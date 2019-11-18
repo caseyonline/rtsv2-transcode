@@ -1,4 +1,4 @@
-module PureConfig where
+module Rtsv2Config where
 
 import Prelude
 

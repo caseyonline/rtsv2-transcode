@@ -1,4 +1,4 @@
-module PureWeb
+module Rtsv2Web
   ( startLink
   , init
   , serverName
@@ -8,7 +8,7 @@ module PureWeb
 
 import Prelude
 
-import PureLibrary as PureLibrary
+import Rtsv2Library as Rtsv2Library
 import Data.Either (Either(..), either)
 import Data.Maybe (Maybe(..), isJust, maybe)
 import Effect (Effect)
@@ -28,16 +28,16 @@ import Unsafe.Coerce (unsafeCoerce)
 
 newtype State = State {}
 
-type PureWebStartArgs = { webPort :: Int }
+type Rtsv2WebStartArgs = { webPort :: Int }
 
 serverName :: ServerName State
 serverName = ServerName "pure_web"
 
-startLink :: PureWebStartArgs -> Effect StartLinkResult
+startLink :: Rtsv2WebStartArgs -> Effect StartLinkResult
 startLink args =
   Gen.startLink serverName $ init args
 
-init :: PureWebStartArgs -> Effect State
+init :: Rtsv2WebStartArgs -> Effect State
 init args = do
   Stetson.configure
     # Stetson.static "/assets/[...]" (PrivDir "pure_ps" "www/assets")

@@ -1,4 +1,4 @@
-module PureLibrary where
+module Rtsv2Library where
 
 import Prelude
 
@@ -11,7 +11,7 @@ import Pinto (ServerName(..), StartLinkResult)
 import Pinto.Gen (CallResult(..))
 import Pinto.Gen as Gen
 
-type PureLibraryStartArgs = {
+type Rtsv2LibraryStartArgs = {
 }
 
 type State = {
@@ -20,10 +20,10 @@ type State = {
 serverName :: ServerName State
 serverName = ServerName "pure_library"
 
-startLink :: PureLibraryStartArgs -> Effect StartLinkResult
+startLink :: Rtsv2LibraryStartArgs -> Effect StartLinkResult
 startLink args =
   Gen.startLink serverName $ init args
 
-init :: PureLibraryStartArgs -> Effect State
+init :: Rtsv2LibraryStartArgs -> Effect State
 init args = do
   pure $ {}

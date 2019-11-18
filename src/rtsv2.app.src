@@ -1,17 +1,16 @@
-{application, pure_ps,
- [{description, "An OTP application"},
+%% -*- mode:erlang;tab-width:2;erlang-indent-level:2;indent-tabs-mode:nil -*-
+{application, rtsv2,
+ [{description, "Limelight RealTime Streaming V2"},
   {vsn, "0.1.0"},
   {registered, []},
-  {mod, { pureApp@ps, []}},
+  {mod, { rtsv2App@ps, []}},
   {applications,
    [kernel,
     stdlib,
-    lager,
     gproc,
     recon,
     cowboy,
-    jsx,
-    eredis
+    jsx
    ]},
   {env,[]},
   {modules, []},
