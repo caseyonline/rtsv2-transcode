@@ -16,3 +16,4 @@ default.etcd
 .#*
 log
 .spago
+node_modules
