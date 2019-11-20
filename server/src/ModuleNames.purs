@@ -2,6 +2,9 @@ module ModuleNames where
 
 import Erl.ModuleName (ModuleName(..))
 
+agents :: ModuleName
+agents = ModuleName "Agents"
+
 gproc :: ModuleName
 gproc = ModuleName "Gproc"
 
