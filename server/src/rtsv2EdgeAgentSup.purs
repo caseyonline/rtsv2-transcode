@@ -1,20 +1,21 @@
 module Rtsv2EdgeAgentSup where
 
-import Effect
-import Erl.Data.List
+import Effect (Effect)
+import Erl.Data.List (nil)
 import Prelude
 
+import Agents as Agents
 import Pinto as Pinto
-import Pinto.Sup (startLink, startChild) as Sup
+import Pinto.Sup (startLink) as Sup
 import Pinto.Sup
-import Rtsv2Web as Rtsv2Web
-import Rtsv2Config as Rtsv2Config
+import Gproc as Gproc
 
-startLink :: Unit -> Effect Pinto.StartLinkResult
+startLink :: forall a. a -> Effect Pinto.StartLinkResult
 startLink _ = Sup.startLink "edgeAgentSup" init
 
 init :: Effect SupervisorSpec
 init = do
+  _ <- Gproc.register Agents.EdgeAgent
   pure $ buildSupervisor
-                # supervisorStrategy SimpleOneForOne
+                # supervisorStrategy OneForOne
                 # supervisorChildren nil

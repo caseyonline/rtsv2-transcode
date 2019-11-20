@@ -8,6 +8,7 @@ module Rtsv2Web
 
 import Prelude
 
+import Agents as Agents
 import Rtsv2Library as Rtsv2Library
 import Data.Either (Either(..), either)
 import Data.Maybe (Maybe(..), isJust, maybe)
@@ -50,13 +51,11 @@ init args = do
     # Stetson.startClear "http_listener"
   pure $ State {}
 
-data Agents = EdgeAgent
-
 edge_entrypoint :: StetsonHandler String
 edge_entrypoint =
   Rest.handler (\req -> Rest.initResult req "state")
   # Rest.serviceAvailable (\req state -> do
-                              registered <- Gproc.registered EdgeAgent
+                              registered <- Gproc.isRegistered Agents.EdgeAgent
                               Rest.result registered req state)
   # Rest.contentTypesProvided (\req state -> Rest.result (textWriter : nil) req state)
   # Rest.yeeha

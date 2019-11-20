@@ -24,4 +24,4 @@ start_edge =
   Sup.startChild "agentSup" $ buildChild
                               # childType Supervisor
                               # childId "edgeAgent"
-                              # childStart Rtsv2EdgeAgentSup.startLink unit
+                              # childStart Rtsv2EdgeAgentSup.startLink nil
