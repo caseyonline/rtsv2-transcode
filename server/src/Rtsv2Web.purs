@@ -24,6 +24,7 @@ import Simple.JSON (class WriteForeign, readJSON, writeJSON)
 import Stetson (RestResult, StaticAssetLocation(..), StetsonHandler)
 import Stetson as Stetson
 import Stetson.Rest as Rest
+import Gproc as Gproc
 import Unsafe.Coerce (unsafeCoerce)
 
 newtype State = State {}
@@ -31,7 +32,7 @@ newtype State = State {}
 type Rtsv2WebStartArgs = { webPort :: Int }
 
 serverName :: ServerName State
-serverName = ServerName "pure_web"
+serverName = ServerName "web"
 
 startLink :: Rtsv2WebStartArgs -> Effect StartLinkResult
 startLink args =
@@ -49,9 +50,14 @@ init args = do
     # Stetson.startClear "http_listener"
   pure $ State {}
 
+data Agents = EdgeAgent
+
 edge_entrypoint :: StetsonHandler String
 edge_entrypoint =
   Rest.handler (\req -> Rest.initResult req "state")
+  # Rest.serviceAvailable (\req state -> do
+                              registered <- Gproc.registered EdgeAgent
+                              Rest.result registered req state)
   # Rest.contentTypesProvided (\req state -> Rest.result (textWriter : nil) req state)
   # Rest.yeeha
 
