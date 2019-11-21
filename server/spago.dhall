@@ -2,9 +2,10 @@
 Welcome to a Spago project!
 You can edit this file as you like.
 -}
-{ name =
-    "my-project"
-, dependencies =
+
+  { name = "rtsv2"
+  , backend = "puerl"
+  , dependencies =
     [ "console"
     , "effect"
     , "erl-atom"
@@ -20,8 +21,8 @@ You can edit this file as you like.
     , "psci-support"
     , "simple-json"
     ]
-, packages =
+  , packages =
     ./packages.dhall
-, sources =
+  , sources =
     [ "src/**/*.purs", "test/**/*.purs" ]
-}
+  }

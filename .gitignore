@@ -17,3 +17,4 @@ default.etcd
 log
 .spago
 node_modules
+.psci_modules

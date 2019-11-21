@@ -43,13 +43,22 @@ init :: Rtsv2WebStartArgs -> Effect State
 init args = do
   Stetson.configure
     # Stetson.route "/poc/api/client/:canary/:stream_id" edge_entrypoint
-
+    # Stetson.route "/test/alive" alive_entrypoint
     # Stetson.static "/assets/[...]" (PrivDir "pure_ps" "www/assets")
     # Stetson.static "/[...]" (PrivFile "pure_ps" "www/index.html")
     # Stetson.port args.webPort
     # Stetson.bindTo 0 0 0 0
     # Stetson.startClear "http_listener"
   pure $ State {}
+
+
+
+alive_entrypoint :: StetsonHandler Unit
+alive_entrypoint =
+  Rest.handler (\req -> Rest.initResult req unit)
+  # Rest.contentTypesProvided (\req state -> Rest.result (emptyText : nil) req unit)
+  # Rest.yeeha
+
 
 edge_entrypoint :: StetsonHandler String
 edge_entrypoint =
@@ -59,6 +68,10 @@ edge_entrypoint =
                               Rest.result registered req state)
   # Rest.contentTypesProvided (\req state -> Rest.result (textWriter : nil) req state)
   # Rest.yeeha
+
+
+emptyText  :: Tuple2 a (Req -> String -> (Effect (RestResult String String)))
+emptyText = tuple2 "text/plain" (\req state -> Rest.result "" req state)
 
 textWriter :: Tuple2 String (Req -> String -> (Effect (RestResult String String)))
 textWriter = tuple2 "text/plain" (\req state -> Rest.result state req state)

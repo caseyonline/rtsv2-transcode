@@ -10,6 +10,8 @@ You can edit this file as you like.
     , "debug"
     , "effect"
     , "http"
+    , "node-child-process"
+    , "node-readline"
     , "psci-support"
     , "spec"
     ]
