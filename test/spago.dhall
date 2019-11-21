@@ -14,6 +14,8 @@ You can edit this file as you like.
     , "node-readline"
     , "psci-support"
     , "spec"
+    , "test-unit"
+    , "toppokki"
     ]
 , packages = ./packages.dhall
 , sources = [ "src/**/*.purs", "test/**/*.purs" ]
