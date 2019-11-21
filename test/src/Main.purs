@@ -13,7 +13,7 @@ import Effect (Effect)
 import Effect.Aff (launchAff_, delay, Aff)
 import Effect.Class.Console (log)
 import OsCmd (runProc)
-import Test.Spec (before_, describe, it, pending)
+import Test.Spec (after_, before_, describe, it, pending)
 import Test.Spec.Assertions (fail, shouldEqual)
 import Test.Spec.Reporter.Console (consoleReporter)
 import Test.Spec.Runner (runSpec)
@@ -22,19 +22,21 @@ main :: Effect Unit
 main =
   launchAff_
     $ runSpec [ consoleReporter ] do
-        before_ launchEdge do
-          describe "client requests stream" do
-            it "fails if no edge agent" do
-              result <- AX.request (AX.defaultRequest { url = "http://localhost:3000/poc/api/client/canary/foo", method = Left GET, responseFormat = ResponseFormat.string })
-              case spy "result is" result of
-                Left err -> do
-                  log $ "GET /api response failed to decode: " <> AX.printError err
-                  fail "HTTP Error"
-                Right response -> do
-                  -- log $ "GET /api response: " <> response.body
-                  case response.status of
-                    StatusCode 200 -> pure unit
-                    sc -> fail $ "Unexpected statuscode" <> show sc
+        before_ launchNode do
+          after_ stopNode do
+            describe "client requests stream" do
+              it "edge agent is present" do
+                result <- AX.request (AX.defaultRequest { url = "http://localhost:3000/poc/api/client/canary/foo", method = Left GET, responseFormat = ResponseFormat.string })
+                case result of
+                  Left err -> do
+                    fail $ "GET /api response failed to decode: " <> AX.printError err
+                  Right response -> do
+                    case response.status of
+                      StatusCode 200 -> pure unit
+                      sc -> fail $ "Unexpected statuscode" <> show sc
 
-launchEdge :: Aff Unit
-launchEdge = runProc "./scripts/startNode.sh" []
+launchNode :: Aff Unit
+launchNode = runProc "./scripts/startNode.sh" []
+
+stopNode :: Aff Unit
+stopNode = runProc "./scripts/stopNode.sh" []
