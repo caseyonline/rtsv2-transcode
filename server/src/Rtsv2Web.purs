@@ -9,24 +9,16 @@ module Rtsv2Web
 import Prelude
 
 import Agents as Agents
-import Rtsv2Library as Rtsv2Library
-import Data.Either (Either(..), either)
-import Data.Maybe (Maybe(..), isJust, maybe)
 import Effect (Effect)
-import Erl.Atom (atom)
-import Erl.Cowboy.Req (ReadBodyResult(..), Req, binding, readBody, setBody)
-import Erl.Data.Binary (Binary)
-import Erl.Data.Binary.IOData (IOData, fromBinary, toBinary)
-import Erl.Data.List (List, nil, (:))
+import Erl.Cowboy.Req (Req)
+import Erl.Data.List (nil, (:))
 import Erl.Data.Tuple (Tuple2, tuple2)
 import Pinto (ServerName(..), StartLinkResult)
 import Pinto.Gen as Gen
-import Simple.JSON (class WriteForeign, readJSON, writeJSON)
-import Stetson (RestResult, StaticAssetLocation(..), StetsonHandler)
+import Stetson (RestResult, StetsonHandler)
 import Stetson as Stetson
 import Stetson.Rest as Rest
 import Gproc as Gproc
-import Unsafe.Coerce (unsafeCoerce)
 
 newtype State = State {}
 

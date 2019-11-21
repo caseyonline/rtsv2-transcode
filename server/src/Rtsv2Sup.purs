@@ -5,7 +5,17 @@ import Erl.Data.List (nil, (:))
 import Prelude
 
 import Pinto as Pinto
-import Pinto.Sup (SupervisorChildType(..), SupervisorSpec, SupervisorStrategy(..), buildChild, buildSupervisor, childId, childStart, childType, supervisorChildren, supervisorStrategy)
+import Pinto.Sup ( SupervisorChildType(..)
+                 , SupervisorSpec
+                 , SupervisorStrategy(..)
+                 , buildChild
+                 , buildSupervisor
+                 , childId
+                 , childStart
+                 , childType
+                 , supervisorChildren
+                 , supervisorStrategy
+                 )
 import Pinto.Sup as Sup
 import Rtsv2AgentSup as Rtsv2AgentSup
 import Rtsv2Config as Rtsv2Config
