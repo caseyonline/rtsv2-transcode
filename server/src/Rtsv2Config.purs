@@ -7,7 +7,7 @@ import Agents (Agent(..))
 import Control.Monad.Except (ExceptT, runExcept)
 import Data.Either (hush)
 import Data.Identity (Identity)
-import Data.Maybe (Maybe, fromMaybe, maybe)
+import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Newtype (wrap)
 import Data.Traversable (traverse)
 import Debug.Trace (spy, traceM)
@@ -15,7 +15,7 @@ import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Foreign (F, Foreign, readInt, readString, unsafeReadTagged)
 import Partial (crashWith)
-import Partial.Unsafe (unsafePartial)
+import Partial.Unsafe (unsafeCrashWith, unsafePartial)
 
 foreign import getEnv_ :: Atom -> Effect Foreign
 
@@ -36,14 +36,16 @@ get f v = hush <<< runExcept <<< f <$> getEnv_ (atom v)
 
 getMandatory :: forall a e. (Foreign -> ExceptT e Identity a) -> String -> Effect a
 getMandatory f v =
-  do
-   let
-    crashIfMissing :: Maybe a -> a
-    crashIfMissing a = fromMaybe (unsafePartial $ crashWith $ "Missing mandatory config value " <> v) a
+  let
     foo = hush <<< runExcept <<< f <$> getEnv_ (atom v)
-   _ <- traceM foo
-   pure $ crashIfMissing <$> spy "wtf" foo
+  in crashIfMissing v <$> (spy "wtf" <$> foo)
 
+
+crashIfMissing :: forall a. String -> Maybe a -> a
+crashIfMissing v ma =
+  case ma of
+    (Just a) -> a
+    Nothing -> unsafeCrashWith $ "Missing mandatory config value " <> v
 
 getWithDefault :: forall a e. (Foreign -> ExceptT e Identity a) -> String -> a -> Effect a
 getWithDefault f v d = fromMaybe d <$> (get f v)
