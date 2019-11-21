@@ -18,7 +18,10 @@ $(COMPILED_PS): output
 
 output: $(PS_SOURCEFILES) $(PS_ERL_FFI) .spago
 	.spago/erl-modules/${ERL_MODULES_VERSION}/scripts/gen_module_names.sh src/
-	spago build
+	$(eval TMP := $(shell mktemp -d))
+	ln -s `which purerl` ${TMP}/purs
+	PATH=${TMP}:${PATH} spago build
+	rm -rf $(TMP)
 	@touch output
 
 .spago: spago.dhall packages.dhall

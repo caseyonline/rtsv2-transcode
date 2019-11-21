@@ -3,9 +3,8 @@ Welcome to a Spago project!
 You can edit this file as you like.
 -}
 
-  { name = "rtsv2"
-  , backend = "puerl"
-  , dependencies =
+{ name = "rtsv2"
+, dependencies =
     [ "console"
     , "effect"
     , "erl-atom"
@@ -18,11 +17,10 @@ You can edit this file as you like.
     , "erl-process"
     , "erl-stetson"
     , "erl-tuples"
+    , "partial"
     , "psci-support"
     , "simple-json"
     ]
-  , packages =
-    ./packages.dhall
-  , sources =
-    [ "src/**/*.purs", "test/**/*.purs" ]
-  }
+, packages = ./packages.dhall
+, sources = [ "src/**/*.purs" ]
+}

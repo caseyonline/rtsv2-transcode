@@ -1,5 +1,5 @@
 module Agents (
-                Agents(..)
+                Agent(..)
               ) where
 
-data Agents = EdgeAgent
+data Agent = EdgeAgent

@@ -44,8 +44,6 @@ init args = do
   Stetson.configure
     # Stetson.route "/poc/api/client/:canary/:stream_id" edge_entrypoint
     # Stetson.route "/test/alive" alive_entrypoint
-    # Stetson.static "/assets/[...]" (PrivDir "pure_ps" "www/assets")
-    # Stetson.static "/[...]" (PrivFile "pure_ps" "www/index.html")
     # Stetson.port args.webPort
     # Stetson.bindTo 0 0 0 0
     # Stetson.startClear "http_listener"
@@ -70,7 +68,7 @@ edge_entrypoint =
   # Rest.yeeha
 
 
-emptyText  :: Tuple2 a (Req -> String -> (Effect (RestResult String String)))
+emptyText  :: forall a. Tuple2 String (Req -> a -> (Effect (RestResult String a)))
 emptyText = tuple2 "text/plain" (\req state -> Rest.result "" req state)
 
 textWriter :: Tuple2 String (Req -> String -> (Effect (RestResult String String)))

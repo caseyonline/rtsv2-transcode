@@ -37,4 +37,4 @@ main =
                     sc -> fail $ "Unexpected statuscode" <> show sc
 
 launchEdge :: Aff Unit
-launchEdge = runProc "./scripts/startEdge.sh" []
+launchEdge = runProc "./scripts/startNode.sh" []

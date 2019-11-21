@@ -3,6 +3,7 @@
 -export([
          readInt_/1,
          readString_/1,
+         readStrings_/1,
          readDirect_/1
         ]).
 
@@ -24,6 +25,15 @@ readString_(Name) -> fun() ->
                            Binary when is_binary(Binary) -> Binary
                          end
                   end.
+
+readStrings_(Name) -> fun() ->
+                         case get_config_value(binary_to_atom(Name, utf8)) of
+                           List when is_list(List) ->
+                             true = lists:all(fun is_binary/1,  List),
+                             List
+                         end
+                  end.
+
 
 get_config_value(Name) ->
   gproc:get_env(l, rtsv2, Name, [os_env, app_env, error]).
