@@ -9,7 +9,7 @@ import Data.Generic.Rep.Eq (genericEq)
 import Data.Generic.Rep.Show (genericShow)
 import Partial.Unsafe (unsafeCrashWith)
 import Prelude (class Eq, class Show, show)
-import Test.QuickCheck.Arbitrary (class Arbitrary, genericArbitrary)
+--import Test.QuickCheck.Arbitrary (class Arbitrary, genericArbitrary)
 
 data Agent = EdgeAgent
 
@@ -21,9 +21,9 @@ instance eqAgent :: Eq Agent where
 instance showAgent :: Show Agent where
   show = genericShow
 
-instance arbitraryAgent ∷ Arbitrary Agent where
-  arbitrary = genericArbitrary
-  
+--instance arbitraryAgent ∷ Arbitrary Agent where
+--  arbitrary = genericArbitrary
+
 strToAgent :: String -> Agent
 strToAgent "EdgeAgent" = EdgeAgent
 strToAgent _ = unsafeCrashWith "Uknown Agent"

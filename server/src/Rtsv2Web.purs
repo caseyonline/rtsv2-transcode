@@ -8,7 +8,7 @@ module Rtsv2Web
 
 import Prelude
 
-import Agents as Agents
+import Shared.Agents as Agents
 import Effect (Effect)
 import Erl.Cowboy.Req (Req)
 import Erl.Data.List (nil, (:))

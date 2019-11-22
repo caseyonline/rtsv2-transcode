@@ -18,6 +18,7 @@ You can edit this file as you like.
     , "erl-process"
     , "erl-stetson"
     , "erl-tuples"
+    , "generics-rep"
     , "partial"
     , "psci-support"
     , "simple-json"
