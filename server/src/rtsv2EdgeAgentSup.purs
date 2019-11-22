@@ -4,7 +4,7 @@ import Effect (Effect)
 import Erl.Data.List (nil)
 import Prelude
 
-import Agents as Agents
+import Shared.Agents as Agents
 import Pinto as Pinto
 import Pinto.Sup (startLink) as Sup
 import Pinto.Sup

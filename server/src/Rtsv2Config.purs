@@ -3,7 +3,7 @@ module Rtsv2Config where
 import Erl.Data.List
 import Prelude
 
-import Agents (Agent(..))
+import Shared.Agents (Agent(..))
 import Control.Monad.Except (ExceptT, runExcept)
 import Data.Either (hush)
 import Data.Identity (Identity)

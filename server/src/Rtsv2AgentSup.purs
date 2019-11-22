@@ -5,7 +5,7 @@ import Erl.Data.List
 import Pinto.Sup
 import Prelude
 
-import Agents (Agent(..))
+import Shared.Agents (Agent(..))
 import Pinto as Pinto
 import Pinto.Sup (startLink, startChild) as Sup
 import Rtsv2Config as Rtsv2Config

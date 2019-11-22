@@ -9,14 +9,16 @@ You can edit this file as you like.
     , "console"
     , "debug"
     , "effect"
+    , "generics-rep"
     , "http"
     , "node-child-process"
     , "node-readline"
     , "psci-support"
+    , "quickcheck"
     , "spec"
     , "test-unit"
     , "toppokki"
     ]
 , packages = ./packages.dhall
-, sources = [ "src/**/*.purs", "test/**/*.purs" ]
+, sources = [ "src/**/*.purs" ]
 }
