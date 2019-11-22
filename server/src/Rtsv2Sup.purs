@@ -4,7 +4,7 @@ import Prelude
 
 import Effect (Effect)
 import Erl.Data.List (nil, (:))
-import GlobalState as GlobalState
+import LocalPopState as PopState
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildType(..), SupervisorSpec, SupervisorStrategy(..), buildChild, buildSupervisor, childId, childStart, childType, supervisorChildren, supervisorStrategy)
 import Pinto.Sup as Sup
@@ -31,7 +31,7 @@ init = do
           buildChild
       # childType Worker
       # childId "globalState"
-      # childStart GlobalState.startLink {}
+      # childStart PopState.startLink {}
 
   webServer port =
     buildChild

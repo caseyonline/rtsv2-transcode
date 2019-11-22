@@ -14,7 +14,7 @@ import Erl.Atom (atom)
 import Erl.Cowboy.Req (Req, binding)
 import Erl.Data.List (nil, (:))
 import Erl.Data.Tuple (Tuple2, tuple2)
-import GlobalState as GlobalState
+import LocalPopState as PopState
 import Gproc as Gproc
 import Pinto (ServerName(..), StartLinkResult)
 import Pinto.Gen as Gen
@@ -66,7 +66,7 @@ edge_entrypoint =
                               registered <- Gproc.isRegistered Agents.EdgeAgent
                               Rest.result registered req state)
   # Rest.resourceExists (\req state@{streamId} -> do
-                            isAvailable <- GlobalState.isStreamAvailable streamId
+                            isAvailable <- PopState.isStreamAvailable streamId
                             Rest.result isAvailable req state
                           )
   # Rest.contentTypesProvided (\req state -> Rest.result (textWriter "" : nil) req state)

@@ -2,11 +2,11 @@ module ModuleNames where
 
 import Erl.ModuleName (ModuleName(..))
 
-globalState :: ModuleName
-globalState = ModuleName "GlobalState"
-
 gproc :: ModuleName
 gproc = ModuleName "Gproc"
+
+localPopState :: ModuleName
+localPopState = ModuleName "LocalPopState"
 
 rtsv2AgentSup :: ModuleName
 rtsv2AgentSup = ModuleName "Rtsv2AgentSup"
