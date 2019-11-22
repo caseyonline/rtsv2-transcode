@@ -11,7 +11,7 @@ wait_for_server() {
   done
 }
 main() {
-  erl -pa _build/default/lib/*/ebin -boot _build/default/rel/rtsv2/releases/1/rtsv2 -name testEdge@127.0.0.1 -config release-files/sys.config -detached -rtsv2 mode dev
+  erl -pa _build/default/lib/*/ebin -boot _build/default/rel/rtsv2/releases/1/rtsv2 -config test/config/$1 -detached -rtsv2 mode dev -rtsv2 id rtsv2TestRunner
   wait_for_server
 }
 

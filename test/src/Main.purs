@@ -8,6 +8,7 @@ import Data.Argonaut.Core as J
 import Data.Either (Either(..))
 import Data.HTTP.Method (Method(..))
 import Data.Time.Duration (Milliseconds(..))
+import Data.Traversable (sequence)
 import Debug.Trace (spy)
 import Effect (Effect)
 import Effect.Aff (launchAff_, delay, Aff)
@@ -22,10 +23,10 @@ main :: Effect Unit
 main =
   launchAff_
     $ runSpec [ consoleReporter ] do
-        before_ launchNode do
-          after_ stopNode do
-            describe "client requests stream" do
-              it "is not being ingested" do
+        before_ (launchNodes [ "node3000" ]) do
+          after_ stopNodes do
+            describe "single edge agent running" do
+              it "client requests stream which is not being ingested" do
                 result <- AX.request (AX.defaultRequest { url = "http://localhost:3000/poc/api/client/canary/edge/stream1/connect", method = Left GET, responseFormat = ResponseFormat.string })
                 case result of
                   Left err -> do
@@ -35,11 +36,9 @@ main =
                       StatusCode 404 -> pure unit
                       sc -> fail $ "Unexpected statuscode" <> show sc
 
+launchNodes :: Array String -> Aff Unit
+launchNodes sysconfigs = do
+  void $ sequence $ ((\sc -> runProc "./scripts/startNode.sh" [ sc ]) <$> sysconfigs)
 
-
-
-launchNode :: Aff Unit
-launchNode = runProc "./scripts/startNode.sh" []
-
-stopNode :: Aff Unit
-stopNode = runProc "./scripts/stopNode.sh" []
+stopNodes :: Aff Unit
+stopNodes = runProc "./scripts/stopNodes.sh" []
