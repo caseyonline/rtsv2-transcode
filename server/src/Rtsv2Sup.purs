@@ -1,21 +1,12 @@
 module Rtsv2Sup where
 
-import Effect (Effect)
-import Erl.Data.List (nil, (:))
 import Prelude
 
+import Effect (Effect)
+import Erl.Data.List (nil, (:))
+import GlobalState as GlobalState
 import Pinto as Pinto
-import Pinto.Sup ( SupervisorChildType(..)
-                 , SupervisorSpec
-                 , SupervisorStrategy(..)
-                 , buildChild
-                 , buildSupervisor
-                 , childId
-                 , childStart
-                 , childType
-                 , supervisorChildren
-                 , supervisorStrategy
-                 )
+import Pinto.Sup (SupervisorChildType(..), SupervisorSpec, SupervisorStrategy(..), buildChild, buildSupervisor, childId, childStart, childType, supervisorChildren, supervisorStrategy)
 import Pinto.Sup as Sup
 import Rtsv2AgentSup as Rtsv2AgentSup
 import Rtsv2Config as Rtsv2Config
@@ -30,11 +21,18 @@ init = do
   pure $ buildSupervisor
     # supervisorStrategy OneForOne
     # supervisorChildren
-        ( agentSup
+        ( globalState
+            : agentSup
             : (webServer webPort)
             : nil
         )
   where
+  globalState =
+          buildChild
+      # childType Worker
+      # childId "globalState"
+      # childStart GlobalState.startLink {}
+
   webServer port =
     buildChild
       # childType Worker

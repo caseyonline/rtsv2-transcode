@@ -14,8 +14,8 @@ import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List)
 import Foreign (F, Foreign, readInt, readString, unsafeReadTagged)
-import Partial.Unsafe (unsafeCrashWith)
 import Shared.Agents (Agent, strToAgent)
+import Shared.Utils (lazyCrashIfMissing)
 
 foreign import getEnv_ :: Atom -> Effect Foreign
 
@@ -31,10 +31,7 @@ get :: forall a e. (Foreign -> ExceptT e Identity a) -> String -> Effect (Maybe 
 get f v = hush <<< runExcept <<< f <$> getEnv_ (atom v)
 
 getMandatory :: forall a e. (Foreign -> ExceptT e Identity a) -> String -> Effect a
-getMandatory f v = fromMaybe' (asyncCrashIfMissing v) <$> hush <<< runExcept <<< f <$> getEnv_ (atom v)
-
-asyncCrashIfMissing :: forall a. String -> Unit -> a
-asyncCrashIfMissing v = const $ unsafeCrashWith $ "Missing mandatory config value " <> v
+getMandatory f v = fromMaybe' (lazyCrashIfMissing $ "Missing mandatory config value " <> v) <$> hush <<< runExcept <<< f <$> getEnv_ (atom v)
 
 getWithDefault :: forall a e. (Foreign -> ExceptT e Identity a) -> String -> a -> Effect a
 getWithDefault f v d = fromMaybe d <$> (get f v)

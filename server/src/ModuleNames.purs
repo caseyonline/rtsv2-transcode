@@ -2,6 +2,9 @@ module ModuleNames where
 
 import Erl.ModuleName (ModuleName(..))
 
+globalState :: ModuleName
+globalState = ModuleName "GlobalState"
+
 gproc :: ModuleName
 gproc = ModuleName "Gproc"
 

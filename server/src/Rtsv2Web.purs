@@ -8,17 +8,21 @@ module Rtsv2Web
 
 import Prelude
 
-import Shared.Agents as Agents
+import Data.Maybe (fromMaybe')
 import Effect (Effect)
-import Erl.Cowboy.Req (Req)
+import Erl.Atom (atom)
+import Erl.Cowboy.Req (Req, binding)
 import Erl.Data.List (nil, (:))
 import Erl.Data.Tuple (Tuple2, tuple2)
+import GlobalState as GlobalState
+import Gproc as Gproc
 import Pinto (ServerName(..), StartLinkResult)
 import Pinto.Gen as Gen
+import Shared.Agents as Agents
+import Shared.Utils (lazyCrashIfMissing)
 import Stetson (RestResult, StetsonHandler)
 import Stetson as Stetson
 import Stetson.Rest as Rest
-import Gproc as Gproc
 
 newtype State = State {}
 
@@ -34,7 +38,7 @@ startLink args =
 init :: Rtsv2WebStartArgs -> Effect State
 init args = do
   Stetson.configure
-    # Stetson.route "/poc/api/client/:canary/:stream_id" edge_entrypoint
+    # Stetson.route "/poc/api/client/:canary/edge/:stream_id/connect" edge_entrypoint
     # Stetson.route "/test/alive" alive_entrypoint
     # Stetson.port args.webPort
     # Stetson.bindTo 0 0 0 0
@@ -50,18 +54,27 @@ alive_entrypoint =
   # Rest.yeeha
 
 
-edge_entrypoint :: StetsonHandler String
+
+type EdgeState = { streamId :: String }
+edge_entrypoint :: StetsonHandler EdgeState
 edge_entrypoint =
-  Rest.handler (\req -> Rest.initResult req "state")
+  Rest.handler (\req ->
+                 let streamId = fromMaybe' (lazyCrashIfMissing "stream_id binding missing") $ binding (atom "stream_id") req
+                 in
+                 Rest.initResult req {streamId})
   # Rest.serviceAvailable (\req state -> do
                               registered <- Gproc.isRegistered Agents.EdgeAgent
                               Rest.result registered req state)
-  # Rest.contentTypesProvided (\req state -> Rest.result (textWriter : nil) req state)
+  # Rest.resourceExists (\req state@{streamId} -> do
+                            isAvailable <- GlobalState.isStreamAvailable streamId
+                            Rest.result isAvailable req state
+                          )
+  # Rest.contentTypesProvided (\req state -> Rest.result (textWriter "" : nil) req state)
   # Rest.yeeha
 
 
 emptyText  :: forall a. Tuple2 String (Req -> a -> (Effect (RestResult String a)))
 emptyText = tuple2 "text/plain" (\req state -> Rest.result "" req state)
 
-textWriter :: Tuple2 String (Req -> String -> (Effect (RestResult String String)))
-textWriter = tuple2 "text/plain" (\req state -> Rest.result state req state)
+textWriter :: forall a. String -> Tuple2 String (Req -> a -> (Effect (RestResult String a)))
+textWriter t = tuple2 "text/plain" (\req state -> Rest.result t req state)

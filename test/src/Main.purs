@@ -25,15 +25,18 @@ main =
         before_ launchNode do
           after_ stopNode do
             describe "client requests stream" do
-              it "edge agent is present" do
-                result <- AX.request (AX.defaultRequest { url = "http://localhost:3000/poc/api/client/canary/foo", method = Left GET, responseFormat = ResponseFormat.string })
+              it "is not being ingested" do
+                result <- AX.request (AX.defaultRequest { url = "http://localhost:3000/poc/api/client/canary/edge/stream1/connect", method = Left GET, responseFormat = ResponseFormat.string })
                 case result of
                   Left err -> do
                     fail $ "GET /api response failed to decode: " <> AX.printError err
                   Right response -> do
                     case response.status of
-                      StatusCode 200 -> pure unit
+                      StatusCode 404 -> pure unit
                       sc -> fail $ "Unexpected statuscode" <> show sc
+
+
+
 
 launchNode :: Aff Unit
 launchNode = runProc "./scripts/startNode.sh" []
