@@ -1,9 +1,12 @@
-.PHONY: all server client
+.PHONY: all server client test
 
-all: server  client
+all: server client test
 
-server: 
+server:
 	$(MAKE) -C server all
 
-client: 
+client:
 	$(MAKE) -C client all
+
+test:
+	$(MAKE) -C test all
