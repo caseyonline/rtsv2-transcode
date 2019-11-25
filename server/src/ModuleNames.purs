@@ -28,3 +28,6 @@ rtsv2Sup = ModuleName "Rtsv2Sup"
 
 rtsv2Web :: ModuleName
 rtsv2Web = ModuleName "Rtsv2Web"
+
+serf :: ModuleName
+serf = ModuleName "Serf"

@@ -18,3 +18,4 @@ log
 .spago
 node_modules
 .psci_modules
+.edts

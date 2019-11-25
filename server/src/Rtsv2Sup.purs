@@ -1,7 +1,6 @@
 module Rtsv2Sup where
 
 import Prelude
-
 import Effect (Effect)
 import Erl.Data.List (nil, (:))
 import LocalPopState as PopState
@@ -21,17 +20,17 @@ init = do
   pure $ buildSupervisor
     # supervisorStrategy OneForOne
     # supervisorChildren
-        ( globalState
+        ( localPopState
             : agentSup
             : (webServer webPort)
             : nil
         )
   where
-  globalState =
-          buildChild
+  localPopState =
+    buildChild
       # childType Worker
-      # childId "globalState"
-      # childStart PopState.startLink {}
+      # childId "localPopState"
+      # childStart PopState.startLink PopState.defaultStartArgs
 
   webServer port =
     buildChild
