@@ -7,6 +7,7 @@ import Shared.Agents as Agents
 import Pinto (ServerName(..), StartLinkResult)
 import Pinto.Gen (CallResult(..))
 import Pinto.Gen as Gen
+import Logger as Logger
 import Gproc as Gproc
 
 type State
@@ -23,5 +24,6 @@ startLink :: IntraPoPAgentStartArgs -> Effect StartLinkResult
 startLink args = Gen.startLink serverName $ init args
 
 init :: IntraPoPAgentStartArgs -> Effect State
-init _ = do
+init state = do
+  _ <- Logger.info "Intra-PoP Agent Starting" {foo: "bar"}
   pure $ {}

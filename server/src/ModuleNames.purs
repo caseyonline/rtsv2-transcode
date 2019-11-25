@@ -8,6 +8,9 @@ gproc = ModuleName "Gproc"
 localPopState :: ModuleName
 localPopState = ModuleName "LocalPopState"
 
+logger :: ModuleName
+logger = ModuleName "Logger"
+
 rtsv2AgentSup :: ModuleName
 rtsv2AgentSup = ModuleName "Rtsv2AgentSup"
 
