@@ -18,6 +18,7 @@ You can edit this file as you like.
     , "spec"
     , "test-unit"
     , "toppokki"
+    , "tuples"
     ]
 , packages = ./packages.dhall
 , sources = [ "src/**/*.purs" ]

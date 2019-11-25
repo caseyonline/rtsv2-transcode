@@ -8,10 +8,15 @@ import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Eq (genericEq)
 import Data.Generic.Rep.Show (genericShow)
 import Partial.Unsafe (unsafeCrashWith)
-import Prelude (class Eq, class Show, show)
+import Prelude (class Eq, class Show, show, (<>))
+
 --import Test.QuickCheck.Arbitrary (class Arbitrary, genericArbitrary)
 
 data Agent = EdgeAgent
+           | IngestAgent
+           | StreamRelayAgent
+           | IntraPoPAgent
+           | TransPoPAgent
 
 derive instance genericAgent :: Generic Agent _
 
@@ -26,7 +31,11 @@ instance showAgent :: Show Agent where
 
 strToAgent :: String -> Agent
 strToAgent "EdgeAgent" = EdgeAgent
-strToAgent _ = unsafeCrashWith "Uknown Agent"
+strToAgent "IngestAgent" = IngestAgent
+strToAgent "StreamRelayAgent" = StreamRelayAgent
+strToAgent "IntraPoPAgent" = IntraPoPAgent
+strToAgent "TransPoPAgent" = TransPoPAgent
+strToAgent unknown = unsafeCrashWith ("Unknown Agent" <> unknown)
 
 agentToStr :: Agent -> String
 agentToStr = show

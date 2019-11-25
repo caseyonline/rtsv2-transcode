@@ -19,3 +19,4 @@ log
 node_modules
 .psci_modules
 .edts
+server/purs
