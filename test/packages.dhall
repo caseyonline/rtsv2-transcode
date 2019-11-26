@@ -5,13 +5,22 @@ let overrides = {=}
 
 let additions = 
       { http =
+          { dependencies = [] : List Text
+          , repo = "ssh://git@github.com/joneshf/purescript-http.git"
+          , version = "v4.0.0"
+          },
+        toppokki =
           { dependencies =
-              [
-              ] : List Text
-          , repo =
-              "ssh://git@github.com/joneshf/purescript-http.git"
-          , version =
-              "v4.0.0"
+            [ "aff-promise"
+            , "node-fs-aff"
+            , "node-buffer"
+            , "node-http"
+            , "functions"
+            , "record"
+            , "prelude"
+            ] : List Text
+          , repo = "ssh://git@github.com/justinwoo/purescript-toppokki.git"
+          , version = "v2.2.0"
           }
       }
 

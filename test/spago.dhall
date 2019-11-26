@@ -12,6 +12,8 @@ You can edit this file as you like.
     , "generics-rep"
     , "http"
     , "node-child-process"
+    , "node-fs"
+    , "node-fs-aff"
     , "node-readline"
     , "psci-support"
     , "quickcheck"
