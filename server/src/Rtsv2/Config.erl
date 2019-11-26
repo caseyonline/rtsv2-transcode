@@ -1,4 +1,4 @@
--module(rtsv2Config@foreign).
+-module(rtsv2_config@foreign).
 
 -export([ getEnv_/1
         ]).

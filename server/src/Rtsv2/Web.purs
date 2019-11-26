@@ -1,4 +1,4 @@
-module Rtsv2Web
+module Rtsv2.Web
   ( startLink
   , init
   , serverName

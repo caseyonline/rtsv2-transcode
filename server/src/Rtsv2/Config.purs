@@ -1,6 +1,7 @@
-module Rtsv2Config
+module Rtsv2.Config
   ( webPort
   , configuredAgents
+  , intraPoPAgentConfig
   ) where
 
 import Prelude
@@ -16,6 +17,7 @@ import Erl.Data.List (List)
 import Foreign (F, Foreign, readInt, readString, unsafeReadTagged)
 import Shared.Agents (Agent, strToAgent)
 import Shared.Utils (lazyCrashIfMissing)
+import Rtsv2.IntraPoPAgent (IntraPoPAgentStartArgs)
 
 foreign import getEnv_ :: Atom -> Effect Foreign
 
@@ -26,6 +28,11 @@ configuredAgents :: Effect (List Agent)
 configuredAgents = do
   agentStrings <- getMandatory (readList >=> traverse readString) "agents"
   pure $ strToAgent <$> agentStrings
+
+intraPoPAgentConfig :: Effect IntraPoPAgentStartArgs
+intraPoPAgentConfig = do
+  config <- getMandatory (unsafeReadTagged "map") "intraPoPConfig"
+  pure $ config
 
 get :: forall a e. (Foreign -> ExceptT e Identity a) -> String -> Effect (Maybe a)
 get f v = hush <<< runExcept <<< f <$> getEnv_ (atom v)

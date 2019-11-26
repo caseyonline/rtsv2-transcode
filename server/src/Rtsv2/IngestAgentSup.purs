@@ -1,4 +1,4 @@
-module Rtsv2IngestAgentSup where
+module Rtsv2.IngestAgentSup where
 
 import Effect (Effect)
 import Erl.Data.List (nil)

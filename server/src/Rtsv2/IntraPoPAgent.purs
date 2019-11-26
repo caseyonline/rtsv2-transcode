@@ -1,4 +1,4 @@
-module Rtsv2IntraPoPAgent where
+module Rtsv2.IntraPoPAgent where
 
 import Prelude
 
@@ -14,12 +14,14 @@ import Pinto.Gen as Gen
 import Prim.Row (class Nub)
 import Record as Record
 import Shared.Agents as Agents
+import Serf (Ip(..), IpAndPort)
+import Serf as Serf
 
 type State
   = {}
 
 type IntraPoPAgentStartArgs
-  = {
+  = { rpcPort :: Int
     }
 
 serverName :: ServerName State
@@ -29,10 +31,18 @@ startLink :: IntraPoPAgentStartArgs -> Effect StartLinkResult
 startLink args = Gen.startLink serverName $ init args
 
 init :: IntraPoPAgentStartArgs -> Effect State
-init state = do
-  _ <- logInfo "Intra-PoP Agent Starting" {foo: "bar"}
+init config = do
+  let
+    serfRpcAddress = { ip: Ipv4 127 0 0 1
+                     , port: config.rpcPort
+                     }
+
+  _ <- logInfo "Intra-PoP Agent Starting" config
+
+--  result <- Serf.join serfRpcAddress defaultSeeds true
+
   pure $ {}
 
 logInfo :: forall a b. Nub (domain :: List Atom | a) b =>  String -> Record a -> Effect Foreign
 logInfo msg metaData =
-  Logger.info msg (Record.merge {domain : ((atom (show Agents.IntraPoPAgent)): nil)} metaData)
+  Logger.info msg (Record.merge {domain : ((atom (show Agents.IntraPoPAgent)): nil)} {misc: metaData})

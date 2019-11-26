@@ -1,4 +1,4 @@
-module Rtsv2TransPoPAgent where
+module Rtsv2.TransPoPAgent where
 
 import Effect (Effect)
 import Erl.Data.List (nil)

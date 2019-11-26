@@ -1,4 +1,4 @@
-module Rtsv2Sup where
+module Rtsv2.Sup where
 
 import Prelude
 import Effect (Effect)
@@ -7,39 +7,40 @@ import LocalPopState as PopState
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildType(..), SupervisorSpec, SupervisorStrategy(..), buildChild, buildSupervisor, childId, childStart, childType, supervisorChildren, supervisorStrategy)
 import Pinto.Sup as Sup
-import Rtsv2AgentSup as Rtsv2AgentSup
-import Rtsv2Config as Rtsv2Config
-import Rtsv2Web as Rtsv2Web
+import Rtsv2.AgentSup as AgentSup
+import Rtsv2.Config as Config
+import Rtsv2.Web as Web
 
 startLink :: Effect Pinto.StartLinkResult
 startLink = Sup.startLink "rtsv2sup" init
 
 init :: Effect SupervisorSpec
 init = do
-  webPort <- Rtsv2Config.webPort
-  pure $ buildSupervisor
-    # supervisorStrategy OneForOne
-    # supervisorChildren
-        ( localPopState
-            : agentSup
-            : (webServer webPort)
-            : nil
-        )
-  where
-  localPopState =
-    buildChild
+  webPort <- Config.webPort
+  let
+    popDefinition =
+      buildChild
       # childType Worker
       # childId "localPopState"
       # childStart PopState.startLink PopState.defaultStartArgs
 
-  webServer port =
-    buildChild
+    webServer =
+      buildChild
       # childType Worker
       # childId "web"
-      # childStart Rtsv2Web.startLink { webPort: port }
+      # childStart Web.startLink { webPort: webPort }
 
-  agentSup =
-    buildChild
+    agentSup =
+      buildChild
       # childType Supervisor
       # childId "agentSup"
-      # childStart Rtsv2AgentSup.startLink unit
+      # childStart AgentSup.startLink unit
+
+  pure $ buildSupervisor
+    # supervisorStrategy OneForOne
+    # supervisorChildren
+        ( popDefinition
+            : agentSup
+            : webServer
+            : nil
+        )
