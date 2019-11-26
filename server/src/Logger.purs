@@ -22,26 +22,26 @@ foreign import notice_ :: forall a. String -> a -> Effect Foreign
 foreign import info_ :: forall a. String -> a -> Effect Foreign
 foreign import debug_ :: forall a. String -> a -> Effect Foreign
 
-emergency :: forall a. String -> a -> Effect Foreign
+emergency :: forall a. String -> Record a -> Effect Foreign
 emergency = emergency_
 
-alert :: forall a. String -> a -> Effect Foreign
+alert :: forall a. String -> Record a -> Effect Foreign
 alert = alert_
 
-critical :: forall a. String -> a -> Effect Foreign
+critical :: forall a. String -> Record a -> Effect Foreign
 critical = critical_
 
-error :: forall a. String -> a -> Effect Foreign
+error :: forall a. String -> Record a -> Effect Foreign
 error = error_
 
-warning :: forall a. String -> a -> Effect Foreign
+warning :: forall a. String -> Record a -> Effect Foreign
 warning = warning_
 
-notice :: forall a. String -> a -> Effect Foreign
+notice :: forall a. String -> Record a -> Effect Foreign
 notice = notice_
 
-info :: forall a. String -> a -> Effect Foreign
+info :: forall a. String -> Record a -> Effect Foreign
 info = info_
 
-debug :: forall a. String -> a -> Effect Foreign
+debug :: forall a. String -> Record a -> Effect Foreign
 debug = debug_

@@ -21,7 +21,7 @@ startLink _ = Sup.startLink "agentSup" init
 
 init :: Effect SupervisorSpec
 init = do
-  initialAgents <- Config.configuredAgents
+  nodeConfig <- Config.nodeConfig
   intraPoPAgentConfig <- Config.intraPoPAgentConfig
   let
       makeSpec :: Agent -> SupervisorChildSpec
@@ -48,4 +48,4 @@ init = do
 
   pure $ Sup.buildSupervisor
                 # Sup.supervisorStrategy OneForOne
-                # Sup.supervisorChildren (makeSpec <$> (IntraPoPAgent : initialAgents))
+                # Sup.supervisorChildren (makeSpec <$> (IntraPoPAgent : nodeConfig.agents))
