@@ -20,7 +20,7 @@
 
         case logger:allow(Level, Module) of
           true ->
-            apply(logger, macro_log, [Location, Level, binary_to_list(Msg), [], #{misc => Args}]);
+            apply(logger, macro_log, [Location, Level, binary_to_list(Msg), [], Args]);
           false ->
             ok
         end).

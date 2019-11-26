@@ -3,7 +3,7 @@
  [{description, "Limelight RealTime Streaming V2"},
   {vsn, "0.1.0"},
   {registered, []},
-  {mod, { rtsv2App@ps, []}},
+  {mod, { rtsv2_app@ps, []}},
   {applications,
    [kernel,
     stdlib,

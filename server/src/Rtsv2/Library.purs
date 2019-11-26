@@ -1,4 +1,4 @@
-module Rtsv2Library where
+module Rtsv2.Library where
 
 import Prelude
 
