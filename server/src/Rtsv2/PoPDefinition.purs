@@ -3,20 +3,26 @@ module Rtsv2.PoPDefinition
        , init
        , serverName
        , State
-       , StartArgs
+       , Config
        ) where
 
 import Prelude
 
 import Effect (Effect)
 import Erl.Data.List (List)
+import File as File
+import Logger as Logger
 import Pinto (ServerName(..), StartLinkResult)
+import Pinto.Gen (CastResult(..))
 import Pinto.Gen as Gen
+import Pinto.Gen as PintoGen
+import Pinto.Timer as Timer
 
-type StartArgs = {
-                 }
+type Config = { popDefinitionFile :: String
+              }
 
-newtype State = State {}
+type State =  { config :: Config
+              }
 
 type PoP = { name :: String
            , servers :: List String
@@ -29,10 +35,20 @@ type Region = { name :: String
 serverName :: ServerName State
 serverName = ServerName "popDefinition"
 
-startLink :: StartArgs -> Effect StartLinkResult
+startLink :: Config -> Effect StartLinkResult
 startLink args =
   Gen.startLink serverName $ init args
 
-init :: StartArgs -> Effect State
-init args = do
-  pure $ State {}
+init :: Config -> Effect State
+init config = do
+  _ <- Timer.sendAfter 1000 handleTick
+  pure $ {config : config}
+
+
+handleTick :: Effect Unit
+handleTick = PintoGen.doCast serverName \state -> do
+
+  file <- File.readFile state.config.popDefinitionFile
+  _ <- Logger.info "ping" {misc: file}
+  _ <- Timer.sendAfter 1000 handleTick
+  pure $ CastNoReply state
