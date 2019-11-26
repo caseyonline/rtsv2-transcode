@@ -3,32 +3,33 @@ module Rtsv2.Sup where
 import Prelude
 import Effect (Effect)
 import Erl.Data.List (nil, (:))
-import LocalPopState as PopState
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildType(..), SupervisorSpec, SupervisorStrategy(..), buildChild, buildSupervisor, childId, childStart, childType, supervisorChildren, supervisorStrategy)
 import Pinto.Sup as Sup
 import Rtsv2.AgentSup as AgentSup
 import Rtsv2.Config as Config
 import Rtsv2.Web as Web
+import Rtsv2.PoPDefinition as PoPDefinition
 
 startLink :: Effect Pinto.StartLinkResult
 startLink = Sup.startLink "rtsv2sup" init
 
 init :: Effect SupervisorSpec
 init = do
-  webPort <- Config.webPort
+  webConfig <- Config.webConfig
+  popDefinitionConfig <- Config.popDefinitionConfig
   let
     popDefinition =
       buildChild
       # childType Worker
-      # childId "localPopState"
-      # childStart PopState.startLink PopState.defaultStartArgs
+      # childId "popDefinition"
+      # childStart PoPDefinition.startLink popDefinitionConfig
 
     webServer =
       buildChild
       # childType Worker
       # childId "web"
-      # childStart Web.startLink { webPort: webPort }
+      # childStart Web.startLink webConfig
 
     agentSup =
       buildChild

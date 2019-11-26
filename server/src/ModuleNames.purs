@@ -32,6 +32,9 @@ rtsv2IntraPoPAgent = ModuleName "Rtsv2.IntraPoPAgent"
 rtsv2Library :: ModuleName
 rtsv2Library = ModuleName "Rtsv2.Library"
 
+rtsv2PoPDefinition :: ModuleName
+rtsv2PoPDefinition = ModuleName "Rtsv2.PoPDefinition"
+
 rtsv2StreamRelayAgentSup :: ModuleName
 rtsv2StreamRelayAgentSup = ModuleName "Rtsv2.StreamRelayAgentSup"
 

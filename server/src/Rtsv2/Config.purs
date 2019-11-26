@@ -1,6 +1,7 @@
 module Rtsv2.Config
-  ( webPort
+  ( webConfig
   , configuredAgents
+  , popDefinitionConfig
   , intraPoPAgentConfig
   ) where
 
@@ -17,21 +18,34 @@ import Erl.Data.List (List)
 import Foreign (F, Foreign, readInt, readString, unsafeReadTagged)
 import Shared.Agents (Agent, strToAgent)
 import Shared.Utils (lazyCrashIfMissing)
-import Rtsv2.IntraPoPAgent (IntraPoPAgentStartArgs)
+import Rtsv2.IntraPoPAgent as IntraPoP
+import Rtsv2.Web as Web
+import Rtsv2.PoPDefinition as PoPDefinition
 
 foreign import getEnv_ :: Atom -> Effect Foreign
 
-webPort :: Effect Int
-webPort = getMandatory readInt "web_port"
+--webPort :: Effect Int
+--webPort = getMandatory readInt "web_port"
+
+webConfig :: Effect Web.StartArgs
+webConfig = do
+  config <- getMandatory (unsafeReadTagged "map") "httpApiConfig"
+  pure $ config
 
 configuredAgents :: Effect (List Agent)
 configuredAgents = do
   agentStrings <- getMandatory (readList >=> traverse readString) "agents"
   pure $ strToAgent <$> agentStrings
 
-intraPoPAgentConfig :: Effect IntraPoPAgentStartArgs
+popDefinitionConfig :: Effect PoPDefinition.StartArgs
+popDefinitionConfig = do
+  config <- getMandatory (unsafeReadTagged "map") "popDefinitionConfig"
+  pure $ config
+
+intraPoPAgentConfig :: Effect IntraPoP.StartArgs
 intraPoPAgentConfig = do
   config <- getMandatory (unsafeReadTagged "map") "intraPoPConfig"
+--  readprop rpcPort config
   pure $ config
 
 get :: forall a e. (Foreign -> ExceptT e Identity a) -> String -> Effect (Maybe a)
