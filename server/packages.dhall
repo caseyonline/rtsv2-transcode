@@ -12,8 +12,32 @@ let overrides =
           , version =
               "582bc4c4ca5f0439155c8763d82d07d3f4188c53"
           }
+       , simple-json =
+          { dependencies =
+            [ "assert"
+            , "effect"
+            , "erl-lists"
+            , "erl-maps"
+            , "exceptions"
+            , "foldable-traversable"
+            , "foreign"
+            , "functions"
+            , "generics-rep"
+            , "globals"
+            , "lists"
+            , "nullable"
+            , "partial"
+            , "prelude"
+            , "record"
+            , "strings"
+            , "transformers"
+            , "typelevel-prelude"
+            , "variant"
+            ]
+          , repo = "ssh://git@github.com/purerl/purescript-simple-json.git"
+          , version = "7ba3d3f1bc9165ebdce948cbecc076d13f964e59"
+          }
       }
-
 
 let additions = {=}
 

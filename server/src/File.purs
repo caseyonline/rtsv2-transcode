@@ -1,6 +1,7 @@
 module File
        (
-         readFile
+         readBinaryFile
+       , readUtf8File
        )
        where
 
@@ -8,7 +9,10 @@ import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Erl.Data.Binary (Binary)
 
-foreign import readFile_ :: Maybe Binary -> (Binary -> Maybe Binary) -> String -> Effect (Maybe Binary)
+foreign import readFile_ :: forall a. Maybe a -> (a -> Maybe a) -> String -> Effect (Maybe a)
 
-readFile :: String -> Effect (Maybe Binary)
-readFile = readFile_ Nothing Just
+readBinaryFile :: String -> Effect (Maybe Binary)
+readBinaryFile = readFile_ Nothing Just
+
+readUtf8File :: String -> Effect (Maybe String)
+readUtf8File = readFile_ Nothing Just

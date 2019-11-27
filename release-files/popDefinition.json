@@ -1,5 +1,5 @@
 {
-   "north-america" {
+  "north-america": {
       "iad": [
          "rts-1.iad.llnw.net",
          "rts-2.iad.llnw.net",
