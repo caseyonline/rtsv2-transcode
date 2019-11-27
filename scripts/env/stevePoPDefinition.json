@@ -1,0 +1,18 @@
+{
+  "america": {
+    "iad": {
+      "subnet" : "169.254.169.0",
+      "numNodes" : 5
+    },
+    "dal": {
+      "subnet" : "169.254.170.0",
+      "numNodes" : 5
+    }
+  },
+  "europe": {
+    "fra": {
+      "subnet" : "169.254.171.0",
+      "numNodes" : 5
+    }
+  }
+}
