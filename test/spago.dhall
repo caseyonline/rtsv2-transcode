@@ -17,6 +17,7 @@ You can edit this file as you like.
     , "node-readline"
     , "psci-support"
     , "quickcheck"
+    , "simple-json"
     , "spec"
     , "test-unit"
     , "toppokki"

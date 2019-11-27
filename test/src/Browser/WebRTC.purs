@@ -21,10 +21,19 @@ testConfig = { slow: (Milliseconds 500.00), timeout: Just (Milliseconds 100000.0
 
 launchArgs :: Array String
 launchArgs = [ "--vmodule=*/webrtc/*=3"
-             , "--mute-audio"
-             , "--use-fake-device-for-media-stream"
-             , "--use-fake-ui-for-media-stream"
+             , "--no-sandbox"
+             , "--mute-audio=1"
+             , "--disable-features=WebRtcHideLocalIpsWithMdns"
+             , "--disable-setuid-sandbox"
+             , "--use-fake-ui-for-media-stream=1"
+             , "--use-fake-device-for-media-stream=1"
+             , "--allow-running-insecure-content"
+             , "--ignore-certificate-errors"
+             , "--unsafely-treat-insecure-origin-as-secure"
              ]
+
+appUrl :: T.URL
+appUrl = T.URL "http://localhost:3080"
 
 main :: Effect Unit
 main =
@@ -32,11 +41,14 @@ main =
     $ un Identity $ runSpecT testConfig [ consoleReporter ] do
       describe "WebRTC browser" do
         it "can do stuff" do
-          browser <- T.launch { headless: false }
+          browser <- T.launch { headless: false
+                              , devtools: true
+                              , args: launchArgs
+                              }
           page <- T.newPage browser
           jsFile <- readTextFile UTF8 "./scripts/inject.js"
           _ <- T.unsafeEvaluateOnNewDocument jsFile page
-          T.goto (T.URL "http://localhost:3080") page
+          T.goto appUrl page
           _ <- delay (Milliseconds 500000.00)
           innerTextF <- T.unsafePageEval
             (T.Selector "#eval-inject")
