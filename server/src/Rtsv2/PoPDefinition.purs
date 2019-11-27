@@ -8,6 +8,7 @@ module Rtsv2.PoPDefinition
 import Prelude
 
 import Data.Either (Either(..), note')
+import Data.Foldable (foldl)
 import Data.FoldableWithIndex (foldMapWithIndex)
 import Data.List.NonEmpty as NonEmptyList
 import Data.Maybe (Maybe(..), fromMaybe')
@@ -15,15 +16,17 @@ import Data.Tuple (Tuple(..))
 import Debug.Trace (spy)
 import Effect (Effect)
 import Erl.Data.List (List(..), nil, singleton, (:))
-import Erl.Data.Map (Map, empty, fromFoldable, mapWithKey)
+import Erl.Data.Map (Map, empty, fromFoldable, insert, mapWithKey)
 import File as File
 import Foreign (ForeignError(..), MultipleErrors)
 import Logger as Logger
+import Os (getEnv)
 import Pinto (ServerName(..), StartLinkResult)
 import Pinto.Gen (CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Gen as PintoGen
 import Pinto.Timer as Timer
+import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON as JSON
 
 type Config = { popDefinitionFile :: String
@@ -36,7 +39,8 @@ data ServerLocation = ServerLocation PoPName RegionName
 
 type State =  { config :: Config
               , regions :: Map RegionName Region
---              , servers :: Map ServerAddress ServerLocation
+              , servers :: Map ServerAddress ServerLocation
+              , thisNode :: ServerAddress
               }
 
 type Region = { name :: RegionName
@@ -44,7 +48,7 @@ type Region = { name :: RegionName
               }
 
 type PoP = { name :: PoPName
-           , servers :: List String
+           , servers :: List ServerAddress
            }
 
 type PoPJsonFormat = Map String (Map String (List String))
@@ -58,8 +62,13 @@ startLink args =
 
 init :: Config -> Effect State
 init config = do
-  newState <- readAndProcessPoPDefinition {config : config,
-                                           regions : empty}
+  maybeHostName <- getEnv "HOST"
+  let
+    hostName = fromMaybe' (lazyCrashIfMissing "No Hostname available") maybeHostName
+  newState <- readAndProcessPoPDefinition { config : config
+                                          , regions : empty
+                                          , servers : empty
+                                          , thisNode : hostName }
   _ <- Timer.sendAfter 1000 handleTick
   pure $ newState
 
@@ -87,16 +96,31 @@ decodeJson = JSON.readJSON
 mapRegionJson :: PoPJsonFormat -> Map RegionName Region
 mapRegionJson =
   mapWithKey (\name pops -> {name : name, pops : mapPoPJson pops})
---  foldMapWithIndex (\name pops -> singleton {name : name, pops : mapPoPJson pops})
 
 mapPoPJson :: Map String (List String) -> Map PoPName PoP
 mapPoPJson =
   mapWithKey (\name servers -> {name : name, servers : servers})
---  foldMapWithIndex (\name servers -> singleton (Tuple name {name : name, servers : servers}))
 
 updateState :: State -> Map RegionName Region -> State
 updateState state regions =
-  state {regions = regions}
+  let
+    servers :: Map ServerAddress ServerLocation
+    servers = foldl (\acc region ->
+                      foldl (\innerAcc pop ->
+                              foldl (\innerInnerAcc server ->
+                                      insert server (ServerLocation pop.name region.name) innerInnerAcc
+                                    )
+                              innerAcc
+                              pop.servers
+                            )
+                      acc
+                      region.pops
+                    )
+              empty
+              regions
+  in
+   state {regions = regions,
+          servers = servers}
 
 finalise :: State -> Either MultipleErrors State -> Effect State
 finalise state (Left errors) = do

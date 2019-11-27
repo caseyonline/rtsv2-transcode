@@ -14,6 +14,9 @@ localPopState = ModuleName "LocalPopState"
 logger :: ModuleName
 logger = ModuleName "Logger"
 
+os :: ModuleName
+os = ModuleName "Os"
+
 rtsv2AgentSup :: ModuleName
 rtsv2AgentSup = ModuleName "Rtsv2.AgentSup"
 
