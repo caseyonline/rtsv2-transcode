@@ -49,7 +49,7 @@ nodeConfig :: Effect Node.Config
 nodeConfig = do
   getMandatoryRecord "nodeConfig"
 
-popDefinitionConfig :: Effect PoPDefinition.StartArgs
+popDefinitionConfig :: Effect PoPDefinition.Config
 popDefinitionConfig = do
   config <- getMandatory (unsafeReadTagged "map") "popDefinitionConfig"
   pure $ config

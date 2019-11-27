@@ -47,7 +47,6 @@ init args = do
   pure $ State {}
 
 
-
 alive_entrypoint :: StetsonHandler Unit
 alive_entrypoint =
   Rest.handler (\req -> Rest.initResult req unit)
