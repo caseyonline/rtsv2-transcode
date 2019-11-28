@@ -24,21 +24,29 @@ function create_vlan {
     local vlan=$1
     local addr=$2
 
-    sudo ifconfig "$vlan" create
-    sudo ifconfig "$vlan" inet "$addr" netmask 255.255.255.0
+    sudo ifconfig lo0 alias $addr netmask 255.255.255.0
+
+    #sudo ifconfig "$vlan" create
+    #sudo ifconfig "$vlan" inet "$addr" netmask 255.255.255.0
 }
 
 function destroy_vlans {
-    for i in $(ifconfig | grep 'vlan[1-9][0-9][0-9]' | awk '{print $1}' | sed 's/://'); do
-        sudo ifconfig "$i" destroy
+    for i in $(ifconfig lo0 | awk '/172.16/ {print $2}'); do
+         sudo ifconfig lo0 -alias $i
     done
+
+#    for i in $(ifconfig | grep 'vlan[1-9][0-9][0-9]' | awk '{print $1}' | sed 's/://'); do
+#        sudo ifconfig "$i" destroy
+#    done
 }
 
 function destroy_serfs {
-    pkill -f 'serf.*vlan'
+    echo Destroy serfs
+    pkill -f 'serf.*172.16' || true
 }
 
 tmux -L "$SESSION" kill-session 2>/dev/null || true
+destroy_serfs
 destroy_vlans
 
 tmux -L "$SESSION" -2 new-session -d -s "$SESSION"
@@ -46,8 +54,6 @@ tmux -L "$SESSION" -2 new-session -d -s "$SESSION"
 regionPopIndex=0
 currentRegionPop=""
 popIndex=0
-
-#array=( $(jq -r 'keys_unsorted[] as $region | .[$region] | keys[] as $pop | .[$pop] | values[] as $addr | [$region, $pop, $addr] | @csv' "$POP_DEFINITION" | sed 's/"//g' ) )
 
 array=()
 while IFS='' read -r line; do array+=("$line"); done < <(jq -r 'keys_unsorted[] as $region | .[$region] | keys[] as $pop | .[$pop] | values[] as $addr | [$region, $pop, $addr] | @csv' "$POP_DEFINITION" | sed 's/"//g' )
@@ -71,13 +77,13 @@ for i in "${array[@]}"; do
         tmux -L "$SESSION" split-window -v -p 50 -f
     fi
     tmux -L "$SESSION" send-keys "export HOSTNAME=$addr" C-m
-    tmux -L "$SESSION" send-keys "serf agent -iface $vlan -node $currentRegionPop$popIndex -bind $addr:7946 -rpc-addr $addr:7373" C-m
-    tmux -L "$SESSION" split-window -h -l 50
+    tmux -L "$SESSION" send-keys "serf agent -iface lo0 -node $currentRegionPop$popIndex -bind $addr:7946 -rpc-addr $addr:7373" C-m
+    tmux -L "$SESSION" split-window -h -p 80
     tmux -L "$SESSION" send-keys "export HOSTNAME=$addr" C-m
-    tmux -L "$SESSION" send-keys "serf agent -iface $vlan -node $currentRegionPop$popIndex -bind $addr:8946 -rpc-addr $addr:8373" C-m
-    tmux -L "$SESSION" split-window -h -l 50
+    tmux -L "$SESSION" send-keys "serf agent -iface lo0 -node $currentRegionPop$popIndex -bind $addr:8946 -rpc-addr $addr:8373" C-m
+    tmux -L "$SESSION" split-window -h -p 75
     tmux -L "$SESSION" send-keys "export HOSTNAME=$addr" C-m
-    tmux -L "$SESSION" split-window -h -l 50
+    tmux -L "$SESSION" split-window -h -p 50
     tmux -L "$SESSION" send-keys "export HOSTNAME=$addr" C-m
     tmux -L "$SESSION" send-keys "erl -pa _build/default/lib/*/ebin -config release-files/sys.config -eval 'application:ensure_all_started(rtsv2).'" C-m
 
@@ -88,5 +94,5 @@ tmux -L "$SESSION" -2 attach-session
 
 echo "Killing session and removing VLANs"
 tmux -L "$SESSION" kill-session
-destroy_serfs
 destroy_vlans
+destroy_serfs
