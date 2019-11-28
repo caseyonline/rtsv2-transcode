@@ -6,24 +6,31 @@ module Rtsv2.Web
 
 import Prelude
 
-import Data.Maybe (fromMaybe')
+import Control.Bind (join)
+import Data.Int (fromString)
+import Data.Maybe (Maybe(..), fromMaybe, fromMaybe')
+import Data.String (Pattern(..), split)
+import Data.Traversable (sequence)
 import Effect (Effect)
 import Erl.Atom (atom)
 import Erl.Cowboy.Req (Req, binding)
 import Erl.Data.List (nil, (:))
-import Erl.Data.Tuple (Tuple2, tuple2)
-import LocalPopState as PopState
+import Erl.Data.Tuple (Tuple2, Tuple4, tuple2, tuple4, uncurry4)
 import Gproc as Gproc
+import LocalPopState as PopState
+import Os as Os
 import Pinto (ServerName(..), StartLinkResult)
 import Pinto.Gen as Gen
+import Serf (Ip(..))
 import Shared.Agents as Agents
-import Shared.Utils (lazyCrashIfMissing)
+import Shared.Utils (lazyCrashIfMissing, strToIp)
 import Stetson (RestResult, StetsonHandler)
 import Stetson as Stetson
 import Stetson.Rest as Rest
 
 newtype State = State {}
 
+-- TODO - config should include BindIFace or BindIp
 type Config = { port :: Int }
 
 serverName :: ServerName State Unit
@@ -35,13 +42,25 @@ startLink args =
 
 init :: Config -> Effect State
 init args = do
+  ip <- bindAddress
   Stetson.configure
     # Stetson.route "/poc/api/client/:canary/edge/:stream_id/connect" edge_entrypoint
     # Stetson.route "/test/alive" alive_entrypoint
     # Stetson.port args.port
-    # Stetson.bindTo 0 0 0 0
+    # (uncurry4 Stetson.bindTo) ip
     # Stetson.startClear "http_listener"
   pure $ State {}
+
+bindAddress :: Effect (Tuple4 Int Int Int Int)
+bindAddress =
+  do
+    hostname <- Os.getEnv "HOSTNAME"
+    let
+      ip = hostname
+           >>= strToIp
+    pure $ case ip of
+      Just (Ipv4 a b c d) -> tuple4 a b c d
+      _ -> tuple4 0 0 0 0
 
 
 alive_entrypoint :: StetsonHandler Unit

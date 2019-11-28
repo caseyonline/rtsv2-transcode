@@ -5,26 +5,31 @@ module Rtsv2.IntraPoPAgent
 
 import Prelude
 
+import Data.Maybe (fromMaybe')
 import Effect (Effect)
-import Erl.Data.List (List, nil, (:))
 import Erl.Atom (Atom, atom)
+import Erl.Data.List (List, nil, (:))
 import Foreign (Foreign)
 import Gproc as Gproc
 import Logger as Logger
+import Os (getEnv)
 import Pinto (ServerName(..), StartLinkResult)
 import Pinto.Gen (CallResult(..))
 import Pinto.Gen as Gen
 import Prim.Row (class Nub)
 import Record as Record
-import Shared.Agents as Agents
+import Rtsv2.PoPDefinition as PoPDefinition
 import Serf (Ip(..), IpAndPort)
 import Serf as Serf
+import Shared.Agents as Agents
+import Shared.Utils (lazyCrashIfMissing, strToIp)
 
 type State
   = {}
 
 type Config
-  = { rpcPort :: Int
+  = { bindPort :: Int
+    , rpcPort :: Int
     }
 
 serverName :: ServerName State Unit
@@ -35,14 +40,32 @@ startLink args = Gen.startLink serverName (init args) Gen.defaultHandleInfo
 
 init :: Config -> Effect State
 init config = do
+  seeds <- PoPDefinition.getSeeds
+
+  -- TODO - only because on OSX we can't talk localhost. Ick.
+  maybeHostName <- getEnv "HOSTNAME"
   let
-    serfRpcAddress = { ip: Ipv4 127 0 0 1
+    -- TODO - serf address should allow strings as well as IPs
+    rpcBind = maybeHostName
+              >>= strToIp
+              # fromMaybe' (lazyCrashIfMissing ("Invalid IP " <> (show maybeHostName)))
+
+    serfRpcAddress = { ip: rpcBind -- Ipv4 127 0 0 1
                      , port: config.rpcPort
                      }
 
-  _ <- logInfo "Intra-PoP Agent Starting" config
 
---  result <- Serf.join serfRpcAddress defaultSeeds true
+    seedAddresses = map (\s -> {ip : strToIp s # fromMaybe' (lazyCrashIfMissing ("Invalid IP " <> s))
+                               , port: config.bindPort
+                               }) seeds
+
+
+  _ <- logInfo "Intra-PoP Agent Starting" { config : config
+                                          , seeds : seedAddresses}
+
+  result <- Serf.join serfRpcAddress seedAddresses true
+
+  _ <- logInfo "Serf said " {result: result}
 
   pure $ {}
 

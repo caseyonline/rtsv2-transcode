@@ -10,7 +10,9 @@ joinImpl(RpcAddr
         , Replay
         ) ->
   fun() ->
-      io:format(user, "~n~nXXX~n~n", []),
+      io:format(user, "~n~nXXX ~p, ~p, ~p~n~n", [mapAddr(RpcAddr),
+                                                 [mapAddr(Seed) || Seed <- SeedAgents],
+                                                 Replay]),
       case serf_api:join(mapAddr(RpcAddr),
                          [mapAddr(Seed) || Seed <- SeedAgents],
                          Replay) of
