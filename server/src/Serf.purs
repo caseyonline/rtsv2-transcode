@@ -16,7 +16,7 @@ data Ip = Ipv4 Int Int Int Int
 data SerfApiError = SerfError String
                   | NetworkError
 
-type IpAndPort = { ip :: Ip
+type IpAndPort = { ip :: String
                  , port :: Int
                  }
 

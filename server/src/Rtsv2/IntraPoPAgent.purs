@@ -42,12 +42,10 @@ init :: Config -> Effect State
 init config = do
   seeds <- PoPDefinition.getSeeds
 
-  -- TODO - only because on OSX we can't talk localhost. Ick.
+  -- TODO - only because on OSX we can't talk localhost. Ick.  Also assumes hostname is an IP
   maybeHostName <- getEnv "HOSTNAME"
   let
-    -- TODO - serf address should allow strings as well as IPs
     rpcBind = maybeHostName
-              >>= strToIp
               # fromMaybe' (lazyCrashIfMissing ("Invalid IP " <> (show maybeHostName)))
 
     serfRpcAddress = { ip: rpcBind -- Ipv4 127 0 0 1
@@ -55,7 +53,7 @@ init config = do
                      }
 
 
-    seedAddresses = map (\s -> {ip : strToIp s # fromMaybe' (lazyCrashIfMissing ("Invalid IP " <> s))
+    seedAddresses = map (\s -> {ip : s
                                , port: config.bindPort
                                }) seeds
 

@@ -25,15 +25,15 @@ serverName = Local "globalState"
 defaultStartArgs :: PopStateStartArgs
 defaultStartArgs =
   { serfRpcAddress:
-    { ip: Ipv4 127 0 0 1
+    { ip: "127.0.0.1"
     , port: 7373
     }
   }
 
 defaultSeeds :: List IpAndPort
 defaultSeeds =
-  ( { ip: Ipv4 127 0 0 1, port: 7948 }
-  : { ip: Ipv4 127 0 0 1, port: 7947 }
+  ( { ip: "127.0.0.1", port: 7948 }
+  : { ip: "127.0.0.1", port: 7947 }
   : nil
   )
 

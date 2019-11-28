@@ -36,4 +36,14 @@ joinImpl(RpcAddr
 mapAddr(#{ ip := {ipv4, O1, O2, O3, O4}
          , port := Port
          }) ->
-  {{O1, O2, O3, O4}, Port}.
+  {{O1, O2, O3, O4}, Port};
+
+mapAddr(#{ ip := {atom, localhost}
+         , port := Port
+         }) ->
+  {localhost, Port};
+
+mapAddr(#{ ip := Addr
+         , port := Port
+         }) when is_binary(Addr) ->
+  {binary_to_list(Addr), Port}.
