@@ -1,9 +1,6 @@
 module Rtsv2.IntraPoPAgent
   ( startLink
-  , init
-  , serverName
-  , StartArgs
-  , State
+  , Config
   ) where
 
 import Prelude
@@ -26,17 +23,17 @@ import Serf as Serf
 type State
   = {}
 
-type StartArgs
+type Config
   = { rpcPort :: Int
     }
 
-serverName :: ServerName State
-serverName = ServerName "intraPopAgent"
+serverName :: ServerName State Unit
+serverName = Local "intraPopAgent"
 
-startLink :: StartArgs -> Effect StartLinkResult
-startLink args = Gen.startLink serverName $ init args
+startLink :: Config -> Effect StartLinkResult
+startLink args = Gen.startLink serverName (init args) Gen.defaultHandleInfo
 
-init :: StartArgs -> Effect State
+init :: Config -> Effect State
 init config = do
   let
     serfRpcAddress = { ip: Ipv4 127 0 0 1

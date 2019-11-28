@@ -12,16 +12,16 @@ import Gproc as Gproc
 type State
   = {}
 
-type TransPoPAgentStartArgs
+type Config
   = {
     }
 
-serverName :: ServerName State
-serverName = ServerName "transPopAgent"
+serverName :: ServerName State Unit
+serverName = Local "transPopAgent"
 
-startLink :: TransPoPAgentStartArgs -> Effect StartLinkResult
-startLink args = Gen.startLink serverName $ init args
+startLink :: Config -> Effect StartLinkResult
+startLink args = Gen.startLink serverName (init args) Gen.defaultHandleInfo
 
-init :: TransPoPAgentStartArgs -> Effect State
+init :: Config -> Effect State
 init _ = do
   pure $ {}

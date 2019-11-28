@@ -5,7 +5,7 @@ let overrides =
       { erl-pinto =
           { dependencies = [ "erl-cowboy", "erl-process" ]
           , repo = "ssh://git@github.com/id3as/purescript-erl-pinto.git"
-          , version = "582bc4c4ca5f0439155c8763d82d07d3f4188c53"
+          , version = "eabf6db6b2aa49d69e5917b4ebb4ceb66d5489f3"
           }
       , simple-json =
           { dependencies =

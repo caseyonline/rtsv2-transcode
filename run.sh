@@ -18,7 +18,8 @@ ENV_SCRIPT=scripts/env/$RUN_ENV
 source "$ENV_SCRIPT"
 unset HISTFILE
 
-SESSION=rtsv2-${CLUSTER_NAME:-primary}
+SESSION=rtsv2
+SYSCONFIG=${SYSCONFIG:-release-files/sys.config}
 
 function create_vlan {
     local vlan=$1

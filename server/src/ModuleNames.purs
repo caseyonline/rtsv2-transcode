@@ -35,9 +35,6 @@ rtsv2IngestAgentSup = ModuleName "Rtsv2.IngestAgentSup"
 rtsv2IntraPoPAgent :: ModuleName
 rtsv2IntraPoPAgent = ModuleName "Rtsv2.IntraPoPAgent"
 
-rtsv2Library :: ModuleName
-rtsv2Library = ModuleName "Rtsv2.Library"
-
 rtsv2Node :: ModuleName
 rtsv2Node = ModuleName "Rtsv2.Node"
 

@@ -1,9 +1,6 @@
 module Rtsv2.Web
   ( startLink
-  , init
-  , serverName
-  , State
-  , StartArgs
+  , Config
   )
   where
 
@@ -27,16 +24,16 @@ import Stetson.Rest as Rest
 
 newtype State = State {}
 
-type StartArgs = { port :: Int }
+type Config = { port :: Int }
 
-serverName :: ServerName State
-serverName = ServerName "web"
+serverName :: ServerName State Unit
+serverName = Local "web"
 
-startLink :: StartArgs -> Effect StartLinkResult
+startLink :: Config -> Effect StartLinkResult
 startLink args =
-  Gen.startLink serverName $ init args
+  Gen.startLink serverName (init args) Gen.defaultHandleInfo
 
-init :: StartArgs -> Effect State
+init :: Config -> Effect State
 init args = do
   Stetson.configure
     # Stetson.route "/poc/api/client/:canary/edge/:stream_id/connect" edge_entrypoint

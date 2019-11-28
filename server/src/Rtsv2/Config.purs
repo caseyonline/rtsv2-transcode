@@ -34,7 +34,7 @@ foreign import getMap_ :: Atom -> Effect Foreign
 --webPort :: Effect Int
 --webPort = getMandatory readInt "web_port"
 
-webConfig :: Effect Web.StartArgs
+webConfig :: Effect Web.Config
 webConfig = do
   config <- getMandatory (unsafeReadTagged "map") "httpApiConfig"
   pure $ config
@@ -54,7 +54,7 @@ popDefinitionConfig = do
   config <- getMandatory (unsafeReadTagged "map") "popDefinitionConfig"
   pure $ config
 
-intraPoPAgentConfig :: Effect IntraPoP.StartArgs
+intraPoPAgentConfig :: Effect IntraPoP.Config
 intraPoPAgentConfig = do
   getMandatoryRecord "intraPoPConfig"
 

@@ -19,8 +19,8 @@ type PopStateStartArgs
   = { serfRpcAddress :: IpAndPort
     }
 
-serverName :: ServerName State
-serverName = ServerName "globalState"
+serverName :: ServerName State Unit
+serverName = Local "globalState"
 
 defaultStartArgs :: PopStateStartArgs
 defaultStartArgs =
@@ -38,7 +38,7 @@ defaultSeeds =
   )
 
 startLink :: PopStateStartArgs -> Effect StartLinkResult
-startLink args = Gen.startLink serverName $ init args
+startLink args = Gen.startLink serverName (init args) Gen.defaultHandleInfo
 
 isStreamAvailable :: String -> Effect Boolean
 isStreamAvailable s = Gen.call serverName \state -> CallReply false state

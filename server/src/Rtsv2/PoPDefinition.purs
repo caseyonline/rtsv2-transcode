@@ -1,7 +1,5 @@
 module Rtsv2.PoPDefinition
        (startLink
-       , init
-       , serverName
        , Config
        ) where
 
@@ -53,12 +51,14 @@ type PoP = { name :: PoPName
 
 type PoPJsonFormat = Map String (Map String (List String))
 
-serverName :: ServerName State
-serverName = ServerName "popDefinition"
+data Msg = Tick
+
+serverName :: ServerName State Msg
+serverName = Local "popDefinition"
 
 startLink :: Config -> Effect StartLinkResult
 startLink args =
-  Gen.startLink serverName $ init args
+  Gen.startLink serverName (init args) handleInfo
 
 init :: Config -> Effect State
 init config = do
@@ -69,14 +69,17 @@ init config = do
                                           , regions : empty
                                           , servers : empty
                                           , thisNode : hostName }
-  _ <- Timer.sendAfter 1000 handleTick
+  _ <- Timer.sendAfter serverName 1000 Tick
   pure $ newState
 
-handleTick :: Effect Unit
-handleTick = PintoGen.doCast serverName \state -> do
-  newState <- readAndProcessPoPDefinition state
-  _ <- Timer.sendAfter 1000 handleTick
-  pure $ CastNoReply newState
+handleInfo :: Msg -> State -> Effect State
+handleInfo msg state =
+  case msg of
+    Tick ->
+      do
+        newState <- readAndProcessPoPDefinition state
+        _ <- Timer.sendAfter serverName 1000 Tick
+        pure $ newState
 
 readAndProcessPoPDefinition :: State -> Effect State
 readAndProcessPoPDefinition state = do
