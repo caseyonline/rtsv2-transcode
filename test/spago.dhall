@@ -9,6 +9,7 @@ You can edit this file as you like.
     , "console"
     , "debug"
     , "effect"
+    , "foreign-generic"
     , "generics-rep"
     , "http"
     , "node-child-process"

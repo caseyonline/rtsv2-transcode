@@ -1,4 +1,4 @@
-module WebRTC where
+module TestWebRTC where
 
 import Prelude
 
@@ -7,9 +7,9 @@ import Data.Maybe (Maybe(..))
 import Data.Newtype (un)
 import Effect (Effect)
 import Effect.Aff (Milliseconds(..), delay, launchAff_)
-import Foreign (unsafeFromForeign)
 import Node.Encoding (Encoding(..))
 import Node.FS.Aff (readTextFile)
+import RTCPeerConnection (getVideoStats)
 import Test.Spec (describe, it)
 import Test.Spec.Reporter.Console (consoleReporter)
 import Test.Spec.Runner (Config, runSpecT)
@@ -17,7 +17,7 @@ import Test.Unit.Assert as Assert
 import Toppokki as T
 
 testConfig :: Config
-testConfig = { slow: (Milliseconds 500.00), timeout: Just (Milliseconds 100000.00), exit: false }
+testConfig = { slow: (Milliseconds 500.00), timeout: Just (Milliseconds 10000.00), exit: true }
 
 launchArgs :: Array String
 launchArgs = [ "--vmodule=*/webrtc/*=3"
@@ -40,19 +40,22 @@ main =
   launchAff_
     $ un Identity $ runSpecT testConfig [ consoleReporter ] do
       describe "WebRTC browser" do
-        it "can do stuff" do
+        it "can check that a streaming video has started and is playing" do
           browser <- T.launch { headless: false
-                              , devtools: true
                               , args: launchArgs
+                              , devtools: true
                               }
           page <- T.newPage browser
-          jsFile <- readTextFile UTF8 "./scripts/inject.js"
+          -- inject JS into the page
+          jsFile <- readTextFile UTF8 "./scripts/injectWebRTC.js"
           _ <- T.unsafeEvaluateOnNewDocument jsFile page
           T.goto appUrl page
-          _ <- delay (Milliseconds 500000.00)
-          innerTextF <- T.unsafePageEval
-            (T.Selector "#eval-inject")
-            "el => el.innerText"
-            page
-          Assert.equal "345" ((unsafeFromForeign innerTextF) :: String)
+          _ <- delay (Milliseconds 1000.00)
+          stats1 <- getVideoStats page
+          -- wait for the dom and video then get video stats
+          _ <- delay (Milliseconds 5000.00)
+          stats2 <- getVideoStats page
+
+          Assert.assert "frames haven't been decoded" (stats2.framesDecoded > stats1.framesDecoded)
+          Assert.assert "packets haven't been decoded" (stats2.packetsReceived > stats1.packetsReceived)
           T.close browser
