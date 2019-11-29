@@ -1,5 +1,6 @@
 module Rtsv2.EnvConfig
-  ( privateInterfaceName
+  ( hostname
+  , privateInterfaceName
   , privateInterfaceIp
   ) where
 
@@ -11,6 +12,12 @@ import Ip as Ip
 import Os (getEnv)
 import Serf (Ip)
 import Shared.Utils (lazyCrashIfMissing)
+
+hostname :: Effect String
+hostname =
+  do
+    maybeHostName <- getEnv "HOSTNAME"
+    pure $ fromMaybe' (lazyCrashIfMissing "No Hostname available") maybeHostName
 
 privateInterfaceName :: Effect String
 privateInterfaceName =

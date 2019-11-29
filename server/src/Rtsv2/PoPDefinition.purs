@@ -30,6 +30,7 @@ import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Prim.Row (class Nub)
 import Record as Record
+import Rtsv2.EnvConfig as Env
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON as JSON
 
@@ -86,16 +87,14 @@ getSeeds' state@{otherServersInThisPoP}
 
 init :: Config -> Effect State
 init config = do
-  maybeHostName <- getEnv "HOSTNAME"
-  let
-    hostName = fromMaybe' (lazyCrashIfMissing "No Hostname available") maybeHostName
+  hostname <- Env.hostname
   newState <- readAndProcessPoPDefinition { config : config
                                           , regions : Map.empty
                                           , servers : Map.empty
-                                          , thisNode : hostName
+                                          , thisNode : hostname
                                           , otherServersInThisPoP : nil
                                           }
-  _ <- logInfo "PoPDefinition Starting" {thisNode : hostName,
+  _ <- logInfo "PoPDefinition Starting" {thisNode : hostname,
                                          otherServers : newState.otherServersInThisPoP}
   _ <- Timer.sendAfter serverName 1000 Tick
   pure $ newState
