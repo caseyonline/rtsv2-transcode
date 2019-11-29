@@ -21,6 +21,7 @@ import LocalPopState as PopState
 import Os as Os
 import Pinto (ServerName(..), StartLinkResult)
 import Pinto.Gen as Gen
+import Rtsv2.EnvConfig as Env
 import Serf (Ip(..), strToIp)
 import Shared.Agents as Agents
 import Shared.Utils (lazyCrashIfMissing)
@@ -42,26 +43,17 @@ startLink args =
 
 init :: Config -> Effect State
 init args = do
-  ip <- bindAddress
+  bindIp <- Env.privateInterfaceIp
   Stetson.configure
     # Stetson.route "/poc/api/client/:canary/edge/:stream_id/connect" edge_entrypoint
     # Stetson.route "/test/alive" alive_entrypoint
     # Stetson.port args.port
-    # (uncurry4 Stetson.bindTo) ip
+    # (uncurry4 Stetson.bindTo) (ipToTuple bindIp)
     # Stetson.startClear "http_listener"
   pure $ State {}
 
-bindAddress :: Effect (Tuple4 Int Int Int Int)
-bindAddress =
-  do
-    hostname <- Os.getEnv "HOSTNAME"
-    let
-      ip = hostname
-           >>= strToIp
-    pure $ case ip of
-      Just (Ipv4 a b c d) -> tuple4 a b c d
-      _ -> tuple4 0 0 0 0
-
+ipToTuple :: Ip -> Tuple4 Int Int Int Int
+ipToTuple (Ipv4 a b c d) = tuple4 a b c d
 
 alive_entrypoint :: StetsonHandler Unit
 alive_entrypoint =

@@ -16,7 +16,7 @@ function destroy_vlans {
   done
 
   for i in $(netstat -nr  | grep 'vlan[1-9][0-9][0-9]' | awk '{print $1}' | sed 's/://'); do
-    sudo route delete -host "$i"
+    sudo route delete -host "$i" >/dev/null
   done
 
 }
@@ -45,6 +45,6 @@ function start_node {
   tmux -L "$tmuxSession" send-keys "export HOSTNAME=$addr" C-m
   tmux -L "$tmuxSession" split-window -h -p 50
   tmux -L "$tmuxSession" send-keys "export HOSTNAME=$addr" C-m
-  tmux -L "$tmuxSession" send-keys "export IFACE=$vlan" C-m
+  tmux -L "$tmuxSession" send-keys "export PRIVATE_IFACE=$vlan" C-m
   tmux -L "$tmuxSession" send-keys "erl -pa _build/default/lib/*/ebin -config $sysConfig -rtsv2 id rtsv2TestRunner -eval 'application:ensure_all_started(rtsv2).'" C-m
 }

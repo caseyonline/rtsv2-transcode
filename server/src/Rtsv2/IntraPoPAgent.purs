@@ -5,6 +5,7 @@ module Rtsv2.IntraPoPAgent
 
 import Prelude
 
+import Rtsv2.EnvConfig as Env
 import Data.Maybe (Maybe(..), fromMaybe, fromMaybe')
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
@@ -43,12 +44,9 @@ init :: Config -> Effect State
 init config =
   do
     seeds <- PoPDefinition.getSeeds :: Effect (List String)
-    maybeIface <- getEnv "IFACE"
-    maybeIfaceIp <- getIp maybeIface
+    rpcBindIp <- Env.privateInterfaceIp
 
     let
-      rpcBindIp :: Ip
-      rpcBindIp = fromMaybe' (lazyCrashIfMissing ("Invalid RPC Interface: " <> (show maybeIface))) maybeIfaceIp
       serfRpcAddress = { ip: show rpcBindIp
                        , port: config.rpcPort
                        }
@@ -64,11 +62,6 @@ init config =
     _ <- logInfo "Serf said " {result: result}
 
     pure $ {}
-  where
-    getIp :: Maybe String -> Effect (Maybe Ip)
-    getIp Nothing = pure $ Nothing
-    getIp (Just str) = Ip.getInterfaceIp str
-
 
 logInfo :: forall a b. Nub (domain :: List Atom | a) b =>  String -> Record a -> Effect Foreign
 logInfo msg metaData =
