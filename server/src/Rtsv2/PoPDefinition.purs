@@ -30,7 +30,7 @@ import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Prim.Row (class Nub)
 import Record as Record
-import Rtsv2.EnvConfig as Env
+import Rtsv2.Env as Env
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON as JSON
 

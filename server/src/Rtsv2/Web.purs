@@ -21,7 +21,7 @@ import LocalPopState as PopState
 import Os as Os
 import Pinto (ServerName(..), StartLinkResult)
 import Pinto.Gen as Gen
-import Rtsv2.EnvConfig as Env
+import Rtsv2.Env as Env
 import Serf (Ip(..), strToIp)
 import Shared.Agents as Agents
 import Shared.Utils (lazyCrashIfMissing)

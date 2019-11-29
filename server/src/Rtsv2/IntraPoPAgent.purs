@@ -5,7 +5,7 @@ module Rtsv2.IntraPoPAgent
 
 import Prelude
 
-import Rtsv2.EnvConfig as Env
+import Rtsv2.Env as Env
 import Data.Maybe (Maybe(..), fromMaybe, fromMaybe')
 import Effect (Effect)
 import Erl.Atom (Atom, atom)

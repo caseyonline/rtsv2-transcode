@@ -1,4 +1,4 @@
-module Rtsv2.EnvConfig
+module Rtsv2.Env
   ( hostname
   , privateInterfaceName
   , privateInterfaceIp

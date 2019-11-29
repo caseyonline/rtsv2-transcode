@@ -32,8 +32,8 @@ rtsv2Config = ModuleName "Rtsv2.Config"
 rtsv2EdgeAgentSup :: ModuleName
 rtsv2EdgeAgentSup = ModuleName "Rtsv2.EdgeAgentSup"
 
-rtsv2EnvConfig :: ModuleName
-rtsv2EnvConfig = ModuleName "Rtsv2.EnvConfig"
+rtsv2Env :: ModuleName
+rtsv2Env = ModuleName "Rtsv2.Env"
 
 rtsv2IngestAgentSup :: ModuleName
 rtsv2IngestAgentSup = ModuleName "Rtsv2.IngestAgentSup"
