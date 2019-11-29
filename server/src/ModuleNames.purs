@@ -8,6 +8,9 @@ file = ModuleName "File"
 gproc :: ModuleName
 gproc = ModuleName "Gproc"
 
+ip :: ModuleName
+ip = ModuleName "Ip"
+
 localPopState :: ModuleName
 localPopState = ModuleName "LocalPopState"
 

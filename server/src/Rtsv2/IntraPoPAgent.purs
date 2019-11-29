@@ -5,12 +5,13 @@ module Rtsv2.IntraPoPAgent
 
 import Prelude
 
-import Data.Maybe (fromMaybe')
+import Data.Maybe (Maybe(..), fromMaybe, fromMaybe')
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
 import Foreign (Foreign)
 import Gproc as Gproc
+import Ip as Ip
 import Logger as Logger
 import Os (getEnv)
 import Pinto (ServerName(..), StartLinkResult)
@@ -39,33 +40,35 @@ startLink :: Config -> Effect StartLinkResult
 startLink args = Gen.startLink serverName (init args) Gen.defaultHandleInfo
 
 init :: Config -> Effect State
-init config = do
-  seeds <- PoPDefinition.getSeeds
+init config =
+  do
+    seeds <- PoPDefinition.getSeeds :: Effect (List String)
+    maybeIface <- getEnv "IFACE"
+    maybeIfaceIp <- getIp maybeIface
 
-  -- TODO - only because on OSX we can't talk localhost. Ick.  Also assumes hostname is an IP
-  maybeHostName <- getEnv "HOSTNAME"
-  let
-    rpcBind = maybeHostName
-              # fromMaybe' (lazyCrashIfMissing ("Invalid IP " <> (show maybeHostName)))
+    let
+      rpcBindIp :: Ip
+      rpcBindIp = fromMaybe' (lazyCrashIfMissing ("Invalid RPC Interface: " <> (show maybeIface))) maybeIfaceIp
+      serfRpcAddress = { ip: show rpcBindIp
+                       , port: config.rpcPort
+                       }
+      seedAddresses = map (\s -> {ip : s
+                                 , port: config.bindPort
+                                 }) seeds
 
-    serfRpcAddress = { ip: rpcBind -- Ipv4 127 0 0 1
-                     , port: config.rpcPort
-                     }
-
-
-    seedAddresses = map (\s -> {ip : s
-                               , port: config.bindPort
-                               }) seeds
-
-
-  _ <- logInfo "Intra-PoP Agent Starting" { config : config
+    _ <- logInfo "Intra-PoP Agent Starting" { config : config
                                           , seeds : seedAddresses}
 
-  --result <- Serf.join serfRpcAddress seedAddresses true
+    result <- Serf.join serfRpcAddress seedAddresses true
 
-  --_ <- logInfo "Serf said " {result: result}
+    _ <- logInfo "Serf said " {result: result}
 
-  pure $ {}
+    pure $ {}
+  where
+    getIp :: Maybe String -> Effect (Maybe Ip)
+    getIp Nothing = pure $ Nothing
+    getIp (Just str) = Ip.getInterfaceIp str
+
 
 logInfo :: forall a b. Nub (domain :: List Atom | a) b =>  String -> Record a -> Effect Foreign
 logInfo msg metaData =
