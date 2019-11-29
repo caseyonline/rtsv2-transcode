@@ -25,20 +25,21 @@ function create_vlan {
     local vlan=$1
     local addr=$2
 
-    sudo ifconfig lo0 alias $addr netmask 255.255.255.0
+    #sudo ifconfig lo0 alias $addr netmask 255.255.255.0
 
-    #sudo ifconfig "$vlan" create
-    #sudo ifconfig "$vlan" inet "$addr" netmask 255.255.255.0
+    sudo ifconfig "$vlan" create
+    sudo ifconfig "$vlan" inet "$addr" netmask 255.255.255.255
+    sudo route add -host "$addr" -interface "$vlan" > /dev/null
 }
 
 function destroy_vlans {
-    for i in $(ifconfig lo0 | awk '/172.16/ {print $2}'); do
-         sudo ifconfig lo0 -alias $i
-    done
-
-#    for i in $(ifconfig | grep 'vlan[1-9][0-9][0-9]' | awk '{print $1}' | sed 's/://'); do
-#        sudo ifconfig "$i" destroy
+#    for i in $(ifconfig lo0 | awk '/172.16/ {print $2}'); do
+#         sudo ifconfig lo0 -alias $i
 #    done
+
+    for i in $(ifconfig | grep 'vlan[1-9][0-9][0-9]' | awk '{print $1}' | sed 's/://'); do
+        sudo ifconfig "$i" destroy
+    done
 }
 
 function destroy_serfs {
@@ -78,10 +79,10 @@ for i in "${array[@]}"; do
         tmux -L "$SESSION" split-window -v -p 50 -f
     fi
     tmux -L "$SESSION" send-keys "export HOSTNAME=$addr" C-m
-    tmux -L "$SESSION" send-keys "serf agent -iface lo0 -node $currentRegionPop$popIndex -bind $addr:7946 -rpc-addr $addr:7373" C-m
+    tmux -L "$SESSION" send-keys "serf agent -iface $vlan -node $currentRegionPop$popIndex -bind $addr:7946 -rpc-addr $addr:7373" C-m
     tmux -L "$SESSION" split-window -h -p 80
     tmux -L "$SESSION" send-keys "export HOSTNAME=$addr" C-m
-    tmux -L "$SESSION" send-keys "serf agent -iface lo0 -node $currentRegionPop$popIndex -bind $addr:8946 -rpc-addr $addr:8373" C-m
+    tmux -L "$SESSION" send-keys "serf agent -iface $vlan -node $currentRegionPop$popIndex -bind $addr:8946 -rpc-addr $addr:8373" C-m
     tmux -L "$SESSION" split-window -h -p 75
     tmux -L "$SESSION" send-keys "export HOSTNAME=$addr" C-m
     tmux -L "$SESSION" split-window -h -p 50
