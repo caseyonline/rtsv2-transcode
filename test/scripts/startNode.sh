@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 
-set -x
-
 cd ${0%/*}
 cd ../..
 
@@ -11,7 +9,7 @@ source ./scripts/shared_functions.sh
 
 function wait_for_server {
   local -r addr=$1
-  while (! curl -v  "http://$addr:3000/test/alive") # --silent --fail
+  while (! curl --silent --fail  "http://$addr:3000/test/alive")
   do
     sleep 0.5
   done

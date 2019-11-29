@@ -27,7 +27,7 @@ import Rtsv2.Node as Node
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Web as Web
 import Serf (Ip)
-import Shared.Agents (Agent, strToAgent)
+import Shared.Agent (Agent, strToAgent)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (class ReadForeign, readImpl)
 

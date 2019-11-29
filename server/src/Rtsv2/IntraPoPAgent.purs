@@ -1,11 +1,12 @@
 module Rtsv2.IntraPoPAgent
   ( startLink
   , Config
+  , isStreamAvailable
+  , isIngestActive
+  , streamIsAvailable
   ) where
 
 import Prelude
-
-import Rtsv2.Env as Env
 import Data.Maybe (Maybe(..), fromMaybe, fromMaybe')
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
@@ -18,51 +19,88 @@ import Os (getEnv)
 import Pinto (ServerName(..), StartLinkResult)
 import Pinto.Gen (CallResult(..))
 import Pinto.Gen as Gen
+import Pinto.Timer as Timer
 import Prim.Row (class Nub)
 import Record as Record
+import Rtsv2.Env as Env
 import Rtsv2.PoPDefinition as PoPDefinition
 import Serf (Ip(..), IpAndPort)
 import Serf as Serf
-import Shared.Agents as Agents
-import Shared.Utils (lazyCrashIfMissing)
+import Shared.Agent as Agent
+import Shared.Stream (StreamId(..), StreamVariantId(..))
 
 type State
-  = {}
+  = { config :: Config
+    , serfRpcAddress :: IpAndPort
+    }
 
 type Config
   = { bindPort :: Int
     , rpcPort :: Int
     }
 
-serverName :: ServerName State Unit
+data Msg
+  = JoinAll
+
+isStreamAvailable :: StreamId -> Effect Boolean
+isStreamAvailable (StreamId s) = Gen.call serverName \state -> CallReply false state
+
+isIngestActive :: StreamVariantId -> Effect Boolean
+isIngestActive (StreamVariantId s v) = Gen.call serverName \state -> CallReply false state
+
+serverName :: ServerName State Msg
 serverName = Local "intraPopAgent"
 
 startLink :: Config -> Effect StartLinkResult
-startLink args = Gen.startLink serverName (init args) Gen.defaultHandleInfo
+startLink args = Gen.startLink serverName (init args) handleInfo
 
 init :: Config -> Effect State
-init config =
-  do
-    seeds <- PoPDefinition.getSeeds :: Effect (List String)
-    rpcBindIp <- Env.privateInterfaceIp
+init config = do
+  _ <- Timer.sendAfter serverName 0 JoinAll
+  rpcBindIp <- Env.privateInterfaceIp
+  let
+    serfRpcAddress =
+      { ip: show rpcBindIp
+      , port: config.rpcPort
+      }
 
-    let
-      serfRpcAddress = { ip: show rpcBindIp
-                       , port: config.rpcPort
-                       }
-      seedAddresses = map (\s -> {ip : s
-                                 , port: config.bindPort
-                                 }) seeds
+  pure { config
+       , serfRpcAddress
+       }
 
-    _ <- logInfo "Intra-PoP Agent Starting" { config : config
-                                          , seeds : seedAddresses}
+streamIsAvailable :: StreamVariantId -> Effect Unit
+streamIsAvailable (StreamVariantId s _) =
+  Gen.doCast serverName
+    $ \state -> do
+      _ <- Serf.event state.serfRpcAddress "streamAvailable" {stream: s} true
+      pure $ Gen.CastNoReply state
 
-    result <- Serf.join serfRpcAddress seedAddresses true
+logInfo :: forall a b. Nub ( domain :: List Atom | a ) b => String -> Record a -> Effect Foreign
+logInfo msg metaData = Logger.info msg (Record.merge { domain: ((atom (show Agent.IntraPoPAgent)) : nil) } { misc: metaData })
 
-    _ <- logInfo "Serf said " {result: result}
+handleInfo :: Msg -> State -> Effect State
+handleInfo msg state = case msg of
+  JoinAll -> do
+    _ <- joinAllSerf state
+    pure state
 
-    pure $ {}
-
-logInfo :: forall a b. Nub (domain :: List Atom | a) b =>  String -> Record a -> Effect Foreign
-logInfo msg metaData =
-  Logger.info msg (Record.merge {domain : ((atom (show Agents.IntraPoPAgent)): nil)} {misc: metaData})
+joinAllSerf :: State -> Effect Unit
+joinAllSerf {config, serfRpcAddress}  = do
+  seeds <- PoPDefinition.getSeeds :: Effect (List String)
+  let
+    seedAddresses =
+      map
+        ( \s ->
+            { ip: s
+            , port: config.bindPort
+            }
+        )
+        seeds
+  _ <-
+    logInfo "Intra-PoP Agent Starting"
+      { config: config
+      , seeds: seedAddresses
+      }
+  result <- Serf.join serfRpcAddress seedAddresses true
+  _ <- logInfo "Serf said " { result: result }
+  pure unit

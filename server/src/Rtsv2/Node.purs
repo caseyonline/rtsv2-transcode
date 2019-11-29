@@ -6,7 +6,7 @@ module Rtsv2.Node
        where
 
 import Erl.Data.List (List)
-import Shared.Agents (Agent)
+import Shared.Agent (Agent)
 
 type Config = { agents :: List Agent
               }

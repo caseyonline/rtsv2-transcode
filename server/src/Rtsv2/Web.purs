@@ -17,15 +17,15 @@ import Erl.Cowboy.Req (Req, binding)
 import Erl.Data.List (nil, (:))
 import Erl.Data.Tuple (Tuple2, Tuple4, tuple2, tuple4, uncurry4)
 import Gproc as Gproc
-import LocalPopState as PopState
-import Os as Os
 import Pinto (ServerName(..), StartLinkResult)
 import Pinto.Gen as Gen
 import Rtsv2.Env as Env
-import Serf (Ip(..), strToIp)
-import Shared.Agents as Agents
+import Rtsv2.IntraPoPAgent (isIngestActive, isStreamAvailable, streamIsAvailable)
+import Serf (Ip(..))
+import Shared.Agent as Agent
+import Shared.Stream (StreamId(..), StreamVariantId(..))
 import Shared.Utils (lazyCrashIfMissing)
-import Stetson (RestResult, StetsonHandler)
+import Stetson (HttpMethod(..), RestResult, StetsonHandler)
 import Stetson as Stetson
 import Stetson.Rest as Rest
 
@@ -46,6 +46,8 @@ init args = do
   bindIp <- Env.privateInterfaceIp
   Stetson.configure
     # Stetson.route "/poc/api/client/:canary/edge/:stream_id/connect" edge_entrypoint
+    # Stetson.route "/poc/api/client/:canary/ingest/:stream_id/:variant_id/start" ingestStart
+    --# Stetson.route "/poc/api/client/:canary/ingest/:stream_id/:variant_id/stop" ingestStop
     # Stetson.route "/test/alive" alive_entrypoint
     # Stetson.port args.port
     # (uncurry4 Stetson.bindTo) (ipToTuple bindIp)
@@ -63,18 +65,40 @@ alive_entrypoint =
 
 
 
-type EdgeState = { streamId :: String }
+
+
+type IngestState = { streamVariantId :: StreamVariantId }
+ingestStart :: StetsonHandler IngestState
+ingestStart =
+  Rest.handler (\req ->
+                 let streamId = fromMaybe' (lazyCrashIfMissing "stream_id binding missing") $ binding (atom "stream_id") req
+                     variantId = fromMaybe' (lazyCrashIfMissing "variant_id binding missing") $ binding (atom "variant_id") req
+                 in
+                 Rest.initResult req {streamVariantId: StreamVariantId streamId variantId})
+  # Rest.serviceAvailable (\req state -> do
+                              registered <- Gproc.isRegistered Agent.IngestAgent
+                              Rest.result registered req state)
+  -- # Rest.resourceExists (\req state@{streamVariantId} -> do
+  --                           isAvailable <- isIngestActive streamVariantId
+  --                           Rest.result isAvailable req state
+  --                         )
+  # Rest.contentTypesProvided (\req state -> do
+                                  _ <- streamIsAvailable state.streamVariantId
+                                  Rest.result (textWriter "" : nil) req state)
+  # Rest.yeeha
+
+type EdgeState = { streamId :: StreamId }
 edge_entrypoint :: StetsonHandler EdgeState
 edge_entrypoint =
   Rest.handler (\req ->
                  let streamId = fromMaybe' (lazyCrashIfMissing "stream_id binding missing") $ binding (atom "stream_id") req
                  in
-                 Rest.initResult req {streamId})
+                 Rest.initResult req {streamId : StreamId streamId})
   # Rest.serviceAvailable (\req state -> do
-                              registered <- Gproc.isRegistered Agents.EdgeAgent
+                              registered <- Gproc.isRegistered Agent.EdgeAgent
                               Rest.result registered req state)
   # Rest.resourceExists (\req state@{streamId} -> do
-                            isAvailable <- PopState.isStreamAvailable streamId
+                            isAvailable <- isStreamAvailable streamId
                             Rest.result isAvailable req state
                           )
   # Rest.contentTypesProvided (\req state -> Rest.result (textWriter "" : nil) req state)

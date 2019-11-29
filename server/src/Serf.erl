@@ -3,16 +3,38 @@
 -include_lib("id3as_common/include/common.hrl").
 
 -export([ joinImpl/3
+        , eventImpl/4
         ]).
+%% event :: forall a. IpAndPort -> String -> a -> Boolean ->  Effect (Either SerfApiError Unit)
+eventImpl(RpcAddr
+         , Name
+         , Msg
+         , Coalesce
+         ) ->
+  fun() ->
+      io:format(user, "~n~nXXX ~p, ~p, ~p~n~n", [mapAddr(RpcAddr)
+                                                , Name
+                                                , Coalesce]),
+      case serf_api:event(mapAddr(RpcAddr),
+                          Name,
+                          base64:encode(term_to_binary(Msg)),
+                          Coalesce) of
+        {error, Error} ->
+          ?SLOG_WARNING("serf error", #{ error => Error
+                                       , client_rpc => RpcAddr
+                                       , msg => Msg
+                                       , coalesce => Coalesce
+                                      }),
+          {left, networkError};
+        ok -> {right, unit}
+      end
+  end.
 
 joinImpl(RpcAddr
         , SeedAgents
         , Replay
         ) ->
   fun() ->
-      io:format(user, "~n~nXXX ~p, ~p, ~p~n~n", [mapAddr(RpcAddr),
-                                                 [mapAddr(Seed) || Seed <- SeedAgents],
-                                                 Replay]),
       case serf_api:join(mapAddr(RpcAddr),
                          [mapAddr(Seed) || Seed <- SeedAgents],
                          Replay) of
@@ -31,6 +53,8 @@ joinImpl(RpcAddr
           {right, Peers}
       end
   end.
+
+
 
 
 mapAddr(#{ ip := {ipv4, O1, O2, O3, O4}

@@ -22,7 +22,6 @@ function destroy_vlans {
 }
 
 function destroy_serfs {
-  echo Destroy serfs
   pkill -f 'serf.*172.16' || true
 }
 

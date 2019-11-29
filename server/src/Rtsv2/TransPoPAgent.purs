@@ -3,7 +3,7 @@ module Rtsv2.TransPoPAgent where
 import Effect (Effect)
 import Erl.Data.List (nil)
 import Prelude
-import Shared.Agents as Agents
+import Shared.Agent as Agents
 import Pinto (ServerName(..), StartLinkResult)
 import Pinto.Gen (CallResult(..))
 import Pinto.Gen as Gen

@@ -14,7 +14,7 @@ import Rtsv2.StreamRelayAgentSup as StreamRelayAgentSup
 import Rtsv2.IntraPoPAgent as IntraPoPAgent
 import Rtsv2.TransPoPAgent as TransPoPAgent
 
-import Shared.Agents (Agent(..))
+import Shared.Agent (Agent(..))
 
 startLink :: Unit -> Effect Pinto.StartLinkResult
 startLink _ = Sup.startLink "agentSup" init

@@ -1,6 +1,7 @@
 module Serf
        ( strToIp
        , join
+       , event
        , Ip(..), IpAndPort(..), SerfApiError(..)
        )
        where
@@ -16,6 +17,7 @@ import Effect (Effect)
 import Erl.Data.List (List)
 
 foreign import joinImpl :: IpAndPort -> List IpAndPort -> Boolean ->  Effect (Either SerfApiError Int)
+foreign import eventImpl :: forall a. IpAndPort -> String -> a -> Boolean ->  Effect (Either SerfApiError Unit)
 
 data Ip = Ipv4 Int Int Int Int
 
@@ -43,3 +45,7 @@ strToIp str =
 
 join :: IpAndPort -> List IpAndPort -> Boolean ->  Effect (Either SerfApiError Int)
 join = joinImpl
+
+
+event :: forall a. IpAndPort -> String -> a -> Boolean ->  Effect (Either SerfApiError Unit)
+event = eventImpl

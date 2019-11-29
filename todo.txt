@@ -1,0 +1,3 @@
+[ ] - review gproc registration for top level supervisors and gen servers (i.e dont use it!)
+[ ] - serf api should take left and right constructors
+[ ] - can msgPack take arbitrary binaries

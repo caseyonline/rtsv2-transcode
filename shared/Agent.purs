@@ -1,4 +1,4 @@
-module Shared.Agents (
+module Shared.Agent (
                 Agent(..)
               , strToAgent
               , agentToStr
