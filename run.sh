@@ -87,6 +87,7 @@ for i in "${array[@]}"; do
     tmux -L "$SESSION" send-keys "export HOSTNAME=$addr" C-m
     tmux -L "$SESSION" split-window -h -p 50
     tmux -L "$SESSION" send-keys "export HOSTNAME=$addr" C-m
+    tmux -L "$SESSION" send-keys "export IFACE=$vlan" C-m
     tmux -L "$SESSION" send-keys "erl -pa _build/default/lib/*/ebin -config "$SYSCONFIG" -eval 'application:ensure_all_started(rtsv2).'" C-m
 
     popIndex=$((popIndex + 1))
