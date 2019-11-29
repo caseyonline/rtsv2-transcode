@@ -11,41 +11,16 @@ if [ "$#" -ne 1 ]; then
 else
   RUN_ENV=$1
 fi
-
 ENV_SCRIPT=scripts/env/$RUN_ENV
 
+source scripts/shared_functions.sh
 # shellcheck source=/dev/null
 source "$ENV_SCRIPT"
-unset HISTFILE
+set +o history
 
 SESSION=rtsv2
 SYSCONFIG=${SYSCONFIG:-release-files/sys.config}
 
-function create_vlan {
-    local vlan=$1
-    local addr=$2
-
-    #sudo ifconfig lo0 alias $addr netmask 255.255.255.0
-
-    sudo ifconfig "$vlan" create
-    sudo ifconfig "$vlan" inet "$addr" netmask 255.255.255.255
-    sudo route add -host "$addr" -interface "$vlan" > /dev/null
-}
-
-function destroy_vlans {
-#    for i in $(ifconfig lo0 | awk '/172.16/ {print $2}'); do
-#         sudo ifconfig lo0 -alias $i
-#    done
-
-    for i in $(ifconfig | grep 'vlan[1-9][0-9][0-9]' | awk '{print $1}' | sed 's/://'); do
-        sudo ifconfig "$i" destroy
-    done
-}
-
-function destroy_serfs {
-    echo Destroy serfs
-    pkill -f 'serf.*172.16' || true
-}
 
 tmux -L "$SESSION" kill-session 2>/dev/null || true
 destroy_serfs
@@ -68,27 +43,16 @@ for i in "${array[@]}"; do
         echo "Preparing PoP $region / $pop"
         currentRegionPop=$region-$pop
         regionPopIndex=$((regionPopIndex + 1))
-        popIndex=0
+        popIndex=1
         tmux -L "$SESSION" new-window -t $regionPopIndex -n "$currentRegionPop"
     fi
 
-    vlan=vlan$((regionPopIndex * 100 + popIndex))
-    create_vlan "$vlan" "$addr"
+    vlan=vlan$(((regionPopIndex * 100) + popIndex))
 
-    if (( popIndex > 0 )); then
+    if (( popIndex > 1 )); then
         tmux -L "$SESSION" split-window -v -p 50 -f
     fi
-    tmux -L "$SESSION" send-keys "export HOSTNAME=$addr" C-m
-    tmux -L "$SESSION" send-keys "serf agent -iface $vlan -node $currentRegionPop$popIndex -bind $addr:7946 -rpc-addr $addr:7373" C-m
-    tmux -L "$SESSION" split-window -h -p 80
-    tmux -L "$SESSION" send-keys "export HOSTNAME=$addr" C-m
-    tmux -L "$SESSION" send-keys "serf agent -iface $vlan -node $currentRegionPop$popIndex -bind $addr:8946 -rpc-addr $addr:8373" C-m
-    tmux -L "$SESSION" split-window -h -p 75
-    tmux -L "$SESSION" send-keys "export HOSTNAME=$addr" C-m
-    tmux -L "$SESSION" split-window -h -p 50
-    tmux -L "$SESSION" send-keys "export HOSTNAME=$addr" C-m
-    tmux -L "$SESSION" send-keys "erl -pa _build/default/lib/*/ebin -config "$SYSCONFIG" -eval 'application:ensure_all_started(rtsv2).'" C-m
-
+    start_node "$SESSION" "$currentRegionPop$popIndex" "$vlan" "$addr" "$SYSCONFIG"
     popIndex=$((popIndex + 1))
 done
 

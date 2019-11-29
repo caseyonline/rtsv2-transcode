@@ -21,9 +21,9 @@ import LocalPopState as PopState
 import Os as Os
 import Pinto (ServerName(..), StartLinkResult)
 import Pinto.Gen as Gen
-import Serf (Ip(..))
+import Serf (Ip(..), strToIp)
 import Shared.Agents as Agents
-import Shared.Utils (lazyCrashIfMissing, strToIp)
+import Shared.Utils (lazyCrashIfMissing)
 import Stetson (RestResult, StetsonHandler)
 import Stetson as Stetson
 import Stetson.Rest as Rest

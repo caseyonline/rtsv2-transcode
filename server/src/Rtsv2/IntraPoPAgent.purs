@@ -22,7 +22,7 @@ import Rtsv2.PoPDefinition as PoPDefinition
 import Serf (Ip(..), IpAndPort)
 import Serf as Serf
 import Shared.Agents as Agents
-import Shared.Utils (lazyCrashIfMissing, strToIp)
+import Shared.Utils (lazyCrashIfMissing)
 
 type State
   = {}
@@ -61,9 +61,9 @@ init config = do
   _ <- logInfo "Intra-PoP Agent Starting" { config : config
                                           , seeds : seedAddresses}
 
-  result <- Serf.join serfRpcAddress seedAddresses true
+  --result <- Serf.join serfRpcAddress seedAddresses true
 
-  _ <- logInfo "Serf said " {result: result}
+  --_ <- logInfo "Serf said " {result: result}
 
   pure $ {}
 

@@ -7,21 +7,35 @@ import Affjax.ResponseFormat as ResponseFormat
 import Affjax.StatusCode (StatusCode(..))
 import Data.Either (Either(..))
 import Data.HTTP.Method (Method(..))
+import Data.Identity (Identity(..))
+import Data.Maybe (Maybe(..))
+import Data.Newtype (un)
+import Data.Time.Duration (Milliseconds(..))
 import Data.Traversable (traverse_)
-import Data.Tuple (Tuple(..), fst, snd)
 import Effect (Effect)
 import Effect.Aff (launchAff_, Aff)
 import OsCmd (runProc)
 import Test.Spec (after_, before_, describe, it)
 import Test.Spec.Assertions (fail)
 import Test.Spec.Reporter.Console (consoleReporter)
-import Test.Spec.Runner (runSpec)
+import Test.Spec.Runner (runSpec, runSpecT)
+
+
+type TestNode =  { nodeName :: String
+                 , vlan :: String
+                 , addr :: String
+                 , sysConfig :: String
+                 }
+
+node :: String -> String -> String -> String -> TestNode
+node nodeName vlan addr sysConfig = {nodeName, vlan, addr, sysConfig}
+
+
 
 main :: Effect Unit
 main =
-  launchAff_
-    $ runSpec [ consoleReporter ] do
-        before_ (launchNodes [ (Tuple "node3000" 3000) ]) do
+  launchAff_ $ un Identity $ runSpecT testConfig [consoleReporter] do
+        before_ (launchNodes [ node "node3000" "vlan201" "172.16.169.1" "scripts/env/steve.data/sys.config" ]) do
           after_ stopNodes do
             describe "single edge agent running" do
               it "client requests stream which is not being ingested" do
@@ -33,7 +47,7 @@ main =
                     case response.status of
                       StatusCode 404 -> pure unit
                       sc -> fail $ "Unexpected statuscode" <> show sc
-        before_ (launchNodes [ (Tuple "node3000" 3000), (Tuple "node3001" 3001) ]) do
+        before_ (launchNodes [ node "node3000" "vlan201" "172.16.169.1" "scripts/env/steve.data/sys.config" ]) do
           after_ stopNodes do
             describe "multiple edge agents running" do
               it "client requests stream which is not being ingested" do
@@ -45,10 +59,25 @@ main =
                     case response.status of
                       StatusCode 404 -> pure unit
                       sc -> fail $ "Unexpected statuscode" <> show sc
+  where
+    testConfig = { slow: Milliseconds 5000.0, timeout: Just (Milliseconds 10000.0), exit: false }
 
-launchNodes :: Array (Tuple String Int) -> Aff Unit
-launchNodes sysconfigs =
-  traverse_ (\sc -> runProc "./scripts/startNode.sh" [(fst sc), show (snd sc)]) sysconfigs
+
+sessionName:: String
+sessionName = "testSession"
+
+launchNodes :: Array TestNode -> Aff Unit
+launchNodes sysconfigs = do
+  _ <- runProc "./scripts/startSession.sh" [sessionName]
+  traverse_ (\tn -> runProc "./scripts/startNode.sh"
+                    [ sessionName
+                    , tn.nodeName
+                    , tn.vlan
+                    , tn.addr
+                    , tn.sysConfig
+                    ]) sysconfigs
 
 stopNodes :: Aff Unit
-stopNodes = runProc "./scripts/stopNodes.sh" []
+stopNodes = do
+  _ <- runProc "./scripts/stopNodes.sh" []
+  runProc "./scripts/stopSession.sh" [sessionName]
