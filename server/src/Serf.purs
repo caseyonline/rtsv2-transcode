@@ -22,16 +22,16 @@ import Foreign (Foreign)
 
 type SerfResult a = Either ApiError a
 
-data Message = MemberAlive
-             | MemberLeaving
-             | MemberLeft
-             | MemberFailed
-             | UserEvent String Int Boolean Binary
+data Message a = MemberAlive
+               | MemberLeaving
+               | MemberLeft
+               | MemberFailed
+               | UserEvent String Int Boolean a
 
 foreign import joinImpl :: IpAndPort -> List IpAndPort -> Boolean ->  Effect (SerfResult Int)
 foreign import eventImpl :: forall a. IpAndPort -> String -> a -> Boolean ->  Effect (SerfResult Unit)
 foreign import streamImpl :: forall a. (ApiError -> (SerfResult Unit)) -> (SerfResult Unit) -> IpAndPort -> Effect (SerfResult Unit)
-foreign import messageMapperImpl :: Foreign -> Message
+foreign import messageMapperImpl :: forall a. Foreign -> Message a
 
 data Ip = Ipv4 Int Int Int Int
 
@@ -66,5 +66,5 @@ event = eventImpl
 stream :: IpAndPort -> Effect (SerfResult Unit)
 stream = streamImpl Left (Right unit)
 
-messageMapper :: Foreign -> Message
+messageMapper :: forall a. Foreign -> Message a
 messageMapper = messageMapperImpl
