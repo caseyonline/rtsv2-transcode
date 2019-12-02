@@ -31,7 +31,6 @@ import Shared.Stream (StreamId(..), StreamVariantId(..))
 type State
   = { config :: Config
     , serfRpcAddress :: IpAndPort
-    , activeStreams :: Map String Boolean -- TODO
     }
 
 type Config
