@@ -6,11 +6,7 @@ module Rtsv2.Web
 
 import Prelude
 
-import Control.Bind (join)
-import Data.Int (fromString)
-import Data.Maybe (Maybe(..), fromMaybe, fromMaybe')
-import Data.String (Pattern(..), split)
-import Data.Traversable (sequence)
+import Data.Maybe (fromMaybe')
 import Effect (Effect)
 import Erl.Atom (atom)
 import Erl.Cowboy.Req (Req, binding)
@@ -20,12 +16,12 @@ import Gproc as Gproc
 import Pinto (ServerName(..), StartLinkResult)
 import Pinto.Gen as Gen
 import Rtsv2.Env as Env
-import Rtsv2.IntraPoPAgent (isIngestActive, isStreamAvailable, streamIsAvailable)
+import Rtsv2.IntraPoPAgent (isStreamAvailable, streamIsAvailable)
 import Serf (Ip(..))
 import Shared.Agent as Agent
 import Shared.Stream (StreamId(..), StreamVariantId(..))
 import Shared.Utils (lazyCrashIfMissing)
-import Stetson (HttpMethod(..), RestResult, StetsonHandler)
+import Stetson (RestResult, StetsonHandler)
 import Stetson as Stetson
 import Stetson.Rest as Rest
 
