@@ -8,11 +8,10 @@ module Rtsv2.IntraPoPAgent
 
 import Prelude
 
-import Data.Maybe (Maybe(..), fromMaybe, fromMaybe')
+import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
-import Erl.Data.Map (Map)
 import Foreign (Foreign)
 import Logger as Logger
 import Pinto (ServerName(..), StartLinkResult)

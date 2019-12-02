@@ -32,6 +32,9 @@ rtsv2EdgeAgentSup = ModuleName "Rtsv2.EdgeAgentSup"
 rtsv2Env :: ModuleName
 rtsv2Env = ModuleName "Rtsv2.Env"
 
+rtsv2IngestAgent :: ModuleName
+rtsv2IngestAgent = ModuleName "Rtsv2.IngestAgent"
+
 rtsv2IngestAgentSup :: ModuleName
 rtsv2IngestAgentSup = ModuleName "Rtsv2.IngestAgentSup"
 

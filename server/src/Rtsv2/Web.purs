@@ -16,7 +16,8 @@ import Gproc as Gproc
 import Pinto (ServerName(..), StartLinkResult)
 import Pinto.Gen as Gen
 import Rtsv2.Env as Env
-import Rtsv2.IntraPoPAgent (isStreamAvailable, streamIsAvailable)
+import Rtsv2.IngestAgent as IngestAgent
+import Rtsv2.IntraPoPAgent (isStreamAvailable)
 import Serf (Ip(..))
 import Shared.Agent as Agent
 import Shared.Stream (StreamId(..), StreamVariantId(..))
@@ -79,7 +80,7 @@ ingestStart =
   --                           Rest.result isAvailable req state
   --                         )
   # Rest.contentTypesProvided (\req state -> do
-                                  _ <- streamIsAvailable state.streamVariantId
+                                  _ <- IngestAgent.startLink {streamVariantId : state.streamVariantId }
                                   Rest.result (textWriter "" : nil) req state)
   # Rest.yeeha
 
