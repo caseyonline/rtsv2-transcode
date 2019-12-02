@@ -2,17 +2,13 @@
 -include_lib("id3as_common/include/serf_api.hrl").
 -include_lib("id3as_common/include/common.hrl").
 
--export([ joinImpl/3
-        , eventImpl/4
+-export([ joinImpl/5
+        , eventImpl/6
         , streamImpl/3
         , messageMapperImpl/1
         ]).
 %% event :: forall a. IpAndPort -> String -> a -> Boolean ->  Effect (Either SerfApiError Unit)
-eventImpl(RpcAddr
-         , Name
-         , Msg
-         , Coalesce
-         ) ->
+eventImpl(Left, Right, RpcAddr, Name, Msg, Coalesce) ->
   fun() ->
       io:format(user, "~n~nXXX ~p, ~p, ~p~n~n", [mapAddr(RpcAddr)
                                                 , Name
@@ -21,14 +17,15 @@ eventImpl(RpcAddr
                           Name,
                           base64:encode(term_to_binary(Msg)),
                           Coalesce) of
+        ok -> Right;
+
         {error, Error} ->
           ?SLOG_WARNING("serf error", #{ error => Error
                                        , client_rpc => RpcAddr
                                        , msg => Msg
                                        , coalesce => Coalesce
                                       }),
-          {left, networkError};
-        ok -> {right, unit}
+          Left(networkError)
       end
   end.
 
@@ -40,10 +37,7 @@ streamImpl(Left, Right, RpcAddr) ->
       end
   end.
 
-joinImpl(RpcAddr
-        , SeedAgents
-        , Replay
-        ) ->
+joinImpl(Left, Right, RpcAddr, SeedAgents, Replay) ->
   fun() ->
       case serf_api:join(mapAddr(RpcAddr),
                          [mapAddr(Seed) || Seed <- SeedAgents],
@@ -54,13 +48,13 @@ joinImpl(RpcAddr
                                       , seeds => SeedAgents
                                       , replay_events => Replay
                                       }),
-          {left, networkError};
+          Left(networkError);
         {ok, #serf_join_response{status = serf_error,
                                  serf_error = ErrorBin}} ->
-          {left, {serfError, ErrorBin}};
+          Left(ErrorBin);
         {ok, #serf_join_response{status = ok,
                                  no_peers_joined = Peers}} ->
-          {right, Peers}
+          Right(Peers)
       end
   end.
 

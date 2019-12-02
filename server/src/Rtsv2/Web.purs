@@ -16,7 +16,6 @@ import Gproc as Gproc
 import Pinto (ServerName(..), StartLinkResult)
 import Pinto.Gen as Gen
 import Rtsv2.Env as Env
-import Rtsv2.IngestAgent as IngestAgent
 import Rtsv2.IngestAgentSup (startIngest)
 import Rtsv2.IntraPoPAgent (isStreamAvailable)
 import Serf (Ip(..))

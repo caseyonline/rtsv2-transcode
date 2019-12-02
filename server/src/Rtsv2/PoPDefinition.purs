@@ -154,7 +154,7 @@ mapPoPJson =
   Map.mapWithKey (\name servers -> {name : name, servers : servers})
 
 updateState :: State -> Map.Map RegionName Region -> State
-updateState state@{thisNode} regions =
+updateState state@{thisNode: hostName} regions =
   let
     servers :: Map.Map ServerAddress ServerLocation
     servers = foldl (\acc region ->
@@ -172,10 +172,10 @@ updateState state@{thisNode} regions =
               regions
 
     otherServers :: List String
-    otherServers = Map.lookup thisNode servers
+    otherServers = Map.lookup hostName servers
                    >>= (\sl -> lookupPop regions sl)
                    <#> (\p -> p.servers)
-                   <#> filter (\s -> s /= thisNode)
+                   <#> filter (\s -> s /= hostName)
                    # fromMaybe nil
 
   in

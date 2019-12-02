@@ -16,7 +16,6 @@ import Data.Maybe (Maybe(..))
 import Data.String (Pattern(..), split)
 import Data.Traversable (sequence)
 import Effect (Effect)
-import Erl.Data.Binary (Binary)
 import Erl.Data.List (List)
 import Foreign (Foreign)
 
@@ -28,9 +27,9 @@ data Message a = MemberAlive
                | MemberFailed
                | UserEvent String Int Boolean a
 
-foreign import joinImpl :: IpAndPort -> List IpAndPort -> Boolean ->  Effect (SerfResult Int)
-foreign import eventImpl :: forall a. IpAndPort -> String -> a -> Boolean ->  Effect (SerfResult Unit)
-foreign import streamImpl :: forall a. (ApiError -> (SerfResult Unit)) -> (SerfResult Unit) -> IpAndPort -> Effect (SerfResult Unit)
+foreign import joinImpl :: (ApiError -> (SerfResult Int)) -> (Int -> SerfResult Int) -> IpAndPort -> List IpAndPort -> Boolean ->  Effect (SerfResult Int)
+foreign import eventImpl :: forall a. (ApiError -> (SerfResult Unit)) -> (SerfResult Unit) -> IpAndPort -> String -> a -> Boolean ->  Effect (SerfResult Unit)
+foreign import streamImpl :: (ApiError -> (SerfResult Unit)) -> (SerfResult Unit) -> IpAndPort -> Effect (SerfResult Unit)
 foreign import messageMapperImpl :: forall a. Foreign -> Message a
 
 data Ip = Ipv4 Int Int Int Int
@@ -58,10 +57,10 @@ strToIp str =
 
 
 join :: IpAndPort -> List IpAndPort -> Boolean ->  Effect (SerfResult Int)
-join = joinImpl
+join = joinImpl Left Right
 
 event :: forall a. IpAndPort -> String -> a -> Boolean ->  Effect (SerfResult Unit)
-event = eventImpl
+event = eventImpl Left (Right unit)
 
 stream :: IpAndPort -> Effect (SerfResult Unit)
 stream = streamImpl Left (Right unit)
