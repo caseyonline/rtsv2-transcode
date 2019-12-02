@@ -4,6 +4,8 @@
 
 -export([ joinImpl/3
         , eventImpl/4
+        , streamImpl/3
+        , messageMapperImpl/1
         ]).
 %% event :: forall a. IpAndPort -> String -> a -> Boolean ->  Effect (Either SerfApiError Unit)
 eventImpl(RpcAddr
@@ -27,6 +29,14 @@ eventImpl(RpcAddr
                                       }),
           {left, networkError};
         ok -> {right, unit}
+      end
+  end.
+
+streamImpl(Left, Right, RpcAddr) ->
+  fun() ->
+      case serf_api:stream(mapAddr(RpcAddr)) of
+        ok -> Right;
+        Error -> Left(Error)
       end
   end.
 
@@ -54,8 +64,22 @@ joinImpl(RpcAddr
       end
   end.
 
+messageMapperImpl(#serf_user_event{ name = Name
+                                  , lamport_time = LTime
+                                  , coalesce = Coalesce
+                                  , payload = Payload
+                                  }) ->
+  {userEvent, Name, LTime, Coalesce, binary_to_term(base64:decode(Payload))};
 
+messageMapperImpl(#serf_members_event{ type = join
+                                     , members = Members
+                                     }) ->
+  {memberAlive};
 
+messageMapperImpl(#serf_members_event{ type = leave
+                                     , members = Members
+                                     }) ->
+  {memberLeft}.
 
 mapAddr(#{ ip := {ipv4, O1, O2, O3, O4}
          , port := Port

@@ -41,6 +41,8 @@ type Config
 
 data Msg
   = JoinAll
+  | SerfMessage Serf.Message
+
 
 isStreamAvailable :: StreamId -> Effect Boolean
 isStreamAvailable (StreamId s) = Gen.call serverName \state -> CallReply false state
@@ -64,6 +66,9 @@ init config = do
       , port: config.rpcPort
       }
 
+  _ <- Gen.registerExternalMapping serverName  (Just <<< SerfMessage <<< Serf.messageMapper)
+  _ <- Serf.stream serfRpcAddress
+
   pure { config
        , serfRpcAddress
        }
@@ -80,6 +85,13 @@ logInfo msg metaData = Logger.info msg (Record.merge { domain: ((atom (show Agen
 
 handleInfo :: Msg -> State -> Effect State
 handleInfo msg state = case msg of
+  SerfMessage (Serf.UserEvent name lamportClock coalesce payload) -> do
+    _ <- logInfo "Really Holy cow" {name: name,
+                                    payload: payload}
+    pure state
+  SerfMessage a -> do
+    _ <- logInfo "Holy cow" {serf: a}
+    pure state
   JoinAll -> do
     _ <- joinAllSerf state
     pure state

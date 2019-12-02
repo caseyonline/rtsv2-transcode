@@ -2,7 +2,9 @@ module Serf
        ( strToIp
        , join
        , event
-       , Ip(..), IpAndPort(..), SerfApiError(..)
+       , stream
+       , messageMapper
+       , Ip(..), IpAndPort(..), ApiError(..), Message(..)
        )
        where
 
@@ -14,18 +16,30 @@ import Data.Maybe (Maybe(..))
 import Data.String (Pattern(..), split)
 import Data.Traversable (sequence)
 import Effect (Effect)
+import Erl.Data.Binary (Binary)
 import Erl.Data.List (List)
+import Foreign (Foreign)
 
-foreign import joinImpl :: IpAndPort -> List IpAndPort -> Boolean ->  Effect (Either SerfApiError Int)
-foreign import eventImpl :: forall a. IpAndPort -> String -> a -> Boolean ->  Effect (Either SerfApiError Unit)
+type SerfResult a = Either ApiError a
+
+data Message = MemberAlive
+             | MemberLeaving
+             | MemberLeft
+             | MemberFailed
+             | UserEvent String Int Boolean Binary
+
+foreign import joinImpl :: IpAndPort -> List IpAndPort -> Boolean ->  Effect (SerfResult Int)
+foreign import eventImpl :: forall a. IpAndPort -> String -> a -> Boolean ->  Effect (SerfResult Unit)
+foreign import streamImpl :: forall a. (ApiError -> (SerfResult Unit)) -> (SerfResult Unit) -> IpAndPort -> Effect (SerfResult Unit)
+foreign import messageMapperImpl :: Foreign -> Message
 
 data Ip = Ipv4 Int Int Int Int
 
 instance showAgent :: Show Ip where
   show (Ipv4 a b c d) = (show a) <> "." <> (show b) <> "." <> (show c) <> "." <> (show d)
 
-data SerfApiError = SerfError String
-                  | NetworkError
+data ApiError = SerfError String
+              | NetworkError
 
 type IpAndPort = { ip :: String
                  , port :: Int
@@ -43,9 +57,14 @@ strToIp str =
     )
 
 
-join :: IpAndPort -> List IpAndPort -> Boolean ->  Effect (Either SerfApiError Int)
+join :: IpAndPort -> List IpAndPort -> Boolean ->  Effect (SerfResult Int)
 join = joinImpl
 
-
-event :: forall a. IpAndPort -> String -> a -> Boolean ->  Effect (Either SerfApiError Unit)
+event :: forall a. IpAndPort -> String -> a -> Boolean ->  Effect (SerfResult Unit)
 event = eventImpl
+
+stream :: IpAndPort -> Effect (SerfResult Unit)
+stream = streamImpl Left (Right unit)
+
+messageMapper :: Foreign -> Message
+messageMapper = messageMapperImpl
