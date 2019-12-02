@@ -17,6 +17,7 @@ import Pinto (ServerName(..), StartLinkResult)
 import Pinto.Gen as Gen
 import Rtsv2.Env as Env
 import Rtsv2.IngestAgent as IngestAgent
+import Rtsv2.IngestAgentSup (startIngest)
 import Rtsv2.IntraPoPAgent (isStreamAvailable)
 import Serf (Ip(..))
 import Shared.Agent as Agent
@@ -72,15 +73,15 @@ ingestStart =
                      variantId = fromMaybe' (lazyCrashIfMissing "variant_id binding missing") $ binding (atom "variant_id") req
                  in
                  Rest.initResult req {streamVariantId: StreamVariantId streamId variantId})
-  # Rest.serviceAvailable (\req state -> do
-                              registered <- Gproc.isRegistered Agent.IngestAgent
-                              Rest.result registered req state)
+  -- # Rest.serviceAvailable (\req state -> do
+  --                             registered <- Gproc.isRegistered Agent.Ingest
+  --                             Rest.result registered req state)
   -- # Rest.resourceExists (\req state@{streamVariantId} -> do
   --                           isAvailable <- isIngestActive streamVariantId
   --                           Rest.result isAvailable req state
   --                         )
   # Rest.contentTypesProvided (\req state -> do
-                                  _ <- IngestAgent.startLink {streamVariantId : state.streamVariantId }
+                                  _ <- startIngest {streamVariantId : state.streamVariantId }
                                   Rest.result (textWriter "" : nil) req state)
   # Rest.yeeha
 
@@ -92,7 +93,7 @@ edge_entrypoint =
                  in
                  Rest.initResult req {streamId : StreamId streamId})
   # Rest.serviceAvailable (\req state -> do
-                              registered <- Gproc.isRegistered Agent.EdgeAgent
+                              registered <- Gproc.isRegistered Agent.Edge
                               Rest.result registered req state)
   # Rest.resourceExists (\req state@{streamId} -> do
                             isAvailable <- isStreamAvailable streamId

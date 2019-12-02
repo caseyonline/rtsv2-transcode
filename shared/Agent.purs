@@ -19,11 +19,12 @@ import Simple.JSON (class ReadForeign)
 
 --import Test.QuickCheck.Arbitrary (class Arbitrary, genericArbitrary)
 
-data Agent = EdgeAgent
-           | IngestAgent
-           | StreamRelayAgent
-           | IntraPoPAgent
-           | TransPoPAgent
+data Agent = Edge
+           | Ingest
+           | IngestAggregator
+           | StreamRelay
+           | IntraPoP
+           | TransPoP
 
 derive instance genericAgent :: Generic Agent _
 
@@ -45,11 +46,12 @@ strToAgent s =
   fromMaybe' (lazyCrashIfMissing $ errorString s) (strToMaybeAgent s)
 
 strToMaybeAgent :: String -> Maybe Agent
-strToMaybeAgent "EdgeAgent" = pure EdgeAgent
-strToMaybeAgent "IngestAgent" = pure IngestAgent
-strToMaybeAgent "StreamRelayAgent" = pure StreamRelayAgent
-strToMaybeAgent "IntraPoPAgent" = pure IntraPoPAgent
-strToMaybeAgent "TransPoPAgent" = pure TransPoPAgent
+strToMaybeAgent "Edge" = pure Edge
+strToMaybeAgent "Ingest" = pure Ingest
+strToMaybeAgent "IngestAggregator" = pure IngestAggregator
+strToMaybeAgent "StreamRelay" = pure StreamRelay
+strToMaybeAgent "IntraPoP" = pure IntraPoP
+strToMaybeAgent "TransPoP" = pure TransPoP
 strToMaybeAgent unknown = Nothing
 
 agentToStr :: Agent -> String

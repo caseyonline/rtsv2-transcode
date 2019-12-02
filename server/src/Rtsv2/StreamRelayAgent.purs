@@ -13,7 +13,7 @@ startLink _ = Sup.startLink "streamRelayAgentSup" init
 
 init :: Effect Sup.SupervisorSpec
 init = do
-  _ <- Gproc.register Agent.StreamRelayAgent
+  _ <- Gproc.register Agent.StreamRelay
   pure $ Sup.buildSupervisor
     # Sup.supervisorStrategy Sup.OneForOne
     # Sup.supervisorChildren nil

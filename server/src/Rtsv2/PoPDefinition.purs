@@ -1,7 +1,9 @@
 module Rtsv2.PoPDefinition
        (startLink
        , getSeeds
+       , thisNode
        , Config
+       , ServerAddress
        ) where
 
 import Prelude
@@ -68,6 +70,10 @@ startLink args =
 
 getSeeds :: Effect (List ServerAddress)
 getSeeds = Gen.doCall serverName (\s -> getSeeds' s >>= (\r -> pure $ CallReply r s))
+
+
+thisNode :: Effect ServerAddress
+thisNode = Gen.doCall serverName (\s -> pure $ CallReply s.thisNode s)
 
 -- TODO - this current picks 4 random seeds - probably just want to give back all the otherServers
 --        If we do stick with random, then we need to ensure required count <= length(otherServers)

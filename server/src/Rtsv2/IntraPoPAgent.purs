@@ -4,10 +4,14 @@ module Rtsv2.IntraPoPAgent
   , isStreamAvailable
   , isIngestActive
   , streamIsAvailable
+  , whereIsIngestAggregator
+  , whereIsIngestRelay
   ) where
 
 import Prelude
 
+import Data.Map (Map)
+import Data.Map as Map
 import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
@@ -21,15 +25,18 @@ import Pinto.Timer as Timer
 import Prim.Row (class Nub)
 import Record as Record
 import Rtsv2.Env as Env
+import Rtsv2.PoPDefinition (thisNode)
 import Rtsv2.PoPDefinition as PoPDefinition
-import Serf (IpAndPort)
-import Serf as Serf
+import Rtsv2.Serf (Ip, IpAndPort, StateMessage)
+import Rtsv2.Serf as Serf
 import Shared.Agent as Agent
 import Shared.Stream (StreamId(..), StreamVariantId(..))
 
 type State
   = { config :: Config
     , serfRpcAddress :: IpAndPort
+    , streamRelayLocations :: Map StreamId Ip
+    , streamAggregatorLocations :: Map StreamId Ip
     }
 
 type Config
@@ -41,7 +48,6 @@ data Msg
   = JoinAll
   | SerfMessage (Serf.Message StateMessage)
 
-data StateMessage = StreamAvailable String
 
 isStreamAvailable :: StreamId -> Effect Boolean
 isStreamAvailable (StreamId s) = Gen.call serverName \state -> CallReply false state
@@ -49,11 +55,21 @@ isStreamAvailable (StreamId s) = Gen.call serverName \state -> CallReply false s
 isIngestActive :: StreamVariantId -> Effect Boolean
 isIngestActive (StreamVariantId s v) = Gen.call serverName \state -> CallReply false state
 
-streamIsAvailable :: StreamVariantId -> Effect Unit
-streamIsAvailable (StreamVariantId s _) =
+whereIsIngestRelay :: StreamVariantId -> Effect (Maybe Ip)
+whereIsIngestRelay (StreamVariantId s _) = Gen.call serverName \state ->
+  CallReply (Map.lookup (StreamId s) state.streamRelayLocations) state
+
+whereIsIngestAggregator :: StreamVariantId -> Effect (Maybe Ip)
+whereIsIngestAggregator (StreamVariantId s _) = Gen.call serverName \state ->
+  CallReply (Map.lookup (StreamId s) state.streamAggregatorLocations) state
+
+
+streamIsAvailable :: StreamId -> Effect Unit
+streamIsAvailable s =
   Gen.doCast serverName
     $ \state -> do
-      _ <- Serf.event state.serfRpcAddress "streamAvailable" (StreamAvailable s) true
+      thisNode <- thisNode
+      _ <- Serf.event state.serfRpcAddress "streamAvailable" (Serf.StreamAvailable s thisNode) true
       pure $ Gen.CastNoReply state
 
 serverName :: ServerName State Msg
@@ -77,23 +93,21 @@ init config = do
 
   pure { config
        , serfRpcAddress
+       , streamRelayLocations : Map.empty
+       , streamAggregatorLocations : Map.empty
        }
 
 logInfo :: forall a b. Nub ( domain :: List Atom | a ) b => String -> Record a -> Effect Foreign
-logInfo msg metaData = Logger.info msg (Record.merge { domain: ((atom (show Agent.IntraPoPAgent)) : nil) } { misc: metaData })
+logInfo msg metaData = Logger.info msg (Record.merge { domain: ((atom (show Agent.IntraPoP)) : nil) } { misc: metaData })
 
 handleInfo :: Msg -> State -> Effect State
 handleInfo msg state = case msg of
-  SerfMessage (Serf.UserEvent name lamportClock coalesce (StreamAvailable streamName)) -> do
-    _ <- logInfo "Really Holy cow" {name: name,
-                                    payload: streamName}
+  SerfMessage (Serf.UserEvent name lamportClock coalesce (Serf.StreamAvailable streamName server)) -> do
+    _ <- logInfo "Really Holy cow" { name: name
+                                    , server: server
+                                    , payload: streamName}
     pure state
 
-
-  SerfMessage (Serf.UserEvent name lamportClock coalesce payload) -> do
-    _ <- logInfo "Really Holy cow" {name: name,
-                                    payload: payload}
-    pure state
   SerfMessage a -> do
     _ <- logInfo "Holy cow" {serf: a}
     pure state

@@ -4,7 +4,7 @@ module Serf
        , event
        , stream
        , messageMapper
-       , Ip(..), IpAndPort(..), ApiError(..), Message(..)
+       , Ip(..), IpAndPort, ApiError(..), Message(..), SerfResult(..)
        )
        where
 

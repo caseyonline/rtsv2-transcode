@@ -14,6 +14,7 @@ primary_*
 _checkouts
 default.etcd
 .#*
+#.*
 log
 .spago
 node_modules

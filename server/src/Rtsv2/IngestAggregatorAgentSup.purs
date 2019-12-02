@@ -1,28 +1,32 @@
-module Rtsv2.IngestAgentSup
-  ( startLink
-  , startIngest
-  ) where
+module Rtsv2.IngestAggregatorAgentSup
+       ( startLink
+       , startAggregator
+       )
+
+       where
 
 import Prelude
+
 import Effect (Effect)
 import Erl.Data.List (nil, (:))
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStartTemplate, childType)
 import Pinto.Sup as Sup
-import Rtsv2.IngestAgent as Ingest
+import Rtsv2.IngestAggregatorAgent as IngestAggregatorAgent
 
 serverName :: String
-serverName = "ingestAgentSup"
+serverName = "ingestAggregatorAgentSup"
 
 startLink :: forall a. a -> Effect Pinto.StartLinkResult
 startLink _ = Sup.startLink serverName init
 
-startIngest :: Ingest.Config -> Effect Unit
-startIngest args = do
+startAggregator :: IngestAggregatorAgent.Config  -> Effect Unit
+startAggregator args = do
   result <- Sup.startSimpleChild childTemplate serverName args
   case result of
-    Pinto.AlreadyStarted pid -> pure unit
-    Pinto.Started pid -> pure unit
+       Pinto.AlreadyStarted pid -> pure unit
+       Pinto.Started pid -> pure unit
+
 
 init :: Effect Sup.SupervisorSpec
 init = do
@@ -31,12 +35,13 @@ init = do
     # Sup.supervisorChildren
         ( ( buildChild
               # childType Worker
-              # childId "ingestAgent"
+              # childId "ingestAggregatorAgent"
               # childStartTemplate childTemplate
               # childRestart Transient
           )
-            : nil
+          : nil
         )
 
-childTemplate :: Pinto.ChildTemplate Ingest.Config
-childTemplate = Pinto.ChildTemplate (Ingest.startLink)
+
+childTemplate :: Pinto.ChildTemplate IngestAggregatorAgent.Config
+childTemplate = Pinto.ChildTemplate (IngestAggregatorAgent.startLink)

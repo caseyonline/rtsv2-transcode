@@ -38,6 +38,12 @@ rtsv2IngestAgent = ModuleName "Rtsv2.IngestAgent"
 rtsv2IngestAgentSup :: ModuleName
 rtsv2IngestAgentSup = ModuleName "Rtsv2.IngestAgentSup"
 
+rtsv2IngestAggregatorAgent :: ModuleName
+rtsv2IngestAggregatorAgent = ModuleName "Rtsv2.IngestAggregatorAgent"
+
+rtsv2IngestAggregatorAgentSup :: ModuleName
+rtsv2IngestAggregatorAgentSup = ModuleName "Rtsv2.IngestAggregatorAgentSup"
+
 rtsv2IntraPoPAgent :: ModuleName
 rtsv2IntraPoPAgent = ModuleName "Rtsv2.IntraPoPAgent"
 
@@ -46,6 +52,9 @@ rtsv2Node = ModuleName "Rtsv2.Node"
 
 rtsv2PoPDefinition :: ModuleName
 rtsv2PoPDefinition = ModuleName "Rtsv2.PoPDefinition"
+
+rtsv2Serf :: ModuleName
+rtsv2Serf = ModuleName "Rtsv2.Serf"
 
 rtsv2StreamRelayAgentSup :: ModuleName
 rtsv2StreamRelayAgentSup = ModuleName "Rtsv2.StreamRelayAgentSup"
