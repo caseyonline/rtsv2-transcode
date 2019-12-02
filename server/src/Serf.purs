@@ -30,7 +30,7 @@ data Message = MemberAlive
 
 foreign import joinImpl :: IpAndPort -> List IpAndPort -> Boolean ->  Effect (SerfResult Int)
 foreign import eventImpl :: forall a. IpAndPort -> String -> a -> Boolean ->  Effect (SerfResult Unit)
-foreign import streamImpl :: forall a. (ApiError -> (SerfResult Unit)) -> (SerfResult Unit) -> IpAndPort -> Effect (SerfResult Unit)
+foreign import streamImpl :: (ApiError -> (SerfResult Unit)) -> (SerfResult Unit) -> IpAndPort -> Effect (SerfResult Unit)
 foreign import messageMapperImpl :: Foreign -> Message
 
 data Ip = Ipv4 Int Int Int Int

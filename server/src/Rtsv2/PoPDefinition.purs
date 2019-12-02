@@ -11,10 +11,10 @@ import Data.Either (Either(..), note')
 import Data.Filterable (filter)
 import Data.Foldable (foldl)
 import Data.List.NonEmpty as NonEmptyList
-import Data.Maybe (Maybe(..), fromMaybe, fromMaybe')
+import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Set as Set
 import Data.Traversable (sequence)
-import Debug.Trace (spy)
+--import Debug.Trace (spy)
 import Effect (Effect)
 import Effect.Random (randomInt)
 import Erl.Atom (Atom, atom)
@@ -23,7 +23,6 @@ import Erl.Data.Map as Map
 import File as File
 import Foreign (Foreign, ForeignError(..), MultipleErrors)
 import Logger as Logger
-import Os (getEnv)
 import Pinto (ServerName(..), StartLinkResult)
 import Pinto.Gen (CallResult(..))
 import Pinto.Gen as Gen
@@ -31,7 +30,6 @@ import Pinto.Timer as Timer
 import Prim.Row (class Nub)
 import Record as Record
 import Rtsv2.Env as Env
-import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON as JSON
 
 type Config = { popDefinitionFile :: String

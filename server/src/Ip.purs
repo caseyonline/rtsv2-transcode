@@ -6,8 +6,7 @@ module Ip
 
 import Data.Maybe (Maybe(..))
 import Effect (Effect)
-import Erl.Atom (Atom)
-import Serf (Ip(..))
+import Serf (Ip)
 
 foreign import getInterfaceIp_ :: Maybe Ip -> (Ip -> Maybe Ip) -> String -> Effect (Maybe Ip)
 

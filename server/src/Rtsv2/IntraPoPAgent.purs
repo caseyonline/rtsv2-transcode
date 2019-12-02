@@ -7,15 +7,12 @@ module Rtsv2.IntraPoPAgent
   ) where
 
 import Prelude
-import Data.Maybe (Maybe(..), fromMaybe, fromMaybe')
+import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
 import Foreign (Foreign)
-import Gproc as Gproc
-import Ip as Ip
 import Logger as Logger
-import Os (getEnv)
 import Pinto (ServerName(..), StartLinkResult)
 import Pinto.Gen (CallResult(..))
 import Pinto.Gen as Gen
@@ -24,7 +21,7 @@ import Prim.Row (class Nub)
 import Record as Record
 import Rtsv2.Env as Env
 import Rtsv2.PoPDefinition as PoPDefinition
-import Serf (Ip(..), IpAndPort)
+import Serf (IpAndPort)
 import Serf as Serf
 import Shared.Agent as Agent
 import Shared.Stream (StreamId(..), StreamVariantId(..))
