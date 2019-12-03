@@ -21,9 +21,11 @@ import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Serf (StateMessage(..))
 import Shared.Agent as Agent
 
-type Config
-  = {
-    }
+type Config = { bindPort :: Int
+              , rpcPort :: Int
+              , leaderTimeoutMs :: Int
+              , leaderAnnounceMs :: Int
+              }
 
 serverName :: ServerName State Msg
 serverName = Local "transPopAgent"
@@ -42,17 +44,18 @@ type State = { currentLeader :: Maybe ServerAddress
              }
 
 init :: Config -> Effect State
-init _ = do
+init {leaderTimeoutMs,
+      leaderAnnounceMs} = do
 
   _ <- Bus.subscribe serverName IntraPoPAgent.bus IntraPoPMsg
-  _ <- Timer.sendEvery serverName 1000 Tick
+  _ <- Timer.sendEvery serverName leaderAnnounceMs Tick
   thisNode <- PoPDefinition.thisNode
   now <- systemTime MilliSecond
 
   pure $ { currentLeader : Nothing
          , weAreLeader : false
          , lastLeaderAnnouncement : now
-         , leaderAnnouncementTimeout : 2000
+         , leaderAnnouncementTimeout : leaderTimeoutMs
          , thisNode : thisNode
          }
 
@@ -99,7 +102,9 @@ handleLeaderAnnouncement address state@{thisNode,
                  , weAreLeader = false
                  }
 
-handleLeaderAnnouncement address state@{currentLeader} | Just address /= currentLeader =
+handleLeaderAnnouncement address state@{currentLeader,
+                                        thisNode} | Just address /= currentLeader &&
+                                                    address /= thisNode =
   do
     _ <- logInfo "Another node has taken over as transpop leader" {leader : address}
     now <- systemTime MilliSecond
