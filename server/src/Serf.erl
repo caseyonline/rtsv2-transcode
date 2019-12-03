@@ -15,7 +15,7 @@ eventImpl(Left, Right, RpcAddr, Name, Msg, Coalesce) ->
                                                 , Coalesce]),
       case serf_api:event(mapAddr(RpcAddr),
                           Name,
-                          base64:encode(term_to_binary(Msg)),
+                          term_to_binary(Msg),
                           Coalesce) of
         ok -> Right;
 
@@ -63,7 +63,7 @@ messageMapperImpl(#serf_user_event{ name = Name
                                   , coalesce = Coalesce
                                   , payload = Payload
                                   }) ->
-  {userEvent, Name, LTime, Coalesce, binary_to_term(base64:decode(Payload))};
+  {userEvent, Name, LTime, Coalesce, binary_to_term(Payload)};
 
 messageMapperImpl(#serf_members_event{ type = join
                                      , members = Members
