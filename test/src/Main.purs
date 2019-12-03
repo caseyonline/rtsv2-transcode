@@ -2,11 +2,11 @@ module Main where
 
 import Prelude
 
+import Affjax (Error, Response)
 import Affjax as AX
 import Affjax.ResponseFormat as ResponseFormat
 import Affjax.StatusCode (StatusCode(..))
 import Data.Either (Either(..))
-import Data.HTTP.Method (Method(..))
 import Data.Identity (Identity(..))
 import Data.Maybe (Maybe(..))
 import Data.Newtype (un)
@@ -14,12 +14,13 @@ import Data.Time.Duration (Milliseconds(..))
 import Data.Traversable (traverse_)
 import Debug.Trace (spy)
 import Effect (Effect)
-import Effect.Aff (Aff, delay, launchAff_)
+import Effect.Aff (Aff, delay, launchAff_, throwError)
+import Effect.Exception (error)
 import OsCmd (runProc)
 import Test.Spec (after_, before_, describe, it)
 import Test.Spec.Assertions (fail)
 import Test.Spec.Reporter.Console (consoleReporter)
-import Test.Spec.Runner (runSpec, runSpecT)
+import Test.Spec.Runner (runSpecT)
 
 
 type TestNode =  { nodeName :: String
@@ -41,53 +42,38 @@ main =
                     launchNodes [ node "node1" "vlan201" "172.16.169.1" "scripts/env/steve.data/sys.config"
                                 , node "node2" "vlan202" "172.16.169.2" "scripts/env/steve.data/sys.config"]) do
           after_ stopNodes do
-            describe "single edge agent running" do
-              it "client requests stream which is not being ingested" do
-                result <- AX.request (AX.defaultRequest { url = "http://172.16.169.2:3000/poc/api/client/canary/edge/stream1/connect", method = Left GET, responseFormat = ResponseFormat.string })
-                case result of
-                  Left err -> do
-                    fail $ "Initial edge connect failed: " <> AX.printError (spy "" err)
-                  Right response -> do
-                    case response.status of
-                      StatusCode 404 ->
-                        do
-                          result2 <- AX.request (AX.defaultRequest { url = "http://172.16.169.1:3000/poc/api/client/:canary/ingest/stream1/low/start", method = Left GET, responseFormat = ResponseFormat.string })
-                          case result2 of
-                            Left err -> do
-                              fail $ "Ingest start failed: " <> AX.printError err
-                            Right response2 -> do
-                              case response2.status of
-                                StatusCode 200 ->
-                                  do
-                                    _ <- delay (Milliseconds 2000.0)
-                                    result3 <- AX.request (AX.defaultRequest { url = "http://172.16.169.2:3000/poc/api/client/canary/edge/stream1/connect", method = Left GET, responseFormat = ResponseFormat.string })
-                                    case result3 of
-                                      Left err -> do
-                                        fail $ "Second edge connect failed: " <> AX.printError err
-                                      Right response3 -> do
-                                        case response3.status of
-                                          StatusCode 200 ->
-                                            pure unit
-                                          sc -> fail $ "Second edge did not return 200" <> show sc
-                                sc -> fail $ "Ingest start did not return 200" <> show sc
-                      sc -> fail $ "First edge did not return 404" <> show sc
+            describe "two node setup" do
+              it "client requests stream on ingest node" do
+                let
+                  node1ingestStart = "http://172.16.169.1:3000/poc/api/client/:canary/ingest/stream1/low/start"
+                  node1edgeUrl = "http://172.16.169.1:3000/poc/api/client/canary/edge/stream1/connect"
+                _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node1edgeUrl
+                _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
+                _ <- delay (Milliseconds 2000.0)
+                _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1edgeUrl
+                pure unit
+              it "client requests stream on non-ingest node" do
+                let
+                  node1ingestStart = "http://172.16.169.1:3000/poc/api/client/:canary/ingest/stream1/low/start"
+                  node2edgeUrl = "http://172.16.169.2:3000/poc/api/client/canary/edge/stream1/connect"
+                _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node2edgeUrl
+                _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
+                _ <- delay (Milliseconds 2000.0)
+                _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node2edgeUrl
+                pure unit
 
-
-        -- before_ (launchNodes [ node "node3000" "vlan201" "172.16.169.1" "scripts/env/steve.data/sys.config" ]) do
-        --   after_ stopNodes do
-        --     describe "multiple edge agents running" do
-        --       it "client requests stream which is not being ingested" do
-        --         result <- AX.request (AX.defaultRequest { url = "http://localhost:3000/poc/api/client/canary/edge/stream1/connect", method = Left GET, responseFormat = ResponseFormat.string })
-        --         case result of
-        --           Left err -> do
-        --             fail $ "GET /api response failed to decode: " <> AX.printError err
-        --           Right response -> do
-        --             case response.status of
-        --               StatusCode 404 -> pure unit
-        --               sc -> fail $ "Unexpected statuscode" <> show sc
   where
     testConfig = { slow: Milliseconds 5000.0, timeout: Just (Milliseconds 20000.0), exit: false }
 
+assertStatusCode :: forall a. Int -> Either Error (Response a) -> Aff (Response a)
+assertStatusCode expectedCode either =
+  case either of
+    Right response@{status : StatusCode resultCode} | resultCode == expectedCode ->
+      pure response
+    Right response@{status : StatusCode resultCode} ->
+      throwError $ error $ "Unexpected statuscode" <> show response.status
+    Left err ->
+      throwError $ error $ "GET /api response failed to decode: " <> AX.printError err
 
 sessionName:: String
 sessionName = "testSession"
