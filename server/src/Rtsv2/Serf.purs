@@ -1,11 +1,4 @@
 module Rtsv2.Serf
-       -- ( strToIp
-       -- , join
-       -- , event
-       -- , stream
-       -- , messageMapper
-       -- , Ip(..), IpAndPort(..), ApiError(..), Message(..)
-       -- )
        ( StateMessage(..)
        , module RootSerf
        , event

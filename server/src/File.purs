@@ -1,3 +1,4 @@
+-- -*- psc-ide-codegen: ("erl") -*-
 module File
        (
          readBinaryFile
