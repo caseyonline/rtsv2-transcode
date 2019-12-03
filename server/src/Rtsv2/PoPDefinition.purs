@@ -82,7 +82,7 @@ getSeeds' state@{otherServersInThisPoP}
   | otherServersInThisPoP == nil = pure $ nil
   | otherwise =
     do
-      indexes <- randomNumbers 4 ((length otherServersInThisPoP) - 1)
+      indexes <- randomNumbers 1 ((length otherServersInThisPoP) - 1)
       let
         servers = map (\i -> index otherServersInThisPoP i) indexes
                   # sequence

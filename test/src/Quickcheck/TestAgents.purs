@@ -5,7 +5,7 @@ import Test.QuickCheck
 
 import Data.Generic.Rep (class Generic, to)
 import Data.Newtype (class Newtype, wrap)
-import Shared.Agents (Agent(..), agentToStr, strToAgent)
+import Shared.Agent (Agent(..), agentToStr, strToAgent)
 import Test.QuickCheck.Arbitrary (class Arbitrary, class Coarbitrary, genericArbitrary)
 import Test.QuickCheck.Gen (Gen)
 

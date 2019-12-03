@@ -2,6 +2,9 @@ module ModuleNames where
 
 import Erl.ModuleName (ModuleName(..))
 
+erlUtils :: ModuleName
+erlUtils = ModuleName "Erl.Utils"
+
 file :: ModuleName
 file = ModuleName "File"
 

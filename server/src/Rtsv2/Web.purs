@@ -18,6 +18,7 @@ import Pinto.Gen as Gen
 import Rtsv2.Env as Env
 import Rtsv2.IngestAgentSup (startIngest)
 import Rtsv2.IntraPoPAgent (isStreamAvailable)
+import Rtsv2.EdgeAgentSup as EdgeAgentSup
 import Serf (Ip(..))
 import Shared.Agent as Agent
 import Shared.Stream (StreamId(..), StreamVariantId(..))
@@ -92,8 +93,8 @@ edge_entrypoint =
                  in
                  Rest.initResult req {streamId : StreamId streamId})
   # Rest.serviceAvailable (\req state -> do
-                              registered <- Gproc.isRegistered Agent.Edge
-                              Rest.result registered req state)
+                              isAvailable <- EdgeAgentSup.isAvailable
+                              Rest.result isAvailable req state)
   # Rest.resourceExists (\req state@{streamId} -> do
                             isAvailable <- isStreamAvailable streamId
                             Rest.result isAvailable req state

@@ -16,6 +16,7 @@ import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
+import Erl.Process (SpawnedProcessState, spawnLink)
 import Foreign (Foreign)
 import Logger as Logger
 import Pinto (ServerName(..), StartLinkResult)
@@ -35,8 +36,8 @@ import Shared.Stream (StreamId(..), StreamVariantId(..))
 type State
   = { config :: Config
     , serfRpcAddress :: IpAndPort
-    , streamRelayLocations :: Map StreamId Ip
-    , streamAggregatorLocations :: Map StreamId Ip
+    , streamRelayLocations :: Map StreamId String
+    , streamAggregatorLocations :: Map StreamId String
     }
 
 type Config
@@ -50,16 +51,16 @@ data Msg
 
 
 isStreamAvailable :: StreamId -> Effect Boolean
-isStreamAvailable (StreamId s) = Gen.call serverName \state -> CallReply false state
+isStreamAvailable streamId = Gen.call serverName \state@{streamAggregatorLocations} -> CallReply (Map.member streamId streamAggregatorLocations) state
 
 isIngestActive :: StreamVariantId -> Effect Boolean
 isIngestActive (StreamVariantId s v) = Gen.call serverName \state -> CallReply false state
 
-whereIsIngestRelay :: StreamVariantId -> Effect (Maybe Ip)
+whereIsIngestRelay :: StreamVariantId -> Effect (Maybe String)
 whereIsIngestRelay (StreamVariantId s _) = Gen.call serverName \state ->
   CallReply (Map.lookup (StreamId s) state.streamRelayLocations) state
 
-whereIsIngestAggregator :: StreamVariantId -> Effect (Maybe Ip)
+whereIsIngestAggregator :: StreamVariantId -> Effect (Maybe String)
 whereIsIngestAggregator (StreamVariantId s _) = Gen.call serverName \state ->
   CallReply (Map.lookup (StreamId s) state.streamAggregatorLocations) state
 
@@ -67,10 +68,10 @@ whereIsIngestAggregator (StreamVariantId s _) = Gen.call serverName \state ->
 streamIsAvailable :: StreamId -> Effect Unit
 streamIsAvailable s =
   Gen.doCast serverName
-    $ \state -> do
+    $ \state@{streamAggregatorLocations} -> do
       thisNode <- thisNode
       _ <- Serf.event state.serfRpcAddress "streamAvailable" (Serf.StreamAvailable s thisNode) true
-      pure $ Gen.CastNoReply state
+      pure $ Gen.CastNoReply state { streamAggregatorLocations = (Map.insert s thisNode streamAggregatorLocations ) }
 
 serverName :: ServerName State Msg
 serverName = Local "intraPopAgent"
@@ -91,47 +92,53 @@ init config = do
   _ <- Gen.registerExternalMapping serverName  (Just <<< SerfMessage <<< Serf.messageMapper)
   _ <- Serf.stream serfRpcAddress
 
+  _ <- logInfo "Intra-PoP Agent Starting"
+        { config: config
+        }
+
   pure { config
        , serfRpcAddress
        , streamRelayLocations : Map.empty
        , streamAggregatorLocations : Map.empty
        }
 
-logInfo :: forall a b. Nub ( domain :: List Atom | a ) b => String -> Record a -> Effect Foreign
-logInfo msg metaData = Logger.info msg (Record.merge { domain: ((atom (show Agent.IntraPoP)) : nil) } { misc: metaData })
-
 handleInfo :: Msg -> State -> Effect State
-handleInfo msg state = case msg of
-  SerfMessage (Serf.UserEvent name lamportClock coalesce (Serf.StreamAvailable streamName server)) -> do
-    _ <- logInfo "Really Holy cow" { name: name
-                                    , server: server
-                                    , payload: streamName}
-    pure state
+handleInfo msg state =
+  case msg of
+    SerfMessage (Serf.UserEvent name lamportClock coalesce (Serf.StreamAvailable streamId server)) ->
+      do
+        thisNode <- thisNode
+        _ <- logInfo "StreamAvailable on remote node" { streamId: streamId
+                                                      , remoteNode: server}
+        pure $ state { streamAggregatorLocations = (Map.insert streamId server state.streamAggregatorLocations )}
 
-  SerfMessage a -> do
-    _ <- logInfo "Holy cow" {serf: a}
-    pure state
-  JoinAll -> do
-    _ <- joinAllSerf state
-    pure state
+    SerfMessage a -> do
+      _ <- logInfo "Holy cow" {serf: a}
+      pure state
+    JoinAll -> do
+      _ <- joinAllSerf state
+      pure state
 
 joinAllSerf :: State -> Effect Unit
-joinAllSerf {config, serfRpcAddress}  = do
-  seeds <- PoPDefinition.getSeeds :: Effect (List String)
-  let
-    seedAddresses =
-      map
-        ( \s ->
-            { ip: s
-            , port: config.bindPort
-            }
-        )
-        seeds
-  _ <-
-    logInfo "Intra-PoP Agent Starting"
-      { config: config
-      , seeds: seedAddresses
-      }
-  result <- Serf.join serfRpcAddress seedAddresses true
-  _ <- logInfo "Serf said " { result: result }
-  pure unit
+joinAllSerf {config, serfRpcAddress}  =
+  do
+    process <- spawnLink (\_ ->
+                           do
+                             seeds <- PoPDefinition.getSeeds :: Effect (List String)
+                             let
+                               seedAddresses =
+                                 map
+                                 ( \s ->
+                                    { ip: s
+                                    , port: config.bindPort
+                                    }
+                                 )
+                                 seeds
+                             result <- Serf.join serfRpcAddress seedAddresses true
+                             _ <- logInfo "Serf said " { result: result }
+                             pure unit
+                         )
+    pure unit
+
+logInfo :: forall a b. Nub ( domain :: List Atom | a ) b => String -> Record a -> Effect Foreign
+logInfo msg metaData = Logger.info msg (Record.merge { domain: ((atom (show Agent.IntraPoP)) : nil) } { misc: metaData })

@@ -3,7 +3,6 @@
 cd ${0%/*}
 cd ../..
 
-
 # shellcheck source=../../scripts/shared_functions.sh
 source ./scripts/shared_functions.sh
 
