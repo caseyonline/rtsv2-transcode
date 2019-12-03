@@ -20,6 +20,7 @@ import Shared.Stream (StreamId)
 
 
 data StateMessage = StreamAvailable StreamId ServerAddress
+                  | TransPoPLeader ServerAddress
 
 
 event :: RootSerf.IpAndPort -> String -> StateMessage -> Boolean ->  Effect (RootSerf.SerfResult Unit)

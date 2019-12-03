@@ -6,10 +6,12 @@ module Rtsv2.IntraPoPAgent
   , streamIsAvailable
   , whereIsIngestAggregator
   , whereIsIngestRelay
+  , bus
   ) where
 
 import Prelude
 
+import Bus as Bus
 import Data.Map (Map)
 import Data.Map as Map
 import Data.Maybe (Maybe(..))
@@ -49,6 +51,8 @@ data Msg
   = JoinAll
   | SerfMessage (Serf.Message StateMessage)
 
+bus :: Bus.Bus StateMessage
+bus = Bus.bus "intrapop_bus"
 
 isStreamAvailable :: StreamId -> Effect Boolean
 isStreamAvailable streamId = Gen.call serverName \state@{streamAggregatorLocations} -> CallReply (Map.member streamId streamAggregatorLocations) state
@@ -105,16 +109,26 @@ init config = do
 handleInfo :: Msg -> State -> Effect State
 handleInfo msg state =
   case msg of
-    SerfMessage (Serf.UserEvent name lamportClock coalesce (Serf.StreamAvailable streamId server)) ->
-      do
-        thisNode <- thisNode
-        _ <- logInfo "StreamAvailable on remote node" { streamId: streamId
-                                                      , remoteNode: server}
-        pure $ state { streamAggregatorLocations = (Map.insert streamId server state.streamAggregatorLocations )}
+    SerfMessage (Serf.UserEvent name lamportClock coalesce stateMessage) ->
 
-    SerfMessage a -> do
-      _ <- logInfo "Holy cow" {serf: a}
+      do
+        _ <- Bus.raise bus stateMessage
+
+        case stateMessage of
+          Serf.StreamAvailable streamId server ->
+            do
+              thisNode <- thisNode
+              _ <- logInfo "StreamAvailable on remote node" { streamId: streamId
+                                                            , remoteNode: server}
+              pure $ state { streamAggregatorLocations = (Map.insert streamId server state.streamAggregatorLocations )}
+
+          other -> do
+            _ <- logInfo "Holy cow" {serf: other}
+            pure state
+
+    SerfMessage _ ->
       pure state
+
     JoinAll -> do
       _ <- joinAllSerf state
       pure state

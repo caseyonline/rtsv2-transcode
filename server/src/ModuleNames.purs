@@ -2,6 +2,9 @@ module ModuleNames where
 
 import Erl.ModuleName (ModuleName(..))
 
+bus :: ModuleName
+bus = ModuleName "Bus"
+
 erlUtils :: ModuleName
 erlUtils = ModuleName "Erl.Utils"
 

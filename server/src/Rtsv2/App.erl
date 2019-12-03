@@ -6,8 +6,8 @@
 
 setLogRoot() ->
   fun() ->
-      Root = gproc:get_env(l, rtsv2, disk_log_root, [os_env, app_env, {default, "log"}]),
-file:write_file("/tmp/out.txt", io_lib:format("GOT ROOT ~p~n", [Root]), [append]),
+      Root = gproc:get_env(l, rtsv2, disk_log_root, [os_env, app_env, {default, "logs"}]),
+
       Handlers = application:get_env(rtsv2, disk_log_handlers, []),
 
       lists:foreach(fun({handler, Id, Module, HandlerConfig = #{config := Config = #{file := File}}}) ->

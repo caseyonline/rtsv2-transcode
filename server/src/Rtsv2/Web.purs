@@ -12,7 +12,6 @@ import Erl.Atom (atom)
 import Erl.Cowboy.Req (Req, binding)
 import Erl.Data.List (nil, (:))
 import Erl.Data.Tuple (Tuple2, Tuple4, tuple2, tuple4, uncurry4)
-import Gproc as Gproc
 import Pinto (ServerName(..), StartLinkResult)
 import Pinto.Gen as Gen
 import Rtsv2.Env as Env
@@ -20,7 +19,6 @@ import Rtsv2.IngestAgentSup (startIngest)
 import Rtsv2.IntraPoPAgent (isStreamAvailable)
 import Rtsv2.EdgeAgentSup as EdgeAgentSup
 import Serf (Ip(..))
-import Shared.Agent as Agent
 import Shared.Stream (StreamId(..), StreamVariantId(..))
 import Shared.Utils (lazyCrashIfMissing)
 import Stetson (RestResult, StetsonHandler)
