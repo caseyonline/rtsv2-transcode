@@ -4,6 +4,7 @@ module Rtsv2.IntraPoPAgent
   , isStreamAvailable
   , isIngestActive
   , streamIsAvailable
+  , announceTransPoPLeader
   , whereIsIngestAggregator
   , whereIsIngestRelay
   , bus
@@ -70,18 +71,22 @@ whereIsIngestAggregator (StreamVariantId s _) = Gen.call serverName \state ->
 
 
 streamIsAvailable :: StreamId -> Effect Unit
-streamIsAvailable s =
+streamIsAvailable streamId =
   Gen.doCast serverName
     $ \state@{streamAggregatorLocations} -> do
       thisNode <- thisNode
       -- TODO - when we raise a serf event, we also need to raise on our local message bus
-      _ <- Serf.event state.serfRpcAddress "streamAvailable" (Serf.StreamAvailable s thisNode) true
-      pure $ Gen.CastNoReply state { streamAggregatorLocations = (Map.insert s thisNode streamAggregatorLocations ) }
+      _ <- Serf.event state.serfRpcAddress "streamAvailable" (Serf.StreamAvailable streamId thisNode) true
+      pure $ Gen.CastNoReply state { streamAggregatorLocations = (Map.insert streamId thisNode streamAggregatorLocations ) }
 
-announceTransPoPLeader :: ServerAddress -> Effect Unit
-announceTransPoPLeader s =
-  -- todo
-  pure unit
+announceTransPoPLeader :: Effect Unit
+announceTransPoPLeader =
+  Gen.doCast serverName
+    $ \state@{streamAggregatorLocations} -> do
+      thisNode <- thisNode
+      -- TODO - when we raise a serf event, we also need to raise on our local message bus
+      _ <- Serf.event state.serfRpcAddress "transPoPLeader" (Serf.TransPoPLeader thisNode) false
+      pure $ Gen.CastNoReply state
 
 serverName :: ServerName State Msg
 serverName = Local "intraPopAgent"
@@ -128,8 +133,7 @@ handleInfo msg state =
                                                             , remoteNode: server}
               pure $ state { streamAggregatorLocations = (Map.insert streamId server state.streamAggregatorLocations )}
 
-          other -> do
-            _ <- logInfo "Holy cow" {serf: other}
+          Serf.TransPoPLeader server ->
             pure state
 
     SerfMessage _ ->
