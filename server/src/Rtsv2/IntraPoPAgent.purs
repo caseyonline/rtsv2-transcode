@@ -28,7 +28,7 @@ import Pinto.Timer as Timer
 import Prim.Row (class Nub)
 import Record as Record
 import Rtsv2.Env as Env
-import Rtsv2.PoPDefinition (thisNode)
+import Rtsv2.PoPDefinition (ServerAddress, thisNode)
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Serf (Ip, IpAndPort, StateMessage)
 import Rtsv2.Serf as Serf
@@ -74,8 +74,14 @@ streamIsAvailable s =
   Gen.doCast serverName
     $ \state@{streamAggregatorLocations} -> do
       thisNode <- thisNode
+      -- TODO - when we raise a serf event, we also need to raise on our local message bus
       _ <- Serf.event state.serfRpcAddress "streamAvailable" (Serf.StreamAvailable s thisNode) true
       pure $ Gen.CastNoReply state { streamAggregatorLocations = (Map.insert s thisNode streamAggregatorLocations ) }
+
+announceTransPoPLeader :: ServerAddress -> Effect Unit
+announceTransPoPLeader s =
+  -- todo
+  pure unit
 
 serverName :: ServerName State Msg
 serverName = Local "intraPopAgent"

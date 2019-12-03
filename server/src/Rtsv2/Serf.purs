@@ -18,14 +18,12 @@ import Serf (strToIp, join, stream, Ip(..), IpAndPort, ApiError(..), Message(..)
 import Serf as Serf
 import Shared.Stream (StreamId)
 
-
 data StateMessage = StreamAvailable StreamId ServerAddress
                   | TransPoPLeader ServerAddress
 
 
 event :: RootSerf.IpAndPort -> String -> StateMessage -> Boolean ->  Effect (RootSerf.SerfResult Unit)
 event = Serf.event
-
 
 messageMapper :: Foreign -> Serf.Message StateMessage
 messageMapper = Serf.messageMapper

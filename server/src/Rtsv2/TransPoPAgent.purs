@@ -57,6 +57,8 @@ handleInfo msg state =
     IntraPoPMsg (TransPoPLeader address) -> handleLeaderAnnouncement address state
 
     IntraPoPMsg a -> do
+      -- TODO - if we are leader and transpop-streamAvailable from other PoP, then call IntraPop.streamIsAvailable
+      -- TODO - if we are leader and get intra-pop-streamAvailable then publish to trans-pop
       _ <- logInfo "Got an intrapop" {msg: a}
       pure $ state
 
@@ -64,6 +66,7 @@ handleTick :: State -> Effect State
 handleTick state@{lastLeaderAnnouncement,
                   leaderAnnouncementTimeout} =
   do
+    -- TODO - if we are leader, call IntraPoPAgent.announceTransPoPLeader
     now <- systemTime MilliSecond
     if lastLeaderAnnouncement + leaderAnnouncementTimeout < now
       then do
@@ -75,6 +78,7 @@ handleTick state@{lastLeaderAnnouncement,
 
 handleLeaderAnnouncement :: ServerAddress -> State -> Effect State
 handleLeaderAnnouncement address state =
+  -- TODO - if we are leader and address < ourAddress, then stop being leader
   do
     _ <- logInfo "Got a transpop leader announcement" {leader : address}
     now <- systemTime MilliSecond
