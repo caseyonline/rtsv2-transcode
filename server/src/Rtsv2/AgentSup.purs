@@ -22,6 +22,7 @@ init :: Effect SupervisorSpec
 init = do
   nodeConfig <- Config.nodeConfig
   intraPoPAgentConfig <- Config.intraPoPAgentConfig
+  transPoPAgentConfig <- Config.transPoPAgentConfig
   let
     makeSpec :: Agent -> SupervisorChildSpec
     makeSpec Edge =
@@ -58,7 +59,7 @@ init = do
       Sup.buildChild
         # Sup.childType Worker
         # Sup.childId "transPopAgent"
-        # Sup.childStart TransPoPAgent.startLink {}
+        # Sup.childStart TransPoPAgent.startLink transPoPAgentConfig
   pure $ Sup.buildSupervisor
     # Sup.supervisorStrategy OneForOne
     # Sup.supervisorChildren (makeSpec <$> (IntraPoP : nodeConfig.agents))

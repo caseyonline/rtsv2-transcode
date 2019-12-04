@@ -17,12 +17,15 @@ import Prim.Row (class Nub)
 import Record as Record
 import Rtsv2.IntraPoPAgent as IntraPoPAgent
 import Rtsv2.PoPDefinition (ServerAddress)
+import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Serf (StateMessage(..))
 import Shared.Agent as Agent
 
-type Config
-  = {
-    }
+type Config = { bindPort :: Int
+              , rpcPort :: Int
+              , leaderTimeoutMs :: Int
+              , leaderAnnounceMs :: Int
+              }
 
 serverName :: ServerName State Msg
 serverName = Local "transPopAgent"
@@ -34,20 +37,27 @@ startLink :: Config -> Effect StartLinkResult
 startLink args = Gen.startLink serverName (init args) handleInfo
 
 type State = { currentLeader :: Maybe ServerAddress
+             , weAreLeader :: Boolean
              , lastLeaderAnnouncement :: Int
              , leaderAnnouncementTimeout :: Int
+             , thisNode :: ServerAddress
              }
 
 init :: Config -> Effect State
-init _ = do
+init {leaderTimeoutMs,
+      leaderAnnounceMs} = do
 
   _ <- Bus.subscribe serverName IntraPoPAgent.bus IntraPoPMsg
-  _ <- Timer.sendEvery serverName 1000 Tick
+  _ <- Timer.sendEvery serverName leaderAnnounceMs Tick
+  thisNode <- PoPDefinition.thisNode
   now <- systemTime MilliSecond
 
   pure $ { currentLeader : Nothing
+         , weAreLeader : false
          , lastLeaderAnnouncement : now
-         , leaderAnnouncementTimeout : 2000}
+         , leaderAnnouncementTimeout : leaderTimeoutMs
+         , thisNode : thisNode
+         }
 
 handleInfo :: Msg -> State -> Effect State
 handleInfo msg state =
@@ -63,27 +73,48 @@ handleInfo msg state =
       pure $ state
 
 handleTick :: State -> Effect State
+handleTick state@{weAreLeader : true} =
+  do
+    _ <- IntraPoPAgent.announceTransPoPLeader
+    pure state
+
 handleTick state@{lastLeaderAnnouncement,
                   leaderAnnouncementTimeout} =
   do
-    -- TODO - if we are leader, call IntraPoPAgent.announceTransPoPLeader
     now <- systemTime MilliSecond
     if lastLeaderAnnouncement + leaderAnnouncementTimeout < now
       then do
-        _ <- logInfo "Leader is abscent" {}
-        pure $ state
+        _ <- logInfo "Leader is absent, becoming leader" {}
+        _ <- IntraPoPAgent.announceTransPoPLeader
+        pure $ state { lastLeaderAnnouncement = now,
+                       weAreLeader = true}
       else do
-        _ <- logInfo "Got a leader" {}
         pure $ state
 
 handleLeaderAnnouncement :: ServerAddress -> State -> Effect State
-handleLeaderAnnouncement address state =
-  -- TODO - if we are leader and address < ourAddress, then stop being leader
+handleLeaderAnnouncement address state@{thisNode,
+                                        weAreLeader : true} | address < thisNode =
   do
-    _ <- logInfo "Got a transpop leader announcement" {leader : address}
+    _ <- logInfo "Another node has taken over as transpop leader; stepping down" {leader : address}
+    now <- systemTime MilliSecond
+    pure $ state { currentLeader = Just address
+                 , lastLeaderAnnouncement = now
+                 , weAreLeader = false
+                 }
+
+handleLeaderAnnouncement address state@{currentLeader,
+                                        thisNode} | Just address /= currentLeader &&
+                                                    address /= thisNode =
+  do
+    _ <- logInfo "Another node has taken over as transpop leader" {leader : address}
     now <- systemTime MilliSecond
     pure $ state { currentLeader = Just address
                  , lastLeaderAnnouncement = now}
+
+handleLeaderAnnouncement address state =
+  do
+    now <- systemTime MilliSecond
+    pure $ state { lastLeaderAnnouncement = now}
 
 logInfo :: forall a b. Nub ( domain :: List Atom | a ) b => String -> Record a -> Effect Foreign
 logInfo msg metaData = Logger.info msg (Record.merge { domain: ((atom (show Agent.TransPoP)) : nil) } { misc: metaData })

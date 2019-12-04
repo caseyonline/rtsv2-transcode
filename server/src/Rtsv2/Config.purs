@@ -4,6 +4,7 @@ module Rtsv2.Config
   , nodeConfig
   , popDefinitionConfig
   , intraPoPAgentConfig
+  , transPoPAgentConfig
   ) where
 
 import Prelude
@@ -21,6 +22,7 @@ import Foreign (F, Foreign, readString, unsafeReadTagged)
 import Logger as Logger
 import Partial.Unsafe (unsafeCrashWith)
 import Rtsv2.IntraPoPAgent as IntraPoP
+import Rtsv2.TransPoPAgent as TransPoP
 import Rtsv2.Node as Node
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Web as Web
@@ -57,6 +59,10 @@ popDefinitionConfig = do
 intraPoPAgentConfig :: Effect IntraPoP.Config
 intraPoPAgentConfig = do
   getMandatoryRecord "intraPoPConfig"
+
+transPoPAgentConfig :: Effect TransPoP.Config
+transPoPAgentConfig = do
+  getMandatoryRecord "transPoPConfig"
 
 get :: forall a e. (Foreign -> ExceptT e Identity a) -> String -> Effect (Maybe a)
 get f v = hush <<< runExcept <<< f <$> getEnv_ (atom v)

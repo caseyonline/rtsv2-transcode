@@ -10,9 +10,6 @@
 %% event :: forall a. IpAndPort -> String -> a -> Boolean ->  Effect (Either SerfApiError Unit)
 eventImpl(Left, Right, RpcAddr, Name, Msg, Coalesce) ->
   fun() ->
-      io:format(user, "~n~nXXX ~p, ~p, ~p~n~n", [mapAddr(RpcAddr)
-                                                , Name
-                                                , Coalesce]),
       case serf_api:event(mapAddr(RpcAddr),
                           Name,
                           term_to_binary(Msg),
