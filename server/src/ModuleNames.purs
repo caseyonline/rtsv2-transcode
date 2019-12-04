@@ -76,3 +76,6 @@ rtsv2Web = ModuleName "Rtsv2.Web"
 
 serf :: ModuleName
 serf = ModuleName "Serf"
+
+spudGun :: ModuleName
+spudGun = ModuleName "SpudGun"

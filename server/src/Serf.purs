@@ -2,6 +2,7 @@
 module Serf
        ( strToIp
        , join
+       , leave
        , event
        , stream
        , messageMapper
@@ -29,6 +30,7 @@ data Message a = MemberAlive
                | UserEvent String Int Boolean a
 
 foreign import joinImpl :: (ApiError -> (SerfResult Int)) -> (Int -> SerfResult Int) -> IpAndPort -> List IpAndPort -> Boolean ->  Effect (SerfResult Int)
+foreign import leaveImpl :: (ApiError -> (SerfResult Unit)) -> (Unit -> SerfResult Unit) -> IpAndPort ->  Effect (SerfResult Unit)
 foreign import eventImpl :: forall a. (ApiError -> (SerfResult Unit)) -> (SerfResult Unit) -> IpAndPort -> String -> a -> Boolean ->  Effect (SerfResult Unit)
 foreign import streamImpl :: (ApiError -> (SerfResult Unit)) -> (SerfResult Unit) -> IpAndPort -> Effect (SerfResult Unit)
 foreign import messageMapperImpl :: forall a. Foreign -> Message a
@@ -59,6 +61,9 @@ strToIp str =
 
 join :: IpAndPort -> List IpAndPort -> Boolean ->  Effect (SerfResult Int)
 join = joinImpl Left Right
+
+leave :: IpAndPort ->  Effect (SerfResult Unit)
+leave = leaveImpl Left Right
 
 event :: forall a. IpAndPort -> String -> a -> Boolean ->  Effect (SerfResult Unit)
 event = eventImpl Left (Right unit)

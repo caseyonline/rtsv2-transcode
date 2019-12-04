@@ -1,6 +1,7 @@
 module Rtsv2.PoPDefinition
        ( startLink
-       , getSeeds
+       , getSeedsForThisPoP
+       , getSeedsForOtherPoPs
        , thisNode
        , whereIsServer
        , thisLocation
@@ -9,11 +10,11 @@ module Rtsv2.PoPDefinition
        , ServerLocation(..)
        , PoPName
        , RegionName
+       , PoP
        ) where
 
 import Prelude
 
-import Control.Apply (lift2)
 import Data.Either (Either(..), note')
 import Data.Filterable (filter)
 import Data.Foldable (foldl)
@@ -21,12 +22,10 @@ import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Eq (genericEq)
 import Data.List.NonEmpty as NonEmptyList
 import Data.Maybe (Maybe(..), fromMaybe)
-import Data.Set as Set
 import Data.Traversable (sequence)
 import Effect (Effect)
-import Effect.Random (randomInt)
 import Erl.Atom (Atom, atom)
-import Erl.Data.List (List, fromFoldable, index, length, nil, (:))
+import Erl.Data.List (List, catMaybes, index, length, nil, (:))
 import Erl.Data.Map as Map
 import File as File
 import Foreign (Foreign, ForeignError(..), MultipleErrors)
@@ -39,6 +38,7 @@ import Pinto.Timer as Timer
 import Prim.Row (class Nub)
 import Record as Record
 import Rtsv2.Env as Env
+import Shared.Utils (distinctRandomNumbers)
 import Simple.JSON as JSON
 
 type Config = { popDefinitionFile :: String
@@ -58,6 +58,7 @@ type PoPInfo =
   , servers :: Map.Map ServerAddress ServerLocation
   , thisLocation :: ServerLocation
   , otherServersInThisPoP :: List ServerAddress
+  , otherPoPs :: List PoP
   }
 
 type State =  { config :: Config
@@ -66,6 +67,7 @@ type State =  { config :: Config
               , thisNode :: ServerAddress
               , thisLocation :: ServerLocation
               , otherServersInThisPoP :: List ServerAddress
+              , otherPoPs :: List PoP
               }
 
 type Region = { name :: RegionName
@@ -87,26 +89,57 @@ startLink :: Config -> Effect StartLinkResult
 startLink args =
   Gen.startLink serverName (init args) handleInfo
 
-getSeeds :: Effect (List ServerAddress)
-getSeeds = Gen.doCall serverName (\s -> getSeeds' s >>= (\r -> pure $ CallReply r s))
-
-
 thisNode :: Effect ServerAddress
 thisNode = Gen.doCall serverName (\s -> pure $ CallReply s.thisNode s)
 
--- TODO - this current picks 4 random seeds - probably just want to give back all the otherServers
---        If we do stick with random, then we need to ensure required count <= length(otherServers)
-getSeeds' :: State -> Effect (List ServerAddress)
-getSeeds' state@{otherServersInThisPoP}
+getSeedsForThisPoP :: Effect (List ServerAddress)
+getSeedsForThisPoP = Gen.doCall serverName (\state@{otherServersInThisPoP} ->
+                                             do
+                                               seeds <- getSeedsForThisPoP' otherServersInThisPoP 4
+                                               pure $ CallReply seeds state
+                                           )
+
+-- TODO - probably just want to give back all the otherServers
+getSeedsForThisPoP' :: List ServerAddress -> Int -> Effect (List ServerAddress)
+getSeedsForThisPoP' otherServersInThisPoP numRequired
   | otherServersInThisPoP == nil = pure $ nil
   | otherwise =
     do
-      indexes <- randomNumbers 1 ((length otherServersInThisPoP) - 1)
+      indexes <- distinctRandomNumbers (min numRequired (length otherServersInThisPoP))  ((length otherServersInThisPoP) - 1)
       let
         servers = map (\i -> index otherServersInThisPoP i) indexes
                   # sequence
                   # fromMaybe nil
       pure $ servers
+
+getSeedsForOtherPoPs :: Effect (List PoP)
+getSeedsForOtherPoPs = Gen.doCall serverName (\state@{otherPoPs} ->
+                                             do
+                                               seeds <- getSeedsForOtherPoPs' otherPoPs 4
+                                               pure $ CallReply seeds state
+                                           )
+
+-- TODO - probably just want to give back all the otherServers
+getSeedsForOtherPoPs' :: List PoP -> Int -> Effect (List PoP)
+getSeedsForOtherPoPs' otherPoPs numRequired
+  | otherPoPs == nil = pure $ nil
+  | otherwise = catMaybes <$> (sequence $ foldl (\acc pop ->
+                                                 getSeedsForOtherPoP' pop numRequired : acc
+                                               )
+                                               nil
+                                               otherPoPs)
+
+getSeedsForOtherPoP' :: PoP -> Int -> Effect (Maybe PoP)
+getSeedsForOtherPoP' otherPoP@{servers} numRequired
+  | servers == nil = pure Nothing
+  | otherwise =
+    do
+      indexes <- distinctRandomNumbers (min numRequired (length servers))  ((length servers) - 1)
+      let
+        selectedServers = map (\i -> index servers i) indexes
+                          # sequence
+                          # fromMaybe nil
+      pure $ Just otherPoP{servers = selectedServers}
 
 thisLocation :: Effect ServerLocation
 thisLocation = Gen.doCall serverName
@@ -133,6 +166,7 @@ init config = do
         , thisNode : hostname
         , thisLocation : popInfo.thisLocation
         , otherServersInThisPoP : popInfo.otherServersInThisPoP
+        , otherPoPs : popInfo.otherPoPs
         }
 
   _ <- logInfo "PoPDefinition Starting" {thisNode : hostname,
@@ -155,6 +189,7 @@ handleInfo msg state =
               pure $ state { regions = popInfo.regions
                            , servers = popInfo.servers
                            , otherServersInThisPoP = popInfo.otherServersInThisPoP
+                           , otherPoPs = popInfo.otherPoPs
                            }
             | otherwise ->
                 do _ <- Logger.warning "This node seems to have changed pop - ignoring" { currentPoP: state.thisLocation
@@ -164,24 +199,6 @@ handleInfo msg state =
 
         _ <- Timer.sendAfter serverName 1000 Tick
         pure $ newState
-
-randomNumbers :: Int -> Int -> Effect (List Int)
-randomNumbers n max =
-  randomNumbers_ n max (pure Set.empty)
-  <#> fromFoldable
-
-randomNumbers_ :: Int -> Int -> Effect (Set.Set Int) -> Effect (Set.Set Int)
-randomNumbers_ n max set =
-  do
-    set2 <- addDistinct max set
-    if Set.size set2 == n then
-      pure $ set2
-      else
-      randomNumbers_ n max (pure set2)
-
-addDistinct :: Int -> Effect (Set.Set Int) -> Effect (Set.Set Int)
-addDistinct max set =
-  lift2 Set.insert (randomInt 0 max) set
 
 readAndProcessPoPDefinition :: Config -> ServerAddress -> Effect (Either MultipleErrors PoPInfo)
 readAndProcessPoPDefinition config hostName = do
@@ -229,16 +246,30 @@ processPoPJson hostName regions =
                    <#> (\p -> p.servers)
                    <#> filter (\s -> s /= hostName)
                    # fromMaybe nil
+
     maybeThisPop = Map.lookup hostName servers
 
+    otherPoPs :: PoPName -> List PoP
+    otherPoPs thisPoP = let
+                           addPoPToList list pop | pop.name == thisPoP = list
+                                                 | otherwise = pop : list
+                        in
+                         foldl (\acc region ->
+                                 foldl addPoPToList
+                                 acc
+                                 region.pops
+                               )
+                         nil
+                         regions
 
   in
    case maybeThisPop of
      Nothing -> Left $ NonEmptyList.singleton $ ForeignError "This node not present in any pop"
-     Just location ->
+     Just location@(ServerLocation popName _) ->
        Right { regions: regions
              , servers: servers
              , otherServersInThisPoP: otherServers
+             , otherPoPs: otherPoPs popName
              , thisLocation: location
              }
 

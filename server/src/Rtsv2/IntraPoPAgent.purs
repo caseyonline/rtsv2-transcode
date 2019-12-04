@@ -7,14 +7,17 @@ module Rtsv2.IntraPoPAgent
   , announceTransPoPLeader
   , whereIsIngestAggregator
   , whereIsIngestRelay
+  , currentTransPoPLeader
   , bus
   ) where
 
 import Prelude
+
 import Bus as Bus
 import Data.Map (Map)
 import Data.Map as Map
 import Data.Maybe (Maybe(..))
+import Debug.Trace (spy)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
@@ -38,6 +41,7 @@ import Shared.Stream (StreamId(..), StreamVariantId(..))
 type State
   = { config :: Config
     , serfRpcAddress :: IpAndPort
+    , currentTransPoPLeader :: Maybe ServerAddress
     , streamRelayLocations :: Map StreamId String
     , streamAggregatorLocations :: Map StreamId String
     , thisNode :: ServerAddress
@@ -70,6 +74,11 @@ whereIsIngestAggregator :: StreamVariantId -> Effect (Maybe String)
 whereIsIngestAggregator (StreamVariantId s _) =
   Gen.call serverName \state ->
     CallReply (Map.lookup (StreamId s) state.streamAggregatorLocations) state
+
+currentTransPoPLeader :: Effect (Maybe ServerAddress)
+currentTransPoPLeader = 
+  Gen.call serverName (\state@{currentTransPoPLeader : value} ->
+                        CallReply value state)
 
 announceStreamIsAvailable :: StreamId -> Effect Unit
 announceStreamIsAvailable streamId =
@@ -119,6 +128,7 @@ init config = do
     , streamRelayLocations: Map.empty
     , streamAggregatorLocations: Map.empty
     , thisNode: thisNode
+    , currentTransPoPLeader: Nothing
     }
 
 handleInfo :: Msg -> State -> Effect State
@@ -136,35 +146,32 @@ handleInfo msg state = case msg of
             }
         pure $ state { streamAggregatorLocations = (Map.insert streamId server state.streamAggregatorLocations) }
     Serf.TransPoPLeader server
-      | server == state.thisNode -> pure state
+      | server == state.thisNode -> pure state{currentTransPoPLeader = Just server}
       | otherwise -> do
         _ <- Bus.raise bus stateMessage
-        pure state
+        pure state{currentTransPoPLeader = Just server}
   SerfMessage _ -> pure state
   JoinAll -> do
     _ <- joinAllSerf state
     pure state
 
 joinAllSerf :: State -> Effect Unit
-joinAllSerf { config, serfRpcAddress } = do
-  process <-
-    spawnLink
-      ( \_ -> do
-          seeds <- PoPDefinition.getSeeds :: Effect (List String)
-          let
-            seedAddresses =
-              map
-                ( \s ->
-                    { ip: s
-                    , port: config.bindPort
-                    }
-                )
-                seeds
-          result <- Serf.join serfRpcAddress seedAddresses true
-          _ <- logInfo "Serf said " { result: result }
-          pure unit
-      )
-  pure unit
+joinAllSerf { config, serfRpcAddress } =
+  let
+    serverAddressToSerfAddress s = {ip: s,
+                                    port: config.bindPort}
+  in
+  do
+    -- TODO - could spawn a process per seed and issue the joins in parallel
+    seeds <- PoPDefinition.getSeedsForThisPoP :: Effect (List String)
+    process <-
+      spawnLink
+        ( \_ -> do
+            result <- Serf.join serfRpcAddress (serverAddressToSerfAddress <$> seeds) true
+            _ <- logInfo "Serf said " { result: result }
+            pure unit
+        )
+    pure unit
 
 logInfo :: forall a b. Nub ( domain :: List Atom | a ) b => String -> Record a -> Effect Foreign
 logInfo msg metaData = Logger.info msg (Record.merge { domain: ((atom (show Agent.IntraPoP)) : nil) } { misc: metaData })

@@ -3,6 +3,7 @@
 -include_lib("id3as_common/include/common.hrl").
 
 -export([ joinImpl/5
+        , leaveImpl/3
         , eventImpl/6
         , streamImpl/3
         , messageMapperImpl/1
@@ -52,6 +53,20 @@ joinImpl(Left, Right, RpcAddr, SeedAgents, Replay) ->
         {ok, #serf_join_response{status = ok,
                                  no_peers_joined = Peers}} ->
           Right(Peers)
+      end
+  end.
+
+leaveImpl(Left, Right, RpcAddr) ->
+  fun() ->
+      case serf_api:leave(mapAddr(RpcAddr)) of
+        ok ->
+          Right(unit);
+
+        {error, Error} ->
+          ?SLOG_WARNING("serf error", #{ error => Error
+                                      , client_rpc => RpcAddr
+                                      }),
+          Left(networkError)
       end
   end.
 

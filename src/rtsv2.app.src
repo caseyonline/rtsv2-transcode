@@ -10,6 +10,7 @@
     gproc,
     recon,
     cowboy,
+    gun,
     jsx
    ]},
   {env,[]},
