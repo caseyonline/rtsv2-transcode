@@ -4,6 +4,7 @@ module Rtsv2.IntraPoPAgent
   , isStreamAvailable
   , isIngestActive
   , announceStreamIsAvailable
+  , announceRemoteStreamIsAvailable
   , announceTransPoPLeader
   , whereIsIngestAggregator
   , whereIsIngestRelay
@@ -87,6 +88,13 @@ announceStreamIsAvailable streamId =
         _ <- raiseLocal state "streamAvailable" (Serf.StreamAvailable streamId thisNode) true
         pure $ Gen.CastNoReply state { streamAggregatorLocations = (Map.insert streamId thisNode streamAggregatorLocations) }
 
+announceRemoteStreamIsAvailable :: StreamId -> ServerAddress -> Effect Unit
+announceRemoteStreamIsAvailable streamId addr =
+  Gen.doCast serverName
+    $ \state@{ streamAggregatorLocations } -> do
+        _ <- raiseLocal state "streamAvailable" (Serf.StreamAvailable streamId addr) true
+        pure $ Gen.CastNoReply state { streamAggregatorLocations = (Map.insert streamId addr streamAggregatorLocations) }
+
 announceTransPoPLeader :: Effect Unit
 announceTransPoPLeader =
   Gen.doCast serverName
@@ -116,7 +124,7 @@ init config = do
       { ip: show rpcBindIp
       , port: config.rpcPort
       }
-  _ <- Gen.registerExternalMapping serverName (Just <<< SerfMessage <<< Serf.messageMapper)
+  _ <- Gen.registerExternalMapping serverName (\m -> SerfMessage <$> (Serf.messageMapper m))
   _ <- Serf.stream serfRpcAddress
   _ <-
     logInfo "Intra-PoP Agent Starting"

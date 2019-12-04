@@ -33,7 +33,7 @@ foreign import joinImpl :: (ApiError -> (SerfResult Int)) -> (Int -> SerfResult 
 foreign import leaveImpl :: (ApiError -> (SerfResult Unit)) -> (Unit -> SerfResult Unit) -> IpAndPort ->  Effect (SerfResult Unit)
 foreign import eventImpl :: forall a. (ApiError -> (SerfResult Unit)) -> (SerfResult Unit) -> IpAndPort -> String -> a -> Boolean ->  Effect (SerfResult Unit)
 foreign import streamImpl :: (ApiError -> (SerfResult Unit)) -> (SerfResult Unit) -> IpAndPort -> Effect (SerfResult Unit)
-foreign import messageMapperImpl :: forall a. Foreign -> Message a
+foreign import messageMapperImpl :: forall a. Foreign -> Maybe (Message a)
 
 data Ip = Ipv4 Int Int Int Int
 
@@ -71,5 +71,5 @@ event = eventImpl Left (Right unit)
 stream :: IpAndPort -> Effect (SerfResult Unit)
 stream = streamImpl Left (Right unit)
 
-messageMapper :: forall a. Foreign -> Message a
+messageMapper :: forall a. Foreign -> Maybe (Message a)
 messageMapper = messageMapperImpl

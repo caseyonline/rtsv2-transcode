@@ -75,17 +75,20 @@ messageMapperImpl(#serf_user_event{ name = Name
                                   , coalesce = Coalesce
                                   , payload = Payload
                                   }) ->
-  {userEvent, Name, LTime, Coalesce, binary_to_term(Payload)};
+  {just, {userEvent, Name, LTime, Coalesce, binary_to_term(Payload)}};
 
 messageMapperImpl(#serf_members_event{ type = join
                                      , members = Members
                                      }) ->
-  {memberAlive};
+  {just, {memberAlive}};
 
 messageMapperImpl(#serf_members_event{ type = leave
                                      , members = Members
                                      }) ->
-  {memberLeft}.
+  {just, {memberLeft}};
+
+messageMapperImpl(_) ->
+  {nothing}.
 
 mapAddr(#{ ip := {ipv4, O1, O2, O3, O4}
          , port := Port

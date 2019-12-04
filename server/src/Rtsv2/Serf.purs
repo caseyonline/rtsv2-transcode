@@ -11,10 +11,11 @@ module Rtsv2.Serf
 
 import Prelude
 
+import Data.Maybe (Maybe)
 import Effect (Effect)
 import Foreign (Foreign)
 import Rtsv2.PoPDefinition (ServerAddress)
-import Serf (strToIp, join, stream, Ip(..), IpAndPort, ApiError(..), Message(..), SerfResult) as RootSerf
+import Serf (strToIp, join, leave, stream, Ip(..), IpAndPort, ApiError(..), Message(..), SerfResult) as RootSerf
 import Serf as Serf
 import Shared.Stream (StreamId)
 
@@ -25,5 +26,5 @@ data StateMessage = StreamAvailable StreamId ServerAddress
 event :: RootSerf.IpAndPort -> String -> StateMessage -> Boolean ->  Effect (RootSerf.SerfResult Unit)
 event = Serf.event
 
-messageMapper :: Foreign -> Serf.Message StateMessage
+messageMapper :: Foreign -> Maybe (Serf.Message StateMessage)
 messageMapper = Serf.messageMapper

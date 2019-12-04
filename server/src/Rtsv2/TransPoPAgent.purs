@@ -24,7 +24,6 @@ import Rtsv2.PoPDefinition (ServerAddress, ServerLocation(..), PoP, whereIsServe
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Serf (StateMessage(..), IpAndPort)
 import Rtsv2.Serf as Serf
-import Serf as Serf
 import Shared.Agent as Agent
 import Shared.Stream (StreamId)
 import SpudGun as SpudGun
@@ -43,6 +42,7 @@ data Msg
   = Tick
   | JoinAll
   | IntraPoPMsg StateMessage
+  | SerfMessage (Serf.Message StateMessage)
 
 startLink :: Config -> Effect StartLinkResult
 startLink args = Gen.startLink serverName (init args) handleInfo
@@ -76,6 +76,8 @@ init config@{ leaderTimeoutMs
         { ip: show rpcBindIp
         , port: rpcPort
         }
+    _ <- Gen.registerExternalMapping serverName (\m -> SerfMessage <$> (Serf.messageMapper m))
+    _ <- Serf.stream serfRpcAddress
     pure
       $ { config: config
         , currentLeader: Nothing
@@ -88,29 +90,52 @@ init config@{ leaderTimeoutMs
         }
 
 handleInfo :: Msg -> State -> Effect State
-handleInfo msg state = case msg of
-  Tick -> handleTick state
-  JoinAll -> joinAllSerf state
-  IntraPoPMsg (TransPoPLeader address) -> handleLeaderAnnouncement address state
-  IntraPoPMsg (StreamAvailable streamId addr) -> handleIntraPoPStreamAvaiable streamId addr state
-  IntraPoPMsg a -> do
-    -- TODO - if we are leader and get intra-pop-streamAvailable then publish to trans-pop
-    _ <- logInfo "Got an intrapop" { msg: a }
-    pure $ state
+handleInfo msg state =
+  case msg of
+    Tick -> handleTick state
+
+    JoinAll -> joinAllSerf state
+
+    IntraPoPMsg (TransPoPLeader address) -> handleLeaderAnnouncement address state
+
+    IntraPoPMsg (StreamAvailable streamId addr) -> handleIntraPoPStreamAvailable streamId addr state
+
+    SerfMessage (Serf.UserEvent name lamportClock coalesce stateMessage) -> case stateMessage of
+      Serf.StreamAvailable streamId server
+        | server == state.thisNode -> pure state
+        | otherwise -> do
+          _ <- IntraPoPAgent.announceRemoteStreamIsAvailable streamId server
+          pure state
+      a -> do
+        _ <- logInfo "Handle a different message" {msg: a}
+        pure state
+
+    a -> do
+      _ <- logInfo "Handle a different message" {msg: a}
+      pure state
+
+    IntraPoPMsg a -> do
+      -- TODO - if we are leader and get intra-pop-streamAvailable then publish to trans-pop
+      _ <- logInfo "Got an intrapop" { msg: a }
+      pure $ state
 
 --TransPopMsg a ->
 -- TODO - if we are leader and transpop-streamAvailable from other PoP, then call IntraPop.streamIsAvailable
-handleIntraPoPStreamAvaiable :: StreamId -> ServerAddress -> State -> Effect State
-handleIntraPoPStreamAvaiable _ _ state@{ weAreLeader: false } = pure state
+handleIntraPoPStreamAvailable :: StreamId -> ServerAddress -> State -> Effect State
+handleIntraPoPStreamAvailable _ _ state@{ weAreLeader: false } = pure state
 
-handleIntraPoPStreamAvaiable streamId addr state@{ thisLocation: (ServerLocation pop _) } = do
+handleIntraPoPStreamAvailable streamId addr state@{ thisLocation: (ServerLocation pop _)
+                                                  , serfRpcAddress } = do
   _ <- logInfo "got a popStreaAvaible msg" { streamId, addr }
   mServerLocation <- whereIsServer addr
   _ <- logInfo "location is " { mServerLocation }
   case mServerLocation of
     Nothing -> pure state
     Just (ServerLocation sourcePoP _)
-      | sourcePoP == pop -> pure state
+      | sourcePoP == pop -> do
+          result <- Serf.event state.serfRpcAddress "streamAvailable" (StreamAvailable streamId addr) true
+          _ <- logInfo "trans-pop serf said" {result: result}
+          pure state
       | otherwise -> do
         _ <- IntraPoPAgent.announceStreamIsAvailable streamId
         pure state
