@@ -106,7 +106,7 @@ handleLeaderAnnouncement address state@{currentLeader,
                                         thisNode} | Just address /= currentLeader &&
                                                     address /= thisNode =
   do
-    _ <- logInfo "Another node has taken over as transpop leader" {leader : address}
+    _ <- logInfo "Another node has announced as transpop leader, but we remain leader" {leader : address}
     now <- systemTime MilliSecond
     pure $ state { currentLeader = Just address
                  , lastLeaderAnnouncement = now}

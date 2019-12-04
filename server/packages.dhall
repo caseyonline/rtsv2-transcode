@@ -1,11 +1,14 @@
 let upstream =
-      https://raw.githubusercontent.com/purerl/package-sets/erl-0.13.2-20190808/src/packages.dhall sha256:9bf5fa72c656bde6888aeb33cf93047cda65ab53c7e8f29cc37c4dcade5a89b1
+      https://raw.githubusercontent.com/purerl/package-sets/erl-0.13.5-20191204/src/packages.dhall sha256:308bc2dd2c5700e6e22fae85b10472fd76ddaaf8034711ff0eaede145573479a
 
 let overrides =
       { erl-pinto =
-          { dependencies = [ "erl-cowboy", "erl-process" ]
-          , repo = "ssh://git@github.com/id3as/purescript-erl-pinto.git"
-          , version = "eabf6db6b2aa49d69e5917b4ebb4ceb66d5489f3"
+          { dependencies =
+              [ "erl-cowboy", "erl-process" ]
+          , repo =
+              "ssh://git@github.com/id3as/purescript-erl-pinto.git"
+          , version =
+              "eabf6db6b2aa49d69e5917b4ebb4ceb66d5489f3"
           }
       , simple-json =
           { dependencies =
@@ -31,8 +34,10 @@ let overrides =
               , "typelevel-prelude"
               , "variant"
               ]
-          , repo = "ssh://git@github.com/purerl/purescript-simple-json.git"
-          , version = "7ba3d3f1bc9165ebdce948cbecc076d13f964e59"
+          , repo =
+              "ssh://git@github.com/purerl/purescript-simple-json.git"
+          , version =
+              "7ba3d3f1bc9165ebdce948cbecc076d13f964e59"
           }
       , erl-maps =
           { dependencies =
@@ -44,8 +49,10 @@ let overrides =
               , "tuples"
               , "unfoldable"
               ]
-          , repo = "ssh://git@github.com/srstrong/purescript-erl-maps.git"
-          , version = "3c4e0cacb67d480130036cbe3baae6b0f0635312"
+          , repo =
+              "ssh://git@github.com/srstrong/purescript-erl-maps.git"
+          , version =
+              "3c4e0cacb67d480130036cbe3baae6b0f0635312"
           }
       }
 
