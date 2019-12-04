@@ -1,8 +1,6 @@
 -- -*- psc-ide-codegen: ("erl") -*-
 module Rtsv2.App where
 
-import Prelude
-
 import Effect (Effect)
 import Effect.Class (liftEffect)
 import Effect.Uncurried (EffectFn2)

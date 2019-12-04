@@ -1,9 +1,14 @@
 module Rtsv2.PoPDefinition
-       (startLink
+       ( startLink
        , getSeeds
        , thisNode
+       , whereIsServer
+       , thisLocation
        , Config
        , ServerAddress
+       , ServerLocation(..)
+       , PoPName
+       , RegionName
        ) where
 
 import Prelude
@@ -12,11 +17,12 @@ import Control.Apply (lift2)
 import Data.Either (Either(..), note')
 import Data.Filterable (filter)
 import Data.Foldable (foldl)
+import Data.Generic.Rep (class Generic)
+import Data.Generic.Rep.Eq (genericEq)
 import Data.List.NonEmpty as NonEmptyList
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Set as Set
 import Data.Traversable (sequence)
---import Debug.Trace (spy)
 import Effect (Effect)
 import Effect.Random (randomInt)
 import Erl.Atom (Atom, atom)
@@ -25,6 +31,7 @@ import Erl.Data.Map as Map
 import File as File
 import Foreign (Foreign, ForeignError(..), MultipleErrors)
 import Logger as Logger
+import Partial.Unsafe (unsafeCrashWith)
 import Pinto (ServerName(..), StartLinkResult)
 import Pinto.Gen (CallResult(..))
 import Pinto.Gen as Gen
@@ -42,10 +49,22 @@ type PoPName = String
 type ServerAddress = String
 data ServerLocation = ServerLocation PoPName RegionName
 
+derive instance genericServerLocation :: Generic ServerLocation _
+instance eqServerLocation :: Eq ServerLocation where
+  eq = genericEq
+
+type PoPInfo =
+  { regions :: Map.Map RegionName Region
+  , servers :: Map.Map ServerAddress ServerLocation
+  , thisLocation :: ServerLocation
+  , otherServersInThisPoP :: List ServerAddress
+  }
+
 type State =  { config :: Config
               , regions :: Map.Map RegionName Region
               , servers :: Map.Map ServerAddress ServerLocation
               , thisNode :: ServerAddress
+              , thisLocation :: ServerLocation
               , otherServersInThisPoP :: List ServerAddress
               }
 
@@ -89,26 +108,60 @@ getSeeds' state@{otherServersInThisPoP}
                   # fromMaybe nil
       pure $ servers
 
+thisLocation :: Effect ServerLocation
+thisLocation = Gen.doCall serverName
+             \state -> pure $ CallReply state.thisLocation state
+
+whereIsServer :: ServerAddress -> Effect (Maybe ServerLocation)
+whereIsServer sa = Gen.doCall serverName
+             \state -> pure $ CallReply (Map.lookup sa state.servers) state
+
 init :: Config -> Effect State
 init config = do
   hostname <- Env.hostname
-  newState <- readAndProcessPoPDefinition { config : config
-                                          , regions : Map.empty
-                                          , servers : Map.empty
-                                          , thisNode : hostname
-                                          , otherServersInThisPoP : nil
-                                          }
+  ePopInfo <- readAndProcessPoPDefinition config hostname
+  popInfo <-  case ePopInfo of
+                   Left e -> do
+                              _ <- Logger.warning "Failed to process pop definition file" {misc: e}
+                              unsafeCrashWith "invalid pop definition file"
+                   Right r -> pure r
+  let
+      state =
+        { config : config
+        , regions : popInfo.regions
+        , servers : popInfo.servers
+        , thisNode : hostname
+        , thisLocation : popInfo.thisLocation
+        , otherServersInThisPoP : popInfo.otherServersInThisPoP
+        }
+
   _ <- logInfo "PoPDefinition Starting" {thisNode : hostname,
-                                         otherServers : newState.otherServersInThisPoP}
+                                         otherServers : state.otherServersInThisPoP}
   _ <- Timer.sendAfter serverName 1000 Tick
-  pure $ newState
+  pure state
+
 
 handleInfo :: Msg -> State -> Effect State
 handleInfo msg state =
   case msg of
     Tick ->
       do
-        newState <- readAndProcessPoPDefinition state
+        ePopInfo <- readAndProcessPoPDefinition state.config state.thisNode
+        newState <-  case ePopInfo of
+          Left e -> do _ <- Logger.warning "Failed to process pop definition file" {misc: e}
+                       pure state
+          Right popInfo@{thisLocation : newPoP}
+            | newPoP == state.thisLocation  ->
+              pure $ state { regions = popInfo.regions
+                           , servers = popInfo.servers
+                           , otherServersInThisPoP = popInfo.otherServersInThisPoP
+                           }
+            | otherwise ->
+                do _ <- Logger.warning "This node seems to have changed pop - ignoring" { currentPoP: state.thisLocation
+                                                                                        , filePoP : newPoP
+                                                                                        }
+                   pure state
+
         _ <- Timer.sendAfter serverName 1000 Tick
         pure $ newState
 
@@ -130,12 +183,11 @@ addDistinct :: Int -> Effect (Set.Set Int) -> Effect (Set.Set Int)
 addDistinct max set =
   lift2 Set.insert (randomInt 0 max) set
 
-readAndProcessPoPDefinition :: State -> Effect State
-readAndProcessPoPDefinition state = do
-  file <- readFile state.config.popDefinitionFile
-  let
-    newState = updateState state <$> mapRegionJson <$> (decodeJson =<< file)
-  finalise state newState
+readAndProcessPoPDefinition :: Config -> ServerAddress -> Effect (Either MultipleErrors PoPInfo)
+readAndProcessPoPDefinition config hostName = do
+  file <- readFile config.popDefinitionFile
+  pure $ processPoPJson hostName =<< (mapRegionJson <$> (decodeJson =<< file))
+
 
 readFile :: String -> Effect (Either MultipleErrors String)
 readFile fileName = do
@@ -153,8 +205,8 @@ mapPoPJson :: Map.Map String (List String) -> Map.Map PoPName PoP
 mapPoPJson =
   Map.mapWithKey (\name servers -> {name : name, servers : servers})
 
-updateState :: State -> Map.Map RegionName Region -> State
-updateState state@{thisNode: hostName} regions =
+processPoPJson :: ServerAddress -> (Map.Map RegionName Region) -> Either MultipleErrors PoPInfo
+processPoPJson hostName regions =
   let
     servers :: Map.Map ServerAddress ServerLocation
     servers = foldl (\acc region ->
@@ -177,11 +229,18 @@ updateState state@{thisNode: hostName} regions =
                    <#> (\p -> p.servers)
                    <#> filter (\s -> s /= hostName)
                    # fromMaybe nil
+    maybeThisPop = Map.lookup hostName servers
+
 
   in
-   state { regions = regions
-         , servers = servers
-         , otherServersInThisPoP = otherServers }
+   case maybeThisPop of
+     Nothing -> Left $ NonEmptyList.singleton $ ForeignError "This node not present in any pop"
+     Just location ->
+       Right { regions: regions
+             , servers: servers
+             , otherServersInThisPoP: otherServers
+             , thisLocation: location
+             }
 
 lookupPop :: Map.Map RegionName Region -> ServerLocation -> Maybe PoP
 lookupPop regions (ServerLocation pop region) =

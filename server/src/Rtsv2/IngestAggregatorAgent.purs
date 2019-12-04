@@ -13,7 +13,7 @@ import Erl.ModuleName (NativeModuleName(..))
 import Foreign (unsafeToForeign)
 import Pinto (ServerName(..), StartLinkResult)
 import Pinto.Gen as Gen
-import Rtsv2.IntraPoPAgent (streamIsAvailable)
+import Rtsv2.IntraPoPAgent (announceStreamIsAvailable)
 import Shared.Stream (StreamId)
 
 type Config
@@ -32,7 +32,7 @@ startLink args = Gen.startLink (serverName args.streamId) (init args) Gen.defaul
 
 init :: Config -> Effect State
 init config = do
-  _ <- streamIsAvailable config.streamId
+  _ <- announceStreamIsAvailable config.streamId
 
   pure
         { config
