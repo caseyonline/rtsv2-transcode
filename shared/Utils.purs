@@ -7,19 +7,19 @@ import Prelude
 
 import Control.Apply (lift2)
 import Data.Set as Set
+import Data.Unfoldable (class Unfoldable)
 import Effect (Effect)
 import Effect.Random (randomInt)
-import Erl.Data.List (List, fromFoldable)
 import Partial.Unsafe (unsafeCrashWith)
 
 lazyCrashIfMissing :: forall a. String -> Unit -> a
 lazyCrashIfMissing s = \unit -> unsafeCrashWith s
 
-distinctRandomNumbers :: Int -> Int -> Effect (List Int)
+distinctRandomNumbers :: forall a. Unfoldable a => Int -> Int -> Effect (a Int)
 distinctRandomNumbers numRequired maxValue =
   randomNumbers_ numRequired maxValue (pure Set.empty)
-  <#> fromFoldable
-
+  <#> Set.toUnfoldable
+  
 randomNumbers_ :: Int -> Int -> Effect (Set.Set Int) -> Effect (Set.Set Int)
 randomNumbers_ numRequired maxValue set =
   let

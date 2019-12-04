@@ -39,8 +39,15 @@ main =
   launchAff_ $ un Identity $ runSpecT testConfig [consoleReporter] do
     before_ (do
                 _ <- stopNodes
-                launchNodes [ node "node1" "vlan201" "172.16.169.1" "scripts/env/steve.data/sys.config"
-                            , node "node2" "vlan202" "172.16.169.2" "scripts/env/steve.data/sys.config"]) do
+                launchNodes [
+                  node "iad1" "vlan101" "172.16.169.1" "scripts/env/steve.data/sys.config"
+                  , node "iad2" "vlan102" "172.16.169.2" "scripts/env/steve.data/sys.config"
+                  , node "dal1" "vlan201" "172.16.170.1" "scripts/env/steve.data/sys.config"
+                  , node "dal2" "vlan202" "172.16.170.2" "scripts/env/steve.data/sys.config"
+                  , node "dal3" "vlan203" "172.16.170.3" "scripts/env/steve.data/sys.config"
+                  , node "dal4" "vlan204" "172.16.170.4" "scripts/env/steve.data/sys.config"
+                  , node "dal5" "vlan205" "172.16.170.5" "scripts/env/steve.data/sys.config"
+                  ]) do
       after_ stopNodes do
         describe "two node setup" do
           it "client requests stream on ingest node" do
@@ -59,6 +66,15 @@ main =
             _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node2edgeUrl
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
             _ <- delay (Milliseconds 2000.0)
+            _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node2edgeUrl
+            pure unit
+          it "client requests stream on other pop" do
+            let
+              node1ingestStart = "http://172.16.169.1:3000/poc/api/client/:canary/ingest/stream1/low/start"
+              node2edgeUrl = "http://172.16.170.2:3000/poc/api/client/canary/edge/stream1/connect"
+            _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node2edgeUrl
+            _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
+            _ <- delay (Milliseconds 6000.0)
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node2edgeUrl
             pure unit
 
