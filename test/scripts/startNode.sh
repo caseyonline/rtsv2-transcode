@@ -6,14 +6,6 @@ cd ../..
 # shellcheck source=../../scripts/shared_functions.sh
 source ./scripts/shared_functions.sh
 
-function wait_for_server {
-  local -r addr=$1
-  while (! curl --silent --fail  "http://$addr:3000/test/alive")
-  do
-    sleep 0.5
-  done
-}
-
 function main {
   local -r session=$1
   local -r nodeName=$2
@@ -23,8 +15,6 @@ function main {
 
   tmux -L "$session" new-window -n "$nodeName"
   start_node "$session" "$nodeName" "$vlan" "$addr" "$sysConfig"
-
-  wait_for_server "$addr"
 }
 
 

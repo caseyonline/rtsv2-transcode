@@ -2,7 +2,7 @@
 [x] - serf api should take left and right constructors
 [ ] - can msgPack take arbitrary binaries
 [x] - test1 - hit edge / start ingest / hit edge again
-[ ] - elect trans pop leader
+[x] - elect trans pop leader
 [ ] - test2 - hit edge / start ingest in different pop / hit edge again
 [ ] - test3 - same after killing trans pop leader
 [ ] - test4 - IngestAggregator with a name clash - 2 things running, should be 1

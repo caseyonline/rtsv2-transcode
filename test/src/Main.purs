@@ -81,12 +81,16 @@ sessionName = "testSession"
 launchNodes :: Array TestNode -> Aff Unit
 launchNodes sysconfigs = do
   _ <- runProc "./scripts/startSession.sh" [sessionName]
-  traverse_ (\tn -> runProc "./scripts/startNode.sh"
-                    [ sessionName
-                    , tn.nodeName
-                    , tn.vlan
-                    , tn.addr
-                    , tn.sysConfig
+  _ <- traverse_ (\tn -> runProc "./scripts/startNode.sh"
+                         [ sessionName
+                         , tn.nodeName
+                         , tn.vlan
+                         , tn.addr
+                         , tn.sysConfig
+                         ]) sysconfigs
+
+  traverse_ (\tn -> runProc "./scripts/waitForNode.sh"
+                    [ tn.addr
                     ]) sysconfigs
 
 stopNodes :: Aff Unit
