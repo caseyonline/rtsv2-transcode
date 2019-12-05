@@ -34,9 +34,9 @@ messageMapper f =
     Nothing -> Nothing
     Just a ->
       case a of
-        Serf.MemberAlive -> Just Ignore
+        Serf.MemberAlive _ -> Just Ignore
         Serf.MemberLeaving -> Just Ignore
-        Serf.MemberLeft -> Just Ignore
+        Serf.MemberLeft _ -> Just Ignore
         Serf.MemberFailed -> Just Ignore
         Serf.StreamFailed -> Just Ignore
         Serf.UserEvent _ _ _ msg -> Just msg

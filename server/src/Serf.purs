@@ -6,7 +6,7 @@ module Serf
        , event
        , stream
        , messageMapper
-       , Ip(..), IpAndPort, ApiError(..), SerfMessage(..), SerfResult(..)
+       , Ip(..), IpAndPort, ApiError(..), SerfMessage(..), SerfResult(..), SerfMember
        )
        where
 
@@ -18,14 +18,29 @@ import Data.Maybe (Maybe(..))
 import Data.String (Pattern(..), split)
 import Data.Traversable (sequence)
 import Effect (Effect)
+import Erl.Atom (Atom)
 import Erl.Data.List (List)
+import Erl.Data.Map (Map)
 import Foreign (Foreign)
 
 type SerfResult a = Either ApiError a
 
-data SerfMessage a = MemberAlive
+type SerfMember = { name :: String
+                  , addr :: String
+                  , port :: Int
+                  , tags :: Map String String
+                  , status :: Atom
+                  , protocolMin :: Int
+                  , protocolMax :: Int
+                  , protocolCur :: Int
+                  , delegageMin :: Int
+                  , delegageMax :: Int
+                  , delegageCur :: Int
+                  }
+
+data SerfMessage a = MemberAlive (List SerfMember)
                    | MemberLeaving
-                   | MemberLeft
+                   | MemberLeft (List SerfMember)
                    | MemberFailed
                    | StreamFailed
                    | UserEvent String Int Boolean a

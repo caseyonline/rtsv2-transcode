@@ -11,7 +11,7 @@
 [ ] - make intrapop rejoin if not enough members
 [ ] - make transpop rejoin if not enough members
 [ ] - /alive should include healthcheck - indicate if joined to enough peers
-[ ] - separate intra-pop serf from trans-pop serf messages
+[x] - separate intra-pop serf from trans-pop serf messages
 [ ] - config in ingestAggregatorAgent - currently timer hardcoded - move all config records to config.purs
 [ ] - add stream_id domain to logs that are pre-stream
 [ ] - currentTransPoP appears to be wrong sometimes...

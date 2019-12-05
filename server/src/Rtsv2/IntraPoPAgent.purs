@@ -15,13 +15,14 @@ module Rtsv2.IntraPoPAgent
 import Prelude
 
 import Bus as Bus
-import Data.Map (Map)
-import Data.Map as Map
+import Data.Foldable (foldl)
 import Data.Maybe (Maybe(..))
 import Debug.Trace (spy)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
+import Erl.Data.Map (Map)
+import Erl.Data.Map as Map
 import Erl.Process (spawnLink)
 import Foreign (Foreign)
 import Logger as Logger
@@ -32,10 +33,10 @@ import Pinto.Timer as Timer
 import Prim.Row (class Nub)
 import Record as Record
 import Rtsv2.Env as Env
-import Rtsv2.PoPDefinition (ServerAddress)
-import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.IntraPoPSerf (IpAndPort, IntraMessage)
 import Rtsv2.IntraPoPSerf as Serf
+import Rtsv2.PoPDefinition (ServerAddress)
+import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Agent as Agent
 import Shared.Stream (StreamId(..), StreamVariantId(..))
 
@@ -46,6 +47,7 @@ type State
     , streamRelayLocations :: Map StreamId String
     , streamAggregatorLocations :: Map StreamId String
     , thisNode :: ServerAddress
+    , members :: Map String Serf.SerfMember
     }
 
 type Config
@@ -145,6 +147,7 @@ init config = do
     , streamAggregatorLocations: Map.empty
     , thisNode: thisNode
     , currentTransPoPLeader: Nothing
+    , members: Map.empty
     }
 
 handleInfo :: Msg -> State -> Effect State
@@ -171,6 +174,19 @@ handleInfo msg state = case msg of
       | otherwise -> do
         _ <- Bus.raise bus intraMessage
         pure state{currentTransPoPLeader = Just server}
+
+    Serf.MembersAlive members -> do
+      _ <- logInfo "Members Alive" {members: members}
+      let
+        newMembers = foldl (\acc member@{name} -> Map.insert name member acc) state.members members
+      pure state {members = newMembers}
+
+    Serf.MembersLeft members -> do
+      _ <- logInfo "Members Left" {members: members}
+      let
+        newMembers = foldl (\acc {name} -> Map.delete name acc) state.members members
+      pure state {members = newMembers}
+
 
   JoinAll -> do
     _ <- joinAllSerf state

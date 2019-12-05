@@ -113,6 +113,12 @@ handleIntraPoPMessage (IntraSerf.TransPoPLeader address) state =
 handleIntraPoPMessage (IntraSerf.StreamAvailable streamId addr) state =
   handleIntraPoPStreamAvailable streamId addr state
 
+handleIntraPoPMessage (IntraSerf.MembersAlive members) state =
+  pure state
+
+handleIntraPoPMessage (IntraSerf.MembersLeft members) state =
+  pure state
+
 handleTransPoPMessage :: TransSerf.TransMessage -> State -> Effect State
 handleTransPoPMessage TransSerf.Ignore state = pure state
 
@@ -120,6 +126,16 @@ handleTransPoPMessage (TransSerf.StreamAvailable streamId server) state =
   do
     _ <- IntraPoPAgent.announceRemoteStreamIsAvailable streamId server
     pure state
+
+-- handleTransPoPMessage (TransSerf.MembersAlive members) state =
+--   do
+--     _ <- logInfo "Members Alive" {members: members}
+--     pure state
+
+-- handleTransPoPMessage (TransSerf.MembersLeft members) state =
+--   do
+--     _ <- logInfo "Members Left" {members: members}
+--     pure state
 
 --TransPopMsg a ->
 -- TODO - if we are leader and transpop-streamAvailable from other PoP, then call IntraPop.streamIsAvailable

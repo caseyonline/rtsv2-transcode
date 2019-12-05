@@ -80,12 +80,12 @@ messageMapperImpl(#serf_user_event{ name = Name
 messageMapperImpl(#serf_members_event{ type = join
                                      , members = Members
                                      }) ->
-  {just, {memberAlive}};
+  {just, {memberAlive, [mapMemberToPurs(Member) || Member <- Members]}};
 
 messageMapperImpl(#serf_members_event{ type = leave
                                      , members = Members
                                      }) ->
-  {just, {memberLeft}};
+  {just, {memberLeft, [mapMemberToPurs(Member) || Member <- Members]}};
 
 %% TODO - should be a record
 messageMapperImpl({serf_stream_failed, _Ref, _Error}) ->
@@ -93,6 +93,31 @@ messageMapperImpl({serf_stream_failed, _Ref, _Error}) ->
 
 messageMapperImpl(_X) ->
   {nothing}.
+
+mapMemberToPurs(#serf_member{ name = Name
+                            , ip_address = Addr
+                            , port = Port
+                            , tags = Tags
+                            , status = Status
+                            , api_protocol_version_min = ProtocolMin
+                            , api_protocol_version_max = ProtocolMax
+                            , api_protocol_version_cur = ProtocolCur
+                            , api_delegate_version_min = DelegateMin
+                            , api_delegate_version_max = DelegateMax
+                            , api_delegate_version_cur = DelegateCur
+                            }) ->
+  #{name => Name
+   , ip_address => serf_api:addr_to_binary_string(Addr)
+   , port => Port
+   , tags => Tags
+   , status => Status
+   , api_protocol_version_min => ProtocolMin
+   , api_protocol_version_max => ProtocolMax
+   , api_protocol_version_cur => ProtocolCur
+   , api_delegate_version_min => DelegateMin
+   , api_delegate_version_max => DelegateMax
+   , api_delegate_version_cur => DelegateCur
+   }.
 
 mapAddr(#{ ip := {ipv4, O1, O2, O3, O4}
          , port := Port
