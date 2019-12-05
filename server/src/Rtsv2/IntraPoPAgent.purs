@@ -17,13 +17,14 @@ import Prelude
 import Bus as Bus
 import Data.Foldable (foldl)
 import Data.Maybe (Maybe(..))
-import Debug.Trace (spy)
+import Data.Traversable (traverse_)
+--import Debug.Trace (spy)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
-import Erl.Data.List (List, length, nil, (:))
+import Erl.Data.List (List, length, nil, singleton, (:))
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
-import Erl.Process (spawnLink)
+import Erl.Process (Process, spawnLink)
 import Foreign (Foreign)
 import Logger as Logger
 import Pinto (ServerName(..), StartLinkResult)
@@ -47,7 +48,7 @@ type State
     , streamRelayLocations :: Map StreamId String
     , streamAggregatorLocations :: Map StreamId String
     , thisNode :: ServerAddress
-    , members :: Map String Serf.SerfMember
+    , members :: Map ServerAddress Serf.SerfMember
     }
 
 type Config
@@ -210,15 +211,16 @@ joinAllSerf { config, serfRpcAddress, members } =
       pure unit
     else
       do
-        -- TODO - could spawn a process per seed and issue the joins in parallel
-        process <-
-          spawnLink
-            ( \_ -> do
-                result <- Serf.join serfRpcAddress (serverAddressToSerfAddress <$> toJoin) true
+        let joinAsync :: ServerAddress -> Effect (Process Unit)
+            joinAsync addr = spawnLink
+
+             ( \_ -> do
+                result <- Serf.join serfRpcAddress (singleton $ serverAddressToSerfAddress addr)  true
                 _ <- logInfo "Serf said " { result: result }
                 pure unit
-            )
-        pure unit
+             )
+        traverse_ joinAsync toJoin
+
   where
     toMap :: forall a. List a -> Map a Unit
     toMap list =
