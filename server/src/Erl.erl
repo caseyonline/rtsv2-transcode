@@ -1,8 +1,8 @@
 -module(erl_utils@foreign).
 
--export([
-         isRegisteredImpl/1,
-         systemTimeImpl/1
+-export([ isRegisteredImpl/1
+        , systemTimeImpl/1
+        , sleep/1
         ]).
 
 isRegisteredImpl(Name) ->
@@ -19,3 +19,6 @@ systemTimeImpl(TimeUnit) ->
   fun() ->
       erlang:system_time(TimeUnit)
   end.
+
+sleep(Ms) ->
+  fun() -> timer:sleep(Ms), unit end.

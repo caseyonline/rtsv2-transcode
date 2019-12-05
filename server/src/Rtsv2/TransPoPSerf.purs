@@ -19,6 +19,7 @@ import Serf as Serf
 import Shared.Stream (StreamId)
 
 data TransMessage = StreamAvailable StreamId ServerAddress
+                  | SerfStreamFailed
                   | Ignore
 
 event :: RootSerf.IpAndPort -> String -> TransMessage -> Boolean ->  Effect (RootSerf.SerfResult Unit)
@@ -26,6 +27,7 @@ event = Serf.event
 
 origin :: TransMessage -> Maybe ServerAddress
 origin (StreamAvailable _ serverAddress) = Just serverAddress
+origin SerfStreamFailed = Nothing
 origin Ignore = Nothing
 
 messageMapper :: Foreign -> Maybe TransMessage
@@ -38,5 +40,5 @@ messageMapper f =
         Serf.MemberLeaving -> Just Ignore
         Serf.MemberLeft _ -> Just Ignore
         Serf.MemberFailed -> Just Ignore
-        Serf.StreamFailed -> Just Ignore
+        Serf.StreamFailed -> Just SerfStreamFailed
         Serf.UserEvent _ _ _ msg -> Just msg

@@ -11,7 +11,7 @@ module Rtsv2.IntraPoPSerf
 import Prelude
 
 import Data.Maybe (Maybe(..))
-import Debug.Trace (spy)
+--import Debug.Trace (spy)
 import Effect (Effect)
 import Erl.Data.List (List)
 import Foreign (Foreign)

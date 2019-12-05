@@ -7,7 +7,7 @@ module Rtsv2.Web
 import Prelude
 
 import Data.Maybe (Maybe(..), fromMaybe, fromMaybe', isJust)
-import Debug.Trace (spy)
+--import Debug.Trace (spy)
 import Effect (Effect)
 import Erl.Atom (atom)
 import Erl.Cowboy.Req (Req, binding)

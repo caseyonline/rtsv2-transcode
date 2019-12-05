@@ -1,7 +1,8 @@
 -- -*- psc-ide-codegen: ("erl") -*-
 module Os
-       (
-         getEnv
+       ( getEnv
+       , osCmd
+       , privCmd
        )
        where
 
@@ -12,3 +13,6 @@ foreign import getEnv_ :: Maybe String -> (String -> Maybe String) -> String -> 
 
 getEnv :: String -> Effect (Maybe String)
 getEnv = getEnv_ Nothing Just
+
+foreign import osCmd :: String -> Effect String
+foreign import privCmd :: String -> Effect String

@@ -1,17 +1,19 @@
 -- -*- psc-ide-codegen: ("erl") -*-
 module Erl.Utils
-       (
-         isRegistered,
-         systemTime,
-         TimeUnit(..)
+       ( isRegistered
+       , systemTime
+       , TimeUnit(..)
+       , sleep
        )
        where
 
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
+import Prelude (Unit)
 
 foreign import isRegisteredImpl :: Atom -> Effect Boolean
 foreign import systemTimeImpl :: Atom -> Effect Int
+foreign import sleep :: Int -> Effect Unit
 
 data TimeUnit = MicroSecond
               | MilliSecond

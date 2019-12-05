@@ -2,7 +2,6 @@
 module Rtsv2.App where
 
 import Effect (Effect)
-import Effect.Class (liftEffect)
 import Effect.Uncurried (EffectFn2)
 import Effect.Unsafe (unsafePerformEffect)
 import Erl.Atom (Atom)

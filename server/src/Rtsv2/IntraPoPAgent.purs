@@ -13,7 +13,6 @@ module Rtsv2.IntraPoPAgent
   ) where
 
 import Prelude
-
 import Bus as Bus
 import Data.Foldable (foldl)
 import Data.Maybe (Maybe(..))
@@ -66,11 +65,13 @@ bus = Bus.bus "intrapop_bus"
 
 isStreamAvailable :: StreamId -> Effect Boolean
 isStreamAvailable streamId =
-  Gen.doCall serverName \state@{ streamAggregatorLocations } ->
-    do
-      _ <- logInfo "Request for stream" {streamId : streamId,
-                                         locations: streamAggregatorLocations}
-      pure $ CallReply (Map.member streamId streamAggregatorLocations) state
+  Gen.doCall serverName \state@{ streamAggregatorLocations } -> do
+    _ <-
+      logInfo "Request for stream"
+        { streamId: streamId
+        , locations: streamAggregatorLocations
+        }
+    pure $ CallReply (Map.member streamId streamAggregatorLocations) state
 
 isIngestActive :: StreamVariantId -> Effect Boolean
 isIngestActive (StreamVariantId s v) = Gen.call serverName \state -> CallReply false state
@@ -87,14 +88,16 @@ whereIsIngestAggregator (StreamVariantId s _) =
 
 currentTransPoPLeader :: Effect (Maybe ServerAddress)
 currentTransPoPLeader =
-  Gen.call serverName (\state@{currentTransPoPLeader : value} ->
-                        CallReply value state)
+  Gen.call serverName
+    ( \state@{ currentTransPoPLeader: value } ->
+        CallReply value state
+    )
 
 announceStreamIsAvailable :: StreamId -> Effect Unit
 announceStreamIsAvailable streamId =
   Gen.doCast serverName
     $ \state@{ streamAggregatorLocations, thisNode } -> do
-        _ <- logInfo "Local stream available" {streamId : streamId}
+        _ <- logInfo "Local stream available" { streamId: streamId }
         _ <- raiseLocal state "streamAvailable" (Serf.StreamAvailable streamId thisNode) true
         pure $ Gen.CastNoReply state { streamAggregatorLocations = (Map.insert streamId thisNode streamAggregatorLocations) }
 
@@ -102,8 +105,11 @@ announceRemoteStreamIsAvailable :: StreamId -> ServerAddress -> Effect Unit
 announceRemoteStreamIsAvailable streamId addr =
   Gen.doCast serverName
     $ \state@{ streamAggregatorLocations } -> do
-        _ <- logInfo "Remote stream available" {streamId : streamId,
-                                                addr: addr}
+        _ <-
+          logInfo "Remote stream available"
+            { streamId: streamId
+            , addr: addr
+            }
         _ <- raiseLocal state "streamAvailable" (Serf.StreamAvailable streamId addr) true
         pure $ Gen.CastNoReply state { streamAggregatorLocations = (Map.insert streamId addr streamAggregatorLocations) }
 
@@ -156,41 +162,38 @@ init config = do
 handleInfo :: Msg -> State -> Effect State
 handleInfo msg state = case msg of
   SerfMessage intraMessage -> case intraMessage of
-
-    Serf.Ignore ->
-      pure state
-
+    Serf.Ignore -> pure state
     Serf.StreamAvailable streamId server
       | server == state.thisNode -> do
-        _ <- logInfo "serf notification about stream available on this node; ignoring" {streamId: streamId,
-                                                                                        server: server}
+        _ <-
+          logInfo "serf notification about stream available on this node; ignoring"
+            { streamId: streamId
+            , server: server
+            }
         pure state
       | otherwise -> do
         _ <- Bus.raise bus intraMessage
-        _ <- logInfo "StreamAvailable on remote node" { streamId: streamId
-                                                      , remoteNode: server
-                                                      }
+        _ <-
+          logInfo "StreamAvailable on remote node"
+            { streamId: streamId
+            , remoteNode: server
+            }
         pure $ state { streamAggregatorLocations = (Map.insert streamId server state.streamAggregatorLocations) }
-
     Serf.TransPoPLeader server
-      | server == state.thisNode -> pure state{currentTransPoPLeader = Just server}
+      | server == state.thisNode -> pure state { currentTransPoPLeader = Just server }
       | otherwise -> do
         _ <- Bus.raise bus intraMessage
-        pure state{currentTransPoPLeader = Just server}
-
+        pure state { currentTransPoPLeader = Just server }
     Serf.MembersAlive members -> do
-      _ <- logInfo "Members Alive" {members: _.name <$> members}
+      _ <- logInfo "Members Alive" { members: _.name <$> members }
       let
-        newMembers = foldl (\acc member@{name} -> Map.insert name member acc) state.members members
-      pure state {members = newMembers}
-
+        newMembers = foldl (\acc member@{ name } -> Map.insert name member acc) state.members members
+      pure state { members = newMembers }
     Serf.MembersLeft members -> do
-      _ <- logInfo "Members Left" {members: _.name <$> members}
+      _ <- logInfo "Members Left" { members: _.name <$> members }
       let
-        newMembers = foldl (\acc {name} -> Map.delete name acc) state.members members
-      pure state {members = newMembers}
-
-
+        newMembers = foldl (\acc { name } -> Map.delete name acc) state.members members
+      pure state { members = newMembers }
   JoinAll -> do
     _ <- joinAllSerf state
     pure state
@@ -198,33 +201,31 @@ handleInfo msg state = case msg of
 joinAllSerf :: State -> Effect Unit
 joinAllSerf { config, serfRpcAddress, members } =
   let
-    serverAddressToSerfAddress s = {ip: s,
-                                    port: config.bindPort}
+    serverAddressToSerfAddress s =
+      { ip: s
+      , port: config.bindPort
+      }
   in
-  do
-    allOtherServers <- PoPDefinition.getOtherServersForThisPoP
-    let
-      toJoin = Map.keys $ Map.difference (toMap allOtherServers) members
-
-    if
-      length toJoin < (length allOtherServers) / 2 then
-      pure unit
-    else
-      do
-        let joinAsync :: ServerAddress -> Effect (Process Unit)
-            joinAsync addr = spawnLink
-
-             ( \_ -> do
-                result <- Serf.join serfRpcAddress (singleton $ serverAddressToSerfAddress addr)  true
-                _ <- logInfo "Serf said " { result: result }
-                pure unit
-             )
+    do
+      allOtherServers <- PoPDefinition.getOtherServersForThisPoP
+      let
+        toJoin = Map.keys $ Map.difference (toMap allOtherServers) members
+      if length toJoin < (length allOtherServers) / 2 then
+        pure unit
+      else do
+        let
+          joinAsync :: ServerAddress -> Effect (Process Unit)
+          joinAsync addr =
+            spawnLink
+              ( \_ -> do
+                  result <- Serf.join serfRpcAddress (singleton $ serverAddressToSerfAddress addr) true
+                  _ <- logInfo "Serf said " { result: result }
+                  pure unit
+              )
         traverse_ joinAsync toJoin
-
   where
-    toMap :: forall a. List a -> Map a Unit
-    toMap list =
-      foldl (\acc item -> Map.insert item unit acc) Map.empty list
+  toMap :: forall a. List a -> Map a Unit
+  toMap list = foldl (\acc item -> Map.insert item unit acc) Map.empty list
 
 logInfo :: forall a b. Nub ( domain :: List Atom | a ) b => String -> Record a -> Effect Foreign
 logInfo msg metaData = Logger.info msg (Record.merge { domain: ((atom (show Agent.IntraPoP)) : nil) } { misc: metaData })
