@@ -225,7 +225,6 @@ joinAllSerf state@{ config, serfRpcAddress } =
                                     port: config.bindPort}
   in
   do
-    -- TODO - could spawn a process per seed and issue the joins in parallel
     pops <- PoPDefinition.getSeedsForOtherPoPs :: Effect (List PoP)
     _ <- sequence $ foldl (\acc {name, servers} ->
                             (spawnLink (\_ ->
