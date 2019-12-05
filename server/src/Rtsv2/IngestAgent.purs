@@ -19,7 +19,7 @@ import Rtsv2.IntraPoPAgent as IntraPoPAgent
 import Shared.Stream (StreamVariantId, toStreamId)
 
 type Config
-  = { streamVariantId :: StreamVariantId }
+  = { }
 
 type State
   = { config :: Config
@@ -28,22 +28,21 @@ type State
 serverName :: StreamVariantId -> ServerName State Unit
 serverName sv = Via (NativeModuleName $ atom "gproc") $ unsafeToForeign (tuple3 (atom "n") (atom "l") (tuple2 "ingest" sv))
 
---nativeName (Via (NativeModuleName m) name) = unsafeCoerce $ tuple3 (atom "via") m name
-startLink :: Config -> Effect StartLinkResult
-startLink args = Gen.startLink (serverName args.streamVariantId) (init args) Gen.defaultHandleInfo
+startLink :: StreamVariantId -> Effect StartLinkResult
+startLink streamVariantId = Gen.startLink (serverName streamVariantId) (init streamVariantId) Gen.defaultHandleInfo
 
-init :: Config -> Effect State
-init config = do
-  maybeAggregator <- IntraPoPAgent.whereIsIngestAggregator config.streamVariantId
+init :: StreamVariantId -> Effect State
+init streamVariantId = do
+  maybeAggregator <- IntraPoPAgent.whereIsIngestAggregator streamVariantId
   case maybeAggregator of
     Just relay ->
       pure
-        { config
+        { config: {}
         }
     Nothing -> do
       -- Launch
-      _ <- IngestAggregatorAgentSup.startAggregator {streamId : toStreamId config.streamVariantId}
+      _ <- IngestAggregatorAgentSup.startAggregator (toStreamId streamVariantId) 
       pure
-        { config
+        { config: {}
         }
  -- TODO - what if we want to have the relay run remotely (load etc) -- Find / create if there is a relay for this stream -- ask intrapopstate --

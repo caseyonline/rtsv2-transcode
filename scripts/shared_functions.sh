@@ -36,10 +36,10 @@ function start_node {
   create_vlan "$vlan" "$addr"
 
   tmux -L "$tmuxSession" send-keys " export HOSTNAME=$addr" C-m
-  tmux -L "$tmuxSession" send-keys " serf agent -iface $vlan -node $nodeName -bind $addr:7946 -rpc-addr $addr:7373 | grep -v 'Accepted client'" C-m
+  tmux -L "$tmuxSession" send-keys " serf agent -iface $vlan -node $nodeName -bind $addr:7946 -rpc-addr $addr:7373 | tee -a logs/$nodeName/i-serf.log | grep -v 'Accepted client'" C-m
   tmux -L "$tmuxSession" split-window -h -p 80
   tmux -L "$tmuxSession" send-keys " export HOSTNAME=$addr" C-m
-  tmux -L "$tmuxSession" send-keys " serf agent -iface $vlan -node $nodeName -bind $addr:8946 -rpc-addr $addr:8373 | grep -v 'Accepted client'" C-m
+  tmux -L "$tmuxSession" send-keys " serf agent -iface $vlan -node $nodeName -bind $addr:8946 -rpc-addr $addr:8373 | tee -a logs/$nodeName/t-serf.log | grep -v 'Accepted client'" C-m
   tmux -L "$tmuxSession" split-window -h -p 75
   tmux -L "$tmuxSession" send-keys " export HOSTNAME=$addr" C-m
   tmux -L "$tmuxSession" split-window -h -p 50

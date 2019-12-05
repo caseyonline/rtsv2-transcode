@@ -61,7 +61,12 @@ bus :: Bus.Bus StateMessage
 bus = Bus.bus "intrapop_bus"
 
 isStreamAvailable :: StreamId -> Effect Boolean
-isStreamAvailable streamId = Gen.call serverName \state@{ streamAggregatorLocations } -> CallReply (Map.member streamId streamAggregatorLocations) state
+isStreamAvailable streamId =
+  Gen.doCall serverName \state@{ streamAggregatorLocations } ->
+    do
+      _ <- logInfo "Request for stream" {streamId : streamId,
+                                         locations: streamAggregatorLocations}
+      pure $ CallReply (Map.member streamId streamAggregatorLocations) state
 
 isIngestActive :: StreamVariantId -> Effect Boolean
 isIngestActive (StreamVariantId s v) = Gen.call serverName \state -> CallReply false state
@@ -85,6 +90,7 @@ announceStreamIsAvailable :: StreamId -> Effect Unit
 announceStreamIsAvailable streamId =
   Gen.doCast serverName
     $ \state@{ streamAggregatorLocations, thisNode } -> do
+        _ <- logInfo "Local stream available" {streamId : streamId}
         _ <- raiseLocal state "streamAvailable" (Serf.StreamAvailable streamId thisNode) true
         pure $ Gen.CastNoReply state { streamAggregatorLocations = (Map.insert streamId thisNode streamAggregatorLocations) }
 
@@ -92,6 +98,8 @@ announceRemoteStreamIsAvailable :: StreamId -> ServerAddress -> Effect Unit
 announceRemoteStreamIsAvailable streamId addr =
   Gen.doCast serverName
     $ \state@{ streamAggregatorLocations } -> do
+        _ <- logInfo "Remote stream available" {streamId : streamId,
+                                                addr: addr}
         _ <- raiseLocal state "streamAvailable" (Serf.StreamAvailable streamId addr) true
         pure $ Gen.CastNoReply state { streamAggregatorLocations = (Map.insert streamId addr streamAggregatorLocations) }
 
@@ -142,23 +150,29 @@ init config = do
 handleInfo :: Msg -> State -> Effect State
 handleInfo msg state = case msg of
   SerfMessage (Serf.UserEvent name lamportClock coalesce stateMessage) -> case stateMessage of
+
     Serf.StreamAvailable streamId server
-      | server == state.thisNode -> pure state
+      | server == state.thisNode -> do
+        _ <- logInfo "serf notification about stream available on this node; ignoring" {streamId: streamId,
+                                                                                        server: server}
+        pure state
       | otherwise -> do
         _ <- Bus.raise bus stateMessage
         thisNode <- PoPDefinition.thisNode
-        _ <-
-          logInfo "StreamAvailable on remote node"
-            { streamId: streamId
-            , remoteNode: server
-            }
+        _ <- logInfo "StreamAvailable on remote node" { streamId: streamId
+                                                      , remoteNode: server
+                                                      }
         pure $ state { streamAggregatorLocations = (Map.insert streamId server state.streamAggregatorLocations) }
+        
     Serf.TransPoPLeader server
       | server == state.thisNode -> pure state{currentTransPoPLeader = Just server}
       | otherwise -> do
         _ <- Bus.raise bus stateMessage
         pure state{currentTransPoPLeader = Just server}
-  SerfMessage _ -> pure state
+        
+  SerfMessage _ ->
+    pure state
+  
   JoinAll -> do
     _ <- joinAllSerf state
     pure state

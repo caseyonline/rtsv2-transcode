@@ -41,9 +41,6 @@ rtsv2Env = ModuleName "Rtsv2.Env"
 rtsv2IngestAgent :: ModuleName
 rtsv2IngestAgent = ModuleName "Rtsv2.IngestAgent"
 
-rtsv2IngestAgentSup :: ModuleName
-rtsv2IngestAgentSup = ModuleName "Rtsv2.IngestAgentSup"
-
 rtsv2IngestAggregatorAgent :: ModuleName
 rtsv2IngestAggregatorAgent = ModuleName "Rtsv2.IngestAggregatorAgent"
 

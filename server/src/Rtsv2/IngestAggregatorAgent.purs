@@ -13,28 +13,47 @@ import Erl.ModuleName (NativeModuleName(..))
 import Foreign (unsafeToForeign)
 import Pinto (ServerName(..), StartLinkResult)
 import Pinto.Gen as Gen
+import Pinto.Timer as Timer
 import Rtsv2.IntraPoPAgent (announceStreamIsAvailable)
 import Shared.Stream (StreamId)
 
 type Config
-  = { streamId :: StreamId }
+  = { streamAvailableAnnounceMs :: Int }
 
 type State
   = { config :: Config
+    , streamId :: StreamId
     }
 
-serverName :: StreamId -> ServerName State Unit
+data Msg
+  = Tick
+
+serverName :: StreamId -> ServerName State Msg
 serverName s = Via (NativeModuleName $ atom "gproc") $ unsafeToForeign (tuple3 (atom "n") (atom "l") (tuple2 "ingest" s))
 
---nativeName (Via (NativeModuleName m) name) = unsafeCoerce $ tuple3 (atom "via") m name
-startLink :: Config -> Effect StartLinkResult
-startLink args = Gen.startLink (serverName args.streamId) (init args) Gen.defaultHandleInfo
+startLink :: StreamId -> Effect StartLinkResult
+startLink streamId = Gen.startLink (serverName streamId) (init streamId) handleInfo
 
-init :: Config -> Effect State
-init config = do
-  _ <- announceStreamIsAvailable config.streamId
+init :: StreamId -> Effect State
+init streamId = do
+  let
+    streamAvailableAnnounceMs = 1000
+  _ <- Timer.sendEvery (serverName streamId) streamAvailableAnnounceMs Tick
+  _ <- announceStreamIsAvailable streamId
 
   pure
-        { config
+        { config : {streamAvailableAnnounceMs} --config
+        , streamId
         }
- -- TODO - what if we want to have the relay run remotely (load etc) -- Find / create if there is a relay for this stream -- ask intrapopstate --
+
+handleInfo :: Msg -> State -> Effect State
+handleInfo msg state =
+  case msg of
+    Tick -> handleTick state
+
+handleTick :: State -> Effect State
+handleTick state@{streamId} = do
+  _ <- announceStreamIsAvailable streamId
+  pure state
+  
+-- TODO - what if we want to have the relay run remotely (load etc) -- Find / create if there is a relay for this stream -- ask intrapopstate --

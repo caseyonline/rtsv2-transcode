@@ -54,6 +54,7 @@ main =
             let
               node1ingestStart = "http://172.16.169.1:3000/poc/api/client/:canary/ingest/stream1/low/start"
               node1edgeUrl = "http://172.16.169.1:3000/poc/api/client/canary/edge/stream1/connect"
+            _ <- delay (Milliseconds 2000.0)
             _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node1edgeUrl
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
             _ <- delay (Milliseconds 2000.0)
@@ -63,6 +64,7 @@ main =
             let
               node1ingestStart = "http://172.16.169.1:3000/poc/api/client/:canary/ingest/stream1/low/start"
               node2edgeUrl = "http://172.16.169.2:3000/poc/api/client/canary/edge/stream1/connect"
+            _ <- delay (Milliseconds 2000.0)
             _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node2edgeUrl
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
             _ <- delay (Milliseconds 2000.0)
@@ -72,6 +74,7 @@ main =
             let
               node1ingestStart = "http://172.16.169.1:3000/poc/api/client/:canary/ingest/stream1/low/start"
               node2edgeUrl = "http://172.16.170.2:3000/poc/api/client/canary/edge/stream1/connect"
+            _ <- delay (Milliseconds 2000.0)
             _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node2edgeUrl
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
             _ <- delay (Milliseconds 6000.0)
@@ -87,7 +90,7 @@ assertStatusCode expectedCode either =
     Right response@{status : StatusCode resultCode} | resultCode == expectedCode ->
       pure response
     Right response@{status : StatusCode resultCode} ->
-      throwError $ error $ "Unexpected statuscode" <> show response.status
+      throwError $ error $ "Unexpected statuscode " <> show response.status
     Left err ->
       throwError $ error $ "GET /api response failed to decode: " <> AX.printError err
 

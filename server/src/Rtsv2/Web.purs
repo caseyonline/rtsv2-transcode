@@ -89,7 +89,7 @@ ingestStart =
   --                           Rest.result isAvailable req state
   --                         )
   # Rest.contentTypesProvided (\req state -> do
-                                  _ <- startIngest {streamVariantId : state.streamVariantId }
+                                  _ <- startIngest state.streamVariantId
                                   Rest.result (textWriter "" : nil) req state)
   # Rest.yeeha
 

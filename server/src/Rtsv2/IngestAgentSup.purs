@@ -1,15 +1,17 @@
-module Rtsv2.IngestAgentSup
+ module Rtsv2.IngestAgentSup
   ( startLink
   , startIngest
   ) where
 
 import Prelude
+
 import Effect (Effect)
 import Erl.Data.List (nil, (:))
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStartTemplate, childType)
 import Pinto.Sup as Sup
 import Rtsv2.IngestAgent as Ingest
+import Shared.Stream (StreamVariantId(..))
 
 serverName :: String
 serverName = "ingestAgentSup"
@@ -17,9 +19,9 @@ serverName = "ingestAgentSup"
 startLink :: forall a. a -> Effect Pinto.StartLinkResult
 startLink _ = Sup.startLink serverName init
 
-startIngest :: Ingest.Config -> Effect Unit
-startIngest args = do
-  result <- Sup.startSimpleChild childTemplate serverName args
+startIngest :: StreamVariantId -> Effect Unit
+startIngest streamVariantId = do
+  result <- Sup.startSimpleChild childTemplate serverName streamVariantId
   case result of
     Pinto.AlreadyStarted pid -> pure unit
     Pinto.Started pid -> pure unit
@@ -38,5 +40,5 @@ init = do
             : nil
         )
 
-childTemplate :: Pinto.ChildTemplate Ingest.Config
+childTemplate :: Pinto.ChildTemplate StreamVariantId
 childTemplate = Pinto.ChildTemplate (Ingest.startLink)

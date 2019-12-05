@@ -5,6 +5,7 @@ module Rtsv2.Config
   , popDefinitionConfig
   , intraPoPAgentConfig
   , transPoPAgentConfig
+  , ingestAggregatorConfig
   ) where
 
 import Prelude
@@ -23,6 +24,7 @@ import Logger as Logger
 import Partial.Unsafe (unsafeCrashWith)
 import Rtsv2.IntraPoPAgent as IntraPoP
 import Rtsv2.TransPoPAgent as TransPoP
+import Rtsv2.IngestAggregatorAgent as IngestAggregator
 import Rtsv2.Node as Node
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Web as Web
@@ -63,6 +65,10 @@ intraPoPAgentConfig = do
 transPoPAgentConfig :: Effect TransPoP.Config
 transPoPAgentConfig = do
   getMandatoryRecord "transPoPConfig"
+
+ingestAggregatorConfig :: Effect IngestAggregator.Config
+ingestAggregatorConfig = do
+  getMandatoryRecord "ingestAggregatorConfig"
 
 get :: forall a e. (Foreign -> ExceptT e Identity a) -> String -> Effect (Maybe a)
 get f v = hush <<< runExcept <<< f <$> getEnv_ (atom v)

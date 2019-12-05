@@ -13,6 +13,7 @@ import Pinto as Pinto
 import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStartTemplate, childType)
 import Pinto.Sup as Sup
 import Rtsv2.IngestAggregatorAgent as IngestAggregatorAgent
+import Shared.Stream (StreamId)
 
 serverName :: String
 serverName = "ingestAggregatorAgentSup"
@@ -20,9 +21,10 @@ serverName = "ingestAggregatorAgentSup"
 startLink :: forall a. a -> Effect Pinto.StartLinkResult
 startLink _ = Sup.startLink serverName init
 
-startAggregator :: IngestAggregatorAgent.Config  -> Effect Unit
-startAggregator args = do
-  result <- Sup.startSimpleChild childTemplate serverName args
+startAggregator :: StreamId -> Effect Unit
+startAggregator streamId = do
+  result <- Sup.startSimpleChild childTemplate serverName streamId
+
   case result of
        Pinto.AlreadyStarted pid -> pure unit
        Pinto.Started pid -> pure unit
@@ -43,5 +45,5 @@ init = do
         )
 
 
-childTemplate :: Pinto.ChildTemplate IngestAggregatorAgent.Config
+childTemplate :: Pinto.ChildTemplate StreamId
 childTemplate = Pinto.ChildTemplate (IngestAggregatorAgent.startLink)
