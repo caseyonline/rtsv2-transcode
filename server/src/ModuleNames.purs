@@ -50,14 +50,14 @@ rtsv2IngestAggregatorAgentSup = ModuleName "Rtsv2.IngestAggregatorAgentSup"
 rtsv2IntraPoPAgent :: ModuleName
 rtsv2IntraPoPAgent = ModuleName "Rtsv2.IntraPoPAgent"
 
+rtsv2IntraPoPSerf :: ModuleName
+rtsv2IntraPoPSerf = ModuleName "Rtsv2.IntraPoPSerf"
+
 rtsv2Node :: ModuleName
 rtsv2Node = ModuleName "Rtsv2.Node"
 
 rtsv2PoPDefinition :: ModuleName
 rtsv2PoPDefinition = ModuleName "Rtsv2.PoPDefinition"
-
-rtsv2Serf :: ModuleName
-rtsv2Serf = ModuleName "Rtsv2.Serf"
 
 rtsv2StreamRelayAgentSup :: ModuleName
 rtsv2StreamRelayAgentSup = ModuleName "Rtsv2.StreamRelayAgentSup"
@@ -67,6 +67,9 @@ rtsv2Sup = ModuleName "Rtsv2.Sup"
 
 rtsv2TransPoPAgent :: ModuleName
 rtsv2TransPoPAgent = ModuleName "Rtsv2.TransPoPAgent"
+
+rtsv2TransPoPSerf :: ModuleName
+rtsv2TransPoPSerf = ModuleName "Rtsv2.TransPoPSerf"
 
 rtsv2Web :: ModuleName
 rtsv2Web = ModuleName "Rtsv2.Web"

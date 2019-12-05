@@ -34,8 +34,8 @@ import Record as Record
 import Rtsv2.Env as Env
 import Rtsv2.PoPDefinition (ServerAddress)
 import Rtsv2.PoPDefinition as PoPDefinition
-import Rtsv2.Serf (IpAndPort, StateMessage)
-import Rtsv2.Serf as Serf
+import Rtsv2.IntraPoPSerf (IpAndPort, IntraMessage)
+import Rtsv2.IntraPoPSerf as Serf
 import Shared.Agent as Agent
 import Shared.Stream (StreamId(..), StreamVariantId(..))
 
@@ -55,9 +55,9 @@ type Config
 
 data Msg
   = JoinAll
-  | SerfMessage (Serf.Message StateMessage)
+  | SerfMessage IntraMessage
 
-bus :: Bus.Bus StateMessage
+bus :: Bus.Bus IntraMessage
 bus = Bus.bus "intrapop_bus"
 
 isStreamAvailable :: StreamId -> Effect Boolean
@@ -82,7 +82,7 @@ whereIsIngestAggregator (StreamVariantId s _) =
     CallReply (Map.lookup (StreamId s) state.streamAggregatorLocations) state
 
 currentTransPoPLeader :: Effect (Maybe ServerAddress)
-currentTransPoPLeader = 
+currentTransPoPLeader =
   Gen.call serverName (\state@{currentTransPoPLeader : value} ->
                         CallReply value state)
 
@@ -110,7 +110,7 @@ announceTransPoPLeader =
         _ <- raiseLocal state "transPoPLeader" (Serf.TransPoPLeader thisNode) false
         pure $ Gen.CastNoReply state
 
-raiseLocal :: State -> String -> StateMessage -> Boolean -> Effect Unit
+raiseLocal :: State -> String -> IntraMessage -> Boolean -> Effect Unit
 raiseLocal state name msg coalesce = do
   _ <- Serf.event state.serfRpcAddress name msg coalesce
   _ <- Bus.raise bus msg
@@ -124,6 +124,7 @@ startLink args = Gen.startLink serverName (init args) handleInfo
 
 init :: Config -> Effect State
 init config = do
+  _ <- Gen.registerExternalMapping serverName (\m -> SerfMessage <$> (Serf.messageMapper m))
   _ <- Timer.sendAfter serverName 0 JoinAll
   rpcBindIp <- Env.privateInterfaceIp
   thisNode <- PoPDefinition.thisNode
@@ -132,7 +133,6 @@ init config = do
       { ip: show rpcBindIp
       , port: config.rpcPort
       }
-  _ <- Gen.registerExternalMapping serverName (\m -> SerfMessage <$> (Serf.messageMapper m))
   _ <- Serf.stream serfRpcAddress
   _ <-
     logInfo "Intra-PoP Agent Starting"
@@ -149,7 +149,10 @@ init config = do
 
 handleInfo :: Msg -> State -> Effect State
 handleInfo msg state = case msg of
-  SerfMessage (Serf.UserEvent name lamportClock coalesce stateMessage) -> case stateMessage of
+  SerfMessage intraMessage -> case intraMessage of
+
+    Serf.Ignore ->
+      pure state
 
     Serf.StreamAvailable streamId server
       | server == state.thisNode -> do
@@ -157,22 +160,18 @@ handleInfo msg state = case msg of
                                                                                         server: server}
         pure state
       | otherwise -> do
-        _ <- Bus.raise bus stateMessage
-        thisNode <- PoPDefinition.thisNode
+        _ <- Bus.raise bus intraMessage
         _ <- logInfo "StreamAvailable on remote node" { streamId: streamId
                                                       , remoteNode: server
                                                       }
         pure $ state { streamAggregatorLocations = (Map.insert streamId server state.streamAggregatorLocations) }
-        
+
     Serf.TransPoPLeader server
       | server == state.thisNode -> pure state{currentTransPoPLeader = Just server}
       | otherwise -> do
-        _ <- Bus.raise bus stateMessage
+        _ <- Bus.raise bus intraMessage
         pure state{currentTransPoPLeader = Just server}
-        
-  SerfMessage _ ->
-    pure state
-  
+
   JoinAll -> do
     _ <- joinAllSerf state
     pure state

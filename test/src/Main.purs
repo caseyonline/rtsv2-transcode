@@ -54,27 +54,27 @@ main =
             let
               node1ingestStart = "http://172.16.169.1:3000/poc/api/client/:canary/ingest/stream1/low/start"
               node1edgeUrl = "http://172.16.169.1:3000/poc/api/client/canary/edge/stream1/connect"
-            _ <- delay (Milliseconds 2000.0)
+            _ <- delay (Milliseconds 2500.0)
             _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node1edgeUrl
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
-            _ <- delay (Milliseconds 2000.0)
+            _ <- delay (Milliseconds 2500.0)
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1edgeUrl
             pure unit
           it "client requests stream on non-ingest node" do
             let
               node1ingestStart = "http://172.16.169.1:3000/poc/api/client/:canary/ingest/stream1/low/start"
               node2edgeUrl = "http://172.16.169.2:3000/poc/api/client/canary/edge/stream1/connect"
-            _ <- delay (Milliseconds 2000.0)
+            _ <- delay (Milliseconds 2500.0)
             _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node2edgeUrl
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
-            _ <- delay (Milliseconds 2000.0)
+            _ <- delay (Milliseconds 2500.0)
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node2edgeUrl
             pure unit
           it "client requests stream on other pop" do
             let
               node1ingestStart = "http://172.16.169.1:3000/poc/api/client/:canary/ingest/stream1/low/start"
               node2edgeUrl = "http://172.16.170.2:3000/poc/api/client/canary/edge/stream1/connect"
-            _ <- delay (Milliseconds 2000.0)
+            _ <- delay (Milliseconds 2500.0)
             _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node2edgeUrl
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
             _ <- delay (Milliseconds 6000.0)

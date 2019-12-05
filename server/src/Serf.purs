@@ -6,7 +6,7 @@ module Serf
        , event
        , stream
        , messageMapper
-       , Ip(..), IpAndPort, ApiError(..), Message(..), SerfResult(..)
+       , Ip(..), IpAndPort, ApiError(..), SerfMessage(..), SerfResult(..)
        )
        where
 
@@ -23,17 +23,18 @@ import Foreign (Foreign)
 
 type SerfResult a = Either ApiError a
 
-data Message a = MemberAlive
-               | MemberLeaving
-               | MemberLeft
-               | MemberFailed
-               | UserEvent String Int Boolean a
+data SerfMessage a = MemberAlive
+                   | MemberLeaving
+                   | MemberLeft
+                   | MemberFailed
+                   | StreamFailed
+                   | UserEvent String Int Boolean a
 
 foreign import joinImpl :: (ApiError -> (SerfResult Int)) -> (Int -> SerfResult Int) -> IpAndPort -> List IpAndPort -> Boolean ->  Effect (SerfResult Int)
 foreign import leaveImpl :: (ApiError -> (SerfResult Unit)) -> (Unit -> SerfResult Unit) -> IpAndPort ->  Effect (SerfResult Unit)
 foreign import eventImpl :: forall a. (ApiError -> (SerfResult Unit)) -> (SerfResult Unit) -> IpAndPort -> String -> a -> Boolean ->  Effect (SerfResult Unit)
 foreign import streamImpl :: (ApiError -> (SerfResult Unit)) -> (SerfResult Unit) -> IpAndPort -> Effect (SerfResult Unit)
-foreign import messageMapperImpl :: forall a. Foreign -> Maybe (Message a)
+foreign import messageMapperImpl :: forall a. Foreign -> Maybe (SerfMessage a)
 
 data Ip = Ipv4 Int Int Int Int
 
@@ -71,5 +72,5 @@ event = eventImpl Left (Right unit)
 stream :: IpAndPort -> Effect (SerfResult Unit)
 stream = streamImpl Left (Right unit)
 
-messageMapper :: forall a. Foreign -> Maybe (Message a)
+messageMapper :: forall a. Foreign -> Maybe (SerfMessage a)
 messageMapper = messageMapperImpl

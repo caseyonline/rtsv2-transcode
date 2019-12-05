@@ -20,10 +20,11 @@ import Prim.Row (class Nub)
 import Record as Record
 import Rtsv2.Env as Env
 import Rtsv2.IntraPoPAgent as IntraPoPAgent
+import Rtsv2.IntraPoPSerf as IntraSerf
 import Rtsv2.PoPDefinition (ServerAddress, ServerLocation(..), PoP, whereIsServer)
 import Rtsv2.PoPDefinition as PoPDefinition
-import Rtsv2.Serf (StateMessage(..), IpAndPort)
-import Rtsv2.Serf as Serf
+import Rtsv2.TransPoPSerf (IpAndPort, origin)
+import Rtsv2.TransPoPSerf as TransSerf
 import Shared.Agent as Agent
 import Shared.Stream (StreamId)
 import SpudGun as SpudGun
@@ -41,8 +42,8 @@ serverName = Local "transPopAgent"
 data Msg
   = Tick
   | JoinAll
-  | IntraPoPMsg StateMessage
-  | SerfMessage (Serf.Message StateMessage)
+  | IntraPoPMsg IntraSerf.IntraMessage
+  | TransPoPMsg TransSerf.TransMessage
 
 startLink :: Config -> Effect StartLinkResult
 startLink args = Gen.startLink serverName (init args) handleInfo
@@ -64,6 +65,7 @@ init config@{ leaderTimeoutMs
             , rpcPort
             } =
   do
+    _ <- Gen.registerExternalMapping serverName (\m -> TransPoPMsg <$> (TransSerf.messageMapper m))
     _ <- Bus.subscribe serverName IntraPoPAgent.bus IntraPoPMsg
     _ <- Timer.sendEvery serverName leaderAnnounceMs Tick
     _ <- Timer.sendAfter serverName 4000 JoinAll
@@ -76,8 +78,7 @@ init config@{ leaderTimeoutMs
         { ip: show rpcBindIp
         , port: rpcPort
         }
-    _ <- Gen.registerExternalMapping serverName (\m -> SerfMessage <$> (Serf.messageMapper m))
-    _ <- Serf.stream serfRpcAddress
+    _ <- TransSerf.stream serfRpcAddress
     pure
       $ { config: config
         , currentLeader: Nothing
@@ -90,34 +91,35 @@ init config@{ leaderTimeoutMs
         }
 
 handleInfo :: Msg -> State -> Effect State
-handleInfo msg state =
+handleInfo msg state@{thisNode} =
   case msg of
     Tick -> handleTick state
 
     JoinAll -> joinAllSerf state
 
-    IntraPoPMsg (TransPoPLeader address) -> handleLeaderAnnouncement address state
+    IntraPoPMsg intraMessage -> handleIntraPoPMessage intraMessage state
 
-    IntraPoPMsg (StreamAvailable streamId addr) -> handleIntraPoPStreamAvailable streamId addr state
+    TransPoPMsg transMessage
+      | origin transMessage == Nothing -> pure state
+      | origin transMessage == Just thisNode -> pure state
+      | otherwise -> handleTransPoPMessage transMessage state
 
-    SerfMessage (Serf.UserEvent name lamportClock coalesce stateMessage) -> case stateMessage of
-      Serf.StreamAvailable streamId server
-        | server == state.thisNode -> pure state
-        | otherwise -> do
-          _ <- IntraPoPAgent.announceRemoteStreamIsAvailable streamId server
-          pure state
-      a -> do
-        _ <- logInfo "Handle a different message" {msg: a}
-        pure state
+handleIntraPoPMessage :: IntraSerf.IntraMessage -> State -> Effect State
+handleIntraPoPMessage IntraSerf.Ignore state = pure state
 
-    a -> do
-      _ <- logInfo "Handle a different message" {msg: a}
-      pure state
+handleIntraPoPMessage (IntraSerf.TransPoPLeader address) state =
+  handleLeaderAnnouncement address state
 
-    IntraPoPMsg a -> do
-      -- TODO - if we are leader and get intra-pop-streamAvailable then publish to trans-pop
-      _ <- logInfo "Got an intrapop" { msg: a }
-      pure $ state
+handleIntraPoPMessage (IntraSerf.StreamAvailable streamId addr) state =
+  handleIntraPoPStreamAvailable streamId addr state
+
+handleTransPoPMessage :: TransSerf.TransMessage -> State -> Effect State
+handleTransPoPMessage TransSerf.Ignore state = pure state
+
+handleTransPoPMessage (TransSerf.StreamAvailable streamId server) state =
+  do
+    _ <- IntraPoPAgent.announceRemoteStreamIsAvailable streamId server
+    pure state
 
 --TransPopMsg a ->
 -- TODO - if we are leader and transpop-streamAvailable from other PoP, then call IntraPop.streamIsAvailable
@@ -133,15 +135,11 @@ handleIntraPoPStreamAvailable streamId addr state@{ thisLocation: (ServerLocatio
       | sourcePoP == pop -> do
           -- Message from our pop - distribute over trans-pop
           _ <- logInfo "Local stream being delivered to trans-pop" {streamId : streamId}
-          result <- Serf.event state.serfRpcAddress "streamAvailable" (StreamAvailable streamId addr) true
+          result <- TransSerf.event state.serfRpcAddress "streamAvailable" (TransSerf.StreamAvailable streamId addr) true
           _ <- logInfo "trans-pop serf said" {result: result}
           pure state
-      | otherwise -> do
-        -- Message from other pop - hand to our intra-pop
-        _ <- logInfo "Trans-pop stream being delivered to intra-pop" {streamId : streamId,
-                                                                      addr : addr}
-        _ <- IntraPoPAgent.announceStreamIsAvailable streamId
-        pure state
+      | otherwise ->
+          pure state
 
 handleTick :: State -> Effect State
 handleTick state@{ weAreLeader: true } = do
@@ -169,7 +167,7 @@ handleLeaderAnnouncement address state@{ thisNode
                                        , serfRpcAddress
                                        }
   | address < thisNode = do
-    result <- Serf.leave serfRpcAddress
+    result <- TransSerf.leave serfRpcAddress
     _ <- logInfo "Another node has taken over as transpop leader; stepping down" { leader: address }
     now <- systemTime MilliSecond
     pure
@@ -203,7 +201,7 @@ joinAllSerf state@{ weAreLeader : false } =
   do
     _ <- Timer.sendAfter serverName 4000 JoinAll
     pure state
-    
+
 joinAllSerf state@{ config, serfRpcAddress } =
   let
     serverAddressToSerfAddress :: String -> IpAndPort
@@ -224,7 +222,7 @@ joinAllSerf state@{ config, serfRpcAddress } =
                                                               pure unit
                                                             Just addr ->
                                                               do
-                                                                result <- Serf.join serfRpcAddress ((serverAddressToSerfAddress addr) : nil) true
+                                                                result <- TransSerf.join serfRpcAddress ((serverAddressToSerfAddress addr) : nil) true
                                                                 _ <- logInfo "Rest said " { server: addr
                                                                                           , result: result }
                                                                 pure unit

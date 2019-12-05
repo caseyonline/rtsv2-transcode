@@ -3,9 +3,16 @@
 [ ] - can msgPack take arbitrary binaries
 [x] - test1 - hit edge / start ingest / hit edge again
 [x] - elect trans pop leader
-[ ] - test2 - hit edge / start ingest in different pop / hit edge again
+[x] - test2 - hit edge / start ingest in different pop / hit edge again
 [ ] - test3 - same after killing trans pop leader
 [ ] - test4 - IngestAggregator with a name clash - 2 things running, should be 1
 [ ] - test5 - Multiple trans-pops with a name clash - 2 things running, should be 1
 [ ] - test6 - Multiple stream-relay with a name clash - 2 things running, should be 1
 [ ] - make intrapop rejoin if not enough members
+[ ] - make transpop rejoin if not enough members
+[ ] - /alive should include healthcheck - indicate if joined to enough peers
+[ ] - separate intra-pop serf from trans-pop serf messages
+[ ] - config in ingestAggregatorAgent - currently timer hardcoded - move all config records to config.purs
+[ ] - add stream_id domain to logs that are pre-stream
+[ ] - currentTransPoP appears to be wrong sometimes...
+[ ] - transPoP leave - ensure serf restarts (systemd) and maybe assert on each tick that still not a memeber

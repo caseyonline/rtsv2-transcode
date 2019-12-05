@@ -87,7 +87,11 @@ messageMapperImpl(#serf_members_event{ type = leave
                                      }) ->
   {just, {memberLeft}};
 
-messageMapperImpl(_) ->
+%% TODO - should be a record
+messageMapperImpl({serf_stream_failed, _Ref, _Error}) ->
+  {just, {streamFailed}};
+
+messageMapperImpl(_X) ->
   {nothing}.
 
 mapAddr(#{ ip := {ipv4, O1, O2, O3, O4}
