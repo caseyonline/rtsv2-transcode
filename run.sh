@@ -52,7 +52,7 @@ for i in "${array[@]}"; do
     if (( popIndex > 1 )); then
         tmux -L "$SESSION" split-window -v -p 50 -f
     fi
-    start_node "$SESSION" "$currentRegionPop$popIndex" "$vlan" "$addr" "$SYSCONFIG"
+    start_node "$SESSION" "$addr" "$vlan" "$addr" "$SYSCONFIG"
     popIndex=$((popIndex + 1))
 done
 

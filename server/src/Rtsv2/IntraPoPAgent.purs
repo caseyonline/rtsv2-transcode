@@ -20,7 +20,7 @@ import Data.Maybe (Maybe(..))
 import Debug.Trace (spy)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
-import Erl.Data.List (List, nil, (:))
+import Erl.Data.List (List, length, nil, (:))
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
 import Erl.Process (spawnLink)
@@ -53,6 +53,7 @@ type State
 type Config
   = { bindPort :: Int
     , rpcPort :: Int
+    , rejoinEveryMs :: Int
     }
 
 data Msg
@@ -128,6 +129,7 @@ init :: Config -> Effect State
 init config = do
   _ <- Gen.registerExternalMapping serverName (\m -> SerfMessage <$> (Serf.messageMapper m))
   _ <- Timer.sendAfter serverName 0 JoinAll
+  _ <- Timer.sendEvery serverName config.rejoinEveryMs JoinAll
   rpcBindIp <- Env.privateInterfaceIp
   thisNode <- PoPDefinition.thisNode
   let
@@ -176,13 +178,13 @@ handleInfo msg state = case msg of
         pure state{currentTransPoPLeader = Just server}
 
     Serf.MembersAlive members -> do
-      _ <- logInfo "Members Alive" {members: members}
+      _ <- logInfo "Members Alive" {members: _.name <$> members}
       let
         newMembers = foldl (\acc member@{name} -> Map.insert name member acc) state.members members
       pure state {members = newMembers}
 
     Serf.MembersLeft members -> do
-      _ <- logInfo "Members Left" {members: members}
+      _ <- logInfo "Members Left" {members: _.name <$> members}
       let
         newMembers = foldl (\acc {name} -> Map.delete name acc) state.members members
       pure state {members = newMembers}
@@ -193,22 +195,34 @@ handleInfo msg state = case msg of
     pure state
 
 joinAllSerf :: State -> Effect Unit
-joinAllSerf { config, serfRpcAddress } =
+joinAllSerf { config, serfRpcAddress, members } =
   let
     serverAddressToSerfAddress s = {ip: s,
                                     port: config.bindPort}
   in
   do
-    -- TODO - could spawn a process per seed and issue the joins in parallel
-    seeds <- PoPDefinition.getSeedsForThisPoP :: Effect (List String)
-    process <-
-      spawnLink
-        ( \_ -> do
-            result <- Serf.join serfRpcAddress (serverAddressToSerfAddress <$> seeds) true
-            _ <- logInfo "Serf said " { result: result }
-            pure unit
-        )
-    pure unit
+    allOtherServers <- PoPDefinition.getOtherServersForThisPoP
+    let
+      toJoin = Map.keys $ Map.difference (toMap allOtherServers) members
+
+    if
+      length toJoin < (length allOtherServers) / 2 then
+      pure unit
+    else
+      do
+        -- TODO - could spawn a process per seed and issue the joins in parallel
+        process <-
+          spawnLink
+            ( \_ -> do
+                result <- Serf.join serfRpcAddress (serverAddressToSerfAddress <$> toJoin) true
+                _ <- logInfo "Serf said " { result: result }
+                pure unit
+            )
+        pure unit
+  where
+    toMap :: forall a. List a -> Map a Unit
+    toMap list =
+      foldl (\acc item -> Map.insert item unit acc) Map.empty list
 
 logInfo :: forall a b. Nub ( domain :: List Atom | a ) b => String -> Record a -> Effect Foreign
 logInfo msg metaData = Logger.info msg (Record.merge { domain: ((atom (show Agent.IntraPoP)) : nil) } { misc: metaData })
