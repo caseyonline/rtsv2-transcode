@@ -38,7 +38,7 @@ import Pinto (ServerName(..), StartLinkResult)
 import Pinto.Gen (CallResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
-import Prim.Row (class Nub)
+import Prim.Row (class Nub, class Union)
 import Record as Record
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
@@ -124,7 +124,8 @@ announceRemoteStreamIsAvailable streamId addr =
     $ \state@{ streamAggregatorLocations } -> do
         _ <- logInfo "Remote stream available" { streamId: streamId
                                                , addr: addr }
-        _ <- Serf.event state.serfRpcAddress "streamAvailable" (StreamAvailable streamId addr) false
+        result <- Serf.event state.serfRpcAddress "streamAvailable" (StreamAvailable streamId addr) false
+        _ <- maybeLogError "Intra-PoP serf event failed" result {}
         -- _ <- raiseLocal state "streamAvailable" (StreamAvailable streamId addr)
         newStreamAggregatorLocations <- EMap.insert' streamId addr streamAggregatorLocations
         pure $ Gen.CastNoReply state { streamAggregatorLocations = newStreamAggregatorLocations }
@@ -138,7 +139,8 @@ announceTransPoPLeader =
 
 raiseLocal :: State -> String -> IntraMessage -> Effect Unit
 raiseLocal state name msg = do
-  resp <- Serf.event state.serfRpcAddress name msg false
+  result <- Serf.event state.serfRpcAddress name msg false
+  _ <- maybeLogError "Intra-PoP serf event failed" result {}
   _ <- Bus.raise bus msg
   pure unit
 
@@ -205,11 +207,7 @@ handleInfo msg state = case msg of
      case intraMessage of
       StreamAvailable streamId server
         | server == state.thisNode -> do
-          _ <-
-            logInfo "serf notification about stream available on this node; ignoring"
-              { streamId: streamId
-              , server: server
-              }
+          -- streamAvailable on this node - we can just ignore, since appropriate action taken in announceStreamIsAvailable
           pure state
         | otherwise -> do
           -- streamAvailable on some other node in this PoP - we need to tell Trans-PoP
@@ -269,7 +267,7 @@ joinAllSerf { config, serfRpcAddress, members } =
             spawnLink
               ( \_ -> do
                   result <- Serf.join serfRpcAddress (singleton $ serverAddressToSerfAddress addr) true
-                  _ <- logInfo "Serf said " { result: result }
+                  _ <- maybeLogError "Intra-PoP serf join failed" result {}
                   pure unit
               )
         traverse_ joinAsync toJoin
@@ -277,5 +275,11 @@ joinAllSerf { config, serfRpcAddress, members } =
   toMap :: forall a. List a -> Map a Unit
   toMap list = foldl (\acc item -> Map.insert item unit acc) Map.empty list
 
-logInfo :: forall a b. Nub ( domain :: List Atom | a ) b => String -> Record a -> Effect Foreign
+maybeLogError :: forall a b c d e. Union b (error :: e) c => Nub c d => String -> Either e a -> Record b  -> Effect Unit
+maybeLogError _ (Right _) _ = pure unit
+maybeLogError msg (Left err) metadata = do
+  _ <- logInfo msg (Record.merge metadata {error: err})
+  pure unit
+
+logInfo :: forall a. String -> a -> Effect Foreign
 logInfo msg metaData = Logger.info msg (Record.merge { domain: ((atom (show Agent.IntraPoP)) : nil) } { misc: metaData })
