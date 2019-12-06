@@ -52,7 +52,7 @@ let overrides =
           , repo =
               "ssh://git@github.com/srstrong/purescript-erl-maps.git"
           , version =
-              "5767ab4c892591eb5f1ac9fae450b45280045aea"
+              "fd104a03c882a836b2725199d49abb2d9d7d11ee"
           }
       , erl-tuples =
           { dependencies =
