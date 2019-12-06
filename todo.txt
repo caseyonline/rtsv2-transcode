@@ -9,11 +9,11 @@
 [ ] - test5 - Multiple trans-pops with a name clash - 2 things running, should be 1
 [ ] - test6 - Multiple stream-relay with a name clash - 2 things running, should be 1
 [x] - make intrapop rejoin if not enough members
-[ ] - make transpop rejoin if not enough members
+[x] - make transpop rejoin if not enough members
 [ ] - /alive should include healthcheck - indicate if joined to enough peers
 [x] - separate intra-pop serf from trans-pop serf messages
 [ ] - config in ingestAggregatorAgent - currently timer hardcoded - move all config records to config.purs
 [ ] - add stream_id domain to logs that are pre-stream
 [x] - currentTransPoP appears to be wrong sometimes...
 [x] - transPoP leave - ensure serf restarts (systemd) and maybe assert on each tick that still not a memeber
-[ ] - reconnect stream if we get a stream-failed (intra and trans) - will need to call serf.members
+[x] - reconnect stream if we get a stream-failed (intra and trans) - will need to call serf.members

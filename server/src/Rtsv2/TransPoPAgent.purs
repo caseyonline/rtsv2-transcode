@@ -19,6 +19,7 @@ import Erl.Utils (sleep, systemTime, TimeUnit(..))
 import Foreign (Foreign)
 import Logger as Logger
 import Os (osCmd)
+import Partial.Unsafe (unsafeCrashWith)
 import Pinto (ServerName(..), StartLinkResult)
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
@@ -46,6 +47,7 @@ type Config
     , leaderTimeoutMs :: Int
     , leaderAnnounceMs :: Int
     , rejoinEveryMs :: Int
+    , connectStreamAfterMs :: Int
     }
 
 serverName :: ServerName State Msg
@@ -54,6 +56,7 @@ serverName = Local "transPopAgent"
 data Msg
   = Tick
   | JoinAll
+  | ConnectStream
   | IntraPoPBusMsg IntraPoPAgent.IntraMessage
   | TransPoPSerfMsg (Serf.SerfMessage TransMessage)
 
@@ -82,8 +85,6 @@ init config@{ leaderTimeoutMs
   _ <- Gen.registerExternalMapping serverName (\m -> TransPoPSerfMsg <$> (Serf.messageMapper m))
   _ <- Bus.subscribe serverName IntraPoPAgent.bus IntraPoPBusMsg
   _ <- Timer.sendEvery serverName leaderAnnounceMs Tick
-  _ <- Timer.sendAfter serverName (min (floor ((toNumber leaderAnnounceMs) * 1.5)) rejoinEveryMs) JoinAll
-  _ <- Timer.sendEvery serverName rejoinEveryMs JoinAll
   rpcBindIp <- Env.privateInterfaceIp
   thisNode <- PoPDefinition.thisNode
   thisLocation <- PoPDefinition.thisLocation
@@ -114,6 +115,10 @@ handleInfo msg state@{ thisNode } = case msg of
     _ <- joinAllSerf state
     pure state
 
+  ConnectStream -> do
+    _ <- connectStream state
+    pure state
+
   IntraPoPBusMsg intraMessage -> handleIntraPoPMessage intraMessage state
 
   TransPoPSerfMsg tmsg ->
@@ -122,7 +127,9 @@ handleInfo msg state@{ thisNode } = case msg of
       Serf.MemberLeaving -> pure state
       Serf.MemberLeft members -> membersLeft members state
       Serf.MemberFailed -> pure state
-      Serf.StreamFailed -> pure state
+      Serf.StreamFailed -> do
+        _ <- logInfo "Lost connection to TransPoP Serf Agent" {}
+        unsafeCrashWith ("lost_serf_connection")
       Serf.UserEvent name ltime coalesce transMessage
         | origin transMessage == thisNode -> pure state
         | otherwise -> handleTransPoPMessage transMessage state
@@ -140,7 +147,7 @@ handleTransPoPMessage (StreamAvailable streamId server) state = do
 membersAlive :: (List Serf.SerfMember) -> State -> Effect State
 membersAlive aliveMembers state =
   do
-    _ <- logInfo "Members Alive" {members: aliveMembers}
+    _ <- logInfo "Members Alive" {members: _.name <$> aliveMembers}
     newMembers <- foldl addPoP (pure state.members) aliveMembers
     pure state {members = newMembers}
   where
@@ -162,7 +169,7 @@ membersAlive aliveMembers state =
 membersLeft :: (List Serf.SerfMember) -> State -> Effect State
 membersLeft leftMembers state =
   do
-    _ <- logInfo "Members Left" {members: leftMembers}
+    _ <- logInfo "Members Left" {members: _.name <$> leftMembers}
     newMembers <- foldl removePoP (pure state.members) leftMembers
     pure state {members = newMembers}
   where
@@ -216,35 +223,29 @@ handleTick state@{ weAreLeader: true } = do
 
 handleTick state@{ lastLeaderAnnouncement
                  , leaderAnnouncementTimeout
-                 , serfRpcAddress
                  } = do
   now <- systemTime MilliSecond
-  if lastLeaderAnnouncement + leaderAnnouncementTimeout < now then do
-    _ <- logInfo "Leader is absent, becoming leader" {}
-    startResp <- osCmd "scripts/startTransPoPAgent.sh"
-    _ <- logInfo "Start Resp" {resp: startResp}
-    _ <- IntraPoPAgent.announceTransPoPLeader
-    x <- loopStreamJoin serfRpcAddress 5
-    _ <- logInfo "Stream Resp" {resp: x}
-    pure
-      $ state
-          { lastLeaderAnnouncement = now
-          , weAreLeader = true
-          }
+  if lastLeaderAnnouncement + leaderAnnouncementTimeout < now then
+    becomeLeader now state
   else do
     pure $ state
 
-  where
-    loopStreamJoin rpcAddress n =
-     do _ <- sleep 300
-        resp <- Serf.stream rpcAddress
-        case resp of
-            Left _ ->
-              case n of
-                   0 -> pure resp
-                   _ -> loopStreamJoin serfRpcAddress $ n - 1
-            Right x ->
-              pure resp
+becomeLeader :: Int -> State -> Effect State
+becomeLeader now state@{ lastLeaderAnnouncement
+                       , leaderAnnouncementTimeout
+                       , serfRpcAddress
+                       , config: {connectStreamAfterMs}
+                       } = do
+
+  _ <- logInfo "Leader is absent, becoming leader" {}
+  _ <- osCmd "scripts/startTransPoPAgent.sh"
+  _ <- IntraPoPAgent.announceTransPoPLeader
+  _ <- Timer.sendAfter serverName connectStreamAfterMs ConnectStream
+  pure
+    $ state
+        { lastLeaderAnnouncement = now
+        , weAreLeader = true
+        }
 
 handleLeaderAnnouncement :: ServerAddress -> State -> Effect State
 handleLeaderAnnouncement address state@{ thisNode
@@ -286,11 +287,33 @@ handleLeaderAnnouncement address state = do
   now <- systemTime MilliSecond
   pure $ state { lastLeaderAnnouncement = now }
 
+connectStream :: State -> Effect Unit
+connectStream state@{serfRpcAddress} = do
+
+  _ <- loopStreamJoin serfRpcAddress 5
+  _ <- Timer.sendAfter serverName 0 JoinAll
+  pure unit
+
+  where
+    loopStreamJoin rpcAddress n =
+     do resp <- Serf.stream rpcAddress
+        case resp of
+            Left error ->
+              case n of
+                   0 -> do
+                        _ <- logInfo "Could not connect to TransPoP Serf Agent" { error: error }
+                        unsafeCrashWith ("could_not_connect_stream")
+                   _ -> do
+                         _ <- sleep 100
+                         loopStreamJoin serfRpcAddress $ n - 1
+            Right x ->
+              pure resp
+
 joinAllSerf :: State -> Effect Unit
 joinAllSerf state@{ weAreLeader: false } = do
   pure unit
 
-joinAllSerf state@{ config, serfRpcAddress, members } =
+joinAllSerf state@{ config: config@{rejoinEveryMs}, serfRpcAddress, members } =
   let
     serverAddressToSerfAddress :: String -> IpAndPort
     serverAddressToSerfAddress s =
@@ -300,6 +323,7 @@ joinAllSerf state@{ config, serfRpcAddress, members } =
   in
     do
       allOtherPoPs <- PoPDefinition.getOtherPoPs
+      _ <- Timer.sendAfter serverName rejoinEveryMs JoinAll
 
       let
         toJoin = Map.values $ Map.difference (toMap allOtherPoPs) members :: List PoP

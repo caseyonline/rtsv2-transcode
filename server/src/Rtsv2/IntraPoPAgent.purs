@@ -14,19 +14,22 @@ module Rtsv2.IntraPoPAgent
   ) where
 
 import Prelude
+
 import Bus as Bus
+import Data.Either (Either(..))
 import Data.Foldable (foldl)
 import Data.Maybe (Maybe(..))
 import Data.Traversable (traverse_)
---import Debug.Trace (spy)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, length, nil, singleton, (:))
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
 import Erl.Process (Process, spawnLink)
+import Erl.Utils as Erl
 import Foreign (Foreign)
 import Logger as Logger
+import Partial.Unsafe (unsafeCrashWith)
 import Pinto (ServerName(..), StartLinkResult)
 import Pinto.Gen (CallResult(..))
 import Pinto.Gen as Gen
@@ -34,10 +37,10 @@ import Pinto.Timer as Timer
 import Prim.Row (class Nub)
 import Record as Record
 import Rtsv2.Env as Env
-import Serf (IpAndPort)
-import Serf as Serf
 import Rtsv2.PoPDefinition (ServerAddress)
 import Rtsv2.PoPDefinition as PoPDefinition
+import Serf (IpAndPort)
+import Serf as Serf
 import Shared.Agent as Agent
 import Shared.Stream (StreamId(..), StreamVariantId(..))
 
@@ -151,7 +154,15 @@ init config = do
       { ip: show rpcBindIp
       , port: config.rpcPort
       }
-  _ <- Serf.stream serfRpcAddress
+  streamResp <- Serf.stream serfRpcAddress
+  _ <- case streamResp of
+         Left error -> do
+           _ <- logInfo "Could not connect to IntraPoP Serf Agent" { error: error }
+           _ <- Erl.sleep 100 -- Just so we don't spin like crazy...
+           unsafeCrashWith ("could_not_connect_stream")
+         Right r ->
+           pure r
+
   pure
     { config
     , serfRpcAddress
@@ -173,7 +184,10 @@ handleInfo msg state = case msg of
     Serf.MemberLeaving -> pure state
     Serf.MemberLeft members -> membersLeft members state
     Serf.MemberFailed -> pure state
-    Serf.StreamFailed -> pure state
+    Serf.StreamFailed -> do
+      _ <- logInfo "Lost connection to IntraPoP Serf Agent" {}
+      _ <- Erl.sleep 100 -- Just so we don't spin like crazy...
+      unsafeCrashWith ("lost_serf_connection")
     Serf.UserEvent name ltime coalesce intraMessage ->
      case intraMessage of
       StreamAvailable streamId server
