@@ -26,7 +26,6 @@ import Prim.Row (class Nub)
 import Record as Record
 import Rtsv2.Env as Env
 import Rtsv2.IntraPoPAgent as IntraPoPAgent
-import Rtsv2.IntraPoPSerf as IntraSerf
 import Rtsv2.PoPDefinition (PoPName, ServerAddress, ServerLocation(..), whereIsServer)
 import Rtsv2.PoPDefinition as PoPDefinition
 import Serf (IpAndPort)
@@ -54,7 +53,7 @@ serverName = Local "transPopAgent"
 data Msg
   = Tick
   | JoinAll
-  | IntraPoPBusMsg IntraSerf.IntraMessage
+  | IntraPoPBusMsg IntraPoPAgent.IntraMessage
   | TransPoPSerfMsg (Serf.SerfMessage TransMessage)
 
 startLink :: Config -> Effect StartLinkResult
@@ -122,16 +121,10 @@ handleInfo msg state@{ thisNode } = case msg of
         | origin transMessage == thisNode -> pure state
         | otherwise -> handleTransPoPMessage transMessage state
 
-handleIntraPoPMessage :: IntraSerf.IntraMessage -> State -> Effect State
-handleIntraPoPMessage IntraSerf.Ignore state = pure state
+handleIntraPoPMessage :: IntraPoPAgent.IntraMessage -> State -> Effect State
+handleIntraPoPMessage (IntraPoPAgent.TransPoPLeader address) state = handleLeaderAnnouncement address state
 
-handleIntraPoPMessage (IntraSerf.TransPoPLeader address) state = handleLeaderAnnouncement address state
-
-handleIntraPoPMessage (IntraSerf.StreamAvailable streamId addr) state = handleIntraPoPStreamAvailable streamId addr state
-
-handleIntraPoPMessage (IntraSerf.MembersAlive members) state = pure state
-
-handleIntraPoPMessage (IntraSerf.MembersLeft members) state = pure state
+handleIntraPoPMessage (IntraPoPAgent.StreamAvailable streamId addr) state = handleIntraPoPStreamAvailable streamId addr state
 
 handleTransPoPMessage :: TransMessage -> State -> Effect State
 handleTransPoPMessage (StreamAvailable streamId server) state = do

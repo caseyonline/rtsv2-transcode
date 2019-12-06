@@ -14,6 +14,6 @@
 [x] - separate intra-pop serf from trans-pop serf messages
 [ ] - config in ingestAggregatorAgent - currently timer hardcoded - move all config records to config.purs
 [ ] - add stream_id domain to logs that are pre-stream
-[ ] - currentTransPoP appears to be wrong sometimes...
+[x] - currentTransPoP appears to be wrong sometimes...
 [x] - transPoP leave - ensure serf restarts (systemd) and maybe assert on each tick that still not a memeber
 [ ] - reconnect stream if we get a stream-failed (intra and trans) - will need to call serf.members

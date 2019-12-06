@@ -50,9 +50,6 @@ rtsv2IngestAggregatorAgentSup = ModuleName "Rtsv2.IngestAggregatorAgentSup"
 rtsv2IntraPoPAgent :: ModuleName
 rtsv2IntraPoPAgent = ModuleName "Rtsv2.IntraPoPAgent"
 
-rtsv2IntraPoPSerf :: ModuleName
-rtsv2IntraPoPSerf = ModuleName "Rtsv2.IntraPoPSerf"
-
 rtsv2Node :: ModuleName
 rtsv2Node = ModuleName "Rtsv2.Node"
 
