@@ -1,6 +1,7 @@
 module Rtsv2.PoPDefinition
        ( startLink
        , getOtherServersForThisPoP
+       , getOtherPoPs
        , getSeedsForThisPoP
        , getSeedsForOtherPoPs
        , thisNode
@@ -97,6 +98,11 @@ getOtherServersForThisPoP :: Effect (List ServerAddress)
 getOtherServersForThisPoP = Gen.call serverName (\state@{otherServersInThisPoP} ->
                                                   CallReply otherServersInThisPoP state
                                                 )
+
+getOtherPoPs :: Effect (List PoP)
+getOtherPoPs = Gen.call serverName (\state@{otherPoPs} ->
+                                     CallReply otherPoPs state
+                                   )
 
 getSeedsForThisPoP :: Effect (List ServerAddress)
 getSeedsForThisPoP = Gen.doCall serverName (\state@{otherServersInThisPoP} ->

@@ -5,11 +5,15 @@ import Prelude
 import Bus as Bus
 import Data.Either (Either(..))
 import Data.Foldable (foldl)
-import Data.Maybe (Maybe(..))
+import Data.Int (floor, toNumber)
+import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Set as Set
 import Data.Traversable (sequence)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
+import Erl.Data.Map (Map)
+import Erl.Data.Map as Map
 import Erl.Process (spawnLink)
 import Erl.Utils (sleep, systemTime, TimeUnit(..))
 import Foreign (Foreign)
@@ -23,7 +27,7 @@ import Record as Record
 import Rtsv2.Env as Env
 import Rtsv2.IntraPoPAgent as IntraPoPAgent
 import Rtsv2.IntraPoPSerf as IntraSerf
-import Rtsv2.PoPDefinition (ServerAddress, ServerLocation(..), PoP, whereIsServer)
+import Rtsv2.PoPDefinition (PoP, ServerAddress, ServerLocation(..), PoPName, whereIsServer)
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.TransPoPSerf (IpAndPort, origin)
 import Rtsv2.TransPoPSerf as TransSerf
@@ -36,6 +40,7 @@ type Config
     , rpcPort :: Int
     , leaderTimeoutMs :: Int
     , leaderAnnounceMs :: Int
+    , rejoinEveryMs :: Int
     }
 
 serverName :: ServerName State Msg
@@ -59,17 +64,21 @@ type State
     , thisLocation :: ServerLocation
     , config :: Config
     , serfRpcAddress :: IpAndPort
+    , members :: Map PoPName (Set.Set String)
     }
 
 init :: Config -> Effect State
 init config@{ leaderTimeoutMs
             , leaderAnnounceMs
+            , rejoinEveryMs
             , rpcPort
             } = do
+  _ <- logInfo "Trans-PoP Agent Starting" {config: config}
   _ <- Gen.registerExternalMapping serverName (\m -> TransPoPMsg <$> (TransSerf.messageMapper m))
   _ <- Bus.subscribe serverName IntraPoPAgent.bus IntraPoPMsg
   _ <- Timer.sendEvery serverName leaderAnnounceMs Tick
-  _ <- Timer.sendAfter serverName 4000 JoinAll
+  _ <- Timer.sendAfter serverName (min (floor ((toNumber leaderAnnounceMs) * 1.5)) rejoinEveryMs) JoinAll
+  _ <- Timer.sendEvery serverName rejoinEveryMs JoinAll
   rpcBindIp <- Env.privateInterfaceIp
   thisNode <- PoPDefinition.thisNode
   thisLocation <- PoPDefinition.thisLocation
@@ -89,6 +98,7 @@ init config@{ leaderTimeoutMs
       , thisNode: thisNode
       , thisLocation: thisLocation
       , serfRpcAddress: serfRpcAddress
+      , members : Map.empty
       }
 
 handleInfo :: Msg -> State -> Effect State
@@ -121,14 +131,56 @@ handleTransPoPMessage (TransSerf.StreamAvailable streamId server) state = do
   _ <- IntraPoPAgent.announceRemoteStreamIsAvailable streamId server
   pure state
 
--- handleTransPoPMessage (TransSerf.MembersAlive members) state =
---   do
---     _ <- logInfo "Members Alive" {members: members}
---     pure state
--- handleTransPoPMessage (TransSerf.MembersLeft members) state =
---   do
---     _ <- logInfo "Members Left" {members: members}
---     pure state
+handleTransPoPMessage (TransSerf.MembersAlive aliveMembers) state =
+  do
+    _ <- logInfo "Members Alive" {members: aliveMembers}
+    newMembers <- foldl addPoP (pure state.members) aliveMembers
+    pure state {members = newMembers}
+  where
+    addPoP :: Effect (Map PoPName (Set.Set String)) -> TransSerf.SerfMember -> Effect (Map PoPName (Set.Set String))
+    addPoP eMembers aliveMember@{name: aliveName} =
+      do
+        members <- eMembers
+        mPoP <- getPoP aliveMember
+        pure $ fromMaybe members ((\popName ->
+                                    let
+                                      existingMembers = case Map.lookup popName members of
+                                                          Just existing -> existing
+                                                          Nothing -> Set.empty
+                                      newMembers = Set.insert aliveName existingMembers
+                                    in
+                                     Map.insert popName newMembers members
+                                  ) <$> mPoP)
+
+handleTransPoPMessage (TransSerf.MembersLeft leftMembers) state =
+  do
+    _ <- logInfo "Members Left" {members: leftMembers}
+    newMembers <- foldl removePoP (pure state.members) leftMembers
+    pure state {members = newMembers}
+  where
+    removePoP :: Effect (Map PoPName (Set.Set String)) -> TransSerf.SerfMember -> Effect (Map PoPName (Set.Set String))
+    removePoP eMembers leftMember@{name: leftName} =
+      do
+        members <- eMembers
+        mPoP <- getPoP leftMember
+        pure $ fromMaybe members ((\popName ->
+                                    let
+                                      existingMembers = case Map.lookup popName members of
+                                                          Just existing -> existing
+                                                          Nothing -> Set.empty
+                                      newMembers = Set.delete leftName existingMembers
+                                    in
+                                     Map.insert popName newMembers members
+                                  ) <$> mPoP)
+
+getPoP :: TransSerf.SerfMember -> Effect (Maybe PoPName)
+getPoP {name : memberName} =
+  do
+    mServerLocation <- whereIsServer memberName
+    pure $ case mServerLocation of
+      Nothing -> Nothing
+      Just (ServerLocation popName _) -> Just popName
+
 --TransPopMsg a ->
 -- TODO - if we are leader and transpop-streamAvailable from other PoP, then call IntraPop.streamIsAvailable
 handleIntraPoPStreamAvailable :: StreamId -> ServerAddress -> State -> Effect State
@@ -176,14 +228,18 @@ handleTick state@{ lastLeaderAnnouncement
 
   where
     loopStreamJoin rpcAddress n =
-     do      _ <- sleep 300
-             resp <- TransSerf.stream rpcAddress
-             case resp of
-                 Left _ ->
-                   case n of
-                        0 -> pure resp
-                        _ -> loopStreamJoin serfRpcAddress $ n - 1
-                 Right x -> pure resp
+      do
+      _ <- sleep 300
+      resp <- TransSerf.stream rpcAddress
+      case resp of
+          Left _ ->
+            case n of
+                 0 -> pure resp
+                 _ -> loopStreamJoin serfRpcAddress $ n - 1
+          Right x ->
+            do
+            _ <- logInfo "Joined Trans-PoP stream" {}
+            pure resp
 
 
 handleLeaderAnnouncement :: ServerAddress -> State -> Effect State
@@ -203,10 +259,11 @@ handleLeaderAnnouncement address state@{ thisNode
           { currentLeader = Just address
           , lastLeaderAnnouncement = now
           , weAreLeader = false
+          , members = Map.empty :: Map PoPName (Set.Set String)
           }
+
 handleLeaderAnnouncement address state@{ weAreLeader: true } =
   pure state
-
 
 handleLeaderAnnouncement address state@{ currentLeader
                                        , thisNode
@@ -227,7 +284,6 @@ handleLeaderAnnouncement address state = do
 
 joinAllSerf :: State -> Effect State
 joinAllSerf state@{ weAreLeader: false } = do
-  _ <- Timer.sendAfter serverName 4000 JoinAll
   pure state
 
 joinAllSerf state@{ config, serfRpcAddress } =
@@ -254,9 +310,10 @@ joinAllSerf state@{ config, serfRpcAddress } =
                                   Just addr -> do
                                     result <- TransSerf.join serfRpcAddress ((serverAddressToSerfAddress addr) : nil) true
                                     _ <-
-                                      logInfo "Rest said "
+                                      logInfo "Join said "
                                         { server: addr
-                                        , result: result
+                                        , restResult: restResult
+                                        , serfResult: result
                                         }
                                     pure unit
                                 pure unit
