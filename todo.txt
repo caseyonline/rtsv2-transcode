@@ -4,7 +4,6 @@
 [x] - test1 - hit edge / start ingest / hit edge again
 [x] - elect trans pop leader
 [x] - test2 - hit edge / start ingest in different pop / hit edge again
-[ ] - test3 - same after killing trans pop leader
 [ ] - test4 - IngestAggregator with a name clash - 2 things running, should be 1
 [ ] - test5 - Multiple trans-pops with a name clash - 2 things running, should be 1
 [ ] - test6 - Multiple stream-relay with a name clash - 2 things running, should be 1
@@ -17,3 +16,4 @@
 [x] - currentTransPoP appears to be wrong sometimes...
 [x] - transPoP leave - ensure serf restarts (systemd) and maybe assert on each tick that still not a memeber
 [x] - reconnect stream if we get a stream-failed (intra and trans) - will need to call serf.members
+[ ] - maybe loose bus between intra-pop and trans-pop

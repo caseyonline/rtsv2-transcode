@@ -6,6 +6,7 @@ import Bus as Bus
 import Data.Either (Either(..))
 import Data.Foldable (foldl)
 import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Newtype (wrap)
 import Data.Set as Set
 import Data.Traversable (sequence, traverse_)
 import Effect (Effect)
@@ -14,7 +15,7 @@ import Erl.Data.List (List, index, length, nil, (:))
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
 import Erl.Process (spawnLink)
-import Erl.Utils (sleep, systemTime, TimeUnit(..))
+import Erl.Utils (Milliseconds, sleep, systemTimeMs)
 import Foreign (Foreign)
 import Logger as Logger
 import Os (osCmd)
@@ -40,8 +41,16 @@ import SpudGun as SpudGun
 
 data TransMessage = StreamAvailable StreamId ServerAddress
 
-origin :: TransMessage -> ServerAddress
-origin (StreamAvailable _ serverAddress) = serverAddress
+messageOrigin :: TransMessage -> Effect (Maybe PoPName)
+messageOrigin (StreamAvailable _ addr) = originPoP addr
+
+originPoP :: ServerAddress -> Effect (Maybe PoPName)
+originPoP addr =
+  do
+    mServerLocation <- whereIsServer addr
+    pure $ case mServerLocation of
+      Nothing -> Nothing
+      Just (ServerLocation sourcePoP _) -> Just sourcePoP
 
 type Config
   = { bindPort :: Int
@@ -79,10 +88,11 @@ startLink args = Gen.startLink serverName (init args) handleInfo
 type State
   = { currentLeader :: Maybe ServerAddress
     , weAreLeader :: Boolean
-    , lastLeaderAnnouncement :: Int
-    , leaderAnnouncementTimeout :: Int
+    , lastLeaderAnnouncement :: Milliseconds
+    , leaderAnnouncementTimeout :: Milliseconds
     , thisNode :: ServerAddress
     , thisLocation :: ServerLocation
+    , thisPoP :: PoPName
     , config :: Config
     , serfRpcAddress :: IpAndPort
     , members :: Map PoPName (Set.Set String)
@@ -101,7 +111,9 @@ init config@{ leaderTimeoutMs
   rpcBindIp <- Env.privateInterfaceIp
   thisNode <- PoPDefinition.thisNode
   thisLocation <- PoPDefinition.thisLocation
-  now <- systemTime MilliSecond
+  let
+    ServerLocation thisPoP _ = thisLocation
+  now <- systemTimeMs
   let
     serfRpcAddress =
       { ip: show rpcBindIp
@@ -113,15 +125,16 @@ init config@{ leaderTimeoutMs
       , currentLeader: Nothing
       , weAreLeader: false
       , lastLeaderAnnouncement: now
-      , leaderAnnouncementTimeout: leaderTimeoutMs
+      , leaderAnnouncementTimeout: wrap leaderTimeoutMs
       , thisNode: thisNode
       , thisLocation: thisLocation
+      , thisPoP: thisPoP
       , serfRpcAddress: serfRpcAddress
       , members: Map.empty
       }
 
 handleInfo :: Msg -> State -> Effect State
-handleInfo msg state@{ thisNode } = case msg of
+handleInfo msg state@{ thisPoP } = case msg of
   Tick -> handleTick state
 
   JoinAll -> do
@@ -143,9 +156,14 @@ handleInfo msg state@{ thisNode } = case msg of
       Serf.StreamFailed -> do
         _ <- logInfo "Lost connection to TransPoP Serf Agent" {}
         unsafeCrashWith ("lost_serf_connection")
-      Serf.UserEvent name ltime coalesce transMessage
-        | origin transMessage == thisNode -> pure state
-        | otherwise -> handleTransPoPMessage transMessage state
+      Serf.UserEvent name ltime coalesce transMessage ->
+        do
+          mSourcePoP <- messageOrigin transMessage
+          case mSourcePoP of
+            Nothing -> pure state
+            Just sourcePoP
+              | sourcePoP == thisPoP -> pure state
+              | otherwise -> handleTransPoPMessage transMessage state
 
 handleIntraPoPMessage :: IntraPoPAgent.IntraMessage -> State -> Effect State
 handleIntraPoPMessage (IntraPoPAgent.TransPoPLeader address) state = handleLeaderAnnouncement address state
@@ -209,18 +227,16 @@ getPoP {name : memberName} =
       Nothing -> Nothing
       Just (ServerLocation popName _) -> Just popName
 
---TransPopMsg a ->
--- TODO - if we are leader and transpop-streamAvailable from other PoP, then call IntraPop.streamIsAvailable
 handleIntraPoPStreamAvailable :: StreamId -> ServerAddress -> State -> Effect State
 handleIntraPoPStreamAvailable _ _ state@{ weAreLeader: false } = pure state
 
 handleIntraPoPStreamAvailable streamId addr state@{ thisLocation: (ServerLocation pop _)
                                                   , serfRpcAddress
                                                   } = do
-  mServerLocation <- whereIsServer addr
-  case mServerLocation of
+  mSourcePoP <- originPoP addr
+  case mSourcePoP of
     Nothing -> pure state
-    Just (ServerLocation sourcePoP _)
+    Just sourcePoP
       | sourcePoP == pop -> do
         -- Message from our pop - distribute over trans-pop
         _ <- logInfo "Local stream being delivered to trans-pop" { streamId: streamId }
@@ -237,13 +253,13 @@ handleTick state@{ weAreLeader: true } = do
 handleTick state@{ lastLeaderAnnouncement
                  , leaderAnnouncementTimeout
                  } = do
-  now <- systemTime MilliSecond
-  if lastLeaderAnnouncement + leaderAnnouncementTimeout < now then
+  now <- systemTimeMs
+  if (lastLeaderAnnouncement + leaderAnnouncementTimeout) < now then
     becomeLeader now state
   else do
     pure $ state
 
-becomeLeader :: Int -> State -> Effect State
+becomeLeader :: Milliseconds -> State -> Effect State
 becomeLeader now state@{ lastLeaderAnnouncement
                        , leaderAnnouncementTimeout
                        , serfRpcAddress
@@ -271,7 +287,7 @@ handleLeaderAnnouncement address state@{ thisNode
     stopResp <- osCmd "scripts/stopTransPoPAgent.sh"
     _ <- logInfo "Stop Resp" {resp: stopResp}
 
-    now <- systemTime MilliSecond
+    now <- systemTimeMs
     pure
       $ state
           { currentLeader = Just address
@@ -289,7 +305,7 @@ handleLeaderAnnouncement address state@{ currentLeader
   | Just address /= currentLeader
       && address /= thisNode = do
     _ <- logInfo "Another node has announced as transpop leader, remember which one" { leader: address }
-    now <- systemTime MilliSecond
+    now <- systemTimeMs
     pure
       $ state
           { currentLeader = Just address
@@ -297,7 +313,7 @@ handleLeaderAnnouncement address state@{ currentLeader
           }
 
 handleLeaderAnnouncement address state = do
-  now <- systemTime MilliSecond
+  now <- systemTimeMs
   pure $ state { lastLeaderAnnouncement = now }
 
 
@@ -321,7 +337,7 @@ connectStream state@{serfRpcAddress} = do
                         _ <- logInfo "Could not connect to TransPoP Serf Agent" { error: error }
                         unsafeCrashWith ("could_not_connect_stream")
                    _ -> do
-                         _ <- sleep 100
+                         _ <- sleep (wrap 100)
                          loopStreamJoin serfRpcAddress $ n - 1
             Right x ->
               pure resp

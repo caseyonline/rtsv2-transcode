@@ -20,13 +20,17 @@ import Bus as Bus
 import Data.Either (Either(..))
 import Data.Foldable (foldl)
 import Data.Maybe (Maybe(..))
+import Data.Newtype (wrap)
 import Data.Traversable (traverse_)
 import Effect (Effect)
+import EphemeralMap (EMap)
+import EphemeralMap as EMap
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, length, nil, singleton, (:))
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
 import Erl.Process (Process, spawnLink)
+import Erl.Utils (Milliseconds)
 import Erl.Utils as Erl
 import Foreign (Foreign)
 import Logger as Logger
@@ -51,9 +55,10 @@ type State
     , serfRpcAddress :: IpAndPort
     , currentTransPoPLeader :: Maybe ServerAddress
     , streamRelayLocations :: Map StreamId String
-    , streamAggregatorLocations :: Map StreamId String
+    , streamAggregatorLocations :: EMap StreamId String
     , thisNode :: ServerAddress
     , members :: Map ServerAddress Serf.SerfMember
+    , expireThreshold :: Milliseconds
     }
 
 
@@ -65,10 +70,13 @@ type Config
   = { bindPort :: Int
     , rpcPort :: Int
     , rejoinEveryMs :: Int
+    , expireThresholdMs :: Int
+    , expireEveryMs :: Int
     }
 
 data Msg
   = JoinAll
+  | GarbageCollect
   | IntraPoPSerfMsg (Serf.SerfMessage IntraMessage)
 
 bus :: Bus.Bus IntraMessage
@@ -85,7 +93,7 @@ health =
 isStreamAvailable :: StreamId -> Effect Boolean
 isStreamAvailable streamId =
   Gen.call serverName \state@{ streamAggregatorLocations } ->
-    CallReply (Map.member streamId streamAggregatorLocations) state
+    CallReply (EMap.member streamId streamAggregatorLocations) state
 
 isIngestActive :: StreamVariantId -> Effect Boolean
 isIngestActive (StreamVariantId s v) = Gen.call serverName \state -> CallReply false state
@@ -98,7 +106,7 @@ whereIsIngestRelay (StreamVariantId s _) =
 whereIsIngestAggregator :: StreamVariantId -> Effect (Maybe String)
 whereIsIngestAggregator (StreamVariantId s _) =
   Gen.call serverName \state ->
-    CallReply (Map.lookup (StreamId s) state.streamAggregatorLocations) state
+    CallReply (EMap.lookup (StreamId s) state.streamAggregatorLocations) state
 
 currentTransPoPLeader :: Effect (Maybe ServerAddress)
 currentTransPoPLeader =
@@ -113,7 +121,8 @@ announceStreamIsAvailable streamId =
     $ \state@{ streamAggregatorLocations, thisNode } -> do
         _ <- logInfo "Local stream available" { streamId: streamId }
         _ <- raiseLocal state "streamAvailable" (StreamAvailable streamId thisNode)
-        pure $ Gen.CastNoReply state { streamAggregatorLocations = (Map.insert streamId thisNode streamAggregatorLocations) }
+        newStreamAggregatorLocations <- EMap.insert' streamId thisNode streamAggregatorLocations
+        pure $ Gen.CastNoReply state { streamAggregatorLocations = newStreamAggregatorLocations }
 
 announceRemoteStreamIsAvailable :: StreamId -> ServerAddress -> Effect Unit
 announceRemoteStreamIsAvailable streamId addr =
@@ -121,13 +130,15 @@ announceRemoteStreamIsAvailable streamId addr =
     $ \state@{ streamAggregatorLocations } -> do
         _ <- logInfo "Remote stream available" { streamId: streamId
                                                , addr: addr }
-        _ <- raiseLocal state "streamAvailable" (StreamAvailable streamId addr)
-        pure $ Gen.CastNoReply state { streamAggregatorLocations = (Map.insert streamId addr streamAggregatorLocations) }
+        _ <- Serf.event state.serfRpcAddress "streamAvailable" (StreamAvailable streamId addr) false
+        -- _ <- raiseLocal state "streamAvailable" (StreamAvailable streamId addr)
+        newStreamAggregatorLocations <- EMap.insert' streamId addr streamAggregatorLocations
+        pure $ Gen.CastNoReply state { streamAggregatorLocations = newStreamAggregatorLocations }
 
 announceTransPoPLeader :: Effect Unit
 announceTransPoPLeader =
   Gen.doCast serverName
-    $ \state@{ streamAggregatorLocations, thisNode } -> do
+    $ \state@{ thisNode } -> do
         _ <- raiseLocal state "transPoPLeader" (TransPoPLeader thisNode)
         pure $ Gen.CastNoReply state
 
@@ -144,11 +155,15 @@ startLink :: Config -> Effect StartLinkResult
 startLink args = Gen.startLink serverName (init args) handleInfo
 
 init :: Config -> Effect State
-init config = do
+init config@{rejoinEveryMs
+             , expireThresholdMs
+             , expireEveryMs}
+             = do
   _ <- logInfo "Intra-PoP Agent Starting" {config: config}
   _ <- Gen.registerExternalMapping serverName (\m -> IntraPoPSerfMsg <$> (Serf.messageMapper m))
   _ <- Timer.sendAfter serverName 0 JoinAll
-  _ <- Timer.sendEvery serverName config.rejoinEveryMs JoinAll
+  _ <- Timer.sendEvery serverName rejoinEveryMs JoinAll
+  _ <- Timer.sendEvery serverName expireEveryMs GarbageCollect
   rpcBindIp <- Env.privateInterfaceIp
   thisNode <- PoPDefinition.thisNode
   let
@@ -160,7 +175,7 @@ init config = do
   _ <- case streamResp of
          Left error -> do
            _ <- logInfo "Could not connect to IntraPoP Serf Agent" { error: error }
-           _ <- Erl.sleep 100 -- Just so we don't spin like crazy...
+           _ <- Erl.sleep (wrap 100) -- Just so we don't spin like crazy...
            unsafeCrashWith ("could_not_connect_stream")
          Right r ->
            pure r
@@ -169,10 +184,11 @@ init config = do
     { config
     , serfRpcAddress
     , streamRelayLocations: Map.empty
-    , streamAggregatorLocations: Map.empty
+    , streamAggregatorLocations: EMap.empty
     , thisNode: thisNode
     , currentTransPoPLeader: Nothing
     , members: Map.empty
+    , expireThreshold: wrap expireThresholdMs
     }
 
 handleInfo :: Msg -> State -> Effect State
@@ -180,6 +196,7 @@ handleInfo msg state = case msg of
   JoinAll -> do
     _ <- joinAllSerf state
     pure state
+  GarbageCollect -> garbageCollect state
   IntraPoPSerfMsg imsg ->
    case imsg of
     Serf.MemberAlive members -> membersAlive members state
@@ -188,7 +205,7 @@ handleInfo msg state = case msg of
     Serf.MemberFailed -> pure state
     Serf.StreamFailed -> do
       _ <- logInfo "Lost connection to IntraPoP Serf Agent" {}
-      _ <- Erl.sleep 100 -- Just so we don't spin like crazy...
+      _ <- Erl.sleep (wrap 100) -- Just so we don't spin like crazy...
       unsafeCrashWith ("lost_serf_connection")
     Serf.UserEvent name ltime coalesce intraMessage ->
      case intraMessage of
@@ -207,7 +224,8 @@ handleInfo msg state = case msg of
               { streamId: streamId
               , remoteNode: server
               }
-          pure $ state { streamAggregatorLocations = (Map.insert streamId server state.streamAggregatorLocations) }
+          newStreamAggregatorLocations <- EMap.insert' streamId server state.streamAggregatorLocations
+          pure $ state { streamAggregatorLocations = newStreamAggregatorLocations }
       TransPoPLeader server
         | server == state.thisNode -> pure state { currentTransPoPLeader = Just server }
         | otherwise -> do
@@ -228,6 +246,12 @@ membersLeft members state = do
     newMembers = foldl (\acc { name } -> Map.delete name acc) state.members members
   pure state { members = newMembers }
 
+garbageCollect :: State -> Effect State
+garbageCollect state@{expireThreshold,
+                      streamAggregatorLocations} =
+  do
+    newStreamAggregatorLocations <- EMap.garbageCollect' expireThreshold streamAggregatorLocations
+    pure state{streamAggregatorLocations = newStreamAggregatorLocations}
 
 joinAllSerf :: State -> Effect Unit
 joinAllSerf { config, serfRpcAddress, members } =

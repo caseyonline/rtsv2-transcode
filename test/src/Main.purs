@@ -39,10 +39,10 @@ main =
     before_ (do
                 _ <- stopNodes
                 launchNodes [
-                  node "vlan101" "172.16.169.1" "scripts/env/steve.data/sys.config"
-                  , node "vlan102" "172.16.169.2" "scripts/env/steve.data/sys.config"
-                  , node "vlan201" "172.16.170.1" "scripts/env/steve.data/sys.config"
-                  , node "vlan202" "172.16.170.2" "scripts/env/steve.data/sys.config"
+                  node "vlan101" "172.16.169.1" "test/config/sys.config"
+                  , node "vlan102" "172.16.169.2" "test/config/sys.config"
+                  , node "vlan201" "172.16.170.1" "test/config/sys.config"
+                  , node "vlan202" "172.16.170.2" "test/config/sys.config"
                   ]) do
       after_ stopNodes do
         describe "two node setup" do

@@ -37,7 +37,7 @@ startLink streamId = Gen.startLink (serverName streamId) (init streamId) handleI
 init :: StreamId -> Effect State
 init streamId = do
   let
-    streamAvailableAnnounceMs = 1000
+    streamAvailableAnnounceMs = 1000 -- TODO - should be in config - goes circular
   _ <- Timer.sendEvery (serverName streamId) streamAvailableAnnounceMs Tick
   _ <- announceStreamIsAvailable streamId
 
@@ -55,5 +55,5 @@ handleTick :: State -> Effect State
 handleTick state@{streamId} = do
   _ <- announceStreamIsAvailable streamId
   pure state
-  
+
 -- TODO - what if we want to have the relay run remotely (load etc) -- Find / create if there is a relay for this stream -- ask intrapopstate --

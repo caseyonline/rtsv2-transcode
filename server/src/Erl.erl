@@ -2,7 +2,7 @@
 
 -export([ isRegisteredImpl/1
         , systemTimeImpl/1
-        , sleep/1
+        , sleepImpl/1
         ]).
 
 isRegisteredImpl(Name) ->
@@ -20,5 +20,5 @@ systemTimeImpl(TimeUnit) ->
       erlang:system_time(TimeUnit)
   end.
 
-sleep(Ms) ->
+sleepImpl(Ms) ->
   fun() -> timer:sleep(Ms), unit end.

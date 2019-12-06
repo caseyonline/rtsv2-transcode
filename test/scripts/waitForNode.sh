@@ -29,7 +29,6 @@ function wait_for_server {
             break
         fi
     fi
-
     sleep 0.5
   done
 }
