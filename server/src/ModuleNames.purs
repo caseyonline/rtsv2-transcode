@@ -68,9 +68,6 @@ rtsv2Sup = ModuleName "Rtsv2.Sup"
 rtsv2TransPoPAgent :: ModuleName
 rtsv2TransPoPAgent = ModuleName "Rtsv2.TransPoPAgent"
 
-rtsv2TransPoPSerf :: ModuleName
-rtsv2TransPoPSerf = ModuleName "Rtsv2.TransPoPSerf"
-
 rtsv2Web :: ModuleName
 rtsv2Web = ModuleName "Rtsv2.Web"
 

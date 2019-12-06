@@ -134,6 +134,7 @@ startLink args = Gen.startLink serverName (init args) handleInfo
 
 init :: Config -> Effect State
 init config = do
+  _ <- logInfo "Intra-PoP Agent Starting" {config: config}
   _ <- Gen.registerExternalMapping serverName (\m -> SerfMessage <$> (Serf.messageMapper m))
   _ <- Timer.sendAfter serverName 0 JoinAll
   _ <- Timer.sendEvery serverName config.rejoinEveryMs JoinAll
@@ -145,10 +146,6 @@ init config = do
       , port: config.rpcPort
       }
   _ <- Serf.stream serfRpcAddress
-  _ <-
-    logInfo "Intra-PoP Agent Starting"
-      { config: config
-      }
   pure
     { config
     , serfRpcAddress

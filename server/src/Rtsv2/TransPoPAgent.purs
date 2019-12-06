@@ -5,7 +5,9 @@ import Prelude
 import Bus as Bus
 import Data.Either (Either(..))
 import Data.Foldable (foldl)
-import Data.Maybe (Maybe(..))
+import Data.Int (floor, toNumber)
+import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Set as Set
 import Data.Traversable (sequence)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
@@ -24,9 +26,8 @@ import Prim.Row (class Nub)
 import Record as Record
 import Rtsv2.Env as Env
 import Rtsv2.IntraPoPAgent as IntraPoPAgent
-import Rtsv2.IntraPoPAgent as Intraerf
 import Rtsv2.IntraPoPSerf as IntraSerf
-import Rtsv2.PoPDefinition (ServerAddress, ServerLocation(..), whereIsServer)
+import Rtsv2.PoPDefinition (PoPName, ServerAddress, ServerLocation(..), whereIsServer)
 import Rtsv2.PoPDefinition as PoPDefinition
 import Serf (IpAndPort)
 import Serf as Serf
@@ -44,6 +45,7 @@ type Config
     , rpcPort :: Int
     , leaderTimeoutMs :: Int
     , leaderAnnounceMs :: Int
+    , rejoinEveryMs :: Int
     }
 
 serverName :: ServerName State Msg
@@ -67,18 +69,21 @@ type State
     , thisLocation :: ServerLocation
     , config :: Config
     , serfRpcAddress :: IpAndPort
-    , members :: Map ServerAddress Serf.SerfMember
+    , members :: Map PoPName (Set.Set String)
     }
 
 init :: Config -> Effect State
 init config@{ leaderTimeoutMs
             , leaderAnnounceMs
+            , rejoinEveryMs
             , rpcPort
             } = do
+  _ <- logInfo "Trans-PoP Agent Starting" {config: config}
   _ <- Gen.registerExternalMapping serverName (\m -> TransPoPSerfMsg <$> (Serf.messageMapper m))
   _ <- Bus.subscribe serverName IntraPoPAgent.bus IntraPoPBusMsg
   _ <- Timer.sendEvery serverName leaderAnnounceMs Tick
-  _ <- Timer.sendAfter serverName 4000 JoinAll
+  _ <- Timer.sendAfter serverName (min (floor ((toNumber leaderAnnounceMs) * 1.5)) rejoinEveryMs) JoinAll
+  _ <- Timer.sendEvery serverName rejoinEveryMs JoinAll
   rpcBindIp <- Env.privateInterfaceIp
   thisNode <- PoPDefinition.thisNode
   thisLocation <- PoPDefinition.thisLocation
@@ -106,14 +111,16 @@ handleInfo msg state@{ thisNode } = case msg of
   Tick -> handleTick state
   JoinAll -> joinAllSerf state
   IntraPoPBusMsg intraMessage -> handleIntraPoPMessage intraMessage state
-  TransPoPSerfMsg msg ->
-    case msg of
-      Serf.MemberAlive members -> pure state
+  TransPoPSerfMsg tmsg ->
+    case tmsg of
+      Serf.MemberAlive members -> membersAlive members state
       Serf.MemberLeaving -> pure state
-      Serf.MemberLeft members -> pure state
+      Serf.MemberLeft members -> membersLeft members state
       Serf.MemberFailed -> pure state
       Serf.StreamFailed -> pure state
-      Serf.UserEvent name ltime coalesce transMessage -> handleTransPoPMessage transMessage state
+      Serf.UserEvent name ltime coalesce transMessage
+        | origin transMessage == thisNode -> pure state
+        | otherwise -> handleTransPoPMessage transMessage state
 
 handleIntraPoPMessage :: IntraSerf.IntraMessage -> State -> Effect State
 handleIntraPoPMessage IntraSerf.Ignore state = pure state
@@ -122,24 +129,67 @@ handleIntraPoPMessage (IntraSerf.TransPoPLeader address) state = handleLeaderAnn
 
 handleIntraPoPMessage (IntraSerf.StreamAvailable streamId addr) state = handleIntraPoPStreamAvailable streamId addr state
 
-handleIntraPoPMessage (IntraSerf.MembersAlive members) state = membersAlive members state
+handleIntraPoPMessage (IntraSerf.MembersAlive members) state = pure state
 
-handleIntraPoPMessage (IntraSerf.MembersLeft members) state = membersLeft members state
+handleIntraPoPMessage (IntraSerf.MembersLeft members) state = pure state
 
 handleTransPoPMessage :: TransMessage -> State -> Effect State
 handleTransPoPMessage (StreamAvailable streamId server) state = do
   _ <- IntraPoPAgent.announceRemoteStreamIsAvailable streamId server
   pure state
 
+membersAlive :: (List Serf.SerfMember) -> State -> Effect State
+membersAlive aliveMembers state =
+  do
+    _ <- logInfo "Members Alive" {members: aliveMembers}
+    newMembers <- foldl addPoP (pure state.members) aliveMembers
+    pure state {members = newMembers}
+  where
+    addPoP :: Effect (Map PoPName (Set.Set String)) -> Serf.SerfMember -> Effect (Map PoPName (Set.Set String))
+    addPoP eMembers aliveMember@{name: aliveName} =
+      do
+        members <- eMembers
+        mPoP <- getPoP aliveMember
+        pure $ fromMaybe members ((\popName ->
+                                    let
+                                      existingMembers = case Map.lookup popName members of
+                                                          Just existing -> existing
+                                                          Nothing -> Set.empty
+                                      newMembers = Set.insert aliveName existingMembers
+                                    in
+                                     Map.insert popName newMembers members
+                                  ) <$> mPoP)
 
--- handleTransPoPMessage (TransSerf.MembersAlive members) state =
---   do
---     _ <- logInfo "Members Alive" {members: members}
---     pure state
--- handleTransPoPMessage (TransSerf.MembersLeft members) state =
---   do
---     _ <- logInfo "Members Left" {members: members}
---     pure state
+membersLeft :: (List Serf.SerfMember) -> State -> Effect State
+membersLeft leftMembers state =
+  do
+    _ <- logInfo "Members Left" {members: leftMembers}
+    newMembers <- foldl removePoP (pure state.members) leftMembers
+    pure state {members = newMembers}
+  where
+    removePoP :: Effect (Map PoPName (Set.Set String)) -> Serf.SerfMember -> Effect (Map PoPName (Set.Set String))
+    removePoP eMembers leftMember@{name: leftName} =
+      do
+        members <- eMembers
+        mPoP <- getPoP leftMember
+        pure $ fromMaybe members ((\popName ->
+                                    let
+                                      existingMembers = case Map.lookup popName members of
+                                                          Just existing -> existing
+                                                          Nothing -> Set.empty
+                                      newMembers = Set.delete leftName existingMembers
+                                    in
+                                     Map.insert popName newMembers members
+                                  ) <$> mPoP)
+
+getPoP :: Serf.SerfMember -> Effect (Maybe PoPName)
+getPoP {name : memberName} =
+  do
+    mServerLocation <- whereIsServer memberName
+    pure $ case mServerLocation of
+      Nothing -> Nothing
+      Just (ServerLocation popName _) -> Just popName
+
 --TransPopMsg a ->
 -- TODO - if we are leader and transpop-streamAvailable from other PoP, then call IntraPop.streamIsAvailable
 handleIntraPoPStreamAvailable :: StreamId -> ServerAddress -> State -> Effect State
@@ -187,16 +237,15 @@ handleTick state@{ lastLeaderAnnouncement
 
   where
     loopStreamJoin rpcAddress n =
-     do      _ <- sleep 300
-             resp <- Serf.stream rpcAddress
-             case resp of
-                 Left _ ->
-                   case n of
-                        0 -> pure resp
-                        _ -> loopStreamJoin serfRpcAddress $ n - 1
-                 Right x ->
-                   pure resp
-
+     do _ <- sleep 300
+        resp <- Serf.stream rpcAddress
+        case resp of
+            Left _ ->
+              case n of
+                   0 -> pure resp
+                   _ -> loopStreamJoin serfRpcAddress $ n - 1
+            Right x ->
+              pure resp
 
 handleLeaderAnnouncement :: ServerAddress -> State -> Effect State
 handleLeaderAnnouncement address state@{ thisNode
@@ -215,10 +264,11 @@ handleLeaderAnnouncement address state@{ thisNode
           { currentLeader = Just address
           , lastLeaderAnnouncement = now
           , weAreLeader = false
+          , members = Map.empty :: Map PoPName (Set.Set String)
           }
+
 handleLeaderAnnouncement address state@{ weAreLeader: true } =
   pure state
-
 
 handleLeaderAnnouncement address state@{ currentLeader
                                        , thisNode
@@ -239,7 +289,6 @@ handleLeaderAnnouncement address state = do
 
 joinAllSerf :: State -> Effect State
 joinAllSerf state@{ weAreLeader: false } = do
-  _ <- Timer.sendAfter serverName 4000 JoinAll
   pure state
 
 joinAllSerf state@{ config, serfRpcAddress } =
@@ -267,9 +316,10 @@ joinAllSerf state@{ config, serfRpcAddress } =
                                   Just addr -> do
                                     result <- Serf.join serfRpcAddress ((serverAddressToSerfAddress addr) : nil) true
                                     _ <-
-                                      logInfo "Rest said "
+                                      logInfo "Join said "
                                         { server: addr
-                                        , result: result
+                                        , restResult: restResult
+                                        , serfResult: result
                                         }
                                     pure unit
                                 pure unit
@@ -286,17 +336,3 @@ joinAllSerf state@{ config, serfRpcAddress } =
 
 logInfo :: forall a b. Nub ( domain :: List Atom | a ) b => String -> Record a -> Effect Foreign
 logInfo msg metaData = Logger.info msg (Record.merge { domain: ((atom (show Agent.TransPoP)) : nil) } { misc: metaData })
-
-membersAlive :: (List Serf.SerfMember) -> State -> Effect State
-membersAlive members state= do
-  _ <- logInfo "Members Alive" { members: _.name <$> members }
-  let
-    newMembers = foldl (\acc member@{ name } -> Map.insert name member acc) state.members members
-  pure state { members = newMembers }
-
-membersLeft :: (List Serf.SerfMember) -> State -> Effect State
-membersLeft members state = do
-  _ <- logInfo "Members Left" { members: _.name <$> members }
-  let
-    newMembers = foldl (\acc { name } -> Map.delete name acc) state.members members
-  pure state { members = newMembers }
