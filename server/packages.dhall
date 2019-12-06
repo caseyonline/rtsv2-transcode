@@ -54,6 +54,14 @@ let overrides =
           , version =
               "5767ab4c892591eb5f1ac9fae450b45280045aea"
           }
+      , erl-tuples =
+          { dependencies =
+              [ "assert", "console", "functions", "prelude", "tuples" ]
+          , repo =
+              "ssh://git@github.com/srstrong/purescript-erl-tuples.git"
+          , version =
+              "d923dab0d94af6872483bb5952b2652afdc3e95a"
+          }
       }
 
 let additions = {=}
