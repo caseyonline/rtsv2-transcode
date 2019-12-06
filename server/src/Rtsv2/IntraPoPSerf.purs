@@ -3,7 +3,7 @@ module Rtsv2.IntraPoPSerf
        , module RootSerf
        , event
        , messageMapper
-       , originServer
+--       , originServer
        )
 
        where
@@ -22,19 +22,19 @@ import Shared.Stream (StreamId)
 
 data IntraMessage = StreamAvailable StreamId ServerAddress
                   | TransPoPLeader ServerAddress
-                  | MembersAlive (List RootSerf.SerfMember)
-                  | MembersLeft (List RootSerf.SerfMember)
+                  | MembersAlive (List Serf.SerfMember)
+                  | MembersLeft (List Serf.SerfMember)
                   | Ignore
 
-event :: RootSerf.IpAndPort -> String -> IntraMessage -> Boolean ->  Effect (RootSerf.SerfResult Unit)
+event :: Serf.IpAndPort -> String -> IntraMessage -> Boolean ->  Effect (Serf.SerfResult Unit)
 event = Serf.event
 
-originServer :: IntraMessage -> Maybe ServerAddress
-originServer (StreamAvailable _ serverAddress) = Just serverAddress
-originServer (TransPoPLeader serverAddress) = Just serverAddress
-originServer (MembersAlive _) = Nothing
-originServer (MembersLeft _) = Nothing
-originServer Ignore = Nothing
+-- originServer :: IntraMessage -> Maybe ServerAddress
+-- originServer (StreamAvailable _ serverAddress) = Just serverAddress
+-- originServer (TransPoPLeader serverAddress) = Just serverAddress
+-- originServer (MembersAlive _) = Nothing
+-- originServer (MembersLeft _) = Nothing
+-- originServer Ignore = Nothing
 
 messageMapper :: Foreign -> Maybe IntraMessage
 messageMapper f =

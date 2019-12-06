@@ -10,6 +10,8 @@ import Data.Traversable (sequence)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
+import Erl.Data.Map (Map)
+import Erl.Data.Map as Map
 import Erl.Process (spawnLink)
 import Erl.Utils (sleep, systemTime, TimeUnit(..))
 import Foreign (Foreign)
@@ -22,14 +24,20 @@ import Prim.Row (class Nub)
 import Record as Record
 import Rtsv2.Env as Env
 import Rtsv2.IntraPoPAgent as IntraPoPAgent
+import Rtsv2.IntraPoPAgent as Intraerf
 import Rtsv2.IntraPoPSerf as IntraSerf
-import Rtsv2.PoPDefinition (ServerAddress, ServerLocation(..), PoP, whereIsServer)
+import Rtsv2.PoPDefinition (ServerAddress, ServerLocation(..), whereIsServer)
 import Rtsv2.PoPDefinition as PoPDefinition
-import Rtsv2.TransPoPSerf (IpAndPort, origin)
-import Rtsv2.TransPoPSerf as TransSerf
+import Serf (IpAndPort)
+import Serf as Serf
 import Shared.Agent as Agent
 import Shared.Stream (StreamId)
 import SpudGun as SpudGun
+
+data TransMessage = StreamAvailable StreamId ServerAddress
+
+origin :: TransMessage -> ServerAddress
+origin (StreamAvailable _ serverAddress) = serverAddress
 
 type Config
   = { bindPort :: Int
@@ -44,8 +52,8 @@ serverName = Local "transPopAgent"
 data Msg
   = Tick
   | JoinAll
-  | IntraPoPMsg IntraSerf.IntraMessage
-  | TransPoPMsg TransSerf.TransMessage
+  | IntraPoPBusMsg IntraSerf.IntraMessage
+  | TransPoPSerfMsg (Serf.SerfMessage TransMessage)
 
 startLink :: Config -> Effect StartLinkResult
 startLink args = Gen.startLink serverName (init args) handleInfo
@@ -59,6 +67,7 @@ type State
     , thisLocation :: ServerLocation
     , config :: Config
     , serfRpcAddress :: IpAndPort
+    , members :: Map ServerAddress Serf.SerfMember
     }
 
 init :: Config -> Effect State
@@ -66,8 +75,8 @@ init config@{ leaderTimeoutMs
             , leaderAnnounceMs
             , rpcPort
             } = do
-  _ <- Gen.registerExternalMapping serverName (\m -> TransPoPMsg <$> (TransSerf.messageMapper m))
-  _ <- Bus.subscribe serverName IntraPoPAgent.bus IntraPoPMsg
+  _ <- Gen.registerExternalMapping serverName (\m -> TransPoPSerfMsg <$> (Serf.messageMapper m))
+  _ <- Bus.subscribe serverName IntraPoPAgent.bus IntraPoPBusMsg
   _ <- Timer.sendEvery serverName leaderAnnounceMs Tick
   _ <- Timer.sendAfter serverName 4000 JoinAll
   rpcBindIp <- Env.privateInterfaceIp
@@ -89,17 +98,22 @@ init config@{ leaderTimeoutMs
       , thisNode: thisNode
       , thisLocation: thisLocation
       , serfRpcAddress: serfRpcAddress
+      , members: Map.empty
       }
 
 handleInfo :: Msg -> State -> Effect State
 handleInfo msg state@{ thisNode } = case msg of
   Tick -> handleTick state
   JoinAll -> joinAllSerf state
-  IntraPoPMsg intraMessage -> handleIntraPoPMessage intraMessage state
-  TransPoPMsg transMessage
-    | origin transMessage == Nothing -> pure state
-    | origin transMessage == Just thisNode -> pure state
-    | otherwise -> handleTransPoPMessage transMessage state
+  IntraPoPBusMsg intraMessage -> handleIntraPoPMessage intraMessage state
+  TransPoPSerfMsg msg ->
+    case msg of
+      Serf.MemberAlive members -> pure state
+      Serf.MemberLeaving -> pure state
+      Serf.MemberLeft members -> pure state
+      Serf.MemberFailed -> pure state
+      Serf.StreamFailed -> pure state
+      Serf.UserEvent name ltime coalesce transMessage -> handleTransPoPMessage transMessage state
 
 handleIntraPoPMessage :: IntraSerf.IntraMessage -> State -> Effect State
 handleIntraPoPMessage IntraSerf.Ignore state = pure state
@@ -108,18 +122,15 @@ handleIntraPoPMessage (IntraSerf.TransPoPLeader address) state = handleLeaderAnn
 
 handleIntraPoPMessage (IntraSerf.StreamAvailable streamId addr) state = handleIntraPoPStreamAvailable streamId addr state
 
-handleIntraPoPMessage (IntraSerf.MembersAlive members) state = pure state
+handleIntraPoPMessage (IntraSerf.MembersAlive members) state = membersAlive members state
 
-handleIntraPoPMessage (IntraSerf.MembersLeft members) state = pure state
+handleIntraPoPMessage (IntraSerf.MembersLeft members) state = membersLeft members state
 
-handleTransPoPMessage :: TransSerf.TransMessage -> State -> Effect State
-handleTransPoPMessage TransSerf.Ignore state = pure state
-
-handleTransPoPMessage TransSerf.SerfStreamFailed state = pure state
-
-handleTransPoPMessage (TransSerf.StreamAvailable streamId server) state = do
+handleTransPoPMessage :: TransMessage -> State -> Effect State
+handleTransPoPMessage (StreamAvailable streamId server) state = do
   _ <- IntraPoPAgent.announceRemoteStreamIsAvailable streamId server
   pure state
+
 
 -- handleTransPoPMessage (TransSerf.MembersAlive members) state =
 --   do
@@ -144,7 +155,7 @@ handleIntraPoPStreamAvailable streamId addr state@{ thisLocation: (ServerLocatio
       | sourcePoP == pop -> do
         -- Message from our pop - distribute over trans-pop
         _ <- logInfo "Local stream being delivered to trans-pop" { streamId: streamId }
-        result <- TransSerf.event state.serfRpcAddress "streamAvailable" (TransSerf.StreamAvailable streamId addr) true
+        result <- Serf.event state.serfRpcAddress "streamAvailable" (StreamAvailable streamId addr) true
         _ <- logInfo "trans-pop serf said" { result: result }
         pure state
       | otherwise -> pure state
@@ -177,13 +188,14 @@ handleTick state@{ lastLeaderAnnouncement
   where
     loopStreamJoin rpcAddress n =
      do      _ <- sleep 300
-             resp <- TransSerf.stream rpcAddress
+             resp <- Serf.stream rpcAddress
              case resp of
                  Left _ ->
                    case n of
                         0 -> pure resp
                         _ -> loopStreamJoin serfRpcAddress $ n - 1
-                 Right x -> pure resp
+                 Right x ->
+                   pure resp
 
 
 handleLeaderAnnouncement :: ServerAddress -> State -> Effect State
@@ -192,7 +204,7 @@ handleLeaderAnnouncement address state@{ thisNode
                                        , serfRpcAddress
                                        }
   | address < thisNode = do
-    result <- TransSerf.leave serfRpcAddress
+    result <- Serf.leave serfRpcAddress
     _ <- logInfo "Another node has taken over as transpop leader; stepping down" { leader: address }
     stopResp <- osCmd "scripts/stopTransPoPAgent.sh"
     _ <- logInfo "Stop Resp" {resp: stopResp}
@@ -239,7 +251,8 @@ joinAllSerf state@{ config, serfRpcAddress } =
       }
   in
     do
-      pops <- PoPDefinition.getSeedsForOtherPoPs :: Effect (List PoP)
+      pops <- PoPDefinition.getOtherPoPs
+
       _ <-
         sequence
           $ foldl
@@ -252,7 +265,7 @@ joinAllSerf state@{ config, serfRpcAddress } =
                                 _ <- case restResult of
                                   Nothing -> pure unit
                                   Just addr -> do
-                                    result <- TransSerf.join serfRpcAddress ((serverAddressToSerfAddress addr) : nil) true
+                                    result <- Serf.join serfRpcAddress ((serverAddressToSerfAddress addr) : nil) true
                                     _ <-
                                       logInfo "Rest said "
                                         { server: addr
@@ -273,3 +286,17 @@ joinAllSerf state@{ config, serfRpcAddress } =
 
 logInfo :: forall a b. Nub ( domain :: List Atom | a ) b => String -> Record a -> Effect Foreign
 logInfo msg metaData = Logger.info msg (Record.merge { domain: ((atom (show Agent.TransPoP)) : nil) } { misc: metaData })
+
+membersAlive :: (List Serf.SerfMember) -> State -> Effect State
+membersAlive members state= do
+  _ <- logInfo "Members Alive" { members: _.name <$> members }
+  let
+    newMembers = foldl (\acc member@{ name } -> Map.insert name member acc) state.members members
+  pure state { members = newMembers }
+
+membersLeft :: (List Serf.SerfMember) -> State -> Effect State
+membersLeft members state = do
+  _ <- logInfo "Members Left" { members: _.name <$> members }
+  let
+    newMembers = foldl (\acc { name } -> Map.delete name acc) state.members members
+  pure state { members = newMembers }

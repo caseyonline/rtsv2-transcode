@@ -75,16 +75,16 @@ strToIp str =
     )
 
 
-join :: IpAndPort -> List IpAndPort -> Boolean ->  Effect (SerfResult Int)
+join :: IpAndPort -> List IpAndPort -> Boolean -> Effect (SerfResult Int)
 join = joinImpl Left Right
 
-leave :: IpAndPort ->  Effect (SerfResult Unit)
+leave :: IpAndPort -> Effect (SerfResult Unit)
 leave = leaveImpl Left Right
 
 event :: forall a. IpAndPort -> String -> a -> Boolean ->  Effect (SerfResult Unit)
 event = eventImpl Left (Right unit)
 
-stream :: IpAndPort -> Effect (SerfResult Unit)
+stream :: forall a. IpAndPort -> Effect (SerfResult Unit)
 stream = streamImpl Left (Right unit)
 
 messageMapper :: forall a. Foreign -> Maybe (SerfMessage a)

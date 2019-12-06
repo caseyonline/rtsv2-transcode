@@ -11,7 +11,7 @@ import Pinto as Pinto
 import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStartTemplate, childType)
 import Pinto.Sup as Sup
 import Rtsv2.IngestAgent as Ingest
-import Shared.Stream (StreamVariantId(..))
+import Shared.Stream (StreamVariantId)
 
 serverName :: String
 serverName = "ingestAgentSup"

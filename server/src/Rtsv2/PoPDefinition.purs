@@ -1,8 +1,7 @@
 module Rtsv2.PoPDefinition
        ( startLink
        , getOtherServersForThisPoP
-       , getSeedsForThisPoP
-       , getSeedsForOtherPoPs
+       , getOtherPoPs
        , thisNode
        , whereIsServer
        , thisLocation
@@ -23,10 +22,9 @@ import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Eq (genericEq)
 import Data.List.NonEmpty as NonEmptyList
 import Data.Maybe (Maybe(..), fromMaybe)
-import Data.Traversable (sequence)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
-import Erl.Data.List (List, catMaybes, index, length, nil, (:))
+import Erl.Data.List (List, nil, (:))
 import Erl.Data.Map as Map
 import File as File
 import Foreign (Foreign, ForeignError(..), MultipleErrors)
@@ -39,7 +37,6 @@ import Pinto.Timer as Timer
 import Prim.Row (class Nub)
 import Record as Record
 import Rtsv2.Env as Env
-import Shared.Utils (distinctRandomNumbers)
 import Simple.JSON as JSON
 
 type Config = { popDefinitionFile :: String
@@ -98,54 +95,9 @@ getOtherServersForThisPoP = Gen.call serverName (\state@{otherServersInThisPoP} 
                                                   CallReply otherServersInThisPoP state
                                                 )
 
-getSeedsForThisPoP :: Effect (List ServerAddress)
-getSeedsForThisPoP = Gen.doCall serverName (\state@{otherServersInThisPoP} ->
-                                             do
-                                               seeds <- getSeedsForThisPoP' otherServersInThisPoP 4
-                                               pure $ CallReply seeds state
-                                           )
-
--- TODO - probably just want to give back all the otherServers
-getSeedsForThisPoP' :: List ServerAddress -> Int -> Effect (List ServerAddress)
-getSeedsForThisPoP' otherServersInThisPoP numRequired
-  | otherServersInThisPoP == nil = pure $ nil
-  | otherwise =
-    do
-      indexes <- distinctRandomNumbers (min numRequired (length otherServersInThisPoP))  ((length otherServersInThisPoP) - 1)
-      let
-        servers = map (\i -> index otherServersInThisPoP i) indexes
-                  # sequence
-                  # fromMaybe nil
-      pure $ servers
-
-getSeedsForOtherPoPs :: Effect (List PoP)
-getSeedsForOtherPoPs = Gen.doCall serverName (\state@{otherPoPs} ->
-                                             do
-                                               seeds <- getSeedsForOtherPoPs' otherPoPs 4
-                                               pure $ CallReply seeds state
-                                           )
-
--- TODO - probably just want to give back all the otherServers
-getSeedsForOtherPoPs' :: List PoP -> Int -> Effect (List PoP)
-getSeedsForOtherPoPs' otherPoPs numRequired
-  | otherPoPs == nil = pure $ nil
-  | otherwise = catMaybes <$> (sequence $ foldl (\acc pop ->
-                                                 getSeedsForOtherPoP' pop numRequired : acc
-                                               )
-                                               nil
-                                               otherPoPs)
-
-getSeedsForOtherPoP' :: PoP -> Int -> Effect (Maybe PoP)
-getSeedsForOtherPoP' otherPoP@{servers} numRequired
-  | servers == nil = pure Nothing
-  | otherwise =
-    do
-      indexes <- distinctRandomNumbers (min numRequired (length servers))  ((length servers) - 1)
-      let
-        selectedServers = map (\i -> index servers i) indexes
-                          # sequence
-                          # fromMaybe nil
-      pure $ Just otherPoP{servers = selectedServers}
+getOtherPoPs :: Effect (List PoP)
+getOtherPoPs = Gen.doCall serverName
+  \state@{otherPoPs} -> pure $ CallReply otherPoPs state
 
 thisLocation :: Effect ServerLocation
 thisLocation = Gen.doCall serverName
