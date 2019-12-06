@@ -8,10 +8,10 @@ import Data.Foldable (foldl)
 import Data.Int (floor, toNumber)
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Set as Set
-import Data.Traversable (sequence)
+import Data.Traversable (sequence, traverse_)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
-import Erl.Data.List (List, nil, (:))
+import Erl.Data.List (List, index, length, nil, (:))
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
 import Erl.Process (spawnLink)
@@ -26,12 +26,13 @@ import Prim.Row (class Nub)
 import Record as Record
 import Rtsv2.Env as Env
 import Rtsv2.IntraPoPAgent as IntraPoPAgent
-import Rtsv2.PoPDefinition (PoPName, ServerAddress, ServerLocation(..), whereIsServer)
+import Rtsv2.PoPDefinition (PoPName, ServerAddress, ServerLocation(..), PoP, whereIsServer)
 import Rtsv2.PoPDefinition as PoPDefinition
 import Serf (IpAndPort)
 import Serf as Serf
 import Shared.Agent as Agent
 import Shared.Stream (StreamId)
+import Shared.Utils (distinctRandomNumbers)
 import SpudGun as SpudGun
 
 data TransMessage = StreamAvailable StreamId ServerAddress
@@ -108,8 +109,13 @@ init config@{ leaderTimeoutMs
 handleInfo :: Msg -> State -> Effect State
 handleInfo msg state@{ thisNode } = case msg of
   Tick -> handleTick state
-  JoinAll -> joinAllSerf state
+
+  JoinAll -> do
+    _ <- joinAllSerf state
+    pure state
+
   IntraPoPBusMsg intraMessage -> handleIntraPoPMessage intraMessage state
+
   TransPoPSerfMsg tmsg ->
     case tmsg of
       Serf.MemberAlive members -> membersAlive members state
@@ -280,11 +286,11 @@ handleLeaderAnnouncement address state = do
   now <- systemTime MilliSecond
   pure $ state { lastLeaderAnnouncement = now }
 
-joinAllSerf :: State -> Effect State
+joinAllSerf :: State -> Effect Unit
 joinAllSerf state@{ weAreLeader: false } = do
-  pure state
+  pure unit
 
-joinAllSerf state@{ config, serfRpcAddress } =
+joinAllSerf state@{ config, serfRpcAddress, members } =
   let
     serverAddressToSerfAddress :: String -> IpAndPort
     serverAddressToSerfAddress s =
@@ -293,39 +299,50 @@ joinAllSerf state@{ config, serfRpcAddress } =
       }
   in
     do
-      pops <- PoPDefinition.getOtherPoPs
+      allOtherPoPs <- PoPDefinition.getOtherPoPs
 
-      _ <-
-        sequence
-          $ foldl
-              ( \acc { name, servers } ->
-                  ( spawnLink
-                      ( \_ -> do
-                          foldl
-                            ( \iAcc server -> do
-                                restResult <- SpudGun.getText ("http://" <> server <> ":3000/poc/api/transPoPLeader")
-                                _ <- case restResult of
-                                  Nothing -> pure unit
-                                  Just addr -> do
-                                    result <- Serf.join serfRpcAddress ((serverAddressToSerfAddress addr) : nil) true
-                                    _ <-
-                                      logInfo "Join said "
-                                        { server: addr
-                                        , restResult: restResult
-                                        , serfResult: result
-                                        }
-                                    pure unit
-                                pure unit
-                            )
-                            mempty
-                            servers
-                      )
+      let
+        toJoin = Map.values $ Map.difference (toMap allOtherPoPs) members :: List PoP
+      if length toJoin < (length allOtherPoPs) / 2 then
+        pure unit
+      else
+        traverse_ (\{ name, servers: serversInPoP } ->
+                    do
+                     indexes <- distinctRandomNumbers 1 ((length serversInPoP) - 1)
+                     let
+                       servers = map (\i -> index serversInPoP i) indexes
+                                 # sequence
+                                 # fromMaybe nil
+
+                     (spawnFun serverAddressToSerfAddress servers)
                   )
-                    : acc
-              )
-              nil
-              pops
-      pure state
+                  toJoin
+  where
+  toMap :: List PoP -> Map PoPName PoP
+  toMap list = foldl (\acc pop@{name} -> Map.insert name pop acc) Map.empty list
+
+  spawnFun :: (String -> IpAndPort) -> List String -> Effect Unit
+  spawnFun addressMapper popsToJoin = void $ spawnLink (\_ -> do
+                             foldl
+                               ( \iAcc server -> do
+                                   restResult <- SpudGun.getText ("http://" <> server <> ":3000/poc/api/transPoPLeader")
+                                   _ <- case restResult of
+                                     Nothing -> pure unit
+                                     Just addr -> do
+                                       result <- Serf.join serfRpcAddress ((addressMapper addr) : nil) true
+                                       _ <-
+                                         logInfo "Join said "
+                                           { server: addr
+                                           , restResult: restResult
+                                           , serfResult: result
+                                           }
+                                       pure unit
+                                   pure unit
+                               )
+                               mempty
+                               popsToJoin
+                         )
+
 
 logInfo :: forall a b. Nub ( domain :: List Atom | a ) b => String -> Record a -> Effect Foreign
 logInfo msg metaData = Logger.info msg (Record.merge { domain: ((atom (show Agent.TransPoP)) : nil) } { misc: metaData })
