@@ -1,7 +1,6 @@
 module Rtsv2.IngestAggregatorAgent
   ( startLink
   , init
-  , Config
   ) where
 
 import Prelude
@@ -13,15 +12,13 @@ import Erl.ModuleName (NativeModuleName(..))
 import Foreign (unsafeToForeign)
 import Pinto (ServerName(..), StartLinkResult)
 import Pinto.Gen as Gen
+import Rtsv2.Config as Config
 import Pinto.Timer as Timer
 import Rtsv2.IntraPoPAgent (announceStreamIsAvailable)
 import Shared.Stream (StreamId)
 
-type Config
-  = { streamAvailableAnnounceMs :: Int }
-
 type State
-  = { config :: Config
+  = { config :: Config.IngestAggregatorAgentConfig
     , streamId :: StreamId
     }
 
@@ -38,6 +35,7 @@ init :: StreamId -> Effect State
 init streamId = do
   let
     streamAvailableAnnounceMs = 1000 -- TODO - should be in config - goes circular
+  _ <- Config.ingestAggregatorAgentConfig
   _ <- Timer.sendEvery (serverName streamId) streamAvailableAnnounceMs Tick
   _ <- announceStreamIsAvailable streamId
 

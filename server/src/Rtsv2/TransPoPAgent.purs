@@ -10,7 +10,7 @@ import Data.Newtype (wrap)
 import Data.Set as Set
 import Data.Traversable (sequence, traverse_)
 import Effect (Effect)
-import Erl.Atom (Atom, atom)
+import Erl.Atom (atom)
 import Erl.Data.List (List, index, length, nil, (:))
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
@@ -24,8 +24,9 @@ import Pinto (ServerName(..), StartLinkResult)
 import Pinto.Gen (CallResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
-import Prim.Row (class Nub)
+import Prim.Row (class Nub, class Union)
 import Record as Record
+import Rtsv2.Config as Config
 import Rtsv2.Env as Env
 import Rtsv2.Health (Health)
 import Rtsv2.Health as Health
@@ -52,15 +53,6 @@ originPoP addr =
       Nothing -> Nothing
       Just (ServerLocation sourcePoP _) -> Just sourcePoP
 
-type Config
-  = { bindPort :: Int
-    , rpcPort :: Int
-    , leaderTimeoutMs :: Int
-    , leaderAnnounceMs :: Int
-    , rejoinEveryMs :: Int
-    , connectStreamAfterMs :: Int
-    }
-
 health :: Effect Health
 health =
   Gen.doCall serverName \state -> do
@@ -82,7 +74,7 @@ data Msg
   | IntraPoPBusMsg IntraPoPAgent.IntraMessage
   | TransPoPSerfMsg (Serf.SerfMessage TransMessage)
 
-startLink :: Config -> Effect StartLinkResult
+startLink :: Config.TransPoPAgentConfig -> Effect StartLinkResult
 startLink args = Gen.startLink serverName (init args) handleInfo
 
 type State
@@ -93,12 +85,12 @@ type State
     , thisNode :: ServerAddress
     , thisLocation :: ServerLocation
     , thisPoP :: PoPName
-    , config :: Config
+    , config :: Config.TransPoPAgentConfig
     , serfRpcAddress :: IpAndPort
     , members :: Map PoPName (Set.Set String)
     }
 
-init :: Config -> Effect State
+init :: Config.TransPoPAgentConfig -> Effect State
 init config@{ leaderTimeoutMs
             , leaderAnnounceMs
             , rejoinEveryMs
@@ -241,7 +233,7 @@ handleIntraPoPStreamAvailable streamId addr state@{ thisLocation: (ServerLocatio
         -- Message from our pop - distribute over trans-pop
         _ <- logInfo "Local stream being delivered to trans-pop" { streamId: streamId }
         result <- Serf.event state.serfRpcAddress "streamAvailable" (StreamAvailable streamId addr) false
-        _ <- logInfo "trans-pop serf said" { result: result }
+        _ <- maybeLogError "Trans-PoP serf event failed" result {}
         pure state
       | otherwise -> pure state
 
@@ -387,12 +379,7 @@ joinAllSerf state@{ config: config@{rejoinEveryMs}, serfRpcAddress, members } =
                                      Nothing -> pure unit
                                      Just addr -> do
                                        result <- Serf.join serfRpcAddress ((addressMapper addr) : nil) true
-                                       _ <-
-                                         logInfo "Join said "
-                                           { server: addr
-                                           , restResult: restResult
-                                           , serfResult: result
-                                           }
+                                       _ <- maybeLogError "Trans-PoP serf join failed" result { server: addr }
                                        pure unit
                                    pure unit
                                )
@@ -400,6 +387,12 @@ joinAllSerf state@{ config: config@{rejoinEveryMs}, serfRpcAddress, members } =
                                popsToJoin
                          )
 
+maybeLogError :: forall a b c d. Union b (error :: Serf.ApiError) c => Nub c d => String -> Either Serf.ApiError a -> Record b  -> Effect Unit
+maybeLogError _ (Right _) _ = pure unit
+maybeLogError msg (Left err) metadata = do
+  _ <- logInfo msg (Record.merge metadata {error: err})
+  pure unit
 
-logInfo :: forall a b. Nub ( domain :: List Atom | a ) b => String -> Record a -> Effect Foreign
+--logInfo :: forall a b. Nub ( domain :: List Atom | a ) b => String -> Record a -> Effect Foreign
+logInfo :: forall a. String -> a -> Effect Foreign
 logInfo msg metaData = Logger.info msg (Record.merge { domain: ((atom (show Agent.TransPoP)) : nil) } { misc: metaData })

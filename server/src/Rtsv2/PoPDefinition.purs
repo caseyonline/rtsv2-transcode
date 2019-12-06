@@ -5,7 +5,6 @@ module Rtsv2.PoPDefinition
        , thisNode
        , whereIsServer
        , thisLocation
-       , Config
        , ServerAddress
        , ServerLocation(..)
        , PoPName
@@ -36,11 +35,9 @@ import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Prim.Row (class Nub)
 import Record as Record
+import Rtsv2.Config as Config
 import Rtsv2.Env as Env
 import Simple.JSON as JSON
-
-type Config = { popDefinitionFile :: String
-              }
 
 type RegionName = String
 type PoPName = String
@@ -59,7 +56,7 @@ type PoPInfo =
   , otherPoPs :: List PoP
   }
 
-type State =  { config :: Config
+type State =  { config :: Config.PoPDefinitionConfig
               , regions :: Map.Map RegionName Region
               , servers :: Map.Map ServerAddress ServerLocation
               , thisNode :: ServerAddress
@@ -83,7 +80,7 @@ data Msg = Tick
 serverName :: ServerName State Msg
 serverName = Local "popDefinition"
 
-startLink :: Config -> Effect StartLinkResult
+startLink :: Config.PoPDefinitionConfig -> Effect StartLinkResult
 startLink args =
   Gen.startLink serverName (init args) handleInfo
 
@@ -107,7 +104,7 @@ whereIsServer :: ServerAddress -> Effect (Maybe ServerLocation)
 whereIsServer sa = Gen.doCall serverName
              \state -> pure $ CallReply (Map.lookup sa state.servers) state
 
-init :: Config -> Effect State
+init :: Config.PoPDefinitionConfig -> Effect State
 init config = do
   hostname <- Env.hostname
   ePopInfo <- readAndProcessPoPDefinition config hostname
@@ -158,7 +155,7 @@ handleInfo msg state =
         _ <- Timer.sendAfter serverName 1000 Tick
         pure $ newState
 
-readAndProcessPoPDefinition :: Config -> ServerAddress -> Effect (Either MultipleErrors PoPInfo)
+readAndProcessPoPDefinition :: Config.PoPDefinitionConfig -> ServerAddress -> Effect (Either MultipleErrors PoPInfo)
 readAndProcessPoPDefinition config hostName = do
   file <- readFile config.popDefinitionFile
   pure $ processPoPJson hostName =<< (mapRegionJson <$> (decodeJson =<< file))

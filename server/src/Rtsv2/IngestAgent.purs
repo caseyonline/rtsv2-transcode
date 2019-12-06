@@ -1,7 +1,6 @@
 module Rtsv2.IngestAgent
   ( startLink
   , init
-  , Config
   ) where
 
 import Prelude
@@ -18,12 +17,8 @@ import Rtsv2.IngestAggregatorAgentSup as IngestAggregatorAgentSup
 import Rtsv2.IntraPoPAgent as IntraPoPAgent
 import Shared.Stream (StreamVariantId, toStreamId)
 
-type Config
-  = { }
-
 type State
-  = { config :: Config
-    }
+  = { }
 
 serverName :: StreamVariantId -> ServerName State Unit
 serverName sv = Via (NativeModuleName $ atom "gproc") $ unsafeToForeign (tuple3 (atom "n") (atom "l") (tuple2 "ingest" sv))
@@ -36,13 +31,10 @@ init streamVariantId = do
   maybeAggregator <- IntraPoPAgent.whereIsIngestAggregator streamVariantId
   case maybeAggregator of
     Just relay ->
-      pure
-        { config: {}
-        }
+      pure {}
     Nothing -> do
       -- Launch
-      _ <- IngestAggregatorAgentSup.startAggregator (toStreamId streamVariantId) 
-      pure
-        { config: {}
-        }
+      _ <- IngestAggregatorAgentSup.startAggregator (toStreamId streamVariantId)
+      pure {}
+
  -- TODO - what if we want to have the relay run remotely (load etc) -- Find / create if there is a relay for this stream -- ask intrapopstate --

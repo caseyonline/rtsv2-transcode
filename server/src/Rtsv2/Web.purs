@@ -1,6 +1,5 @@
 module Rtsv2.Web
   ( startLink
-  , Config
   )
   where
 
@@ -14,6 +13,7 @@ import Erl.Data.List (nil, (:))
 import Erl.Data.Tuple (Tuple2, Tuple4, tuple2, tuple4, uncurry4)
 import Pinto (ServerName(..), StartLinkResult)
 import Pinto.Gen as Gen
+import Rtsv2.Config as Config
 import Rtsv2.EdgeAgentSup as EdgeAgentSup
 import Rtsv2.Endpoints.Alive (alive)
 import Rtsv2.Env as Env
@@ -29,17 +29,14 @@ import Stetson.Rest as Rest
 
 newtype State = State {}
 
--- TODO - config should include BindIFace or BindIp
-type Config = { port :: Int }
-
 serverName :: ServerName State Unit
 serverName = Local "web"
 
-startLink :: Config -> Effect StartLinkResult
+startLink :: Config.WebConfig -> Effect StartLinkResult
 startLink args =
   Gen.startLink serverName (init args) Gen.defaultHandleInfo
 
-init :: Config -> Effect State
+init :: Config.WebConfig -> Effect State
 init args = do
   bindIp <- Env.privateInterfaceIp
   Stetson.configure

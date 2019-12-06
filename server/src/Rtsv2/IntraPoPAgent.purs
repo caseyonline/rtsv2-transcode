@@ -1,6 +1,5 @@
 module Rtsv2.IntraPoPAgent
   ( startLink
-  , Config
   , isStreamAvailable
   , isIngestActive
   , announceStreamIsAvailable
@@ -41,6 +40,7 @@ import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Prim.Row (class Nub)
 import Record as Record
+import Rtsv2.Config as Config
 import Rtsv2.Env as Env
 import Rtsv2.Health (Health, percentageToHealth)
 import Rtsv2.PoPDefinition (ServerAddress)
@@ -51,7 +51,7 @@ import Shared.Agent as Agent
 import Shared.Stream (StreamId(..), StreamVariantId(..))
 
 type State
-  = { config :: Config
+  = { config :: Config.IntraPoPAgentConfig
     , serfRpcAddress :: IpAndPort
     , currentTransPoPLeader :: Maybe ServerAddress
     , streamRelayLocations :: Map StreamId String
@@ -65,14 +65,6 @@ type State
 data IntraMessage = StreamAvailable StreamId ServerAddress
                   | TransPoPLeader ServerAddress
 
-
-type Config
-  = { bindPort :: Int
-    , rpcPort :: Int
-    , rejoinEveryMs :: Int
-    , expireThresholdMs :: Int
-    , expireEveryMs :: Int
-    }
 
 data Msg
   = JoinAll
@@ -115,6 +107,7 @@ currentTransPoPLeader =
         CallReply value state
     )
 
+-- Called by IngestAggregator to indicate stream on this node
 announceStreamIsAvailable :: StreamId -> Effect Unit
 announceStreamIsAvailable streamId =
   Gen.doCast serverName
@@ -124,6 +117,7 @@ announceStreamIsAvailable streamId =
         newStreamAggregatorLocations <- EMap.insert' streamId thisNode streamAggregatorLocations
         pure $ Gen.CastNoReply state { streamAggregatorLocations = newStreamAggregatorLocations }
 
+-- Called by TransPoP to indicate stream that is present on a node in another PoP
 announceRemoteStreamIsAvailable :: StreamId -> ServerAddress -> Effect Unit
 announceRemoteStreamIsAvailable streamId addr =
   Gen.doCast serverName
@@ -151,10 +145,10 @@ raiseLocal state name msg = do
 serverName :: ServerName State Msg
 serverName = Local "intraPopAgent"
 
-startLink :: Config -> Effect StartLinkResult
+startLink :: Config.IntraPoPAgentConfig -> Effect StartLinkResult
 startLink args = Gen.startLink serverName (init args) handleInfo
 
-init :: Config -> Effect State
+init :: Config.IntraPoPAgentConfig -> Effect State
 init config@{rejoinEveryMs
              , expireThresholdMs
              , expireEveryMs}
@@ -218,6 +212,7 @@ handleInfo msg state = case msg of
               }
           pure state
         | otherwise -> do
+          -- streamAvailable on some other node in this PoP - we need to tell Trans-PoP
           _ <- Bus.raise bus intraMessage
           _ <-
             logInfo "StreamAvailable on remote node"

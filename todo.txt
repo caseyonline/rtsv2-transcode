@@ -1,19 +1,19 @@
 [ ] - review gproc registration for top level supervisors and gen servers (i.e dont use it!)
+[ ] - test4 - IngestAggregator with a name clash - 2 things running, should be 1
+[ ] - test5 - Multiple trans-pops with a name clash - 2 things running, should be 1
+[ ] - test6 - Multiple stream-relay with a name clash - 2 things running, should be 1
+[ ] - add stream_id domain to logs that are pre-stream
+[ ] - maybe loose bus between intra-pop and trans-pop
+[x] - config in ingestAggregatorAgent - currently timer hardcoded - move all config records to config.purs
 [x] - serf api should take left and right constructors
 [x] - can msgPack take arbitrary binaries
 [x] - test1 - hit edge / start ingest / hit edge again
 [x] - elect trans pop leader
 [x] - test2 - hit edge / start ingest in different pop / hit edge again
-[ ] - test4 - IngestAggregator with a name clash - 2 things running, should be 1
-[ ] - test5 - Multiple trans-pops with a name clash - 2 things running, should be 1
-[ ] - test6 - Multiple stream-relay with a name clash - 2 things running, should be 1
 [x] - make intrapop rejoin if not enough members
 [x] - make transpop rejoin if not enough members
 [x] - /alive should include healthcheck - indicate if joined to enough peers
 [x] - separate intra-pop serf from trans-pop serf messages
-[ ] - config in ingestAggregatorAgent - currently timer hardcoded - move all config records to config.purs
-[ ] - add stream_id domain to logs that are pre-stream
 [x] - currentTransPoP appears to be wrong sometimes...
 [x] - transPoP leave - ensure serf restarts (systemd) and maybe assert on each tick that still not a memeber
 [x] - reconnect stream if we get a stream-failed (intra and trans) - will need to call serf.members
-[ ] - maybe loose bus between intra-pop and trans-pop

@@ -84,7 +84,7 @@ leave = leaveImpl Left Right
 event :: forall a. IpAndPort -> String -> a -> Boolean ->  Effect (SerfResult Unit)
 event = eventImpl Left (Right unit)
 
-stream :: forall a. IpAndPort -> Effect (SerfResult Unit)
+stream :: IpAndPort -> Effect (SerfResult Unit)
 stream = streamImpl Left (Right unit)
 
 messageMapper :: forall a. Foreign -> Maybe (SerfMessage a)

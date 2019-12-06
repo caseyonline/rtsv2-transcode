@@ -2,7 +2,6 @@ module Rtsv2.IngestAggregatorAgentSup
        ( startLink
        , startAggregator
        )
-
        where
 
 import Prelude
@@ -24,11 +23,9 @@ startLink _ = Sup.startLink serverName init
 startAggregator :: StreamId -> Effect Unit
 startAggregator streamId = do
   result <- Sup.startSimpleChild childTemplate serverName streamId
-
   case result of
        Pinto.AlreadyStarted pid -> pure unit
        Pinto.Started pid -> pure unit
-
 
 init :: Effect Sup.SupervisorSpec
 init = do
@@ -43,7 +40,6 @@ init = do
           )
           : nil
         )
-
 
 childTemplate :: Pinto.ChildTemplate StreamId
 childTemplate = Pinto.ChildTemplate (IngestAggregatorAgent.startLink)

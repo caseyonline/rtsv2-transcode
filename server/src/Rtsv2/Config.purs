@@ -1,11 +1,16 @@
 -- -*- psc-ide-codegen: ("erl") -*-
 module Rtsv2.Config
-  ( webConfig
+  ( IngestAggregatorAgentConfig
+  , WebConfig
+  , PoPDefinitionConfig
+  , IntraPoPAgentConfig
+  , TransPoPAgentConfig
+  , webConfig
   , nodeConfig
   , popDefinitionConfig
   , intraPoPAgentConfig
   , transPoPAgentConfig
-  , ingestAggregatorConfig
+  , ingestAggregatorAgentConfig
   ) where
 
 import Prelude
@@ -22,23 +27,43 @@ import Erl.Data.List (List)
 import Foreign (F, Foreign, readString, unsafeReadTagged)
 import Logger as Logger
 import Partial.Unsafe (unsafeCrashWith)
-import Rtsv2.IntraPoPAgent as IntraPoP
-import Rtsv2.TransPoPAgent as TransPoP
-import Rtsv2.IngestAggregatorAgent as IngestAggregator
 import Rtsv2.Node as Node
-import Rtsv2.PoPDefinition as PoPDefinition
-import Rtsv2.Web as Web
 import Shared.Agent (Agent, strToAgent)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (class ReadForeign, readImpl)
 
+-- TODO - config should include BindIFace or BindIp
+type WebConfig = { port :: Int }
+
+type PoPDefinitionConfig
+  = { popDefinitionFile :: String
+    }
+
+type IngestAggregatorAgentConfig
+  = { streamAvailableAnnounceMs :: Int }
+
+type IntraPoPAgentConfig
+  = { bindPort :: Int
+    , rpcPort :: Int
+    , rejoinEveryMs :: Int
+    , expireThresholdMs :: Int
+    , expireEveryMs :: Int
+    }
+
+
+type TransPoPAgentConfig
+  = { bindPort :: Int
+    , rpcPort :: Int
+    , leaderTimeoutMs :: Int
+    , leaderAnnounceMs :: Int
+    , rejoinEveryMs :: Int
+    , connectStreamAfterMs :: Int
+    }
+
 foreign import getEnv_ :: Atom -> Effect Foreign
 foreign import getMap_ :: Atom -> Effect Foreign
 
---webPort :: Effect Int
---webPort = getMandatory readInt "web_port"
-
-webConfig :: Effect Web.Config
+webConfig :: Effect WebConfig
 webConfig = do
   config <- getMandatory (unsafeReadTagged "map") "httpApiConfig"
   pure $ config
@@ -53,21 +78,21 @@ nodeConfig :: Effect Node.Config
 nodeConfig = do
   getMandatoryRecord "nodeConfig"
 
-popDefinitionConfig :: Effect PoPDefinition.Config
+popDefinitionConfig :: Effect PoPDefinitionConfig
 popDefinitionConfig = do
   config <- getMandatory (unsafeReadTagged "map") "popDefinitionConfig"
   pure $ config
 
-intraPoPAgentConfig :: Effect IntraPoP.Config
+intraPoPAgentConfig :: Effect IntraPoPAgentConfig
 intraPoPAgentConfig = do
   getMandatoryRecord "intraPoPConfig"
 
-transPoPAgentConfig :: Effect TransPoP.Config
+transPoPAgentConfig :: Effect TransPoPAgentConfig
 transPoPAgentConfig = do
   getMandatoryRecord "transPoPConfig"
 
-ingestAggregatorConfig :: Effect IngestAggregator.Config
-ingestAggregatorConfig = do
+ingestAggregatorAgentConfig :: Effect IngestAggregatorAgentConfig
+ingestAggregatorAgentConfig = do
   getMandatoryRecord "ingestAggregatorConfig"
 
 get :: forall a e. (Foreign -> ExceptT e Identity a) -> String -> Effect (Maybe a)
