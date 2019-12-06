@@ -61,10 +61,8 @@ type State
     , expireThreshold :: Milliseconds
     }
 
-
 data IntraMessage = StreamAvailable StreamId ServerAddress
                   | TransPoPLeader ServerAddress
-
 
 data Msg
   = JoinAll
@@ -73,6 +71,9 @@ data Msg
 
 bus :: Bus.Bus IntraMessage
 bus = Bus.bus "intrapop_bus"
+
+serverName :: ServerName State Msg
+serverName = Local $ show Agent.IntraPoP
 
 health :: Effect Health
 health =
@@ -143,9 +144,6 @@ raiseLocal state name msg = do
   _ <- maybeLogError "Intra-PoP serf event failed" result {}
   _ <- Bus.raise bus msg
   pure unit
-
-serverName :: ServerName State Msg
-serverName = Local "intraPopAgent"
 
 startLink :: Config.IntraPoPAgentConfig -> Effect StartLinkResult
 startLink args = Gen.startLink serverName (init args) handleInfo

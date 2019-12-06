@@ -73,7 +73,7 @@ ingestStart =
                  in
                  Rest.initResult req {streamVariantId: StreamVariantId streamId variantId})
   -- # Rest.serviceAvailable (\req state -> do
-  --                             registered <- Gproc.isRegistered Agent.Ingest
+  --                             registered <- Erl.isRegistered Agent.Ingest
   --                             Rest.result registered req state)
   -- # Rest.resourceExists (\req state@{streamVariantId} -> do
   --                           isAvailable <- isIngestActive streamVariantId

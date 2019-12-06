@@ -1,9 +1,9 @@
-[ ] - review gproc registration for top level supervisors and gen servers (i.e dont use it!)
 [ ] - test4 - IngestAggregator with a name clash - 2 things running, should be 1
 [ ] - test5 - Multiple trans-pops with a name clash - 2 things running, should be 1
 [ ] - test6 - Multiple stream-relay with a name clash - 2 things running, should be 1
 [ ] - add stream_id domain to logs that are pre-stream
 [ ] - maybe loose bus between intra-pop and trans-pop
+[x] - review gproc registration for top level supervisors and gen servers (i.e dont use it!)
 [x] - config in ingestAggregatorAgent - currently timer hardcoded - move all config records to config.purs
 [x] - serf api should take left and right constructors
 [x] - can msgPack take arbitrary binaries

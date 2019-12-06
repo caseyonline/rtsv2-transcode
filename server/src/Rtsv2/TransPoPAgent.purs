@@ -40,7 +40,30 @@ import Shared.Stream (StreamId)
 import Shared.Utils (distinctRandomNumbers)
 import SpudGun as SpudGun
 
+type State
+  = { currentLeader :: Maybe ServerAddress
+    , weAreLeader :: Boolean
+    , lastLeaderAnnouncement :: Milliseconds
+    , leaderAnnouncementTimeout :: Milliseconds
+    , thisNode :: ServerAddress
+    , thisLocation :: ServerLocation
+    , thisPoP :: PoPName
+    , config :: Config.TransPoPAgentConfig
+    , serfRpcAddress :: IpAndPort
+    , members :: Map PoPName (Set.Set String)
+    }
+
 data TransMessage = StreamAvailable StreamId ServerAddress
+
+data Msg
+  = Tick
+  | JoinAll
+  | ConnectStream
+  | IntraPoPBusMsg IntraPoPAgent.IntraMessage
+  | TransPoPSerfMsg (Serf.SerfMessage TransMessage)
+
+serverName :: ServerName State Msg
+serverName = Local $ show Agent.TransPoP
 
 messageOrigin :: TransMessage -> Effect (Maybe PoPName)
 messageOrigin (StreamAvailable _ addr) = originPoP addr
@@ -64,31 +87,8 @@ health =
       allOtherPoPs <- PoPDefinition.getOtherPoPs
       pure $ Health.percentageToHealth $ (Map.size members * 100) / (length allOtherPoPs) * 100
 
-serverName :: ServerName State Msg
-serverName = Local "transPopAgent"
-
-data Msg
-  = Tick
-  | JoinAll
-  | ConnectStream
-  | IntraPoPBusMsg IntraPoPAgent.IntraMessage
-  | TransPoPSerfMsg (Serf.SerfMessage TransMessage)
-
 startLink :: Config.TransPoPAgentConfig -> Effect StartLinkResult
 startLink args = Gen.startLink serverName (init args) handleInfo
-
-type State
-  = { currentLeader :: Maybe ServerAddress
-    , weAreLeader :: Boolean
-    , lastLeaderAnnouncement :: Milliseconds
-    , leaderAnnouncementTimeout :: Milliseconds
-    , thisNode :: ServerAddress
-    , thisLocation :: ServerLocation
-    , thisPoP :: PoPName
-    , config :: Config.TransPoPAgentConfig
-    , serfRpcAddress :: IpAndPort
-    , members :: Map PoPName (Set.Set String)
-    }
 
 init :: Config.TransPoPAgentConfig -> Effect State
 init config@{ leaderTimeoutMs
