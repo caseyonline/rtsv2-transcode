@@ -3,10 +3,33 @@
 cd ${0%/*}
 cd ../..
 
+#set -x
+#exec >>/tmp/start.txt
+#exec 2>&1
+
 function wait_for_server {
   local -r addr=$1
-  while (! curl --silent --fail  "http://$addr:3000/test/alive")
+  while true
   do
+    IFS=, read -r intra trans transpop <<< $(curl --silent --fail http://$addr:3000/test/alive | jq -r '[.intraPoPHealth, .transPoPHealth, .currentTransPoP] | @csv' | sed 's/"//g')
+
+    if [[ "$intra" != "Excellent" ]]; then
+        sleep 0.5
+        continue
+    fi
+
+    if [[ "$trans" == "Excellent" ]]; then
+        break
+    fi
+
+    if [[ "$trans" == "NA" ]]; then
+         IFS=, read -r intra trans  <<< $(curl --silent --fail http://$transpop:3000/test/alive | jq -r '[.intraPoPHealth, .transPoPHealth] | @csv' | sed 's/"//g')
+
+        if [[ "$trans" == "Excellent" ]]; then
+            break
+        fi
+    fi
+
     sleep 0.5
   done
 }

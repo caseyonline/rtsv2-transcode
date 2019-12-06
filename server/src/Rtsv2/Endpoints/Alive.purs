@@ -5,13 +5,14 @@ module Rtsv2.Endpoints.Alive
 
 import Prelude
 
+import Data.Maybe (fromMaybe)
 import Erl.Data.List (nil, (:))
 import Rtsv2.Endpoints.MimeType as MimeType
 import Rtsv2.IntraPoPAgent as IntraPoPAgent
 import Rtsv2.TransPoPAgent as TransPoPAgent
+import Simple.JSON as JSON
 import Stetson (StetsonHandler)
 import Stetson.Rest as Rest
-import Simple.JSON as JSON
 
 alive :: StetsonHandler Unit
 alive =
@@ -20,9 +21,11 @@ alive =
   # Rest.yeeha
   where
     jsonHandler req state = do
+      currentTransPoP <- IntraPoPAgent.currentTransPoPLeader
       intraPoPHealth <- IntraPoPAgent.health
       transPoPHealth <- TransPoPAgent.health
       let
         result = {intraPoPHealth,
-                  transPoPHealth}
+                  transPoPHealth,
+                  currentTransPoP : fromMaybe "" currentTransPoP}
       Rest.result (JSON.writeJSON result) req state

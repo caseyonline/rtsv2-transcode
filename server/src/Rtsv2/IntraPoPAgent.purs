@@ -112,31 +112,28 @@ announceStreamIsAvailable streamId =
   Gen.doCast serverName
     $ \state@{ streamAggregatorLocations, thisNode } -> do
         _ <- logInfo "Local stream available" { streamId: streamId }
-        _ <- raiseLocal state "streamAvailable" (StreamAvailable streamId thisNode) true
+        _ <- raiseLocal state "streamAvailable" (StreamAvailable streamId thisNode)
         pure $ Gen.CastNoReply state { streamAggregatorLocations = (Map.insert streamId thisNode streamAggregatorLocations) }
 
 announceRemoteStreamIsAvailable :: StreamId -> ServerAddress -> Effect Unit
 announceRemoteStreamIsAvailable streamId addr =
   Gen.doCast serverName
     $ \state@{ streamAggregatorLocations } -> do
-        _ <-
-          logInfo "Remote stream available"
-            { streamId: streamId
-            , addr: addr
-            }
-        _ <- raiseLocal state "streamAvailable" (StreamAvailable streamId addr) true
+        _ <- logInfo "Remote stream available" { streamId: streamId
+                                               , addr: addr }
+        _ <- raiseLocal state "streamAvailable" (StreamAvailable streamId addr)
         pure $ Gen.CastNoReply state { streamAggregatorLocations = (Map.insert streamId addr streamAggregatorLocations) }
 
 announceTransPoPLeader :: Effect Unit
 announceTransPoPLeader =
   Gen.doCast serverName
     $ \state@{ streamAggregatorLocations, thisNode } -> do
-        _ <- raiseLocal state "transPoPLeader" (TransPoPLeader thisNode) false
+        _ <- raiseLocal state "transPoPLeader" (TransPoPLeader thisNode)
         pure $ Gen.CastNoReply state
 
-raiseLocal :: State -> String -> IntraMessage -> Boolean -> Effect Unit
-raiseLocal state name msg coalesce = do
-  _ <- Serf.event state.serfRpcAddress name msg coalesce
+raiseLocal :: State -> String -> IntraMessage -> Effect Unit
+raiseLocal state name msg = do
+  resp <- Serf.event state.serfRpcAddress name msg false
   _ <- Bus.raise bus msg
   pure unit
 

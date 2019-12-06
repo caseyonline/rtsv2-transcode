@@ -23,14 +23,13 @@ import Test.Spec.Reporter.Console (consoleReporter)
 import Test.Spec.Runner (runSpecT)
 
 
-type TestNode =  { nodeName :: String
-                 , vlan :: String
+type TestNode =  { vlan :: String
                  , addr :: String
                  , sysConfig :: String
                  }
 
-node :: String -> String -> String -> String -> TestNode
-node nodeName vlan addr sysConfig = {nodeName, vlan, addr, sysConfig}
+node :: String -> String -> String -> TestNode
+node vlan addr sysConfig = {vlan, addr, sysConfig}
 
 
 
@@ -40,13 +39,10 @@ main =
     before_ (do
                 _ <- stopNodes
                 launchNodes [
-                  node "iad1" "vlan101" "172.16.169.1" "scripts/env/steve.data/sys.config"
-                  , node "iad2" "vlan102" "172.16.169.2" "scripts/env/steve.data/sys.config"
-                  , node "dal1" "vlan201" "172.16.170.1" "scripts/env/steve.data/sys.config"
-                  , node "dal2" "vlan202" "172.16.170.2" "scripts/env/steve.data/sys.config"
-                  , node "dal3" "vlan203" "172.16.170.3" "scripts/env/steve.data/sys.config"
-                  , node "dal4" "vlan204" "172.16.170.4" "scripts/env/steve.data/sys.config"
-                  , node "dal5" "vlan205" "172.16.170.5" "scripts/env/steve.data/sys.config"
+                  node "vlan101" "172.16.169.1" "scripts/env/steve.data/sys.config"
+                  , node "vlan102" "172.16.169.2" "scripts/env/steve.data/sys.config"
+                  , node "vlan201" "172.16.170.1" "scripts/env/steve.data/sys.config"
+                  , node "vlan202" "172.16.170.2" "scripts/env/steve.data/sys.config"
                   ]) do
       after_ stopNodes do
         describe "two node setup" do
@@ -54,30 +50,27 @@ main =
             let
               node1ingestStart = "http://172.16.169.1:3000/poc/api/client/:canary/ingest/stream1/low/start"
               node1edgeUrl = "http://172.16.169.1:3000/poc/api/client/canary/edge/stream1/connect"
-            _ <- delay (Milliseconds 2500.0)
             _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node1edgeUrl
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
-            _ <- delay (Milliseconds 2500.0)
+            _ <- delay (Milliseconds 500.0)
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1edgeUrl
             pure unit
           it "client requests stream on non-ingest node" do
             let
               node1ingestStart = "http://172.16.169.1:3000/poc/api/client/:canary/ingest/stream1/low/start"
               node2edgeUrl = "http://172.16.169.2:3000/poc/api/client/canary/edge/stream1/connect"
-            _ <- delay (Milliseconds 2500.0)
             _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node2edgeUrl
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
-            _ <- delay (Milliseconds 2500.0)
+            _ <- delay (Milliseconds 1000.0)
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node2edgeUrl
             pure unit
           it "client requests stream on other pop" do
             let
               node1ingestStart = "http://172.16.169.1:3000/poc/api/client/:canary/ingest/stream1/low/start"
               node2edgeUrl = "http://172.16.170.2:3000/poc/api/client/canary/edge/stream1/connect"
-            _ <- delay (Milliseconds 2500.0)
             _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node2edgeUrl
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
-            _ <- delay (Milliseconds 6000.0)
+            _ <- delay (Milliseconds 2000.0)
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node2edgeUrl
             pure unit
 
@@ -102,7 +95,7 @@ launchNodes sysconfigs = do
   _ <- runProc "./scripts/startSession.sh" [sessionName]
   _ <- traverse_ (\tn -> runProc "./scripts/startNode.sh"
                          [ sessionName
-                         , tn.nodeName
+                         , tn.addr
                          , tn.vlan
                          , tn.addr
                          , tn.sysConfig

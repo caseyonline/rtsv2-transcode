@@ -224,7 +224,7 @@ handleIntraPoPStreamAvailable streamId addr state@{ thisLocation: (ServerLocatio
       | sourcePoP == pop -> do
         -- Message from our pop - distribute over trans-pop
         _ <- logInfo "Local stream being delivered to trans-pop" { streamId: streamId }
-        result <- Serf.event state.serfRpcAddress "streamAvailable" (StreamAvailable streamId addr) true
+        result <- Serf.event state.serfRpcAddress "streamAvailable" (StreamAvailable streamId addr) false
         _ <- logInfo "trans-pop serf said" { result: result }
         pure state
       | otherwise -> pure state
