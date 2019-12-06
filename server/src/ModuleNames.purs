@@ -35,8 +35,17 @@ rtsv2Config = ModuleName "Rtsv2.Config"
 rtsv2EdgeAgentSup :: ModuleName
 rtsv2EdgeAgentSup = ModuleName "Rtsv2.EdgeAgentSup"
 
+rtsv2EndpointsAlive :: ModuleName
+rtsv2EndpointsAlive = ModuleName "Rtsv2.Endpoints.Alive"
+
+rtsv2EndpointsMimeType :: ModuleName
+rtsv2EndpointsMimeType = ModuleName "Rtsv2.Endpoints.MimeType"
+
 rtsv2Env :: ModuleName
 rtsv2Env = ModuleName "Rtsv2.Env"
+
+rtsv2Health :: ModuleName
+rtsv2Health = ModuleName "Rtsv2.Health"
 
 rtsv2IngestAgent :: ModuleName
 rtsv2IngestAgent = ModuleName "Rtsv2.IngestAgent"

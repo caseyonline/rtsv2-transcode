@@ -5,7 +5,6 @@ import Prelude
 import Bus as Bus
 import Data.Either (Either(..))
 import Data.Foldable (foldl)
-import Data.Int (floor, toNumber)
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Set as Set
 import Data.Traversable (sequence, traverse_)
@@ -21,11 +20,14 @@ import Logger as Logger
 import Os (osCmd)
 import Partial.Unsafe (unsafeCrashWith)
 import Pinto (ServerName(..), StartLinkResult)
+import Pinto.Gen (CallResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Prim.Row (class Nub)
 import Record as Record
 import Rtsv2.Env as Env
+import Rtsv2.Health (Health)
+import Rtsv2.Health as Health
 import Rtsv2.IntraPoPAgent as IntraPoPAgent
 import Rtsv2.PoPDefinition (PoPName, ServerAddress, ServerLocation(..), PoP, whereIsServer)
 import Rtsv2.PoPDefinition as PoPDefinition
@@ -49,6 +51,17 @@ type Config
     , rejoinEveryMs :: Int
     , connectStreamAfterMs :: Int
     }
+
+health :: Effect Health
+health =
+  Gen.doCall serverName \state -> do
+    currentHealth <- getHealth state
+    pure $ CallReply currentHealth state
+  where
+    getHealth {weAreLeader: false} = pure Health.NA
+    getHealth {members} = do
+      allOtherPoPs <- PoPDefinition.getOtherPoPs
+      pure $ Health.percentageToHealth $ (Map.size members * 100) / (length allOtherPoPs) * 100
 
 serverName :: ServerName State Msg
 serverName = Local "transPopAgent"
@@ -287,7 +300,11 @@ handleLeaderAnnouncement address state = do
   now <- systemTime MilliSecond
   pure $ state { lastLeaderAnnouncement = now }
 
+
 connectStream :: State -> Effect Unit
+connectStream state@{ weAreLeader: false } = do
+  pure unit
+
 connectStream state@{serfRpcAddress} = do
 
   _ <- loopStreamJoin serfRpcAddress 5

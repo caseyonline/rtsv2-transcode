@@ -9,6 +9,7 @@ module Rtsv2.IntraPoPAgent
   , whereIsIngestAggregator
   , whereIsIngestRelay
   , currentTransPoPLeader
+  , health
   , bus
   , IntraMessage(..)
   ) where
@@ -37,6 +38,7 @@ import Pinto.Timer as Timer
 import Prim.Row (class Nub)
 import Record as Record
 import Rtsv2.Env as Env
+import Rtsv2.Health (Health, percentageToHealth)
 import Rtsv2.PoPDefinition (ServerAddress)
 import Rtsv2.PoPDefinition as PoPDefinition
 import Serf (IpAndPort)
@@ -72,15 +74,18 @@ data Msg
 bus :: Bus.Bus IntraMessage
 bus = Bus.bus "intrapop_bus"
 
+health :: Effect Health
+health =
+  Gen.doCall serverName \state@{ members } -> do
+    allOtherServers <- PoPDefinition.getOtherServersForThisPoP
+    let
+      currentHealth = percentageToHealth $ (Map.size members * 100) / (length allOtherServers) * 100
+    pure $ CallReply currentHealth state
+
 isStreamAvailable :: StreamId -> Effect Boolean
 isStreamAvailable streamId =
-  Gen.doCall serverName \state@{ streamAggregatorLocations } -> do
-    _ <-
-      logInfo "Request for stream"
-        { streamId: streamId
-        , locations: streamAggregatorLocations
-        }
-    pure $ CallReply (Map.member streamId streamAggregatorLocations) state
+  Gen.call serverName \state@{ streamAggregatorLocations } ->
+    CallReply (Map.member streamId streamAggregatorLocations) state
 
 isIngestActive :: StreamVariantId -> Effect Boolean
 isIngestActive (StreamVariantId s v) = Gen.call serverName \state -> CallReply false state
