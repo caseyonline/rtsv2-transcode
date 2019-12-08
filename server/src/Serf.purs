@@ -5,6 +5,7 @@ module Serf
        , leave
        , event
        , stream
+       , getCoordinate
        , messageMapper
        , Ip(..), IpAndPort, ApiError(..), SerfMessage(..), SerfResult(..), SerfMember
        )
@@ -38,6 +39,12 @@ type SerfMember = { name :: String
                   , delegageCur :: Int
                   }
 
+type SerfCoordinate = { adjustment :: Number
+                      , error :: Number
+                      , height :: Number
+                      , vec :: List Number
+                      }
+
 data SerfMessage a = MemberAlive (List SerfMember)
                    | MemberLeaving
                    | MemberLeft (List SerfMember)
@@ -49,6 +56,7 @@ foreign import joinImpl :: (ApiError -> (SerfResult Int)) -> (Int -> SerfResult 
 foreign import leaveImpl :: (ApiError -> (SerfResult Unit)) -> (Unit -> SerfResult Unit) -> IpAndPort ->  Effect (SerfResult Unit)
 foreign import eventImpl :: forall a. (ApiError -> (SerfResult Unit)) -> (SerfResult Unit) -> IpAndPort -> String -> a -> Boolean ->  Effect (SerfResult Unit)
 foreign import streamImpl :: (ApiError -> (SerfResult Unit)) -> (SerfResult Unit) -> IpAndPort -> Effect (SerfResult Unit)
+foreign import getCoordinateImpl :: (ApiError -> (SerfResult SerfCoordinate)) -> (SerfCoordinate -> SerfResult SerfCoordinate) -> IpAndPort -> String -> Effect (SerfResult SerfCoordinate)
 foreign import messageMapperImpl :: forall a. Foreign -> Maybe (SerfMessage a)
 
 data Ip = Ipv4 Int Int Int Int
@@ -86,6 +94,9 @@ event = eventImpl Left (Right unit)
 
 stream :: IpAndPort -> Effect (SerfResult Unit)
 stream = streamImpl Left (Right unit)
+
+getCoordinate :: IpAndPort -> String -> Effect (SerfResult SerfCoordinate)
+getCoordinate = getCoordinateImpl Left Right
 
 messageMapper :: forall a. Foreign -> Maybe (SerfMessage a)
 messageMapper = messageMapperImpl

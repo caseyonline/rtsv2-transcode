@@ -3,21 +3,24 @@ module Rtsv2.TransPoPAgent where
 import Prelude
 
 import Bus as Bus
+import Control.Apply (lift2)
 import Data.Either (Either(..))
 import Data.Foldable (foldl)
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (wrap)
 import Data.Set as Set
 import Data.Traversable (sequence, traverse_)
+import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Erl.Atom (atom)
-import Erl.Data.List (List, index, length, nil, (:))
+import Erl.Data.List (List, index, length, nil, zip, (:))
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
 import Erl.Process (spawnLink)
 import Erl.Utils (Milliseconds, sleep, systemTimeMs)
 import Foreign (Foreign)
 import Logger as Logger
+import Math (sqrt)
 import Os (osCmd)
 import Partial.Unsafe (unsafeCrashWith)
 import Pinto (ServerName(..), StartLinkResult)
@@ -237,10 +240,34 @@ handleIntraPoPStreamAvailable streamId addr state@{ thisLocation: (ServerLocatio
         pure state
       | otherwise -> pure state
 
+--2019-12-08T21:24:23.372156Z info: <0.150.0> rtsv2_transPoPAgent@ps:-handleTick/1-fun-0-/2:251 coord: #{node => <<"172.16.170.1">>,resp => {right,{serf_coordinates_response,1.5309981138097235e-5,0.5134477696275596,4.5257898368117226e-5,[-1.3974985474775243e-5,-2.328347845032923e-5,3.1110710708379625e-5,-9.664092176629029e-6,-2.0183114455995605e-5,-3.480894910938468e-5,1.3913103911099286e-5,-1.8121849771647579e-6]}}}
+
 handleTick :: State -> Effect State
-handleTick state@{ weAreLeader: true } = do
+handleTick state@{ weAreLeader: true, serfRpcAddress, thisNode, members } = do
   _ <- IntraPoPAgent.announceTransPoPLeader
+  us <- Serf.getCoordinate serfRpcAddress thisNode
+  _ <- traverse_ (\popMembers ->
+                   do
+                     traverse_ (\popMember ->
+                                 do
+                                   resp <- Serf.getCoordinate serfRpcAddress popMember
+                                   _ <- logInfo "rtt" {node: popMember,
+                                                       rtt : (lift2 calcRtt us resp)}
+                                   pure unit
+                               )
+                               popMembers
+                 )
+       (Map.values members)
   pure state
+  where
+    calcRtt lhs rhs =
+      let
+        sumq = foldl (\acc (Tuple a b) -> acc + ((a - b) * (a - b))) 0.0 (zip lhs.vec rhs.vec)
+        rtt = sqrt sumq + lhs.height + rhs.height
+        adjusted = rtt + lhs.adjustment + rhs.adjustment
+      in
+       if adjusted > 0.0 then adjusted * 1000.0
+       else rtt * 1000.0
 
 handleTick state@{ lastLeaderAnnouncement
                  , leaderAnnouncementTimeout

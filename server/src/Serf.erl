@@ -6,6 +6,7 @@
         , leaveImpl/3
         , eventImpl/6
         , streamImpl/3
+        , getCoordinateImpl/4
         , messageMapperImpl/1
         ]).
 %% event :: forall a. IpAndPort -> String -> a -> Boolean ->  Effect (Either SerfApiError Unit)
@@ -31,6 +32,14 @@ streamImpl(Left, Right, RpcAddr) ->
   fun() ->
       case serf_api:stream(mapAddr(RpcAddr)) of
         ok -> Right;
+        Error -> Left(Error)
+      end
+  end.
+
+getCoordinateImpl(Left, Right, RpcAddr, NodeName) ->
+  fun() ->
+      case serf_api:get_coordinate(mapAddr(RpcAddr), NodeName) of
+        {ok, Coords} -> Right(mapCoordsToPurs(Coords));
         Error -> Left(Error)
       end
   end.
@@ -90,12 +99,31 @@ messageMapperImpl_(#serf_members_event{ type = leave
                                      }) ->
   {just, {memberLeft, [mapMemberToPurs(Member) || Member <- Members]}};
 
+messageMapperImpl_(#serf_coordinates_response{ adjustment = Adjustment
+                                             , error = Error
+                                             , height = Height
+                                             , vec = Vec}) ->
+  {just, #{adjustment => Adjustment
+          , error => Error
+          , height => Height
+          , vec => Vec}};
+
 %% TODO - should be a record
 messageMapperImpl_({serf_stream_failed, _Ref, _Error}) ->
   {just, {streamFailed}};
 
 messageMapperImpl_(_X) ->
   {nothing}.
+
+
+mapCoordsToPurs(#serf_coordinates_response{ adjustment = Adjustment
+                                          , error = Error
+                                          , height = Height
+                                          , vec = Vec}) ->
+  #{adjustment => Adjustment
+   , error => Error
+   , height => Height
+   , vec => Vec}.
 
 mapMemberToPurs(#serf_member{ name = Name
                             , ip_address = Addr
