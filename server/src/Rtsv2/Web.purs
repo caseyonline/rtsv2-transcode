@@ -15,7 +15,7 @@ import Pinto (ServerName(..), StartLinkResult)
 import Pinto.Gen as Gen
 import Rtsv2.Config as Config
 import Rtsv2.EdgeAgentSup as EdgeAgentSup
-import Rtsv2.Endpoints.Alive (alive)
+import Rtsv2.Endpoints.Health (healthCheck)
 import Rtsv2.Env as Env
 import Rtsv2.IngestAgentSup (startIngest)
 import Rtsv2.IntraPoPAgent as IntraPoPAgent
@@ -40,11 +40,11 @@ init :: Config.WebConfig -> Effect State
 init args = do
   bindIp <- Env.privateInterfaceIp
   Stetson.configure
-    # Stetson.route "/poc/api/transPoPLeader" transPoPLeader
-    # Stetson.route "/poc/api/client/:canary/edge/:stream_id/connect" edge_entrypoint
-    # Stetson.route "/poc/api/client/:canary/ingest/:stream_id/:variant_id/start" ingestStart
-    --# Stetson.route "/poc/api/client/:canary/ingest/:stream_id/:variant_id/stop" ingestStop
-    # Stetson.route "/test/alive" alive
+    # Stetson.route "/api/transPoPLeader" transPoPLeader
+    # Stetson.route "/api/healthCheck" healthCheck
+    # Stetson.route "/api/client/:canary/edge/:stream_id/connect" edge_entrypoint
+    # Stetson.route "/api/client/:canary/ingest/:stream_id/:variant_id/start" ingestStart
+    --# Stetson.route "/api/client/:canary/ingest/:stream_id/:variant_id/stop" ingestStop
     # Stetson.port args.port
     # (uncurry4 Stetson.bindTo) (ipToTuple bindIp)
     # Stetson.startClear "http_listener"

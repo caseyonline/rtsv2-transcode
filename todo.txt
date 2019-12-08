@@ -1,3 +1,5 @@
+[ ] - remove /poc from API
+[ ] - streamStoppedMessage (ingest -> aggregator)
 [ ] - test4 - IngestAggregator with a name clash - 2 things running, should be 1
 [ ] - test5 - Multiple trans-pops with a name clash - 2 things running, should be 1
 [ ] - test6 - Multiple stream-relay with a name clash - 2 things running, should be 1

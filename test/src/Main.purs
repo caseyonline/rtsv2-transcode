@@ -48,8 +48,8 @@ main =
         describe "two node setup" do
           it "client requests stream on ingest node" do
             let
-              node1ingestStart = "http://172.16.169.1:3000/poc/api/client/:canary/ingest/stream1/low/start"
-              node1edgeUrl = "http://172.16.169.1:3000/poc/api/client/canary/edge/stream1/connect"
+              node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/stream1/low/start"
+              node1edgeUrl = "http://172.16.169.1:3000/api/client/canary/edge/stream1/connect"
             _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node1edgeUrl
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
             _ <- delay (Milliseconds 500.0)
@@ -57,8 +57,8 @@ main =
             pure unit
           it "client requests stream on non-ingest node" do
             let
-              node1ingestStart = "http://172.16.169.1:3000/poc/api/client/:canary/ingest/stream1/low/start"
-              node2edgeUrl = "http://172.16.169.2:3000/poc/api/client/canary/edge/stream1/connect"
+              node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/stream1/low/start"
+              node2edgeUrl = "http://172.16.169.2:3000/api/client/canary/edge/stream1/connect"
             _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node2edgeUrl
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
             _ <- delay (Milliseconds 1000.0)
@@ -66,8 +66,8 @@ main =
             pure unit
           it "client requests stream on other pop" do
             let
-              node1ingestStart = "http://172.16.169.1:3000/poc/api/client/:canary/ingest/stream1/low/start"
-              node2edgeUrl = "http://172.16.170.2:3000/poc/api/client/canary/edge/stream1/connect"
+              node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/stream1/low/start"
+              node2edgeUrl = "http://172.16.170.2:3000/api/client/canary/edge/stream1/connect"
             _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node2edgeUrl
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
             _ <- delay (Milliseconds 2000.0)

@@ -374,7 +374,7 @@ joinAllSerf state@{ config: config@{rejoinEveryMs}, serfRpcAddress, members } =
   spawnFun addressMapper popsToJoin = void $ spawnLink (\_ -> do
                              foldl
                                ( \iAcc server -> do
-                                   restResult <- SpudGun.getText ("http://" <> server <> ":3000/poc/api/transPoPLeader")
+                                   restResult <- SpudGun.getText ("http://" <> server <> ":3000/api/transPoPLeader")
                                    _ <- case restResult of
                                      Nothing -> pure unit
                                      Just addr -> do

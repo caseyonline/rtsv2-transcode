@@ -1,6 +1,6 @@
-module Rtsv2.Endpoints.Alive
+module Rtsv2.Endpoints.Health
        (
-         alive
+         healthCheck
        ) where
 
 import Prelude
@@ -14,8 +14,8 @@ import Simple.JSON as JSON
 import Stetson (StetsonHandler)
 import Stetson.Rest as Rest
 
-alive :: StetsonHandler Unit
-alive =
+healthCheck :: StetsonHandler Unit
+healthCheck =
   Rest.handler (\req -> Rest.initResult req unit)
   # Rest.contentTypesProvided (\req state -> Rest.result (MimeType.json jsonHandler : nil) req unit)
   # Rest.yeeha
