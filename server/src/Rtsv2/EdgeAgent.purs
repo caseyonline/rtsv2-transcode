@@ -1,7 +1,6 @@
 module Rtsv2.EdgeAgent
   ( startLink
   , init
-  , isActive
   ) where
 
 import Prelude
@@ -31,9 +30,6 @@ gprocName streamId = unsafeToForeign (tuple3 (atom "n") (atom "l") (tuple2 "edge
 
 serverName :: StreamId -> ServerName State Unit
 serverName streamId = Via (NativeModuleName $ atom "gproc") $ gprocName streamId
-
-isActive :: StreamId -> Effect Boolean
-isActive streamId = isRegistered $ (tuple2 "edge" streamId)
 
 startLink :: StreamId -> Effect StartLinkResult
 startLink streamId = Gen.startLink (serverName streamId) (init streamId) Gen.defaultHandleInfo

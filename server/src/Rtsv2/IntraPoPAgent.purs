@@ -8,6 +8,7 @@ module Rtsv2.IntraPoPAgent
   , announceTransPoPLeader
   , whereIsIngestAggregator
   , whereIsStreamRelay
+  , whereIsEdge
   , currentTransPoPLeader
   , health
   , bus
@@ -102,9 +103,14 @@ whereIsIngestAggregator (StreamVariantId streamId _) =
     CallReply (EMap.lookup (StreamId streamId) state.streamAggregatorLocations) state
 
 whereIsStreamRelay :: StreamId -> Effect (Maybe String)
-whereIsStreamRelay (StreamId streamId) =
+whereIsStreamRelay streamId =
   Gen.call serverName \state ->
-    CallReply (EMap.lookup (StreamId streamId) state.streamRelayLocations) state
+    CallReply (EMap.lookup streamId state.streamRelayLocations) state
+
+whereIsEdge :: StreamId -> Effect (Maybe (Set String))
+whereIsEdge streamId =
+  Gen.call serverName \state ->
+    CallReply (Map.lookup streamId state.edgeLocations) state
 
 currentTransPoPLeader :: Effect (Maybe ServerAddress)
 currentTransPoPLeader =
