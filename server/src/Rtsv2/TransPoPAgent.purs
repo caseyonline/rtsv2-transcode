@@ -166,6 +166,8 @@ handleIntraPoPMessage (IntraPoPAgent.TransPoPLeader address) state = handleLeade
 
 handleIntraPoPMessage (IntraPoPAgent.StreamAvailable streamId addr) state = handleIntraPoPStreamAvailable streamId addr state
 
+handleIntraPoPMessage (IntraPoPAgent.EdgeAvailable _ _) state = pure state
+
 handleTransPoPMessage :: TransMessage -> State -> Effect State
 handleTransPoPMessage (StreamAvailable streamId server) state = do
   _ <- IntraPoPAgent.announceRemoteStreamIsAvailable streamId server
@@ -235,7 +237,7 @@ handleIntraPoPStreamAvailable streamId addr state@{ thisLocation: (ServerLocatio
     Just sourcePoP
       | sourcePoP == pop -> do
         -- Message from our pop - distribute over trans-pop
-        _ <- logInfo "Local stream being delivered to trans-pop" { streamId: streamId }
+        --_ <- logInfo "Local stream being delivered to trans-pop" { streamId: streamId }
         result <- Serf.event state.serfRpcAddress "streamAvailable" (StreamAvailable streamId addr) false
         _ <- maybeLogError "Trans-PoP serf event failed" result {}
         pure state

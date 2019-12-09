@@ -2,10 +2,12 @@ module Rtsv2.IntraPoPAgent
   ( startLink
   , isStreamIngestAvailable
   , isIngestActive
+  , announceEdgeIsActive
   , announceStreamIsAvailable
   , announceRemoteStreamIsAvailable
   , announceTransPoPLeader
   , whereIsIngestAggregator
+  , whereIsStreamRelay
   , currentTransPoPLeader
   , health
   , bus
@@ -17,8 +19,10 @@ import Prelude
 import Bus as Bus
 import Data.Either (Either(..))
 import Data.Foldable (foldl)
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (wrap)
+import Data.Set (Set)
+import Data.Set as Set
 import Data.Traversable (traverse_)
 import Effect (Effect)
 import EphemeralMap (EMap)
@@ -53,14 +57,16 @@ type State
   = { config :: Config.IntraPoPAgentConfig
     , serfRpcAddress :: IpAndPort
     , currentTransPoPLeader :: Maybe ServerAddress
-    , streamRelayLocations :: EMap StreamId String
-    , streamAggregatorLocations :: EMap StreamId String
+    , edgeLocations :: Map StreamId (Set ServerAddress) -- TODO - ServerAddresses need to be ephemeral
+    , streamRelayLocations :: EMap StreamId ServerAddress
+    , streamAggregatorLocations :: EMap StreamId ServerAddress
     , thisNode :: ServerAddress
     , members :: Map ServerAddress Serf.SerfMember
     , expireThreshold :: Milliseconds
     }
 
 data IntraMessage = StreamAvailable StreamId ServerAddress
+                  | EdgeAvailable StreamId ServerAddress
                   | TransPoPLeader ServerAddress
 
 data Msg
@@ -107,12 +113,25 @@ currentTransPoPLeader =
         CallReply value state
     )
 
+-- Called by EdgeAgent to indicate edge on this node
+announceEdgeIsActive :: StreamId -> Effect Unit
+announceEdgeIsActive streamId =
+  Gen.doCast serverName
+    $ \state@{ edgeLocations, thisNode } -> do
+        --_ <- logInfo "Local edge available" { streamId: streamId }
+        _ <- raiseLocal state "edgeAvailable" (EdgeAvailable streamId thisNode)
+        let
+          currentLocations = fromMaybe Set.empty $ Map.lookup streamId state.edgeLocations
+          newLocations = Set.insert thisNode currentLocations
+          newEdgeLocations = Map.insert streamId newLocations state.edgeLocations
+        pure $ Gen.CastNoReply state { edgeLocations = newEdgeLocations }
+
 -- Called by IngestAggregator to indicate stream on this node
 announceStreamIsAvailable :: StreamId -> Effect Unit
 announceStreamIsAvailable streamId =
   Gen.doCast serverName
     $ \state@{ streamAggregatorLocations, thisNode } -> do
-        _ <- logInfo "Local stream available" { streamId: streamId }
+        --_ <- logInfo "Local stream available" { streamId: streamId }
         _ <- raiseLocal state "streamAvailable" (StreamAvailable streamId thisNode)
         newStreamAggregatorLocations <- EMap.insert' streamId thisNode streamAggregatorLocations
         pure $ Gen.CastNoReply state { streamAggregatorLocations = newStreamAggregatorLocations }
@@ -176,6 +195,7 @@ init config@{rejoinEveryMs
   pure
     { config
     , serfRpcAddress
+    , edgeLocations: Map.empty
     , streamRelayLocations: EMap.empty
     , streamAggregatorLocations: EMap.empty
     , thisNode: thisNode
@@ -209,13 +229,21 @@ handleInfo msg state = case msg of
         | otherwise -> do
           -- streamAvailable on some other node in this PoP - we need to tell Trans-PoP
           _ <- Bus.raise bus intraMessage
-          _ <-
-            logInfo "StreamAvailable on remote node"
-              { streamId: streamId
-              , remoteNode: server
-              }
+          -- _ <- logInfo "StreamAvailable on remote node" { streamId: streamId, remoteNode: server }
           newStreamAggregatorLocations <- EMap.insert' streamId server state.streamAggregatorLocations
           pure $ state { streamAggregatorLocations = newStreamAggregatorLocations }
+      EdgeAvailable streamId server
+        | server == state.thisNode -> do
+          -- edgeAvailable on this node - we can just ignore, since appropriate action taken in announceEdgeIsActive
+          pure state
+        | otherwise -> do
+          -- edgeAvailable on some other node in this PoP
+          -- _ <- logInfo "EdgeAvailable on remote node" { streamId: streamId, remoteNode: server }
+          let
+            currentLocations = fromMaybe Set.empty $ Map.lookup streamId state.edgeLocations
+            newLocations = Set.insert server currentLocations
+            newEdgeLocations = Map.insert streamId newLocations state.edgeLocations
+          pure $ state { edgeLocations = newEdgeLocations }
       TransPoPLeader server
         | server == state.thisNode -> pure state { currentTransPoPLeader = Just server }
         | otherwise -> do

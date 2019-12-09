@@ -51,4 +51,4 @@ childTemplate :: Pinto.ChildTemplate StreamId
 childTemplate = Pinto.ChildTemplate (StreamRelay.startLink)
 
 logInfo :: forall a. String -> a -> Effect Foreign
-logInfo msg metaData = Logger.info msg (Record.merge { domain: ((atom (show Agent.Edge)) : nil) } { misc: metaData })
+logInfo msg metaData = Logger.info msg (Record.merge { domain: ((atom (show Agent.StreamRelay)) : nil) } { misc: metaData })

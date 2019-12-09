@@ -6,6 +6,7 @@ module Rtsv2.Web
 import Prelude
 
 import Data.Maybe (Maybe(..), fromMaybe, fromMaybe', isJust)
+import Debug.Trace (spy)
 import Effect (Effect)
 import Erl.Atom (atom)
 import Erl.Cowboy.Req (Req, binding)
@@ -14,13 +15,15 @@ import Erl.Data.Tuple (Tuple2, Tuple4, tuple2, tuple4, uncurry4)
 import Pinto (ServerName(..), StartLinkResult)
 import Pinto.Gen as Gen
 import Rtsv2.Config as Config
+import Rtsv2.EdgeAgent as EdgeAgent
+import Rtsv2.EdgeAgentSup (startEdge)
 import Rtsv2.EdgeAgentSup as EdgeAgentSup
 import Rtsv2.Endpoints.Health (healthCheck)
 import Rtsv2.Env as Env
 import Rtsv2.IngestAgentSup (startIngest)
-import Rtsv2.EdgeAgentSup (startEdge)
 import Rtsv2.IntraPoPAgent as IntraPoPAgent
 import Rtsv2.PoPDefinition (ServerAddress)
+import Rtsv2.TransPoPAgent as Logger
 import Serf (Ip(..))
 import Shared.Stream (StreamId(..), StreamVariantId(..))
 import Shared.Utils (lazyCrashIfMissing)
@@ -86,23 +89,37 @@ ingestStart =
                                   Rest.result (textWriter "" : nil) req state)
   # Rest.yeeha
 
-type EdgeState = { streamId :: StreamId }
+type EdgeState = { streamId :: StreamId
+                 , isAgentAvailable :: Boolean
+                 , isIngestAvailable :: Boolean
+                 , isEdgeActive :: Boolean
+                 }
 edgeStart :: StetsonHandler EdgeState
 edgeStart =
   Rest.handler (\req ->
-                 let streamId = fromMaybe' (lazyCrashIfMissing "stream_id binding missing") $ binding (atom "stream_id") req
+                 let streamId = StreamId $ fromMaybe' (lazyCrashIfMissing "stream_id binding missing") $ binding (atom "stream_id") req
                  in
-                 Rest.initResult req {streamId : StreamId streamId})
-  # Rest.serviceAvailable (\req state -> do
-                              isAvailable <- EdgeAgentSup.isAvailable
-                              Rest.result isAvailable req state)
-  # Rest.resourceExists (\req state@{streamId} -> do
-                            isAvailable <- IntraPoPAgent.isStreamIngestAvailable streamId
-                            Rest.result isAvailable req state
-                          )
-  # Rest.contentTypesProvided (\req state -> do
-                                  _ <- startEdge state.streamId
-                                  Rest.result (textWriter "" : nil) req state)
+                  do
+                    -- TODO - more RESTy please - but we need isConflict to get the flow correct
+                    isAgentAvailable <- EdgeAgentSup.isAvailable
+                    isIngestAvailable <- IntraPoPAgent.isStreamIngestAvailable streamId
+                    isEdgeActive <- EdgeAgent.isActive streamId
+                    Rest.initResult req { streamId : streamId
+                                        , isAgentAvailable
+                                        , isIngestAvailable
+                                        , isEdgeActive})
+
+  # Rest.forbidden (\req state@{isEdgeActive} -> Rest.result isEdgeActive req state)
+  # Rest.serviceAvailable (\req state@{isAgentAvailable} -> Rest.result isAgentAvailable req state)
+  # Rest.resourceExists (\req state@{isIngestAvailable} -> Rest.result isIngestAvailable req state)
+  # Rest.contentTypesProvided (\req state ->
+                                  Rest.result
+                                    ((tuple2 "text/plain" (\req2 state2 ->
+                                                            do
+                                                              -- TODO - this could fail, in which case we should return conflict
+                                                              _ <- startEdge state.streamId
+                                                              Rest.result "" req2 state2)) : nil)
+                                    req state)
   # Rest.yeeha
 
 
