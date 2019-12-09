@@ -44,6 +44,9 @@ rtsv2EdgeAgent = ModuleName "Rtsv2.EdgeAgent"
 rtsv2EdgeAgentSup :: ModuleName
 rtsv2EdgeAgentSup = ModuleName "Rtsv2.EdgeAgentSup"
 
+rtsv2EndpointsClient :: ModuleName
+rtsv2EndpointsClient = ModuleName "Rtsv2.Endpoints.Client"
+
 rtsv2EndpointsEdge :: ModuleName
 rtsv2EndpointsEdge = ModuleName "Rtsv2.Endpoints.Edge"
 

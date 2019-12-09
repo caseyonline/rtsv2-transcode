@@ -6,7 +6,6 @@ module Rtsv2.Web
 import Prelude
 
 import Data.Maybe (Maybe(..), fromMaybe, fromMaybe', isJust)
-import Data.Set (member)
 import Debug.Trace (spy)
 import Effect (Effect)
 import Erl.Atom (atom)
@@ -14,22 +13,18 @@ import Erl.Cowboy.Req (Req, binding)
 import Erl.Data.List (nil, (:))
 import Erl.Data.Tuple (Tuple2, Tuple4, tuple2, tuple4, uncurry4)
 import Foreign (Foreign)
-import Logger as Logger
+import Logger (info) as Logger
 import Pinto (ServerName(..), StartLinkResult)
 import Pinto.Gen as Gen
 import Record as Record
 import Rtsv2.Config as Config
-import Rtsv2.EdgeAgent as EdgeAgent
-import Rtsv2.EdgeAgentSup (startEdge)
-import Rtsv2.EdgeAgentSup as EdgeAgentSup
-import Rtsv2.Endpoints.Edge (edgeStart)
+import Rtsv2.Endpoints.Client (clientStart)
+import Rtsv2.Endpoints.Edge as EdgeEndpoint
 import Rtsv2.Endpoints.Health (healthCheck)
 import Rtsv2.Env as Env
 import Rtsv2.IngestAgentSup (startIngest)
 import Rtsv2.IntraPoPAgent as IntraPoPAgent
 import Rtsv2.PoPDefinition (ServerAddress)
-import Rtsv2.PoPDefinition as PoPDefintion
-import Rtsv2.TransPoPAgent as Logger
 import Serf (Ip(..))
 import Shared.Stream (StreamId(..), StreamVariantId(..))
 import Shared.Utils (lazyCrashIfMissing)
@@ -52,10 +47,15 @@ init args = do
   Stetson.configure
     # Stetson.route "/api/transPoPLeader" transPoPLeader
     # Stetson.route "/api/healthCheck" healthCheck
-    # Stetson.route "/api/client/:canary/edge/:stream_id/start" edgeStart
-    --# Stetson.route "/api/client/:canary/edge/:stream_id/stop" edgeStop
+    
     # Stetson.route "/api/client/:canary/ingest/:stream_id/:variant_id/start" ingestStart
     --# Stetson.route "/api/client/:canary/ingest/:stream_id/:variant_id/stop" ingestStop
+    
+    # Stetson.route "/api/client/:canary/client/:stream_id/start" clientStart
+    --# Stetson.route "/api/client/:canary/client/:stream_id/stop" clientStop
+
+    # Stetson.route "/api/client/:canary/edge/:stream_id/clientCount" EdgeEndpoint.clientCount
+
     # Stetson.port args.port
     # (uncurry4 Stetson.bindTo) (ipToTuple bindIp)
     # Stetson.startClear "http_listener"

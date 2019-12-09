@@ -53,7 +53,7 @@ main =
           it "client requests stream on ingest node" do
             let
               node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/stream1/low/start"
-              node1edgeUrl = "http://172.16.169.1:3000/api/client/canary/edge/stream1/start"
+              node1edgeUrl = "http://172.16.169.1:3000/api/client/canary/client/stream1/start"
             _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node1edgeUrl
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
             _ <- delay (Milliseconds 500.0)
@@ -62,7 +62,7 @@ main =
           it "client requests stream on non-ingest node" do
             let
               node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/stream1/low/start"
-              node2edgeUrl = "http://172.16.169.2:3000/api/client/canary/edge/stream1/start"
+              node2edgeUrl = "http://172.16.169.2:3000/api/client/canary/client/stream1/start"
             _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node2edgeUrl
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
             _ <- delay (Milliseconds 1000.0)
@@ -71,7 +71,7 @@ main =
           it "client requests stream on other pop" do
             let
               node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/stream1/low/start"
-              node2edgeUrl = "http://172.16.170.2:3000/api/client/canary/edge/stream1/start"
+              node2edgeUrl = "http://172.16.170.2:3000/api/client/canary/client/stream1/start"
             _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node2edgeUrl
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
             _ <- delay (Milliseconds 2000.0)
@@ -80,8 +80,8 @@ main =
           it "client requests stream on 2nd node on ingest pop" do
             let
               node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/stream1/low/start"
-              node2edgeUrl = "http://172.16.169.2:3000/api/client/canary/edge/stream1/start"
-              node3edgeUrl = "http://172.16.169.3:3000/api/client/canary/edge/stream1/start"
+              node2edgeUrl = "http://172.16.169.2:3000/api/client/canary/client/stream1/start"
+              node3edgeUrl = "http://172.16.169.3:3000/api/client/canary/client/stream1/start"
             _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node2edgeUrl
             _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node3edgeUrl
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart

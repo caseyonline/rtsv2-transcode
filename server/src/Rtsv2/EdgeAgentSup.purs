@@ -1,6 +1,6 @@
 module Rtsv2.EdgeAgentSup
        ( startLink
-       , startEdge
+       , maybeStartAndAddClient
        , isAvailable
        )
        where
@@ -19,7 +19,7 @@ import Pinto.Sup as Sup
 import Record as Record
 import Rtsv2.EdgeAgent as Edge
 import Shared.Agent as Agent
-import Shared.Stream (StreamId(..))
+import Shared.Stream (StreamId)
 
 serverName :: String
 serverName = show Agent.Edge
@@ -30,12 +30,22 @@ isAvailable = ErlUtils.isRegistered serverName
 startLink :: forall a. a -> Effect Pinto.StartLinkResult
 startLink _ = Sup.startLink serverName init
 
-startEdge :: StreamId -> Effect Unit
-startEdge streamId = do
-  result <- Sup.startSimpleChild childTemplate serverName streamId
-  case result of
-    Pinto.AlreadyStarted pid -> pure unit
-    Pinto.Started pid -> pure unit
+maybeStartAndAddClient :: StreamId -> Effect Unit
+maybeStartAndAddClient streamId = do
+  isActive <- Edge.isActive streamId
+  case isActive of
+    false -> do
+             _ <- Sup.startSimpleChild childTemplate serverName streamId
+             maybeStartAndAddClient streamId
+    true ->
+      do
+        _ <- Edge.addClient streamId
+        pure unit
+
+  -- result <- Sup.startSimpleChild childTemplate serverName streamId
+  -- case result of
+  --   Pinto.AlreadyStarted pid -> pure unit
+  --   Pinto.Started pid -> pure unit
 
 init :: Effect Sup.SupervisorSpec
 init = do
