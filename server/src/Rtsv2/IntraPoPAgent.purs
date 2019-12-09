@@ -124,7 +124,7 @@ announceEdgeIsActive :: StreamId -> Effect Unit
 announceEdgeIsActive streamId =
   Gen.doCast serverName
     $ \state@{ edgeLocations, thisNode } -> do
-        --_ <- logInfo "Local edge available" { streamId: streamId }
+        _ <- logInfo "Local edge available" { streamId: streamId }
         _ <- raiseLocal state "edgeAvailable" (EdgeAvailable streamId thisNode)
         let
           currentLocations = fromMaybe Set.empty $ Map.lookup streamId state.edgeLocations
@@ -244,7 +244,7 @@ handleInfo msg state = case msg of
           pure state
         | otherwise -> do
           -- edgeAvailable on some other node in this PoP
-          -- _ <- logInfo "EdgeAvailable on remote node" { streamId: streamId, remoteNode: server }
+          _ <- logInfo "EdgeAvailable on remote node" { streamId: streamId, remoteNode: server }
           let
             currentLocations = fromMaybe Set.empty $ Map.lookup streamId state.edgeLocations
             newLocations = Set.insert server currentLocations

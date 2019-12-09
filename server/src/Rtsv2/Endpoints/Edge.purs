@@ -12,7 +12,7 @@ import Data.Set as Set
 import Debug.Trace (spy)
 import Erl.Atom (atom)
 import Erl.Cowboy.Handlers.Rest (moved, notMoved)
-import Erl.Cowboy.Req (binding, path)
+import Erl.Cowboy.Req (binding, path, setHeader)
 import Erl.Data.List (nil, (:))
 import Erl.Data.Tuple (tuple2)
 import Rtsv2.EdgeAgentSup (startEdge)
@@ -33,6 +33,7 @@ type EdgeState = { streamId :: StreamId
                  , isAgentAvailable :: Boolean
                  , isIngestAvailable :: Boolean
                  , currentNodeHasEdge :: Boolean
+                 , thisNode :: ServerAddress
                  , currentEdgeLocations :: Set ServerAddress
                  }
 edgeStart :: StetsonHandler EdgeState
@@ -47,6 +48,7 @@ edgeStart =
                     isIngestAvailable <- IntraPoPAgent.isStreamIngestAvailable streamId
                     currentEdgeLocations <- fromMaybe Set.empty <$> IntraPoPAgent.whereIsEdge streamId
                     Rest.initResult req { streamId : streamId
+                                        , thisNode
                                         , isAgentAvailable
                                         , isIngestAvailable
                                         , currentEdgeLocations
@@ -81,7 +83,10 @@ edgeStart =
     addOrStartEdge req state@{currentNodeHasEdge: false} = do
       _ <- startEdge state.streamId
       Rest.result "" req state
-    addOrStartEdge req state@{currentNodeHasEdge: true} = do
+    addOrStartEdge req state@{currentNodeHasEdge: true,
+                              thisNode} = do
       -- TODO - this could fail, in which case we should return conflict
       _ <- startEdge state.streamId
-      Rest.result "" req state
+      let
+        req2 = setHeader "X-ServedBy" thisNode req
+      Rest.result "" req2 state

@@ -5,13 +5,16 @@ import Prelude
 import Affjax (Error, Response)
 import Affjax as AX
 import Affjax.ResponseFormat as ResponseFormat
+import Affjax.ResponseHeader (ResponseHeader(..))
 import Affjax.StatusCode (StatusCode(..))
 import Data.Either (Either(..))
+import Data.Foldable (elem)
 import Data.Identity (Identity(..))
 import Data.Maybe (Maybe(..))
 import Data.Newtype (un)
 import Data.Time.Duration (Milliseconds(..))
 import Data.Traversable (traverse_)
+import Data.Tuple (Tuple(..))
 import Debug.Trace (spy)
 import Effect (Effect)
 import Effect.Aff (Aff, delay, launchAff_, throwError)
@@ -41,6 +44,7 @@ main =
                 launchNodes [
                   node "vlan101" "172.16.169.1" "test/config/sys.config"
                   , node "vlan102" "172.16.169.2" "test/config/sys.config"
+                  , node "vlan103" "172.16.169.3" "test/config/sys.config"
                   , node "vlan201" "172.16.170.1" "test/config/sys.config"
                   , node "vlan202" "172.16.170.2" "test/config/sys.config"
                   ]) do
@@ -73,6 +77,21 @@ main =
             _ <- delay (Milliseconds 2000.0)
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node2edgeUrl
             pure unit
+          it "client requests stream on 2nd node on ingest pop" do
+            let
+              node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/stream1/low/start"
+              node2edgeUrl = "http://172.16.169.2:3000/api/client/canary/edge/stream1/start"
+              node3edgeUrl = "http://172.16.169.3:3000/api/client/canary/edge/stream1/start"
+            _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node2edgeUrl
+            _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node3edgeUrl
+            _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
+            _ <- delay (Milliseconds 2000.0)
+            _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node2edgeUrl
+            _ <- delay (Milliseconds 1000.0)
+            _ <- assertHeader (Tuple "x-servedby" "172.16.169.2")
+                 =<< assertStatusCode 200
+                 =<< AX.get ResponseFormat.string node3edgeUrl
+            pure unit
 
   where
     testConfig = { slow: Milliseconds 5000.0, timeout: Just (Milliseconds 20000.0), exit: false }
@@ -86,6 +105,12 @@ assertStatusCode expectedCode either =
       throwError $ error $ "Unexpected statuscode " <> show response.status
     Left err ->
       throwError $ error $ "GET /api response failed to decode: " <> AX.printError err
+
+assertHeader :: forall a. Tuple String String -> Response a -> Aff (Response a)
+assertHeader (Tuple header value) response@{headers} =
+  case elem (ResponseHeader header value) headers of
+    true -> pure response
+    false -> throwError $ error $ "Header " <> header <> ":" <> value <> " not present in response " <> (show headers)
 
 sessionName:: String
 sessionName = "testSession"
