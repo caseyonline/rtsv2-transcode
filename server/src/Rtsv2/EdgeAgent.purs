@@ -20,7 +20,7 @@ import Record as Record
 import Rtsv2.IntraPoPAgent as IntraPoPAgent
 import Rtsv2.StreamRelayAgentSup as StreamRelayAgentSup
 import Shared.Agent as Agent
-import Shared.Stream (StreamId(..), StreamVariantId, toStreamId)
+import Shared.Stream (StreamId)
 
 type State
   = { }

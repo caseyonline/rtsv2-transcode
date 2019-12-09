@@ -13,8 +13,11 @@ import Erl.Atom (atom)
 import Erl.Cowboy.Req (Req, binding)
 import Erl.Data.List (nil, (:))
 import Erl.Data.Tuple (Tuple2, Tuple4, tuple2, tuple4, uncurry4)
+import Foreign (Foreign)
+import Logger as Logger
 import Pinto (ServerName(..), StartLinkResult)
 import Pinto.Gen as Gen
+import Record as Record
 import Rtsv2.Config as Config
 import Rtsv2.EdgeAgent as EdgeAgent
 import Rtsv2.EdgeAgentSup (startEdge)
@@ -97,3 +100,7 @@ emptyText = textWriter ""
 
 textWriter :: forall a. String -> Tuple2 String (Req -> a -> (Effect (RestResult String a)))
 textWriter text = tuple2 "text/plain" (\req state -> Rest.result text req state)
+
+
+logInfo :: forall a. String -> a -> Effect Foreign
+logInfo msg metaData = Logger.info msg (Record.merge { domain: ((atom "Web") : nil) } { misc: metaData })

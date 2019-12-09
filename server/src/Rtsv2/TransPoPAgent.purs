@@ -3,7 +3,6 @@ module Rtsv2.TransPoPAgent where
 import Prelude
 
 import Bus as Bus
-import Control.Apply (lift2)
 import Data.Either (Either(..))
 import Data.Foldable (foldl)
 import Data.Maybe (Maybe(..), fromMaybe)
@@ -11,7 +10,7 @@ import Data.Newtype (wrap)
 import Data.Set as Set
 import Data.Traversable (sequence, traverse_)
 import Data.Tuple (Tuple(..))
-import Debug.Trace (spy)
+--import Debug.Trace (spy)
 import Effect (Effect)
 import Erl.Atom (atom)
 import Erl.Data.List (List, index, length, nil, zip, (:))
@@ -170,6 +169,7 @@ handleIntraPoPMessage (IntraPoPAgent.EdgeAvailable _ _) state = pure state
 
 handleTransPoPMessage :: TransMessage -> State -> Effect State
 handleTransPoPMessage (StreamAvailable streamId server) state = do
+  _ <- logInfo "Remote stream available" {streamId, server}
   _ <- IntraPoPAgent.announceRemoteStreamIsAvailable streamId server
   pure state
 
