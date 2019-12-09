@@ -5,8 +5,11 @@ import Erl.ModuleName (ModuleName(..))
 bus :: ModuleName
 bus = ModuleName "Bus"
 
+ephemeral :: ModuleName
+ephemeral = ModuleName "Ephemeral"
+
 ephemeralMap :: ModuleName
-ephemeralMap = ModuleName "EphemeralMap"
+ephemeralMap = ModuleName "Ephemeral.Map"
 
 erlUtils :: ModuleName
 erlUtils = ModuleName "Erl.Utils"

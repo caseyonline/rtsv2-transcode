@@ -26,8 +26,8 @@ import Data.Set (Set)
 import Data.Set as Set
 import Data.Traversable (traverse_)
 import Effect (Effect)
-import EphemeralMap (EMap)
-import EphemeralMap as EMap
+import Ephemeral.Map (EMap)
+import Ephemeral.Map as EMap
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, length, nil, singleton, (:))
 import Erl.Data.Map (Map)
@@ -137,7 +137,7 @@ announceStreamIsAvailable :: StreamId -> Effect Unit
 announceStreamIsAvailable streamId =
   Gen.doCast serverName
     $ \state@{ streamAggregatorLocations, thisNode } -> do
-        --_ <- logInfo "Local stream available" { streamId: streamId }
+        logIfNew streamId streamAggregatorLocations "New local stream is avaiable"
         _ <- raiseLocal state "streamAvailable" (StreamAvailable streamId thisNode)
         newStreamAggregatorLocations <- EMap.insert' streamId thisNode streamAggregatorLocations
         pure $ Gen.CastNoReply state { streamAggregatorLocations = newStreamAggregatorLocations }
@@ -147,13 +147,19 @@ announceRemoteStreamIsAvailable :: StreamId -> ServerAddress -> Effect Unit
 announceRemoteStreamIsAvailable streamId addr =
   Gen.doCast serverName
     $ \state@{ streamAggregatorLocations } -> do
-        _ <- logInfo "Remote stream available" { streamId: streamId
-                                               , addr: addr }
+        logIfNew streamId streamAggregatorLocations "New remote stream is avaiable"
         result <- Serf.event state.serfRpcAddress "streamAvailable" (StreamAvailable streamId addr) false
         _ <- maybeLogError "Intra-PoP serf event failed" result {}
-        -- _ <- raiseLocal state "streamAvailable" (StreamAvailable streamId addr)
+
         newStreamAggregatorLocations <- EMap.insert' streamId addr streamAggregatorLocations
         pure $ Gen.CastNoReply state { streamAggregatorLocations = newStreamAggregatorLocations }
+
+logIfNew :: forall v. StreamId -> EMap StreamId v -> String -> Effect Unit
+logIfNew streamId m str =
+  if EMap.member streamId m
+  then pure unit
+  else void $ logInfo str { streamId }
+
 
 announceTransPoPLeader :: Effect Unit
 announceTransPoPLeader =
