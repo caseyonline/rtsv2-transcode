@@ -35,6 +35,9 @@ rtsv2App = ModuleName "Rtsv2.App"
 rtsv2Config :: ModuleName
 rtsv2Config = ModuleName "Rtsv2.Config"
 
+rtsv2EdgeAgent :: ModuleName
+rtsv2EdgeAgent = ModuleName "Rtsv2.EdgeAgent"
+
 rtsv2EdgeAgentSup :: ModuleName
 rtsv2EdgeAgentSup = ModuleName "Rtsv2.EdgeAgentSup"
 
@@ -67,6 +70,9 @@ rtsv2Node = ModuleName "Rtsv2.Node"
 
 rtsv2PoPDefinition :: ModuleName
 rtsv2PoPDefinition = ModuleName "Rtsv2.PoPDefinition"
+
+rtsv2StreamRelayAgent :: ModuleName
+rtsv2StreamRelayAgent = ModuleName "Rtsv2.StreamRelayAgent"
 
 rtsv2StreamRelayAgentSup :: ModuleName
 rtsv2StreamRelayAgentSup = ModuleName "Rtsv2.StreamRelayAgentSup"

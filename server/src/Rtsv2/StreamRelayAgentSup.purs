@@ -1,7 +1,6 @@
-module Rtsv2.EdgeAgentSup
+module Rtsv2.StreamRelayAgentSup
        ( startLink
-       , startEdge
-       , isAvailable
+       , startRelay
        )
        where
 
@@ -10,28 +9,24 @@ import Prelude
 import Effect (Effect)
 import Erl.Atom (atom)
 import Erl.Data.List (nil, (:))
-import Erl.Utils as ErlUtils
 import Foreign (Foreign)
 import Logger as Logger
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStartTemplate, childType)
 import Pinto.Sup as Sup
 import Record as Record
-import Rtsv2.EdgeAgent as Edge
+import Rtsv2.StreamRelayAgent as StreamRelay
 import Shared.Agent as Agent
 import Shared.Stream (StreamId(..))
 
 serverName :: String
-serverName = show Agent.Edge
-
-isAvailable :: Effect Boolean
-isAvailable = ErlUtils.isRegistered serverName
+serverName = show Agent.StreamRelay
 
 startLink :: forall a. a -> Effect Pinto.StartLinkResult
 startLink _ = Sup.startLink serverName init
 
-startEdge :: StreamId -> Effect Unit
-startEdge streamId = do
+startRelay :: StreamId -> Effect Unit
+startRelay streamId = do
   result <- Sup.startSimpleChild childTemplate serverName streamId
   case result of
     Pinto.AlreadyStarted pid -> pure unit
@@ -39,13 +34,13 @@ startEdge streamId = do
 
 init :: Effect Sup.SupervisorSpec
 init = do
-  _ <- logInfo "Edge Supervisor starting" {}
+  _ <- logInfo "StreamRelay Supervisor starting" {}
   pure $ Sup.buildSupervisor
     # Sup.supervisorStrategy Sup.SimpleOneForOne
     # Sup.supervisorChildren
         ( ( buildChild
               # childType Worker
-              # childId "edgeAgent"
+              # childId "streamRelayAgent"
               # childStartTemplate childTemplate
               # childRestart Transient
           )
@@ -53,7 +48,7 @@ init = do
         )
 
 childTemplate :: Pinto.ChildTemplate StreamId
-childTemplate = Pinto.ChildTemplate (Edge.startLink)
+childTemplate = Pinto.ChildTemplate (StreamRelay.startLink)
 
 logInfo :: forall a. String -> a -> Effect Foreign
 logInfo msg metaData = Logger.info msg (Record.merge { domain: ((atom (show Agent.Edge)) : nil) } { misc: metaData })

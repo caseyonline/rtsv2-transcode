@@ -8,13 +8,17 @@ import Prelude
 import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Erl.Atom (atom)
+import Erl.Data.List (nil, (:))
 import Erl.Data.Tuple (tuple2, tuple3)
 import Erl.ModuleName (NativeModuleName(..))
-import Foreign (unsafeToForeign)
+import Foreign (Foreign, unsafeToForeign)
+import Logger as Logger
 import Pinto (ServerName(..), StartLinkResult)
 import Pinto.Gen as Gen
+import Record as Record
 import Rtsv2.IngestAggregatorAgentSup as IngestAggregatorAgentSup
 import Rtsv2.IntraPoPAgent as IntraPoPAgent
+import Shared.Agent as Agent
 import Shared.Stream (StreamVariantId, toStreamId)
 
 type State
@@ -28,6 +32,7 @@ startLink streamVariantId = Gen.startLink (serverName streamVariantId) (init str
 
 init :: StreamVariantId -> Effect State
 init streamVariantId = do
+  _ <- logInfo "Ingest starting" {streamVariantId: streamVariantId}
   maybeAggregator <- IntraPoPAgent.whereIsIngestAggregator streamVariantId
   case maybeAggregator of
     Just relay ->
@@ -37,4 +42,6 @@ init streamVariantId = do
       _ <- IngestAggregatorAgentSup.startAggregator (toStreamId streamVariantId)
       pure {}
 
- -- TODO - what if we want to have the relay run remotely (load etc) -- Find / create if there is a relay for this stream -- ask intrapopstate --
+
+logInfo :: forall a. String -> a -> Effect Foreign
+logInfo msg metaData = Logger.info msg (Record.merge { domain: ((atom (show Agent.Ingest)) : nil) } { misc: metaData })

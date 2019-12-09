@@ -7,14 +7,18 @@ import Prelude
 
 import Effect (Effect)
 import Erl.Atom (atom)
+import Erl.Data.List (nil, (:))
 import Erl.Data.Tuple (tuple2, tuple3)
 import Erl.ModuleName (NativeModuleName(..))
-import Foreign (unsafeToForeign)
+import Foreign (Foreign, unsafeToForeign)
+import Logger as Logger
 import Pinto (ServerName(..), StartLinkResult)
 import Pinto.Gen as Gen
-import Rtsv2.Config as Config
 import Pinto.Timer as Timer
+import Record as Record
+import Rtsv2.Config as Config
 import Rtsv2.IntraPoPAgent (announceStreamIsAvailable)
+import Shared.Agent as Agent
 import Shared.Stream (StreamId)
 
 type State
@@ -33,16 +37,14 @@ startLink streamId = Gen.startLink (serverName streamId) (init streamId) handleI
 
 init :: StreamId -> Effect State
 init streamId = do
-  let
-    streamAvailableAnnounceMs = 1000 -- TODO - should be in config - goes circular
-  _ <- Config.ingestAggregatorAgentConfig
-  _ <- Timer.sendEvery (serverName streamId) streamAvailableAnnounceMs Tick
+  _ <- logInfo "Ingest Aggregator starting" {streamId: streamId}
+  config <- Config.ingestAggregatorAgentConfig
+  _ <- Timer.sendEvery (serverName streamId) config.streamAvailableAnnounceMs Tick
   _ <- announceStreamIsAvailable streamId
 
-  pure
-        { config : {streamAvailableAnnounceMs} --config
-        , streamId
-        }
+  pure { config : config
+       , streamId
+       }
 
 handleInfo :: Msg -> State -> Effect State
 handleInfo msg state =
@@ -54,4 +56,5 @@ handleTick state@{streamId} = do
   _ <- announceStreamIsAvailable streamId
   pure state
 
--- TODO - what if we want to have the relay run remotely (load etc) -- Find / create if there is a relay for this stream -- ask intrapopstate --
+logInfo :: forall a. String -> a -> Effect Foreign
+logInfo msg metaData = Logger.info msg (Record.merge { domain: ((atom (show Agent.IngestAggregator)) : nil) } { misc: metaData })

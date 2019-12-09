@@ -11,6 +11,7 @@ import Data.Newtype (wrap)
 import Data.Set as Set
 import Data.Traversable (sequence, traverse_)
 import Data.Tuple (Tuple(..))
+import Debug.Trace (spy)
 import Effect (Effect)
 import Erl.Atom (atom)
 import Erl.Data.List (List, index, length, nil, zip, (:))
@@ -240,24 +241,22 @@ handleIntraPoPStreamAvailable streamId addr state@{ thisLocation: (ServerLocatio
         pure state
       | otherwise -> pure state
 
---2019-12-08T21:24:23.372156Z info: <0.150.0> rtsv2_transPoPAgent@ps:-handleTick/1-fun-0-/2:251 coord: #{node => <<"172.16.170.1">>,resp => {right,{serf_coordinates_response,1.5309981138097235e-5,0.5134477696275596,4.5257898368117226e-5,[-1.3974985474775243e-5,-2.328347845032923e-5,3.1110710708379625e-5,-9.664092176629029e-6,-2.0183114455995605e-5,-3.480894910938468e-5,1.3913103911099286e-5,-1.8121849771647579e-6]}}}
-
 handleTick :: State -> Effect State
 handleTick state@{ weAreLeader: true, serfRpcAddress, thisNode, members } = do
   _ <- IntraPoPAgent.announceTransPoPLeader
-  us <- Serf.getCoordinate serfRpcAddress thisNode
-  _ <- traverse_ (\popMembers ->
-                   do
-                     traverse_ (\popMember ->
-                                 do
-                                   resp <- Serf.getCoordinate serfRpcAddress popMember
-                                   _ <- logInfo "rtt" {node: popMember,
-                                                       rtt : (lift2 calcRtt us resp)}
-                                   pure unit
-                               )
-                               popMembers
-                 )
-       (Map.values members)
+  -- us <- Serf.getCoordinate serfRpcAddress thisNode
+  -- _ <- traverse_ (\popMembers ->
+  --                  do
+  --                    traverse_ (\popMember ->
+  --                                do
+  --                                  resp <- Serf.getCoordinate serfRpcAddress popMember
+  --                                  _ <- logInfo "rtt" {node: popMember,
+  --                                                      rtt : (lift2 calcRtt us resp)}
+  --                                  pure unit
+  --                              )
+  --                              popMembers
+  --                )
+  --      (Map.values members)
   pure state
   where
     calcRtt lhs rhs =

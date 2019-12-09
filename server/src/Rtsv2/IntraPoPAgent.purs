@@ -1,12 +1,11 @@
 module Rtsv2.IntraPoPAgent
   ( startLink
-  , isStreamAvailable
+  , isStreamIngestAvailable
   , isIngestActive
   , announceStreamIsAvailable
   , announceRemoteStreamIsAvailable
   , announceTransPoPLeader
   , whereIsIngestAggregator
-  , whereIsIngestRelay
   , currentTransPoPLeader
   , health
   , bus
@@ -54,7 +53,7 @@ type State
   = { config :: Config.IntraPoPAgentConfig
     , serfRpcAddress :: IpAndPort
     , currentTransPoPLeader :: Maybe ServerAddress
-    , streamRelayLocations :: Map StreamId String
+    , streamRelayLocations :: EMap StreamId String
     , streamAggregatorLocations :: EMap StreamId String
     , thisNode :: ServerAddress
     , members :: Map ServerAddress Serf.SerfMember
@@ -83,23 +82,23 @@ health =
       currentHealth = percentageToHealth $ (Map.size members * 100) / (length allOtherServers) * 100
     pure $ CallReply currentHealth state
 
-isStreamAvailable :: StreamId -> Effect Boolean
-isStreamAvailable streamId =
+isStreamIngestAvailable :: StreamId -> Effect Boolean
+isStreamIngestAvailable streamId =
   Gen.call serverName \state@{ streamAggregatorLocations } ->
     CallReply (EMap.member streamId streamAggregatorLocations) state
 
 isIngestActive :: StreamVariantId -> Effect Boolean
 isIngestActive (StreamVariantId s v) = Gen.call serverName \state -> CallReply false state
 
-whereIsIngestRelay :: StreamVariantId -> Effect (Maybe String)
-whereIsIngestRelay (StreamVariantId s _) =
-  Gen.call serverName \state ->
-    CallReply (Map.lookup (StreamId s) state.streamRelayLocations) state
-
 whereIsIngestAggregator :: StreamVariantId -> Effect (Maybe String)
-whereIsIngestAggregator (StreamVariantId s _) =
+whereIsIngestAggregator (StreamVariantId streamId _) =
   Gen.call serverName \state ->
-    CallReply (EMap.lookup (StreamId s) state.streamAggregatorLocations) state
+    CallReply (EMap.lookup (StreamId streamId) state.streamAggregatorLocations) state
+
+whereIsStreamRelay :: StreamId -> Effect (Maybe String)
+whereIsStreamRelay (StreamId streamId) =
+  Gen.call serverName \state ->
+    CallReply (EMap.lookup (StreamId streamId) state.streamRelayLocations) state
 
 currentTransPoPLeader :: Effect (Maybe ServerAddress)
 currentTransPoPLeader =
@@ -177,7 +176,7 @@ init config@{rejoinEveryMs
   pure
     { config
     , serfRpcAddress
-    , streamRelayLocations: Map.empty
+    , streamRelayLocations: EMap.empty
     , streamAggregatorLocations: EMap.empty
     , thisNode: thisNode
     , currentTransPoPLeader: Nothing

@@ -18,6 +18,7 @@ import Rtsv2.EdgeAgentSup as EdgeAgentSup
 import Rtsv2.Endpoints.Health (healthCheck)
 import Rtsv2.Env as Env
 import Rtsv2.IngestAgentSup (startIngest)
+import Rtsv2.EdgeAgentSup (startEdge)
 import Rtsv2.IntraPoPAgent as IntraPoPAgent
 import Rtsv2.PoPDefinition (ServerAddress)
 import Serf (Ip(..))
@@ -42,7 +43,8 @@ init args = do
   Stetson.configure
     # Stetson.route "/api/transPoPLeader" transPoPLeader
     # Stetson.route "/api/healthCheck" healthCheck
-    # Stetson.route "/api/client/:canary/edge/:stream_id/connect" edge_entrypoint
+    # Stetson.route "/api/client/:canary/edge/:stream_id/start" edgeStart
+    --# Stetson.route "/api/client/:canary/edge/:stream_id/stop" edgeStop
     # Stetson.route "/api/client/:canary/ingest/:stream_id/:variant_id/start" ingestStart
     --# Stetson.route "/api/client/:canary/ingest/:stream_id/:variant_id/stop" ingestStop
     # Stetson.port args.port
@@ -85,8 +87,8 @@ ingestStart =
   # Rest.yeeha
 
 type EdgeState = { streamId :: StreamId }
-edge_entrypoint :: StetsonHandler EdgeState
-edge_entrypoint =
+edgeStart :: StetsonHandler EdgeState
+edgeStart =
   Rest.handler (\req ->
                  let streamId = fromMaybe' (lazyCrashIfMissing "stream_id binding missing") $ binding (atom "stream_id") req
                  in
@@ -95,10 +97,12 @@ edge_entrypoint =
                               isAvailable <- EdgeAgentSup.isAvailable
                               Rest.result isAvailable req state)
   # Rest.resourceExists (\req state@{streamId} -> do
-                            isAvailable <- IntraPoPAgent.isStreamAvailable streamId
+                            isAvailable <- IntraPoPAgent.isStreamIngestAvailable streamId
                             Rest.result isAvailable req state
                           )
-  # Rest.contentTypesProvided (\req state -> Rest.result (textWriter "" : nil) req state)
+  # Rest.contentTypesProvided (\req state -> do
+                                  _ <- startEdge state.streamId
+                                  Rest.result (textWriter "" : nil) req state)
   # Rest.yeeha
 
 
