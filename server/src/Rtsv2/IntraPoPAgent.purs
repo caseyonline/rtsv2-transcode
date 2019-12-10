@@ -198,6 +198,7 @@ raiseLocal :: State -> String -> IntraMessage -> Effect Unit
 raiseLocal state name msg = do
   result <- Serf.event state.serfRpcAddress name msg false
   _ <- maybeLogError "Intra-PoP serf event failed" result {}
+  --_ <- logInfo "raiseLocal send" {name, msg}
   _ <- Bus.raise bus msg
   pure unit
 
@@ -266,6 +267,7 @@ handleInfo msg state = case msg of
           pure state
         | otherwise -> do
           -- streamAvailable on some other node in this PoP - we need to tell Trans-PoP
+          --_ <- logInfo "StreamAvailable on remote node" { streamId: streamId, remoteNode: server }
           _ <- Bus.raise bus intraMessage
           logIfNew streamId state.streamAggregatorLocations "StreamAvailable on remote node" { streamId: streamId, remoteNode: server }
           newStreamAggregatorLocations <- EMap.insert' streamId server state.streamAggregatorLocations
