@@ -22,14 +22,14 @@ import Prelude
 import Bus as Bus
 import Data.Either (Either(..))
 import Data.Foldable (foldl)
-import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Maybe (Maybe(..))
 import Data.Newtype (wrap)
-import Data.Set (Set)
-import Data.Set as Set
 import Data.Traversable (traverse_)
 import Effect (Effect)
 import Ephemeral.Map (EMap)
 import Ephemeral.Map as EMap
+import Ephemeral.MultiMap (EMultiMap)
+import Ephemeral.MultiMap as MultiMap
 import Erl.Atom (atom)
 import Erl.Data.List (List, length, nil, singleton, (:))
 import Erl.Data.Map (Map)
@@ -60,7 +60,7 @@ type State
   = { config :: Config.IntraPoPAgentConfig
     , serfRpcAddress :: IpAndPort
     , currentTransPoPLeader :: Maybe ServerAddress
-    , edgeLocations :: Map StreamId (Set ServerAddress) -- TODO - ServerAddresses need to be ephemeral
+    , edgeLocations :: EMultiMap StreamId ServerAddress
     , streamRelayLocations :: EMap StreamId ServerAddress
     , streamAggregatorLocations :: EMap StreamId ServerAddress
     , thisNode :: ServerAddress
@@ -110,10 +110,10 @@ whereIsStreamRelay streamId =
   Gen.call serverName \state ->
     CallReply (EMap.lookup streamId state.streamRelayLocations) state
 
-whereIsEdge :: StreamId -> Effect (Maybe (Set String))
+whereIsEdge :: StreamId -> Effect (List ServerAddress)
 whereIsEdge streamId =
   Gen.call serverName \state ->
-    CallReply (Map.lookup streamId state.edgeLocations) state
+    CallReply (MultiMap.lookup streamId state.edgeLocations) state
 
 currentTransPoPLeader :: Effect (Maybe ServerAddress)
 currentTransPoPLeader =
@@ -129,10 +129,7 @@ announceEdgeIsActive streamId =
     $ \state@{ edgeLocations, thisNode } -> do
         _ <- logInfo "Local edge available" { streamId: streamId }
         _ <- raiseLocal state "edgeAvailable" (EdgeAvailable streamId thisNode)
-        let
-          currentLocations = fromMaybe Set.empty $ Map.lookup streamId state.edgeLocations
-          newLocations = Set.insert thisNode currentLocations
-          newEdgeLocations = Map.insert streamId newLocations state.edgeLocations
+        newEdgeLocations <- MultiMap.insert' streamId thisNode  state.edgeLocations
         pure $ Gen.CastNoReply state { edgeLocations = newEdgeLocations }
 
 -- Called by IngestAggregator to indicate stream on this node
@@ -234,7 +231,7 @@ init config@{rejoinEveryMs
   pure
     { config
     , serfRpcAddress
-    , edgeLocations: Map.empty
+    , edgeLocations: MultiMap.empty
     , streamRelayLocations: EMap.empty
     , streamAggregatorLocations: EMap.empty
     , thisNode: thisNode
@@ -292,10 +289,7 @@ handleInfo msg state = case msg of
         | otherwise -> do
           -- edgeAvailable on some other node in this PoP
           _ <- logInfo "EdgeAvailable on remote node" { streamId: streamId, remoteNode: server }
-          let
-            currentLocations = fromMaybe Set.empty $ Map.lookup streamId state.edgeLocations
-            newLocations = Set.insert server currentLocations
-            newEdgeLocations = Map.insert streamId newLocations state.edgeLocations
+          newEdgeLocations <- MultiMap.insert' streamId server  state.edgeLocations
           pure $ state { edgeLocations = newEdgeLocations }
 
       TransPoPLeader server
@@ -319,14 +313,21 @@ membersLeft members state = do
   pure state { members = newMembers }
 
 garbageCollect :: State -> Effect State
-garbageCollect state@{expireThreshold,
-                      streamAggregatorLocations,
-                      streamRelayLocations} =
+garbageCollect state@{ expireThreshold
+                     , streamAggregatorLocations
+                     , streamRelayLocations
+                     , edgeLocations
+                     } =
   do
-    newStreamAggregatorLocations <- EMap.garbageCollect' expireThreshold streamAggregatorLocations
-    newStreamRelayLocations <- EMap.garbageCollect' expireThreshold streamRelayLocations
-    pure state{streamAggregatorLocations = newStreamAggregatorLocations
-              , streamRelayLocations = newStreamRelayLocations}
+    now <- Erl.systemTimeMs
+    let threshold = now - expireThreshold
+        newStreamAggregatorLocations = EMap.garbageCollect threshold streamAggregatorLocations
+        newStreamRelayLocations = EMap.garbageCollect threshold streamRelayLocations
+        newEdgeLocations = MultiMap.garbageCollect threshold edgeLocations
+    pure state{ streamAggregatorLocations = newStreamAggregatorLocations
+              , streamRelayLocations = newStreamRelayLocations
+              , edgeLocations = newEdgeLocations
+              }
 
 joinAllSerf :: State -> Effect Unit
 joinAllSerf { config, serfRpcAddress, members } =
