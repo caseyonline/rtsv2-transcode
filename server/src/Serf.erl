@@ -79,40 +79,37 @@ leaveImpl(Left, Right, RpcAddr) ->
       end
   end.
 
-messageMapperImpl(X) ->
-  %%io:format(user, "~p Message ~p~n", [self(), X]),
-  messageMapperImpl_(X).
-messageMapperImpl_(#serf_user_event{ name = Name
+messageMapperImpl(#serf_user_event{ name = Name
                                   , lamport_time = LTime
                                   , coalesce = Coalesce
                                   , payload = Payload
                                   }) ->
   {just, {userEvent, Name, LTime, Coalesce, binary_to_term(Payload)}};
 
-messageMapperImpl_(#serf_members_event{ type = join
+messageMapperImpl(#serf_members_event{ type = join
                                      , members = Members
                                      }) ->
   {just, {memberAlive, [mapMemberToPurs(Member) || Member <- Members]}};
 
-messageMapperImpl_(#serf_members_event{ type = leave
+messageMapperImpl(#serf_members_event{ type = leave
                                      , members = Members
                                      }) ->
   {just, {memberLeft, [mapMemberToPurs(Member) || Member <- Members]}};
 
-messageMapperImpl_(#serf_coordinates_response{ adjustment = Adjustment
-                                             , error = Error
-                                             , height = Height
-                                             , vec = Vec}) ->
+messageMapperImpl(#serf_coordinates_response{ adjustment = Adjustment
+                                            , error = Error
+                                            , height = Height
+                                            , vec = Vec}) ->
   {just, #{adjustment => Adjustment
           , error => Error
           , height => Height
           , vec => Vec}};
 
 %% TODO - should be a record
-messageMapperImpl_({serf_stream_failed, _Ref, _Error}) ->
+messageMapperImpl({serf_stream_failed, _Ref, _Error}) ->
   {just, {streamFailed}};
 
-messageMapperImpl_(_X) ->
+messageMapperImpl(_X) ->
   {nothing}.
 
 

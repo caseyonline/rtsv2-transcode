@@ -11,6 +11,7 @@ module Rtsv2.Config
   , intraPoPAgentConfig
   , transPoPAgentConfig
   , ingestAggregatorAgentConfig
+  , edgeAgentConfig
   ) where
 
 import Prelude
@@ -41,6 +42,9 @@ type PoPDefinitionConfig
 
 type IngestAggregatorAgentConfig
   = { streamAvailableAnnounceMs :: Int }
+
+type EdgeAgentConfig
+  = { edgeAvailableAnnounceMs :: Int }
 
 type IntraPoPAgentConfig
   = { bindPort :: Int
@@ -73,7 +77,6 @@ configuredAgents = do
   agentStrings <- getMandatory (readList >=> traverse readString) "agents"
   pure $ strToAgent <$> agentStrings
 
-
 nodeConfig :: Effect Node.Config
 nodeConfig = do
   getMandatoryRecord "nodeConfig"
@@ -94,6 +97,10 @@ transPoPAgentConfig = do
 ingestAggregatorAgentConfig :: Effect IngestAggregatorAgentConfig
 ingestAggregatorAgentConfig = do
   getMandatoryRecord "ingestAggregatorConfig"
+
+edgeAgentConfig :: Effect EdgeAgentConfig
+edgeAgentConfig = do
+  getMandatoryRecord "edgeConfig"
 
 get :: forall a e. (Foreign -> ExceptT e Identity a) -> String -> Effect (Maybe a)
 get f v = hush <<< runExcept <<< f <$> getEnv_ (atom v)

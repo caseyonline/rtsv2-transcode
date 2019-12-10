@@ -7,12 +7,12 @@ import Prelude
 
 import Data.Foldable (minimum)
 import Data.Maybe (Maybe(..), fromMaybe')
---import Debug.Trace (spy)
 import Erl.Atom (atom)
 import Erl.Cowboy.Handlers.Rest (moved, notMoved)
 import Erl.Cowboy.Req (binding, path, setHeader)
 import Erl.Data.List (List, nil, null, (:))
 import Erl.Data.Tuple (tuple2)
+import Logger as Logger
 import Rtsv2.Audit as Audit
 import Rtsv2.EdgeAgentSup (maybeStartAndAddClient)
 import Rtsv2.EdgeAgentSup as EdgeAgentSup
@@ -55,19 +55,22 @@ clientStart =
                             let
                               currentNodeHasEdge = member thisNode currentEdgeLocations
                               exists = isIngestAvailable && (currentNodeHasEdge || (null currentEdgeLocations))
+                            _ <- Logger.info "ResourceExists" {misc: {streamId, isIngestAvailable, currentEdgeLocations, currentNodeHasEdge}}
                             Rest.result exists req state {isIngestAvailable = isIngestAvailable
                                                          , currentNodeHasEdge = currentNodeHasEdge
                                                          , currentEdgeLocations = currentEdgeLocations}
                         )
 
-  # Rest.previouslyExisted (\req state@{isIngestAvailable} -> Rest.result isIngestAvailable req state)
+  # Rest.previouslyExisted (\req state@{isIngestAvailable} -> do
+                               _ <- Logger.info "PreviouslyExisted" {misc: {isIngestAvailable}}
+                               Rest.result isIngestAvailable req state)
 
-  # Rest.movedTemporarily (\req state@{currentEdgeLocations} ->
+  # Rest.movedTemporarily (\req state@{currentEdgeLocations} -> do
+                            _ <- Logger.info "MovedTemp" {misc: {currentEdgeLocations}}
                             let
                               -- todo - ick - need functions to build URLs
                               redirect server = "http://" <> server <> ":3000" <> (path req)
-                            in
-                             case pickBest currentEdgeLocations of
+                            case pickBest currentEdgeLocations of
                               Nothing -> Rest.result notMoved req state
                               Just server -> Rest.result (moved (redirect server)) req state
                           )

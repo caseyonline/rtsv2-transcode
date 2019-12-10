@@ -3,6 +3,7 @@ module Rtsv2.TransPoPAgent where
 import Prelude
 
 import Bus as Bus
+import Control.Apply (lift2)
 import Data.Either (Either(..))
 import Data.Foldable (foldl)
 import Data.Maybe (Maybe(..), fromMaybe)
@@ -10,8 +11,9 @@ import Data.Newtype (wrap)
 import Data.Set as Set
 import Data.Traversable (sequence, traverse_)
 import Data.Tuple (Tuple(..))
---import Debug.Trace (spy)
 import Effect (Effect)
+import Ephemeral.Map (EMap)
+import Ephemeral.Map as EMap
 import Erl.Atom (atom)
 import Erl.Data.List (List, index, length, nil, zip, (:))
 import Erl.Data.Map (Map)
@@ -54,10 +56,13 @@ type State
     , config :: Config.TransPoPAgentConfig
     , serfRpcAddress :: IpAndPort
     , members :: Map PoPName (Set.Set String)
+    , streamStateClocks :: EMap StreamId Int
     }
 
-data TransMessage = StreamAvailable StreamId ServerAddress
-                  | StreamStopped StreamId ServerAddress
+data StreamState = StreamAvailable
+                 | StreamStopped 
+
+data TransMessage = StreamState StreamState StreamId ServerAddress
 
 data Msg
   = Tick
@@ -70,8 +75,7 @@ serverName :: ServerName State Msg
 serverName = Local $ show Agent.TransPoP
 
 messageOrigin :: TransMessage -> Effect (Maybe PoPName)
-messageOrigin (StreamAvailable _ addr) = originPoP addr
-messageOrigin (StreamStopped _ addr) = originPoP addr
+messageOrigin (StreamState _ _ addr) = originPoP addr
 
 originPoP :: ServerAddress -> Effect (Maybe PoPName)
 originPoP addr =
@@ -128,7 +132,16 @@ init config@{ leaderTimeoutMs
       , thisPoP: thisPoP
       , serfRpcAddress: serfRpcAddress
       , members: Map.empty
-      }
+      , streamStateClocks: EMap.empty
+    }
+
+shouldProcessStreamState :: StreamId -> Int -> EMap StreamId Int -> Boolean
+shouldProcessStreamState streamId ltime streamStateClocks =
+  case EMap.lookup streamId streamStateClocks of
+    Just lastLTime
+      | lastLTime > ltime -> false
+    _ ->
+      true
 
 handleInfo :: Msg -> State -> Effect State
 handleInfo msg state@{ thisPoP } = case msg of
@@ -160,24 +173,35 @@ handleInfo msg state@{ thisPoP } = case msg of
             Nothing -> pure state
             Just sourcePoP
               | sourcePoP == thisPoP -> pure state
-              | otherwise -> handleTransPoPMessage transMessage state
+              | otherwise ->
+                let
+                  StreamState stateChange streamId _ = transMessage
+                in
+                  case shouldProcessStreamState streamId ltime state.streamStateClocks of
+                    false -> do
+                      _ <- logInfo "Dropping out-of-order serf message" {streamId, stateChange}
+                      pure $ state
+
+                    true -> do
+                      newStreamStateClocks <- EMap.insert' streamId ltime state.streamStateClocks
+                      handleTransPoPMessage transMessage (state{streamStateClocks = newStreamStateClocks})
 
 handleIntraPoPMessage :: IntraPoPAgent.IntraMessage -> State -> Effect State
 handleIntraPoPMessage (IntraPoPAgent.TransPoPLeader address) state = handleLeaderAnnouncement address state
 
-handleIntraPoPMessage (IntraPoPAgent.StreamAvailable streamId addr) state = handleIntraPoPStreamAvailable streamId addr state
+handleIntraPoPMessage (IntraPoPAgent.StreamState IntraPoPAgent.StreamAvailable streamId addr) state = handleIntraPoPStreamAvailable streamId addr state
 
-handleIntraPoPMessage (IntraPoPAgent.StreamStopped streamId addr) state = handleIntraPoPStreamStopped streamId addr state
+handleIntraPoPMessage (IntraPoPAgent.StreamState IntraPoPAgent.StreamStopped streamId addr) state = handleIntraPoPStreamStopped streamId addr state
 
 handleIntraPoPMessage (IntraPoPAgent.EdgeAvailable _ _) state = pure state
 
 handleTransPoPMessage :: TransMessage -> State -> Effect State
-handleTransPoPMessage (StreamAvailable streamId server) state = do
+handleTransPoPMessage (StreamState StreamAvailable streamId server) state = do
   _ <- logInfo "Remote stream available" {streamId, server}
   _ <- IntraPoPAgent.announceRemoteStreamIsAvailable streamId server
   pure state
 
-handleTransPoPMessage (StreamStopped streamId server) state = do
+handleTransPoPMessage (StreamState StreamStopped streamId server) state = do
   _ <- logInfo "Remote stream stopped" {streamId, server}
   _ <- IntraPoPAgent.announceRemoteStreamStopped streamId server
   pure state
@@ -247,7 +271,7 @@ handleIntraPoPStreamAvailable streamId addr state@{ thisLocation: (ServerLocatio
       | sourcePoP == pop -> do
         -- Message from our pop - distribute over trans-pop
         --_ <- logInfo "Local stream being delivered to trans-pop" { streamId: streamId }
-        result <- Serf.event state.serfRpcAddress "streamAvailable" (StreamAvailable streamId addr) false
+        result <- Serf.event state.serfRpcAddress "streamAvailable" (StreamState StreamAvailable streamId addr) false
         _ <- maybeLogError "Trans-PoP serf event failed" result {}
         pure state
       | otherwise -> pure state
@@ -265,7 +289,7 @@ handleIntraPoPStreamStopped streamId addr state@{ thisLocation: (ServerLocation 
       | sourcePoP == pop -> do
         -- Message from our pop - distribute over trans-pop
         --_ <- logInfo "Local stream stopped being delivered to trans-pop" { streamId: streamId }
-        result <- Serf.event state.serfRpcAddress "streamStopped" (StreamStopped streamId addr) false
+        result <- Serf.event state.serfRpcAddress "streamStopped" (StreamState StreamStopped streamId addr) false
         _ <- maybeLogError "Trans-PoP serf event failed" result {}
         pure state
       | otherwise -> pure state
