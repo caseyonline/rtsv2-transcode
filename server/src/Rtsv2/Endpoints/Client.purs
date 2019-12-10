@@ -38,10 +38,11 @@ clientStart =
                  let streamId = StreamId $ fromMaybe' (lazyCrashIfMissing "stream_id binding missing") $ binding (atom "stream_id") req
                  in
                   do
+                    thisNode <- PoPDefintion.thisNode
                     Rest.initResult req { streamId : streamId
                                         , isIngestAvailable : false
                                         , currentNodeHasEdge : false
-                                        , thisNode : ""
+                                        , thisNode : thisNode
                                         , currentEdgeLocations : Set.empty
                                         }
                )
@@ -49,8 +50,7 @@ clientStart =
                               isAgentAvailable <- EdgeAgentSup.isAvailable
                               Rest.result isAgentAvailable req state)
 
-  # Rest.resourceExists (\req state@{streamId} -> do
-                            thisNode <- PoPDefintion.thisNode
+  # Rest.resourceExists (\req state@{streamId, thisNode} -> do
                             isIngestAvailable <- IntraPoPAgent.isStreamIngestAvailable streamId
                             currentEdgeLocations <- fromMaybe Set.empty <$> IntraPoPAgent.whereIsEdge streamId
                             let

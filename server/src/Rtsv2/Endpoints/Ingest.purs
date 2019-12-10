@@ -11,8 +11,9 @@ import Erl.Atom (atom)
 import Erl.Cowboy.Req (binding)
 import Erl.Data.List (nil, (:))
 import Erl.Data.Tuple (tuple2)
-import Rtsv2.IngestAgentSup as IngestAgentSup
+import Logger as Logger
 import Rtsv2.IngestAgent as IngestAgent
+import Rtsv2.IngestAgentSup as IngestAgentSup
 import Shared.Stream (StreamVariantId(..))
 import Shared.Utils (lazyCrashIfMissing)
 import Stetson (StetsonHandler)
@@ -38,7 +39,7 @@ ingestStart =
   --                         )
   # Rest.contentTypesProvided (\req state -> do
                                   _ <- IngestAgentSup.startIngest state.streamVariantId
-                                  Rest.result (tuple2 "text/plain" (\req2 state2 -> Rest.result "" req2 state2) : nil) req state)
+                                  Rest.result (tuple2 "text/plain" (\req2 state2 -> Rest.result "ingestStarted" req2 state2) : nil) req state)
   # Rest.yeeha
 
 
@@ -60,8 +61,10 @@ ingestStop =
                             isActive <- IngestAgent.isActive streamVariantId
                             Rest.result isActive req state
                           )
-  # Rest.contentTypesProvided (\req state -> do
-                                  _ <- IngestAgent.stopIngest state.streamVariantId
-                                  Rest.result (tuple2 "text/plain" (\req2 state2 -> Rest.result "" req2 state2) : nil) req state)
+  # Rest.contentTypesProvided (\req state ->
+                                Rest.result (tuple2 "text/plain" (\req2 state2 -> do
+                                                                     _ <- IngestAgent.stopIngest state.streamVariantId
+                                                                     Rest.result "ingestStopped" req2 state2
+                                                                 ) : nil) req state)
   # Rest.yeeha
 
