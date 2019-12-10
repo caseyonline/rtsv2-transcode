@@ -5,22 +5,16 @@ module Rtsv2.Endpoints.Edge
 
 import Prelude
 
-import Data.Maybe (fromMaybe, fromMaybe')
-import Data.Set (member)
-import Data.Set as Set
-import Debug.Trace (spy)
+import Data.Maybe (fromMaybe')
 import Erl.Atom (atom)
-import Erl.Cowboy.Handlers.Rest (moved, notMoved)
-import Erl.Cowboy.Req (binding, path, setHeader)
+import Erl.Cowboy.Req (binding)
 import Erl.Data.List (nil, (:))
 import Erl.Data.Tuple (tuple2)
 import Rtsv2.EdgeAgent as EdgeAgent
-import Rtsv2.EdgeAgentSup (maybeStartAndAddClient)
 import Rtsv2.EdgeAgentSup as EdgeAgentSup
 import Rtsv2.IntraPoPAgent as IntraPoPAgent
-import Rtsv2.PoPDefinition (ServerAddress)
 import Rtsv2.PoPDefinition as PoPDefintion
-import Rtsv2.TransPoPAgent as Logger
+import Rtsv2.Utils (member)
 import Shared.Stream (StreamId(..))
 import Shared.Utils (lazyCrashIfMissing)
 import Stetson (StetsonHandler)
@@ -39,14 +33,12 @@ clientCount =
   # Rest.serviceAvailable (\req state -> do
                               isAgentAvailable <- EdgeAgentSup.isAvailable
                               Rest.result isAgentAvailable req state)
-  
+
   # Rest.resourceExists (\req state@{streamId} -> do
                             thisNode <- PoPDefintion.thisNode
-                            currentEdgeLocations <- fromMaybe Set.empty <$> IntraPoPAgent.whereIsEdge streamId
-                            let
-                              currentNodeHasEdge = member thisNode $ currentEdgeLocations
+                            currentNodeHasEdge <- member thisNode <$> IntraPoPAgent.whereIsEdge streamId
                             Rest.result currentNodeHasEdge req state)
-  
+
   # Rest.contentTypesProvided (\req state@{streamId} ->
                                   Rest.result
                                     ((tuple2 "text/plain" (content streamId)) : nil)

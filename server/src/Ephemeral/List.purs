@@ -20,7 +20,7 @@ import Erl.Data.List as List
 import Erl.Utils (Milliseconds)
 import Erl.Utils as Erl
 
-data EList a = EList (List (EData a))
+newtype EList a = EList (List (EData a))
 
 empty :: forall a. EList a
 empty = EList nil

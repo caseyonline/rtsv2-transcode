@@ -17,13 +17,13 @@ module Ephemeral.MultiMap
 import Prelude
 
 import Data.FoldableWithIndex (foldlWithIndex)
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe(..), fromMaybe)
 import Effect (Effect)
 import Ephemeral (EData)
 import Ephemeral as EData
 import Ephemeral.List (EList)
 import Ephemeral.List as EList
-import Erl.Data.List (List)
+import Erl.Data.List (List, nil)
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
 import Erl.Utils (Milliseconds)
@@ -47,9 +47,9 @@ delete k (EMultiMap m) = EMultiMap $ Map.delete k m
 keys :: forall k v. EMultiMap k v -> List k
 keys (EMultiMap m) = Map.keys m
 
-lookup :: forall k v. k -> EMultiMap k v -> Maybe (List v)
+lookup :: forall k v. k -> EMultiMap k v -> List v
 lookup k (EMultiMap m) =
-  EList.extract <$> Map.lookup k m
+  fromMaybe nil $ EList.extract <$> Map.lookup k m
 
 insert :: forall k v. Eq v => k -> EData v -> EMultiMap k v -> EMultiMap k v
 insert k ev (EMultiMap m) =

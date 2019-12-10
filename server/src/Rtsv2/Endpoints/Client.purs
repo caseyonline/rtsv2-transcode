@@ -5,22 +5,21 @@ module Rtsv2.Endpoints.Client
 
 import Prelude
 
-import Data.Maybe (Maybe(..), fromMaybe, fromMaybe')
-import Data.Set (Set, findMin, isEmpty, member)
-import Data.Set as Set
-import Debug.Trace (spy)
+import Data.Foldable (minimum)
+import Data.Maybe (Maybe(..), fromMaybe')
+--import Debug.Trace (spy)
 import Erl.Atom (atom)
 import Erl.Cowboy.Handlers.Rest (moved, notMoved)
 import Erl.Cowboy.Req (binding, path, setHeader)
-import Erl.Data.List (nil, (:))
+import Erl.Data.List (List, nil, null, (:))
 import Erl.Data.Tuple (tuple2)
+import Rtsv2.Audit as Audit
 import Rtsv2.EdgeAgentSup (maybeStartAndAddClient)
 import Rtsv2.EdgeAgentSup as EdgeAgentSup
-import Rtsv2.Audit as Audit
 import Rtsv2.IntraPoPAgent as IntraPoPAgent
 import Rtsv2.PoPDefinition (ServerAddress)
 import Rtsv2.PoPDefinition as PoPDefintion
-import Rtsv2.TransPoPAgent as Logger
+import Rtsv2.Utils (member)
 import Shared.Stream (StreamId(..))
 import Shared.Utils (lazyCrashIfMissing)
 import Stetson (StetsonHandler)
@@ -30,7 +29,7 @@ type ClientState = { streamId :: StreamId
                    , isIngestAvailable :: Boolean
                    , currentNodeHasEdge :: Boolean
                    , thisNode :: ServerAddress
-                   , currentEdgeLocations :: Set ServerAddress
+                   , currentEdgeLocations :: List ServerAddress
                  }
 clientStart :: StetsonHandler ClientState
 clientStart =
@@ -43,7 +42,7 @@ clientStart =
                                         , isIngestAvailable : false
                                         , currentNodeHasEdge : false
                                         , thisNode : thisNode
-                                        , currentEdgeLocations : Set.empty
+                                        , currentEdgeLocations : nil
                                         }
                )
   # Rest.serviceAvailable (\req state -> do
@@ -52,10 +51,10 @@ clientStart =
 
   # Rest.resourceExists (\req state@{streamId, thisNode} -> do
                             isIngestAvailable <- IntraPoPAgent.isStreamIngestAvailable streamId
-                            currentEdgeLocations <- fromMaybe Set.empty <$> IntraPoPAgent.whereIsEdge streamId
+                            currentEdgeLocations <- IntraPoPAgent.whereIsEdge streamId
                             let
-                              currentNodeHasEdge = member thisNode $ currentEdgeLocations
-                              exists = isIngestAvailable && (currentNodeHasEdge || (isEmpty currentEdgeLocations))
+                              currentNodeHasEdge = member thisNode currentEdgeLocations
+                              exists = isIngestAvailable && (currentNodeHasEdge || (null currentEdgeLocations))
                             Rest.result exists req state {isIngestAvailable = isIngestAvailable
                                                          , currentNodeHasEdge = currentNodeHasEdge
                                                          , currentEdgeLocations = currentEdgeLocations}
@@ -68,7 +67,7 @@ clientStart =
                               -- todo - ick - need functions to build URLs
                               redirect server = "http://" <> server <> ":3000" <> (path req)
                             in
-                            case findMin currentEdgeLocations of
+                             case pickBest currentEdgeLocations of
                               Nothing -> Rest.result notMoved req state
                               Just server -> Rest.result (moved (redirect server)) req state
                           )
@@ -84,3 +83,4 @@ clientStart =
       let
         req2 = setHeader "X-ServedBy" thisNode req
       Rest.result "" req2 state
+    pickBest = minimum
