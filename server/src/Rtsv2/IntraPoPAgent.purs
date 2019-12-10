@@ -117,12 +117,8 @@ whereIsStreamRelay streamId =
 
 whereIsEdge :: StreamId -> Effect (List ServerAddress)
 whereIsEdge streamId =
-  Gen.doCall serverName \state -> do
-    _ <- logInfo "Lookup" {streamId, 
-                           locations: state.edgeLocations,
-                           result: (MultiMap.lookup streamId state.edgeLocations)
-                          }
-    pure $ CallReply (MultiMap.lookup streamId state.edgeLocations) state
+  Gen.call serverName \state ->
+    CallReply (MultiMap.lookup streamId state.edgeLocations) state
 
 currentTransPoPLeader :: Effect (Maybe ServerAddress)
 currentTransPoPLeader =
@@ -284,7 +280,6 @@ handleIntraPoPSerfMsg imsg state =
       unsafeCrashWith ("lost_serf_connection")
 
     Serf.UserEvent name ltime coalesce intraMessage -> do
-     _ <- logInfo "Inbound Serf" {ltime, name, clocks: state.streamStateClocks}
      case intraMessage of
        StreamState stateChange streamId server ->
 
@@ -366,7 +361,6 @@ garbageCollect state@{ expireThreshold
         newStreamAggregatorLocations = EMap.garbageCollect threshold streamAggregatorLocations
         newStreamRelayLocations = EMap.garbageCollect threshold streamRelayLocations
         newEdgeLocations = MultiMap.garbageCollect threshold edgeLocations
-    _ <- logInfo "garbagecollect" {old: edgeLocations, new: newEdgeLocations}
     pure state{ streamAggregatorLocations = newStreamAggregatorLocations
               , streamRelayLocations = newStreamRelayLocations
               , edgeLocations = newEdgeLocations

@@ -44,7 +44,7 @@ singleton = EList <<< List.singleton
 
 garbageCollect :: forall v. Milliseconds -> EList v -> EList v
 garbageCollect threshold (EList evs) =
-  EList $ List.filter (EData.expired threshold) evs
+  EList $ List.filter (not (EData.expired threshold)) evs
 
 garbageCollect' :: forall v. Milliseconds -> EList v -> Effect (EList v)
 garbageCollect' age el =
