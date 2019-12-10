@@ -16,6 +16,7 @@ import Erl.Data.List (nil, (:))
 import Erl.Data.Tuple (tuple2)
 import Rtsv2.EdgeAgentSup (maybeStartAndAddClient)
 import Rtsv2.EdgeAgentSup as EdgeAgentSup
+import Rtsv2.Audit as Audit
 import Rtsv2.IntraPoPAgent as IntraPoPAgent
 import Rtsv2.PoPDefinition (ServerAddress)
 import Rtsv2.PoPDefinition as PoPDefintion
@@ -76,8 +77,9 @@ clientStart =
   # Rest.yeeha
 
   where
-    addOrStartEdge req state@{thisNode} = do
-      _ <- maybeStartAndAddClient state.streamId
+    addOrStartEdge req state@{thisNode, streamId} = do
+      _ <- Audit.clientStart streamId
+      _ <- maybeStartAndAddClient streamId
       let
         req2 = setHeader "X-ServedBy" thisNode req
       Rest.result "" req2 state

@@ -278,10 +278,13 @@ membersLeft members state = do
 
 garbageCollect :: State -> Effect State
 garbageCollect state@{expireThreshold,
-                      streamAggregatorLocations} =
+                      streamAggregatorLocations,
+                      streamRelayLocations} =
   do
     newStreamAggregatorLocations <- EMap.garbageCollect' expireThreshold streamAggregatorLocations
-    pure state{streamAggregatorLocations = newStreamAggregatorLocations}
+    newStreamRelayLocations <- EMap.garbageCollect' expireThreshold streamRelayLocations
+    pure state{streamAggregatorLocations = newStreamAggregatorLocations
+              , streamRelayLocations = newStreamRelayLocations}
 
 joinAllSerf :: State -> Effect Unit
 joinAllSerf { config, serfRpcAddress, members } =

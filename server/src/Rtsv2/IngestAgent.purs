@@ -16,6 +16,7 @@ import Logger as Logger
 import Pinto (ServerName(..), StartLinkResult)
 import Pinto.Gen as Gen
 import Record as Record
+import Rtsv2.Audit as Audit
 import Rtsv2.IngestAggregatorAgentSup as IngestAggregatorAgentSup
 import Rtsv2.IntraPoPAgent as IntraPoPAgent
 import Shared.Agent as Agent
@@ -33,6 +34,7 @@ startLink streamVariantId = Gen.startLink (serverName streamVariantId) (init str
 init :: StreamVariantId -> Effect State
 init streamVariantId = do
   _ <- logInfo "Ingest starting" {streamVariantId: streamVariantId}
+  _ <- Audit.ingestStart streamVariantId
   maybeAggregator <- IntraPoPAgent.whereIsIngestAggregator streamVariantId
   case maybeAggregator of
     Just relay ->

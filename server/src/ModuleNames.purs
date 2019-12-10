@@ -35,6 +35,9 @@ rtsv2AgentSup = ModuleName "Rtsv2.AgentSup"
 rtsv2App :: ModuleName
 rtsv2App = ModuleName "Rtsv2.App"
 
+rtsv2Audit :: ModuleName
+rtsv2Audit = ModuleName "Rtsv2.Audit"
+
 rtsv2Config :: ModuleName
 rtsv2Config = ModuleName "Rtsv2.Config"
 
