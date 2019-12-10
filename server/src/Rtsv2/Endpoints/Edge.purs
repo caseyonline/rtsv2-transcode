@@ -27,8 +27,6 @@ import Stetson (StetsonHandler)
 import Stetson.Rest as Rest
 
 type ClientCountState = { streamId :: StreamId
-                        , isAgentAvailable :: Boolean
-                        , currentNodeHasEdge :: Boolean
                         }
 
 clientCount :: StetsonHandler ClientCountState
@@ -36,17 +34,19 @@ clientCount =
   Rest.handler (\req ->
                  let streamId = StreamId $ fromMaybe' (lazyCrashIfMissing "stream_id binding missing") $ binding (atom "stream_id") req
                  in
-                  do
-                    thisNode <- PoPDefintion.thisNode
-                    isAgentAvailable <- EdgeAgentSup.isAvailable
-                    currentEdgeLocations <- fromMaybe Set.empty <$> IntraPoPAgent.whereIsEdge streamId
-                    Rest.initResult req { streamId : streamId
-                                        , isAgentAvailable
-                                        , currentNodeHasEdge : member thisNode $ currentEdgeLocations
-                                        }
+                    Rest.initResult req { streamId : streamId }
                )
-  # Rest.serviceAvailable (\req state@{isAgentAvailable} -> Rest.result isAgentAvailable req state)
-  # Rest.resourceExists (\req state@{currentNodeHasEdge} -> Rest.result currentNodeHasEdge req state)
+  # Rest.serviceAvailable (\req state -> do
+                              isAgentAvailable <- EdgeAgentSup.isAvailable
+                              Rest.result isAgentAvailable req state)
+  
+  # Rest.resourceExists (\req state@{streamId} -> do
+                            thisNode <- PoPDefintion.thisNode
+                            currentEdgeLocations <- fromMaybe Set.empty <$> IntraPoPAgent.whereIsEdge streamId
+                            let
+                              currentNodeHasEdge = member thisNode $ currentEdgeLocations
+                            Rest.result currentNodeHasEdge req state)
+  
   # Rest.contentTypesProvided (\req state@{streamId} ->
                                   Rest.result
                                     ((tuple2 "text/plain" (content streamId)) : nil)

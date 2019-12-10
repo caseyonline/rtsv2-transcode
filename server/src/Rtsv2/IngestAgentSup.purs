@@ -1,5 +1,6 @@
  module Rtsv2.IngestAgentSup
-  ( startLink
+  ( isAvailable
+  , startLink
   , startIngest
   ) where
 
@@ -7,11 +8,15 @@ import Prelude
 
 import Effect (Effect)
 import Erl.Data.List (nil, (:))
+import Erl.Utils as ErlUtils
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStartTemplate, childType)
 import Pinto.Sup as Sup
 import Rtsv2.IngestAgent as Ingest
 import Shared.Stream (StreamVariantId)
+
+isAvailable :: Effect Boolean
+isAvailable = ErlUtils.isRegistered serverName
 
 serverName :: String
 serverName = "ingestAgentSup"

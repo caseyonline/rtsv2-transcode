@@ -56,6 +56,9 @@ rtsv2EndpointsEdge = ModuleName "Rtsv2.Endpoints.Edge"
 rtsv2EndpointsHealth :: ModuleName
 rtsv2EndpointsHealth = ModuleName "Rtsv2.Endpoints.Health"
 
+rtsv2EndpointsIngest :: ModuleName
+rtsv2EndpointsIngest = ModuleName "Rtsv2.Endpoints.Ingest"
+
 rtsv2EndpointsMimeType :: ModuleName
 rtsv2EndpointsMimeType = ModuleName "Rtsv2.Endpoints.MimeType"
 

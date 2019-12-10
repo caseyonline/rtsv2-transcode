@@ -18,8 +18,9 @@ import Pinto (ServerName(..), StartLinkResult)
 import Pinto.Gen as Gen
 import Record as Record
 import Rtsv2.Config as Config
-import Rtsv2.Endpoints.Client (clientStart)
+import Rtsv2.Endpoints.Client as ClientEndpoint
 import Rtsv2.Endpoints.Edge as EdgeEndpoint
+import Rtsv2.Endpoints.Ingest as IngestEndpoint
 import Rtsv2.Endpoints.Health (healthCheck)
 import Rtsv2.Env as Env
 import Rtsv2.IngestAgentSup (startIngest)
@@ -47,12 +48,12 @@ init args = do
   Stetson.configure
     # Stetson.route "/api/transPoPLeader" transPoPLeader
     # Stetson.route "/api/healthCheck" healthCheck
-    
-    # Stetson.route "/api/client/:canary/ingest/:stream_id/:variant_id/start" ingestStart
-    --# Stetson.route "/api/client/:canary/ingest/:stream_id/:variant_id/stop" ingestStop
-    
-    # Stetson.route "/api/client/:canary/client/:stream_id/start" clientStart
-    --# Stetson.route "/api/client/:canary/client/:stream_id/stop" clientStop
+
+    # Stetson.route "/api/client/:canary/ingest/:stream_id/:variant_id/start" IngestEndpoint.ingestStart
+    # Stetson.route "/api/client/:canary/ingest/:stream_id/:variant_id/stop" IngestEndpoint.ingestStop
+
+    # Stetson.route "/api/client/:canary/client/:stream_id/start" ClientEndpoint.clientStart
+    --# Stetson.route "/api/client/:canary/client/:stream_id/stop" ClientEndpoint.clientStop
 
     # Stetson.route "/api/client/:canary/edge/:stream_id/clientCount" EdgeEndpoint.clientCount
 
@@ -73,26 +74,6 @@ transPoPLeader =
                           )
   # Rest.contentTypesProvided (\req state ->
                                 Rest.result ((tuple2 "text/plain" (\req2 currentLeader -> Rest.result (fromMaybe "" currentLeader) req2 state)) : nil) req state)
-  # Rest.yeeha
-
-type IngestState = { streamVariantId :: StreamVariantId }
-ingestStart :: StetsonHandler IngestState
-ingestStart =
-  Rest.handler (\req ->
-                 let streamId = fromMaybe' (lazyCrashIfMissing "stream_id binding missing") $ binding (atom "stream_id") req
-                     variantId = fromMaybe' (lazyCrashIfMissing "variant_id binding missing") $ binding (atom "variant_id") req
-                 in
-                 Rest.initResult req {streamVariantId: StreamVariantId streamId variantId})
-  -- # Rest.serviceAvailable (\req state -> do
-  --                             registered <- Erl.isRegistered Agent.Ingest
-  --                             Rest.result registered req state)
-  -- # Rest.resourceExists (\req state@{streamVariantId} -> do
-  --                           isAvailable <- isIngestActive streamVariantId
-  --                           Rest.result isAvailable req state
-  --                         )
-  # Rest.contentTypesProvided (\req state -> do
-                                  _ <- startIngest state.streamVariantId
-                                  Rest.result (textWriter "" : nil) req state)
   # Rest.yeeha
 
 emptyText  :: forall a. Tuple2 String (Req -> a -> (Effect (RestResult String a)))

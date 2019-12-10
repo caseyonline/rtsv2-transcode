@@ -57,6 +57,7 @@ type State
     }
 
 data TransMessage = StreamAvailable StreamId ServerAddress
+                  | StreamStopped StreamId ServerAddress
 
 data Msg
   = Tick
@@ -70,6 +71,7 @@ serverName = Local $ show Agent.TransPoP
 
 messageOrigin :: TransMessage -> Effect (Maybe PoPName)
 messageOrigin (StreamAvailable _ addr) = originPoP addr
+messageOrigin (StreamStopped _ addr) = originPoP addr
 
 originPoP :: ServerAddress -> Effect (Maybe PoPName)
 originPoP addr =
@@ -165,12 +167,19 @@ handleIntraPoPMessage (IntraPoPAgent.TransPoPLeader address) state = handleLeade
 
 handleIntraPoPMessage (IntraPoPAgent.StreamAvailable streamId addr) state = handleIntraPoPStreamAvailable streamId addr state
 
+handleIntraPoPMessage (IntraPoPAgent.StreamStopped streamId addr) state = handleIntraPoPStreamStopped streamId addr state
+
 handleIntraPoPMessage (IntraPoPAgent.EdgeAvailable _ _) state = pure state
 
 handleTransPoPMessage :: TransMessage -> State -> Effect State
 handleTransPoPMessage (StreamAvailable streamId server) state = do
   _ <- logInfo "Remote stream available" {streamId, server}
   _ <- IntraPoPAgent.announceRemoteStreamIsAvailable streamId server
+  pure state
+
+handleTransPoPMessage (StreamStopped streamId server) state = do
+  _ <- logInfo "Remote stream stopped" {streamId, server}
+  _ <- IntraPoPAgent.announceRemoteStreamStopped streamId server
   pure state
 
 membersAlive :: (List Serf.SerfMember) -> State -> Effect State
@@ -239,6 +248,24 @@ handleIntraPoPStreamAvailable streamId addr state@{ thisLocation: (ServerLocatio
         -- Message from our pop - distribute over trans-pop
         --_ <- logInfo "Local stream being delivered to trans-pop" { streamId: streamId }
         result <- Serf.event state.serfRpcAddress "streamAvailable" (StreamAvailable streamId addr) false
+        _ <- maybeLogError "Trans-PoP serf event failed" result {}
+        pure state
+      | otherwise -> pure state
+
+handleIntraPoPStreamStopped :: StreamId -> ServerAddress -> State -> Effect State
+handleIntraPoPStreamStopped _ _ state@{ weAreLeader: false } = pure state
+
+handleIntraPoPStreamStopped streamId addr state@{ thisLocation: (ServerLocation pop _)
+                                                , serfRpcAddress
+                                                } = do
+  mSourcePoP <- originPoP addr
+  case mSourcePoP of
+    Nothing -> pure state
+    Just sourcePoP
+      | sourcePoP == pop -> do
+        -- Message from our pop - distribute over trans-pop
+        --_ <- logInfo "Local stream stopped being delivered to trans-pop" { streamId: streamId }
+        result <- Serf.event state.serfRpcAddress "streamStopped" (StreamStopped streamId addr) false
         _ <- maybeLogError "Trans-PoP serf event failed" result {}
         pure state
       | otherwise -> pure state

@@ -1,6 +1,6 @@
 module Rtsv2.IngestAggregatorAgent
   ( startLink
-  , init
+  , stopAggregator
   ) where
 
 import Prelude
@@ -13,11 +13,12 @@ import Erl.ModuleName (NativeModuleName(..))
 import Foreign (Foreign, unsafeToForeign)
 import Logger as Logger
 import Pinto (ServerName(..), StartLinkResult)
+import Pinto.Gen (CallResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Record as Record
 import Rtsv2.Config as Config
-import Rtsv2.IntraPoPAgent (announceStreamIsAvailable)
+import Rtsv2.IntraPoPAgent (announceStreamIsAvailable, announceStreamStopped)
 import Shared.Agent as Agent
 import Shared.Stream (StreamId)
 
@@ -32,8 +33,16 @@ data Msg
 serverName :: StreamId -> ServerName State Msg
 serverName s = Via (NativeModuleName $ atom "gproc") $ unsafeToForeign (tuple3 (atom "n") (atom "l") (tuple2 "ingest" s))
 
+stopAggregator :: StreamId -> Effect Unit
+stopAggregator streamId = do
+  Gen.doCall (serverName streamId) \state -> do
+    _ <- logInfo "Ingest Aggregator stopping" {streamId: streamId}
+    _ <- announceStreamStopped streamId
+    pure $ CallStop unit state
+
 startLink :: StreamId -> Effect StartLinkResult
 startLink streamId = Gen.startLink (serverName streamId) (init streamId) handleInfo
+
 
 init :: StreamId -> Effect State
 init streamId = do

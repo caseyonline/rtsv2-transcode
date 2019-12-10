@@ -1,6 +1,7 @@
 module Rtsv2.IngestAgent
   ( startLink
-  , init
+  , isActive
+  , stopIngest
   ) where
 
 import Prelude
@@ -12,11 +13,14 @@ import Erl.Data.List (nil, (:))
 import Erl.Data.Tuple (tuple2, tuple3)
 import Erl.ModuleName (NativeModuleName(..))
 import Foreign (Foreign, unsafeToForeign)
+import Gproc as Gproc
 import Logger as Logger
 import Pinto (ServerName(..), StartLinkResult)
+import Pinto.Gen (CallResult(..))
 import Pinto.Gen as Gen
 import Record as Record
 import Rtsv2.Audit as Audit
+import Rtsv2.IngestAggregatorAgent as IngestAggregatorAgent
 import Rtsv2.IngestAggregatorAgentSup as IngestAggregatorAgentSup
 import Rtsv2.IntraPoPAgent as IntraPoPAgent
 import Shared.Agent as Agent
@@ -25,11 +29,21 @@ import Shared.Stream (StreamVariantId, toStreamId)
 type State
   = { }
 
+isActive :: StreamVariantId -> Effect Boolean
+isActive streamVariantId = Gproc.isRegistered (tuple2 "ingest" streamVariantId)
+
 serverName :: StreamVariantId -> ServerName State Unit
-serverName sv = Via (NativeModuleName $ atom "gproc") $ unsafeToForeign (tuple3 (atom "n") (atom "l") (tuple2 "ingest" sv))
+serverName streamVariantId = Via (NativeModuleName $ atom "gproc") $ unsafeToForeign (tuple3 (atom "n") (atom "l") (tuple2 "ingest" streamVariantId))
 
 startLink :: StreamVariantId -> Effect StartLinkResult
 startLink streamVariantId = Gen.startLink (serverName streamVariantId) (init streamVariantId) Gen.defaultHandleInfo
+
+stopIngest :: StreamVariantId -> Effect Unit
+stopIngest streamVariantId =
+  Gen.doCall (serverName streamVariantId) \state -> do
+    _ <- IngestAggregatorAgent.stopAggregator (toStreamId streamVariantId)
+    _ <- Audit.ingestStop streamVariantId
+    pure $ CallStop unit state
 
 init :: StreamVariantId -> Effect State
 init streamVariantId = do

@@ -27,7 +27,6 @@ import Stetson (StetsonHandler)
 import Stetson.Rest as Rest
 
 type ClientState = { streamId :: StreamId
-                   , isAgentAvailable :: Boolean
                    , isIngestAvailable :: Boolean
                    , currentNodeHasEdge :: Boolean
                    , thisNode :: ServerAddress
@@ -39,27 +38,31 @@ clientStart =
                  let streamId = StreamId $ fromMaybe' (lazyCrashIfMissing "stream_id binding missing") $ binding (atom "stream_id") req
                  in
                   do
-                    -- TODO - more RESTy please - but we need isConflict to get the flow correct
-                    thisNode <- PoPDefintion.thisNode
-                    isAgentAvailable <- EdgeAgentSup.isAvailable
-                    isIngestAvailable <- IntraPoPAgent.isStreamIngestAvailable streamId
-                    currentEdgeLocations <- fromMaybe Set.empty <$> IntraPoPAgent.whereIsEdge streamId
                     Rest.initResult req { streamId : streamId
-                                        , thisNode
-                                        , isAgentAvailable
-                                        , isIngestAvailable
-                                        , currentEdgeLocations
-                                        , currentNodeHasEdge : member thisNode $ currentEdgeLocations
+                                        , isIngestAvailable : false
+                                        , currentNodeHasEdge : false
+                                        , thisNode : ""
+                                        , currentEdgeLocations : Set.empty
                                         }
                )
-  # Rest.serviceAvailable (\req state@{isAgentAvailable} -> Rest.result isAgentAvailable req state)
-  # Rest.resourceExists (\req state@{isIngestAvailable, currentNodeHasEdge, currentEdgeLocations} ->
-                          let
-                            exists = isIngestAvailable && (currentNodeHasEdge || (isEmpty currentEdgeLocations))
-                          in
-                           Rest.result exists req state
+  # Rest.serviceAvailable (\req state -> do
+                              isAgentAvailable <- EdgeAgentSup.isAvailable
+                              Rest.result isAgentAvailable req state)
+
+  # Rest.resourceExists (\req state@{streamId} -> do
+                            thisNode <- PoPDefintion.thisNode
+                            isIngestAvailable <- IntraPoPAgent.isStreamIngestAvailable streamId
+                            currentEdgeLocations <- fromMaybe Set.empty <$> IntraPoPAgent.whereIsEdge streamId
+                            let
+                              currentNodeHasEdge = member thisNode $ currentEdgeLocations
+                              exists = isIngestAvailable && (currentNodeHasEdge || (isEmpty currentEdgeLocations))
+                            Rest.result exists req state {isIngestAvailable = isIngestAvailable
+                                                         , currentNodeHasEdge = currentNodeHasEdge
+                                                         , currentEdgeLocations = currentEdgeLocations}
                         )
+
   # Rest.previouslyExisted (\req state@{isIngestAvailable} -> Rest.result isIngestAvailable req state)
+
   # Rest.movedTemporarily (\req state@{currentEdgeLocations} ->
                             let
                               -- todo - ick - need functions to build URLs
@@ -69,11 +72,9 @@ clientStart =
                               Nothing -> Rest.result notMoved req state
                               Just server -> Rest.result (moved (redirect server)) req state
                           )
-  # Rest.contentTypesProvided (\req state -> do
-                                  _ <- Logger.logInfo "contentTypesProvided" {state: state}
-                                  Rest.result
-                                      ((tuple2 "text/plain" addOrStartEdge) : nil)
-                                      req state)
+
+  # Rest.contentTypesProvided (\req state ->
+                                Rest.result ((tuple2 "text/plain" addOrStartEdge) : nil) req state)
   # Rest.yeeha
 
   where
