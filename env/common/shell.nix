@@ -1,7 +1,11 @@
 let
   erlangReleases = builtins.fetchTarball https://github.com/nixerl/nixpkgs-nixerl/archive/v1.0.2-devel.tar.gz;
 
-  purerlReleases = builtins.fetchTarball https://github.com/purerl/nixpkgs-purerl/archive/master.tar.gz;
+  purerlReleases =
+    builtins.fetchGit {
+      url = "https://github.com/purerl/nixpkgs-purerl.git";
+      rev = "dde39f61c7d2dfa3b92035c9becc356fd8235ac8";
+    };
 
   id3asPackages =
     builtins.fetchGit {
