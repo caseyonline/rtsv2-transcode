@@ -1,7 +1,6 @@
 -- -*- psc-ide-codegen: ("erl") -*-
 module Logger
-       (
-         emergency
+       ( emergency
        , alert
        , critical
        , error
@@ -9,40 +8,27 @@ module Logger
        , notice
        , info
        , debug
+       , spy
        ) where
 
+import Prelude
+
+import Debug.Trace (class DebugWarning)
 import Effect (Effect)
+import Effect.Unsafe (unsafePerformEffect)
 import Foreign (Foreign)
 
-foreign import emergency_ :: forall a. String -> a -> Effect Foreign
-foreign import alert_ :: forall a. String -> a -> Effect Foreign
-foreign import critical_ :: forall a. String -> a -> Effect Foreign
-foreign import error_ :: forall a. String -> a -> Effect Foreign
-foreign import warning_ :: forall a. String -> a -> Effect Foreign
-foreign import notice_ :: forall a. String -> a -> Effect Foreign
-foreign import info_ :: forall a. String -> a -> Effect Foreign
-foreign import debug_ :: forall a. String -> a -> Effect Foreign
+foreign import emergency :: forall a. String -> a -> Effect Foreign
+foreign import alert :: forall a. String -> a -> Effect Foreign
+foreign import critical :: forall a. String -> a -> Effect Foreign
+foreign import error :: forall a. String -> a -> Effect Foreign
+foreign import warning :: forall a. String -> a -> Effect Foreign
+foreign import notice :: forall a. String -> a -> Effect Foreign
+foreign import info :: forall a. String -> a -> Effect Foreign
+foreign import debug :: forall a. String -> a -> Effect Foreign
+foreign import spyImpl :: forall a. String -> a -> Effect Foreign
 
-emergency :: forall a. String -> Record a -> Effect Foreign
-emergency = emergency_
-
-alert :: forall a. String -> Record a -> Effect Foreign
-alert = alert_
-
-critical :: forall a. String -> Record a -> Effect Foreign
-critical = critical_
-
-error :: forall a. String -> Record a -> Effect Foreign
-error = error_
-
-warning :: forall a. String -> Record a -> Effect Foreign
-warning = warning_
-
-notice :: forall a. String -> Record a -> Effect Foreign
-notice = notice_
-
-info :: forall a. String -> Record a -> Effect Foreign
-info = info_
-
-debug :: forall a. String -> Record a -> Effect Foreign
-debug = debug_
+spy :: forall a. DebugWarning => String -> a -> a
+spy str a = unsafePerformEffect do
+  _ <-  spyImpl str {misc : a}
+  pure a

@@ -1,14 +1,15 @@
 -module(logger@foreign).
 
 -export([
-         emergency_/2,
-         alert_/2,
-         critical_/2,
-         error_/2,
-         warning_/2,
-         notice_/2,
-         info_/2,
-         debug_/2
+         emergency/2,
+         alert/2,
+         critical/2,
+         error/2,
+         warning/2,
+         notice/2,
+         info/2,
+         debug/2,
+         spyImpl/2
         ]).
 
 -define(do_log(Level, Msg, Args),
@@ -25,46 +26,47 @@
             ok
         end).
 
-emergency_(Msg, Args) ->
+emergency(Msg, Args) ->
   fun() ->
       ?do_log(emergency, Msg, Args)
   end.
 
-alert_(Msg, Args) ->
+alert(Msg, Args) ->
   fun() ->
       ?do_log(alert, Msg, Args)
   end.
 
-critical_(Msg, Args) ->
+critical(Msg, Args) ->
   fun() ->
       ?do_log(critical, Msg, Args)
   end.
 
-error_(Msg, Args) ->
+error(Msg, Args) ->
   fun() ->
       ?do_log(error, Msg, Args)
   end.
 
-warning_(Msg, Args) ->
+warning(Msg, Args) ->
   fun() ->
       ?do_log(warning, Msg, Args)
   end.
 
-notice_(Msg, Args) ->
+notice(Msg, Args) ->
   fun() ->
       ?do_log(notice, Msg, Args)
   end.
 
-info_(Msg, Args) ->
+info(Msg, Args) ->
   fun() ->
       ?do_log(info, Msg, Args)
   end.
 
-debug_(Msg, Args) ->
+debug(Msg, Args) ->
   fun() ->
       ?do_log(debug, Msg, Args)
   end.
 
-%%------------------------------------------------------------------------------
-%% Internal functions
-%%------------------------------------------------------------------------------
+spyImpl(Msg, Args) ->
+  fun() ->
+      ?do_log(notice, Msg, Args)
+  end.
