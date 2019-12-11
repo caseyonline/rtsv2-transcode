@@ -7,11 +7,11 @@ module Rtsv2.Endpoints.Ingest
 import Prelude
 
 import Data.Maybe (fromMaybe')
+import Logger (spy)
 import Erl.Atom (atom)
 import Erl.Cowboy.Req (binding)
 import Erl.Data.List (nil, (:))
 import Erl.Data.Tuple (tuple2)
-import Logger as Logger
 import Rtsv2.IngestAgent as IngestAgent
 import Rtsv2.IngestAgentSup as IngestAgentSup
 import Shared.Stream (StreamVariantId(..))
@@ -25,7 +25,7 @@ ingestStart :: StetsonHandler IngestStartState
 ingestStart =
   Rest.handler (\req ->
                  let streamId = fromMaybe' (lazyCrashIfMissing "stream_id binding missing") $ binding (atom "stream_id") req
-                     variantId = fromMaybe' (lazyCrashIfMissing "variant_id binding missing") $ binding (atom "variant_id") req
+                     variantId = fromMaybe' (lazyCrashIfMissing "variant_id binding missing") $ binding (atom "variant_id") $ spy "wtf really" req
                  in
                  Rest.initResult req {streamVariantId: StreamVariantId streamId variantId})
 
@@ -33,10 +33,11 @@ ingestStart =
                             isAgentAvailable <- IngestAgentSup.isAvailable
                             Rest.result isAgentAvailable req state)
   -- TODO - would conflict if stream exists, but this won't be REST once media plugged...
-  -- # Rest.resourceExists (\req state@{streamVariantId} -> do
-  --                           isAvailable <- isIngestActive streamVariantId
-  --                           Rest.result isAvailable req state
-  --                         )
+  # Rest.isConflict (\req state@{streamVariantId} -> do
+
+                            --isAvailable <- isIngestActive streamVariantId
+                            Rest.result false req $ spy "state" state
+                          )
   # Rest.contentTypesProvided (\req state -> do
                                   _ <- IngestAgentSup.startIngest state.streamVariantId
                                   Rest.result (tuple2 "text/plain" (\req2 state2 -> Rest.result "ingestStarted" req2 state2) : nil) req state)
@@ -67,4 +68,3 @@ ingestStop =
                                                                      Rest.result "ingestStopped" req2 state2
                                                                  ) : nil) req state)
   # Rest.yeeha
-

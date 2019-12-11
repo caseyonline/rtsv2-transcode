@@ -25,7 +25,6 @@ newtype EList a = EList (List (EData a))
 empty :: forall a. EList a
 empty = EList nil
 
-
 null :: forall a. EList a -> Boolean
 null (EList es) = List.null es
 
