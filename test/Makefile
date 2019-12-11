@@ -1,13 +1,12 @@
-.PHONY: all test compile clean
+.PHONY: all test compile
 
 all: compile test
-
-install:
-	npm install
-	spago install
 
 compile:
 	spago build
 
-test:
-	spago test --main Test
+test: | node_modules
+	spago run # test --main Test
+
+node_modules:
+	npm install
