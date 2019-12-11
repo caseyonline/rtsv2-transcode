@@ -3,7 +3,9 @@ module Erl.Utils
        ( isRegistered
        , systemTimeMs
        , sleep
+       , makeRef
        , Milliseconds
+       , Ref
        )
        where
 
@@ -12,10 +14,12 @@ import Prelude
 import Data.Newtype (class Newtype, unwrap, wrap)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
+import Foreign (Foreign)
 
 foreign import isRegisteredImpl :: Atom -> Effect Boolean
 foreign import systemTimeImpl :: Atom -> Effect Int
 foreign import sleepImpl :: Int -> Effect Unit
+foreign import makeRefImpl :: Foreign
 
 sleep :: Milliseconds -> Effect Unit
 sleep = sleepImpl <<< unwrap
@@ -50,3 +54,11 @@ isRegistered name = isRegisteredImpl (atom name)
 
 systemTimeMs :: Effect Milliseconds
 systemTimeMs = wrap <$> systemTimeImpl (atom "millisecond")
+
+newtype Ref = Ref Foreign
+
+instance eqRef :: Eq Ref where
+  eq _ _ = true
+
+makeRef :: Ref
+makeRef = Ref makeRefImpl

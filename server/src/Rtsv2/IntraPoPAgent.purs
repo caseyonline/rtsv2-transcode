@@ -3,6 +3,7 @@ module Rtsv2.IntraPoPAgent
   , isStreamIngestAvailable
   , isIngestActive
   , announceEdgeIsActive
+  , announceEdgeStopped
   , announceStreamIsAvailable
   , announceStreamStopped
   , announceRemoteStreamIsAvailable
@@ -16,6 +17,7 @@ module Rtsv2.IntraPoPAgent
   , bus
   , IntraMessage(..)
   , StreamState(..)
+  , EdgeState(..)
   ) where
 
 import Prelude
@@ -69,13 +71,17 @@ type State
     , members :: Map ServerAddress Serf.SerfMember
     , expireThreshold :: Milliseconds
     , streamStateClocks :: EMap StreamId Int
+    , edgeStateClocks :: EMap StreamId Int
     }
 
 data StreamState = StreamAvailable
                  | StreamStopped 
 
+data EdgeState = EdgeAvailable
+               | EdgeStopped
+
 data IntraMessage = StreamState StreamState StreamId ServerAddress
-                  | EdgeAvailable StreamId ServerAddress
+                  | EdgeState EdgeState StreamId ServerAddress
                   | TransPoPLeader ServerAddress
 
 data Msg
@@ -133,9 +139,13 @@ announceEdgeIsActive streamId =
   Gen.doCast serverName
     $ \state@{ edgeLocations, thisNode } -> do
         _ <- logInfo "Local edge available" { streamId: streamId }
-        _ <- raiseLocal state "edgeAvailable" (EdgeAvailable streamId thisNode)
+        _ <- raiseLocal state "edgeAvailable" (EdgeState EdgeAvailable streamId thisNode)
         newEdgeLocations <- MultiMap.insert' streamId thisNode  state.edgeLocations
         pure $ Gen.CastNoReply state { edgeLocations = newEdgeLocations }
+
+-- Called by EdgeAgent to indicate edge on this node has stopped
+announceEdgeStopped :: StreamId -> Effect Unit
+announceEdgeStopped streamId = pure unit
 
 -- Called by IngestAggregator to indicate stream on this node
 announceStreamIsAvailable :: StreamId -> Effect Unit
@@ -244,10 +254,11 @@ init config@{rejoinEveryMs
     , members: Map.empty
     , expireThreshold: wrap expireThresholdMs
     , streamStateClocks: EMap.empty
+    , edgeStateClocks: EMap.empty
     }
 
-shouldProcessStreamState :: StreamId -> Int -> EMap StreamId Int -> Boolean
-shouldProcessStreamState streamId ltime streamStateClocks =
+shouldProcessSerfMessage :: StreamId -> Int -> EMap StreamId Int -> Boolean
+shouldProcessSerfMessage streamId ltime streamStateClocks =
   case EMap.lookup streamId streamStateClocks of
     Just lastLTime
       | lastLTime > ltime -> false
@@ -283,7 +294,7 @@ handleIntraPoPSerfMsg imsg state =
      case intraMessage of
        StreamState stateChange streamId server ->
 
-         case shouldProcessStreamState streamId ltime state.streamStateClocks of
+         case shouldProcessSerfMessage streamId ltime state.streamStateClocks of
            false -> do
              _ <- logInfo "Dropping out-of-order serf message" {streamId, stateChange}
              pure $ state
@@ -292,15 +303,15 @@ handleIntraPoPSerfMsg imsg state =
              newStreamStateClocks <- EMap.insert' streamId ltime state.streamStateClocks
              handleStreamStateChange stateChange streamId server intraMessage (state {streamStateClocks = newStreamStateClocks})
 
-       EdgeAvailable streamId server
-         | server == state.thisNode -> do
-           -- edgeAvailable on this node - we can just ignore, since appropriate action taken in announceEdgeIsActive
-           pure state
-         | otherwise -> do
-           -- edgeAvailable on some other node in this PoP
-           _ <- logInfo "EdgeAvailable on remote node" { streamId: streamId, remoteNode: server }
-           newEdgeLocations <- MultiMap.insert' streamId server  state.edgeLocations
-           pure $ state { edgeLocations = newEdgeLocations }
+       EdgeState stateChange streamId server ->
+         case shouldProcessSerfMessage streamId ltime state.edgeStateClocks of
+           false -> do
+             _ <- logInfo "Dropping out-of-order serf message" {streamId, stateChange}
+             pure $ state
+
+           true -> do
+             newEdgeStateClocks <- EMap.insert' streamId ltime state.edgeStateClocks
+             handleEdgeStateChange stateChange streamId server (state {edgeStateClocks = newEdgeStateClocks})
 
        TransPoPLeader server
          | server == state.thisNode -> pure state { currentTransPoPLeader = Just server }
@@ -334,6 +345,29 @@ handleStreamStateChange stateChange streamId server intraMessage state =
         let
           newStreamAggregatorLocations = EMap.delete streamId state.streamAggregatorLocations
         pure $ state { streamAggregatorLocations = newStreamAggregatorLocations }
+
+handleEdgeStateChange :: EdgeState -> StreamId -> ServerAddress -> State -> Effect State
+handleEdgeStateChange stateChange streamId server state =
+  case stateChange of
+    EdgeAvailable 
+      | server == state.thisNode -> do
+        -- edgeAvailable on this node - we can just ignore, since appropriate action taken in announceEdgeIsActive
+        pure state
+      | otherwise -> do
+        -- edgeAvailable on some other node in this PoP
+        _ <- logInfo "EdgeAvailable on remote node" { streamId: streamId, remoteNode: server }
+        newEdgeLocations <- MultiMap.insert' streamId server  state.edgeLocations
+        pure $ state { edgeLocations = newEdgeLocations }
+
+    EdgeStopped 
+      | server == state.thisNode -> do
+        -- edgeStopped on this node - we can just ignore, since appropriate action taken in announceEdgeStopped
+        pure state
+      | otherwise -> do
+        _ <- logInfo "EdgeStopped on remote node" { streamId: streamId, remoteNode: server }
+        let
+          newEdgeLocations = MultiMap.delete streamId server state.edgeLocations
+        pure $ state { edgeLocations = newEdgeLocations }
 
 membersAlive :: (List Serf.SerfMember) -> State -> Effect State
 membersAlive members state = do

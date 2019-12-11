@@ -3,6 +3,7 @@
 -export([ isRegisteredImpl/1
         , systemTimeImpl/1
         , sleepImpl/1
+        , makeRefImpl/0
         ]).
 
 isRegisteredImpl(Name) ->
@@ -22,3 +23,6 @@ systemTimeImpl(TimeUnit) ->
 
 sleepImpl(Ms) ->
   fun() -> timer:sleep(Ms), unit end.
+
+makeRefImpl() ->
+  make_ref().

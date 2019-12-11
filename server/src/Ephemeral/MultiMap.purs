@@ -18,6 +18,7 @@ import Prelude
 
 import Data.FoldableWithIndex (foldlWithIndex)
 import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Newtype (wrap)
 import Effect (Effect)
 import Ephemeral (EData)
 import Ephemeral as EData
@@ -41,8 +42,17 @@ size (EMultiMap m) = Map.size m
 member :: forall k v. k -> EMultiMap k v -> Boolean
 member k (EMultiMap m) = Map.member k m
 
-delete :: forall k v. k -> EMultiMap k v -> EMultiMap k v
-delete k (EMultiMap m) = EMultiMap $ Map.delete k m
+delete :: forall k v. Eq v => k -> v -> EMultiMap k v -> EMultiMap k v
+delete k v (EMultiMap m) =
+  let
+    deleteMember :: Maybe (EList v) -> Maybe (EList v)
+    deleteMember Nothing = Nothing
+    deleteMember (Just list) = let list2 = EList.delete (EData.new (wrap 0) v) list
+                               in
+                                if EList.null list2 then Nothing
+                                else Just list2
+  in
+   EMultiMap $ Map.alter deleteMember k m
 
 keys :: forall k v. EMultiMap k v -> List k
 keys (EMultiMap m) = Map.keys m
@@ -57,7 +67,6 @@ insert k ev (EMultiMap m) =
       addMember Nothing = Just $ EList.singleton ev
   in
   EMultiMap $ Map.alter addMember k m
-
 
 insert' :: forall k v. Eq v => k -> v -> EMultiMap k v -> Effect (EMultiMap k v)
 insert' k v m =

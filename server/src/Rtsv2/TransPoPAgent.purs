@@ -193,7 +193,7 @@ handleIntraPoPMessage (IntraPoPAgent.StreamState IntraPoPAgent.StreamAvailable s
 
 handleIntraPoPMessage (IntraPoPAgent.StreamState IntraPoPAgent.StreamStopped streamId addr) state = handleIntraPoPStreamStopped streamId addr state
 
-handleIntraPoPMessage (IntraPoPAgent.EdgeAvailable _ _) state = pure state
+handleIntraPoPMessage (IntraPoPAgent.EdgeState _ _ _) state = pure state
 
 handleTransPoPMessage :: TransMessage -> State -> Effect State
 handleTransPoPMessage (StreamState StreamAvailable streamId server) state = do

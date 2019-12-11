@@ -53,7 +53,7 @@ init args = do
     # Stetson.route "/api/client/:canary/ingest/:stream_id/:variant_id/stop" IngestEndpoint.ingestStop
 
     # Stetson.route "/api/client/:canary/client/:stream_id/start" ClientEndpoint.clientStart
-    --# Stetson.route "/api/client/:canary/client/:stream_id/stop" ClientEndpoint.clientStop
+    # Stetson.route "/api/client/:canary/client/:stream_id/stop" ClientEndpoint.clientStop
 
     # Stetson.route "/api/client/:canary/edge/:stream_id/clientCount" EdgeEndpoint.clientCount
 

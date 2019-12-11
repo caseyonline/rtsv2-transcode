@@ -35,7 +35,6 @@ insert ev (EList evs) = EList $ ev : List.delete ev evs
 delete :: forall a. Eq a => EData a -> EList a -> EList a
 delete ev (EList evs) = EList $ List.delete ev evs
 
-
 extract :: forall a. EList a -> List a
 extract (EList evs) = EData.extract <$> evs
 

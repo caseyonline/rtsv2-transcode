@@ -5,6 +5,7 @@ module Rtsv2.Config
   , PoPDefinitionConfig
   , IntraPoPAgentConfig
   , TransPoPAgentConfig
+  , EdgeAgentConfig
   , webConfig
   , nodeConfig
   , popDefinitionConfig
@@ -44,7 +45,9 @@ type IngestAggregatorAgentConfig
   = { streamAvailableAnnounceMs :: Int }
 
 type EdgeAgentConfig
-  = { edgeAvailableAnnounceMs :: Int }
+  = { edgeAvailableAnnounceMs :: Int
+    , lingerTimeMs :: Int
+    }
 
 type IntraPoPAgentConfig
   = { bindPort :: Int
