@@ -1,4 +1,4 @@
--- -*- psc-ide-codegen: ("erl") -*-
+
 module Logger
        ( emergency
        , alert

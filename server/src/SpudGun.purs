@@ -1,5 +1,5 @@
--- -*- psc-ide-codegen: ("erl") -*-
-module SpudGun 
+
+module SpudGun
 ( post
 , post'
 , put'
@@ -38,4 +38,3 @@ getText s = get' s (tuple2 "Accept" "text/plain" : nil)
 
 getJson :: String -> Effect (Maybe String)
 getJson s = get' s (tuple2 "Accept" "application/json" : nil)
-

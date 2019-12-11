@@ -6,7 +6,6 @@ module Rtsv2.Web
 import Prelude
 
 import Data.Maybe (Maybe(..), fromMaybe, isJust)
---import Debug.Trace (spy)
 import Effect (Effect)
 import Erl.Atom (atom)
 import Erl.Cowboy.Req (Req)
@@ -20,8 +19,8 @@ import Record as Record
 import Rtsv2.Config as Config
 import Rtsv2.Endpoints.Client as ClientEndpoint
 import Rtsv2.Endpoints.Edge as EdgeEndpoint
-import Rtsv2.Endpoints.Ingest as IngestEndpoint
 import Rtsv2.Endpoints.Health (healthCheck)
+import Rtsv2.Endpoints.Ingest as IngestEndpoint
 import Rtsv2.Env as Env
 import Rtsv2.IntraPoPAgent as IntraPoPAgent
 import Rtsv2.PoPDefinition (ServerAddress)

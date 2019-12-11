@@ -62,6 +62,14 @@ let overrides =
           , version =
               "d923dab0d94af6872483bb5952b2652afdc3e95a"
           }
+      , erl-stetson =
+          { dependencies =
+              [ "erl-cowboy", "erl-lager" ]
+          , repo =
+              "ssh://git@github.com/id3as/purescript-erl-stetson.git"
+          , version =
+              "158afd072c7d33364dfa3e0d09497541954c1181"
+          }
       }
 
 let additions = {=}

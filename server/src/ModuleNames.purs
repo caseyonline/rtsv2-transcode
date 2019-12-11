@@ -20,17 +20,8 @@ ephemeralMultiMap = ModuleName "Ephemeral.MultiMap"
 erlUtils :: ModuleName
 erlUtils = ModuleName "Erl.Utils"
 
-file :: ModuleName
-file = ModuleName "File"
-
-gproc :: ModuleName
-gproc = ModuleName "Gproc"
-
 ip :: ModuleName
 ip = ModuleName "Ip"
-
-logger :: ModuleName
-logger = ModuleName "Logger"
 
 os :: ModuleName
 os = ModuleName "Os"
@@ -43,9 +34,6 @@ rtsv2App = ModuleName "Rtsv2.App"
 
 rtsv2Audit :: ModuleName
 rtsv2Audit = ModuleName "Rtsv2.Audit"
-
-rtsv2Config :: ModuleName
-rtsv2Config = ModuleName "Rtsv2.Config"
 
 rtsv2EdgeAgent :: ModuleName
 rtsv2EdgeAgent = ModuleName "Rtsv2.EdgeAgent"
@@ -112,6 +100,3 @@ rtsv2Web = ModuleName "Rtsv2.Web"
 
 serf :: ModuleName
 serf = ModuleName "Serf"
-
-spudGun :: ModuleName
-spudGun = ModuleName "SpudGun"

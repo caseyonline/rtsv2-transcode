@@ -7,7 +7,6 @@ module Rtsv2.Endpoints.Ingest
 import Prelude
 
 import Data.Maybe (fromMaybe')
-import Logger (spy)
 import Erl.Atom (atom)
 import Erl.Cowboy.Req (binding)
 import Erl.Data.List (nil, (:))
@@ -25,7 +24,7 @@ ingestStart :: StetsonHandler IngestStartState
 ingestStart =
   Rest.handler (\req ->
                  let streamId = fromMaybe' (lazyCrashIfMissing "stream_id binding missing") $ binding (atom "stream_id") req
-                     variantId = fromMaybe' (lazyCrashIfMissing "variant_id binding missing") $ binding (atom "variant_id") $ spy "wtf really" req
+                     variantId = fromMaybe' (lazyCrashIfMissing "variant_id binding missing") $ binding (atom "variant_id") req
                  in
                  Rest.initResult req {streamVariantId: StreamVariantId streamId variantId})
 
@@ -33,11 +32,11 @@ ingestStart =
                             isAgentAvailable <- IngestAgentSup.isAvailable
                             Rest.result isAgentAvailable req state)
   -- TODO - would conflict if stream exists, but this won't be REST once media plugged...
-  # Rest.isConflict (\req state@{streamVariantId} -> do
+  -- # Rest.isConflict (\req state@{streamVariantId} -> do
 
-                            --isAvailable <- isIngestActive streamVariantId
-                            Rest.result false req $ spy "state" state
-                          )
+  --                           isAvailable <- isIngestActive streamVariantId
+  --                           Rest.result isAvailable req $ spy "state" state
+  --                         )
   # Rest.contentTypesProvided (\req state -> do
                                   _ <- IngestAgentSup.startIngest state.streamVariantId
                                   Rest.result (tuple2 "text/plain" (\req2 state2 -> Rest.result "ingestStarted" req2 state2) : nil) req state)
