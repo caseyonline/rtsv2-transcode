@@ -1,16 +1,22 @@
-[ ] - edge agent needs to tick
 [ ] - metrics (rrt) for trans-pop neigbours
-[ ] - streamStoppedMessage (ingest -> aggregator)
 [ ] - test4 - IngestAggregator with a name clash - 2 things running, should be 1
 [ ] - test5 - Multiple trans-pops with a name clash - 2 things running, should be 1
 [ ] - test6 - Multiple stream-relay with a name clash - 2 things running, should be 1
 [ ] - add stream_id domain to logs that are pre-stream
-[ ] - maybe loose bus between intra-pop and trans-pop
+[ ] - intra -> trans pop updates via function calls
+[A] - Bus should have its own set of messages
 [ ] - check serf errors from serf_api correctly map to whatever we've said in purs - get_coordinate in particular
 [ ] - Stetson isConflict
-[ ] - Erl.Cowboy.Req.binding - returns Maybe a - it doesn't know what a is.  Should be Maybe String or insist on typeclass on a
+[A] - Erl.Cowboy.Req.binding - returns Maybe a - it doesn't know what a is.  Should be Maybe String or insist on typeclass on a
 [ ] - Should handleInfo message map thing be done with type class?
-[ ] - Clean up / rewrite gproc.purs - is it a direct mapping, or do we want our own API
+[A] - Clean up / rewrite gproc.purs - is it a direct mapping, or do we want our own API
+[ ] - stops on clients
+[ ] - intraPoP load messages
+[ ] - transPoP load messages
+[A] - WAN definitition / neighbours file
+[A] - resurrect the WAN topology discovery code
+[A] - combine rtt times with WAN topology
+[x] - edge agent needs to tick
 [x] - remove /poc from API
 [x] - review gproc registration for top level supervisors and gen servers (i.e dont use it!)
 [x] - config in ingestAggregatorAgent - currently timer hardcoded - move all config records to config.purs
