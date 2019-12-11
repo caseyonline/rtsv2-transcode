@@ -145,7 +145,14 @@ announceEdgeIsActive streamId =
 
 -- Called by EdgeAgent to indicate edge on this node has stopped
 announceEdgeStopped :: StreamId -> Effect Unit
-announceEdgeStopped streamId = pure unit
+announceEdgeStopped streamId = 
+  Gen.doCast serverName
+    $ \state@{ edgeLocations, thisNode } -> do
+        _ <- logInfo "Local edge stopped" {streamId}
+        _ <- raiseLocal state "edgeStopped" (EdgeState EdgeStopped streamId thisNode)
+        let
+          newEdgeLocations = MultiMap.delete streamId thisNode edgeLocations
+        pure $ Gen.CastNoReply state { edgeLocations = newEdgeLocations }
 
 -- Called by IngestAggregator to indicate stream on this node
 announceStreamIsAvailable :: StreamId -> Effect Unit

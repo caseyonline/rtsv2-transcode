@@ -20,7 +20,7 @@ import Effect (Effect)
 import Effect.Aff (Aff, delay, launchAff_, throwError)
 import Effect.Exception (error)
 import OsCmd (runProc)
-import Test.Spec (after_, before_, describe, it)
+import Test.Spec (after_, before_, describe, it, itOnly)
 import Test.Spec.Assertions (fail)
 import Test.Spec.Reporter.Console (consoleReporter)
 import Test.Spec.Runner (runSpecT)
@@ -53,61 +53,90 @@ main =
           it "client requests stream on ingest node" do
             let
               node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/stream1/low/start"
-              node1edgeUrl = "http://172.16.169.1:3000/api/client/canary/client/stream1/start"
-            _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node1edgeUrl
+              node1edge = "http://172.16.169.1:3000/api/client/canary/client/stream1/start"
+            _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node1edge
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
             _ <- delay (Milliseconds 500.0)
-            _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1edgeUrl
+            _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1edge
             pure unit
           it "client requests stream on non-ingest node" do
             let
               node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/stream1/low/start"
-              node2edgeUrl = "http://172.16.169.2:3000/api/client/canary/client/stream1/start"
-            _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node2edgeUrl
+              node2edge = "http://172.16.169.2:3000/api/client/canary/client/stream1/start"
+            _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node2edge
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
             _ <- delay (Milliseconds 1000.0)
-            _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node2edgeUrl
+            _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node2edge
             pure unit
           it "client requests stream on other pop" do
             let
               node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/stream1/low/start"
-              node2edgeUrl = "http://172.16.170.2:3000/api/client/canary/client/stream1/start"
-            _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node2edgeUrl
+              node2edge = "http://172.16.170.2:3000/api/client/canary/client/stream1/start"
+            _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node2edge
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
             _ <- delay (Milliseconds 2000.0)
-            _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node2edgeUrl
+            _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node2edge
             pure unit
           it "client requests stream on 2nd node on ingest pop" do
             let
               node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/stream1/low/start"
-              node2edgeUrl = "http://172.16.169.2:3000/api/client/canary/client/stream1/start"
-              node3edgeUrl = "http://172.16.169.3:3000/api/client/canary/client/stream1/start"
-            _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node2edgeUrl
-            _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node3edgeUrl
+              node2edge = "http://172.16.169.2:3000/api/client/canary/client/stream1/start"
+              node3edge = "http://172.16.169.3:3000/api/client/canary/client/stream1/start"
+            _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node2edge
+            _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node3edge
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
             _ <- delay (Milliseconds 2000.0)
-            _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node2edgeUrl
+            _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node2edge
             _ <- delay (Milliseconds 1000.0)
-            _ <- assertHeader (Tuple "x-servedby" "172.16.169.2")
-                 =<< assertStatusCode 200
-                 =<< AX.get ResponseFormat.string node3edgeUrl
+            _ <- assertHeader (Tuple "x-servedby" "172.16.169.2") =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node3edge
             pure unit
           it "client ingest starts and stops" do
             let
               node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/stream1/low/start"
               node1ingestStop = "http://172.16.169.1:3000/api/client/:canary/ingest/stream1/low/stop"
-              node2edgeUrl = "http://172.16.169.2:3000/api/client/canary/client/stream1/start"
-              node3edgeUrl = "http://172.16.170.2:3000/api/client/canary/client/stream1/start"
-            _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node2edgeUrl
-            _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node3edgeUrl
+              node2edge = "http://172.16.169.2:3000/api/client/canary/client/stream1/start"
+              node3edge = "http://172.16.170.2:3000/api/client/canary/client/stream1/start"
+            _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node2edge
+            _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node3edge
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
             _ <- delay (Milliseconds 2000.0)
-            _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node2edgeUrl
-            _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node3edgeUrl
+            _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node2edge
+            _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node3edge
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStop
             _ <- delay (Milliseconds 2000.0)
-            _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node2edgeUrl
-            _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node3edgeUrl
+            _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node2edge
+            _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node3edge
+            pure unit
+          it "client edge starts and stops" do
+            let
+              node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/stream1/low/start"
+              node2edgeStart = "http://172.16.169.2:3000/api/client/canary/client/stream1/start"
+              node2edgeStop = "http://172.16.169.2:3000/api/client/canary/client/stream1/stop"
+              node3edgeStart = "http://172.16.169.3:3000/api/client/canary/client/stream1/start"
+              node3edgeStop = "http://172.16.169.3:3000/api/client/canary/client/stream1/stop"
+              node2edgeCount = "http://172.16.169.2:3000/api/client/canary/edge/stream1/clientCount"
+              node3edgeCount = "http://172.16.169.3:3000/api/client/canary/edge/stream1/clientCount"
+            _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
+            _ <- delay (Milliseconds 1000.0)
+            _ <- assertHeader (Tuple "x-servedby" "172.16.169.2") =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node2edgeStart
+            _ <- delay (Milliseconds 1000.0)
+            _ <- assertHeader (Tuple "x-servedby" "172.16.169.2") =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node3edgeStart
+            _ <- assertBody "2" =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node2edgeCount
+            _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node3edgeCount
+            _ <- assertHeader (Tuple "x-servedby" "172.16.169.2") =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node2edgeStart
+            _ <- assertHeader (Tuple "x-servedby" "172.16.169.2") =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node3edgeStart
+            _ <- assertBody "4" =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node2edgeCount
+            _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node3edgeCount
+            _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node2edgeStop
+            _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node2edgeStop
+            _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node2edgeStop
+            _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node2edgeStop
+            _ <- delay (Milliseconds 3000.0) -- allow edge linger time to expire...
+            _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node2edgeCount
+            _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node3edgeCount
+            _ <- delay (Milliseconds 1000.0)
+            _ <- assertHeader (Tuple "x-servedby" "172.16.169.3") =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node3edgeStart
+            _ <- assertBody "1" =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node3edgeCount
             pure unit
 
   where
@@ -128,6 +157,11 @@ assertHeader (Tuple header value) response@{headers} =
   case elem (ResponseHeader header value) headers of
     true -> pure response
     false -> throwError $ error $ "Header " <> header <> ":" <> value <> " not present in response " <> (show headers)
+
+assertBody :: String -> Response String -> Aff (Response String)
+assertBody expectedBody response@{body} =
+  if expectedBody == body then pure response
+  else throwError $ error $ "Body " <> body <> " did not match expected " <> expectedBody
 
 sessionName:: String
 sessionName = "testSession"

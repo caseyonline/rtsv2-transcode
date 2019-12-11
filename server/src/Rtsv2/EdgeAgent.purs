@@ -20,7 +20,7 @@ import Foreign (Foreign, unsafeToForeign)
 import Gproc as Gproc
 import Logger as Logger
 import Pinto (ServerName(..), StartLinkResult)
-import Pinto.Gen (CallResult(..))
+import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Record as Record
@@ -47,33 +47,42 @@ startLink :: StreamId -> Effect StartLinkResult
 startLink streamId = Gen.startLink (serverName streamId) (init streamId) handleInfo
 
 addClient :: StreamId -> Effect Unit
-addClient streamId = Gen.call (serverName streamId) doAddClient
+addClient streamId = Gen.doCall (serverName streamId) doAddClient
 
-doAddClient :: State -> CallResult Unit State
-doAddClient state@{clientCount} =
-  CallReply unit state{clientCount = clientCount + 1,
-                       stopRef = Nothing}
+doAddClient :: State -> Effect (CallResult Unit State)
+doAddClient state@{clientCount} = do
+  _ <- logInfo "Add client" {newCount: clientCount + 1}
+  pure $ CallReply unit state{clientCount = clientCount + 1,
+                              stopRef = Nothing}
 
 removeClient :: StreamId -> Effect Unit
 removeClient streamId = Gen.doCall (serverName streamId) doRemoveClient
 
 doRemoveClient :: State -> Effect (CallResult Unit State)
-doRemoveClient state@{clientCount: 0} =
+doRemoveClient state@{clientCount: 0} = do
+  _ <- logInfo "Remove client - already zero" {}
   pure $ CallReply unit state
 doRemoveClient state@{clientCount: 1, lingerTime, streamId} = do
   let
     ref = makeRef
+  _ <- logInfo "Last client gone, start stop timer" {}
   _ <- Timer.sendAfter (serverName streamId) (unwrap lingerTime) (MaybeStop ref)
   pure $ CallReply unit state{clientCount = 0,
                               stopRef = Just makeRef}
     
-doRemoveClient state@{clientCount} =
+doRemoveClient state@{clientCount} = do
+  _ <- logInfo "Remove client" {newCount: clientCount - 1}
   pure $ CallReply unit state{clientCount = clientCount - 1}
     
 currentClientCount :: StreamId -> Effect Int
 currentClientCount streamId =
   Gen.call (serverName streamId) \state@{clientCount} ->
     CallReply clientCount state
+
+stop :: StreamId -> Effect Unit
+stop streamId =
+  Gen.cast (serverName streamId) \state ->
+    CastStop state
 
 gprocName :: StreamId -> Foreign
 gprocName streamId = unsafeToForeign (tuple3 (atom "n") (atom "l") (tuple2 "edge" streamId))
@@ -110,7 +119,6 @@ handleInfo msg state =
 
 handleTick :: State -> Effect State
 handleTick state@{streamId} = do
-  _ <- logInfo "announce" {streamId}
   _ <- IntraPoPAgent.announceEdgeIsActive streamId
   pure state
 
@@ -121,7 +129,9 @@ maybeStop ref state@{streamId
   | (clientCount == 0) && (Just ref == stopRef) = do
     _ <- logInfo "Edge stopping" {streamId: streamId}
     _ <- IntraPoPAgent.announceEdgeStopped streamId
+    _ <- stop streamId
     pure state
+
   | otherwise = pure state
 
 logInfo :: forall a. String -> a -> Effect Foreign
