@@ -30,7 +30,7 @@ import Foreign (Foreign, ForeignError(..), MultipleErrors)
 import Logger as Logger
 import Partial.Unsafe (unsafeCrashWith)
 import Pinto (ServerName(..), StartLinkResult)
-import Pinto.Gen (CallResult(..))
+import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Prim.Row (class Nub)
@@ -130,7 +130,7 @@ init config = do
   pure state
 
 
-handleInfo :: Msg -> State -> Effect State
+handleInfo :: Msg -> State -> Effect (CastResult State)
 handleInfo msg state =
   case msg of
     Tick ->
@@ -153,7 +153,7 @@ handleInfo msg state =
                    pure state
 
         _ <- Timer.sendAfter serverName 1000 Tick
-        pure $ newState
+        pure $ CastNoReply newState
 
 readAndProcessPoPDefinition :: Config.PoPDefinitionConfig -> ServerAddress -> Effect (Either MultipleErrors PoPInfo)
 readAndProcessPoPDefinition config hostName = do

@@ -17,7 +17,7 @@ import Pinto.Sup as Sup
 import Record as Record
 import Rtsv2.StreamRelayAgent as StreamRelay
 import Shared.Agent as Agent
-import Shared.Stream (StreamId(..))
+import Shared.Stream (StreamId)
 
 serverName :: String
 serverName = show Agent.StreamRelay

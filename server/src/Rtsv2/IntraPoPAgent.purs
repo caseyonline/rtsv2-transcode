@@ -44,7 +44,7 @@ import Foreign (Foreign)
 import Logger as Logger
 import Partial.Unsafe (unsafeCrashWith)
 import Pinto (ServerName(..), StartLinkResult)
-import Pinto.Gen (CallResult(..))
+import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Prim.Row (class Nub, class Union)
@@ -271,17 +271,17 @@ shouldProcessSerfMessage streamId ltime streamStateClocks =
     _ ->
       true
 
-handleInfo :: Msg -> State -> Effect State
+handleInfo :: Msg -> State -> Effect (CastResult State)
 handleInfo msg state = case msg of
   JoinAll -> do
     _ <- joinAllSerf state
-    pure state
+    pure $ CastNoReply state
 
   GarbageCollect ->
-    garbageCollect state
+    CastNoReply <$> (garbageCollect state)
 
   IntraPoPSerfMsg imsg ->
-    handleIntraPoPSerfMsg imsg state
+    CastNoReply <$> handleIntraPoPSerfMsg imsg state
 
 handleIntraPoPSerfMsg :: (Serf.SerfMessage IntraMessage) -> State -> Effect State
 handleIntraPoPSerfMsg imsg state =

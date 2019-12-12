@@ -3,7 +3,6 @@ module Rtsv2.TransPoPAgent where
 import Prelude
 
 import Bus as Bus
-import Control.Apply (lift2)
 import Data.Either (Either(..))
 import Data.Foldable (foldl)
 import Data.Maybe (Maybe(..), fromMaybe)
@@ -26,7 +25,7 @@ import Math (sqrt)
 import Os (osCmd)
 import Partial.Unsafe (unsafeCrashWith)
 import Pinto (ServerName(..), StartLinkResult)
-import Pinto.Gen (CallResult(..))
+import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Prim.Row (class Nub, class Union)
@@ -143,48 +142,52 @@ shouldProcessStreamState streamId ltime streamStateClocks =
     _ ->
       true
 
-handleInfo :: Msg -> State -> Effect State
+handleInfo :: Msg -> State -> Effect (CastResult State)
 handleInfo msg state@{ thisPoP } = case msg of
-  Tick -> handleTick state
+  Tick -> CastNoReply <$> handleTick state
 
   JoinAll -> do
     _ <- joinAllSerf state
-    pure state
+    pure $ CastNoReply state
 
   ConnectStream -> do
     _ <- connectStream state
-    pure state
+    pure $ CastNoReply state
 
-  IntraPoPBusMsg intraMessage -> handleIntraPoPMessage intraMessage state
+  IntraPoPBusMsg intraMessage -> CastNoReply <$> handleIntraPoPMessage intraMessage state
 
   TransPoPSerfMsg tmsg ->
-    case tmsg of
-      Serf.MemberAlive members -> membersAlive members state
-      Serf.MemberLeaving -> pure state
-      Serf.MemberLeft members -> membersLeft members state
-      Serf.MemberFailed -> pure state
-      Serf.StreamFailed -> do
-        _ <- logInfo "Lost connection to TransPoP Serf Agent" {}
-        unsafeCrashWith ("lost_serf_connection")
-      Serf.UserEvent name ltime coalesce transMessage ->
-        do
-          mSourcePoP <- messageOrigin transMessage
-          case mSourcePoP of
-            Nothing -> pure state
-            Just sourcePoP
-              | sourcePoP == thisPoP -> pure state
-              | otherwise ->
-                let
-                  StreamState stateChange streamId _ = transMessage
-                in
-                  case shouldProcessStreamState streamId ltime state.streamStateClocks of
-                    false -> do
-                      _ <- logInfo "Dropping out-of-order serf message" {streamId, stateChange}
-                      pure $ state
+    let
+      newState = 
+        case tmsg of
+          Serf.MemberAlive members -> membersAlive members state
+          Serf.MemberLeaving -> pure state
+          Serf.MemberLeft members -> membersLeft members state
+          Serf.MemberFailed -> pure state
+          Serf.StreamFailed -> do
+            _ <- logInfo "Lost connection to TransPoP Serf Agent" {}
+            unsafeCrashWith ("lost_serf_connection")
+          Serf.UserEvent name ltime coalesce transMessage ->
+            do
+              mSourcePoP <- messageOrigin transMessage
+              case mSourcePoP of
+                Nothing -> pure state
+                Just sourcePoP
+                  | sourcePoP == thisPoP -> pure state
+                  | otherwise ->
+                    let
+                      StreamState stateChange streamId _ = transMessage
+                    in
+                      case shouldProcessStreamState streamId ltime state.streamStateClocks of
+                        false -> do
+                          _ <- logInfo "Dropping out-of-order serf message" {streamId, stateChange}
+                          pure $ state
 
-                    true -> do
-                      newStreamStateClocks <- EMap.insert' streamId ltime state.streamStateClocks
-                      handleTransPoPMessage transMessage (state{streamStateClocks = newStreamStateClocks})
+                        true -> do
+                          newStreamStateClocks <- EMap.insert' streamId ltime state.streamStateClocks
+                          handleTransPoPMessage transMessage (state{streamStateClocks = newStreamStateClocks})
+     in
+       CastNoReply <$> newState 
 
 handleIntraPoPMessage :: IntraPoPAgent.IntraMessage -> State -> Effect State
 handleIntraPoPMessage (IntraPoPAgent.TransPoPLeader address) state = handleLeaderAnnouncement address state

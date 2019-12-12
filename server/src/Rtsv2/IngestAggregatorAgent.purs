@@ -13,7 +13,7 @@ import Erl.ModuleName (NativeModuleName(..))
 import Foreign (Foreign, unsafeToForeign)
 import Logger as Logger
 import Pinto (ServerName(..), StartLinkResult)
-import Pinto.Gen (CallResult(..))
+import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Record as Record
@@ -55,10 +55,10 @@ init streamId = do
        , streamId
        }
 
-handleInfo :: Msg -> State -> Effect State
+handleInfo :: Msg -> State -> Effect (CastResult State)
 handleInfo msg state =
   case msg of
-    Tick -> handleTick state
+    Tick -> CastNoReply <$> handleTick state
 
 handleTick :: State -> Effect State
 handleTick state@{streamId} = do

@@ -5,7 +5,6 @@ module Rtsv2.StreamRelayAgent
 
 import Prelude
 
-import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Erl.Atom (atom)
 import Erl.Data.List (nil, (:))
@@ -17,7 +16,7 @@ import Pinto (ServerName(..), StartLinkResult)
 import Pinto.Gen as Gen
 import Record as Record
 import Shared.Agent as Agent
-import Shared.Stream (StreamId(..), toStreamId)
+import Shared.Stream (StreamId)
 
 type State
   = { }

@@ -28,6 +28,7 @@ function wait_for_server {
         if [[ "$trans" == "Excellent" ]]; then
             break
         fi
+
     fi
     sleep 0.5
   done

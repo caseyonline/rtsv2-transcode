@@ -79,11 +79,6 @@ currentClientCount streamId =
   Gen.call (serverName streamId) \state@{clientCount} ->
     CallReply clientCount state
 
-stop :: StreamId -> Effect Unit
-stop streamId =
-  Gen.cast (serverName streamId) \state ->
-    CastStop state
-
 gprocName :: StreamId -> Foreign
 gprocName streamId = unsafeToForeign (tuple3 (atom "n") (atom "l") (tuple2 "edge" streamId))
 
@@ -110,10 +105,10 @@ init streamId = do
       _ <- StreamRelayAgentSup.startRelay streamId
       pure state
 
-handleInfo :: Msg -> State -> Effect State
+handleInfo :: Msg -> State -> Effect (CastResult State)
 handleInfo msg state =
   case msg of
-    Tick -> handleTick state
+    Tick -> CastNoReply <$> handleTick state
 
     MaybeStop ref -> maybeStop ref state
 
@@ -122,17 +117,16 @@ handleTick state@{streamId} = do
   _ <- IntraPoPAgent.announceEdgeIsActive streamId
   pure state
 
-maybeStop :: Ref -> State -> Effect State
+maybeStop :: Ref -> State -> Effect (CastResult State)
 maybeStop ref state@{streamId
                     , clientCount
                     , stopRef}
   | (clientCount == 0) && (Just ref == stopRef) = do
     _ <- logInfo "Edge stopping" {streamId: streamId}
     _ <- IntraPoPAgent.announceEdgeStopped streamId
-    _ <- stop streamId
-    pure state
+    pure $ CastStop state
 
-  | otherwise = pure state
+  | otherwise = pure $ CastNoReply state
 
 logInfo :: forall a. String -> a -> Effect Foreign
 logInfo msg metaData = Logger.info msg (Record.merge { domain: ((atom (show Agent.Edge)) : nil) } { misc: metaData })
