@@ -15,8 +15,8 @@
 [A] - WAN definitition / neighbours file
 [A] - resurrect the WAN topology discovery code
 [A] - combine rtt times with WAN topology
-[ ] - handleInfo in Pinto to support CastResult
 
+[x] - handleInfo in Pinto to support CastResult
 [x] - stops on clients
 [x] - edge agent needs to tick
 [x] - remove /poc from API
