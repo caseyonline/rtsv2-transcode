@@ -37,7 +37,6 @@ import Erl.Atom (atom)
 import Erl.Data.List (List, length, nil, singleton, (:))
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
-import Erl.Data.Tuple (Tuple2, tuple2)
 import Erl.Process (Process, spawnLink)
 import Erl.Utils (Milliseconds)
 import Erl.Utils as Erl
@@ -75,7 +74,7 @@ type State
     }
 
 data StreamState = StreamAvailable
-                 | StreamStopped 
+                 | StreamStopped
 
 data EdgeState = EdgeAvailable
                | EdgeStopped
@@ -277,10 +276,10 @@ handleInfo msg state = case msg of
   JoinAll -> do
     _ <- joinAllSerf state
     pure state
-    
+
   GarbageCollect ->
     garbageCollect state
-    
+
   IntraPoPSerfMsg imsg ->
     handleIntraPoPSerfMsg imsg state
 
@@ -329,7 +328,7 @@ handleIntraPoPSerfMsg imsg state =
 handleStreamStateChange :: StreamState -> StreamId -> ServerAddress -> IntraMessage -> State -> Effect State
 handleStreamStateChange stateChange streamId server intraMessage state =
   case stateChange of
-    StreamAvailable 
+    StreamAvailable
       | server == state.thisNode -> do
         -- streamAvailable on this node - we can just ignore, since appropriate action taken in announceStreamIsAvailable
         pure state
@@ -341,7 +340,7 @@ handleStreamStateChange stateChange streamId server intraMessage state =
         newStreamAggregatorLocations <- EMap.insert' streamId server state.streamAggregatorLocations
         pure $ state { streamAggregatorLocations = newStreamAggregatorLocations }
 
-    StreamStopped 
+    StreamStopped
       | server == state.thisNode -> do
         -- streamStopped on this node - we can just ignore, since appropriate action taken in announceStreamStopped
         pure state

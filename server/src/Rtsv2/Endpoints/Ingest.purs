@@ -11,7 +11,6 @@ import Erl.Atom (atom)
 import Erl.Cowboy.Req (binding)
 import Erl.Data.List (nil, (:))
 import Erl.Data.Tuple (tuple2)
-import Logger as Logger
 import Rtsv2.IngestAgent as IngestAgent
 import Rtsv2.IngestAgentSup as IngestAgentSup
 import Shared.Stream (StreamVariantId(..))
@@ -33,9 +32,10 @@ ingestStart =
                             isAgentAvailable <- IngestAgentSup.isAvailable
                             Rest.result isAgentAvailable req state)
   -- TODO - would conflict if stream exists, but this won't be REST once media plugged...
-  -- # Rest.resourceExists (\req state@{streamVariantId} -> do
+  -- # Rest.isConflict (\req state@{streamVariantId} -> do
+
   --                           isAvailable <- isIngestActive streamVariantId
-  --                           Rest.result isAvailable req state
+  --                           Rest.result isAvailable req $ spy "state" state
   --                         )
   # Rest.contentTypesProvided (\req state -> do
                                   _ <- IngestAgentSup.startIngest state.streamVariantId
@@ -67,4 +67,3 @@ ingestStop =
                                                                      Rest.result "ingestStopped" req2 state2
                                                                  ) : nil) req state)
   # Rest.yeeha
-

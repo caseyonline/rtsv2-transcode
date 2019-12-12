@@ -78,7 +78,7 @@ type PoPJsonFormat = Map.Map String (Map.Map String (List String))
 data Msg = Tick
 
 serverName :: ServerName State Msg
-serverName = Local "popDefinition"
+serverName = Local "PoPDefinition"
 
 startLink :: Config.PoPDefinitionConfig -> Effect StartLinkResult
 startLink args =

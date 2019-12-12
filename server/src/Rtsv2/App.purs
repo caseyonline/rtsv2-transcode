@@ -1,4 +1,3 @@
--- -*- psc-ide-codegen: ("erl") -*-
 module Rtsv2.App where
 
 import Effect (Effect)

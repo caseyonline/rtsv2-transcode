@@ -5,11 +5,10 @@ module Rtsv2.Web
 
 import Prelude
 
-import Data.Maybe (Maybe(..), fromMaybe, fromMaybe', isJust)
-import Debug.Trace (spy)
+import Data.Maybe (Maybe(..), fromMaybe, isJust)
 import Effect (Effect)
 import Erl.Atom (atom)
-import Erl.Cowboy.Req (Req, binding)
+import Erl.Cowboy.Req (Req)
 import Erl.Data.List (nil, (:))
 import Erl.Data.Tuple (Tuple2, Tuple4, tuple2, tuple4, uncurry4)
 import Foreign (Foreign)
@@ -20,15 +19,12 @@ import Record as Record
 import Rtsv2.Config as Config
 import Rtsv2.Endpoints.Client as ClientEndpoint
 import Rtsv2.Endpoints.Edge as EdgeEndpoint
-import Rtsv2.Endpoints.Ingest as IngestEndpoint
 import Rtsv2.Endpoints.Health (healthCheck)
+import Rtsv2.Endpoints.Ingest as IngestEndpoint
 import Rtsv2.Env as Env
-import Rtsv2.IngestAgentSup (startIngest)
 import Rtsv2.IntraPoPAgent as IntraPoPAgent
 import Rtsv2.PoPDefinition (ServerAddress)
 import Serf (Ip(..))
-import Shared.Stream (StreamId(..), StreamVariantId(..))
-import Shared.Utils (lazyCrashIfMissing)
 import Stetson (RestResult, StetsonHandler)
 import Stetson as Stetson
 import Stetson.Rest as Rest

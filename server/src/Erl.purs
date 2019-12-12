@@ -1,4 +1,3 @@
--- -*- psc-ide-codegen: ("erl") -*-
 module Erl.Utils
        ( isRegistered
        , systemTimeMs
