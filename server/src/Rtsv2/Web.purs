@@ -16,6 +16,7 @@ import Logger (info) as Logger
 import Pinto (ServerName(..), StartLinkResult)
 import Pinto.Gen as Gen
 import Record as Record
+import Rtsv2.Config (ServerAddress)
 import Rtsv2.Config as Config
 import Rtsv2.Endpoints.Client as ClientEndpoint
 import Rtsv2.Endpoints.Edge as EdgeEndpoint
@@ -23,7 +24,6 @@ import Rtsv2.Endpoints.Health (healthCheck)
 import Rtsv2.Endpoints.Ingest as IngestEndpoint
 import Rtsv2.Env as Env
 import Rtsv2.IntraPoPAgent as IntraPoPAgent
-import Rtsv2.PoPDefinition (ServerAddress)
 import Serf (Ip(..))
 import Stetson (RestResult, StetsonHandler)
 import Stetson as Stetson

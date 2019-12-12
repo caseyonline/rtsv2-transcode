@@ -18,7 +18,7 @@ import Rtsv2.Audit as Audit
 import Rtsv2.EdgeAgentSup as EdgeAgentSup
 import Rtsv2.EdgeAgent as EdgeAgent
 import Rtsv2.IntraPoPAgent as IntraPoPAgent
-import Rtsv2.PoPDefinition (ServerAddress)
+import Rtsv2.Config (ServerAddress)
 import Rtsv2.PoPDefinition as PoPDefintion
 import Rtsv2.Utils (member)
 import Shared.Stream (StreamId(..))

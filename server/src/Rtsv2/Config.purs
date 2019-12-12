@@ -1,11 +1,16 @@
-
 module Rtsv2.Config
-  ( IngestAggregatorAgentConfig
+  ( RegionName
+  , PoPName
+  , ServerAddress
+  , ServerLocation(..)
+  , IngestAggregatorAgentConfig
   , WebConfig
   , PoPDefinitionConfig
   , IntraPoPAgentConfig
   , TransPoPAgentConfig
   , EdgeAgentConfig
+  , IntraPoPAgentApi
+  , TransPoPAgentApi
   , webConfig
   , nodeConfig
   , popDefinitionConfig
@@ -19,10 +24,11 @@ import Prelude
 
 import Control.Monad.Except (ExceptT, runExcept)
 import Data.Either (Either(..), hush)
+import Data.Generic.Rep (class Generic)
+import Data.Generic.Rep.Eq (genericEq)
 import Data.Identity (Identity)
 import Data.Maybe (Maybe, fromMaybe, fromMaybe')
 import Data.Traversable (traverse)
---import Debug.Trace (spy)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List)
@@ -31,8 +37,18 @@ import Logger as Logger
 import Partial.Unsafe (unsafeCrashWith)
 import Rtsv2.Node as Node
 import Shared.Agent (Agent, strToAgent)
+import Shared.Stream (StreamId(..))
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (class ReadForeign, readImpl)
+
+type RegionName = String
+type PoPName = String
+type ServerAddress = String
+data ServerLocation = ServerLocation PoPName RegionName
+
+derive instance genericServerLocation :: Generic ServerLocation _
+instance eqServerLocation :: Eq ServerLocation where
+  eq = genericEq
 
 -- TODO - config should include BindIFace or BindIp
 type WebConfig = { port :: Int }
@@ -57,7 +73,6 @@ type IntraPoPAgentConfig
     , expireEveryMs :: Int
     }
 
-
 type TransPoPAgentConfig
   = { bindPort :: Int
     , rpcPort :: Int
@@ -65,6 +80,18 @@ type TransPoPAgentConfig
     , leaderAnnounceMs :: Int
     , rejoinEveryMs :: Int
     , connectStreamAfterMs :: Int
+    }
+
+type IntraPoPAgentApi
+  = { announceRemoteStreamIsAvailable :: StreamId -> ServerAddress -> Effect Unit
+    , announceRemoteStreamStopped :: StreamId -> ServerAddress -> Effect Unit
+    , announceTransPoPLeader :: Effect Unit
+    }
+
+type TransPoPAgentApi
+  = { announceStreamIsAvailable :: StreamId -> ServerAddress -> Effect Unit
+    , announceStreamStopped :: StreamId -> ServerAddress -> Effect Unit
+    , announceTransPoPLeader :: ServerAddress -> Effect Unit
     }
 
 foreign import getEnv_ :: Atom -> Effect Foreign

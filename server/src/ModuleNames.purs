@@ -35,6 +35,9 @@ rtsv2App = ModuleName "Rtsv2.App"
 rtsv2Audit :: ModuleName
 rtsv2Audit = ModuleName "Rtsv2.Audit"
 
+rtsv2Config :: ModuleName
+rtsv2Config = ModuleName "Rtsv2.Config"
+
 rtsv2EdgeAgent :: ModuleName
 rtsv2EdgeAgent = ModuleName "Rtsv2.EdgeAgent"
 

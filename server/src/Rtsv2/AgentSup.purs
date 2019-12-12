@@ -13,6 +13,7 @@ import Rtsv2.IngestAggregatorAgentSup as IngestAggregatorAgentSup
 import Rtsv2.IntraPoPAgent as IntraPoPAgent
 import Rtsv2.StreamRelayAgentSup as StreamRelayAgentSup
 import Rtsv2.TransPoPAgent as TransPoPAgent
+import Rtsv2.IntraPoPAgent as IntraPoPAgent
 import Shared.Agent (Agent(..))
 
 startLink :: Unit -> Effect Pinto.StartLinkResult
@@ -53,13 +54,22 @@ init = do
       Sup.buildChild
         # Sup.childType Worker
         # Sup.childId "intraPopAgent"
-        # Sup.childStart IntraPoPAgent.startLink intraPoPAgentConfig
+        # Sup.childStart IntraPoPAgent.startLink { config: intraPoPAgentConfig
+                                                 , transPoPApi: { announceStreamIsAvailable: TransPoPAgent.announceStreamIsAvailable
+                                                                , announceStreamStopped: TransPoPAgent.announceStreamStopped
+                                                                , announceTransPoPLeader: TransPoPAgent.announceTransPoPLeader}
+                                                 }
 
     makeSpec TransPoP =
       Sup.buildChild
         # Sup.childType Worker
         # Sup.childId "transPopAgent"
-        # Sup.childStart TransPoPAgent.startLink transPoPAgentConfig
+        # Sup.childStart TransPoPAgent.startLink { config: transPoPAgentConfig
+                                                 , intraPoPApi: { announceRemoteStreamIsAvailable: IntraPoPAgent.announceRemoteStreamIsAvailable
+                                                                , announceRemoteStreamStopped: IntraPoPAgent.announceRemoteStreamStopped
+                                                                , announceTransPoPLeader: IntraPoPAgent.announceTransPoPLeader}
+                                                 }
+
   pure $ Sup.buildSupervisor
     # Sup.supervisorStrategy OneForOne
     # Sup.supervisorChildren (makeSpec <$> (IntraPoP : nodeConfig.agents))

@@ -89,7 +89,7 @@ init :: StreamId -> Effect State
 init streamId = do
   {edgeAvailableAnnounceMs, lingerTimeMs} <- Config.edgeAgentConfig
   _ <- logInfo "Edge starting" {streamId: streamId}
-  _ <- IntraPoPAgent.announceEdgeIsActive streamId
+  _ <- IntraPoPAgent.announceEdgeIsAvailable streamId
   _ <- Timer.sendEvery (serverName streamId) edgeAvailableAnnounceMs Tick
   maybeRelay <- IntraPoPAgent.whereIsStreamRelay streamId
   let 
@@ -114,7 +114,7 @@ handleInfo msg state =
 
 handleTick :: State -> Effect State
 handleTick state@{streamId} = do
-  _ <- IntraPoPAgent.announceEdgeIsActive streamId
+  _ <- IntraPoPAgent.announceEdgeIsAvailable streamId
   pure state
 
 maybeStop :: Ref -> State -> Effect (CastResult State)

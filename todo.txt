@@ -3,7 +3,6 @@
 [ ] - test5 - Multiple trans-pops with a name clash - 2 things running, should be 1
 [ ] - test6 - Multiple stream-relay with a name clash - 2 things running, should be 1
 [ ] - add stream_id domain to logs that are pre-stream
-[ ] - intra -> trans pop updates via function calls
 [A] - Bus should have its own set of messages
 [ ] - check serf errors from serf_api correctly map to whatever we've said in purs - get_coordinate in particular
 [x] - Stetson isConflict
@@ -16,6 +15,7 @@
 [A] - resurrect the WAN topology discovery code
 [A] - combine rtt times with WAN topology
 
+[x] - intra -> trans pop updates via function calls
 [x] - handleInfo in Pinto to support CastResult
 [x] - stops on clients
 [x] - edge agent needs to tick

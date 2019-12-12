@@ -1,8 +1,13 @@
-module Rtsv2.TransPoPAgent where
+module Rtsv2.TransPoPAgent
+       ( announceStreamIsAvailable
+       , announceStreamStopped
+       , announceTransPoPLeader
+       , health
+       , startLink
+       ) where
 
 import Prelude
 
-import Bus as Bus
 import Data.Either (Either(..))
 import Data.Foldable (foldl)
 import Data.Maybe (Maybe(..), fromMaybe)
@@ -30,12 +35,12 @@ import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Prim.Row (class Nub, class Union)
 import Record as Record
+import Rtsv2.Config (PoPName, ServerAddress, ServerLocation(..))
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
 import Rtsv2.Health (Health)
 import Rtsv2.Health as Health
-import Rtsv2.IntraPoPAgent as IntraPoPAgent
-import Rtsv2.PoPDefinition (PoPName, ServerAddress, ServerLocation(..), PoP, whereIsServer)
+import Rtsv2.PoPDefinition (PoP, whereIsServer)
 import Rtsv2.PoPDefinition as PoPDefinition
 import Serf (IpAndPort)
 import Serf as Serf
@@ -45,7 +50,8 @@ import Shared.Utils (distinctRandomNumbers)
 import SpudGun as SpudGun
 
 type State
-  = { currentLeader :: Maybe ServerAddress
+  = { intraPoPApi :: Config.IntraPoPAgentApi
+    , currentLeader :: Maybe ServerAddress
     , weAreLeader :: Boolean
     , lastLeaderAnnouncement :: Milliseconds
     , leaderAnnouncementTimeout :: Milliseconds
@@ -67,7 +73,6 @@ data Msg
   = Tick
   | JoinAll
   | ConnectStream
-  | IntraPoPBusMsg IntraPoPAgent.IntraMessage
   | TransPoPSerfMsg (Serf.SerfMessage TransMessage)
 
 serverName :: ServerName State Msg
@@ -95,18 +100,106 @@ health =
       allOtherPoPs <- PoPDefinition.getOtherPoPs
       pure $ Health.percentageToHealth $ (Map.size members * 100) / (length allOtherPoPs) * 100
 
-startLink :: Config.TransPoPAgentConfig -> Effect StartLinkResult
+announceStreamIsAvailable :: StreamId -> ServerAddress -> Effect Unit
+announceStreamIsAvailable streamId addr =
+  Gen.doCast serverName ((map CastNoReply) <<< doAnnounceStreamIsAvailable)
+  where
+    doAnnounceStreamIsAvailable :: State -> Effect State
+    doAnnounceStreamIsAvailable state@{ weAreLeader: false } = pure state
+
+    doAnnounceStreamIsAvailable state@{ thisLocation: (ServerLocation pop _)
+                                      , serfRpcAddress
+                                      } = do
+      mSourcePoP <- originPoP addr
+      case mSourcePoP of
+        Nothing -> pure state
+        Just sourcePoP
+          | sourcePoP == pop -> do
+            -- Message from our pop - distribute over trans-pop
+            --_ <- logInfo "Local stream being delivered to trans-pop" { streamId: streamId }
+            result <- Serf.event state.serfRpcAddress "streamAvailable" (StreamState StreamAvailable streamId addr) false
+            _ <- maybeLogError "Trans-PoP serf event failed" result {}
+            pure state
+          | otherwise -> pure state
+ 
+announceStreamStopped:: StreamId -> ServerAddress -> Effect Unit
+announceStreamStopped streamId addr =
+  Gen.doCast serverName ((map CastNoReply) <<< doAnnounceStreamStopped)
+  where
+    doAnnounceStreamStopped :: State -> Effect State
+    doAnnounceStreamStopped state@{ weAreLeader: false } = pure state
+
+    doAnnounceStreamStopped  state@{ thisLocation: (ServerLocation pop _)
+                                   , serfRpcAddress
+                                   } = do
+      mSourcePoP <- originPoP addr
+      case mSourcePoP of
+        Nothing -> pure state
+        Just sourcePoP
+          | sourcePoP == pop -> do
+            -- Message from our pop - distribute over trans-pop
+            --_ <- logInfo "Local stream stopped being delivered to trans-pop" { streamId: streamId }
+            result <- Serf.event state.serfRpcAddress "streamStopped" (StreamState StreamStopped streamId addr) false
+            _ <- maybeLogError "Trans-PoP serf event failed" result {}
+            pure state
+          | otherwise -> pure state
+
+announceTransPoPLeader :: ServerAddress -> Effect Unit
+announceTransPoPLeader address =
+  Gen.doCast serverName ((map CastNoReply) <<< doAnnounceTransPoPLeader)
+  where
+    doAnnounceTransPoPLeader :: State -> Effect State
+    doAnnounceTransPoPLeader state@{ thisNode
+                                   , weAreLeader: true
+                                   , serfRpcAddress
+                                   }
+      | address < thisNode = do
+        result <- Serf.leave serfRpcAddress
+        _ <- logInfo "Another node has taken over as transpop leader; stepping down" { leader: address }
+        stopResp <- osCmd "scripts/stopTransPoPAgent.sh"
+        _ <- logInfo "Stop Resp" {resp: stopResp}
+
+        now <- systemTimeMs
+        pure
+          $ state
+              { currentLeader = Just address
+              , lastLeaderAnnouncement = now
+              , weAreLeader = false
+              , members = Map.empty :: Map PoPName (Set.Set String)
+              }
+
+    doAnnounceTransPoPLeader state@{ weAreLeader: true } =
+      pure state
+
+    doAnnounceTransPoPLeader state@{ currentLeader
+                                   , thisNode
+                                   }
+      | Just address /= currentLeader
+          && address /= thisNode = do
+        _ <- logInfo "Another node has announced as transpop leader, remember which one" { leader: address }
+        now <- systemTimeMs
+        pure
+          $ state
+              { currentLeader = Just address
+              , lastLeaderAnnouncement = now
+              }
+
+    doAnnounceTransPoPLeader state = do
+      now <- systemTimeMs
+      pure $ state { lastLeaderAnnouncement = now }
+
+startLink :: {config :: Config.TransPoPAgentConfig, intraPoPApi :: Config.IntraPoPAgentApi} -> Effect StartLinkResult
 startLink args = Gen.startLink serverName (init args) handleInfo
 
-init :: Config.TransPoPAgentConfig -> Effect State
-init config@{ leaderTimeoutMs
-            , leaderAnnounceMs
-            , rejoinEveryMs
-            , rpcPort
-            } = do
+init :: {config :: Config.TransPoPAgentConfig, intraPoPApi :: Config.IntraPoPAgentApi} -> Effect State
+init { config: config@{ leaderTimeoutMs
+                      , leaderAnnounceMs
+                      , rejoinEveryMs
+                      , rpcPort
+                      }
+     , intraPoPApi} = do
   _ <- logInfo "Trans-PoP Agent Starting" {config: config}
   _ <- Gen.registerExternalMapping serverName (\m -> TransPoPSerfMsg <$> (Serf.messageMapper m))
-  _ <- Bus.subscribe serverName IntraPoPAgent.bus IntraPoPBusMsg
   _ <- Timer.sendEvery serverName leaderAnnounceMs Tick
   rpcBindIp <- Env.privateInterfaceIp
   thisNode <- PoPDefinition.thisNode
@@ -121,7 +214,8 @@ init config@{ leaderTimeoutMs
       }
 
   pure
-    $ { config: config
+    $ { intraPoPApi
+      , config: config
       , currentLeader: Nothing
       , weAreLeader: false
       , lastLeaderAnnouncement: now
@@ -153,8 +247,6 @@ handleInfo msg state@{ thisPoP } = case msg of
   ConnectStream -> do
     _ <- connectStream state
     pure $ CastNoReply state
-
-  IntraPoPBusMsg intraMessage -> CastNoReply <$> handleIntraPoPMessage intraMessage state
 
   TransPoPSerfMsg tmsg ->
     let
@@ -189,24 +281,15 @@ handleInfo msg state@{ thisPoP } = case msg of
      in
        CastNoReply <$> newState 
 
-handleIntraPoPMessage :: IntraPoPAgent.IntraMessage -> State -> Effect State
-handleIntraPoPMessage (IntraPoPAgent.TransPoPLeader address) state = handleLeaderAnnouncement address state
-
-handleIntraPoPMessage (IntraPoPAgent.StreamState IntraPoPAgent.StreamAvailable streamId addr) state = handleIntraPoPStreamAvailable streamId addr state
-
-handleIntraPoPMessage (IntraPoPAgent.StreamState IntraPoPAgent.StreamStopped streamId addr) state = handleIntraPoPStreamStopped streamId addr state
-
-handleIntraPoPMessage (IntraPoPAgent.EdgeState _ _ _) state = pure state
-
 handleTransPoPMessage :: TransMessage -> State -> Effect State
-handleTransPoPMessage (StreamState StreamAvailable streamId server) state = do
+handleTransPoPMessage (StreamState StreamAvailable streamId server) state@{intraPoPApi: {announceRemoteStreamIsAvailable}} = do
   _ <- logInfo "Remote stream available" {streamId, server}
-  _ <- IntraPoPAgent.announceRemoteStreamIsAvailable streamId server
+  _ <- announceRemoteStreamIsAvailable streamId server
   pure state
 
-handleTransPoPMessage (StreamState StreamStopped streamId server) state = do
+handleTransPoPMessage (StreamState StreamStopped streamId server) state@{intraPoPApi: {announceRemoteStreamStopped}} = do
   _ <- logInfo "Remote stream stopped" {streamId, server}
-  _ <- IntraPoPAgent.announceRemoteStreamStopped streamId server
+  _ <- announceRemoteStreamStopped streamId server
   pure state
 
 membersAlive :: (List Serf.SerfMember) -> State -> Effect State
@@ -261,45 +344,9 @@ getPoP {name : memberName} =
       Nothing -> Nothing
       Just (ServerLocation popName _) -> Just popName
 
-handleIntraPoPStreamAvailable :: StreamId -> ServerAddress -> State -> Effect State
-handleIntraPoPStreamAvailable _ _ state@{ weAreLeader: false } = pure state
-
-handleIntraPoPStreamAvailable streamId addr state@{ thisLocation: (ServerLocation pop _)
-                                                  , serfRpcAddress
-                                                  } = do
-  mSourcePoP <- originPoP addr
-  case mSourcePoP of
-    Nothing -> pure state
-    Just sourcePoP
-      | sourcePoP == pop -> do
-        -- Message from our pop - distribute over trans-pop
-        --_ <- logInfo "Local stream being delivered to trans-pop" { streamId: streamId }
-        result <- Serf.event state.serfRpcAddress "streamAvailable" (StreamState StreamAvailable streamId addr) false
-        _ <- maybeLogError "Trans-PoP serf event failed" result {}
-        pure state
-      | otherwise -> pure state
-
-handleIntraPoPStreamStopped :: StreamId -> ServerAddress -> State -> Effect State
-handleIntraPoPStreamStopped _ _ state@{ weAreLeader: false } = pure state
-
-handleIntraPoPStreamStopped streamId addr state@{ thisLocation: (ServerLocation pop _)
-                                                , serfRpcAddress
-                                                } = do
-  mSourcePoP <- originPoP addr
-  case mSourcePoP of
-    Nothing -> pure state
-    Just sourcePoP
-      | sourcePoP == pop -> do
-        -- Message from our pop - distribute over trans-pop
-        --_ <- logInfo "Local stream stopped being delivered to trans-pop" { streamId: streamId }
-        result <- Serf.event state.serfRpcAddress "streamStopped" (StreamState StreamStopped streamId addr) false
-        _ <- maybeLogError "Trans-PoP serf event failed" result {}
-        pure state
-      | otherwise -> pure state
-
 handleTick :: State -> Effect State
-handleTick state@{ weAreLeader: true, serfRpcAddress, thisNode, members } = do
-  _ <- IntraPoPAgent.announceTransPoPLeader
+handleTick state@{ weAreLeader: true, serfRpcAddress, thisNode, members, intraPoPApi: {announceTransPoPLeader: intraPoP_announceTransPoPLeader} } = do
+  _ <- intraPoP_announceTransPoPLeader
   -- us <- Serf.getCoordinate serfRpcAddress thisNode
   -- _ <- traverse_ (\popMembers ->
   --                  do
@@ -338,58 +385,18 @@ becomeLeader now state@{ lastLeaderAnnouncement
                        , leaderAnnouncementTimeout
                        , serfRpcAddress
                        , config: {connectStreamAfterMs}
+                       , intraPoPApi: {announceTransPoPLeader: intraPoP_announceTransPoPLeader}
                        } = do
 
   _ <- logInfo "Leader is absent, becoming leader" {}
   _ <- osCmd "scripts/startTransPoPAgent.sh"
-  _ <- IntraPoPAgent.announceTransPoPLeader
+  _ <- intraPoP_announceTransPoPLeader
   _ <- Timer.sendAfter serverName connectStreamAfterMs ConnectStream
   pure
     $ state
         { lastLeaderAnnouncement = now
         , weAreLeader = true
         }
-
-handleLeaderAnnouncement :: ServerAddress -> State -> Effect State
-handleLeaderAnnouncement address state@{ thisNode
-                                       , weAreLeader: true
-                                       , serfRpcAddress
-                                       }
-  | address < thisNode = do
-    result <- Serf.leave serfRpcAddress
-    _ <- logInfo "Another node has taken over as transpop leader; stepping down" { leader: address }
-    stopResp <- osCmd "scripts/stopTransPoPAgent.sh"
-    _ <- logInfo "Stop Resp" {resp: stopResp}
-
-    now <- systemTimeMs
-    pure
-      $ state
-          { currentLeader = Just address
-          , lastLeaderAnnouncement = now
-          , weAreLeader = false
-          , members = Map.empty :: Map PoPName (Set.Set String)
-          }
-
-handleLeaderAnnouncement address state@{ weAreLeader: true } =
-  pure state
-
-handleLeaderAnnouncement address state@{ currentLeader
-                                       , thisNode
-                                       }
-  | Just address /= currentLeader
-      && address /= thisNode = do
-    _ <- logInfo "Another node has announced as transpop leader, remember which one" { leader: address }
-    now <- systemTimeMs
-    pure
-      $ state
-          { currentLeader = Just address
-          , lastLeaderAnnouncement = now
-          }
-
-handleLeaderAnnouncement address state = do
-  now <- systemTimeMs
-  pure $ state { lastLeaderAnnouncement = now }
-
 
 connectStream :: State -> Effect Unit
 connectStream state@{ weAreLeader: false } = do

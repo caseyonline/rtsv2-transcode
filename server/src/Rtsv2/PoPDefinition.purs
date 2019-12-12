@@ -5,11 +5,8 @@ module Rtsv2.PoPDefinition
        , thisNode
        , whereIsServer
        , thisLocation
-       , ServerAddress
-       , ServerLocation(..)
-       , PoPName
-       , RegionName
        , PoP
+       , Region
        ) where
 
 import Prelude
@@ -17,8 +14,6 @@ import Prelude
 import Data.Either (Either(..), note')
 import Data.Filterable (filter)
 import Data.Foldable (foldl)
-import Data.Generic.Rep (class Generic)
-import Data.Generic.Rep.Eq (genericEq)
 import Data.List.NonEmpty as NonEmptyList
 import Data.Maybe (Maybe(..), fromMaybe)
 import Effect (Effect)
@@ -35,18 +30,10 @@ import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Prim.Row (class Nub)
 import Record as Record
+import Rtsv2.Config (RegionName, ServerAddress, ServerLocation(..), PoPName)
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
 import Simple.JSON as JSON
-
-type RegionName = String
-type PoPName = String
-type ServerAddress = String
-data ServerLocation = ServerLocation PoPName RegionName
-
-derive instance genericServerLocation :: Generic ServerLocation _
-instance eqServerLocation :: Eq ServerLocation where
-  eq = genericEq
 
 type PoPInfo =
   { regions :: Map.Map RegionName Region
