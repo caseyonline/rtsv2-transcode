@@ -31,6 +31,10 @@ with nixpkgs;
 mkShell {
   buildInputs = with pkgs; [
 
+    # Use GNU coreutils - so that if we're building on OSX, we get sensible versions
+    # of things like readlink
+    coreutils
+
     nixerl.erlang-22-1-8.erlang
     nixerl.erlang-22-1-8.rebar3
 
