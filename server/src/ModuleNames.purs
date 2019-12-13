@@ -74,6 +74,9 @@ rtsv2IngestAggregatorAgent = ModuleName "Rtsv2.IngestAggregatorAgent"
 rtsv2IngestAggregatorAgentSup :: ModuleName
 rtsv2IngestAggregatorAgentSup = ModuleName "Rtsv2.IngestAggregatorAgentSup"
 
+rtsv2IngestRtmpServer :: ModuleName
+rtsv2IngestRtmpServer = ModuleName "Rtsv2.IngestRtmpServer"
+
 rtsv2IntraPoPAgent :: ModuleName
 rtsv2IntraPoPAgent = ModuleName "Rtsv2.IntraPoPAgent"
 

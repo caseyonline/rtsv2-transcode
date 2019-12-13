@@ -12,7 +12,7 @@ import Erl.Cowboy.Req (binding)
 import Erl.Data.List (nil, (:))
 import Erl.Data.Tuple (tuple2)
 import Rtsv2.IngestAgent as IngestAgent
-import Rtsv2.IngestAgentSup as IngestAgentSup
+import Rtsv2.IngestAgentInstanceSup as IngestAgentInstanceSup
 import Shared.Stream (StreamVariantId(..))
 import Shared.Utils (lazyCrashIfMissing)
 import Stetson (StetsonHandler)
@@ -29,7 +29,7 @@ ingestStart =
                  Rest.initResult req {streamVariantId: StreamVariantId streamId variantId})
 
   # Rest.serviceAvailable (\req state -> do
-                            isAgentAvailable <- IngestAgentSup.isAvailable
+                            isAgentAvailable <- IngestAgentInstanceSup.isAvailable
                             Rest.result isAgentAvailable req state)
   -- TODO - would conflict if stream exists, but this won't be REST once media plugged...
   -- # Rest.isConflict (\req state@{streamVariantId} -> do
@@ -38,7 +38,7 @@ ingestStart =
   --                           Rest.result isAvailable req $ spy "state" state
   --                         )
   # Rest.contentTypesProvided (\req state -> do
-                                  _ <- IngestAgentSup.startIngest state.streamVariantId
+                                  _ <- IngestAgentInstanceSup.startIngest state.streamVariantId
                                   Rest.result (tuple2 "text/plain" (\req2 state2 -> Rest.result "ingestStarted" req2 state2) : nil) req state)
   # Rest.yeeha
 
@@ -54,7 +54,7 @@ ingestStop =
                  Rest.initResult req {streamVariantId: StreamVariantId streamId variantId})
 
   # Rest.serviceAvailable (\req state -> do
-                            isAgentAvailable <- IngestAgentSup.isAvailable
+                            isAgentAvailable <- IngestAgentInstanceSup.isAvailable
                             Rest.result isAgentAvailable req state)
 
   # Rest.resourceExists (\req state@{streamVariantId} -> do

@@ -1,5 +1,7 @@
 module Rtsv2.Env
   ( hostname
+  , publicInterfaceName
+  , publicInterfaceIp
   , privateInterfaceName
   , privateInterfaceIp
   ) where
@@ -19,6 +21,23 @@ hostname =
     maybeHostName <- getEnv "HOSTNAME"
     pure $ fromMaybe' (lazyCrashIfMissing "No Hostname available") maybeHostName
 
+publicInterfaceName :: Effect String
+publicInterfaceName =
+  do
+    maybeIface <- getEnv "PUBLIC_IFACE"
+    pure $ fromMaybe' (lazyCrashIfMissing ("Invalid Public Interface Name: " <> (show maybeIface))) maybeIface
+
+publicInterfaceIp :: Effect Ip
+publicInterfaceIp =
+  do
+    name <- publicInterfaceName
+    maybeIfaceIp <- getIp name
+
+    pure $ fromMaybe' (lazyCrashIfMissing ("Invalid Public Interface Name: " <> name)) maybeIfaceIp
+  where
+    getIp :: String -> Effect (Maybe Ip)
+    getIp str = Ip.getInterfaceIp str
+
 privateInterfaceName :: Effect String
 privateInterfaceName =
   do
@@ -31,7 +50,8 @@ privateInterfaceIp =
     name <- privateInterfaceName
     maybeIfaceIp <- getIp name
 
-    pure $ fromMaybe' (lazyCrashIfMissing ("Invalid RPC Interface: " <> name)) maybeIfaceIp
+    pure $ fromMaybe' (lazyCrashIfMissing ("Invalid Private Interface Name: " <> name)) maybeIfaceIp
   where
     getIp :: String -> Effect (Maybe Ip)
     getIp str = Ip.getInterfaceIp str
+

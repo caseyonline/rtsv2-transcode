@@ -10,7 +10,6 @@ import Rtsv2.Config as Config
 import Rtsv2.EdgeAgentSup as EdgeAgentSup
 import Rtsv2.IngestAgentSup as IngestAgentSup
 import Rtsv2.IngestAggregatorAgentSup as IngestAggregatorAgentSup
-import Rtsv2.IntraPoPAgent as IntraPoPAgent
 import Rtsv2.StreamRelayAgentSup as StreamRelayAgentSup
 import Rtsv2.TransPoPAgent as TransPoPAgent
 import Rtsv2.IntraPoPAgent as IntraPoPAgent

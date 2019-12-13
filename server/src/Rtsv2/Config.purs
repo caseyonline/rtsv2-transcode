@@ -18,6 +18,7 @@ module Rtsv2.Config
   , transPoPAgentConfig
   , ingestAggregatorAgentConfig
   , edgeAgentConfig
+  , rtmpIngestConfig
   ) where
 
 import Prelude
@@ -94,6 +95,11 @@ type TransPoPAgentApi
     , announceTransPoPLeader :: ServerAddress -> Effect Unit
     }
 
+type RtmpIngestConfig
+  = { port :: Int
+    , nbAcceptors :: Int
+    }
+
 foreign import getEnv_ :: Atom -> Effect Foreign
 foreign import getMap_ :: Atom -> Effect Foreign
 
@@ -131,6 +137,10 @@ ingestAggregatorAgentConfig = do
 edgeAgentConfig :: Effect EdgeAgentConfig
 edgeAgentConfig = do
   getMandatoryRecord "edgeConfig"
+
+rtmpIngestConfig :: Effect RtmpIngestConfig
+rtmpIngestConfig = do
+  getMandatoryRecord "rtmpIngestConfig"
 
 get :: forall a e. (Foreign -> ExceptT e Identity a) -> String -> Effect (Maybe a)
 get f v = hush <<< runExcept <<< f <$> getEnv_ (atom v)
