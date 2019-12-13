@@ -1,7 +1,0 @@
-if command -v lorri;
-then
-  eval "$(lorri direnv)"
-elif command -v nix-shell
-then
-  use nix
-fi

@@ -29,9 +29,6 @@ id3as::establish_environment() {
   if [[ -f "${this_dir}/${USER}/dev.sh" ]]; then
     source_env "${this_dir}/${USER}/dev.sh"
   fi
-
-  # Use nix set-up
-  source_env common/nix.sh
 }
 
 id3as::establish_environment
