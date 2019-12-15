@@ -16,6 +16,7 @@ import Data.Filterable (filter)
 import Data.Foldable (foldl)
 import Data.List.NonEmpty as NonEmptyList
 import Data.Maybe (Maybe(..), fromMaybe)
+import Data.String (joinWith)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
@@ -145,7 +146,7 @@ handleInfo msg state =
 
 readAndProcessPoPDefinition :: Config.PoPDefinitionConfig -> ServerAddress -> Effect (Either MultipleErrors PoPInfo)
 readAndProcessPoPDefinition config hostName = do
-  file <- readFile config.popDefinitionFile
+  file <- readFile $ joinWith "/" [config.directory, config.popDefinitionFile]
   pure $ processPoPJson hostName =<< (mapRegionJson <$> (decodeJson =<< file))
 
 
