@@ -60,9 +60,11 @@ type Region = { name :: RegionName
 
 type PoP = { name :: PoPName
            , servers :: List ServerAddress
+           , neighbours :: List PoPName
            }
 
 type PoPJsonFormat = Map String (Map String (List String))
+type WanJsonFormat = Map String (List String)
 
 data Msg = Tick
 
@@ -96,12 +98,19 @@ whereIsServer sa = Gen.doCall serverName
 init :: Config.PoPDefinitionConfig -> Effect State
 init config = do
   hostname <- Env.hostname
-  ePopInfo <- readAndProcessPoPDefinition config hostname
+  eWanInfo <- readWanDefinition config
+  wanInfo <-  case eWanInfo of
+    Left e -> do
+               _ <- Logger.warning "Failed to process WAN definition file" {misc: e}
+               unsafeCrashWith "invalid WAN definition file"
+    Right r -> pure r
+
+  ePopInfo <- readAndProcessPoPDefinition config hostname wanInfo
   popInfo <-  case ePopInfo of
-                   Left e -> do
-                              _ <- Logger.warning "Failed to process pop definition file" {misc: e}
-                              unsafeCrashWith "invalid pop definition file"
-                   Right r -> pure r
+    Left e -> do
+               _ <- Logger.warning "Failed to process pop definition file" {misc: e}
+               unsafeCrashWith "invalid pop definition file"
+    Right r -> pure r
   let
       state =
         { config : config
@@ -124,30 +133,41 @@ handleInfo msg state =
   case msg of
     Tick ->
       do
-        ePopInfo <- readAndProcessPoPDefinition state.config state.thisNode
-        newState <-  case ePopInfo of
-          Left e -> do _ <- Logger.warning "Failed to process pop definition file" {misc: e}
+        eWanInfo <- readWanDefinition state.config
+        newState <-  case eWanInfo of
+          Left e -> do _ <- Logger.warning "Failed to process WAN definition file" {misc: e}
                        pure state
-          Right popInfo@{thisLocation : newPoP}
-            | newPoP == state.thisLocation  ->
-              pure $ state { regions = popInfo.regions
-                           , servers = popInfo.servers
-                           , otherServersInThisPoP = popInfo.otherServersInThisPoP
-                           , otherPoPs = popInfo.otherPoPs
-                           }
-            | otherwise ->
-                do _ <- Logger.warning "This node seems to have changed pop - ignoring" { currentPoP: state.thisLocation
-                                                                                        , filePoP : newPoP
-                                                                                        }
-                   pure state
+          Right wanInfo -> do
+            ePopInfo <- readAndProcessPoPDefinition state.config state.thisNode wanInfo
+            case ePopInfo of
+
+              Left e -> do _ <- Logger.warning "Failed to process pop definition file" {misc: e}
+                           pure state
+              Right popInfo@{thisLocation : newPoP}
+                | newPoP == state.thisLocation  ->
+                  pure $ state { regions = popInfo.regions
+                               , servers = popInfo.servers
+                               , otherServersInThisPoP = popInfo.otherServersInThisPoP
+                               , otherPoPs = popInfo.otherPoPs
+                               }
+                | otherwise ->
+                    do _ <- Logger.warning "This node seems to have changed pop - ignoring" { currentPoP: state.thisLocation
+                                                                                            , filePoP : newPoP
+                                                                                            }
+                       pure state
 
         _ <- Timer.sendAfter serverName 1000 Tick
         pure $ CastNoReply newState
 
-readAndProcessPoPDefinition :: Config.PoPDefinitionConfig -> ServerAddress -> Effect (Either MultipleErrors PoPInfo)
-readAndProcessPoPDefinition config hostName = do
+readWanDefinition :: Config.PoPDefinitionConfig -> Effect (Either MultipleErrors WanJsonFormat)
+readWanDefinition config = do
+  file <- readFile $ joinWith "/" [config.directory, config.wanDefinitionFile]
+  pure $ JSON.readJSON =<< file
+
+readAndProcessPoPDefinition :: Config.PoPDefinitionConfig -> ServerAddress -> WanJsonFormat -> Effect (Either MultipleErrors PoPInfo)
+readAndProcessPoPDefinition config hostName neighbourMap = do
   file <- readFile $ joinWith "/" [config.directory, config.popDefinitionFile]
-  pure $ processPoPJson hostName =<< (mapRegionJson <$> (decodeJson =<< file))
+  pure $ processPoPJson hostName =<< (mapRegionJson neighbourMap <$> (decodeJson =<< file))
 
 
 readFile :: String -> Effect (Either MultipleErrors String)
@@ -158,13 +178,16 @@ readFile fileName = do
 decodeJson :: String -> Either MultipleErrors PoPJsonFormat
 decodeJson = JSON.readJSON
 
-mapRegionJson :: PoPJsonFormat -> Map RegionName Region
-mapRegionJson =
-  Map.mapWithKey (\name pops -> {name : name, pops : mapPoPJson pops})
+mapRegionJson :: WanJsonFormat -> PoPJsonFormat -> Map RegionName Region
+mapRegionJson neighbourMap =
+  Map.mapWithKey (\name pops -> {name : name, pops : mapPoPJson neighbourMap pops})
 
-mapPoPJson :: Map String (List String) -> Map PoPName PoP
-mapPoPJson =
-  Map.mapWithKey (\name servers -> {name : name, servers : servers})
+mapPoPJson :: WanJsonFormat -> Map String (List String) -> Map PoPName PoP
+mapPoPJson neighbourMap =
+  Map.mapWithKey (\name servers ->
+                   let neighbours = Map.lookup name neighbourMap # fromMaybe nil
+                   in
+                    {name : name, servers : servers, neighbours})
 
 processPoPJson :: ServerAddress -> (Map RegionName Region) -> Either MultipleErrors PoPInfo
 processPoPJson hostName regions =
