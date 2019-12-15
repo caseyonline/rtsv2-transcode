@@ -19,6 +19,7 @@ import Data.Maybe (Maybe(..), fromMaybe)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
+import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
 import File as File
 import Foreign (Foreign, ForeignError(..), MultipleErrors)
@@ -36,16 +37,16 @@ import Rtsv2.Env as Env
 import Simple.JSON as JSON
 
 type PoPInfo =
-  { regions :: Map.Map RegionName Region
-  , servers :: Map.Map ServerAddress ServerLocation
+  { regions :: Map RegionName Region
+  , servers :: Map ServerAddress ServerLocation
   , thisLocation :: ServerLocation
   , otherServersInThisPoP :: List ServerAddress
   , otherPoPs :: List PoP
   }
 
 type State =  { config :: Config.PoPDefinitionConfig
-              , regions :: Map.Map RegionName Region
-              , servers :: Map.Map ServerAddress ServerLocation
+              , regions :: Map RegionName Region
+              , servers :: Map ServerAddress ServerLocation
               , thisNode :: ServerAddress
               , thisLocation :: ServerLocation
               , otherServersInThisPoP :: List ServerAddress
@@ -53,14 +54,14 @@ type State =  { config :: Config.PoPDefinitionConfig
               }
 
 type Region = { name :: RegionName
-              , pops :: Map.Map PoPName PoP
+              , pops :: Map PoPName PoP
               }
 
 type PoP = { name :: PoPName
            , servers :: List ServerAddress
            }
 
-type PoPJsonFormat = Map.Map String (Map.Map String (List String))
+type PoPJsonFormat = Map String (Map String (List String))
 
 data Msg = Tick
 
@@ -156,18 +157,18 @@ readFile fileName = do
 decodeJson :: String -> Either MultipleErrors PoPJsonFormat
 decodeJson = JSON.readJSON
 
-mapRegionJson :: PoPJsonFormat -> Map.Map RegionName Region
+mapRegionJson :: PoPJsonFormat -> Map RegionName Region
 mapRegionJson =
   Map.mapWithKey (\name pops -> {name : name, pops : mapPoPJson pops})
 
-mapPoPJson :: Map.Map String (List String) -> Map.Map PoPName PoP
+mapPoPJson :: Map String (List String) -> Map PoPName PoP
 mapPoPJson =
   Map.mapWithKey (\name servers -> {name : name, servers : servers})
 
-processPoPJson :: ServerAddress -> (Map.Map RegionName Region) -> Either MultipleErrors PoPInfo
+processPoPJson :: ServerAddress -> (Map RegionName Region) -> Either MultipleErrors PoPInfo
 processPoPJson hostName regions =
   let
-    servers :: Map.Map ServerAddress ServerLocation
+    servers :: Map ServerAddress ServerLocation
     servers = foldl (\acc region ->
                       foldl (\innerAcc pop ->
                               foldl (\innerInnerAcc server ->
@@ -215,7 +216,7 @@ processPoPJson hostName regions =
              , thisLocation: location
              }
 
-lookupPop :: Map.Map RegionName Region -> ServerLocation -> Maybe PoP
+lookupPop :: Map RegionName Region -> ServerLocation -> Maybe PoP
 lookupPop regions (ServerLocation pop region) =
   (\{pops : pops} -> Map.lookup pop pops) =<< Map.lookup region regions
 
