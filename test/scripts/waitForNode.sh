@@ -37,6 +37,6 @@ function wait_for_server {
 function main {
   local -r addr=$1
   wait_for_server "$addr"
-
 }
+
 main "$@"
