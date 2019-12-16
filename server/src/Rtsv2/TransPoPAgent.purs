@@ -35,7 +35,7 @@ import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Prim.Row (class Nub, class Union)
 import Record as Record
-import Rtsv2.Config (PoPName, ServerAddress, ServerLocation(..))
+import Rtsv2.Config (PoPName, ServerLocation(..))
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
 import Rtsv2.Health (Health)
@@ -46,6 +46,7 @@ import Serf (IpAndPort)
 import Serf as Serf
 import Shared.Agent as Agent
 import Shared.Stream (StreamId)
+import Shared.Types (ServerAddress(..))
 import Shared.Utils (distinctRandomNumbers)
 import SpudGun as SpudGun
 
@@ -60,12 +61,12 @@ type State
     , thisPoP :: PoPName
     , config :: Config.TransPoPAgentConfig
     , serfRpcAddress :: IpAndPort
-    , members :: Map PoPName (Set.Set String)
+    , members :: Map PoPName (Set.Set ServerAddress)
     , streamStateClocks :: EMap StreamId Int
     }
 
 data StreamState = StreamAvailable
-                 | StreamStopped 
+                 | StreamStopped
 
 data TransMessage = StreamState StreamState StreamId ServerAddress
 
@@ -121,7 +122,7 @@ announceStreamIsAvailable streamId addr =
             _ <- maybeLogError "Trans-PoP serf event failed" result {}
             pure state
           | otherwise -> pure state
- 
+
 announceStreamStopped:: StreamId -> ServerAddress -> Effect Unit
 announceStreamStopped streamId addr =
   Gen.doCast serverName ((map CastNoReply) <<< doAnnounceStreamStopped)
@@ -161,11 +162,12 @@ announceTransPoPLeader address =
 
         now <- systemTimeMs
         pure
-          $ state
+           $ state
               { currentLeader = Just address
               , lastLeaderAnnouncement = now
               , weAreLeader = false
-              , members = Map.empty :: Map PoPName (Set.Set String)
+              -- TODO - why is this type hint needed?  Does not compile without
+              , members = Map.empty :: Map PoPName (Set.Set ServerAddress)
               }
 
     doAnnounceTransPoPLeader state@{ weAreLeader: true } =
@@ -204,10 +206,10 @@ init { config: config@{ leaderTimeoutMs
   rpcBindIp <- Env.privateInterfaceIp
   thisNode <- PoPDefinition.thisNode
   thisLocation <- PoPDefinition.thisLocation
+  now <- systemTimeMs
+
   let
     ServerLocation thisPoP _ = thisLocation
-  now <- systemTimeMs
-  let
     serfRpcAddress =
       { ip: show rpcBindIp
       , port: rpcPort
@@ -250,7 +252,7 @@ handleInfo msg state@{ thisPoP } = case msg of
 
   TransPoPSerfMsg tmsg ->
     let
-      newState = 
+      newState =
         case tmsg of
           Serf.MemberAlive members -> membersAlive members state
           Serf.MemberLeaving -> pure state
@@ -279,7 +281,7 @@ handleInfo msg state@{ thisPoP } = case msg of
                           newStreamStateClocks <- EMap.insert' streamId ltime state.streamStateClocks
                           handleTransPoPMessage transMessage (state{streamStateClocks = newStreamStateClocks})
      in
-       CastNoReply <$> newState 
+       CastNoReply <$> newState
 
 handleTransPoPMessage :: TransMessage -> State -> Effect State
 handleTransPoPMessage (StreamState StreamAvailable streamId server) state@{intraPoPApi: {announceRemoteStreamIsAvailable}} = do
@@ -296,10 +298,10 @@ membersAlive :: (List Serf.SerfMember) -> State -> Effect State
 membersAlive aliveMembers state =
   do
     _ <- logInfo "Members Alive" {members: _.name <$> aliveMembers}
-    newMembers <- foldl addPoP (pure state.members) aliveMembers
+    newMembers <- foldl addPoP (pure $ state.members) aliveMembers
     pure state {members = newMembers}
   where
-    addPoP :: Effect (Map PoPName (Set.Set String)) -> Serf.SerfMember -> Effect (Map PoPName (Set.Set String))
+    addPoP :: Effect (Map PoPName (Set.Set ServerAddress)) -> Serf.SerfMember -> Effect (Map PoPName (Set.Set ServerAddress))
     addPoP eMembers aliveMember@{name: aliveName} =
       do
         members <- eMembers
@@ -309,7 +311,7 @@ membersAlive aliveMembers state =
                                       existingMembers = case Map.lookup popName members of
                                                           Just existing -> existing
                                                           Nothing -> Set.empty
-                                      newMembers = Set.insert aliveName existingMembers
+                                      newMembers = Set.insert (ServerAddress aliveName) existingMembers
                                     in
                                      Map.insert popName newMembers members
                                   ) <$> mPoP)
@@ -321,7 +323,7 @@ membersLeft leftMembers state =
     newMembers <- foldl removePoP (pure state.members) leftMembers
     pure state {members = newMembers}
   where
-    removePoP :: Effect (Map PoPName (Set.Set String)) -> Serf.SerfMember -> Effect (Map PoPName (Set.Set String))
+    removePoP :: Effect (Map PoPName (Set.Set ServerAddress)) -> Serf.SerfMember -> Effect (Map PoPName (Set.Set ServerAddress))
     removePoP eMembers leftMember@{name: leftName} =
       do
         members <- eMembers
@@ -331,7 +333,7 @@ membersLeft leftMembers state =
                                       existingMembers = case Map.lookup popName members of
                                                           Just existing -> existing
                                                           Nothing -> Set.empty
-                                      newMembers = Set.delete leftName existingMembers
+                                      newMembers = Set.delete (ServerAddress leftName) existingMembers
                                     in
                                      Map.insert popName newMembers members
                                   ) <$> mPoP)
@@ -339,7 +341,7 @@ membersLeft leftMembers state =
 getPoP :: Serf.SerfMember -> Effect (Maybe PoPName)
 getPoP {name : memberName} =
   do
-    mServerLocation <- whereIsServer memberName
+    mServerLocation <- whereIsServer (ServerAddress memberName)
     pure $ case mServerLocation of
       Nothing -> Nothing
       Just (ServerLocation popName _) -> Just popName
@@ -448,6 +450,7 @@ joinAllSerf state@{ config: config@{rejoinEveryMs}, serfRpcAddress, members } =
                     do
                      indexes <- distinctRandomNumbers 1 ((length serversInPoP) - 1)
                      let
+                       servers :: List ServerAddress
                        servers = map (\i -> index serversInPoP i) indexes
                                  # sequence
                                  # fromMaybe nil
@@ -459,10 +462,10 @@ joinAllSerf state@{ config: config@{rejoinEveryMs}, serfRpcAddress, members } =
   toMap :: List PoP -> Map PoPName PoP
   toMap list = foldl (\acc pop@{name} -> Map.insert name pop acc) Map.empty list
 
-  spawnFun :: (String -> IpAndPort) -> List String -> Effect Unit
+  spawnFun :: (String -> IpAndPort) -> List ServerAddress -> Effect Unit
   spawnFun addressMapper popsToJoin = void $ spawnLink (\_ -> do
                              foldl
-                               ( \iAcc server -> do
+                               ( \iAcc (ServerAddress server) -> do
                                    restResult <- SpudGun.getText ("http://" <> server <> ":3000/api/transPoPLeader")
                                    _ <- case restResult of
                                      Nothing -> pure unit

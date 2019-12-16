@@ -17,10 +17,7 @@ $(COMPILED_PS): output
 	@touch $(COMPILED_PS)
 
 output: $(PS_SOURCEFILES) $(PS_ERL_FFI) .spago
-	$(eval TMP := $(shell mktemp -d))
-	#ln -s `which purerl` ${TMP}/purs
-	PATH=${TMP}:${PATH} spago build
-	rm -rf $(TMP)
+	spago build
 	@touch output
 
 .spago: spago.dhall packages.dhall

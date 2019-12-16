@@ -32,9 +32,10 @@ import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Prim.Row (class Nub)
 import Record as Record
-import Rtsv2.Config (RegionName, ServerAddress, ServerLocation(..), PoPName)
+import Rtsv2.Config (RegionName, ServerLocation(..), PoPName)
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
+import Shared.Types (ServerAddress(..))
 import Simple.JSON as JSON
 
 type PoPInfo =
@@ -99,7 +100,7 @@ whereIsServer sa = Gen.doCall serverName
 
 init :: Config.PoPDefinitionConfig -> Effect State
 init config = do
-  hostname <- Env.hostname
+  hostname <- ServerAddress <$> Env.hostname
   eWanInfo <- readWanDefinition config
   wanInfo <-  case eWanInfo of
     Left e -> do

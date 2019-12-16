@@ -6,6 +6,7 @@ module Rtsv2.Web
 import Prelude
 
 import Data.Maybe (Maybe(..), fromMaybe, isJust)
+import Data.Newtype (unwrap)
 import Effect (Effect)
 import Erl.Atom (atom)
 import Erl.Cowboy.Req (Req)
@@ -16,7 +17,6 @@ import Logger (info) as Logger
 import Pinto (ServerName(..), StartLinkResult)
 import Pinto.Gen as Gen
 import Record as Record
-import Rtsv2.Config (ServerAddress)
 import Rtsv2.Config as Config
 import Rtsv2.Endpoints.Client as ClientEndpoint
 import Rtsv2.Endpoints.Edge as EdgeEndpoint
@@ -25,6 +25,7 @@ import Rtsv2.Endpoints.Ingest as IngestEndpoint
 import Rtsv2.Env as Env
 import Rtsv2.IntraPoPAgent as IntraPoPAgent
 import Serf (Ip(..))
+import Shared.Types (ServerAddress)
 import Stetson (RestResult, StetsonHandler)
 import Stetson as Stetson
 import Stetson.Rest as Rest
@@ -69,7 +70,7 @@ transPoPLeader =
                             Rest.result (isJust currentLeader) req currentLeader
                           )
   # Rest.contentTypesProvided (\req state ->
-                                Rest.result ((tuple2 "text/plain" (\req2 currentLeader -> Rest.result (fromMaybe "" currentLeader) req2 state)) : nil) req state)
+                                Rest.result ((tuple2 "text/plain" (\req2 currentLeader -> Rest.result (fromMaybe "" (unwrap <$> currentLeader)) req2 state)) : nil) req state)
   # Rest.yeeha
 
 emptyText  :: forall a. Tuple2 String (Req -> a -> (Effect (RestResult String a)))
