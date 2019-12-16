@@ -179,8 +179,11 @@ readFile fileName = do
 
 mapRegionJson :: WanJsonFormat -> NetworkJsonFormat -> Map RegionName Region
 mapRegionJson neighbourMap nwMap =
-  let allPops = Map.values nwMap
-  in
+  -- let allPops =  Map.keys =<< Map.values nwMap
+  --     --newNeighbourMap = Map.mapMaybeWithKey (\k v -> case List.find k allPops of
+
+  --     _ = ?foo
+  -- in
   Map.mapWithKey (\name pops -> {name : name, pops : mapPoPJson neighbourMap pops}) nwMap
 
 mapPoPJson :: WanJsonFormat -> PoPJsonFormat -> Map PoPName PoP
@@ -243,7 +246,7 @@ processPoPJson hostName regions =
 
 lookupPop :: Map RegionName Region -> ServerLocation -> Maybe PoP
 lookupPop regions (ServerLocation pop region) =
-  (\{pops : pops} -> Map.lookup pop pops) =<< Map.lookup region regions
+  (\{pops} -> Map.lookup pop pops) =<< Map.lookup region regions
 
 finalise :: State -> Either MultipleErrors State -> Effect State
 finalise state (Left errors) = do
