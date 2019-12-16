@@ -22,7 +22,15 @@
          ingestStopped :: fun()
         }).
 
-%% TODO - auth (will be config passed into rtmp_server), status
+%% TODO:
+%% - rtmp_server to support wildcards in dispatch logic (stream name is per-customer, so we want to support '*')
+%% - auth
+%%   - rtmp.erl calls into rtmp_server.erl which in turn calls this handler - so init here can call into purs
+%%     with the connectArgs, and then call the LLNW api to get back the auth details (type, username, password)
+%%     We then need a new return type of {authenticate, type, username, password} that rtmp_server passes
+%%     back to rtmp.  After auth completes, rtmp_server is going to need to call back into this module to
+%%     indicate success / failure
+%% - status reporting
 
 init(Rtmp, _ConnectArgs, [#{ingestStarted := IngestStarted,
                             ingestStopped := IngestStopped}]) ->
