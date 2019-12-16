@@ -178,8 +178,10 @@ readFile fileName = do
   pure $ note' (\_ -> NonEmptyList.singleton $ ForeignError ("failed to read file " <> fileName)) jsonString
 
 mapRegionJson :: WanJsonFormat -> NetworkJsonFormat -> Map RegionName Region
-mapRegionJson neighbourMap =
-  Map.mapWithKey (\name pops -> {name : name, pops : mapPoPJson neighbourMap pops})
+mapRegionJson neighbourMap nwMap =
+  let allPops = Map.values nwMap
+  in
+  Map.mapWithKey (\name pops -> {name : name, pops : mapPoPJson neighbourMap pops}) nwMap
 
 mapPoPJson :: WanJsonFormat -> PoPJsonFormat -> Map PoPName PoP
 mapPoPJson neighbourMap =

@@ -5,6 +5,7 @@ module Ephemeral.List
        , singleton
        , insert
        , delete
+       , delete'
        , extract
        , garbageCollect
        , garbageCollect'
@@ -12,10 +13,11 @@ module Ephemeral.List
 
 import Prelude
 
+import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Ephemeral (EData)
 import Ephemeral as EData
-import Erl.Data.List (List, nil, (:))
+import Erl.Data.List (List, nil, uncons, (:))
 import Erl.Data.List as List
 import Erl.Utils (Milliseconds)
 import Erl.Utils as Erl
@@ -33,6 +35,17 @@ insert ev (EList evs) = EList $ ev : List.delete ev evs
 
 delete :: forall a. Eq a => EData a -> EList a -> EList a
 delete ev (EList evs) = EList $ List.delete ev evs
+
+delete' :: forall a. Eq a => a -> EList a -> EList a
+delete' v (EList evs) =
+  let
+    delete_ evs' =
+      case uncons evs' of
+        Nothing -> nil
+        Just {head, tail} ->
+          if EData.extract head == v then evs'
+          else head : delete_ tail
+  in EList $ delete_ evs
 
 extract :: forall a. EList a -> List a
 extract (EList evs) = EData.extract <$> evs
