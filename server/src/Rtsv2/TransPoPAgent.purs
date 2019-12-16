@@ -35,7 +35,7 @@ import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Prim.Row (class Nub, class Union)
 import Record as Record
-import Rtsv2.Config (PoPName, ServerLocation(..))
+import Rtsv2.Config (ServerLocation(..))
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
 import Rtsv2.Health (Health)
@@ -46,7 +46,7 @@ import Serf (IpAndPort)
 import Serf as Serf
 import Shared.Agent as Agent
 import Shared.Stream (StreamId)
-import Shared.Types (ServerAddress(..))
+import Shared.Types (PoPName, ServerAddress(..))
 import Shared.Utils (distinctRandomNumbers)
 import SpudGun as SpudGun
 

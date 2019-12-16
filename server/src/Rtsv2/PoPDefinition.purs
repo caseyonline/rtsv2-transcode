@@ -32,10 +32,10 @@ import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Prim.Row (class Nub)
 import Record as Record
-import Rtsv2.Config (RegionName, ServerLocation(..), PoPName)
+import Rtsv2.Config (ServerLocation(..))
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
-import Shared.Types (ServerAddress(..))
+import Shared.Types (PoPName, RegionName, ServerAddress(..))
 import Simple.JSON as JSON
 
 type PoPInfo =
@@ -64,10 +64,9 @@ type PoP = { name :: PoPName
            , neighbours :: List PoPName
            }
 
-
 type NetworkJsonFormat = Map RegionName PoPJsonFormat
 type PoPJsonFormat =  Map PoPName (List ServerAddress)
-type WanJsonFormat = Map PoPName (List PoPName)
+type WanJsonFormat =  Map PoPName (List PoPName)
 
 data Msg = Tick
 

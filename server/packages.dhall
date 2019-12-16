@@ -35,9 +35,9 @@ let overrides =
               , "variant"
               ]
           , repo =
-              "ssh://git@github.com/purerl/purescript-simple-json.git"
+              "ssh://git@github.com/adrianroe/purescript-simple-json.git"
           , version =
-              "7ba3d3f1bc9165ebdce948cbecc076d13f964e59"
+              "c1c7e23a60b22c4813d56abb6600ce7a5eb66c55"
           }
       , erl-maps =
           { dependencies =

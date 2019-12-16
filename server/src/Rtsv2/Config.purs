@@ -1,7 +1,5 @@
 module Rtsv2.Config
-  ( RegionName
-  , PoPName
-  , ServerLocation(..)
+  ( ServerLocation(..)
   , IngestAggregatorAgentConfig
   , WebConfig
   , PoPDefinitionConfig
@@ -37,13 +35,10 @@ import Logger as Logger
 import Partial.Unsafe (unsafeCrashWith)
 import Rtsv2.Node as Node
 import Shared.Agent (Agent, strToAgent)
-import Shared.Types (ServerAddress)
 import Shared.Stream (StreamId)
+import Shared.Types (RegionName, ServerAddress, PoPName)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (class ReadForeign, readImpl)
-
-type RegionName = String
-type PoPName = String
 
 data ServerLocation = ServerLocation PoPName RegionName
 
