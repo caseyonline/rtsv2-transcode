@@ -63,8 +63,10 @@ type PoP = { name :: PoPName
            , neighbours :: List PoPName
            }
 
-type PoPJsonFormat = Map String (Map String (List String))
-type WanJsonFormat = Map String (List String)
+
+type NetworkJsonFormat = Map RegionName PoPJsonFormat
+type PoPJsonFormat =  Map PoPName (List ServerAddress)
+type WanJsonFormat = Map PoPName (List PoPName)
 
 data Msg = Tick
 
@@ -167,7 +169,7 @@ readWanDefinition config = do
 readAndProcessPoPDefinition :: Config.PoPDefinitionConfig -> ServerAddress -> WanJsonFormat -> Effect (Either MultipleErrors PoPInfo)
 readAndProcessPoPDefinition config hostName neighbourMap = do
   file <- readFile $ joinWith "/" [config.directory, config.popDefinitionFile]
-  pure $ processPoPJson hostName =<< (mapRegionJson neighbourMap <$> (decodeJson =<< file))
+  pure $ processPoPJson hostName =<< (mapRegionJson neighbourMap <$> (JSON.readJSON =<< file))
 
 
 readFile :: String -> Effect (Either MultipleErrors String)
@@ -175,14 +177,11 @@ readFile fileName = do
   jsonString <- File.readUtf8File fileName
   pure $ note' (\_ -> NonEmptyList.singleton $ ForeignError ("failed to read file " <> fileName)) jsonString
 
-decodeJson :: String -> Either MultipleErrors PoPJsonFormat
-decodeJson = JSON.readJSON
-
-mapRegionJson :: WanJsonFormat -> PoPJsonFormat -> Map RegionName Region
+mapRegionJson :: WanJsonFormat -> NetworkJsonFormat -> Map RegionName Region
 mapRegionJson neighbourMap =
   Map.mapWithKey (\name pops -> {name : name, pops : mapPoPJson neighbourMap pops})
 
-mapPoPJson :: WanJsonFormat -> Map String (List String) -> Map PoPName PoP
+mapPoPJson :: WanJsonFormat -> PoPJsonFormat -> Map PoPName PoP
 mapPoPJson neighbourMap =
   Map.mapWithKey (\name servers ->
                    let neighbours = Map.lookup name neighbourMap # fromMaybe nil
@@ -207,7 +206,7 @@ processPoPJson hostName regions =
               Map.empty
               regions
 
-    otherServers :: List String
+    otherServers :: List ServerAddress
     otherServers = Map.lookup hostName servers
                    >>= (\sl -> lookupPop regions sl)
                    <#> (\p -> p.servers)
