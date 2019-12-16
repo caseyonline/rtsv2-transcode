@@ -17,7 +17,6 @@ $(COMPILED_PS): output
 	@touch $(COMPILED_PS)
 
 output: $(PS_SOURCEFILES) $(PS_ERL_FFI) .spago
-	.spago/erl-modules/${ERL_MODULES_VERSION}/scripts/gen_module_names.sh src/
 	$(eval TMP := $(shell mktemp -d))
 	#ln -s `which purerl` ${TMP}/purs
 	PATH=${TMP}:${PATH} spago build
