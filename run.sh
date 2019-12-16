@@ -60,5 +60,6 @@ tmux -L "$SESSION" -2 attach-session
 
 echo "Killing session and removing VLANs"
 tmux -L "$SESSION" kill-session
-destroy_vlans
+destroy_beams
 destroy_serfs
+destroy_vlans

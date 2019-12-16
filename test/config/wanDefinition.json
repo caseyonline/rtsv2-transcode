@@ -1,0 +1,20 @@
+{
+  "iad": [
+    "dal",
+    "lax",
+    "fra"
+  ],
+  "dal": [
+    "iad",
+    "lax",
+    "fra"
+  ],
+  "lax": [
+    "iad",
+    "lax"
+  ],
+  "fra": [
+    "iad",
+    "dal"
+  ]
+}

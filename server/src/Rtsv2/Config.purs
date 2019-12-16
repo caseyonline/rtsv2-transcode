@@ -55,7 +55,9 @@ instance eqServerLocation :: Eq ServerLocation where
 type WebConfig = { port :: Int }
 
 type PoPDefinitionConfig
-  = { popDefinitionFile :: String
+  = { directory :: String
+    , popDefinitionFile :: String
+    , wanDefinitionFile :: String
     }
 
 type IngestAggregatorAgentConfig

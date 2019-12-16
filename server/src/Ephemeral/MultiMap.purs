@@ -30,7 +30,7 @@ import Erl.Data.Map as Map
 import Erl.Utils (Milliseconds)
 import Erl.Utils as Erl
 
-
+--TODO - this should really be EMultiMap (Map k (ENonEmptyList v))
 data EMultiMap k v = EMultiMap (Map k (EList v))
 
 empty :: forall k v. EMultiMap k v

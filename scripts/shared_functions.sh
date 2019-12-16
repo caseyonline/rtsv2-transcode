@@ -25,6 +25,9 @@ function destroy_serfs {
   pkill -f 'serf.*172.16' || true
 }
 
+function destroy_beams {
+  pkill -f 'rtsv2TestRunner'|| true
+}
 
 function start_node {
   local -r tmuxSession=$1
