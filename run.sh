@@ -1,17 +1,32 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
+set -eu
+set -o pipefail
 
-usage() {
-  echo "Usage: ./${0} (stears | ashton | etc)"
+update_env_script() {
+  ENV_SCRIPT=scripts/env/${ENV_NAME}
 }
 
-if [ "$#" -ne 1 ]; then
-  RUN_ENV=$USER
-  echo "Defaulting to $RUN_ENV"
-else
-  RUN_ENV=$1
+declare ENV_NAME=${1:-}
+declare ENV_NAME_SPECIFIED="yes"
+declare ENV_SCRIPT=
+
+if [[ -z "${ENV_NAME}" ]]; then
+  ENV_NAME="${USER}"
+  ENV_NAME_SPECIFIED="no"
 fi
-ENV_SCRIPT=scripts/env/$RUN_ENV
+
+update_env_script
+
+if [[ ! -f "${ENV_SCRIPT}" ]]; then
+  if [[ "${ENV_NAME_SPECIFIED}" == "yes" ]]; then
+    echo "The explicitly specified environment ${ENV_NAME} was not found at ${ENV_SCRIPT}, aborting."
+    return 64
+  fi
+
+  echo "No environment specified, and no user-specific environment found, falling back to the common environment."
+  ENV_NAME=common
+  update_env_script
+fi
 
 source scripts/shared_functions.sh
 # shellcheck source=/dev/null
@@ -21,10 +36,11 @@ set +o history
 SESSION=rtsv2
 SYSCONFIG=${SYSCONFIG:-release-files/sys.config}
 
-
 tmux -L "$SESSION" kill-session 2>/dev/null || true
 destroy_serfs
-destroy_vlans
+destroy_net
+
+create_net
 
 tmux -L "$SESSION" -2 new-session -d -s "$SESSION"
 
@@ -47,19 +63,20 @@ for i in "${array[@]}"; do
         tmux -L "$SESSION" new-window -t $regionPopIndex -n "$currentRegionPop"
     fi
 
-    vlan=vlan$(((regionPopIndex * 100) + popIndex))
+    # NOTE: these have to be named this way to work on macOS
+    iface=$(interface_name_from_index $(((regionPopIndex * 100) + popIndex)))
 
     if (( popIndex > 1 )); then
         tmux -L "$SESSION" split-window -v -p 50 -f
     fi
-    start_node "$SESSION" "$addr" "$vlan" "$addr" "$SYSCONFIG"
+    start_node "$SESSION" "$addr" "$iface" "$addr" "$SYSCONFIG"
     popIndex=$((popIndex + 1))
 done
 
 tmux -L "$SESSION" -2 attach-session
 
-echo "Killing session and removing VLANs"
+echo "Killing session and removing interfaces"
 tmux -L "$SESSION" kill-session
 destroy_beams
 destroy_serfs
-destroy_vlans
+destroy_net
