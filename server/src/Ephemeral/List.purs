@@ -43,7 +43,7 @@ delete' v (EList evs) =
       case uncons evs' of
         Nothing -> nil
         Just {head, tail} ->
-          if EData.extract head == v then evs'
+          if EData.extract head == v then tail
           else head : delete_ tail
   in EList $ delete_ evs
 

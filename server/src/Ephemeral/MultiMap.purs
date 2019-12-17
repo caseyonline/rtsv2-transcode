@@ -47,8 +47,7 @@ delete k v (EMultiMap m) =
   let
     deleteMember :: Maybe (EList v) -> Maybe (EList v)
     deleteMember Nothing = Nothing
-    deleteMember (Just list) = let list2 = EList.delete (EData.new (wrap 0) v) list
---    deleteMember (Just list) = let list2 = EList.delete' v list
+    deleteMember (Just list) = let list2 = EList.delete' v list
                                in
                                 if EList.null list2 then Nothing
                                 else Just list2
