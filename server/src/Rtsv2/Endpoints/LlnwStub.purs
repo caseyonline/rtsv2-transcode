@@ -36,7 +36,7 @@ streamDb =
                       , streamName: "my-cool-slot_1000"}
                       { role: Primary
                       , slot : { name: "my-cool-slot"
-                                , publishAuth: SlotPublishAuth { authType: Llnw
+                                , publishAuth: SlotPublishAuth { authType: Adobe
                                                                , username: "user"
                                                                , password: "password"}
                                 , subscribeValidation: false
