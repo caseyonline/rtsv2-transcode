@@ -32,9 +32,10 @@ import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Prim.Row (class Nub)
 import Record as Record
-import Rtsv2.Config (RegionName, ServerAddress, ServerLocation(..), PoPName)
+import Rtsv2.Config (ServerLocation(..))
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
+import Shared.Types (PoPName, RegionName, ServerAddress(..))
 import Simple.JSON as JSON
 
 type PoPInfo =
@@ -63,8 +64,9 @@ type PoP = { name :: PoPName
            , neighbours :: List PoPName
            }
 
-type PoPJsonFormat = Map String (Map String (List String))
-type WanJsonFormat = Map String (List String)
+type NetworkJsonFormat = Map RegionName PoPJsonFormat
+type PoPJsonFormat =  Map PoPName (List ServerAddress)
+type WanJsonFormat =  Map PoPName (List PoPName)
 
 data Msg = Tick
 
@@ -97,7 +99,7 @@ whereIsServer sa = Gen.doCall serverName
 
 init :: Config.PoPDefinitionConfig -> Effect State
 init config = do
-  hostname <- Env.hostname
+  hostname <- ServerAddress <$> Env.hostname
   eWanInfo <- readWanDefinition config
   wanInfo <-  case eWanInfo of
     Left e -> do
@@ -167,7 +169,7 @@ readWanDefinition config = do
 readAndProcessPoPDefinition :: Config.PoPDefinitionConfig -> ServerAddress -> WanJsonFormat -> Effect (Either MultipleErrors PoPInfo)
 readAndProcessPoPDefinition config hostName neighbourMap = do
   file <- readFile $ joinWith "/" [config.directory, config.popDefinitionFile]
-  pure $ processPoPJson hostName =<< (mapRegionJson neighbourMap <$> (decodeJson =<< file))
+  pure $ processPoPJson hostName =<< (mapRegionJson neighbourMap <$> (JSON.readJSON =<< file))
 
 
 readFile :: String -> Effect (Either MultipleErrors String)
@@ -175,14 +177,16 @@ readFile fileName = do
   jsonString <- File.readUtf8File fileName
   pure $ note' (\_ -> NonEmptyList.singleton $ ForeignError ("failed to read file " <> fileName)) jsonString
 
-decodeJson :: String -> Either MultipleErrors PoPJsonFormat
-decodeJson = JSON.readJSON
+mapRegionJson :: WanJsonFormat -> NetworkJsonFormat -> Map RegionName Region
+mapRegionJson neighbourMap nwMap =
+  -- let allPops =  Map.keys =<< Map.values nwMap
+  --     --newNeighbourMap = Map.mapMaybeWithKey (\k v -> case List.find k allPops of
 
-mapRegionJson :: WanJsonFormat -> PoPJsonFormat -> Map RegionName Region
-mapRegionJson neighbourMap =
-  Map.mapWithKey (\name pops -> {name : name, pops : mapPoPJson neighbourMap pops})
+  --     _ = ?foo
+  -- in
+  Map.mapWithKey (\name pops -> {name : name, pops : mapPoPJson neighbourMap pops}) nwMap
 
-mapPoPJson :: WanJsonFormat -> Map String (List String) -> Map PoPName PoP
+mapPoPJson :: WanJsonFormat -> PoPJsonFormat -> Map PoPName PoP
 mapPoPJson neighbourMap =
   Map.mapWithKey (\name servers ->
                    let neighbours = Map.lookup name neighbourMap # fromMaybe nil
@@ -207,7 +211,7 @@ processPoPJson hostName regions =
               Map.empty
               regions
 
-    otherServers :: List String
+    otherServers :: List ServerAddress
     otherServers = Map.lookup hostName servers
                    >>= (\sl -> lookupPop regions sl)
                    <#> (\p -> p.servers)
@@ -242,7 +246,7 @@ processPoPJson hostName regions =
 
 lookupPop :: Map RegionName Region -> ServerLocation -> Maybe PoP
 lookupPop regions (ServerLocation pop region) =
-  (\{pops : pops} -> Map.lookup pop pops) =<< Map.lookup region regions
+  (\{pops} -> Map.lookup pop pops) =<< Map.lookup region regions
 
 finalise :: State -> Either MultipleErrors State -> Effect State
 finalise state (Left errors) = do

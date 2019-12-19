@@ -9,8 +9,7 @@ function main {
   tmux -L "$session" kill-session > /dev/null 2>&1 || true
   destroy_beams
   destroy_serfs
-  destroy_vlans
-
+  destroy_net
 }
 
 main "$@"

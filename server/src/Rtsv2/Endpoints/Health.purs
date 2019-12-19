@@ -6,6 +6,7 @@ module Rtsv2.Endpoints.Health
 import Prelude
 
 import Data.Maybe (fromMaybe)
+import Data.Newtype (wrap)
 import Erl.Data.List (nil, (:))
 import Rtsv2.Endpoints.MimeType as MimeType
 import Rtsv2.IntraPoPAgent as IntraPoPAgent
@@ -27,5 +28,5 @@ healthCheck =
       let
         result = {intraPoPHealth,
                   transPoPHealth,
-                  currentTransPoP : fromMaybe "" currentTransPoP}
+                  currentTransPoP : fromMaybe (wrap "") currentTransPoP}
       Rest.result (JSON.writeJSON result) req state

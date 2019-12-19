@@ -8,6 +8,7 @@ import Prelude
 
 import Data.Foldable (minimum)
 import Data.Maybe (Maybe(..), fromMaybe')
+import Data.Newtype (unwrap)
 import Erl.Atom (atom)
 import Erl.Cowboy.Handlers.Rest (moved, notMoved)
 import Erl.Cowboy.Req (binding, path, setHeader)
@@ -15,23 +16,23 @@ import Erl.Data.List (List, nil, null, (:))
 import Erl.Data.Tuple (tuple2)
 import Logger as Logger
 import Rtsv2.Audit as Audit
-import Rtsv2.EdgeAgentSup as EdgeAgentSup
 import Rtsv2.EdgeAgent as EdgeAgent
+import Rtsv2.EdgeAgentSup as EdgeAgentSup
 import Rtsv2.IntraPoPAgent as IntraPoPAgent
-import Rtsv2.Config (ServerAddress)
 import Rtsv2.PoPDefinition as PoPDefintion
 import Rtsv2.Utils (member)
 import Shared.Stream (StreamId(..))
+import Shared.Types (ServerAddress(..))
 import Shared.Utils (lazyCrashIfMissing)
 import Stetson (StetsonHandler)
 import Stetson.Rest as Rest
 
 type ClientStartState = { streamId :: StreamId
-                   , isIngestAvailable :: Boolean
-                   , currentNodeHasEdge :: Boolean
-                   , thisNode :: ServerAddress
-                   , currentEdgeLocations :: List ServerAddress
-                 }
+                        , isIngestAvailable :: Boolean
+                        , currentNodeHasEdge :: Boolean
+                        , thisNode :: ServerAddress
+                        , currentEdgeLocations :: List ServerAddress
+                        }
 clientStart :: StetsonHandler ClientStartState
 clientStart =
   Rest.handler (\req ->
@@ -69,7 +70,7 @@ clientStart =
                             _ <- Logger.info "MovedTemp" {misc: {currentEdgeLocations}}
                             let
                               -- todo - ick - need functions to build URLs
-                              redirect server = "http://" <> server <> ":3000" <> (path req)
+                              redirect (ServerAddress server) = "http://" <> server <> ":3000" <> (path req)
                             case pickBest currentEdgeLocations of
                               Nothing -> Rest.result notMoved req state
                               Just server -> Rest.result (moved (redirect server)) req state
@@ -84,8 +85,9 @@ clientStart =
       _ <- Audit.clientStart streamId
       _ <- EdgeAgentSup.maybeStartAndAddClient streamId
       let
-        req2 = setHeader "X-ServedBy" thisNode req
+        req2 = setHeader "X-ServedBy" (unwrap thisNode) req
       Rest.result "" req2 state
+    pickBest :: List ServerAddress -> Maybe ServerAddress
     pickBest = minimum
 
 type ClientStopState = { streamId :: StreamId

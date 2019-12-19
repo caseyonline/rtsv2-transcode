@@ -40,7 +40,7 @@ main :: Effect Unit
 main =
   launchAff_ $ un Identity $ runSpecT testConfig [consoleReporter] do
     before_ (do
-                _ <- stopNodes
+                _ <- stopSession
                 launchNodes [
                   node "vlan101" "172.16.169.1" "test/config/sys.config"
                   , node "vlan102" "172.16.169.2" "test/config/sys.config"
@@ -48,7 +48,7 @@ main =
                   , node "vlan201" "172.16.170.1" "test/config/sys.config"
                   , node "vlan202" "172.16.170.2" "test/config/sys.config"
                   ]) do
-      after_ stopNodes do
+      after_ stopSession do
         describe "two node setup" do
           it "client requests stream on ingest node" do
             let
@@ -181,7 +181,6 @@ launchNodes sysconfigs = do
                     [ tn.addr
                     ]) sysconfigs
 
-stopNodes :: Aff Unit
-stopNodes = do
-  _ <- runProc "./scripts/stopNodes.sh" []
+stopSession :: Aff Unit
+stopSession = do
   runProc "./scripts/stopSession.sh" [sessionName]

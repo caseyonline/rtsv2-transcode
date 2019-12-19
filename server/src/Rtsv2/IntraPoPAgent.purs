@@ -47,8 +47,7 @@ import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Prim.Row (class Nub, class Union)
 import Record as Record
-import Rtsv2.Config (ServerAddress) 
-import Rtsv2.Config as Config 
+import Rtsv2.Config as Config
 import Rtsv2.Env as Env
 import Rtsv2.Health (Health, percentageToHealth)
 import Rtsv2.PoPDefinition as PoPDefinition
@@ -56,6 +55,7 @@ import Serf (IpAndPort)
 import Serf as Serf
 import Shared.Agent as Agent
 import Shared.Stream (StreamId(..), StreamVariantId(..))
+import Shared.Types (ServerAddress(..))
 
 type State
   = { transPoPApi :: Config.TransPoPAgentApi
@@ -106,12 +106,12 @@ isStreamIngestAvailable streamId =
 isIngestActive :: StreamVariantId -> Effect Boolean
 isIngestActive (StreamVariantId s v) = Gen.call serverName \state -> CallReply false state
 
-whereIsIngestAggregator :: StreamVariantId -> Effect (Maybe String)
+whereIsIngestAggregator :: StreamVariantId -> Effect (Maybe ServerAddress)
 whereIsIngestAggregator (StreamVariantId streamId _) =
   Gen.call serverName \state ->
     CallReply (EMap.lookup (StreamId streamId) state.streamAggregatorLocations) state
 
-whereIsStreamRelay :: StreamId -> Effect (Maybe String)
+whereIsStreamRelay :: StreamId -> Effect (Maybe ServerAddress)
 whereIsStreamRelay streamId =
   Gen.call serverName \state ->
     CallReply (EMap.lookup streamId state.streamRelayLocations) state
@@ -140,7 +140,7 @@ announceEdgeIsAvailable streamId =
 
 -- Called by EdgeAgent to indicate edge on this node has stopped
 announceEdgeStopped :: StreamId -> Effect Unit
-announceEdgeStopped streamId = 
+announceEdgeStopped streamId =
   Gen.doCast serverName
     $ \state@{ edgeLocations, thisNode } -> do
         _ <- logInfo "Local edge stopped" {streamId}
@@ -356,7 +356,7 @@ handleStreamStateChange stateChange streamId server intraMessage
 handleEdgeStateChange :: EdgeState -> StreamId -> ServerAddress -> State -> Effect State
 handleEdgeStateChange stateChange streamId server state =
   case stateChange of
-    EdgeAvailable 
+    EdgeAvailable
       | server == state.thisNode -> do
         -- edgeAvailable on this node - we can just ignore, since appropriate action taken in announceEdgeIsActive
         pure state
@@ -366,7 +366,7 @@ handleEdgeStateChange stateChange streamId server state =
         newEdgeLocations <- MultiMap.insert' streamId server  state.edgeLocations
         pure $ state { edgeLocations = newEdgeLocations }
 
-    EdgeStopped 
+    EdgeStopped
       | server == state.thisNode -> do
         -- edgeStopped on this node - we can just ignore, since appropriate action taken in announceEdgeStopped
         pure state
@@ -380,14 +380,14 @@ membersAlive :: (List Serf.SerfMember) -> State -> Effect State
 membersAlive members state = do
   _ <- logInfo "Members Alive" { members: _.name <$> members }
   let
-    newMembers = foldl (\acc member@{ name } -> Map.insert name member acc) state.members members
+    newMembers = foldl (\acc member@{ name } -> Map.insert (ServerAddress name) member acc) state.members members
   pure state { members = newMembers }
 
 membersLeft :: (List Serf.SerfMember) -> State -> Effect State
 membersLeft members state = do
   _ <- logInfo "Members Left" { members: _.name <$> members }
   let
-    newMembers = foldl (\acc { name } -> Map.delete name acc) state.members members
+    newMembers = foldl (\acc { name } -> Map.delete (ServerAddress name) acc) state.members members
   pure state { members = newMembers }
 
 garbageCollect :: State -> Effect State
@@ -410,7 +410,7 @@ garbageCollect state@{ expireThreshold
 joinAllSerf :: State -> Effect Unit
 joinAllSerf { config, serfRpcAddress, members } =
   let
-    serverAddressToSerfAddress s =
+    serverAddressToSerfAddress (ServerAddress s) =
       { ip: s
       , port: config.bindPort
       }
