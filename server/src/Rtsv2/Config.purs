@@ -8,6 +8,7 @@ module Rtsv2.Config
   , EdgeAgentConfig
   , IntraPoPAgentApi
   , TransPoPAgentApi
+  , LlnwApiConfig
   , webConfig
   , nodeConfig
   , popDefinitionConfig
@@ -16,6 +17,7 @@ module Rtsv2.Config
   , ingestAggregatorAgentConfig
   , edgeAgentConfig
   , rtmpIngestConfig
+  , llnwApiConfig
   ) where
 
 import Prelude
@@ -97,6 +99,10 @@ type RtmpIngestConfig
     , nbAcceptors :: Int
     }
 
+type LlnwApiConfig
+  = { streamPublishUrl :: String
+    }
+
 foreign import getEnv_ :: Atom -> Effect Foreign
 foreign import getMap_ :: Atom -> Effect Foreign
 
@@ -138,6 +144,10 @@ edgeAgentConfig = do
 rtmpIngestConfig :: Effect RtmpIngestConfig
 rtmpIngestConfig = do
   getMandatoryRecord "rtmpIngestConfig"
+
+llnwApiConfig :: Effect LlnwApiConfig
+llnwApiConfig = do
+  getMandatoryRecord "llnwApiConfig"
 
 get :: forall a e. (Foreign -> ExceptT e Identity a) -> String -> Effect (Maybe a)
 get f v = hush <<< runExcept <<< f <$> getEnv_ (atom v)

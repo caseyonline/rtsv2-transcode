@@ -11,7 +11,7 @@ startServerImpl(Left, Right, {ipv4, O1, O2, O3, O4}, Port, NbAcceptors, Callback
       case rtmp_server:start_listener({rtmp_listener, Port},
                                       NbAcceptors,
                                       [{ip, {O1, O2, O3, O4}}, {port, Port}],
-                                      [{dispatch, [{"source", rtsv2_rtmp_ingest_handler, [Callbacks]}]},
+                                      [{dispatch, [{'*', rtsv2_rtmp_ingest_handler, [Callbacks]}]},
                                        {config, #rtmp_server_config{}}]) of
         {ok, _} -> Right;
         {error, {alread_started, _}} -> Right;

@@ -30,10 +30,10 @@ import Unsafe.Coerce (unsafeCoerce)
 
 streamDb :: Map StreamPublish StreamDetails
 streamDb =
-  fromFoldable (Tuple { host: "127.0.0.1"
+  fromFoldable (Tuple { host: "172.16.171.5"
                       , protocol: Rtmp
                       , shortname: "mmddev001"
-                      , streamName: "my-cool-slot"}
+                      , streamName: "my-cool-slot_1000"}
                       { role: Primary
                       , slot : { name: "my-cool-slot"
                                 , publishAuth: SlotPublishAuth { authType: Llnw

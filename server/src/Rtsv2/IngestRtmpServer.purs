@@ -6,10 +6,14 @@ module Rtsv2.IngestRtmpServer
 
 import Prelude
 
-import Data.Either (Either(..))
+import Data.Bifunctor (lmap)
+import Data.Either (Either(..), hush, note)
+import Data.List.NonEmpty (singleton)
+import Data.Maybe (Maybe)
+import Debug.Trace (spy)
 import Effect (Effect)
 import Erl.Utils as ErlUtils
-import Foreign (Foreign)
+import Foreign (Foreign, ForeignError(..))
 import Pinto (ServerName(..))
 import Pinto as Pinto
 import Pinto.Gen as Gen
@@ -17,12 +21,16 @@ import Rtsv2.Config as Config
 import Rtsv2.Env as Env
 import Rtsv2.IngestAgent as IngestAgent
 import Rtsv2.IngestAgentInstanceSup as IngestAgentInstanceSup
+import Rtsv2.LlnwApiTypes (StreamPublish, StreamPublishProtocol(..), StreamDetails)
 import Serf (Ip)
 import Shared.Stream (StreamVariantId(..))
+import Simple.JSON as JSON
+import SpudGun as SpudGun
 
 type Callbacks
   = { ingestStarted :: String -> String -> Effect Unit
     , ingestStopped :: String -> String -> Effect Unit
+    , checkSlot :: String -> String -> String -> Effect (Maybe StreamDetails)
     }
 
 isAvailable :: Effect Boolean
@@ -38,17 +46,27 @@ foreign import startServerImpl :: (Foreign -> Either Foreign Unit) -> Either For
 
 init :: forall a. a -> Effect Unit
 init _ = do
+  interfaceIp <- Env.publicInterfaceIp
+  {port, nbAcceptors} <- Config.rtmpIngestConfig
+  {streamPublishUrl} <- Config.llnwApiConfig
   let
+    callbacks = { ingestStarted
+                , ingestStopped
+                , checkSlot: checkSlot streamPublishUrl
+                }
+  _ <- startServerImpl Left (Right unit) interfaceIp port nbAcceptors callbacks
+  pure $ unit
+  where
     ingestStarted streamId streamVariantId = IngestAgentInstanceSup.startIngest (StreamVariantId streamId streamVariantId)
 
     ingestStopped streamId streamVariantId = IngestAgent.stopIngest (StreamVariantId streamId streamVariantId)
-    
-    callbacks = { ingestStarted
-                , ingestStopped
-                }
-                
-  interfaceIp <- Env.publicInterfaceIp
-  {port, nbAcceptors} <- Config.rtmpIngestConfig
-  _ <- startServerImpl Left (Right unit) interfaceIp port nbAcceptors callbacks
-  pure $ unit
 
+checkSlot :: String -> String -> String -> String -> Effect (Maybe StreamDetails)
+checkSlot url host shortname streamName = do
+  restResult <- SpudGun.post url (JSON.writeJSON ({host
+                                                  , protocol: Rtmp
+                                                  , shortname
+                                                  , streamName} :: StreamPublish))
+  let
+    streamPublish = JSON.readJSON =<< lmap (\s -> (singleton (ForeignError s))) restResult
+  pure $ hush streamPublish

@@ -1,3 +1,4 @@
+[ ] - SpudGun.purs is inconsistent in Maybe vs Either in results
 [ ] - metrics (rrt) for trans-pop neigbours
 [ ] - test4 - IngestAggregator with a name clash - 2 things running, should be 1
 [ ] - test5 - Multiple trans-pops with a name clash - 2 things running, should be 1
@@ -32,5 +33,5 @@
 [x] - /alive should include healthcheck - indicate if joined to enough peers
 [x] - separate intra-pop serf from trans-pop serf messages
 [x] - currentTransPoP appears to be wrong sometimes...
-[x] - transPoP leave - ensure serf restarts (systemd) and maybe assert on each tick that still not a memeber
+[x] - transPoP leave - ensure serf restarts (systemd) and maybe assert on each tick that still not a member
 [x] - reconnect stream if we get a stream-failed (intra and trans) - will need to call serf.members

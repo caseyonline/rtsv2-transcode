@@ -2,6 +2,8 @@
 -- * Unique ID per slot (64 bit int?)
 -- * What does 415 error indicate?
 -- * is 'profiles' within SlotDetails guaranteed to be non-empty?
+-- * Capitization differs on shortname vs streamName
+-- * Can slot details change when stream is live - assuming not
 
 module Rtsv2.LlnwApiTypes
        ( HlsPushAuth
