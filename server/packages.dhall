@@ -68,7 +68,7 @@ let overrides =
           , repo =
               "ssh://git@github.com/id3as/purescript-erl-stetson.git"
           , version =
-              "158afd072c7d33364dfa3e0d09497541954c1181"
+              "8688462267530254365bda284f06a162672de0c1"
           }
       }
 
