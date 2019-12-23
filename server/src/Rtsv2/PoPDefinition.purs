@@ -5,6 +5,7 @@ module Rtsv2.PoPDefinition
        , thisNode
        , whereIsServer
        , thisLocation
+       , thisPoP
        , PoP
        , Region
        ) where
@@ -17,10 +18,11 @@ import Data.Foldable (foldl)
 import Data.List.NonEmpty as NonEmptyList
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.String (joinWith)
+import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
-import Erl.Data.List (List, nil, (:))
-import Erl.Data.Map (Map)
+import Erl.Data.List (List, elem, nil, (:))
+import Erl.Data.Map (Map, mapMaybeWithKey)
 import Erl.Data.Map as Map
 import File as File
 import Foreign (Foreign, ForeignError(..), MultipleErrors)
@@ -43,6 +45,7 @@ type PoPInfo =
   , servers :: Map ServerAddress ServerLocation
   , thisLocation :: ServerLocation
   , otherServersInThisPoP :: List ServerAddress
+  , thisPoP :: PoP
   , otherPoPs :: List PoP
   }
 
@@ -51,6 +54,7 @@ type State =  { config :: Config.PoPDefinitionConfig
               , servers :: Map ServerAddress ServerLocation
               , thisNode :: ServerAddress
               , thisLocation :: ServerLocation
+              , thisPoP :: PoP
               , otherServersInThisPoP :: List ServerAddress
               , otherPoPs :: List PoP
               }
@@ -64,9 +68,9 @@ type PoP = { name :: PoPName
            , neighbours :: List PoPName
            }
 
-type NetworkJsonFormat = Map RegionName PoPJsonFormat
-type PoPJsonFormat =  Map PoPName (List ServerAddress)
-type WanJsonFormat =  Map PoPName (List PoPName)
+type NetworkJson = Map RegionName PoPJson
+type PoPJson =  Map PoPName (List ServerAddress)
+type NeighbourMapJson =  Map PoPName (List PoPName)
 
 data Msg = Tick
 
@@ -79,6 +83,9 @@ startLink args =
 
 thisNode :: Effect ServerAddress
 thisNode = Gen.doCall serverName (\s -> pure $ CallReply s.thisNode s)
+
+thisPoP :: Effect PoP
+thisPoP = Gen.doCall serverName (\s -> pure $ CallReply s.thisPoP s)
 
 getOtherServersForThisPoP :: Effect (List ServerAddress)
 getOtherServersForThisPoP = Gen.call serverName (\state@{otherServersInThisPoP} ->
@@ -100,14 +107,14 @@ whereIsServer sa = Gen.doCall serverName
 init :: Config.PoPDefinitionConfig -> Effect State
 init config = do
   hostname <- ServerAddress <$> Env.hostname
-  eWanInfo <- readWanDefinition config
-  wanInfo <-  case eWanInfo of
+  eNeighbourMap <- readNeighbourMap config
+  neighbourMap <-  case eNeighbourMap of
     Left e -> do
                _ <- Logger.warning "Failed to process WAN definition file" {misc: e}
                unsafeCrashWith "invalid WAN definition file"
     Right r -> pure r
 
-  ePopInfo <- readAndProcessPoPDefinition config hostname wanInfo
+  ePopInfo <- readAndProcessPoPDefinition config hostname neighbourMap
   popInfo <-  case ePopInfo of
     Left e -> do
                _ <- Logger.warning "Failed to process pop definition file" {misc: e}
@@ -120,8 +127,9 @@ init config = do
         , servers : popInfo.servers
         , thisNode : hostname
         , thisLocation : popInfo.thisLocation
-        , otherServersInThisPoP : popInfo.otherServersInThisPoP
+        , thisPoP : popInfo.thisPoP
         , otherPoPs : popInfo.otherPoPs
+        , otherServersInThisPoP : popInfo.otherServersInThisPoP
         }
 
   _ <- logInfo "PoPDefinition Starting" {thisNode : hostname,
@@ -129,18 +137,17 @@ init config = do
   _ <- Timer.sendAfter serverName 1000 Tick
   pure state
 
-
 handleInfo :: Msg -> State -> Effect (CastResult State)
 handleInfo msg state =
   case msg of
     Tick ->
       do
-        eWanInfo <- readWanDefinition state.config
-        newState <-  case eWanInfo of
+        eNeighbourMap <- readNeighbourMap state.config
+        newState <-  case eNeighbourMap of
           Left e -> do _ <- Logger.warning "Failed to process WAN definition file" {misc: e}
                        pure state
-          Right wanInfo -> do
-            ePopInfo <- readAndProcessPoPDefinition state.config state.thisNode wanInfo
+          Right neighbourMap -> do
+            ePopInfo <- readAndProcessPoPDefinition state.config state.thisNode neighbourMap
             case ePopInfo of
 
               Left e -> do _ <- Logger.warning "Failed to process pop definition file" {misc: e}
@@ -161,32 +168,36 @@ handleInfo msg state =
         _ <- Timer.sendAfter serverName 1000 Tick
         pure $ CastNoReply newState
 
-readWanDefinition :: Config.PoPDefinitionConfig -> Effect (Either MultipleErrors WanJsonFormat)
-readWanDefinition config = do
+readNeighbourMap :: Config.PoPDefinitionConfig -> Effect (Either MultipleErrors NeighbourMapJson)
+readNeighbourMap config = do
   file <- readFile $ joinWith "/" [config.directory, config.wanDefinitionFile]
   pure $ JSON.readJSON =<< file
 
-readAndProcessPoPDefinition :: Config.PoPDefinitionConfig -> ServerAddress -> WanJsonFormat -> Effect (Either MultipleErrors PoPInfo)
+readAndProcessPoPDefinition :: Config.PoPDefinitionConfig -> ServerAddress -> NeighbourMapJson -> Effect (Either MultipleErrors PoPInfo)
 readAndProcessPoPDefinition config hostName neighbourMap = do
   file <- readFile $ joinWith "/" [config.directory, config.popDefinitionFile]
   pure $ processPoPJson hostName =<< (mapRegionJson neighbourMap <$> (JSON.readJSON =<< file))
-
 
 readFile :: String -> Effect (Either MultipleErrors String)
 readFile fileName = do
   jsonString <- File.readUtf8File fileName
   pure $ note' (\_ -> NonEmptyList.singleton $ ForeignError ("failed to read file " <> fileName)) jsonString
 
-mapRegionJson :: WanJsonFormat -> NetworkJsonFormat -> Map RegionName Region
+mapRegionJson :: NeighbourMapJson -> NetworkJson -> Map RegionName Region
 mapRegionJson neighbourMap nwMap =
-  -- let allPops =  Map.keys =<< Map.values nwMap
-  --     --newNeighbourMap = Map.mapMaybeWithKey (\k v -> case List.find k allPops of
+  let allPops = Map.keys =<< Map.values nwMap
+      filteredNeighbours = mapMaybeWithKey (\k v ->
+                                             if elem k allPops then
+                                               Just $ filter (flip elem allPops) v
+                                             else
+                                               Nothing
+                                           )
+                           neighbourMap
 
-  --     _ = ?foo
-  -- in
-  Map.mapWithKey (\name pops -> {name : name, pops : mapPoPJson neighbourMap pops}) nwMap
+  in
+   Map.mapWithKey (\name pops -> {name : name, pops : mapPoPJson filteredNeighbours pops}) nwMap
 
-mapPoPJson :: WanJsonFormat -> PoPJsonFormat -> Map PoPName PoP
+mapPoPJson :: NeighbourMapJson -> PoPJson -> Map PoPName PoP
 mapPoPJson neighbourMap =
   Map.mapWithKey (\name servers ->
                    let neighbours = Map.lookup name neighbourMap # fromMaybe nil
@@ -218,31 +229,36 @@ processPoPJson hostName regions =
                    <#> filter (\s -> s /= hostName)
                    # fromMaybe nil
 
-    maybeThisPop = Map.lookup hostName servers
+    maybeThisLocation = Map.lookup hostName servers
 
-    otherPoPs :: PoPName -> List PoP
-    otherPoPs thisPoP = let
-                           addPoPToList list pop | pop.name == thisPoP = list
-                                                 | otherwise = pop : list
-                        in
-                         foldl (\acc region ->
-                                 foldl addPoPToList
-                                 acc
-                                 region.pops
-                               )
-                         nil
-                         regions
+    partitionPoPs :: PoPName -> Tuple (Maybe PoP) (List PoP)
+    partitionPoPs thisPoP' =
+      let
+        updateAcc (Tuple mThisPop  otherPops) pop
+          | pop.name == thisPoP' = Tuple (Just pop) otherPops
+          | otherwise = Tuple mThisPop $ pop : otherPops
+      in
+        foldl (\acc region ->
+                foldl updateAcc acc region.pops
+              )
+        (Tuple Nothing nil)
+        regions
 
   in
-   case maybeThisPop of
+   case maybeThisLocation of
      Nothing -> Left $ NonEmptyList.singleton $ ForeignError "This node not present in any pop"
      Just location@(ServerLocation popName _) ->
-       Right { regions: regions
-             , servers: servers
-             , otherServersInThisPoP: otherServers
-             , otherPoPs: otherPoPs popName
-             , thisLocation: location
-             }
+       case partitionPoPs popName of
+         (Tuple (Just thisPoP') otherPoPs) ->
+            Right { regions: regions
+                  , servers: servers
+                  , otherServersInThisPoP: otherServers
+                  , otherPoPs: otherPoPs
+                  , thisLocation: location
+                  , thisPoP: thisPoP'
+                  }
+         _ ->
+           Left $ NonEmptyList.singleton $ ForeignError "This pop is not present in the neighbours map"
 
 lookupPop :: Map RegionName Region -> ServerLocation -> Maybe PoP
 lookupPop regions (ServerLocation pop region) =

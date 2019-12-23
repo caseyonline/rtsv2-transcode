@@ -18,7 +18,6 @@ import Prelude
 
 import Data.FoldableWithIndex (foldlWithIndex)
 import Data.Maybe (Maybe(..), fromMaybe)
-import Data.Newtype (wrap)
 import Effect (Effect)
 import Ephemeral (EData)
 import Ephemeral as EData
