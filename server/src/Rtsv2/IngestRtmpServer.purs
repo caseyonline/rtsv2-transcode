@@ -36,7 +36,7 @@ type Callbacks
 isAvailable :: Effect Boolean
 isAvailable = ErlUtils.isRegistered "ingestRtmpServer"
 
-serverName :: ServerName Unit Unit
+serverName :: ServerName State Unit
 serverName = Local "ingestRtmpServer"
 
 startLink :: forall a. a -> Effect Pinto.StartLinkResult
@@ -44,7 +44,12 @@ startLink args = Gen.startLink serverName (init args) Gen.defaultHandleInfo
 
 foreign import startServerImpl :: (Foreign -> Either Foreign Unit) -> Either Foreign Unit -> Ip -> Int -> Int -> Callbacks -> Effect (Either Foreign Unit)
 
-init :: forall a. a -> Effect Unit
+type State =
+  {
+  }
+
+
+init :: forall a. a -> Effect State
 init _ = do
   interfaceIp <- Env.publicInterfaceIp
   {port, nbAcceptors} <- Config.rtmpIngestConfig
@@ -55,7 +60,7 @@ init _ = do
                 , checkSlot: checkSlot streamPublishUrl
                 }
   _ <- startServerImpl Left (Right unit) interfaceIp port nbAcceptors callbacks
-  pure $ unit
+  pure $ {}
   where
     ingestStarted streamId streamVariantId = IngestAgentInstanceSup.startIngest (StreamVariantId streamId streamVariantId)
 

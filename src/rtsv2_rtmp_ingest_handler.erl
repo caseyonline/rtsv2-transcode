@@ -45,86 +45,186 @@ init(Rtmp, ConnectArgs, [#{ingestStarted := IngestStarted,
                             host = Host
                            },
      app_config = #rtmp_app_config{
-                     application = Application
+                     %%application = Application
                     },
-     stream_name = StreamName,
+     %%stream_name = StreamName,
      query = Query
     } = rtmp_utils:parse_url(TcUrl),
 
   %% Init is called once the stream is connected.  Here we can call back into purs
   %% to get slot details, auth types etc, and fail the stream if we wish...
 
-  Reply = (((CheckSlot(Host))(Application))(StreamName))(),
+  Application = <<"mmddev001">>,
+  StreamName = <<"my-cool-slot_1000">>,
+  Protocol = llnw,
 
-  case Reply of
-    {nothing} ->
-      {stop, rejected};
+  case Query of
+    #{<<"authmod">> := <<"adobe">>,
+      <<"user">> := User,
+      <<"challenge">> := ClientChallenge,
+      <<"response">> := ClientResponse} ->
+      %% We have a adobe completed digest
 
-    %% HERE #{push => [],role => {primary},slot => #{name => <<"my-cool-slot">>,profiles => [#{bitrate => 1000000,name => <<"100-">>,streamName => <<"my-cool-slot_1000">>}],publishAuth => #{authType => {llnw},password => <<"password">>,username => <<"user">>},subscribeValidation => false}}:
+      Reply = (((CheckSlot(Host))(Application))(StreamName))(),
 
-    {just, #{slot := #{publishAuth := #{authType := {adobe},
-                                        username := ExpectedUserName,
-                                        password := ExpectedPassword}}}} ->
+      case Reply of
+        {nothing} ->
+          {stop, rejected};
 
-      case maps:find(<<"authmod">>, Query) of
-        error ->
-          ?INFO("No authmod - start authentication"),
-          {authenticate, adobe};
+        {just, #{slot := #{publishAuth := #{authType := {adobe},
+                                            username := ExpectedUserName,
+                                            password := ExpectedPassword}}}} ->
 
-        {ok, <<"adobe">>} ->
-          case maps:find(<<"challenge">>, Query) of
-            error ->
-              case maps:find(<<"user">>, Query) of
-                error ->
-                  ?INFO("No username - start authentication"),
-                  {authenticate, adobe};
+          case rtmp:compare_abobe_challenge_response(ExpectedUserName,
+                                                     <<"NzEwNzk">>,
+                                                     ExpectedPassword,
+                                                     <<"ODE3MDQ3NTYz">>,
+                                                     ClientChallenge,
+                                                     ClientResponse) of
+            true ->
+              {ok, State} = start_workflow(Rtmp),
+              {ok, State#?state{ingestStarted = IngestStarted,
+                                ingestStopped = IngestStopped,
+                                checkSlot = CheckSlot}};
 
-                {ok, UserName} when UserName == ExpectedUserName ->
-                  ?INFO("Username Matches - do next phase"),
-                  {authenticate, adobe, UserName, <<"NzEwNzk">>, <<"ODE3MDQ3NTYz">>};
-
-                _ ->
-                  ?INFO("Username does not match, fail"),
-                  {authenticate_fail, adobe, unknown_user}
-              end;
-
-            {ok, ClientChallenge} ->
-              case maps:find(<<"response">>, Query) of
-                error ->
-                  ?INFO("Challenge but not response, fail"),
-                  {stop, rejected};
-                {ok, ClientResponse} ->
-                  case rtmp:compare_challenge_response(ExpectedUserName,
-                                                       <<"NzEwNzk">>,
-                                                       ExpectedPassword,
-                                                       <<"ODE3MDQ3NTYz">>,
-                                                       ClientChallenge,
-                                                       ClientResponse) of
-                    true ->
-                      {ok, State} = start_workflow(Rtmp),
-                      {ok, State#?state{ingestStarted = IngestStarted,
-                                        ingestStopped = IngestStopped,
-                                        checkSlot = CheckSlot}};
-
-                    false ->
-                      ?INFO("Challenge failed"),
-                      {authenticate_fail, adobe, invalid_password}
-                  end
-              end
-          end;
-
-        _ ->
-          ?INFO("Authmod does not match, fail"),
-          {stop, rejected}
+            false ->
+              ?SLOG_INFO("Challenge failed", #{client_challenge => ClientChallenge,
+                                               client_response => ClientResponse}),
+              {authenticate_fail, adobe, invalid_password}
+          end
       end;
 
-    {just, StreamDetails} ->
-      {ok, State} = start_workflow(Rtmp),
+    #{<<"authmod">> := <<"adobe">>,
+      <<"user">> := UserName} ->
+      ?INFO("Username Matches - do next phase"),
+      {authenticate, adobe, UserName, <<"NzEwNzk">>, <<"ODE3MDQ3NTYz">>};
 
-      {ok, State#?state{ingestStarted = IngestStarted,
-                        ingestStopped = IngestStopped,
-                        checkSlot = CheckSlot}}
+    #{<<"authmod">> := <<"llnw">>,
+      <<"user">> := User,
+      <<"nonce">> := ClientOurNonce,
+      <<"cnonce">> := ClientNonce,
+      <<"nc">> := ClientNc,
+      <<"response">> := ClientResponse} ->
+      %% We have a llnw completed digest
+
+      Reply = (((CheckSlot(Host))(Application))(StreamName))(),
+
+      case Reply of
+        {nothing} ->
+          {stop, rejected};
+
+        {just, #{slot := #{publishAuth := #{authType := {adobe},
+                                            username := ExpectedUserName,
+                                            password := ExpectedPassword}}}} ->
+
+          Realm = <<"live">>,
+          Method = <<"publish">>,
+          Nonce = <<"ODE3MDQ3NTYz">>,
+          Qop = <<"auth">>,
+
+          case rtmp:compare_llnw_challenge_response(ExpectedUserName,
+                                                    Realm,
+                                                    ExpectedPassword,
+                                                    Method,
+                                                    Application,
+                                                    Nonce,
+                                                    ClientNc,
+                                                    ClientNonce,
+                                                    Qop,
+                                                    ClientResponse) of
+            true ->
+              {ok, State} = start_workflow(Rtmp),
+              {ok, State#?state{ingestStarted = IngestStarted,
+                                ingestStopped = IngestStopped,
+                                checkSlot = CheckSlot}};
+
+            false ->
+              ?SLOG_INFO("Challenge failed", #{client_response => ClientResponse}),
+              {authenticate_fail, adobe, invalid_password}
+          end
+      end;
+
+
+    #{<<"authmod">> := <<"llnw">>,
+      <<"user">> := UserName} ->
+      ?INFO("Username Matches - do next phase"),
+      {authenticate, llnw, UserName, <<"ODE3MDQ3NTYz">>};
+
+    #{} ->
+      ?INFO("No authmod - start authentication"),
+      {authenticate, Protocol}
   end.
+
+  %% Reply = (((CheckSlot(Host))(Application))(StreamName))(),
+
+  %% case Reply of
+  %%   {nothing} ->
+  %%     {stop, rejected};
+
+  %%   {just, #{slot := #{publishAuth := #{authType := {adobe},
+  %%                                       username := ExpectedUserName,
+  %%                                       password := ExpectedPassword}}}} ->
+
+  %%     case maps:find(<<"authmod">>, Query) of
+  %%       error ->
+  %%         ?INFO("No authmod - start authentication"),
+  %%         {authenticate, Protocol};
+
+  %%       {ok, <<"adobe">>} ->
+  %%         case maps:find(<<"challenge">>, Query) of
+  %%           error ->
+  %%             case maps:find(<<"user">>, Query) of
+  %%               error ->
+  %%                 ?INFO("No username - start authentication"),
+  %%                 {authenticate, adobe};
+
+  %%               {ok, UserName} when UserName == ExpectedUserName ->
+  %%                 ?INFO("Username Matches - do next phase"),
+  %%                 {authenticate, adobe, UserName, <<"NzEwNzk">>, <<"ODE3MDQ3NTYz">>};
+
+  %%               _ ->
+  %%                 ?INFO("Username does not match, fail"),
+  %%                 {authenticate_fail, adobe, unknown_user}
+  %%             end;
+
+  %%           {ok, ClientChallenge} ->
+  %%             case maps:find(<<"response">>, Query) of
+  %%               error ->
+  %%                 ?INFO("Challenge but not response, fail"),
+  %%                 {stop, rejected};
+  %%               {ok, ClientResponse} ->
+  %%                 case rtmp:compare_challenge_response(ExpectedUserName,
+  %%                                                      <<"NzEwNzk">>,
+  %%                                                      ExpectedPassword,
+  %%                                                      <<"ODE3MDQ3NTYz">>,
+  %%                                                      ClientChallenge,
+  %%                                                      ClientResponse) of
+  %%                   true ->
+  %%                     {ok, State} = start_workflow(Rtmp),
+  %%                     {ok, State#?state{ingestStarted = IngestStarted,
+  %%                                       ingestStopped = IngestStopped,
+  %%                                       checkSlot = CheckSlot}};
+
+  %%                   false ->
+  %%                     ?SLOG_INFO("Challenge failed", #{client_challenge => ClientChallenge,
+  %%                                                      client_response => ClientResponse}),
+  %%                     {authenticate_fail, adobe, invalid_password}
+  %%                 end
+  %%             end
+  %%         end;
+
+  %%       _ ->
+  %%         ?INFO("Authmod does not match, fail"),
+  %%         {stop, rejected}
+  %%     end;
+
+  %%   {just, StreamDetails} ->
+  %%     {ok, State} = start_workflow(Rtmp),
+
+  %%     {ok, State#?state{ingestStarted = IngestStarted,
+  %%                       ingestStopped = IngestStopped,
+  %%                       checkSlot = CheckSlot}}
+  %% end.
 
 handle(State = #?state{ingestStarted = IngestStarted,
                        ingestStopped = IngestStopped}) ->
