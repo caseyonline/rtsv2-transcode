@@ -8,6 +8,7 @@ import Prelude
 
 import Data.Bifunctor (lmap)
 import Data.Either (Either(..), hush, note)
+import Data.Foldable (any)
 import Data.List.NonEmpty (singleton)
 import Data.Maybe (Maybe)
 import Debug.Trace (spy)
@@ -28,15 +29,15 @@ import Simple.JSON as JSON
 import SpudGun as SpudGun
 
 type Callbacks
-  = { ingestStarted :: String -> String -> Effect Unit
-    , ingestStopped :: String -> String -> Effect Unit
+  = { ingestStarted :: StreamDetails -> String -> Effect Boolean
+    , ingestStopped :: StreamDetails -> String -> Effect Unit
     , checkSlot :: String -> String -> String -> Effect (Maybe StreamDetails)
     }
 
 isAvailable :: Effect Boolean
 isAvailable = ErlUtils.isRegistered "ingestRtmpServer"
 
-serverName :: ServerName Unit Unit
+serverName :: ServerName State Unit
 serverName = Local "ingestRtmpServer"
 
 startLink :: forall a. a -> Effect Pinto.StartLinkResult
@@ -44,7 +45,12 @@ startLink args = Gen.startLink serverName (init args) Gen.defaultHandleInfo
 
 foreign import startServerImpl :: (Foreign -> Either Foreign Unit) -> Either Foreign Unit -> Ip -> Int -> Int -> Callbacks -> Effect (Either Foreign Unit)
 
-init :: forall a. a -> Effect Unit
+type State =
+  {
+  }
+
+
+init :: forall a. a -> Effect State
 init _ = do
   interfaceIp <- Env.publicInterfaceIp
   {port, nbAcceptors} <- Config.rtmpIngestConfig
@@ -55,11 +61,20 @@ init _ = do
                 , checkSlot: checkSlot streamPublishUrl
                 }
   _ <- startServerImpl Left (Right unit) interfaceIp port nbAcceptors callbacks
-  pure $ unit
+  pure $ {}
   where
-    ingestStarted streamId streamVariantId = IngestAgentInstanceSup.startIngest (StreamVariantId streamId streamVariantId)
+    ingestStarted { role
+                  , slot : {name : streamId, profiles}
+                  } streamVariantId =
+      case any (\{streamName: slotStreamName} -> slotStreamName == streamVariantId) profiles of
+        true ->
+          IngestAgentInstanceSup.startIngest (StreamVariantId streamId streamVariantId)
+          <#> const true
+        false ->
+          pure $ false
 
-    ingestStopped streamId streamVariantId = IngestAgent.stopIngest (StreamVariantId streamId streamVariantId)
+    ingestStopped { role
+                   , slot : {name : streamId}} streamVariantId = IngestAgent.stopIngest (StreamVariantId streamId streamVariantId)
 
 checkSlot :: String -> String -> String -> String -> Effect (Maybe StreamDetails)
 checkSlot url host shortname streamName = do
