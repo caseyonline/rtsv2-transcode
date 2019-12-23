@@ -158,12 +158,19 @@ handle(State = #?state{rtmp_pid = Rtmp,
 
       StreamName = list_to_binary(StreamNameStr),
 
-      unit = ((IngestStarted(Slot))(StreamName))(),
+      case ((IngestStarted(Slot))(StreamName))() of
+        true ->
+          ok = rtmp:accept_publish(Rtmp, StreamId, ClientId, Path),
+          {ok, WorkflowPid} = start_workflow(Rtmp),
 
-      {ok, WorkflowPid} = start_workflow(Rtmp),
+          %% Stream is now connected - we block in here, when we return the rtmp_server instance will close
+          workflow_loop(StreamName, WorkflowPid, State);
 
-      %% Stream is now connected - we block in here, when we return the rtmp_server instance will close
-      workflow_loop(StreamName, WorkflowPid, State);
+        false ->
+          ?SLOG_INFO("Invalid stream name"),
+          rtmp:close(Rtmp),
+          ok
+      end;
 
     {Rtmp, disconnected} ->
       ok

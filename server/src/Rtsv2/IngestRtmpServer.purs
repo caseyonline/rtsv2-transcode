@@ -8,6 +8,7 @@ import Prelude
 
 import Data.Bifunctor (lmap)
 import Data.Either (Either(..), hush, note)
+import Data.Foldable (any)
 import Data.List.NonEmpty (singleton)
 import Data.Maybe (Maybe)
 import Debug.Trace (spy)
@@ -28,7 +29,7 @@ import Simple.JSON as JSON
 import SpudGun as SpudGun
 
 type Callbacks
-  = { ingestStarted :: StreamDetails -> String -> Effect Unit
+  = { ingestStarted :: StreamDetails -> String -> Effect Boolean
     , ingestStopped :: StreamDetails -> String -> Effect Unit
     , checkSlot :: String -> String -> String -> Effect (Maybe StreamDetails)
     }
@@ -62,11 +63,18 @@ init _ = do
   _ <- startServerImpl Left (Right unit) interfaceIp port nbAcceptors callbacks
   pure $ {}
   where
-    ingestStarted {role,
-                   slot : {name : streamId}} streamVariantId = IngestAgentInstanceSup.startIngest (StreamVariantId streamId streamVariantId)
+    ingestStarted { role
+                  , slot : {name : streamId, profiles}
+                  } streamVariantId =
+      case any (\{streamName: slotStreamName} -> slotStreamName == streamVariantId) profiles of
+        true ->
+          IngestAgentInstanceSup.startIngest (StreamVariantId streamId streamVariantId)
+          <#> const true
+        false ->
+          pure $ false
 
-    ingestStopped {role,
-                   slot : {name : streamId}} streamVariantId = IngestAgent.stopIngest (StreamVariantId streamId streamVariantId)
+    ingestStopped { role
+                   , slot : {name : streamId}} streamVariantId = IngestAgent.stopIngest (StreamVariantId streamId streamVariantId)
 
 checkSlot :: String -> String -> String -> String -> Effect (Maybe StreamDetails)
 checkSlot url host shortname streamName = do
