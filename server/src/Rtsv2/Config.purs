@@ -78,6 +78,7 @@ type TransPoPAgentConfig
     , rpcPort :: Int
     , leaderTimeoutMs :: Int
     , leaderAnnounceMs :: Int
+    , rttRefreshMs :: Int
     , rejoinEveryMs :: Int
     , connectStreamAfterMs :: Int
     }

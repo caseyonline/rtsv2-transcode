@@ -8,10 +8,11 @@ module Rtsv2.TransPoPAgent
 
 import Prelude
 
+import Control.Apply (lift2)
 import Data.Either (Either(..))
 import Data.Foldable (foldl)
 import Data.Maybe (Maybe(..), fromMaybe)
-import Data.Newtype (wrap)
+import Data.Newtype (unwrap, wrap)
 import Data.Set as Set
 import Data.Traversable (sequence, traverse_)
 import Data.Tuple (Tuple(..))
@@ -71,7 +72,8 @@ data StreamState = StreamAvailable
 data TransMessage = StreamState StreamState StreamId ServerAddress
 
 data Msg
-  = Tick
+  = LeaderTimeoutTick
+  | RttRefreshTick
   | JoinAll
   | ConnectStream
   | TransPoPSerfMsg (Serf.SerfMessage TransMessage)
@@ -196,13 +198,15 @@ startLink args = Gen.startLink serverName (init args) handleInfo
 init :: {config :: Config.TransPoPAgentConfig, intraPoPApi :: Config.IntraPoPAgentApi} -> Effect State
 init { config: config@{ leaderTimeoutMs
                       , leaderAnnounceMs
+                      , rttRefreshMs
                       , rejoinEveryMs
                       , rpcPort
                       }
      , intraPoPApi} = do
   _ <- logInfo "Trans-PoP Agent Starting" {config: config}
   _ <- Gen.registerExternalMapping serverName (\m -> TransPoPSerfMsg <$> (Serf.messageMapper m))
-  _ <- Timer.sendEvery serverName leaderAnnounceMs Tick
+  _ <- Timer.sendEvery serverName leaderAnnounceMs LeaderTimeoutTick
+  _ <- Timer.sendAfter serverName rttRefreshMs RttRefreshTick
   rpcBindIp <- Env.privateInterfaceIp
   thisNode <- PoPDefinition.thisNode
   thisLocation <- PoPDefinition.thisLocation
@@ -240,7 +244,9 @@ shouldProcessStreamState streamId ltime streamStateClocks =
 
 handleInfo :: Msg -> State -> Effect (CastResult State)
 handleInfo msg state@{ thisPoP } = case msg of
-  Tick -> CastNoReply <$> handleTick state
+  LeaderTimeoutTick -> CastNoReply <$> handleTick state
+
+  RttRefreshTick -> CastNoReply <$> handleRttRefresh state
 
   JoinAll -> do
     _ <- joinAllSerf state
@@ -346,54 +352,59 @@ getPoP {name : memberName} =
       Nothing -> Nothing
       Just (ServerLocation popName _) -> Just popName
 
-handleTick :: State -> Effect State
-handleTick state@{ weAreLeader: true, serfRpcAddress, thisNode, members, intraPoPApi: {announceTransPoPLeader: intraPoP_announceTransPoPLeader} } = do
-  _ <- intraPoP_announceTransPoPLeader
-  -- us <- Serf.getCoordinate serfRpcAddress thisNode
-  -- _ <- traverse_ (\popMembers ->
-  --                  do
-  --                    traverse_ (\popMember ->
-  --                                do
-  --                                  resp <- Serf.getCoordinate serfRpcAddress popMember
-  --                                  _ <- logInfo "rtt" {node: popMember,
-  --                                                      rtt : (lift2 calcRtt us resp)}
-  --                                  pure unit
-  --                              )
-  --                              popMembers
-  --                )
-  --      (Map.values members)
-  pure state
-  where
-    calcRtt lhs rhs =
-      let
-        sumq = foldl (\acc (Tuple a b) -> acc + ((a - b) * (a - b))) 0.0 (zip lhs.vec rhs.vec)
-        rtt = sqrt sumq + lhs.height + rhs.height
-        adjusted = rtt + lhs.adjustment + rhs.adjustment
-      in
-       if adjusted > 0.0 then adjusted * 1000.0
-       else rtt * 1000.0
+handleRttRefresh :: State -> Effect State
+handleRttRefresh = case _ of
+  state@{ weAreLeader: true
+        , config: {rttRefreshMs}
+        } -> do
+      us <- Serf.getCoordinate state.serfRpcAddress $ unwrap state.thisNode
+      _ <- traverse_ (\popMembers -> do
+                          traverse_ (\popMember -> do
+                                    resp <- Serf.getCoordinate state.serfRpcAddress $ unwrap popMember
+                                    _ <- logInfo "rtt" { node: popMember, rtt : (lift2 calcRtt us resp)}
+                                    pure unit)
+                                popMembers
+                  )
+        (Map.values state.members)
+      _ <- Timer.sendAfter serverName rttRefreshMs RttRefreshTick
+      pure state
+  state -> pure state
 
-handleTick state@{ lastLeaderAnnouncement
-                 , leaderAnnouncementTimeout
-                 } = do
-  now <- systemTimeMs
-  if (lastLeaderAnnouncement + leaderAnnouncementTimeout) < now then
-    becomeLeader now state
-  else do
-    pure $ state
+  where
+    calcRtt lhs rhs = do
+      let sumq = foldl (\acc (Tuple a b) -> acc + ((a - b) * (a - b))) 0.0 (zip lhs.vec rhs.vec)
+          rtt = sqrt sumq + lhs.height + rhs.height
+          adjusted = rtt + lhs.adjustment + rhs.adjustment
+      if adjusted > 0.0
+        then adjusted * 1000.0
+        else rtt * 1000.0
+
+handleTick :: State -> Effect State
+handleTick = case _ of
+  state@{ weAreLeader: true } -> do
+            _ <- state.intraPoPApi.announceTransPoPLeader
+            pure state
+
+  state -> do
+      now <- systemTimeMs
+      if (state.lastLeaderAnnouncement + state.leaderAnnouncementTimeout) < now
+        then becomeLeader now state
+        else pure $ state
+
 
 becomeLeader :: Milliseconds -> State -> Effect State
 becomeLeader now state@{ lastLeaderAnnouncement
                        , leaderAnnouncementTimeout
                        , serfRpcAddress
-                       , config: {connectStreamAfterMs}
+                       , config: {connectStreamAfterMs, rttRefreshMs}
                        , intraPoPApi: {announceTransPoPLeader: intraPoP_announceTransPoPLeader}
                        } = do
-
   _ <- logInfo "Leader is absent, becoming leader" {}
   _ <- osCmd "scripts/startTransPoPAgent.sh"
   _ <- intraPoP_announceTransPoPLeader
   _ <- Timer.sendAfter serverName connectStreamAfterMs ConnectStream
+  -- TODO: build default network topology map
+  _ <- Timer.sendAfter serverName rttRefreshMs RttRefreshTick
   pure
     $ state
         { lastLeaderAnnouncement = now
