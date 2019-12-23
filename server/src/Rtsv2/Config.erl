@@ -2,19 +2,41 @@
 
 -include_lib("id3as_common/include/common.hrl").
 
--export([
-          getEnv_/1,
-          getMap_/1
+-export([ getEnv_/1
+        , getMap_/1
+        , mergeOverrides/0
         ]).
+
+-define(APP, rtsv2).
+
+mergeOverrides() ->
+  fun() ->
+      case application:get_env(?APP, overrides) of
+        undefined -> ok;
+        {ok, Overrides} ->
+          lists:foreach(fun({Key, Overrides}) ->
+                            {ok, Org} =  application:get_env(?APP, Key),
+                            mergeMaps(Org, Overrides),
+                            application:set_env(?APP,Key, maps:merge(Org, Overrides))
+                        end,
+                        Overrides)
+      end,
+      ok
+  end.
+
+mergeMaps(Org, Overrides) ->
+  maps:fold(fun maps:update/3,
+            Org,
+            Overrides).
 
 getEnv_(Name) ->
   fun() ->
-      gproc:get_env(l, rtsv2, Name, [os_env, app_env, error])
+      gproc:get_env(l, ?APP, Name, [os_env, app_env, error])
   end.
 
 getMap_(Name) ->
   fun() ->
-      Map = gproc:get_env(l, rtsv2, Name, [os_env, app_env, error]),
+      Map = gproc:get_env(l, ?APP, Name, [os_env, app_env, error]),
       map_atom_keys_to_binaries(expand_environment_variables(Map))
   end.
 

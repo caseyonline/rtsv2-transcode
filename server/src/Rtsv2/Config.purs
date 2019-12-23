@@ -18,6 +18,7 @@ module Rtsv2.Config
   , edgeAgentConfig
   , rtmpIngestConfig
   , llnwApiConfig
+  , mergeOverrides
   ) where
 
 import Prelude
@@ -106,6 +107,7 @@ type LlnwApiConfig
 
 foreign import getEnv_ :: Atom -> Effect Foreign
 foreign import getMap_ :: Atom -> Effect Foreign
+foreign import mergeOverrides :: Effect Foreign
 
 webConfig :: Effect WebConfig
 webConfig = do
