@@ -175,27 +175,32 @@ readNeighbourMap config = do
 
 readAndProcessPoPDefinition :: Config.PoPDefinitionConfig -> ServerAddress -> NeighbourMapJson -> Effect (Either MultipleErrors PoPInfo)
 readAndProcessPoPDefinition config hostName neighbourMap = do
+  -- In Effect
   file <- readFile $ joinWith "/" [config.directory, config.popDefinitionFile]
-  pure $ processPoPJson hostName =<< (mapRegionJson neighbourMap <$> (JSON.readJSON =<< file))
+  let ePoPJson =(JSON.readJSON =<< file)
+  pure do -- In either
+        popJson <- ePoPJson
+        let allPops = Map.keys =<< Map.values popJson
+            filteredNeighbours = filterNeighbours allPops neighbourMap
+            regionMap = mapRegionJson filteredNeighbours popJson
+        processPoPJson hostName regionMap
+
 
 readFile :: String -> Effect (Either MultipleErrors String)
 readFile fileName = do
   jsonString <- File.readUtf8File fileName
   pure $ note' (\_ -> NonEmptyList.singleton $ ForeignError ("failed to read file " <> fileName)) jsonString
 
+filterNeighbours :: List PoPName -> NeighbourMapJson -> NeighbourMapJson
+filterNeighbours allPops neighbourMap =
+  mapMaybeWithKey
+  (\k v ->
+    if elem k allPops then Just $ filter (flip elem allPops) v else Nothing
+  ) neighbourMap
+
 mapRegionJson :: NeighbourMapJson -> NetworkJson -> Map RegionName Region
 mapRegionJson neighbourMap nwMap =
-  let allPops = Map.keys =<< Map.values nwMap
-      filteredNeighbours = mapMaybeWithKey (\k v ->
-                                             if elem k allPops then
-                                               Just $ filter (flip elem allPops) v
-                                             else
-                                               Nothing
-                                           )
-                           neighbourMap
-
-  in
-   Map.mapWithKey (\name pops -> {name : name, pops : mapPoPJson filteredNeighbours pops}) nwMap
+   Map.mapWithKey (\name pops -> {name : name, pops : mapPoPJson neighbourMap pops}) nwMap
 
 mapPoPJson :: NeighbourMapJson -> PoPJson -> Map PoPName PoP
 mapPoPJson neighbourMap =

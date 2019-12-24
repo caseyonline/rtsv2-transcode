@@ -13,6 +13,7 @@ import Data.Either (Either(..))
 import Data.Foldable (foldl)
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (unwrap, wrap)
+import Data.Set (findMin)
 import Data.Set as Set
 import Data.Traversable (sequence, traverse_)
 import Data.Tuple (Tuple(..))
@@ -41,7 +42,7 @@ import Rtsv2.Config as Config
 import Rtsv2.Env as Env
 import Rtsv2.Health (Health)
 import Rtsv2.Health as Health
-import Rtsv2.PoPDefinition (PoP, whereIsServer)
+import Rtsv2.PoPDefinition (PoP)
 import Rtsv2.PoPDefinition as PoPDefinition
 import Serf (IpAndPort)
 import Serf as Serf
@@ -87,7 +88,7 @@ messageOrigin (StreamState _ _ addr) = originPoP addr
 originPoP :: ServerAddress -> Effect (Maybe PoPName)
 originPoP addr =
   do
-    mServerLocation <- whereIsServer addr
+    mServerLocation <- PoPDefinition.whereIsServer addr
     pure $ case mServerLocation of
       Nothing -> Nothing
       Just (ServerLocation sourcePoP _) -> Just sourcePoP
@@ -159,8 +160,7 @@ announceTransPoPLeader address =
       | address < thisNode = do
         result <- Serf.leave serfRpcAddress
         _ <- logInfo "Another node has taken over as transpop leader; stepping down" { leader: address }
-        stopResp <- osCmd "scripts/stopTransPoPAgent.sh"
-        _ <- logInfo "Stop Resp" {resp: stopResp}
+        _ <- osCmd stopScript
 
         now <- systemTimeMs
         pure
@@ -204,9 +204,12 @@ init { config: config@{ leaderTimeoutMs
                       }
      , intraPoPApi} = do
   _ <- logInfo "Trans-PoP Agent Starting" {config: config}
+  -- Stop any agent that might be running (in case we crashed)
+  _ <- osCmd stopScript
+
   _ <- Gen.registerExternalMapping serverName (\m -> TransPoPSerfMsg <$> (Serf.messageMapper m))
   _ <- Timer.sendEvery serverName leaderAnnounceMs LeaderTimeoutTick
-  _ <- Timer.sendAfter serverName rttRefreshMs RttRefreshTick
+
   rpcBindIp <- Env.privateInterfaceIp
   thisNode <- PoPDefinition.thisNode
   thisLocation <- PoPDefinition.thisLocation
@@ -246,19 +249,17 @@ handleInfo :: Msg -> State -> Effect (CastResult State)
 handleInfo msg state@{ thisPoP } = case msg of
   LeaderTimeoutTick -> CastNoReply <$> handleTick state
 
-  RttRefreshTick -> CastNoReply <$> handleRttRefresh state
+  RttRefreshTick ->
+    CastNoReply state <$ handleRttRefresh state
 
-  JoinAll -> do
-    _ <- joinAllSerf state
-    pure $ CastNoReply state
+  JoinAll ->
+    CastNoReply state <$ joinAllSerf state
 
-  ConnectStream -> do
-    _ <- connectStream state
-    pure $ CastNoReply state
+  ConnectStream ->
+    CastNoReply state <$ connectStream state
 
   TransPoPSerfMsg tmsg ->
-    let
-      newState =
+    CastNoReply <$>
         case tmsg of
           Serf.MemberAlive members -> membersAlive members state
           Serf.MemberLeaving -> pure state
@@ -286,8 +287,7 @@ handleInfo msg state@{ thisPoP } = case msg of
                         true -> do
                           newStreamStateClocks <- EMap.insert' streamId ltime state.streamStateClocks
                           handleTransPoPMessage transMessage (state{streamStateClocks = newStreamStateClocks})
-     in
-       CastNoReply <$> newState
+
 
 handleTransPoPMessage :: TransMessage -> State -> Effect State
 handleTransPoPMessage (StreamState StreamAvailable streamId server) state@{intraPoPApi: {announceRemoteStreamIsAvailable}} = do
@@ -347,7 +347,7 @@ membersLeft leftMembers state =
 getPoP :: Serf.SerfMember -> Effect (Maybe PoPName)
 getPoP {name : memberName} =
   do
-    mServerLocation <- whereIsServer (ServerAddress memberName)
+    mServerLocation <- PoPDefinition.whereIsServer (ServerAddress memberName)
     pure $ case mServerLocation of
       Nothing -> Nothing
       Just (ServerLocation popName _) -> Just popName
@@ -357,15 +357,23 @@ handleRttRefresh = case _ of
   state@{ weAreLeader: true
         , config: {rttRefreshMs}
         } -> do
+      _ <- logInfo "Starting rtt calls" {}
+      neighbours <- _.neighbours <$> PoPDefinition.thisPoP
       us <- Serf.getCoordinate state.serfRpcAddress $ unwrap state.thisNode
-      _ <- traverse_ (\popMembers -> do
-                          traverse_ (\popMember -> do
-                                    resp <- Serf.getCoordinate state.serfRpcAddress $ unwrap popMember
-                                    _ <- logInfo "rtt" { node: popMember, rtt : (lift2 calcRtt us resp)}
-                                    pure unit)
-                                popMembers
-                  )
-        (Map.values state.members)
+      -- For each neighbouring pop pick an arbitrary member node (typically there is only 1) and find the rtt to it
+      let findRttToFirstMemeber neighbour =
+            case Map.lookup neighbour state.members of
+              Nothing -> pure Nothing
+              Just servers ->
+                case findMin servers of
+                  Nothing -> pure Nothing
+                  Just popMember -> do
+                    resp <- Serf.getCoordinate state.serfRpcAddress $ unwrap popMember
+                    _ <- logInfo "rtt" { node: popMember, rtt : (lift2 calcRtt us resp)}
+                    pure Nothing
+
+
+      _ <- traverse_ findRttToFirstMemeber neighbours
       _ <- Timer.sendAfter serverName rttRefreshMs RttRefreshTick
       pure state
   state -> pure state
@@ -400,7 +408,7 @@ becomeLeader now state@{ lastLeaderAnnouncement
                        , intraPoPApi: {announceTransPoPLeader: intraPoP_announceTransPoPLeader}
                        } = do
   _ <- logInfo "Leader is absent, becoming leader" {}
-  _ <- osCmd "scripts/startTransPoPAgent.sh"
+  _ <- osCmd startScript
   _ <- intraPoP_announceTransPoPLeader
   _ <- Timer.sendAfter serverName connectStreamAfterMs ConnectStream
   -- TODO: build default network topology map
@@ -498,3 +506,10 @@ maybeLogError msg (Left err) metadata = do
 
 logInfo :: forall a. String -> a -> Effect Foreign
 logInfo msg metaData = Logger.info msg (Record.merge { domain: ((atom (show Agent.TransPoP)) : nil) } { misc: metaData })
+
+
+startScript :: String
+startScript = "scripts/startTransPoPAgent.sh"
+
+stopScript :: String
+stopScript = "scripts/stopTransPoPAgent.sh"
