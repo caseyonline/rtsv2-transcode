@@ -5,6 +5,7 @@ module Serf
        , event
        , stream
        , getCoordinate
+       , calcRtt
        , messageMapper
        , Ip(..), IpAndPort, ApiError(..), SerfMessage(..), SerfResult(..), SerfMember
        )
@@ -13,15 +14,20 @@ module Serf
 import Prelude
 
 import Data.Either (Either(..))
-import Data.Int (fromString)
+import Data.Foldable (foldl)
+import Data.Int (fromString, round)
 import Data.Maybe (Maybe(..))
+import Data.Newtype (wrap)
 import Data.String (Pattern(..), split)
 import Data.Traversable (sequence)
+import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Erl.Atom (Atom)
-import Erl.Data.List (List)
+import Erl.Data.List (List, zip)
 import Erl.Data.Map (Map)
+import Erl.Utils (Milliseconds)
 import Foreign (Foreign)
+import Math (sqrt)
 
 type SerfResult a = Either ApiError a
 
@@ -96,6 +102,18 @@ stream = streamImpl Left (Right unit)
 
 getCoordinate :: IpAndPort -> String -> Effect (SerfResult SerfCoordinate)
 getCoordinate = getCoordinateImpl Left Right
+
+-- Calculation as described in https://www.serf.io/docs/internals/coordinates.html
+calcRtt :: SerfCoordinate -> SerfCoordinate -> Milliseconds
+calcRtt lhs rhs = wrap <<< round $
+  let sumq = foldl (\acc (Tuple a b) -> acc + ((a - b) * (a - b))) 0.0 (zip lhs.vec rhs.vec)
+      rtt = sqrt sumq + lhs.height + rhs.height
+      adjusted = rtt + lhs.adjustment + rhs.adjustment
+  in
+  if adjusted > 0.0
+    then adjusted * 1000.0
+    else rtt * 1000.0
+
 
 messageMapper :: forall a. Foreign -> Maybe (SerfMessage a)
 messageMapper = messageMapperImpl

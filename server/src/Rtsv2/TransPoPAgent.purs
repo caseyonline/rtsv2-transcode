@@ -44,7 +44,7 @@ import Rtsv2.Health (Health)
 import Rtsv2.Health as Health
 import Rtsv2.PoPDefinition (PoP)
 import Rtsv2.PoPDefinition as PoPDefinition
-import Serf (IpAndPort)
+import Serf (IpAndPort, calcRtt)
 import Serf as Serf
 import Shared.Agent as Agent
 import Shared.Stream (StreamId)
@@ -153,8 +153,8 @@ announceTransPoPLeader address =
   Gen.doCast serverName ((map CastNoReply) <<< doAnnounceTransPoPLeader)
   where
     doAnnounceTransPoPLeader :: State -> Effect State
-    doAnnounceTransPoPLeader state@{ thisNode
-                                   , weAreLeader: true
+    doAnnounceTransPoPLeader state@{ weAreLeader: true
+                                   , thisNode
                                    , serfRpcAddress
                                    }
       | address < thisNode = do
@@ -171,9 +171,8 @@ announceTransPoPLeader address =
               -- TODO - why is this type hint needed?  Does not compile without
               , members = Map.empty :: Map PoPName (Set.Set ServerAddress)
               }
-
-    doAnnounceTransPoPLeader state@{ weAreLeader: true } =
-      pure state
+      | otherwise =
+        pure state
 
     doAnnounceTransPoPLeader state@{ currentLeader
                                    , thisNode
@@ -377,15 +376,6 @@ handleRttRefresh = case _ of
       _ <- Timer.sendAfter serverName rttRefreshMs RttRefreshTick
       pure state
   state -> pure state
-
-  where
-    calcRtt lhs rhs = do
-      let sumq = foldl (\acc (Tuple a b) -> acc + ((a - b) * (a - b))) 0.0 (zip lhs.vec rhs.vec)
-          rtt = sqrt sumq + lhs.height + rhs.height
-          adjusted = rtt + lhs.adjustment + rhs.adjustment
-      if adjusted > 0.0
-        then adjusted * 1000.0
-        else rtt * 1000.0
 
 handleTick :: State -> Effect State
 handleTick = case _ of
