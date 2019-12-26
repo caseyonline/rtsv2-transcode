@@ -13,22 +13,20 @@ import Data.Either (Either(..))
 import Data.Foldable (foldl)
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (unwrap, wrap)
-import Data.Set (findMin)
+import Data.Set (Set, findMin)
 import Data.Set as Set
 import Data.Traversable (sequence, traverse_)
-import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Ephemeral.Map (EMap)
 import Ephemeral.Map as EMap
 import Erl.Atom (atom)
-import Erl.Data.List (List, index, length, nil, zip, (:))
+import Erl.Data.List (List, index, length, nil, (:))
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
 import Erl.Process (spawnLink)
 import Erl.Utils (Milliseconds, sleep, systemTimeMs)
 import Foreign (Foreign)
 import Logger as Logger
-import Math (sqrt)
 import Os (osCmd)
 import Partial.Unsafe (unsafeCrashWith)
 import Pinto (ServerName(..), StartLinkResult)
@@ -63,7 +61,7 @@ type State
     , thisPoP :: PoPName
     , config :: Config.TransPoPAgentConfig
     , serfRpcAddress :: IpAndPort
-    , members :: Map PoPName (Set.Set ServerAddress)
+    , members :: Map PoPName (Set ServerAddress)
     , streamStateClocks :: EMap StreamId Int
     }
 
@@ -169,7 +167,7 @@ announceTransPoPLeader address =
               , lastLeaderAnnouncement = now
               , weAreLeader = false
               -- TODO - why is this type hint needed?  Does not compile without
-              , members = Map.empty :: Map PoPName (Set.Set ServerAddress)
+              , members = Map.empty :: Map PoPName (Set ServerAddress)
               }
       | otherwise =
         pure state
@@ -306,7 +304,7 @@ membersAlive aliveMembers state =
     newMembers <- foldl addPoP (pure $ state.members) aliveMembers
     pure state {members = newMembers}
   where
-    addPoP :: Effect (Map PoPName (Set.Set ServerAddress)) -> Serf.SerfMember -> Effect (Map PoPName (Set.Set ServerAddress))
+    addPoP :: Effect (Map PoPName (Set ServerAddress)) -> Serf.SerfMember -> Effect (Map PoPName (Set ServerAddress))
     addPoP eMembers aliveMember@{name: aliveName} =
       do
         members <- eMembers
@@ -328,7 +326,7 @@ membersLeft leftMembers state =
     newMembers <- foldl removePoP (pure state.members) leftMembers
     pure state {members = newMembers}
   where
-    removePoP :: Effect (Map PoPName (Set.Set ServerAddress)) -> Serf.SerfMember -> Effect (Map PoPName (Set.Set ServerAddress))
+    removePoP :: Effect (Map PoPName (Set ServerAddress)) -> Serf.SerfMember -> Effect (Map PoPName (Set ServerAddress))
     removePoP eMembers leftMember@{name: leftName} =
       do
         members <- eMembers
