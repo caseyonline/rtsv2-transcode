@@ -10,23 +10,25 @@ import Prelude
 
 import Control.Apply (lift2)
 import Data.Either (Either(..))
-import Data.Foldable (foldM, foldl)
+import Data.Foldable (foldl)
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (unwrap, wrap)
-import Data.Set (Set)
+import Data.Set (findMin)
 import Data.Set as Set
-import Data.Traversable (sequence, traverse, traverse_)
+import Data.Traversable (sequence, traverse_)
+import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Ephemeral.Map (EMap)
 import Ephemeral.Map as EMap
 import Erl.Atom (atom)
-import Erl.Data.List (List, index, length, nil, (:))
+import Erl.Data.List (List, index, length, nil, zip, (:))
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
 import Erl.Process (spawnLink)
 import Erl.Utils (Milliseconds, sleep, systemTimeMs)
 import Foreign (Foreign)
 import Logger as Logger
+import Math (sqrt)
 import Os (osCmd)
 import Partial.Unsafe (unsafeCrashWith)
 import Pinto (ServerName(..), StartLinkResult)
@@ -42,7 +44,7 @@ import Rtsv2.Health (Health)
 import Rtsv2.Health as Health
 import Rtsv2.PoPDefinition (PoP)
 import Rtsv2.PoPDefinition as PoPDefinition
-import Serf (IpAndPort, calcRtt)
+import Serf (IpAndPort)
 import Serf as Serf
 import Shared.Agent as Agent
 import Shared.Stream (StreamId)
@@ -61,7 +63,7 @@ type State
     , thisPoP :: PoPName
     , config :: Config.TransPoPAgentConfig
     , serfRpcAddress :: IpAndPort
-    , members :: Map PoPName (Set ServerAddress)
+    , members :: Map PoPName (Set.Set ServerAddress)
     , streamStateClocks :: EMap StreamId Int
     }
 
@@ -151,8 +153,8 @@ announceTransPoPLeader address =
   Gen.doCast serverName ((map CastNoReply) <<< doAnnounceTransPoPLeader)
   where
     doAnnounceTransPoPLeader :: State -> Effect State
-    doAnnounceTransPoPLeader state@{ weAreLeader: true
-                                   , thisNode
+    doAnnounceTransPoPLeader state@{ thisNode
+                                   , weAreLeader: true
                                    , serfRpcAddress
                                    }
       | address < thisNode = do
@@ -167,9 +169,11 @@ announceTransPoPLeader address =
               , lastLeaderAnnouncement = now
               , weAreLeader = false
               -- TODO - why is this type hint needed?  Does not compile without
-              , members = Map.empty :: Map PoPName (List ServerAddress)
+              , members = Map.empty :: Map PoPName (Set.Set ServerAddress)
               }
-       | otherwise = pure state
+
+    doAnnounceTransPoPLeader state@{ weAreLeader: true } =
+      pure state
 
     doAnnounceTransPoPLeader state@{ currentLeader
                                    , thisNode
@@ -299,11 +303,11 @@ handleTransPoPMessage (StreamState StreamStopped streamId server) state@{intraPo
 membersAlive :: (List Serf.SerfMember) -> State -> Effect State
 membersAlive aliveMembers state =
   do
-    _ <- logInfo "TransPoP Members Alive" {members: _.name <$> aliveMembers}
+    _ <- logInfo "Members Alive" {members: _.name <$> aliveMembers}
     newMembers <- foldl addPoP (pure $ state.members) aliveMembers
     pure state {members = newMembers}
   where
-    addPoP :: Effect (Map PoPName (List ServerAddress)) -> Serf.SerfMember -> Effect (Map PoPName (List ServerAddress))
+    addPoP :: Effect (Map PoPName (Set.Set ServerAddress)) -> Serf.SerfMember -> Effect (Map PoPName (Set.Set ServerAddress))
     addPoP eMembers aliveMember@{name: aliveName} =
       do
         members <- eMembers
@@ -312,8 +316,8 @@ membersAlive aliveMembers state =
                                     let
                                       existingMembers = case Map.lookup popName members of
                                                           Just existing -> existing
-                                                          Nothing -> nil
-                                      newMembers = (ServerAddress aliveName) : existingMembers
+                                                          Nothing -> Set.empty
+                                      newMembers = Set.insert (ServerAddress aliveName) existingMembers
                                     in
                                      Map.insert popName newMembers members
                                   ) <$> mPoP)
@@ -321,7 +325,7 @@ membersAlive aliveMembers state =
 membersLeft :: (List Serf.SerfMember) -> State -> Effect State
 membersLeft leftMembers state =
   do
-    _ <- logInfo "Trans members left" {members: _.name <$> leftMembers}
+    _ <- logInfo "Members Left" {members: _.name <$> leftMembers}
     newMembers <- foldl removePoP (pure state.members) leftMembers
     pure state {members = newMembers}
   where
@@ -352,48 +356,36 @@ handleRttRefresh :: State -> Effect State
 handleRttRefresh = case _ of
   state@{ weAreLeader: true
         , config: {rttRefreshMs}
-        , members
         } -> do
-    -- look up the coordinates of each of the alive members in the network so we can estimate RTT between them
-    let
-      --allMembers :: List ServerAddress
-      --allMembers =  join <$> Set.toUnfoldable <$> Map.values members
-      a = Map.values members
-      b :: List (List ServerAddress)
-      b = Set.toUnfoldable <$> a
-      c = join b
-      _ = ?foo --serverCoordinates = (Serf.getCoordinate state.serfRpcAddress <<< unwrap) <$> allMembers
-    neighbours <- _.neighbours <$> PoPDefinition.thisPoP
+      _ <- logInfo "Starting rtt calls" {}
+      neighbours <- _.neighbours <$> PoPDefinition.thisPoP
+      us <- Serf.getCoordinate state.serfRpcAddress $ unwrap state.thisNode
+      -- For each neighbouring pop pick an arbitrary member node (typically there is only 1) and find the rtt to it
+      let findRttToFirstMemeber neighbour =
+            case Map.lookup neighbour state.members of
+              Nothing -> pure Nothing
+              Just servers ->
+                case findMin servers of
+                  Nothing -> pure Nothing
+                  Just popMember -> do
+                    resp <- Serf.getCoordinate state.serfRpcAddress $ unwrap popMember
+                    _ <- logInfo "rtt" { node: popMember, rtt : (lift2 calcRtt us resp)}
+                    pure Nothing
 
 
-    us <- Serf.getCoordinate state.serfRpcAddress $ unwrap state.thisNode
-    -- For each neighbouring pop pick an arbitrary member node (typically there is only 1) and find the rtt to it
-    let foo neighbour = Map.lookup neighbour state.members >>= Set.findMin >>=
-                        (\popMember ->
-                          let x = do
-                                resp <- Serf.getCoordinate state.serfRpcAddress $ unwrap popMember
-                                _ <- logInfo "rtt" { node: popMember, rtt : (lift2 calcRtt us resp)}
-                                pure resp
-                              --_ = ?bar
-
-                          in Nothing
-                        )
-        findRttToFirstMemeber neighbour =
-          case Map.lookup neighbour state.members of
-            Nothing -> pure Nothing
-            Just servers ->
-              case Set.findMin servers of
-                Nothing -> pure Nothing
-                Just popMember -> do
-                  resp <- Serf.getCoordinate state.serfRpcAddress $ unwrap popMember
-                  _ <- logInfo "rtt" { node: popMember, rtt : (lift2 calcRtt us resp)}
-                  pure Nothing
-
-
-    _ <- traverse_ findRttToFirstMemeber neighbours
-    _ <- Timer.sendAfter serverName rttRefreshMs RttRefreshTick
-    pure state
+      _ <- traverse_ findRttToFirstMemeber neighbours
+      _ <- Timer.sendAfter serverName rttRefreshMs RttRefreshTick
+      pure state
   state -> pure state
+
+  where
+    calcRtt lhs rhs = do
+      let sumq = foldl (\acc (Tuple a b) -> acc + ((a - b) * (a - b))) 0.0 (zip lhs.vec rhs.vec)
+          rtt = sqrt sumq + lhs.height + rhs.height
+          adjusted = rtt + lhs.adjustment + rhs.adjustment
+      if adjusted > 0.0
+        then adjusted * 1000.0
+        else rtt * 1000.0
 
 handleTick :: State -> Effect State
 handleTick = case _ of
