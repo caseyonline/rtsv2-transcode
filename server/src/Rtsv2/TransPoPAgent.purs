@@ -8,14 +8,15 @@ module Rtsv2.TransPoPAgent
 
 import Prelude
 
-import Control.Apply (lift2)
 import Data.Either (Either(..))
-import Data.Foldable (foldl)
+import Data.Foldable (foldM, foldl)
+import Data.FoldableWithIndex (foldlWithIndex)
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (unwrap, wrap)
-import Data.Set (Set, findMin)
+import Data.Set (Set)
 import Data.Set as Set
-import Data.Traversable (sequence, traverse_)
+import Data.Traversable (sequence, traverse, traverse_)
+import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Ephemeral.Map (EMap)
 import Ephemeral.Map as EMap
@@ -25,7 +26,7 @@ import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
 import Erl.Process (spawnLink)
 import Erl.Utils (Milliseconds, sleep, systemTimeMs)
-import Foreign (Foreign)
+import Logger (Logger)
 import Logger as Logger
 import Os (osCmd)
 import Partial.Unsafe (unsafeCrashWith)
@@ -35,8 +36,7 @@ import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Prim.Row (class Nub, class Union)
 import Record as Record
-import Rtsv2.Config (ServerLocation(..))
-import Rtsv2.Config as Config
+import Rtsv2.Config (IntraPoPAgentApi, ServerLocation(..), TransPoPAgentConfig)
 import Rtsv2.Env as Env
 import Rtsv2.Health (Health)
 import Rtsv2.Health as Health
@@ -50,8 +50,10 @@ import Shared.Types (PoPName, ServerAddress(..))
 import Shared.Utils (distinctRandomNumbers)
 import SpudGun as SpudGun
 
+data Edge = Edge PoPName PoPName
+
 type State
-  = { intraPoPApi :: Config.IntraPoPAgentApi
+  = { intraPoPApi :: IntraPoPAgentApi
     , currentLeader :: Maybe ServerAddress
     , weAreLeader :: Boolean
     , lastLeaderAnnouncement :: Milliseconds
@@ -59,10 +61,11 @@ type State
     , thisNode :: ServerAddress
     , thisLocation :: ServerLocation
     , thisPoP :: PoPName
-    , config :: Config.TransPoPAgentConfig
+    , config :: TransPoPAgentConfig
     , serfRpcAddress :: IpAndPort
     , members :: Map PoPName (Set ServerAddress)
     , streamStateClocks :: EMap StreamId Int
+    , edgeRtts :: Map Edge Milliseconds
     }
 
 data StreamState = StreamAvailable
@@ -189,15 +192,16 @@ announceTransPoPLeader address =
       now <- systemTimeMs
       pure $ state { lastLeaderAnnouncement = now }
 
-startLink :: {config :: Config.TransPoPAgentConfig, intraPoPApi :: Config.IntraPoPAgentApi} -> Effect StartLinkResult
+startLink :: {config :: TransPoPAgentConfig, intraPoPApi :: IntraPoPAgentApi} -> Effect StartLinkResult
 startLink args = Gen.startLink serverName (init args) handleInfo
 
-init :: {config :: Config.TransPoPAgentConfig, intraPoPApi :: Config.IntraPoPAgentApi} -> Effect State
+init :: {config :: TransPoPAgentConfig, intraPoPApi :: IntraPoPAgentApi} -> Effect State
 init { config: config@{ leaderTimeoutMs
                       , leaderAnnounceMs
                       , rttRefreshMs
                       , rejoinEveryMs
                       , rpcPort
+                      , defaultRttMs
                       }
      , intraPoPApi} = do
   _ <- logInfo "Trans-PoP Agent Starting" {config: config}
@@ -210,6 +214,7 @@ init { config: config@{ leaderTimeoutMs
   rpcBindIp <- Env.privateInterfaceIp
   thisNode <- PoPDefinition.thisNode
   thisLocation <- PoPDefinition.thisLocation
+  defaultEdgeRtts' <- defaultEdgeRtts config
   now <- systemTimeMs
 
   let
@@ -231,8 +236,16 @@ init { config: config@{ leaderTimeoutMs
       , thisPoP: thisPoP
       , serfRpcAddress: serfRpcAddress
       , members: Map.empty
+      , edgeRtts: defaultEdgeRtts'
       , streamStateClocks: EMap.empty
     }
+
+defaultEdgeRtts :: TransPoPAgentConfig -> Effect (Map Edge Milliseconds)
+defaultEdgeRtts {defaultRttMs} = do
+  let defaultRtt = wrap defaultRttMs
+  neighbourMap <- PoPDefinition.neighbourMap
+  pure $ foldlWithIndex (\k acc v -> foldl (\acc' a -> Map.insert (Edge k a) defaultRtt acc') acc v) Map.empty neighbourMap
+
 
 shouldProcessStreamState :: StreamId -> Int -> EMap StreamId Int -> Boolean
 shouldProcessStreamState streamId ltime streamStateClocks =
@@ -350,30 +363,51 @@ getPoP {name : memberName} =
       Just (ServerLocation popName _) -> Just popName
 
 handleRttRefresh :: State -> Effect State
-handleRttRefresh = case _ of
-  state@{ weAreLeader: true
-        , config: {rttRefreshMs}
-        } -> do
-      _ <- logInfo "Starting rtt calls" {}
-      neighbours <- _.neighbours <$> PoPDefinition.thisPoP
-      us <- Serf.getCoordinate state.serfRpcAddress $ unwrap state.thisNode
-      -- For each neighbouring pop pick an arbitrary member node (typically there is only 1) and find the rtt to it
-      let findRttToFirstMemeber neighbour =
-            case Map.lookup neighbour state.members of
-              Nothing -> pure Nothing
-              Just servers ->
-                case findMin servers of
-                  Nothing -> pure Nothing
-                  Just popMember -> do
-                    resp <- Serf.getCoordinate state.serfRpcAddress $ unwrap popMember
-                    _ <- logInfo "rtt" { node: popMember, rtt : (lift2 calcRtt us resp)}
-                    pure Nothing
+handleRttRefresh state@{ weAreLeader: false} =  pure state
+
+handleRttRefresh state@{ weAreLeader: true
+                       , config: config@{rttRefreshMs}
+                       , members
+                       , edgeRtts
+                       } = do
+    -- look up the coordinates of all members
+    let allMemebers = join $ Set.toUnfoldable <$> Map.values members
+        lookup addr = (Tuple addr) <$> (Serf.getCoordinate state.serfRpcAddress $ unwrap addr)
+    eCoordiates <- traverse lookup allMemebers
+    poPCoordinates <-
+      foldM (\acc (Tuple sa eCoord) ->
+              case eCoord of
+                Right coord -> do
+                  mPoP <- originPoP sa
+                  case mPoP of
+                    Nothing -> do
+                      _ <- logWarning "Unknown pop for server" {misc: sa}
+                      pure acc
+                    Just pop -> do
+                      pure $ Map.insert pop coord acc
+                Left error -> do
+                  _ <- logWarning "Coordinate error" {misc: {server: sa, error}}
+                  pure acc
+            ) Map.empty eCoordiates
 
 
-      _ <- traverse_ findRttToFirstMemeber neighbours
-      _ <- Timer.sendAfter serverName rttRefreshMs RttRefreshTick
-      pure state
-  state -> pure state
+
+    -- The new RttMap should have:
+    -- * only those edges now in the latest PoPDefinition
+    -- With:
+    --  * Newly looked up RTTs (from the new coordinates)
+    --  * Previous RTTs (from current map)
+    --  * Default RTTs
+    defaultEdgeRtts' <- defaultEdgeRtts config
+
+    let bestRttGuess edge@(Edge fromPoP toPoP) acc def =
+          flip (Map.insert edge) acc $
+            case traverse (flip Map.lookup poPCoordinates) [fromPoP, toPoP] of
+              Just [fromCoord, toCoord] -> calcRtt fromCoord toCoord
+              _ -> fromMaybe def $ Map.lookup edge edgeRtts
+        newEdgeRtts = foldlWithIndex bestRttGuess Map.empty defaultEdgeRtts'
+    _ <- Timer.sendAfter serverName rttRefreshMs RttRefreshTick
+    pure $ state {edgeRtts = newEdgeRtts}
 
 handleTick :: State -> Effect State
 handleTick = case _ of
@@ -492,9 +526,15 @@ maybeLogError msg (Left err) metadata = do
   _ <- logInfo msg (Record.merge metadata {error: err})
   pure unit
 
-logInfo :: forall a. String -> a -> Effect Foreign
-logInfo msg metaData = Logger.info msg (Record.merge { domain: ((atom (show Agent.TransPoP)) : nil) } { misc: metaData })
+logInfo :: forall a. Logger a
+logInfo = doLog Logger.info
 
+logWarning :: forall a. Logger a
+logWarning = doLog Logger.warning
+
+--TODO - a vaguely readable type for this!
+doLog logger msg metaData =
+  logger msg (Record.merge { domain: ((atom (show Agent.TransPoP)) : nil) } { misc: metaData })
 
 startScript :: String
 startScript = "scripts/startTransPoPAgent.sh"

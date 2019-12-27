@@ -9,6 +9,7 @@ module Logger
        , info
        , debug
        , spy
+       , Logger
        ) where
 
 import Prelude
@@ -18,6 +19,9 @@ import Effect (Effect)
 import Effect.Unsafe (unsafePerformEffect)
 import Foreign (Foreign)
 
+
+type Logger a = String -> a -> Effect Foreign
+-- TODO - FFI warning if we use the type aliasa
 foreign import emergency :: forall a. String -> a -> Effect Foreign
 foreign import alert :: forall a. String -> a -> Effect Foreign
 foreign import critical :: forall a. String -> a -> Effect Foreign

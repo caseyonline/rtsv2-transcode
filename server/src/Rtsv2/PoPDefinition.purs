@@ -6,8 +6,10 @@ module Rtsv2.PoPDefinition
        , whereIsServer
        , thisLocation
        , thisPoP
+       , neighbourMap
        , PoP
        , Region
+       , NeighbourMap
        ) where
 
 import Prelude
@@ -47,6 +49,7 @@ type PoPInfo =
   , otherServersInThisPoP :: List ServerAddress
   , thisPoP :: PoP
   , otherPoPs :: List PoP
+  , neighbourMap :: NeighbourMap
   }
 
 type State =  { config :: Config.PoPDefinitionConfig
@@ -57,6 +60,7 @@ type State =  { config :: Config.PoPDefinitionConfig
               , thisPoP :: PoP
               , otherServersInThisPoP :: List ServerAddress
               , otherPoPs :: List PoP
+              , neighbourMap :: NeighbourMap
               }
 
 type Region = { name :: RegionName
@@ -70,7 +74,7 @@ type PoP = { name :: PoPName
 
 type NetworkJson = Map RegionName PoPJson
 type PoPJson =  Map PoPName (List ServerAddress)
-type NeighbourMapJson =  Map PoPName (List PoPName)
+type NeighbourMap =  Map PoPName (List PoPName)
 
 data Msg = Tick
 
@@ -86,6 +90,9 @@ thisNode = Gen.doCall serverName (\s -> pure $ CallReply s.thisNode s)
 
 thisPoP :: Effect PoP
 thisPoP = Gen.doCall serverName (\s -> pure $ CallReply s.thisPoP s)
+
+neighbourMap :: Effect NeighbourMap
+neighbourMap = Gen.doCall serverName (\s -> pure $ CallReply s.neighbourMap s)
 
 getOtherServersForThisPoP :: Effect (List ServerAddress)
 getOtherServersForThisPoP = Gen.call serverName (\state@{otherServersInThisPoP} ->
@@ -108,13 +115,13 @@ init :: Config.PoPDefinitionConfig -> Effect State
 init config = do
   hostname <- ServerAddress <$> Env.hostname
   eNeighbourMap <- readNeighbourMap config
-  neighbourMap <-  case eNeighbourMap of
+  nMap <-  case eNeighbourMap of
     Left e -> do
                _ <- Logger.warning "Failed to process WAN definition file" {misc: e}
                unsafeCrashWith "invalid WAN definition file"
     Right r -> pure r
 
-  ePopInfo <- readAndProcessPoPDefinition config hostname neighbourMap
+  ePopInfo <- readAndProcessPoPDefinition config hostname nMap
   popInfo <-  case ePopInfo of
     Left e -> do
                _ <- Logger.warning "Failed to process pop definition file" {misc: e}
@@ -130,6 +137,7 @@ init config = do
         , thisPoP : popInfo.thisPoP
         , otherPoPs : popInfo.otherPoPs
         , otherServersInThisPoP : popInfo.otherServersInThisPoP
+        , neighbourMap : popInfo.neighbourMap
         }
 
   _ <- logInfo "PoPDefinition Starting" {thisNode : hostname,
@@ -146,8 +154,8 @@ handleInfo msg state =
         newState <-  case eNeighbourMap of
           Left e -> do _ <- Logger.warning "Failed to process WAN definition file" {misc: e}
                        pure state
-          Right neighbourMap -> do
-            ePopInfo <- readAndProcessPoPDefinition state.config state.thisNode neighbourMap
+          Right nMap -> do
+            ePopInfo <- readAndProcessPoPDefinition state.config state.thisNode nMap
             case ePopInfo of
 
               Left e -> do _ <- Logger.warning "Failed to process pop definition file" {misc: e}
@@ -168,22 +176,22 @@ handleInfo msg state =
         _ <- Timer.sendAfter serverName 1000 Tick
         pure $ CastNoReply newState
 
-readNeighbourMap :: Config.PoPDefinitionConfig -> Effect (Either MultipleErrors NeighbourMapJson)
+readNeighbourMap :: Config.PoPDefinitionConfig -> Effect (Either MultipleErrors NeighbourMap)
 readNeighbourMap config = do
   file <- readFile $ joinWith "/" [config.directory, config.wanDefinitionFile]
   pure $ JSON.readJSON =<< file
 
-readAndProcessPoPDefinition :: Config.PoPDefinitionConfig -> ServerAddress -> NeighbourMapJson -> Effect (Either MultipleErrors PoPInfo)
-readAndProcessPoPDefinition config hostName neighbourMap = do
+readAndProcessPoPDefinition :: Config.PoPDefinitionConfig -> ServerAddress -> NeighbourMap -> Effect (Either MultipleErrors PoPInfo)
+readAndProcessPoPDefinition config hostName nMap = do
   -- In Effect
   file <- readFile $ joinWith "/" [config.directory, config.popDefinitionFile]
   let ePoPJson =(JSON.readJSON =<< file)
   pure do -- In either
         popJson <- ePoPJson
         let allPops = Map.keys =<< Map.values popJson
-            filteredNeighbours = filterNeighbours allPops neighbourMap
+            filteredNeighbours = filterNeighbours allPops nMap
             regionMap = mapRegionJson filteredNeighbours popJson
-        processPoPJson hostName regionMap
+        processPoPJson hostName regionMap filteredNeighbours
 
 
 readFile :: String -> Effect (Either MultipleErrors String)
@@ -191,26 +199,26 @@ readFile fileName = do
   jsonString <- File.readUtf8File fileName
   pure $ note' (\_ -> NonEmptyList.singleton $ ForeignError ("failed to read file " <> fileName)) jsonString
 
-filterNeighbours :: List PoPName -> NeighbourMapJson -> NeighbourMapJson
-filterNeighbours allPops neighbourMap =
+filterNeighbours :: List PoPName -> NeighbourMap -> NeighbourMap
+filterNeighbours allPops nMap =
   mapMaybeWithKey
   (\k v ->
     if elem k allPops then Just $ filter (flip elem allPops) v else Nothing
-  ) neighbourMap
+  ) nMap
 
-mapRegionJson :: NeighbourMapJson -> NetworkJson -> Map RegionName Region
-mapRegionJson neighbourMap nwMap =
-   Map.mapWithKey (\name pops -> {name : name, pops : mapPoPJson neighbourMap pops}) nwMap
+mapRegionJson :: NeighbourMap -> NetworkJson -> Map RegionName Region
+mapRegionJson nMap nwMap =
+   Map.mapWithKey (\name pops -> {name : name, pops : mapPoPJson nMap pops}) nwMap
 
-mapPoPJson :: NeighbourMapJson -> PoPJson -> Map PoPName PoP
-mapPoPJson neighbourMap =
+mapPoPJson :: NeighbourMap -> PoPJson -> Map PoPName PoP
+mapPoPJson nMap =
   Map.mapWithKey (\name servers ->
-                   let neighbours = Map.lookup name neighbourMap # fromMaybe nil
+                   let neighbours = Map.lookup name nMap # fromMaybe nil
                    in
                     {name : name, servers : servers, neighbours})
 
-processPoPJson :: ServerAddress -> (Map RegionName Region) -> Either MultipleErrors PoPInfo
-processPoPJson hostName regions =
+processPoPJson :: ServerAddress -> (Map RegionName Region) -> NeighbourMap -> Either MultipleErrors PoPInfo
+processPoPJson hostName regions nMap =
   let
     servers :: Map ServerAddress ServerLocation
     servers = foldl (\acc region ->
@@ -261,6 +269,7 @@ processPoPJson hostName regions =
                   , otherPoPs: otherPoPs
                   , thisLocation: location
                   , thisPoP: thisPoP'
+                  , neighbourMap: nMap
                   }
          _ ->
            Left $ NonEmptyList.singleton $ ForeignError "This pop is not present in the neighbours map"
