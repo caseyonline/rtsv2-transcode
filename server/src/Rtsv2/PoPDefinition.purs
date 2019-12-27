@@ -78,38 +78,32 @@ type NeighbourMap =  Map PoPName (List PoPName)
 
 data Msg = Tick
 
-serverName :: ServerName State Msg
-serverName = Local "PoPDefinition"
-
 startLink :: Config.PoPDefinitionConfig -> Effect StartLinkResult
 startLink args =
   Gen.startLink serverName (init args) handleInfo
 
 thisNode :: Effect ServerAddress
-thisNode = Gen.doCall serverName (\s -> pure $ CallReply s.thisNode s)
+thisNode = exposeStateMember _.thisNode
 
 thisPoP :: Effect PoP
-thisPoP = Gen.doCall serverName (\s -> pure $ CallReply s.thisPoP s)
+thisPoP = exposeStateMember _.thisPoP
 
 neighbourMap :: Effect NeighbourMap
-neighbourMap = Gen.doCall serverName (\s -> pure $ CallReply s.neighbourMap s)
+neighbourMap = exposeStateMember _.neighbourMap
 
 getOtherServersForThisPoP :: Effect (List ServerAddress)
-getOtherServersForThisPoP = Gen.call serverName (\state@{otherServersInThisPoP} ->
-                                                  CallReply otherServersInThisPoP state
-                                                )
+getOtherServersForThisPoP = exposeStateMember _.otherServersInThisPoP
 
 getOtherPoPs :: Effect (List PoP)
-getOtherPoPs = Gen.doCall serverName
-  \state@{otherPoPs} -> pure $ CallReply otherPoPs state
+getOtherPoPs = exposeStateMember _.otherPoPs
 
 thisLocation :: Effect ServerLocation
-thisLocation = Gen.doCall serverName
-             \state -> pure $ CallReply state.thisLocation state
+thisLocation = exposeStateMember _.thisLocation
 
 whereIsServer :: ServerAddress -> Effect (Maybe ServerLocation)
 whereIsServer sa = Gen.doCall serverName
              \state -> pure $ CallReply (Map.lookup sa state.servers) state
+
 
 init :: Config.PoPDefinitionConfig -> Effect State
 init config = do
@@ -176,6 +170,10 @@ handleInfo msg state =
         _ <- Timer.sendAfter serverName 1000 Tick
         pure $ CastNoReply newState
 
+
+--------------------------------------------------------------------------------
+-- Internal funcitons
+--------------------------------------------------------------------------------
 readNeighbourMap :: Config.PoPDefinitionConfig -> Effect (Either MultipleErrors NeighbourMap)
 readNeighbourMap config = do
   file <- readFile $ joinWith "/" [config.directory, config.wanDefinitionFile]
@@ -290,6 +288,13 @@ maybeLog _ val@(Just _) = pure $ val
 maybeLog msg Nothing = do
   _ <- Logger.warning msg {}
   pure $ Nothing
+
+serverName :: ServerName State Msg
+serverName = Local "PoPDefinition"
+
+exposeStateMember :: forall a. (State -> a) -> Effect a
+exposeStateMember member = Gen.doCall serverName
+  \state -> pure $ CallReply (member state) state
 
 logInfo :: forall a b. Nub (domain :: List Atom | a) b =>  String -> Record a -> Effect Foreign
 logInfo msg metaData =

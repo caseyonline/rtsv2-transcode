@@ -8,7 +8,6 @@ import Prelude
 import Data.Either (hush)
 import Data.Maybe (Maybe(..), isNothing)
 import Data.Tuple (Tuple(..))
-import Debug.Trace (spy)
 import Effect (Effect)
 import Erl.Cowboy.Req (ReadBodyResult(..), Req, readBody, setBody)
 import Erl.Data.Binary (Binary)
@@ -101,7 +100,7 @@ streamPublish =
   # Rest.allowMissingPost (Rest.result false)
 
   # Rest.contentTypesProvided (\req state -> Rest.result (tuple2 "application/json" (Rest.result ""): nil) req state)
-  
+
   # Rest.yeeha
 
 allBody :: Req -> IOData -> Effect Binary

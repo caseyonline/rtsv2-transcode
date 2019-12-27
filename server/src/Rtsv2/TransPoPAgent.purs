@@ -4,6 +4,8 @@ module Rtsv2.TransPoPAgent
        , announceTransPoPLeader
        , health
        , startLink
+       , getEdgeRtts
+       , Edge
        ) where
 
 import Prelude
@@ -11,7 +13,7 @@ import Prelude
 import Data.Either (Either(..))
 import Data.Foldable (foldM, foldl)
 import Data.FoldableWithIndex (foldlWithIndex)
-import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Maybe (Maybe(..), fromMaybe, fromMaybe')
 import Data.Newtype (unwrap, wrap)
 import Data.Set (Set)
 import Data.Set as Set
@@ -79,6 +81,13 @@ data Msg
   | JoinAll
   | ConnectStream
   | TransPoPSerfMsg (Serf.SerfMessage TransMessage)
+
+
+getEdgeRtts :: Effect (Map Edge Milliseconds)
+getEdgeRtts = Gen.doCall serverName
+  \state@{edgeRtts} -> pure $ CallReply edgeRtts state
+
+
 
 serverName :: ServerName State Msg
 serverName = Local $ show Agent.TransPoP
@@ -260,7 +269,7 @@ handleInfo msg state@{ thisPoP } = case msg of
   LeaderTimeoutTick -> CastNoReply <$> handleTick state
 
   RttRefreshTick ->
-    CastNoReply state <$ handleRttRefresh state
+    CastNoReply <$> handleRttRefresh state
 
   JoinAll ->
     CastNoReply state <$ joinAllSerf state
@@ -401,10 +410,9 @@ handleRttRefresh state@{ weAreLeader: true
     defaultEdgeRtts' <- defaultEdgeRtts config
 
     let bestRttGuess edge@(Edge fromPoP toPoP) acc def =
-          flip (Map.insert edge) acc $
-            case traverse (flip Map.lookup poPCoordinates) [fromPoP, toPoP] of
-              Just [fromCoord, toCoord] -> calcRtt fromCoord toCoord
-              _ -> fromMaybe def $ Map.lookup edge edgeRtts
+          let maybeBest = calcRtt <$> Map.lookup fromPoP poPCoordinates <*> Map.lookup toPoP poPCoordinates
+              guess = fromMaybe' (\_ -> fromMaybe def $ Map.lookup edge edgeRtts) maybeBest
+          in  Map.insert edge guess acc
         newEdgeRtts = foldlWithIndex bestRttGuess Map.empty defaultEdgeRtts'
     _ <- Timer.sendAfter serverName rttRefreshMs RttRefreshTick
     pure $ state {edgeRtts = newEdgeRtts}
@@ -520,7 +528,7 @@ joinAllSerf state@{ config: config@{rejoinEveryMs}, serfRpcAddress, members } =
                                popsToJoin
                          )
 
-maybeLogError :: forall a b c d e. Union b (error :: e) c => Nub c d => String -> Either e a -> Record b  -> Effect Unit
+maybeLogError :: forall r b c d e. Union b (error :: e) c => Nub c d => String -> Either e r -> Record b  -> Effect Unit
 maybeLogError _ (Right _) _ = pure unit
 maybeLogError msg (Left err) metadata = do
   _ <- logInfo msg (Record.merge metadata {error: err})
