@@ -81,7 +81,7 @@ type TransPoPAgentConfig
     , leaderAnnounceMs :: Int
     , rttRefreshMs :: Int
     , rejoinEveryMs :: Int
-    , defaultRttMs :: Int
+    , defaultEdgeCost :: Int
     , connectStreamAfterMs :: Int
     }
 

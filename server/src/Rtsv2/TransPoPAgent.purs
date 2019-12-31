@@ -4,8 +4,7 @@ module Rtsv2.TransPoPAgent
        , announceTransPoPLeader
        , health
        , startLink
-       , getEdgeRtts
-       , Edge
+       , getEdgeCosts
        ) where
 
 import Prelude
@@ -28,8 +27,9 @@ import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
 import Erl.Process (spawnLink)
 import Erl.Utils (Milliseconds, sleep, systemTimeMs)
-import Logger (Logger)
+import Logger (Logger, spy)
 import Logger as Logger
+import Network (Network(..), addEdge', bestPaths, emptyNetwork, pathsBetween)
 import Os (osCmd)
 import Partial.Unsafe (unsafeCrashWith)
 import Pinto (ServerName(..), StartLinkResult)
@@ -52,7 +52,9 @@ import Shared.Types (PoPName, ServerAddress(..))
 import Shared.Utils (distinctRandomNumbers)
 import SpudGun as SpudGun
 
-data Edge = Edge PoPName PoPName
+--data Edge = Edge PoPName PoPName
+
+type EdgeCosts = Map (Tuple PoPName PoPName) Int
 
 type State
   = { intraPoPApi :: IntraPoPAgentApi
@@ -67,7 +69,7 @@ type State
     , serfRpcAddress :: IpAndPort
     , members :: Map PoPName (Set ServerAddress)
     , streamStateClocks :: EMap StreamId Int
-    , edgeRtts :: Map Edge Milliseconds
+    , edgeCosts :: EdgeCosts
     }
 
 data StreamState = StreamAvailable
@@ -83,25 +85,10 @@ data Msg
   | TransPoPSerfMsg (Serf.SerfMessage TransMessage)
 
 
-getEdgeRtts :: Effect (Map Edge Milliseconds)
-getEdgeRtts = Gen.doCall serverName
-  \state@{edgeRtts} -> pure $ CallReply edgeRtts state
+getEdgeCosts :: Effect EdgeCosts
+getEdgeCosts = Gen.doCall serverName
+  \state@{edgeCosts} -> pure $ CallReply edgeCosts state
 
-
-
-serverName :: ServerName State Msg
-serverName = Local $ show Agent.TransPoP
-
-messageOrigin :: TransMessage -> Effect (Maybe PoPName)
-messageOrigin (StreamState _ _ addr) = originPoP addr
-
-originPoP :: ServerAddress -> Effect (Maybe PoPName)
-originPoP addr =
-  do
-    mServerLocation <- PoPDefinition.whereIsServer addr
-    pure $ case mServerLocation of
-      Nothing -> Nothing
-      Just (ServerLocation sourcePoP _) -> Just sourcePoP
 
 health :: Effect Health
 health =
@@ -210,7 +197,7 @@ init { config: config@{ leaderTimeoutMs
                       , rttRefreshMs
                       , rejoinEveryMs
                       , rpcPort
-                      , defaultRttMs
+                      , defaultEdgeCost
                       }
      , intraPoPApi} = do
   _ <- logInfo "Trans-PoP Agent Starting" {config: config}
@@ -223,7 +210,7 @@ init { config: config@{ leaderTimeoutMs
   rpcBindIp <- Env.privateInterfaceIp
   thisNode <- PoPDefinition.thisNode
   thisLocation <- PoPDefinition.thisLocation
-  defaultEdgeRtts' <- defaultEdgeRtts config
+  defaultEdgeCosts' <- defaultEdgeCosts config
   now <- systemTimeMs
 
   let
@@ -245,25 +232,13 @@ init { config: config@{ leaderTimeoutMs
       , thisPoP: thisPoP
       , serfRpcAddress: serfRpcAddress
       , members: Map.empty
-      , edgeRtts: defaultEdgeRtts'
+      , edgeCosts: defaultEdgeCosts'
       , streamStateClocks: EMap.empty
     }
 
-defaultEdgeRtts :: TransPoPAgentConfig -> Effect (Map Edge Milliseconds)
-defaultEdgeRtts {defaultRttMs} = do
-  let defaultRtt = wrap defaultRttMs
-  neighbourMap <- PoPDefinition.neighbourMap
-  pure $ foldlWithIndex (\k acc v -> foldl (\acc' a -> Map.insert (Edge k a) defaultRtt acc') acc v) Map.empty neighbourMap
-
-
-shouldProcessStreamState :: StreamId -> Int -> EMap StreamId Int -> Boolean
-shouldProcessStreamState streamId ltime streamStateClocks =
-  case EMap.lookup streamId streamStateClocks of
-    Just lastLTime
-      | lastLTime > ltime -> false
-    _ ->
-      true
-
+--------------------------------------------------------------------------------
+-- Genserver callbacks
+--------------------------------------------------------------------------------
 handleInfo :: Msg -> State -> Effect (CastResult State)
 handleInfo msg state@{ thisPoP } = case msg of
   LeaderTimeoutTick -> CastNoReply <$> handleTick state
@@ -318,6 +293,43 @@ handleTransPoPMessage (StreamState StreamStopped streamId server) state@{intraPo
   _ <- logInfo "Remote stream stopped" {streamId, server}
   _ <- announceRemoteStreamStopped streamId server
   pure state
+
+--------------------------------------------------------------------------------
+-- Internal functions
+--------------------------------------------------------------------------------
+serverName :: ServerName State Msg
+serverName = Local $ show Agent.TransPoP
+
+messageOrigin :: TransMessage -> Effect (Maybe PoPName)
+messageOrigin (StreamState _ _ addr) = originPoP addr
+
+originPoP :: ServerAddress -> Effect (Maybe PoPName)
+originPoP addr =
+  do
+    mServerLocation <- PoPDefinition.whereIsServer addr
+    pure $ case mServerLocation of
+      Nothing -> Nothing
+      Just (ServerLocation sourcePoP _) -> Just sourcePoP
+
+defaultEdgeCosts :: TransPoPAgentConfig -> Effect EdgeCosts
+defaultEdgeCosts {defaultEdgeCost} = do
+  neighbourMap <- PoPDefinition.neighbourMap
+  pure $ foldlWithIndex
+    (\k acc vs ->
+      foldl (\acc' a ->
+              Map.insert (Tuple k a) defaultEdgeCost acc')
+      acc vs
+    ) Map.empty neighbourMap
+
+
+shouldProcessStreamState :: StreamId -> Int -> EMap StreamId Int -> Boolean
+shouldProcessStreamState streamId ltime streamStateClocks =
+  case EMap.lookup streamId streamStateClocks of
+    Just lastLTime
+      | lastLTime > ltime -> false
+    _ ->
+      true
+
 
 membersAlive :: (List Serf.SerfMember) -> State -> Effect State
 membersAlive aliveMembers state =
@@ -375,9 +387,10 @@ handleRttRefresh :: State -> Effect State
 handleRttRefresh state@{ weAreLeader: false} =  pure state
 
 handleRttRefresh state@{ weAreLeader: true
-                       , config: config@{rttRefreshMs}
+                       , config: config@{rttRefreshMs, defaultEdgeCost}
                        , members
-                       , edgeRtts
+                       , thisPoP
+                       , edgeCosts
                        } = do
     -- look up the coordinates of all members
     let allMemebers = join $ Set.toUnfoldable <$> Map.values members
@@ -399,23 +412,30 @@ handleRttRefresh state@{ weAreLeader: true
                   pure acc
             ) Map.empty eCoordiates
 
+    defaultEdgeCosts' <- defaultEdgeCosts config
+    otherPoPNames <- PoPDefinition.getOtherPoPNames
 
-
-    -- The new RttMap should have:
+    -- The new cost map should have:
     -- * only those edges now in the latest PoPDefinition
     -- With:
-    --  * Newly looked up RTTs (from the new coordinates)
-    --  * Previous RTTs (from current map)
-    --  * Default RTTs
-    defaultEdgeRtts' <- defaultEdgeRtts config
-
-    let bestRttGuess edge@(Edge fromPoP toPoP) acc def =
-          let maybeBest = calcRtt <$> Map.lookup fromPoP poPCoordinates <*> Map.lookup toPoP poPCoordinates
-              guess = fromMaybe' (\_ -> fromMaybe def $ Map.lookup edge edgeRtts) maybeBest
+    --  * Newly looked up costs from measured RTTs (from the new coordinates)
+    --  * Previous costs (from current map)
+    --  * Default costs
+    let bestRttGuess edge@(Tuple fromPoP toPoP) acc def =
+          let rttToCost :: Milliseconds -> Int
+              rttToCost  = (*) 10 <<< unwrap
+              maybeBest :: Maybe Int
+              maybeBest = rttToCost <$> (calcRtt <$> Map.lookup fromPoP poPCoordinates <*> Map.lookup toPoP poPCoordinates)
+              guess = fromMaybe' (\_ -> fromMaybe def $ Map.lookup edge edgeCosts) maybeBest
           in  Map.insert edge guess acc
-        newEdgeRtts = foldlWithIndex bestRttGuess Map.empty defaultEdgeRtts'
+        newEdgeCosts = foldlWithIndex bestRttGuess Map.empty defaultEdgeCosts'
+        newNetwork :: Network PoPName
+        newNetwork = foldlWithIndex (\(Tuple from to) acc cost -> addEdge' from to cost acc) emptyNetwork newEdgeCosts
+        -- Get the bestroute pairs to all the other pops
+        paths = (pathsBetween newNetwork thisPoP) <$> otherPoPNames
+        foo = spy "best" $ bestPaths <$>  paths
     _ <- Timer.sendAfter serverName rttRefreshMs RttRefreshTick
-    pure $ state {edgeRtts = newEdgeRtts}
+    pure $ state {edgeCosts = newEdgeCosts}
 
 handleTick :: State -> Effect State
 handleTick = case _ of

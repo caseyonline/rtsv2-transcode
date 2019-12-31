@@ -2,6 +2,7 @@ module Rtsv2.PoPDefinition
        ( startLink
        , getOtherServersForThisPoP
        , getOtherPoPs
+       , getOtherPoPNames
        , thisNode
        , whereIsServer
        , thisLocation
@@ -39,7 +40,7 @@ import Record as Record
 import Rtsv2.Config (ServerLocation(..))
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
-import Shared.Types (PoPName, RegionName, ServerAddress(..))
+import Shared.Types (PoPName(..), RegionName, ServerAddress(..))
 import Simple.JSON as JSON
 
 type PoPInfo =
@@ -96,6 +97,11 @@ getOtherServersForThisPoP = exposeStateMember _.otherServersInThisPoP
 
 getOtherPoPs :: Effect (List PoP)
 getOtherPoPs = exposeStateMember _.otherPoPs
+
+
+getOtherPoPNames :: Effect (List PoPName)
+getOtherPoPNames =
+   exposeStateMember ((<$>) _.name <<< _.otherPoPs)
 
 thisLocation :: Effect ServerLocation
 thisLocation = exposeStateMember _.thisLocation
