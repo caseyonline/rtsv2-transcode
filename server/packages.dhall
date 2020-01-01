@@ -41,8 +41,7 @@ let overrides =
           }
       , erl-maps =
           { dependencies =
-              [ "assert"
-              , "console"
+              [ "console"
               , "erl-lists"
               , "functions"
               , "prelude"
@@ -52,7 +51,7 @@ let overrides =
           , repo =
               "ssh://git@github.com/adrianroe/purescript-erl-maps.git"
           , version =
-              "8b837a6a53ef085e6c097e3a4d16fdcd16da50f2"
+              "88995fa67be79f7dd77734f20b13bb54fec10f88"
           }
       , erl-lists =
           { dependencies =

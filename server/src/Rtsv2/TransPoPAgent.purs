@@ -29,7 +29,7 @@ import Erl.Process (spawnLink)
 import Erl.Utils (Milliseconds, sleep, systemTimeMs)
 import Logger (Logger, spy)
 import Logger as Logger
-import Network (Network(..), addEdge', bestPaths, emptyNetwork, pathsBetween)
+import Network (Network, addEdge', bestPaths, emptyNetwork, pathsBetween)
 import Os (osCmd)
 import Partial.Unsafe (unsafeCrashWith)
 import Pinto (ServerName(..), StartLinkResult)
