@@ -432,8 +432,7 @@ handleRttRefresh state@{ weAreLeader: true
         newNetwork :: Network PoPName
         newNetwork = foldlWithIndex (\(Tuple from to) acc cost -> addEdge' from to cost acc) emptyNetwork newEdgeCosts
         -- Get the bestroute pairs to all the other pops
-        paths = (pathsBetween newNetwork thisPoP) <$> otherPoPNames
-        foo = spy "best" $ bestPaths <$>  paths
+        paths = spy "best" $ (bestPaths <<< pathsBetween newNetwork thisPoP) <$> otherPoPNames
     _ <- Timer.sendAfter serverName rttRefreshMs RttRefreshTick
     pure $ state {edgeCosts = newEdgeCosts}
 
