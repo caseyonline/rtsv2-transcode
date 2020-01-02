@@ -17,14 +17,14 @@ import Prelude
 
 import Data.Either (Either(..), note')
 import Data.Filterable (filter)
-import Data.Foldable (foldl)
+import Data.Foldable (elem, foldl)
 import Data.List.NonEmpty as NonEmptyList
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.String (joinWith)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
-import Erl.Data.List (List, elem, nil, (:))
+import Erl.Data.List (List, nil, (:))
 import Erl.Data.Map (Map, mapMaybeWithKey)
 import Erl.Data.Map as Map
 import File as File

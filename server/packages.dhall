@@ -53,20 +53,6 @@ let overrides =
           , version =
               "88995fa67be79f7dd77734f20b13bb54fec10f88"
           }
-      , erl-lists =
-          { dependencies =
-              [ "assert"
-              , "unfoldable"
-              , "filterable"
-              , "tuples"
-              , "console"
-              , "prelude"
-              ]
-          , repo =
-              "ssh://git@github.com/adrianroe/purescript-erl-lists.git"
-          , version =
-              "19d3ae1bc1559a8e507a4af1c092170f37e5d2f5"
-          }
       , erl-tuples =
           { dependencies =
               [ "assert", "console", "functions", "prelude", "tuples" ]
