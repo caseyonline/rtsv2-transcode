@@ -19,11 +19,11 @@ eventImpl(Left, Right, RpcAddr, Name, Msg, Coalesce) ->
         ok -> Right;
 
         {error, Error} ->
-          ?SLOG_WARNING("serf error", #{ error => Error
-                                       , client_rpc => RpcAddr
-                                       , msg => Msg
-                                       , coalesce => Coalesce
-                                      }),
+          ?SLOG_WARNING("serf event error", #{ error => Error
+                                             , client_rpc => RpcAddr
+                                             , msg => Msg
+                                             , coalesce => Coalesce
+                                             }),
           Left(networkError)
       end
   end.
@@ -50,11 +50,11 @@ joinImpl(Left, Right, RpcAddr, SeedAgents, Replay) ->
                          [mapAddr(Seed) || Seed <- SeedAgents],
                          Replay) of
         {error, Error} ->
-          ?SLOG_WARNING("serf error", #{ error => Error
-                                      , client_rpc => RpcAddr
-                                      , seeds => SeedAgents
-                                      , replay_events => Replay
-                                      }),
+          ?SLOG_WARNING("serf join error", #{ error => Error
+                                            , client_rpc => RpcAddr
+                                            , seeds => SeedAgents
+                                            , replay_events => Replay
+                                            }),
           Left(networkError);
         {ok, #serf_join_response{status = serf_error,
                                  serf_error = ErrorBin}} ->
@@ -72,9 +72,9 @@ leaveImpl(Left, Right, RpcAddr) ->
           Right(unit);
 
         {error, Error} ->
-          ?SLOG_WARNING("serf error", #{ error => Error
-                                      , client_rpc => RpcAddr
-                                      }),
+          ?SLOG_WARNING("serf leave error", #{ error => Error
+                                             , client_rpc => RpcAddr
+                                             }),
           Left(networkError)
       end
   end.

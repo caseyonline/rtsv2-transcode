@@ -41,8 +41,7 @@ let overrides =
           }
       , erl-maps =
           { dependencies =
-              [ "assert"
-              , "console"
+              [ "console"
               , "erl-lists"
               , "functions"
               , "prelude"
@@ -50,9 +49,9 @@ let overrides =
               , "unfoldable"
               ]
           , repo =
-              "ssh://git@github.com/srstrong/purescript-erl-maps.git"
+              "ssh://git@github.com/adrianroe/purescript-erl-maps.git"
           , version =
-              "33b4d45ec2c1c951dae6358b187ba013c128870b"
+              "88995fa67be79f7dd77734f20b13bb54fec10f88"
           }
       , erl-tuples =
           { dependencies =

@@ -1,17 +1,17 @@
 module Bus where
 
-import Prelude 
+import Prelude
 import Effect (Effect)
 import Erl.Process.Raw (Pid)
-import Pinto (ServerName(..))
+import Pinto (ServerName)
 
-newtype SubscriptionRef msg = SubscriptionRef Pid                                               
+newtype SubscriptionRef msg = SubscriptionRef Pid
 
 foreign import subscribe_ :: forall busMsg msg. (Pid -> SubscriptionRef busMsg) -> String -> (busMsg -> msg) -> Effect (SubscriptionRef busMsg)
 foreign import unsubscribe_ :: Pid -> Effect Unit
 foreign import raise_ :: forall msg. String -> msg -> Effect Unit
 
-newtype Bus msg = Bus String 
+newtype Bus msg = Bus String
 
 bus :: forall msg. String -> Bus msg
 bus name = Bus name

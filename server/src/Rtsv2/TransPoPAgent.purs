@@ -4,30 +4,32 @@ module Rtsv2.TransPoPAgent
        , announceTransPoPLeader
        , health
        , startLink
+       , getEdgeCosts
        ) where
 
 import Prelude
 
-import Control.Apply (lift2)
 import Data.Either (Either(..))
-import Data.Foldable (foldl)
-import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Foldable (foldM, foldl)
+import Data.FoldableWithIndex (foldlWithIndex)
+import Data.Maybe (Maybe(..), fromMaybe, fromMaybe')
 import Data.Newtype (unwrap, wrap)
+import Data.Set (Set)
 import Data.Set as Set
-import Data.Traversable (sequence, traverse_)
+import Data.Traversable (sequence, traverse, traverse_)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Ephemeral.Map (EMap)
 import Ephemeral.Map as EMap
 import Erl.Atom (atom)
-import Erl.Data.List (List, index, length, nil, zip, (:))
+import Erl.Data.List (List, index, length, nil, (:))
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
 import Erl.Process (spawnLink)
 import Erl.Utils (Milliseconds, sleep, systemTimeMs)
-import Foreign (Foreign)
+import Logger (Logger, spy)
 import Logger as Logger
-import Math (sqrt)
+import Network (Network, addEdge', bestPaths, emptyNetwork, pathsBetween)
 import Os (osCmd)
 import Partial.Unsafe (unsafeCrashWith)
 import Pinto (ServerName(..), StartLinkResult)
@@ -36,14 +38,13 @@ import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Prim.Row (class Nub, class Union)
 import Record as Record
-import Rtsv2.Config (ServerLocation(..))
-import Rtsv2.Config as Config
+import Rtsv2.Config (IntraPoPAgentApi, ServerLocation(..), TransPoPAgentConfig)
 import Rtsv2.Env as Env
 import Rtsv2.Health (Health)
 import Rtsv2.Health as Health
-import Rtsv2.PoPDefinition (PoP, whereIsServer)
+import Rtsv2.PoPDefinition (PoP)
 import Rtsv2.PoPDefinition as PoPDefinition
-import Serf (IpAndPort)
+import Serf (IpAndPort, calcRtt)
 import Serf as Serf
 import Shared.Agent as Agent
 import Shared.Stream (StreamId)
@@ -51,8 +52,12 @@ import Shared.Types (PoPName, ServerAddress(..))
 import Shared.Utils (distinctRandomNumbers)
 import SpudGun as SpudGun
 
+--data Edge = Edge PoPName PoPName
+
+type EdgeCosts = Map (Tuple PoPName PoPName) Int
+
 type State
-  = { intraPoPApi :: Config.IntraPoPAgentApi
+  = { intraPoPApi :: IntraPoPAgentApi
     , currentLeader :: Maybe ServerAddress
     , weAreLeader :: Boolean
     , lastLeaderAnnouncement :: Milliseconds
@@ -60,10 +65,11 @@ type State
     , thisNode :: ServerAddress
     , thisLocation :: ServerLocation
     , thisPoP :: PoPName
-    , config :: Config.TransPoPAgentConfig
+    , config :: TransPoPAgentConfig
     , serfRpcAddress :: IpAndPort
-    , members :: Map PoPName (Set.Set ServerAddress)
+    , members :: Map PoPName (Set ServerAddress)
     , streamStateClocks :: EMap StreamId Int
+    , edgeCosts :: EdgeCosts
     }
 
 data StreamState = StreamAvailable
@@ -78,19 +84,11 @@ data Msg
   | ConnectStream
   | TransPoPSerfMsg (Serf.SerfMessage TransMessage)
 
-serverName :: ServerName State Msg
-serverName = Local $ show Agent.TransPoP
 
-messageOrigin :: TransMessage -> Effect (Maybe PoPName)
-messageOrigin (StreamState _ _ addr) = originPoP addr
+getEdgeCosts :: Effect EdgeCosts
+getEdgeCosts = Gen.doCall serverName
+  \state@{edgeCosts} -> pure $ CallReply edgeCosts state
 
-originPoP :: ServerAddress -> Effect (Maybe PoPName)
-originPoP addr =
-  do
-    mServerLocation <- whereIsServer addr
-    pure $ case mServerLocation of
-      Nothing -> Nothing
-      Just (ServerLocation sourcePoP _) -> Just sourcePoP
 
 health :: Effect Health
 health =
@@ -152,15 +150,14 @@ announceTransPoPLeader address =
   Gen.doCast serverName ((map CastNoReply) <<< doAnnounceTransPoPLeader)
   where
     doAnnounceTransPoPLeader :: State -> Effect State
-    doAnnounceTransPoPLeader state@{ thisNode
-                                   , weAreLeader: true
+    doAnnounceTransPoPLeader state@{ weAreLeader: true
+                                   , thisNode
                                    , serfRpcAddress
                                    }
       | address < thisNode = do
         result <- Serf.leave serfRpcAddress
         _ <- logInfo "Another node has taken over as transpop leader; stepping down" { leader: address }
-        stopResp <- osCmd "scripts/stopTransPoPAgent.sh"
-        _ <- logInfo "Stop Resp" {resp: stopResp}
+        _ <- osCmd stopScript
 
         now <- systemTimeMs
         pure
@@ -169,11 +166,10 @@ announceTransPoPLeader address =
               , lastLeaderAnnouncement = now
               , weAreLeader = false
               -- TODO - why is this type hint needed?  Does not compile without
-              , members = Map.empty :: Map PoPName (Set.Set ServerAddress)
+              , members = Map.empty :: Map PoPName (Set ServerAddress)
               }
-
-    doAnnounceTransPoPLeader state@{ weAreLeader: true } =
-      pure state
+      | otherwise =
+        pure state
 
     doAnnounceTransPoPLeader state@{ currentLeader
                                    , thisNode
@@ -192,24 +188,29 @@ announceTransPoPLeader address =
       now <- systemTimeMs
       pure $ state { lastLeaderAnnouncement = now }
 
-startLink :: {config :: Config.TransPoPAgentConfig, intraPoPApi :: Config.IntraPoPAgentApi} -> Effect StartLinkResult
+startLink :: {config :: TransPoPAgentConfig, intraPoPApi :: IntraPoPAgentApi} -> Effect StartLinkResult
 startLink args = Gen.startLink serverName (init args) handleInfo
 
-init :: {config :: Config.TransPoPAgentConfig, intraPoPApi :: Config.IntraPoPAgentApi} -> Effect State
+init :: {config :: TransPoPAgentConfig, intraPoPApi :: IntraPoPAgentApi} -> Effect State
 init { config: config@{ leaderTimeoutMs
                       , leaderAnnounceMs
                       , rttRefreshMs
                       , rejoinEveryMs
                       , rpcPort
+                      , defaultEdgeCost
                       }
      , intraPoPApi} = do
   _ <- logInfo "Trans-PoP Agent Starting" {config: config}
+  -- Stop any agent that might be running (in case we crashed)
+  _ <- osCmd stopScript
+
   _ <- Gen.registerExternalMapping serverName (\m -> TransPoPSerfMsg <$> (Serf.messageMapper m))
   _ <- Timer.sendEvery serverName leaderAnnounceMs LeaderTimeoutTick
-  _ <- Timer.sendAfter serverName rttRefreshMs RttRefreshTick
+
   rpcBindIp <- Env.privateInterfaceIp
   thisNode <- PoPDefinition.thisNode
   thisLocation <- PoPDefinition.thisLocation
+  defaultEdgeCosts' <- defaultEdgeCosts config
   now <- systemTimeMs
 
   let
@@ -231,34 +232,28 @@ init { config: config@{ leaderTimeoutMs
       , thisPoP: thisPoP
       , serfRpcAddress: serfRpcAddress
       , members: Map.empty
+      , edgeCosts: defaultEdgeCosts'
       , streamStateClocks: EMap.empty
     }
 
-shouldProcessStreamState :: StreamId -> Int -> EMap StreamId Int -> Boolean
-shouldProcessStreamState streamId ltime streamStateClocks =
-  case EMap.lookup streamId streamStateClocks of
-    Just lastLTime
-      | lastLTime > ltime -> false
-    _ ->
-      true
-
+--------------------------------------------------------------------------------
+-- Genserver callbacks
+--------------------------------------------------------------------------------
 handleInfo :: Msg -> State -> Effect (CastResult State)
 handleInfo msg state@{ thisPoP } = case msg of
   LeaderTimeoutTick -> CastNoReply <$> handleTick state
 
-  RttRefreshTick -> CastNoReply <$> handleRttRefresh state
+  RttRefreshTick ->
+    CastNoReply <$> handleRttRefresh state
 
-  JoinAll -> do
-    _ <- joinAllSerf state
-    pure $ CastNoReply state
+  JoinAll ->
+    CastNoReply state <$ joinAllSerf state
 
-  ConnectStream -> do
-    _ <- connectStream state
-    pure $ CastNoReply state
+  ConnectStream ->
+    CastNoReply state <$ connectStream state
 
   TransPoPSerfMsg tmsg ->
-    let
-      newState =
+    CastNoReply <$>
         case tmsg of
           Serf.MemberAlive members -> membersAlive members state
           Serf.MemberLeaving -> pure state
@@ -286,8 +281,7 @@ handleInfo msg state@{ thisPoP } = case msg of
                         true -> do
                           newStreamStateClocks <- EMap.insert' streamId ltime state.streamStateClocks
                           handleTransPoPMessage transMessage (state{streamStateClocks = newStreamStateClocks})
-     in
-       CastNoReply <$> newState
+
 
 handleTransPoPMessage :: TransMessage -> State -> Effect State
 handleTransPoPMessage (StreamState StreamAvailable streamId server) state@{intraPoPApi: {announceRemoteStreamIsAvailable}} = do
@@ -300,6 +294,43 @@ handleTransPoPMessage (StreamState StreamStopped streamId server) state@{intraPo
   _ <- announceRemoteStreamStopped streamId server
   pure state
 
+--------------------------------------------------------------------------------
+-- Internal functions
+--------------------------------------------------------------------------------
+serverName :: ServerName State Msg
+serverName = Local $ show Agent.TransPoP
+
+messageOrigin :: TransMessage -> Effect (Maybe PoPName)
+messageOrigin (StreamState _ _ addr) = originPoP addr
+
+originPoP :: ServerAddress -> Effect (Maybe PoPName)
+originPoP addr =
+  do
+    mServerLocation <- PoPDefinition.whereIsServer addr
+    pure $ case mServerLocation of
+      Nothing -> Nothing
+      Just (ServerLocation sourcePoP _) -> Just sourcePoP
+
+defaultEdgeCosts :: TransPoPAgentConfig -> Effect EdgeCosts
+defaultEdgeCosts {defaultEdgeCost} = do
+  neighbourMap <- PoPDefinition.neighbourMap
+  pure $ foldlWithIndex
+    (\k acc vs ->
+      foldl (\acc' a ->
+              Map.insert (Tuple k a) defaultEdgeCost acc')
+      acc vs
+    ) Map.empty neighbourMap
+
+
+shouldProcessStreamState :: StreamId -> Int -> EMap StreamId Int -> Boolean
+shouldProcessStreamState streamId ltime streamStateClocks =
+  case EMap.lookup streamId streamStateClocks of
+    Just lastLTime
+      | lastLTime > ltime -> false
+    _ ->
+      true
+
+
 membersAlive :: (List Serf.SerfMember) -> State -> Effect State
 membersAlive aliveMembers state =
   do
@@ -307,7 +338,7 @@ membersAlive aliveMembers state =
     newMembers <- foldl addPoP (pure $ state.members) aliveMembers
     pure state {members = newMembers}
   where
-    addPoP :: Effect (Map PoPName (Set.Set ServerAddress)) -> Serf.SerfMember -> Effect (Map PoPName (Set.Set ServerAddress))
+    addPoP :: Effect (Map PoPName (Set ServerAddress)) -> Serf.SerfMember -> Effect (Map PoPName (Set ServerAddress))
     addPoP eMembers aliveMember@{name: aliveName} =
       do
         members <- eMembers
@@ -329,7 +360,7 @@ membersLeft leftMembers state =
     newMembers <- foldl removePoP (pure state.members) leftMembers
     pure state {members = newMembers}
   where
-    removePoP :: Effect (Map PoPName (Set.Set ServerAddress)) -> Serf.SerfMember -> Effect (Map PoPName (Set.Set ServerAddress))
+    removePoP :: Effect (Map PoPName (Set ServerAddress)) -> Serf.SerfMember -> Effect (Map PoPName (Set ServerAddress))
     removePoP eMembers leftMember@{name: leftName} =
       do
         members <- eMembers
@@ -347,37 +378,63 @@ membersLeft leftMembers state =
 getPoP :: Serf.SerfMember -> Effect (Maybe PoPName)
 getPoP {name : memberName} =
   do
-    mServerLocation <- whereIsServer (ServerAddress memberName)
+    mServerLocation <- PoPDefinition.whereIsServer (ServerAddress memberName)
     pure $ case mServerLocation of
       Nothing -> Nothing
       Just (ServerLocation popName _) -> Just popName
 
 handleRttRefresh :: State -> Effect State
-handleRttRefresh = case _ of
-  state@{ weAreLeader: true
-        , config: {rttRefreshMs}
-        } -> do
-      us <- Serf.getCoordinate state.serfRpcAddress $ unwrap state.thisNode
-      _ <- traverse_ (\popMembers -> do
-                          traverse_ (\popMember -> do
-                                    resp <- Serf.getCoordinate state.serfRpcAddress $ unwrap popMember
-                                    _ <- logInfo "rtt" { node: popMember, rtt : (lift2 calcRtt us resp)}
-                                    pure unit)
-                                popMembers
-                  )
-        (Map.values state.members)
-      _ <- Timer.sendAfter serverName rttRefreshMs RttRefreshTick
-      pure state
-  state -> pure state
+handleRttRefresh state@{ weAreLeader: false} =  pure state
 
-  where
-    calcRtt lhs rhs = do
-      let sumq = foldl (\acc (Tuple a b) -> acc + ((a - b) * (a - b))) 0.0 (zip lhs.vec rhs.vec)
-          rtt = sqrt sumq + lhs.height + rhs.height
-          adjusted = rtt + lhs.adjustment + rhs.adjustment
-      if adjusted > 0.0
-        then adjusted * 1000.0
-        else rtt * 1000.0
+handleRttRefresh state@{ weAreLeader: true
+                       , config: config@{rttRefreshMs, defaultEdgeCost}
+                       , members
+                       , thisPoP
+                       , edgeCosts
+                       } = do
+    -- look up the coordinates of all members
+    let allMemebers = join $ Set.toUnfoldable <$> Map.values members
+        lookup addr = (Tuple addr) <$> (Serf.getCoordinate state.serfRpcAddress $ unwrap addr)
+    eCoordiates <- traverse lookup allMemebers
+    poPCoordinates <-
+      foldM (\acc (Tuple sa eCoord) ->
+              case eCoord of
+                Right coord -> do
+                  mPoP <- originPoP sa
+                  case mPoP of
+                    Nothing -> do
+                      _ <- logWarning "Unknown pop for server" {misc: sa}
+                      pure acc
+                    Just pop -> do
+                      pure $ Map.insert pop coord acc
+                Left error -> do
+                  _ <- logWarning "Coordinate error" {misc: {server: sa, error}}
+                  pure acc
+            ) Map.empty eCoordiates
+
+    defaultEdgeCosts' <- defaultEdgeCosts config
+    otherPoPNames <- PoPDefinition.getOtherPoPNames
+
+    -- The new cost map should have:
+    -- * only those edges now in the latest PoPDefinition
+    -- With:
+    --  * Newly looked up costs from measured RTTs (from the new coordinates)
+    --  * Previous costs (from current map)
+    --  * Default costs
+    let bestRttGuess edge@(Tuple fromPoP toPoP) acc def =
+          let rttToCost :: Milliseconds -> Int
+              rttToCost  = (*) 10 <<< unwrap
+              maybeBest :: Maybe Int
+              maybeBest = rttToCost <$> (calcRtt <$> Map.lookup fromPoP poPCoordinates <*> Map.lookup toPoP poPCoordinates)
+              guess = fromMaybe' (\_ -> fromMaybe def $ Map.lookup edge edgeCosts) maybeBest
+          in  Map.insert edge guess acc
+        newEdgeCosts = foldlWithIndex bestRttGuess Map.empty defaultEdgeCosts'
+        newNetwork :: Network PoPName
+        newNetwork = foldlWithIndex (\(Tuple from to) acc cost -> addEdge' from to cost acc) emptyNetwork newEdgeCosts
+        -- Get the bestroute pairs to all the other pops
+        paths = spy "best" $ (bestPaths <<< pathsBetween newNetwork thisPoP) <$> otherPoPNames
+    _ <- Timer.sendAfter serverName rttRefreshMs RttRefreshTick
+    pure $ state {edgeCosts = newEdgeCosts}
 
 handleTick :: State -> Effect State
 handleTick = case _ of
@@ -400,7 +457,7 @@ becomeLeader now state@{ lastLeaderAnnouncement
                        , intraPoPApi: {announceTransPoPLeader: intraPoP_announceTransPoPLeader}
                        } = do
   _ <- logInfo "Leader is absent, becoming leader" {}
-  _ <- osCmd "scripts/startTransPoPAgent.sh"
+  _ <- osCmd startScript
   _ <- intraPoP_announceTransPoPLeader
   _ <- Timer.sendAfter serverName connectStreamAfterMs ConnectStream
   -- TODO: build default network topology map
@@ -490,11 +547,24 @@ joinAllSerf state@{ config: config@{rejoinEveryMs}, serfRpcAddress, members } =
                                popsToJoin
                          )
 
-maybeLogError :: forall a b c d e. Union b (error :: e) c => Nub c d => String -> Either e a -> Record b  -> Effect Unit
+maybeLogError :: forall r b c d e. Union b (error :: e) c => Nub c d => String -> Either e r -> Record b  -> Effect Unit
 maybeLogError _ (Right _) _ = pure unit
 maybeLogError msg (Left err) metadata = do
   _ <- logInfo msg (Record.merge metadata {error: err})
   pure unit
 
-logInfo :: forall a. String -> a -> Effect Foreign
-logInfo msg metaData = Logger.info msg (Record.merge { domain: ((atom (show Agent.TransPoP)) : nil) } { misc: metaData })
+logInfo :: forall a. Logger a
+logInfo = doLog Logger.info
+
+logWarning :: forall a. Logger a
+logWarning = doLog Logger.warning
+
+--TODO - a vaguely readable type for this!
+doLog logger msg metaData =
+  logger msg (Record.merge { domain: ((atom (show Agent.TransPoP)) : nil) } { misc: metaData })
+
+startScript :: String
+startScript = "scripts/startTransPoPAgent.sh"
+
+stopScript :: String
+stopScript = "scripts/stopTransPoPAgent.sh"

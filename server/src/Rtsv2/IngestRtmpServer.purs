@@ -7,11 +7,10 @@ module Rtsv2.IngestRtmpServer
 import Prelude
 
 import Data.Bifunctor (lmap)
-import Data.Either (Either(..), hush, note)
+import Data.Either (Either(..), hush)
 import Data.Foldable (any)
 import Data.List.NonEmpty (singleton)
 import Data.Maybe (Maybe)
-import Debug.Trace (spy)
 import Effect (Effect)
 import Erl.Utils as ErlUtils
 import Foreign (Foreign, ForeignError(..))
