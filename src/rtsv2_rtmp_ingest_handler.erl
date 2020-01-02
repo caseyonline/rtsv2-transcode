@@ -18,13 +18,17 @@
          rtmp_pid :: pid(),
          ingestStarted :: fun(),
          ingestStopped :: fun(),
-         checkSlot :: fun(),
-         slot :: term()
+         streamAuthType :: fun(),
+         streamAuth :: fun(),
+         streamPublish :: fun(),
+         streamDetails :: term()
         }).
 
 init(Rtmp, ConnectArgs, [#{ingestStarted := IngestStarted,
                            ingestStopped := IngestStopped,
-                           checkSlot := CheckSlot}]) ->
+                           streamAuthType := StreamAuthType,
+                           streamAuth := StreamAuth,
+                           streamPublish := StreamPublish}]) ->
 
   {_, TcUrl} = lists:keyfind("tcUrl", 1, ConnectArgs),
 
@@ -33,33 +37,32 @@ init(Rtmp, ConnectArgs, [#{ingestStarted := IngestStarted,
                             host = Host
                            },
      app_config = #rtmp_app_config{
-                     %%application = Application
+                     application = ShortName
                     },
-     %%stream_name = StreamName,
      query = Query
     } = rtmp_utils:parse_url(TcUrl),
 
   %% Stuff hardcoded until LLNW finalise the API...
-  Application = <<"mmddev001">>,
-  StreamName = <<"my-cool-slot_1000">>,
-  Protocol = adobe,
+  %% Application = <<"mmddev001">>,
+  %% StreamName = <<"my-cool-slot_1000">>,
+  %% Protocol = adobe,
 
   case Query of
     #{<<"authmod">> := <<"adobe">>,
-      <<"user">> := User,
+      <<"user">> := UserName,
       <<"challenge">> := ClientChallenge,
       <<"response">> := ClientResponse} ->
       %% We have a adobe completed digest
 
-      Reply = (((CheckSlot(Host))(Application))(StreamName))(),
+      Reply = (((StreamAuth(Host))(ShortName))(UserName))(),
 
       case Reply of
         {nothing} ->
           {stop, rejected};
 
-        {just, Slot = #{slot := #{publishAuth := #{authType := {adobe},
-                                                   username := ExpectedUserName,
-                                                   password := ExpectedPassword}}}} ->
+        {just, #{authType := {adobe},
+                 username := ExpectedUserName,
+                 password := ExpectedPassword}} ->
 
           case rtmp:compare_adobe_challenge_response(ExpectedUserName,
                                                      <<"NzEwNzk">>,
@@ -71,8 +74,10 @@ init(Rtmp, ConnectArgs, [#{ingestStarted := IngestStarted,
               {ok, #?state{rtmp_pid = Rtmp,
                            ingestStarted = IngestStarted,
                            ingestStopped = IngestStopped,
-                           checkSlot = CheckSlot,
-                           slot = Slot}};
+                           streamAuthType = StreamAuthType,
+                           streamAuth = StreamAuth,
+                           streamPublish = (((StreamPublish)(Host))(ShortName))(UserName)
+                          }};
 
             false ->
               ?SLOG_INFO("Challenge failed", #{client_challenge => ClientChallenge,
@@ -87,23 +92,22 @@ init(Rtmp, ConnectArgs, [#{ingestStarted := IngestStarted,
       {authenticate, adobe, UserName, <<"NzEwNzk">>, <<"ODE3MDQ3NTYz">>};
 
     #{<<"authmod">> := <<"llnw">>,
-      <<"user">> := User,
+      <<"user">> := UserName,
       <<"nonce">> := ClientOurNonce,
       <<"cnonce">> := ClientNonce,
       <<"nc">> := ClientNc,
       <<"response">> := ClientResponse} ->
       %% We have a llnw completed digest
 
-      Reply = (((CheckSlot(Host))(Application))(StreamName))(),
+      Reply = (((StreamAuth(Host))(ShortName))(UserName))(),
 
       case Reply of
         {nothing} ->
           {stop, rejected};
 
-        {just, Slot = #{slot := #{publishAuth := #{authType := {adobe},
-                                                   username := ExpectedUserName,
-                                                   password := ExpectedPassword}}}} ->
-
+        {just, #{authType := {llnw},
+                 username := ExpectedUserName,
+                 password := ExpectedPassword}} ->
           Realm = <<"live">>,
           Method = <<"publish">>,
           Nonce = <<"ODE3MDQ3NTYz">>,
@@ -113,7 +117,7 @@ init(Rtmp, ConnectArgs, [#{ingestStarted := IngestStarted,
                                                     Realm,
                                                     ExpectedPassword,
                                                     Method,
-                                                    Application,
+                                                    ShortName,
                                                     Nonce,
                                                     ClientNc,
                                                     ClientNonce,
@@ -123,8 +127,10 @@ init(Rtmp, ConnectArgs, [#{ingestStarted := IngestStarted,
               {ok, #?state{rtmp_pid = Rtmp,
                            ingestStarted = IngestStarted,
                            ingestStopped = IngestStopped,
-                           checkSlot = CheckSlot,
-                           slot = Slot}};
+                           streamAuthType = StreamAuthType,
+                           streamAuth = StreamAuth,
+                           streamPublish = (((StreamPublish)(Host))(ShortName))(UserName)
+                          }};
 
             false ->
               ?SLOG_INFO("Challenge failed", #{client_response => ClientResponse}),
@@ -140,36 +146,51 @@ init(Rtmp, ConnectArgs, [#{ingestStarted := IngestStarted,
 
     #{} ->
       ?INFO("No authmod - start authentication"),
-      {authenticate, Protocol}
+      Reply = ((StreamAuthType(Host))(ShortName))(),
+
+      case Reply of
+        {nothing} ->
+          {stop, rejected};
+
+        {just, #{authType := {Protocol}}} ->
+          {authenticate, Protocol}
+      end
   end.
 
 handle(State = #?state{rtmp_pid = Rtmp,
-                       ingestStarted = IngestStarted,
-                       slot = Slot}) ->
+                       streamPublish = StreamPublish,
+                       ingestStarted = IngestStarted}) ->
 
   receive
     {Rtmp, {request, publish, {StreamId, ClientId, Path}}} ->
       [StreamNameStr | _] = string:tokens(Path, "&"),
 
-      ?SLOG_INFO("Inbound stream", #{stream_id => StreamId,
-                                     client_id => ClientId,
-                                     path => Path,
-                                     stream_name => StreamNameStr}),
-
       StreamName = list_to_binary(StreamNameStr),
 
-      case ((IngestStarted(Slot))(StreamName))() of
-        true ->
-          ok = rtmp:accept_publish(Rtmp, StreamId, ClientId, Path),
-          {ok, WorkflowPid} = start_workflow(Rtmp),
-
-          %% Stream is now connected - we block in here, when we return the rtmp_server instance will close
-          workflow_loop(StreamName, WorkflowPid, State);
-
-        false ->
-          ?SLOG_INFO("Invalid stream name"),
+      case ((StreamPublish)(StreamName))() of
+        {nothing} ->
+          ?SLOG_INFO("Streamname rejected", #{stream_name => StreamName}),
           rtmp:close(Rtmp),
-          ok
+          ok;
+
+        {just, StreamDetails} ->
+          ?SLOG_INFO("Inbound stream", #{stream_id => StreamId,
+                                         client_id => ClientId,
+                                         path => Path,
+                                         stream_name => StreamName}),
+
+          case ((IngestStarted(StreamDetails))(StreamName))() of
+            true ->
+              {ok, WorkflowPid} = start_workflow(Rtmp, StreamId, ClientId, Path),
+
+              %% Stream is now connected - we block in here, when we return the rtmp_server instance will close
+              workflow_loop(StreamName, WorkflowPid, State#?state{streamDetails = StreamDetails});
+
+            false ->
+              ?SLOG_INFO("Invalid stream name"),
+              rtmp:close(Rtmp),
+              ok
+          end
       end;
 
     {Rtmp, disconnected} ->
@@ -177,13 +198,13 @@ handle(State = #?state{rtmp_pid = Rtmp,
   end.
 
 workflow_loop(StreamName, WorkflowPid, State = #?state{ingestStopped = IngestStopped,
-                                                       slot = Slot}) ->
+                                                       streamDetails = StreamDetails}) ->
   %% the workflow is dealing with the RTMP, so just wait until it says we are done
   receive
     #workflow_output{message = #no_active_generators_msg{}} ->
       ?SLOG_WARNING("Client exited"),
 
-      unit = ((IngestStopped(Slot))(StreamName))(),
+      unit = ((IngestStopped(StreamDetails))(StreamName))(),
       ok;
 
     Other ->
@@ -191,7 +212,7 @@ workflow_loop(StreamName, WorkflowPid, State = #?state{ingestStopped = IngestSto
       workflow_loop(StreamName, WorkflowPid, State)
   end.
 
-start_workflow(Rtmp) ->
+start_workflow(Rtmp, StreamId, ClientId, Path) ->
 
   Workflow = #workflow{
                 name = ingest,
@@ -199,7 +220,8 @@ start_workflow(Rtmp) ->
                               #generator{name = rtmp_ingest,
                                          module = rtmp_push_ingest_generator,
                                          config = #rtmp_push_ingest_generator_config{
-                                                     rtmp = Rtmp
+                                                     rtmp = Rtmp,
+                                                     auto_accept = {StreamId, ClientId, Path}
                                                     }}
                              ],
                 processors = [

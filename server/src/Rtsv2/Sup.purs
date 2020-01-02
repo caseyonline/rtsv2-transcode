@@ -8,6 +8,7 @@ import Pinto.Sup (SupervisorChildType(..), SupervisorSpec, SupervisorStrategy(..
 import Pinto.Sup as Sup
 import Rtsv2.AgentSup as AgentSup
 import Rtsv2.Config as Config
+import Rtsv2.Load as Load
 import Rtsv2.Web as Web
 import Rtsv2.PoPDefinition as PoPDefinition
 
@@ -31,6 +32,13 @@ init = do
       # childId "web"
       # childStart Web.startLink webConfig
 
+    load =
+      buildChild
+      # childType Worker
+      # childId "load"
+      # childStart Load.startLink unit
+
+
     agentSup =
       buildChild
       # childType Supervisor
@@ -43,5 +51,6 @@ init = do
         ( popDefinition
             : agentSup
             : webServer
+            : load
             : nil
         )

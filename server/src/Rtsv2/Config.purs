@@ -102,7 +102,9 @@ type RtmpIngestConfig
     }
 
 type LlnwApiConfig
-  = { streamPublishUrl :: String
+  = { streamAuthTypeUrl :: String
+    , streamAuthUrl :: String
+    , streamPublishUrl :: String
     }
 
 foreign import getEnv_ :: Atom -> Effect Foreign

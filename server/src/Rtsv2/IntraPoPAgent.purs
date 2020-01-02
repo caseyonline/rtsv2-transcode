@@ -2,6 +2,7 @@ module Rtsv2.IntraPoPAgent
   ( startLink
   , isStreamIngestAvailable
   , isIngestActive
+  , announceLoad
   , announceEdgeIsAvailable
   , announceEdgeStopped
   , announceStreamIsAvailable
@@ -12,6 +13,7 @@ module Rtsv2.IntraPoPAgent
   , whereIsIngestAggregator
   , whereIsStreamRelay
   , whereIsEdge
+  , getIdleServer
   , currentTransPoPLeader
   , health
   , IntraMessage(..)
@@ -26,14 +28,15 @@ import Data.Foldable (foldl)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (wrap)
 import Data.Traversable (traverse_)
+import Data.Tuple (Tuple(..), fst)
 import Effect (Effect)
 import Ephemeral.Map (EMap)
 import Ephemeral.Map as EMap
 import Ephemeral.MultiMap (EMultiMap)
 import Ephemeral.MultiMap as MultiMap
 import Erl.Atom (atom)
-import Erl.Data.List (List, length, nil, singleton, (:))
-import Erl.Data.Map (Map)
+import Erl.Data.List (List, head, length, nil, singleton, sortBy, (:))
+import Erl.Data.Map (Map, alter, values)
 import Erl.Data.Map as Map
 import Erl.Process (Process, spawnLink)
 import Erl.Utils (Milliseconds)
@@ -55,7 +58,7 @@ import Serf (IpAndPort)
 import Serf as Serf
 import Shared.Agent as Agent
 import Shared.Stream (StreamId(..), StreamVariantId(..))
-import Shared.Types (ServerAddress(..))
+import Shared.Types (ServerAddress(..), Load(..))
 
 type State
   = { transPoPApi :: Config.TransPoPAgentApi
@@ -66,7 +69,7 @@ type State
     , streamRelayLocations :: EMap StreamId ServerAddress
     , streamAggregatorLocations :: EMap StreamId ServerAddress
     , thisNode :: ServerAddress
-    , members :: Map ServerAddress Serf.SerfMember
+    , members :: Map ServerAddress (Tuple Serf.SerfMember Load)
     , expireThreshold :: Milliseconds
     , streamStateClocks :: EMap StreamId Int
     , edgeStateClocks :: EMap StreamId Int
@@ -80,6 +83,7 @@ data EdgeState = EdgeAvailable
 
 data IntraMessage = StreamState StreamState StreamId ServerAddress
                   | EdgeState EdgeState StreamId ServerAddress
+                  | Load ServerAddress Load
                   | TransPoPLeader ServerAddress
 
 data Msg
@@ -121,12 +125,31 @@ whereIsEdge streamId =
   Gen.call serverName \state ->
     CallReply (MultiMap.lookup streamId state.edgeLocations) state
 
+getIdleServer :: Effect (Maybe ServerAddress)
+getIdleServer =
+  Gen.call serverName \state@{members} ->
+    let
+      output = wrap <$> _.name <$> fst <$> (head $ sortBy (\(Tuple _ lhsLoad) (Tuple _ rhsLoad) -> compare lhsLoad rhsLoad) $ values members)
+    in
+     CallReply output state
+  
 currentTransPoPLeader :: Effect (Maybe ServerAddress)
 currentTransPoPLeader =
   Gen.call serverName
     ( \state@{ currentTransPoPLeader: value } ->
         CallReply value state
     )
+
+-- Called by Load to indicate load on this node
+announceLoad :: Load -> Effect Unit
+announceLoad load =
+  Gen.doCast serverName
+    $ \state@{ thisNode, members } -> do
+        _ <- logInfo "Load" { load: load }
+        _ <- sendToIntraSerfNetwork state "loadUpdate" (Load thisNode load)
+        let
+          newMembers = alter (map (\(Tuple member oldLoad) -> Tuple member load)) thisNode members
+        pure $ Gen.CastNoReply state { members = newMembers }
 
 -- Called by EdgeAgent to indicate edge on this node
 announceEdgeIsAvailable :: StreamId -> Effect Unit
@@ -316,6 +339,13 @@ handleIntraPoPSerfMsg imsg state@{transPoPApi: {announceTransPoPLeader: transPoP
              newEdgeStateClocks <- EMap.insert' streamId ltime state.edgeStateClocks
              handleEdgeStateChange stateChange streamId server (state {edgeStateClocks = newEdgeStateClocks})
 
+       Load server load -> do
+         _ <- logInfo "Server Load" { server: server
+                                      , load: load }
+         let
+           newMembers = alter (map (\(Tuple member oldLoad) -> Tuple member load)) server state.members
+         pure state{members = newMembers}
+
        TransPoPLeader server
          | server == state.thisNode -> pure state { currentTransPoPLeader = Just server }
          | otherwise -> do
@@ -380,7 +410,7 @@ membersAlive :: (List Serf.SerfMember) -> State -> Effect State
 membersAlive members state = do
   _ <- logInfo "Members Alive" { members: _.name <$> members }
   let
-    newMembers = foldl (\acc member@{ name } -> Map.insert (ServerAddress name) member acc) state.members members
+    newMembers = foldl (\acc member@{ name } -> Map.insert (ServerAddress name) (Tuple member Overloaded) acc) state.members members
   pure state { members = newMembers }
 
 membersLeft :: (List Serf.SerfMember) -> State -> Effect State

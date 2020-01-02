@@ -23,6 +23,7 @@ import Rtsv2.Endpoints.Edge as EdgeEndpoint
 import Rtsv2.Endpoints.Health (healthCheck)
 import Rtsv2.Endpoints.Ingest as IngestEndpoint
 import Rtsv2.Endpoints.LlnwStub as LlnwStub
+import Rtsv2.Endpoints.Load as LoadEndpoint
 import Rtsv2.Env as Env
 import Rtsv2.IntraPoPAgent as IntraPoPAgent
 import Serf (Ip(..))
@@ -47,6 +48,8 @@ init args = do
     # Stetson.route "/api/transPoPLeader" transPoPLeader
     # Stetson.route "/api/healthCheck" healthCheck
 
+    # Stetson.route "/api/load" LoadEndpoint.load
+
     # Stetson.route "/api/client/:canary/ingest/:stream_id/:variant_id/start" IngestEndpoint.ingestStart
     # Stetson.route "/api/client/:canary/ingest/:stream_id/:variant_id/stop" IngestEndpoint.ingestStop
 
@@ -55,6 +58,8 @@ init args = do
 
     # Stetson.route "/api/client/:canary/edge/:stream_id/clientCount" EdgeEndpoint.clientCount
 
+    # Stetson.route "/llnwstub/rts/v1/streamauthtype" LlnwStub.streamAuthType
+    # Stetson.route "/llnwstub/rts/v1/streamauth" LlnwStub.streamAuth
     # Stetson.route "/llnwstub/rts/v1/streampublish" LlnwStub.streamPublish
 
     # Stetson.port args.port

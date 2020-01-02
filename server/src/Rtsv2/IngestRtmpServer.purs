@@ -22,7 +22,7 @@ import Rtsv2.Config as Config
 import Rtsv2.Env as Env
 import Rtsv2.IngestAgent as IngestAgent
 import Rtsv2.IngestAgentInstanceSup as IngestAgentInstanceSup
-import Rtsv2.LlnwApiTypes (StreamPublish, StreamPublishProtocol(..), StreamDetails)
+import Rtsv2.LlnwApiTypes (AuthType, PublishCredentials(..), StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamPublish, StreamAuth)
 import Serf (Ip)
 import Shared.Stream (StreamVariantId(..))
 import Simple.JSON as JSON
@@ -31,7 +31,9 @@ import SpudGun as SpudGun
 type Callbacks
   = { ingestStarted :: StreamDetails -> String -> Effect Boolean
     , ingestStopped :: StreamDetails -> String -> Effect Unit
-    , checkSlot :: String -> String -> String -> Effect (Maybe StreamDetails)
+    , streamAuthType :: String -> String -> Effect (Maybe AuthType)
+    , streamAuth ::  String -> String -> String -> Effect (Maybe PublishCredentials)
+    , streamPublish :: String -> String -> String -> String -> Effect (Maybe StreamDetails)
     }
 
 isAvailable :: Effect Boolean
@@ -54,11 +56,13 @@ init :: forall a. a -> Effect State
 init _ = do
   interfaceIp <- Env.publicInterfaceIp
   {port, nbAcceptors} <- Config.rtmpIngestConfig
-  {streamPublishUrl} <- Config.llnwApiConfig
+  {streamAuthTypeUrl, streamAuthUrl, streamPublishUrl} <- Config.llnwApiConfig
   let
     callbacks = { ingestStarted
                 , ingestStopped
-                , checkSlot: checkSlot streamPublishUrl
+                , streamAuthType: streamAuthType streamAuthTypeUrl
+                , streamAuth: streamAuth streamAuthUrl
+                , streamPublish: streamPublish streamPublishUrl
                 }
   _ <- startServerImpl Left (Right unit) interfaceIp port nbAcceptors callbacks
   pure $ {}
@@ -76,12 +80,30 @@ init _ = do
     ingestStopped { role
                    , slot : {name : streamId}} streamVariantId = IngestAgent.stopIngest (StreamVariantId streamId streamVariantId)
 
-checkSlot :: String -> String -> String -> String -> Effect (Maybe StreamDetails)
-checkSlot url host shortname streamName = do
-  restResult <- SpudGun.post url (JSON.writeJSON ({host
-                                                  , protocol: Rtmp
-                                                  , shortname
-                                                  , streamName} :: StreamPublish))
-  let
-    streamPublish = JSON.readJSON =<< lmap (\s -> (singleton (ForeignError s))) restResult
-  pure $ hush streamPublish
+    streamAuthType url host shortname = do
+      restResult <- SpudGun.post url (JSON.writeJSON ({host
+                                                      , protocol: Rtmp
+                                                      , shortname} :: StreamConnection))
+      let
+        authType = JSON.readJSON =<< lmap (\s -> (singleton (ForeignError s))) restResult
+      pure $ hush authType
+
+    streamAuth url host shortname username = do
+      restResult <- SpudGun.post url (JSON.writeJSON ({host
+                                                      , shortname
+                                                      , username} :: StreamAuth))
+      let
+        publishCredentials = JSON.readJSON =<< lmap (\s -> (singleton (ForeignError s))) restResult
+      pure $ hush publishCredentials
+
+    streamPublish url host shortname username streamName = do
+      restResult <- SpudGun.post url (JSON.writeJSON ({host
+                                                      , protocol: Rtmp
+                                                      , shortname
+                                                      , streamName
+                                                      , username} :: StreamPublish))
+      let
+        streamDetails = JSON.readJSON =<< lmap (\s -> (singleton (ForeignError s))) restResult
+      pure $ hush streamDetails
+
+

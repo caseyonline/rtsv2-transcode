@@ -7,6 +7,7 @@ module Rtsv2.IngestAgent
 import Prelude
 
 import Data.Maybe (Maybe(..))
+import Debug.Trace (spy)
 import Effect (Effect)
 import Erl.Atom (atom)
 import Erl.Data.List (nil, (:))
@@ -55,6 +56,7 @@ init streamVariantId = do
       pure {}
     Nothing -> do
       -- Launch
+      _ <- (spy "here" IntraPoPAgent.getIdleServer)
       _ <- IngestAggregatorAgentSup.startAggregator (toStreamId streamVariantId)
       pure {}
 

@@ -6,17 +6,21 @@
 -- * Can slot details change when stream is live - assuming not
 
 module Rtsv2.LlnwApiTypes
-       ( HlsPushAuth
-       , HlsPushSpec
-       , HlsPushSpecFormat
-       , SlotDetails
-       , SlotProfile
+       ( StreamConnection
+       , AuthType
+       , StreamIngestProtocol(..)
        , SlotPublishAuthType(..)
-       , StreamDetails
-       , StreamPublishProtocol(..)
+       , StreamAuth
+       , PublishCredentials(..)
        , StreamPublish
+       , StreamDetails
        , StreamRole(..)
-       , SlotPublishAuth(..)
+       , SlotDetails
+       , StreamOutputFormat
+       , HlsPushSpec
+       , SlotProfile
+       , HlsPushSpecFormat
+       , HlsPushAuth
        )
        where
 
@@ -36,24 +40,42 @@ import Record (rename)
 import Simple.JSON (class ReadForeign, class WriteForeign, readJSON', writeJSON)
 import Type.Prelude (SProxy(..))
 
-data StreamPublishProtocol = Rtmp
+data StreamIngestProtocol = Rtmp
                            | WebRTC
 
-type StreamPublish =
+type StreamConnection =
   { host :: String
-  , protocol :: StreamPublishProtocol
+  , protocol :: StreamIngestProtocol
   , shortname :: String
-  , streamName :: String
   }
 
 data SlotPublishAuthType = Adobe
                          | Llnw
                          | Query
 
-newtype SlotPublishAuth = SlotPublishAuth { authType :: SlotPublishAuthType
-                                          , username :: String
-                                          , password :: String
-                                          }
+type AuthType =
+  { authType :: SlotPublishAuthType
+  }
+
+type StreamAuth =
+  { host :: String
+  , shortname :: String
+  , username :: String
+  }
+
+newtype PublishCredentials = PublishCredentials
+                             { authType :: SlotPublishAuthType
+                             , username :: String
+                             , password :: String
+                             }
+
+type StreamPublish =
+  { host :: String
+  , protocol :: StreamIngestProtocol
+  , shortname :: String
+  , streamName :: String
+  , username :: String
+  }
 
 type SlotProfile =
   { name :: String
@@ -63,7 +85,6 @@ type SlotProfile =
 
 type SlotDetails =
   { name :: String
-  , publishAuth :: SlotPublishAuth
   , subscribeValidation :: Boolean
   , profiles :: List SlotProfile
   }
@@ -84,18 +105,23 @@ type HlsPushSpec =
 data StreamRole = Primary
                 | Backup
 
+data StreamOutputFormat = WebRTCOutput
+                        | RtmpOutput
+                        | HlsOutput
+
 type StreamDetails =
   { role :: StreamRole
   , slot :: SlotDetails
+  , outputFormats :: List StreamOutputFormat
   , push :: List HlsPushSpec
   }
 
 --------------------------------------------------------------------------------
 -- Type class derivations
 --------------------------------------------------------------------------------
-derive instance genericStreamPublishProtocol :: Generic StreamPublishProtocol _
+derive instance genericStreamIngestProtocol :: Generic StreamIngestProtocol _
 
-instance readForeignStreamPublishProtocol :: ReadForeign StreamPublishProtocol where
+instance readForeignStreamIngestProtocol :: ReadForeign StreamIngestProtocol where
   readImpl =
     readString >=> parseAgent
     where
@@ -104,22 +130,22 @@ instance readForeignStreamPublishProtocol :: ReadForeign StreamPublishProtocol w
       toType "rtmp" = pure Rtmp
       toType "webrtc" = pure WebRTC
       toType unknown = Nothing
-      errorString s = "Unknown StreamPublishProtocol: " <> s
+      errorString s = "Unknown StreamIngestProtocol: " <> s
 
-instance writeForeignStreamPublishProtocol :: WriteForeign StreamPublishProtocol where
+instance writeForeignStreamIngestProtocol :: WriteForeign StreamIngestProtocol where
   writeImpl =
     toString >>> unsafeToForeign
     where
       toString Rtmp = "rtmp"
       toString WebRTC = "webrtc"
 
-instance eqStreamPublishProtocol :: Eq StreamPublishProtocol where
+instance eqStreamIngestProtocol :: Eq StreamIngestProtocol where
   eq = genericEq
 
-instance compareStreamPublishProtocol :: Ord StreamPublishProtocol where
+instance compareStreamIngestProtocol :: Ord StreamIngestProtocol where
   compare = genericCompare
 
-instance showStreamPublishProtocol :: Show StreamPublishProtocol where
+instance showStreamIngestProtocol :: Show StreamIngestProtocol where
   show = genericShow
 
 derive instance genericSlotPublishAuthType :: Generic SlotPublishAuthType _
@@ -153,22 +179,22 @@ instance compareSlotPublishAuthType :: Ord SlotPublishAuthType where
 instance showSlotPublishAuthType :: Show SlotPublishAuthType where
   show = genericShow
 
-instance readForeignSlotPublishAuth :: ReadForeign SlotPublishAuth where
+instance readForeignPublishCredentials :: ReadForeign PublishCredentials where
   readImpl o = decode =<< readString o
     where
-    decode :: String -> F SlotPublishAuth
+    decode :: String -> F PublishCredentials
     decode s = do
       parsed <- readJSON' s
-      pure $ SlotPublishAuth $ rename
+      pure $ PublishCredentials $ rename
         (SProxy :: SProxy "type")
         (SProxy :: SProxy "authType")
         parsed
 
-instance writeForeignSlotPublishAuth :: WriteForeign SlotPublishAuth where
+instance writeForeignPublishCredentials :: WriteForeign PublishCredentials where
   writeImpl = (unsafeToForeign <<< encode)
     where
-      encode :: SlotPublishAuth -> String
-      encode (SlotPublishAuth r) = do
+      encode :: PublishCredentials -> String
+      encode (PublishCredentials r) = do
         writeJSON $ rename
           (SProxy :: SProxy "authType")
           (SProxy :: SProxy "type")
@@ -208,4 +234,23 @@ instance writeForeignStreamRole :: WriteForeign StreamRole where
       toString Primary = "primary"
       toString Backup = "backup"
 
+instance readForeignStreamOutputFormat :: ReadForeign StreamOutputFormat where
+  readImpl =
+    readString >=> parseAgent
+    where
+      error s = singleton (ForeignError (errorString s))
+      parseAgent s = except $ note (error s) (toType s)
+      toType "webrtc" = pure WebRTCOutput
+      toType "rtmp" = pure RtmpOutput
+      toType "hls" = pure HlsOutput
+      toType unknown = Nothing
+      errorString s = "Unknown StreamOutputFormat: " <> s
+
+instance writeForeignStreamOutputFormat :: WriteForeign StreamOutputFormat where
+  writeImpl =
+    toString >>> unsafeToForeign
+    where
+      toString WebRTCOutput = "webrtc"
+      toString RtmpOutput = "rtmp"
+      toString HlsOutput = "hls"
 

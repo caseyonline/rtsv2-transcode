@@ -1,3 +1,4 @@
+[S] - rtsv2_rtmp_ingest_handler currently has hardcoded salt / challenge - to be held in gen_server once LLNW API is finalised
 [ ] - SpudGun.purs is inconsistent in Maybe vs Either in results
 [ ] - metrics (rrt) for trans-pop neigbours
 [ ] - test4 - IngestAggregator with a name clash - 2 things running, should be 1
