@@ -40,7 +40,7 @@ import Record as Record
 import Rtsv2.Config (ServerLocation(..))
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
-import Shared.Types (PoPName(..), RegionName, ServerAddress(..))
+import Shared.Types (PoPName, RegionName, ServerAddress(..))
 import Simple.JSON as JSON
 
 type PoPInfo =

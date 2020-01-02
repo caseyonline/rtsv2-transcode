@@ -21,7 +21,7 @@ import Foreign (Foreign)
 
 
 type Logger a = String -> a -> Effect Foreign
--- TODO - FFI warning if we use the type aliasa
+-- TODO - FFI error if we use the type alias
 foreign import emergency :: forall a. String -> a -> Effect Foreign
 foreign import alert :: forall a. String -> a -> Effect Foreign
 foreign import critical :: forall a. String -> a -> Effect Foreign
