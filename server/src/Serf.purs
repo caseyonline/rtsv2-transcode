@@ -7,7 +7,7 @@ module Serf
        , getCoordinate
        , calcRtt
        , messageMapper
-       , Ip(..), IpAndPort, ApiError(..), SerfMessage(..), SerfResult(..), SerfMember
+       , Ip(..), IpAndPort, ApiError(..), SerfCoordinate, SerfMember, SerfMessage(..), SerfResult(..)
        )
        where
 

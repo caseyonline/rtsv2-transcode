@@ -4,7 +4,8 @@ module Rtsv2.TransPoPAgent
        , announceTransPoPLeader
        , health
        , startLink
-       , getEdgeCosts
+       , getRtts
+       , routesTo
        ) where
 
 import Prelude
@@ -21,7 +22,7 @@ import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Ephemeral.Map (EMap)
 import Ephemeral.Map as EMap
-import Erl.Atom (atom)
+import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, index, length, nil, (:))
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
@@ -44,7 +45,7 @@ import Rtsv2.Health (Health)
 import Rtsv2.Health as Health
 import Rtsv2.PoPDefinition (PoP)
 import Rtsv2.PoPDefinition as PoPDefinition
-import Serf (IpAndPort, calcRtt)
+import Serf (IpAndPort, SerfCoordinate, calcRtt)
 import Serf as Serf
 import Shared.Agent as Agent
 import Shared.Stream (StreamId)
@@ -52,9 +53,10 @@ import Shared.Types (PoPName, ServerAddress(..))
 import Shared.Utils (distinctRandomNumbers)
 import SpudGun as SpudGun
 
---data Edge = Edge PoPName PoPName
 
-type EdgeCosts = Map (Tuple PoPName PoPName) Int
+type Edge = Tuple PoPName PoPName
+type Rtts = Map Edge Milliseconds
+type ViaPoPs = List PoPName
 
 type State
   = { intraPoPApi :: IntraPoPAgentApi
@@ -69,7 +71,8 @@ type State
     , serfRpcAddress :: IpAndPort
     , members :: Map PoPName (Set ServerAddress)
     , streamStateClocks :: EMap StreamId Int
-    , edgeCosts :: EdgeCosts
+    , rtts :: Rtts
+    , sourceRoutes :: Map PoPName (List ViaPoPs)
     }
 
 data StreamState = StreamAvailable
@@ -85,9 +88,15 @@ data Msg
   | TransPoPSerfMsg (Serf.SerfMessage TransMessage)
 
 
-getEdgeCosts :: Effect EdgeCosts
-getEdgeCosts = Gen.doCall serverName
-  \state@{edgeCosts} -> pure $ CallReply edgeCosts state
+getRtts :: Effect Rtts
+getRtts = Gen.doCall serverName
+  \state@{rtts} -> pure $ CallReply rtts state
+
+
+routesTo :: PoPName -> Effect (List ViaPoPs)
+routesTo pop = Gen.doCall serverName
+  \state@{sourceRoutes} -> pure $ CallReply (fromMaybe goDirect (Map.lookup pop sourceRoutes)) state
+  where goDirect = (nil : nil) -- The list [[]] - i.e. one route that is to go via nowhere
 
 
 health :: Effect Health
@@ -197,7 +206,7 @@ init { config: config@{ leaderTimeoutMs
                       , rttRefreshMs
                       , rejoinEveryMs
                       , rpcPort
-                      , defaultEdgeCost
+                      , defaultRttMs
                       }
      , intraPoPApi} = do
   _ <- logInfo "Trans-PoP Agent Starting" {config: config}
@@ -207,11 +216,13 @@ init { config: config@{ leaderTimeoutMs
   _ <- Gen.registerExternalMapping serverName (\m -> TransPoPSerfMsg <$> (Serf.messageMapper m))
   _ <- Timer.sendEvery serverName leaderAnnounceMs LeaderTimeoutTick
 
+  now <- systemTimeMs
+
   rpcBindIp <- Env.privateInterfaceIp
   thisNode <- PoPDefinition.thisNode
   thisLocation <- PoPDefinition.thisLocation
-  defaultEdgeCosts' <- defaultEdgeCosts config
-  now <- systemTimeMs
+  otherPoPNames <- PoPDefinition.getOtherPoPNames
+  defaultRtts' <- getDefaultRtts config
 
   let
     ServerLocation thisPoP _ = thisLocation
@@ -219,6 +230,7 @@ init { config: config@{ leaderTimeoutMs
       { ip: show rpcBindIp
       , port: rpcPort
       }
+    Tuple _ initialSourceRoutes = calculateRoutes Map.empty Map.empty defaultRtts' thisPoP otherPoPNames
 
   pure
     $ { intraPoPApi
@@ -232,8 +244,9 @@ init { config: config@{ leaderTimeoutMs
       , thisPoP: thisPoP
       , serfRpcAddress: serfRpcAddress
       , members: Map.empty
-      , edgeCosts: defaultEdgeCosts'
       , streamStateClocks: EMap.empty
+      , rtts: defaultRtts'
+      , sourceRoutes: initialSourceRoutes
     }
 
 --------------------------------------------------------------------------------
@@ -311,13 +324,13 @@ originPoP addr =
       Nothing -> Nothing
       Just (ServerLocation sourcePoP _) -> Just sourcePoP
 
-defaultEdgeCosts :: TransPoPAgentConfig -> Effect EdgeCosts
-defaultEdgeCosts {defaultEdgeCost} = do
+getDefaultRtts :: TransPoPAgentConfig -> Effect Rtts
+getDefaultRtts {defaultRttMs} = do
   neighbourMap <- PoPDefinition.neighbourMap
   pure $ foldlWithIndex
     (\k acc vs ->
       foldl (\acc' a ->
-              Map.insert (Tuple k a) defaultEdgeCost acc')
+              Map.insert (Tuple k a) (wrap defaultRttMs) acc')
       acc vs
     ) Map.empty neighbourMap
 
@@ -387,10 +400,10 @@ handleRttRefresh :: State -> Effect State
 handleRttRefresh state@{ weAreLeader: false} =  pure state
 
 handleRttRefresh state@{ weAreLeader: true
-                       , config: config@{rttRefreshMs, defaultEdgeCost}
+                       , config: config@{rttRefreshMs, defaultRttMs}
                        , members
                        , thisPoP
-                       , edgeCosts
+                       , rtts
                        } = do
     -- look up the coordinates of all members
     let allMemebers = join $ Set.toUnfoldable <$> Map.values members
@@ -412,29 +425,42 @@ handleRttRefresh state@{ weAreLeader: true
                   pure acc
             ) Map.empty eCoordiates
 
-    defaultEdgeCosts' <- defaultEdgeCosts config
+    defaultRtts <- getDefaultRtts config
     otherPoPNames <- PoPDefinition.getOtherPoPNames
 
+    let Tuple newRtts newSourceRoutes = calculateRoutes poPCoordinates rtts defaultRtts thisPoP otherPoPNames
+
+    _ <- Timer.sendAfter serverName rttRefreshMs RttRefreshTick
+    pure $ state { rtts = newRtts
+                 , sourceRoutes = newSourceRoutes}
+
+
+calculateRoutes :: Map PoPName SerfCoordinate -> Rtts -> Rtts -> PoPName -> List PoPName -> Tuple Rtts (Map PoPName (List ViaPoPs))
+calculateRoutes poPCoordinates currentRtts defaultRtts thisPoP otherPoPNames =
     -- The new cost map should have:
     -- * only those edges now in the latest PoPDefinition
     -- With:
-    --  * Newly looked up costs from measured RTTs (from the new coordinates)
-    --  * Previous costs (from current map)
-    --  * Default costs
-    let bestRttGuess edge@(Tuple fromPoP toPoP) acc def =
-          let rttToCost :: Milliseconds -> Int
-              rttToCost  = (*) 10 <<< unwrap
-              maybeBest :: Maybe Int
-              maybeBest = rttToCost <$> (calcRtt <$> Map.lookup fromPoP poPCoordinates <*> Map.lookup toPoP poPCoordinates)
-              guess = fromMaybe' (\_ -> fromMaybe def $ Map.lookup edge edgeCosts) maybeBest
+    --  * Newly measured RTTs (from the new coordinates)
+    --  * Previous rtts (from current map)
+    --  * Default rtt
+    let bestGuessRtt edge@(Tuple fromPoP toPoP) acc def =
+          let maybeBest :: Maybe Milliseconds
+              maybeBest = calcRtt <$> Map.lookup fromPoP poPCoordinates <*> Map.lookup toPoP poPCoordinates
+              guess = fromMaybe' (\_ -> fromMaybe def $ Map.lookup edge currentRtts) maybeBest
           in  Map.insert edge guess acc
-        newEdgeCosts = foldlWithIndex bestRttGuess Map.empty defaultEdgeCosts'
+        newRtts = foldlWithIndex bestGuessRtt Map.empty defaultRtts
+        msToCost :: Milliseconds -> Int
+        msToCost = unwrap >>> (*) 10
         newNetwork :: Network PoPName
-        newNetwork = foldlWithIndex (\(Tuple from to) acc cost -> addEdge' from to cost acc) emptyNetwork newEdgeCosts
+        newNetwork = foldlWithIndex (\(Tuple from to) acc ms -> addEdge' from to (msToCost ms) acc) emptyNetwork newRtts
         -- Get the bestroute pairs to all the other pops
-        paths = spy "best" $ (bestPaths <<< pathsBetween newNetwork thisPoP) <$> otherPoPNames
-    _ <- Timer.sendAfter serverName rttRefreshMs RttRefreshTick
-    pure $ state {edgeCosts = newEdgeCosts}
+        sourceRoutes = spy "best" $ foldl (\acc popName ->
+                                            case bestPaths $ pathsBetween newNetwork thisPoP popName of
+                                              Just {path1, path2} -> Map.insert popName (_.via <$> (path1 : path2 : nil)) acc
+                                              Nothing -> acc
+                                          ) Map.empty otherPoPNames
+    in Tuple newRtts sourceRoutes
+
 
 handleTick :: State -> Effect State
 handleTick = case _ of
@@ -453,6 +479,7 @@ becomeLeader :: Milliseconds -> State -> Effect State
 becomeLeader now state@{ lastLeaderAnnouncement
                        , leaderAnnouncementTimeout
                        , serfRpcAddress
+                       , thisNode
                        , config: {connectStreamAfterMs, rttRefreshMs}
                        , intraPoPApi: {announceTransPoPLeader: intraPoP_announceTransPoPLeader}
                        } = do
@@ -466,6 +493,7 @@ becomeLeader now state@{ lastLeaderAnnouncement
     $ state
         { lastLeaderAnnouncement = now
         , weAreLeader = true
+        , currentLeader = Just thisNode
         }
 
 connectStream :: State -> Effect Unit
@@ -559,9 +587,10 @@ logInfo = doLog Logger.info
 logWarning :: forall a. Logger a
 logWarning = doLog Logger.warning
 
---TODO - a vaguely readable type for this!
+doLog :: forall a.  Logger {domain :: List Atom, misc :: a} -> Logger a
 doLog logger msg metaData =
-  logger msg (Record.merge { domain: ((atom (show Agent.TransPoP)) : nil) } { misc: metaData })
+  logger msg { domain: (atom (show Agent.TransPoP)) : nil
+             , misc: metaData }
 
 startScript :: String
 startScript = "scripts/startTransPoPAgent.sh"
