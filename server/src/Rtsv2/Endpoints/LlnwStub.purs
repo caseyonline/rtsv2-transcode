@@ -208,7 +208,7 @@ streamPublish =
   # Rest.resourceExists (\req state@{streamPublish: maybeKey} ->
                           let
                             lookupStreamDetails :: StreamPublish -> Maybe StreamDetails
-                            lookupStreamDetails key = lookup (spy "lookup" key) streamPublishDb
+                            lookupStreamDetails key = lookup key streamPublishDb
                           in
                             case lookupStreamDetails =<< maybeKey of
                               Nothing ->
