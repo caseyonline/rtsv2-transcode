@@ -10,9 +10,9 @@ import Prelude
 import Effect (Effect)
 import Erl.Atom (atom)
 import Erl.Data.List (nil, (:))
-import Erl.Utils as ErlUtils
 import Foreign (Foreign)
 import Logger as Logger
+import Pinto (SupervisorName)
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStartTemplate, childType)
 import Pinto.Sup as Sup
@@ -22,11 +22,11 @@ import Rtsv2.Names as Names
 import Shared.Agent as Agent
 import Shared.Stream (StreamId)
 
-serverName :: String
-serverName = Names.edgeAgentSupName
+serverName :: SupervisorName
+serverName = Names.edgeInstanceSupName
 
 isAvailable :: Effect Boolean
-isAvailable = ErlUtils.isRegistered serverName
+isAvailable = Names.isRegistered serverName
 
 startLink :: forall a. a -> Effect Pinto.StartLinkResult
 startLink _ = Sup.startLink serverName init

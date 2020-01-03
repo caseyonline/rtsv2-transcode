@@ -1,19 +1,21 @@
 module Rtsv2.Sup where
 
 import Prelude
+
 import Effect (Effect)
 import Erl.Data.List (nil, (:))
+import Pinto (ServerName(..))
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildType(..), SupervisorSpec, SupervisorStrategy(..), buildChild, buildSupervisor, childId, childStart, childType, supervisorChildren, supervisorStrategy)
 import Pinto.Sup as Sup
 import Rtsv2.Agents.AgentSup as AgentSup
 import Rtsv2.Config as Config
 import Rtsv2.Load as Load
-import Rtsv2.Web as Web
 import Rtsv2.PoPDefinition as PoPDefinition
+import Rtsv2.Web as Web
 
 startLink :: Effect Pinto.StartLinkResult
-startLink = Sup.startLink "rtsv2sup" init
+startLink = Sup.startLink (Local "rtsv2sup") init
 
 init :: Effect SupervisorSpec
 init = do

@@ -9,18 +9,19 @@ import Prelude
 
 import Effect (Effect)
 import Erl.Data.List (nil, (:))
+import Pinto (SupervisorName)
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStartTemplate, childType)
 import Pinto.Sup as Sup
-import Rtsv2.Names as Names
 import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
+import Rtsv2.Names as Names
 import Shared.Stream (StreamId)
 
 isAvailable :: Effect Boolean
-isAvailable = Names.ingestAggregatorAgentSupRegistered
+isAvailable = Names.isRegistered serverName
 
-serverName :: String
-serverName = Names.ingestAggregatorAgentSupName
+serverName :: SupervisorName
+serverName = Names.ingestAggregatorInstanceSupName
 
 startLink :: forall a. a -> Effect Pinto.StartLinkResult
 startLink _ = Sup.startLink serverName init

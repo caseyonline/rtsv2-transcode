@@ -60,7 +60,7 @@ import Serf (IpAndPort)
 import Serf as Serf
 import Shared.Agent as Agent
 import Shared.Stream (StreamId(..), StreamVariantId(..))
-import Shared.Types (ServerAddress(..), Load(..))
+import Shared.Types (Load, ServerAddress(..))
 import Shared.Utils (distinctRandomNumbers)
 
 type State
@@ -95,7 +95,7 @@ data Msg
   | IntraPoPSerfMsg (Serf.SerfMessage IntraMessage)
 
 serverName :: ServerName State Msg
-serverName = Names.intraPoPAgentName
+serverName = Names.intraPoPName
 
 health :: Effect Health
 health =

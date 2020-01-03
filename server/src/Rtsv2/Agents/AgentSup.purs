@@ -1,22 +1,24 @@
 module Rtsv2.Agents.AgentSup where
 
 import Prelude
+
 import Effect (Effect)
 import Erl.Data.List ((:))
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildSpec, SupervisorChildType(..), SupervisorSpec, SupervisorStrategy(..))
 import Pinto.Sup as Sup
-import Rtsv2.Config as Config
 import Rtsv2.Agents.EdgeInstanceSup as EdgeInstanceSup
-import Rtsv2.Agents.IngestSup as IngestSup
 import Rtsv2.Agents.IngestAggregatorInstanceSup as IngestAggregatorInstanceSup
+import Rtsv2.Agents.IngestSup as IngestSup
+import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.StreamRelayInstanceSup as StreamRelayInstanceSup
 import Rtsv2.Agents.TransPoP as TransPoP
-import Rtsv2.Agents.IntraPoP as IntraPoP
+import Rtsv2.Config as Config
+import Rtsv2.Names as Names
 import Shared.Agent (Agent(..))
 
 startLink :: Unit -> Effect Pinto.StartLinkResult
-startLink _ = Sup.startLink "agentSup" init
+startLink _ = Sup.startLink Names.agentSupName init
 
 init :: Effect SupervisorSpec
 init = do

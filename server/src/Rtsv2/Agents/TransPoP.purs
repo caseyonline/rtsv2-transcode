@@ -312,7 +312,7 @@ handleTransPoPMessage (StreamState StreamStopped streamId server) state@{intraPo
 -- Internal functions
 --------------------------------------------------------------------------------
 serverName :: ServerName State Msg
-serverName = Names.transPoPAgentName
+serverName = Names.transPoPName
 
 messageOrigin :: TransMessage -> Effect (Maybe PoPName)
 messageOrigin (StreamState _ _ addr) = originPoP addr

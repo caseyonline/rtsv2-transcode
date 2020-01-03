@@ -13,10 +13,8 @@ import Data.Newtype (unwrap, wrap)
 import Effect (Effect)
 import Erl.Atom (atom)
 import Erl.Data.List (nil, (:))
-import Erl.Data.Tuple (tuple2)
 import Erl.Utils (Milliseconds, Ref, makeRef)
 import Foreign (Foreign)
-import Gproc as Gproc
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen (CallResult(..), CastResult(..))
@@ -44,7 +42,7 @@ serverName :: StreamId -> ServerName State Msg
 serverName streamId = Names.edgeInstanceName streamId
 
 isActive :: StreamId -> Effect Boolean
-isActive streamId = Names.edgeInstanceRegistered streamId
+isActive streamId = Names.isRegistered (serverName streamId)
 
 startLink :: StreamId -> Effect StartLinkResult
 startLink streamId = Gen.startLink (serverName streamId) (init streamId) handleInfo

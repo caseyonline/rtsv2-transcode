@@ -36,7 +36,7 @@ type Callbacks
     }
 
 isAvailable :: Effect Boolean
-isAvailable = Names.ingestRtmpServerRegistered
+isAvailable = Names.isRegistered serverName
 
 serverName :: ServerName State Unit
 serverName = Names.ingestRtmpServerName
