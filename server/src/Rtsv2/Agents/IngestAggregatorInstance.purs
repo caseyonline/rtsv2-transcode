@@ -1,5 +1,8 @@
 module Rtsv2.Agents.IngestAggregatorInstance
   ( startLink
+  , isAvailable
+  , addVariant
+  , getState
   , stopAggregator
   ) where
 
@@ -7,7 +10,9 @@ import Prelude
 
 import Effect (Effect)
 import Erl.Atom (atom)
-import Erl.Data.List (nil, (:))
+import Erl.Data.List (List, nil, toUnfoldable, (:))
+import Erl.Data.Map (Map, insert, keys)
+import Erl.Data.Map as Map
 import Foreign (Foreign)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
@@ -19,18 +24,33 @@ import Rtsv2.Agents.IntraPoP (announceStreamIsAvailable, announceStreamStopped)
 import Rtsv2.Config as Config
 import Rtsv2.Names as Names
 import Shared.Agent as Agent
-import Shared.Stream (StreamId)
+import Shared.Stream (StreamId, StreamVariantId(..), toStreamId)
 
 type State
   = { config :: Config.IngestAggregatorAgentConfig
     , streamId :: StreamId
+    , streamVariants :: Map StreamVariantId Unit
     }
 
 data Msg
   = Tick
 
+isAvailable :: StreamId -> Effect Boolean
+isAvailable streamId = Names.isRegistered (serverName streamId)
+
 serverName :: StreamId -> ServerName State Msg
 serverName = Names.ingestAggregatorInstanceName
+
+addVariant :: StreamVariantId -> Effect Unit
+addVariant streamVariantId = Gen.call (serverName (toStreamId streamVariantId))
+  \state@{streamVariants} ->
+  CallReply unit state{streamVariants = insert streamVariantId unit streamVariants}
+
+-- TODO - would rather a list, but it doesn't call writeForeign on StreamVariantId 
+getState :: StreamId -> Effect (Array StreamVariantId)
+getState streamId = Gen.call (serverName streamId)
+  \state@{streamVariants} ->
+  CallReply (toUnfoldable (keys streamVariants)) state
 
 stopAggregator :: StreamId -> Effect Unit
 stopAggregator streamId = do
@@ -42,7 +62,6 @@ stopAggregator streamId = do
 startLink :: StreamId -> Effect StartLinkResult
 startLink streamId = Gen.startLink (serverName streamId) (init streamId) handleInfo
 
-
 init :: StreamId -> Effect State
 init streamId = do
   _ <- logInfo "Ingest Aggregator starting" {streamId: streamId}
@@ -52,6 +71,7 @@ init streamId = do
 
   pure { config : config
        , streamId
+       , streamVariants : Map.empty
        }
 
 handleInfo :: Msg -> State -> Effect (CastResult State)

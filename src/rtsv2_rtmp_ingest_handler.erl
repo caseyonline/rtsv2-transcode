@@ -225,6 +225,7 @@ start_workflow(Rtmp, StreamId, ClientId, Path) ->
                                          module = rtmp_tag_to_frame
                                         },
 
+                              %% TODO - raise on bus and to llwp
                               #processor{name = null,
                                          subscribes_to = ?previous,
                                          module = dev_null_processor}

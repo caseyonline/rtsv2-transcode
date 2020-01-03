@@ -8,24 +8,22 @@ import Prelude
 
 import Data.Maybe (Maybe(..))
 import Data.Newtype (wrap)
-import Debug.Trace (spy)
 import Effect (Effect)
 import Erl.Atom (atom)
 import Erl.Data.List (nil, (:))
-import Erl.Data.Tuple (tuple2, tuple3)
-import Erl.ModuleName (NativeModuleName(..))
-import Foreign (Foreign, unsafeToForeign)
-import Gproc as Gproc
+import Foreign (Foreign)
 import Logger as Logger
-import Pinto (ServerName(..), StartLinkResult)
+import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen (CallResult(..))
 import Pinto.Gen as Gen
 import Record as Record
-import Rtsv2.Audit as Audit
 import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
 import Rtsv2.Agents.IngestAggregatorInstanceSup as IngestAggregatorInstanceSup
 import Rtsv2.Agents.IntraPoP as IntraPoP
+import Rtsv2.Audit as Audit
+import Rtsv2.Config (PoPDefinitionConfig)
 import Rtsv2.Load as Load
+import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Agent as Agent
 import Shared.Stream (StreamVariantId, toStreamId)
@@ -35,10 +33,10 @@ type State
   = { }
 
 isActive :: StreamVariantId -> Effect Boolean
-isActive streamVariantId = Gproc.isRegistered (tuple2 "ingest" streamVariantId)
+isActive streamVariantId = Names.isRegistered (serverName streamVariantId)
 
 serverName :: StreamVariantId -> ServerName State Unit
-serverName streamVariantId = Via (NativeModuleName $ atom "gproc") $ unsafeToForeign (tuple3 (atom "n") (atom "l") (tuple2 "ingest" streamVariantId))
+serverName streamVariantId = Names.ingestInstanceName streamVariantId
 
 startLink :: StreamVariantId -> Effect StartLinkResult
 startLink streamVariantId = Gen.startLink (serverName streamVariantId) (init streamVariantId) Gen.defaultHandleInfo
@@ -54,9 +52,18 @@ stopIngest streamVariantId =
 init :: StreamVariantId -> Effect State
 init streamVariantId = do
   _ <- logInfo "Ingest starting" {streamVariantId: streamVariantId}
+  thisNode <- PoPDefinition.thisNode
   _ <- Audit.ingestStart streamVariantId
   maybeAggregator <- getAggregator streamVariantId
+  _ <- addVariant thisNode streamVariantId maybeAggregator
   pure {}
+
+addVariant :: ServerAddress -> StreamVariantId -> Maybe ServerAddress -> Effect Unit
+addVariant thisNode streamVariantId aggregatorAddress
+  | aggregatorAddress == Just thisNode = do
+    _ <- IngestAggregatorInstance.addVariant streamVariantId
+    pure unit
+  | otherwise = pure unit -- TODO - HTTP call...
 
 getAggregator :: StreamVariantId -> Effect (Maybe ServerAddress)
 getAggregator streamVariantId = do
@@ -79,12 +86,8 @@ launchLocalOrRemote streamVariantId = do
 
 launchRemote :: StreamVariantId -> Effect (Maybe ServerAddress)
 launchRemote streamVariantId = do
+  -- TODO - need to make http call to idle server to request it starts an aggregator, and then retry if it returns no
   IntraPoP.getIdleServer
-
--- check for existing aggregator - if one, talk to it
--- if none, then check our load.  If low enough, start one here
--- if load too high, pick two random servers and ask the best to start one
--- if start fails, repeat
 
 logInfo :: forall a. String -> a -> Effect Foreign
 logInfo msg metaData = Logger.info msg (Record.merge { domain: ((atom (show Agent.Ingest)) : nil) } { misc: metaData })

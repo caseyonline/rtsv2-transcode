@@ -4,12 +4,17 @@ import Prelude
 
 import Affjax (Error, Response)
 import Affjax as AX
+import Affjax.RequestBody (RequestBody)
+import Affjax.RequestBody as RequestBody
 import Affjax.ResponseFormat as ResponseFormat
 import Affjax.ResponseHeader (ResponseHeader(..))
 import Affjax.StatusCode (StatusCode(..))
-import Data.Either (Either(..))
+import Data.Argonaut as Json
+import Data.Array (sort)
+import Data.Either (Either(..), hush)
 import Data.Foldable (elem)
 import Data.Identity (Identity(..))
+import Data.List (List)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (un)
 import Data.Time.Duration (Milliseconds(..))
@@ -19,7 +24,11 @@ import Debug.Trace (spy)
 import Effect (Effect)
 import Effect.Aff (Aff, delay, launchAff_, throwError)
 import Effect.Exception (error)
+import Foreign (F)
 import OsCmd (runProc)
+import Shared.Stream (StreamVariantId(..))
+import Simple.JSON (class ReadForeign, E)
+import Simple.JSON as SimpleJSON
 import Test.Spec (after_, before_, describe, it, itOnly)
 import Test.Spec.Assertions (fail)
 import Test.Spec.Reporter.Console (consoleReporter)
@@ -33,8 +42,6 @@ type TestNode =  { vlan :: String
 
 node :: String -> String -> String -> TestNode
 node vlan addr sysConfig = {vlan, addr, sysConfig}
-
-
 
 main :: Effect Unit
 main =
@@ -138,11 +145,36 @@ main =
             _ <- assertHeader (Tuple "x-servedby" "172.16.169.3") =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node3edgeStart
             _ <- assertBody "1" =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node3edgeCount
             pure unit
-          -- it "ingest aggregation on ingest node" do
+          it "ingest aggregation on ingest node" do
+            let
+              node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/stream1/low/start"
+              node1ingestAggregator = "http://172.16.169.1:3000/api/agents/ingestAggregator/stream1"
+            _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
+            _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestAggregator
+            pure unit
+          -- it "ingest aggregation on non-ingest node" do
           --   let
           --     node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/stream1/low/start"
+          --     node1ingestLoad = "http://172.16.169.1:3000/api/load"
+          --   _ <- assertStatusCode 204 =<< AX.post ResponseFormat.string node1ingestLoad SomeLoadJsonHere
           --   _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
-            
+          -- TODO - assert that ingest aggregator is on node2 (or 3) - using new /api/agents/ingestAggregator endpoint
+          it "2nd ingest aggregation on ingest node" do
+            let
+              node1ingestStart1 = "http://172.16.169.1:3000/api/client/:canary/ingest/stream1/low/start"
+              node1ingestStart2 = "http://172.16.169.1:3000/api/client/:canary/ingest/stream1/high/start"
+              node1ingestAggregator = "http://172.16.169.1:3000/api/agents/ingestAggregator/stream1"
+              node1ingestLoad = "http://172.16.169.1:3000/api/load"
+              assertAggregators :: E (Array StreamVariantId) -> Boolean
+              assertAggregators (Left _) = false
+              assertAggregators (Right streamVariants) = [StreamVariantId "stream1" "high", StreamVariantId "stream1" "low"] == (sort streamVariants)
+            _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart1
+            _ <- assertStatusCode 204 =<< AX.post ResponseFormat.string node1ingestLoad (jsonBody "{\"load\": 60.0}")
+            _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart2
+            _ <- assertBodyFun assertAggregators =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestAggregator
+            _ <- delay (Milliseconds 1000.0)
+            pure unit
+
   where
     testConfig = { slow: Milliseconds 5000.0, timeout: Just (Milliseconds 20000.0), exit: false }
 
@@ -162,10 +194,22 @@ assertHeader (Tuple header value) response@{headers} =
     true -> pure response
     false -> throwError $ error $ "Header " <> header <> ":" <> value <> " not present in response " <> (show headers)
 
+assertBodyFun :: forall a. ReadForeign a => (E a -> Boolean) -> Response String -> Aff (Response String)
+assertBodyFun expectedBodyFun response@{body} =
+  let
+    parsed = SimpleJSON.readJSON body
+  in
+   if expectedBodyFun parsed then pure response
+   else throwError $ error $ "Body " <> body <> " did not match expected"
+
 assertBody :: String -> Response String -> Aff (Response String)
 assertBody expectedBody response@{body} =
   if expectedBody == body then pure response
   else throwError $ error $ "Body " <> body <> " did not match expected " <> expectedBody
+
+jsonBody :: String -> Maybe RequestBody
+jsonBody string =
+  RequestBody.json <$> hush (Json.jsonParser string)
 
 sessionName:: String
 sessionName = "testSession"

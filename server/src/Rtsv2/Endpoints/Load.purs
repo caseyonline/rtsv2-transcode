@@ -13,6 +13,7 @@ import Erl.Data.Binary (Binary)
 import Erl.Data.Binary.IOData (IOData, fromBinary, toBinary)
 import Erl.Data.List (nil, (:))
 import Erl.Data.Tuple (tuple2)
+import Logger (spy)
 import Rtsv2.Endpoints.MimeType as MimeType
 import Rtsv2.Load as Load
 import Simple.JSON (readJSON)
@@ -30,17 +31,16 @@ load :: StetsonHandler State
 load =
   Rest.handler (\req -> Rest.initResult req {load: 0.0})
   # Rest.allowedMethods (Rest.result (GET : POST : nil))
-  # Rest.malformedRequest (\req state -> 
+  # Rest.malformedRequest (\req state ->
                             case method req of
                               "POST" -> do
                                 body <- allBody req mempty
                                 let
-                                  state2 = hush $ readJSON $ binaryToString body
+                                  state2 = hush $ readJSON $ (binaryToString body)
                                 Rest.result (isNothing state2) req (fromMaybe state state2)
                               _ ->
                                 Rest.result false req state
                           )
-
   # Rest.contentTypesProvided (\req state -> Rest.result (MimeType.json jsonHandler : nil) req state)
   # Rest.contentTypesAccepted (\req state ->
                                 Rest.result ((tuple2 "application/json" (\req2 state2@{load: currentLoad} -> do

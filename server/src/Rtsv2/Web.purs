@@ -17,16 +17,17 @@ import Logger (info) as Logger
 import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen as Gen
 import Record as Record
-import Rtsv2.Names as Names
+import Rtsv2.Agents.IntraPoP as IntraPoPAgent
 import Rtsv2.Config as Config
 import Rtsv2.Endpoints.Client as ClientEndpoint
 import Rtsv2.Endpoints.Edge as EdgeEndpoint
 import Rtsv2.Endpoints.Health as HealthEndpoint
 import Rtsv2.Endpoints.Ingest as IngestEndpoint
+import Rtsv2.Endpoints.IngestAggregator as IngestAggregatorEndpoint
 import Rtsv2.Endpoints.LlnwStub as LlnwStub
 import Rtsv2.Endpoints.Load as LoadEndpoint
 import Rtsv2.Env as Env
-import Rtsv2.Agents.IntraPoP as IntraPoPAgent
+import Rtsv2.Names as Names
 import Serf (Ip(..))
 import Shared.Types (ServerAddress)
 import Stetson (RestResult, StetsonHandler)
@@ -49,7 +50,7 @@ init args = do
     # Stetson.route "/api/transPoPLeader" transPoPLeader
     # Stetson.route "/api/healthCheck" HealthEndpoint.healthCheck
     # Stetson.route "/api/load" LoadEndpoint.load
-    --# Stetson.route "/api/agents/ingestAggregator" IngestAggregatorEndpoint.ingestAggregators
+    # Stetson.route "/api/agents/ingestAggregator/:stream_id" IngestAggregatorEndpoint.ingestAggregator
 
     # Stetson.route "/api/client/:canary/ingest/:stream_id/:variant_id/start" IngestEndpoint.ingestStart
     # Stetson.route "/api/client/:canary/ingest/:stream_id/:variant_id/stop" IngestEndpoint.ingestStop
