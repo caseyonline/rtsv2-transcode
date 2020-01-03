@@ -9,6 +9,7 @@ module Rtsv2.Config
   , IntraPoPAgentApi
   , TransPoPAgentApi
   , LlnwApiConfig
+  , LoadMonitorConfig
   , webConfig
   , nodeConfig
   , popDefinitionConfig
@@ -18,6 +19,7 @@ module Rtsv2.Config
   , edgeAgentConfig
   , rtmpIngestConfig
   , llnwApiConfig
+  , loadMonitorConfig
   , mergeOverrides
   ) where
 
@@ -108,6 +110,9 @@ type LlnwApiConfig
     , streamPublishUrl :: String
     }
 
+type LoadMonitorConfig
+  = {loadAnnounceMs :: Int}
+    
 foreign import getEnv_ :: Atom -> Effect Foreign
 foreign import getMap_ :: Atom -> Effect Foreign
 foreign import mergeOverrides :: Effect Foreign
@@ -154,6 +159,10 @@ rtmpIngestConfig = do
 llnwApiConfig :: Effect LlnwApiConfig
 llnwApiConfig = do
   getMandatoryRecord "llnwApiConfig"
+
+loadMonitorConfig :: Effect LoadMonitorConfig
+loadMonitorConfig = do
+  getMandatoryRecord "loadMonitorConfig"
 
 get :: forall a e. (Foreign -> ExceptT e Identity a) -> String -> Effect (Maybe a)
 get f v = hush <<< runExcept <<< f <$> getEnv_ (atom v)

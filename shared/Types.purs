@@ -1,5 +1,5 @@
 module Shared.Types
-       ( Load(..)
+       ( Load
        , ServerAddress(..)
        , RegionName(..)
        , PoPName(..)
@@ -7,11 +7,7 @@ module Shared.Types
 
 import Prelude
 
-import Data.Generic.Rep (class Generic)
-import Data.Generic.Rep.Eq (genericEq)
-import Data.Generic.Rep.Show (genericShow)
 import Data.Newtype (class Newtype)
-import Foreign (unsafeToForeign)
 import Simple.JSON (class ReadForeign, class WriteForeign)
 
 newtype ServerAddress = ServerAddress String
@@ -38,26 +34,10 @@ derive newtype instance showPoPName :: Show PoPName
 derive newtype instance readForeignPoPName :: ReadForeign PoPName
 derive newtype instance writeForeignPoPName :: WriteForeign PoPName
 
-data Load = Idle
-          | Busy
-          | Overloaded
-          | Critical
-derive instance genericLoad :: Generic Load _
-
-instance eqLoad :: Eq Load where
-  eq = genericEq
-
-instance showLoad :: Show Load where
-  show = genericShow
-
-instance ordLoad :: Ord Load where
-  compare lhs rhs = compare (toNum lhs) (toNum rhs)
-
-instance foreignLoad :: WriteForeign Load where
-  writeImpl = unsafeToForeign <<< show
-
-toNum :: Load -> Int
-toNum Idle = 0
-toNum Busy = 1
-toNum Overloaded = 2
-toNum Critical = 3
+newtype Load = Load Number
+derive instance newtypeLoad :: Newtype Load _
+derive newtype instance eqLoad :: Eq Load
+derive newtype instance ordLoad :: Ord Load
+derive newtype instance showLoad :: Show Load
+derive newtype instance readForeignLoad :: ReadForeign Load
+derive newtype instance writeForeignLoad :: WriteForeign Load

@@ -23,12 +23,13 @@ module Rtsv2.IntraPoPAgent
 
 import Prelude
 
-import Data.Either (Either(..))
+import Data.Either (Either(..), hush)
 import Data.Foldable (foldl)
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (wrap)
 import Data.Traversable (traverse_)
 import Data.Tuple (Tuple(..), fst)
+import Debug.Trace (spy)
 import Effect (Effect)
 import Ephemeral.Map (EMap)
 import Ephemeral.Map as EMap
@@ -36,7 +37,7 @@ import Ephemeral.MultiMap (EMultiMap)
 import Ephemeral.MultiMap as MultiMap
 import Erl.Atom (atom)
 import Erl.Data.List (List, head, length, nil, singleton, sortBy, (:))
-import Erl.Data.Map (Map, alter, values)
+import Erl.Data.Map (Map, alter, fromFoldable, values)
 import Erl.Data.Map as Map
 import Erl.Process (Process, spawnLink)
 import Erl.Utils (Milliseconds)
@@ -83,7 +84,7 @@ data EdgeState = EdgeAvailable
 
 data IntraMessage = StreamState StreamState StreamId ServerAddress
                   | EdgeState EdgeState StreamId ServerAddress
-                  | Load ServerAddress Load
+                  | ServerLoad ServerAddress Load
                   | TransPoPLeader ServerAddress
 
 data Msg
@@ -145,8 +146,7 @@ announceLoad :: Load -> Effect Unit
 announceLoad load =
   Gen.doCast serverName
     $ \state@{ thisNode, members } -> do
-        _ <- logInfo "Load" { load: load }
-        _ <- sendToIntraSerfNetwork state "loadUpdate" (Load thisNode load)
+        _ <- sendToIntraSerfNetwork state "loadUpdate" (ServerLoad thisNode load)
         let
           newMembers = alter (map (\(Tuple member oldLoad) -> Tuple member load)) thisNode members
         pure $ Gen.CastNoReply state { members = newMembers }
@@ -259,6 +259,7 @@ init { config: config@{rejoinEveryMs
       { ip: show rpcBindIp
       , port: config.rpcPort
       }
+  membersResp <- Serf.members serfRpcAddress
   streamResp <- Serf.stream serfRpcAddress
   _ <- case streamResp of
          Left error -> do
@@ -268,6 +269,12 @@ init { config: config@{rejoinEveryMs
          Right r ->
            pure r
 
+  let
+    members = membersResp
+              # hush
+              # fromMaybe nil
+              <#> (\member@{name} -> Tuple (ServerAddress name) (Tuple member (wrap 100.0)))
+              # fromFoldable
   pure
     { config
     , transPoPApi
@@ -277,7 +284,7 @@ init { config: config@{rejoinEveryMs
     , streamAggregatorLocations: EMap.empty
     , thisNode: thisNode
     , currentTransPoPLeader: Nothing
-    , members: Map.empty
+    , members
     , expireThreshold: wrap expireThresholdMs
     , streamStateClocks: EMap.empty
     , edgeStateClocks: EMap.empty
@@ -339,9 +346,7 @@ handleIntraPoPSerfMsg imsg state@{transPoPApi: {announceTransPoPLeader: transPoP
              newEdgeStateClocks <- EMap.insert' streamId ltime state.edgeStateClocks
              handleEdgeStateChange stateChange streamId server (state {edgeStateClocks = newEdgeStateClocks})
 
-       Load server load -> do
-         _ <- logInfo "Server Load" { server: server
-                                      , load: load }
+       ServerLoad server load -> do
          let
            newMembers = alter (map (\(Tuple member oldLoad) -> Tuple member load)) server state.members
          pure state{members = newMembers}
@@ -410,7 +415,7 @@ membersAlive :: (List Serf.SerfMember) -> State -> Effect State
 membersAlive members state = do
   _ <- logInfo "Members Alive" { members: _.name <$> members }
   let
-    newMembers = foldl (\acc member@{ name } -> Map.insert (ServerAddress name) (Tuple member Overloaded) acc) state.members members
+    newMembers = foldl (\acc member@{ name } -> Map.insert (ServerAddress name) (Tuple member (wrap 100.0)) acc) state.members members
   pure state { members = newMembers }
 
 membersLeft :: (List Serf.SerfMember) -> State -> Effect State
@@ -450,6 +455,7 @@ joinAllSerf { config, serfRpcAddress, members } =
       let
         toJoin = Map.keys $ Map.difference (toMap allOtherServers) members
       if length toJoin < (length allOtherServers) / 2 then
+        -- We already know about more than 1/2 the network - no need to issue any joins
         pure unit
       else do
         let

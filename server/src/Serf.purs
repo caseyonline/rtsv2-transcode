@@ -1,5 +1,6 @@
 module Serf
        ( strToIp
+       , members
        , join
        , leave
        , event
@@ -61,6 +62,7 @@ foreign import joinImpl :: (ApiError -> (SerfResult Int)) -> (Int -> SerfResult 
 foreign import leaveImpl :: (ApiError -> (SerfResult Unit)) -> (Unit -> SerfResult Unit) -> IpAndPort ->  Effect (SerfResult Unit)
 foreign import eventImpl :: forall a. (ApiError -> (SerfResult Unit)) -> (SerfResult Unit) -> IpAndPort -> String -> a -> Boolean ->  Effect (SerfResult Unit)
 foreign import streamImpl :: (ApiError -> (SerfResult Unit)) -> (SerfResult Unit) -> IpAndPort -> Effect (SerfResult Unit)
+foreign import membersImpl :: (ApiError -> (SerfResult (List SerfMember))) -> ((List SerfMember) -> SerfResult (List SerfMember)) -> IpAndPort -> Effect (SerfResult (List SerfMember))
 foreign import getCoordinateImpl :: (ApiError -> (SerfResult SerfCoordinate)) -> (SerfCoordinate -> SerfResult SerfCoordinate) -> IpAndPort -> String -> Effect (SerfResult SerfCoordinate)
 foreign import messageMapperImpl :: forall a. Foreign -> Maybe (SerfMessage a)
 
@@ -87,7 +89,6 @@ strToIp str =
         _ -> Nothing
     )
 
-
 join :: IpAndPort -> List IpAndPort -> Boolean -> Effect (SerfResult Int)
 join = joinImpl Left Right
 
@@ -99,6 +100,9 @@ event = eventImpl Left (Right unit)
 
 stream :: IpAndPort -> Effect (SerfResult Unit)
 stream = streamImpl Left (Right unit)
+
+members :: IpAndPort -> Effect (SerfResult (List SerfMember))
+members = membersImpl Left Right
 
 getCoordinate :: IpAndPort -> String -> Effect (SerfResult SerfCoordinate)
 getCoordinate = getCoordinateImpl Left Right

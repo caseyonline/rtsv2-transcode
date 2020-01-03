@@ -52,14 +52,20 @@ init streamVariantId = do
   _ <- Audit.ingestStart streamVariantId
   maybeAggregator <- IntraPoPAgent.whereIsIngestAggregator streamVariantId
   case maybeAggregator of
-    Just relay ->
+    Just aggregator ->
+      -- Got an aggregator - tell it of our existence - direct call or via serf?  How to do this...
       pure {}
     Nothing -> do
-      -- Launch
-      _ <- (spy "here" IntraPoPAgent.getIdleServer)
+      -- Launch -
+      idle <- IntraPoPAgent.getIdleServer
+      _ <- logInfo "idle" {idle}
       _ <- IngestAggregatorAgentSup.startAggregator (toStreamId streamVariantId)
       pure {}
 
+-- check for existing aggregator - if one, talk to it
+-- if none, then check our load.  If low enough, start one here
+-- if load too high, pick two random servers and ask the best to start one
+-- if start fails, repeat
 
 logInfo :: forall a. String -> a -> Effect Foreign
 logInfo msg metaData = Logger.info msg (Record.merge { domain: ((atom (show Agent.Ingest)) : nil) } { misc: metaData })

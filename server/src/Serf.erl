@@ -2,13 +2,15 @@
 -include_lib("id3as_common/include/serf_api.hrl").
 -include_lib("id3as_common/include/common.hrl").
 
--export([ joinImpl/5
+-export([ membersImpl/3
+        , joinImpl/5
         , leaveImpl/3
         , eventImpl/6
         , streamImpl/3
         , getCoordinateImpl/4
         , messageMapperImpl/1
-        ]).
+        ])
+.
 %% event :: forall a. IpAndPort -> String -> a -> Boolean ->  Effect (Either SerfApiError Unit)
 eventImpl(Left, Right, RpcAddr, Name, Msg, Coalesce) ->
   fun() ->
@@ -25,6 +27,23 @@ eventImpl(Left, Right, RpcAddr, Name, Msg, Coalesce) ->
                                              , coalesce => Coalesce
                                              }),
           Left(networkError)
+      end
+  end.
+
+membersImpl(Left, Right, RpcAddr) ->
+  fun() ->
+      case serf_api:members(mapAddr(RpcAddr)) of
+        {error, Error} ->
+          ?SLOG_WARNING("serf members error", #{ error => Error
+                                               , client_rpc => RpcAddr
+                                               }),
+          Left(networkError);
+        {ok, #serf_members_response{status = serf_error,
+                                    serf_error = ErrorBin}} ->
+          Left(ErrorBin);
+        {ok, #serf_members_response{status = ok,
+                                    members = Members}} ->
+          Right([mapMemberToPurs(Member) || Member <- Members])
       end
   end.
 
