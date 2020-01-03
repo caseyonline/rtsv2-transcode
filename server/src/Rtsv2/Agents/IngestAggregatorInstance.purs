@@ -1,4 +1,4 @@
-module Rtsv2.IngestAggregatorAgent
+module Rtsv2.Agents.IngestAggregatorInstance
   ( startLink
   , stopAggregator
   ) where
@@ -8,17 +8,16 @@ import Prelude
 import Effect (Effect)
 import Erl.Atom (atom)
 import Erl.Data.List (nil, (:))
-import Erl.Data.Tuple (tuple2, tuple3)
-import Erl.ModuleName (NativeModuleName(..))
-import Foreign (Foreign, unsafeToForeign)
+import Foreign (Foreign)
 import Logger as Logger
-import Pinto (ServerName(..), StartLinkResult)
+import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Record as Record
+import Rtsv2.Agents.IntraPoP (announceStreamIsAvailable, announceStreamStopped)
 import Rtsv2.Config as Config
-import Rtsv2.IntraPoPAgent (announceStreamIsAvailable, announceStreamStopped)
+import Rtsv2.Names as Names
 import Shared.Agent as Agent
 import Shared.Stream (StreamId)
 
@@ -31,7 +30,7 @@ data Msg
   = Tick
 
 serverName :: StreamId -> ServerName State Msg
-serverName s = Via (NativeModuleName $ atom "gproc") $ unsafeToForeign (tuple3 (atom "n") (atom "l") (tuple2 "ingest" s))
+serverName = Names.ingestAggregatorInstanceName
 
 stopAggregator :: StreamId -> Effect Unit
 stopAggregator streamId = do

@@ -1,4 +1,4 @@
-module Rtsv2.EdgeAgent
+module Rtsv2.Agents.EdgeInstance
   ( startLink
   , isActive
   , addClient
@@ -13,20 +13,20 @@ import Data.Newtype (unwrap, wrap)
 import Effect (Effect)
 import Erl.Atom (atom)
 import Erl.Data.List (nil, (:))
-import Erl.Data.Tuple (tuple2, tuple3)
-import Erl.ModuleName (NativeModuleName(..))
+import Erl.Data.Tuple (tuple2)
 import Erl.Utils (Milliseconds, Ref, makeRef)
-import Foreign (Foreign, unsafeToForeign)
+import Foreign (Foreign)
 import Gproc as Gproc
 import Logger as Logger
-import Pinto (ServerName(..), StartLinkResult)
+import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Record as Record
+import Rtsv2.Agents.IntraPoP as IntraPoP
+import Rtsv2.Agents.StreamRelayInstanceSup as StreamRelayInstanceSup
 import Rtsv2.Config as Config
-import Rtsv2.IntraPoPAgent as IntraPoPAgent
-import Rtsv2.StreamRelayAgentSup as StreamRelayAgentSup
+import Rtsv2.Names as Names
 import Shared.Agent as Agent
 import Shared.Stream (StreamId)
 
@@ -40,8 +40,11 @@ type State
 data Msg = Tick
          | MaybeStop Ref
 
+serverName :: StreamId -> ServerName State Msg
+serverName streamId = Names.edgeInstanceName streamId
+
 isActive :: StreamId -> Effect Boolean
-isActive streamId = Gproc.isRegistered (tuple2 "edge" streamId)
+isActive streamId = Names.edgeInstanceRegistered streamId
 
 startLink :: StreamId -> Effect StartLinkResult
 startLink streamId = Gen.startLink (serverName streamId) (init streamId) handleInfo
@@ -79,19 +82,13 @@ currentClientCount streamId =
   Gen.call (serverName streamId) \state@{clientCount} ->
     CallReply clientCount state
 
-gprocName :: StreamId -> Foreign
-gprocName streamId = unsafeToForeign (tuple3 (atom "n") (atom "l") (tuple2 "edge" streamId))
-
-serverName :: StreamId -> ServerName State Msg
-serverName streamId = Via (NativeModuleName $ atom "gproc") $ gprocName streamId
-
 init :: StreamId -> Effect State
 init streamId = do
   {edgeAvailableAnnounceMs, lingerTimeMs} <- Config.edgeAgentConfig
   _ <- logInfo "Edge starting" {streamId: streamId}
-  _ <- IntraPoPAgent.announceEdgeIsAvailable streamId
+  _ <- IntraPoP.announceEdgeIsAvailable streamId
   _ <- Timer.sendEvery (serverName streamId) edgeAvailableAnnounceMs Tick
-  maybeRelay <- IntraPoPAgent.whereIsStreamRelay streamId
+  maybeRelay <- IntraPoP.whereIsStreamRelay streamId
   let 
     state ={ streamId
            , clientCount: 0
@@ -102,7 +99,7 @@ init streamId = do
       pure state
     Nothing -> do
       -- Launch
-      _ <- StreamRelayAgentSup.startRelay streamId
+      _ <- StreamRelayInstanceSup.startRelay streamId
       pure state
 
 handleInfo :: Msg -> State -> Effect (CastResult State)
@@ -114,7 +111,7 @@ handleInfo msg state =
 
 handleTick :: State -> Effect State
 handleTick state@{streamId} = do
-  _ <- IntraPoPAgent.announceEdgeIsAvailable streamId
+  _ <- IntraPoP.announceEdgeIsAvailable streamId
   pure state
 
 maybeStop :: Ref -> State -> Effect (CastResult State)
@@ -123,7 +120,7 @@ maybeStop ref state@{streamId
                     , stopRef}
   | (clientCount == 0) && (Just ref == stopRef) = do
     _ <- logInfo "Edge stopping" {streamId: streamId}
-    _ <- IntraPoPAgent.announceEdgeStopped streamId
+    _ <- IntraPoP.announceEdgeStopped streamId
     pure $ CastStop state
 
   | otherwise = pure $ CastNoReply state

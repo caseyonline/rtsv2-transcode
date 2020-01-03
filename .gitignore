@@ -21,3 +21,4 @@ node_modules
 .psci_modules
 .edts
 server/purs
+.DS_store

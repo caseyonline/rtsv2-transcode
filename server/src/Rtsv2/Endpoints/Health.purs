@@ -9,8 +9,8 @@ import Data.Maybe (fromMaybe)
 import Data.Newtype (wrap)
 import Erl.Data.List (nil, (:))
 import Rtsv2.Endpoints.MimeType as MimeType
-import Rtsv2.IntraPoPAgent as IntraPoPAgent
-import Rtsv2.TransPoPAgent as TransPoPAgent
+import Rtsv2.Agents.IntraPoP as IntraPoP
+import Rtsv2.Agents.TransPoP as TransPoP
 import Simple.JSON as JSON
 import Stetson (StetsonHandler)
 import Stetson.Rest as Rest
@@ -22,9 +22,9 @@ healthCheck =
   # Rest.yeeha
   where
     jsonHandler req state = do
-      currentTransPoP <- IntraPoPAgent.currentTransPoPLeader
-      intraPoPHealth <- IntraPoPAgent.health
-      transPoPHealth <- TransPoPAgent.health
+      currentTransPoP <- IntraPoP.currentTransPoPLeader
+      intraPoPHealth <- IntraPoP.health
+      transPoPHealth <- TransPoP.health
       let
         result = {intraPoPHealth,
                   transPoPHealth,

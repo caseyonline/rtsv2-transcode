@@ -1,4 +1,4 @@
- module Rtsv2.IngestAgentSup
+ module Rtsv2.Agents.IngestSup
   ( isAvailable
   , startLink
   ) where
@@ -7,20 +7,20 @@ import Prelude
 
 import Effect (Effect)
 import Erl.Data.List (nil, (:))
-import Erl.Utils as ErlUtils
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStart, childType)
 import Pinto.Sup as Sup
-import Rtsv2.IngestAgent as Ingest
-import Rtsv2.IngestAgentInstanceSup as IngestAgentInstanceSup
-import Rtsv2.IngestRtmpServer as IngestRtmpServer
+import Rtsv2.Names as Names
+import Rtsv2.Agents.IngestInstance as IngestInstance
+import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
+import Rtsv2.Agents.IngestRtmpServer as IngestRtmpServer
 import Shared.Stream (StreamVariantId)
 
 isAvailable :: Effect Boolean
-isAvailable = ErlUtils.isRegistered serverName
+isAvailable = Names.ingestAgentSupRegistered
 
 serverName :: String
-serverName = "ingestAgentSup"
+serverName = Names.ingestAgentSupName
 
 startLink :: forall a. a -> Effect Pinto.StartLinkResult
 startLink _ = Sup.startLink serverName init
@@ -39,11 +39,11 @@ init = do
           : ( buildChild
               # childType Supervisor
               # childId "ingestAgentInstance"
-              # childStart IngestAgentInstanceSup.startLink unit
+              # childStart IngestInstanceSup.startLink unit
               # childRestart Transient
           )
             : nil
         )
 
 childTemplate :: Pinto.ChildTemplate StreamVariantId
-childTemplate = Pinto.ChildTemplate (Ingest.startLink)
+childTemplate = Pinto.ChildTemplate (IngestInstance.startLink)

@@ -6,7 +6,7 @@ import Erl.Data.List (nil, (:))
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildType(..), SupervisorSpec, SupervisorStrategy(..), buildChild, buildSupervisor, childId, childStart, childType, supervisorChildren, supervisorStrategy)
 import Pinto.Sup as Sup
-import Rtsv2.AgentSup as AgentSup
+import Rtsv2.Agents.AgentSup as AgentSup
 import Rtsv2.Config as Config
 import Rtsv2.Load as Load
 import Rtsv2.Web as Web

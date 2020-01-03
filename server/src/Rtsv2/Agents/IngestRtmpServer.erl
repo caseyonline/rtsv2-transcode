@@ -1,4 +1,4 @@
--module(rtsv2_ingestRtmpServer@foreign).
+-module(rtsv2_agents_ingestRtmpServer@foreign).
 
 -include_lib("id3as_media/include/rtmp.hrl").
 

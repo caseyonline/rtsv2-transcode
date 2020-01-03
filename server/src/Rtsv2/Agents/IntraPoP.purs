@@ -1,4 +1,4 @@
-module Rtsv2.IntraPoPAgent
+module Rtsv2.Agents.IntraPoP
   ( startLink
   , isStreamIngestAvailable
   , isIngestActive
@@ -27,7 +27,7 @@ import Data.Either (Either(..), hush)
 import Data.Foldable (foldl)
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (wrap)
-import Data.Traversable (traverse_)
+import Data.Traversable (traverse, traverse_)
 import Data.Tuple (Tuple(..), fst)
 import Debug.Trace (spy)
 import Effect (Effect)
@@ -36,7 +36,7 @@ import Ephemeral.Map as EMap
 import Ephemeral.MultiMap (EMultiMap)
 import Ephemeral.MultiMap as MultiMap
 import Erl.Atom (atom)
-import Erl.Data.List (List, head, length, nil, singleton, sortBy, (:))
+import Erl.Data.List (List, head, index, length, nil, singleton, sortBy, (:))
 import Erl.Data.Map (Map, alter, fromFoldable, values)
 import Erl.Data.Map as Map
 import Erl.Process (Process, spawnLink)
@@ -45,7 +45,7 @@ import Erl.Utils as Erl
 import Foreign (Foreign)
 import Logger as Logger
 import Partial.Unsafe (unsafeCrashWith)
-import Pinto (ServerName(..), StartLinkResult)
+import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
@@ -54,12 +54,14 @@ import Record as Record
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
 import Rtsv2.Health (Health, percentageToHealth)
+import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Serf (IpAndPort)
 import Serf as Serf
 import Shared.Agent as Agent
 import Shared.Stream (StreamId(..), StreamVariantId(..))
 import Shared.Types (ServerAddress(..), Load(..))
+import Shared.Utils (distinctRandomNumbers)
 
 type State
   = { transPoPApi :: Config.TransPoPAgentApi
@@ -93,7 +95,7 @@ data Msg
   | IntraPoPSerfMsg (Serf.SerfMessage IntraMessage)
 
 serverName :: ServerName State Msg
-serverName = Local $ show Agent.IntraPoP
+serverName = Names.intraPoPAgentName
 
 health :: Effect Health
 health =
@@ -127,13 +129,22 @@ whereIsEdge streamId =
     CallReply (MultiMap.lookup streamId state.edgeLocations) state
 
 getIdleServer :: Effect (Maybe ServerAddress)
-getIdleServer =
-  Gen.call serverName \state@{members} ->
+getIdleServer = Gen.doCall serverName
+  (\state@{members} ->
     let
-      output = wrap <$> _.name <$> fst <$> (head $ sortBy (\(Tuple _ lhsLoad) (Tuple _ rhsLoad) -> compare lhsLoad rhsLoad) $ values members)
+      membersList = values members
     in
-     CallReply output state
-  
+      do
+        indexes <- distinctRandomNumbers 1 (min 2 ((length membersList) - 1))
+        let
+          output = traverse (\i -> index membersList i) indexes
+                   # fromMaybe nil
+                   # sortBy (\(Tuple _ lhsLoad) (Tuple _ rhsLoad) -> compare lhsLoad rhsLoad)
+                   # head
+                   <#> fst >>> _.name >>> wrap
+        pure $ CallReply output state
+  )
+
 currentTransPoPLeader :: Effect (Maybe ServerAddress)
 currentTransPoPLeader =
   Gen.call serverName

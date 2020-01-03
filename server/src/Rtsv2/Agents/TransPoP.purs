@@ -1,4 +1,4 @@
-module Rtsv2.TransPoPAgent
+module Rtsv2.Agents.TransPoP
        ( announceStreamIsAvailable
        , announceStreamStopped
        , announceTransPoPLeader
@@ -17,7 +17,7 @@ import Data.Maybe (Maybe(..), fromMaybe, fromMaybe')
 import Data.Newtype (unwrap, wrap)
 import Data.Set (Set)
 import Data.Set as Set
-import Data.Traversable (sequence, traverse, traverse_)
+import Data.Traversable (traverse, traverse_)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Ephemeral.Map (EMap)
@@ -28,17 +28,18 @@ import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
 import Erl.Process (spawnLink)
 import Erl.Utils (Milliseconds, sleep, systemTimeMs)
-import Logger (Logger, spy)
+import Logger (Logger)
 import Logger as Logger
 import Network (Network, addEdge', bestPaths, emptyNetwork, pathsBetween)
 import Os (osCmd)
 import Partial.Unsafe (unsafeCrashWith)
-import Pinto (ServerName(..), StartLinkResult)
+import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Prim.Row (class Nub, class Union)
 import Record as Record
+import Rtsv2.Names as Names
 import Rtsv2.Config (IntraPoPAgentApi, ServerLocation(..), TransPoPAgentConfig)
 import Rtsv2.Env as Env
 import Rtsv2.Health (Health)
@@ -311,7 +312,7 @@ handleTransPoPMessage (StreamState StreamStopped streamId server) state@{intraPo
 -- Internal functions
 --------------------------------------------------------------------------------
 serverName :: ServerName State Msg
-serverName = Local $ show Agent.TransPoP
+serverName = Names.transPoPAgentName
 
 messageOrigin :: TransMessage -> Effect (Maybe PoPName)
 messageOrigin (StreamState _ _ addr) = originPoP addr
@@ -454,11 +455,11 @@ calculateRoutes poPCoordinates currentRtts defaultRtts thisPoP otherPoPNames =
         newNetwork :: Network PoPName
         newNetwork = foldlWithIndex (\(Tuple from to) acc ms -> addEdge' from to (msToCost ms) acc) emptyNetwork newRtts
         -- Get the bestroute pairs to all the other pops
-        sourceRoutes = spy "best" $ foldl (\acc popName ->
-                                            case bestPaths $ pathsBetween newNetwork thisPoP popName of
-                                              Just {path1, path2} -> Map.insert popName (_.via <$> (path1 : path2 : nil)) acc
-                                              Nothing -> acc
-                                          ) Map.empty otherPoPNames
+        sourceRoutes = foldl (\acc popName ->
+                               case bestPaths $ pathsBetween newNetwork thisPoP popName of
+                                 Just {path1, path2} -> Map.insert popName (_.via <$> (path1 : path2 : nil)) acc
+                                 Nothing -> acc
+                             ) Map.empty otherPoPNames
     in Tuple newRtts sourceRoutes
 
 
@@ -547,8 +548,7 @@ joinAllSerf state@{ config: config@{rejoinEveryMs}, serfRpcAddress, members } =
                      indexes <- distinctRandomNumbers 1 ((length serversInPoP) - 1)
                      let
                        servers :: List ServerAddress
-                       servers = map (\i -> index serversInPoP i) indexes
-                                 # sequence
+                       servers = traverse (\i -> index serversInPoP i) indexes
                                  # fromMaybe nil
 
                      (spawnFun serverAddressToSerfAddress servers)

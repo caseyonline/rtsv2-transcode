@@ -138,7 +138,11 @@ main =
             _ <- assertHeader (Tuple "x-servedby" "172.16.169.3") =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node3edgeStart
             _ <- assertBody "1" =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node3edgeCount
             pure unit
-
+          -- it "ingest aggregation on ingest node" do
+          --   let
+          --     node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/stream1/low/start"
+          --   _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
+            
   where
     testConfig = { slow: Milliseconds 5000.0, timeout: Just (Milliseconds 20000.0), exit: false }
 

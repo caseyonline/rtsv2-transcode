@@ -16,9 +16,9 @@ import Erl.Data.List (List, nil, null, (:))
 import Erl.Data.Tuple (tuple2)
 import Logger as Logger
 import Rtsv2.Audit as Audit
-import Rtsv2.EdgeAgent as EdgeAgent
-import Rtsv2.EdgeAgentSup as EdgeAgentSup
-import Rtsv2.IntraPoPAgent as IntraPoPAgent
+import Rtsv2.Agents.EdgeInstance as EdgeInstance
+import Rtsv2.Agents.EdgeInstanceSup as EdgeInstanceSup
+import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.PoPDefinition as PoPDefintion
 import Rtsv2.Utils (member)
 import Shared.Stream (StreamId(..))
@@ -48,12 +48,12 @@ clientStart =
                                         }
                )
   # Rest.serviceAvailable (\req state -> do
-                              isAgentAvailable <- EdgeAgentSup.isAvailable
+                              isAgentAvailable <- EdgeInstanceSup.isAvailable
                               Rest.result isAgentAvailable req state)
 
   # Rest.resourceExists (\req state@{streamId, thisNode} -> do
-                            isIngestAvailable <- IntraPoPAgent.isStreamIngestAvailable streamId
-                            currentEdgeLocations <- IntraPoPAgent.whereIsEdge streamId
+                            isIngestAvailable <- IntraPoP.isStreamIngestAvailable streamId
+                            currentEdgeLocations <- IntraPoP.whereIsEdge streamId
                             let
                               currentNodeHasEdge = member thisNode currentEdgeLocations
                               exists = isIngestAvailable && (currentNodeHasEdge || (null currentEdgeLocations))
@@ -83,7 +83,7 @@ clientStart =
   where
     addOrStartEdge req state@{thisNode, streamId} = do
       _ <- Audit.clientStart streamId
-      _ <- EdgeAgentSup.maybeStartAndAddClient streamId
+      _ <- EdgeInstanceSup.maybeStartAndAddClient streamId
       let
         req2 = setHeader "X-ServedBy" (unwrap thisNode) req
       Rest.result "" req2 state
@@ -103,11 +103,11 @@ clientStop =
                                         }
                )
   # Rest.serviceAvailable (\req state -> do
-                              isAgentAvailable <- EdgeAgentSup.isAvailable
+                              isAgentAvailable <- EdgeInstanceSup.isAvailable
                               Rest.result isAgentAvailable req state)
 
   # Rest.resourceExists (\req state@{streamId} -> do
-                            isActive <- EdgeAgent.isActive streamId
+                            isActive <- EdgeInstance.isActive streamId
                             Rest.result isActive req state
                         )
 
@@ -118,5 +118,5 @@ clientStop =
   where
     removeClient req state@{streamId} = do
       _ <- Audit.clientStop streamId
-      _ <- EdgeAgent.removeClient streamId
+      _ <- EdgeInstance.removeClient streamId
       Rest.result "" req state

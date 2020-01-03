@@ -1,4 +1,4 @@
- module Rtsv2.IngestAgentInstanceSup
+ module Rtsv2.Agents.IngestInstanceSup
   ( isAvailable
   , startLink
   , startIngest
@@ -12,14 +12,15 @@ import Erl.Utils as ErlUtils
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStartTemplate, childType)
 import Pinto.Sup as Sup
-import Rtsv2.IngestAgent as Ingest
+import Rtsv2.Names as Names
+import Rtsv2.Agents.IngestInstance as IngestInstance
 import Shared.Stream (StreamVariantId)
 
 isAvailable :: Effect Boolean
 isAvailable = ErlUtils.isRegistered serverName
 
 serverName :: String
-serverName = "ingestAgentInstanceSup"
+serverName = Names.ingestAgentInstanceSupName
 
 startLink :: forall a. a -> Effect Pinto.StartLinkResult
 startLink _ = Sup.startLink serverName init
@@ -46,4 +47,4 @@ init = do
         )
 
 childTemplate :: Pinto.ChildTemplate StreamVariantId
-childTemplate = Pinto.ChildTemplate (Ingest.startLink)
+childTemplate = Pinto.ChildTemplate (IngestInstance.startLink)

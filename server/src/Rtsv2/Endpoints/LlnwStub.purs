@@ -16,7 +16,7 @@ import Erl.Data.Binary.IOData (IOData, fromBinary, toBinary)
 import Erl.Data.List (nil, (:))
 import Erl.Data.Map (Map, fromFoldable, lookup)
 import Erl.Data.Tuple (tuple2)
-import Rtsv2.IngestAgentInstanceSup as IngestAgentInstanceSup
+import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
 import Rtsv2.LlnwApiTypes (AuthType, PublishCredentials(..), SlotPublishAuthType(..), StreamAuth, StreamDetails, StreamIngestProtocol(..), StreamPublish, StreamRole(..), StreamConnection)
 import Simple.JSON (readJSON, writeJSON)
 import Stetson (Authorized(..), HttpMethod(..), StetsonHandler)
@@ -72,7 +72,7 @@ streamAuthType =
                                             , isAuthorized: true})
 
   # Rest.serviceAvailable (\req state -> do
-                              isAgentAvailable <- IngestAgentInstanceSup.isAvailable
+                              isAgentAvailable <- IngestInstanceSup.isAvailable
                               Rest.result isAgentAvailable req state)
 
   # Rest.allowedMethods (Rest.result (POST : nil))
@@ -126,7 +126,7 @@ streamAuth =
                                             , isAuthorized: true})
 
   # Rest.serviceAvailable (\req state -> do
-                              isAgentAvailable <- IngestAgentInstanceSup.isAvailable
+                              isAgentAvailable <- IngestInstanceSup.isAvailable
                               Rest.result isAgentAvailable req state)
 
   # Rest.allowedMethods (Rest.result (POST : nil))
@@ -180,7 +180,7 @@ streamPublish =
                                             , isAuthorized: true})
 
   # Rest.serviceAvailable (\req state -> do
-                              isAgentAvailable <- IngestAgentInstanceSup.isAvailable
+                              isAgentAvailable <- IngestInstanceSup.isAvailable
                               Rest.result isAgentAvailable req state)
 
   # Rest.allowedMethods (Rest.result (POST : nil))

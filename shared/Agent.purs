@@ -26,6 +26,9 @@ data Agent = Edge
            | IntraPoP
            | TransPoP
 
+--------------------------------------------------------------------------------
+-- Type class derivations
+--------------------------------------------------------------------------------
 derive instance genericAgent :: Generic Agent _
 
 instance eqAgent :: Eq Agent where

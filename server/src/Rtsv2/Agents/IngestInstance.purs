@@ -1,4 +1,4 @@
-module Rtsv2.IngestAgent
+module Rtsv2.Agents.IngestInstance
   ( startLink
   , isActive
   , stopIngest
@@ -7,6 +7,7 @@ module Rtsv2.IngestAgent
 import Prelude
 
 import Data.Maybe (Maybe(..))
+import Data.Newtype (wrap)
 import Debug.Trace (spy)
 import Effect (Effect)
 import Erl.Atom (atom)
@@ -21,11 +22,14 @@ import Pinto.Gen (CallResult(..))
 import Pinto.Gen as Gen
 import Record as Record
 import Rtsv2.Audit as Audit
-import Rtsv2.IngestAggregatorAgent as IngestAggregatorAgent
-import Rtsv2.IngestAggregatorAgentSup as IngestAggregatorAgentSup
-import Rtsv2.IntraPoPAgent as IntraPoPAgent
+import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
+import Rtsv2.Agents.IngestAggregatorInstanceSup as IngestAggregatorInstanceSup
+import Rtsv2.Agents.IntraPoP as IntraPoP
+import Rtsv2.Load as Load
+import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Agent as Agent
 import Shared.Stream (StreamVariantId, toStreamId)
+import Shared.Types (ServerAddress)
 
 type State
   = { }
@@ -42,7 +46,8 @@ startLink streamVariantId = Gen.startLink (serverName streamVariantId) (init str
 stopIngest :: StreamVariantId -> Effect Unit
 stopIngest streamVariantId =
   Gen.doCall (serverName streamVariantId) \state -> do
-    _ <- IngestAggregatorAgent.stopAggregator (toStreamId streamVariantId)
+    -- TODO - single ingest can't stop the aggregator
+    _ <- IngestAggregatorInstance.stopAggregator (toStreamId streamVariantId)
     _ <- Audit.ingestStop streamVariantId
     pure $ CallStop unit state
 
@@ -50,17 +55,31 @@ init :: StreamVariantId -> Effect State
 init streamVariantId = do
   _ <- logInfo "Ingest starting" {streamVariantId: streamVariantId}
   _ <- Audit.ingestStart streamVariantId
-  maybeAggregator <- IntraPoPAgent.whereIsIngestAggregator streamVariantId
+  maybeAggregator <- getAggregator streamVariantId
+  pure {}
+
+getAggregator :: StreamVariantId -> Effect (Maybe ServerAddress)
+getAggregator streamVariantId = do
+  maybeAggregator <- IntraPoP.whereIsIngestAggregator streamVariantId
   case maybeAggregator of
     Just aggregator ->
-      -- Got an aggregator - tell it of our existence - direct call or via serf?  How to do this...
-      pure {}
-    Nothing -> do
-      -- Launch -
-      idle <- IntraPoPAgent.getIdleServer
-      _ <- logInfo "idle" {idle}
-      _ <- IngestAggregatorAgentSup.startAggregator (toStreamId streamVariantId)
-      pure {}
+      pure maybeAggregator
+    Nothing ->
+      launchLocalOrRemote streamVariantId
+
+launchLocalOrRemote :: StreamVariantId -> Effect (Maybe ServerAddress)
+launchLocalOrRemote streamVariantId = do
+  currentLoad <- Load.load
+  if
+    currentLoad < (wrap 50.0) then do
+      _ <- IngestAggregatorInstanceSup.startAggregator (toStreamId streamVariantId)
+      Just <$> PoPDefinition.thisNode
+    else
+      launchRemote streamVariantId
+
+launchRemote :: StreamVariantId -> Effect (Maybe ServerAddress)
+launchRemote streamVariantId = do
+  IntraPoP.getIdleServer
 
 -- check for existing aggregator - if one, talk to it
 -- if none, then check our load.  If low enough, start one here

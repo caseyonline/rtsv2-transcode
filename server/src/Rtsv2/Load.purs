@@ -12,13 +12,14 @@ import Erl.Atom (atom)
 import Erl.Data.List (nil, (:))
 import Foreign (Foreign)
 import Logger as Logger
-import Pinto (ServerName(..), StartLinkResult)
+import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Record as Record
+import Rtsv2.Names as Names
 import Rtsv2.Config as Config
-import Rtsv2.IntraPoPAgent as IntraPopAgent
+import Rtsv2.Agents.IntraPoP as IntraPop
 import Shared.Types (Load)
 
 type State =
@@ -29,7 +30,7 @@ type State =
 data Msg = Tick
 
 serverName :: ServerName State Msg
-serverName = Local "load"
+serverName = Names.loadServerName
 
 startLink :: Unit -> Effect StartLinkResult
 startLink args =
@@ -41,7 +42,7 @@ load =
 
 setLoad :: Number -> Effect Unit
 setLoad newLoad = do
-  _ <- IntraPopAgent.announceLoad (wrap newLoad)
+  _ <- IntraPop.announceLoad (wrap newLoad)
   Gen.call serverName \state -> CallReply unit state{load = (wrap newLoad)}
 
 init :: Unit -> Effect State
@@ -56,7 +57,7 @@ handleInfo msg state@{load: currentLoad} =
   case msg of
     Tick ->
       do
-        _ <- IntraPopAgent.announceLoad currentLoad
+        _ <- IntraPop.announceLoad currentLoad
         pure $ CastNoReply state
 
 logInfo :: forall a. String -> a -> Effect Foreign

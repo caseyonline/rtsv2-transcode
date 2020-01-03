@@ -31,12 +31,13 @@ import File as File
 import Foreign (Foreign, ForeignError(..), MultipleErrors)
 import Logger as Logger
 import Partial.Unsafe (unsafeCrashWith)
-import Pinto (ServerName(..), StartLinkResult)
+import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Prim.Row (class Nub)
 import Record as Record
+import Rtsv2.Names as Names
 import Rtsv2.Config (ServerLocation(..))
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
@@ -296,7 +297,7 @@ maybeLog msg Nothing = do
   pure $ Nothing
 
 serverName :: ServerName State Msg
-serverName = Local "PoPDefinition"
+serverName = Names.popDefinitionName
 
 exposeStateMember :: forall a. (State -> a) -> Effect a
 exposeStateMember member = Gen.doCall serverName

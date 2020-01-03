@@ -10,9 +10,9 @@ import Erl.Atom (atom)
 import Erl.Cowboy.Req (binding)
 import Erl.Data.List (nil, (:))
 import Erl.Data.Tuple (tuple2)
-import Rtsv2.EdgeAgent as EdgeAgent
-import Rtsv2.EdgeAgentSup as EdgeAgentSup
-import Rtsv2.IntraPoPAgent as IntraPoPAgent
+import Rtsv2.Agents.EdgeInstance as EdgeInstance
+import Rtsv2.Agents.EdgeInstanceSup as EdgeInstanceSup
+import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.PoPDefinition as PoPDefintion
 import Rtsv2.Utils (member)
 import Shared.Stream (StreamId(..))
@@ -31,12 +31,12 @@ clientCount =
                     Rest.initResult req { streamId : streamId }
                )
   # Rest.serviceAvailable (\req state -> do
-                              isAgentAvailable <- EdgeAgentSup.isAvailable
+                              isAgentAvailable <- EdgeInstanceSup.isAvailable
                               Rest.result isAgentAvailable req state)
 
   # Rest.resourceExists (\req state@{streamId} -> do
                             thisNode <- PoPDefintion.thisNode
-                            currentNodeHasEdge <- member thisNode <$> IntraPoPAgent.whereIsEdge streamId
+                            currentNodeHasEdge <- member thisNode <$> IntraPoP.whereIsEdge streamId
                             Rest.result currentNodeHasEdge req state)
 
   # Rest.contentTypesProvided (\req state@{streamId} ->
@@ -47,5 +47,5 @@ clientCount =
 
   where
     content streamId req state = do
-      count <- EdgeAgent.currentClientCount streamId
+      count <- EdgeInstance.currentClientCount streamId
       Rest.result (show count) req state

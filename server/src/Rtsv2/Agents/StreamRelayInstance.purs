@@ -1,4 +1,4 @@
-module Rtsv2.StreamRelayAgent
+module Rtsv2.Agents.StreamRelayInstance
   ( startLink
   , init
   ) where

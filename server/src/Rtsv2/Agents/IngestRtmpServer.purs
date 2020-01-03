@@ -1,4 +1,4 @@
-module Rtsv2.IngestRtmpServer
+module Rtsv2.Agents.IngestRtmpServer
        (
          startLink
        )
@@ -12,16 +12,16 @@ import Data.Foldable (any)
 import Data.List.NonEmpty (singleton)
 import Data.Maybe (Maybe)
 import Effect (Effect)
-import Erl.Utils as ErlUtils
 import Foreign (Foreign, ForeignError(..))
-import Pinto (ServerName(..))
+import Pinto (ServerName)
 import Pinto as Pinto
 import Pinto.Gen as Gen
+import Rtsv2.Names as Names
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
-import Rtsv2.IngestAgent as IngestAgent
-import Rtsv2.IngestAgentInstanceSup as IngestAgentInstanceSup
-import Rtsv2.LlnwApiTypes (AuthType, PublishCredentials(..), StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamPublish, StreamAuth)
+import Rtsv2.Agents.IngestInstance as IngestInstance
+import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
+import Rtsv2.LlnwApiTypes (AuthType, PublishCredentials, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamPublish, StreamAuth)
 import Serf (Ip)
 import Shared.Stream (StreamVariantId(..))
 import Simple.JSON as JSON
@@ -36,10 +36,10 @@ type Callbacks
     }
 
 isAvailable :: Effect Boolean
-isAvailable = ErlUtils.isRegistered "ingestRtmpServer"
+isAvailable = Names.ingestRtmpServerRegistered
 
 serverName :: ServerName State Unit
-serverName = Local "ingestRtmpServer"
+serverName = Names.ingestRtmpServerName
 
 startLink :: forall a. a -> Effect Pinto.StartLinkResult
 startLink args = Gen.startLink serverName (init args) Gen.defaultHandleInfo
@@ -71,13 +71,13 @@ init _ = do
                   } streamVariantId =
       case any (\{streamName: slotStreamName} -> slotStreamName == streamVariantId) profiles of
         true ->
-          IngestAgentInstanceSup.startIngest (StreamVariantId streamId streamVariantId)
+          IngestInstanceSup.startIngest (StreamVariantId streamId streamVariantId)
           <#> const true
         false ->
           pure $ false
 
     ingestStopped { role
-                   , slot : {name : streamId}} streamVariantId = IngestAgent.stopIngest (StreamVariantId streamId streamVariantId)
+                   , slot : {name : streamId}} streamVariantId = IngestInstance.stopIngest (StreamVariantId streamId streamVariantId)
 
     streamAuthType url host shortname = do
       restResult <- SpudGun.post url (JSON.writeJSON ({host

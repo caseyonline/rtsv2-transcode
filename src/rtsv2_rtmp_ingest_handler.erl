@@ -42,11 +42,6 @@ init(Rtmp, ConnectArgs, [#{ingestStarted := IngestStarted,
      query = Query
     } = rtmp_utils:parse_url(TcUrl),
 
-  %% Stuff hardcoded until LLNW finalise the API...
-  %% Application = <<"mmddev001">>,
-  %% StreamName = <<"my-cool-slot_1000">>,
-  %% Protocol = adobe,
-
   case Query of
     #{<<"authmod">> := <<"adobe">>,
       <<"user">> := UserName,
