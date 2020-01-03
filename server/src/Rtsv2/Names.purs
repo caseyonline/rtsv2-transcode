@@ -32,7 +32,7 @@ import Shared.Agent (Agent(..))
 import Shared.Stream (StreamId, StreamVariantId)
 
 agentSupName :: SupervisorName
-agentSupName = Local "agentSup"
+agentSupName = localName "agentSup"
 
 edgeInstanceName :: forall a b. StreamId -> ServerName a b
 edgeInstanceName = gprocName2 Edge
@@ -59,19 +59,19 @@ ingestSupName :: SupervisorName
 ingestSupName = sup Ingest
 
 intraPoPName :: forall a b. ServerName a b
-intraPoPName = fromShowable IntraPoP
+intraPoPName = localName IntraPoP
 
 loadServerName :: forall a b. ServerName a b
-loadServerName = Local "load"
+loadServerName = localName "load"
 
 popDefinitionName :: forall a b. ServerName a b
-popDefinitionName = Local "PoPDefinition"
+popDefinitionName = localName "PoPDefinition"
 
 streamRelayInstanceSupName :: SupervisorName
 streamRelayInstanceSupName = instanceSup StreamRelay
 
 transPoPName :: forall a b. ServerName a b
-transPoPName = fromShowable TransPoP
+transPoPName = localName TransPoP
 
 webServerName :: forall a b. ServerName a b
 webServerName = Local "web"
@@ -89,8 +89,8 @@ foreign import viaIsRegisteredImpl :: forall a. Atom -> a -> Boolean
 withSuffix :: forall a b t. Show t => String -> t -> ServerName a b
 withSuffix suffix t = Local $ (show t) <> suffix
 
-fromShowable :: forall a b t. Show t => t -> ServerName a b
-fromShowable = Local <<< show
+localName :: forall a b t. Show t => t -> ServerName a b
+localName = Local <<< show
 
 instanceSup :: forall a. Show a => a -> SupervisorName
 instanceSup = withSuffix "InstanceSup"
@@ -103,4 +103,4 @@ gprocName term =
     Via (NativeModuleName $ atom "gproc") $ unsafeToForeign (tuple3 (atom "n") (atom "l") term)
 
 gprocName2 :: forall a b t x. Show t => t -> x -> ServerName a b
-gprocName2 t  = gprocName <<< tuple2 (show t)
+gprocName2 t = gprocName <<< tuple2 (show t)
