@@ -13,7 +13,6 @@ NewErlOpts =
   [ {d, 'BUILD_VERSION_COMMIT', string:trim(os:cmd("git rev-parse --short HEAD"))}
   , {d, 'BUILD_VERSION_TAG', string:trim(os:cmd("git describe --tags HEAD"))}
   , {d, list_to_atom("ERLANG_OTP_VERSION_"++Rel)}
-  , {d, 'ID3AS_COMMON_USE_LOGGER'}
    | ErlOpts
   ],
 
