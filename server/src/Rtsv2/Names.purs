@@ -32,7 +32,7 @@ import Shared.Agent (Agent(..))
 import Shared.Stream (StreamId, StreamVariantId)
 
 agentSupName :: SupervisorName
-agentSupName = localName "agentSup"
+agentSupName = Local "AgentSup"
 
 edgeInstanceName :: forall a b. StreamId -> ServerName a b
 edgeInstanceName = gprocName2 Edge
@@ -62,10 +62,10 @@ intraPoPName :: forall a b. ServerName a b
 intraPoPName = localName IntraPoP
 
 loadServerName :: forall a b. ServerName a b
-loadServerName = localName "load"
+loadServerName = Local "Load"
 
 popDefinitionName :: forall a b. ServerName a b
-popDefinitionName = localName "PoPDefinition"
+popDefinitionName = Local "PoPDefinition"
 
 streamRelayInstanceSupName :: SupervisorName
 streamRelayInstanceSupName = instanceSup StreamRelay
@@ -74,7 +74,7 @@ transPoPName :: forall a b. ServerName a b
 transPoPName = localName TransPoP
 
 webServerName :: forall a b. ServerName a b
-webServerName = Local "web"
+webServerName = Local "Web"
 
 isRegistered :: forall a b. ServerName a b -> Effect Boolean
 isRegistered (Local name) = ErlUtils.isRegistered name
