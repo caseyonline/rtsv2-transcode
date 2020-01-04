@@ -1,14 +1,14 @@
 -module(spudGun@foreign).
 
--export([post_/5, put_/5, get_/4]).
+-export([postImpl/5, putImpl/5, getImpl/4]).
 
 -include_lib("id3as_common/include/spud_gun.hrl").
 -include_lib("id3as_common/include/common.hrl").
 
-post_(Left, Right, Url, Body, UserHeaders) -> send_(post, Left, Right, Url, Body, UserHeaders).
-put_(Left, Right, Url, Body, UserHeaders) -> send_(put, Left, Right, Url, Body, UserHeaders).
+postImpl(Left, Right, Url, Body, UserHeaders) -> sendImpl(post, Left, Right, Url, Body, UserHeaders).
+putImpl(Left, Right, Url, Body, UserHeaders) -> sendImpl(put, Left, Right, Url, Body, UserHeaders).
 
-send_(Method, Left, Right, Url, Body, UserHeaders) ->
+sendImpl(Method, Left, Right, Url, Body, UserHeaders) ->
   fun() ->
       ReqHeaders = [ {<<"Accept-Encoding">>, <<"gzip">>} | UserHeaders ],
       Request = spud_gun:url_to_request_record(Url,
@@ -32,13 +32,14 @@ send_(Method, Left, Right, Url, Body, UserHeaders) ->
       end
   end.
 
-get_(Nothing, Just, Url, ReqHeaders) ->
+getImpl(Left, Right, Url, ReqHeaders) ->
   fun() ->
       case spud_gun:get(Url, ReqHeaders) of
-        {ok, StatusCode, _Headers, RespBody} when StatusCode >= 200, StatusCode < 300 -> Just(RespBody);
+        {ok, StatusCode, _Headers, RespBody} when StatusCode >= 200, StatusCode < 300 ->
+          Right(RespBody);
         Response ->
           ?SLOG_DEBUG("spud gun get failed", #{url => Url,
                                                response => Response}),
-          Nothing
+          Left(<<"get error">>)
       end
   end.

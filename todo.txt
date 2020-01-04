@@ -1,5 +1,4 @@
 [S] - rtsv2_rtmp_ingest_handler currently has hardcoded salt / challenge - to be held in gen_server once LLNW API is finalised
-[ ] - SpudGun.purs is inconsistent in Maybe vs Either in results
 [ ] - metrics (rrt) for trans-pop neigbours
 [ ] - test4 - IngestAggregator with a name clash - 2 things running, should be 1
 [ ] - test5 - Multiple trans-pops with a name clash - 2 things running, should be 1
@@ -16,6 +15,7 @@
 [A] - resurrect the WAN topology discovery code
 [A] - combine rtt times with WAN topology
 
+[x] - SpudGun.purs is inconsistent in Maybe vs Either in results
 [x] - Newtypes for key variables
 [x] - intra -> trans pop updates via function calls
 [x] - handleInfo in Pinto to support CastResult

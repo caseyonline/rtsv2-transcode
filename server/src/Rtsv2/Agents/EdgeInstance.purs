@@ -70,11 +70,11 @@ doRemoveClient state@{clientCount: 1, lingerTime, streamId} = do
   _ <- Timer.sendAfter (serverName streamId) (unwrap lingerTime) (MaybeStop ref)
   pure $ CallReply unit state{clientCount = 0,
                               stopRef = Just makeRef}
-    
+
 doRemoveClient state@{clientCount} = do
   _ <- logInfo "Remove client" {newCount: clientCount - 1}
   pure $ CallReply unit state{clientCount = clientCount - 1}
-    
+
 currentClientCount :: StreamId -> Effect Int
 currentClientCount streamId =
   Gen.call (serverName streamId) \state@{clientCount} ->
@@ -87,7 +87,7 @@ init streamId = do
   _ <- IntraPoP.announceEdgeIsAvailable streamId
   _ <- Timer.sendEvery (serverName streamId) edgeAvailableAnnounceMs Tick
   maybeRelay <- IntraPoP.whereIsStreamRelay streamId
-  let 
+  let
     state ={ streamId
            , clientCount: 0
            , lingerTime: wrap lingerTimeMs

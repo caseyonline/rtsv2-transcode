@@ -564,8 +564,8 @@ joinAllSerf state@{ config: config@{rejoinEveryMs}, serfRpcAddress, members } =
                                ( \iAcc (ServerAddress server) -> do
                                    restResult <- SpudGun.getText ("http://" <> server <> ":3000/api/transPoPLeader")
                                    _ <- case restResult of
-                                     Nothing -> pure unit
-                                     Just addr -> do
+                                     Left _ -> pure unit
+                                     Right addr -> do
                                        result <- Serf.join serfRpcAddress ((addressMapper addr) : nil) true
                                        _ <- maybeLogError "Trans-PoP serf join failed" result { server: addr }
                                        pure unit
