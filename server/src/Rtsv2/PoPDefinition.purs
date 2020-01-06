@@ -37,11 +37,10 @@ import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Prim.Row (class Nub)
 import Record as Record
-import Rtsv2.Names as Names
-import Rtsv2.Config (ServerLocation(..))
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
-import Shared.Types (PoPName, RegionName, ServerAddress(..))
+import Rtsv2.Names as Names
+import Shared.Types (PoPName, RegionName, ServerAddress(..), ServerLocation(..))
 import Simple.JSON as JSON
 
 type PoPInfo =

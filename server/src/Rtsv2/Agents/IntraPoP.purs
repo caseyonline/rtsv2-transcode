@@ -1,6 +1,6 @@
 module Rtsv2.Agents.IntraPoP
   ( startLink
-  , isStreamIngestAvailable
+  , isIngestAvailable
   , isIngestActive
   , announceLoad
   , announceEdgeIsAvailable
@@ -105,8 +105,8 @@ health =
       currentHealth = percentageToHealth $ (Map.size members * 100) / (length allOtherServers) * 100
     pure $ CallReply currentHealth state
 
-isStreamIngestAvailable :: StreamId -> Effect Boolean
-isStreamIngestAvailable streamId =
+isIngestAvailable :: StreamId -> Effect Boolean
+isIngestAvailable streamId =
   Gen.call serverName \state@{ streamAggregatorLocations } ->
     CallReply (EMap.member streamId streamAggregatorLocations) state
 

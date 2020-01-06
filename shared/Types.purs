@@ -3,10 +3,13 @@ module Shared.Types
        , ServerAddress(..)
        , RegionName(..)
        , PoPName(..)
+       , ServerLocation(..)
        ) where
 
 import Prelude
 
+import Data.Generic.Rep (class Generic)
+import Data.Generic.Rep.Eq (genericEq)
 import Data.Newtype (class Newtype)
 import Simple.JSON (class ReadForeign, class WriteForeign)
 
@@ -41,3 +44,8 @@ derive newtype instance ordLoad :: Ord Load
 derive newtype instance showLoad :: Show Load
 derive newtype instance readForeignLoad :: ReadForeign Load
 derive newtype instance writeForeignLoad :: WriteForeign Load
+
+data ServerLocation = ServerLocation PoPName RegionName
+derive instance genericServerLocation :: Generic ServerLocation _
+instance eqServerLocation :: Eq ServerLocation where
+  eq = genericEq

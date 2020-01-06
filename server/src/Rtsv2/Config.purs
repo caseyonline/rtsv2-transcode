@@ -1,6 +1,5 @@
 module Rtsv2.Config
-  ( ServerLocation(..)
-  , IngestAggregatorAgentConfig
+  ( IngestAggregatorAgentConfig
   , WebConfig
   , PoPDefinitionConfig
   , IntraPoPAgentConfig
@@ -27,8 +26,6 @@ import Prelude
 
 import Control.Monad.Except (ExceptT, runExcept)
 import Data.Either (Either(..), hush)
-import Data.Generic.Rep (class Generic)
-import Data.Generic.Rep.Eq (genericEq)
 import Data.Identity (Identity)
 import Data.Maybe (Maybe, fromMaybe, fromMaybe')
 import Data.Traversable (traverse)
@@ -41,15 +38,10 @@ import Partial.Unsafe (unsafeCrashWith)
 import Rtsv2.Node as Node
 import Shared.Agent (Agent, strToAgent)
 import Shared.Stream (StreamId)
-import Shared.Types (RegionName, ServerAddress, PoPName)
+import Shared.Types (ServerAddress)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (class ReadForeign, readImpl)
 
-data ServerLocation = ServerLocation PoPName RegionName
-
-derive instance genericServerLocation :: Generic ServerLocation _
-instance eqServerLocation :: Eq ServerLocation where
-  eq = genericEq
 
 -- TODO - config should include BindIFace or BindIp
 type WebConfig = { port :: Int }

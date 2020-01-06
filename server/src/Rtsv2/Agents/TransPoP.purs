@@ -39,18 +39,18 @@ import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Prim.Row (class Nub, class Union)
 import Record as Record
-import Rtsv2.Names as Names
-import Rtsv2.Config (IntraPoPAgentApi, ServerLocation(..), TransPoPAgentConfig)
+import Rtsv2.Config (IntraPoPAgentApi, TransPoPAgentConfig)
 import Rtsv2.Env as Env
 import Rtsv2.Health (Health)
 import Rtsv2.Health as Health
+import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition (PoP)
 import Rtsv2.PoPDefinition as PoPDefinition
 import Serf (IpAndPort, SerfCoordinate, calcRtt)
 import Serf as Serf
 import Shared.Agent as Agent
 import Shared.Stream (StreamId)
-import Shared.Types (PoPName, ServerAddress(..))
+import Shared.Types (PoPName, ServerAddress(..), ServerLocation(..))
 import Shared.Utils (distinctRandomNumbers)
 import SpudGun as SpudGun
 
@@ -425,7 +425,7 @@ handleRttRefresh state@{ weAreLeader: true
                   _ <- logWarning "Coordinate error" {misc: {server: sa, error}}
                   pure acc
             ) Map.empty eCoordinates
-
+--    let _ = ?foo
     defaultRtts <- getDefaultRtts config
     otherPoPNames <- PoPDefinition.getOtherPoPNames
 
@@ -438,7 +438,7 @@ handleRttRefresh state@{ weAreLeader: true
 
 calculateRoutes :: Map PoPName SerfCoordinate -> Rtts -> Rtts -> PoPName -> List PoPName -> Tuple Rtts (Map PoPName (List ViaPoPs))
 calculateRoutes poPCoordinates currentRtts defaultRtts thisPoP otherPoPNames =
-    -- The new cost map should have:
+    -- The new rtts map should have:
     -- * only those edges now in the latest PoPDefinition
     -- With:
     --  * Newly measured RTTs (from the new coordinates)
