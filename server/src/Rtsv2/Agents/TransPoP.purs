@@ -1,7 +1,7 @@
 module Rtsv2.Agents.TransPoP
        ( announceStreamIsAvailable
        , announceStreamStopped
-       , announceTransPoPLeader
+       , handleRemoteLeaderAnnouncement
        , health
        , startLink
        , getRtts
@@ -155,12 +155,12 @@ announceStreamStopped streamId addr =
             pure state
           | otherwise -> pure state
 
-announceTransPoPLeader :: ServerAddress -> Effect Unit
-announceTransPoPLeader address =
-  Gen.doCast serverName ((map CastNoReply) <<< doAnnounceTransPoPLeader)
+handleRemoteLeaderAnnouncement :: ServerAddress -> Effect Unit
+handleRemoteLeaderAnnouncement address =
+  Gen.doCast serverName ((map CastNoReply) <<< doHandleRemoteLeaderAnnouncement)
   where
-    doAnnounceTransPoPLeader :: State -> Effect State
-    doAnnounceTransPoPLeader state@{ weAreLeader: true
+    doHandleRemoteLeaderAnnouncement :: State -> Effect State
+    doHandleRemoteLeaderAnnouncement state@{ weAreLeader: true
                                    , thisNode
                                    , serfRpcAddress
                                    }
@@ -181,7 +181,7 @@ announceTransPoPLeader address =
       | otherwise =
         pure state
 
-    doAnnounceTransPoPLeader state@{ currentLeader
+    doHandleRemoteLeaderAnnouncement state@{ currentLeader
                                    , thisNode
                                    }
       | Just address /= currentLeader
@@ -194,7 +194,7 @@ announceTransPoPLeader address =
               , lastLeaderAnnouncement = now
               }
 
-    doAnnounceTransPoPLeader state = do
+    doHandleRemoteLeaderAnnouncement state = do
       now <- systemTimeMs
       pure $ state { lastLeaderAnnouncement = now }
 

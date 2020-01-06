@@ -79,12 +79,12 @@ webServerName = Local "Web"
 isRegistered :: forall a b. ServerName a b -> Effect Boolean
 isRegistered (Local name) = ErlUtils.isRegistered name
 isRegistered (Global name) = ErlUtils.isRegistered name
-isRegistered (Via (NativeModuleName m) name) = pure $ viaIsRegisteredImpl m name
+isRegistered (Via (NativeModuleName m) name) = viaIsRegisteredImpl m name
 
 --------------------------------------------------------------------------------
 -- Internals
 --------------------------------------------------------------------------------
-foreign import viaIsRegisteredImpl :: forall a. Atom -> a -> Boolean
+foreign import viaIsRegisteredImpl :: forall a. Atom -> a -> Effect Boolean
 
 withSuffix :: forall a b t. Show t => String -> t -> ServerName a b
 withSuffix suffix t = Local $ (show t) <> suffix

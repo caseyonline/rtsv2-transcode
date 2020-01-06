@@ -21,14 +21,24 @@ init :: Effect SupervisorSpec
 init = do
   webConfig <- Config.webConfig
   popDefinitionConfig <- Config.popDefinitionConfig
-  let
-    popDefinition =
+
+  pure $ buildSupervisor
+    # supervisorStrategy OneForOne
+    # supervisorChildren
+        ( popDefinition popDefinitionConfig
+          : agentSup
+          : load
+          : webServer webConfig
+          : nil
+        )
+  where
+    popDefinition popDefinitionConfig =
       buildChild
       # childType Worker
       # childId "popDefinition"
       # childStart PoPDefinition.startLink popDefinitionConfig
 
-    webServer =
+    webServer webConfig =
       buildChild
       # childType Worker
       # childId "web"
@@ -40,19 +50,8 @@ init = do
       # childId "load"
       # childStart Load.startLink unit
 
-
     agentSup =
       buildChild
       # childType Supervisor
       # childId "agentSup"
       # childStart AgentSup.startLink unit
-
-  pure $ buildSupervisor
-    # supervisorStrategy OneForOne
-    # supervisorChildren
-        ( popDefinition
-            : agentSup
-            : webServer
-            : load
-            : nil
-        )

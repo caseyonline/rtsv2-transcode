@@ -96,7 +96,7 @@ type IntraPoPAgentApi
 type TransPoPAgentApi
   = { announceStreamIsAvailable :: StreamId -> ServerAddress -> Effect Unit
     , announceStreamStopped :: StreamId -> ServerAddress -> Effect Unit
-    , announceTransPoPLeader :: ServerAddress -> Effect Unit
+    , handleRemoteLeaderAnnouncement :: ServerAddress -> Effect Unit
     }
 
 type RtmpIngestConfig
@@ -112,7 +112,7 @@ type LlnwApiConfig
 
 type LoadMonitorConfig
   = {loadAnnounceMs :: Int}
-    
+
 foreign import getEnv_ :: Atom -> Effect Foreign
 foreign import getMap_ :: Atom -> Effect Foreign
 foreign import mergeOverrides :: Effect Foreign

@@ -20,7 +20,7 @@ import Data.Int (fromString, round)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (wrap)
 import Data.String (Pattern(..), split)
-import Data.Traversable (sequence)
+import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Erl.Atom (Atom)
@@ -82,8 +82,7 @@ strToIp :: String -> Maybe Ip
 strToIp str =
   str
   # split (Pattern ".")
-  # map fromString
-  # sequence
+  # traverse fromString
   # (\ip -> case ip of
         Just [a, b, c, d] -> Just (Ipv4 a b c d)
         _ -> Nothing

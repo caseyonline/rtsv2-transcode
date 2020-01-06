@@ -5,4 +5,4 @@
         ]).
 
 viaIsRegisteredImpl(Module, Name) ->
-  Module:whereis_name(Name) /= undefined.
+  fun() -> Module:whereis_name(Name) /= undefined end.
