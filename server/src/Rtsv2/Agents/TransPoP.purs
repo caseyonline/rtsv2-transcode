@@ -407,9 +407,9 @@ handleRttRefresh state@{ weAreLeader: true
                        , rtts
                        } = do
     -- look up the coordinates of all members
-    let allMemebers = join $ Set.toUnfoldable <$> Map.values members
+    let allMembers = join $ Set.toUnfoldable <$> Map.values members
         lookup addr = (Tuple addr) <$> (Serf.getCoordinate state.serfRpcAddress $ unwrap addr)
-    eCoordiates <- traverse lookup allMemebers
+    eCoordinates <- traverse lookup allMembers
     poPCoordinates <-
       foldM (\acc (Tuple sa eCoord) ->
               case eCoord of
@@ -424,7 +424,7 @@ handleRttRefresh state@{ weAreLeader: true
                 Left error -> do
                   _ <- logWarning "Coordinate error" {misc: {server: sa, error}}
                   pure acc
-            ) Map.empty eCoordiates
+            ) Map.empty eCoordinates
 
     defaultRtts <- getDefaultRtts config
     otherPoPNames <- PoPDefinition.getOtherPoPNames
