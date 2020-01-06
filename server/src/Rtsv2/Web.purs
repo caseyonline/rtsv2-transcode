@@ -17,17 +17,19 @@ import Logger (info) as Logger
 import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen as Gen
 import Record as Record
+import Routing.Duplex (print)
 import Rtsv2.Agents.IntraPoP as IntraPoPAgent
 import Rtsv2.Config as Config
 import Rtsv2.Endpoints.Client as ClientEndpoint
 import Rtsv2.Endpoints.Edge as EdgeEndpoint
-import Rtsv2.Endpoints.Health as HealthEndpoint
+import Rtsv2.Endpoints.Health (healthCheck)
 import Rtsv2.Endpoints.Ingest as IngestEndpoint
 import Rtsv2.Endpoints.IngestAggregator as IngestAggregatorEndpoint
 import Rtsv2.Endpoints.LlnwStub as LlnwStub
 import Rtsv2.Endpoints.Load as LoadEndpoint
 import Rtsv2.Env as Env
 import Rtsv2.Names as Names
+import Rtsv2.Router (Endpoint(..), StreamId(..), StreamVariant(..), endpoint)
 import Serf (Ip(..))
 import Shared.Types (ServerAddress)
 import Stetson (RestResult, StetsonHandler)
@@ -47,23 +49,42 @@ init :: Config.WebConfig -> Effect State
 init args = do
   bindIp <- Env.privateInterfaceIp
   Stetson.configure
-    # Stetson.route "/api/transPoPLeader" transPoPLeader
-    # Stetson.route "/api/healthCheck" HealthEndpoint.healthCheck
-    # Stetson.route "/api/load" LoadEndpoint.load
-    # Stetson.route "/api/agents/ingestAggregator/:stream_id" IngestAggregatorEndpoint.ingestAggregator
-
-    # Stetson.route "/api/client/:canary/ingest/:stream_id/:variant_id/start" IngestEndpoint.ingestStart
-    # Stetson.route "/api/client/:canary/ingest/:stream_id/:variant_id/stop" IngestEndpoint.ingestStop
-
-    # Stetson.route "/api/client/:canary/client/:stream_id/start" ClientEndpoint.clientStart
-    # Stetson.route "/api/client/:canary/client/:stream_id/stop" ClientEndpoint.clientStop
-
-    # Stetson.route "/api/client/:canary/edge/:stream_id/clientCount" EdgeEndpoint.clientCount
-
-    # Stetson.route "/llnwstub/rts/v1/streamauthtype" LlnwStub.streamAuthType
-    # Stetson.route "/llnwstub/rts/v1/streamauth" LlnwStub.streamAuth
-    # Stetson.route "/llnwstub/rts/v1/streampublish" LlnwStub.streamPublish
-
+    # Stetson.route
+        (print endpoint TransPoPLeaderE)
+        transPoPLeader
+    # Stetson.route
+        (print endpoint HealthCheckE)
+        healthCheck
+    # Stetson.route
+        (print endpoint LoadE)
+        LoadEndpoint.load
+    # Stetson.route
+        (print endpoint (IngestAggregator $ StreamId ":stream_id"))
+        IngestAggregatorEndpoint.ingestAggregator
+    # Stetson.route
+        (print endpoint (IngestStartE ":canary" (StreamId ":stream_id") (StreamVariant ":variant_id")))
+        IngestEndpoint.ingestStart
+    # Stetson.route
+        (print endpoint (IngestStopE ":canary" (StreamId ":stream_id") (StreamVariant ":variant_id")))
+        IngestEndpoint.ingestStop
+    # Stetson.route
+        (print endpoint (ClientStartE ":canary" (StreamId ":stream_id")))
+        ClientEndpoint.clientStart
+    # Stetson.route
+        (print endpoint (ClientStartE ":canary" (StreamId ":stream_id")))
+        ClientEndpoint.clientStop
+    # Stetson.route
+        (print endpoint (ClientCountE ":canary" (StreamId ":stream_id")))
+        EdgeEndpoint.clientCount
+    # Stetson.route
+        (print endpoint StreamAuthE)
+        LlnwStub.streamAuthType
+    # Stetson.route
+        (print endpoint StreamAuthTypeE)
+        LlnwStub.streamAuth
+    # Stetson.route
+        (print endpoint StreamPublishE)
+        LlnwStub.streamPublish
     # Stetson.port args.port
     # (uncurry4 Stetson.bindTo) (ipToTuple bindIp)
     # Stetson.startClear "http_listener"
@@ -92,3 +113,24 @@ textWriter text = tuple2 "text/plain" (\req state -> Rest.result text req state)
 
 logInfo :: forall a. String -> a -> Effect Foreign
 logInfo msg metaData = Logger.info msg (Record.merge { domain: ((atom "Web") : nil) } { misc: metaData })
+
+
+
+
+
+    -- # Stetson.route "/api/transPoPLeader" transPoPLeader
+    -- # Stetson.route "/api/healthCheck" HealthEndpoint.healthCheck
+    -- # Stetson.route "/api/load" LoadEndpoint.load
+    -- # Stetson.route "/api/agents/ingestAggregator/:stream_id" IngestAggregatorEndpoint.ingestAggregator
+
+    -- # Stetson.route "/api/client/:canary/ingest/:stream_id/:variant_id/start" IngestEndpoint.ingestStart
+    -- # Stetson.route "/api/client/:canary/ingest/:stream_id/:variant_id/stop" IngestEndpoint.ingestStop
+
+    -- # Stetson.route "/api/client/:canary/client/:stream_id/start" ClientEndpoint.clientStart
+    -- # Stetson.route "/api/client/:canary/client/:stream_id/stop" ClientEndpoint.clientStop
+
+    -- # Stetson.route "/api/client/:canary/edge/:stream_id/clientCount" EdgeEndpoint.clientCount
+
+    -- # Stetson.route "/llnwstub/rts/v1/streamauthtype" LlnwStub.streamAuthType
+    -- # Stetson.route "/llnwstub/rts/v1/streamauth" LlnwStub.streamAuth
+    -- # Stetson.route "/llnwstub/rts/v1/streampublish" LlnwStub.streamPublish
