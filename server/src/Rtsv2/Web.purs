@@ -17,7 +17,6 @@ import Logger (info) as Logger
 import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen as Gen
 import Record as Record
-import Routing.Duplex (print)
 import Rtsv2.Agents.IntraPoP as IntraPoPAgent
 import Rtsv2.Config as Config
 import Rtsv2.Endpoints.Client as ClientEndpoint
@@ -29,7 +28,7 @@ import Rtsv2.Endpoints.LlnwStub as LlnwStub
 import Rtsv2.Endpoints.Load as LoadEndpoint
 import Rtsv2.Env as Env
 import Rtsv2.Names as Names
-import Rtsv2.Router (Endpoint(..), StreamId(..), StreamVariant(..), endpoint)
+import Rtsv2.Router (Endpoint(..), StreamId(..), StreamVariant(..), endpoint, printUrl)
 import Serf (Ip(..))
 import Shared.Types (ServerAddress)
 import Stetson (RestResult, StetsonHandler)
@@ -50,40 +49,40 @@ init args = do
   bindIp <- Env.privateInterfaceIp
   Stetson.configure
     # Stetson.route
-        (print endpoint TransPoPLeaderE)
+        (printUrl endpoint TransPoPLeaderE)
         transPoPLeader
     # Stetson.route
-        (print endpoint HealthCheckE)
+        (printUrl endpoint HealthCheckE)
         healthCheck
     # Stetson.route
-        (print endpoint LoadE)
+        (printUrl endpoint LoadE)
         LoadEndpoint.load
     # Stetson.route
-        (print endpoint (IngestAggregator $ StreamId ":stream_id"))
+        (printUrl endpoint (IngestAggregator $ StreamId ":stream_id"))
         IngestAggregatorEndpoint.ingestAggregator
     # Stetson.route
-        (print endpoint (IngestStartE ":canary" (StreamId ":stream_id") (StreamVariant ":variant_id")))
+        (printUrl endpoint (IngestStartE ":canary" (StreamId ":stream_id") (StreamVariant ":variant_id")))
         IngestEndpoint.ingestStart
     # Stetson.route
-        (print endpoint (IngestStopE ":canary" (StreamId ":stream_id") (StreamVariant ":variant_id")))
+        (printUrl endpoint (IngestStopE ":canary" (StreamId ":stream_id") (StreamVariant ":variant_id")))
         IngestEndpoint.ingestStop
     # Stetson.route
-        (print endpoint (ClientStartE ":canary" (StreamId ":stream_id")))
+        (printUrl endpoint (ClientStartE ":canary" (StreamId ":stream_id")))
         ClientEndpoint.clientStart
     # Stetson.route
-        (print endpoint (ClientStartE ":canary" (StreamId ":stream_id")))
+        (printUrl endpoint (ClientStopE ":canary" (StreamId ":stream_id")))
         ClientEndpoint.clientStop
     # Stetson.route
-        (print endpoint (ClientCountE ":canary" (StreamId ":stream_id")))
+        (printUrl endpoint (ClientCountE ":canary" (StreamId ":stream_id")))
         EdgeEndpoint.clientCount
     # Stetson.route
-        (print endpoint StreamAuthE)
+        (printUrl endpoint StreamAuthE)
         LlnwStub.streamAuthType
     # Stetson.route
-        (print endpoint StreamAuthTypeE)
+        (printUrl endpoint StreamAuthTypeE)
         LlnwStub.streamAuth
     # Stetson.route
-        (print endpoint StreamPublishE)
+        (printUrl endpoint StreamPublishE)
         LlnwStub.streamPublish
     # Stetson.port args.port
     # (uncurry4 Stetson.bindTo) (ipToTuple bindIp)
