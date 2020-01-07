@@ -26,7 +26,7 @@ import Effect.Aff (Aff, delay, launchAff_, throwError)
 import Effect.Exception (error)
 import Foreign (F)
 import OsCmd (runProc)
-import Shared.Stream (StreamVariantId(..))
+import Shared.Stream (StreamId(..), StreamVariant(..), StreamAndVariant(..))
 import Simple.JSON (class ReadForeign, E)
 import Simple.JSON as SimpleJSON
 import Test.Spec (after_, before_, describe, it, itOnly)
@@ -165,9 +165,9 @@ main =
               node1ingestStart2 = "http://172.16.169.1:3000/api/client/:canary/ingest/stream1/high/start"
               node1ingestAggregator = "http://172.16.169.1:3000/api/agents/ingestAggregator/stream1"
               node1ingestLoad = "http://172.16.169.1:3000/api/load"
-              assertAggregators :: E (Array StreamVariantId) -> Boolean
+              assertAggregators :: E (Array StreamAndVariant) -> Boolean
               assertAggregators (Left _) = false
-              assertAggregators (Right streamVariants) = [StreamVariantId "stream1" "high", StreamVariantId "stream1" "low"] == (sort streamVariants)
+              assertAggregators (Right streamVariants) = [StreamAndVariant (StreamId "stream1") (StreamVariant "high"), StreamAndVariant (StreamId "stream1") (StreamVariant "low")] == (sort streamVariants)
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart1
             _ <- assertStatusCode 204 =<< AX.post ResponseFormat.string node1ingestLoad (jsonBody "{\"load\": 60.0}")
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart2
