@@ -3,6 +3,7 @@ module Shared.Types
        , ServerAddress(..)
        , RegionName(..)
        , PoPName(..)
+       , ServerLoad(..)
        , ServerLocation(..)
        ) where
 
@@ -48,4 +49,9 @@ derive newtype instance writeForeignLoad :: WriteForeign Load
 data ServerLocation = ServerLocation PoPName RegionName
 derive instance genericServerLocation :: Generic ServerLocation _
 instance eqServerLocation :: Eq ServerLocation where
+  eq = genericEq
+
+data ServerLoad = ServerLoad ServerAddress Load
+derive instance genericServerLoad :: Generic ServerLoad _
+instance eqServerLoad :: Eq ServerLoad where
   eq = genericEq

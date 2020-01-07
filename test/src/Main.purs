@@ -121,8 +121,8 @@ main =
               node2edgeStop = "http://172.16.169.2:3000/api/client/canary/client/stream1/stop"
               node3edgeStart = "http://172.16.169.3:3000/api/client/canary/client/stream1/start"
               node3edgeStop = "http://172.16.169.3:3000/api/client/canary/client/stream1/stop"
-              node2edgeCount = "http://172.16.169.2:3000/api/client/canary/edge/stream1/clientCount"
-              node3edgeCount = "http://172.16.169.3:3000/api/client/canary/edge/stream1/clientCount"
+              node2edgeCount = "http://172.16.169.2:3000/api/egest/stream1/clientCount"
+              node3edgeCount = "http://172.16.169.3:3000/api/egest/stream1/clientCount"
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
             _ <- delay (Milliseconds 1000.0)
             _ <- assertHeader (Tuple "x-servedby" "172.16.169.2") =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node2edgeStart

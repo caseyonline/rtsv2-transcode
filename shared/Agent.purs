@@ -19,7 +19,7 @@ import Simple.JSON (class ReadForeign)
 
 --import Test.QuickCheck.Arbitrary (class Arbitrary, genericArbitrary)
 
-data Agent = Edge
+data Agent = Egest
            | Ingest
            | IngestAggregator
            | StreamRelay
@@ -49,7 +49,7 @@ strToAgent s =
   fromMaybe' (lazyCrashIfMissing $ errorString s) (strToMaybeAgent s)
 
 strToMaybeAgent :: String -> Maybe Agent
-strToMaybeAgent "Edge" = pure Edge
+strToMaybeAgent "Egest" = pure Egest
 strToMaybeAgent "Ingest" = pure Ingest
 strToMaybeAgent "IngestAggregator" = pure IngestAggregator
 strToMaybeAgent "StreamRelay" = pure StreamRelay

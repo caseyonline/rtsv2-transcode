@@ -1,8 +1,8 @@
 module Rtsv2.Names
        (
          agentSupName
-       , edgeInstanceName
-       , edgeInstanceSupName
+       , egestInstanceName
+       , egestInstanceSupName
        , ingestAggregatorInstanceName
        , ingestAggregatorInstanceSupName
        , ingestInstanceName
@@ -34,11 +34,11 @@ import Shared.Stream (StreamId, StreamVariantId)
 agentSupName :: SupervisorName
 agentSupName = Local "AgentSup"
 
-edgeInstanceName :: forall a b. StreamId -> ServerName a b
-edgeInstanceName = gprocName2 Edge
+egestInstanceName :: forall a b. StreamId -> ServerName a b
+egestInstanceName = gprocName2 Egest
 
-edgeInstanceSupName :: SupervisorName
-edgeInstanceSupName = instanceSup Edge
+egestInstanceSupName :: SupervisorName
+egestInstanceSupName = instanceSup Egest
 
 ingestAggregatorInstanceName :: forall a b. StreamId -> ServerName a b
 ingestAggregatorInstanceName = gprocName2 IngestAggregator

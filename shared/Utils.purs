@@ -19,7 +19,7 @@ distinctRandomNumbers :: forall a. Unfoldable a => Int -> Int -> Effect (a Int)
 distinctRandomNumbers numRequired maxValue =
   randomNumbers_ numRequired maxValue (pure Set.empty)
   <#> Set.toUnfoldable
-  
+
 randomNumbers_ :: Int -> Int -> Effect (Set.Set Int) -> Effect (Set.Set Int)
 randomNumbers_ numRequired maxValue set =
   let

@@ -1,4 +1,4 @@
-module Rtsv2.Agents.EdgeInstance
+module Rtsv2.Agents.EgestInstance
   ( startLink
   , isActive
   , addClient
@@ -39,7 +39,7 @@ data Msg = Tick
          | MaybeStop Ref
 
 serverName :: StreamId -> ServerName State Msg
-serverName streamId = Names.edgeInstanceName streamId
+serverName streamId = Names.egestInstanceName streamId
 
 isActive :: StreamId -> Effect Boolean
 isActive streamId = Names.isRegistered (serverName streamId)
@@ -82,10 +82,10 @@ currentClientCount streamId =
 
 init :: StreamId -> Effect State
 init streamId = do
-  {edgeAvailableAnnounceMs, lingerTimeMs} <- Config.edgeAgentConfig
-  _ <- logInfo "Edge starting" {streamId: streamId}
-  _ <- IntraPoP.announceEdgeIsAvailable streamId
-  _ <- Timer.sendEvery (serverName streamId) edgeAvailableAnnounceMs Tick
+  {egestAvailableAnnounceMs, lingerTimeMs} <- Config.egestAgentConfig
+  _ <- logInfo "Egest starting" {streamId: streamId}
+  _ <- IntraPoP.announceEgestIsAvailable streamId
+  _ <- Timer.sendEvery (serverName streamId) egestAvailableAnnounceMs Tick
   maybeRelay <- IntraPoP.whereIsStreamRelay streamId
   let
     state ={ streamId
@@ -109,7 +109,7 @@ handleInfo msg state =
 
 handleTick :: State -> Effect State
 handleTick state@{streamId} = do
-  _ <- IntraPoP.announceEdgeIsAvailable streamId
+  _ <- IntraPoP.announceEgestIsAvailable streamId
   pure state
 
 maybeStop :: Ref -> State -> Effect (CastResult State)
@@ -117,11 +117,11 @@ maybeStop ref state@{streamId
                     , clientCount
                     , stopRef}
   | (clientCount == 0) && (Just ref == stopRef) = do
-    _ <- logInfo "Edge stopping" {streamId: streamId}
-    _ <- IntraPoP.announceEdgeStopped streamId
+    _ <- logInfo "Egest stopping" {streamId: streamId}
+    _ <- IntraPoP.announceEgestStopped streamId
     pure $ CastStop state
 
   | otherwise = pure $ CastNoReply state
 
 logInfo :: forall a. String -> a -> Effect Foreign
-logInfo msg metaData = Logger.info msg (Record.merge { domain: ((atom (show Agent.Edge)) : nil) } { misc: metaData })
+logInfo msg metaData = Logger.info msg (Record.merge { domain: ((atom (show Agent.Egest)) : nil) } { misc: metaData })

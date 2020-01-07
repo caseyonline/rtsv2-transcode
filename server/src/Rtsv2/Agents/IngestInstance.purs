@@ -27,7 +27,7 @@ import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Agent as Agent
 import Shared.Stream (StreamVariantId, toStreamId)
-import Shared.Types (ServerAddress)
+import Shared.Types (Load, ServerAddress)
 
 type State
   = { }
@@ -87,7 +87,7 @@ launchLocalOrRemote streamVariantId = do
 launchRemote :: StreamVariantId -> Effect (Maybe ServerAddress)
 launchRemote streamVariantId = do
   -- TODO - need to make http call to idle server to request it starts an aggregator, and then retry if it returns no
-  IntraPoP.getIdleServer
+  IntraPoP.getIdleServer ((<) (wrap 70.2231222))
 
 logInfo :: forall a. String -> a -> Effect Foreign
 logInfo msg metaData = Logger.info msg (Record.merge { domain: ((atom (show Agent.Ingest)) : nil) } { misc: metaData })

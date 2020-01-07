@@ -4,7 +4,7 @@ module Rtsv2.Config
   , PoPDefinitionConfig
   , IntraPoPAgentConfig
   , TransPoPAgentConfig
-  , EdgeAgentConfig
+  , EgestAgentConfig
   , IntraPoPAgentApi
   , TransPoPAgentApi
   , LlnwApiConfig
@@ -15,7 +15,7 @@ module Rtsv2.Config
   , intraPoPAgentConfig
   , transPoPAgentConfig
   , ingestAggregatorAgentConfig
-  , edgeAgentConfig
+  , egestAgentConfig
   , rtmpIngestConfig
   , llnwApiConfig
   , loadMonitorConfig
@@ -55,8 +55,8 @@ type PoPDefinitionConfig
 type IngestAggregatorAgentConfig
   = { streamAvailableAnnounceMs :: Int }
 
-type EdgeAgentConfig
-  = { edgeAvailableAnnounceMs :: Int
+type EgestAgentConfig
+  = { egestAvailableAnnounceMs :: Int
     , lingerTimeMs :: Int
     }
 
@@ -140,9 +140,9 @@ ingestAggregatorAgentConfig :: Effect IngestAggregatorAgentConfig
 ingestAggregatorAgentConfig = do
   getMandatoryRecord "ingestAggregatorConfig"
 
-edgeAgentConfig :: Effect EdgeAgentConfig
-edgeAgentConfig = do
-  getMandatoryRecord "edgeConfig"
+egestAgentConfig :: Effect EgestAgentConfig
+egestAgentConfig = do
+  getMandatoryRecord "egestConfig"
 
 rtmpIngestConfig :: Effect RtmpIngestConfig
 rtmpIngestConfig = do

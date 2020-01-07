@@ -3,8 +3,8 @@ module Rtsv2.Agents.IntraPoP
   , isIngestAvailable
   , isIngestActive
   , announceLoad
-  , announceEdgeIsAvailable
-  , announceEdgeStopped
+  , announceEgestIsAvailable
+  , announceEgestStopped
   , announceStreamIsAvailable
   , announceStreamStopped
   , announceRemoteStreamIsAvailable
@@ -12,31 +12,33 @@ module Rtsv2.Agents.IntraPoP
   , announceTransPoPLeader
   , whereIsIngestAggregator
   , whereIsStreamRelay
-  , whereIsEdge
+  , whereIsEgest
   , getIdleServer
   , currentTransPoPLeader
   , health
   , IntraMessage(..)
   , StreamState(..)
-  , EdgeState(..)
+  , EgestState(..)
   ) where
 
 import Prelude
 
 import Data.Either (Either(..), hush)
+import Data.Filterable (filterMap)
 import Data.Foldable (foldl)
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (wrap)
 import Data.Traversable (traverse, traverse_)
-import Data.Tuple (Tuple(..), fst)
+import Data.Tuple (Tuple(..), fst, snd)
 import Effect (Effect)
+import Effect.Random (randomInt)
 import Ephemeral.Map (EMap)
 import Ephemeral.Map as EMap
 import Ephemeral.MultiMap (EMultiMap)
 import Ephemeral.MultiMap as MultiMap
 import Erl.Atom (atom)
-import Erl.Data.List (List, head, index, length, nil, singleton, sortBy, (:))
-import Erl.Data.Map (Map, alter, fromFoldable, values)
+import Erl.Data.List (List, head, index, length, nil, singleton, sortBy, take, uncons, (:))
+import Erl.Data.Map (Map, alter, fromFoldable, toUnfoldable, values)
 import Erl.Data.Map as Map
 import Erl.Process (Process, spawnLink)
 import Erl.Utils (Milliseconds)
@@ -59,7 +61,7 @@ import Serf (IpAndPort)
 import Serf as Serf
 import Shared.Agent as Agent
 import Shared.Stream (StreamId(..), StreamVariantId(..))
-import Shared.Types (Load, ServerAddress(..))
+import Shared.Types (Load, ServerAddress(..), ServerLoad(..))
 import Shared.Utils (distinctRandomNumbers)
 
 type State
@@ -67,26 +69,26 @@ type State
     , config :: Config.IntraPoPAgentConfig
     , serfRpcAddress :: IpAndPort
     , currentTransPoPLeader :: Maybe ServerAddress
-    , edgeLocations :: EMultiMap StreamId ServerAddress
+    , egestLocations :: EMultiMap StreamId ServerAddress
     , streamRelayLocations :: EMap StreamId ServerAddress
     , streamAggregatorLocations :: EMap StreamId ServerAddress
     , thisNode :: ServerAddress
     , members :: Map ServerAddress (Tuple Serf.SerfMember Load)
     , expireThreshold :: Milliseconds
     , streamStateClocks :: EMap StreamId Int
-    , edgeStateClocks :: EMap StreamId Int
+    , egestStateClocks :: EMap StreamId Int
     }
 
 data StreamState = StreamAvailable
                  | StreamStopped
 
-data EdgeState = EdgeAvailable
-               | EdgeStopped
+data EgestState = EgestAvailable
+                | EgestStopped
 
-data IntraMessage = StreamState StreamState StreamId ServerAddress
-                  | EdgeState EdgeState StreamId ServerAddress
-                  | ServerLoad ServerAddress Load
-                  | TransPoPLeader ServerAddress
+data IntraMessage = IMStreamState StreamState StreamId ServerAddress
+                  | IMEgestState EgestState StreamId ServerAddress
+                  | IMServerLoad ServerAddress Load
+                  | IMTransPoPLeader ServerAddress
 
 data Msg
   = JoinAll
@@ -123,13 +125,51 @@ whereIsStreamRelay streamId =
   Gen.call serverName \state ->
     CallReply (EMap.lookup streamId state.streamRelayLocations) state
 
-whereIsEdge :: StreamId -> Effect (List ServerAddress)
-whereIsEdge streamId =
-  Gen.call serverName \state ->
-    CallReply (MultiMap.lookup streamId state.edgeLocations) state
+whereIsEgest :: StreamId -> Effect (List ServerLoad)
+whereIsEgest streamId =
+  Gen.call serverName
+  \state@{egestLocations, members} ->
+    let withLoad :: ServerAddress -> Maybe ServerLoad
+        withLoad el = (ServerLoad el <$>  (snd <$> Map.lookup el members))
+    in
+    CallReply (filterMap withLoad $ MultiMap.lookup streamId state.egestLocations) state
 
-getIdleServer :: Effect (Maybe ServerAddress)
-getIdleServer = Gen.doCall serverName
+
+--------------------------------------------------------------------------------
+-- TODO re-read Power of Two articles such as
+-- https://www.nginx.com/blog/nginx-power-of-two-choices-load-balancing-algorithm/
+--------------------------------------------------------------------------------
+getIdleServer :: (Load -> Boolean) -> Effect (Maybe ServerAddress)
+getIdleServer pred = Gen.doCall serverName
+  (\state@{members} ->
+    let n = 2
+        nMostIdleWithCapacity =
+          toUnfoldable members
+          # filterMap (\(Tuple addr (Tuple _ load)) -> if pred load then Just (ServerLoad addr load) else Nothing)
+          # sortBy (\(ServerLoad _ l1) (ServerLoad _ l2) -> compare l1 l2)
+          <#> (\(ServerLoad addr _) -> addr)
+          # take n
+        numServers = length nMostIdleWithCapacity
+    in do
+      resp <-
+        case numServers of
+          0 ->
+            pure Nothing
+          1 ->
+            case uncons nMostIdleWithCapacity of
+              Just {head} -> pure $ Just head
+              Nothing -> pure Nothing
+          _ ->
+            do
+              chosenIndex <- randomInt 1 numServers
+              pure $ index nMostIdleWithCapacity chosenIndex
+      pure $ CallReply resp state
+  )
+
+
+
+getIdleServer' :: Effect (Maybe ServerAddress)
+getIdleServer' = Gen.doCall serverName
   (\state@{members} ->
     let
       membersList = values members
@@ -157,31 +197,31 @@ announceLoad :: Load -> Effect Unit
 announceLoad load =
   Gen.doCast serverName
     \state@{ thisNode, members } -> do
-      _ <- sendToIntraSerfNetwork state "loadUpdate" (ServerLoad thisNode load)
+      _ <- sendToIntraSerfNetwork state "loadUpdate" (IMServerLoad thisNode load)
       let
         newMembers = alter (map (\(Tuple member oldLoad) -> Tuple member load)) thisNode members
       pure $ Gen.CastNoReply state { members = newMembers }
 
--- Called by EdgeAgent to indicate edge on this node
-announceEdgeIsAvailable :: StreamId -> Effect Unit
-announceEdgeIsAvailable streamId =
+-- Called by EgestAgent to indicate egest on this node
+announceEgestIsAvailable :: StreamId -> Effect Unit
+announceEgestIsAvailable streamId =
   Gen.doCast serverName
-    \state@{ edgeLocations, thisNode } -> do
-      _ <- logInfo "Local edge available" { streamId: streamId }
-      _ <- sendToIntraSerfNetwork state "edgeAvailable" (EdgeState EdgeAvailable streamId thisNode)
-      newEdgeLocations <- MultiMap.insert' streamId thisNode  state.edgeLocations
-      pure $ Gen.CastNoReply state { edgeLocations = newEdgeLocations }
+    \state@{ egestLocations, thisNode } -> do
+      _ <- logInfo "Local egest available" { streamId: streamId }
+      _ <- sendToIntraSerfNetwork state "egestAvailable" (IMEgestState EgestAvailable streamId thisNode)
+      newEgestLocations <- MultiMap.insert' streamId thisNode  state.egestLocations
+      pure $ Gen.CastNoReply state { egestLocations = newEgestLocations }
 
--- Called by EdgeAgent to indicate edge on this node has stopped
-announceEdgeStopped :: StreamId -> Effect Unit
-announceEdgeStopped streamId =
+-- Called by EgestAgent to indicate egest on this node has stopped
+announceEgestStopped :: StreamId -> Effect Unit
+announceEgestStopped streamId =
   Gen.doCast serverName
-    \state@{ edgeLocations, thisNode } -> do
-      _ <- logInfo "Local edge stopped" {streamId}
-      _ <- sendToIntraSerfNetwork state "edgeStopped" (EdgeState EdgeStopped streamId thisNode)
+    \state@{ egestLocations, thisNode } -> do
+      _ <- logInfo "Local egest stopped" {streamId}
+      _ <- sendToIntraSerfNetwork state "egestStopped" (IMEgestState EgestStopped streamId thisNode)
       let
-        newEdgeLocations = MultiMap.delete streamId thisNode edgeLocations
-      pure $ Gen.CastNoReply state { edgeLocations = newEdgeLocations }
+        newEgestLocations = MultiMap.delete streamId thisNode egestLocations
+      pure $ Gen.CastNoReply state { egestLocations = newEgestLocations }
 
 -- Called by IngestAggregator to indicate stream on this node
 announceStreamIsAvailable :: StreamId -> Effect Unit
@@ -189,7 +229,7 @@ announceStreamIsAvailable streamId =
   Gen.doCast serverName
     \state@{ streamAggregatorLocations, thisNode, transPoPApi:{announceStreamIsAvailable: transPoP_announceStreamIsAvailable} } -> do
       logIfNew streamId streamAggregatorLocations "New local stream is available" {streamId}
-      _ <- sendToIntraSerfNetwork state "streamAvailable" (StreamState StreamAvailable streamId thisNode)
+      _ <- sendToIntraSerfNetwork state "streamAvailable" (IMStreamState StreamAvailable streamId thisNode)
       _ <- transPoP_announceStreamIsAvailable streamId thisNode
 
       newStreamAggregatorLocations <- EMap.insert' streamId thisNode streamAggregatorLocations
@@ -201,7 +241,7 @@ announceStreamStopped streamId =
   Gen.doCast serverName
     \state@{ streamAggregatorLocations, thisNode, transPoPApi:{announceStreamStopped: transPoP_announceStreamStopped} } -> do
       _ <- logInfo "Local stream stopped" {streamId}
-      _ <- sendToIntraSerfNetwork state "streamStopped" (StreamState StreamStopped streamId thisNode)
+      _ <- sendToIntraSerfNetwork state "streamStopped" (IMStreamState StreamStopped streamId thisNode)
       _ <- transPoP_announceStreamStopped streamId thisNode
 
       let
@@ -214,7 +254,7 @@ announceRemoteStreamIsAvailable streamId addr =
   Gen.doCast serverName
     \state@{ streamAggregatorLocations } -> do
       logIfNew streamId streamAggregatorLocations "New remote stream is avaiable" {streamId}
-      _ <- sendToIntraSerfNetwork state "streamAvailable" (StreamState StreamAvailable streamId addr)
+      _ <- sendToIntraSerfNetwork state "streamAvailable" (IMStreamState StreamAvailable streamId addr)
       newStreamAggregatorLocations <- EMap.insert' streamId addr streamAggregatorLocations
       pure $ Gen.CastNoReply state { streamAggregatorLocations = newStreamAggregatorLocations }
 
@@ -224,7 +264,7 @@ announceRemoteStreamStopped streamId addr =
   Gen.doCast serverName
     \state@{ streamAggregatorLocations } -> do
       _ <- logInfo "Remote stream has stopped" {streamId}
-      _ <- sendToIntraSerfNetwork state "streamStopped" (StreamState StreamStopped streamId addr)
+      _ <- sendToIntraSerfNetwork state "streamStopped" (IMStreamState StreamStopped streamId addr)
       let
         newStreamAggregatorLocations = EMap.delete streamId streamAggregatorLocations
       pure $ Gen.CastNoReply state { streamAggregatorLocations = newStreamAggregatorLocations }
@@ -235,7 +275,7 @@ announceTransPoPLeader =
   Gen.doCast serverName
     \state@{ thisNode, transPoPApi:{handleRemoteLeaderAnnouncement: transPoP_announceTransPoPLeader} } -> do
       _ <- transPoP_announceTransPoPLeader thisNode
-      _ <- sendToIntraSerfNetwork state "transPoPLeader" (TransPoPLeader thisNode)
+      _ <- sendToIntraSerfNetwork state "transPoPLeader" (IMTransPoPLeader thisNode)
       pure $ Gen.CastNoReply state
 
 --------------------------------------------------------------------------------
@@ -282,7 +322,7 @@ init { config: config@{rejoinEveryMs
     { config
     , transPoPApi
     , serfRpcAddress
-    , edgeLocations: MultiMap.empty
+    , egestLocations: MultiMap.empty
     , streamRelayLocations: EMap.empty
     , streamAggregatorLocations: EMap.empty
     , thisNode: thisNode
@@ -290,7 +330,7 @@ init { config: config@{rejoinEveryMs
     , members
     , expireThreshold: wrap expireThresholdMs
     , streamStateClocks: EMap.empty
-    , edgeStateClocks: EMap.empty
+    , egestStateClocks: EMap.empty
     }
 
 shouldProcessSerfMessage :: StreamId -> Int -> EMap StreamId Int -> Boolean
@@ -328,7 +368,7 @@ handleIntraPoPSerfMsg imsg state@{transPoPApi: {handleRemoteLeaderAnnouncement}}
 
     Serf.UserEvent name ltime coalesce intraMessage -> do
      case intraMessage of
-       StreamState stateChange streamId server ->
+       IMStreamState stateChange streamId server ->
 
          case shouldProcessSerfMessage streamId ltime state.streamStateClocks of
            false -> do
@@ -336,25 +376,25 @@ handleIntraPoPSerfMsg imsg state@{transPoPApi: {handleRemoteLeaderAnnouncement}}
              pure $ state
 
            true -> do
-             newStreamStateClocks <- EMap.insert' streamId ltime state.streamStateClocks
-             handleStreamStateChange stateChange streamId server intraMessage (state {streamStateClocks = newStreamStateClocks})
+             newIMStreamStateClocks <- EMap.insert' streamId ltime state.streamStateClocks
+             handleStreamStateChange stateChange streamId server intraMessage (state {streamStateClocks = newIMStreamStateClocks})
 
-       EdgeState stateChange streamId server ->
-         case shouldProcessSerfMessage streamId ltime state.edgeStateClocks of
+       IMEgestState stateChange streamId server ->
+         case shouldProcessSerfMessage streamId ltime state.egestStateClocks of
            false -> do
              _ <- logInfo "Dropping out-of-order serf message" {streamId, stateChange}
              pure $ state
 
            true -> do
-             newEdgeStateClocks <- EMap.insert' streamId ltime state.edgeStateClocks
-             handleEdgeStateChange stateChange streamId server (state {edgeStateClocks = newEdgeStateClocks})
+             newEgestStateClocks <- EMap.insert' streamId ltime state.egestStateClocks
+             handleEgestStateChange stateChange streamId server (state {egestStateClocks = newEgestStateClocks})
 
-       ServerLoad server load -> do
+       IMServerLoad server load -> do
          let
            newMembers = alter (map (\(Tuple member oldLoad) -> Tuple member load)) server state.members
          pure state{members = newMembers}
 
-       TransPoPLeader server
+       IMTransPoPLeader server
          | server == state.thisNode -> pure state { currentTransPoPLeader = Just server }
          | otherwise -> do
            _ <- handleRemoteLeaderAnnouncement server
@@ -391,28 +431,28 @@ handleStreamStateChange stateChange streamId server intraMessage
           newStreamAggregatorLocations = EMap.delete streamId state.streamAggregatorLocations
         pure $ state { streamAggregatorLocations = newStreamAggregatorLocations }
 
-handleEdgeStateChange :: EdgeState -> StreamId -> ServerAddress -> State -> Effect State
-handleEdgeStateChange stateChange streamId server state =
+handleEgestStateChange :: EgestState -> StreamId -> ServerAddress -> State -> Effect State
+handleEgestStateChange stateChange streamId server state =
   case stateChange of
-    EdgeAvailable
+    EgestAvailable
       | server == state.thisNode -> do
-        -- edgeAvailable on this node - we can just ignore, since appropriate action taken in announceEdgeIsActive
+        -- egestAvailable on this node - we can just ignore, since appropriate action taken in announceEgestIsActive
         pure state
       | otherwise -> do
-        -- edgeAvailable on some other node in this PoP
-        _ <- logInfo "EdgeAvailable on remote node" { streamId: streamId, remoteNode: server }
-        newEdgeLocations <- MultiMap.insert' streamId server  state.edgeLocations
-        pure $ state { edgeLocations = newEdgeLocations }
+        -- egestAvailable on some other node in this PoP
+        _ <- logInfo "EgestAvailable on remote node" { streamId: streamId, remoteNode: server }
+        newEgestLocations <- MultiMap.insert' streamId server  state.egestLocations
+        pure $ state { egestLocations = newEgestLocations }
 
-    EdgeStopped
+    EgestStopped
       | server == state.thisNode -> do
-        -- edgeStopped on this node - we can just ignore, since appropriate action taken in announceEdgeStopped
+        -- egestStopped on this node - we can just ignore, since appropriate action taken in announceEgestStopped
         pure state
       | otherwise -> do
-        _ <- logInfo "EdgeStopped on remote node" { streamId: streamId, remoteNode: server }
+        _ <- logInfo "EgestStopped on remote node" { streamId: streamId, remoteNode: server }
         let
-          newEdgeLocations = MultiMap.delete streamId server state.edgeLocations
-        pure $ state { edgeLocations = newEdgeLocations }
+          newEgestLocations = MultiMap.delete streamId server state.egestLocations
+        pure $ state { egestLocations = newEgestLocations }
 
 
 --------------------------------------------------------------------------------
@@ -452,17 +492,17 @@ garbageCollect :: State -> Effect State
 garbageCollect state@{ expireThreshold
                      , streamAggregatorLocations
                      , streamRelayLocations
-                     , edgeLocations
+                     , egestLocations
                      } =
   do
     now <- Erl.systemTimeMs
     let threshold = now - expireThreshold
         newStreamAggregatorLocations = EMap.garbageCollect threshold streamAggregatorLocations
         newStreamRelayLocations = EMap.garbageCollect threshold streamRelayLocations
-        newEdgeLocations = MultiMap.garbageCollect threshold edgeLocations
+        newEgestLocations = MultiMap.garbageCollect threshold egestLocations
     pure state{ streamAggregatorLocations = newStreamAggregatorLocations
               , streamRelayLocations = newStreamRelayLocations
-              , edgeLocations = newEdgeLocations
+              , egestLocations = newEgestLocations
               }
 
 joinAllSerf :: State -> Effect Unit

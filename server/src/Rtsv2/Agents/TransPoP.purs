@@ -425,7 +425,6 @@ handleRttRefresh state@{ weAreLeader: true
                   _ <- logWarning "Coordinate error" {misc: {server: sa, error}}
                   pure acc
             ) Map.empty eCoordinates
---    let _ = ?foo
     defaultRtts <- getDefaultRtts config
     otherPoPNames <- PoPDefinition.getOtherPoPNames
 

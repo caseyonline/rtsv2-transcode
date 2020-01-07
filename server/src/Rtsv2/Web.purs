@@ -20,7 +20,7 @@ import Record as Record
 import Rtsv2.Agents.IntraPoP as IntraPoPAgent
 import Rtsv2.Config as Config
 import Rtsv2.Endpoints.Client as ClientEndpoint
-import Rtsv2.Endpoints.Edge as EdgeEndpoint
+import Rtsv2.Endpoints.EgestStats as EgestStats
 import Rtsv2.Endpoints.Health as HealthEndpoint
 import Rtsv2.Endpoints.Ingest as IngestEndpoint
 import Rtsv2.Endpoints.IngestAggregator as IngestAggregatorEndpoint
@@ -50,15 +50,16 @@ init args = do
     # Stetson.route "/api/transPoPLeader" transPoPLeader
     # Stetson.route "/api/healthCheck" HealthEndpoint.healthCheck
     # Stetson.route "/api/load" LoadEndpoint.load
+    # Stetson.route "/api/egest/:stream_id/clientCount" EgestStats.clientCount
+
     # Stetson.route "/api/agents/ingestAggregator/:stream_id" IngestAggregatorEndpoint.ingestAggregator
 
     # Stetson.route "/api/client/:canary/ingest/:stream_id/:variant_id/start" IngestEndpoint.ingestStart
     # Stetson.route "/api/client/:canary/ingest/:stream_id/:variant_id/stop" IngestEndpoint.ingestStop
 
-    # Stetson.route "/api/client/:canary/client/:stream_id/start" ClientEndpoint.clientStart
+    --# Stetson.route "/api/client/:canary/client/:stream_id/start" ClientEndpoint.clientStart
     # Stetson.route "/api/client/:canary/client/:stream_id/stop" ClientEndpoint.clientStop
 
-    # Stetson.route "/api/client/:canary/edge/:stream_id/clientCount" EdgeEndpoint.clientCount
 
     # Stetson.route "/llnwstub/rts/v1/streamauthtype" LlnwStub.streamAuthType
     # Stetson.route "/llnwstub/rts/v1/streamauth" LlnwStub.streamAuth

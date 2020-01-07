@@ -23,14 +23,14 @@ import Foreign (Foreign)
 type Logger a = String -> a -> Effect Foreign
 -- TODO - FFI error if we use the type alias
 foreign import emergency :: forall a. String -> a -> Effect Foreign
-foreign import alert :: forall a. String -> a -> Effect Foreign
-foreign import critical :: forall a. String -> a -> Effect Foreign
-foreign import error :: forall a. String -> a -> Effect Foreign
-foreign import warning :: forall a. String -> a -> Effect Foreign
-foreign import notice :: forall a. String -> a -> Effect Foreign
-foreign import info :: forall a. String -> a -> Effect Foreign
-foreign import debug :: forall a. String -> a -> Effect Foreign
-foreign import spyImpl :: forall a. String -> a -> Effect Foreign
+foreign import alert     :: forall a. String -> a -> Effect Foreign
+foreign import critical  :: forall a. String -> a -> Effect Foreign
+foreign import error     :: forall a. String -> a -> Effect Foreign
+foreign import warning   :: forall a. String -> a -> Effect Foreign
+foreign import notice    :: forall a. String -> a -> Effect Foreign
+foreign import info      :: forall a. String -> a -> Effect Foreign
+foreign import debug     :: forall a. String -> a -> Effect Foreign
+foreign import spyImpl   :: forall a. String -> a -> Effect Foreign
 
 spy :: forall a. DebugWarning => String -> a -> a
 spy str a = unsafePerformEffect do
