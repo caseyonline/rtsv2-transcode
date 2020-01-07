@@ -1,4 +1,4 @@
-module Rtsv2.Endpoints.MimeType
+module Rtsv2.Handler.MimeType
        (
          json
        ) where

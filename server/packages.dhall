@@ -69,6 +69,25 @@ let overrides =
           , version =
               "8688462267530254365bda284f06a162672de0c1"
           }
+      , routing-duplex =
+          { dependencies =
+              [ "arrays"
+              , "control"
+              , "either"
+              , "generics-rep"
+              , "globals"
+              , "lazy"
+              , "prelude"
+              , "profunctor"
+              , "record"
+              , "strings"
+              , "typelevel-prelude"
+              ]
+          , repo =
+              "ssh://git@github.com/natefaubion/purescript-routing-duplex.git"
+          , version =
+              "eceaba4ee9921250cc6640d5ead98bbfc44310f5"
+          }
       }
 
 let additions = {=}

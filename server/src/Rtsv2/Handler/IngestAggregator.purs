@@ -1,4 +1,4 @@
-module Rtsv2.Endpoints.IngestAggregator
+module Rtsv2.Handler.IngestAggregator
        ( ingestAggregator
        )
        where
@@ -11,7 +11,7 @@ import Erl.Cowboy.Req (binding)
 import Erl.Data.List (nil, (:))
 import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
 import Rtsv2.Agents.IngestAggregatorInstanceSup as IngestAggregatorInstanceSup
-import Rtsv2.Endpoints.MimeType as MimeType
+import Rtsv2.Handler.MimeType as MimeType
 import Shared.Stream (StreamId(..))
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON as JSON

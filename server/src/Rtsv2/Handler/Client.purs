@@ -1,4 +1,4 @@
-module Rtsv2.Endpoints.Client
+module Rtsv2.Handler.Client
        (
          --clientStart
          clientStop

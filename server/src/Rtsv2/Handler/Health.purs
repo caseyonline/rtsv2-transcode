@@ -1,4 +1,4 @@
-module Rtsv2.Endpoints.Health
+module Rtsv2.Handler.Health
        (
          healthCheck
        ) where
@@ -8,9 +8,9 @@ import Prelude
 import Data.Maybe (fromMaybe)
 import Data.Newtype (wrap)
 import Erl.Data.List (nil, (:))
-import Rtsv2.Endpoints.MimeType as MimeType
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.TransPoP as TransPoP
+import Rtsv2.Handler.MimeType as MimeType
 import Simple.JSON as JSON
 import Stetson (StetsonHandler)
 import Stetson.Rest as Rest

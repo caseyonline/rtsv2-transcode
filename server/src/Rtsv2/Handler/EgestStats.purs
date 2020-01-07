@@ -1,4 +1,4 @@
-module Rtsv2.Endpoints.EgestStats
+module Rtsv2.Handler.EgestStats
        (
          clientCount
        ) where

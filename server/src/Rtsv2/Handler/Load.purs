@@ -1,4 +1,4 @@
-module Rtsv2.Endpoints.Load
+module Rtsv2.Handler.Load
        (
          load
        ) where
@@ -14,7 +14,7 @@ import Erl.Data.Binary.IOData (IOData, fromBinary, toBinary)
 import Erl.Data.List (nil, (:))
 import Erl.Data.Tuple (tuple2)
 import Logger (spy)
-import Rtsv2.Endpoints.MimeType as MimeType
+import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.Load as Load
 import Simple.JSON (readJSON)
 import Simple.JSON as JSON
