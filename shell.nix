@@ -35,6 +35,9 @@ mkShell {
     # of things like readlink
     coreutils
 
+    # Bash on macOS is ancient
+    bash
+
     nixerl.erlang-22-1-8.erlang
     nixerl.erlang-22-1-8.rebar3
 
