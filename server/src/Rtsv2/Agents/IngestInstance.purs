@@ -27,7 +27,7 @@ import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Agent as Agent
 import Shared.Stream (StreamId(..), StreamAndVariant(..), toStreamId)
-import Shared.Types (Load, ServerAddress)
+import Shared.Types (Load, ServerAddress, LocatedServer(..))
 
 type State
   = { }
@@ -69,8 +69,8 @@ getAggregator :: StreamAndVariant -> Effect (Maybe ServerAddress)
 getAggregator streamAndVariant@(StreamAndVariant streamId _variantId)  = do
   maybeAggregator <- IntraPoP.whereIsIngestAggregator streamId
   case maybeAggregator of
-    Just aggregator ->
-      pure maybeAggregator
+    Just (LocatedServer serverAddress _serverLocation) ->
+      pure $ Just serverAddress
     Nothing ->
       launchLocalOrRemote streamAndVariant
 

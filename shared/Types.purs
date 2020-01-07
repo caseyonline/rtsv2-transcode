@@ -5,6 +5,7 @@ module Shared.Types
        , PoPName(..)
        , ServerLoad(..)
        , ServerLocation(..)
+       , LocatedServer(..)
        ) where
 
 import Prelude
@@ -49,6 +50,11 @@ derive newtype instance writeForeignLoad :: WriteForeign Load
 data ServerLocation = ServerLocation PoPName RegionName
 derive instance genericServerLocation :: Generic ServerLocation _
 instance eqServerLocation :: Eq ServerLocation where
+  eq = genericEq
+
+data LocatedServer = LocatedServer ServerAddress ServerLocation
+derive instance genericLocatedServer :: Generic LocatedServer _
+instance eqLocatedServer :: Eq LocatedServer where
   eq = genericEq
 
 data ServerLoad = ServerLoad ServerAddress Load

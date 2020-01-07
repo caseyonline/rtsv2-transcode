@@ -1,7 +1,6 @@
 module Rtsv2.Handler.Client
-       (
-         --clientStart
-         clientStop
+       ( -- clientStart
+       clientStop
        ) where
 
 import Prelude
@@ -24,7 +23,7 @@ import Rtsv2.Audit as Audit
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Utils (member)
 import Shared.Stream (StreamId(..))
-import Shared.Types (ServerAddress(..), ServerLoad(..))
+import Shared.Types (ServerAddress(..), ServerLoad(..), LocatedServer(..))
 import Shared.Utils (lazyCrashIfMissing)
 import Stetson (StetsonHandler)
 import Stetson.Rest as Rest
@@ -119,9 +118,9 @@ findRelayForStream streamId = do
             --leastLoaded <- IntraPoP.w
             createRelayChain sourceServer streamId
 
-createRelayChain :: ServerAddress -> StreamId -> Effect (Either FailureType ServerAddress)
-createRelayChain sourceServer streamId = do
-  pure $ Right sourceServer
+createRelayChain :: LocatedServer -> StreamId -> Effect (Either FailureType ServerAddress)
+createRelayChain (LocatedServer serverAddress _serverLocation) streamId = do
+  pure $ Right serverAddress
 
 
 
