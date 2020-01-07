@@ -1,4 +1,8 @@
-module Rtsv2.Router.Endpoint where
+module Rtsv2.Router.Endpoint ( Endpoint(..)
+                             , Canary(..)
+                             , StreamId(..)
+                             , StreamVariant(..)
+                             , endpoint ) where
 
 import Prelude hiding ((/))
 
