@@ -1,4 +1,4 @@
-module Rtsv2.Endpoints.Ingest
+module Rtsv2.Handler.Ingest
        (
          ingestStart
        , ingestStop

@@ -1,4 +1,4 @@
-module Rtsv2.Endpoints.Edge
+module Rtsv2.Handler.Edge
        (
          clientCount
        ) where

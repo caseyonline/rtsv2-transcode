@@ -1,25 +1,16 @@
-module Rtsv2.Router where
+module Rtsv2.Router.Endpoint where
 
 import Prelude hiding ((/))
 
 import Data.Either (note)
-import Data.Function (applyFlipped)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Eq (genericEq)
 import Data.Generic.Rep.Ord (genericCompare)
 import Data.Generic.Rep.Show (genericShow)
 import Data.Maybe (Maybe(..))
-import Data.Newtype (unwrap)
-import Data.String (joinWith)
-import Data.String.CodeUnits (contains)
-import Data.String.Pattern (Pattern(..))
-import Data.Tuple (uncurry)
-import Global.Unsafe (unsafeEncodeURIComponent)
-import Routing.Duplex (RouteDuplex(..), RouteDuplex', as, path, root, segment)
+import Routing.Duplex (RouteDuplex', as, path, root, segment)
 import Routing.Duplex.Generic (noArgs, sum)
 import Routing.Duplex.Generic.Syntax ((/))
-import Routing.Duplex.Printer (RoutePrinter)
-import Routing.Duplex.Types (RouteState, emptyRouteState)
 
 type Canary = String
 data StreamId = StreamId String
@@ -104,32 +95,3 @@ streamId = as streamIdToString (parseStreamId >>> note "Bad StreamId")
 -- | This combinator transforms a codec over `String` into one that operates on the `StreamVariant` type.
 variant :: RouteDuplex' String -> RouteDuplex' StreamVariant
 variant = as variantToString (parseStreamVariant >>> note "Bad StreamId")
-
-printUrl :: forall i o. RouteDuplex i o -> i -> String
-printUrl (RouteDuplex enc _) = run <<< enc
-
-run :: RoutePrinter -> String
-run = printPath <<< applyFlipped emptyRouteState <<< unwrap
-
-printPath :: RouteState -> String
-printPath { segments, params, hash: hash' } =
-  printSegments segments <> printParams params <> printHash hash'
-  where
-  printSegments = case _ of
-    [""] -> "/"
-    xs -> joinWith "/" $ map (\a -> case contains (Pattern ":") a of
-                                         true  -> a
-                                         false -> unsafeEncodeURIComponent a) xs
-
-  printParams [] = ""
-  printParams ps = "?" <> joinWith "&" (uncurry printParam <$> ps)
-
-  printParam key ""  = unsafeEncodeURIComponent key
-  printParam key val = unsafeEncodeURIComponent key <> "=" <> unsafeEncodeURIComponent val
-
-  printHash "" = ""
-  printHash h  = "#" <> h
-
-
--- printme :: String
--- printme = print endpoint (IngestStartE (":canary") (StreamId ":stream_id") (StreamVariant ":variant_id"))
