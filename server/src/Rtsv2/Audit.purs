@@ -8,30 +8,31 @@ module Rtsv2.Audit
 
 import Prelude
 
+import Data.Newtype (unwrap)
 import Effect (Effect)
 import Erl.Atom (atom)
 import Erl.Data.List (List, nil, (:))
 import Logger as Logger
-import Shared.Stream (StreamId(..), StreamVariantId(..))
+import Shared.Stream (StreamId(..), StreamAndVariant(..))
 
 foreign import toList :: String -> List Char
 
-ingestStart :: StreamVariantId -> Effect Unit
-ingestStart (StreamVariantId streamId streamVariantId) = do
+ingestStart :: StreamAndVariant -> Effect Unit
+ingestStart (StreamAndVariant streamId streamVariantId) = do
   _ <- Logger.info "" { domain: (atom "audit") : (atom "ingest") : nil
                       , event: toList "start"
                       , customerId: toList "customerId" -- todo
-                      , streamId: toList streamId
-                      , streamVariantId: toList streamVariantId}
+                      , streamId: toList $ unwrap streamId
+                      , streamVariantId: toList $ unwrap streamVariantId}
   pure unit
 
-ingestStop :: StreamVariantId -> Effect Unit
-ingestStop (StreamVariantId streamId streamVariantId) = do
+ingestStop :: StreamAndVariant -> Effect Unit
+ingestStop (StreamAndVariant streamId streamVariantId) = do
   _ <- Logger.info "" { domain: (atom "audit") : (atom "ingest") : nil
                       , event: toList "stop"
                       , customerId: toList "customerId" -- todo
-                      , streamId: toList streamId
-                      , streamVariantId: toList streamVariantId}
+                      , streamId: toList $ unwrap streamId
+                      , streamVariantId: toList $ unwrap streamVariantId}
   pure unit
 
 clientStart :: StreamId -> Effect Unit

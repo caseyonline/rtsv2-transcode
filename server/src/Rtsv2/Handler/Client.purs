@@ -6,15 +6,15 @@ module Rtsv2.Handler.Client
 
 import Prelude
 
-import Data.Either (Either)
-import Data.Foldable (minimum)
+import Data.Either (Either(..))
+import Data.Foldable (any, minimum)
 import Data.Maybe (Maybe(..), fromMaybe')
-import Data.Newtype (unwrap)
+import Data.Newtype (unwrap, wrap)
 import Effect (Effect)
 import Erl.Atom (atom)
 import Erl.Cowboy.Handlers.Rest (moved, notMoved)
 import Erl.Cowboy.Req (binding, header, path, setHeader)
-import Erl.Data.List (List, head, nil, null, (:))
+import Erl.Data.List (List, filter, head, nil, null, (:))
 import Erl.Data.Tuple (tuple2)
 import Logger as Logger
 import Rtsv2.Agents.EgestInstance as EgestInstance
@@ -46,6 +46,9 @@ data ServerSelectionResponse
   | Remote ServerAddress
 
 
+data FailureType = FTNotFound
+
+
 --------------------------------------------------------------------------------
 -- Do we have any EgestInstances in this pop that have capacity for another client?
 -- Yes -> If this node is one of them -> Use it (TODO - maybe load concentrate?)
@@ -57,50 +60,68 @@ data ServerSelectionResponse
 --          No -> Try to find or create a relay for this stream and also put an egest handler on the same node
 -- otherwise 404
 --------------------------------------------------------------------------------
--- findEgestForStream :: StreamId -> Effect ServerSelectionResponse
--- findEgestForStream streamId = do
---   thisNode <- PoPDefinition.thisNode
---   servers <- IntraPoP.whereIsEgest streamId
+findEgestForStream :: StreamId -> Effect ServerSelectionResponse
+findEgestForStream streamId = do
+  thisNode <- PoPDefinition.thisNode
+  servers <- IntraPoP.whereIsEgest streamId
 
---   let serversWithCapacity  =
---         filter (\ServerLoad serverAddress load ->
---                  load < 76.323341
---                ) servers
---   if any ((==) thisNode <<< extractAddress) servers
---   then pure Local
---   else
---    case pickInstance serversWithCapacity of
---      Just server -> pure Remote server
---      Nothing ->
---        case findRelayForStream streamId of
+  let serversWithCapacity  =
+        filter (\(ServerLoad serverAddress load) ->
+                 load < (wrap 76.323341)
+               ) servers
+  if any ((==) thisNode <<< extractAddress) servers
+  then pure Local
+  else
+   case pickInstance serversWithCapacity of
+     Just server -> 
+       pure $ Remote server
 
---        pure $ Local
---   where extractAddress (ServerLoad serverAddress _) = serverAddress
---         pickInstance = extractAddress <$> head
+     Nothing ->
+       do
+         relayForStream <- findRelayForStream streamId 
 
+         pure $
+           case relayForStream of
+             Left _ ->
+               NoResource
 
--- --------------------------------------------------------------------------------
--- -- Do we have a relay in this pop - yes -> use it
--- -- Does the stream have an origin (aggregator) - if so build a streamRelay chain to that origin
--- -- otherwise 404
--- --------------------------------------------------------------------------------
--- findRelayForStream :: StreamId -> Effect (Either FailureType ServerAddress)
--- findRelayForStream streamId = do
---   mRelay <- IntraPoP.whereIsStreamRelay stream
---   case mRelay of
---     Just relay -> pure $ Right relay
---     Nothig -> do
---       mAggregator <- IntraPoP.whereIsIngestAggregator streamId
---       case mAggregator of
---         Nothing -> Left NotFound
---         Just sourceServer -> do
---           -- Find a server with capacity for a new relay
---           leastLoaded = IntraPoP.w
---           createRelayChain sourceServer streamId
+             Right serverAddress
+               | serverAddress == thisNode -> Local
+               | otherwise -> Remote serverAddress
 
--- createRelayChain :: ServerAddress -> StreamId -> Effect (Either FailureType ServerAddress)
--- createRelayChain sourceServer streamId = do
---   pure $ Right sourceServer
+  where 
+    extractAddress (ServerLoad serverAddress _) = serverAddress
+    pickInstance = map extractAddress <<< head
+
+--------------------------------------------------------------------------------
+-- Do we have a relay in this pop - yes -> use it
+-- Does the stream have an origin (aggregator) - if so build a streamRelay chain to that origin
+-- otherwise 404
+--------------------------------------------------------------------------------
+findRelayForStream :: StreamId -> Effect (Either FailureType ServerAddress)
+findRelayForStream streamId = do
+  mRelay <- IntraPoP.whereIsStreamRelay streamId
+
+  case mRelay of
+    Just relay ->
+      pure $ Right relay
+
+    Nothing ->
+      do
+        mAggregator <- IntraPoP.whereIsIngestAggregator streamId
+
+        case mAggregator of
+          Nothing ->
+            pure $ Left FTNotFound
+
+          Just sourceServer -> do
+            -- Find a server with capacity for a new relay
+            --leastLoaded <- IntraPoP.w
+            createRelayChain sourceServer streamId
+
+createRelayChain :: ServerAddress -> StreamId -> Effect (Either FailureType ServerAddress)
+createRelayChain sourceServer streamId = do
+  pure $ Right sourceServer
 
 
 

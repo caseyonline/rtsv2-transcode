@@ -11,19 +11,20 @@ import Data.Either (Either(..), hush)
 import Data.Foldable (any)
 import Data.List.NonEmpty (singleton)
 import Data.Maybe (Maybe)
+import Data.Newtype (wrap)
 import Effect (Effect)
 import Foreign (Foreign, ForeignError(..))
 import Pinto (ServerName)
 import Pinto as Pinto
 import Pinto.Gen as Gen
-import Rtsv2.Names as Names
-import Rtsv2.Config as Config
-import Rtsv2.Env as Env
 import Rtsv2.Agents.IngestInstance as IngestInstance
 import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
+import Rtsv2.Config as Config
+import Rtsv2.Env as Env
 import Rtsv2.LlnwApiTypes (AuthType, PublishCredentials, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamPublish, StreamAuth)
+import Rtsv2.Names as Names
 import Serf (Ip)
-import Shared.Stream (StreamVariantId(..))
+import Shared.Stream (StreamAndVariant(..))
 import Simple.JSON as JSON
 import SpudGun as SpudGun
 
@@ -71,13 +72,13 @@ init _ = do
                   } streamVariantId =
       case any (\{streamName: slotStreamName} -> slotStreamName == streamVariantId) profiles of
         true ->
-          IngestInstanceSup.startIngest (StreamVariantId streamId streamVariantId)
+          IngestInstanceSup.startIngest (StreamAndVariant (wrap streamId) (wrap streamVariantId))
           <#> const true
         false ->
           pure $ false
 
     ingestStopped { role
-                   , slot : {name : streamId}} streamVariantId = IngestInstance.stopIngest (StreamVariantId streamId streamVariantId)
+                   , slot : {name : streamId}} streamVariantId = IngestInstance.stopIngest (StreamAndVariant (wrap streamId) (wrap streamVariantId))
 
     streamAuthType url host shortname = do
       restResult <- SpudGun.post url (JSON.writeJSON ({host

@@ -13,12 +13,12 @@ import Erl.Data.List (nil, (:))
 import Erl.Data.Tuple (tuple2)
 import Rtsv2.Agents.IngestInstance as IngestInstance
 import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
-import Shared.Stream (StreamVariantId(..))
+import Shared.Stream (StreamAndVariant(..))
 import Shared.Utils (lazyCrashIfMissing)
 import Stetson (StetsonHandler)
 import Stetson.Rest as Rest
 
-type IngestStartState = { streamVariantId :: StreamVariantId }
+type IngestStartState = { streamVariantId :: StreamAndVariant }
 
 ingestStart :: StetsonHandler IngestStartState
 ingestStart =
@@ -26,7 +26,7 @@ ingestStart =
                  let streamId = fromMaybe' (lazyCrashIfMissing "stream_id binding missing") $ binding (atom "stream_id") req
                      variantId = fromMaybe' (lazyCrashIfMissing "variant_id binding missing") $ binding (atom "variant_id") req
                  in
-                 Rest.initResult req {streamVariantId: StreamVariantId streamId variantId})
+                 Rest.initResult req {streamVariantId: StreamAndVariant streamId variantId})
 
   # Rest.serviceAvailable (\req state -> do
                             isAgentAvailable <- IngestInstanceSup.isAvailable
@@ -43,7 +43,7 @@ ingestStart =
   # Rest.yeeha
 
 
-type IngestStopState = { streamVariantId :: StreamVariantId }
+type IngestStopState = { streamVariantId :: StreamAndVariant }
 
 ingestStop :: StetsonHandler IngestStopState
 ingestStop =
@@ -51,7 +51,7 @@ ingestStop =
                  let streamId = fromMaybe' (lazyCrashIfMissing "stream_id binding missing") $ binding (atom "stream_id") req
                      variantId = fromMaybe' (lazyCrashIfMissing "variant_id binding missing") $ binding (atom "variant_id") req
                  in
-                 Rest.initResult req {streamVariantId: StreamVariantId streamId variantId})
+                 Rest.initResult req {streamVariantId: StreamAndVariant streamId variantId})
 
   # Rest.serviceAvailable (\req state -> do
                             isAgentAvailable <- IngestInstanceSup.isAvailable

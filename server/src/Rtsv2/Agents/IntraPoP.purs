@@ -60,7 +60,7 @@ import Rtsv2.PoPDefinition as PoPDefinition
 import Serf (IpAndPort)
 import Serf as Serf
 import Shared.Agent as Agent
-import Shared.Stream (StreamId(..), StreamVariantId(..))
+import Shared.Stream (StreamId(..), StreamAndVariant(..))
 import Shared.Types (Load, ServerAddress(..), ServerLoad(..))
 import Shared.Utils (distinctRandomNumbers)
 
@@ -112,11 +112,11 @@ isIngestAvailable streamId =
   Gen.call serverName \state@{ streamAggregatorLocations } ->
     CallReply (EMap.member streamId streamAggregatorLocations) state
 
-isIngestActive :: StreamVariantId -> Effect Boolean
-isIngestActive (StreamVariantId s v) = Gen.call serverName \state -> CallReply false state
+isIngestActive :: StreamAndVariant -> Effect Boolean
+isIngestActive (StreamAndVariant s v) = Gen.call serverName \state -> CallReply false state
 
-whereIsIngestAggregator :: StreamVariantId -> Effect (Maybe ServerAddress)
-whereIsIngestAggregator (StreamVariantId streamId _) =
+whereIsIngestAggregator :: StreamId -> Effect (Maybe ServerAddress)
+whereIsIngestAggregator (StreamId streamId) =
   Gen.call serverName \state ->
     CallReply (EMap.lookup (StreamId streamId) state.streamAggregatorLocations) state
 

@@ -29,7 +29,7 @@ import Erl.Utils as ErlUtils
 import Foreign (unsafeToForeign)
 import Pinto (ServerName(..), SupervisorName)
 import Shared.Agent (Agent(..))
-import Shared.Stream (StreamId, StreamVariantId)
+import Shared.Stream (StreamId, StreamAndVariant)
 
 agentSupName :: SupervisorName
 agentSupName = Local "AgentSup"
@@ -46,7 +46,7 @@ ingestAggregatorInstanceName = gprocName2 IngestAggregator
 ingestAggregatorInstanceSupName :: SupervisorName
 ingestAggregatorInstanceSupName = instanceSup IngestAggregator
 
-ingestInstanceName :: forall a b. StreamVariantId -> ServerName a b
+ingestInstanceName :: forall a b. StreamAndVariant -> ServerName a b
 ingestInstanceName = gprocName2 Ingest
 
 ingestInstanceSupName :: SupervisorName

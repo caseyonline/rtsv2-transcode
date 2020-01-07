@@ -14,7 +14,7 @@ import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChil
 import Pinto.Sup as Sup
 import Rtsv2.Agents.IngestInstance as IngestInstance
 import Rtsv2.Names as Names
-import Shared.Stream (StreamVariantId)
+import Shared.Stream (StreamAndVariant)
 
 isAvailable :: Effect Boolean
 isAvailable = Names.isRegistered serverName
@@ -25,9 +25,9 @@ serverName = Names.ingestInstanceSupName
 startLink :: forall a. a -> Effect Pinto.StartLinkResult
 startLink _ = Sup.startLink serverName init
 
-startIngest :: StreamVariantId -> Effect Unit
-startIngest streamVariantId = do
-  result <- Sup.startSimpleChild childTemplate serverName streamVariantId
+startIngest :: StreamAndVariant -> Effect Unit
+startIngest streamAndVariant = do
+  result <- Sup.startSimpleChild childTemplate serverName streamAndVariant
   case result of
     Pinto.AlreadyStarted pid -> pure unit
     Pinto.Started pid -> pure unit
@@ -46,5 +46,5 @@ init = do
             : nil
         )
 
-childTemplate :: Pinto.ChildTemplate StreamVariantId
+childTemplate :: Pinto.ChildTemplate StreamAndVariant
 childTemplate = Pinto.ChildTemplate (IngestInstance.startLink)

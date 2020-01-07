@@ -26,66 +26,66 @@ import Rtsv2.Load as Load
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Agent as Agent
-import Shared.Stream (StreamVariantId, toStreamId)
+import Shared.Stream (StreamId(..), StreamAndVariant(..), toStreamId)
 import Shared.Types (Load, ServerAddress)
 
 type State
   = { }
 
-isActive :: StreamVariantId -> Effect Boolean
-isActive streamVariantId = Names.isRegistered (serverName streamVariantId)
+isActive :: StreamAndVariant -> Effect Boolean
+isActive streamAndVariant = Names.isRegistered (serverName streamAndVariant)
 
-serverName :: StreamVariantId -> ServerName State Unit
-serverName streamVariantId = Names.ingestInstanceName streamVariantId
+serverName :: StreamAndVariant -> ServerName State Unit
+serverName streamAndVariant = Names.ingestInstanceName streamAndVariant
 
-startLink :: StreamVariantId -> Effect StartLinkResult
-startLink streamVariantId = Gen.startLink (serverName streamVariantId) (init streamVariantId) Gen.defaultHandleInfo
+startLink :: StreamAndVariant -> Effect StartLinkResult
+startLink streamAndVariant = Gen.startLink (serverName streamAndVariant) (init streamAndVariant) Gen.defaultHandleInfo
 
-stopIngest :: StreamVariantId -> Effect Unit
-stopIngest streamVariantId =
-  Gen.doCall (serverName streamVariantId) \state -> do
+stopIngest :: StreamAndVariant -> Effect Unit
+stopIngest streamAndVariant =
+  Gen.doCall (serverName streamAndVariant) \state -> do
     -- TODO - single ingest can't stop the aggregator
-    _ <- IngestAggregatorInstance.stopAggregator (toStreamId streamVariantId)
-    _ <- Audit.ingestStop streamVariantId
+    _ <- IngestAggregatorInstance.stopAggregator (toStreamId streamAndVariant)
+    _ <- Audit.ingestStop streamAndVariant
     pure $ CallStop unit state
 
-init :: StreamVariantId -> Effect State
-init streamVariantId = do
-  _ <- logInfo "Ingest starting" {streamVariantId: streamVariantId}
+init :: StreamAndVariant -> Effect State
+init streamAndVariant = do
+  _ <- logInfo "Ingest starting" {streamAndVariant: streamAndVariant}
   thisNode <- PoPDefinition.thisNode
-  _ <- Audit.ingestStart streamVariantId
-  maybeAggregator <- getAggregator streamVariantId
-  _ <- addVariant thisNode streamVariantId maybeAggregator
+  _ <- Audit.ingestStart streamAndVariant
+  maybeAggregator <- getAggregator streamAndVariant
+  _ <- addVariant thisNode streamAndVariant maybeAggregator
   pure {}
 
-addVariant :: ServerAddress -> StreamVariantId -> Maybe ServerAddress -> Effect Unit
-addVariant thisNode streamVariantId aggregatorAddress
+addVariant :: ServerAddress -> StreamAndVariant -> Maybe ServerAddress -> Effect Unit
+addVariant thisNode streamAndVariant aggregatorAddress
   | aggregatorAddress == Just thisNode = do
-    _ <- IngestAggregatorInstance.addVariant streamVariantId
+    _ <- IngestAggregatorInstance.addVariant streamAndVariant
     pure unit
   | otherwise = pure unit -- TODO - HTTP call...
 
-getAggregator :: StreamVariantId -> Effect (Maybe ServerAddress)
-getAggregator streamVariantId = do
-  maybeAggregator <- IntraPoP.whereIsIngestAggregator streamVariantId
+getAggregator :: StreamAndVariant -> Effect (Maybe ServerAddress)
+getAggregator streamAndVariant@(StreamAndVariant streamId _variantId)  = do
+  maybeAggregator <- IntraPoP.whereIsIngestAggregator streamId
   case maybeAggregator of
     Just aggregator ->
       pure maybeAggregator
     Nothing ->
-      launchLocalOrRemote streamVariantId
+      launchLocalOrRemote streamAndVariant
 
-launchLocalOrRemote :: StreamVariantId -> Effect (Maybe ServerAddress)
-launchLocalOrRemote streamVariantId = do
+launchLocalOrRemote :: StreamAndVariant -> Effect (Maybe ServerAddress)
+launchLocalOrRemote streamAndVariant@(StreamAndVariant streamId _variantId) = do
   currentLoad <- Load.load
   if
     currentLoad < (wrap 50.0) then do
-      _ <- IngestAggregatorInstanceSup.startAggregator (toStreamId streamVariantId)
+      _ <- IngestAggregatorInstanceSup.startAggregator streamId
       Just <$> PoPDefinition.thisNode
     else
-      launchRemote streamVariantId
+      launchRemote streamAndVariant
 
-launchRemote :: StreamVariantId -> Effect (Maybe ServerAddress)
-launchRemote streamVariantId = do
+launchRemote :: StreamAndVariant -> Effect (Maybe ServerAddress)
+launchRemote streamAndVariant = do
   -- TODO - need to make http call to idle server to request it starts an aggregator, and then retry if it returns no
   IntraPoP.getIdleServer ((<) (wrap 70.2231222))
 

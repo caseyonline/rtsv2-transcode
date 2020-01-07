@@ -24,12 +24,12 @@ import Rtsv2.Agents.IntraPoP (announceStreamIsAvailable, announceStreamStopped)
 import Rtsv2.Config as Config
 import Rtsv2.Names as Names
 import Shared.Agent as Agent
-import Shared.Stream (StreamId, StreamVariantId(..), toStreamId)
+import Shared.Stream (StreamId, StreamAndVariant(..), toStreamId)
 
 type State
   = { config :: Config.IngestAggregatorAgentConfig
     , streamId :: StreamId
-    , streamVariants :: Map StreamVariantId Unit
+    , streamVariants :: Map StreamAndVariant Unit
     }
 
 data Msg
@@ -41,13 +41,13 @@ isAvailable streamId = Names.isRegistered (serverName streamId)
 serverName :: StreamId -> ServerName State Msg
 serverName = Names.ingestAggregatorInstanceName
 
-addVariant :: StreamVariantId -> Effect Unit
+addVariant :: StreamAndVariant -> Effect Unit
 addVariant streamVariantId = Gen.call (serverName (toStreamId streamVariantId))
   \state@{streamVariants} ->
   CallReply unit state{streamVariants = insert streamVariantId unit streamVariants}
 
 -- TODO - would rather a list, but it doesn't call writeForeign on StreamVariantId 
-getState :: StreamId -> Effect (Array StreamVariantId)
+getState :: StreamId -> Effect (Array StreamAndVariant)
 getState streamId = Gen.call (serverName streamId)
   \state@{streamVariants} ->
   CallReply (toUnfoldable (keys streamVariants)) state

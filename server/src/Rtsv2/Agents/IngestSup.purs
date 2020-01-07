@@ -15,7 +15,7 @@ import Rtsv2.Agents.IngestInstance as IngestInstance
 import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
 import Rtsv2.Agents.IngestRtmpServer as IngestRtmpServer
 import Rtsv2.Names as Names
-import Shared.Stream (StreamVariantId)
+import Shared.Stream (StreamAndVariant)
 
 isAvailable :: Effect Boolean
 isAvailable = Names.isRegistered serverName
@@ -46,5 +46,5 @@ init = do
             : nil
         )
 
-childTemplate :: Pinto.ChildTemplate StreamVariantId
+childTemplate :: Pinto.ChildTemplate StreamAndVariant
 childTemplate = Pinto.ChildTemplate (IngestInstance.startLink)
