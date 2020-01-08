@@ -22,7 +22,7 @@ import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Audit as Audit
 import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Stream (StreamId(..))
-import Shared.Types (LocatedServer(..), ServerAddress, ServerLoad(..))
+import Shared.Types (LocatedServer(..), ServerAddress, ServerLoad(..), locatedServerAddress)
 import Shared.Utils (lazyCrashIfMissing)
 import Stetson (StetsonHandler)
 import Stetson.Rest as Rest
@@ -88,7 +88,7 @@ findEgestForStream streamId = do
                | otherwise -> Remote serverAddress
 
   where
-    extractAddress (ServerLoad serverAddress _) = serverAddress
+    extractAddress (ServerLoad locatedServer _) = locatedServerAddress locatedServer
     pickInstance = map extractAddress <<< head
 
 --------------------------------------------------------------------------------

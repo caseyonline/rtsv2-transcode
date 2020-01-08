@@ -29,7 +29,7 @@ import Data.Foldable (foldl)
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (wrap)
 import Data.Traversable (traverse, traverse_)
-import Data.Tuple (Tuple(..), fst, snd)
+import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Effect.Random (randomInt)
 import Ephemeral.Map (EMap)
@@ -38,7 +38,7 @@ import Ephemeral.MultiMap (EMultiMap)
 import Ephemeral.MultiMap as MultiMap
 import Erl.Atom (Atom)
 import Erl.Data.List (List, head, index, length, nil, singleton, sortBy, take, uncons)
-import Erl.Data.Map (Map, alter, fromFoldable, toUnfoldable, values)
+import Erl.Data.Map (Map, alter, fromFoldable, values)
 import Erl.Data.Map as Map
 import Erl.Process (Process, spawnLink)
 import Erl.Utils (Milliseconds)
@@ -60,9 +60,14 @@ import Rtsv2.PoPDefinition as PoPDefinition
 import Serf (IpAndPort)
 import Serf as Serf
 import Shared.Stream (StreamId(..), StreamAndVariant(..))
-import Shared.Types (Load, ServerAddress(..), ServerLoad(..), LocatedServer(..))
+import Shared.Types (Load, LocatedServer(..), ServerAddress(..), ServerLoad(..))
 import Shared.Utils (distinctRandomNumbers)
 
+
+type MemberInfo = { serfMember :: Serf.SerfMember
+                  , load :: Load
+                  , server :: LocatedServer
+                  }
 type State
   = { transPoPApi :: Config.TransPoPAgentApi
     , config :: Config.IntraPoPAgentConfig
@@ -72,7 +77,7 @@ type State
     , streamRelayLocations :: EMap StreamId ServerAddress
     , streamAggregatorLocations :: EMap StreamId LocatedServer
     , thisNode :: ServerAddress
-    , members :: Map ServerAddress (Tuple Serf.SerfMember Load)
+    , members :: Map ServerAddress MemberInfo
     , expireThreshold :: Milliseconds
     , streamStateClocks :: EMap StreamId Int
     , egestStateClocks :: EMap StreamId Int
@@ -128,8 +133,7 @@ whereIsEgest :: StreamId -> Effect (List ServerLoad)
 whereIsEgest streamId =
   Gen.call serverName
   \state@{egestLocations, members} ->
-    let withLoad :: ServerAddress -> Maybe ServerLoad
-        withLoad el = (ServerLoad el <$>  (snd <$> Map.lookup el members))
+    let withLoad el = toServerLoad <$> Map.lookup el members
     in
     CallReply (filterMap withLoad $ MultiMap.lookup streamId state.egestLocations) state
 
@@ -137,16 +141,19 @@ whereIsEgest streamId =
 --------------------------------------------------------------------------------
 -- TODO re-read Power of Two articles such as
 -- https://www.nginx.com/blog/nginx-power-of-two-choices-load-balancing-algorithm/
+-- TODO - predicate should probable be ServerLoad -> Weighting
 --------------------------------------------------------------------------------
-getIdleServer :: (Load -> Boolean) -> Effect (Maybe ServerAddress)
+getIdleServer :: (ServerLoad -> Boolean) -> Effect (Maybe LocatedServer)
 getIdleServer pred = Gen.doCall serverName
   (\state@{members} ->
     let n = 2
         nMostIdleWithCapacity =
-          toUnfoldable members
-          # filterMap (\(Tuple addr (Tuple _ load)) -> if pred load then Just (ServerLoad addr load) else Nothing)
+          values members
+          # filterMap (\memberInfo ->
+                        let serverLoad = toServerLoad memberInfo
+                        in if pred serverLoad then Just serverLoad else Nothing)
           # sortBy (\(ServerLoad _ l1) (ServerLoad _ l2) -> compare l1 l2)
-          <#> (\(ServerLoad addr _) -> addr)
+          <#> (\(ServerLoad locatedServer _) -> locatedServer)
           # take n
         numServers = length nMostIdleWithCapacity
     in do
@@ -178,9 +185,9 @@ getIdleServer' = Gen.doCall serverName
         let
           output = traverse (\i -> index membersList i) indexes
                    # fromMaybe nil
-                   # sortBy (\(Tuple _ lhsLoad) (Tuple _ rhsLoad) -> compare lhsLoad rhsLoad)
+                   # sortBy (\ {load: l1} {load: l2} -> compare l1 l2)
                    # head
-                   <#> fst >>> _.name >>> wrap
+                   <#> _.serfMember.name >>> wrap
         pure $ CallReply output state
   )
 
@@ -198,7 +205,7 @@ announceLoad load =
     \state@{ thisNode, members } -> do
       _ <- sendToIntraSerfNetwork state "loadUpdate" (IMServerLoad thisNode load)
       let
-        newMembers = alter (map (\(Tuple member oldLoad) -> Tuple member load)) thisNode members
+        newMembers = alter (map (\ memberInfo -> memberInfo { load = load })) thisNode members
       pure $ Gen.CastNoReply state { members = newMembers }
 
 -- Called by EgestAgent to indicate egest on this node
@@ -329,11 +336,24 @@ init { config: config@{rejoinEveryMs
          Right r ->
            pure r
 
+  locatedServersInPoP <- PoPDefinition.serversInThisPoPByAddress
+
   let
     members = membersResp
               # hush
               # fromMaybe nil
-              <#> (\member@{name} -> Tuple (ServerAddress name) (Tuple member (wrap 100.0)))
+              # filterMap (\member@{name} ->
+                            let
+                              initialLoad = wrap 100.0 :: Load
+                              serverAddress = ServerAddress name
+                              locatedServerToMemberInfo locatedServer =
+                                { server: locatedServer
+                                , load: initialLoad
+                                , serfMember: member
+                                }
+                            in
+                              map (Tuple serverAddress) $ map locatedServerToMemberInfo $ Map.lookup serverAddress locatedServersInPoP
+                          )
               # fromFoldable
   pure
     { config
@@ -408,7 +428,7 @@ handleIntraPoPSerfMsg imsg state@{transPoPApi: {handleRemoteLeaderAnnouncement}}
 
        IMServerLoad server load -> do
          let
-           newMembers = alter (map (\(Tuple member oldLoad) -> Tuple member load)) server state.members
+           newMembers = alter (map (\ memberInfo -> memberInfo { load = load })) server state.members
          pure state{members = newMembers}
 
        IMTransPoPLeader server
@@ -494,8 +514,27 @@ sendToIntraSerfNetwork state name msg = do
 membersAlive :: (List Serf.SerfMember) -> State -> Effect State
 membersAlive members state = do
   _ <- logInfo "Members Alive" { members: _.name <$> members }
+
+  locatedServersInPoP <- PoPDefinition.serversInThisPoPByAddress
+
   let
-    newMembers = foldl (\acc member@{ name } -> Map.insert (ServerAddress name) (Tuple member (wrap 100.0)) acc) state.members members
+    makeMemberInfo member@{ name } locatedServer =
+      { serfMember: member
+      , server: locatedServer
+      , load: wrap 100.0 :: Load
+      }
+
+    newMembers
+      = members
+        # filterMap (\ member@{ name } ->
+                      let
+                        address = (ServerAddress name)
+                      in
+                       Map.lookup address locatedServersInPoP
+                       # map (\locatedServer -> Tuple address (makeMemberInfo member locatedServer))
+                    )
+        # foldl (\acc (Tuple address memberInfo) -> Map.insert address memberInfo acc) state.members
+
   pure state { members = newMembers }
 
 membersLeft :: (List Serf.SerfMember) -> State -> Effect State
@@ -557,6 +596,9 @@ maybeLogError _ (Right _) _ = pure unit
 maybeLogError msg (Left err) metadata = do
   _ <- logInfo msg (Record.merge metadata {error: err})
   pure unit
+
+toServerLoad :: MemberInfo -> ServerLoad
+toServerLoad {server, load} = ServerLoad server load
 
 --------------------------------------------------------------------------------
 -- Log helpers

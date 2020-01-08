@@ -8,6 +8,7 @@ module Rtsv2.PoPDefinition
        , thisLocation
        , thisPoP
        , neighbourMap
+       , serversInThisPoPByAddress
        , PoP
        , Region
        , NeighbourMap
@@ -16,7 +17,7 @@ module Rtsv2.PoPDefinition
 import Prelude
 
 import Data.Either (Either(..), note')
-import Data.Filterable (filter)
+import Data.Filterable (filter, filterMap)
 import Data.Foldable (elem, foldl)
 import Data.List.NonEmpty as NonEmptyList
 import Data.Maybe (Maybe(..), fromMaybe)
@@ -39,7 +40,7 @@ import Pinto.Timer as Timer
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
 import Rtsv2.Names as Names
-import Shared.Types (PoPName, RegionName, ServerAddress(..), ServerLocation(..))
+import Shared.Types (LocatedServer(..), PoPName, RegionName, ServerAddress(..), ServerLocation(..))
 import Simple.JSON as JSON
 
 type PoPInfo =
@@ -108,6 +109,22 @@ thisLocation = exposeStateMember _.thisLocation
 whereIsServer :: ServerAddress -> Effect (Maybe ServerLocation)
 whereIsServer sa = Gen.doCall serverName
              \state -> pure $ CallReply (Map.lookup sa state.servers) state
+
+serversInThisPoPByAddress :: Effect (Map ServerAddress LocatedServer)
+serversInThisPoPByAddress =
+  Gen.doCall serverName
+    \state ->
+      let
+        result
+          = state.servers
+            # Map.mapMaybeWithKey (\address location@(ServerLocation pop region) ->
+                                    if pop == state.thisPoP.name then
+                                      Just $ (LocatedServer address location)
+                                    else
+                                      Nothing
+                                  )
+      in
+      pure $ CallReply result state
 
 
 init :: Config.PoPDefinitionConfig -> Effect State

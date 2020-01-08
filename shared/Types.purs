@@ -6,6 +6,8 @@ module Shared.Types
        , ServerLoad(..)
        , ServerLocation(..)
        , LocatedServer(..)
+       , locatedServerAddress
+       , locatedServerLocation
        ) where
 
 import Prelude
@@ -57,7 +59,13 @@ derive instance genericLocatedServer :: Generic LocatedServer _
 instance eqLocatedServer :: Eq LocatedServer where
   eq = genericEq
 
-data ServerLoad = ServerLoad ServerAddress Load
+locatedServerAddress :: LocatedServer -> ServerAddress
+locatedServerAddress (LocatedServer address _location) = address
+
+locatedServerLocation :: LocatedServer -> ServerLocation
+locatedServerLocation (LocatedServer _address location) = location
+
+data ServerLoad = ServerLoad LocatedServer Load
 derive instance genericServerLoad :: Generic ServerLoad _
 instance eqServerLoad :: Eq ServerLoad where
   eq = genericEq

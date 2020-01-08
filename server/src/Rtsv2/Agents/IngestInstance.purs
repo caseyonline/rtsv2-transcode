@@ -25,7 +25,7 @@ import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Agent as Agent
 import Shared.Stream (StreamAndVariant(..), toStreamId)
-import Shared.Types (LocatedServer(..), ServerAddress)
+import Shared.Types (LocatedServer(..), ServerAddress, ServerLoad(..), locatedServerAddress)
 
 type State
   = { }
@@ -83,10 +83,11 @@ launchLocalOrRemote streamAndVariant@(StreamAndVariant streamId _variantId) = do
       launchRemote streamAndVariant
 
 launchRemote :: StreamAndVariant -> Effect (Maybe ServerAddress)
-launchRemote streamAndVariant = do
+launchRemote streamAndVariant =
   -- TODO - need to make http call to idle server to request it starts an aggregator, and then retry if it returns no
-  IntraPoP.getIdleServer ((<) (wrap 70.2231222))
-
+  IntraPoP.getIdleServer predicate <#> (map locatedServerAddress)
+  where
+    predicate (ServerLoad _locatedServer load) = (load < wrap 70.2231222)
 
 --------------------------------------------------------------------------------
 -- Log helpers
