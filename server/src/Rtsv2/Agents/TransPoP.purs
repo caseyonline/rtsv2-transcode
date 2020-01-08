@@ -22,8 +22,8 @@ import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Ephemeral.Map (EMap)
 import Ephemeral.Map as EMap
-import Erl.Atom (Atom, atom)
-import Erl.Data.List (List, index, length, nil, (:))
+import Erl.Atom (Atom)
+import Erl.Data.List (List, index, length, nil, singleton, (:))
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
 import Erl.Process (spawnLink)
@@ -48,7 +48,6 @@ import Rtsv2.PoPDefinition (PoP)
 import Rtsv2.PoPDefinition as PoPDefinition
 import Serf (IpAndPort, SerfCoordinate, calcRtt)
 import Serf as Serf
-import Shared.Agent as Agent
 import Shared.Stream (StreamId)
 import Shared.Types (PoPName, ServerAddress(..), ServerLocation(..))
 import Shared.Utils (distinctRandomNumbers)
@@ -574,25 +573,29 @@ joinAllSerf state@{ config: config@{rejoinEveryMs}, serfRpcAddress, members } =
                                popsToJoin
                          )
 
-maybeLogError :: forall r b c d e. Union b (error :: e) c => Nub c d => String -> Either e r -> Record b  -> Effect Unit
-maybeLogError _ (Right _) _ = pure unit
-maybeLogError msg (Left err) metadata = do
-  _ <- logInfo msg (Record.merge metadata {error: err})
-  pure unit
-
-logInfo :: forall a. Logger a
-logInfo = doLog Logger.info
-
-logWarning :: forall a. Logger a
-logWarning = doLog Logger.warning
-
-doLog :: forall a.  Logger {domain :: List Atom, misc :: a} -> Logger a
-doLog logger msg metaData =
-  logger msg { domain: (atom (show Agent.TransPoP)) : nil
-             , misc: metaData }
-
 startScript :: String
 startScript = "scripts/startTransPoPAgent.sh"
 
 stopScript :: String
 stopScript = "scripts/stopTransPoPAgent.sh"
+
+--------------------------------------------------------------------------------
+-- Log helpers
+--------------------------------------------------------------------------------
+domains :: List Atom
+domains = serverName # Names.toDomain # singleton
+
+logInfo :: forall a. Logger a
+logInfo = domainLog Logger.info
+
+logWarning :: forall a. Logger a
+logWarning = domainLog Logger.warning
+
+domainLog :: forall a. Logger {domain :: List Atom, misc :: a} -> Logger a
+domainLog = Logger.doLog domains
+
+maybeLogError :: forall r b c d e. Union b (error :: e) c => Nub c d => String -> Either e r -> Record b  -> Effect Unit
+maybeLogError _ (Right _) _ = pure unit
+maybeLogError msg (Left err) metadata = do
+  _ <- logInfo msg (Record.merge metadata {error: err})
+  pure unit

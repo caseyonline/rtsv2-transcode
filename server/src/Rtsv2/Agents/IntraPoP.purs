@@ -36,14 +36,13 @@ import Ephemeral.Map (EMap)
 import Ephemeral.Map as EMap
 import Ephemeral.MultiMap (EMultiMap)
 import Ephemeral.MultiMap as MultiMap
-import Erl.Atom (Atom, atom)
-import Erl.Data.List (List, head, index, length, nil, singleton, sortBy, take, uncons, (:))
+import Erl.Atom (Atom)
+import Erl.Data.List (List, head, index, length, nil, singleton, sortBy, take, uncons)
 import Erl.Data.Map (Map, alter, fromFoldable, toUnfoldable, values)
 import Erl.Data.Map as Map
 import Erl.Process (Process, spawnLink)
 import Erl.Utils (Milliseconds)
 import Erl.Utils as Erl
-import Foreign (Foreign)
 import Logger (Logger)
 import Logger as Logger
 import Partial.Unsafe (unsafeCrashWith)
@@ -60,7 +59,6 @@ import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Serf (IpAndPort)
 import Serf as Serf
-import Shared.Agent as Agent
 import Shared.Stream (StreamId(..), StreamAndVariant(..))
 import Shared.Types (Load, ServerAddress(..), ServerLoad(..), LocatedServer(..))
 import Shared.Utils (distinctRandomNumbers)
@@ -560,13 +558,17 @@ maybeLogError msg (Left err) metadata = do
   _ <- logInfo msg (Record.merge metadata {error: err})
   pure unit
 
+--------------------------------------------------------------------------------
+-- Log helpers
+--------------------------------------------------------------------------------
+domains :: List Atom
+domains = serverName # Names.toDomain # singleton
+
 logInfo :: forall a. Logger a
-logInfo = doLog Logger.info
+logInfo = domainLog Logger.info
 
 logWarning :: forall a. Logger a
-logWarning = doLog Logger.warning
+logWarning = domainLog Logger.warning
 
-doLog :: forall a.  Logger {domain :: List Atom, misc :: a} -> Logger a
-doLog logger msg metaData =
-  logger msg { domain: (atom (show Agent.IntraPoP)) : nil
-             , misc: metaData }
+domainLog :: forall a. Logger {domain :: List Atom, misc :: a} -> Logger a
+domainLog = Logger.doLog domains

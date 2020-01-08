@@ -11,16 +11,15 @@ import Prelude
 import Data.Maybe (Maybe(..))
 import Data.Newtype (unwrap, wrap)
 import Effect (Effect)
-import Erl.Atom (atom)
-import Erl.Data.List (nil, (:))
+import Erl.Atom (Atom, atom)
+import Erl.Data.List (List, singleton)
 import Erl.Utils (Milliseconds, Ref, makeRef)
-import Foreign (Foreign)
+import Logger (Logger)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
-import Record as Record
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.StreamRelayInstanceSup as StreamRelayInstanceSup
 import Rtsv2.Config as Config
@@ -123,5 +122,18 @@ maybeStop ref state@{streamId
 
   | otherwise = pure $ CastNoReply state
 
-logInfo :: forall a. String -> a -> Effect Foreign
-logInfo msg metaData = Logger.info msg (Record.merge { domain: ((atom (show Agent.Egest)) : nil) } { misc: metaData })
+
+--------------------------------------------------------------------------------
+-- Log helpers
+--------------------------------------------------------------------------------
+domains :: List Atom
+domains = Agent.Egest # show # atom # singleton
+
+logInfo :: forall a. Logger a
+logInfo = domainLog Logger.info
+
+-- logWarning :: forall a. Logger a
+-- logWarning = domainLog Logger.warning
+
+domainLog :: forall a. Logger {domain :: List Atom, misc :: a} -> Logger a
+domainLog = Logger.doLog domains

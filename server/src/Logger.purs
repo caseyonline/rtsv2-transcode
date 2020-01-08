@@ -1,4 +1,3 @@
-
 module Logger
        ( emergency
        , alert
@@ -9,6 +8,7 @@ module Logger
        , info
        , debug
        , spy
+       , doLog
        , Logger
        ) where
 
@@ -17,6 +17,8 @@ import Prelude
 import Debug.Trace (class DebugWarning)
 import Effect (Effect)
 import Effect.Unsafe (unsafePerformEffect)
+import Erl.Atom (Atom)
+import Erl.Data.List (List)
 import Foreign (Foreign)
 
 
@@ -36,3 +38,7 @@ spy :: forall a. DebugWarning => String -> a -> a
 spy str a = unsafePerformEffect do
   _ <-  spyImpl str {misc : a}
   pure a
+
+doLog :: forall a. List Atom -> Logger {domain :: List Atom, misc :: a} -> Logger a
+doLog domain logger msg misc =
+  logger msg { domain: domain, misc: misc }

@@ -6,15 +6,15 @@ module Rtsv2.Agents.StreamRelayInstance
 import Prelude
 
 import Effect (Effect)
-import Erl.Atom (atom)
-import Erl.Data.List (nil, (:))
+import Erl.Atom (Atom, atom)
+import Erl.Data.List (List, nil, (:))
 import Erl.Data.Tuple (tuple2, tuple3)
 import Erl.ModuleName (NativeModuleName(..))
-import Foreign (Foreign, unsafeToForeign)
+import Foreign (unsafeToForeign)
+import Logger (Logger)
 import Logger as Logger
 import Pinto (ServerName(..), StartLinkResult)
 import Pinto.Gen as Gen
-import Record as Record
 import Shared.Agent as Agent
 import Shared.Stream (StreamId)
 
@@ -32,5 +32,17 @@ init streamId = do
   _ <- logInfo "StreamRelay starting" {streamId: streamId}
   pure {}
 
-logInfo :: forall a. String -> a -> Effect Foreign
-logInfo msg metaData = Logger.info msg (Record.merge { domain: ((atom (show Agent.StreamRelay)) : nil) } { misc: metaData })
+--------------------------------------------------------------------------------
+-- Log helpers
+--------------------------------------------------------------------------------
+domains :: List Atom
+domains = atom <$> (show Agent.StreamRelay :  "Instance" : nil)
+
+logInfo :: forall a. Logger a
+logInfo = domainLog Logger.info
+
+--logWarning :: forall a. Logger a
+--logWarning = domainLog Logger.warning
+
+domainLog :: forall a. Logger {domain :: List Atom, misc :: a} -> Logger a
+domainLog = Logger.doLog domains

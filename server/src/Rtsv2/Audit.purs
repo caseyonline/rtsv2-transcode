@@ -48,3 +48,20 @@ clientStop (StreamId streamId) = do
                       , event: toList "stop"
                       , streamId: toList streamId}
   pure unit
+
+
+--------------------------------------------------------------------------------
+-- Log helpers
+--------------------------------------------------------------------------------
+-- TODO - agree structured log format
+-- domains :: List Atom
+-- domains = atom <$> (show Agent.StreamRelay :  "Instance" : nil)
+
+-- logInfo :: forall a. Logger a
+-- logInfo = domainLog Logger.info
+
+-- --logWarning :: forall a. Logger a
+-- --logWarning = domainLog Logger.warning
+
+-- domainLog :: forall a. Logger {domain :: List Atom, misc :: a} -> Logger a
+-- domainLog = Logger.doLog domains

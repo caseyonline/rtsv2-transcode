@@ -16,6 +16,7 @@ module Rtsv2.Names
        , streamRelayInstanceSupName
        , transPoPName
        , webServerName
+       , toDomain
        )
        where
 
@@ -80,6 +81,12 @@ isRegistered :: forall a b. ServerName a b -> Effect Boolean
 isRegistered (Local name) = ErlUtils.isRegistered name
 isRegistered (Global name) = ErlUtils.isRegistered name
 isRegistered (Via (NativeModuleName m) name) = viaIsRegisteredImpl m name
+
+
+toDomain :: forall a b. ServerName a b -> Atom
+toDomain (Local name) = atom name
+toDomain (Global name) = atom name
+toDomain _ = atom "gproc domain unknown"
 
 --------------------------------------------------------------------------------
 -- Internals

@@ -9,25 +9,23 @@ import Prelude
 import Data.Maybe (Maybe(..))
 import Data.Newtype (wrap)
 import Effect (Effect)
-import Erl.Atom (atom)
-import Erl.Data.List (nil, (:))
-import Foreign (Foreign)
+import Erl.Atom (Atom, atom)
+import Erl.Data.List (List, nil, (:))
+import Logger (Logger)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen (CallResult(..))
 import Pinto.Gen as Gen
-import Record as Record
 import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
 import Rtsv2.Agents.IngestAggregatorInstanceSup as IngestAggregatorInstanceSup
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Audit as Audit
-import Rtsv2.Config (PoPDefinitionConfig)
 import Rtsv2.Load as Load
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Agent as Agent
-import Shared.Stream (StreamId(..), StreamAndVariant(..), toStreamId)
-import Shared.Types (Load, ServerAddress, LocatedServer(..))
+import Shared.Stream (StreamAndVariant(..), toStreamId)
+import Shared.Types (LocatedServer(..), ServerAddress)
 
 type State
   = { }
@@ -36,7 +34,7 @@ isActive :: StreamAndVariant -> Effect Boolean
 isActive streamAndVariant = Names.isRegistered (serverName streamAndVariant)
 
 serverName :: StreamAndVariant -> ServerName State Unit
-serverName streamAndVariant = Names.ingestInstanceName streamAndVariant
+serverName = Names.ingestInstanceName
 
 startLink :: StreamAndVariant -> Effect StartLinkResult
 startLink streamAndVariant = Gen.startLink (serverName streamAndVariant) (init streamAndVariant) Gen.defaultHandleInfo
@@ -89,5 +87,18 @@ launchRemote streamAndVariant = do
   -- TODO - need to make http call to idle server to request it starts an aggregator, and then retry if it returns no
   IntraPoP.getIdleServer ((<) (wrap 70.2231222))
 
-logInfo :: forall a. String -> a -> Effect Foreign
-logInfo msg metaData = Logger.info msg (Record.merge { domain: ((atom (show Agent.Ingest)) : nil) } { misc: metaData })
+
+--------------------------------------------------------------------------------
+-- Log helpers
+--------------------------------------------------------------------------------
+domains :: List Atom
+domains = atom <$> (show Agent.Ingest :  "Instance" : nil)
+
+logInfo :: forall a. Logger a
+logInfo = domainLog Logger.info
+
+--logWarning :: forall a. Logger a
+--logWarning = domainLog Logger.warning
+
+domainLog :: forall a. Logger {domain :: List Atom, misc :: a} -> Logger a
+domainLog = Logger.doLog domains

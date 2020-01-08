@@ -8,15 +8,14 @@ import Prelude
 import Data.Maybe (Maybe(..), fromMaybe, isJust)
 import Data.Newtype (unwrap)
 import Effect (Effect)
-import Erl.Atom (atom)
+import Erl.Atom (Atom)
 import Erl.Cowboy.Req (Req)
-import Erl.Data.List (nil, (:))
+import Erl.Data.List (List, nil, singleton, (:))
 import Erl.Data.Tuple (Tuple2, Tuple4, tuple2, tuple4, uncurry4)
-import Foreign (Foreign)
-import Logger (info) as Logger
+import Logger (Logger)
+import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen as Gen
-import Record as Record
 import Rtsv2.Agents.IntraPoP as IntraPoPAgent
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
@@ -111,5 +110,17 @@ textWriter :: forall a. String -> Tuple2 String (Req -> a -> (Effect (RestResult
 textWriter text = tuple2 "text/plain" (\req state -> Rest.result text req state)
 
 
-logInfo :: forall a. String -> a -> Effect Foreign
-logInfo msg metaData = Logger.info msg (Record.merge { domain: ((atom "Web") : nil) } { misc: metaData })
+--------------------------------------------------------------------------------
+-- Log helpers
+--------------------------------------------------------------------------------
+domains :: List Atom
+domains = serverName # Names.toDomain # singleton
+
+logInfo :: forall a. Logger a
+logInfo = domainLog Logger.info
+
+--logWarning :: forall a. Logger a
+--logWarning = domainLog Logger.warning
+
+domainLog :: forall a. Logger {domain :: List Atom, misc :: a} -> Logger a
+domainLog = Logger.doLog domains

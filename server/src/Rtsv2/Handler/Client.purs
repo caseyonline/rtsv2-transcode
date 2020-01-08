@@ -6,24 +6,23 @@ module Rtsv2.Handler.Client
 import Prelude
 
 import Data.Either (Either(..))
-import Data.Foldable (any, minimum)
+import Data.Foldable (any)
 import Data.Maybe (Maybe(..), fromMaybe')
-import Data.Newtype (unwrap, wrap)
+import Data.Newtype (wrap)
 import Effect (Effect)
-import Erl.Atom (atom)
-import Erl.Cowboy.Handlers.Rest (moved, notMoved)
-import Erl.Cowboy.Req (binding, header, path, setHeader)
-import Erl.Data.List (List, filter, head, nil, null, (:))
+import Erl.Atom (Atom, atom)
+import Erl.Cowboy.Req (binding)
+import Erl.Data.List (List, filter, head, nil, (:))
 import Erl.Data.Tuple (tuple2)
+import Logger (Logger)
 import Logger as Logger
 import Rtsv2.Agents.EgestInstance as EgestInstance
 import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Audit as Audit
 import Rtsv2.PoPDefinition as PoPDefinition
-import Rtsv2.Utils (member)
 import Shared.Stream (StreamId(..))
-import Shared.Types (ServerAddress(..), ServerLoad(..), LocatedServer(..))
+import Shared.Types (LocatedServer(..), ServerAddress, ServerLoad(..))
 import Shared.Utils (lazyCrashIfMissing)
 import Stetson (StetsonHandler)
 import Stetson.Rest as Rest
@@ -72,12 +71,12 @@ findEgestForStream streamId = do
   then pure Local
   else
    case pickInstance serversWithCapacity of
-     Just server -> 
+     Just server ->
        pure $ Remote server
 
      Nothing ->
        do
-         relayForStream <- findRelayForStream streamId 
+         relayForStream <- findRelayForStream streamId
 
          pure $
            case relayForStream of
@@ -88,7 +87,7 @@ findEgestForStream streamId = do
                | serverAddress == thisNode -> Local
                | otherwise -> Remote serverAddress
 
-  where 
+  where
     extractAddress (ServerLoad serverAddress _) = serverAddress
     pickInstance = map extractAddress <<< head
 
@@ -225,3 +224,18 @@ clientStop =
       _ <- Audit.clientStop streamId
       _ <- EgestInstance.removeClient streamId
       Rest.result "" req state
+
+--------------------------------------------------------------------------------
+-- Log helpers
+--------------------------------------------------------------------------------
+domains :: List Atom
+domains = atom <$> ("Client" :  "Instance" : nil)
+
+logInfo :: forall a. Logger a
+logInfo = domainLog Logger.info
+
+--logWarning :: forall a. Logger a
+--logWarning = domainLog Logger.warning
+
+domainLog :: forall a. Logger {domain :: List Atom, misc :: a} -> Logger a
+domainLog = Logger.doLog domains

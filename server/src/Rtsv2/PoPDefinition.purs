@@ -23,20 +23,19 @@ import Data.Maybe (Maybe(..), fromMaybe)
 import Data.String (joinWith)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
-import Erl.Atom (Atom, atom)
-import Erl.Data.List (List, nil, (:))
+import Erl.Atom (Atom)
+import Erl.Data.List (List, nil, singleton, (:))
 import Erl.Data.Map (Map, mapMaybeWithKey)
 import Erl.Data.Map as Map
 import File as File
-import Foreign (Foreign, ForeignError(..), MultipleErrors)
+import Foreign (ForeignError(..), MultipleErrors)
+import Logger (Logger)
 import Logger as Logger
 import Partial.Unsafe (unsafeCrashWith)
 import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
-import Prim.Row (class Nub)
-import Record as Record
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
 import Rtsv2.Names as Names
@@ -117,14 +116,14 @@ init config = do
   eNeighbourMap <- readNeighbourMap config
   nMap <-  case eNeighbourMap of
     Left e -> do
-               _ <- Logger.warning "Failed to process WAN definition file" {misc: e}
+               _ <- logWarning "Failed to process WAN definition file" {misc: e}
                unsafeCrashWith "invalid WAN definition file"
     Right r -> pure r
 
   ePopInfo <- readAndProcessPoPDefinition config hostname nMap
   popInfo <-  case ePopInfo of
     Left e -> do
-               _ <- Logger.warning "Failed to process pop definition file" {misc: e}
+               _ <- logWarning "Failed to process pop definition file" {misc: e}
                unsafeCrashWith "invalid pop definition file"
     Right r -> pure r
   let
@@ -152,13 +151,13 @@ handleInfo msg state =
       do
         eNeighbourMap <- readNeighbourMap state.config
         newState <-  case eNeighbourMap of
-          Left e -> do _ <- Logger.warning "Failed to process WAN definition file" {misc: e}
+          Left e -> do _ <- logWarning "Failed to process WAN definition file" {misc: e}
                        pure state
           Right nMap -> do
             ePopInfo <- readAndProcessPoPDefinition state.config state.thisNode nMap
             case ePopInfo of
 
-              Left e -> do _ <- Logger.warning "Failed to process pop definition file" {misc: e}
+              Left e -> do _ <- logWarning "Failed to process pop definition file" {misc: e}
                            pure state
               Right popInfo@{thisLocation : newPoP}
                 | newPoP == state.thisLocation  ->
@@ -168,7 +167,7 @@ handleInfo msg state =
                                , otherPoPs = popInfo.otherPoPs
                                }
                 | otherwise ->
-                    do _ <- Logger.warning "This node seems to have changed pop - ignoring" { currentPoP: state.thisLocation
+                    do _ <- logWarning "This node seems to have changed pop - ignoring" { currentPoP: state.thisLocation
                                                                                             , filePoP : newPoP
                                                                                             }
                        pure state
@@ -284,7 +283,7 @@ lookupPop regions (ServerLocation pop region) =
 
 finalise :: State -> Either MultipleErrors State -> Effect State
 finalise state (Left errors) = do
-  _ <- Logger.warning "Failed to process pop definition file" {misc: errors}
+  _ <- logWarning "Failed to process pop definition file" {misc: errors}
   pure state
 finalise _ (Right state) =
   pure state
@@ -292,7 +291,7 @@ finalise _ (Right state) =
 maybeLog :: forall a. String -> Maybe a -> Effect (Maybe a)
 maybeLog _ val@(Just _) = pure $ val
 maybeLog msg Nothing = do
-  _ <- Logger.warning msg {}
+  _ <- logWarning msg {}
   pure $ Nothing
 
 serverName :: ServerName State Msg
@@ -302,6 +301,17 @@ exposeStateMember :: forall a. (State -> a) -> Effect a
 exposeStateMember member = Gen.doCall serverName
   \state -> pure $ CallReply (member state) state
 
-logInfo :: forall a b. Nub (domain :: List Atom | a) b =>  String -> Record a -> Effect Foreign
-logInfo msg metaData =
-  Logger.info msg (Record.merge {domain : ((atom "PopDefinition"): nil)} {misc: metaData})
+--------------------------------------------------------------------------------
+-- Log helpers
+--------------------------------------------------------------------------------
+domains :: List Atom
+domains = serverName # Names.toDomain # singleton
+
+logInfo :: forall a. Logger a
+logInfo = domainLog Logger.info
+
+logWarning :: forall a. Logger a
+logWarning = domainLog Logger.warning
+
+domainLog :: forall a. Logger {domain :: List Atom, misc :: a} -> Logger a
+domainLog = Logger.doLog domains

@@ -3,5 +3,5 @@
 
 ((purescript-mode
    (psc-ide-codegen "corefn")
-   (psc-ide-port . 4243)
+   ;;(psc-ide-port . 4243)
    ))

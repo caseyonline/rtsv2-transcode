@@ -8,18 +8,16 @@ module Rtsv2.Agents.EgestInstanceSup
 import Prelude
 
 import Effect (Effect)
-import Erl.Atom (atom)
-import Erl.Data.List (nil, (:))
-import Foreign (Foreign)
+import Erl.Atom (Atom)
+import Erl.Data.List (List, nil, singleton, (:))
+import Logger (Logger)
 import Logger as Logger
 import Pinto (SupervisorName)
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStartTemplate, childType)
 import Pinto.Sup as Sup
-import Record as Record
 import Rtsv2.Agents.EgestInstance as EgestInstance
 import Rtsv2.Names as Names
-import Shared.Agent as Agent
 import Shared.Stream (StreamId)
 
 serverName :: SupervisorName
@@ -66,5 +64,17 @@ init = do
 childTemplate :: Pinto.ChildTemplate StreamId
 childTemplate = Pinto.ChildTemplate (EgestInstance.startLink)
 
-logInfo :: forall a. String -> a -> Effect Foreign
-logInfo msg metaData = Logger.info msg (Record.merge { domain: ((atom (show Agent.Egest)) : nil) } { misc: metaData })
+--------------------------------------------------------------------------------
+-- Log helpers
+--------------------------------------------------------------------------------
+domains :: List Atom
+domains = serverName # Names.toDomain # singleton
+
+logInfo :: forall a. Logger a
+logInfo = domainLog Logger.info
+
+logWarning :: forall a. Logger a
+logWarning = domainLog Logger.warning
+
+domainLog :: forall a. Logger {domain :: List Atom, misc :: a} -> Logger a
+domainLog = Logger.doLog domains

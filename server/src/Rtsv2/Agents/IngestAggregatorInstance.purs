@@ -9,22 +9,21 @@ module Rtsv2.Agents.IngestAggregatorInstance
 import Prelude
 
 import Effect (Effect)
-import Erl.Atom (atom)
+import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, toUnfoldable, (:))
 import Erl.Data.Map (Map, insert, keys)
 import Erl.Data.Map as Map
-import Foreign (Foreign)
+import Logger (Logger)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
-import Record as Record
 import Rtsv2.Agents.IntraPoP (announceStreamIsAvailable, announceStreamStopped)
 import Rtsv2.Config as Config
 import Rtsv2.Names as Names
 import Shared.Agent as Agent
-import Shared.Stream (StreamId, StreamAndVariant(..), toStreamId)
+import Shared.Stream (StreamAndVariant, StreamId, toStreamId)
 
 type State
   = { config :: Config.IngestAggregatorAgentConfig
@@ -46,7 +45,7 @@ addVariant streamVariantId = Gen.call (serverName (toStreamId streamVariantId))
   \state@{streamVariants} ->
   CallReply unit state{streamVariants = insert streamVariantId unit streamVariants}
 
--- TODO - would rather a list, but it doesn't call writeForeign on StreamVariantId 
+-- TODO - would rather a list, but it doesn't call writeForeign on StreamVariantId
 getState :: StreamId -> Effect (Array StreamAndVariant)
 getState streamId = Gen.call (serverName streamId)
   \state@{streamVariants} ->
@@ -84,5 +83,17 @@ handleTick state@{streamId} = do
   _ <- announceStreamIsAvailable streamId
   pure state
 
-logInfo :: forall a. String -> a -> Effect Foreign
-logInfo msg metaData = Logger.info msg (Record.merge { domain: ((atom (show Agent.IngestAggregator)) : nil) } { misc: metaData })
+--------------------------------------------------------------------------------
+-- Log helpers
+--------------------------------------------------------------------------------
+domains :: List Atom
+domains = atom <$> (show Agent.IngestAggregator :  "Instance" : nil)
+
+logInfo :: forall a. Logger a
+logInfo = domainLog Logger.info
+
+logWarning :: forall a. Logger a
+logWarning = domainLog Logger.warning
+
+domainLog :: forall a. Logger {domain :: List Atom, misc :: a} -> Logger a
+domainLog = Logger.doLog domains
