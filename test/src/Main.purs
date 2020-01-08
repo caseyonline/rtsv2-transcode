@@ -156,13 +156,17 @@ main =
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestAggregator
             pure unit
-          -- it "ingest aggregation on non-ingest node" do
-          --   let
-          --     node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/mmddev001/slot1_500/start"
-          --     node1ingestLoad = "http://172.16.169.1:3000/api/load"
-          --   _ <- assertStatusCode 204 =<< AX.post ResponseFormat.string node1ingestLoad SomeLoadJsonHere
-          --   _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
-          -- TODO - assert that ingest aggregator is on node2 (or 3) - using new /api/agents/ingestAggregator endpoint
+          it "ingest aggregation on non-ingest node" do
+            let
+              node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/mmddev001/slot1_500/start"
+              node1ingestLoad = "http://172.16.169.1:3000/api/load"
+              node3ingestLoad = "http://172.16.169.3:3000/api/load"
+            _ <- assertStatusCode 204 =<< AX.post ResponseFormat.string node1ingestLoad (jsonBody "{\"load\": 60.0}")
+            _ <- assertStatusCode 204 =<< AX.post ResponseFormat.string node3ingestLoad (jsonBody "{\"load\": 60.0}")            
+            _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
+            _ <- delay (Milliseconds 1000.0)
+            pure unit
+          --TODO - assert that ingest aggregator is on node2 (or 3) - using new /api/agents/ingestAggregator endpoint
           it "2nd ingest aggregation on ingest node" do
             let
               node1ingestStart1 = "http://172.16.169.1:3000/api/client/:canary/ingest/mmddev001/slot1_500/start"

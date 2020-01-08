@@ -51,6 +51,7 @@ init args = do
     # Stetson.route "/api/healthCheck" HealthEndpoint.healthCheck
     # Stetson.route "/api/load" LoadEndpoint.load
     # Stetson.route "/api/agents/ingestAggregator/:stream_id" IngestAggregatorEndpoint.ingestAggregator
+    # Stetson.route "/api/agents/ingestAggregator" IngestAggregatorEndpoint.ingestAggregators
 
     # Stetson.route "/api/client/:canary/ingest/:short_name/:variant_id/start" IngestEndpoint.ingestStart
     # Stetson.route "/api/client/:canary/ingest/:short_name/:variant_id/stop" IngestEndpoint.ingestStop

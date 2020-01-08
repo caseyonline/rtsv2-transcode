@@ -6,6 +6,7 @@ module Rtsv2.Agents.IngestInstance
 
 import Prelude
 
+import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Data.Newtype (wrap)
 import Data.Tuple (Tuple(..))
@@ -13,6 +14,7 @@ import Effect (Effect)
 import Erl.Atom (atom)
 import Erl.Data.List (nil, (:))
 import Foreign (Foreign)
+import Logger (spy)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen (CallResult(..))
@@ -29,7 +31,9 @@ import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Agent as Agent
 import Shared.LlnwApiTypes (StreamDetails)
 import Shared.Stream (StreamVariantId, toStreamId)
-import Shared.Types (ServerAddress)
+import Shared.Types (ServerAddress(..))
+import Simple.JSON as JSON
+import SpudGun as SpudGun
 
 type State
   = { }
@@ -46,7 +50,7 @@ startLink (Tuple streamDetails streamVariantId) = Gen.startLink (serverName stre
 stopIngest :: StreamVariantId -> Effect Unit
 stopIngest streamVariantId =
   Gen.doCall (serverName streamVariantId) \state -> do
-    -- TODO - single ingest can't stop the aggregator
+    -- TODO - single ingest can't stop the aggregator - just remove this variant and allow the aggregator to stop when it deems fit
     _ <- IngestAggregatorInstance.stopAggregator (toStreamId streamVariantId)
     _ <- Audit.ingestStop streamVariantId
     pure $ CallStop unit state
@@ -88,8 +92,20 @@ launchLocalOrRemote streamDetails streamVariantId = do
 
 launchRemote :: StreamDetails -> StreamVariantId -> Effect (Maybe ServerAddress)
 launchRemote streamDetails streamVariantId = do
-  -- TODO - need to make http call to idle server to request it starts an aggregator, and then retry if it returns no
-  IntraPoP.getIdleServer
+  candidate <- IntraPoP.getIdleServer
+  case (spy "candidate" candidate) of
+    Nothing ->
+      -- TODO - retry on timer?
+      pure $ candidate
+    Just (ServerAddress addr) -> do
+      let
+        -- TODO - functions to make URLs from ServerAddress
+        url = "http://" <> addr <> ":3000/api/agents/ingestAggregator"
+      restResult <- SpudGun.post url (JSON.writeJSON streamDetails)
+      case restResult of
+        -- TODO - retry on timer?
+        Left _ -> pure $ candidate
+        Right _ -> pure $ candidate
 
 logInfo :: forall a. String -> a -> Effect Foreign
 logInfo msg metaData = Logger.info msg (Record.merge { domain: ((atom (show Agent.Ingest)) : nil) } { misc: metaData })
