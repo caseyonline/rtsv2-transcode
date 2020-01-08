@@ -17,7 +17,7 @@ import Erl.Data.List (nil, (:))
 import Erl.Data.Map (Map, fromFoldable, lookup)
 import Erl.Data.Tuple (tuple2)
 import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
-import Rtsv2.LlnwApiTypes (AuthType, PublishCredentials(..), SlotPublishAuthType(..), StreamAuth, StreamDetails, StreamIngestProtocol(..), StreamPublish, StreamRole(..), StreamConnection)
+import Shared.LlnwApiTypes (AuthType, PublishCredentials(..), SlotPublishAuthType(..), StreamAuth, StreamDetails, StreamIngestProtocol(..), StreamPublish, StreamRole(..), StreamConnection)
 import Simple.JSON (readJSON, writeJSON)
 import Stetson (Authorized(..), HttpMethod(..), StetsonHandler)
 import Stetson.Rest as Rest
@@ -48,19 +48,42 @@ streamPublishDb =
   fromFoldable (Tuple { host: "172.16.171.5"
                       , protocol: Rtmp
                       , shortname: "mmddev001"
-                      , streamName: "my-cool-slot_1000"
+                      , streamName: "slot1_1000"
                       , username: "user" }
                       { role: Primary
-                      , slot : { name: "my-cool-slot"
-                                , subscribeValidation: false
-                                , profiles: ({ name: "100-",
-                                               streamName: "my-cool-slot_1000",
-                                               bitrate: 1000000} : nil)
+                      , slot : { name: "slot1"
+                               , subscribeValidation: false
+                               , profiles: [{ name: "high",
+                                              streamName: "slot1_1000",
+                                              bitrate: 1000000}
+                                           , { name: "low",
+                                               streamName: "slot1_500",
+                                               bitrate: 500000}
+                                           ]
                               }
-                      , outputFormats : nil
-                      , push : nil
+                      , outputFormats : []
+                      , push : []
                       }
-                : nil)
+                : Tuple { host: "172.16.171.5"
+                        , protocol: Rtmp
+                        , shortname: "mmddev001"
+                        , streamName: "slot1_500"
+                        , username: "user" }
+                        { role: Primary
+                        , slot : { name: "slot1"
+                                 , subscribeValidation: false
+                                 , profiles: [{ name: "high",
+                                                streamName: "slot1_1000",
+                                                bitrate: 1000000}
+                                             , { name: "low",
+                                                 streamName: "slot1_500",
+                                                 bitrate: 500000}
+                                             ]
+                                 }
+                        , outputFormats : []
+                        , push : []
+                        }
+                : nil )
 
 type StreamAuthTypeState = { streamConnection :: Maybe StreamConnection
                            , authType :: Maybe AuthType

@@ -10,7 +10,7 @@ import Prelude
 
 import Effect (Effect)
 import Erl.Atom (atom)
-import Erl.Data.List (List, nil, toUnfoldable, (:))
+import Erl.Data.List (nil, toUnfoldable, (:))
 import Erl.Data.Map (Map, insert, keys)
 import Erl.Data.Map as Map
 import Foreign (Foreign)
@@ -24,12 +24,15 @@ import Rtsv2.Agents.IntraPoP (announceStreamIsAvailable, announceStreamStopped)
 import Rtsv2.Config as Config
 import Rtsv2.Names as Names
 import Shared.Agent as Agent
-import Shared.Stream (StreamId, StreamVariantId(..), toStreamId)
+import Shared.LlnwApiTypes (StreamDetails)
+import Shared.Stream (StreamId(..), StreamVariantId, toStreamId)
+import Shared.Types (IngestAggregatorPublicState)
 
 type State
   = { config :: Config.IngestAggregatorAgentConfig
     , streamId :: StreamId
-    , streamVariants :: Map StreamVariantId Unit
+    , streamDetails :: StreamDetails
+    , activeStreamVariants :: Map StreamVariantId Unit
     }
 
 data Msg
@@ -43,14 +46,13 @@ serverName = Names.ingestAggregatorInstanceName
 
 addVariant :: StreamVariantId -> Effect Unit
 addVariant streamVariantId = Gen.call (serverName (toStreamId streamVariantId))
-  \state@{streamVariants} ->
-  CallReply unit state{streamVariants = insert streamVariantId unit streamVariants}
+  \state@{activeStreamVariants} ->
+  CallReply unit state{activeStreamVariants = insert streamVariantId unit activeStreamVariants}
 
--- TODO - would rather a list, but it doesn't call writeForeign on StreamVariantId 
-getState :: StreamId -> Effect (Array StreamVariantId)
+getState :: StreamId -> Effect (IngestAggregatorPublicState)
 getState streamId = Gen.call (serverName streamId)
-  \state@{streamVariants} ->
-  CallReply (toUnfoldable (keys streamVariants)) state
+  \state@{streamDetails, activeStreamVariants} ->
+  CallReply {streamDetails, activeStreamVariants: (toUnfoldable (keys activeStreamVariants))} state
 
 stopAggregator :: StreamId -> Effect Unit
 stopAggregator streamId = do
@@ -59,20 +61,22 @@ stopAggregator streamId = do
     _ <- announceStreamStopped streamId
     pure $ CallStop unit state
 
-startLink :: StreamId -> Effect StartLinkResult
-startLink streamId = Gen.startLink (serverName streamId) (init streamId) handleInfo
+startLink :: StreamDetails -> Effect StartLinkResult
+startLink streamDetails@{slot : {name}} = Gen.startLink (serverName (StreamId name)) (init streamDetails) handleInfo
 
-init :: StreamId -> Effect State
-init streamId = do
+init :: StreamDetails -> Effect State
+init streamDetails = do
   _ <- logInfo "Ingest Aggregator starting" {streamId: streamId}
   config <- Config.ingestAggregatorAgentConfig
   _ <- Timer.sendEvery (serverName streamId) config.streamAvailableAnnounceMs Tick
   _ <- announceStreamIsAvailable streamId
-
   pure { config : config
        , streamId
-       , streamVariants : Map.empty
+       , streamDetails
+       , activeStreamVariants : Map.empty
        }
+  where
+    streamId = StreamId streamDetails.slot.name
 
 handleInfo :: Msg -> State -> Effect (CastResult State)
 handleInfo msg state =

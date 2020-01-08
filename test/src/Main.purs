@@ -27,6 +27,7 @@ import Effect.Exception (error)
 import Foreign (F)
 import OsCmd (runProc)
 import Shared.Stream (StreamVariantId(..))
+import Shared.Types (IngestAggregatorPublicState)
 import Simple.JSON (class ReadForeign, E)
 import Simple.JSON as SimpleJSON
 import Test.Spec (after_, before_, describe, it, itOnly)
@@ -59,17 +60,19 @@ main =
         describe "two node setup" do
           it "client requests stream on ingest node" do
             let
-              node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/stream1/low/start"
-              node1edge = "http://172.16.169.1:3000/api/client/canary/client/stream1/start"
+              node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/mmddev001/slot1_500/start"
+              node1edge = "http://172.16.169.1:3000/api/client/canary/client/slot1/start"
             _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node1edge
+            _ <- AX.get ResponseFormat.string node1ingestStart
+            _ <- delay (Milliseconds 500.0)
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
             _ <- delay (Milliseconds 500.0)
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1edge
             pure unit
           it "client requests stream on non-ingest node" do
             let
-              node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/stream1/low/start"
-              node2edge = "http://172.16.169.2:3000/api/client/canary/client/stream1/start"
+              node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/mmddev001/slot1_500/start"
+              node2edge = "http://172.16.169.2:3000/api/client/canary/client/slot1/start"
             _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node2edge
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
             _ <- delay (Milliseconds 1000.0)
@@ -77,8 +80,8 @@ main =
             pure unit
           it "client requests stream on other pop" do
             let
-              node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/stream1/low/start"
-              node2edge = "http://172.16.170.2:3000/api/client/canary/client/stream1/start"
+              node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/mmddev001/slot1_500/start"
+              node2edge = "http://172.16.170.2:3000/api/client/canary/client/slot1/start"
             _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node2edge
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
             _ <- delay (Milliseconds 2000.0)
@@ -86,9 +89,9 @@ main =
             pure unit
           it "client requests stream on 2nd node on ingest pop" do
             let
-              node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/stream1/low/start"
-              node2edge = "http://172.16.169.2:3000/api/client/canary/client/stream1/start"
-              node3edge = "http://172.16.169.3:3000/api/client/canary/client/stream1/start"
+              node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/mmddev001/slot1_500/start"
+              node2edge = "http://172.16.169.2:3000/api/client/canary/client/slot1/start"
+              node3edge = "http://172.16.169.3:3000/api/client/canary/client/slot1/start"
             _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node2edge
             _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node3edge
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
@@ -99,10 +102,10 @@ main =
             pure unit
           it "client ingest starts and stops" do
             let
-              node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/stream1/low/start"
-              node1ingestStop = "http://172.16.169.1:3000/api/client/:canary/ingest/stream1/low/stop"
-              node2edge = "http://172.16.169.2:3000/api/client/canary/client/stream1/start"
-              node3edge = "http://172.16.170.2:3000/api/client/canary/client/stream1/start"
+              node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/mmddev001/slot1_500/start"
+              node1ingestStop = "http://172.16.169.1:3000/api/client/:canary/ingest/mmddev001/slot1_500/stop"
+              node2edge = "http://172.16.169.2:3000/api/client/canary/client/slot1/start"
+              node3edge = "http://172.16.170.2:3000/api/client/canary/client/slot1/start"
             _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node2edge
             _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node3edge
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
@@ -116,13 +119,13 @@ main =
             pure unit
           it "client edge starts and stops" do
             let
-              node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/stream1/low/start"
-              node2edgeStart = "http://172.16.169.2:3000/api/client/canary/client/stream1/start"
-              node2edgeStop = "http://172.16.169.2:3000/api/client/canary/client/stream1/stop"
-              node3edgeStart = "http://172.16.169.3:3000/api/client/canary/client/stream1/start"
-              node3edgeStop = "http://172.16.169.3:3000/api/client/canary/client/stream1/stop"
-              node2edgeCount = "http://172.16.169.2:3000/api/client/canary/edge/stream1/clientCount"
-              node3edgeCount = "http://172.16.169.3:3000/api/client/canary/edge/stream1/clientCount"
+              node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/mmddev001/slot1_500/start"
+              node2edgeStart = "http://172.16.169.2:3000/api/client/canary/client/slot1/start"
+              node2edgeStop = "http://172.16.169.2:3000/api/client/canary/client/slot1/stop"
+              node3edgeStart = "http://172.16.169.3:3000/api/client/canary/client/slot1/start"
+              node3edgeStop = "http://172.16.169.3:3000/api/client/canary/client/slot1/stop"
+              node2edgeCount = "http://172.16.169.2:3000/api/client/canary/edge/slot1/clientCount"
+              node3edgeCount = "http://172.16.169.3:3000/api/client/canary/edge/slot1/clientCount"
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
             _ <- delay (Milliseconds 1000.0)
             _ <- assertHeader (Tuple "x-servedby" "172.16.169.2") =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node2edgeStart
@@ -138,36 +141,37 @@ main =
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node2edgeStop
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node2edgeStop
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node2edgeStop
-            _ <- delay (Milliseconds 3000.0) -- allow edge linger time to expire...
+            _ <- delay (Milliseconds 3000.0) -- alslot1_500 edge linger time to expire...
             _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node2edgeCount
             _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node3edgeCount
             _ <- delay (Milliseconds 1000.0)
             _ <- assertHeader (Tuple "x-servedby" "172.16.169.3") =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node3edgeStart
             _ <- assertBody "1" =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node3edgeCount
             pure unit
+            -- TODO - we want the ingestAggregator status thing to return more info (slot details), which also means our test ingest start will need to get them from the limelight API
           it "ingest aggregation on ingest node" do
             let
-              node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/stream1/low/start"
-              node1ingestAggregator = "http://172.16.169.1:3000/api/agents/ingestAggregator/stream1"
+              node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/mmddev001/slot1_500/start"
+              node1ingestAggregator = "http://172.16.169.1:3000/api/agents/ingestAggregator/slot1"
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestAggregator
             pure unit
           -- it "ingest aggregation on non-ingest node" do
           --   let
-          --     node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/stream1/low/start"
+          --     node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/mmddev001/slot1_500/start"
           --     node1ingestLoad = "http://172.16.169.1:3000/api/load"
           --   _ <- assertStatusCode 204 =<< AX.post ResponseFormat.string node1ingestLoad SomeLoadJsonHere
           --   _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
           -- TODO - assert that ingest aggregator is on node2 (or 3) - using new /api/agents/ingestAggregator endpoint
           it "2nd ingest aggregation on ingest node" do
             let
-              node1ingestStart1 = "http://172.16.169.1:3000/api/client/:canary/ingest/stream1/low/start"
-              node1ingestStart2 = "http://172.16.169.1:3000/api/client/:canary/ingest/stream1/high/start"
-              node1ingestAggregator = "http://172.16.169.1:3000/api/agents/ingestAggregator/stream1"
+              node1ingestStart1 = "http://172.16.169.1:3000/api/client/:canary/ingest/mmddev001/slot1_500/start"
+              node1ingestStart2 = "http://172.16.169.1:3000/api/client/:canary/ingest/mmddev001/slot1_1000/start"
+              node1ingestAggregator = "http://172.16.169.1:3000/api/agents/ingestAggregator/slot1"
               node1ingestLoad = "http://172.16.169.1:3000/api/load"
-              assertAggregators :: E (Array StreamVariantId) -> Boolean
+              assertAggregators :: E IngestAggregatorPublicState -> Boolean
               assertAggregators (Left _) = false
-              assertAggregators (Right streamVariants) = [StreamVariantId "stream1" "high", StreamVariantId "stream1" "low"] == (sort streamVariants)
+              assertAggregators (Right {activeStreamVariants}) = [StreamVariantId "slot1" "slot1_1000", StreamVariantId "slot1" "slot1_500"] == (sort activeStreamVariants)
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart1
             _ <- assertStatusCode 204 =<< AX.post ResponseFormat.string node1ingestLoad (jsonBody "{\"load\": 60.0}")
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart2

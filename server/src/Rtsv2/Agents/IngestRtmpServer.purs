@@ -11,17 +11,18 @@ import Data.Either (Either(..), hush)
 import Data.Foldable (any)
 import Data.List.NonEmpty (singleton)
 import Data.Maybe (Maybe)
+import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Foreign (Foreign, ForeignError(..))
 import Pinto (ServerName)
 import Pinto as Pinto
 import Pinto.Gen as Gen
-import Rtsv2.Names as Names
-import Rtsv2.Config as Config
-import Rtsv2.Env as Env
 import Rtsv2.Agents.IngestInstance as IngestInstance
 import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
-import Rtsv2.LlnwApiTypes (AuthType, PublishCredentials, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamPublish, StreamAuth)
+import Rtsv2.Config as Config
+import Rtsv2.Env as Env
+import Shared.LlnwApiTypes (AuthType, PublishCredentials, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamPublish, StreamAuth)
+import Rtsv2.Names as Names
 import Serf (Ip)
 import Shared.Stream (StreamVariantId(..))
 import Simple.JSON as JSON
@@ -66,16 +67,18 @@ init _ = do
   _ <- startServerImpl Left (Right unit) interfaceIp port nbAcceptors callbacks
   pure $ {}
   where
-    ingestStarted { role
-                  , slot : {name : streamId, profiles}
-                  } streamVariantId =
+    ingestStarted :: StreamDetails -> String -> Effect Boolean
+    ingestStarted streamDetails@{ role
+                                , slot : {name : streamId, profiles}
+                                } streamVariantId =
       case any (\{streamName: slotStreamName} -> slotStreamName == streamVariantId) profiles of
         true ->
-          IngestInstanceSup.startIngest (StreamVariantId streamId streamVariantId)
+          IngestInstanceSup.startIngest streamDetails (StreamVariantId streamId streamVariantId)
           <#> const true
         false ->
           pure $ false
 
+    ingestStopped :: StreamDetails -> String -> Effect Unit
     ingestStopped { role
                    , slot : {name : streamId}} streamVariantId = IngestInstance.stopIngest (StreamVariantId streamId streamVariantId)
 

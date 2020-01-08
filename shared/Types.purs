@@ -3,11 +3,14 @@ module Shared.Types
        , ServerAddress(..)
        , RegionName(..)
        , PoPName(..)
+       , IngestAggregatorPublicState
        ) where
 
 import Prelude
 
 import Data.Newtype (class Newtype)
+import Shared.LlnwApiTypes (StreamDetails)
+import Shared.Stream (StreamVariantId(..))
 import Simple.JSON (class ReadForeign, class WriteForeign)
 
 newtype ServerAddress = ServerAddress String
@@ -41,3 +44,9 @@ derive newtype instance ordLoad :: Ord Load
 derive newtype instance showLoad :: Show Load
 derive newtype instance readForeignLoad :: ReadForeign Load
 derive newtype instance writeForeignLoad :: WriteForeign Load
+
+type IngestAggregatorPublicState
+   = { streamDetails :: StreamDetails
+     , activeStreamVariants :: Array StreamVariantId
+     }
+

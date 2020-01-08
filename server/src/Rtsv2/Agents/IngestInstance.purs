@@ -8,6 +8,7 @@ import Prelude
 
 import Data.Maybe (Maybe(..))
 import Data.Newtype (wrap)
+import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Erl.Atom (atom)
 import Erl.Data.List (nil, (:))
@@ -26,6 +27,7 @@ import Rtsv2.Load as Load
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Agent as Agent
+import Shared.LlnwApiTypes (StreamDetails)
 import Shared.Stream (StreamVariantId, toStreamId)
 import Shared.Types (ServerAddress)
 
@@ -38,8 +40,8 @@ isActive streamVariantId = Names.isRegistered (serverName streamVariantId)
 serverName :: StreamVariantId -> ServerName State Unit
 serverName streamVariantId = Names.ingestInstanceName streamVariantId
 
-startLink :: StreamVariantId -> Effect StartLinkResult
-startLink streamVariantId = Gen.startLink (serverName streamVariantId) (init streamVariantId) Gen.defaultHandleInfo
+startLink :: Tuple StreamDetails StreamVariantId -> Effect StartLinkResult
+startLink (Tuple streamDetails streamVariantId) = Gen.startLink (serverName streamVariantId) (init streamDetails streamVariantId) Gen.defaultHandleInfo
 
 stopIngest :: StreamVariantId -> Effect Unit
 stopIngest streamVariantId =
@@ -49,12 +51,12 @@ stopIngest streamVariantId =
     _ <- Audit.ingestStop streamVariantId
     pure $ CallStop unit state
 
-init :: StreamVariantId -> Effect State
-init streamVariantId = do
+init :: StreamDetails -> StreamVariantId -> Effect State
+init streamDetails streamVariantId = do
   _ <- logInfo "Ingest starting" {streamVariantId: streamVariantId}
   thisNode <- PoPDefinition.thisNode
   _ <- Audit.ingestStart streamVariantId
-  maybeAggregator <- getAggregator streamVariantId
+  maybeAggregator <- getAggregator streamDetails streamVariantId
   _ <- addVariant thisNode streamVariantId maybeAggregator
   pure {}
 
@@ -65,27 +67,27 @@ addVariant thisNode streamVariantId aggregatorAddress
     pure unit
   | otherwise = pure unit -- TODO - HTTP call...
 
-getAggregator :: StreamVariantId -> Effect (Maybe ServerAddress)
-getAggregator streamVariantId = do
+getAggregator :: StreamDetails -> StreamVariantId -> Effect (Maybe ServerAddress)
+getAggregator streamDetails streamVariantId = do
   maybeAggregator <- IntraPoP.whereIsIngestAggregator streamVariantId
   case maybeAggregator of
     Just aggregator ->
       pure maybeAggregator
     Nothing ->
-      launchLocalOrRemote streamVariantId
+      launchLocalOrRemote streamDetails streamVariantId
 
-launchLocalOrRemote :: StreamVariantId -> Effect (Maybe ServerAddress)
-launchLocalOrRemote streamVariantId = do
+launchLocalOrRemote :: StreamDetails -> StreamVariantId -> Effect (Maybe ServerAddress)
+launchLocalOrRemote streamDetails streamVariantId = do
   currentLoad <- Load.load
   if
     currentLoad < (wrap 50.0) then do
-      _ <- IngestAggregatorInstanceSup.startAggregator (toStreamId streamVariantId)
+      _ <- IngestAggregatorInstanceSup.startAggregator streamDetails
       Just <$> PoPDefinition.thisNode
     else
-      launchRemote streamVariantId
+      launchRemote streamDetails streamVariantId
 
-launchRemote :: StreamVariantId -> Effect (Maybe ServerAddress)
-launchRemote streamVariantId = do
+launchRemote :: StreamDetails -> StreamVariantId -> Effect (Maybe ServerAddress)
+launchRemote streamDetails streamVariantId = do
   -- TODO - need to make http call to idle server to request it starts an aggregator, and then retry if it returns no
   IntraPoP.getIdleServer
 
