@@ -17,7 +17,7 @@ module Rtsv2.PoPDefinition
 import Prelude
 
 import Data.Either (Either(..), note')
-import Data.Filterable (filter, filterMap)
+import Data.Filterable (filter)
 import Data.Foldable (elem, foldl)
 import Data.List.NonEmpty as NonEmptyList
 import Data.Maybe (Maybe(..), fromMaybe)

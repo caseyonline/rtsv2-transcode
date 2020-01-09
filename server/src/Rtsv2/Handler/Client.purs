@@ -29,14 +29,12 @@ import Rtsv2.Router.Endpoint (Endpoint(..))
 import Rtsv2.Router.Endpoint as RoutingEndpoint
 import Rtsv2.Router.Parser as Routing
 import Shared.Stream (StreamId(..))
-import Shared.Types (LocatedServer(..), PoPName(..), ServerAddress, ServerLoad(..), ServerLocation(..), locatedServerAddress)
+import Shared.Types (LocatedServer(..), PoPName, ServerAddress, ServerLoad(..), ServerLocation(..), locatedServerAddress)
 import Shared.Utils (lazyCrashIfMissing)
-import Simple.JSON (undefined)
 import Simple.JSON as Json
 import SpudGun as SpudGun
 import Stetson (StetsonHandler)
 import Stetson.Rest as Rest
-import Unsafe.Coerce as Unsafe.Coerce
 
 data ClientStartState =
   NoEdgeRole
@@ -134,9 +132,9 @@ findRelayForStream streamId = do
  -- IngestAggregator - .... - .... - ... - Egest
  -- TheirPoP ............................. OurPoP
 
- -- 1. compute pop route -> 
+ -- 1. compute pop route ->
  --     1. [ ThePoP ]
- --     2. 
+ --     2.
  --        [ TheirPoP, IntermediatePoP, OurPoP ]
  --        [ TheirPoP, OtherIntermediatePoP1, OtherIntermediaPoP2, OurPoP ]
 
@@ -170,7 +168,7 @@ createRelayChain ingestAggregatorServer@(LocatedServer address (ServerLocation p
       TransPoP.routesTo pop
 
   createRelayInThisPoP streamId pop upstreamPoPs ingestAggregatorServer
-     
+
 
 createRelayInThisPoP :: StreamId -> PoPName -> List ViaPoPs -> LocatedServer -> Effect (Either FailureType ServerAddress)
 createRelayInThisPoP streamId thisPoPName routes ingestAggregator@(LocatedServer address _location) = do
@@ -183,7 +181,7 @@ createRelayInThisPoP streamId thisPoPName routes ingestAggregator@(LocatedServer
 
         request =
           { streamSource: address
-          , routes: List.toUnfoldable $ map List.toUnfoldable routes  
+          , routes: List.toUnfoldable $ map List.toUnfoldable routes
           } :: CreateRelayPayload
       in
       do
