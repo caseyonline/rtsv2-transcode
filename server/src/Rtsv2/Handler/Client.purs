@@ -23,11 +23,17 @@ import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.TransPoP (ViaPoPs)
 import Rtsv2.Agents.TransPoP as TransPoP
 import Rtsv2.Audit as Audit
+import Rtsv2.Handler.Relay (CreateRelayPayload)
 import Rtsv2.PoPDefinition as PoPDefinition
+import Rtsv2.Router.Endpoint (Endpoint(..))
+import Rtsv2.Router.Endpoint as RoutingEndpoint
+import Rtsv2.Router.Parser as Routing
 import Shared.Stream (StreamId(..))
 import Shared.Types (LocatedServer(..), PoPName(..), ServerAddress, ServerLoad(..), ServerLocation(..), locatedServerAddress)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (undefined)
+import Simple.JSON as Json
+import SpudGun as SpudGun
 import Stetson (StetsonHandler)
 import Stetson.Rest as Rest
 import Unsafe.Coerce as Unsafe.Coerce
@@ -49,7 +55,9 @@ data ServerSelectionResponse
   | Remote ServerAddress
 
 
-data FailureType = FTNotFound
+data FailureType
+  = FTNotFound
+  | FTNoResource
 
 
 --------------------------------------------------------------------------------
@@ -161,12 +169,30 @@ createRelayChain ingestAggregatorServer@(LocatedServer address (ServerLocation p
     else
       TransPoP.routesTo pop
 
-  createRelayInThisPoP pop upstreamPoPs ingestAggregatorServer
+  createRelayInThisPoP streamId pop upstreamPoPs ingestAggregatorServer
      
 
-createRelayInThisPoP :: PoPName -> List ViaPoPs -> LocatedServer -> Effect (Either FailureType ServerAddress)
-createRelayInThisPoP thisPoPName routes ingestAggregator =
-  pure $ Left FTNotFound
+createRelayInThisPoP :: StreamId -> PoPName -> List ViaPoPs -> LocatedServer -> Effect (Either FailureType ServerAddress)
+createRelayInThisPoP streamId thisPoPName routes ingestAggregator@(LocatedServer address _location) = do
+  maybeCandidateRelayServer <- IntraPoP.getIdleServer (const true)
+
+  case maybeCandidateRelayServer of
+    Just candidateRelayServer ->
+      let
+        url = Routing.printUrl RoutingEndpoint.endpoint (ClientCountE (StreamId "fake-stream-id"))
+
+        request =
+          { streamId
+          , streamSource: address
+          , routes: List.toUnfoldable $ map List.toUnfoldable routes  
+          } :: CreateRelayPayload
+      in
+      do
+        _restResult <- SpudGun.post url (Json.writeJSON request)
+        pure $ Left FTNotFound
+
+    Nothing ->
+      pure $ Left FTNoResource
 
 -- clientStart :: StetsonHandler ClientStartState
 -- clientStart =

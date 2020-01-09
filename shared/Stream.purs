@@ -22,12 +22,14 @@ import Foreign (ForeignError(..), readString, unsafeToForeign)
 import Simple.JSON (class ReadForeign, class WriteForeign)
 
 newtype StreamId = StreamId String
-newtype StreamVariant = StreamVariant String
-data StreamAndVariant = StreamAndVariant StreamId StreamVariant
 
 derive instance genericStreamId :: Generic StreamId _
 
 derive instance newtypeStreamId :: Newtype StreamId _
+
+derive newtype instance readForeignStreamId :: ReadForeign StreamId
+
+derive newtype instance writeForeignStreamId :: WriteForeign StreamId
 
 instance eqStreamId :: Eq StreamId where
   eq = genericEq
@@ -39,9 +41,17 @@ instance showStreamId :: Show StreamId where
   show = genericShow
 
 
+newtype StreamVariant = StreamVariant String
+
 derive instance genericStreamVariant :: Generic StreamVariant _
 
 derive instance newtypeStreamVariant :: Newtype StreamVariant _
+
+derive newtype instance readForeignStreamVariant :: ReadForeign StreamVariant
+
+derive newtype instance writeForeignStreamVariant :: WriteForeign StreamVariant
+
+data StreamAndVariant = StreamAndVariant StreamId StreamVariant
 
 instance eqStreamVariant :: Eq StreamVariant where
   eq = genericEq

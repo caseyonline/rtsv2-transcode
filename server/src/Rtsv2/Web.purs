@@ -27,9 +27,10 @@ import Rtsv2.Handler.IngestAggregator as IngestAggregatorHandler
 import Rtsv2.Handler.LlnwStub as LlnwStubHandler
 import Rtsv2.Handler.Load as LoadHandler
 import Rtsv2.Names as Names
-import Rtsv2.Router.Endpoint (Endpoint(..), StreamId(..), StreamVariant(..), endpoint)
+import Rtsv2.Router.Endpoint (Endpoint(..), endpoint)
 import Rtsv2.Router.Parser (printUrl)
 import Serf (Ip(..))
+import Shared.Stream (StreamId(..), StreamVariant(..))
 import Shared.Types (ServerAddress)
 import Stetson (RestResult, StetsonHandler)
 import Stetson as Stetson

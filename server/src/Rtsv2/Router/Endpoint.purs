@@ -1,7 +1,5 @@
 module Rtsv2.Router.Endpoint ( Endpoint(..)
                              , Canary(..)
-                             , StreamId(..)
-                             , StreamVariant(..)
                              , endpoint ) where
 
 import Prelude hiding ((/))
@@ -15,10 +13,9 @@ import Data.Maybe (Maybe(..))
 import Routing.Duplex (RouteDuplex', as, path, root, segment)
 import Routing.Duplex.Generic (noArgs, sum)
 import Routing.Duplex.Generic.Syntax ((/))
+import Shared.Stream (StreamId(..), StreamVariant(..))
 
 type Canary = String
-data StreamId = StreamId String
-data StreamVariant = StreamVariant String
 
 data Endpoint
   = TransPoPLeaderE
@@ -54,16 +51,6 @@ endpoint = root $ sum
   }
 
 -- | StreamId
-derive instance genericStreamId :: Generic StreamId _
-
-instance eqStreamId :: Eq StreamId where
-  eq = genericEq
-
-instance compareStreamId :: Ord StreamId where
-  compare = genericCompare
-
-instance showStreamId :: Show StreamId where
-  show = genericShow
 
 parseStreamId :: String -> Maybe StreamId
 parseStreamId ""  = Nothing
@@ -73,17 +60,6 @@ streamIdToString :: StreamId -> String
 streamIdToString (StreamId str) = str
 
 -- | StreamVariant
-derive instance genericStreamVariant :: Generic StreamVariant _
-
-instance eqStreamVariant :: Eq StreamVariant where
-  eq = genericEq
-
-instance compareStreamVariant :: Ord StreamVariant where
-  compare = genericCompare
-
-instance showStreamVariant :: Show StreamVariant where
-  show = genericShow
-
 parseStreamVariant :: String -> Maybe StreamVariant
 parseStreamVariant  ""  = Nothing
 parseStreamVariant  str = Just (StreamVariant str)
