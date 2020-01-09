@@ -6,6 +6,7 @@ module Rtsv2.Agents.TransPoP
        , startLink
        , getRtts
        , routesTo
+       , ViaPoPs
        ) where
 
 import Prelude

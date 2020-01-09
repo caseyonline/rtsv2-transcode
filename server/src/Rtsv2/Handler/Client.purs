@@ -12,20 +12,25 @@ import Data.Newtype (wrap)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Cowboy.Req (binding)
-import Erl.Data.List (List, filter, head, nil, (:))
+import Erl.Data.List (List, (:))
+import Erl.Data.List as List
 import Erl.Data.Tuple (tuple2)
 import Logger (Logger)
 import Logger as Logger
 import Rtsv2.Agents.EgestInstance as EgestInstance
 import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
 import Rtsv2.Agents.IntraPoP as IntraPoP
+import Rtsv2.Agents.TransPoP (ViaPoPs)
+import Rtsv2.Agents.TransPoP as TransPoP
 import Rtsv2.Audit as Audit
 import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Stream (StreamId(..))
-import Shared.Types (LocatedServer(..), ServerAddress, ServerLoad(..), locatedServerAddress)
+import Shared.Types (LocatedServer(..), PoPName(..), ServerAddress, ServerLoad(..), ServerLocation(..), locatedServerAddress)
 import Shared.Utils (lazyCrashIfMissing)
+import Simple.JSON (undefined)
 import Stetson (StetsonHandler)
 import Stetson.Rest as Rest
+import Unsafe.Coerce as Unsafe.Coerce
 
 data ClientStartState =
   NoEdgeRole
@@ -64,9 +69,9 @@ findEgestForStream streamId = do
   servers <- IntraPoP.whereIsEgest streamId
 
   let serversWithCapacity  =
-        filter (\(ServerLoad serverAddress load) ->
-                 load < (wrap 76.323341)
-               ) servers
+        List.filter (\(ServerLoad serverAddress load) ->
+                      load < (wrap 76.323341)
+                    ) servers
   if any ((==) thisNode <<< extractAddress) servers
   then pure Local
   else
@@ -89,7 +94,7 @@ findEgestForStream streamId = do
 
   where
     extractAddress (ServerLoad locatedServer _) = locatedServerAddress locatedServer
-    pickInstance = map extractAddress <<< head
+    pickInstance = map extractAddress <<< List.head
 
 --------------------------------------------------------------------------------
 -- Do we have a relay in this pop - yes -> use it
@@ -117,11 +122,51 @@ findRelayForStream streamId = do
             --leastLoaded <- IntraPoP.w
             createRelayChain sourceServer streamId
 
+
+ -- IngestAggregator - .... - .... - ... - Egest
+ -- TheirPoP ............................. OurPoP
+
+ -- 1. compute pop route -> 
+ --     1. [ ThePoP ]
+ --     2. 
+ --        [ TheirPoP, IntermediatePoP, OurPoP ]
+ --        [ TheirPoP, OtherIntermediatePoP1, OtherIntermediaPoP2, OurPoP ]
+
+ -- 2. Create the relay for our pop - passing it the entirety of both chains
+ --    detail: what does that means? is it just an HTTP request to some endpoint? yes
+
+ -- that is everything
+
+
+  -- from our relay's point of view, it needs to:
+  -- if we're in the same pop as the aggregator - source from the ingest aggregator directly
+  -- if we're in a different pop
+  --   for each of the chains, pick the next pop in the next chain, and ask it to relay to us passing in the chain information relevant to it
+  --      detail: to what server in the next pop do we talk?
+
+  -- additional thoughts on load and stuff:
+  -- If aggregator is in this pop pick server for the relay
+  --   Needs capacity
+  --   Prefer with most capacity (if any have enough) and create a relay and an edge on it
+  -- If we are on the same server as the IngestAggregator and we have capacity, then create a single relay here
+  -- same pop -> 1) If server with aggregator has cap
 createRelayChain :: LocatedServer -> StreamId -> Effect (Either FailureType ServerAddress)
-createRelayChain (LocatedServer serverAddress _serverLocation) streamId = do
-  pure $ Right serverAddress
+createRelayChain ingestAggregatorServer@(LocatedServer address (ServerLocation pop _region)) streamId = do
 
+  { name: thisPoPName } <- PoPDefinition.thisPoP
 
+  upstreamPoPs <-
+    if pop == thisPoPName then
+      pure $ List.singleton mempty
+    else
+      TransPoP.routesTo pop
+
+  createRelayInThisPoP pop upstreamPoPs ingestAggregatorServer
+     
+
+createRelayInThisPoP :: PoPName -> List ViaPoPs -> LocatedServer -> Effect (Either FailureType ServerAddress)
+createRelayInThisPoP thisPoPName routes ingestAggregator =
+  pure $ Left FTNotFound
 
 -- clientStart :: StetsonHandler ClientStartState
 -- clientStart =
@@ -216,7 +261,7 @@ clientStop =
                         )
 
   # Rest.contentTypesProvided (\req state ->
-                                Rest.result ((tuple2 "text/plain" removeClient) : nil) req state)
+                                Rest.result ((tuple2 "text/plain" removeClient) : List.nil) req state)
   # Rest.yeeha
 
   where
@@ -229,7 +274,7 @@ clientStop =
 -- Log helpers
 --------------------------------------------------------------------------------
 domains :: List Atom
-domains = atom <$> ("Client" :  "Instance" : nil)
+domains = atom <$> ("Client" :  "Instance" : List.nil)
 
 logInfo :: forall a. Logger a
 logInfo = domainLog Logger.info
