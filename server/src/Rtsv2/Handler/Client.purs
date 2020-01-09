@@ -179,11 +179,10 @@ createRelayInThisPoP streamId thisPoPName routes ingestAggregator@(LocatedServer
   case maybeCandidateRelayServer of
     Just candidateRelayServer ->
       let
-        url = Routing.printUrl RoutingEndpoint.endpoint (ClientCountE (StreamId "fake-stream-id"))
+        url = Routing.printUrl RoutingEndpoint.endpoint (RelayE streamId)
 
         request =
-          { streamId
-          , streamSource: address
+          { streamSource: address
           , routes: List.toUnfoldable $ map List.toUnfoldable routes  
           } :: CreateRelayPayload
       in

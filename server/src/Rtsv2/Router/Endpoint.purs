@@ -21,6 +21,7 @@ data Endpoint
   = TransPoPLeaderE
   | HealthCheckE
   | ClientCountE StreamId
+  | RelayE StreamId
   | LoadE
   | IngestAggregator StreamId
   | IngestStartE Canary StreamId StreamVariant
@@ -39,6 +40,7 @@ endpoint = root $ sum
   { "TransPoPLeaderE" : "" / "api" / path "transPoPLeader" noArgs
   , "HealthCheckE"    : "" / "api" / path "healthCheck" noArgs
   , "ClientCountE"    : "" / "api" / "egest" / streamId segment / "clientCount"
+  , "RelayE"          : "" / "api" / "relay" / streamId segment
   , "LoadE"           : "" / "api" / path "load" noArgs
   , "IngestAggregator": "" / "api" / "agents" / "ingestAggregator" / streamId segment
   , "IngestStartE"    : "" / "api" / "client" / segment / "ingest" / streamId segment / variant segment / "start"

@@ -26,6 +26,7 @@ import Rtsv2.Handler.Ingest as IngestHandler
 import Rtsv2.Handler.IngestAggregator as IngestAggregatorHandler
 import Rtsv2.Handler.LlnwStub as LlnwStubHandler
 import Rtsv2.Handler.Load as LoadHandler
+import Rtsv2.Handler.Relay as RelayHandler
 import Rtsv2.Names as Names
 import Rtsv2.Router.Endpoint (Endpoint(..), endpoint)
 import Rtsv2.Router.Parser (printUrl)
@@ -58,6 +59,9 @@ init args = do
     # Stetson.route
         (printUrl endpoint (ClientCountE (StreamId ":stream_id")))
         EgestStatsHandler.clientCount
+    # Stetson.route
+        (printUrl endpoint (RelayE (StreamId ":stream_id")))
+        RelayHandler.resource
     # Stetson.route
         (printUrl endpoint LoadE)
         LoadHandler.load
