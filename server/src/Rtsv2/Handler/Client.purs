@@ -205,7 +205,7 @@ clientStart :: StetsonHandler ServerSelectionResponse
 clientStart =
   Rest.handler init
   # Rest.allowedMethods (Rest.result (PUT : mempty))
---  # Rest.contentTypesAccepted (\req state -> Rest.result (singleton $ MimeType.json acceptAny) req state)
+  # Rest.contentTypesAccepted (\req state -> Rest.result (singleton $ MimeType.json acceptAny) req state)
   # Rest.contentTypesProvided (\req state -> Rest.result (singleton $ MimeType.json provideEmpty) req state)
   # Rest.yeeha
 
@@ -218,7 +218,9 @@ clientStart =
           thisNode <- PoPDefinition.thisNode
           egestResp <- spy "clientStartInit" $ findEgestForStream streamId
           Rest.initResult req egestResp
---    acceptAny req state = Rest.result true req state
+
+    acceptAny req state = Rest.result true req state
+
     provideEmpty req state = Rest.result "" req state
 
 
