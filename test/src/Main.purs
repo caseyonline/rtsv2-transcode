@@ -188,15 +188,15 @@ assertStatusCode source expectedCode either =
     Right response@{status : StatusCode resultCode} | resultCode == expectedCode ->
       pure response
     Right response@{status : StatusCode resultCode} ->
-      throwError $ error $ "Unexpected statuscode from " <> source <> " - " <> show response.status
+      throwSlowError $ error $ "Unexpected statuscode from " <> source <> " - " <> show response.status
     Left err ->
-      throwError $ error $ "GET /api response failed to decode from " <> source <> " - " <> AX.printError err
+      throwSlowError $ error $ "GET /api response failed to decode from " <> source <> " - " <> AX.printError err
 
 assertHeader :: forall a. Tuple String String -> Response a -> Aff (Response a)
 assertHeader (Tuple header value) response@{headers} =
   case elem (ResponseHeader header value) headers of
     true -> pure response
-    false -> throwError $ error $ "Header " <> header <> ":" <> value <> " not present in response " <> (show headers)
+    false -> throwSlowError $ error $ "Header " <> header <> ":" <> value <> " not present in response " <> (show headers)
 
 assertBodyFun :: forall a. ReadForeign a => (E a -> Boolean) -> Response String -> Aff (Response String)
 assertBodyFun expectedBodyFun response@{body} =
@@ -204,12 +204,12 @@ assertBodyFun expectedBodyFun response@{body} =
     parsed = SimpleJSON.readJSON body
   in
    if expectedBodyFun parsed then pure response
-   else throwError $ error $ "Body " <> body <> " did not match expected"
+   else throwSlowError $ error $ "Body " <> body <> " did not match expected"
 
 assertBody :: String -> Response String -> Aff (Response String)
 assertBody expectedBody response@{body} =
   if expectedBody == body then pure response
-  else throwError $ error $ "Body " <> body <> " did not match expected " <> expectedBody
+  else throwSlowError $ error $ "Body " <> body <> " did not match expected " <> expectedBody
 
 jsonBody :: String -> Maybe RequestBody
 jsonBody string =
@@ -236,3 +236,10 @@ launchNodes sysconfigs = do
 stopSession :: Aff Unit
 stopSession = do
   runProc "./scripts/stopSession.sh" [sessionName]
+
+
+--throwSlowError :: forall a m e. MonadThrow e m => e -> m a
+throwSlowError e =
+  do
+    _ <- delay (Milliseconds 1000.0)
+    throwError e

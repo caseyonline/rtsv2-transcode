@@ -67,7 +67,7 @@ let overrides =
           , repo =
               "ssh://git@github.com/id3as/purescript-erl-stetson.git"
           , version =
-              "8688462267530254365bda284f06a162672de0c1"
+              "1f03351e166e28a35ccbaff05575b8161c0900e3"
           }
       , routing-duplex =
           { dependencies =

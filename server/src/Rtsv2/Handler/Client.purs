@@ -1,7 +1,7 @@
 module Rtsv2.Handler.Client
        ( clientStart
        , clientStop
-       , ServerSelectionResponse
+       , State
        ) where
 
 import Prelude
@@ -9,12 +9,13 @@ import Prelude
 import Data.Either (Either(..))
 import Data.Foldable (any)
 import Data.Maybe (Maybe(..), fromMaybe')
-import Data.Newtype (unwrap, wrap)
+import Data.Newtype (class Newtype, unwrap, wrap)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
-import Erl.Cowboy.Req (binding)
-import Erl.Data.List (List, singleton, (:))
+import Erl.Cowboy.Req (StatusCode(..), binding, replyWithoutBody)
+import Erl.Data.List (List, nil, singleton, (:))
 import Erl.Data.List as List
+import Erl.Data.Map as Map
 import Erl.Data.Tuple (tuple2)
 import Logger (Logger, spy)
 import Logger as Logger
@@ -47,17 +48,17 @@ data ClientStartState
          , currentEdgeLocations :: List ServerAddress
          }
 
-data ServerSelectionResponse
-  = NotFound
-  | NoResource
-  | Local
+data EgestLocation
+  = Local
   | Remote ServerAddress
 
+data FailureReason
+  = NotFound
+  | NoResource
 
-data FailureType
-  = FTNotFound
-  | FTNoResource
 
+newtype State = State (Either FailureReason EgestLocation)
+derive instance newtypeState :: Newtype State _
 
 --------------------------------------------------------------------------------
 -- Do we have any EgestInstances in this pop that have capacity for another client?
@@ -70,34 +71,35 @@ data FailureType
 --          No -> Try to find or create a relay for this stream and also put an egest handler on the same node
 -- otherwise 404
 --------------------------------------------------------------------------------
-findEgestForStream :: StreamId -> Effect ServerSelectionResponse
-findEgestForStream streamId = do
-  thisNode <- PoPDefinition.thisNode
+findEgestForStream :: ServerAddress -> StreamId -> Effect (Either FailureReason EgestLocation)
+findEgestForStream thisNode streamId = do
   servers <- IntraPoP.whereIsEgest streamId
 
   let serversWithCapacity  =
         List.filter (\(ServerLoad serverAddress load) ->
                       load < (wrap 76.323341)
-                    ) servers
+                    ) $ spy "swc" $ servers
   if any ((==) thisNode <<< extractAddress) servers
-  then pure Local
+  then pure $ Right Local
   else
    case pickInstance serversWithCapacity of
      Just server ->
-       pure $ Remote server
+       pure $ Right $ Remote server
 
      Nothing ->
        do
          relayForStream <- findRelayForStream streamId
 
-         pure $
-           case relayForStream of
-             Left _ ->
-               NoResource
+         case relayForStream of
+           Left e ->
+             pure $ Left e
 
-             Right serverAddress
-               | serverAddress == thisNode -> Local
-               | otherwise -> Remote serverAddress
+           Right relayAddress ->
+             do
+               -- TODO create egest
+               _ <- EgestInstanceSup.maybeStartAndAddClient streamId
+               pure $ Right Local
+
 
   where
     extractAddress (ServerLoad locatedServer _) = locatedServerAddress locatedServer
@@ -108,7 +110,7 @@ findEgestForStream streamId = do
 -- Does the stream have an origin (aggregator) - if so build a streamRelay chain to that origin
 -- otherwise 404
 --------------------------------------------------------------------------------
-findRelayForStream :: StreamId -> Effect (Either FailureType ServerAddress)
+findRelayForStream :: StreamId -> Effect (Either FailureReason ServerAddress)
 findRelayForStream streamId = do
   mRelay <- IntraPoP.whereIsStreamRelay streamId
 
@@ -122,7 +124,7 @@ findRelayForStream streamId = do
 
         case mAggregator of
           Nothing ->
-            pure $ Left FTNotFound
+            pure $ Left NotFound
 
           Just sourceServer -> do
             -- Find a server with capacity for a new relay
@@ -157,7 +159,7 @@ findRelayForStream streamId = do
   --   Prefer with most capacity (if any have enough) and create a relay and an edge on it
   -- If we are on the same server as the IngestAggregator and we have capacity, then create a single relay here
   -- same pop -> 1) If server with aggregator has cap
-createRelayChain :: LocatedServer -> StreamId -> Effect (Either FailureType ServerAddress)
+createRelayChain :: LocatedServer -> StreamId -> Effect (Either FailureReason ServerAddress)
 createRelayChain ingestAggregatorServer@(LocatedServer address (ServerLocation pop _region)) streamId = do
 
   { name: thisPoPName } <- PoPDefinition.thisPoP
@@ -171,7 +173,7 @@ createRelayChain ingestAggregatorServer@(LocatedServer address (ServerLocation p
   createRelayInThisPoP streamId pop upstreamPoPs ingestAggregatorServer
 
 
-createRelayInThisPoP :: StreamId -> PoPName -> List ViaPoPs -> LocatedServer -> Effect (Either FailureType ServerAddress)
+createRelayInThisPoP :: StreamId -> PoPName -> List ViaPoPs -> LocatedServer -> Effect (Either FailureReason ServerAddress)
 createRelayInThisPoP streamId thisPoPName routes ingestAggregator@(LocatedServer address _location) = do
   maybeCandidateRelayServer <- IntraPoP.getIdleServer (const true)
 
@@ -194,18 +196,19 @@ createRelayInThisPoP streamId thisPoPName routes ingestAggregator@(LocatedServer
         pure $ Right $ locatedServerAddress candidateRelayServer
 
     Nothing ->
-      pure $ Left FTNoResource
+      pure $ Left NoResource
 
 
 toHost :: LocatedServer -> String
 toHost =
   unwrap <<< locatedServerAddress
 
-clientStart :: StetsonHandler ServerSelectionResponse
+clientStart :: StetsonHandler State
 clientStart =
   Rest.handler init
   # Rest.allowedMethods (Rest.result (PUT : mempty))
   # Rest.contentTypesAccepted (\req state -> Rest.result (singleton $ MimeType.json acceptAny) req state)
+  # Rest.resourceExists resourceExists
   # Rest.contentTypesProvided (\req state -> Rest.result (singleton $ MimeType.json provideEmpty) req state)
   # Rest.yeeha
 
@@ -216,10 +219,23 @@ clientStart =
       in
         do
           thisNode <- PoPDefinition.thisNode
-          egestResp <- spy "clientStartInit" $ findEgestForStream streamId
-          Rest.initResult req egestResp
+          egestResp <- findEgestForStream thisNode streamId
+          Rest.initResult req $ wrap $ spy "egestResp" egestResp
 
     acceptAny req state = Rest.result true req state
+
+    resourceExists req state =
+      case unwrap (spy "re" state) of
+        Left NotFound ->
+          do
+            newReq <- replyWithoutBody (StatusCode 404) Map.empty req
+            Rest.stop newReq state
+        Left NoResource ->
+          Rest.stop req state
+        Right Local ->
+          Rest.result true req state
+        Right (Remote _) ->
+          Rest.result true req state
 
     provideEmpty req state = Rest.result "" req state
 
