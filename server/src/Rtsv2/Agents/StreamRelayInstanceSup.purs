@@ -1,6 +1,7 @@
 module Rtsv2.Agents.StreamRelayInstanceSup
        ( startLink
        , startRelay
+       , isAvailable
        )
        where
 

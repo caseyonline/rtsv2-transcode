@@ -27,7 +27,7 @@ import Data.Tuple (Tuple(..))
 import Debug.Trace (spy)
 import Effect (Effect)
 import Effect.Aff (Aff, delay, launchAff_, throwError)
-import Effect.Exception (error)
+import Effect.Exception (Error, error) as Exception
 import Foreign (F)
 import OsCmd (runProc)
 import Shared.Stream (StreamId(..), StreamVariant(..), StreamAndVariant(..))
@@ -49,6 +49,21 @@ node vlan addr sysConfig = {vlan, addr, sysConfig}
 
 main :: Effect Unit
 main =
+  let
+    node1                         = "http://172.16.169.1:3000/api/"
+    node2                         = "http://172.16.169.2:3000/api/"
+
+    node1IngestStart              = node1 <> "canary/ingest/stream1/low/start"
+    node1Egest                    = node1 <> "canary/client/stream1/start"
+
+    egest  node' streamId         = AX.put ResponseFormat.string (node' <> "client/canary/client/" <> streamId <> "/start") (Just $ Affjax.RequestBody.json $ Data.Argonaut.Core.fromString "{}")
+    ingest node' streamId variant = AX.get ResponseFormat.string (node' <> "client/canary/ingest/" <> streamId <> "/" <> variant <> "/start")
+    relayStatus node' streamId    = AX.get ResponseFormat.string (node' <> "relay/" <> streamId)
+
+    stream1                       = "stream1"
+    low                           = "low"
+    delayMs                       = delay <<< Milliseconds
+  in
   launchAff_ $ un Identity $ runSpecT testConfig [consoleReporter] do
     before_ (do
                 _ <- stopSession
@@ -61,23 +76,30 @@ main =
                   ]) do
       after_ stopSession do
         describe "two node setup" do
-          it "client requests stream on ingest node" do
-            let
-              node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/stream1/low/start"
-              node1edge = "http://172.16.169.1:3000/api/client/canary/client/stream1/start"
-            _ <- assertStatusCode "no ingest before creating client" 404 =<< AX.put ResponseFormat.string node1edge (Just $ Affjax.RequestBody.json $ Data.Argonaut.Core.fromString "{}")
-            _ <- assertStatusCode "create ingest" 200 =<< AX.get ResponseFormat.string node1ingestStart
-            _ <- delay (Milliseconds 500.0)
-            _ <- assertStatusCode "ingest ready" 204 =<< AX.put ResponseFormat.string node1edge (Just $ Affjax.RequestBody.json $ Data.Argonaut.Core.fromString "{}")
+          it "client requests stream on ingest node"  do
+            _ <- egest node1 stream1       >>= assertStatusCode "no egest prior to ingest" 404
+            _ <- ingest node1 stream1 low  >>= assertStatusCode "create ingest" 200
+            _ <- delayMs 500.0
+            _ <- relayStatus node1 stream1 >>= assertStatusCode "relay exists" 200
+            _ <- egest node1 stream1       >>= assertStatusCode "egest available" 204
             pure unit
-          -- it "client requests stream on non-ingest node" do
+
+          it "client requests stream on non-ingest node" do
+            _ <- egest node2 stream1       >>= assertStatusCode "no egest prior to ingest" 404
+            _ <- ingest node1 stream1 low  >>= assertStatusCode "create ingest" 200
+            _ <- delayMs 1000.0
+            _ <- relayStatus node2 stream1 >>= assertStatusCode "relay exists" 200
+            _ <- egest node2 stream1       >>= assertStatusCode "egest available" 204
+            pure unit
+
           --   let
           --     node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/stream1/low/start"
           --     node2edge = "http://172.16.169.2:3000/api/client/canary/client/stream1/start"
-          --   _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node2edge
-          --   _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
+          --   _ <- assertStatusCode "no ingest before creating client" 404 =<< AX.put ResponseFormat.string node2edge (Just $ Affjax.RequestBody.json $ Data.Argonaut.Core.fromString "{}")
+          --   _ <- assertStatusCode "create ingest" 200 =<< AX.get ResponseFormat.string node1ingestStart
           --   _ <- delay (Milliseconds 1000.0)
-          --   _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node2edge
+          --   _ <- assertStatusCode "relay on origin" 204 =<< AX.get node2edge
+          --   _ <- assertStatusCode "ingest ready" 204 =<< AX.put ResponseFormat.string node2edge (Just $ Affjax.RequestBody.json $ Data.Argonaut.Core.fromString "{}")
           --   pure unit
           -- it "client requests stream on other pop" do
           --   let
@@ -188,15 +210,15 @@ assertStatusCode source expectedCode either =
     Right response@{status : StatusCode resultCode} | resultCode == expectedCode ->
       pure response
     Right response@{status : StatusCode resultCode} ->
-      throwSlowError $ error $ "Unexpected statuscode from " <> source <> " - " <> show response.status
+      throwSlowError $ Exception.error $ "Unexpected statuscode from " <> source <> " - " <> show response.status
     Left err ->
-      throwSlowError $ error $ "GET /api response failed to decode from " <> source <> " - " <> AX.printError err
+      throwSlowError $ Exception.error $ "GET /api response failed to decode from " <> source <> " - " <> AX.printError err
 
 assertHeader :: forall a. Tuple String String -> Response a -> Aff (Response a)
 assertHeader (Tuple header value) response@{headers} =
   case elem (ResponseHeader header value) headers of
     true -> pure response
-    false -> throwSlowError $ error $ "Header " <> header <> ":" <> value <> " not present in response " <> (show headers)
+    false -> throwSlowError $ Exception.error $ "Header " <> header <> ":" <> value <> " not present in response " <> (show headers)
 
 assertBodyFun :: forall a. ReadForeign a => (E a -> Boolean) -> Response String -> Aff (Response String)
 assertBodyFun expectedBodyFun response@{body} =
@@ -204,12 +226,12 @@ assertBodyFun expectedBodyFun response@{body} =
     parsed = SimpleJSON.readJSON body
   in
    if expectedBodyFun parsed then pure response
-   else throwSlowError $ error $ "Body " <> body <> " did not match expected"
+   else throwSlowError $ Exception.error $ "Body " <> body <> " did not match expected"
 
 assertBody :: String -> Response String -> Aff (Response String)
 assertBody expectedBody response@{body} =
   if expectedBody == body then pure response
-  else throwSlowError $ error $ "Body " <> body <> " did not match expected " <> expectedBody
+  else throwSlowError $ Exception.error $ "Body " <> body <> " did not match expected " <> expectedBody
 
 jsonBody :: String -> Maybe RequestBody
 jsonBody string =
@@ -238,7 +260,8 @@ stopSession = do
   runProc "./scripts/stopSession.sh" [sessionName]
 
 
---throwSlowError :: forall a m e. MonadThrow e m => e -> m a
+
+throwSlowError :: forall e. Exception.Error -> Aff e
 throwSlowError e =
   do
     _ <- delay (Milliseconds 1000.0)

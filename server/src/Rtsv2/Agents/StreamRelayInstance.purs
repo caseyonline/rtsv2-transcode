@@ -1,5 +1,6 @@
 module Rtsv2.Agents.StreamRelayInstance
   ( startLink
+  , isAvailable
   , init
   ) where
 
@@ -26,6 +27,9 @@ serverName streamId = Via (NativeModuleName $ atom "gproc") $ unsafeToForeign (t
 
 startLink :: StreamId -> Effect StartLinkResult
 startLink streamId = Gen.startLink (serverName streamId) (init streamId) Gen.defaultHandleInfo
+
+isAvailable :: StreamId -> Effect Boolean
+isAvailable streamId = Names.isRegistered (serverName streamId)
 
 init :: StreamId -> Effect State
 init streamId = do

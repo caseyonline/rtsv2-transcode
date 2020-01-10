@@ -36,9 +36,10 @@ type State
 resource :: StetsonHandler State
 resource =
   Rest.handler init
+  # Rest.allowedMethods (Rest.result (GET : POST : mempty))
   # Rest.malformedRequest malformedRequest
   # Rest.contentTypesAccepted (\req state -> Rest.result (singleton $ MimeType.json acceptJson) req state)
-  # Rest.contentTypesProvided (\req state -> Rest.result (singleton $ MimeType.json provideEmpty) req state)
+  # Rest.contentTypesProvided (\req state -> Rest.result (singleton $ MimeType.json provideContent) req state)
   # Rest.yeeha
   where
     init req =
@@ -71,6 +72,16 @@ resource =
         _ <- StreamRelayInstanceSup.startRelay streamId
         Rest.result true req state
 
+    provideContent req state =
+      case method req of
+        "POST" -> provideEmpty
+        _ -> provideStatus
+
+    provideStatus req state = Rest.result "marvelous" req state
+
+    provideEmpty req state = Rest.result "" req state
+
+Rest.result "" req state
     provideEmpty req state = Rest.result "" req state
 
 
