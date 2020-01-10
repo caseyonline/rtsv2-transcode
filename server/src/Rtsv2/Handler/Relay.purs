@@ -6,16 +6,14 @@ module Rtsv2.Handler.Relay
 import Prelude
 
 import Data.Either (Either(..))
-import Data.Maybe (Maybe(..), fromMaybe, fromMaybe')
-import Data.Newtype (wrap)
+import Data.Maybe (Maybe(..), fromMaybe')
 import Effect (Effect)
 import Erl.Atom (atom)
 import Erl.Cowboy.Req (ReadBodyResult(..), Req, binding, method, readBody)
 import Erl.Data.Binary (Binary)
 import Erl.Data.Binary.IOData (IOData, fromBinary, toBinary)
 import Erl.Data.List (singleton)
-import Rtsv2.Agents.IntraPoP as IntraPoP
-import Rtsv2.Agents.TransPoP as TransPoP
+import Rtsv2.Agents.StreamRelayInstanceSup as StreamRelayInstanceSup
 import Rtsv2.Handler.MimeType as MimeType
 import Shared.Stream (StreamId(..))
 import Shared.Types (PoPName, ServerAddress)
@@ -40,7 +38,7 @@ resource =
   Rest.handler init
   # Rest.malformedRequest malformedRequest
   # Rest.contentTypesAccepted (\req state -> Rest.result (singleton $ MimeType.json acceptJson) req state)
-  # Rest.contentTypesProvided (\req state -> Rest.result (singleton $ MimeType.json provideJson) req state)
+  # Rest.contentTypesProvided (\req state -> Rest.result (singleton $ MimeType.json provideEmpty) req state)
   # Rest.yeeha
   where
     init req =
@@ -52,7 +50,7 @@ resource =
           , createRelayPayload: Nothing
           }
 
-    malformedRequest req state = 
+    malformedRequest req state =
       case method req of
         "POST" -> do
           body <- allBody req mempty
@@ -67,21 +65,14 @@ resource =
               Rest.result true req (state { createRelayPayload = Just createRelayPayload })
         _ ->
           Rest.result false req state
-      
-    acceptJson req state@{} =
-      do
-        (Rest.result true req state)
 
-    provideJson req state =
+    acceptJson req state@{streamId} =
       do
-        currentTransPoP <- IntraPoP.currentTransPoPLeader
-        intraPoPRelay <- IntraPoP.health
-        transPoPRelay <- TransPoP.health
-        let
-          result = {intraPoPRelay,
-                    transPoPRelay,
-                    currentTransPoP : fromMaybe (wrap "") currentTransPoP}
-        Rest.result (JSON.writeJSON result) req state
+        _ <- StreamRelayInstanceSup.startRelay streamId
+        Rest.result true req state
+
+    provideEmpty req state = Rest.result "" req state
+
 
 allBody :: Req -> IOData -> Effect Binary
 allBody req acc = do

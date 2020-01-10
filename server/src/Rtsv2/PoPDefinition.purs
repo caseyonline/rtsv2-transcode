@@ -112,6 +112,7 @@ whereIsServer sa = Gen.doCall serverName
 
 serversInThisPoPByAddress :: Effect (Map ServerAddress LocatedServer)
 serversInThisPoPByAddress =
+  -- TODO - this probasbly need to list which services each node offers as well
   Gen.doCall serverName
     \state ->
       let

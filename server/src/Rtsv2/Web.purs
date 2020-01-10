@@ -74,9 +74,9 @@ init args = do
     # Stetson.route
         (printUrl endpoint (IngestStopE ":canary" (StreamId ":stream_id") (StreamVariant ":variant_id")))
         IngestHandler.ingestStop
-    -- # Stetson.route
-    --     (printUrl endpoint (ClientStartE ":canary" (StreamId ":stream_id")))
-    --     ClientHandler.clientStart
+    # Stetson.route
+        (printUrl endpoint (ClientStartE ":canary" (StreamId ":stream_id")))
+        ClientHandler.clientStart
     # Stetson.route
         (printUrl endpoint (ClientStopE ":canary" (StreamId ":stream_id")))
         ClientHandler.clientStop

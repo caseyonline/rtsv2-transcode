@@ -1,6 +1,7 @@
 module Rtsv2.Handler.Client
-       ( -- clientStart
-       clientStop
+       ( clientStart
+       , clientStop
+       , ServerSelectionResponse
        ) where
 
 import Prelude
@@ -8,14 +9,14 @@ import Prelude
 import Data.Either (Either(..))
 import Data.Foldable (any)
 import Data.Maybe (Maybe(..), fromMaybe')
-import Data.Newtype (wrap)
+import Data.Newtype (unwrap, wrap)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Cowboy.Req (binding)
-import Erl.Data.List (List, (:))
+import Erl.Data.List (List, singleton, (:))
 import Erl.Data.List as List
 import Erl.Data.Tuple (tuple2)
-import Logger (Logger)
+import Logger (Logger, spy)
 import Logger as Logger
 import Rtsv2.Agents.EgestInstance as EgestInstance
 import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
@@ -23,6 +24,7 @@ import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.TransPoP (ViaPoPs)
 import Rtsv2.Agents.TransPoP as TransPoP
 import Rtsv2.Audit as Audit
+import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.Handler.Relay (CreateRelayPayload)
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Router.Endpoint (Endpoint(..))
@@ -33,12 +35,11 @@ import Shared.Types (LocatedServer(..), PoPName, ServerAddress, ServerLoad(..), 
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON as Json
 import SpudGun as SpudGun
-import Stetson (StetsonHandler)
+import Stetson (HttpMethod(..), StetsonHandler)
 import Stetson.Rest as Rest
 
-data ClientStartState =
-  NoEdgeRole
-  | StreamNotAvailable
+data ClientStartState
+  = StreamNotAvailable
   | Foo  { streamId :: StreamId
          , isIngestAvailable :: Boolean
          , currentNodeHasEdge :: Boolean
@@ -177,7 +178,8 @@ createRelayInThisPoP streamId thisPoPName routes ingestAggregator@(LocatedServer
   case maybeCandidateRelayServer of
     Just candidateRelayServer ->
       let
-        url = Routing.printUrl RoutingEndpoint.endpoint (RelayE streamId)
+        path = Routing.printUrl RoutingEndpoint.endpoint (RelayE streamId)
+        url = spy "url" $ "http://" <> toHost candidateRelayServer <> ":3000" <> path
 
         request =
           { streamSource: address
@@ -185,11 +187,40 @@ createRelayInThisPoP streamId thisPoPName routes ingestAggregator@(LocatedServer
           } :: CreateRelayPayload
       in
       do
+        -- TODO / thoughts - do we wait for the entire relay chain to exist before returning?
+        -- what if there isn't enough resource on an intermediate PoP?
+        -- Single relay that goes direct?
         _restResult <- SpudGun.post url (Json.writeJSON request)
-        pure $ Left FTNotFound
+        pure $ Right $ locatedServerAddress candidateRelayServer
 
     Nothing ->
       pure $ Left FTNoResource
+
+
+toHost :: LocatedServer -> String
+toHost =
+  unwrap <<< locatedServerAddress
+
+clientStart :: StetsonHandler ServerSelectionResponse
+clientStart =
+  Rest.handler init
+  # Rest.allowedMethods (Rest.result (PUT : mempty))
+--  # Rest.contentTypesAccepted (\req state -> Rest.result (singleton $ MimeType.json acceptAny) req state)
+  # Rest.contentTypesProvided (\req state -> Rest.result (singleton $ MimeType.json provideEmpty) req state)
+  # Rest.yeeha
+
+  where
+    init req =
+      let
+        streamId = spy "clientStartInit" $ StreamId $ fromMaybe' (lazyCrashIfMissing "stream_id binding missing") $ binding (atom "stream_id") req
+      in
+        do
+          thisNode <- PoPDefinition.thisNode
+          egestResp <- spy "clientStartInit" $ findEgestForStream streamId
+          Rest.initResult req egestResp
+--    acceptAny req state = Rest.result true req state
+    provideEmpty req state = Rest.result "" req state
+
 
 -- clientStart :: StetsonHandler ClientStartState
 -- clientStart =

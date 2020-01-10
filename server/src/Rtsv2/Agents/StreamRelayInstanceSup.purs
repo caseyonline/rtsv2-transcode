@@ -26,12 +26,9 @@ serverName = Names.streamRelayInstanceSupName
 startLink :: forall a. a -> Effect Pinto.StartLinkResult
 startLink _ = Sup.startLink serverName init
 
-startRelay :: StreamId -> Effect Unit
+startRelay :: StreamId -> Effect Pinto.StartChildResult
 startRelay streamId = do
-  result <- Sup.startSimpleChild childTemplate serverName streamId
-  case result of
-    Pinto.AlreadyStarted pid -> pure unit
-    Pinto.Started pid -> pure unit
+  Sup.startSimpleChild childTemplate serverName streamId
 
 init :: Effect Sup.SupervisorSpec
 init = do
