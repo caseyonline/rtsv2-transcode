@@ -11,8 +11,7 @@ import Effect (Effect)
 import Erl.Cowboy.Req (ReadBodyResult(..), Req, method, readBody)
 import Erl.Data.Binary (Binary)
 import Erl.Data.Binary.IOData (IOData, fromBinary, toBinary)
-import Erl.Data.List (nil, (:))
-import Erl.Data.Tuple (tuple2)
+import Erl.Data.List (nil, singleton, (:))
 import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.Load as Load
 import Simple.JSON (readJSON)
@@ -28,31 +27,37 @@ type State =
 
 load :: StetsonHandler State
 load =
-  Rest.handler (\req -> Rest.initResult req {load: 0.0})
+  Rest.handler init
   # Rest.allowedMethods (Rest.result (GET : POST : nil))
-  # Rest.malformedRequest (\req state ->
-                            case method req of
-                              "POST" -> do
-                                body <- allBody req mempty
-                                let
-                                  state2 = hush $ readJSON $ (binaryToString body)
-                                Rest.result (isNothing state2) req (fromMaybe state state2)
-                              _ ->
-                                Rest.result false req state
-                          )
-  # Rest.contentTypesProvided (\req state -> Rest.result (MimeType.json jsonHandler : nil) req state)
-  # Rest.contentTypesAccepted (\req state ->
-                                Rest.result ((tuple2 "application/json" (\req2 state2@{load: currentLoad} -> do
-                                                                            _ <- Load.setLoad currentLoad
-                                                                            (Rest.result true req2 state2))) : nil)
-                                req state)
+  # Rest.malformedRequest malformedRequest
+  # Rest.contentTypesProvided (\req state -> Rest.result (singleton $ MimeType.json provideJson) req state)
+  # Rest.contentTypesAccepted (\req state -> Rest.result (singleton $ MimeType.json acceptJson) req state)
   # Rest.yeeha
   where
-    jsonHandler req state = do
-      currentLoad <- Load.load
-      let
-        result = {currentLoad}
-      Rest.result (JSON.writeJSON result) req state
+    init req = Rest.initResult req {load: 0.0}
+
+    malformedRequest req state =
+      do
+        case method req of
+          "POST" -> do
+            body <- allBody req mempty
+            let
+              state2 = hush $ readJSON $ (binaryToString body)
+            Rest.result (isNothing state2) req (fromMaybe state state2)
+          _ ->
+            Rest.result false req state
+
+    provideJson req state =
+      do
+        currentLoad <- Load.load
+        let
+          result = {currentLoad}
+        Rest.result (JSON.writeJSON result) req state
+
+    acceptJson req state@{load: currentLoad} =
+      do
+        _ <- Load.setLoad currentLoad
+        Rest.result true req state
 
 allBody :: Req -> IOData -> Effect Binary
 allBody req acc = do
