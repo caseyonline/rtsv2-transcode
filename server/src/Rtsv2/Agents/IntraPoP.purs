@@ -43,7 +43,7 @@ import Erl.Data.Map as Map
 import Erl.Process (Process, spawnLink)
 import Erl.Utils (Milliseconds)
 import Erl.Utils as Erl
-import Logger (Logger, spy)
+import Logger (Logger)
 import Logger as Logger
 import Partial.Unsafe (unsafeCrashWith)
 import Pinto (ServerName, StartLinkResult)
@@ -148,14 +148,14 @@ getIdleServer pred = Gen.doCall serverName
   (\state@{members} ->
     let n = 2
         nMostIdleWithCapacity =
-          values (spy "members" members)
+          values members
           # filterMap (\memberInfo ->
                         let serverLoad = toServerLoad memberInfo
                         in if pred serverLoad then Just serverLoad else Nothing)
           # sortBy (\(ServerLoad _ l1) (ServerLoad _ l2) -> compare l1 l2)
           <#> (\(ServerLoad locatedServer _) -> locatedServer)
           # take n
-        numServers = length $spy "nMostIdleWithCapacity" nMostIdleWithCapacity
+        numServers = length nMostIdleWithCapacity
     in do
       resp <-
         case numServers of
@@ -169,7 +169,7 @@ getIdleServer pred = Gen.doCall serverName
             do
               -- TODO - always seems to give the same answer!
               chosenIndex <- randomInt 0 (numServers - 1)
-              pure $ (spy "chosenIndexPure" $ index nMostIdleWithCapacity (spy "chosenIndex" chosenIndex))
+              pure $ index nMostIdleWithCapacity chosenIndex
       pure $ CallReply resp state
   )
 
@@ -340,16 +340,16 @@ init { config: config@{rejoinEveryMs
   locatedServersInPoP <- PoPDefinition.serversInThisPoPByAddress
 
   let
+    busy = wrap 100.0 :: Load
     members = membersResp
               # hush
               # fromMaybe nil
               # filterMap (\member@{name} ->
                             let
-                              initialLoad = wrap 100.0 :: Load
                               serverAddress = ServerAddress name
                               locatedServerToMemberInfo locatedServer =
                                 { server: locatedServer
-                                , load: initialLoad
+                                , load: busy
                                 , serfMember: member
                                 }
                             in

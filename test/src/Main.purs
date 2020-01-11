@@ -10,31 +10,23 @@ import Affjax.RequestBody as RequestBody
 import Affjax.ResponseFormat as ResponseFormat
 import Affjax.ResponseHeader (ResponseHeader(..))
 import Affjax.StatusCode (StatusCode(..))
-import Data.Argonaut (Json)
 import Data.Argonaut as Json
-import Data.Argonaut.Core (Json)
 import Data.Argonaut.Core as Data.Argonaut.Core
-import Data.Array (sort)
 import Data.Either (Either(..), hush)
 import Data.Foldable (elem)
 import Data.Identity (Identity(..))
-import Data.List (List)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (un)
 import Data.Time.Duration (Milliseconds(..))
 import Data.Traversable (traverse_)
 import Data.Tuple (Tuple(..))
-import Debug.Trace (spy)
 import Effect (Effect)
 import Effect.Aff (Aff, delay, launchAff_, throwError)
 import Effect.Exception (Error, error) as Exception
-import Foreign (F)
 import OsCmd (runProc)
-import Shared.Stream (StreamId(..), StreamVariant(..), StreamAndVariant(..))
 import Simple.JSON (class ReadForeign, E)
 import Simple.JSON as SimpleJSON
-import Test.Spec (after_, before_, describe, it, itOnly)
-import Test.Spec.Assertions (fail)
+import Test.Spec (after_, before_, describe, it)
 import Test.Spec.Reporter.Console (consoleReporter)
 import Test.Spec.Runner (runSpecT)
 
@@ -50,11 +42,10 @@ node vlan addr sysConfig = {vlan, addr, sysConfig}
 main :: Effect Unit
 main =
   let
-    node1                         = "http://172.16.169.1:3000/api/"
-    node2                         = "http://172.16.169.2:3000/api/"
-
-    node1IngestStart              = node1 <> "canary/ingest/stream1/low/start"
-    node1Egest                    = node1 <> "canary/client/stream1/start"
+    p1n1                         = "http://172.16.169.1:3000/api/"
+    p1n2                         = "http://172.16.169.2:3000/api/"
+    p2n1                         = "http://172.16.170.1:3000/api/"
+    p2n2                         = "http://172.16.170.2:3000/api/"
 
     egest  node' streamId         = AX.put ResponseFormat.string (node' <> "client/canary/client/" <> streamId <> "/start") (Just $ Affjax.RequestBody.json $ Data.Argonaut.Core.fromString "{}")
     ingest node' streamId variant = AX.get ResponseFormat.string (node' <> "client/canary/ingest/" <> streamId <> "/" <> variant <> "/start")
@@ -75,44 +66,38 @@ main =
                   , node "vlan202" "172.16.170.2" "test/config/sys.config"
                   ]) do
       after_ stopSession do
-        describe "two node setup" do
-          it "client requests stream on ingest node"  do
-            _ <- egest node1 stream1       >>= assertStatusCode "no egest prior to ingest" 404
-            _ <- relayStatus node1 stream1 >>= assertStatusCode "no relay prior to ingest" 404
-            _ <- ingest node1 stream1 low  >>= assertStatusCode "create ingest" 200
-            _ <- delayMs 500.0
-            _ <- egest node1 stream1       >>= assertStatusCode "egest available" 204
-            _ <- relayStatus node1 stream1 >>= assertStatusCode "relay exists" 200
-            pure unit
+        describe "Ingest egest" do
+          describe "one pop setup" do
+            it "client requests stream on ingest node" do
+              _ <- egest       p1n1 stream1     >>= assertStatusCode 404 "no egest prior to ingest"
+              _ <- relayStatus p1n1 stream1     >>= assertStatusCode 404 "no relay prior to ingest"
+              _ <- ingest      p1n1 stream1 low >>= assertStatusCode 200 "create ingest"
+              _ <- delayMs 500.0
+              _ <- egest       p1n1 stream1     >>= assertStatusCode 204 "egest available"
+              _ <- relayStatus p1n1 stream1     >>= assertStatusCode 200 "relay exists"
+              pure unit
 
-          it "client requests stream on non-ingest node" do
-            _ <- egest node2 stream1       >>= assertStatusCode "no egest prior to ingest" 404
-            _ <- relayStatus node2 stream1 >>= assertStatusCode "no local relay prior to ingest" 404
-            _ <- relayStatus node1 stream1 >>= assertStatusCode "no remote relay prior to ingest" 404
-            _ <- ingest node1 stream1 low  >>= assertStatusCode "create ingest" 200
-            _ <- delayMs 1000.0
-            _ <- egest node1 stream1       >>= assertStatusCode "egest available" 204
-            _ <- relayStatus node2 stream1 >>= assertStatusCode "local relay exists" 200
-            _ <- relayStatus node1 stream1 >>= assertStatusCode "remote relay exists" 200
-            pure unit
+            it "client requests stream on non-ingest node" do
+              _ <- egest       p1n2 stream1     >>= assertStatusCode 404 "no egest prior to ingest"
+              _ <- relayStatus p1n2 stream1     >>= assertStatusCode 404 "no remote relay prior to ingest"
+              _ <- ingest      p1n1 stream1 low >>= assertStatusCode 200 "create ingest"
+              _ <- delayMs 1000.0
+              _ <- egest       p1n2 stream1     >>= assertStatusCode 204 "egest available"
+              _ <- relayStatus p1n2 stream1     >>= assertStatusCode 200 "remote relay exists"
+              pure unit
 
-          -- it
-          --   _ <- egest node2 stream1       >>= assertStatusCode "no egest prior to ingest" 404
-          --   _ <- ingest node1 stream1 low  >>= assertStatusCode "create ingest" 200
-          --   _ <- delayMs 1000.0
-          --   _ <- relayStatus node2 stream1 >>= assertStatusCode "relay exists" 200
-          --   _ <- egest node2 stream1       >>= assertStatusCode "egest available" 204
-          --   pure unit
+          describe "two pop setup" do
+            it "client requests stream on other pop" do
+              _ <- egest       p2n2 stream1     >>= assertStatusCode 404 "no egest prior to ingest"
+              _ <- relayStatus p1n1 stream1     >>= assertStatusCode 404 "no remote relay prior to ingest"
+              _ <- relayStatus p1n1 stream1     >>= assertStatusCode 404 "no local relay prior to ingest"
+              _ <- ingest      p1n1 stream1 low >>= assertStatusCode 200 "create ingest"
+              _ <- delayMs 1000.0
+              _ <- egest       p2n2 stream1     >>= assertStatusCode 204 "egest available"
+              _ <- relayStatus p2n2 stream1     >>= assertStatusCode 200 "local relay exists"
+              _ <- relayStatus p1n1 stream1     >>= assertStatusCode 200 "remote relay exists"
+              pure unit
 
-          --   let
-          --     node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/stream1/low/start"
-          --     node2edge = "http://172.16.169.2:3000/api/client/canary/client/stream1/start"
-          --   _ <- assertStatusCode "no ingest before creating client" 404 =<< AX.put ResponseFormat.string node2edge (Just $ Affjax.RequestBody.json $ Data.Argonaut.Core.fromString "{}")
-          --   _ <- assertStatusCode "create ingest" 200 =<< AX.get ResponseFormat.string node1ingestStart
-          --   _ <- delay (Milliseconds 1000.0)
-          --   _ <- assertStatusCode "relay on origin" 204 =<< AX.get node2edge
-          --   _ <- assertStatusCode "ingest ready" 204 =<< AX.put ResponseFormat.string node2edge (Just $ Affjax.RequestBody.json $ Data.Argonaut.Core.fromString "{}")
-          --   pure unit
           -- it "client requests stream on other pop" do
           --   let
           --     node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/stream1/low/start"
@@ -216,8 +201,8 @@ main =
   where
     testConfig = { slow: Milliseconds 5000.0, timeout: Just (Milliseconds 20000.0), exit: false }
 
-assertStatusCode :: forall a. String -> Int -> Either Error (Response a) -> Aff (Response a)
-assertStatusCode source expectedCode either =
+assertStatusCode :: forall a. Int -> String -> Either Error (Response a) -> Aff (Response a)
+assertStatusCode expectedCode source either =
   case either of
     Right response@{status : StatusCode resultCode} | resultCode == expectedCode ->
       pure response

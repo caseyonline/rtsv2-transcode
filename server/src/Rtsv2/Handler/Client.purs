@@ -13,7 +13,7 @@ import Data.Newtype (class Newtype, unwrap, wrap)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Cowboy.Req (StatusCode(..), binding, replyWithoutBody)
-import Erl.Data.List (List, nil, singleton, (:))
+import Erl.Data.List (List, singleton, (:))
 import Erl.Data.List as List
 import Erl.Data.Map as Map
 import Erl.Data.Tuple (tuple2)
