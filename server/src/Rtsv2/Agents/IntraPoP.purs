@@ -43,7 +43,7 @@ import Erl.Data.Map as Map
 import Erl.Process (Process, spawnLink)
 import Erl.Utils (Milliseconds)
 import Erl.Utils as Erl
-import Logger (Logger)
+import Logger (Logger, spy)
 import Logger as Logger
 import Partial.Unsafe (unsafeCrashWith)
 import Pinto (ServerName, StartLinkResult)
@@ -148,14 +148,14 @@ getIdleServer pred = Gen.doCall serverName
   (\state@{members} ->
     let n = 2
         nMostIdleWithCapacity =
-          values members
+          values (spy "members" members)
           # filterMap (\memberInfo ->
                         let serverLoad = toServerLoad memberInfo
                         in if pred serverLoad then Just serverLoad else Nothing)
           # sortBy (\(ServerLoad _ l1) (ServerLoad _ l2) -> compare l1 l2)
           <#> (\(ServerLoad locatedServer _) -> locatedServer)
           # take n
-        numServers = length nMostIdleWithCapacity
+        numServers = length $spy "nMostIdleWithCapacity" nMostIdleWithCapacity
     in do
       resp <-
         case numServers of
@@ -167,8 +167,9 @@ getIdleServer pred = Gen.doCall serverName
               Nothing -> pure Nothing
           _ ->
             do
-              chosenIndex <- randomInt 1 numServers
-              pure $ index nMostIdleWithCapacity chosenIndex
+              -- TODO - always seems to give the same answer!
+              chosenIndex <- randomInt 0 (numServers - 1)
+              pure $ (spy "chosenIndexPure" $ index nMostIdleWithCapacity (spy "chosenIndex" chosenIndex))
       pure $ CallReply resp state
   )
 

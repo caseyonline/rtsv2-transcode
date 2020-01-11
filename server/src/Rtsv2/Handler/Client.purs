@@ -177,7 +177,7 @@ createRelayInThisPoP :: StreamId -> PoPName -> List ViaPoPs -> LocatedServer -> 
 createRelayInThisPoP streamId thisPoPName routes ingestAggregator@(LocatedServer address _location) = do
   maybeCandidateRelayServer <- IntraPoP.getIdleServer (const true)
 
-  case maybeCandidateRelayServer of
+  case (spy "maybeCandidateRelayServer" maybeCandidateRelayServer) of
     Just candidateRelayServer ->
       let
         path = Routing.printUrl RoutingEndpoint.endpoint (RelayE streamId)

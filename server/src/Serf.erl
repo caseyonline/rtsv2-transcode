@@ -9,8 +9,7 @@
         , streamImpl/3
         , getCoordinateImpl/4
         , messageMapperImpl/1
-        ])
-.
+        ]).
 %% event :: forall a. IpAndPort -> String -> a -> Boolean ->  Effect (Either SerfApiError Unit)
 eventImpl(Left, Right, RpcAddr, Name, Msg, Coalesce) ->
   fun() ->

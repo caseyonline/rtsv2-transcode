@@ -78,19 +78,31 @@ main =
         describe "two node setup" do
           it "client requests stream on ingest node"  do
             _ <- egest node1 stream1       >>= assertStatusCode "no egest prior to ingest" 404
+            _ <- relayStatus node1 stream1 >>= assertStatusCode "no relay prior to ingest" 404
             _ <- ingest node1 stream1 low  >>= assertStatusCode "create ingest" 200
             _ <- delayMs 500.0
-            _ <- relayStatus node1 stream1 >>= assertStatusCode "relay exists" 200
             _ <- egest node1 stream1       >>= assertStatusCode "egest available" 204
+            _ <- relayStatus node1 stream1 >>= assertStatusCode "relay exists" 200
             pure unit
 
           it "client requests stream on non-ingest node" do
             _ <- egest node2 stream1       >>= assertStatusCode "no egest prior to ingest" 404
+            _ <- relayStatus node2 stream1 >>= assertStatusCode "no local relay prior to ingest" 404
+            _ <- relayStatus node1 stream1 >>= assertStatusCode "no remote relay prior to ingest" 404
             _ <- ingest node1 stream1 low  >>= assertStatusCode "create ingest" 200
             _ <- delayMs 1000.0
-            _ <- relayStatus node2 stream1 >>= assertStatusCode "relay exists" 200
-            _ <- egest node2 stream1       >>= assertStatusCode "egest available" 204
+            _ <- egest node1 stream1       >>= assertStatusCode "egest available" 204
+            _ <- relayStatus node2 stream1 >>= assertStatusCode "local relay exists" 200
+            _ <- relayStatus node1 stream1 >>= assertStatusCode "remote relay exists" 200
             pure unit
+
+          -- it
+          --   _ <- egest node2 stream1       >>= assertStatusCode "no egest prior to ingest" 404
+          --   _ <- ingest node1 stream1 low  >>= assertStatusCode "create ingest" 200
+          --   _ <- delayMs 1000.0
+          --   _ <- relayStatus node2 stream1 >>= assertStatusCode "relay exists" 200
+          --   _ <- egest node2 stream1       >>= assertStatusCode "egest available" 204
+          --   pure unit
 
           --   let
           --     node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/stream1/low/start"

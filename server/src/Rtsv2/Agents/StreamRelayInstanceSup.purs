@@ -24,6 +24,9 @@ import Shared.Stream (StreamId)
 serverName :: SupervisorName
 serverName = Names.streamRelayInstanceSupName
 
+isAvailable :: Effect Boolean
+isAvailable = Names.isRegistered serverName
+
 startLink :: forall a. a -> Effect Pinto.StartLinkResult
 startLink _ = Sup.startLink serverName init
 

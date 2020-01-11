@@ -5,21 +5,26 @@ module Rtsv2.Handler.Relay
 
 import Prelude
 
-import Data.Either (Either(..))
-import Data.Maybe (Maybe(..), fromMaybe')
+import Data.Either (hush)
+import Data.Maybe (Maybe(..), fromMaybe', isNothing)
+import Data.Newtype (wrap)
 import Effect (Effect)
 import Erl.Atom (atom)
-import Erl.Cowboy.Req (ReadBodyResult(..), Req, binding, method, readBody)
+import Erl.Cowboy.Req (ReadBodyResult(..), Req, StatusCode(..), binding, method, readBody, replyWithoutBody)
 import Erl.Data.Binary (Binary)
 import Erl.Data.Binary.IOData (IOData, fromBinary, toBinary)
-import Erl.Data.List (singleton)
+import Erl.Data.List (singleton, (:))
+import Erl.Data.Map as Map
+import Rtsv2.Agents.StreamRelayInstance (Status)
+import Rtsv2.Agents.StreamRelayInstance as StreamRelayInstance
 import Rtsv2.Agents.StreamRelayInstanceSup as StreamRelayInstanceSup
 import Rtsv2.Handler.MimeType as MimeType
-import Shared.Stream (StreamId(..))
+import Rtsv2.Utils (noprocToMaybe)
+import Shared.Stream (StreamId)
 import Shared.Types (PoPName, ServerAddress)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON as JSON
-import Stetson (StetsonHandler)
+import Stetson (HttpMethod(..), StetsonHandler)
 import Stetson.Rest as Rest
 import Unsafe.Coerce as Unsafe.Coerce
 
@@ -31,6 +36,8 @@ type CreateRelayPayload
 type State
   = { streamId :: StreamId
     , createRelayPayload :: Maybe CreateRelayPayload
+    , method :: String
+    , mStatus :: Maybe Status
     }
 
 resource :: StetsonHandler State
@@ -44,26 +51,27 @@ resource =
   where
     init req =
       let
-        streamId = fromMaybe' (lazyCrashIfMissing "stream_id binding missing") $ binding (atom "stream_id") req
-      in
+        streamId = wrap $ fromMaybe' (lazyCrashIfMissing "stream_id binding missing") $ binding (atom "stream_id") req
+        method' = method req
+      in do
+        mStatus <- case method' of
+          "POST" -> pure Nothing
+          _ -> noprocToMaybe $ StreamRelayInstance.status streamId
+        createRelayPayload <-
+          case method' of
+            "POST" ->  hush <$> JSON.readJSON <$> binaryToString <$> allBody req mempty
+            _ -> pure Nothing
         Rest.initResult req
-          { streamId: StreamId streamId
-          , createRelayPayload: Nothing
-          }
+            { streamId
+            , createRelayPayload
+            , method: method'
+            , mStatus
+            }
 
-    malformedRequest req state =
-      case method req of
+    malformedRequest req state@{method, streamId, mStatus, createRelayPayload} =
+      case method of
         "POST" -> do
-          body <- allBody req mempty
-          let
-            payload = JSON.readJSON $ (binaryToString body) :: Either _ CreateRelayPayload
-
-          case payload of
-            Left _ ->
-              Rest.result false req state
-
-            Right createRelayPayload ->
-              Rest.result true req (state { createRelayPayload = Just createRelayPayload })
+          Rest.result (isNothing createRelayPayload) req state
         _ ->
           Rest.result false req state
 
@@ -74,15 +82,21 @@ resource =
 
     provideContent req state =
       case method req of
-        "POST" -> provideEmpty
-        _ -> provideStatus
+        "POST" -> provideEmpty req state
+        _ -> provideStatus req state
 
-    provideStatus req state = Rest.result "marvelous" req state
+    provideStatus req state@{mStatus} =
+      case mStatus of
+        Nothing ->
+          do
+            newReq <- replyWithoutBody (StatusCode 404) Map.empty req
+            Rest.stop newReq state
+        Just status ->
+          Rest.result "marvelous" req state
 
-    provideEmpty req state = Rest.result "" req state
+    provideEmpty req state =
+      Rest.result "" req state
 
-Rest.result "" req state
-    provideEmpty req state = Rest.result "" req state
 
 
 allBody :: Req -> IOData -> Effect Binary
