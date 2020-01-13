@@ -12,7 +12,8 @@ import Data.Maybe (Maybe(..), fromMaybe')
 import Data.Newtype (class Newtype, unwrap, wrap)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
-import Erl.Cowboy.Req (StatusCode(..), binding, replyWithoutBody)
+import Erl.Cowboy.Handlers.Rest (MovedResult, moved, notMoved)
+import Erl.Cowboy.Req (Req, StatusCode(..), binding, replyWithoutBody, setHeader)
 import Erl.Data.List (List, singleton, (:))
 import Erl.Data.List as List
 import Erl.Data.Map as Map
@@ -36,7 +37,7 @@ import Shared.Types (LocatedServer(..), PoPName, ServerAddress, ServerLoad(..), 
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON as Json
 import SpudGun as SpudGun
-import Stetson (HttpMethod(..), StetsonHandler)
+import Stetson (HttpMethod(..), RestResult, StetsonHandler, RestHandler)
 import Stetson.Rest as Rest
 
 data ClientStartState
@@ -57,8 +58,10 @@ data FailureReason
   | NoResource
 
 
-newtype State = State (Either FailureReason EgestLocation)
-derive instance newtypeState :: Newtype State _
+newtype State = State { streamId :: StreamId
+                      , egestResp :: (Either FailureReason EgestLocation)
+                      }
+--derive instance newtypeState :: Newtype State _
 
 --------------------------------------------------------------------------------
 -- Do we have any EgestInstances in this pop that have capacity for another client?
@@ -84,7 +87,7 @@ findEgestForStream thisNode streamId = do
   else
    case pickInstance serversWithCapacity of
      Just server ->
-       pure $ Right $ Remote server
+       pure $ Right $ Remote (spy "remote" server)
 
      Nothing ->
        do
@@ -96,7 +99,6 @@ findEgestForStream thisNode streamId = do
 
            Right relayAddress ->
              do
-               -- TODO create egest
                _ <- EgestInstanceSup.maybeStartAndAddClient streamId
                pure $ Right Local
 
@@ -209,6 +211,8 @@ clientStart =
   # Rest.allowedMethods (Rest.result (PUT : mempty))
   # Rest.contentTypesAccepted (\req state -> Rest.result (singleton $ MimeType.json acceptAny) req state)
   # Rest.resourceExists resourceExists
+  # Rest.previouslyExisted previsouslyExisted
+  # Rest.movedTemporarily movedTemporarily
   # Rest.contentTypesProvided (\req state -> Rest.result (singleton $ MimeType.json provideEmpty) req state)
   # Rest.yeeha
 
@@ -220,22 +224,43 @@ clientStart =
         do
           thisNode <- PoPDefinition.thisNode
           egestResp <- findEgestForStream thisNode streamId
-          Rest.initResult req $ wrap $ spy "egestResp" egestResp
+          let
+            req2 = setHeader "x-servedby" (unwrap thisNode) req
+            _ = spy "egestResp" egestResp
+          Rest.initResult req2 $ State { streamId, egestResp }
 
     acceptAny req state = Rest.result true req state
 
-    resourceExists req state =
-      case unwrap (spy "re" state) of
+    resourceExists req state@(State {egestResp}) =
+      case egestResp of
         Left NotFound ->
           do
             newReq <- replyWithoutBody (StatusCode 404) Map.empty req
             Rest.stop newReq state
         Left NoResource ->
+          -- todo
           Rest.stop req state
         Right Local ->
           Rest.result true req state
         Right (Remote _) ->
-          Rest.result true req state
+          Rest.result false req state
+
+    previsouslyExisted req state@(State {egestResp}) =
+      let resp = case egestResp of
+            Right (Remote _) -> true
+            _ -> false
+      in
+       Rest.result resp req state
+
+    movedTemporarily :: Req -> State -> Effect (RestResult MovedResult State)
+    movedTemporarily req state@(State {streamId, egestResp}) =
+      case spy "moved" egestResp of
+        Right (Remote addr) ->
+          --api node <> "client/canary/ingest/" <> streamId <> "/" <> variant <> "/start") <#> stringifyError
+          Rest.result (moved $ "http://" <> show addr <> ":3000/api/client/canary/ingest/" <> show streamId <> "/start") req state
+        _ ->
+          Rest.result notMoved req state
+
 
     provideEmpty req state = Rest.result "" req state
 

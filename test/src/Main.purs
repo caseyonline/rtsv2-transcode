@@ -20,6 +20,7 @@ import Data.Newtype (un)
 import Data.Time.Duration (Milliseconds(..))
 import Data.Traversable (traverse_)
 import Data.Tuple (Tuple(..))
+import Debug.Trace (spy)
 import Effect (Effect)
 import Effect.Aff (Aff, delay, launchAff_, throwError)
 import Effect.Exception (Error, error) as Exception
@@ -81,22 +82,22 @@ main =
       before_ (start [p1n1, p1n2, p1n3]) do
         after_ stopSession do
           describe "one pop setup" do
-            it "client requests stream on ingest node" do
-              egest       p1n1 stream1     >>= assertStatusCode 404 >>= as "no egest prior to ingest"
-              egest       p1n1 stream1     >>= assertStatusCode 404 >>= as "no egest prior to ingest"
-              relayStatus p1n1 stream1     >>= assertStatusCode 404 >>= as "no relay prior to ingest"
-              ingest      p1n1 stream1 low >>= assertStatusCode 200 >>= as "create ingest"
-              delayMs 500.0
-              egest       p1n1 stream1     >>= assertStatusCode 204 >>= as "egest available"
-              relayStatus p1n1 stream1     >>= assertStatusCode 200 >>= as "relay exists"
+            -- it "client requests stream on ingest node" do
+            --   egest       p1n1 stream1     >>= assertStatusCode 404 >>= as "no egest prior to ingest"
+            --   egest       p1n1 stream1     >>= assertStatusCode 404 >>= as "no egest prior to ingest"
+            --   relayStatus p1n1 stream1     >>= assertStatusCode 404 >>= as "no relay prior to ingest"
+            --   ingest      p1n1 stream1 low >>= assertStatusCode 200 >>= as "create ingest"
+            --   delayMs 500.0
+            --   egest       p1n1 stream1     >>= assertStatusCode 204 >>= as "egest available"
+            --   relayStatus p1n1 stream1     >>= assertStatusCode 200 >>= as "relay exists"
 
-            it "client requests stream on non-ingest node" do
-              egest       p1n2 stream1     >>= assertStatusCode 404 >>= as "no egest prior to ingest"
-              relayStatus p1n2 stream1     >>= assertStatusCode 404 >>= as "no remote relay prior to ingest"
-              ingest      p1n1 stream1 low >>= assertStatusCode 200 >>= as "create ingest"
-              delayMs 1000.0
-              egest       p1n2 stream1     >>= assertStatusCode 204 >>= as "egest available"
-              relayStatus p1n2 stream1     >>= assertStatusCode 200 >>= as "remote relay exists"
+            -- it "client requests stream on non-ingest node" do
+            --   egest       p1n2 stream1     >>= assertStatusCode 404 >>= as "no egest prior to ingest"
+            --   relayStatus p1n2 stream1     >>= assertStatusCode 404 >>= as "no remote relay prior to ingest"
+            --   ingest      p1n1 stream1 low >>= assertStatusCode 200 >>= as "create ingest"
+            --   delayMs 1000.0
+            --   egest       p1n2 stream1     >>= assertStatusCode 204 >>= as "egest available"
+            --   relayStatus p1n2 stream1     >>= assertStatusCode 200 >>= as "remote relay exists"
 
             it "client requests stream on 2nd node on ingest pop" do
               egest       p1n2 stream1     >>= assertStatusCode 404 >>= as "no egest p1n2 prior to ingest"
@@ -105,22 +106,22 @@ main =
               delayMs 1000.0
               egest       p1n2 stream1     >>= assertStatusCode 204 >>= as "egest available on p1n2"
               delayMs 1000.0
-              egest       p1n3 stream1     >>= assertStatusCode 204
+              egest       p1n3 stream1     >>= assertStatusCode 201
                                            >>= assertHeader (Tuple "x-servedby" "172.16.169.2")
                                                                     >>= as "p1n3 egest redirects to p1n2"
 
-      describe "two pop setup" do
-        before_ (start [p1n1, p1n2, p1n3, p2n1]) do
-          after_ stopSession do
-            it "client requests stream on other pop" do
-              egest       p2n1 stream1     >>= assertStatusCode 404 >>= as "no egest prior to ingest"
-              relayStatus p1n1 stream1     >>= assertStatusCode 404 >>= as "no remote relay prior to ingest"
-              relayStatus p1n1 stream1     >>= assertStatusCode 404 >>= as "no local relay prior to ingest"
-              ingest      p1n1 stream1 low >>= assertStatusCode 200 >>= as "create ingest"
-              delayMs 1000.0
-              egest       p2n1 stream1     >>= assertStatusCode 204 >>= as "egest available"
-              relayStatus p2n1 stream1     >>= assertStatusCode 200 >>= as "local relay exists"
-              -- TODO -- relayStatus p1n1 stream1     >>= assertStatusCode 200 >>= as "remote relay exists"
+      -- describe "two pop setup" do
+      --   before_ (start [p1n1, p1n2, p1n3, p2n1]) do
+      --     after_ stopSession do
+      --       it "client requests stream on other pop" do
+      --         egest       p2n1 stream1     >>= assertStatusCode 404 >>= as "no egest prior to ingest"
+      --         relayStatus p1n1 stream1     >>= assertStatusCode 404 >>= as "no remote relay prior to ingest"
+      --         relayStatus p1n1 stream1     >>= assertStatusCode 404 >>= as "no local relay prior to ingest"
+      --         ingest      p1n1 stream1 low >>= assertStatusCode 200 >>= as "create ingest"
+      --         delayMs 1000.0
+      --         egest       p2n1 stream1     >>= assertStatusCode 204 >>= as "egest available"
+      --         relayStatus p2n1 stream1     >>= assertStatusCode 200 >>= as "local relay exists"
+      --         -- TODO -- relayStatus p1n1 stream1     >>= assertStatusCode 200 >>= as "remote relay exists"
 
           -- it "client ingest starts and stops" do
           --   let
@@ -214,6 +215,7 @@ assertStatusCode expectedCode either =
 assertHeader :: forall a. Tuple String String -> Either String (Response a) -> Aff (Either String (Response a))
 assertHeader (Tuple header value) either =
   pure $ either >>= (\response@{headers} ->
+                      let _ = spy "header" response in
                       if elem (ResponseHeader header value) headers
                       then pure response
                       else Left $ "Header " <> header <> ":" <> value <> " not present in response " <> (show headers)
