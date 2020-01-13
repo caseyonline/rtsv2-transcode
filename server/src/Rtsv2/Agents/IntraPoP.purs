@@ -42,6 +42,7 @@ import Erl.Process (Process, spawnLink)
 import Erl.Utils (Milliseconds)
 import Erl.Utils as Erl
 import Foreign (Foreign)
+import Logger (spy)
 import Logger as Logger
 import Partial.Unsafe (unsafeCrashWith)
 import Pinto (ServerName, StartLinkResult)
@@ -130,12 +131,13 @@ whereIsEdge streamId =
 
 getIdleServer :: Effect (Maybe ServerAddress)
 getIdleServer = Gen.doCall serverName
-  (\state@{members} ->
+  (\state@{thisNode, members} ->
     let
-      membersList = values members
+      membersList = values (Map.delete thisNode members)
+      maxIndex = (length membersList) - 1
     in
       do
-        indexes <- distinctRandomNumbers 1 (min 2 ((length membersList) - 1))
+        indexes <- distinctRandomNumbers (min 2 maxIndex) maxIndex
         let
           output = traverse (\i -> index membersList i) indexes
                    # fromMaybe nil

@@ -1,6 +1,7 @@
 module Rtsv2.Endpoints.IngestAggregator
        ( ingestAggregator
        , ingestAggregators
+       , ingestAggregatorsActiveIngest
        )
        where
 
@@ -21,7 +22,8 @@ import Rtsv2.Agents.IngestAggregatorInstanceSup as IngestAggregatorInstanceSup
 import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
 import Rtsv2.Endpoints.MimeType as MimeType
 import Shared.LlnwApiTypes (StreamDetails)
-import Shared.Stream (StreamId(..))
+import Shared.Stream (StreamId(..), StreamVariantId(..), toStreamId)
+import Shared.Types (ServerAddress(..))
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (readJSON)
 import Simple.JSON as JSON
@@ -81,6 +83,51 @@ ingestAggregators =
   # Rest.previouslyExisted (Rest.result false)
 
   # Rest.allowMissingPost (Rest.result true)
+
+  # Rest.contentTypesProvided (\req state -> Rest.result (tuple2 "application/json" (Rest.result ""): nil) req state)
+
+  # Rest.yeeha
+
+type IngestAggregatorsActiveIngestState = { streamVariantId :: StreamVariantId
+                                          , serverAddress :: Maybe ServerAddress}
+ingestAggregatorsActiveIngest :: StetsonHandler IngestAggregatorsActiveIngestState
+ingestAggregatorsActiveIngest = 
+  Rest.handler (\req ->
+                 let
+                   streamIdStr = fromMaybe' (lazyCrashIfMissing "stream_id binding missing") $ binding (atom "stream_id") req
+                   variantIdStr = fromMaybe' (lazyCrashIfMissing "variant binding missing") $ binding (atom "variant_id") req
+                 in
+                  Rest.initResult req {streamVariantId: StreamVariantId streamIdStr variantIdStr
+                                      , serverAddress: Nothing})
+  # Rest.serviceAvailable (\req state -> do
+                              isAgentAvailable <- IngestAggregatorInstanceSup.isAvailable
+                              Rest.result isAgentAvailable req state)
+  # Rest.allowedMethods (Rest.result (POST : nil))
+  # Rest.resourceExists (\req state@{streamVariantId} -> do
+                          isAvailable <- IngestAggregatorInstance.isAvailable (toStreamId streamVariantId)
+                          Rest.result isAvailable req state
+                        )
+  # Rest.malformedRequest (\req state -> do
+                              body <- allBody req mempty
+                              let
+                                maybeServerAddress :: Maybe ServerAddress
+                                maybeServerAddress = hush $ readJSON $ binaryToString body
+                              Rest.result (isNothing maybeServerAddress) req state{serverAddress = maybeServerAddress})
+  # Rest.contentTypesAccepted (\req state ->
+                                Rest.result ((tuple2 "application/json" (\req2 state2@{ streamVariantId
+                                                                                      , serverAddress: maybeServerAddress} ->
+                                                                          let
+                                                                            serverAddress = fromMaybe' (lazyCrashIfMissing "server_address is nothing") maybeServerAddress
+                                                                          in
+                                                                            do
+                                                                              _ <- IngestAggregatorInstance.addRemoteVariant streamVariantId serverAddress
+                                                                              Rest.result true req2 state2
+                                                                        )) : nil)
+                                req state)
+
+  # Rest.previouslyExisted (Rest.result false)
+
+  # Rest.allowMissingPost (Rest.result false)
 
   # Rest.contentTypesProvided (\req state -> Rest.result (tuple2 "application/json" (Rest.result ""): nil) req state)
 

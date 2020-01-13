@@ -2,6 +2,7 @@ module Rtsv2.Agents.IngestAggregatorInstance
   ( startLink
   , isAvailable
   , addVariant
+  , addRemoteVariant
   , getState
   , stopAggregator
   ) where
@@ -23,16 +24,18 @@ import Record as Record
 import Rtsv2.Agents.IntraPoP (announceStreamIsAvailable, announceStreamStopped)
 import Rtsv2.Config as Config
 import Rtsv2.Names as Names
+import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Agent as Agent
 import Shared.LlnwApiTypes (StreamDetails)
 import Shared.Stream (StreamId(..), StreamVariantId, toStreamId)
-import Shared.Types (IngestAggregatorPublicState)
+import Shared.Types (IngestAggregatorPublicState, ServerAddress(..))
 
 type State
   = { config :: Config.IngestAggregatorAgentConfig
+    , thisNode :: ServerAddress
     , streamId :: StreamId
     , streamDetails :: StreamDetails
-    , activeStreamVariants :: Map StreamVariantId Unit
+    , activeStreamVariants :: Map StreamVariantId ServerAddress
     }
 
 data Msg
@@ -46,8 +49,13 @@ serverName = Names.ingestAggregatorInstanceName
 
 addVariant :: StreamVariantId -> Effect Unit
 addVariant streamVariantId = Gen.call (serverName (toStreamId streamVariantId))
+  \state@{thisNode, activeStreamVariants} ->
+  CallReply unit state{activeStreamVariants = insert streamVariantId thisNode activeStreamVariants}
+
+addRemoteVariant :: StreamVariantId -> ServerAddress -> Effect Unit
+addRemoteVariant streamVariantId remoteServer = Gen.call (serverName (toStreamId streamVariantId))
   \state@{activeStreamVariants} ->
-  CallReply unit state{activeStreamVariants = insert streamVariantId unit activeStreamVariants}
+  CallReply unit state{activeStreamVariants = insert streamVariantId remoteServer activeStreamVariants}
 
 getState :: StreamId -> Effect (IngestAggregatorPublicState)
 getState streamId = Gen.call (serverName streamId)
@@ -68,9 +76,11 @@ init :: StreamDetails -> Effect State
 init streamDetails = do
   _ <- logInfo "Ingest Aggregator starting" {streamId: streamId}
   config <- Config.ingestAggregatorAgentConfig
+  thisNode <- PoPDefinition.thisNode
   _ <- Timer.sendEvery (serverName streamId) config.streamAvailableAnnounceMs Tick
   _ <- announceStreamIsAvailable streamId
   pure { config : config
+       , thisNode
        , streamId
        , streamDetails
        , activeStreamVariants : Map.empty

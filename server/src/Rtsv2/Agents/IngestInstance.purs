@@ -30,7 +30,7 @@ import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Agent as Agent
 import Shared.LlnwApiTypes (StreamDetails)
-import Shared.Stream (StreamVariantId, toStreamId)
+import Shared.Stream (StreamVariantId(..), toStreamId)
 import Shared.Types (ServerAddress(..))
 import Simple.JSON as JSON
 import SpudGun as SpudGun
@@ -65,11 +65,23 @@ init streamDetails streamVariantId = do
   pure {}
 
 addVariant :: ServerAddress -> StreamVariantId -> Maybe ServerAddress -> Effect Unit
-addVariant thisNode streamVariantId aggregatorAddress
-  | aggregatorAddress == Just thisNode = do
+addVariant thisNode streamVariantId Nothing = pure unit
+addVariant thisNode streamVariantId (Just aggregatorAddress)
+  | aggregatorAddress == thisNode = do
     _ <- IngestAggregatorInstance.addVariant streamVariantId
     pure unit
-  | otherwise = pure unit -- TODO - HTTP call...
+  | otherwise = do
+    let
+      -- TODO - functions to make URLs from ServerAddress
+      ServerAddress addr = aggregatorAddress
+      StreamVariantId streamId variantId = streamVariantId
+      url = "http://" <> addr <> ":3000/api/agents/ingestAggregator/" <> streamId <> "/activeIngests/" <> variantId
+    restResult <- SpudGun.post url (JSON.writeJSON thisNode)
+    case restResult of
+      -- TODO - retry on timer?
+      Left _ -> pure $ unit
+      Right _ -> pure $ unit
+
 
 getAggregator :: StreamDetails -> StreamVariantId -> Effect (Maybe ServerAddress)
 getAggregator streamDetails streamVariantId = do
@@ -93,7 +105,7 @@ launchLocalOrRemote streamDetails streamVariantId = do
 launchRemote :: StreamDetails -> StreamVariantId -> Effect (Maybe ServerAddress)
 launchRemote streamDetails streamVariantId = do
   candidate <- IntraPoP.getIdleServer
-  case (spy "candidate" candidate) of
+  case candidate of
     Nothing ->
       -- TODO - retry on timer?
       pure $ candidate
