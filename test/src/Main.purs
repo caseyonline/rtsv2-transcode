@@ -169,8 +169,9 @@ main =
             _ <- delay (Milliseconds 500.0)
             _ <- assertStatusCode 204 =<< AX.post ResponseFormat.string node1ingestLoad (jsonBody "{\"load\": 60.0}")
             _ <- assertStatusCode 204 =<< AX.post ResponseFormat.string node3ingestLoad (jsonBody "{\"load\": 60.0}")
-            _ <- delay (Milliseconds 1000.0)
+            _ <- delay (Milliseconds 500.0)
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
+            _ <- delay (Milliseconds 500.0)
             _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node1ingestAggregator
             _ <- assertBodyFun assertAggregators =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node2ingestAggregator
             _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node3ingestAggregator
@@ -185,6 +186,7 @@ main =
               assertAggregators (Left _) = false
               assertAggregators (Right {activeStreamVariants}) = [StreamVariantId "slot1" "slot1_1000", StreamVariantId "slot1" "slot1_500"] == (sort activeStreamVariants)
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart1
+            _ <- delay (Milliseconds 500.0)
             _ <- assertStatusCode 204 =<< AX.post ResponseFormat.string node1ingestLoad (jsonBody "{\"load\": 60.0}")
             _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart2
             _ <- assertBodyFun assertAggregators =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestAggregator
