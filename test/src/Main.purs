@@ -192,9 +192,32 @@ main =
             _ <- assertBodyFun assertAggregators =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestAggregator
             _ <- delay (Milliseconds 1000.0)
             pure unit
+          it "ingest restarts aggregator if aggregator exits" do
+            let
+              node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/mmddev001/slot1_500/start"
+              node1ingestLoad = "http://172.16.169.1:3000/api/load"
+              node3ingestLoad = "http://172.16.169.3:3000/api/load"
+              node1ingestAggregator = "http://172.16.169.1:3000/api/agents/ingestAggregator/slot1"
+              node2ingestAggregator = "http://172.16.169.2:3000/api/agents/ingestAggregator/slot1"
+              node3ingestAggregator = "http://172.16.169.3:3000/api/agents/ingestAggregator/slot1"
+              assertAggregators :: E IngestAggregatorPublicState -> Boolean
+              assertAggregators (Left _) = false
+              assertAggregators (Right {activeStreamVariants}) = [StreamVariantId "slot1" "slot1_500"] == (sort activeStreamVariants)
+            _ <- delay (Milliseconds 500.0)
+            _ <- assertStatusCode 204 =<< AX.post ResponseFormat.string node1ingestLoad (jsonBody "{\"load\": 60.0}")
+            _ <- assertStatusCode 204 =<< AX.post ResponseFormat.string node3ingestLoad (jsonBody "{\"load\": 50.0}")
+            _ <- delay (Milliseconds 500.0)
+            _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
+            _ <- delay (Milliseconds 500.0)
+            _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node2ingestAggregator
+            _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node3ingestAggregator
+            _ <- stopNode "172.16.169.2"
+            _ <- delay (Milliseconds 2500.0)
+            _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node3ingestAggregator
+            pure unit
 
   where
-    testConfig = { slow: Milliseconds 5000.0, timeout: Just (Milliseconds 20000.0), exit: false }
+    testConfig = { slow: Milliseconds 5000.0, timeout: Just (Milliseconds 25000.0), exit: false }
 
 assertStatusCode :: forall a. Int -> Either Error (Response a) -> Aff (Response a)
 assertStatusCode expectedCode either =
@@ -250,3 +273,11 @@ launchNodes sysconfigs = do
 stopSession :: Aff Unit
 stopSession = do
   runProc "./scripts/stopSession.sh" [sessionName]
+
+stopNode :: String -> Aff Unit
+stopNode nodeAddr = do
+  runProc "./scripts/stopNode.sh" [ sessionName
+                                  , nodeAddr
+                                  , nodeAddr
+                                  ]
+
