@@ -1,0 +1,30 @@
+{
+  "name": "rtsv2-app",
+  "version": "1.0.0",
+  "description": "",
+  "scripts": {
+    "clean": "rm -rf node_modules output .spago dist/* *.lock",
+    "build": "spago bundle --main Main --to client.js",
+    "watch": "spago build --watch & pulp --watch browserify --main Main --to ../priv/www/js/rtsv2AppBundle.js ",
+    "bundle": "spago bundle-app --main Main --to dist/app.js && parcel build assets/index.html",
+    "serve": "yarn bundle && http-server dist",
+    "test": "spago test"
+  },
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
+  "keywords": [],
+  "author": "Id3as",
+  "license": "MIT",
+  "bugs": {
+    "url": ""
+  },
+  "homepage": "",
+  "devDependencies": {},
+  "dependencies": {
+    "decimal.js": "^10.2.0",
+    "marked": "^0.6.3",
+    "xhr2": "^0.2.0"
+  }
+}

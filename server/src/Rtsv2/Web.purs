@@ -30,11 +30,12 @@ import Rtsv2.Env as Env
 import Rtsv2.Names as Names
 import Serf (Ip(..))
 import Shared.Types (ServerAddress)
-import Stetson (RestResult, StetsonHandler)
+import Stetson (RestResult, StaticAssetLocation(..), StetsonHandler)
 import Stetson as Stetson
 import Stetson.Rest as Rest
 
 newtype State = State {}
+
 
 serverName :: ServerName State Unit
 serverName = Names.webServerName
@@ -63,6 +64,10 @@ init args = do
     # Stetson.route "/llnwstub/rts/v1/streamauthtype" LlnwStub.streamAuthType
     # Stetson.route "/llnwstub/rts/v1/streamauth" LlnwStub.streamAuth
     # Stetson.route "/llnwstub/rts/v1/streampublish" LlnwStub.streamPublish
+
+    # Stetson.static "/assets/[...]" (PrivDir Config.appName "www/assets")
+    # Stetson.static "/adminApp" (PrivFile Config.appName "www/index.html")
+    # Stetson.static "/adminApp/[...]" (PrivFile Config.appName "www/index.html")
 
     # Stetson.port args.port
     # (uncurry4 Stetson.bindTo) (ipToTuple bindIp)
