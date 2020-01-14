@@ -16,12 +16,11 @@ import Prelude hiding ((/))
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show (genericShow)
 import Data.Maybe (Maybe(..))
-import Routing.Duplex (RouteDuplex', int, optional, prefix, root, segment, string)
+import Routing.Duplex (RouteDuplex', prefix, root, segment)
 import Routing.Duplex.Generic (noArgs, sum)
-import Routing.Duplex.Generic.Syntax ((/), (?))
-import Rtsv2App.Data.Route (slug, uname)
+import Routing.Duplex.Generic.Syntax ((/))
+import Rtsv2App.Data.Route (uname)
 import Rtsv2App.Data.Username (Username)
-import Slug (Slug)
 
 -- | First, let's define a few types necessary for our larger `Endpoint` type.
 
@@ -72,13 +71,7 @@ data Endpoint
   | User
   | Users
   | RoundTripTimes
-  | Follow Username
-  | Article Slug
-  | Favorite Slug
-  | Articles ArticleParams
   | Profiles Username
-  | Feed Pagination
-  | Tags
 
 derive instance genericEndpoint :: Generic Endpoint _
 
@@ -102,21 +95,6 @@ endpointCodec = root $ prefix "api" $ sum
   , "User"          : "user" / noArgs
   , "Users"         : "users" / noArgs
   , "RoundTripTimes": "roundtriptimes" / noArgs
-  , "Follow": "profiles" / uname segment/ "follow"
-  , "Article"       : "articles" / slug segment
   -- automatically create query parameters
-  , "Favorite": "articles" / slug segment / "favorite"
-  , "Articles": "articles" ?
-      { tag: optional <<< string
-      , author: optional <<< uname
-      , favorited: optional <<< uname
-      , offset: optional <<< int
-      , limit: optional <<< int
-      }
   , "Profiles": "profiles" / uname segment
-  , "Feed": "articles" / "feed" ?
-      { offset: optional <<< int
-      , limit: optional <<< int
-      }
-  , "Tags": "tags" / noArgs
   }

@@ -1618,9 +1618,13 @@ select.form-control
 }
 .header-navbar .navbar-container ul.nav li > a.nav-link
 {
-    font-size: 1.15rem; 
+    font-size: 1.15rem;
 
     padding: 1.9rem 1rem;
+}
+.header-navbar .navbar-container ul.nav li > a.nav-link:hover
+{
+    color: black;
 }
 .header-navbar .navbar-container ul.nav li > a.nav-link i.flag-icon
 {

@@ -5,79 +5,48 @@ module Rtsv2App.Page.Profile where
 
 import Prelude
 
-import Rtsv2App.Api.Endpoint (noArticleParams)
-import Rtsv2App.Capability.Resource.Article (class ManageArticle, getArticles)
-import Rtsv2App.Capability.Resource.User (class ManageUser, getAuthor)
-import Rtsv2App.Component.HTML.ArticleList (articleList, renderPagination)
-import Rtsv2App.Component.HTML.Footer (footer)
-import Rtsv2App.Component.HTML.Header (header)
-import Rtsv2App.Component.HTML.Utils (css, maybeElem, safeHref, whenElem)
-import Rtsv2App.Component.Part.FavoriteButton (favorite, unfavorite)
-import Rtsv2App.Component.Part.FollowButton (follow, followButton, unfollow)
-import Rtsv2App.Data.Article (ArticleWithMetadata)
-import Rtsv2App.Data.Avatar as Avatar
-import Rtsv2App.Data.PaginatedArray (PaginatedArray)
-import Rtsv2App.Data.Profile (Profile, Author)
-import Rtsv2App.Data.Route (Route(..))
-import Rtsv2App.Data.Username (Username)
-import Rtsv2App.Data.Username as Username
-import Rtsv2App.Env (UserEnv)
 import Control.Monad.Reader (class MonadAsk, asks)
 import Data.Const (Const)
 import Data.Lens (Traversal')
-import Data.Lens.Index (ix)
 import Data.Lens.Record (prop)
 import Data.Maybe (Maybe(..))
-import Data.Monoid (guard)
 import Data.Symbol (SProxy(..))
 import Effect.Aff.Class (class MonadAff)
 import Effect.Ref as Ref
 import Halogen as H
 import Halogen.HTML as HH
-import Halogen.HTML.Properties as HP
 import Network.RemoteData (RemoteData(..), _Success, fromMaybe, toMaybe)
-import Web.Event.Event (preventDefault)
-import Web.UIEvent.MouseEvent (MouseEvent, toEvent)
+import Rtsv2App.Capability.Resource.User (class ManageUser, getAuthor)
+import Rtsv2App.Component.HTML.Footer (footer)
+import Rtsv2App.Component.HTML.Header (header)
+import Rtsv2App.Component.HTML.Utils (css, maybeElem)
+import Rtsv2App.Data.Profile (Profile, Author)
+import Rtsv2App.Data.Route (Route(..))
+import Rtsv2App.Data.Username (Username)
+import Rtsv2App.Data.Username as Username
+import Rtsv2App.Env (UserEnv)
+
 
 data Action
   = Initialize
   | Receive Input
-  | LoadArticles
-  | LoadFavorites
   | LoadAuthor
-  | FollowAuthor
-  | UnfollowAuthor
-  | FavoriteArticle Int
-  | UnfavoriteArticle Int
-  | SelectPage Int MouseEvent
 
 type State =
-  { articles :: RemoteData String (PaginatedArray ArticleWithMetadata)
-  , favorites :: RemoteData String (PaginatedArray ArticleWithMetadata)
-  , author :: RemoteData String Author
-  , page :: Int
+  { author :: RemoteData String Author
   , currentUser :: Maybe Profile
   , username :: Username
-  , tab :: Tab
   }
 
 type Input =
-  { username :: Username
-  , tab :: Tab
-  }
+  { username :: Username }
 
-data Tab
-  = ArticlesTab
-  | FavoritesTab
-
-derive instance eqTab :: Eq Tab
 
 component
   :: forall m r
    . MonadAff m
   => MonadAsk { userEnv :: UserEnv | r } m
   => ManageUser m
-  => ManageArticle m
   => H.Component HH.HTML (Const Void) Input Void m
 component = H.mkComponent
   { initialState
@@ -90,13 +59,9 @@ component = H.mkComponent
   }
   where
   initialState :: Input -> State
-  initialState { username, tab } =
-    { articles: NotAsked
-    , favorites: NotAsked
-    , author: NotAsked
+  initialState { username } =
+    { author: NotAsked
     , currentUser: Nothing
-    , page: 1
-    , tab
     , username
     }
 
@@ -106,74 +71,20 @@ component = H.mkComponent
       mbProfile <- H.liftEffect <<< Ref.read =<< asks _.userEnv.currentUser
       st <- H.modify _ { currentUser = mbProfile }
       void $ H.fork $ handleAction LoadAuthor
-      void $ H.fork $ case st.tab of
-        ArticlesTab -> handleAction LoadArticles
-        FavoritesTab -> handleAction LoadFavorites
 
-    Receive { tab, username } -> do
+    Receive { username } -> do
       st <- H.get
-      when (st.tab /= tab) do
-        H.modify_ _ { tab = tab }
-        void $ H.fork $ case tab of
-          ArticlesTab -> handleAction LoadArticles
-          FavoritesTab -> handleAction LoadFavorites
       when (st.username /= username) do
         H.modify_ _ { username = username }
         void $ H.fork $ handleAction Initialize
-
-    LoadArticles -> do
-      st <- H.modify _ { articles = Loading }
-      let
-        params = noArticleParams
-          { author = Just st.username
-          , offset = if st.page > 1 then Just (st.page * 20) else Nothing
-          }
-      articles <- getArticles params
-      H.modify_ _ { articles = fromMaybe articles }
-
-    LoadFavorites -> do
-      st <- H.modify _ { favorites = Loading}
-      let
-        params = noArticleParams
-          { favorited = Just st.username
-          , offset = if st.page > 1 then Just (st.page * 20) else Nothing
-          }
-      favorites <- getArticles params
-      H.modify_ _ { favorites = fromMaybe favorites }
 
     LoadAuthor -> do
       st <- H.modify _ { author = Loading }
       author <- getAuthor st.username
       H.modify_ _ { author = fromMaybe author }
 
-    FollowAuthor ->
-      follow _author
-
-    UnfollowAuthor ->
-      unfollow _author
-
-    FavoriteArticle index ->
-      favorite (_article index)
-
-    UnfavoriteArticle index ->
-      unfavorite (_article index)
-
-    SelectPage index event -> do
-      H.liftEffect $ preventDefault $ toEvent event
-      st <- H.modify _ { page = index }
-      void $ H.fork $ handleAction case st.tab of
-        FavoritesTab -> LoadFavorites
-        ArticlesTab -> LoadArticles
-
   _author :: Traversal' State Author
   _author = prop (SProxy :: SProxy "author") <<< _Success
-
-  _article :: Int -> Traversal' State ArticleWithMetadata
-  _article i =
-    prop (SProxy :: SProxy "articles")
-      <<< _Success
-      <<< prop (SProxy :: SProxy "body")
-      <<< ix i
 
   render :: State -> H.ComponentHTML Action () m
   render state =
@@ -203,14 +114,13 @@ component = H.mkComponent
                   [ css "col-xs-12 col-md-10 offset-md-1" ]
                   [ HH.img
                       [ css "user-img"
-                      , HP.src $ Avatar.toStringWithDefault (_.image =<< toMaybe state.author)
+                      -- , HP.src $ Avatar.toStringWithDefault (_.image =<< toMaybe state.author)
                       ]
                   , HH.h4_
                       [ HH.text $ Username.toString state.username ]
                   , maybeElem (_.bio =<< toMaybe state.author) \str ->
                       HH.p_
                         [ HH.text str ]
-                  , maybeElem (toMaybe state.author) (followButton FollowAuthor UnfollowAuthor)
                   ]
               ]
           ]
@@ -223,39 +133,6 @@ component = H.mkComponent
           [ css "articles-toggle" ]
           [ HH.ul
               [ css "nav nav-pills outline-active" ]
-              [ mkTab state ArticlesTab
-              , mkTab state FavoritesTab
-              ]
+              []
           ]
-      , whenElem (state.tab == ArticlesTab) \_ ->
-          HH.div_
-            [ articleList FavoriteArticle UnfavoriteArticle state.articles
-            , maybeElem (toMaybe state.articles) \paginated ->
-                renderPagination SelectPage state.page paginated
-            ]
-      , whenElem (state.tab == FavoritesTab) \_ ->
-          HH.div_
-            [ articleList FavoriteArticle UnfavoriteArticle state.favorites
-            , maybeElem (toMaybe state.favorites) \paginated ->
-                renderPagination SelectPage state.page paginated
-            ]
-      ]
-
-  mkTab :: forall props. State -> Tab -> HH.HTML props Action
-  mkTab st thisTab =
-    HH.li
-      [ css "nav-item" ]
-      [ case thisTab of
-          ArticlesTab ->
-            HH.a
-              [ css $ "nav-link" <> guard (st.tab == thisTab) " active"
-              , safeHref $ Profile st.username
-              ]
-              [ HH.text "My Articles" ]
-          FavoritesTab ->
-            HH.a
-              [ css $ "nav-link" <> guard (st.tab == thisTab) " active"
-              , safeHref $ Favorites st.username
-              ]
-              [ HH.text "My Favorites" ]
       ]

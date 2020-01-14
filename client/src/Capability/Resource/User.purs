@@ -37,8 +37,6 @@ class Monad m <= ManageUser m where
   getCurrentUser :: m (Maybe ProfileWithEmail)
   getAuthor :: Username -> m (Maybe Author)
   updateUser :: UpdateProfileFields -> m Unit
-  followUser :: Username -> m (Maybe Author)
-  unfollowUser :: Username -> m (Maybe Author)
 
 -- | This instance lets us avoid having to use `lift` when we use these functions in a component.
 instance manageUserHalogenM :: ManageUser m => ManageUser (HalogenM st act slots msg m) where
@@ -47,5 +45,3 @@ instance manageUserHalogenM :: ManageUser m => ManageUser (HalogenM st act slots
   getCurrentUser = lift getCurrentUser
   getAuthor = lift <<< getAuthor
   updateUser = lift <<< updateUser
-  followUser = lift <<< followUser
-  unfollowUser = lift <<< unfollowUser

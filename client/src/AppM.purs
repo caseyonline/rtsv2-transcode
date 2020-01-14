@@ -14,23 +14,20 @@ import Effect.Now as Now
 import Effect.Ref as Ref
 import Routing.Duplex (print)
 import Routing.Hash (setHash)
-import Rtsv2App.Api.Endpoint (Endpoint(..), noArticleParams)
+import Rtsv2App.Api.Endpoint (Endpoint(..))
 import Rtsv2App.Api.Request (RequestMethod(..))
 import Rtsv2App.Api.Request as Request
 import Rtsv2App.Api.Utils (authenticate, decode, decodeWithUser, mkAuthRequest, mkRequest)
 import Rtsv2App.Capability.LogMessages (class LogMessages)
 import Rtsv2App.Capability.Navigate (class Navigate, navigate)
 import Rtsv2App.Capability.Now (class Now)
-import Rtsv2App.Capability.Resource.Article (class ManageArticle)
 import Rtsv2App.Capability.Resource.User (class ManageUser)
-import Rtsv2App.Data.Article (decodeArticle, decodeArticles)
 import Rtsv2App.Data.Log as Log
 import Rtsv2App.Data.Profile (decodeProfileAuthor)
 import Rtsv2App.Data.Route as Route
 import Rtsv2App.Data.Utils (decodeAt)
 import Rtsv2App.Env (Env, LogLevel(..))
 import Type.Equality (class TypeEquals, from)
-
 
 -- | `AppM` combines the `Aff` and `Reader` monads under a new type, which we can now use to write
 -- | instances for our capabilities. We're able to combine these monads because `ReaderT` is a
@@ -104,46 +101,3 @@ instance manageUserAppM :: ManageUser AppM where
 
   updateUser fields =
     void $ mkAuthRequest { endpoint: User, method: Put (Just (encodeJson fields)) }
-
-  followUser username =
-    mkAuthRequest { endpoint: Follow username, method: Post Nothing }
-      >>= decodeWithUser decodeProfileAuthor
-
-  unfollowUser username =
-    mkAuthRequest { endpoint: Follow username, method: Delete }
-      >>= decodeWithUser decodeProfileAuthor
-
--- | Our operations for managing articles
-instance manageArticleAppM :: ManageArticle AppM where
-  getArticle slug =
-    mkRequest { endpoint: Article slug, method: Get }
-      >>= decodeWithUser decodeArticle
-
-  getArticles fields =
-    mkRequest { endpoint: Articles fields, method: Get }
-      >>= decodeWithUser decodeArticles
-
-  createArticle article = do
-    let method = Post $ Just $ encodeJson { article }
-    mkAuthRequest { endpoint: Articles noArticleParams, method }
-      >>= decodeWithUser decodeArticle
-
-  updateArticle slug article = do
-    let method = Put $ Just $ encodeJson { article }
-    mkAuthRequest { endpoint: Article slug, method }
-      >>= decodeWithUser decodeArticle
-
-  deleteArticle slug =
-    void $ mkAuthRequest { endpoint: Article slug, method: Delete }
-
-  favoriteArticle slug =
-    mkAuthRequest { endpoint: Favorite slug, method: Post Nothing }
-      >>= decodeWithUser decodeArticle
-
-  unfavoriteArticle slug =
-    mkAuthRequest { endpoint: Favorite slug, method: Delete }
-      >>= decodeWithUser decodeArticle
-
-  getCurrentUserFeed params =
-    mkAuthRequest { endpoint: Feed params, method: Get }
-      >>= decodeWithUser decodeArticles

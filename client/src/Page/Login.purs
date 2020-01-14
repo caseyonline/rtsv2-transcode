@@ -27,6 +27,7 @@ import Rtsv2App.Env (UserEnv)
 import Rtsv2App.Form.Field (submit)
 import Rtsv2App.Form.Field as Field
 import Rtsv2App.Form.Validation as V
+import Rtsv2App.Page.PageContainer (pageContainer)
 
 data Action
   = HandleLoginForm LoginFields
@@ -77,7 +78,9 @@ component = Connect.component $  H.mkComponent
 
   render :: State -> H.ComponentHTML Action ChildSlots m
   render state@{ redirect, currentUser }  =
-    container
+    pageContainer
+      currentUser
+      Login
       [ HH.div
           [ css "card-header"]
           [ HH.text "Sign In" ]
@@ -91,42 +94,6 @@ component = Connect.component $  H.mkComponent
             , HH.slot F._formless unit formComponent unit (Just <<< HandleLoginForm)
             ]
           ]
-      ]
-    where
-    container html =
-      HH.div_
-      [ header currentUser Login
-      , mainMenu currentUser Login
-      , HH.div
-        [ css "app-content content" ]
-        [ HH.div
-          [ css "content-wrapper" ]
-          [ HH.div
-            [ css "content-wrapper-before" ]
-            []
-          , HH.div
-            [ css "content-header row" ]
-            [ HH.div
-              [ css "content-header-left col-md-4 col-12 mb-2" ]
-              [ HH.h3
-                [ css "content-header-h3" ]
-                [ HH.text "Login" ]
-              ]
-            ]
-          , HH.div
-            [ css "content-body" ]
-            [ HH.div
-              [ css "row" ]
-              [ HH.div
-                [ css "col-12" ]
-                [ HH.div
-                  [ css "card" ]
-                  html
-                ]
-              ]
-            ]
-          ]
-        ]
       ]
 
 -- | See the Formless tutorial to learn how to build your own forms:

@@ -1,8 +1,3 @@
--- | A capability representing the ability to fetch the current time. This is pure, so we can 
--- | use fixed times in a test monad for determinism. 
--- |
--- | To learn more about why we use capabilities and this architecture, please see the guide:
-
 module Rtsv2App.Capability.Now where
 
 import Prelude
