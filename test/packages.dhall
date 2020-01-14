@@ -32,9 +32,9 @@ let additions =
           , devDependencies =
               [ "purescript-spec" ] : List Text
           , repo =
-              "ssh://git@github.com/adrianroe/purescript-milkis.git"
+              "ssh://git@github.com/justinwoo/purescript-milkis.git"
           , version =
-              "0aadf60bfea70b047cd1fa7a49f5b9d096c3f489"
+              "v7.4.0"
           }
       }
 

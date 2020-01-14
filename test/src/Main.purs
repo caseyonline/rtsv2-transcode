@@ -16,8 +16,6 @@ import Foreign.Object as Object
 import Milkis as M
 import Milkis.Impl.Node (nodeFetch)
 import OsCmd (runProc)
-
-
 import Test.Spec (after_, before_, describe, it)
 import Test.Spec.Reporter.Console (consoleReporter)
 import Test.Spec.Runner (runSpecT)
@@ -53,17 +51,18 @@ main =
     stringifyError (Right r)       = Right r
     stringifyError (Left axError)  = Left $ show axError
 
-
-
     egest :: Node -> String -> Aff (Either String M.Response)
     egest  node streamId         = fetch (M.URL $ api node <> "client/canary/client/" <> streamId <> "/start")
                                    { method: M.postMethod
                                    , body: "{}"
                                    , headers: M.makeHeaders { "Content-Type": "application/json" }
                                    } # attempt <#> stringifyError
-
-    ingest node streamId variant = fetch (M.URL $ api node <> "client/canary/ingest/" <> streamId <> "/" <> variant <> "/start") { method: M.getMethod } # attempt <#> stringifyError
-    relayStatus node streamId    = fetch (M.URL $ api node <> "relay/" <> streamId) { method: M.getMethod } # attempt <#> stringifyError
+    ingest node streamId variant = fetch (M.URL $ api node <> "client/canary/ingest/" <> streamId <> "/" <> variant <> "/start")
+                                   { method: M.getMethod
+                                   } # attempt <#> stringifyError
+    relayStatus node streamId    = fetch (M.URL $ api node <> "relay/" <> streamId)
+                                   { method: M.getMethod
+                                   } # attempt <#> stringifyError
 
     mkNode sysConfig node = {vlan: toVlan node, addr: toAddr node, sysConfig}
 
