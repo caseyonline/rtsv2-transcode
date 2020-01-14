@@ -208,7 +208,7 @@ toHost =
 clientStart :: StetsonHandler State
 clientStart =
   Rest.handler init
-  # Rest.allowedMethods (Rest.result (PUT : mempty))
+  # Rest.allowedMethods (Rest.result (POST : mempty))
   # Rest.contentTypesAccepted (\req state -> Rest.result (singleton $ MimeType.json acceptAny) req state)
   # Rest.resourceExists resourceExists
   # Rest.previouslyExisted previsouslyExisted
@@ -257,7 +257,7 @@ clientStart =
       case spy "moved" egestResp of
         Right (Remote addr) ->
           --api node <> "client/canary/ingest/" <> streamId <> "/" <> variant <> "/start") <#> stringifyError
-          Rest.result (moved $ "http://" <> show addr <> ":3000/api/client/canary/ingest/" <> show streamId <> "/start") req state
+          Rest.result (moved $ "http://" <> unwrap addr <> ":3000/api/client/canary/client/" <> unwrap streamId <> "/start") req state
         _ ->
           Rest.result notMoved req state
 

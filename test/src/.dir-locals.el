@@ -3,4 +3,4 @@
 
 ((purescript-mode
    (psc-ide-port . 4243)
-   ))
+  ))

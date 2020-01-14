@@ -2,35 +2,28 @@ module Main where
 
 import Prelude
 
-import Affjax (Error, Response)
-import Affjax as AX
-import Affjax.RequestBody (RequestBody)
-import Affjax.RequestBody as Affjax.RequestBody
-import Affjax.RequestBody as RequestBody
-import Affjax.ResponseFormat as ResponseFormat
-import Affjax.ResponseHeader (ResponseHeader(..))
-import Affjax.StatusCode (StatusCode(..))
-import Data.Argonaut as Json
-import Data.Argonaut.Core as Data.Argonaut.Core
-import Data.Either (Either(..), hush)
-import Data.Foldable (elem)
+import Data.Either (Either(..))
 import Data.Identity (Identity(..))
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe(..), isNothing)
 import Data.Newtype (un)
 import Data.Time.Duration (Milliseconds(..))
 import Data.Traversable (traverse_)
 import Data.Tuple (Tuple(..))
-import Debug.Trace (spy)
 import Effect (Effect)
-import Effect.Aff (Aff, delay, launchAff_, throwError)
-import Effect.Exception (Error, error) as Exception
+import Effect.Aff (Aff, attempt, delay, launchAff_, throwError)
+import Effect.Exception (error) as Exception
+import Foreign.Object as Object
+import Milkis as M
+import Milkis.Impl.Node (nodeFetch)
 import OsCmd (runProc)
-import Simple.JSON (class ReadForeign, E)
-import Simple.JSON as SimpleJSON
+
+
 import Test.Spec (after_, before_, describe, it)
 import Test.Spec.Reporter.Console (consoleReporter)
 import Test.Spec.Runner (runSpecT)
 
+fetch :: M.Fetch
+fetch = M.fetch nodeFetch
 
 type TestNode =  { vlan :: String
                  , addr :: String
@@ -58,14 +51,21 @@ main =
     api node = "http://" <> toAddr node <> ":3000/api/"
 
     stringifyError (Right r)       = Right r
-    stringifyError (Left axError)  = Left $ AX.printError axError
+    stringifyError (Left axError)  = Left $ show axError
 
-    egest  node streamId         = AX.put ResponseFormat.string (api node <> "client/canary/client/" <> streamId <> "/start") (Just $ Affjax.RequestBody.json $ Data.Argonaut.Core.fromString "{}") <#> stringifyError
-    ingest node streamId variant = AX.get ResponseFormat.string (api node <> "client/canary/ingest/" <> streamId <> "/" <> variant <> "/start") <#> stringifyError
-    relayStatus node streamId    = AX.get ResponseFormat.string (api node <> "relay/" <> streamId) <#> stringifyError
+
+
+    egest :: Node -> String -> Aff (Either String M.Response)
+    egest  node streamId         = fetch (M.URL $ api node <> "client/canary/client/" <> streamId <> "/start")
+                                   { method: M.postMethod
+                                   , body: "{}"
+                                   , headers: M.makeHeaders { "Content-Type": "application/json" }
+                                   } # attempt <#> stringifyError
+
+    ingest node streamId variant = fetch (M.URL $ api node <> "client/canary/ingest/" <> streamId <> "/" <> variant <> "/start") { method: M.getMethod } # attempt <#> stringifyError
+    relayStatus node streamId    = fetch (M.URL $ api node <> "relay/" <> streamId) { method: M.getMethod } # attempt <#> stringifyError
 
     mkNode sysConfig node = {vlan: toVlan node, addr: toAddr node, sysConfig}
-
 
     delayMs                       = delay <<< Milliseconds
 
@@ -82,22 +82,23 @@ main =
       before_ (start [p1n1, p1n2, p1n3]) do
         after_ stopSession do
           describe "one pop setup" do
-            -- it "client requests stream on ingest node" do
-            --   egest       p1n1 stream1     >>= assertStatusCode 404 >>= as "no egest prior to ingest"
-            --   egest       p1n1 stream1     >>= assertStatusCode 404 >>= as "no egest prior to ingest"
-            --   relayStatus p1n1 stream1     >>= assertStatusCode 404 >>= as "no relay prior to ingest"
-            --   ingest      p1n1 stream1 low >>= assertStatusCode 200 >>= as "create ingest"
-            --   delayMs 500.0
-            --   egest       p1n1 stream1     >>= assertStatusCode 204 >>= as "egest available"
-            --   relayStatus p1n1 stream1     >>= assertStatusCode 200 >>= as "relay exists"
 
-            -- it "client requests stream on non-ingest node" do
-            --   egest       p1n2 stream1     >>= assertStatusCode 404 >>= as "no egest prior to ingest"
-            --   relayStatus p1n2 stream1     >>= assertStatusCode 404 >>= as "no remote relay prior to ingest"
-            --   ingest      p1n1 stream1 low >>= assertStatusCode 200 >>= as "create ingest"
-            --   delayMs 1000.0
-            --   egest       p1n2 stream1     >>= assertStatusCode 204 >>= as "egest available"
-            --   relayStatus p1n2 stream1     >>= assertStatusCode 200 >>= as "remote relay exists"
+            it "client requests stream on ingest node" do
+              egest       p1n1 stream1     >>= assertStatusCode 404 >>= as "no egest prior to ingest"
+              egest       p1n1 stream1     >>= assertStatusCode 404 >>= as "no egest prior to ingest"
+              relayStatus p1n1 stream1     >>= assertStatusCode 404 >>= as "no relay prior to ingest"
+              ingest      p1n1 stream1 low >>= assertStatusCode 200 >>= as "create ingest"
+              delayMs 500.0
+              egest       p1n1 stream1     >>= assertStatusCode 204 >>= as "egest available"
+              relayStatus p1n1 stream1     >>= assertStatusCode 200 >>= as "relay exists"
+
+            it "client requests stream on non-ingest node" do
+              egest       p1n2 stream1     >>= assertStatusCode 404 >>= as "no egest prior to ingest"
+              relayStatus p1n2 stream1     >>= assertStatusCode 404 >>= as "no remote relay prior to ingest"
+              ingest      p1n1 stream1 low >>= assertStatusCode 200 >>= as "create ingest"
+              delayMs 1000.0
+              egest       p1n2 stream1     >>= assertStatusCode 204 >>= as "egest available"
+              relayStatus p1n2 stream1     >>= assertStatusCode 200 >>= as "remote relay exists"
 
             it "client requests stream on 2nd node on ingest pop" do
               egest       p1n2 stream1     >>= assertStatusCode 404 >>= as "no egest p1n2 prior to ingest"
@@ -106,22 +107,22 @@ main =
               delayMs 1000.0
               egest       p1n2 stream1     >>= assertStatusCode 204 >>= as "egest available on p1n2"
               delayMs 1000.0
-              egest       p1n3 stream1     >>= assertStatusCode 201
+              egest       p1n3 stream1     >>= assertStatusCode 204
                                            >>= assertHeader (Tuple "x-servedby" "172.16.169.2")
                                                                     >>= as "p1n3 egest redirects to p1n2"
 
-      -- describe "two pop setup" do
-      --   before_ (start [p1n1, p1n2, p1n3, p2n1]) do
-      --     after_ stopSession do
-      --       it "client requests stream on other pop" do
-      --         egest       p2n1 stream1     >>= assertStatusCode 404 >>= as "no egest prior to ingest"
-      --         relayStatus p1n1 stream1     >>= assertStatusCode 404 >>= as "no remote relay prior to ingest"
-      --         relayStatus p1n1 stream1     >>= assertStatusCode 404 >>= as "no local relay prior to ingest"
-      --         ingest      p1n1 stream1 low >>= assertStatusCode 200 >>= as "create ingest"
-      --         delayMs 1000.0
-      --         egest       p2n1 stream1     >>= assertStatusCode 204 >>= as "egest available"
-      --         relayStatus p2n1 stream1     >>= assertStatusCode 200 >>= as "local relay exists"
-      --         -- TODO -- relayStatus p1n1 stream1     >>= assertStatusCode 200 >>= as "remote relay exists"
+      describe "two pop setup" do
+        before_ (start [p1n1, p1n2, p1n3, p2n1]) do
+          after_ stopSession do
+            it "client requests stream on other pop" do
+              egest       p2n1 stream1     >>= assertStatusCode 404 >>= as "no egest prior to ingest"
+              relayStatus p1n1 stream1     >>= assertStatusCode 404 >>= as "no remote relay prior to ingest"
+              relayStatus p1n1 stream1     >>= assertStatusCode 404 >>= as "no local relay prior to ingest"
+              ingest      p1n1 stream1 low >>= assertStatusCode 200 >>= as "create ingest"
+              delayMs 1000.0
+              egest       p2n1 stream1     >>= assertStatusCode 204 >>= as "egest available"
+              relayStatus p2n1 stream1     >>= assertStatusCode 200 >>= as "local relay exists"
+              -- TODO -- relayStatus p1n1 stream1     >>= assertStatusCode 200 >>= as "remote relay exists"
 
           -- it "client ingest starts and stops" do
           --   let
@@ -204,22 +205,31 @@ main =
   where
     testConfig = { slow: Milliseconds 5000.0, timeout: Just (Milliseconds 20000.0), exit: false }
 
-assertStatusCode :: forall a. Int -> Either String (Response a) -> Aff (Either String (Response a))
+assertStatusCode :: Int -> Either String M.Response -> Aff (Either String M.Response)
 assertStatusCode expectedCode either =
-  pure $ either >>= (\response@{status : StatusCode resultCode} ->
-                      if resultCode == expectedCode
-                      then pure response
-                      else Left $  "Unexpected statuscode: Expected " <> show expectedCode <> ", got " <> show resultCode
+  pure $ either >>= (\response ->
+                      let statusCode = M.statusCode response
+                      in
+                      if statusCode == expectedCode
+                      then either
+                      else Left $  "Unexpected statuscode: Expected " <> show expectedCode <> ", got " <> show statusCode
                     )
 
-assertHeader :: forall a. Tuple String String -> Either String (Response a) -> Aff (Either String (Response a))
+assertHeader :: Tuple String String -> Either String M.Response -> Aff (Either String M.Response)
 assertHeader (Tuple header value) either =
-  pure $ either >>= (\response@{headers} ->
-                      let _ = spy "header" response in
-                      if elem (ResponseHeader header value) headers
-                      then pure response
-                      else Left $ "Header " <> header <> ":" <> value <> " not present in response " <> (show headers)
+  pure $ either >>= (\response ->
+                      let headers = M.headers response
+                          mEqual = Object.lookup header headers
+                                   >>= (\hdrVal -> if hdrVal == value then Just true
+                                                   else Nothing
+                                       )
+
+                      in
+                       if isNothing mEqual
+                       then Left $ "Header " <> header <> ":" <> value <> " not present in response " <> show headers
+                       else either
                     )
+
 -- assertBodyFun :: forall a. ReadForeign a => (E a -> Boolean) -> Response String -> Aff (Response String)
 -- assertBodyFun expectedBodyFun response@{body} =
 --   let
@@ -233,9 +243,9 @@ assertHeader (Tuple header value) either =
 --   if expectedBody == body then pure response
 --   else throwSlowError $ Exception.error $ "Body " <> body <> " did not match expected " <> expectedBody
 
-jsonBody :: String -> Maybe RequestBody
-jsonBody string =
-  RequestBody.json <$> hush (Json.jsonParser string)
+-- jsonBody :: String -> Maybe RequestBody
+-- jsonBody string =
+--   RequestBody.json <$> hush (Json.jsonParser string)
 
 sessionName:: String
 sessionName = "testSession"
