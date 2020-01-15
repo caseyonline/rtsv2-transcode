@@ -52,9 +52,9 @@ endpoint = root $ sum
   , "IngestStopE"                    : "" / "api" / "client" / canary segment / "ingest" / segment / variant segment / "stop"
   , "ClientStartE"                   : "" / "api" / "client" / canary segment / "client" / streamId segment / "start"
   , "ClientStopE"                    : "" / "api" / "client" / canary segment / "client" / streamId segment / "stop"
-  , "StreamAuthE"                    : "" / "llnwstub/" / "rts" / "v1" / path "streamauthtype" noArgs
-  , "StreamAuthTypeE"                : "" / "llnwstub/" / "rts" / "v1" / path "streamauth" noArgs
-  , "StreamPublishE"                 : "" / "llnwstub/" / "rts" / "v1" / path "streampublish" noArgs
+  , "StreamAuthE"                    : "" / "llnwstub" / "rts" / "v1" / path "streamauthtype" noArgs
+  , "StreamAuthTypeE"                : "" / "llnwstub" / "rts" / "v1" / path "streamauth" noArgs
+  , "StreamPublishE"                 : "" / "llnwstub" / "rts" / "v1" / path "streampublish" noArgs
   }
 
 -- | StreamId
