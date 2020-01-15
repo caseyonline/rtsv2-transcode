@@ -15,7 +15,7 @@ import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
 import Erl.Data.Map (Map, delete, insert, size, toUnfoldable)
 import Erl.Data.Map as Map
-import Logger (Logger)
+import Logger (Logger, spy)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen (CallResult(..), CastResult(..))
@@ -43,7 +43,11 @@ data Msg
   | MaybeStop
 
 isAvailable :: StreamId -> Effect Boolean
-isAvailable streamId = Names.isRegistered (serverName streamId)
+isAvailable streamId =
+  do
+  let _ = spy "isAvailable" streamId
+  bool <- Names.isRegistered (serverName streamId)
+  pure bool
 
 serverName :: StreamId -> ServerName State Msg
 serverName = Names.ingestAggregatorInstanceName
@@ -80,7 +84,7 @@ startLink streamDetails@{slot : {name}} = Gen.startLink (serverName (StreamId na
 
 init :: StreamDetails -> Effect State
 init streamDetails = do
-  _ <- logInfo "Ingest Aggregator starting" {streamId: streamId}
+  _ <- logInfo "Ingest Aggregator starting" {streamId, streamDetails}
   config <- Config.ingestAggregatorAgentConfig
   thisNode <- PoPDefinition.thisNode
   _ <- Timer.sendEvery (serverName streamId) config.streamAvailableAnnounceMs Tick

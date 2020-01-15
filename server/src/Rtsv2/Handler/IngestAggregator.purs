@@ -17,7 +17,6 @@ import Erl.Data.Binary (Binary)
 import Erl.Data.Binary.IOData (IOData, fromBinary, toBinary)
 import Erl.Data.List (nil, (:))
 import Erl.Data.Tuple (tuple2)
-import Logger (spy)
 import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
 import Rtsv2.Agents.IngestAggregatorInstanceSup as IngestAggregatorInstanceSup
 import Rtsv2.Handler.MimeType as MimeType
@@ -94,7 +93,7 @@ ingestAggregatorsActiveIngest :: StetsonHandler IngestAggregatorsActiveIngestSta
 ingestAggregatorsActiveIngest =
   Rest.handler (\req ->
                  let
-                   streamIdStr = spy "here" $ fromMaybe' (lazyCrashIfMissing "stream_id binding missing") $ binding (atom "stream_id") (spy "req" req)
+                   streamIdStr = fromMaybe' (lazyCrashIfMissing "stream_id binding missing") $ binding (atom "stream_id") req
                    variantIdStr = fromMaybe' (lazyCrashIfMissing "variant binding missing") $ binding (atom "variant_id") req
                  in
                   Rest.initResult req {streamAndVariant: StreamAndVariant (wrap streamIdStr) (wrap variantIdStr)
