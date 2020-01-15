@@ -45,7 +45,7 @@ main =
     low                           = "slot1_500"
 
     start = "start"
-    stop = "stop"
+    stop  = "stop"
 
     toAddr (Node popNum nodeNum) = "172.16." <> show (popNum + 168) <> "." <> show nodeNum
     toVlan (Node popNum nodeNum) = "vlan" <> show (popNum * 10) <> show nodeNum
@@ -60,7 +60,7 @@ main =
                                          , body: "{}"
                                          , headers: M.makeHeaders { "Content-Type": "application/json" }
                                          } # attempt <#> stringifyError
-    egestStats node streamId           = fetch (M.URL $ api node <> "agenst/egest/" <> streamId)
+    egestStats node streamId           = fetch (M.URL $ api node <> "agents/egest/" <> streamId)
                                          { method: M.getMethod
                                          , headers: M.makeHeaders { "Content-Type": "application/json" }
                                          } # attempt <#> stringifyError
@@ -69,7 +69,7 @@ main =
                                          { method: M.getMethod
                                          } # attempt <#> stringifyError
 
-    relayStatus node streamId          = fetch (M.URL $ api node <> "agents/relay/" <> streamId)
+    relayStats node streamId           = fetch (M.URL $ api node <> "agents/relay/" <> streamId)
                                          { method: M.getMethod
                                          } # attempt <#> stringifyError
 
@@ -90,49 +90,64 @@ main =
       describe "one pop setup" do
         before_ (launch [p1n1, p1n2, p1n3]) do
           after_ stopSession do
-            it "client requests stream on ingest node" do
-              client start  p1n1 slot1          >>= assertStatusCode 404 >>= as "no egest prior to ingest"
-              relayStatus  p1n1 slot1          >>= assertStatusCode 404 >>= as "no relay prior to ingest"
-              ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as "create ingest"
-              delayMs 500.0
-              client start  p1n1 slot1          >>= assertStatusCode 204 >>= as "egest available"
-              relayStatus  p1n1 slot1          >>= assertStatusCode 200 >>= as "relay exists"
+            -- it "client requests stream on ingest node" do
+            --   client start p1n1 slot1          >>= assertStatusCode 404 >>= as "no egest prior to ingest"
+            --   relayStats   p1n1 slot1          >>= assertStatusCode 404 >>= as "no relay prior to ingest"
+            --   ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as "create ingest"
+            --   delayMs 500.0
+            --   client start p1n1 slot1          >>= assertStatusCode 204 >>= as "egest available"
+            --   relayStats   p1n1 slot1          >>= assertStatusCode 200 >>= as "relay exists"
+            --   egestStats   p1n1 slot1          >>= assertStatusCode 200
+            --                                        >>= assertBody "1"   >>= as "agent should have 1 client"
 
-            it "client requests stream on non-ingest node" do
-              client start  p1n2 slot1          >>= assertStatusCode 404 >>= as "no egest prior to ingest"
-              relayStatus  p1n2 slot1          >>= assertStatusCode 404 >>= as "no remote relay prior to ingest"
-              ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as "create ingest"
-              delayMs 1000.0
-              client start  p1n2 slot1          >>= assertStatusCode 204 >>= as "egest available"
-              relayStatus  p1n2 slot1          >>= assertStatusCode 200 >>= as "remote relay exists"
+
+            -- it "client requests stream on non-ingest node" do
+            --   client start p1n2 slot1          >>= assertStatusCode 404 >>= as "no egest prior to ingest"
+            --   relayStats   p1n2 slot1          >>= assertStatusCode 404 >>= as "no remote relay prior to ingest"
+            --   ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as "create ingest"
+            --   delayMs 1000.0
+            --   client start p1n2 slot1          >>= assertStatusCode 204 >>= as "egest available"
+            --   relayStats   p1n2 slot1          >>= assertStatusCode 200 >>= as "remote relay exists"
+            --   egestStats   p1n2 slot1          >>= assertStatusCode 200
+            --                                        >>= assertBody "1"   >>= as "agent should have 1 client"
 
             it "client requests stream on 2nd node on ingest pop" do
-              client start  p1n2 slot1          >>= assertStatusCode 404 >>= as "no egest p1n2 prior to ingest"
-              client start  p1n2 slot1          >>= assertStatusCode 404 >>= as "no egest p1n3 prior to ingest"
+              client start p1n2 slot1          >>= assertStatusCode 404 >>= as "no egest p1n2 prior to ingest"
+              client start p1n3 slot1          >>= assertStatusCode 404 >>= as "no egest p1n3 prior to ingest"
               ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as "create ingest"
               delayMs 1000.0
-              client start  p1n2 slot1          >>= assertStatusCode 204
+              client start p1n2 slot1          >>= assertStatusCode 204
                                                    >>= assertHeader (Tuple "x-servedby" "172.16.169.2")
                                                                         >>= as "first egest is same node"
               delayMs 1000.0
-              client start  p1n3 slot1          >>= assertStatusCode 204
+              client start p1n3 slot1          >>= assertStatusCode 204
                                                    >>= assertHeader (Tuple "x-servedby" "172.16.169.2")
                                                                         >>= as "p1n3 egest redirects to p1n2"
+              egestStats   p1n2 slot1          >>= assertStatusCode 200
+                                                   >>= assertBody "2"   >>= as "agent should have 2 clients"
+              egestStats   p1n3 slot1          >>= assertStatusCode 404 >>= as "no egest on node3"
+              client start p1n2 slot1          >>= assertStatusCode 204
+                                                   >>= assertHeader (Tuple "x-servedby" "172.16.169.2")
+                                                                        >>= as "p1n2 stays on node2"
+              client start p1n3 slot1          >>= assertStatusCode 204
+                                                   >>= assertHeader (Tuple "x-servedby" "172.16.169.2")
+                                                                        >>= as "p1n3 egest still redirects to p1n2"
+              egestStats   p1n2 slot1          >>= assertStatusCode 200
+                                                   >>= assertBody "4"   >>= as "agent now has 4 clients"
+              egestStats   p1n3 slot1          >>= assertStatusCode 404 >>= as "still no egest on node3"
+              client stop  p1n2 slot1          >>= assertStatusCode 204 >>= as "stop client 1 on node2"
+              client stop  p1n2 slot1          >>= assertStatusCode 204 >>= as "stop client 2 on node2"
+              client stop  p1n2 slot1          >>= assertStatusCode 204 >>= as "stop client 3 on node2"
+              client stop  p1n2 slot1          >>= assertStatusCode 204 >>= as "stop client 4 on node2"
+              delayMs 3000.0                   -- allow the linger timer to expire
+              egestStats   p1n2 slot1          >>= assertStatusCode 404 >>= as "now no egest on node2"
+              egestStats   p1n3 slot1          >>= assertStatusCode 404 >>= as "still no egest on node3"
+              client start p1n3 slot1          >>= assertStatusCode 204
+                                                   >>= assertHeader (Tuple "x-servedby" "172.16.169.3")
+                                                                        >>= as "Final egest starts on node3"
+              egestStats   p1n3 slot1          >>= assertStatusCode 200
+                                                   >>= assertBody "1"   >>= as "node 3 agent should have 1 client"
 
-              -- _ <- assertBody "2" =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node2edgeCount
-              -- _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node3edgeCount
-              -- _ <- assertHeader (Tuple "x-servedby" "172.16.169.2") =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node2edgeStart
-              -- _ <- assertHeader (Tuple "x-servedby" "172.16.169.2") =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node3edgeStart
-              -- _ <- assertBody "4" =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node2edgeCount
-              -- _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node3edgeCount
-              -- _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node2edgeStop
-              -- _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node2edgeStop
-              -- _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node2edgeStop
-              -- _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node2edgeStop
-              -- _ <- delay (Milliseconds 3000.0) -- alslot1_500 edge linger time to expire...
-              -- _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node2edgeCount
-              -- _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node3edgeCount
-              -- _ <- delay (Milliseconds 1000.0)
               -- _ <- assertHeader (Tuple "x-servedby" "172.16.169.3") =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node3edgeStart
               -- _ <- assertBody "1" =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node3edgeCount
 
@@ -169,30 +184,30 @@ main =
       --       _ <- assertBody "1" =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node3edgeCount
       --       pure unit
 
-      describe "two pop setup" do
-        before_ (launch [p1n1, p1n2, p1n3, p2n1]) do
-          after_ stopSession do
-            -- it "client requests stream on other pop" do
-            --   egest        p2n1 slot1           >>= assertStatusCode 404 >>= as "no egest prior to ingest"
-            --   relayStatus  p1n1 slot1           >>= assertStatusCode 404 >>= as "no remote relay prior to ingest"
-            --   relayStatus  p1n1 slot1           >>= assertStatusCode 404 >>= as "no local relay prior to ingest"
-            --   ingest start p1n1 shortName1 low  >>= assertStatusCode 200 >>= as "create ingest"
-            --   delayMs 1000.0
-            --   egest        p2n1 slot1           >>= assertStatusCode 204 >>= as "egest available"
-            --   relayStatus  p2n1 slot1           >>= assertStatusCode 200 >>= as "local relay exists"
-            --   -- TODO -- relayStatus p1n1 slot1 >>= assertStatusCode 200 >>= as "remote relay exists"
+      -- describe "two pop setup" do
+      --   before_ (launch [p1n1, p1n2, p1n3, p2n1]) do
+      --     after_ stopSession do
+      --       -- it "client requests stream on other pop" do
+      --       --   egest        p2n1 slot1           >>= assertStatusCode 404 >>= as "no egest prior to ingest"
+      --       --   relayStatus  p1n1 slot1           >>= assertStatusCode 404 >>= as "no remote relay prior to ingest"
+      --       --   relayStatus  p1n1 slot1           >>= assertStatusCode 404 >>= as "no local relay prior to ingest"
+      --       --   ingest start p1n1 shortName1 low  >>= assertStatusCode 200 >>= as "create ingest"
+      --       --   delayMs 1000.0
+      --       --   egest        p2n1 slot1           >>= assertStatusCode 204 >>= as "egest available"
+      --       --   relayStatus  p2n1 slot1           >>= assertStatusCode 200 >>= as "local relay exists"
+      --       --   -- TODO -- relayStatus p1n1 slot1 >>= assertStatusCode 200 >>= as "remote relay exists"
 
-            it "client ingest starts and stops" do
-              client start       p1n2 slot1          >>= assertStatusCode 404 >>= as "no local egest prior to ingest"
-              client start      p2n1 slot1          >>= assertStatusCode 404 >>= as "no remote egest prior to ingest"
-              ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as "create ingest"
-              delayMs 1000.0
-              client start       p1n2 slot1          >>= assertStatusCode 204 >>= as "local egest post ingest"
-              client start       p2n1 slot1          >>= assertStatusCode 204 >>= as "remote egest post ingest"
-              ingest stop  p1n1 shortName1 low >>= assertStatusCode 200 >>= as "stop the ingest"
-              delayMs 5000.0
-              client start       p1n2 slot1          >>= assertStatusCode 404 >>= as "no same pop egest post stop"
-              client start       p2n1 slot1          >>= assertStatusCode 404 >>= as "no remote pop egest post stop"
+      --       it "client ingest starts and stops" do
+      --         client start       p1n2 slot1          >>= assertStatusCode 404 >>= as "no local egest prior to ingest"
+      --         client start      p2n1 slot1          >>= assertStatusCode 404 >>= as "no remote egest prior to ingest"
+      --         ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as "create ingest"
+      --         delayMs 1000.0
+      --         client start       p1n2 slot1          >>= assertStatusCode 204 >>= as "local egest post ingest"
+      --         client start       p2n1 slot1          >>= assertStatusCode 204 >>= as "remote egest post ingest"
+      --         ingest stop  p1n1 shortName1 low >>= assertStatusCode 200 >>= as "stop the ingest"
+      --         delayMs 5000.0
+      --         client start       p1n2 slot1          >>= assertStatusCode 404 >>= as "no same pop egest post stop"
+      --         client start       p2n1 slot1          >>= assertStatusCode 404 >>= as "no remote pop egest post stop"
 
           -- it "ingest aggregation on ingest node" do
           --   let
@@ -364,6 +379,16 @@ assertHeader (Tuple header value) either =
                        then Left $ "Header " <> header <> ":" <> value <> " not present in response " <> show headers
                        else either
                     )
+
+assertBody :: String -> Either String M.Response -> Aff (Either String M.Response)
+assertBody expected either =
+  case either of
+    Left e -> pure $ Left e
+    Right response -> do
+      text <- M.text response
+      if text == expected
+        then pure either
+        else pure $ Left $ "Body " <> text <> " did not match expected " <> expected
 
 -- assertBodyFun :: forall a. ReadForeign a => (E a -> Boolean) -> Response String -> Aff (Response String)
 -- assertBodyFun expectedBodyFun response@{body} =

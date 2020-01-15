@@ -55,8 +55,9 @@ addClient streamId = Gen.doCall (serverName streamId) doAddClient
 doAddClient :: State -> Effect (CallResult Unit State)
 doAddClient state@{clientCount} = do
   _ <- logInfo "Add client" {newCount: clientCount + 1}
-  pure $ CallReply unit state{clientCount = clientCount + 1,
-                              stopRef = Nothing}
+  pure $ CallReply unit state{ clientCount = clientCount + 1
+                             , stopRef = Nothing
+                             }
 
 removeClient :: StreamId -> Effect Unit
 removeClient streamId = Gen.doCall (serverName streamId) doRemoveClient
@@ -70,12 +71,13 @@ doRemoveClient state@{clientCount: 1, lingerTime, streamId} = do
     ref = makeRef
   _ <- logInfo "Last client gone, start stop timer" {}
   _ <- Timer.sendAfter (serverName streamId) (unwrap lingerTime) (MaybeStop ref)
-  pure $ CallReply unit state{clientCount = 0,
-                              stopRef = Just makeRef}
+  pure $ CallReply unit state{ clientCount = 0
+                             , stopRef = Just makeRef
+                             }
 
 doRemoveClient state@{clientCount} = do
-  _ <- logInfo "Remove client" {newCount: clientCount - 1}
-  pure $ CallReply unit state{clientCount = clientCount - 1}
+  _ <- logInfo "Remove client" { newCount: clientCount - 1 }
+  pure $ CallReply unit state{ clientCount = clientCount - 1 }
 
 currentStats :: StreamId -> Effect Int
 currentStats streamId =
@@ -94,7 +96,8 @@ init streamId = do
     state ={ streamId
            , clientCount: 0
            , lingerTime: wrap lingerTimeMs
-          , stopRef: Nothing}
+           , stopRef: Nothing
+           }
   case maybeRelay of
     Just relay ->
       pure state

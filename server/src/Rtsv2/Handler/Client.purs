@@ -83,7 +83,10 @@ findEgestForStream thisNode streamId = do
                       load < (wrap 76.323341)
                     ) $ spy "swc" $ servers
   if any ((==) thisNode <<< extractAddress) servers
-  then pure $ Right Local
+  then
+    do
+      _ <- EgestInstanceSup.maybeStartAndAddClient streamId
+      pure $ Right Local
   else
    case pickInstance serversWithCapacity of
      Just server ->
@@ -211,9 +214,8 @@ clientStart =
   # Rest.allowedMethods (Rest.result (POST : mempty))
   # Rest.contentTypesAccepted (\req state -> Rest.result (singleton $ MimeType.json acceptAny) req state)
   # Rest.resourceExists resourceExists
-  # Rest.previouslyExisted previsouslyExisted
+  # Rest.previouslyExisted previouslyExisted
   # Rest.movedTemporarily movedTemporarily
-  # Rest.contentTypesProvided (\req state -> Rest.result (singleton $ MimeType.json provideEmpty) req state)
   # Rest.yeeha
 
   where
@@ -245,7 +247,7 @@ clientStart =
         Right (Remote _) ->
           Rest.result false req state
 
-    previsouslyExisted req state@(State {egestResp}) =
+    previouslyExisted req state@(State {egestResp}) =
       let resp = case egestResp of
             Right (Remote _) -> true
             _ -> false
@@ -265,110 +267,46 @@ clientStart =
           Rest.result notMoved req state
 
 
-    provideEmpty req state = Rest.result "" req state
 
 
--- clientStart :: StetsonHandler ClientStartState
--- clientStart =
---   Rest.handler
---   (\req ->
---     let streamId = StreamId $ fromMaybe' (lazyCrashIfMissing "stream_id binding missing") $ binding (atom "stream_id") req
---     in
---      do
---        eEgest <- findEgestForStream
---        thisNode <- PoPDefinition.thisNode
---        isAgentAvailable <- EdgeInstanceSup.isAvailable
---        Rest.initResult req $
---          if isAgentAvailable then
---            case IntraPoP.whereIsStreamAggregator streamId of
---              Just serverAddress ->
-
---                | serverAddress == thisNode ->
---              Nothing
-
---            isIngestAvailable <-
---            Foo { streamId : streamId
---                , isIngestAvailable : false
---                , currentNodeHasEdge : false
---                , thisNode : thisNode
---                , currentEdgeLocations : nil
---                }
---          else
---            NoEdgeRole
---   )
---   # Rest.serviceAvailable (\req state -> do
---                               isAgentAvailable <- EdgeInstanceSup.isAvailable
---                               Rest.result isAgentAvailable req state)
-
---   # Rest.resourceExists (\req state@{streamId, thisNode} -> do
---                             isIngestAvailable <- IntraPoP.isStreamIngestAvailable streamId
---                             currentEdgeLocations <- IntraPoP.whereIsEdge streamId
---                             let
---                               currentNodeHasEdge = member thisNode currentEdgeLocations
---                               exists = isIngestAvailable && (currentNodeHasEdge || (null currentEdgeLocations))
---                             Rest.result exists req state {isIngestAvailable = isIngestAvailable
---                                                          , currentNodeHasEdge = currentNodeHasEdge
---                                                          , currentEdgeLocations = currentEdgeLocations}
---                         )
-
---   # Rest.previouslyExisted (\req state@{isIngestAvailable} -> do
---                                _ <- Logger.info "PreviouslyExisted" {misc: {isIngestAvailable}}
---                                Rest.result isIngestAvailable req state)
-
---   # Rest.movedTemporarily (\req state@{currentEdgeLocations} -> do
---                             _ <- Logger.info "MovedTemp" {misc: {currentEdgeLocations}}
---                             let
---                               -- todo - ick - need functions to build URLs
---                               redirect (ServerAddress server) = "http://" <> server <> ":3000" <> (path req)
---                             case pickBest currentEdgeLocations of
---                               Nothing -> Rest.result notMoved req state
---                               Just server -> Rest.result (moved (redirect server)) req state
---                           )
-
---   # Rest.contentTypesProvided (\req state ->
---                                 Rest.result ((tuple2 "text/plain" addOrStartEdge) : nil) req state)
---   # Rest.yeeha
-
---   where
---     addOrStartEdge req state@{thisNode, streamId} = do
---       _ <- Audit.clientStart streamId
---       _ <- EdgeInstanceSup.maybeStartAndAddClient streamId
---       let
---         req2 = setHeader "X-ServedBy" (unwrap thisNode) req
---       Rest.result "" req2 state
---     pickBest :: List ServerAddress -> Maybe ServerAddress
---     pickBest = minimum
 
 type ClientStopState = { streamId :: StreamId
                        }
 clientStop :: StetsonHandler ClientStopState
 clientStop =
-  Rest.handler (\req ->
-                 let streamId = StreamId $ fromMaybe' (lazyCrashIfMissing "stream_id binding missing") $ binding (atom "stream_id") req
-                 in
-                  do
-                    thisNode <- PoPDefinition.thisNode
-                    Rest.initResult req { streamId : streamId
-                                        }
-               )
-  # Rest.serviceAvailable (\req state -> do
-                              isAgentAvailable <- EgestInstanceSup.isAvailable
-                              Rest.result isAgentAvailable req state)
 
-  # Rest.resourceExists (\req state@{streamId} -> do
-                            isActive <- EgestInstance.isActive streamId
-                            Rest.result isActive req state
-                        )
-
-  # Rest.contentTypesProvided (\req state ->
-                                Rest.result ((tuple2 "text/plain" removeClient) : List.nil) req state)
+  Rest.handler init
+  # Rest.allowedMethods (Rest.result (POST : mempty))
+  # Rest.contentTypesAccepted (\req state -> Rest.result (singleton $ MimeType.json removeClient) req state)
+  # Rest.resourceExists resourceExists
   # Rest.yeeha
 
   where
-    removeClient req state@{streamId} = do
+    init req =
+      let streamId = StreamId $ fromMaybe' (lazyCrashIfMissing "stream_id binding missing") $ binding (atom "stream_id") req
+      in
+       do
+         thisNode <- PoPDefinition.thisNode
+         Rest.initResult req { streamId : spy "init" streamId
+                             }
+
+    acceptAny req state = Rest.result true req  $ spy "accept" state
+
+    serviceAvailable req state = do
+      isAgentAvailable <- EgestInstanceSup.isAvailable
+      Rest.result isAgentAvailable req  $ spy "savail" state
+
+
+    resourceExists req state@{streamId} = do
+      isActive <- EgestInstance.isActive $ spy "exists" streamId
+      Rest.result isActive req state
+
+    removeClient req state@{streamId} =
+      let _ = spy "remove" streamId
+      in do
       _ <- Audit.clientStop streamId
-      _ <- EgestInstance.removeClient streamId
-      Rest.result "" req state
+      _ <- EgestInstance.removeClient $ spy "remove" streamId
+      Rest.result true req state
 
 --------------------------------------------------------------------------------
 -- Log helpers
