@@ -29,13 +29,13 @@ html body.blank-page .content-wrapper-before
 {
     height: 0 !important;
 }
-html body .content
+html body .main .app-content.content
 {
     position: relative;
 
-    min-height: -webkit-calc(100% - 32px);
-    min-height:    -moz-calc(100% - 32px);
-    min-height:         calc(100% - 32px); 
+    min-height: -webkit-calc(100% - 45px);
+    min-height:    -moz-calc(100% - 45px);
+    min-height:         calc(100% - 45px);
     padding: 0;
 
     -webkit-transition: 300ms ease all;
@@ -47,6 +47,12 @@ html body .content
        -moz-backface-visibility: hidden;
             backface-visibility: hidden;
 }
+
+html body .main
+{
+    display: contents;
+}
+
 html body .content.app-content
 {
     overflow: hidden;

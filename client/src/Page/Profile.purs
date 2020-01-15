@@ -1,6 +1,3 @@
--- | User profiles display the articles they have written as well as the articles they have
--- | favorited. It's also the main way users choose to follow one another. Users can view their
--- | own profile.
 module Rtsv2App.Page.Profile where
 
 import Prelude
@@ -16,9 +13,11 @@ import Effect.Ref as Ref
 import Halogen as H
 import Halogen.HTML as HH
 import Network.RemoteData (RemoteData(..), _Success, fromMaybe, toMaybe)
+import Rtsv2App.Capability.Navigate (class Navigate)
 import Rtsv2App.Capability.Resource.User (class ManageUser, getAuthor)
 import Rtsv2App.Component.HTML.Footer (footer)
-import Rtsv2App.Component.HTML.Header (header)
+import Rtsv2App.Component.HTML.Header as HD
+import Rtsv2App.Component.HTML.MainMenu as MM
 import Rtsv2App.Component.HTML.Utils (css, maybeElem)
 import Rtsv2App.Data.Profile (Profile, Author)
 import Rtsv2App.Data.Route (Route(..))
@@ -41,10 +40,15 @@ type State =
 type Input =
   { username :: Username }
 
+type ChildSlots =
+  ( mainMenu :: MM.Slot Unit
+  , header :: HD.Slot Unit
+  )
 
 component
   :: forall m r
    . MonadAff m
+  => Navigate m
   => MonadAsk { userEnv :: UserEnv | r } m
   => ManageUser m
   => H.Component HH.HTML (Const Void) Input Void m
@@ -65,7 +69,7 @@ component = H.mkComponent
     , username
     }
 
-  handleAction :: Action -> H.HalogenM State Action () Void m Unit
+  handleAction :: Action -> H.HalogenM State Action ChildSlots Void m Unit
   handleAction = case _ of
     Initialize -> do
       mbProfile <- H.liftEffect <<< Ref.read =<< asks _.userEnv.currentUser
@@ -86,10 +90,12 @@ component = H.mkComponent
   _author :: Traversal' State Author
   _author = prop (SProxy :: SProxy "author") <<< _Success
 
-  render :: State -> H.ComponentHTML Action () m
-  render state =
-    HH.div_
-      [ header state.currentUser (Profile state.username)
+  render :: State -> H.ComponentHTML Action ChildSlots m
+  render state@{ currentUser  } =
+    HH.div
+      [ css "main" ]
+      [ HH.slot (SProxy :: _ "header") unit HD.component { currentUser, route: Register } absurd
+      , HH.slot (SProxy :: _ "mainMenu") unit MM.component { currentUser , route: Register } absurd
       , HH.div
           [ css "profile-page" ]
           [ userInfo state

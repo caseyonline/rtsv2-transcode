@@ -117,7 +117,7 @@ component = Connect.component $ H.mkComponent
       Register ->
         HH.slot (SProxy :: _ "register") unit Register.component {} absurd
       Settings -> 
-        HH.slot (SProxy :: _ "settings") unit Settings.component unit absurd
+        HH.slot (SProxy :: _ "settings") unit Settings.component {} absurd
           # authorize currentUser
       Profile username ->
         HH.slot (SProxy :: _ "profile") unit Profile.component { username } absurd

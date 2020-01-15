@@ -1,19 +1,65 @@
--- | This module exports a pure HTML function to render a consistent header throughout the app.
 module Rtsv2App.Component.HTML.MainMenu where
 
 import Prelude
 
-import Data.Maybe (Maybe, isJust)
+import Data.Const (Const)
+import Data.Maybe (Maybe(..), isJust)
 import Data.Monoid (guard)
+import Effect.Aff.Class (class MonadAff)
+import Halogen as H
 import Halogen.HTML as HH
+import Halogen.HTML.Events as HE
 import Halogen.HTML.Properties as HP
+import Rtsv2App.Capability.Navigate (class Navigate, logout)
 import Rtsv2App.Component.HTML.Utils (css, dataAttr, maybeElem, safeHref, whenElem)
-import Rtsv2App.Data.Profile (ProfileRep)
+import Rtsv2App.Data.Profile (Profile)
 import Rtsv2App.Data.Route (Route(..))
 
-mainMenu :: forall i p r. Maybe { | ProfileRep r } -> Route -> HH.HTML i p
-mainMenu currentUser route =
-   HH.div
+data Action
+  = LogUserOut
+  | Receive Input
+
+type State =
+  { currentUser :: Maybe Profile
+  , route :: Route
+  }
+
+type Input =
+  { currentUser :: Maybe Profile
+  , route :: Route
+  }
+
+type Slot
+  = H.Slot (Const Void) Void
+
+component
+  :: forall m
+   . MonadAff m
+  => Navigate m
+  => H.Component HH.HTML (Const Void) Input Void m
+component = H.mkComponent
+  { initialState: initialState
+  , render
+  , eval: H.mkEval $ H.defaultEval
+      { handleAction = handleAction
+      , receive = Just <<< Receive
+      }
+  }
+  where
+  initialState :: Input -> State
+  initialState { currentUser, route } =
+    { currentUser
+    , route
+    }
+
+  handleAction = case _ of
+    Receive s -> do
+       H.put s
+
+    LogUserOut -> logout
+
+  render state@{ currentUser, route } =
+    HH.div
     [ css "main-menu menu-fixed menu-light menu-accordion menu-shadow "
     , dataAttr "scroll-to-active" "true"
     , dataAttr "img" "assets/images/backgrounds/02.jpg"]
@@ -79,8 +125,8 @@ mainMenu currentUser route =
              [css "menu-title"]
              [ HH.text "Settings" ]
            ]
-         , maybeElem currentUser \cu ->
-             navItem (Profile cu.username)
+         , maybeElem currentUser \c ->
+             navItem (Profile c.username)
              [ HH.i
                [css "ft-user"]
                []
@@ -91,7 +137,8 @@ mainMenu currentUser route =
          , whenElem (isJust currentUser) \_ ->
            HH.li
            []
-           [ HH.a_
+           [ HH.a
+             [ HE.onClick \_ -> Just LogUserOut ]
              [ HH.i
                [css "ft-lock"]
                []
@@ -103,8 +150,8 @@ mainMenu currentUser route =
          ]
       ]
     ]
-  where
-  navItem r html =
+    where
+    navItem r html =
       HH.li
         [css $ "" <> guard (route == r) "active"  ]
         [ HH.a

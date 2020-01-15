@@ -1,9 +1,6 @@
-{ sources =
-    [ "src/**/*.purs", "test/**/*.purs" ]
-, name =
-    "rsvt2-app"
-, packages =
-    ./packages.dhall
+{ sources = [ "src/**/*.purs", "test/**/*.purs" ]
+, name = "rsvt2-app"
+, packages = ./packages.dhall
 , dependencies =
     [ "aff"
     , "aff-bus"
@@ -11,6 +8,7 @@
     , "argonaut-codecs"
     , "argonaut-core"
     , "console"
+    , "debug"
     , "effect"
     , "formatters"
     , "halogen"

@@ -1,37 +1,39 @@
--- | The settings page lets users change data about their account, like their email or password,
--- | as well as their publicly-viewable profile information.
 module Rtsv2App.Page.Settings where
 
 import Prelude
 
-import Rtsv2App.Capability.Navigate (class Navigate, logout)
-import Rtsv2App.Capability.Resource.User (class ManageUser, UpdateProfileFields, getCurrentUser, updateUser)
-import Rtsv2App.Component.HTML.Header (header)
-import Rtsv2App.Component.HTML.Utils (css)
-import Rtsv2App.Data.Avatar (Avatar)
-import Rtsv2App.Data.Avatar as Avatar
-import Rtsv2App.Data.Email (Email)
-import Rtsv2App.Data.Profile (ProfileWithEmail)
-import Rtsv2App.Data.Route (Route(..))
-import Rtsv2App.Data.Username (Username)
-import Rtsv2App.Data.Username as Username
-import Rtsv2App.Form.Field as Field
-import Rtsv2App.Form.Validation as V
+import Component.HOC.Connect as Connect
+import Control.Monad.Reader (class MonadAsk, asks)
 import Data.Const (Const)
-import Data.Lens (preview)
 import Data.Maybe (Maybe(..))
 import Data.Maybe as Maybe
 import Data.Newtype (class Newtype, unwrap)
+import Data.Symbol (SProxy(..))
 import Effect.Aff.Class (class MonadAff)
+import Effect.Ref as Ref
 import Formless as F
 import Halogen as H
 import Halogen.HTML as HH
 import Halogen.HTML.Events as HE
 import Halogen.HTML.Properties as HP
-import Network.RemoteData (RemoteData(..), _Success, fromMaybe)
+import Network.RemoteData (RemoteData(..), fromMaybe)
+import Rtsv2App.Capability.Navigate (class Navigate, logout)
+import Rtsv2App.Capability.Resource.User (class ManageUser, UpdateProfileFields, getCurrentUser, updateUser)
+import Rtsv2App.Component.HTML.Footer (footer)
+import Rtsv2App.Component.HTML.Header as HD
+import Rtsv2App.Component.HTML.MainMenu as MM
+import Rtsv2App.Component.HTML.Utils (css)
+import Rtsv2App.Data.Avatar (Avatar)
+import Rtsv2App.Data.Avatar as Avatar
+import Rtsv2App.Data.Email (Email)
+import Rtsv2App.Data.Profile (Profile, ProfileWithEmail)
+import Rtsv2App.Data.Route (Route(..))
+import Rtsv2App.Data.Username (Username)
+import Rtsv2App.Data.Username as Username
+import Rtsv2App.Env (UserEnv)
+import Rtsv2App.Form.Field as Field
+import Rtsv2App.Form.Validation as V
 
--- | See the Formless tutorial to learn how to build your own forms:
--- | https://github.com/thomashoneyman/purescript-halogen-formless
 
 newtype SettingsForm r f = SettingsForm (r
   ( image :: f V.FormError String (Maybe Avatar)
@@ -49,16 +51,25 @@ data Action
   | LogUserOut
 
 type State =
-  { profile :: RemoteData String ProfileWithEmail }
+  { profile :: RemoteData String ProfileWithEmail
+  , currentUser :: Maybe Profile
+  }
+
+type ChildSlots =
+  ( mainMenu :: MM.Slot Unit
+  , header :: MM.Slot Unit
+  , formless :: F.Slot SettingsForm (Const Void) () UpdateProfileFields Unit
+  )
 
 component
-  :: forall m
+  :: forall m r
    . MonadAff m
   => Navigate m
+  => MonadAsk { userEnv :: UserEnv | r } m
   => ManageUser m
-  => H.Component HH.HTML (Const Void) Unit Void m
-component = H.mkComponent
-  { initialState: \_ -> { profile: NotAsked }
+  => H.Component HH.HTML (Const Void) {} Void m
+component = Connect.component $ H.mkComponent
+  { initialState: initialState
   , render
   , eval: H.mkEval $ H.defaultEval
       { handleAction = handleAction
@@ -66,14 +77,22 @@ component = H.mkComponent
       }
   }
   where
+  initialState { currentUser } =
+    { currentUser
+    , profile: NotAsked
+    }
+
+  handleAction :: Action -> H.HalogenM State Action ChildSlots Void m Unit
   handleAction = case _ of
     Initialize -> do
+      mbProfile <- H.liftEffect <<< Ref.read =<< asks _.userEnv.currentUser
+      st <- H.modify _ { currentUser = mbProfile }
       H.modify_ _ { profile = Loading }
       mbProfileWithEmail <- getCurrentUser
       H.modify_ _ { profile = fromMaybe mbProfileWithEmail }
 
-      -- if the profile couldn't be located then something horrible has gone wrong
-      -- and we should log the user out
+      -- if profile cann't be located then something horrible has gone wrong
+      -- then log the user out
       case mbProfileWithEmail of
         Nothing -> logout
         Just profile -> do
@@ -94,93 +113,121 @@ component = H.mkComponent
 
     LogUserOut -> logout
 
-  render { profile } =
-    container
-      [ HH.h1
-          [ css "text-xs-center"]
-          [ HH.text "Your Settings" ]
-      , HH.slot F._formless unit formComponent unit (Just <<< HandleForm)
-      , HH.hr_
-      , HH.button
-          [ css "btn btn-outline-danger"
-          , HE.onClick \_ -> Just LogUserOut
+  render :: State -> H.ComponentHTML Action ChildSlots m
+  render state@{ profile, currentUser } =
+    HH.div
+      [ css "main" ]
+      [ HH.slot (SProxy :: _ "header") unit HD.component { currentUser, route: Settings } absurd
+      , HH.slot (SProxy :: _ "mainMenu") unit MM.component { currentUser, route: Settings } absurd
+      , HH.div
+        [ css "app-content content" ]
+        [ HH.div
+          [ css "content-wrapper" ]
+          [ HH.div
+            [ css "content-wrapper-before" ]
+            []
+          , HH.div
+            [ css "content-header row" ]
+            [ HH.div
+              [ css "content-header-left col-md-4 col-12 mb-2" ]
+              [ HH.h3
+                [ css "content-header-h3" ]
+                [ HH.text "Settings" ]
+              ]
+            ]
+          , HH.div
+            [ css "content-body" ]
+            [ HH.div
+              [ css "row" ]
+              [ HH.div
+                [ css "col-12" ]
+                [ HH.div
+                  [ css "card" ]
+                  html
+                ]
+              ]
+            ]
           ]
-          [ HH.text "Log out" ]
+        ]
+      , footer
       ]
     where
-    container html =
-      HH.div_
-        [ header (preview _Success profile) Settings
+      html =
+        [ HH.div
+            [ css "card-header" ]
+            [ HH.text "Your Settings" ]
         , HH.div
-            [ css "settings-page" ]
+            [ css "card-content collapse show" ]
             [ HH.div
-                [ css "container page" ]
-                [ HH.div
-                    [ css "row" ]
-                    [ HH.div
-                        [ css "col-md-6 offset-md-3 col-xs12" ]
-                        html
-                    ]
+              [ css "card-body" ]
+              [ HH.slot F._formless unit formComponent unit (Just <<< HandleForm)
+              , HH.hr_
+              , HH.button
+                [ css "btn btn-outline-danger"
+                , HE.onClick \_ -> Just LogUserOut
                 ]
+                [ HH.text "Log out" ]
+              ]
             ]
         ]
 
-    formComponent :: F.Component SettingsForm (Const Void) () Unit UpdateProfileFields m
-    formComponent = F.component formInput $ F.defaultSpec
-      { render = renderForm
-      , handleEvent = F.raiseResult
-      }
-      where
-      formInput :: Unit -> F.Input' SettingsForm m
-      formInput _ =
-        { validators: SettingsForm
-            { image: V.toOptional V.avatarFormat
-            , username: V.required >>> V.minLength 3 >>> V.maxLength 20 >>> V.usernameFormat
-            , bio: F.hoistFn_ pure
-            , email: V.required >>> V.minLength 3 >>> V.maxLength 50 >>> V.emailFormat
-            , password: V.toOptional $ V.minLength 3 >>> V.maxLength 20
-            }
-        , initialInputs: Nothing
+
+      formComponent :: F.Component SettingsForm (Const Void) () Unit UpdateProfileFields m
+      formComponent = F.component formInput $ F.defaultSpec
+        { render = renderForm
+        , handleEvent = F.raiseResult
         }
-
-      renderForm { form } =
-        HH.form_
-          [ HH.fieldset_
-            [ image
-            , username
-            , bio
-            , email
-            , password
-            , Field.submit "Update settings"
-            ]
-          ]
         where
-        proxies = F.mkSProxies (F.FormProxy :: _ SettingsForm)
+        formInput :: Unit -> F.Input' SettingsForm m
+        formInput _ =
+          { validators: SettingsForm
+              { image: V.toOptional V.avatarFormat
+              , username: V.required >>> V.minLength 3 >>> V.maxLength 20 >>> V.usernameFormat
+              , bio: F.hoistFn_ pure
+              , email: V.required >>> V.minLength 3 >>> V.maxLength 50 >>> V.emailFormat
+              , password: V.toOptional $ V.minLength 3 >>> V.maxLength 20
+              }
+          , initialInputs: Nothing
+          }
 
-        image =
-          Field.input proxies.image form
-            [ HP.placeholder "URL of profile picture", HP.type_ HP.InputText ]
-
-        username =
-          Field.input proxies.username form
-            [ HP.placeholder "Your name", HP.type_ HP.InputText ]
-
-        bio =
-          HH.fieldset
-            [ css "form-group" ]
-            [ HH.textarea
-                [ css "form-control form-control-lg"
-                , HP.placeholder "Short bio about you"
-                , HP.rows 8
-                , HP.value $ F.getInput proxies.bio form
-                , HE.onValueInput $ Just <<< F.setValidate proxies.bio
-                ]
+        renderForm { form } =
+          HH.form_
+            [ HH.fieldset_
+              [ image
+              , username
+              , bio
+              , email
+              , password
+              , Field.submit "Update settings"
+              ]
             ]
+          where
+          proxies = F.mkSProxies (F.FormProxy :: _ SettingsForm)
 
-        email =
-          Field.input proxies.email form
-            [ HP.placeholder "Email", HP.type_ HP.InputEmail ]
+          image =
+            Field.input proxies.image form
+              [ HP.placeholder "URL of profile picture", HP.type_ HP.InputText ]
 
-        password =
-          Field.input proxies.password form
-            [ HP.placeholder "Password", HP.type_ HP.InputPassword ]
+          username =
+            Field.input proxies.username form
+              [ HP.placeholder "Your name", HP.type_ HP.InputText ]
+
+          bio =
+            HH.fieldset
+              [ css "form-group" ]
+              [ HH.textarea
+                  [ css "form-control form-control-lg"
+                  , HP.placeholder "Short bio about you"
+                  , HP.rows 8
+                  , HP.value $ F.getInput proxies.bio form
+                  , HE.onValueInput $ Just <<< F.setValidate proxies.bio
+                  ]
+              ]
+
+          email =
+            Field.input proxies.email form
+              [ HP.placeholder "Email", HP.type_ HP.InputEmail ]
+
+          password =
+            Field.input proxies.password form
+              [ HP.placeholder "Password", HP.type_ HP.InputPassword ]

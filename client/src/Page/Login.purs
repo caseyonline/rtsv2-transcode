@@ -4,11 +4,10 @@ module Rtsv2App.Page.Login where
 
 import Prelude
 
-import Component.HOC.Connect as Connect
-import Control.Monad.Reader (class MonadAsk)
 import Data.Const (Const)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype)
+import Data.Symbol (SProxy(..))
 import Effect.Aff.Class (class MonadAff)
 import Formless as F
 import Halogen as H
@@ -17,52 +16,43 @@ import Halogen.HTML.Properties as HP
 import Rtsv2App.Api.Request (LoginFields)
 import Rtsv2App.Capability.Navigate (class Navigate, navigate)
 import Rtsv2App.Capability.Resource.User (class ManageUser, loginUser)
-import Rtsv2App.Component.HTML.Header (header)
-import Rtsv2App.Component.HTML.MainMenu (mainMenu)
+import Rtsv2App.Component.HTML.Footer (footer)
+import Rtsv2App.Component.HTML.MainMenu as MM
+import Rtsv2App.Component.HTML.Header as HD
 import Rtsv2App.Component.HTML.Utils (css, safeHref, whenElem)
 import Rtsv2App.Data.Email (Email)
-import Rtsv2App.Data.Profile (Profile)
 import Rtsv2App.Data.Route (Route(..))
-import Rtsv2App.Env (UserEnv)
 import Rtsv2App.Form.Field (submit)
 import Rtsv2App.Form.Field as Field
 import Rtsv2App.Form.Validation as V
-import Rtsv2App.Page.PageContainer (pageContainer)
 
 data Action
   = HandleLoginForm LoginFields
 
--- Should this component redirect to home after login or not? If the login page is loaded
--- at the login route, then yes; if not, then it is guarding another route and should not.
 type State =
-  { redirect :: Boolean
-  , currentUser :: Maybe Profile
-  }
+  { redirect :: Boolean }
 
 type Input =
   { redirect :: Boolean }
 
 type ChildSlots =
-  ( formless :: F.Slot LoginForm FormQuery () LoginFields Unit )
+  ( formless :: F.Slot LoginForm FormQuery () LoginFields Unit
+  , mainMenu :: MM.Slot Unit
+  , header :: HD.Slot Unit
+  )
 
 component
-  :: forall r m
+  :: forall m
    . MonadAff m
-  => MonadAsk { userEnv :: UserEnv | r } m
   => Navigate m
   => ManageUser m
   => H.Component HH.HTML (Const Void) Input Void m
-component = Connect.component $  H.mkComponent
-  { initialState
+component = H.mkComponent
+  { initialState: identity
   , render
   , eval: H.mkEval $ H.defaultEval { handleAction = handleAction }
   }
   where
-  initialState { currentUser } =
-    { redirect: false
-    , currentUser
-    }
-
   handleAction :: Action -> H.HalogenM State Action ChildSlots Void m Unit
   handleAction = case _ of
     HandleLoginForm fields -> do
@@ -77,27 +67,60 @@ component = Connect.component $  H.mkComponent
           when st.redirect (navigate Home)
 
   render :: State -> H.ComponentHTML Action ChildSlots m
-  render state@{ redirect, currentUser }  =
-    pageContainer
-      currentUser
-      Login
-      [ HH.div
-          [ css "card-header"]
-          [ HH.text "Sign In" ]
+  render _  =
+     HH.div
+      [ css "main" ]
+      [ HH.slot (SProxy :: _ "header") unit HD.component { currentUser: Nothing , route: Login } absurd
+      , HH.slot (SProxy :: _ "mainMenu") unit MM.component { currentUser: Nothing , route: Login } absurd
       , HH.div
-          [ css "card-content collapse show" ]
+        [ css "app-content content" ]
+        [ HH.div
+          [ css "content-wrapper" ]
           [ HH.div
-            [ css "card-body" ]
-            [ HH.a
-              [ safeHref Register ]
-              [ HH.text "Need an account?" ]
-            , HH.slot F._formless unit formComponent unit (Just <<< HandleLoginForm)
+            [ css "content-wrapper-before" ]
+            []
+          , HH.div
+            [ css "content-header row" ]
+            [ HH.div
+              [ css "content-header-left col-md-4 col-12 mb-2" ]
+              [ HH.h3
+                [ css "content-header-h3" ]
+                [ HH.text "Login" ]
+              ]
+            ]
+          , HH.div
+            [ css "content-body" ]
+            [ HH.div
+              [ css "row" ]
+              [ HH.div
+                [ css "col-12" ]
+                [ HH.div
+                  [ css "card" ]
+                  html
+                ]
+              ]
             ]
           ]
+        ]
+      , footer
       ]
+    where
+      html =
+        [ HH.div
+            [ css "card-header" ]
+            [ HH.text "Sign In" ]
+        , HH.div
+            [ css "card-content collapse show" ]
+            [ HH.div
+              [ css "card-body" ]
+              [ HH.a
+                [ safeHref Register ]
+                [ HH.text "Need an account?" ]
+              , HH.slot F._formless unit formComponent unit (Just <<< HandleLoginForm)
+              ]
+            ]
+        ]
 
--- | See the Formless tutorial to learn how to build your own forms:
--- | https://github.com/thomashoneyman/purescript-halogen-formless
 
 newtype LoginForm r f = LoginForm (r
   ( email :: f V.FormError String Email
@@ -106,7 +129,7 @@ newtype LoginForm r f = LoginForm (r
 
 derive instance newtypeLoginForm :: Newtype (LoginForm r f) _
 
--- We can extend our form to receive more queries than it supports by default. Here, we'll
+-- Extend the form to receive more queries than it supports by default. Here, we'll
 -- set a login error from the parent.
 data FormQuery a
   = SetLoginError Boolean a
