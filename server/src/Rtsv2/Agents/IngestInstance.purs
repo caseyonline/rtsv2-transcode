@@ -54,6 +54,7 @@ type State
     , streamId :: StreamId
     , streamVariantId :: StreamVariantId
     , streamDetails :: StreamDetails
+    , aggregatorAddr :: Maybe ServerAddress
     }
 
 startLink :: Tuple StreamDetails StreamVariantId -> Effect StartLinkResult
@@ -64,9 +65,8 @@ isActive streamVariantId = Names.isRegistered (serverName streamVariantId)
 
 stopIngest :: StreamVariantId -> Effect Unit
 stopIngest streamVariantId =
-  Gen.doCall (serverName streamVariantId) \state -> do
-    -- TODO - single ingest can't stop the aggregator - just remove this variant and allow the aggregator to stop when it deems fit
-    _ <- IngestAggregatorInstance.stopAggregator (toStreamId streamVariantId)
+  Gen.doCall (serverName streamVariantId) \state@{thisNode, aggregatorAddr} -> do
+    _ <- removeVariant thisNode streamVariantId aggregatorAddr
     _ <- Audit.ingestStop streamVariantId
     pure $ CallStop unit state
 
@@ -82,7 +82,9 @@ init streamDetails streamVariantId = do
        , streamDetails
        , streamVariantId
        , streamId: toStreamId streamVariantId
-       , aggregatorRetryTime: wrap intraPoPLatencyMs}
+       , aggregatorRetryTime: wrap intraPoPLatencyMs
+       , aggregatorAddr: Nothing
+       }
 
 handleInfo :: Msg -> State -> Effect (CastResult State)
 handleInfo msg state = case msg of
@@ -91,7 +93,7 @@ handleInfo msg state = case msg of
     pure $ CastNoReply state2
   IntraPoPBus (IngestAggregatorExited streamId serverAddress) -> do
     _ <- logInfo "exit" {streamId, serverAddress, thisStreamId: state.streamId}
-    state2 <- handleAggregatorExit streamId state
+    state2 <- handleAggregatorExit streamId serverAddress state
     pure $ CastNoReply state2
 
 informAggregator :: State -> Effect State
@@ -99,14 +101,14 @@ informAggregator state@{streamDetails, streamVariantId, thisNode, aggregatorRetr
   maybeAggregator <- getAggregator streamDetails streamVariantId
   maybeVariantAdded <- sequence ((addVariant thisNode streamVariantId) <$> maybeAggregator)
   case fromMaybe false maybeVariantAdded of
-    true -> pure state
+    true -> pure state{aggregatorAddr = maybeAggregator}
     false -> do
       _ <- Timer.sendAfter (serverName streamVariantId) (unwrap aggregatorRetryTime) InformAggregator
       pure state
 
-handleAggregatorExit :: StreamId -> State -> Effect State
-handleAggregatorExit exitedStreamId state@{streamId, streamVariantId, aggregatorRetryTime}
-  | exitedStreamId == streamId = do
+handleAggregatorExit :: StreamId -> ServerAddress -> State -> Effect State
+handleAggregatorExit exitedStreamId exitedAggregatorAddr state@{streamId, streamVariantId, aggregatorRetryTime, aggregatorAddr}
+  | exitedStreamId == streamId && Just exitedAggregatorAddr == aggregatorAddr = do
       _ <- Timer.sendAfter (serverName streamVariantId) 0 InformAggregator
       pure state
   | otherwise =
@@ -127,6 +129,23 @@ addVariant thisNode streamVariantId aggregatorAddress
     case restResult of
       Left _ -> pure $ false
       Right _ -> pure $ true
+
+removeVariant :: ServerAddress -> StreamVariantId -> Maybe ServerAddress -> Effect Unit
+removeVariant thisNode streamVariantId Nothing = pure unit
+removeVariant thisNode streamVariantId (Just aggregatorAddress)
+  | aggregatorAddress == thisNode = do
+    _ <- IngestAggregatorInstance.removeVariant streamVariantId
+    pure unit
+  | otherwise = do
+    let
+      -- TODO - functions to make URLs from ServerAddress
+      ServerAddress addr = aggregatorAddress
+      StreamVariantId streamId variantId = streamVariantId
+      url = "http://" <> addr <> ":3000/api/agents/ingestAggregator/" <> streamId <> "/activeIngests/" <> variantId
+    restResult <- SpudGun.delete url
+    case (spy "result" restResult) of
+      Left _ -> pure $ unit
+      Right _ -> pure $ unit
 
 getAggregator :: StreamDetails -> StreamVariantId -> Effect (Maybe ServerAddress)
 getAggregator streamDetails streamVariantId = do

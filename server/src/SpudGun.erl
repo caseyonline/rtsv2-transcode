@@ -1,12 +1,35 @@
 -module(spudGun@foreign).
 
--export([postImpl/5, putImpl/5, getImpl/4]).
+-export([
+         getImpl/4,
+         putImpl/5,
+         postImpl/5,
+         deleteImpl/4
+        ]).
 
 -include_lib("id3as_common/include/spud_gun.hrl").
 -include_lib("id3as_common/include/common.hrl").
 
-postImpl(Left, Right, Url, Body, UserHeaders) -> sendImpl(post, Left, Right, Url, Body, UserHeaders).
-putImpl(Left, Right, Url, Body, UserHeaders) -> sendImpl(put, Left, Right, Url, Body, UserHeaders).
+getImpl(Left, Right, Url, ReqHeaders) ->
+  fun() ->
+      case spud_gun:get(Url, ReqHeaders) of
+        {ok, StatusCode, _Headers, RespBody} when StatusCode >= 200, StatusCode < 300 ->
+          Right(RespBody);
+        Response ->
+          ?SLOG_DEBUG("spud gun get failed", #{url => Url,
+                                               response => Response}),
+          Left(<<"get error">>)
+      end
+  end.
+
+putImpl(Left, Right, Url, Body, UserHeaders) ->
+  sendImpl(put, Left, Right, Url, Body, UserHeaders).
+
+postImpl(Left, Right, Url, Body, UserHeaders) ->
+  sendImpl(post, Left, Right, Url, Body, UserHeaders).
+
+deleteImpl(Left, Right, Url, UserHeaders) ->
+  sendImpl(delete, Left, Right, Url, <<>>, UserHeaders).
 
 sendImpl(Method, Left, Right, Url, Body, UserHeaders) ->
   fun() ->
@@ -17,7 +40,8 @@ sendImpl(Method, Left, Right, Url, Body, UserHeaders) ->
                                                             ,method = Method
                                                             ,body = Body }),
       case spud_gun:simple_request(Request) of
-        {ok, StatusCode, Headers, RespBody} when StatusCode >= 200, StatusCode < 300 ->
+        Response = {ok, StatusCode, Headers, RespBody} when StatusCode >= 200, StatusCode < 300 ->
+          ?SLOG_INFO("~p -> ~p", [Request, Response]),
           %% Gun lowercases response header names
           case proplists:lookup(<<"content-encoding">>, Headers) of
             {_, <<"gzip">>} -> Right(zlib:gunzip(RespBody));
@@ -29,17 +53,5 @@ sendImpl(Method, Left, Right, Url, Body, UserHeaders) ->
                                                 method => Method,
                                                 response=> Response}),
           Left(<<"request error">>)
-      end
-  end.
-
-getImpl(Left, Right, Url, ReqHeaders) ->
-  fun() ->
-      case spud_gun:get(Url, ReqHeaders) of
-        {ok, StatusCode, _Headers, RespBody} when StatusCode >= 200, StatusCode < 300 ->
-          Right(RespBody);
-        Response ->
-          ?SLOG_DEBUG("spud gun get failed", #{url => Url,
-                                               response => Response}),
-          Left(<<"get error">>)
       end
   end.

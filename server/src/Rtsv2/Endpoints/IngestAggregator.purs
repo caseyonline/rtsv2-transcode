@@ -94,7 +94,7 @@ ingestAggregatorsActiveIngest :: StetsonHandler IngestAggregatorsActiveIngestSta
 ingestAggregatorsActiveIngest = 
   Rest.handler (\req ->
                  let
-                   streamIdStr = fromMaybe' (lazyCrashIfMissing "stream_id binding missing") $ binding (atom "stream_id") req
+                   streamIdStr = spy "here" $ fromMaybe' (lazyCrashIfMissing "stream_id binding missing") $ binding (atom "stream_id") (spy "req" req)
                    variantIdStr = fromMaybe' (lazyCrashIfMissing "variant binding missing") $ binding (atom "variant_id") req
                  in
                   Rest.initResult req {streamVariantId: StreamVariantId streamIdStr variantIdStr

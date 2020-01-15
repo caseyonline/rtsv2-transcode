@@ -38,7 +38,7 @@ type IngestStartState = { shortName :: String
 ingestStart :: StetsonHandler IngestStartState
 ingestStart =
   Rest.handler (\req ->
-                 let shortName = fromMaybe' (lazyCrashIfMissing "short_name binding missing") $ binding (atom "short_name") req
+                 let shortName = spy "init" (fromMaybe' (lazyCrashIfMissing "short_name binding missing") $ binding (atom "short_name") req)
                      variantId = fromMaybe' (lazyCrashIfMissing "variant_id binding missing") $ binding (atom "variant_id") req
                      streamId = fromMaybe' (lazyCrashIfMissing "variant_id badly formed") $ (split (Pattern "_") variantId) !! 0
                  in

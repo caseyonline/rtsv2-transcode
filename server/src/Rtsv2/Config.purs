@@ -67,7 +67,8 @@ type PoPDefinitionConfig
     }
 
 type IngestAggregatorAgentConfig
-  = { streamAvailableAnnounceMs :: Int }
+  = { streamAvailableAnnounceMs :: Int
+    , shutdownLingerTimeMs :: Int}
 
 type EdgeAgentConfig
   = { edgeAvailableAnnounceMs :: Int

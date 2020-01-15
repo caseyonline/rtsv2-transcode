@@ -9,6 +9,7 @@ module Shared.Types
 import Prelude
 
 import Data.Newtype (class Newtype)
+import Data.Tuple (Tuple(..))
 import Shared.LlnwApiTypes (StreamDetails)
 import Shared.Stream (StreamVariantId(..))
 import Simple.JSON (class ReadForeign, class WriteForeign)
@@ -47,6 +48,8 @@ derive newtype instance writeForeignLoad :: WriteForeign Load
 
 type IngestAggregatorPublicState
    = { streamDetails :: StreamDetails
-     , activeStreamVariants :: Array StreamVariantId
+     , activeStreamVariants :: Array { streamVariant :: StreamVariantId
+                                     , serverAddress :: ServerAddress
+                                     }
      }
 
