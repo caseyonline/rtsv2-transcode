@@ -31,7 +31,7 @@ import Data.Filterable (filterMap)
 import Data.Foldable (foldl)
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (wrap)
-import Data.Traversable (traverse, traverse_)
+import Data.Traversable (sequence, traverse, traverse_)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Effect.Random (randomInt)
@@ -78,6 +78,7 @@ type State
     , streamRelayLocations :: EMap StreamId ServerAddress
     , streamAggregatorLocations :: EMap StreamId LocatedServer
     , thisNode :: ServerAddress
+    , thisLocatedServer :: LocatedServer
     , members :: Map ServerAddress MemberInfo
     , expireThreshold :: Milliseconds
     , streamStateClocks :: EMap StreamId Int
@@ -251,8 +252,9 @@ insertStreamAggregator streamId server state@{ streamAggregatorLocations } =
 announceStreamStopped :: StreamId -> Effect Unit
 announceStreamStopped streamId =
   Gen.doCast serverName
-    \state@{ streamAggregatorLocations, thisNode, transPoPApi:{announceStreamStopped: transPoP_announceStreamStopped} } -> do
+    \state@{ streamAggregatorLocations, thisLocatedServer, thisNode, transPoPApi:{announceStreamStopped: transPoP_announceStreamStopped} } -> do
       _ <- logInfo "Local stream stopped" {streamId}
+      _ <- Bus.raise bus (IngestAggregatorExited streamId thisLocatedServer)
       _ <- sendToIntraSerfNetwork state "streamStopped" (IMStreamState StreamStopped streamId thisNode)
       _ <- transPoP_announceStreamStopped streamId thisNode
 
@@ -276,6 +278,9 @@ announceRemoteStreamStopped streamId addr =
   Gen.doCast serverName
     \state@{ streamAggregatorLocations } -> do
       _ <- logInfo "Remote stream has stopped" {streamId}
+      -- TODO - serverAddress or locatedServer for bus message???
+      mServerLocation <- PoPDefinition.whereIsServer addr
+      _ <- sequence $ mServerLocation <#> (\serverLocation -> Bus.raise bus (IngestAggregatorExited streamId (LocatedServer addr serverLocation)))
       _ <- sendToIntraSerfNetwork state "streamStopped" (IMStreamState StreamStopped streamId addr)
       let
         newStreamAggregatorLocations = EMap.delete streamId streamAggregatorLocations
@@ -309,6 +314,7 @@ init { config: config@{rejoinEveryMs
   _ <- Timer.sendEvery serverName expireEveryMs GarbageCollect
   rpcBindIp <- Env.privateInterfaceIp
   thisNode <- PoPDefinition.thisNode
+  thisLocatedServer <- PoPDefinition.thisLocatedServer
   let
     serfRpcAddress =
       { ip: show rpcBindIp
@@ -351,6 +357,7 @@ init { config: config@{rejoinEveryMs
     , streamRelayLocations: EMap.empty
     , streamAggregatorLocations: EMap.empty
     , thisNode: thisNode
+    , thisLocatedServer: thisLocatedServer
     , currentTransPoPLeader: Nothing
     , members
     , expireThreshold: wrap expireThresholdMs
@@ -450,7 +457,9 @@ handleStreamStateChange stateChange streamId server intraMessage
       | otherwise -> do
         -- streamStopped on some other node in this PoP - we need to tell Trans-PoP
         _ <- transPoP_announceStreamStopped streamId server
-
+        -- TODO - we do this in a bunch of places
+        mServerLocation <- PoPDefinition.whereIsServer server
+        _ <- sequence $ mServerLocation <#> (\serverLocation -> Bus.raise bus (IngestAggregatorExited streamId (LocatedServer server serverLocation)))
         _ <- logInfo "StreamStopped on remote node" { streamId: streamId, remoteNode: server }
         let
           newStreamAggregatorLocations = EMap.delete streamId state.streamAggregatorLocations

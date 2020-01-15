@@ -8,6 +8,7 @@ module Rtsv2.Agents.EgestInstance
 
 import Prelude
 
+import Bus as Bus
 import Data.Maybe (Maybe(..))
 import Data.Newtype (unwrap, wrap)
 import Effect (Effect)
@@ -20,6 +21,7 @@ import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
+import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..))
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.StreamRelayInstanceSup as StreamRelayInstanceSup
 import Rtsv2.Config as Config
@@ -36,6 +38,7 @@ type State
 
 data Msg = Tick
          | MaybeStop Ref
+         | IntraPoPBus IntraPoP.IntraPoPBusMessage
 
 serverName :: StreamId -> ServerName State Msg
 serverName streamId = Names.egestInstanceName streamId
@@ -83,6 +86,7 @@ init :: StreamId -> Effect State
 init streamId = do
   {egestAvailableAnnounceMs, lingerTimeMs} <- Config.egestAgentConfig
   _ <- logInfo "Egest starting" {streamId: streamId}
+  _ <- Bus.subscribe (serverName streamId) IntraPoP.bus IntraPoPBus
   _ <- IntraPoP.announceEgestIsAvailable streamId
   _ <- Timer.sendEvery (serverName streamId) egestAvailableAnnounceMs Tick
   maybeRelay <- IntraPoP.whereIsStreamRelay streamId
@@ -100,11 +104,16 @@ init streamId = do
       pure state
 
 handleInfo :: Msg -> State -> Effect (CastResult State)
-handleInfo msg state =
+handleInfo msg state@{streamId} =
   case msg of
     Tick -> CastNoReply <$> handleTick state
 
     MaybeStop ref -> maybeStop ref state
+
+    IntraPoPBus (IngestAggregatorExited stoppingStreamId serverAddress)
+      | stoppingStreamId == streamId -> pure $ CastStop state
+      | otherwise -> pure $ CastNoReply state
+
 
 handleTick :: State -> Effect State
 handleTick state@{streamId} = do
