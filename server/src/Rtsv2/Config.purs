@@ -1,5 +1,6 @@
 module Rtsv2.Config
   ( ServerLocation(..)
+  , GlobalConfig
   , IngestAggregatorAgentConfig
   , WebConfig
   , PoPDefinitionConfig
@@ -12,6 +13,7 @@ module Rtsv2.Config
   , LoadMonitorConfig
   , appName
   , webConfig
+  , globalConfig
   , nodeConfig
   , popDefinitionConfig
   , intraPoPAgentConfig
@@ -55,6 +57,10 @@ instance eqServerLocation :: Eq ServerLocation where
 -- TODO - config should include BindIFace or BindIp
 type WebConfig = { port :: Int }
 
+type GlobalConfig
+  = { intraPoPLatencyMs :: Int
+    }
+
 type PoPDefinitionConfig
   = { directory :: String
     , popDefinitionFile :: String
@@ -62,7 +68,8 @@ type PoPDefinitionConfig
     }
 
 type IngestAggregatorAgentConfig
-  = { streamAvailableAnnounceMs :: Int }
+  = { streamAvailableAnnounceMs :: Int
+    , shutdownLingerTimeMs :: Int}
 
 type EdgeAgentConfig
   = { edgeAvailableAnnounceMs :: Int
@@ -124,6 +131,11 @@ appName = "rtsv2"
 webConfig :: Effect WebConfig
 webConfig = do
   config <- getMandatory (unsafeReadTagged "map") "httpApiConfig"
+  pure $ config
+
+globalConfig :: Effect GlobalConfig
+globalConfig = do
+  config <- getMandatory (unsafeReadTagged "map") "globalConfig"
   pure $ config
 
 configuredAgents :: Effect (List Agent)

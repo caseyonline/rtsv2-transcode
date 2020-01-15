@@ -76,7 +76,7 @@ function destroy_serfs {
 }
 
 function destroy_beams {
-  pkill -f 'rtsv2TestRunner'|| true
+  pkill -f 'rtsv2TestRunner' || true
 }
 
 function start_node {
@@ -103,5 +103,15 @@ function start_node {
   tmux -L "$tmuxSession" send-keys " export PRIVATE_IFACE=$iface" C-m
   tmux -L "$tmuxSession" send-keys " export PUBLIC_IFACE=$iface" C-m
   tmux -L "$tmuxSession" send-keys " export DISK_LOG_ROOT=logs/$nodeName" C-m
-  tmux -L "$tmuxSession" send-keys " erl -pa _build/default/lib/*/ebin -config $sysConfig -rtsv2 id rtsv2TestRunner -eval 'application:ensure_all_started(rtsv2).'" C-m
+  tmux -L "$tmuxSession" send-keys " erl -pa _build/default/lib/*/ebin -config $sysConfig -rtsv2 id '\"rtsv2TestRunner$nodeName\"' -eval 'application:ensure_all_started(rtsv2).'" C-m
+}
+
+function stop_node {
+  local -r tmuxSession=$1
+  local -r nodeName=$2
+  local -r addr=$3
+
+  pkill -9 -f "rtsv2TestRunner$nodeName" || true
+  serf leave --rpc-addr $addr:7373 > /dev/null
+  pkill -9 -f "rpc-addr $addr:7373" || true
 }

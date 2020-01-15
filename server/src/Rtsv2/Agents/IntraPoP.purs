@@ -16,13 +16,16 @@ module Rtsv2.Agents.IntraPoP
   , getIdleServer
   , currentTransPoPLeader
   , health
+  , bus
   , IntraMessage(..)
   , StreamState(..)
   , EdgeState(..)
+  , IntraPoPBusMessage(..)
   ) where
 
 import Prelude
 
+import Bus as Bus
 import Data.Either (Either(..), hush)
 import Data.Foldable (foldl)
 import Data.Maybe (Maybe(..), fromMaybe)
@@ -42,6 +45,7 @@ import Erl.Process (Process, spawnLink)
 import Erl.Utils (Milliseconds)
 import Erl.Utils as Erl
 import Foreign (Foreign)
+import Logger (spy)
 import Logger as Logger
 import Partial.Unsafe (unsafeCrashWith)
 import Pinto (ServerName, StartLinkResult)
@@ -93,6 +97,8 @@ data Msg
   | GarbageCollect
   | IntraPoPSerfMsg (Serf.SerfMessage IntraMessage)
 
+data IntraPoPBusMessage =
+  IngestAggregatorExited StreamId ServerAddress
 
 --------------------------------------------------------------------------------
 -- API
@@ -104,6 +110,9 @@ health =
     let
       currentHealth = percentageToHealth $ (Map.size members * 100) / (length allOtherServers) * 100
     pure $ CallReply currentHealth state
+
+bus :: Bus.Bus IntraPoPBusMessage
+bus = Bus.bus "intrapop_bus"
 
 isStreamIngestAvailable :: StreamId -> Effect Boolean
 isStreamIngestAvailable streamId =
@@ -130,12 +139,14 @@ whereIsEdge streamId =
 
 getIdleServer :: Effect (Maybe ServerAddress)
 getIdleServer = Gen.doCall serverName
-  (\state@{members} ->
+  (\state@{thisNode, members} ->
     let
-      membersList = values members
+      membersList = values (Map.delete thisNode members)
+      memberCount = length membersList
+      maxIndex = memberCount - 1
     in
       do
-        indexes <- distinctRandomNumbers 1 (min 2 ((length membersList) - 1))
+        indexes <- distinctRandomNumbers (min 2 memberCount) maxIndex
         let
           output = traverse (\i -> index membersList i) indexes
                    # fromMaybe nil
@@ -457,9 +468,10 @@ garbageCollect state@{ expireThreshold
   do
     now <- Erl.systemTimeMs
     let threshold = now - expireThreshold
-        newStreamAggregatorLocations = EMap.garbageCollect threshold streamAggregatorLocations
+        Tuple newStreamAggregatorLocations aggregatorGarbage = EMap.garbageCollect2 threshold streamAggregatorLocations
         newStreamRelayLocations = EMap.garbageCollect threshold streamRelayLocations
         newEdgeLocations = MultiMap.garbageCollect threshold edgeLocations
+    _ <- traverse (\(Tuple streamId aggregator) -> Bus.raise bus (IngestAggregatorExited streamId aggregator)) aggregatorGarbage
     pure state{ streamAggregatorLocations = newStreamAggregatorLocations
               , streamRelayLocations = newStreamRelayLocations
               , edgeLocations = newEdgeLocations

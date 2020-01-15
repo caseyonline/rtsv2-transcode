@@ -6,6 +6,7 @@
 
 import Prelude
 
+import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Erl.Data.List (nil, (:))
 import Pinto (SupervisorName)
@@ -14,6 +15,7 @@ import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChil
 import Pinto.Sup as Sup
 import Rtsv2.Agents.IngestInstance as IngestInstance
 import Rtsv2.Names as Names
+import Shared.LlnwApiTypes (StreamDetails)
 import Shared.Stream (StreamVariantId)
 
 isAvailable :: Effect Boolean
@@ -25,9 +27,9 @@ serverName = Names.ingestInstanceSupName
 startLink :: forall a. a -> Effect Pinto.StartLinkResult
 startLink _ = Sup.startLink serverName init
 
-startIngest :: StreamVariantId -> Effect Unit
-startIngest streamVariantId = do
-  result <- Sup.startSimpleChild childTemplate serverName streamVariantId
+startIngest :: StreamDetails -> StreamVariantId -> Effect Unit
+startIngest streamDetails streamVariantId = do
+  result <- Sup.startSimpleChild childTemplate serverName (Tuple streamDetails streamVariantId)
   case result of
     Pinto.AlreadyStarted pid -> pure unit
     Pinto.Started pid -> pure unit
@@ -46,5 +48,5 @@ init = do
             : nil
         )
 
-childTemplate :: Pinto.ChildTemplate StreamVariantId
+childTemplate :: Pinto.ChildTemplate (Tuple StreamDetails StreamVariantId)
 childTemplate = Pinto.ChildTemplate (IngestInstance.startLink)

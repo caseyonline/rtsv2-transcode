@@ -15,6 +15,7 @@ import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChil
 import Pinto.Sup as Sup
 import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
 import Rtsv2.Names as Names
+import Shared.LlnwApiTypes (StreamDetails)
 import Shared.Stream (StreamId)
 
 isAvailable :: Effect Boolean
@@ -26,9 +27,9 @@ serverName = Names.ingestAggregatorInstanceSupName
 startLink :: forall a. a -> Effect Pinto.StartLinkResult
 startLink _ = Sup.startLink serverName init
 
-startAggregator :: StreamId -> Effect Unit
-startAggregator streamId = do
-  result <- Sup.startSimpleChild childTemplate serverName streamId
+startAggregator :: StreamDetails -> Effect Unit
+startAggregator streamDetails = do
+  result <- Sup.startSimpleChild childTemplate serverName streamDetails
   case result of
        Pinto.AlreadyStarted pid -> pure unit
        Pinto.Started pid -> pure unit
@@ -47,5 +48,5 @@ init = do
           : nil
         )
 
-childTemplate :: Pinto.ChildTemplate StreamId
+childTemplate :: Pinto.ChildTemplate StreamDetails
 childTemplate = Pinto.ChildTemplate (IngestAggregatorInstance.startLink)
