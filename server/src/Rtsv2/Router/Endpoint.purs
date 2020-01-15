@@ -7,10 +7,14 @@ import Prelude hiding ((/))
 import Data.Either (note)
 import Data.Generic.Rep (class Generic)
 import Data.Maybe (Maybe(..))
+import Data.Newtype (unwrap)
 import Routing.Duplex (RouteDuplex', as, path, root, segment)
 import Routing.Duplex.Generic (noArgs, sum)
 import Routing.Duplex.Generic.Syntax ((/))
 import Shared.Stream (StreamId(..), StreamVariant(..))
+
+-- data Canary = Live
+--             | Canary
 
 type Canary = String
 
@@ -40,10 +44,10 @@ endpoint = root $ sum
   , "RelayE"          : "" / "api" / "relay" / streamId segment
   , "LoadE"           : "" / "api" / path "load" noArgs
   , "IngestAggregator": "" / "api" / "agents" / "ingestAggregator" / streamId segment
-  , "IngestStartE"    : "" / "api" / "client" / segment / "ingest" / streamId segment / variant segment / "start"
-  , "IngestStopE"     : "" / "api" / "client" / segment / "ingest" / streamId segment / variant segment / "stop"
-  , "ClientStartE"    : "" / "api" / "client" / segment / "client" / streamId segment / "start"
-  , "ClientStopE"     : "" / "api" / "client" / segment / "client" / streamId segment / "stop"
+  , "IngestStartE"    : "" / "api" / "client" / canary segment / "ingest" / streamId segment / variant segment / "start"
+  , "IngestStopE"     : "" / "api" / "client" / canary segment / "ingest" / streamId segment / variant segment / "stop"
+  , "ClientStartE"    : "" / "api" / "client" / canary segment / "client" / streamId segment / "start"
+  , "ClientStopE"     : "" / "api" / "client" / canary segment / "client" / streamId segment / "stop"
   , "StreamAuthE"     : "" / "llnwstub/" / "rts" / "v1" / path "streamauthtype" noArgs
   , "StreamAuthTypeE" : "" / "llnwstub/" / "rts" / "v1" / path "streamauth" noArgs
   , "StreamPublishE"  : "" / "llnwstub/" / "rts" / "v1" / path "streampublish" noArgs
@@ -56,7 +60,7 @@ parseStreamId ""  = Nothing
 parseStreamId str = Just (StreamId str)
 
 streamIdToString :: StreamId -> String
-streamIdToString (StreamId str) = str
+streamIdToString = unwrap
 
 -- | StreamVariant
 parseStreamVariant :: String -> Maybe StreamVariant
@@ -66,6 +70,17 @@ parseStreamVariant  str = Just (StreamVariant str)
 variantToString :: StreamVariant -> String
 variantToString (StreamVariant str) = str
 
+-- | Canary
+-- parseCanary :: String -> Maybe Canary
+-- parseCanary "live"  = Just Live
+-- parseCanary "canary"  = Just Canary
+-- parseCanary _ = Nothing
+
+-- canaryToString :: Canary -> String
+-- canaryToString Live = "live"
+-- canaryToString Canary = "canary"
+
+
 
 -- | This combinator transforms a codec over `String` into one that operates on the `StreamId` type.
 streamId :: RouteDuplex' String -> RouteDuplex' StreamId
@@ -74,3 +89,8 @@ streamId = as streamIdToString (parseStreamId >>> note "Bad StreamId")
 -- | This combinator transforms a codec over `String` into one that operates on the `StreamVariant` type.
 variant :: RouteDuplex' String -> RouteDuplex' StreamVariant
 variant = as variantToString (parseStreamVariant >>> note "Bad StreamId")
+
+-- | This combinator transforms a codec over `String` into one that operates on the `Canary` type.
+canary :: RouteDuplex' String -> RouteDuplex' Canary
+--canary = as canaryToString (parseCanary >>> note "Bad CanaryId")
+canary = as identity (Just >>> note "Bad CanaryId")

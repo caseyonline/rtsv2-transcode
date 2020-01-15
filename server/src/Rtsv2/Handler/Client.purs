@@ -9,7 +9,7 @@ import Prelude
 import Data.Either (Either(..))
 import Data.Foldable (any)
 import Data.Maybe (Maybe(..), fromMaybe')
-import Data.Newtype (class Newtype, unwrap, wrap)
+import Data.Newtype (unwrap, wrap)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Cowboy.Handlers.Rest (MovedResult, moved, notMoved)
@@ -37,7 +37,7 @@ import Shared.Types (LocatedServer(..), PoPName, ServerAddress, ServerLoad(..), 
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON as Json
 import SpudGun as SpudGun
-import Stetson (HttpMethod(..), RestResult, StetsonHandler, RestHandler)
+import Stetson (HttpMethod(..), RestResult, StetsonHandler)
 import Stetson.Rest as Rest
 
 data ClientStartState
@@ -256,8 +256,11 @@ clientStart =
     movedTemporarily req state@(State {streamId, egestResp}) =
       case spy "moved" egestResp of
         Right (Remote addr) ->
-          --api node <> "client/canary/ingest/" <> streamId <> "/" <> variant <> "/start") <#> stringifyError
-          Rest.result (moved $ "http://" <> unwrap addr <> ":3000/api/client/canary/client/" <> unwrap streamId <> "/start") req state
+          let
+            path = Routing.printUrl RoutingEndpoint.endpoint (ClientStartE "canary" streamId)
+            url = spy "url" $ "http://" <> unwrap addr <> ":3000" <> path
+          in
+            Rest.result (moved $ url) req state
         _ ->
           Rest.result notMoved req state
 
