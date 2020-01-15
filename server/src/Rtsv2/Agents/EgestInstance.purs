@@ -3,7 +3,7 @@ module Rtsv2.Agents.EgestInstance
   , isActive
   , addClient
   , removeClient
-  , currentClientCount
+  , currentStats
   ) where
 
 import Prelude
@@ -77,8 +77,8 @@ doRemoveClient state@{clientCount} = do
   _ <- logInfo "Remove client" {newCount: clientCount - 1}
   pure $ CallReply unit state{clientCount = clientCount - 1}
 
-currentClientCount :: StreamId -> Effect Int
-currentClientCount streamId =
+currentStats :: StreamId -> Effect Int
+currentStats streamId =
   Gen.call (serverName streamId) \state@{clientCount} ->
     CallReply clientCount state
 

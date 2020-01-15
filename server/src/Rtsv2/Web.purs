@@ -57,8 +57,8 @@ init args = do
         (printUrl endpoint HealthCheckE)
         HealthHandler.healthCheck
     # Stetson.route
-        (printUrl endpoint (ClientCountE (StreamId ":stream_id")))
-        EgestStatsHandler.clientCount
+        (printUrl endpoint (EgestStatsE (StreamId ":stream_id")))
+        EgestStatsHandler.stats
     # Stetson.route
         (printUrl endpoint (RelayE (StreamId ":stream_id")))
         RelayHandler.resource

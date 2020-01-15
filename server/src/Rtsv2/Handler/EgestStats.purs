@@ -1,6 +1,6 @@
 module Rtsv2.Handler.EgestStats
        (
-         clientCount
+         stats
        ) where
 
 import Prelude
@@ -21,11 +21,11 @@ import Shared.Utils (lazyCrashIfMissing)
 import Stetson (StetsonHandler)
 import Stetson.Rest as Rest
 
-type ClientCountState = { streamId :: StreamId
+type StatsState = { streamId :: StreamId
                         }
 
-clientCount :: StetsonHandler ClientCountState
-clientCount =
+stats :: StetsonHandler StatsState
+stats =
   Rest.handler (\req ->
                  let streamId = StreamId $ fromMaybe' (lazyCrashIfMissing "stream_id binding missing") $ binding (atom "stream_id") req
                  in
@@ -49,5 +49,5 @@ clientCount =
 
   where
     content streamId req state = do
-      count <- EgestInstance.currentClientCount streamId
+      count <- EgestInstance.currentStats streamId
       Rest.result (show count) req state

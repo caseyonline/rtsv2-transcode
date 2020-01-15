@@ -55,19 +55,23 @@ main =
     stringifyError (Right r)       = Right r
     stringifyError (Left axError)  = Left $ show axError
 
-    egest :: Node -> String -> Aff (Either String M.Response)
-    egest  node streamId         = fetch (M.URL $ api node <> "client/canary/client/" <> streamId <> "/start")
-                                   { method: M.postMethod
-                                   , body: "{}"
-                                   , headers: M.makeHeaders { "Content-Type": "application/json" }
-                                   } # attempt <#> stringifyError
-    ingest verb node shortName variant = fetch (M.URL $ api node <> "client/canary/ingest/" <> shortName <> "/" <> variant <> "/" <> verb)
-                                   { method: M.getMethod
-                                   } # attempt <#> stringifyError
+    client verb node streamId           = fetch (M.URL $ api node <> "public/canary/client/" <> streamId <> "/" <> verb)
+                                         { method: M.postMethod
+                                         , body: "{}"
+                                         , headers: M.makeHeaders { "Content-Type": "application/json" }
+                                         } # attempt <#> stringifyError
+    egestStats node streamId           = fetch (M.URL $ api node <> "agenst/egest/" <> streamId)
+                                         { method: M.getMethod
+                                         , headers: M.makeHeaders { "Content-Type": "application/json" }
+                                         } # attempt <#> stringifyError
 
-    relayStatus node streamId    = fetch (M.URL $ api node <> "relay/" <> streamId)
-                                   { method: M.getMethod
-                                   } # attempt <#> stringifyError
+    ingest verb node shortName variant = fetch (M.URL $ api node <> "public/canary/ingest/" <> shortName <> "/" <> variant <> "/" <> verb)
+                                         { method: M.getMethod
+                                         } # attempt <#> stringifyError
+
+    relayStatus node streamId          = fetch (M.URL $ api node <> "agents/relay/" <> streamId)
+                                         { method: M.getMethod
+                                         } # attempt <#> stringifyError
 
     mkNode sysConfig node = {vlan: toVlan node, addr: toAddr node, sysConfig}
 
@@ -83,38 +87,55 @@ main =
   in
   launchAff_ $ un Identity $ runSpecT testConfig [consoleReporter] do
     describe "Ingest egest tests" do
-      -- describe "one pop setup" do
-      --   before_ (launch [p1n1, p1n2, p1n3]) do
-      --     after_ stopSession do
-      --       it "client requests stream on ingest node" do
-      --         egest        p1n1 slot1          >>= assertStatusCode 404 >>= as "no egest prior to ingest"
-      --         egest        p1n1 slot1          >>= assertStatusCode 404 >>= as "no egest prior to ingest"
-      --         relayStatus  p1n1 slot1          >>= assertStatusCode 404 >>= as "no relay prior to ingest"
-      --         ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as "create ingest"
-      --         delayMs 500.0
-      --         egest        p1n1 slot1          >>= assertStatusCode 204 >>= as "egest available"
-      --         relayStatus  p1n1 slot1          >>= assertStatusCode 200 >>= as "relay exists"
+      describe "one pop setup" do
+        before_ (launch [p1n1, p1n2, p1n3]) do
+          after_ stopSession do
+            it "client requests stream on ingest node" do
+              client start  p1n1 slot1          >>= assertStatusCode 404 >>= as "no egest prior to ingest"
+              relayStatus  p1n1 slot1          >>= assertStatusCode 404 >>= as "no relay prior to ingest"
+              ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as "create ingest"
+              delayMs 500.0
+              client start  p1n1 slot1          >>= assertStatusCode 204 >>= as "egest available"
+              relayStatus  p1n1 slot1          >>= assertStatusCode 200 >>= as "relay exists"
 
-      --       it "client requests stream on non-ingest node" do
-      --         egest        p1n2 slot1          >>= assertStatusCode 404 >>= as "no egest prior to ingest"
-      --         relayStatus  p1n2 slot1          >>= assertStatusCode 404 >>= as "no remote relay prior to ingest"
-      --         ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as "create ingest"
-      --         delayMs 1000.0
-      --         egest        p1n2 slot1          >>= assertStatusCode 204 >>= as "egest available"
-      --         relayStatus  p1n2 slot1          >>= assertStatusCode 200 >>= as "remote relay exists"
+            it "client requests stream on non-ingest node" do
+              client start  p1n2 slot1          >>= assertStatusCode 404 >>= as "no egest prior to ingest"
+              relayStatus  p1n2 slot1          >>= assertStatusCode 404 >>= as "no remote relay prior to ingest"
+              ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as "create ingest"
+              delayMs 1000.0
+              client start  p1n2 slot1          >>= assertStatusCode 204 >>= as "egest available"
+              relayStatus  p1n2 slot1          >>= assertStatusCode 200 >>= as "remote relay exists"
 
-      --       it "client requests stream on 2nd node on ingest pop" do
-      --         egest        p1n2 slot1          >>= assertStatusCode 404 >>= as "no egest p1n2 prior to ingest"
-      --         egest        p1n2 slot1          >>= assertStatusCode 404 >>= as "no egest p1n3 prior to ingest"
-      --         ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as "create ingest"
-      --         delayMs 1000.0
-      --         egest        p1n2 slot1          >>= assertStatusCode 204
-      --                                              >>= assertHeader (Tuple "x-servedby" "172.16.169.2")
-      --                                                                   >>= as "first egest is same node"
-      --         delayMs 1000.0
-      --         egest        p1n3 slot1          >>= assertStatusCode 204
-      --                                              >>= assertHeader (Tuple "x-servedby" "172.16.169.2")
-      --                                                                   >>= as "p1n3 egest redirects to p1n2"
+            it "client requests stream on 2nd node on ingest pop" do
+              client start  p1n2 slot1          >>= assertStatusCode 404 >>= as "no egest p1n2 prior to ingest"
+              client start  p1n2 slot1          >>= assertStatusCode 404 >>= as "no egest p1n3 prior to ingest"
+              ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as "create ingest"
+              delayMs 1000.0
+              client start  p1n2 slot1          >>= assertStatusCode 204
+                                                   >>= assertHeader (Tuple "x-servedby" "172.16.169.2")
+                                                                        >>= as "first egest is same node"
+              delayMs 1000.0
+              client start  p1n3 slot1          >>= assertStatusCode 204
+                                                   >>= assertHeader (Tuple "x-servedby" "172.16.169.2")
+                                                                        >>= as "p1n3 egest redirects to p1n2"
+
+              -- _ <- assertBody "2" =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node2edgeCount
+              -- _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node3edgeCount
+              -- _ <- assertHeader (Tuple "x-servedby" "172.16.169.2") =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node2edgeStart
+              -- _ <- assertHeader (Tuple "x-servedby" "172.16.169.2") =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node3edgeStart
+              -- _ <- assertBody "4" =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node2edgeCount
+              -- _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node3edgeCount
+              -- _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node2edgeStop
+              -- _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node2edgeStop
+              -- _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node2edgeStop
+              -- _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node2edgeStop
+              -- _ <- delay (Milliseconds 3000.0) -- alslot1_500 edge linger time to expire...
+              -- _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node2edgeCount
+              -- _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node3edgeCount
+              -- _ <- delay (Milliseconds 1000.0)
+              -- _ <- assertHeader (Tuple "x-servedby" "172.16.169.3") =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node3edgeStart
+              -- _ <- assertBody "1" =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node3edgeCount
+
 
       --     it "client edge starts and stops" do
       --       let
@@ -162,16 +183,16 @@ main =
             --   -- TODO -- relayStatus p1n1 slot1 >>= assertStatusCode 200 >>= as "remote relay exists"
 
             it "client ingest starts and stops" do
-              egest        p1n2 slot1          >>= assertStatusCode 404 >>= as "no local egest prior to ingest"
-              egest        p2n1 slot1          >>= assertStatusCode 404 >>= as "no remote egest prior to ingest"
+              client start       p1n2 slot1          >>= assertStatusCode 404 >>= as "no local egest prior to ingest"
+              client start      p2n1 slot1          >>= assertStatusCode 404 >>= as "no remote egest prior to ingest"
               ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as "create ingest"
               delayMs 1000.0
-              egest        p1n2 slot1          >>= assertStatusCode 204 >>= as "local egest post ingest"
-              egest        p2n1 slot1          >>= assertStatusCode 204 >>= as "remote egest post ingest"
+              client start       p1n2 slot1          >>= assertStatusCode 204 >>= as "local egest post ingest"
+              client start       p2n1 slot1          >>= assertStatusCode 204 >>= as "remote egest post ingest"
               ingest stop  p1n1 shortName1 low >>= assertStatusCode 200 >>= as "stop the ingest"
               delayMs 5000.0
-              egest        p1n2 slot1          >>= assertStatusCode 404 >>= as "no same pop egest post stop"
-              egest        p2n1 slot1          >>= assertStatusCode 404 >>= as "no remote pop egest post stop"
+              client start       p1n2 slot1          >>= assertStatusCode 404 >>= as "no same pop egest post stop"
+              client start       p2n1 slot1          >>= assertStatusCode 404 >>= as "no remote pop egest post stop"
 
           -- it "ingest aggregation on ingest node" do
           --   let

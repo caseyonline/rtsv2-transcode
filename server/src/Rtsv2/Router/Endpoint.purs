@@ -21,7 +21,7 @@ type Canary = String
 data Endpoint
   = TransPoPLeaderE
   | HealthCheckE
-  | ClientCountE StreamId
+  | EgestStatsE StreamId
   | RelayE StreamId
   | LoadE
   | IngestAggregatorE StreamId
@@ -42,16 +42,18 @@ endpoint :: RouteDuplex' Endpoint
 endpoint = root $ sum
   { "TransPoPLeaderE"                : "" / "api" / path "transPoPLeader" noArgs
   , "HealthCheckE"                   : "" / "api" / path "healthCheck" noArgs
-  , "ClientCountE"                   : "" / "api" / "egest" / streamId segment / "clientCount"
-  , "RelayE"                         : "" / "api" / "relay" / streamId segment
+  , "EgestStatsE"                    : "" / "api" / "agents" / "egest" / streamId segment
+  , "RelayE"                         : "" / "api" / "agents" / "relay" / streamId segment
   , "LoadE"                          : "" / "api" / path "load" noArgs
   , "IngestAggregatorE"              : "" / "api" / "agents" / "ingestAggregator" / streamId segment
   , "IngestAggregatorActiveIngestsE" : "" / "api" / "agents" / "ingestAggregator" / segment / "activeIngests" / variant segment
-  , "IngestAggregatorsE"             : "" / "api" / "agents" / "ingestAggregator" / noArgs
-  , "IngestStartE"                   : "" / "api" / "client" / canary segment / "ingest" / segment / variant segment / "start"
-  , "IngestStopE"                    : "" / "api" / "client" / canary segment / "ingest" / segment / variant segment / "stop"
-  , "ClientStartE"                   : "" / "api" / "client" / canary segment / "client" / streamId segment / "start"
-  , "ClientStopE"                    : "" / "api" / "client" / canary segment / "client" / streamId segment / "stop"
+  , "IngestAggregatorsE"             : "" / "api" / "agents" / path "ingestAggregator" noArgs
+
+  , "IngestStartE"                   : "" / "api" / "public" / canary segment / "ingest" / segment / variant segment / "start"
+  , "IngestStopE"                    : "" / "api" / "public" / canary segment / "ingest" / segment / variant segment / "stop"
+  , "ClientStartE"                   : "" / "api" / "public" / canary segment / "client" / streamId segment / "start"
+  , "ClientStopE"                    : "" / "api" / "public" / canary segment / "client" / streamId segment / "stop"
+
   , "StreamAuthE"                    : "" / "llnwstub" / "rts" / "v1" / path "streamauthtype" noArgs
   , "StreamAuthTypeE"                : "" / "llnwstub" / "rts" / "v1" / path "streamauth" noArgs
   , "StreamPublishE"                 : "" / "llnwstub" / "rts" / "v1" / path "streampublish" noArgs
