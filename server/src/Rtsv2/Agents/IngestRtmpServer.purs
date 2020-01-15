@@ -21,7 +21,7 @@ import Rtsv2.Agents.IngestInstance as IngestInstance
 import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
-import Rtsv2.LlnwApiTypes (AuthType, PublishCredentials, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamPublish, StreamAuth)
+import Shared.LlnwApiTypes (AuthType, PublishCredentials, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamPublish, StreamAuth)
 import Rtsv2.Names as Names
 import Serf (Ip)
 import Shared.Stream (StreamAndVariant(..))
@@ -67,16 +67,18 @@ init _ = do
   _ <- startServerImpl Left (Right unit) interfaceIp port nbAcceptors callbacks
   pure $ {}
   where
-    ingestStarted { role
-                  , slot : {name : streamId, profiles}
-                  } streamVariantId =
+    ingestStarted :: StreamDetails -> String -> Effect Boolean
+    ingestStarted streamDetails@{ role
+                                , slot : {name : streamId, profiles}
+                                } streamVariantId =
       case any (\{streamName: slotStreamName} -> slotStreamName == streamVariantId) profiles of
         true ->
-          IngestInstanceSup.startIngest (StreamAndVariant (wrap streamId) (wrap streamVariantId))
+          IngestInstanceSup.startIngest streamDetails (StreamAndVariant (wrap streamId) (wrap streamVariantId))
           <#> const true
         false ->
           pure $ false
 
+    ingestStopped :: StreamDetails -> String -> Effect Unit
     ingestStopped { role
                    , slot : {name : streamId}} streamVariantId = IngestInstance.stopIngest (StreamAndVariant (wrap streamId) (wrap streamVariantId))
 
@@ -105,5 +107,3 @@ init _ = do
       let
         streamDetails = JSON.readJSON =<< lmap (\s -> (singleton (ForeignError s))) restResult
       pure $ hush streamDetails
-
-

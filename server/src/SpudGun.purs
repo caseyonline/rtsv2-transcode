@@ -5,6 +5,8 @@ module SpudGun
 , getText
 , getJson
 , get'
+, delete
+, delete'
 ) where
 
 import Data.Either (Either(..))
@@ -14,8 +16,13 @@ import Erl.Data.Tuple (Tuple2, tuple2)
 
 type Headers = List (Tuple2 String String)
 
-foreign import postImpl :: (String -> (Either String String)) -> (String -> (Either String String)) -> String -> String -> Headers -> Effect (Either String String)
+foreign import getImpl :: (String -> (Either String String)) -> (String -> (Either String String))  -> String -> Headers -> Effect (Either String String)
+
 foreign import putImpl :: (String -> (Either String String)) -> (String -> (Either String String)) -> String -> String -> Headers -> Effect (Either String String)
+
+foreign import postImpl :: (String -> (Either String String)) -> (String -> (Either String String)) -> String -> String -> Headers -> Effect (Either String String)
+
+foreign import deleteImpl :: (String -> (Either String String)) -> (String -> (Either String String)) -> String -> Headers -> Effect (Either String String)
 
 post' :: String -> String -> Headers -> Effect (Either String String)
 post' = postImpl Left Right
@@ -23,10 +30,14 @@ post' = postImpl Left Right
 put' :: String -> String -> Headers -> Effect (Either String String)
 put' = putImpl Left Right
 
+delete' :: String -> Headers -> Effect (Either String String)
+delete' = deleteImpl Left Right
+
+delete :: String -> Effect (Either String String)
+delete s = delete' s (tuple2 "Content-Type" "application/json" : tuple2 "Accept" "application/json" : nil)
+
 post :: String -> String -> Effect (Either String String)
 post s b = post' s b (tuple2 "Content-Type" "application/json" : tuple2 "Accept" "application/json" : nil)
-
-foreign import getImpl :: (String -> (Either String String)) -> (String -> (Either String String))  -> String -> Headers -> Effect (Either String String)
 
 get' :: String -> Headers -> Effect (Either String String)
 get' = getImpl Left Right

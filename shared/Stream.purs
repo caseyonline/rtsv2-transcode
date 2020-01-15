@@ -3,6 +3,7 @@ module Shared.Stream
   , StreamVariant(..)
   , StreamAndVariant(..)
   , toStreamId
+  , toVariant
   ) where
 
 import Prelude
@@ -61,7 +62,7 @@ instance compareStreamVariant :: Ord StreamVariant where
 
 instance showStreamVariant :: Show StreamVariant where
   show = genericShow
-  
+
 
 derive instance genericStreamAndVariant :: Generic StreamAndVariant _
 
@@ -86,6 +87,10 @@ instance readForeignStreamAndVariant :: ReadForeign StreamAndVariant where
 
 instance writeForeignStreamAndVariant :: WriteForeign StreamAndVariant where
   writeImpl (StreamAndVariant streamId streamVariant) = unsafeToForeign $ (unwrap streamId) <> ":" <> (unwrap streamVariant)
-  
+
 toStreamId :: StreamAndVariant -> StreamId
 toStreamId (StreamAndVariant s _) = s
+
+
+toVariant :: StreamAndVariant -> StreamVariant
+toVariant (StreamAndVariant _ v) = v

@@ -1,5 +1,6 @@
 module Rtsv2.Config
-  ( IngestAggregatorAgentConfig
+  ( GlobalConfig
+  , IngestAggregatorAgentConfig
   , WebConfig
   , PoPDefinitionConfig
   , IntraPoPAgentConfig
@@ -10,6 +11,7 @@ module Rtsv2.Config
   , LlnwApiConfig
   , LoadMonitorConfig
   , webConfig
+  , globalConfig
   , nodeConfig
   , popDefinitionConfig
   , intraPoPAgentConfig
@@ -47,6 +49,10 @@ import Simple.JSON (class ReadForeign, readImpl)
 -- TODO - config should include BindIFace or BindIp
 type WebConfig = { port :: Int }
 
+type GlobalConfig
+  = { intraPoPLatencyMs :: Int
+    }
+
 type PoPDefinitionConfig
   = { directory :: String
     , popDefinitionFile :: String
@@ -54,7 +60,8 @@ type PoPDefinitionConfig
     }
 
 type IngestAggregatorAgentConfig
-  = { streamAvailableAnnounceMs :: Int }
+  = { streamAvailableAnnounceMs :: Int
+    , shutdownLingerTimeMs :: Int}
 
 type EgestAgentConfig
   = { egestAvailableAnnounceMs :: Int
@@ -113,6 +120,11 @@ foreign import mergeOverrides :: Effect Foreign
 webConfig :: Effect WebConfig
 webConfig = do
   config <- getMandatory (unsafeReadTagged "map") "httpApiConfig"
+  pure $ config
+
+globalConfig :: Effect GlobalConfig
+globalConfig = do
+  config <- getMandatory (unsafeReadTagged "map") "globalConfig"
   pure $ config
 
 configuredAgents :: Effect (List Agent)

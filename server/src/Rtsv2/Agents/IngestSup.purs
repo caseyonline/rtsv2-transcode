@@ -5,6 +5,7 @@
 
 import Prelude
 
+import Data.Tuple (Tuple)
 import Effect (Effect)
 import Erl.Data.List (nil, (:))
 import Pinto (SupervisorName)
@@ -16,6 +17,7 @@ import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
 import Rtsv2.Agents.IngestRtmpServer as IngestRtmpServer
 import Rtsv2.Names as Names
 import Shared.Stream (StreamAndVariant)
+import Shared.LlnwApiTypes (StreamDetails)
 
 isAvailable :: Effect Boolean
 isAvailable = Names.isRegistered serverName
@@ -46,5 +48,5 @@ init = do
             : nil
         )
 
-childTemplate :: Pinto.ChildTemplate StreamAndVariant
+childTemplate :: Pinto.ChildTemplate (Tuple StreamDetails StreamAndVariant)
 childTemplate = Pinto.ChildTemplate (IngestInstance.startLink)

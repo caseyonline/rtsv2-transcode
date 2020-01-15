@@ -5,7 +5,7 @@
 -- * Capitization differs on shortname vs streamName
 -- * Can slot details change when stream is live - assuming not
 
-module Rtsv2.LlnwApiTypes
+module Shared.LlnwApiTypes
        ( StreamConnection
        , AuthType
        , StreamIngestProtocol(..)
@@ -32,7 +32,6 @@ import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Eq (genericEq)
 import Data.Generic.Rep.Ord (genericCompare)
 import Data.Generic.Rep.Show (genericShow)
-import Erl.Data.List (List)
 import Data.List.NonEmpty (singleton)
 import Data.Maybe (Maybe(..))
 import Foreign (F, ForeignError(..), readString, unsafeToForeign)
@@ -86,7 +85,7 @@ type SlotProfile =
 type SlotDetails =
   { name :: String
   , subscribeValidation :: Boolean
-  , profiles :: List SlotProfile
+  , profiles :: Array SlotProfile
   }
 
 type HlsPushAuth =
@@ -112,8 +111,8 @@ data StreamOutputFormat = WebRTCOutput
 type StreamDetails =
   { role :: StreamRole
   , slot :: SlotDetails
-  , outputFormats :: List StreamOutputFormat
-  , push :: List HlsPushSpec
+  , outputFormats :: Array StreamOutputFormat
+  , push :: Array HlsPushSpec
   }
 
 --------------------------------------------------------------------------------
@@ -253,4 +252,3 @@ instance writeForeignStreamOutputFormat :: WriteForeign StreamOutputFormat where
       toString WebRTCOutput = "webrtc"
       toString RtmpOutput = "rtmp"
       toString HlsOutput = "hls"
-

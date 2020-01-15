@@ -24,9 +24,11 @@ data Endpoint
   | ClientCountE StreamId
   | RelayE StreamId
   | LoadE
-  | IngestAggregator StreamId
-  | IngestStartE Canary StreamId StreamVariant
-  | IngestStopE Canary StreamId StreamVariant
+  | IngestAggregatorE StreamId
+  | IngestAggregatorActiveIngestsE String StreamVariant
+  | IngestAggregatorsE
+  | IngestStartE Canary String StreamVariant
+  | IngestStopE Canary String StreamVariant
   | ClientStartE Canary StreamId
   | ClientStopE Canary StreamId
   | StreamAuthE
@@ -38,19 +40,21 @@ derive instance genericEndpoint :: Generic Endpoint _
 -- | Our codec will cause a compile-time error if we fail to handle any of our route cases.
 endpoint :: RouteDuplex' Endpoint
 endpoint = root $ sum
-  { "TransPoPLeaderE" : "" / "api" / path "transPoPLeader" noArgs
-  , "HealthCheckE"    : "" / "api" / path "healthCheck" noArgs
-  , "ClientCountE"    : "" / "api" / "egest" / streamId segment / "clientCount"
-  , "RelayE"          : "" / "api" / "relay" / streamId segment
-  , "LoadE"           : "" / "api" / path "load" noArgs
-  , "IngestAggregator": "" / "api" / "agents" / "ingestAggregator" / streamId segment
-  , "IngestStartE"    : "" / "api" / "client" / canary segment / "ingest" / streamId segment / variant segment / "start"
-  , "IngestStopE"     : "" / "api" / "client" / canary segment / "ingest" / streamId segment / variant segment / "stop"
-  , "ClientStartE"    : "" / "api" / "client" / canary segment / "client" / streamId segment / "start"
-  , "ClientStopE"     : "" / "api" / "client" / canary segment / "client" / streamId segment / "stop"
-  , "StreamAuthE"     : "" / "llnwstub/" / "rts" / "v1" / path "streamauthtype" noArgs
-  , "StreamAuthTypeE" : "" / "llnwstub/" / "rts" / "v1" / path "streamauth" noArgs
-  , "StreamPublishE"  : "" / "llnwstub/" / "rts" / "v1" / path "streampublish" noArgs
+  { "TransPoPLeaderE"                : "" / "api" / path "transPoPLeader" noArgs
+  , "HealthCheckE"                   : "" / "api" / path "healthCheck" noArgs
+  , "ClientCountE"                   : "" / "api" / "egest" / streamId segment / "clientCount"
+  , "RelayE"                         : "" / "api" / "relay" / streamId segment
+  , "LoadE"                          : "" / "api" / path "load" noArgs
+  , "IngestAggregatorE"              : "" / "api" / "agents" / "ingestAggregator" / streamId segment
+  , "IngestAggregatorActiveIngestsE" : "" / "api" / "agents" / "ingestAggregator" / segment / "activeIngests" / variant segment
+  , "IngestAggregatorsE"             : "" / "api" / "agents" / "ingestAggregator" / noArgs
+  , "IngestStartE"                   : "" / "api" / "client" / canary segment / "ingest" / segment / variant segment / "start"
+  , "IngestStopE"                    : "" / "api" / "client" / canary segment / "ingest" / segment / variant segment / "stop"
+  , "ClientStartE"                   : "" / "api" / "client" / canary segment / "client" / streamId segment / "start"
+  , "ClientStopE"                    : "" / "api" / "client" / canary segment / "client" / streamId segment / "stop"
+  , "StreamAuthE"                    : "" / "llnwstub/" / "rts" / "v1" / path "streamauthtype" noArgs
+  , "StreamAuthTypeE"                : "" / "llnwstub/" / "rts" / "v1" / path "streamauth" noArgs
+  , "StreamPublishE"                 : "" / "llnwstub/" / "rts" / "v1" / path "streampublish" noArgs
   }
 
 -- | StreamId

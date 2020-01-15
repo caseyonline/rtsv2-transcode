@@ -6,6 +6,7 @@ module Rtsv2.PoPDefinition
        , thisNode
        , whereIsServer
        , thisLocation
+       , thisLocatedServer
        , thisPoP
        , neighbourMap
        , serversInThisPoPByAddress
@@ -58,6 +59,7 @@ type State =  { config :: Config.PoPDefinitionConfig
               , servers :: Map ServerAddress ServerLocation
               , thisNode :: ServerAddress
               , thisLocation :: ServerLocation
+              , thisLocatedServer :: LocatedServer
               , thisPoP :: PoP
               , otherServersInThisPoP :: List ServerAddress
               , otherPoPs :: List PoP
@@ -106,6 +108,9 @@ getOtherPoPNames =
 thisLocation :: Effect ServerLocation
 thisLocation = exposeStateMember _.thisLocation
 
+thisLocatedServer :: Effect LocatedServer
+thisLocatedServer = exposeStateMember _.thisLocatedServer
+
 whereIsServer :: ServerAddress -> Effect (Maybe ServerLocation)
 whereIsServer sa = Gen.doCall serverName
              \state -> pure $ CallReply (Map.lookup sa state.servers) state
@@ -151,6 +156,7 @@ init config = do
         , servers : popInfo.servers
         , thisNode : hostname
         , thisLocation : popInfo.thisLocation
+        , thisLocatedServer : LocatedServer hostname popInfo.thisLocation
         , thisPoP : popInfo.thisPoP
         , otherPoPs : popInfo.otherPoPs
         , otherServersInThisPoP : popInfo.otherServersInThisPoP

@@ -1,6 +1,5 @@
 module Ephemeral.Map
-       (
-         EMap
+       ( EMap
        , empty
        , size
        , member
@@ -11,18 +10,21 @@ module Ephemeral.Map
        , insert'
        , values
        , garbageCollect
+       , garbageCollect2
        , garbageCollect'
        )
        where
 
 import Prelude
 
+import Data.Bifunctor (lmap)
 import Data.FoldableWithIndex (foldlWithIndex)
 import Data.Maybe (Maybe)
+import Data.Tuple (Tuple(..))
 import Effect (Effect)
-import Ephemeral (EData, expired)
+import Ephemeral (EData, expired, extract)
 import Ephemeral as EData
-import Erl.Data.List (List)
+import Erl.Data.List (List, nil, (:))
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
 import Erl.Utils (Milliseconds)
@@ -72,6 +74,16 @@ garbageCollect threshold (EMap m) =
                else  Map.insert k v acc
   )
   Map.empty
+  m
+
+garbageCollect2 :: forall k v. Milliseconds -> EMap k v -> Tuple (EMap k v) (List (Tuple k v))
+garbageCollect2 threshold (EMap m) =
+  lmap EMap $ foldlWithIndex
+  (\k (Tuple acc garbage) v ->
+    if expired threshold v then (Tuple acc ((Tuple k (extract v)) : garbage))
+    else Tuple (Map.insert k v acc) garbage
+  )
+  (Tuple Map.empty nil)
   m
 
 garbageCollect' :: forall k v. Milliseconds -> EMap k v -> Effect (EMap k v)

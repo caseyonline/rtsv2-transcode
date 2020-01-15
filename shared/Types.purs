@@ -6,8 +6,10 @@ module Shared.Types
        , ServerLoad(..)
        , ServerLocation(..)
        , LocatedServer(..)
+       , IngestAggregatorPublicState
        , locatedServerAddress
        , locatedServerLocation
+
        ) where
 
 import Prelude
@@ -15,6 +17,9 @@ import Prelude
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Eq (genericEq)
 import Data.Newtype (class Newtype)
+import Data.Tuple (Tuple(..))
+import Shared.LlnwApiTypes (StreamDetails)
+import Shared.Stream (StreamVariant(..))
 import Simple.JSON (class ReadForeign, class WriteForeign)
 
 newtype ServerAddress = ServerAddress String
@@ -69,3 +74,10 @@ data ServerLoad = ServerLoad LocatedServer Load
 derive instance genericServerLoad :: Generic ServerLoad _
 instance eqServerLoad :: Eq ServerLoad where
   eq = genericEq
+
+type IngestAggregatorPublicState
+   = { streamDetails :: StreamDetails
+     , activeStreamVariants :: Array { streamVariant :: StreamVariant
+                                     , serverAddress :: ServerAddress
+                                     }
+     }

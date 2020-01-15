@@ -66,13 +66,19 @@ init args = do
         (printUrl endpoint LoadE)
         LoadHandler.load
     # Stetson.route
-        (printUrl endpoint (IngestAggregator $ StreamId ":stream_id"))
+        (printUrl endpoint (IngestAggregatorE $ StreamId ":stream_id"))
         IngestAggregatorHandler.ingestAggregator
     # Stetson.route
-        (printUrl endpoint (IngestStartE ":canary" (StreamId ":stream_id") (StreamVariant ":variant_id")))
+        (printUrl endpoint (IngestAggregatorActiveIngestsE ":short_name" (StreamVariant ":variant_id")))
+        IngestAggregatorHandler.ingestAggregatorsActiveIngest
+    # Stetson.route
+        (printUrl endpoint IngestAggregatorsE)
+        IngestAggregatorHandler.ingestAggregators
+    # Stetson.route
+        (printUrl endpoint (IngestStartE ":canary" ":short_name" (StreamVariant ":variant_id")))
         IngestHandler.ingestStart
     # Stetson.route
-        (printUrl endpoint (IngestStopE ":canary" (StreamId ":stream_id") (StreamVariant ":variant_id")))
+        (printUrl endpoint (IngestStopE ":canary" ":short_name" (StreamVariant ":variant_id")))
         IngestHandler.ingestStop
     # Stetson.route
         (printUrl endpoint (ClientStartE ":canary" (StreamId ":stream_id")))

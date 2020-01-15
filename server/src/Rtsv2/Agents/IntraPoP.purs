@@ -1,6 +1,6 @@
 module Rtsv2.Agents.IntraPoP
   ( startLink
-  , isIngestAvailable
+  , isStreamIngestAvailable
   , isIngestActive
   , announceLoad
   , announceEgestIsAvailable
@@ -16,13 +16,16 @@ module Rtsv2.Agents.IntraPoP
   , getIdleServer
   , currentTransPoPLeader
   , health
+  , bus
   , IntraMessage(..)
   , StreamState(..)
   , EgestState(..)
+  , IntraPoPBusMessage(..)
   ) where
 
 import Prelude
 
+import Bus as Bus
 import Data.Either (Either(..), hush)
 import Data.Filterable (filterMap)
 import Data.Foldable (foldl)
@@ -37,7 +40,7 @@ import Ephemeral.Map as EMap
 import Ephemeral.MultiMap (EMultiMap)
 import Ephemeral.MultiMap as MultiMap
 import Erl.Atom (Atom)
-import Erl.Data.List (List, head, index, length, nil, singleton, sortBy, take, uncons)
+import Erl.Data.List (List, index, length, nil, singleton, sortBy, take, uncons)
 import Erl.Data.Map (Map, alter, fromFoldable, values)
 import Erl.Data.Map as Map
 import Erl.Process (Process, spawnLink)
@@ -61,8 +64,6 @@ import Serf (IpAndPort)
 import Serf as Serf
 import Shared.Stream (StreamId(..), StreamAndVariant(..))
 import Shared.Types (Load, LocatedServer(..), ServerAddress(..), ServerLoad(..))
-import Shared.Utils (distinctRandomNumbers)
-
 
 type MemberInfo = { serfMember :: Serf.SerfMember
                   , load :: Load
@@ -99,6 +100,8 @@ data Msg
   | GarbageCollect
   | IntraPoPSerfMsg (Serf.SerfMessage IntraMessage)
 
+data IntraPoPBusMessage =
+  IngestAggregatorExited StreamId LocatedServer
 
 --------------------------------------------------------------------------------
 -- API
@@ -111,8 +114,11 @@ health =
       currentHealth = percentageToHealth $ (Map.size members * 100) / (length allOtherServers) * 100
     pure $ CallReply currentHealth state
 
-isIngestAvailable :: StreamId -> Effect Boolean
-isIngestAvailable streamId =
+bus :: Bus.Bus IntraPoPBusMessage
+bus = Bus.bus "intrapop_bus"
+
+isStreamIngestAvailable :: StreamId -> Effect Boolean
+isStreamIngestAvailable streamId =
   Gen.call serverName \state@{ streamAggregatorLocations } ->
     CallReply (EMap.member streamId streamAggregatorLocations) state
 
@@ -136,7 +142,6 @@ whereIsEgest streamId =
     let withLoad el = toServerLoad <$> Map.lookup el members
     in
     CallReply (filterMap withLoad $ MultiMap.lookup streamId state.egestLocations) state
-
 
 --------------------------------------------------------------------------------
 -- TODO re-read Power of Two articles such as
@@ -173,24 +178,6 @@ getIdleServer pred = Gen.doCall serverName
       pure $ CallReply resp state
   )
 
-
-
-getIdleServer' :: Effect (Maybe ServerAddress)
-getIdleServer' = Gen.doCall serverName
-  (\state@{members} ->
-    let
-      membersList = values members
-    in
-      do
-        indexes <- distinctRandomNumbers 1 (min 2 ((length membersList) - 1))
-        let
-          output = traverse (\i -> index membersList i) indexes
-                   # fromMaybe nil
-                   # sortBy (\ {load: l1} {load: l2} -> compare l1 l2)
-                   # head
-                   <#> _.serfMember.name >>> wrap
-        pure $ CallReply output state
-  )
 
 currentTransPoPLeader :: Effect (Maybe ServerAddress)
 currentTransPoPLeader =
@@ -554,9 +541,10 @@ garbageCollect state@{ expireThreshold
   do
     now <- Erl.systemTimeMs
     let threshold = now - expireThreshold
-        newStreamAggregatorLocations = EMap.garbageCollect threshold streamAggregatorLocations
+        Tuple newStreamAggregatorLocations aggregatorGarbage = EMap.garbageCollect2 threshold streamAggregatorLocations
         newStreamRelayLocations = EMap.garbageCollect threshold streamRelayLocations
         newEgestLocations = MultiMap.garbageCollect threshold egestLocations
+    _ <- traverse (\(Tuple streamId aggregator) -> Bus.raise bus (IngestAggregatorExited streamId aggregator)) aggregatorGarbage
     pure state{ streamAggregatorLocations = newStreamAggregatorLocations
               , streamRelayLocations = newStreamRelayLocations
               , egestLocations = newEgestLocations
