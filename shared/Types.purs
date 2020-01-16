@@ -17,9 +17,8 @@ import Prelude
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Eq (genericEq)
 import Data.Newtype (class Newtype)
-import Data.Tuple (Tuple(..))
 import Shared.LlnwApiTypes (StreamDetails)
-import Shared.Stream (StreamVariant(..))
+import Shared.Stream (StreamVariant)
 import Simple.JSON (class ReadForeign, class WriteForeign)
 
 newtype ServerAddress = ServerAddress String

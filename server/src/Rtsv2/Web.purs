@@ -69,7 +69,7 @@ init args = do
         (printUrl endpoint (IngestAggregatorE $ StreamId ":stream_id"))
         IngestAggregatorHandler.ingestAggregator
     # Stetson.route
-        (printUrl endpoint (IngestAggregatorActiveIngestsE ":short_name" (StreamVariant ":variant_id")))
+        (printUrl endpoint (IngestAggregatorActiveIngestsE (StreamId ":stream_id") (StreamVariant ":variant_id")))
         IngestAggregatorHandler.ingestAggregatorsActiveIngest
     # Stetson.route
         (printUrl endpoint IngestAggregatorsE)

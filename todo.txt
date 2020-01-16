@@ -12,6 +12,7 @@
 [A] - Clean up / rewrite gproc.purs - is it a direct mapping, or do we want our own API
 [ ] - intraPoP load messages
 [ ] - transPoP load messages
+[ ] - have an http wrapper that does local gen_server call if on same node (ingestInstance - local / remote?)
 
 [x] - if ingest aggregator exits, then ingest instances need to reallocate a new aggregator
 [x] - move ingest-instance aggregator start logic out of init and retry failure on timer

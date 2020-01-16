@@ -25,7 +25,7 @@ data Endpoint
   | RelayE StreamId
   | LoadE
   | IngestAggregatorE StreamId
-  | IngestAggregatorActiveIngestsE String StreamVariant
+  | IngestAggregatorActiveIngestsE StreamId StreamVariant
   | IngestAggregatorsE
   | IngestStartE Canary String StreamVariant
   | IngestStopE Canary String StreamVariant
@@ -45,8 +45,9 @@ endpoint = root $ sum
   , "EgestStatsE"                    : "" / "api" / "agents" / "egest" / streamId segment
   , "RelayE"                         : "" / "api" / "agents" / "relay" / streamId segment
   , "LoadE"                          : "" / "api" / path "load" noArgs
+
   , "IngestAggregatorE"              : "" / "api" / "agents" / "ingestAggregator" / streamId segment
-  , "IngestAggregatorActiveIngestsE" : "" / "api" / "agents" / "ingestAggregator" / segment / "activeIngests" / variant segment
+  , "IngestAggregatorActiveIngestsE" : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "activeIngests" / variant segment
   , "IngestAggregatorsE"             : "" / "api" / "agents" / path "ingestAggregator" noArgs
 
   , "IngestStartE"                   : "" / "api" / "public" / canary segment / "ingest" / segment / variant segment / "start"

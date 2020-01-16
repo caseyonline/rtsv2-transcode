@@ -31,10 +31,13 @@ import Rtsv2.Config as Config
 import Rtsv2.Load as Load
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
+import Rtsv2.Router.Endpoint (Endpoint(..))
+import Rtsv2.Router.Endpoint as RoutingEndpoint
+import Rtsv2.Router.Parser as Routing
 import Shared.Agent as Agent
 import Shared.LlnwApiTypes (StreamDetails)
 import Shared.Stream (StreamAndVariant, StreamId, toStreamId, toVariant)
-import Shared.Types (LocatedServer, locatedServerAddress)
+import Shared.Types (Load, LocatedServer, ServerLoad(..), locatedServerAddress)
 import Simple.JSON as JSON
 import SpudGun as SpudGun
 
@@ -158,26 +161,42 @@ launchLocalOrRemote :: StreamDetails -> StreamAndVariant -> Effect (Maybe Locate
 launchLocalOrRemote streamDetails streamAndVariant = do
   currentLoad <- Load.load
   if
-    currentLoad < (wrap 50.0) then do
+    currentLoad < loadThresholdToCreateAggregator then do
       _ <- IngestAggregatorInstanceSup.startAggregator streamDetails
       Just <$> PoPDefinition.thisLocatedServer
     else
       launchRemote streamDetails streamAndVariant
 
+-- todo - maybe move to intrapop so we know if a second aggregator requests comes in quickly
+-- it could serialise requests on a per stream / asset basis
 launchRemote :: StreamDetails -> StreamAndVariant -> Effect (Maybe LocatedServer)
 launchRemote streamDetails streamAndVariant = do
-  candidate <- IntraPoP.getIdleServer (const true)
+  candidate <- IntraPoP.getIdleServer filterForAggregatorLoad
   case candidate of
     Nothing ->
       pure Nothing
     Just locatedServer -> do
       let
+        path = Routing.printUrl RoutingEndpoint.endpoint IngestAggregatorsE
+        url = spy "url" $ "http://" <> toHost locatedServer <> ":3000" <> path
+
         -- TODO - functions to make URLs from ServerAddress
-        url = "http://" <> (unwrap $ locatedServerAddress locatedServer) <> ":3000/api/agents/ingestAggregator"
+        --url = "http://" <> (unwrap $ locatedServerAddress locatedServer) <> ":3000/api/agents/ingestAggregator"
       restResult <- SpudGun.post url (JSON.writeJSON streamDetails)
       case restResult of
         Left _ -> pure Nothing
         Right _ -> pure candidate
+
+loadThresholdToCreateAggregator :: Load
+loadThresholdToCreateAggregator = wrap 50.0
+
+filterForAggregatorLoad :: ServerLoad -> Boolean
+filterForAggregatorLoad (ServerLoad _ load) = load < loadThresholdToCreateAggregator
+
+toHost :: LocatedServer -> String
+toHost =
+  unwrap <<< locatedServerAddress
+
 
 --------------------------------------------------------------------------------
 -- Log helpers

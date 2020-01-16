@@ -47,7 +47,8 @@ sendImpl(Method, Left, Right, Url, Body, UserHeaders) ->
             {_, <<"gzip">>} -> Right(zlib:gunzip(RespBody));
             none -> Right(RespBody)
           end;
-        {ok, _Other, _Headers, Body} -> Right(Body);
+        {ok, _Other, _Headers, Body} ->
+          Right(Body);
         Response ->
           ?SLOG_DEBUG("spud gun send failed", #{url => Url,
                                                 method => Method,
