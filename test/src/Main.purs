@@ -94,7 +94,6 @@ main =
 
 
 
-    delayMs = delay <<< Milliseconds
 
     maybeLogStep s a = let _ = spy s a in unit
 
@@ -125,8 +124,21 @@ main =
         predicate :: Array String -> IngestAggregatorPublicState -> Boolean
         predicate vars {activeStreamVariants} = sort (StreamVariant <$> vars) == (sort $ _.streamVariant <$> activeStreamVariants)
 
-    waitForAsyncVariantStart = delayMs 100.0
-    waitForAsyncVariantStop  = delayMs 100.0
+    delayMs = delay <<< Milliseconds
+
+    waitForAsyncVariantStart       = delayMs  100.0
+    waitForAsyncVariantStop        = delayMs  100.0
+
+    waitForIntraPoPDisseminate     = delayMs  500.0
+    waitForNodeFailureDisseminate  = delayMs 2500.0
+
+    waitForTransPoPDisseminate     = delayMs 1000.0
+    waitForTransPoPStopDisseminate = delayMs 5000.0 -- TODO - seeems big
+
+    waitForLessThanLinger          = delayMs  500.0
+    waitForMoreThanLinger          = delayMs 1500.0
+
+    waitForMoreThanEgestLinger     = delayMs 3000.0 -- TODO seems big
 
   in
   launchAff_ $ un Identity $ runSpecT testConfig [consoleReporter] do
@@ -156,9 +168,9 @@ main =
 
           it "if ingest node is too loaded, then ingest aggregation starts on non-ingest node" do
             traverse_ maxOut (allNodesBar p1n2)                           >>= as' "load up all servers bar one"
-            delayMs 500.0                                                 >>= as' "allow load to disseminate"
+            waitForIntraPoPDisseminate                                    >>= as' "allow load to disseminate"
             ingest start    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as  "create low ingest"
-            delayMs 1000.0                                                >>= as' "allow remote ingest location to disseminate"
+            waitForIntraPoPDisseminate                                    >>= as' "allow remote ingest location to disseminate"
             ingest start    p1n1 shortName1 high >>= assertStatusCode 200 >>= as  "create high ingest"
             aggregatorStats p1n2 slot1           >>= assertStatusCode 200
                                                      >>= assertAggregator [low, high]
@@ -167,7 +179,7 @@ main =
 
           it "ingest on different node removes itself from aggregator when stopped" do
             traverse_ maxOut (allNodesBar p1n2)                          >>= as' "load up all servers bar one"
-            delayMs 500.0                                                >>= as' "allow load to disseminate"
+            waitForIntraPoPDisseminate                                   >>= as' "allow load to disseminate"
             ingest start    p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create low ingest"
             waitForAsyncVariantStart                                     >>= as' "wait for async start of variant"
             aggregatorStats p1n2 slot1          >>= assertStatusCode 200
@@ -183,16 +195,16 @@ main =
 
           it "ingest restarts aggregator if aggregator exits" do
             traverse_ maxOut (allNodesBar p1n2)                           >>= as' "load up all servers bar one"
-            delayMs 500.0                                                 >>= as' "allow load to disseminate"
+            waitForIntraPoPDisseminate                                    >>= as' "allow load to disseminate"
             ingest start    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as  "create low ingest"
-            delayMs 100.0                                                 >>= as' "wait for async start of variant"
+            waitForAsyncVariantStart                                      >>= as' "wait for async start of variant"
             aggregatorStats p1n2 slot1           >>= assertStatusCode 200
                                                      >>= assertAggregator [low]
                                                                           >>= as  "aggregator created on idle server"
             traverse_ (aggregatorNotPresent slot1) (allNodesBar p1n2)     >>= as' "aggregator not on busy servers"
             setLoad         p1n3 0.0             >>= assertStatusCode 204 >>= as  "mark p1n3 as idle"
             stopNode (toAddr p1n2)                                        >>= as' "make p1n2 fail"
-            delayMs 2500.0                                                >>= as' "allow failure to disseminate"
+            waitForNodeFailureDisseminate                                 >>= as' "allow failure to disseminate"
             aggregatorStats p1n3 slot1           >>= assertStatusCode 200
                                                      >>= assertAggregator [low]
                                                                           >>= as  "failed aggregator moved to new idle server"
@@ -212,7 +224,7 @@ main =
             aggregatorStats p1n1 slot1           >>= assertStatusCode 200
                                                      >>= assertAggregator []
                                                                           >>= as  "aggregator has no variants"
-            delayMs 1500.0                                                >>= as' "wait for linger time"
+            waitForMoreThanLinger                                         >>= as' "wait for linger time"
             aggregatorStats p1n1 slot1           >>= assertStatusCode 404 >>= as  "aggregator stops after linger"
 
           it "aggregator does not exit during linger time" do
@@ -224,7 +236,7 @@ main =
             aggregatorStats p1n1 slot1          >>= assertStatusCode 200
                                                     >>= assertAggregator []
                                                                           >>= as  "aggregator has no variants"
-            delayMs 500.0                                                 >>= as' "wait for less than the linger time"
+            waitForLessThanLinger                                         >>= as' "wait for less than the linger time"
             ingest start    p1n2 shortName1 high >>= assertStatusCode 200 >>= as  "create high ingest on another node"
             aggregatorStats p1n1 slot1           >>= assertStatusCode 200
                                                      >>= assertAggregator [high]
@@ -242,7 +254,7 @@ main =
               client start p1n1 slot1          >>= assertStatusCode 404 >>= as  "no egest prior to ingest"
               relayStats   p1n1 slot1          >>= assertStatusCode 404 >>= as  "no relay prior to ingest"
               ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
-              delayMs 100.0                                             >>= as' "allow for async start of new stream"
+              waitForAsyncVariantStart                                  >>= as' "wait for async start of variant"
               client start p1n1 slot1          >>= assertStatusCode 204 >>= as  "egest available"
               relayStats   p1n1 slot1          >>= assertStatusCode 200 >>= as  "relay exists"
               egestStats   p1n1 slot1          >>= assertStatusCode 200
@@ -252,7 +264,7 @@ main =
               client start p1n2 slot1          >>= assertStatusCode 404 >>= as  "no egest prior to ingest"
               relayStats   p1n2 slot1          >>= assertStatusCode 404 >>= as  "no remote relay prior to ingest"
               ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
-              delayMs 500.0                                             >>= as' "allow intraPoP source avaialable to disseminate"
+              waitForIntraPoPDisseminate                                >>= as' "allow intraPoP source avaialable to disseminate"
               client start p1n2 slot1          >>= assertStatusCode 204 >>= as  "egest available"
               relayStats   p1n2 slot1          >>= assertStatusCode 200 >>= as  "remote relay exists"
               egestStats   p1n2 slot1          >>= assertStatusCode 200
@@ -262,11 +274,11 @@ main =
               client start p1n2 slot1          >>= assertStatusCode 404 >>= as "no egest p1n2 prior to ingest"
               client start p1n3 slot1          >>= assertStatusCode 404 >>= as "no egest p1n3 prior to ingest"
               ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as "create ingest"
-              delayMs 500.0                                             >>= as' "allow intraPoP source avaialable to disseminate"
+              waitForIntraPoPDisseminate                                >>= as' "allow intraPoP source avaialable to disseminate"
               client start p1n2 slot1          >>= assertStatusCode 204
                                                    >>= assertHeader (Tuple "x-servedby" "172.16.169.2")
                                                                         >>= as "first egest is same node"
-              delayMs 500.0                                             >>= as' "allow intraPoP egest avaialable to disseminate"
+              waitForIntraPoPDisseminate                                >>= as' "allow intraPoP egest avaialable to disseminate"
               client start p1n3 slot1          >>= assertStatusCode 204
                                                    >>= assertHeader (Tuple "x-servedby" "172.16.169.2")
                                                                         >>= as "p1n3 egest redirects to p1n2"
@@ -286,8 +298,8 @@ main =
               client stop  p1n2 slot1          >>= assertStatusCode 204 >>= as "stop client 2 on node2"
               client stop  p1n2 slot1          >>= assertStatusCode 204 >>= as "stop client 3 on node2"
               client stop  p1n2 slot1          >>= assertStatusCode 204 >>= as "stop client 4 on node2"
-              -- TODO why does this timer need to be so large?
-              delayMs 3000.0                                            >>= as' "allow the egest linger timer to expire"
+
+              waitForMoreThanEgestLinger                                >>= as' "allow the egest linger timer to expire"
               egestStats   p1n2 slot1          >>= assertStatusCode 404 >>= as "now no egest on node2"
               egestStats   p1n3 slot1          >>= assertStatusCode 404 >>= as "still no egest on node3"
               client start p1n3 slot1          >>= assertStatusCode 204
@@ -304,26 +316,26 @@ main =
         before_ (launch nodes) do
           after_ stopSession do
             it "client requests stream on other pop" do
-              client start p2n1 slot1           >>= assertStatusCode 404 >>= as "no egest prior to ingest"
-              relayStats   p1n1 slot1           >>= assertStatusCode 404 >>= as "no remote relay prior to ingest"
-              relayStats   p1n1 slot1           >>= assertStatusCode 404 >>= as "no local relay prior to ingest"
-              ingest start p1n1 shortName1 low  >>= assertStatusCode 200 >>= as "create ingest"
-              delayMs 1000.0
-              client start p2n1 slot1           >>= assertStatusCode 204 >>= as "egest available"
-              relayStats   p2n1 slot1           >>= assertStatusCode 200 >>= as "local relay exists"
-              -- TODO -- relayStatus p1n1 slot1 >>= assertStatusCode 200 >>= as "remote relay exists"
+              client start p2n1 slot1          >>= assertStatusCode 404 >>= as  "no egest prior to ingest"
+              relayStats   p1n1 slot1          >>= assertStatusCode 404 >>= as  "no remote relay prior to ingest"
+              relayStats   p1n1 slot1          >>= assertStatusCode 404 >>= as  "no local relay prior to ingest"
+              ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
+              waitForTransPoPDisseminate                                >>= as' "wait for transPop disseminate"
+              client start p2n1 slot1          >>= assertStatusCode 204 >>= as  "egest available"
+              relayStats   p2n1 slot1          >>= assertStatusCode 200 >>= as  "local relay exists"
+              -- TODO relayStatus p1n1 slot1   >>= assertStatusCode 200 >>= as "remote relay exists"
 
             it "client ingest starts and stops" do
-              client start       p1n2 slot1          >>= assertStatusCode 404 >>= as "no local egest prior to ingest"
-              client start      p2n1 slot1          >>= assertStatusCode 404 >>= as "no remote egest prior to ingest"
-              ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as "create ingest"
-              delayMs 1000.0
-              client start       p1n2 slot1          >>= assertStatusCode 204 >>= as "local egest post ingest"
-              client start       p2n1 slot1          >>= assertStatusCode 204 >>= as "remote egest post ingest"
-              ingest stop  p1n1 shortName1 low >>= assertStatusCode 200 >>= as "stop the ingest"
-              delayMs 5000.0
-              client start       p1n2 slot1          >>= assertStatusCode 404 >>= as "no same pop egest post stop"
-              client start       p2n1 slot1          >>= assertStatusCode 404 >>= as "no remote pop egest post stop"
+              client start p1n2 slot1          >>= assertStatusCode 404 >>= as  "no local egest prior to ingest"
+              client start p2n1 slot1          >>= assertStatusCode 404 >>= as  "no remote egest prior to ingest"
+              ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
+              waitForTransPoPDisseminate                                >>= as' "wait for transPop disseminate"
+              client start p1n2 slot1          >>= assertStatusCode 204 >>= as  "local egest post ingest"
+              client start p2n1 slot1          >>= assertStatusCode 204 >>= as  "remote egest post ingest"
+              ingest stop  p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "stop the ingest"
+              waitForTransPoPStopDisseminate                            >>= as' "wait for transPop disseminate"
+              client start p1n2 slot1          >>= assertStatusCode 404 >>= as  "no same pop egest post stop"
+              client start p2n1 slot1          >>= assertStatusCode 404 >>= as  "no remote pop egest post stop"
 
     describe "Cleanup" do
       after_ stopSession do
@@ -386,23 +398,6 @@ assertBodyFun pred either =
             pure $ Left $ "Predicated failed for body " <> body
         Left _ ->
           pure $ Left $ "Could not parse json " <> body
-
--- assertBodyFun :: forall a. ReadForeign a => (E a -> Boolean) -> Response String -> Aff (Response String)
--- assertBodyFun expectedBodyFun response@{body} =
---   let
---     parsed = SimpleJSON.readJSON body
---   in
---    if expectedBodyFun parsed then pure response
---    else throwSlowError $ Exception.error $ "Body " <> body <> " did not match expected"
-
--- assertBody :: String -> Response String -> Aff (Response String)
--- assertBody expectedBody response@{body} =
---   if expectedBody == body then pure response
---   else throwSlowError $ Exception.error $ "Body " <> body <> " did not match expected " <> expectedBody
-
--- jsonBody :: String -> Maybe RequestBody
--- jsonBody string =
---   RequestBody.json <$> hush (Json.jsonParser string)
 
 sessionName:: String
 sessionName = "testSession"
