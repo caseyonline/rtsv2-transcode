@@ -177,7 +177,6 @@ main =
                                                      >>= assertAggregator [low, high]
                                                                           >>= as  "aggregator is on p1n2"
 
-
           it "ingest on different node removes itself from aggregator when stopped" do
             traverse_ maxOut (allNodesBar p1n2)                          >>= as' "load up all servers bar one"
             waitForIntraPoPDisseminate                                   >>= as' "allow load to disseminate"

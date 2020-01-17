@@ -12,7 +12,7 @@ import Data.Maybe (Maybe(..), fromMaybe', isNothing)
 import Data.Newtype (wrap)
 import Effect (Effect)
 import Erl.Atom (atom)
-import Erl.Cowboy.Req (ReadBodyResult(..), Req, binding, readBody)
+import Erl.Cowboy.Req (ReadBodyResult(..), Req, binding, method, readBody)
 import Erl.Data.Binary (Binary)
 import Erl.Data.Binary.IOData (IOData, fromBinary, toBinary)
 import Erl.Data.List (nil, (:))
@@ -101,17 +101,26 @@ ingestAggregatorsActiveIngest =
   # Rest.serviceAvailable (\req state -> do
                               isAgentAvailable <- IngestAggregatorInstanceSup.isAvailable
                               Rest.result isAgentAvailable req state)
-  # Rest.allowedMethods (Rest.result (POST : nil))
+  # Rest.allowedMethods (Rest.result (DELETE : POST : nil))
   # Rest.resourceExists (\req state@{streamAndVariant} -> do
                           isAvailable <- IngestAggregatorInstance.isAvailable (toStreamId streamAndVariant)
                           Rest.result isAvailable req state
                         )
-  # Rest.malformedRequest (\req state -> do
-                              body <- allBody req mempty
-                              let
-                                maybeServerAddress :: Maybe ServerAddress
-                                maybeServerAddress = hush $ readJSON $ binaryToString body
-                              Rest.result (isNothing maybeServerAddress) req state{serverAddress = maybeServerAddress})
+  # Rest.malformedRequest (\req state ->
+                            case method req of
+                              "DELETE" ->
+                                Rest.result false req state
+                              "POST" -> 
+                                do
+                                  body <- allBody req mempty
+                                  let
+                                    maybeServerAddress :: Maybe ServerAddress
+                                    maybeServerAddress = hush $ readJSON $ binaryToString body
+                                  Rest.result (isNothing maybeServerAddress) req state{serverAddress = maybeServerAddress}
+                              _ ->
+                                Rest.result false req state
+
+                          )
   # Rest.contentTypesAccepted (\req state ->
                                 Rest.result ((tuple2 "application/json" (\req2 state2@{ streamAndVariant
                                                                                       , serverAddress: maybeServerAddress} ->
@@ -122,16 +131,18 @@ ingestAggregatorsActiveIngest =
                                                                               _ <- IngestAggregatorInstance.addRemoteVariant streamAndVariant serverAddress
                                                                               Rest.result true req2 state2
                                                                         )) : nil)
-                                req state)
+                                req state
+                              )
+
 
   # Rest.previouslyExisted (Rest.result false)
 
   # Rest.allowMissingPost (Rest.result false)
 
-  -- # Rest.deleteResource (\req state@{streamAndVariant} -> do
-  --                           _ <- IngestAggregatorInstance.removeVariant streamAndVariant
-  --                           Rest.result true req state
-  --                       )
+  # Rest.deleteResource (\req state@{streamAndVariant} -> do
+                            _ <- IngestAggregatorInstance.removeVariant streamAndVariant
+                            Rest.result true req state
+                        )
 
   # Rest.contentTypesProvided (\req state -> Rest.result (tuple2 "application/json" (Rest.result ""): nil) req state)
 
