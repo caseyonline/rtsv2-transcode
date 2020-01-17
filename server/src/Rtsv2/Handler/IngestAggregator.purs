@@ -128,6 +128,11 @@ ingestAggregatorsActiveIngest =
 
   # Rest.allowMissingPost (Rest.result false)
 
+  -- # Rest.deleteResource (\req state@{streamAndVariant} -> do
+  --                           _ <- IngestAggregatorInstance.removeVariant streamAndVariant
+  --                           Rest.result true req state
+  --                       )
+
   # Rest.contentTypesProvided (\req state -> Rest.result (tuple2 "application/json" (Rest.result ""): nil) req state)
 
   # Rest.yeeha
