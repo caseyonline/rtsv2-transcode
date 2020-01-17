@@ -9,7 +9,7 @@ module SpudGun
 , delete'
 , bodyToJSON
 , bodyToString
-, ParseError
+, JsonResponseError
 , SpudResult
 , SpudResponse(..)
 , SpudError(..)
