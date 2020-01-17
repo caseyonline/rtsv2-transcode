@@ -7,43 +7,112 @@ module SpudGun
 , get'
 , delete
 , delete'
+, bodyToJSON
+, bodyToString
+, ParseError
+, SpudResult
+, SpudResponse(..)
+, SpudError(..)
+, StatusCode
+, Headers
+, Body
 ) where
 
+import Prelude
+
+import Data.Bifunctor (lmap)
 import Data.Either (Either(..))
+import Data.Newtype (class Newtype, unwrap, wrap)
 import Effect (Effect)
 import Erl.Data.List (List, nil, (:))
 import Erl.Data.Tuple (Tuple2, tuple2)
+import Foreign (Foreign, MultipleErrors)
+import Simple.JSON (class ReadForeign, class WriteForeign)
+import Simple.JSON as JSON
+
+newtype StatusCode = StatusCode Int
 
 type Headers = List (Tuple2 String String)
 
-foreign import getImpl :: (String -> (Either String String)) -> (String -> (Either String String))  -> String -> Headers -> Effect (Either String String)
+newtype Body = Body String
 
-foreign import putImpl :: (String -> (Either String String)) -> (String -> (Either String String)) -> String -> String -> Headers -> Effect (Either String String)
+data SpudError = RequestError Foreign
+               | ResponseError SpudResponse
 
-foreign import postImpl :: (String -> (Either String String)) -> (String -> (Either String String)) -> String -> String -> Headers -> Effect (Either String String)
+data SpudResponse = SpudResponse StatusCode Headers Body
 
-foreign import deleteImpl :: (String -> (Either String String)) -> (String -> (Either String String)) -> String -> Headers -> Effect (Either String String)
+type SpudResult = Either SpudError SpudResponse
 
-post' :: String -> String -> Headers -> Effect (Either String String)
-post' = postImpl Left Right
+type RequestErrorFun = Foreign -> SpudResult
+type ResponseErrorFun = Int -> Headers -> String -> SpudResult
+type ResponseSuccessFun = Int -> Headers -> String -> SpudResult
 
-put' :: String -> String -> Headers -> Effect (Either String String)
-put' = putImpl Left Right
+foreign import getImpl :: RequestErrorFun -> ResponseErrorFun -> ResponseSuccessFun -> String -> Headers -> Effect SpudResult
 
-delete' :: String -> Headers -> Effect (Either String String)
-delete' = deleteImpl Left Right
+foreign import putImpl :: RequestErrorFun -> ResponseErrorFun -> ResponseSuccessFun -> String -> String -> Headers -> Effect SpudResult
 
-delete :: String -> Effect (Either String String)
+foreign import postImpl :: RequestErrorFun -> ResponseErrorFun -> ResponseSuccessFun -> String -> String -> Headers -> Effect SpudResult
+
+foreign import deleteImpl :: RequestErrorFun -> ResponseErrorFun -> ResponseSuccessFun -> String -> Headers -> Effect SpudResult
+
+data ParseError = SpudError SpudError
+                | ParseError MultipleErrors
+
+bodyToString :: SpudResult -> Either SpudError String
+bodyToString = map (\(SpudResponse _ _ b) -> unwrap b)
+
+bodyToJSON :: forall a. ReadForeign a => SpudResult -> Either ParseError a
+bodyToJSON result =
+  let
+    parser s = lmap ParseError (JSON.readJSON s)
+  in
+   parser =<< (toBody <$> (lmap SpudError result))
+  where
+    toBody (SpudResponse _ _ b) = unwrap b
+
+requestError :: RequestErrorFun
+requestError f = Left $ RequestError f
+
+responseError :: ResponseErrorFun
+responseError s h b = Left $ ResponseError (SpudResponse (wrap s) h (wrap b))
+
+responseSuccess :: Int -> Headers -> String -> SpudResult --ResponseSuccessFun
+responseSuccess s h b = Right $ SpudResponse (wrap s) h (wrap b)
+
+post' :: String -> String -> Headers -> Effect SpudResult
+post' = postImpl requestError responseError responseSuccess
+
+put' :: String -> String -> Headers -> Effect SpudResult
+put' = putImpl requestError responseError responseSuccess
+
+delete' :: String -> Headers -> Effect SpudResult
+delete' = deleteImpl requestError responseError responseSuccess
+
+delete :: String -> Effect SpudResult
 delete s = delete' s (tuple2 "Content-Type" "application/json" : tuple2 "Accept" "application/json" : nil)
 
-post :: String -> String -> Effect (Either String String)
+post :: String -> String -> Effect SpudResult
 post s b = post' s b (tuple2 "Content-Type" "application/json" : tuple2 "Accept" "application/json" : nil)
 
-get' :: String -> Headers -> Effect (Either String String)
-get' = getImpl Left Right
+get' :: String -> Headers -> Effect SpudResult
+get' = getImpl requestError responseError responseSuccess
 
-getText :: String -> Effect (Either String String)
+getText :: String -> Effect SpudResult
 getText s = get' s (tuple2 "Accept" "text/plain" : nil)
 
-getJson :: String -> Effect (Either String String)
+getJson :: String -> Effect SpudResult
 getJson s = get' s (tuple2 "Accept" "application/json" : nil)
+
+derive instance newtypeStatusCode :: Newtype StatusCode _
+derive newtype instance eqStatusCode :: Eq StatusCode
+derive newtype instance ordStatusCode :: Ord StatusCode
+derive newtype instance showStatusCode :: Show StatusCode
+derive newtype instance readForeignStatusCode :: ReadForeign StatusCode
+derive newtype instance writeForeignStatusCode :: WriteForeign StatusCode
+
+derive instance newtypeBody :: Newtype Body _
+derive newtype instance eqBody :: Eq Body
+derive newtype instance ordBody :: Ord Body
+derive newtype instance showBody :: Show Body
+derive newtype instance readForeignBody :: ReadForeign Body
+derive newtype instance writeForeignBody :: WriteForeign Body

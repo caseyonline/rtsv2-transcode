@@ -95,7 +95,8 @@ main =
 
 
 
-    maybeLogStep s a = let _ = spy s a in unit
+    maybeLogStep s a = --let _ = spy s a in
+      unit
 
     as desc (Right r) =
       let _ = maybeLogStep "step" desc in
@@ -238,6 +239,7 @@ main =
                                                                           >>= as  "aggregator has no variants"
             waitForLessThanLinger                                         >>= as' "wait for less than the linger time"
             ingest start    p1n2 shortName1 high >>= assertStatusCode 200 >>= as  "create high ingest on another node"
+            waitForAsyncVariantStart                                      >>= as' "wait for async start of variant"
             aggregatorStats p1n1 slot1           >>= assertStatusCode 200
                                                      >>= assertAggregator [high]
                                                                           >>= as  "lingered aggregator has high variant"

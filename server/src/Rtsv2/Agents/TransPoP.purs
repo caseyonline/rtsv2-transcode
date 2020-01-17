@@ -52,6 +52,7 @@ import Serf as Serf
 import Shared.Stream (StreamId)
 import Shared.Types (PoPName, ServerAddress(..), ServerLocation(..))
 import Shared.Utils (distinctRandomNumbers)
+import SpudGun (bodyToString)
 import SpudGun as SpudGun
 
 
@@ -561,7 +562,7 @@ joinAllSerf state@{ config: config@{rejoinEveryMs}, serfRpcAddress, members } =
   spawnFun addressMapper popsToJoin = void $ spawnLink (\_ -> do
                              foldl
                                ( \iAcc (ServerAddress server) -> do
-                                   restResult <- SpudGun.getText ("http://" <> server <> ":3000/api/transPoPLeader")
+                                   restResult <- bodyToString <$> SpudGun.getText ("http://" <> server <> ":3000/api/transPoPLeader")
                                    _ <- case restResult of
                                      Left _ -> pure unit
                                      Right addr -> do

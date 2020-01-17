@@ -1,37 +1,41 @@
 -module(spudGun@foreign).
 
 -export([
-         getImpl/4,
-         putImpl/5,
-         postImpl/5,
-         deleteImpl/4
+         getImpl/5,
+         putImpl/6,
+         postImpl/6,
+         deleteImpl/5
         ]).
 
 -include_lib("id3as_common/include/spud_gun.hrl").
 -include_lib("id3as_common/include/common.hrl").
 
-getImpl(Left, Right, Url, ReqHeaders) ->
+getImpl(ReqError, RespError, RespSuccess, Url, ReqHeaders) ->
   fun() ->
       case spud_gun:get(Url, ReqHeaders) of
-        {ok, StatusCode, _Headers, RespBody} when StatusCode >= 200, StatusCode < 300 ->
-          Right(RespBody);
-        Response ->
+        {ok, StatusCode, Headers, RespBody} when StatusCode >= 200, StatusCode < 300 ->
+          ((RespSuccess(StatusCode))(Headers))(RespBody);
+
+        {ok, StatusCode, Headers, RespBody} ->
+          ((RespError(StatusCode))(Headers))(RespBody);
+
+        Error ->
           ?SLOG_DEBUG("spud gun get failed", #{url => Url,
-                                               response => Response}),
-          Left(<<"get error">>)
+                                               error => Error}),
+          ReqError(Error)
       end
   end.
 
-putImpl(Left, Right, Url, Body, UserHeaders) ->
-  sendImpl(put, Left, Right, Url, Body, UserHeaders).
+putImpl(ReqError, RespError, RespSuccess, Url, Body, UserHeaders) ->
+  sendImpl(put, ReqError, RespError, RespSuccess, Url, Body, UserHeaders).
 
-postImpl(Left, Right, Url, Body, UserHeaders) ->
-  sendImpl(post, Left, Right, Url, Body, UserHeaders).
+postImpl(ReqError, RespError, RespSuccess, Url, Body, UserHeaders) ->
+  sendImpl(post, ReqError, RespError, RespSuccess, Url, Body, UserHeaders).
 
-deleteImpl(Left, Right, Url, UserHeaders) ->
-  sendImpl(delete, Left, Right, Url, <<>>, UserHeaders).
+deleteImpl(ReqError, RespError, RespSuccess, Url, UserHeaders) ->
+  sendImpl(delete, ReqError, RespError, RespSuccess, Url, <<>>, UserHeaders).
 
-sendImpl(Method, Left, Right, Url, Body, UserHeaders) ->
+sendImpl(Method, ReqError, RespError, RespSuccess, Url, Body, UserHeaders) ->
   fun() ->
       ReqHeaders = [ {<<"Accept-Encoding">>, <<"gzip">>} | UserHeaders ],
       Request = spud_gun:url_to_request_record(Url,
@@ -43,16 +47,19 @@ sendImpl(Method, Left, Right, Url, Body, UserHeaders) ->
         Response = {ok, StatusCode, Headers, RespBody} when StatusCode >= 200, StatusCode < 300 ->
           ?SLOG_INFO("~p -> ~p", [Request, Response]),
           %% Gun lowercases response header names
-          case proplists:lookup(<<"content-encoding">>, Headers) of
-            {_, <<"gzip">>} -> Right(zlib:gunzip(RespBody));
-            none -> Right(RespBody)
-          end;
-        {ok, _Other, _Headers, Body} ->
-          Right(Body);
-        Response ->
+          UnzippedBody = case proplists:lookup(<<"content-encoding">>, Headers) of
+                           {_, <<"gzip">>} -> zlib:gunzip(RespBody);
+                           none -> RespBody
+                         end,
+          ((RespSuccess(StatusCode))(Headers))(UnzippedBody);
+
+        {ok, StatusCode, Headers, RespBody} ->
+          ((RespError(StatusCode))(Headers))(RespBody);
+
+        Error ->
           ?SLOG_DEBUG("spud gun send failed", #{url => Url,
                                                 method => Method,
-                                                response=> Response}),
-          Left(<<"request error">>)
+                                                error => Error}),
+          ReqError(Error)
       end
   end.

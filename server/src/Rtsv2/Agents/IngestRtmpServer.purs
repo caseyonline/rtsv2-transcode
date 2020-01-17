@@ -6,12 +6,12 @@ module Rtsv2.Agents.IngestRtmpServer
 
 import Prelude
 
-import Data.Bifunctor (lmap)
+import Data.Bifunctor (lmap, rmap)
 import Data.Either (Either(..), hush)
 import Data.Foldable (any)
-import Data.List.NonEmpty (singleton)
+import Data.List.NonEmpty (NonEmptyList(..), singleton)
 import Data.Maybe (Maybe)
-import Data.Newtype (wrap)
+import Data.Newtype (unwrap, wrap)
 import Effect (Effect)
 import Foreign (Foreign, ForeignError(..))
 import Pinto (ServerName)
@@ -21,11 +21,13 @@ import Rtsv2.Agents.IngestInstance as IngestInstance
 import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
-import Shared.LlnwApiTypes (AuthType, PublishCredentials, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamPublish, StreamAuth)
 import Rtsv2.Names as Names
 import Serf (Ip)
+import Shared.LlnwApiTypes (AuthType, PublishCredentials, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamPublish, StreamAuth)
 import Shared.Stream (StreamAndVariant(..))
+import Simple.JSON (E)
 import Simple.JSON as JSON
+import SpudGun (SpudResponse(..), SpudResult, bodyToJSON)
 import SpudGun as SpudGun
 
 type Callbacks
@@ -86,17 +88,13 @@ init _ = do
       restResult <- SpudGun.post url (JSON.writeJSON ({host
                                                       , protocol: Rtmp
                                                       , shortname} :: StreamConnection))
-      let
-        authType = JSON.readJSON =<< lmap (\s -> (singleton (ForeignError s))) restResult
-      pure $ hush authType
+      pure $ hush (bodyToJSON restResult)
 
     streamAuth url host shortname username = do
       restResult <- SpudGun.post url (JSON.writeJSON ({host
                                                       , shortname
                                                       , username} :: StreamAuth))
-      let
-        publishCredentials = JSON.readJSON =<< lmap (\s -> (singleton (ForeignError s))) restResult
-      pure $ hush publishCredentials
+      pure $ hush (bodyToJSON restResult)
 
     streamPublish url host shortname username streamName = do
       restResult <- SpudGun.post url (JSON.writeJSON ({host
@@ -104,6 +102,4 @@ init _ = do
                                                       , shortname
                                                       , streamName
                                                       , username} :: StreamPublish))
-      let
-        streamDetails = JSON.readJSON =<< lmap (\s -> (singleton (ForeignError s))) restResult
-      pure $ hush streamDetails
+      pure $ hush (bodyToJSON restResult)

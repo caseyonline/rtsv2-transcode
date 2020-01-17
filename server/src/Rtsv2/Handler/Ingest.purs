@@ -26,6 +26,7 @@ import Shared.LlnwApiTypes (StreamIngestProtocol(..), StreamPublish, StreamDetai
 import Shared.Stream (StreamAndVariant(..), toVariant)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON as JSON
+import SpudGun (bodyToJSON)
 import SpudGun as SpudGun
 import Stetson (StetsonHandler)
 import Stetson.Rest as Rest
@@ -59,9 +60,9 @@ ingestStart =
                           in
                            do
                              {streamPublishUrl} <- Config.llnwApiConfig
-                             restResult <- SpudGun.post streamPublishUrl (JSON.writeJSON apiBody)
+                             restResult <- bodyToJSON <$> SpudGun.post streamPublishUrl (JSON.writeJSON apiBody)
                              let
-                               streamDetails = hush $ JSON.readJSON =<< lmap (\s -> (singleton (ForeignError s))) restResult
+                               streamDetails = hush $ restResult
                              Rest.result true req state{streamDetails = streamDetails}
                           )
   -- TODO - would conflict if stream exists, but this won't be REST once media plugged...
