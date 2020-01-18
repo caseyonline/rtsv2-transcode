@@ -7,9 +7,7 @@ module Rtsv2.Handler.Ingest
 import Prelude
 
 import Data.Array ((!!))
-import Data.Bifunctor (lmap)
 import Data.Either (hush)
-import Data.List.NonEmpty (singleton)
 import Data.Maybe (Maybe(..), fromMaybe')
 import Data.Newtype (unwrap, wrap)
 import Data.String (Pattern(..), split)
@@ -17,7 +15,6 @@ import Erl.Atom (atom)
 import Erl.Cowboy.Req (binding)
 import Erl.Data.List (nil, (:))
 import Erl.Data.Tuple (tuple2)
-import Foreign (ForeignError(..))
 import Logger (spy)
 import Rtsv2.Agents.IngestInstance as IngestInstance
 import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
@@ -60,7 +57,7 @@ ingestStart =
                           in
                            do
                              {streamPublishUrl} <- Config.llnwApiConfig
-                             restResult <- bodyToJSON <$> SpudGun.post streamPublishUrl (JSON.writeJSON apiBody)
+                             restResult <- bodyToJSON <$> SpudGun.postJson (wrap streamPublishUrl) (JSON.writeJSON apiBody)
                              let
                                streamDetails = hush $ restResult
                              Rest.result true req state{streamDetails = streamDetails}

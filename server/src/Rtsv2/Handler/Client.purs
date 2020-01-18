@@ -17,7 +17,6 @@ import Erl.Cowboy.Req (Req, StatusCode(..), binding, replyWithoutBody, setHeader
 import Erl.Data.List (List, singleton, (:))
 import Erl.Data.List as List
 import Erl.Data.Map as Map
-import Erl.Data.Tuple (tuple2)
 import Logger (Logger, spy)
 import Logger as Logger
 import Rtsv2.Agents.EgestInstance as EgestInstance
@@ -197,7 +196,7 @@ createRelayInThisPoP streamId thisPoPName routes ingestAggregator@(LocatedServer
         -- TODO / thoughts - do we wait for the entire relay chain to exist before returning?
         -- what if there isn't enough resource on an intermediate PoP?
         -- Single relay that goes direct?
-        _restResult <- SpudGun.post url (Json.writeJSON request)
+        _restResult <- SpudGun.postJson (wrap url) $ Json.writeJSON request
         pure $ Right $ locatedServerAddress candidateRelayServer
 
     Nothing ->

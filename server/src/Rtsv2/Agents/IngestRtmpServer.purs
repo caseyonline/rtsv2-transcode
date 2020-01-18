@@ -6,14 +6,12 @@ module Rtsv2.Agents.IngestRtmpServer
 
 import Prelude
 
-import Data.Bifunctor (lmap, rmap)
 import Data.Either (Either(..), hush)
 import Data.Foldable (any)
-import Data.List.NonEmpty (NonEmptyList(..), singleton)
 import Data.Maybe (Maybe)
-import Data.Newtype (unwrap, wrap)
+import Data.Newtype (wrap)
 import Effect (Effect)
-import Foreign (Foreign, ForeignError(..))
+import Foreign (Foreign)
 import Pinto (ServerName)
 import Pinto as Pinto
 import Pinto.Gen as Gen
@@ -25,9 +23,8 @@ import Rtsv2.Names as Names
 import Serf (Ip)
 import Shared.LlnwApiTypes (AuthType, PublishCredentials, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamPublish, StreamAuth)
 import Shared.Stream (StreamAndVariant(..))
-import Simple.JSON (E)
 import Simple.JSON as JSON
-import SpudGun (SpudResponse(..), SpudResult, bodyToJSON)
+import SpudGun (bodyToJSON)
 import SpudGun as SpudGun
 
 type Callbacks
@@ -85,21 +82,21 @@ init _ = do
                    , slot : {name : streamId}} streamVariantId = IngestInstance.stopIngest (StreamAndVariant (wrap streamId) (wrap streamVariantId))
 
     streamAuthType url host shortname = do
-      restResult <- SpudGun.post url (JSON.writeJSON ({host
-                                                      , protocol: Rtmp
-                                                      , shortname} :: StreamConnection))
+      restResult <- SpudGun.postJson (wrap url) $ JSON.writeJSON ({ host
+                                                                  , protocol: Rtmp
+                                                                  , shortname} :: StreamConnection)
       pure $ hush (bodyToJSON restResult)
 
     streamAuth url host shortname username = do
-      restResult <- SpudGun.post url (JSON.writeJSON ({host
-                                                      , shortname
-                                                      , username} :: StreamAuth))
+      restResult <- SpudGun.postJson (wrap url) $ JSON.writeJSON ({ host
+                                                                  , shortname
+                                                                  , username} :: StreamAuth)
       pure $ hush (bodyToJSON restResult)
 
     streamPublish url host shortname username streamName = do
-      restResult <- SpudGun.post url (JSON.writeJSON ({host
-                                                      , protocol: Rtmp
-                                                      , shortname
-                                                      , streamName
-                                                      , username} :: StreamPublish))
+      restResult <- SpudGun.postJson (wrap url) $ JSON.writeJSON ({ host
+                                                                  , protocol: Rtmp
+                                                                  , shortname
+                                                                  , streamName
+                                                                  , username} :: StreamPublish)
       pure $ hush (bodyToJSON restResult)
