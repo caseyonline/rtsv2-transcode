@@ -1,51 +1,40 @@
 -module(spudGun@foreign).
 
 -export([
-         getImpl/5,
-         putImpl/6,
-         postImpl/6,
-         deleteImpl/5
+         makeRequestImpl/6
         ]).
 
 -include_lib("id3as_common/include/spud_gun.hrl").
 -include_lib("id3as_common/include/common.hrl").
 
-getImpl(ReqError, RespError, RespSuccess, Url, ReqHeaders) ->
+
+makeRequestImpl(ReqError, RespError, RespSuccess, Method, Url, Options) ->
   fun() ->
-      case spud_gun:get(Url, ReqHeaders) of
-        {ok, StatusCode, Headers, RespBody} when StatusCode >= 200, StatusCode < 300 ->
-          ((RespSuccess(StatusCode))(Headers))(RespBody);
+      #spud_request{ connect_timeout = DefaultConnectTimeout
+                   , request_timeout = DefaultRequestTimeout
+                   , body_timeout    = DefaultBodyTimeout
+                   } = #spud_request{},
 
-        {ok, StatusCode, Headers, RespBody} ->
-          ((RespError(StatusCode))(Headers))(RespBody);
+      UserHeaders = maps:get(headers, Options, []),
+      Body = maps:get(body, Options, <<>>),
+      ConnectTimeout = maps:get(request_timeout, Options, DefaultConnectTimeout),
+      RequestTimeout = maps:get(request_timeout, Options, DefaultRequestTimeout),
+      BodyTimeout = maps:get(request_timeout, Options, DefaultBodyTimeout),
+      FollowRedirect = maps:get(followRedirect, Options, false),
 
-        Error ->
-          ?SLOG_DEBUG("spud gun get failed", #{url => Url,
-                                               error => Error}),
-          ReqError(Error)
-      end
-  end.
+      ReqHeaders = [ {<<"accept-encoding">>, <<"gzip">>} | UserHeaders ],
 
-putImpl(ReqError, RespError, RespSuccess, Url, Body, UserHeaders) ->
-  sendImpl(put, ReqError, RespError, RespSuccess, Url, Body, UserHeaders).
-
-postImpl(ReqError, RespError, RespSuccess, Url, Body, UserHeaders) ->
-  sendImpl(post, ReqError, RespError, RespSuccess, Url, Body, UserHeaders).
-
-deleteImpl(ReqError, RespError, RespSuccess, Url, UserHeaders) ->
-  sendImpl(delete, ReqError, RespError, RespSuccess, Url, <<>>, UserHeaders).
-
-sendImpl(Method, ReqError, RespError, RespSuccess, Url, Body, UserHeaders) ->
-  fun() ->
-      ReqHeaders = [ {<<"Accept-Encoding">>, <<"gzip">>} | UserHeaders ],
       Request = spud_gun:url_to_request_record(Url,
-                                               #spud_request{request_timeout = 30000
-                                                            ,headers = ReqHeaders
-                                                            ,method = Method
-                                                            ,body = Body }),
+                                               #spud_request{ connect_timeout = ConnectTimeout
+                                                            , request_timeout = RequestTimeout
+                                                            , body_timeout    = BodyTimeout
+                                                            , headers = ReqHeaders
+                                                            , method = Method
+                                                            , body = Body
+                                                            , options = #{follow_redirect => FollowRedirect}
+                                                            }),
       case spud_gun:simple_request(Request) of
         Response = {ok, StatusCode, Headers, RespBody} when StatusCode >= 200, StatusCode < 300 ->
-          ?SLOG_INFO("~p -> ~p", [Request, Response]),
           %% Gun lowercases response header names
           UnzippedBody = case proplists:lookup(<<"content-encoding">>, Headers) of
                            {_, <<"gzip">>} -> zlib:gunzip(RespBody);
@@ -57,9 +46,6 @@ sendImpl(Method, ReqError, RespError, RespSuccess, Url, Body, UserHeaders) ->
           ((RespError(StatusCode))(Headers))(RespBody);
 
         Error ->
-          ?SLOG_DEBUG("spud gun send failed", #{url => Url,
-                                                method => Method,
-                                                error => Error}),
           ReqError(Error)
       end
   end.
