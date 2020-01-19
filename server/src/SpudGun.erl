@@ -7,6 +7,11 @@
 -include_lib("id3as_common/include/spud_gun.hrl").
 -include_lib("id3as_common/include/common.hrl").
 
+%% makeHeadersImpl(Record) ->
+%%   Headers = lists:map(fun({K, V}) -> {atom_to_binary(K, utf8), V} end,
+%%                       maps:to_list(Record)),
+%%   io:format(user, "headers ~p~n", [Headers]),
+%%   Headers.
 
 makeRequestImpl(ReqError, RespError, RespSuccess, Method, Url, Options) ->
   fun() ->

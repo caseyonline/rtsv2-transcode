@@ -196,7 +196,7 @@ createRelayInThisPoP streamId thisPoPName routes ingestAggregator@(LocatedServer
         -- TODO / thoughts - do we wait for the entire relay chain to exist before returning?
         -- what if there isn't enough resource on an intermediate PoP?
         -- Single relay that goes direct?
-        _restResult <- SpudGun.postJson (wrap url) $ Json.writeJSON request
+        _restResult <- SpudGun.postJson (wrap url) $ request
         pure $ Right $ locatedServerAddress candidateRelayServer
 
     Nothing ->

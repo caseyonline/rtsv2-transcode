@@ -121,7 +121,7 @@ addVariant thisLocatedServer streamAndVariant aggregatorAddress
     let
       -- TODO - functions to make URLs from LocatedServer
       url = makeActiveIngestUrl aggregatorAddress streamAndVariant
-    restResult <- SpudGun.postJson (wrap url) (JSON.writeJSON $ locatedServerAddress thisLocatedServer)
+    restResult <- SpudGun.postJson (wrap url) $ locatedServerAddress thisLocatedServer
     case restResult of
       Left _ -> pure $ false
       Right _ -> pure $ true
@@ -182,7 +182,7 @@ launchRemote streamDetails streamAndVariant = do
 
         -- TODO - functions to make URLs from ServerAddress
         --url = "http://" <> (unwrap $ locatedServerAddress locatedServer) <> ":3000/api/agents/ingestAggregator"
-      restResult <- SpudGun.postJson (wrap url) $ JSON.writeJSON streamDetails
+      restResult <- SpudGun.postJson (wrap url) streamDetails
       case restResult of
         Left _ -> pure Nothing
         Right _ -> pure candidate

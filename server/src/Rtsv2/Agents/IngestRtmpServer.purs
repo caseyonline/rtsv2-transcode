@@ -82,21 +82,24 @@ init _ = do
                    , slot : {name : streamId}} streamVariantId = IngestInstance.stopIngest (StreamAndVariant (wrap streamId) (wrap streamVariantId))
 
     streamAuthType url host shortname = do
-      restResult <- SpudGun.postJson (wrap url) $ JSON.writeJSON ({ host
-                                                                  , protocol: Rtmp
-                                                                  , shortname} :: StreamConnection)
+      restResult <- SpudGun.postJson (wrap url) ({ host
+                                                 , protocol: Rtmp
+                                                 , shortname} :: StreamConnection
+                                                )
       pure $ hush (bodyToJSON restResult)
 
     streamAuth url host shortname username = do
-      restResult <- SpudGun.postJson (wrap url) $ JSON.writeJSON ({ host
-                                                                  , shortname
-                                                                  , username} :: StreamAuth)
+      restResult <- SpudGun.postJson (wrap url) ({ host
+                                                 , shortname
+                                                 , username} :: StreamAuth
+                                                )
       pure $ hush (bodyToJSON restResult)
 
     streamPublish url host shortname username streamName = do
-      restResult <- SpudGun.postJson (wrap url) $ JSON.writeJSON ({ host
-                                                                  , protocol: Rtmp
-                                                                  , shortname
-                                                                  , streamName
-                                                                  , username} :: StreamPublish)
+      restResult <- SpudGun.postJson (wrap url) ({ host
+                                                  , protocol: Rtmp
+                                                  , shortname
+                                                  , streamName
+                                                  , username} :: StreamPublish
+                                                )
       pure $ hush (bodyToJSON restResult)

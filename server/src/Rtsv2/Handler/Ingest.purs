@@ -57,7 +57,7 @@ ingestStart =
                           in
                            do
                              {streamPublishUrl} <- Config.llnwApiConfig
-                             restResult <- bodyToJSON <$> SpudGun.postJson (wrap streamPublishUrl) (JSON.writeJSON apiBody)
+                             restResult <- bodyToJSON <$> SpudGun.postJson (wrap streamPublishUrl) apiBody
                              let
                                streamDetails = hush $ restResult
                              Rest.result true req state{streamDetails = streamDetails}

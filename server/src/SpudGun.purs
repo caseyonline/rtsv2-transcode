@@ -1,11 +1,16 @@
 module SpudGun
-       ( postJson
-       , get
-       , getText
-       , getJson
+       ( get
+       , put
+       , post
        , delete
+       -- , makeHeaders
+
        , bodyToJSON
        , bodyToString
+
+       , getText
+       , getJson
+       , postJson
        , JsonResponseError
        , SpudResult
        , SpudResponse(..)
@@ -29,7 +34,7 @@ import Erl.Utils (Milliseconds, Url)
 import Erl.Utils (Url, Milliseconds) as Erl
 import Foreign (Foreign, MultipleErrors)
 import Prim.Row (class Union)
-import Simple.JSON (class ReadForeign, class WriteForeign)
+import Simple.JSON (class ReadForeign, class WriteForeign, writeJSON)
 import Simple.JSON as JSON
 
 
@@ -123,8 +128,19 @@ getText url = get url {headers : tuple2 "accept" "text/plain" : nil}
 getJson :: Url -> Effect SpudResult
 getJson url = get url {headers : tuple2 "Accept" "application/json" : nil}
 
-postJson :: Url -> String -> Effect SpudResult
-postJson url body = post url {body, headers: tuple2 "Content-Type" "application/json" : tuple2 "Accept" "application/json" : nil}
+postJson :: forall a. WriteForeign a => Url -> a -> Effect SpudResult
+postJson url bodyType = post url {body: writeJSON bodyType,
+                                  headers: tuple2 "Content-Type" "application/json" : tuple2 "Accept" "application/json" : nil}
+
+
+--TODO homogeneous constraint generates a function of the wrong arity ??!!
+-- makeHeaders ::
+--   forall r. -- Homogeneous r String =>
+--   Record r -> Headers
+-- makeHeaders =
+--   makeHeadersImpl
+-- foreign import makeHeadersImpl :: forall r. Record(r) -> Headers
+
 
 --------------------------------------------------------------------------------
 -- Body conversion helpers
@@ -148,6 +164,7 @@ makeRequest method url options = makeRequestImpl requestError responseError resp
 foreign import makeRequestImpl ::
   forall options.
   RequestErrorFun -> ResponseErrorFun -> ResponseSuccessFun -> Atom -> String -> Record(options) -> Effect SpudResult
+
 
 requestError :: RequestErrorFun
 requestError = Left <<< RequestError
