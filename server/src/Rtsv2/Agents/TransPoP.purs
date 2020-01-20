@@ -29,7 +29,7 @@ import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
 import Erl.Process (spawnLink)
 import Erl.Utils (Milliseconds, sleep, systemTimeMs)
-import Logger (Logger)
+import Logger (Logger, spy)
 import Logger as Logger
 import Network (Network, addEdge', bestPaths, emptyNetwork, pathsBetween)
 import Os (osCmd)
@@ -553,7 +553,7 @@ joinAllSerf state@{ config: config@{rejoinEveryMs}, serfRpcAddress, members } =
                        servers = traverse (\i -> index serversInPoP i) indexes
                                  # fromMaybe nil
 
-                     (spawnFun serverAddressToSerfAddress servers)
+                     (spawnFun serverAddressToSerfAddress (spy "join" servers))
                   )
                   toJoin
   where

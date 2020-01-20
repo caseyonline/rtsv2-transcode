@@ -3,9 +3,9 @@
 cd ${0%/*}
 cd ../..
 
-#set -x
-#exec >>/tmp/start.txt
-#exec 2>&1
+# set -x
+# exec >>/tmp/start.txt
+# exec 2>&1
 
 function wait_for_server {
   local -r addr=$1

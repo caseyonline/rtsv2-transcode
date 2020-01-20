@@ -45,6 +45,10 @@ spec(_Processor) ->
 initialise(_Processor) ->
   {ok, #?state{}}.
 
+process_input({ingest_stopped, _}, State = #?state{streams = undefined}) ->
+  %% Ingest stopped before we saw any frames
+  {ok, State};
+
 process_input({ingest_stopped, Id}, State = #?state{reference_stream = ReferenceStream,
                                                     streams = Streams}) ->
 

@@ -447,18 +447,17 @@ handleStreamStateChange stateChange streamId locatedServer  intraMessage
     StreamAvailable -> do
         -- streamAvailable on some other node in this PoP - we need to tell Trans-PoP
         --_ <- logInfo "StreamAvailable on remote node" { streamId: streamId, remoteNode: server }
---        _ <- transPoP_announceStreamIsAvailable streamId server
-
+        _ <- transPoP_announceStreamIsAvailable streamId locatedServer
         _ <- logIfNew streamId state.streamAggregatorLocations "StreamAvailable on remote node" { streamId: streamId, remoteNode: locatedServer }
 
         insertStreamAggregator streamId locatedServer state
 
     StreamStopped -> do
         -- streamStopped on some other node in this PoP - we need to tell Trans-PoP
---        _ <- transPoP_announceStreamStopped streamId server
         -- TODO - we do this in a bunch of places
         _ <- Bus.raise bus $ IngestAggregatorExited streamId locatedServer
         _ <- logInfo "StreamStopped on remote node" { streamId: streamId, remoteNode: locatedServer }
+        _ <- transPoP_announceStreamStopped streamId locatedServer
         let
           newStreamAggregatorLocations = EMap.delete streamId state.streamAggregatorLocations
         pure $ state { streamAggregatorLocations = newStreamAggregatorLocations }

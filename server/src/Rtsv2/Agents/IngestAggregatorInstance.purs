@@ -17,7 +17,7 @@ import Erl.Data.List (List, nil, (:))
 import Erl.Data.Map (Map, delete, insert, size, toUnfoldable)
 import Erl.Data.Map as Map
 import Foreign (Foreign)
-import Logger (Logger)
+import Logger (Logger, spy)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen (CallResult(..), CastResult(..))
@@ -63,6 +63,7 @@ serverName = Names.ingestAggregatorInstanceName
 addVariant :: StreamAndVariant -> Effect Unit
 addVariant streamAndVariant = Gen.doCall (serverName (toStreamId streamAndVariant))
   \state@{thisNode, activeStreamVariants, workflow} -> do
+    _ <- logInfo "Ingest variant added" {streamId: streamAndVariant}
     let
       path = Routing.printUrl RoutingEndpoint.endpoint (IngestInstanceLlwpE (toStreamId streamAndVariant) (toVariant streamAndVariant))
       url = "http://" <> (unwrap thisNode) <> ":3000" <> path
@@ -72,6 +73,7 @@ addVariant streamAndVariant = Gen.doCall (serverName (toStreamId streamAndVarian
 addRemoteVariant :: StreamAndVariant -> ServerAddress -> Effect Unit
 addRemoteVariant streamAndVariant remoteServer = Gen.doCall (serverName (toStreamId streamAndVariant))
   \state@{activeStreamVariants, workflow} -> do
+    _ <- logInfo "Remote ingest variant added" {streamId: streamAndVariant, source: remoteServer}
     let
       path = Routing.printUrl RoutingEndpoint.endpoint (IngestInstanceLlwpE (toStreamId streamAndVariant) (toVariant streamAndVariant))
       url = "http://" <> (unwrap remoteServer) <> ":3000" <> path

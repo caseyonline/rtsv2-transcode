@@ -133,7 +133,7 @@ main =
     waitForIntraPoPDisseminate     = delayMs  500.0
     waitForNodeFailureDisseminate  = delayMs 2500.0
 
-    waitForTransPoPDisseminate     = delayMs 1000.0
+    waitForTransPoPDisseminate     = delayMs 2000.0
     waitForTransPoPStopDisseminate = delayMs 5000.0 -- TODO - seeems big
 
     waitForLessThanLinger          = delayMs  500.0
@@ -163,6 +163,7 @@ main =
             ingest start    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as "create low ingest"
             setLoad         p1n1 60.0            >>= assertStatusCode 204 >>= as "set load on server"
             ingest start    p1n1 shortName1 high >>= assertStatusCode 200 >>= as "create high ingest"
+            waitForAsyncVariantStart                                      >>= as' "wait for async start of variants"
             aggregatorStats p1n1 slot1           >>= assertStatusCode 200
                                                      >>= assertAggregator [low, high]
                                                                           >>= as "aggregator has 2 variants"
@@ -212,6 +213,7 @@ main =
           it "aggregator exits after last variant stops (with linger time)" do
             ingest start    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as  "create low ingest"
             ingest start    p1n1 shortName1 high >>= assertStatusCode 200 >>= as  "create high ingest"
+            waitForAsyncVariantStart
             aggregatorStats p1n1 slot1           >>= assertStatusCode 200
                                                      >>= assertAggregator [low, high]
                                                                           >>= as  "aggregator has both variants"
@@ -229,6 +231,7 @@ main =
 
           it "aggregator does not exit during linger time" do
             ingest start    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as  "create low ingest"
+            waitForAsyncVariantStart
             aggregatorStats p1n1 slot1           >>= assertStatusCode 200
                                                      >>= assertAggregator [low]
                                                                           >>= as  "aggregator created"
