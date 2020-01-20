@@ -4,6 +4,7 @@ module Erl.Utils
        , sleep
        , makeRef
        , Milliseconds
+       , Url
        , Ref
        )
        where
@@ -23,12 +24,23 @@ foreign import makeRefImpl :: Foreign
 sleep :: Milliseconds -> Effect Unit
 sleep = sleepImpl <<< unwrap
 
+
+
+-- TODO - find a place for these utility types to live (a la id3as_common?)
 -- | A duration measured in milliseconds.
 newtype Milliseconds = Milliseconds Int
 
 derive instance newtypeMilliseconds :: Newtype Milliseconds _
 derive newtype instance eqMilliseconds :: Eq Milliseconds
 derive newtype instance ordMilliseconds :: Ord Milliseconds
+
+
+-- | Url type
+newtype Url = Url String
+derive instance newtypeURL :: Newtype Url _
+derive newtype instance eqURL :: Eq Url
+derive newtype instance ordURL :: Ord Url
+
 
 instance semigroupMilliseconds :: Semigroup Milliseconds where
   append (Milliseconds x) (Milliseconds y) = Milliseconds (x + y)

@@ -110,7 +110,7 @@ ingestAggregatorsActiveIngest =
                             case method req of
                               "DELETE" ->
                                 Rest.result false req state
-                              "POST" -> 
+                              "POST" ->
                                 do
                                   body <- allBody req mempty
                                   let

@@ -12,7 +12,7 @@ let
     builtins.fetchGit {
       name = "id3as-packages";
       url = "git@github.com:id3as/nixpkgs-private.git";
-      rev = "fea4d6f8a24103dd0fc42a36e8ff23f07b59e9a5";
+      rev = "086e2efca8bfd1699e7aeeda9a220b82f10fa866";
     };
 
   nixpkgs =

@@ -33,7 +33,7 @@ import Rtsv2.Router.Parser as Routing
 import Shared.Agent as Agent
 import Shared.LlnwApiTypes (StreamDetails)
 import Shared.Stream (StreamAndVariant, StreamId(..), StreamVariant, toStreamId, toVariant)
-import Shared.Types (IngestAggregatorPublicState, ServerAddress)
+import Shared.Types (IngestAggregatorPublicState, ServerAddress, locatedServerAddress)
 
 foreign import startWorkflowImpl :: String -> Effect Foreign
 foreign import addVariantImpl :: Foreign -> StreamAndVariant -> String -> Effect Unit
@@ -103,12 +103,12 @@ init :: StreamDetails -> Effect State
 init streamDetails = do
   _ <- logInfo "Ingest Aggregator starting" {streamId, streamDetails}
   config <- Config.ingestAggregatorAgentConfig
-  thisNode <- PoPDefinition.thisNode
+  thisLocatedServer <- PoPDefinition.thisLocatedServer
   _ <- Timer.sendEvery (serverName streamId) config.streamAvailableAnnounceMs Tick
   _ <- announceStreamIsAvailable streamId
   workflow <- startWorkflowImpl streamDetails.slot.name
   pure { config : config
-       , thisNode
+       , thisNode : locatedServerAddress thisLocatedServer
        , streamId
        , streamDetails
        , activeStreamVariants : Map.empty
