@@ -8,7 +8,7 @@ module Serf
        , getCoordinate
        , calcRtt
        , messageMapper
-       , Ip(..), IpAndPort, ApiError(..), SerfCoordinate, SerfMember, SerfMessage(..), SerfResult(..)
+       , Ip(..), IpAndPort, ApiError(..), SerfCoordinate, SerfMember, SerfMessage(..), SerfResult(..), LamportClock
        )
        where
 
@@ -31,6 +31,11 @@ import Foreign (Foreign)
 import Math (sqrt)
 
 type SerfResult a = Either ApiError a
+
+newtype LamportClock = LamportClock Int
+derive instance eqLamportClock :: Eq LamportClock
+derive instance ordLamportClock :: Ord LamportClock
+
 
 type SerfMember = { name :: String
                   , addr :: String
@@ -56,7 +61,7 @@ data SerfMessage a = MemberAlive (List SerfMember)
                    | MemberLeft (List SerfMember)
                    | MemberFailed
                    | StreamFailed
-                   | UserEvent String Int Boolean a
+                   | UserEvent String LamportClock Boolean a
 
 foreign import joinImpl :: (ApiError -> (SerfResult Int)) -> (Int -> SerfResult Int) -> IpAndPort -> List IpAndPort -> Boolean ->  Effect (SerfResult Int)
 foreign import leaveImpl :: (ApiError -> (SerfResult Unit)) -> (Unit -> SerfResult Unit) -> IpAndPort ->  Effect (SerfResult Unit)

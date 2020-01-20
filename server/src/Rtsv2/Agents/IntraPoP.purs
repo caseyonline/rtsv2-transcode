@@ -29,7 +29,7 @@ import Bus as Bus
 import Data.Either (Either(..), hush)
 import Data.Filterable (filterMap)
 import Data.Foldable (foldl)
-import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Newtype (wrap)
 import Data.Traversable (traverse, traverse_)
 import Data.Tuple (Tuple(..))
@@ -60,7 +60,7 @@ import Rtsv2.Env as Env
 import Rtsv2.Health (Health, percentageToHealth)
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
-import Serf (IpAndPort)
+import Serf (IpAndPort, LamportClock)
 import Serf as Serf
 import Shared.Stream (StreamId(..), StreamAndVariant(..))
 import Shared.Types (Load, LocatedServer(..), ServerAddress(..), ServerLoad(..), locatedServerAddress)
@@ -69,6 +69,14 @@ type MemberInfo = { serfMember :: Serf.SerfMember
                   , load :: Load
                   , server :: LocatedServer
                   }
+
+type LamportClocks =
+  { streamStateClocks :: Map ServerAddress LamportClock
+  , egestStateClocks :: Map ServerAddress LamportClock
+  , loadClocks :: Map ServerAddress LamportClock
+  , popLeaderClocks :: Map ServerAddress LamportClock
+  }
+
 type State
   = { transPoPApi :: Config.TransPoPAgentApi
     , config :: Config.IntraPoPAgentConfig
@@ -80,8 +88,7 @@ type State
     , thisLocatedServer :: LocatedServer
     , members :: Map ServerAddress MemberInfo
     , expireThreshold :: Milliseconds
-    , streamStateClocks :: EMap StreamId Int
-    , egestStateClocks :: EMap StreamId Int
+    , lamportClocks :: LamportClocks
     }
 
 data StreamState = StreamAvailable
@@ -348,37 +355,12 @@ init { config: config@{rejoinEveryMs
     , currentTransPoPLeader: Nothing
     , members
     , expireThreshold: wrap expireThresholdMs
-    , streamStateClocks: EMap.empty
-    , egestStateClocks: EMap.empty
+    , lamportClocks: { streamStateClocks: Map.empty
+                     , egestStateClocks: Map.empty
+                     , loadClocks: Map.empty
+                     , popLeaderClocks: Map.empty
+                     }
     }
-
-shouldProcessSerfMessage :: StreamId -> Int -> EMap StreamId Int -> Boolean
-shouldProcessSerfMessage streamId ltime streamStateClocks =
-  case EMap.lookup streamId streamStateClocks of
-    Just lastLTime
-      | lastLTime > ltime -> false
-    _ ->
-      true
-
-screenMessageClockAndOrigin :: LocatedServer -> ServerAddress -> StreamId -> Int -> EMap StreamId Int -> Effect (Maybe (Tuple (EMap StreamId Int) LocatedServer))
-screenMessageClockAndOrigin thisLocatedServer messageServerAddress streamId ltime streamStateClocks =
-  if locatedServerAddress thisLocatedServer == messageServerAddress then
-    pure Nothing
-  else
-  if shouldProcessSerfMessage streamId ltime streamStateClocks
-    then do
-      mLocation <- PoPDefinition.whereIsServer messageServerAddress
-      case mLocation of
-        Nothing -> do
-          _ <- logInfo "Ignoring message from unknown messageServerAddress" {streamId, messageServerAddress}
-          pure Nothing
-        Just location -> do
-          newStreamStateClocks <- EMap.insert' streamId ltime streamStateClocks
-          pure $ Just $ Tuple newStreamStateClocks $ LocatedServer messageServerAddress location
-    else do
-      _ <- logInfo "Dropping out-of-order serf message" {streamId}
-      pure Nothing
-
 
 handleInfo :: Msg -> State -> Effect (CastResult State)
 handleInfo msg state = case msg of
@@ -395,6 +377,7 @@ handleInfo msg state = case msg of
 handleIntraPoPSerfMsg :: (Serf.SerfMessage IntraMessage) -> State -> Effect State
 handleIntraPoPSerfMsg imsg state@{ transPoPApi: {handleRemoteLeaderAnnouncement}
                                  , thisLocatedServer
+                                 , lamportClocks
                                  } =
   case imsg of
     Serf.MemberAlive members -> membersAlive members state
@@ -410,57 +393,61 @@ handleIntraPoPSerfMsg imsg state@{ transPoPApi: {handleRemoteLeaderAnnouncement}
     Serf.UserEvent name ltime coalesce intraMessage -> do
      case intraMessage of
        IMStreamState stateChange streamId server -> do
-         mTuple <- screenMessageClockAndOrigin thisLocatedServer server streamId ltime state.streamStateClocks
+         mTuple <- screenOriginAndMessageClock thisLocatedServer server ltime lamportClocks.streamStateClocks
          case mTuple of
            Nothing -> pure state
            Just (Tuple newClockState locatedServer) ->
-             handleStreamStateChange stateChange streamId locatedServer intraMessage (state {streamStateClocks = newClockState})
+             handleStreamStateChange stateChange streamId locatedServer (state {lamportClocks = lamportClocks {streamStateClocks = newClockState}})
 
        IMEgestState stateChange streamId server -> do
-         mTuple <- screenMessageClockAndOrigin thisLocatedServer server streamId ltime state.egestStateClocks
+         mTuple <- screenOriginAndMessageClock thisLocatedServer server ltime lamportClocks.egestStateClocks
          case mTuple of
            Nothing -> pure state
            Just (Tuple newClockState locatedServer) ->
-             handleEgestStateChange stateChange streamId locatedServer (state {egestStateClocks = newClockState})
+             handleEgestStateChange stateChange streamId locatedServer (state {lamportClocks = lamportClocks {egestStateClocks = newClockState}})
 
        IMServerLoad server load -> do
-         -- TODO - why don't we screen load message for lamport clocks as well?
-         let
-           newMembers = alter (map (\ memberInfo -> memberInfo { load = load })) server state.members
-         pure state{members = newMembers}
+         mTuple <- screenOriginAndMessageClock thisLocatedServer server ltime lamportClocks.loadClocks
+         case mTuple of
+           Nothing -> pure state
+           Just (Tuple newClockState locatedServer) ->
+             let
+               newMembers = alter (map (\ memberInfo -> memberInfo { load = load })) server state.members
+             in
+               pure state{ members = newMembers
+                         , lamportClocks = lamportClocks {loadClocks = newClockState}
+                         }
 
        IMTransPoPLeader server -> do
-         -- TODO - why don't we screen TPL message for lamport clocks as well?
-         -- TODO - not this filthy hack!
-         mTuple <- screenMessageClockAndOrigin thisLocatedServer server (wrap "streamIdTransPoPLeader") ltime EMap.empty
+         mTuple <- screenOriginAndMessageClock thisLocatedServer server ltime lamportClocks.popLeaderClocks
          case mTuple of
            Nothing -> pure state
            Just (Tuple newClockState locatedServer) -> do
              _ <- handleRemoteLeaderAnnouncement locatedServer
-             pure state { currentTransPoPLeader = Just server }
+             pure state { currentTransPoPLeader = Just server
+                        , lamportClocks = lamportClocks {popLeaderClocks = newClockState}
+                        }
 
-handleStreamStateChange :: StreamState -> StreamId -> LocatedServer -> IntraMessage -> State -> Effect State
-handleStreamStateChange stateChange streamId locatedServer  intraMessage
-  state@{transPoPApi: {announceStreamIsAvailable: transPoP_announceStreamIsAvailable
-                      , announceStreamStopped: transPoP_announceStreamStopped}} =
-  case stateChange of
+handleStreamStateChange :: StreamState -> StreamId -> LocatedServer -> State -> Effect State
+handleStreamStateChange streamState streamId locatedServer state =
+  case streamState of
     StreamAvailable -> do
-        -- streamAvailable on some other node in this PoP - we need to tell Trans-PoP
-        --_ <- logInfo "StreamAvailable on remote node" { streamId: streamId, remoteNode: server }
-        _ <- transPoP_announceStreamIsAvailable streamId locatedServer
-        _ <- logIfNew streamId state.streamAggregatorLocations "StreamAvailable on remote node" { streamId: streamId, remoteNode: locatedServer }
+      -- streamAvailable on some other node in this PoP - we need to tell Trans-PoP
+      --_ <- logInfo "StreamAvailable on remote node" { streamId: streamId, remoteNode: server }
+      _ <- state.transPoPApi.announceStreamIsAvailable streamId locatedServer
+      _ <- logIfNew streamId state.streamAggregatorLocations "StreamAvailable on remote node" { streamId: streamId, remoteNode: locatedServer }
 
-        insertStreamAggregator streamId locatedServer state
+      insertStreamAggregator streamId locatedServer state
 
     StreamStopped -> do
-        -- streamStopped on some other node in this PoP - we need to tell Trans-PoP
-        -- TODO - we do this in a bunch of places
-        _ <- Bus.raise bus $ IngestAggregatorExited streamId locatedServer
-        _ <- logInfo "StreamStopped on remote node" { streamId: streamId, remoteNode: locatedServer }
-        _ <- transPoP_announceStreamStopped streamId locatedServer
-        let
-          newStreamAggregatorLocations = EMap.delete streamId state.streamAggregatorLocations
-        pure $ state { streamAggregatorLocations = newStreamAggregatorLocations }
+      -- streamStopped on some other node in this PoP - we need to tell Trans-PoP
+      -- TODO - we do this in a bunch of places
+      _ <- Bus.raise bus $ IngestAggregatorExited streamId locatedServer
+      _ <- logInfo "StreamStopped on remote node" { streamId: streamId, remoteNode: locatedServer }
+      _ <- state.transPoPApi.announceStreamStopped streamId locatedServer
+      let
+        newStreamAggregatorLocations = EMap.delete streamId state.streamAggregatorLocations
+      pure $ state { streamAggregatorLocations = newStreamAggregatorLocations }
 
 handleEgestStateChange :: EgestState -> StreamId -> LocatedServer -> State -> Effect State
 handleEgestStateChange stateChange streamId locatedServer state =
@@ -578,11 +565,23 @@ joinAllSerf { config, serfRpcAddress, members } =
   toMap :: forall a. List a -> Map a Unit
   toMap list = foldl (\acc item -> Map.insert item unit acc) Map.empty list
 
-maybeLogError :: forall a b c d e. Union b (error :: e) c => Nub c d => String -> Either e a -> Record b  -> Effect Unit
-maybeLogError _ (Right _) _ = pure unit
-maybeLogError msg (Left err) metadata = do
-  _ <- logInfo msg (Record.merge metadata {error: err})
-  pure unit
+
+screenOriginAndMessageClock :: LocatedServer -> ServerAddress -> LamportClock -> Map ServerAddress LamportClock -> Effect (Maybe (Tuple (Map ServerAddress LamportClock) LocatedServer))
+screenOriginAndMessageClock thisLocatedServer messageServerAddress msgClock lastClockByServer =
+  if Map.lookup messageServerAddress lastClockByServer # maybe false (_ >= msgClock)
+  then do
+    pure Nothing
+  else
+    if locatedServerAddress thisLocatedServer == messageServerAddress then
+      pure Nothing
+    else do
+      mLocation <- PoPDefinition.whereIsServer messageServerAddress
+      case mLocation of
+        Nothing -> do
+          pure Nothing
+        Just location ->
+          pure $ Just $ Tuple (Map.insert messageServerAddress msgClock lastClockByServer) $ LocatedServer messageServerAddress location
+
 
 toServerLoad :: MemberInfo -> ServerLoad
 toServerLoad {server, load} = ServerLoad server load
@@ -601,3 +600,9 @@ logWarning = domainLog Logger.warning
 
 domainLog :: forall a. Logger {domain :: List Atom, misc :: a} -> Logger a
 domainLog = Logger.doLog domains
+
+maybeLogError :: forall a b c d e. Union b (error :: e) c => Nub c d => String -> Either e a -> Record b  -> Effect Unit
+maybeLogError _ (Right _) _ = pure unit
+maybeLogError msg (Left err) metadata = do
+  _ <- logInfo msg (Record.merge metadata {error: err})
+  pure unit

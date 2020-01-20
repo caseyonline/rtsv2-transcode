@@ -1,13 +1,11 @@
 module Quickcheck.TestAgents where
 
 import Prelude
-import Test.QuickCheck
 
-import Data.Generic.Rep (class Generic, to)
-import Data.Newtype (class Newtype, wrap)
-import Shared.Agent (Agent(..), agentToStr, strToAgent)
-import Test.QuickCheck.Arbitrary (class Arbitrary, class Coarbitrary, genericArbitrary)
-import Test.QuickCheck.Gen (Gen)
+import Data.Generic.Rep (to)
+import Data.Newtype (class Newtype)
+import Shared.Agent (Agent, agentToStr, strToAgent)
+import Test.QuickCheck.Arbitrary (class Arbitrary, arbitrary)
 
 encodeDecodeIsIdentity :: AgentNT -> Boolean
 encodeDecodeIsIdentity (AgentNT agent) = (agentToStr >>> strToAgent) agent == agent

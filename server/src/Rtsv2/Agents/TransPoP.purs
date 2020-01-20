@@ -14,7 +14,7 @@ import Prelude
 import Data.Either (Either(..))
 import Data.Foldable (foldM, foldl)
 import Data.FoldableWithIndex (foldlWithIndex)
-import Data.Maybe (Maybe(..), fromMaybe, fromMaybe')
+import Data.Maybe (Maybe(..), fromMaybe, fromMaybe', maybe)
 import Data.Newtype (unwrap, wrap)
 import Data.Set (Set)
 import Data.Set as Set
@@ -29,7 +29,7 @@ import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
 import Erl.Process (spawnLink)
 import Erl.Utils (Milliseconds, sleep, systemTimeMs)
-import Logger (Logger, spy)
+import Logger (Logger)
 import Logger as Logger
 import Network (Network, addEdge', bestPaths, emptyNetwork, pathsBetween)
 import Os (osCmd)
@@ -47,7 +47,7 @@ import Rtsv2.Health as Health
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition (PoP)
 import Rtsv2.PoPDefinition as PoPDefinition
-import Serf (IpAndPort, SerfCoordinate, calcRtt)
+import Serf (IpAndPort, LamportClock, SerfCoordinate, calcRtt)
 import Serf as Serf
 import Shared.Stream (StreamId)
 import Shared.Types (LocatedServer(..), PoPName, ServerAddress(..), ServerLocation(..), locatedServerAddress, locatedServerPoP)
@@ -60,6 +60,10 @@ type Edge = Tuple PoPName PoPName
 type Rtts = Map Edge Milliseconds
 type ViaPoPs = List PoPName
 
+type LamportClocks =
+  { streamStateClocks :: Map ServerAddress LamportClock
+  }
+
 type State
   = { intraPoPApi :: IntraPoPAgentApi
     , currentLeader :: Maybe LocatedServer
@@ -70,7 +74,7 @@ type State
     , config :: TransPoPAgentConfig
     , serfRpcAddress :: IpAndPort
     , members :: Map PoPName (Set ServerAddress)
-    , streamStateClocks :: EMap StreamId Int
+    , lamportClocks :: LamportClocks
     , rtts :: Rtts
     , sourceRoutes :: Map PoPName (List ViaPoPs)
     }
@@ -78,7 +82,7 @@ type State
 data StreamState = StreamAvailable
                  | StreamStopped
 
-data TransMessage = StreamState StreamState StreamId ServerAddress
+data TransMessage = TMStreamState StreamState StreamId ServerAddress
 
 data Msg
   = LeaderTimeoutTick
@@ -125,7 +129,7 @@ announceStreamIsAvailable streamId locatedServer =
       then do
             -- Message from our pop - distribute over trans-pop
             --_ <- logInfo "Local stream being delivered to trans-pop" { streamId: streamId }
-            result <- Serf.event state.serfRpcAddress "streamAvailable" (StreamState StreamAvailable streamId (locatedServerAddress locatedServer)) false
+            result <- Serf.event state.serfRpcAddress "streamAvailable" (TMStreamState StreamAvailable streamId (locatedServerAddress locatedServer)) false
             _ <- maybeLogError "Trans-PoP serf event failed" result {}
             pure state
       else pure state
@@ -145,7 +149,7 @@ announceStreamStopped streamId locatedServer =
       then do
             -- Message from our pop - distribute over trans-pop
             --_ <- logInfo "Local stream stopped being delivered to trans-pop" { streamId: streamId }
-            result <- Serf.event state.serfRpcAddress "streamStopped" (StreamState StreamStopped streamId (locatedServerAddress locatedServer)) false
+            result <- Serf.event state.serfRpcAddress "streamStopped" (TMStreamState StreamStopped streamId (locatedServerAddress locatedServer)) false
             _ <- maybeLogError "Trans-PoP serf event failed" result {}
             pure state
       else pure state
@@ -237,7 +241,8 @@ init { config: config@{ leaderTimeoutMs
       , thisLocatedServer: thisLocatedServer
       , serfRpcAddress: serfRpcAddress
       , members: Map.empty
-      , streamStateClocks: EMap.empty
+      , lamportClocks: { streamStateClocks: Map.empty
+                       }
       , rtts: defaultRtts'
       , sourceRoutes: initialSourceRoutes
     }
@@ -246,7 +251,9 @@ init { config: config@{ leaderTimeoutMs
 -- Genserver callbacks
 --------------------------------------------------------------------------------
 handleInfo :: Msg -> State -> Effect (CastResult State)
-handleInfo msg state@{ thisLocatedServer } = case msg of
+handleInfo msg state@{ thisLocatedServer
+                     , lamportClocks } =
+ case msg of
   LeaderTimeoutTick -> CastNoReply <$> handleTick state
 
   RttRefreshTick ->
@@ -269,29 +276,19 @@ handleInfo msg state@{ thisLocatedServer } = case msg of
             _ <- logInfo "Lost connection to TransPoP Serf Agent" {}
             unsafeCrashWith ("lost_serf_connection")
           Serf.UserEvent name ltime coalesce transMessage ->
-            -- TODO - up front handling of ltime out of order messages for all user messages
-            do
-              mSourcePoP <- messageOrigin transMessage
-              case mSourcePoP of
-                Nothing -> pure state
-                Just sourcePoP
-                  | sourcePoP == locatedServerPoP thisLocatedServer -> pure state
-                  | otherwise ->
-                    let
-                      StreamState stateChange streamId _ = transMessage
-                    in
-                      case shouldProcessStreamState streamId ltime state.streamStateClocks of
-                        false -> do
-                          _ <- logInfo "Dropping out-of-order serf message" {streamId, stateChange}
-                          pure $ state
+            case transMessage of
+              TMStreamState stateChange streamId originServer -> do
+                mTuple <- screenOriginAndMessageClock thisLocatedServer originServer ltime lamportClocks.streamStateClocks
+                case mTuple of
+                  Nothing -> pure state
+                  Just (Tuple newClockState locatedServer) ->
+                    handleTransPoPMessage transMessage (state {lamportClocks = lamportClocks {streamStateClocks = newClockState}})
+                    --handleStreamStateChange stateChange streamId locatedServer intraMessage (state {lamportClocks = lamportClocks {streamStateClocks = newClockState}})
 
-                        true -> do
-                          newStreamStateClocks <- EMap.insert' streamId ltime state.streamStateClocks
-                          handleTransPoPMessage transMessage (state{streamStateClocks = newStreamStateClocks})
 
 
 handleTransPoPMessage :: TransMessage -> State -> Effect State
-handleTransPoPMessage (StreamState StreamAvailable streamId server) state@{intraPoPApi: {announceRemoteStreamIsAvailable}} = do
+handleTransPoPMessage (TMStreamState StreamAvailable streamId server) state@{intraPoPApi: {announceRemoteStreamIsAvailable}} = do
   --_ <- logInfo "Remote stream available" {streamId, server}
   mServerLocation <- PoPDefinition.whereIsServer server
   case mServerLocation of
@@ -300,7 +297,7 @@ handleTransPoPMessage (StreamState StreamAvailable streamId server) state@{intra
       _ <- announceRemoteStreamIsAvailable streamId (LocatedServer server location)
       pure state
 
-handleTransPoPMessage (StreamState StreamStopped streamId server) state@{intraPoPApi: {announceRemoteStreamStopped}} = do
+handleTransPoPMessage (TMStreamState StreamStopped streamId server) state@{intraPoPApi: {announceRemoteStreamStopped}} = do
   _ <- logInfo "Remote stream stopped" {streamId, server}
   mServerLocation <- PoPDefinition.whereIsServer server
   case mServerLocation of
@@ -314,9 +311,6 @@ handleTransPoPMessage (StreamState StreamStopped streamId server) state@{intraPo
 --------------------------------------------------------------------------------
 serverName :: ServerName State Msg
 serverName = Names.transPoPName
-
-messageOrigin :: TransMessage -> Effect (Maybe PoPName)
-messageOrigin (StreamState _ _ addr) = originPoP addr
 
 originPoP :: ServerAddress -> Effect (Maybe PoPName)
 originPoP addr =
@@ -337,7 +331,7 @@ getDefaultRtts {defaultRttMs} = do
     ) Map.empty neighbourMap
 
 
-shouldProcessStreamState :: StreamId -> Int -> EMap StreamId Int -> Boolean
+shouldProcessStreamState :: StreamId -> LamportClock -> EMap StreamId LamportClock -> Boolean
 shouldProcessStreamState streamId ltime streamStateClocks =
   case EMap.lookup streamId streamStateClocks of
     Just lastLTime
@@ -553,7 +547,7 @@ joinAllSerf state@{ config: config@{rejoinEveryMs}, serfRpcAddress, members } =
                        servers = traverse (\i -> index serversInPoP i) indexes
                                  # fromMaybe nil
 
-                     (spawnFun serverAddressToSerfAddress (spy "join" servers))
+                     (spawnFun serverAddressToSerfAddress servers)
                   )
                   toJoin
   where
@@ -576,6 +570,25 @@ joinAllSerf state@{ config: config@{rejoinEveryMs}, serfRpcAddress, members } =
                                mempty
                                popsToJoin
                          )
+
+
+screenOriginAndMessageClock :: LocatedServer -> ServerAddress -> LamportClock -> Map ServerAddress LamportClock -> Effect (Maybe (Tuple (Map ServerAddress LamportClock) LocatedServer))
+screenOriginAndMessageClock thisLocatedServer messageServerAddress msgClock lastClockByServer =
+  if Map.lookup messageServerAddress lastClockByServer # maybe false (_ >= msgClock)
+  then do
+    pure Nothing
+  else do
+    mLocation <- PoPDefinition.whereIsServer messageServerAddress
+    case mLocation of
+      Nothing -> do
+        pure Nothing
+      Just location@(ServerLocation msgPopName _) ->
+        if locatedServerPoP thisLocatedServer == msgPopName
+        then
+          pure Nothing
+        else do
+          pure $ Just $ Tuple (Map.insert messageServerAddress msgClock lastClockByServer) $ LocatedServer messageServerAddress location
+
 
 startScript :: String
 startScript = "scripts/startTransPoPAgent.sh"
