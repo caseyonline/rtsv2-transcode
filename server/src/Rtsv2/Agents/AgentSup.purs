@@ -77,8 +77,8 @@ init = do
         # Sup.childType Worker
         # Sup.childId "transPopAgent"
         # Sup.childStart TransPoP.startLink { config: transPoPAgentConfig
-                                                 , intraPoPApi: { announceRemoteStreamIsAvailable: IntraPoP.announceRemoteStreamIsAvailable
-                                                                , announceRemoteStreamStopped: IntraPoP.announceRemoteStreamStopped
-                                                                , announceTransPoPLeader: IntraPoP.announceTransPoPLeader}
-                                                 }
+                                            , intraPoPApi: { announceRemoteStreamIsAvailable: IntraPoP.announceRemoteStreamIsAvailable
+                                                           , announceRemoteStreamStopped: IntraPoP.announceRemoteStreamStopped
+                                                           , announceTransPoPLeader: IntraPoP.announceTransPoPLeader}
+                                            }
         # pure

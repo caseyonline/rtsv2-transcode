@@ -9,7 +9,7 @@ module Shared.Types
        , IngestAggregatorPublicState
        , locatedServerAddress
        , locatedServerLocation
-
+       , locatedServerPoP
        ) where
 
 import Prelude
@@ -68,6 +68,9 @@ locatedServerAddress (LocatedServer address _location) = address
 
 locatedServerLocation :: LocatedServer -> ServerLocation
 locatedServerLocation (LocatedServer _address location) = location
+
+locatedServerPoP :: LocatedServer -> PoPName
+locatedServerPoP (LocatedServer _address (ServerLocation popName _)) = popName
 
 data ServerLoad = ServerLoad LocatedServer Load
 derive instance genericServerLoad :: Generic ServerLoad _

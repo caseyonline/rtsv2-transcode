@@ -15,7 +15,7 @@ import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
 import Erl.Data.Map (Map, delete, insert, size, toUnfoldable)
 import Erl.Data.Map as Map
-import Logger (Logger, spy)
+import Logger (Logger)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen (CallResult(..), CastResult(..))
@@ -28,7 +28,7 @@ import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Agent as Agent
 import Shared.LlnwApiTypes (StreamDetails)
 import Shared.Stream (StreamAndVariant, StreamId(..), StreamVariant, toStreamId, toVariant)
-import Shared.Types (IngestAggregatorPublicState, ServerAddress)
+import Shared.Types (IngestAggregatorPublicState, ServerAddress, locatedServerAddress)
 
 type State
   = { config :: Config.IngestAggregatorAgentConfig
@@ -45,7 +45,6 @@ data Msg
 isAvailable :: StreamId -> Effect Boolean
 isAvailable streamId =
   do
-  let _ = spy "isAvailable" streamId
   bool <- Names.isRegistered (serverName streamId)
   pure bool
 
@@ -86,11 +85,11 @@ init :: StreamDetails -> Effect State
 init streamDetails = do
   _ <- logInfo "Ingest Aggregator starting" {streamId, streamDetails}
   config <- Config.ingestAggregatorAgentConfig
-  thisNode <- PoPDefinition.thisNode
+  thisLocatedServer <- PoPDefinition.thisLocatedServer
   _ <- Timer.sendEvery (serverName streamId) config.streamAvailableAnnounceMs Tick
   _ <- announceStreamIsAvailable streamId
   pure { config : config
-       , thisNode
+       , thisNode : locatedServerAddress thisLocatedServer
        , streamId
        , streamDetails
        , activeStreamVariants : Map.empty

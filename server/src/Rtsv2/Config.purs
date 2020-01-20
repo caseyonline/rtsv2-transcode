@@ -41,7 +41,7 @@ import Partial.Unsafe (unsafeCrashWith)
 import Rtsv2.Node as Node
 import Shared.Agent (Agent, strToAgent)
 import Shared.Stream (StreamId)
-import Shared.Types (ServerAddress)
+import Shared.Types (LocatedServer(..), ServerAddress)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (class ReadForeign, readImpl)
 
@@ -88,15 +88,15 @@ type TransPoPAgentConfig
     }
 
 type IntraPoPAgentApi
-  = { announceRemoteStreamIsAvailable :: StreamId -> ServerAddress -> Effect Unit
-    , announceRemoteStreamStopped :: StreamId -> ServerAddress -> Effect Unit
+  = { announceRemoteStreamIsAvailable :: StreamId -> LocatedServer -> Effect Unit
+    , announceRemoteStreamStopped :: StreamId -> LocatedServer -> Effect Unit
     , announceTransPoPLeader :: Effect Unit
     }
 
 type TransPoPAgentApi
-  = { announceStreamIsAvailable :: StreamId -> ServerAddress -> Effect Unit
-    , announceStreamStopped :: StreamId -> ServerAddress -> Effect Unit
-    , handleRemoteLeaderAnnouncement :: ServerAddress -> Effect Unit
+  = { announceStreamIsAvailable :: StreamId -> LocatedServer -> Effect Unit
+    , announceStreamStopped :: StreamId -> LocatedServer -> Effect Unit
+    , handleRemoteLeaderAnnouncement :: LocatedServer -> Effect Unit
     }
 
 type RtmpIngestConfig

@@ -50,7 +50,7 @@ import Rtsv2.PoPDefinition as PoPDefinition
 import Serf (IpAndPort, SerfCoordinate, calcRtt)
 import Serf as Serf
 import Shared.Stream (StreamId)
-import Shared.Types (PoPName, ServerAddress(..), ServerLocation(..))
+import Shared.Types (LocatedServer(..), PoPName, ServerAddress(..), ServerLocation(..), locatedServerAddress, locatedServerPoP)
 import Shared.Utils (distinctRandomNumbers)
 import SpudGun (bodyToString)
 import SpudGun as SpudGun
@@ -62,13 +62,11 @@ type ViaPoPs = List PoPName
 
 type State
   = { intraPoPApi :: IntraPoPAgentApi
-    , currentLeader :: Maybe ServerAddress
+    , currentLeader :: Maybe LocatedServer
     , weAreLeader :: Boolean
     , lastLeaderAnnouncement :: Milliseconds
     , leaderAnnouncementTimeout :: Milliseconds
-    , thisNode :: ServerAddress
-    , thisLocation :: ServerLocation
-    , thisPoP :: PoPName
+    , thisLocatedServer :: LocatedServer
     , config :: TransPoPAgentConfig
     , serfRpcAddress :: IpAndPort
     , members :: Map PoPName (Set ServerAddress)
@@ -112,68 +110,64 @@ health =
       allOtherPoPs <- PoPDefinition.getOtherPoPs
       pure $ Health.percentageToHealth $ (Map.size members * 100) / (length allOtherPoPs) * 100
 
-announceStreamIsAvailable :: StreamId -> ServerAddress -> Effect Unit
-announceStreamIsAvailable streamId addr =
+announceStreamIsAvailable :: StreamId -> LocatedServer -> Effect Unit
+announceStreamIsAvailable streamId locatedServer =
   Gen.doCast serverName ((map CastNoReply) <<< doAnnounceStreamIsAvailable)
   where
     doAnnounceStreamIsAvailable :: State -> Effect State
     doAnnounceStreamIsAvailable state@{ weAreLeader: false } = pure state
 
-    doAnnounceStreamIsAvailable state@{ thisLocation: (ServerLocation pop _)
+    doAnnounceStreamIsAvailable state@{ thisLocatedServer
                                       , serfRpcAddress
                                       } = do
-      mSourcePoP <- originPoP addr
-      case mSourcePoP of
-        Nothing -> pure state
-        Just sourcePoP
-          | sourcePoP == pop -> do
+      -- Don't think this test is required - surely it can only be from this pop...
+      if locatedServerPoP locatedServer == locatedServerPoP thisLocatedServer
+      then do
             -- Message from our pop - distribute over trans-pop
             --_ <- logInfo "Local stream being delivered to trans-pop" { streamId: streamId }
-            result <- Serf.event state.serfRpcAddress "streamAvailable" (StreamState StreamAvailable streamId addr) false
+            result <- Serf.event state.serfRpcAddress "streamAvailable" (StreamState StreamAvailable streamId (locatedServerAddress locatedServer)) false
             _ <- maybeLogError "Trans-PoP serf event failed" result {}
             pure state
-          | otherwise -> pure state
+      else pure state
 
-announceStreamStopped:: StreamId -> ServerAddress -> Effect Unit
-announceStreamStopped streamId addr =
+announceStreamStopped :: StreamId -> LocatedServer -> Effect Unit
+announceStreamStopped streamId locatedServer =
   Gen.doCast serverName ((map CastNoReply) <<< doAnnounceStreamStopped)
   where
     doAnnounceStreamStopped :: State -> Effect State
     doAnnounceStreamStopped state@{ weAreLeader: false } = pure state
 
-    doAnnounceStreamStopped  state@{ thisLocation: (ServerLocation pop _)
+    doAnnounceStreamStopped  state@{ thisLocatedServer
                                    , serfRpcAddress
                                    } = do
-      mSourcePoP <- originPoP addr
-      case mSourcePoP of
-        Nothing -> pure state
-        Just sourcePoP
-          | sourcePoP == pop -> do
+      -- Don't think this test is required - surely it can only be from this pop...
+      if locatedServerPoP locatedServer == locatedServerPoP thisLocatedServer
+      then do
             -- Message from our pop - distribute over trans-pop
             --_ <- logInfo "Local stream stopped being delivered to trans-pop" { streamId: streamId }
-            result <- Serf.event state.serfRpcAddress "streamStopped" (StreamState StreamStopped streamId addr) false
+            result <- Serf.event state.serfRpcAddress "streamStopped" (StreamState StreamStopped streamId (locatedServerAddress locatedServer)) false
             _ <- maybeLogError "Trans-PoP serf event failed" result {}
             pure state
-          | otherwise -> pure state
+      else pure state
 
-handleRemoteLeaderAnnouncement :: ServerAddress -> Effect Unit
-handleRemoteLeaderAnnouncement address =
+handleRemoteLeaderAnnouncement :: LocatedServer -> Effect Unit
+handleRemoteLeaderAnnouncement locatedServer =
   Gen.doCast serverName ((map CastNoReply) <<< doHandleRemoteLeaderAnnouncement)
   where
     doHandleRemoteLeaderAnnouncement :: State -> Effect State
     doHandleRemoteLeaderAnnouncement state@{ weAreLeader: true
-                                   , thisNode
-                                   , serfRpcAddress
-                                   }
-      | address < thisNode = do
+                                           , thisLocatedServer
+                                           , serfRpcAddress
+                                           }
+      | locatedServerAddress locatedServer < locatedServerAddress thisLocatedServer = do
+        _ <- logInfo "Another node has taken over as transpop leader; stepping down" { leader: locatedServer }
         result <- Serf.leave serfRpcAddress
-        _ <- logInfo "Another node has taken over as transpop leader; stepping down" { leader: address }
         _ <- osCmd stopScript
 
         now <- systemTimeMs
         pure
            $ state
-              { currentLeader = Just address
+              { currentLeader = Just locatedServer
               , lastLeaderAnnouncement = now
               , weAreLeader = false
               -- TODO - why is this type hint needed?  Does not compile without
@@ -183,15 +177,15 @@ handleRemoteLeaderAnnouncement address =
         pure state
 
     doHandleRemoteLeaderAnnouncement state@{ currentLeader
-                                   , thisNode
-                                   }
-      | Just address /= currentLeader
-          && address /= thisNode = do
-        _ <- logInfo "Another node has announced as transpop leader, remember which one" { leader: address }
+                                           , thisLocatedServer
+                                           }
+      | Just locatedServer /= currentLeader
+          && locatedServerAddress locatedServer /= locatedServerAddress thisLocatedServer = do
+        _ <- logInfo "Another node has announced as transpop leader, remember which one" { leader: locatedServer }
         now <- systemTimeMs
         pure
           $ state
-              { currentLeader = Just address
+              { currentLeader = Just locatedServer
               , lastLeaderAnnouncement = now
               }
 
@@ -221,13 +215,12 @@ init { config: config@{ leaderTimeoutMs
   now <- systemTimeMs
 
   rpcBindIp <- Env.privateInterfaceIp
-  thisNode <- PoPDefinition.thisNode
-  thisLocation <- PoPDefinition.thisLocation
+  thisLocatedServer <- PoPDefinition.thisLocatedServer
   otherPoPNames <- PoPDefinition.getOtherPoPNames
   defaultRtts' <- getDefaultRtts config
 
   let
-    ServerLocation thisPoP _ = thisLocation
+    thisPoP = locatedServerPoP thisLocatedServer
     serfRpcAddress =
       { ip: show rpcBindIp
       , port: rpcPort
@@ -241,9 +234,7 @@ init { config: config@{ leaderTimeoutMs
       , weAreLeader: false
       , lastLeaderAnnouncement: now
       , leaderAnnouncementTimeout: wrap leaderTimeoutMs
-      , thisNode: thisNode
-      , thisLocation: thisLocation
-      , thisPoP: thisPoP
+      , thisLocatedServer: thisLocatedServer
       , serfRpcAddress: serfRpcAddress
       , members: Map.empty
       , streamStateClocks: EMap.empty
@@ -255,7 +246,7 @@ init { config: config@{ leaderTimeoutMs
 -- Genserver callbacks
 --------------------------------------------------------------------------------
 handleInfo :: Msg -> State -> Effect (CastResult State)
-handleInfo msg state@{ thisPoP } = case msg of
+handleInfo msg state@{ thisLocatedServer } = case msg of
   LeaderTimeoutTick -> CastNoReply <$> handleTick state
 
   RttRefreshTick ->
@@ -278,12 +269,13 @@ handleInfo msg state@{ thisPoP } = case msg of
             _ <- logInfo "Lost connection to TransPoP Serf Agent" {}
             unsafeCrashWith ("lost_serf_connection")
           Serf.UserEvent name ltime coalesce transMessage ->
+            -- TODO - up front handling of ltime out of order messages for all user messages
             do
               mSourcePoP <- messageOrigin transMessage
               case mSourcePoP of
                 Nothing -> pure state
                 Just sourcePoP
-                  | sourcePoP == thisPoP -> pure state
+                  | sourcePoP == locatedServerPoP thisLocatedServer -> pure state
                   | otherwise ->
                     let
                       StreamState stateChange streamId _ = transMessage
@@ -300,14 +292,22 @@ handleInfo msg state@{ thisPoP } = case msg of
 
 handleTransPoPMessage :: TransMessage -> State -> Effect State
 handleTransPoPMessage (StreamState StreamAvailable streamId server) state@{intraPoPApi: {announceRemoteStreamIsAvailable}} = do
-  _ <- logInfo "Remote stream available" {streamId, server}
-  _ <- announceRemoteStreamIsAvailable streamId server
-  pure state
+  --_ <- logInfo "Remote stream available" {streamId, server}
+  mServerLocation <- PoPDefinition.whereIsServer server
+  case mServerLocation of
+    Nothing -> pure state
+    Just location -> do
+      _ <- announceRemoteStreamIsAvailable streamId (LocatedServer server location)
+      pure state
 
 handleTransPoPMessage (StreamState StreamStopped streamId server) state@{intraPoPApi: {announceRemoteStreamStopped}} = do
   _ <- logInfo "Remote stream stopped" {streamId, server}
-  _ <- announceRemoteStreamStopped streamId server
-  pure state
+  mServerLocation <- PoPDefinition.whereIsServer server
+  case mServerLocation of
+    Nothing -> pure state
+    Just location -> do
+      _ <- announceRemoteStreamStopped streamId (LocatedServer server location)
+      pure state
 
 --------------------------------------------------------------------------------
 -- Internal functions
@@ -404,7 +404,7 @@ handleRttRefresh state@{ weAreLeader: false} =  pure state
 handleRttRefresh state@{ weAreLeader: true
                        , config: config@{rttRefreshMs, defaultRttMs}
                        , members
-                       , thisPoP
+                       , thisLocatedServer
                        , rtts
                        } = do
     -- look up the coordinates of all members
@@ -429,7 +429,9 @@ handleRttRefresh state@{ weAreLeader: true
     defaultRtts <- getDefaultRtts config
     otherPoPNames <- PoPDefinition.getOtherPoPNames
 
-    let Tuple newRtts newSourceRoutes = calculateRoutes poPCoordinates rtts defaultRtts thisPoP otherPoPNames
+    let
+      thisPoP = locatedServerPoP thisLocatedServer
+      Tuple newRtts newSourceRoutes = calculateRoutes poPCoordinates rtts defaultRtts thisPoP otherPoPNames
 
     _ <- Timer.sendAfter serverName rttRefreshMs RttRefreshTick
     pure $ state { rtts = newRtts
@@ -480,7 +482,7 @@ becomeLeader :: Milliseconds -> State -> Effect State
 becomeLeader now state@{ lastLeaderAnnouncement
                        , leaderAnnouncementTimeout
                        , serfRpcAddress
-                       , thisNode
+                       , thisLocatedServer
                        , config: {connectStreamAfterMs, rttRefreshMs}
                        , intraPoPApi: {announceTransPoPLeader: intraPoP_announceTransPoPLeader}
                        } = do
@@ -494,7 +496,7 @@ becomeLeader now state@{ lastLeaderAnnouncement
     $ state
         { lastLeaderAnnouncement = now
         , weAreLeader = true
-        , currentLeader = Just thisNode
+        , currentLeader = Just thisLocatedServer
         }
 
 connectStream :: State -> Effect Unit
