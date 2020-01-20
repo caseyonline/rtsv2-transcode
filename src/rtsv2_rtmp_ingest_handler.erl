@@ -1,10 +1,13 @@
 -module(rtsv2_rtmp_ingest_handler).
 
+-define(ID3AS_COMMON_USE_LOGGER, true).
+
 -include_lib("id3as_common/include/common.hrl").
 -include_lib("id3as_common/include/id3as_types.hrl").
 -include_lib("id3as_media/include/id3as_workflow.hrl").
 -include_lib("id3as_media/include/frame.hrl").
 -include_lib("id3as_media/include/rtmp.hrl").
+-include_lib("id3as_media/include/send_to_bus_processor.hrl").
 
 -export([
          init/3,
@@ -175,13 +178,13 @@ handle(State = #?state{rtmp_pid = Rtmp,
                                          stream_name => StreamName}),
 
           case ((IngestStarted(StreamDetails))(StreamName))() of
-            true ->
-              {ok, WorkflowPid} = start_workflow(Rtmp, StreamId, ClientId, Path),
+            {right, StreamAndVariant} ->
+              {ok, WorkflowPid} = start_workflow(Rtmp, StreamId, ClientId, Path, StreamAndVariant),
 
               %% Stream is now connected - we block in here, when we return the rtmp_server instance will close
               workflow_loop(StreamName, WorkflowPid, State#?state{streamDetails = StreamDetails});
 
-            false ->
+            {left, _} ->
               ?SLOG_INFO("Invalid stream name"),
               rtmp:close(Rtmp),
               ok
@@ -207,10 +210,11 @@ workflow_loop(StreamName, WorkflowPid, State = #?state{ingestStopped = IngestSto
       workflow_loop(StreamName, WorkflowPid, State)
   end.
 
-start_workflow(Rtmp, StreamId, ClientId, Path) ->
+start_workflow(Rtmp, StreamId, ClientId, Path, StreamAndVariant) ->
 
   Workflow = #workflow{
-                name = ingest,
+                name = rtmp_ingest_handler,
+                display_name = <<"RTMP Ingest">>,
                 generators = [
                               #generator{name = rtmp_ingest,
                                          module = rtmp_push_ingest_generator,
@@ -225,10 +229,23 @@ start_workflow(Rtmp, StreamId, ClientId, Path) ->
                                          module = rtmp_tag_to_frame
                                         },
 
-                              %% TODO - raise on bus and to llwp
-                              #processor{name = null,
+                              #processor{name = set_source_id,
                                          subscribes_to = ?previous,
-                                         module = dev_null_processor}
+                                         module = set_source_id,
+                                         config = {StreamAndVariant, make_ref()}
+                                        },
+
+                              #processor{name = program_details,
+                                         subscribes_to = ?previous,
+                                         module = program_details_generator
+                                        },
+
+                              #processor{name = send_to_bus,
+                                         subscribes_to = ?previous,
+                                         module = send_to_bus_processor,
+                                         config = #send_to_bus_processor_config{consumes = true,
+                                                                                bus_name = {ingest, StreamAndVariant}}
+                                        }
                              ]
                },
 

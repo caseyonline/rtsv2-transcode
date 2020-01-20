@@ -6,12 +6,15 @@ module Rtsv2.Web
 import Prelude
 
 import Data.Maybe (Maybe(..), fromMaybe, isJust)
-import Data.Newtype (unwrap)
+import Data.Newtype (unwrap, wrap)
 import Effect (Effect)
-import Erl.Atom (Atom)
+import Erl.Atom (Atom, atom)
 import Erl.Cowboy.Req (Req)
+import Erl.Cowboy.Routes (InitialState(..), Path(..), matchSpec)
 import Erl.Data.List (List, nil, singleton, (:))
-import Erl.Data.Tuple (Tuple2, Tuple4, tuple2, tuple4, uncurry4)
+import Erl.Data.Tuple (Tuple2, Tuple4, tuple2, tuple3, tuple4, uncurry4)
+import Erl.ModuleName (NativeModuleName(..))
+import Foreign (unsafeToForeign)
 import Logger (Logger)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
@@ -31,7 +34,7 @@ import Rtsv2.Names as Names
 import Rtsv2.Router.Endpoint (Endpoint(..), endpoint)
 import Rtsv2.Router.Parser (printUrl)
 import Serf (Ip(..))
-import Shared.Stream (StreamId(..), StreamVariant(..))
+import Shared.Stream (StreamAndVariant(..), StreamId(..), StreamVariant(..))
 import Shared.Types (ServerAddress)
 import Stetson (RestResult, StetsonHandler)
 import Stetson as Stetson
@@ -95,10 +98,21 @@ init args = do
     # Stetson.route
         (printUrl endpoint StreamPublishE)
         LlnwStubHandler.streamPublish
+    # Stetson.cowboyRoutes streamingRoutes
     # Stetson.port args.port
     # (uncurry4 Stetson.bindTo) (ipToTuple bindIp)
     # Stetson.startClear "http_listener"
   pure $ State {}
+  where
+    streamingRoutes :: List Path
+    streamingRoutes = Path (tuple3
+                            (matchSpec $ printUrl endpoint (IngestInstanceLlwpE (StreamId ":stream_id") (StreamVariant ":variant_id")))
+                            (NativeModuleName $ atom "llwp_stream_resource")
+                            (InitialState $ unsafeToForeign makeStreamAndVariant)
+                           )
+                      : nil
+    makeStreamAndVariant :: String -> String -> StreamAndVariant
+    makeStreamAndVariant streamId variantId = StreamAndVariant (wrap streamId) (wrap variantId)
 
 ipToTuple :: Ip -> Tuple4 Int Int Int Int
 ipToTuple (Ipv4 a b c d) = tuple4 a b c d

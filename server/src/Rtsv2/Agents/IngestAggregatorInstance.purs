@@ -9,13 +9,15 @@ module Rtsv2.Agents.IngestAggregatorInstance
 
 import Prelude
 
+import Data.Newtype (unwrap)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
 import Erl.Data.Map (Map, delete, insert, size, toUnfoldable)
 import Erl.Data.Map as Map
-import Logger (Logger, spy)
+import Foreign (Foreign)
+import Logger (Logger)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen (CallResult(..), CastResult(..))
@@ -25,10 +27,17 @@ import Rtsv2.Agents.IntraPoP (announceStreamIsAvailable, announceStreamStopped)
 import Rtsv2.Config as Config
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
+import Rtsv2.Router.Endpoint (Endpoint(..))
+import Rtsv2.Router.Endpoint as RoutingEndpoint
+import Rtsv2.Router.Parser as Routing
 import Shared.Agent as Agent
 import Shared.LlnwApiTypes (StreamDetails)
 import Shared.Stream (StreamAndVariant, StreamId(..), StreamVariant, toStreamId, toVariant)
 import Shared.Types (IngestAggregatorPublicState, ServerAddress)
+
+foreign import startWorkflowImpl :: String -> Effect Foreign
+foreign import addVariantImpl :: Foreign -> StreamAndVariant -> String -> Effect Unit
+foreign import removeVariantImpl :: Foreign -> StreamAndVariant -> Effect Unit
 
 type State
   = { config :: Config.IngestAggregatorAgentConfig
@@ -36,6 +45,7 @@ type State
     , streamId :: StreamId
     , streamDetails :: StreamDetails
     , activeStreamVariants :: Map StreamVariant ServerAddress
+    , workflow :: Foreign
     }
 
 data Msg
@@ -43,9 +53,7 @@ data Msg
   | MaybeStop
 
 isAvailable :: StreamId -> Effect Boolean
-isAvailable streamId =
-  do
-  let _ = spy "isAvailable" streamId
+isAvailable streamId = do
   bool <- Names.isRegistered (serverName streamId)
   pure bool
 
@@ -53,20 +61,29 @@ serverName :: StreamId -> ServerName State Msg
 serverName = Names.ingestAggregatorInstanceName
 
 addVariant :: StreamAndVariant -> Effect Unit
-addVariant streamAndVariant = Gen.call (serverName (toStreamId streamAndVariant))
-  \state@{thisNode, activeStreamVariants} ->
-  CallReply unit state{activeStreamVariants = insert (toVariant streamAndVariant) thisNode activeStreamVariants}
+addVariant streamAndVariant = Gen.doCall (serverName (toStreamId streamAndVariant))
+  \state@{thisNode, activeStreamVariants, workflow} -> do
+    let
+      path = Routing.printUrl RoutingEndpoint.endpoint (IngestInstanceLlwpE (toStreamId streamAndVariant) (toVariant streamAndVariant))
+      url = "http://" <> (unwrap thisNode) <> ":3000" <> path
+    _ <- addVariantImpl workflow streamAndVariant url -- TODO - this is local, so can just hook the bus rather than llwp...
+    pure $ CallReply unit state{activeStreamVariants = insert (toVariant streamAndVariant) thisNode activeStreamVariants}
 
 addRemoteVariant :: StreamAndVariant -> ServerAddress -> Effect Unit
-addRemoteVariant streamAndVariant remoteServer = Gen.call (serverName (toStreamId streamAndVariant))
-  \state@{activeStreamVariants} ->
-  CallReply unit state{activeStreamVariants = insert (toVariant streamAndVariant) remoteServer activeStreamVariants}
+addRemoteVariant streamAndVariant remoteServer = Gen.doCall (serverName (toStreamId streamAndVariant))
+  \state@{activeStreamVariants, workflow} -> do
+    let
+      path = Routing.printUrl RoutingEndpoint.endpoint (IngestInstanceLlwpE (toStreamId streamAndVariant) (toVariant streamAndVariant))
+      url = "http://" <> (unwrap remoteServer) <> ":3000" <> path
+    _ <- addVariantImpl workflow streamAndVariant url
+    pure $ CallReply unit state{activeStreamVariants = insert (toVariant streamAndVariant) remoteServer activeStreamVariants}
 
 removeVariant :: StreamAndVariant -> Effect Unit
 removeVariant streamAndVariant = Gen.doCall (serverName (toStreamId streamAndVariant))
-  \state@{activeStreamVariants, streamId, config:{shutdownLingerTimeMs}} -> do
+  \state@{activeStreamVariants, streamId, workflow, config:{shutdownLingerTimeMs}} -> do
   let
     newActiveStreamVariants = delete (toVariant streamAndVariant) activeStreamVariants
+  _ <- removeVariantImpl workflow streamAndVariant
   _ <- if (size newActiveStreamVariants) == 0 then do
          _ <- Timer.sendAfter (serverName streamId) shutdownLingerTimeMs MaybeStop
          pure unit
@@ -89,11 +106,13 @@ init streamDetails = do
   thisNode <- PoPDefinition.thisNode
   _ <- Timer.sendEvery (serverName streamId) config.streamAvailableAnnounceMs Tick
   _ <- announceStreamIsAvailable streamId
+  workflow <- startWorkflowImpl streamDetails.slot.name
   pure { config : config
        , thisNode
        , streamId
        , streamDetails
        , activeStreamVariants : Map.empty
+       , workflow
        }
   where
     streamId = StreamId streamDetails.slot.name
