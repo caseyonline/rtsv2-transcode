@@ -36,7 +36,8 @@ import Shared.Stream (StreamAndVariant, StreamId(..), StreamVariant, toStreamId,
 import Shared.Types (IngestAggregatorPublicState, ServerAddress, locatedServerAddress)
 
 foreign import startWorkflowImpl :: String -> Effect Foreign
-foreign import addVariantImpl :: Foreign -> StreamAndVariant -> String -> Effect Unit
+foreign import addLocalVariantImpl :: Foreign -> StreamAndVariant -> Effect Unit
+foreign import addRemoteVariantImpl :: Foreign -> StreamAndVariant -> String -> Effect Unit
 foreign import removeVariantImpl :: Foreign -> StreamAndVariant -> Effect Unit
 
 type State
@@ -64,10 +65,7 @@ addVariant :: StreamAndVariant -> Effect Unit
 addVariant streamAndVariant = Gen.doCall (serverName (toStreamId streamAndVariant))
   \state@{thisNode, activeStreamVariants, workflow} -> do
     _ <- logInfo "Ingest variant added" {streamId: streamAndVariant}
-    let
-      path = Routing.printUrl RoutingEndpoint.endpoint (IngestInstanceLlwpE (toStreamId streamAndVariant) (toVariant streamAndVariant))
-      url = "http://" <> (unwrap thisNode) <> ":3000" <> path
-    _ <- addVariantImpl workflow streamAndVariant url -- TODO - this is local, so can just hook the bus rather than llwp...
+    _ <- addLocalVariantImpl workflow streamAndVariant
     pure $ CallReply unit state{activeStreamVariants = insert (toVariant streamAndVariant) thisNode activeStreamVariants}
 
 addRemoteVariant :: StreamAndVariant -> ServerAddress -> Effect Unit
@@ -77,7 +75,7 @@ addRemoteVariant streamAndVariant remoteServer = Gen.doCall (serverName (toStrea
     let
       path = Routing.printUrl RoutingEndpoint.endpoint (IngestInstanceLlwpE (toStreamId streamAndVariant) (toVariant streamAndVariant))
       url = "http://" <> (unwrap remoteServer) <> ":3000" <> path
-    _ <- addVariantImpl workflow streamAndVariant url
+    _ <- addRemoteVariantImpl workflow streamAndVariant url
     pure $ CallReply unit state{activeStreamVariants = insert (toVariant streamAndVariant) remoteServer activeStreamVariants}
 
 removeVariant :: StreamAndVariant -> Effect Unit

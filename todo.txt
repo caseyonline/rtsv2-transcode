@@ -1,5 +1,4 @@
 [S] - rtsv2_rtmp_ingest_handler currently has hardcoded salt / challenge - to be held in gen_server once LLNW API is finalised
-[S] - ingest instance stop need to remove instance from aggregator - just need test
 [S] - handle multiple ingest aggregators
 [S] - client API in shared
 [ ] - test4 - IngestAggregator with a name clash - 2 things running, should be 1
@@ -14,6 +13,7 @@
 [ ] - transPoP load messages
 [ ] - have an http wrapper that does local gen_server call if on same node (ingestInstance - local / remote?)
 
+[x] - ingest instance stop need to remove instance from aggregator - just need test
 [x] - if ingest aggregator exits, then ingest instances need to reallocate a new aggregator
 [x] - move ingest-instance aggregator start logic out of init and retry failure on timer
 [x] - metrics (rrt) for trans-pop neigbours

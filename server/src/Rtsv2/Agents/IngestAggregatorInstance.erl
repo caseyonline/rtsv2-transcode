@@ -4,7 +4,8 @@
 
 -export([
          startWorkflowImpl/1,
-         addVariantImpl/3,
+         addLocalVariantImpl/2,
+         addRemoteVariantImpl/3,
          removeVariantImpl/2
         ]).
 
@@ -39,9 +40,14 @@ startWorkflowImpl(SlotName) ->
       Handle
   end.
 
-addVariantImpl(Handle, StreamAndVariant, Url) ->
+addLocalVariantImpl(Handle, StreamAndVariant) ->
   fun() ->
-      ok = id3as_workflow:ioctl(ingests, {add_ingest, StreamAndVariant, Url}, Handle)
+      ok = id3as_workflow:ioctl(ingests, {add_local_ingest, StreamAndVariant}, Handle)
+  end.
+
+addRemoteVariantImpl(Handle, StreamAndVariant, Url) ->
+  fun() ->
+      ok = id3as_workflow:ioctl(ingests, {add_remote_ingest, StreamAndVariant, Url}, Handle)
   end.
 
 removeVariantImpl(Handle, StreamAndVariant) ->

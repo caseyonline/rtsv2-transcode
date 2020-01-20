@@ -22,7 +22,7 @@ import Shared.Stream (StreamVariant(..))
 import Shared.Types (IngestAggregatorPublicState)
 import Simple.JSON (class ReadForeign)
 import Simple.JSON as SimpleJSON
-import Test.Spec (after_, before_, describe, it)
+import Test.Spec (after_, before_, describe, it, describeOnly, itOnly)
 import Test.Spec.Reporter.Console (consoleReporter)
 import Test.Spec.Runner (runSpecT)
 
@@ -145,7 +145,9 @@ main =
   launchAff_ $ un Identity $ runSpecT testConfig [consoleReporter] do
     describe "Ingest tests"
       let
-        nodes = [p1n1, p1n2, p1n3]
+        p1Nodes = [p1n1, p1n2, p1n3]
+        p2Nodes = [p2n1, p2n2]
+        nodes = p1Nodes <> p2Nodes
         allNodesBar node = delete node nodes
         maxOut server = setLoad server 60.0 >>= assertStatusCode 204 >>= as ("set load on " <> toAddr server)
         aggregatorNotPresent slot server = aggregatorStats server slot >>= assertStatusCode 404 >>= as ("aggregator not on " <> toAddr server)
@@ -174,6 +176,7 @@ main =
             ingest start    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as  "create low ingest"
             waitForIntraPoPDisseminate                                    >>= as' "allow remote ingest location to disseminate"
             ingest start    p1n1 shortName1 high >>= assertStatusCode 200 >>= as  "create high ingest"
+            waitForAsyncVariantStart                                      >>= as' "wait for async start of variant"
             aggregatorStats p1n2 slot1           >>= assertStatusCode 200
                                                      >>= assertAggregator [low, high]
                                                                           >>= as  "aggregator is on p1n2"
@@ -249,7 +252,9 @@ main =
     describe "Ingest egest tests" do
       describe "one pop setup"
         let
-          nodes = [p1n1, p1n2, p1n3]
+          p1Nodes = [p1n1, p1n2, p1n3]
+          p2Nodes = [p2n1, p2n2]
+          nodes = p1Nodes <> p2Nodes
           allNodesBar node = delete node nodes
         in do
         before_ (launch nodes) do
@@ -315,7 +320,7 @@ main =
       describe "two pop setup" do
         let
           p1Nodes = [p1n1, p1n2, p1n3]
-          p2Nodes = [p2n1]
+          p2Nodes = [p2n1, p2n2]
           nodes = p1Nodes <> p2Nodes
         before_ (launch nodes) do
           after_ stopSession do

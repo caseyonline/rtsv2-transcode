@@ -108,7 +108,7 @@ health =
     getHealth {weAreLeader: false} = pure Health.NA
     getHealth {members} = do
       allOtherPoPs <- PoPDefinition.getOtherPoPs
-      pure $ Health.percentageToHealth $ (Map.size members * 100) / (length allOtherPoPs) * 100
+      pure $ Health.percentageToHealth $ (Map.size members) / ((length allOtherPoPs) + 1) * 100
 
 announceStreamIsAvailable :: StreamId -> LocatedServer -> Effect Unit
 announceStreamIsAvailable streamId locatedServer =

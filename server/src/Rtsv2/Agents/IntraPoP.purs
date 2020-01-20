@@ -46,7 +46,7 @@ import Erl.Data.Map as Map
 import Erl.Process (Process, spawnLink)
 import Erl.Utils (Milliseconds)
 import Erl.Utils as Erl
-import Logger (Logger)
+import Logger (Logger, spy)
 import Logger as Logger
 import Partial.Unsafe (unsafeCrashWith)
 import Pinto (ServerName, StartLinkResult)
@@ -111,7 +111,7 @@ health =
   Gen.doCall serverName \state@{ members } -> do
     allOtherServers <- PoPDefinition.getOtherServersForThisPoP
     let
-      currentHealth = percentageToHealth $ (Map.size members * 100) / (length allOtherServers) * 100
+      currentHealth = percentageToHealth $ (Map.size members) / ((length allOtherServers) + 1) * 100
     pure $ CallReply currentHealth state
 
 bus :: Bus.Bus IntraPoPBusMessage
