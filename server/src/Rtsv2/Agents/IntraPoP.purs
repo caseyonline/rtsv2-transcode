@@ -30,7 +30,7 @@ import Data.Either (Either(..), hush)
 import Data.Filterable (filterMap)
 import Data.Foldable (foldl)
 import Data.Maybe (Maybe(..), fromMaybe, maybe)
-import Data.Newtype (wrap)
+import Data.Newtype (unwrap, wrap)
 import Data.Traversable (traverse, traverse_)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
@@ -46,7 +46,7 @@ import Erl.Data.Map as Map
 import Erl.Process (Process, spawnLink)
 import Erl.Utils (Milliseconds)
 import Erl.Utils as Erl
-import Logger (Logger, spy)
+import Logger (Logger)
 import Logger as Logger
 import Partial.Unsafe (unsafeCrashWith)
 import Pinto (ServerName, StartLinkResult)
@@ -63,7 +63,7 @@ import Rtsv2.PoPDefinition as PoPDefinition
 import Serf (IpAndPort, LamportClock)
 import Serf as Serf
 import Shared.Stream (StreamId(..), StreamAndVariant(..))
-import Shared.Types (Load, LocatedServer(..), ServerAddress(..), ServerLoad(..), locatedServerAddress)
+import Shared.Types (Load, LocatedServer(..), ServerAddress(..), ServerLoad(..), locatedServerAddress, toLoadedServer, toLocatedServer)
 
 type MemberInfo = { serfMember :: Serf.SerfMember
                   , load :: Load
@@ -146,7 +146,7 @@ whereIsEgest :: StreamId -> Effect (List ServerLoad)
 whereIsEgest streamId =
   Gen.call serverName
   \state@{egestLocations, members} ->
-    let withLoad el = toServerLoad <$> Map.lookup (locatedServerAddress el) members
+    let withLoad (LocatedServer el) = toServerLoad <$> Map.lookup el.address members
     in
     CallReply (filterMap withLoad $ MultiMap.lookup streamId state.egestLocations) state
 
@@ -155,7 +155,7 @@ whereIsEgest streamId =
 -- https://www.nginx.com/blog/nginx-power-of-two-choices-load-balancing-algorithm/
 -- TODO - predicate should probable be ServerLoad -> Weighting
 --------------------------------------------------------------------------------
-getIdleServer :: (ServerLoad -> Boolean) -> Effect (Maybe LocatedServer)
+getIdleServer :: (ServerLoad -> Boolean) -> Effect (Maybe ServerLoad)
 getIdleServer pred = Gen.doCall serverName
   (\state@{members} ->
     let n = 2
@@ -164,8 +164,7 @@ getIdleServer pred = Gen.doCall serverName
           # filterMap (\memberInfo ->
                         let serverLoad = toServerLoad memberInfo
                         in if pred serverLoad then Just serverLoad else Nothing)
-          # sortBy (\(ServerLoad _ l1) (ServerLoad _ l2) -> compare l1 l2)
-          <#> (\(ServerLoad locatedServer _) -> locatedServer)
+          # sortBy (\(ServerLoad sl1) (ServerLoad sl2) -> compare sl1.load sl2.load)
           # take n
         numServers = length nMostIdleWithCapacity
     in do
@@ -220,10 +219,9 @@ announceEgestStopped streamId =
   Gen.doCast serverName
     \state@{ egestLocations, thisLocatedServer } -> do
       let
-        thisNodeAddress = locatedServerAddress thisLocatedServer
         newEgestLocations = MultiMap.delete streamId thisLocatedServer egestLocations
       _ <- logInfo "Local egest stopped" {streamId}
-      _ <- sendToIntraSerfNetwork state "egestStopped" (IMEgestState EgestStopped streamId $ locatedServerAddress thisLocatedServer)
+      _ <- sendToIntraSerfNetwork state "egestStopped" $ IMEgestState EgestStopped streamId $ locatedServerAddress thisLocatedServer
       pure $ Gen.CastNoReply state { egestLocations = newEgestLocations }
 
 -- Called by IngestAggregator to indicate stream on this node
@@ -285,11 +283,11 @@ announceTransPoPLeader :: Effect Unit
 announceTransPoPLeader =
   Gen.doCast serverName
     \state@{ thisLocatedServer, transPoPApi:{handleRemoteLeaderAnnouncement: transPoP_announceTransPoPLeader} } ->
-    let thisNode = locatedServerAddress thisLocatedServer
-    in do
+    do
       _ <- transPoP_announceTransPoPLeader thisLocatedServer
-      _ <- sendToIntraSerfNetwork state "transPoPLeader" (IMTransPoPLeader thisNode)
+      _ <- sendToIntraSerfNetwork state "transPoPLeader" (IMTransPoPLeader $ locatedServerAddress thisLocatedServer)
       pure $ Gen.CastNoReply state
+
 
 --------------------------------------------------------------------------------
 -- Gen Server methods
@@ -309,7 +307,7 @@ init { config: config@{rejoinEveryMs
   _ <- Timer.sendEvery serverName rejoinEveryMs JoinAll
   _ <- Timer.sendEvery serverName expireEveryMs GarbageCollect
   rpcBindIp <- Env.privateInterfaceIp
-  thisLocatedServer <- PoPDefinition.thisLocatedServer
+  thisLocatedServer <- PoPDefinition.thisServer
   let
     serfRpcAddress =
       { ip: show rpcBindIp
@@ -567,12 +565,12 @@ joinAllSerf { config, serfRpcAddress, members } =
 
 
 screenOriginAndMessageClock :: LocatedServer -> ServerAddress -> LamportClock -> Map ServerAddress LamportClock -> Effect (Maybe (Tuple (Map ServerAddress LamportClock) LocatedServer))
-screenOriginAndMessageClock thisLocatedServer messageServerAddress msgClock lastClockByServer =
+screenOriginAndMessageClock (LocatedServer thisLocatedServer) messageServerAddress msgClock lastClockByServer =
   if Map.lookup messageServerAddress lastClockByServer # maybe false (_ >= msgClock)
   then do
     pure Nothing
   else
-    if locatedServerAddress thisLocatedServer == messageServerAddress then
+    if thisLocatedServer.address == messageServerAddress then
       pure Nothing
     else do
       mLocation <- PoPDefinition.whereIsServer messageServerAddress
@@ -580,11 +578,12 @@ screenOriginAndMessageClock thisLocatedServer messageServerAddress msgClock last
         Nothing -> do
           pure Nothing
         Just location ->
-          pure $ Just $ Tuple (Map.insert messageServerAddress msgClock lastClockByServer) $ LocatedServer messageServerAddress location
+          pure $ Just $ Tuple (Map.insert messageServerAddress msgClock lastClockByServer) $ toLocatedServer messageServerAddress location
 
 
 toServerLoad :: MemberInfo -> ServerLoad
-toServerLoad {server, load} = ServerLoad server load
+toServerLoad {server, load} = toLoadedServer server load
+
 
 --------------------------------------------------------------------------------
 -- Log helpers

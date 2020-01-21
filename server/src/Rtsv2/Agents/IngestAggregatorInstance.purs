@@ -17,7 +17,7 @@ import Erl.Data.List (List, nil, (:))
 import Erl.Data.Map (Map, delete, insert, size, toUnfoldable)
 import Erl.Data.Map as Map
 import Foreign (Foreign)
-import Logger (Logger, spy)
+import Logger (Logger)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen (CallResult(..), CastResult(..))
@@ -103,7 +103,7 @@ init :: StreamDetails -> Effect State
 init streamDetails = do
   _ <- logInfo "Ingest Aggregator starting" {streamId, streamDetails}
   config <- Config.ingestAggregatorAgentConfig
-  thisLocatedServer <- PoPDefinition.thisLocatedServer
+  thisLocatedServer <- PoPDefinition.thisServer
   _ <- Timer.sendEvery (serverName streamId) config.streamAvailableAnnounceMs Tick
   _ <- announceStreamIsAvailable streamId
   workflow <- startWorkflowImpl streamDetails.slot.name

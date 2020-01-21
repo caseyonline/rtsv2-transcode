@@ -4,7 +4,7 @@ module Rtsv2.PoPDefinition
        , getOtherPoPs
        , getOtherPoPNames
        , whereIsServer
-       , thisLocatedServer
+       , thisServer
        , neighbourMap
        , serversInThisPoPByAddress
        , PoP
@@ -38,7 +38,7 @@ import Pinto.Timer as Timer
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
 import Rtsv2.Names as Names
-import Shared.Types (LocatedServer(..), PoPName, RegionName, ServerAddress(..), ServerLocation(..), locatedServerAddress, locatedServerLocation, locatedServerPoP)
+import Shared.Types (LocatedServer(..), PoPName, RegionName, ServerAddress(..), ServerLocation(..), toLocatedServer)
 import Simple.JSON as JSON
 
 type PoPInfo =
@@ -93,8 +93,8 @@ getOtherPoPNames :: Effect (List PoPName)
 getOtherPoPNames =
    exposeStateMember ((<$>) _.name <<< _.otherPoPs)
 
-thisLocatedServer :: Effect LocatedServer
-thisLocatedServer = exposeStateMember _.thisLocatedServer
+thisServer :: Effect LocatedServer
+thisServer = exposeStateMember _.thisLocatedServer
 
 whereIsServer :: ServerAddress -> Effect (Maybe ServerLocation)
 whereIsServer sa = Gen.doCall serverName
@@ -104,14 +104,13 @@ serversInThisPoPByAddress :: Effect (Map ServerAddress LocatedServer)
 serversInThisPoPByAddress =
   -- TODO - this probasbly need to list which services each node offers as well
   Gen.doCall serverName
-    \state ->
+    \state@{thisLocatedServer: LocatedServer locatedServer} ->
       let
-        thisPoP = locatedServerPoP state.thisLocatedServer
         result
           = state.servers
-            # Map.mapMaybeWithKey (\address location@(ServerLocation pop region) ->
-                                    if pop == thisPoP then
-                                      Just $ (LocatedServer address location)
+            # Map.mapMaybeWithKey (\address location@(ServerLocation {pop}) ->
+                                    if pop == locatedServer.pop then
+                                      Just $ (toLocatedServer address  location)
                                     else
                                       Nothing
                                   )
@@ -136,7 +135,7 @@ init config = do
                unsafeCrashWith "invalid pop definition file"
     Right r -> pure r
   let
-      thisLocatedServer' =  LocatedServer thisServerAddress popInfo.thisLocation
+      thisLocatedServer' =  toLocatedServer thisServerAddress popInfo.thisLocation
       state =
         { config : config
         , regions : popInfo.regions
@@ -153,7 +152,7 @@ init config = do
   pure state
 
 handleInfo :: Msg -> State -> Effect (CastResult State)
-handleInfo msg state =
+handleInfo msg state@{thisLocatedServer: (LocatedServer thisLocatedServer)}=
   case msg of
     Tick ->
       do
@@ -162,21 +161,21 @@ handleInfo msg state =
           Left e -> do _ <- logWarning "Failed to process WAN definition file" {misc: e}
                        pure state
           Right nMap -> do
-            ePopInfo <- readAndProcessPoPDefinition state.config (locatedServerAddress state.thisLocatedServer) nMap
+            ePopInfo <- readAndProcessPoPDefinition state.config thisLocatedServer.address nMap
             case ePopInfo of
 
               Left e -> do _ <- logWarning "Failed to process pop definition file" {misc: e}
                            pure state
-              Right popInfo@{thisLocation : newPoP}
-                | newPoP == locatedServerLocation state.thisLocatedServer  ->
-                  pure $ state { regions = popInfo.regions
+              Right popInfo@{thisLocation : (ServerLocation newPoPLocation)}
+                | newPoPLocation.pop == thisLocatedServer.pop  ->
+                  pure $ (state { regions = popInfo.regions
                                , servers = popInfo.servers
                                , otherServersInThisPoP = popInfo.otherServersInThisPoP
                                , otherPoPs = popInfo.otherPoPs
-                               }
+                               } :: State)
                 | otherwise ->
                     do _ <- logWarning "This node seems to have changed pop - ignoring" { currentLocation: state.thisLocatedServer
-                                                                                        , filePoP : newPoP
+                                                                                        , filePoP : newPoPLocation
                                                                                         }
                        pure state
 
@@ -235,7 +234,7 @@ processPoPJson thisServerAddress regions nMap =
     servers = foldl (\acc region ->
                       foldl (\innerAcc pop ->
                               foldl (\innerInnerAcc server ->
-                                      Map.insert server (ServerLocation pop.name region.name) innerInnerAcc
+                                      Map.insert server (ServerLocation {pop: pop.name, region:  region.name}) innerInnerAcc
                                     )
                               innerAcc
                               pop.servers
@@ -271,14 +270,14 @@ processPoPJson thisServerAddress regions nMap =
   in
    case maybeThisLocation of
      Nothing -> Left $ NonEmptyList.singleton $ ForeignError "This node not present in any pop"
-     Just location@(ServerLocation popName _) ->
-       case partitionPoPs popName of
+     Just sl@(ServerLocation location) ->
+       case partitionPoPs location.pop of
          (Tuple (Just thisPoP') otherPoPs) ->
             Right { regions: regions
                   , servers: servers
                   , otherServersInThisPoP: otherServers
                   , otherPoPs: otherPoPs
-                  , thisLocation: location
+                  , thisLocation: sl
                   , thisPoP: thisPoP'
                   , neighbourMap: nMap
                   }
@@ -286,7 +285,7 @@ processPoPJson thisServerAddress regions nMap =
            Left $ NonEmptyList.singleton $ ForeignError "This pop is not present in the neighbours map"
 
 lookupPop :: Map RegionName Region -> ServerLocation -> Maybe PoP
-lookupPop regions (ServerLocation pop region) =
+lookupPop regions (ServerLocation {pop, region}) =
   (\{pops} -> Map.lookup pop pops) =<< Map.lookup region regions
 
 finalise :: State -> Either MultipleErrors State -> Effect State

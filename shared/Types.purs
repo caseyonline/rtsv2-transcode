@@ -7,16 +7,18 @@ module Shared.Types
        , ServerLocation(..)
        , LocatedServer(..)
        , IngestAggregatorPublicState
+       , extractLocatedServer
+       , toLoadedServer
+       , toLocatedServer
        , locatedServerAddress
-       , locatedServerLocation
        , locatedServerPoP
        ) where
 
 import Prelude
 
-import Data.Generic.Rep (class Generic)
-import Data.Generic.Rep.Eq (genericEq)
-import Data.Newtype (class Newtype)
+import Data.Newtype (class Newtype, unwrap)
+import Data.Symbol (SProxy(..))
+import Record as Record
 import Shared.LlnwApiTypes (StreamDetails)
 import Shared.Stream (StreamVariant)
 import Simple.JSON (class ReadForeign, class WriteForeign)
@@ -53,29 +55,40 @@ derive newtype instance showLoad :: Show Load
 derive newtype instance readForeignLoad :: ReadForeign Load
 derive newtype instance writeForeignLoad :: WriteForeign Load
 
-data ServerLocation = ServerLocation PoPName RegionName
-derive instance genericServerLocation :: Generic ServerLocation _
-instance eqServerLocation :: Eq ServerLocation where
-  eq = genericEq
+newtype ServerLocation = ServerLocation { pop :: PoPName
+                                        , region :: RegionName
+                                        }
+derive instance newtypeServerLocation :: Newtype ServerLocation _
+derive newtype instance eqServerLocation :: Eq ServerLocation
+derive newtype instance ordServerLocation :: Ord ServerLocation
+derive newtype instance showServerLocation :: Show ServerLocation
+derive newtype instance readForeignServerLocation :: ReadForeign ServerLocation
+derive newtype instance writeForeignServerLocation :: WriteForeign ServerLocation
 
-data LocatedServer = LocatedServer ServerAddress ServerLocation
-derive instance genericLocatedServer :: Generic LocatedServer _
-instance eqLocatedServer :: Eq LocatedServer where
-  eq = genericEq
 
-locatedServerAddress :: LocatedServer -> ServerAddress
-locatedServerAddress (LocatedServer address _location) = address
+newtype LocatedServer = LocatedServer { address :: ServerAddress
+                                      , pop :: PoPName
+                                      , region :: RegionName
+                                      }
 
-locatedServerLocation :: LocatedServer -> ServerLocation
-locatedServerLocation (LocatedServer _address location) = location
+derive instance newtypeLocatedServer :: Newtype LocatedServer _
+derive newtype instance eqLocatedServer :: Eq LocatedServer
+derive newtype instance ordLocatedServer :: Ord LocatedServer
+derive newtype instance showLocatedServer :: Show LocatedServer
+derive newtype instance readForeignLocatedServer :: ReadForeign LocatedServer
+derive newtype instance writeForeignLocatedServer :: WriteForeign LocatedServer
 
-locatedServerPoP :: LocatedServer -> PoPName
-locatedServerPoP (LocatedServer _address (ServerLocation popName _)) = popName
-
-data ServerLoad = ServerLoad LocatedServer Load
-derive instance genericServerLoad :: Generic ServerLoad _
-instance eqServerLoad :: Eq ServerLoad where
-  eq = genericEq
+newtype ServerLoad = ServerLoad { address :: ServerAddress
+                                , pop :: PoPName
+                                , region :: RegionName
+                                , load :: Load
+                                }
+derive instance newtypeServerLoad :: Newtype ServerLoad _
+derive newtype instance eqServerLoad :: Eq ServerLoad
+derive newtype instance ordServerLoad :: Ord ServerLoad
+derive newtype instance showServerLoad :: Show ServerLoad
+derive newtype instance readForeignServerLoad :: ReadForeign ServerLoad
+derive newtype instance writeForeignServerLoad :: WriteForeign ServerLoad
 
 type IngestAggregatorPublicState
    = { streamDetails :: StreamDetails
@@ -83,3 +96,34 @@ type IngestAggregatorPublicState
                                      , serverAddress :: ServerAddress
                                      }
      }
+
+
+type ServerAddressRec = {address :: ServerAddress}
+type LocationRec = { pop :: PoPName
+                   , region :: RegionName
+                   }
+
+toLocatedServer :: ServerAddress -> ServerLocation -> LocatedServer
+toLocatedServer sa (ServerLocation ls) =
+  LocatedServer $ Record.insert address_ sa ls
+
+toLoadedServer :: LocatedServer -> Load -> ServerLoad
+toLoadedServer  (LocatedServer ls) load =
+  ServerLoad $ Record.insert load_ load ls
+
+extractLocatedServer :: ServerLoad -> LocatedServer
+extractLocatedServer (ServerLoad sl) =
+  LocatedServer $ Record.delete load_ sl
+
+locatedServerPoP :: LocatedServer -> PoPName
+locatedServerPoP = unwrap >>> _.pop
+
+locatedServerAddress :: LocatedServer -> ServerAddress
+locatedServerAddress = unwrap >>> _.address
+
+
+--------------------------------------------------------------------------------
+-- internal
+--------------------------------------------------------------------------------
+load_ = SProxy :: SProxy "load"
+address_ = SProxy :: SProxy "address"

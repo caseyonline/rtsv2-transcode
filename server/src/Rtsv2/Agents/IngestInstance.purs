@@ -37,7 +37,7 @@ import Rtsv2.Router.Parser as Routing
 import Shared.Agent as Agent
 import Shared.LlnwApiTypes (StreamDetails)
 import Shared.Stream (StreamAndVariant, StreamId, toStreamId, toVariant)
-import Shared.Types (Load, LocatedServer, ServerLoad(..), locatedServerAddress)
+import Shared.Types (Load, LocatedServer, ServerLoad(..), extractLocatedServer, locatedServerAddress)
 import Simple.JSON as JSON
 import SpudGun as SpudGun
 
@@ -72,7 +72,7 @@ stopIngest streamAndVariant =
 init :: StreamDetails -> StreamAndVariant -> Effect State
 init streamDetails streamAndVariant = do
   _ <- logInfo "Ingest starting" {streamAndVariant: streamAndVariant}
-  thisLocatedServer <- PoPDefinition.thisLocatedServer
+  thisLocatedServer <- PoPDefinition.thisServer
   {intraPoPLatencyMs} <- Config.globalConfig
   _ <- Bus.subscribe (serverName streamAndVariant) IntraPoP.bus IntraPoPBus
   _ <- Audit.ingestStart streamAndVariant
@@ -163,7 +163,7 @@ launchLocalOrRemote streamDetails streamAndVariant = do
   if
     currentLoad < loadThresholdToCreateAggregator then do
       _ <- IngestAggregatorInstanceSup.startAggregator streamDetails
-      Just <$> PoPDefinition.thisLocatedServer
+      Just <$> PoPDefinition.thisServer
     else
       launchRemote streamDetails streamAndVariant
 
@@ -185,17 +185,17 @@ launchRemote streamDetails streamAndVariant = do
       restResult <- SpudGun.postJson (wrap url) streamDetails
       case restResult of
         Left _ -> pure Nothing
-        Right _ -> pure candidate
+        Right _ -> pure $ extractLocatedServer <$> candidate
 
 loadThresholdToCreateAggregator :: Load
 loadThresholdToCreateAggregator = wrap 50.0
 
 filterForAggregatorLoad :: ServerLoad -> Boolean
-filterForAggregatorLoad (ServerLoad _ load) = load < loadThresholdToCreateAggregator
+filterForAggregatorLoad (ServerLoad sl) = sl.load < loadThresholdToCreateAggregator
 
-toHost :: LocatedServer -> String
+toHost :: ServerLoad -> String
 toHost =
-  unwrap <<< locatedServerAddress
+  unwrap <<< _.address <<< unwrap
 
 
 --------------------------------------------------------------------------------
