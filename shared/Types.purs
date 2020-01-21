@@ -5,13 +5,13 @@ module Shared.Types
        , PoPName(..)
        , ServerLoad(..)
        , ServerLocation(..)
-       , LocatedServer(..)
+       , Server(..)
        , IngestAggregatorPublicState
-       , extractLocatedServer
-       , toLoadedServer
-       , toLocatedServer
-       , locatedServerAddress
-       , locatedServerPoP
+       , toServer
+       , toServerLoad
+       , serverLoadToServer
+       , extractAddress
+       , extractPoP
        ) where
 
 import Prelude
@@ -66,17 +66,17 @@ derive newtype instance readForeignServerLocation :: ReadForeign ServerLocation
 derive newtype instance writeForeignServerLocation :: WriteForeign ServerLocation
 
 
-newtype LocatedServer = LocatedServer { address :: ServerAddress
-                                      , pop :: PoPName
-                                      , region :: RegionName
-                                      }
+newtype Server = Server { address :: ServerAddress
+                        , pop :: PoPName
+                        , region :: RegionName
+                        }
 
-derive instance newtypeLocatedServer :: Newtype LocatedServer _
-derive newtype instance eqLocatedServer :: Eq LocatedServer
-derive newtype instance ordLocatedServer :: Ord LocatedServer
-derive newtype instance showLocatedServer :: Show LocatedServer
-derive newtype instance readForeignLocatedServer :: ReadForeign LocatedServer
-derive newtype instance writeForeignLocatedServer :: WriteForeign LocatedServer
+derive instance newtypeServer :: Newtype Server _
+derive newtype instance eqServer :: Eq Server
+derive newtype instance ordServer :: Ord Server
+derive newtype instance showServer :: Show Server
+derive newtype instance readForeignServer :: ReadForeign Server
+derive newtype instance writeForeignServer :: WriteForeign Server
 
 newtype ServerLoad = ServerLoad { address :: ServerAddress
                                 , pop :: PoPName
@@ -103,24 +103,23 @@ type LocationRec = { pop :: PoPName
                    , region :: RegionName
                    }
 
-toLocatedServer :: ServerAddress -> ServerLocation -> LocatedServer
-toLocatedServer sa (ServerLocation ls) =
-  LocatedServer $ Record.insert address_ sa ls
+toServer :: ServerAddress -> ServerLocation -> Server
+toServer sa (ServerLocation ls) =
+  Server $ Record.insert address_ sa ls
 
-toLoadedServer :: LocatedServer -> Load -> ServerLoad
-toLoadedServer  (LocatedServer ls) load =
+toServerLoad :: Server -> Load -> ServerLoad
+toServerLoad  (Server ls) load =
   ServerLoad $ Record.insert load_ load ls
 
-extractLocatedServer :: ServerLoad -> LocatedServer
-extractLocatedServer (ServerLoad sl) =
-  LocatedServer $ Record.delete load_ sl
+serverLoadToServer :: ServerLoad -> Server
+serverLoadToServer (ServerLoad sl) =
+  Server $ Record.delete load_ sl
 
-locatedServerPoP :: LocatedServer -> PoPName
-locatedServerPoP = unwrap >>> _.pop
+extractPoP :: forall r a. Newtype a { pop :: PoPName | r } => a -> PoPName
+extractPoP = unwrap >>> _.pop
 
-locatedServerAddress :: LocatedServer -> ServerAddress
-locatedServerAddress = unwrap >>> _.address
-
+extractAddress :: forall r a. Newtype a { address :: ServerAddress | r } => a -> ServerAddress
+extractAddress = unwrap >>> _.address
 
 --------------------------------------------------------------------------------
 -- internal

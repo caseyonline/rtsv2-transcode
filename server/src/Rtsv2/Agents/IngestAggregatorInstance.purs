@@ -34,7 +34,7 @@ import Rtsv2.Router.Parser as Routing
 import Shared.Agent as Agent
 import Shared.LlnwApiTypes (StreamDetails)
 import Shared.Stream (StreamAndVariant(..), StreamId(..), StreamVariant, toStreamId, toVariant)
-import Shared.Types (IngestAggregatorPublicState, ServerAddress, locatedServerAddress)
+import Shared.Types (IngestAggregatorPublicState, ServerAddress, extractAddress)
 
 foreign import startWorkflowImpl :: String -> Array (Tuple2 StreamAndVariant String) -> Effect Foreign
 foreign import addLocalVariantImpl :: Foreign -> StreamAndVariant -> Effect Unit
@@ -43,7 +43,7 @@ foreign import removeVariantImpl :: Foreign -> StreamAndVariant -> Effect Unit
 
 type State
   = { config :: Config.IngestAggregatorAgentConfig
-    , thisNode :: ServerAddress
+    , thisAddress :: ServerAddress
     , streamId :: StreamId
     , streamDetails :: StreamDetails
     , activeStreamVariants :: Map StreamVariant ServerAddress
@@ -64,10 +64,10 @@ serverName = Names.ingestAggregatorInstanceName
 
 addVariant :: StreamAndVariant -> Effect Unit
 addVariant streamAndVariant = Gen.doCall (serverName (toStreamId streamAndVariant))
-  \state@{thisNode, activeStreamVariants, workflow} -> do
+  \state@{thisAddress, activeStreamVariants, workflow} -> do
     _ <- logInfo "Ingest variant added" {streamId: streamAndVariant}
     _ <- addLocalVariantImpl workflow streamAndVariant
-    pure $ CallReply unit state{activeStreamVariants = insert (toVariant streamAndVariant) thisNode activeStreamVariants}
+    pure $ CallReply unit state{activeStreamVariants = insert (toVariant streamAndVariant) thisAddress activeStreamVariants}
 
 addRemoteVariant :: StreamAndVariant -> ServerAddress -> Effect Unit
 addRemoteVariant streamAndVariant remoteServer = Gen.doCall (serverName (toStreamId streamAndVariant))
@@ -104,12 +104,12 @@ init :: StreamDetails -> Effect State
 init streamDetails = do
   _ <- logInfo "Ingest Aggregator starting" {streamId, streamDetails}
   config <- Config.ingestAggregatorAgentConfig
-  thisLocatedServer <- PoPDefinition.thisServer
+  thisServer <- PoPDefinition.getThisServer
   _ <- Timer.sendEvery (serverName streamId) config.streamAvailableAnnounceMs Tick
   _ <- announceStreamIsAvailable streamId
   workflow <- startWorkflowImpl streamDetails.slot.name ((\p -> tuple2 (StreamAndVariant (wrap streamDetails.slot.name) (wrap p.streamName)) p.streamName) <$> streamDetails.slot.profiles)
   pure { config : config
-       , thisNode : locatedServerAddress thisLocatedServer
+       , thisAddress : extractAddress thisServer
        , streamId
        , streamDetails
        , activeStreamVariants : Map.empty

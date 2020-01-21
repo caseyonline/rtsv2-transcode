@@ -17,6 +17,7 @@ import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.PoPDefinition as PoPDefintion
 import Rtsv2.Utils (member)
 import Shared.Stream (StreamId(..))
+import Shared.Types (extractAddress)
 import Shared.Utils (lazyCrashIfMissing)
 import Stetson (StetsonHandler)
 import Stetson.Rest as Rest
@@ -36,9 +37,9 @@ stats =
                               Rest.result isAgentAvailable req state)
 
   # Rest.resourceExists (\req state@{streamId} -> do
-                            thisServerAddress <- _.address <$> unwrap <$> PoPDefintion.thisServer
+                            thisServerAddress <- _.address <$> unwrap <$> PoPDefintion.getThisServer
                             serverLoads <- IntraPoP.whereIsEgest streamId
-                            let currentNodeHasEgest = member thisServerAddress $ (unwrap >>> _.address) <$> serverLoads
+                            let currentNodeHasEgest = member thisServerAddress $ extractAddress <$> serverLoads
                             Rest.result currentNodeHasEgest req state)
 
   # Rest.contentTypesProvided (\req state@{streamId} ->

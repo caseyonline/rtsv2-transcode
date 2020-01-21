@@ -32,7 +32,7 @@ import Rtsv2.Router.Endpoint (Endpoint(..))
 import Rtsv2.Router.Endpoint as RoutingEndpoint
 import Rtsv2.Router.Parser as Routing
 import Shared.Stream (StreamId(..))
-import Shared.Types (LocatedServer(..), PoPName, ServerAddress, ServerLoad(..), ServerLocation(..), extractLocatedServer, locatedServerAddress, locatedServerPoP)
+import Shared.Types (PoPName, Server(..), ServerAddress, ServerLoad(..), ServerLocation(..), extractAddress, serverLoadToServer)
 import Shared.Utils (lazyCrashIfMissing)
 import SpudGun as SpudGun
 import Stetson (HttpMethod(..), RestResult, StetsonHandler)
@@ -106,14 +106,14 @@ findEgestForStream thisNode streamId = do
 
   where
     -- TODO not just head :)
-    pickInstance = map (_.address<<< unwrap) <<< List.head
+    pickInstance = map extractAddress <<< List.head
 
 --------------------------------------------------------------------------------
 -- Do we have a relay in this pop - yes -> use it
 -- Does the stream have an origin (aggregator) - if so build a streamRelay chain to that origin
 -- otherwise 404
 --------------------------------------------------------------------------------
-findRelayForStream :: StreamId -> Effect (Either FailureReason LocatedServer)
+findRelayForStream :: StreamId -> Effect (Either FailureReason Server)
 findRelayForStream streamId = do
   mRelay <- IntraPoP.whereIsStreamRelay $ spy "streamId" streamId
 
@@ -162,15 +162,15 @@ findRelayForStream streamId = do
   --   Prefer with most capacity (if any have enough) and create a relay and an edge on it
   -- If we are on the same server as the IngestAggregator and we have capacity, then create a single relay here
   -- same pop -> 1) If server with aggregator has cap
-createRelayChain :: LocatedServer -> StreamId -> Effect (Either FailureReason LocatedServer)
-createRelayChain ingestAggregatorServer@(LocatedServer ia) streamId = do
+createRelayChain :: Server -> StreamId -> Effect (Either FailureReason Server)
+createRelayChain ingestAggregatorServer@(Server ia) streamId = do
 
   let aggregatorPoP = ia.pop
-  (LocatedServer thisLocatedServer) <- PoPDefinition.thisServer
+  (Server thisServer) <- PoPDefinition.getThisServer
 
 
   upstreamPoPs <-
-    if aggregatorPoP == thisLocatedServer.pop then
+    if aggregatorPoP == thisServer.pop then
       pure $ List.singleton mempty
     else
       TransPoP.routesTo aggregatorPoP
@@ -178,8 +178,8 @@ createRelayChain ingestAggregatorServer@(LocatedServer ia) streamId = do
   createRelayInThisPoP streamId aggregatorPoP upstreamPoPs ingestAggregatorServer
 
 
-createRelayInThisPoP :: StreamId -> PoPName -> List ViaPoPs -> LocatedServer -> Effect (Either FailureReason LocatedServer)
-createRelayInThisPoP streamId thisPoPName routes (LocatedServer ingestAggregator) = do
+createRelayInThisPoP :: StreamId -> PoPName -> List ViaPoPs -> Server -> Effect (Either FailureReason Server)
+createRelayInThisPoP streamId thisPoPName routes (Server ingestAggregator) = do
   maybeCandidateRelayServer <- IntraPoP.getIdleServer (const true)
 
   case (spy "maybeCandidateRelayServer" maybeCandidateRelayServer) of
@@ -198,7 +198,7 @@ createRelayInThisPoP streamId thisPoPName routes (LocatedServer ingestAggregator
         -- what if there isn't enough resource on an intermediate PoP?
         -- Single relay that goes direct?
         _restResult <- SpudGun.postJson (wrap url) $ request
-        pure $ Right $ extractLocatedServer candidateRelayServer
+        pure $ Right $ serverLoadToServer candidateRelayServer
 
     Nothing ->
       pure $ Left NoResource
@@ -224,7 +224,7 @@ clientStart =
         streamId = spy "clientStartInit" $ StreamId $ fromMaybe' (lazyCrashIfMissing "stream_id binding missing") $ binding (atom "stream_id") req
       in
         do
-          thisNode <- locatedServerAddress <$> PoPDefinition.thisServer
+          thisNode <- extractAddress <$> PoPDefinition.getThisServer
           egestResp <- findEgestForStream thisNode streamId
           let
             req2 = setHeader "x-servedby" (unwrap thisNode) req
@@ -286,7 +286,7 @@ clientStop =
       let streamId = StreamId $ fromMaybe' (lazyCrashIfMissing "stream_id binding missing") $ binding (atom "stream_id") req
       in
        do
-         thisNode <- locatedServerAddress <$> PoPDefinition.thisServer
+         thisNode <- extractAddress <$> PoPDefinition.getThisServer
          Rest.initResult req { streamId : spy "init" streamId
                              }
 
