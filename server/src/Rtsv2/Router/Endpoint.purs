@@ -25,6 +25,8 @@ data Endpoint
   | RelayE StreamId
   | LoadE
   | IngestAggregatorE StreamId
+  | IngestAggregatorPlayerE StreamId
+  | IngestAggregatorPlayerJsE StreamId
   | IngestAggregatorActiveIngestsE StreamId StreamVariant
   | IngestAggregatorActiveIngestsPlayerE StreamId StreamVariant
   | IngestAggregatorActiveIngestsPlayerJsE StreamId StreamVariant
@@ -53,6 +55,8 @@ endpoint = root $ sum
   , "LoadE"                                            : "" / "api" / path "load" noArgs
 
   , "IngestAggregatorE"                                : "" / "api" / "agents" / "ingestAggregator" / streamId segment
+  , "IngestAggregatorPlayerE"                          : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "player"
+  , "IngestAggregatorPlayerJsE"                        : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "js" -- TODO - would like to add '/ "[...]"' bit it causes compiler error that I don't understand
   , "IngestAggregatorActiveIngestsE"                   : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "activeIngests" / variant segment
   , "IngestAggregatorActiveIngestsPlayerE"             : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "activeIngests" / variant segment / "player"
   , "IngestAggregatorActiveIngestsPlayerJsE"           : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "activeIngests" / variant segment / "js" -- TODO - would like to add '/ "[...]"' bit it causes compiler error that I don't understand

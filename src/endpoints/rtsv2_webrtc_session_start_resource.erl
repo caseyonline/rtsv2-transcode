@@ -10,11 +10,13 @@
          init/2,
          allowed_methods/2,
          service_available/2,
+         resource_exists/2,
          content_types_provided/2,
          get_json/2
         ]).
 
 -record(state, {
+                exists :: boolean(),
                 management_interface :: undefined | atom(),
                 turn_server_public_ip :: undefined | binary_string(),
                 turn_server_public_port :: integer(),
@@ -56,17 +58,25 @@ init(Req, MakeStreamAndVariant) ->
                          use_turn = UseTurn == 1
                        }}.
 
-service_available(Req, State = #state{bus_name = BusName}) ->
+resource_exists(Req, State = #state{exists = Exists}) ->
+  {Exists, Req, State}.
 
-  case pubsub:read_bus_metadata(BusName) of
-    {ok, #live_stream_metadata{
-            program_details = Frame = #frame{}
-           }} ->
-      {true, Req, State#state{
-                    program_details = Frame
-                   }};
-    _ ->
-      {false, Req, State}
+service_available(Req, State = #state{bus_name = BusName}) ->
+  case pubsub:exists(BusName) of
+    true ->
+      case pubsub:read_bus_metadata(BusName) of
+        {ok, #live_stream_metadata{
+                program_details = Frame = #frame{}
+               }} ->
+          {true, Req, State#state{
+                        exists = true,
+                        program_details = Frame
+                       }};
+        _ ->
+          {false, Req, State#state{exists = true}}
+      end;
+    false ->
+      {true, Req, State#state{exists = false}}
   end.
 
 allowed_methods(Req, State) ->

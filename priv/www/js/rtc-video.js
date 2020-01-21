@@ -9,6 +9,7 @@ template.innerHTML = `
   }
 
   video {
+    width: 250px;
   }
 </style>
 <video controls>

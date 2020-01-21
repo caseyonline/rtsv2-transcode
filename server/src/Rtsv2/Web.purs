@@ -99,6 +99,12 @@ init args = do
         (printUrl endpoint StreamPublishE)
         LlnwStubHandler.streamPublish
     # Stetson.static
+         (printUrl endpoint (IngestAggregatorPlayerE (StreamId ":stream_id")))
+         (PrivFile "rtsv2" "www/aggregatorPlayer.html")
+    # Stetson.static
+         ((printUrl endpoint (IngestAggregatorPlayerJsE (StreamId ":stream_id"))) <> "/[...]")
+         (PrivDir "rtsv2" "www/js")
+    # Stetson.static
          (printUrl endpoint (IngestAggregatorActiveIngestsPlayerE (StreamId ":stream_id") (StreamVariant ":variant_id")))
          (PrivFile "rtsv2" "www/play.html")
     # Stetson.static

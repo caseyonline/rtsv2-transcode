@@ -1,0 +1,39 @@
+<head>
+  <title>Ingest Aggregator Test Player</title>
+  <script src="https://code.jquery.com/jquery-1.11.3.js"></script>
+  <script type="text/javascript" src="js/aggregatorPlayer.js"></script>
+  <script src="js/rtc-video.js" type="module" async></script>
+  <style>
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 13px;
+    }
+
+    #players {
+      display: flex;
+      padding: 10px;
+    }
+
+    .rtcVideo {
+      flex: 0 1 0px;
+      padding: 10px;
+      border: 1px solid black;
+      min-width: 250px;
+      margin: 10px;
+    }
+
+    .ingestTitle {
+      font-weight: bold;
+      padding-bottom: 5px;
+      align: centre;
+    }
+
+    rtc-video {
+      --width: 200px;
+    }
+
+  </style>
+</head>
+<body>
+  <div id="players"></div>
+</body>
