@@ -50,7 +50,7 @@ import Rtsv2.PoPDefinition as PoPDefinition
 import Serf (IpAndPort, LamportClock, SerfCoordinate, calcRtt)
 import Serf as Serf
 import Shared.Stream (StreamId)
-import Shared.Types (LocatedServer(..), PoPName, ServerAddress(..), ServerLocation(..), locatedServerAddress, locatedServerPoP)
+import Shared.Types (LocatedServer, PoPName, ServerAddress(..), ServerLocation(..), locatedServerAddress, locatedServerPoP, toLocatedServer)
 import Shared.Utils (distinctRandomNumbers)
 import SpudGun (bodyToString)
 import SpudGun as SpudGun
@@ -219,7 +219,7 @@ init { config: config@{ leaderTimeoutMs
   now <- systemTimeMs
 
   rpcBindIp <- Env.privateInterfaceIp
-  thisLocatedServer <- PoPDefinition.thisLocatedServer
+  thisLocatedServer <- PoPDefinition.thisServer
   otherPoPNames <- PoPDefinition.getOtherPoPNames
   defaultRtts' <- getDefaultRtts config
 
@@ -294,7 +294,7 @@ handleTransPoPMessage (TMStreamState StreamAvailable streamId server) state@{int
   case mServerLocation of
     Nothing -> pure state
     Just location -> do
-      _ <- announceRemoteStreamIsAvailable streamId (LocatedServer server location)
+      _ <- announceRemoteStreamIsAvailable streamId (toLocatedServer server location)
       pure state
 
 handleTransPoPMessage (TMStreamState StreamStopped streamId server) state@{intraPoPApi: {announceRemoteStreamStopped}} = do
@@ -303,7 +303,7 @@ handleTransPoPMessage (TMStreamState StreamStopped streamId server) state@{intra
   case mServerLocation of
     Nothing -> pure state
     Just location -> do
-      _ <- announceRemoteStreamStopped streamId (LocatedServer server location)
+      _ <- announceRemoteStreamStopped streamId (toLocatedServer server location)
       pure state
 
 --------------------------------------------------------------------------------
@@ -318,7 +318,7 @@ originPoP addr =
     mServerLocation <- PoPDefinition.whereIsServer addr
     pure $ case mServerLocation of
       Nothing -> Nothing
-      Just (ServerLocation sourcePoP _) -> Just sourcePoP
+      Just (ServerLocation sl) -> Just sl.pop
 
 getDefaultRtts :: TransPoPAgentConfig -> Effect Rtts
 getDefaultRtts {defaultRttMs} = do
@@ -388,9 +388,7 @@ getPoP :: Serf.SerfMember -> Effect (Maybe PoPName)
 getPoP {name : memberName} =
   do
     mServerLocation <- PoPDefinition.whereIsServer (ServerAddress memberName)
-    pure $ case mServerLocation of
-      Nothing -> Nothing
-      Just (ServerLocation popName _) -> Just popName
+    pure $ (unwrap >>> _.pop) <$> mServerLocation
 
 handleRttRefresh :: State -> Effect State
 handleRttRefresh state@{ weAreLeader: false} =  pure state
@@ -582,12 +580,12 @@ screenOriginAndMessageClock thisLocatedServer messageServerAddress msgClock last
     case mLocation of
       Nothing -> do
         pure Nothing
-      Just location@(ServerLocation msgPopName _) ->
-        if locatedServerPoP thisLocatedServer == msgPopName
+      Just location@(ServerLocation sl) ->
+        if locatedServerPoP thisLocatedServer == sl.pop
         then
           pure Nothing
         else do
-          pure $ Just $ Tuple (Map.insert messageServerAddress msgClock lastClockByServer) $ LocatedServer messageServerAddress location
+          pure $ Just $ Tuple (Map.insert messageServerAddress msgClock lastClockByServer) $ toLocatedServer messageServerAddress location
 
 
 startScript :: String
@@ -595,6 +593,7 @@ startScript = "scripts/startTransPoPAgent.sh"
 
 stopScript :: String
 stopScript = "scripts/stopTransPoPAgent.sh"
+
 
 --------------------------------------------------------------------------------
 -- Log helpers

@@ -9,8 +9,7 @@ import Prelude
 import Data.Either (Either(..), hush)
 import Data.Foldable (any)
 import Data.Maybe (Maybe)
-import Data.Newtype (unwrap, wrap)
-import Data.Profunctor.Choice (left, right)
+import Data.Newtype (wrap)
 import Effect (Effect)
 import Foreign (Foreign)
 import Pinto (ServerName)
@@ -24,7 +23,6 @@ import Rtsv2.Names as Names
 import Serf (Ip)
 import Shared.LlnwApiTypes (AuthType, PublishCredentials, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamPublish, StreamAuth)
 import Shared.Stream (StreamAndVariant(..))
-import Simple.JSON as JSON
 import SpudGun (bodyToJSON)
 import SpudGun as SpudGun
 
