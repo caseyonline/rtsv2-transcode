@@ -26,6 +26,10 @@ data Endpoint
   | LoadE
   | IngestAggregatorE StreamId
   | IngestAggregatorActiveIngestsE StreamId StreamVariant
+  | IngestAggregatorActiveIngestsPlayerE StreamId StreamVariant
+  | IngestAggregatorActiveIngestsPlayerJsE StreamId StreamVariant
+  | IngestAggregatorActiveIngestsPlayerSessionStartE StreamId StreamVariant
+  | IngestAggregatorActiveIngestsPlayerSessionE StreamId StreamVariant String
   | IngestAggregatorsE
   | IngestInstanceLlwpE StreamId StreamVariant
   | IngestStartE Canary String StreamVariant
@@ -41,25 +45,31 @@ derive instance genericEndpoint :: Generic Endpoint _
 -- | Our codec will cause a compile-time error if we fail to handle any of our route cases.
 endpoint :: RouteDuplex' Endpoint
 endpoint = root $ sum
-  { "TransPoPLeaderE"                : "" / "api" / path "transPoPLeader" noArgs
-  , "HealthCheckE"                   : "" / "api" / path "healthCheck" noArgs
-  , "EgestStatsE"                    : "" / "api" / "agents" / "egest" / streamId segment
-  , "RelayE"                         : "" / "api" / "agents" / "relay" / streamId segment
-  , "LoadE"                          : "" / "api" / path "load" noArgs
+  {
+    "TransPoPLeaderE"                                  : "" / "api" / path "transPoPLeader" noArgs
+  , "HealthCheckE"                                     : "" / "api" / path "healthCheck" noArgs
+  , "EgestStatsE"                                      : "" / "api" / "agents" / "egest" / streamId segment
+  , "RelayE"                                           : "" / "api" / "agents" / "relay" / streamId segment
+  , "LoadE"                                            : "" / "api" / path "load" noArgs
 
-  , "IngestAggregatorE"              : "" / "api" / "agents" / "ingestAggregator" / streamId segment
-  , "IngestAggregatorActiveIngestsE" : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "activeIngests" / variant segment
-  , "IngestAggregatorsE"             : "" / "api" / "agents" / path "ingestAggregator" noArgs
-  , "IngestInstanceLlwpE"            : "" / "api" / "agents" / "ingest" / streamId segment / variant segment / "llwp"
+  , "IngestAggregatorE"                                : "" / "api" / "agents" / "ingestAggregator" / streamId segment
+  , "IngestAggregatorActiveIngestsE"                   : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "activeIngests" / variant segment
+  , "IngestAggregatorActiveIngestsPlayerE"             : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "activeIngests" / variant segment / "player"
+  , "IngestAggregatorActiveIngestsPlayerJsE"           : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "activeIngests" / variant segment / "js" -- TODO - would like to add '/ "[...]"' bit it causes compiler error that I don't understand
+  , "IngestAggregatorActiveIngestsPlayerSessionStartE" : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "activeIngests" / variant segment / "session"
+  , "IngestAggregatorActiveIngestsPlayerSessionE"      : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "activeIngests" / variant segment / "session" / segment
 
-  , "IngestStartE"                   : "" / "api" / "public" / canary segment / "ingest" / segment / variant segment / "start"
-  , "IngestStopE"                    : "" / "api" / "public" / canary segment / "ingest" / segment / variant segment / "stop"
-  , "ClientStartE"                   : "" / "api" / "public" / canary segment / "client" / streamId segment / "start"
-  , "ClientStopE"                    : "" / "api" / "public" / canary segment / "client" / streamId segment / "stop"
+  , "IngestAggregatorsE"                               : "" / "api" / "agents" / path "ingestAggregator" noArgs
+  , "IngestInstanceLlwpE"                              : "" / "api" / "agents" / "ingest" / streamId segment / variant segment / "llwp"
 
-  , "StreamAuthE"                    : "" / "llnwstub" / "rts" / "v1" / path "streamauthtype" noArgs
-  , "StreamAuthTypeE"                : "" / "llnwstub" / "rts" / "v1" / path "streamauth" noArgs
-  , "StreamPublishE"                 : "" / "llnwstub" / "rts" / "v1" / path "streampublish" noArgs
+  , "IngestStartE"                                     : "" / "api" / "public" / canary segment / "ingest" / segment / variant segment / "start"
+  , "IngestStopE"                                      : "" / "api" / "public" / canary segment / "ingest" / segment / variant segment / "stop"
+  , "ClientStartE"                                     : "" / "api" / "public" / canary segment / "client" / streamId segment / "start"
+  , "ClientStopE"                                      : "" / "api" / "public" / canary segment / "client" / streamId segment / "stop"
+
+  , "StreamAuthE"                                      : "" / "llnwstub" / "rts" / "v1" / path "streamauthtype" noArgs
+  , "StreamAuthTypeE"                                  : "" / "llnwstub" / "rts" / "v1" / path "streamauth" noArgs
+  , "StreamPublishE"                                   : "" / "llnwstub" / "rts" / "v1" / path "streampublish" noArgs
   }
 
 -- | StreamId
@@ -88,8 +98,6 @@ variantToString (StreamVariant str) = str
 -- canaryToString :: Canary -> String
 -- canaryToString Live = "live"
 -- canaryToString Canary = "canary"
-
-
 
 -- | This combinator transforms a codec over `String` into one that operates on the `StreamId` type.
 streamId :: RouteDuplex' String -> RouteDuplex' StreamId

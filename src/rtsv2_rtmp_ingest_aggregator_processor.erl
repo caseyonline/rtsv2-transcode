@@ -1,7 +1,5 @@
 -module(rtsv2_rtmp_ingest_aggregator_processor).
 
--define(ID3AS_COMMON_USE_LOGGER, true).
-
 -include_lib("id3as_media/include/id3as_workflow.hrl").
 -include_lib("id3as_media/include/frame.hrl").
 
@@ -28,7 +26,8 @@
         {
          permissible_delta_before_adjustment_ms = 250 :: milliseconds(),
          reference_stream :: undefined | term(),
-         streams :: undefined | maps:map({term(), reference()}, #active_stream_state{})
+         streams :: undefined | maps:map({term(), reference()}, #active_stream_state{}),
+         pending_program_details = #{} :: maps:map(term(), frame())
         }).
 
 %%------------------------------------------------------------------------------
@@ -50,11 +49,14 @@ process_input({ingest_stopped, _}, State = #?state{streams = undefined}) ->
   {ok, State};
 
 process_input({ingest_stopped, Id}, State = #?state{reference_stream = ReferenceStream,
-                                                    streams = Streams}) ->
+                                                    streams = Streams,
+                                                    pending_program_details = PendingProgramDetails}) ->
 
   ?SLOG_INFO("Ingest stopped", #{stream => Id}),
 
   NewStreams = maps:filter(fun({Key, _Ref}, _) -> Key /= Id end, Streams),
+
+  PendingProgramDetails2 = maps:filter(fun(Key, _Frame) -> Key /= Id end, PendingProgramDetails),
 
   case ReferenceStream of
     {Id, _} ->
@@ -69,22 +71,31 @@ process_input({ingest_stopped, Id}, State = #?state{reference_stream = Reference
                      NewStreams) of
         undefined ->
           ?SLOG_INFO("Ingest was reference.  No new reference selected", #{new_streams => NewStreams}),
-          {ok, State#?state{reference_stream = undefined, streams = #{}}};
+          {ok, State#?state{reference_stream = undefined,
+                            streams = #{},
+                            pending_program_details = PendingProgramDetails2
+                           }};
 
         {_, NewReferenceStream} ->
           ?SLOG_INFO("Ingest was reference.  New reference selected", #{reference => NewReferenceStream}),
           {ok, State#?state{reference_stream = NewReferenceStream,
-                            streams = NewStreams}}
+                            streams = NewStreams,
+                            pending_program_details = PendingProgramDetails2
+                           }}
       end;
     _ ->
-      {ok, State#?state{streams = NewStreams}}
+      {ok, State#?state{streams = NewStreams,
+                        pending_program_details = PendingProgramDetails2
+                       }}
   end;
 
 process_input(Input = #frame{source_metadata = #source_metadata{source_id = Id,
                                                                 source_instance = Instance},
                              frame_metadata = #video_frame_metadata{is_idr_frame = true},
                              vm_capture_us = CaptureUs,
-                             dts = Dts}, State = #?state{reference_stream = undefined}) ->
+                             dts = Dts},
+              State = #?state{reference_stream = undefined,
+                              pending_program_details = PendingProgramDetails}) ->
 
   %% No reference - this stream is the new reference and no timestamp delta needed
   Key = {Id, Instance},
@@ -95,11 +106,31 @@ process_input(Input = #frame{source_metadata = #source_metadata{source_id = Id,
                                      last_iframe_utc = CaptureUs,
                                      last_iframe_dts = Dts},
 
-  {ok, Input, State#?state{reference_stream = Key,
-                           streams = maps:put(Key, StreamState, #{})}};
+  Output = case maps:get(Id, PendingProgramDetails, undefined) of
+             undefined ->
+?INFO("XXX NO PROG DETAILS ~p -> ~p", [Id, PendingProgramDetails]),
+               Input;
+             ProgramDetails ->
+?INFO("XXX SENDING PROG DETAILS ~p", [ProgramDetails]),
+               [ProgramDetails, Input]
+           end,
+
+  {ok, Output, State#?state{reference_stream = Key,
+                            streams = maps:put(Key, StreamState, #{}),
+                            pending_program_details = maps:remove(Id, PendingProgramDetails)
+                           }};
+
+process_input(Input = #frame{type = program_details,
+                             source_metadata = #source_metadata{source_id = Id}},
+              State = #?state{reference_stream = undefined,
+                              pending_program_details = PendingProgramDetails}) ->
+  %% We need an iframe to create a reference stream
+  ?INFO("XXX STORE PD ~p", [Input]),
+  {ok, State#?state{pending_program_details = maps:put(Id, Input, PendingProgramDetails)}};
 
 process_input(_Input, State = #?state{reference_stream = undefined}) ->
   %% We need an iframe to create a reference stream
+  ?INFO("XXX DROP ~p", [trace_formatter:format(_Input)]),
   {ok, State};
 
 process_input(Input = #frame{source_metadata = #source_metadata{source_id = Id,
@@ -109,7 +140,9 @@ process_input(Input = #frame{source_metadata = #source_metadata{source_id = Id,
                              pts = Pts,
                              dts = Dts}, State = #?state{streams = Streams,
                                                          reference_stream = ReferenceStream,
-                                                         permissible_delta_before_adjustment_ms = PermissibleDelta}) ->
+                                                         permissible_delta_before_adjustment_ms = PermissibleDelta,
+                                                         pending_program_details = PendingProgramDetails
+                                                        }) ->
 
   Key = {Id, Instance},
 
@@ -145,11 +178,29 @@ process_input(Input = #frame{source_metadata = #source_metadata{source_id = Id,
                                                     us_delta => UsDelta,
                                                     dts_delta => DtsDelta}),
 
-          process_input(Input, State#?state{streams = maps:put(Key, #active_stream_state{delta = StreamDelta}, Streams)});
+          {ok, DeltadFrame, State2} = process_input(Input, State#?state{streams = maps:put(Key, #active_stream_state{delta = StreamDelta}, Streams)}),
+
+          Output = case maps:get(Id, PendingProgramDetails, undefined) of
+                     undefined ->
+                       ?INFO("XXX NO PROG DETAILS2 ~p -> ~p", [Id, PendingProgramDetails]),
+                       DeltadFrame;
+                     ProgramDetails ->
+                       ?INFO("XXX SENDING PROG DETAILS2 ~p", [ProgramDetails]),
+                       [ProgramDetails#frame{dts = DeltadFrame#frame.dts,
+                                             pts = DeltadFrame#frame.dts}, DeltadFrame]
+                   end,
+
+          {ok, Output, State2#?state{pending_program_details = maps:remove(Id, PendingProgramDetails)}};
 
         _ ->
           %% We can't generate a reference delta on a non-iframe
-          {ok, State}
+          case Input of
+            #frame{type = program_details} ->
+  ?INFO("XXX STORE2 PD ~p", [Input]),
+              {ok, State#?state{pending_program_details = maps:put(Id, Input, PendingProgramDetails)}};
+            _ ->
+              {ok, State}
+          end
       end;
 
     StreamState = #active_stream_state{delta = Delta} ->

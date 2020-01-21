@@ -9,13 +9,14 @@ module Rtsv2.Agents.IngestAggregatorInstance
 
 import Prelude
 
-import Data.Newtype (unwrap)
+import Data.Newtype (unwrap, wrap)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
 import Erl.Data.Map (Map, delete, insert, size, toUnfoldable)
 import Erl.Data.Map as Map
+import Erl.Data.Tuple (Tuple2, tuple2)
 import Foreign (Foreign)
 import Logger (Logger, spy)
 import Logger as Logger
@@ -32,10 +33,10 @@ import Rtsv2.Router.Endpoint as RoutingEndpoint
 import Rtsv2.Router.Parser as Routing
 import Shared.Agent as Agent
 import Shared.LlnwApiTypes (StreamDetails)
-import Shared.Stream (StreamAndVariant, StreamId(..), StreamVariant, toStreamId, toVariant)
+import Shared.Stream (StreamAndVariant(..), StreamId(..), StreamVariant, toStreamId, toVariant)
 import Shared.Types (IngestAggregatorPublicState, ServerAddress, locatedServerAddress)
 
-foreign import startWorkflowImpl :: String -> Effect Foreign
+foreign import startWorkflowImpl :: String -> Array (Tuple2 StreamAndVariant String) -> Effect Foreign
 foreign import addLocalVariantImpl :: Foreign -> StreamAndVariant -> Effect Unit
 foreign import addRemoteVariantImpl :: Foreign -> StreamAndVariant -> String -> Effect Unit
 foreign import removeVariantImpl :: Foreign -> StreamAndVariant -> Effect Unit
@@ -106,7 +107,7 @@ init streamDetails = do
   thisLocatedServer <- PoPDefinition.thisLocatedServer
   _ <- Timer.sendEvery (serverName streamId) config.streamAvailableAnnounceMs Tick
   _ <- announceStreamIsAvailable streamId
-  workflow <- startWorkflowImpl streamDetails.slot.name
+  workflow <- startWorkflowImpl streamDetails.slot.name ((\p -> tuple2 (StreamAndVariant (wrap streamDetails.slot.name) (wrap p.streamName)) p.streamName) <$> streamDetails.slot.profiles)
   pure { config : config
        , thisNode : locatedServerAddress thisLocatedServer
        , streamId

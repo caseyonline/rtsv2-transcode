@@ -1,7 +1,5 @@
 -module(rtsv2_rtmp_ingest_handler).
 
--define(ID3AS_COMMON_USE_LOGGER, true).
-
 -include_lib("id3as_common/include/common.hrl").
 -include_lib("id3as_common/include/id3as_types.hrl").
 -include_lib("id3as_media/include/id3as_workflow.hrl").

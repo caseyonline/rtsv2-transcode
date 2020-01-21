@@ -11,7 +11,8 @@
     recon,
     cowboy,
     gun,
-    jsx
+    jsx,
+    id3as_common
    ]},
   {env,[]},
   {modules, []},

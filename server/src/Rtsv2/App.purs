@@ -17,7 +17,7 @@ foreign import setLogRoot :: Effect Foreign
 start :: forall a. EffectFn2 Atom (List a) (Tuple2 Atom Pid)
 start =
   let
-    _ = unsafePerformEffect setLogRoot
+--    _ = unsafePerformEffect setLogRoot
     _ = unsafePerformEffect mergeOverrides
   in
    App.simpleStart Sup.startLink

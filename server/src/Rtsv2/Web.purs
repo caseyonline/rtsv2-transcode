@@ -36,7 +36,7 @@ import Rtsv2.Router.Parser (printUrl)
 import Serf (Ip(..))
 import Shared.Stream (StreamAndVariant(..), StreamId(..), StreamVariant(..))
 import Shared.Types (ServerAddress)
-import Stetson (RestResult, StetsonHandler)
+import Stetson (RestResult, StaticAssetLocation(..), StetsonHandler)
 import Stetson as Stetson
 import Stetson.Rest as Rest
 
@@ -98,19 +98,38 @@ init args = do
     # Stetson.route
         (printUrl endpoint StreamPublishE)
         LlnwStubHandler.streamPublish
-    # Stetson.cowboyRoutes streamingRoutes
+    # Stetson.static
+         (printUrl endpoint (IngestAggregatorActiveIngestsPlayerE (StreamId ":stream_id") (StreamVariant ":variant_id")))
+         (PrivFile "rtsv2" "www/play.html")
+    # Stetson.static
+         ((printUrl endpoint (IngestAggregatorActiveIngestsPlayerJsE (StreamId ":stream_id") (StreamVariant ":variant_id"))) <> "/[...]")
+         (PrivDir "rtsv2" "www/js")
+
+    # Stetson.cowboyRoutes cowboyRoutes
     # Stetson.port args.port
     # (uncurry4 Stetson.bindTo) (ipToTuple bindIp)
     # Stetson.startClear "http_listener"
   pure $ State {}
   where
-    streamingRoutes :: List Path
-    streamingRoutes = Path (tuple3
-                            (matchSpec $ printUrl endpoint (IngestInstanceLlwpE (StreamId ":stream_id") (StreamVariant ":variant_id")))
-                            (NativeModuleName $ atom "llwp_stream_resource")
-                            (InitialState $ unsafeToForeign makeStreamAndVariant)
-                           )
-                      : nil
+    cowboyRoutes :: List Path
+    cowboyRoutes =
+      Path (tuple3
+            (matchSpec $ printUrl endpoint (IngestInstanceLlwpE (StreamId ":stream_id") (StreamVariant ":variant_id")))
+            (NativeModuleName $ atom "llwp_stream_resource")
+            (InitialState $ unsafeToForeign makeStreamAndVariant)
+           )
+      : Path (tuple3
+              (matchSpec $ printUrl endpoint (IngestAggregatorActiveIngestsPlayerSessionStartE (StreamId ":stream_id") (StreamVariant ":variant_id")))
+              (NativeModuleName $ atom "rtsv2_webrtc_session_start_resource")
+              (InitialState $ unsafeToForeign makeStreamAndVariant)
+             )
+      : Path (tuple3
+              (matchSpec $ printUrl endpoint (IngestAggregatorActiveIngestsPlayerSessionE (StreamId ":stream_id") (StreamVariant ":variant_id") ":session_id"))
+              (NativeModuleName $ atom "rtsv2_webrtc_session_resource")
+              (InitialState $ unsafeToForeign makeStreamAndVariant)
+             )
+      : nil
+
     makeStreamAndVariant :: String -> String -> StreamAndVariant
     makeStreamAndVariant streamId variantId = StreamAndVariant (wrap streamId) (wrap variantId)
 

@@ -1,7 +1,5 @@
 -module(rtsv2_rtmp_ingest_generator).
 
--define(ID3AS_COMMON_USE_LOGGER, true).
-
 -behaviour(workflow_generator).
 
 -include_lib("id3as_common/include/common.hrl").
