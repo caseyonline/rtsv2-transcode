@@ -9,10 +9,10 @@ template.innerHTML = `
   }
 
   video {
-    width: 250px;
+    width: 400px;
   }
 </style>
-<video controls>
+<video controls muted>
 </video>
 `;
 
@@ -44,6 +44,13 @@ class RTCVideo extends HTMLElement {
     console.log("adopted!");
   }
 
+  readyState() {
+    return this._video.readyState;
+  }
+
+  startTime() {
+    return this._startTime;
+  }
 
   _maybeStartPlayback() {
     this._stopPlayback();
@@ -57,6 +64,7 @@ class RTCVideo extends HTMLElement {
     console.debug(`Starting video playback with src ${src}.`);
     this._session = new Session(src, this._video);
     this._session.start();
+    this._startTime = new Date();
   }
 
   _stopPlayback() {
