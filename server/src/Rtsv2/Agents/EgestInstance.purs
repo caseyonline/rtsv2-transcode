@@ -103,7 +103,7 @@ init streamId = do
       pure state
     Nothing -> do
       -- Launch
-      _ <- StreamRelayInstanceSup.startRelay streamId
+--      _ <- StreamRelayInstanceSup.startRelay streamId
       pure state
 
 handleInfo :: Msg -> State -> Effect (CastResult State)

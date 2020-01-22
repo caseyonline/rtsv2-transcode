@@ -1,17 +1,23 @@
 module Rtsv2.Router.Endpoint ( Endpoint(..)
                              , Canary(..)
-                             , endpoint ) where
+                             , endpoint
+                             , makeUrl
+                             ) where
 
 import Prelude hiding ((/))
 
 import Data.Either (note)
 import Data.Generic.Rep (class Generic)
 import Data.Maybe (Maybe(..))
-import Data.Newtype (unwrap)
+import Data.Newtype (class Newtype, unwrap, wrap)
+import Logger (spy)
 import Routing.Duplex (RouteDuplex', as, path, root, segment)
 import Routing.Duplex.Generic (noArgs, sum)
 import Routing.Duplex.Generic.Syntax ((/))
+import Rtsv2.Router.Parser as Routing
 import Shared.Stream (StreamId(..), StreamVariant(..))
+import Shared.Types (Server, ServerAddress(..), extractAddress)
+import SpudGun (Url)
 
 -- data Canary = Live
 --             | Canary
@@ -22,7 +28,8 @@ data Endpoint
   = TransPoPLeaderE
   | HealthCheckE
   | EgestStatsE StreamId
-  | RelayE StreamId
+  | EgestE
+  | RelayE
   | LoadE
   | IngestAggregatorE StreamId
   | IngestAggregatorPlayerE StreamId
@@ -51,7 +58,8 @@ endpoint = root $ sum
     "TransPoPLeaderE"                                  : "" / "api" / path "transPoPLeader" noArgs
   , "HealthCheckE"                                     : "" / "api" / path "healthCheck" noArgs
   , "EgestStatsE"                                      : "" / "api" / "agents" / "egest" / streamId segment
-  , "RelayE"                                           : "" / "api" / "agents" / "relay" / streamId segment
+  , "EgestE"                                           : "" / "api" / "agents" / path "egest" noArgs
+  , "RelayE"                                           : "" / "api" / "agents" / path "relay" noArgs
   , "LoadE"                                            : "" / "api" / path "load" noArgs
 
   , "IngestAggregatorE"                                : "" / "api" / "agents" / "ingestAggregator" / streamId segment
@@ -75,6 +83,17 @@ endpoint = root $ sum
   , "StreamAuthTypeE"                                  : "" / "llnwstub" / "rts" / "v1" / path "streamauth" noArgs
   , "StreamPublishE"                                   : "" / "llnwstub" / "rts" / "v1" / path "streampublish" noArgs
   }
+
+
+makeUrl :: forall r a. Newtype a { address :: ServerAddress | r }
+        => a -> Endpoint -> Url
+makeUrl server ep =
+  let
+    path = Routing.printUrl endpoint ep
+  in spy "url" wrap $ "http://" <> toHost server <> ":3000" <> path
+  where
+    toHost = extractAddress >>> unwrap
+
 
 -- | StreamId
 

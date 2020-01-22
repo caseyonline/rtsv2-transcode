@@ -12,28 +12,32 @@ import Data.Maybe (Maybe(..), fromMaybe')
 import Data.Newtype (unwrap, wrap)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
-import Erl.Cowboy.Handlers.Rest (MovedResult, moved, notMoved)
+import Erl.Cowboy.Handlers.Rest (MovedResult, moved, notMoved, restResult)
 import Erl.Cowboy.Req (Req, StatusCode(..), binding, replyWithoutBody, setHeader)
 import Erl.Data.List (List, singleton, (:))
 import Erl.Data.List as List
 import Erl.Data.Map as Map
 import Logger (Logger, spy)
 import Logger as Logger
+import Partial.Unsafe (unsafePartial)
 import Rtsv2.Agents.EgestInstance as EgestInstance
+import Rtsv2.Agents.EgestInstanceSup (CreateEgestPayload)
 import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
 import Rtsv2.Agents.IntraPoP as IntraPoP
+import Rtsv2.Agents.StreamRelayInstance (CreateRelayPayload)
 import Rtsv2.Agents.TransPoP (ViaPoPs)
 import Rtsv2.Agents.TransPoP as TransPoP
 import Rtsv2.Audit as Audit
 import Rtsv2.Handler.MimeType as MimeType
-import Rtsv2.Handler.Relay (CreateRelayPayload)
 import Rtsv2.PoPDefinition as PoPDefinition
-import Rtsv2.Router.Endpoint (Endpoint(..))
+import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Rtsv2.Router.Endpoint as RoutingEndpoint
 import Rtsv2.Router.Parser as Routing
+import Rtsv2.Utils (crashIfLeft)
 import Shared.Stream (StreamId(..))
 import Shared.Types (PoPName, Server(..), ServerAddress, ServerLoad(..), ServerLocation(..), extractAddress, serverLoadToServer)
 import Shared.Utils (lazyCrashIfMissing)
+import SpudGun (SpudResult, Url)
 import SpudGun as SpudGun
 import Stetson (HttpMethod(..), RestResult, StetsonHandler)
 import Stetson.Rest as Rest
@@ -43,7 +47,7 @@ data ClientStartState
   | Foo  { streamId :: StreamId
          , isIngestAvailable :: Boolean
          , currentNodeHasEdge :: Boolean
-         , thisNode :: ServerAddress
+         , thisServer :: Server
          , currentEdgeLocations :: List ServerAddress
          }
 
@@ -59,7 +63,6 @@ data FailureReason
 newtype State = State { streamId :: StreamId
                       , egestResp :: (Either FailureReason EgestLocation)
                       }
---derive instance newtypeState :: Newtype State _
 
 --------------------------------------------------------------------------------
 -- Do we have any EgestInstances in this pop that have capacity for another client?
@@ -72,36 +75,57 @@ newtype State = State { streamId :: StreamId
 --          No -> Try to find or create a relay for this stream and also put an egest handler on the same node
 -- otherwise 404
 --------------------------------------------------------------------------------
-findEgestForStream :: ServerAddress -> StreamId -> Effect (Either FailureReason EgestLocation)
-findEgestForStream thisNode streamId = do
-  servers <- IntraPoP.whereIsEgest streamId
+findEgestForStream :: Server -> StreamId -> Effect (Either FailureReason EgestLocation)
+findEgestForStream thisServer streamId = do
+  existingEgests <- IntraPoP.whereIsEgest streamId
 
-  let serversWithCapacity  =
-        List.filter (\(ServerLoad sl) ->
-                      sl.load < (wrap 76.323341)
-                    ) $ servers
-  if any (\server ->  (server # unwrap # _.address) == thisNode) servers
+  let
+    thisAddress = extractAddress thisServer
+    egestsWithCapacity  =
+      List.filter (\(ServerLoad sl) ->
+                    sl.load < (wrap 76.323341)
+                  ) $ existingEgests
+  if any (\server ->  (extractAddress server) == thisAddress) egestsWithCapacity
   then
     do
-      _ <- EgestInstanceSup.maybeStartAndAddClient streamId
+      _ <- EgestInstance.addClient streamId
       pure $ Right Local
   else
-   case pickInstance serversWithCapacity of
-     Just server ->
-       pure $ Right $ Remote (spy "remote" server)
+   case pickInstance egestsWithCapacity of
+     Just egestServerAddress ->
+       pure $ Right $ Remote (spy "remote" egestServerAddress)
 
      Nothing ->
        do
-         relayForStream <- findRelayForStream streamId
-
-         case relayForStream of
-           Left e ->
-             pure $ Left e
-
-           Right relayAddress ->
-             do
+         mIdleServer <- IntraPoP.getIdleServer (const true)
+         case mIdleServer of
+           Nothing ->
+             pure $ Left NoResource
+           Just idleServer ->
+             if extractAddress idleServer == thisAddress
+             then do
                _ <- EgestInstanceSup.maybeStartAndAddClient streamId
                pure $ Right Local
+             else do
+               -- post to remote server to try to start an egest on it
+               let
+                 payload = { streamId } :: CreateEgestPayload
+                 url = makeUrl idleServer EgestE
+                 addr = extractAddress idleServer
+               _ <- crashIfLeft =<< SpudGun.postJson url payload
+               pure $ Right $ Remote addr
+
+           -- relayForStream <- findRelayForStream streamId
+
+           -- case relayForStream of
+           --   Left e ->
+           --     pure $ Left e
+
+           --   Right relayAddress ->
+           --     do
+           --       -- TODO - why is the egest on the same server
+           --       _ <- EgestInstanceSup.maybeStartAndAddClient streamId
+  --               pure $ Right Local
 
 
   where
@@ -179,34 +203,31 @@ createRelayChain ingestAggregatorServer@(Server ia) streamId = do
 
 
 createRelayInThisPoP :: StreamId -> PoPName -> List ViaPoPs -> Server -> Effect (Either FailureReason Server)
-createRelayInThisPoP streamId thisPoPName routes (Server ingestAggregator) = do
+createRelayInThisPoP streamId thisPoPName routes ingestAggregator = do
   maybeCandidateRelayServer <- IntraPoP.getIdleServer (const true)
 
   case (spy "maybeCandidateRelayServer" maybeCandidateRelayServer) of
     Just candidateRelayServer ->
       let
-        path = Routing.printUrl RoutingEndpoint.endpoint (RelayE streamId)
-        url = spy "url" $ "http://" <> toHost candidateRelayServer <> ":3000" <> path
+        url = makeUrl candidateRelayServer RelayE
 
         request =
-          { streamSource: ingestAggregator.address
-          , routes: List.toUnfoldable $ map List.toUnfoldable routes
+          { streamId,
+            aggregator: ingestAggregator
+          , routes: List.toUnfoldable <$> List.toUnfoldable routes
           } :: CreateRelayPayload
       in
       do
         -- TODO / thoughts - do we wait for the entire relay chain to exist before returning?
         -- what if there isn't enough resource on an intermediate PoP?
         -- Single relay that goes direct?
-        _restResult <- SpudGun.postJson (wrap url) $ request
+        _restResult <- SpudGun.postJson url request
         pure $ Right $ serverLoadToServer candidateRelayServer
 
     Nothing ->
       pure $ Left NoResource
 
 
-toHost :: ServerLoad -> String
-toHost =
-  unwrap >>> _.address >>> unwrap
 
 clientStart :: StetsonHandler State
 clientStart =
@@ -224,10 +245,10 @@ clientStart =
         streamId = spy "clientStartInit" $ StreamId $ fromMaybe' (lazyCrashIfMissing "stream_id binding missing") $ binding (atom "stream_id") req
       in
         do
-          thisNode <- extractAddress <$> PoPDefinition.getThisServer
-          egestResp <- findEgestForStream thisNode streamId
+          thisServer <- PoPDefinition.getThisServer
+          egestResp <- findEgestForStream thisServer streamId
           let
-            req2 = setHeader "x-servedby" (unwrap thisNode) req
+            req2 = setHeader "x-servedby" (unwrap $ extractAddress thisServer) req
             _ = spy "egestResp" egestResp
           Rest.initResult req2 $ State { streamId, egestResp }
 

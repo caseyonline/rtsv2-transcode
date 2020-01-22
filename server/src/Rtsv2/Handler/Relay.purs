@@ -1,6 +1,5 @@
 module Rtsv2.Handler.Relay
        ( resource
-       , CreateRelayPayload
        ) where
 
 import Prelude
@@ -15,27 +14,21 @@ import Erl.Data.Binary (Binary)
 import Erl.Data.Binary.IOData (IOData, fromBinary, toBinary)
 import Erl.Data.List (singleton, (:))
 import Erl.Data.Map as Map
-import Rtsv2.Agents.StreamRelayInstance (Status)
+import Rtsv2.Agents.StreamRelayInstance (Status, CreateRelayPayload)
 import Rtsv2.Agents.StreamRelayInstance as StreamRelayInstance
 import Rtsv2.Agents.StreamRelayInstanceSup as StreamRelayInstanceSup
 import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.Utils (noprocToMaybe)
 import Shared.Stream (StreamId)
-import Shared.Types (PoPName, ServerAddress)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON as JSON
 import Stetson (HttpMethod(..), StetsonHandler)
 import Stetson.Rest as Rest
 import Unsafe.Coerce as Unsafe.Coerce
 
-type CreateRelayPayload
-  = { streamSource :: ServerAddress
-    , routes :: Array (Array PoPName)
-    }
-
 type State
   = { streamId :: StreamId
-    , createRelayPayload :: Maybe CreateRelayPayload
+    , mCreateRelayPayload :: Maybe CreateRelayPayload
     , method :: String
     , mStatus :: Maybe Status
     }
@@ -57,27 +50,29 @@ resource =
         mStatus <- case method' of
           "POST" -> pure Nothing
           _ -> noprocToMaybe $ StreamRelayInstance.status streamId
-        createRelayPayload <-
+        mCreateRelayPayload <-
           case method' of
             "POST" ->  hush <$> JSON.readJSON <$> binaryToString <$> allBody req mempty
             _ -> pure Nothing
         Rest.initResult req
             { streamId
-            , createRelayPayload
+            , mCreateRelayPayload
             , method: method'
             , mStatus
             }
 
-    malformedRequest req state@{method, streamId, mStatus, createRelayPayload} =
+    malformedRequest req state@{method, streamId, mStatus, mCreateRelayPayload} =
       case method of
         "POST" -> do
-          Rest.result (isNothing createRelayPayload) req state
+          Rest.result (isNothing mCreateRelayPayload) req state
         _ ->
           Rest.result false req state
 
-    acceptJson req state@{streamId} =
+    acceptJson req state@{streamId, mCreateRelayPayload} =
       do
-        _ <- StreamRelayInstanceSup.startRelay streamId
+        let
+          createRelayPayload = fromMaybe' (lazyCrashIfMissing "impossible noPayload") mCreateRelayPayload
+        _ <- StreamRelayInstanceSup.startRelay createRelayPayload
         Rest.result true req state
 
     provideContent req state =

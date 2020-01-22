@@ -63,7 +63,7 @@ init args = do
         (printUrl endpoint (EgestStatsE (StreamId ":stream_id")))
         EgestStatsHandler.stats
     # Stetson.route
-        (printUrl endpoint (RelayE (StreamId ":stream_id")))
+        (printUrl endpoint RelayE)
         RelayHandler.resource
     # Stetson.route
         (printUrl endpoint LoadE)

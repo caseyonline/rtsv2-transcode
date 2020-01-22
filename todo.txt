@@ -12,6 +12,8 @@
 [ ] - intraPoP load messages
 [ ] - transPoP load messages
 [ ] - have an http wrapper that does local gen_server call if on same node (ingestInstance - local / remote?)
+[ ] - Lots of gen server calls are not checking return values.  Let It Crash
+[ ] - Maybe have a generic JSON -> supervisor relay module (a la Egest.purs)
 
 [x] - ingest instance stop need to remove instance from aggregator - just need test
 [x] - if ingest aggregator exits, then ingest instances need to reallocate a new aggregator

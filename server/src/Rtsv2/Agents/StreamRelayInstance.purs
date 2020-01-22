@@ -4,6 +4,7 @@ module Rtsv2.Agents.StreamRelayInstance
   , init
   , status
   , Status
+  , CreateRelayPayload
   ) where
 
 import Prelude
@@ -22,6 +23,14 @@ import Pinto.Gen as Gen
 import Rtsv2.Names as Names
 import Shared.Agent as Agent
 import Shared.Stream (StreamId)
+import Shared.Types (PoPName, Server)
+
+
+type CreateRelayPayload
+  = { streamId :: StreamId
+    , aggregator :: Server
+    , routes :: Array (Array PoPName)
+    }
 
 
 type Status = {}
@@ -31,8 +40,8 @@ type State
 serverName :: StreamId -> ServerName State Unit
 serverName streamId = Via (NativeModuleName $ atom "gproc") $ unsafeToForeign (tuple3 (atom "n") (atom "l") (tuple2 "streamRelay" streamId))
 
-startLink :: StreamId -> Effect StartLinkResult
-startLink streamId = Gen.startLink (serverName streamId) (init streamId) Gen.defaultHandleInfo
+startLink :: CreateRelayPayload -> Effect StartLinkResult
+startLink createRelayPayload = Gen.startLink (serverName createRelayPayload.streamId) (init createRelayPayload) Gen.defaultHandleInfo
 
 isAvailable :: StreamId -> Effect Boolean
 isAvailable streamId = Names.isRegistered (serverName streamId)
@@ -42,7 +51,7 @@ status streamId =
   exposeStateMember _.status streamId
 
 
-init :: StreamId -> Effect State
+init :: CreateRelayPayload -> Effect State
 init streamId = do
   _ <- logInfo "StreamRelay starting" {streamId: streamId}
   pure {status: {}}

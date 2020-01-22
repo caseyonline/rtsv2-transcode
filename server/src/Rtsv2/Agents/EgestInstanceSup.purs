@@ -1,7 +1,9 @@
 module Rtsv2.Agents.EgestInstanceSup
        ( startLink
+       , startEgest
        , maybeStartAndAddClient
        , isAvailable
+       , CreateEgestPayload
        )
        where
 
@@ -20,6 +22,12 @@ import Rtsv2.Agents.EgestInstance as EgestInstance
 import Rtsv2.Names as Names
 import Shared.Stream (StreamId)
 
+
+type CreateEgestPayload
+  = { streamId :: StreamId
+    }
+
+
 serverName :: SupervisorName
 serverName = Names.egestInstanceSupName
 
@@ -28,6 +36,17 @@ isAvailable = Names.isRegistered serverName
 
 startLink :: forall a. a -> Effect Pinto.StartLinkResult
 startLink _ = Sup.startLink serverName init
+
+
+startEgest :: CreateEgestPayload -> Effect Unit
+startEgest payload = do
+  isActive <- EgestInstance.isActive payload.streamId
+  case isActive of
+    false -> do
+             _ <- Sup.startSimpleChild childTemplate serverName payload.streamId
+             pure unit
+    true ->
+      pure unit
 
 maybeStartAndAddClient :: StreamId -> Effect Unit
 maybeStartAndAddClient streamId = do

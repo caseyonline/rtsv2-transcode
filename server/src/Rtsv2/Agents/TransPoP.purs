@@ -50,7 +50,7 @@ import Rtsv2.PoPDefinition as PoPDefinition
 import Serf (IpAndPort, LamportClock, SerfCoordinate, calcRtt)
 import Serf as Serf
 import Shared.Stream (StreamId)
-import Shared.Types (PoPName, Server, ServerAddress(..), ServerLocation(..), extractAddress, extractPoP, toServer)
+import Shared.Types (PoPName, Server, ServerAddress(..), extractAddress, extractPoP, toServer)
 import Shared.Utils (distinctRandomNumbers)
 import SpudGun (bodyToString)
 import SpudGun as SpudGun
@@ -315,10 +315,7 @@ serverName = Names.transPoPName
 originPoP :: ServerAddress -> Effect (Maybe PoPName)
 originPoP addr =
   do
-    mServerLocation <- PoPDefinition.whereIsServer addr
-    pure $ case mServerLocation of
-      Nothing -> Nothing
-      Just (ServerLocation sl) -> Just sl.pop
+    (map extractPoP) <$> PoPDefinition.whereIsServer addr
 
 getDefaultRtts :: TransPoPAgentConfig -> Effect Rtts
 getDefaultRtts {defaultRttMs} = do
