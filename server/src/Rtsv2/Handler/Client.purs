@@ -95,38 +95,31 @@ findEgestForStream thisServer streamId = do
      Just egestServerAddress ->
        pure $ Right $ Remote (spy "remote" egestServerAddress)
 
-     Nothing ->
-       do
-         mIdleServer <- IntraPoP.getIdleServer (const true)
-         case mIdleServer of
-           Nothing ->
-             pure $ Left NoResource
-           Just idleServer ->
-             if extractAddress idleServer == thisAddress
-             then do
-               _ <- EgestInstanceSup.maybeStartAndAddClient streamId
-               pure $ Right Local
-             else do
-               -- post to remote server to try to start an egest on it
-               let
-                 payload = { streamId } :: CreateEgestPayload
-                 url = makeUrl idleServer EgestE
-                 addr = extractAddress idleServer
-               _ <- crashIfLeft =<< SpudGun.postJson url payload
-               pure $ Right $ Remote addr
+     Nothing -> do
+        -- does the stream even exists
+        mAggregator <- IntraPoP.whereIsIngestAggregator streamId
+        case spy "mAggregator" mAggregator of
+          Nothing ->
+            pure $ Left NotFound
 
-           -- relayForStream <- findRelayForStream streamId
-
-           -- case relayForStream of
-           --   Left e ->
-           --     pure $ Left e
-
-           --   Right relayAddress ->
-           --     do
-           --       -- TODO - why is the egest on the same server
-           --       _ <- EgestInstanceSup.maybeStartAndAddClient streamId
-  --               pure $ Right Local
-
+          Just aggregator -> do
+            mIdleServer <- IntraPoP.getIdleServer (const true)
+            case mIdleServer of
+              Nothing ->
+                pure $ Left NoResource
+              Just idleServer ->
+                if extractAddress idleServer == thisAddress
+                then do
+                  _ <- EgestInstanceSup.maybeStartAndAddClient streamId
+                  pure $ Right Local
+                else do
+                  let
+                    payload = { streamId
+                              , aggregator} :: CreateEgestPayload
+                    url = makeUrl idleServer EgestE
+                    addr = extractAddress idleServer
+                  _ <- crashIfLeft =<< SpudGun.postJson url payload
+                  pure $ Right $ Remote addr
 
   where
     -- TODO not just head :)

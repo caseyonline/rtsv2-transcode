@@ -21,10 +21,12 @@ import Pinto.Sup as Sup
 import Rtsv2.Agents.EgestInstance as EgestInstance
 import Rtsv2.Names as Names
 import Shared.Stream (StreamId)
+import Shared.Types (Server)
 
 
 type CreateEgestPayload
   = { streamId :: StreamId
+    , aggregator :: Server
     }
 
 
