@@ -6,6 +6,7 @@
 -include_lib("id3as_media/include/frame.hrl").
 -include_lib("id3as_media/include/rtmp.hrl").
 -include_lib("id3as_media/include/send_to_bus_processor.hrl").
+-include_lib("id3as_media/include/frame_writer.hrl").
 
 -export([
          init/3,
@@ -141,7 +142,8 @@ init(Rtmp, ConnectArgs, [#{ingestStarted := IngestStarted,
       {authenticate, llnw, UserName, <<"ODE3MDQ3NTYz">>};
 
     #{} ->
-      ?INFO("No authmod - start authentication"),
+      ?SLOG_INFO("No authmod - start authentication", #{host => Host,
+                                                        shortName => ShortName}),
       Reply = ((StreamAuthType(Host))(ShortName))(),
 
       case Reply of
@@ -243,7 +245,13 @@ start_workflow(Rtmp, StreamId, ClientId, Path, StreamAndVariant) ->
                                          module = send_to_bus_processor,
                                          config = #send_to_bus_processor_config{consumes = true,
                                                                                 bus_name = {ingest, StreamAndVariant}}
-                                        }
+                                        },
+
+#processor{name = writer,
+           subscribes_to = {demux, ?video_frames},
+           module = frame_writer,
+           config = #frame_writer_config{filename = "/tmp/out.h264", mode = consumes}
+          }
                              ]
                },
 

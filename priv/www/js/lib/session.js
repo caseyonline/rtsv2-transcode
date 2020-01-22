@@ -36,6 +36,10 @@ export class Session extends EventTarget {
           this.dispatchEvent(new Event("ready"));
         };
 
+        signalSocket.onerror = (event) => {
+
+        };
+
         signalSocket.onmessage = (event) => {
 
           var response = JSON.parse(event.data);
@@ -71,10 +75,13 @@ export class Session extends EventTarget {
 
   _sendMessage(type, data, schedulePing) {
     var toSend = { "type": type, "data": data };
-    this._signalSocket.send(JSON.stringify(toSend));
 
-    if (schedulePing) {
-      this._schedulePing();
+    if (this._signalSocket.readyState == 1) {
+      this._signalSocket.send(JSON.stringify(toSend));
+
+      if (schedulePing) {
+        this._schedulePing();
+      }
     }
   }
 

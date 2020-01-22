@@ -1,3 +1,6 @@
+[S] - ingest / ingest aggregator monitoring and recovery
+[S] - ffmpeg visual / sei timecode for demo
+[S] - workflow metrics to prometheus
 [S] - rtsv2_rtmp_ingest_handler currently has hardcoded salt / challenge - to be held in gen_server once LLNW API is finalised
 [S] - handle multiple ingest aggregators
 [S] - client API in shared
