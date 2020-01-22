@@ -3,7 +3,6 @@ module Rtsv2.Agents.EgestInstanceSup
        , startEgest
        , maybeStartAndAddClient
        , isAvailable
-       , CreateEgestPayload
        )
        where
 
@@ -18,17 +17,9 @@ import Pinto (SupervisorName)
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStartTemplate, childType)
 import Pinto.Sup as Sup
+import Rtsv2.Agents.EgestInstance (CreateEgestPayload)
 import Rtsv2.Agents.EgestInstance as EgestInstance
 import Rtsv2.Names as Names
-import Shared.Stream (StreamId)
-import Shared.Types (Server)
-
-
-type CreateEgestPayload
-  = { streamId :: StreamId
-    , aggregator :: Server
-    }
-
 
 serverName :: SupervisorName
 serverName = Names.egestInstanceSupName
@@ -45,21 +36,21 @@ startEgest payload = do
   isActive <- EgestInstance.isActive payload.streamId
   case isActive of
     false -> do
-             _ <- Sup.startSimpleChild childTemplate serverName payload.streamId
+             _ <- Sup.startSimpleChild childTemplate serverName payload
              pure unit
     true ->
       pure unit
 
-maybeStartAndAddClient :: StreamId -> Effect Unit
-maybeStartAndAddClient streamId = do
-  isActive <- EgestInstance.isActive streamId
+maybeStartAndAddClient :: CreateEgestPayload -> Effect Unit
+maybeStartAndAddClient payload = do
+  isActive <- EgestInstance.isActive payload.streamId
   case isActive of
     false -> do
-             _ <- Sup.startSimpleChild childTemplate serverName streamId
-             maybeStartAndAddClient streamId
+             _ <- Sup.startSimpleChild childTemplate serverName payload
+             maybeStartAndAddClient payload
     true ->
       do
-        _ <- EgestInstance.addClient streamId
+        _ <- EgestInstance.addClient payload.streamId
         pure unit
 
   -- result <- Sup.startSimpleChild childTemplate serverName streamId
@@ -82,7 +73,7 @@ init = do
             : nil
         )
 
-childTemplate :: Pinto.ChildTemplate StreamId
+childTemplate :: Pinto.ChildTemplate CreateEgestPayload
 childTemplate = Pinto.ChildTemplate (EgestInstance.startLink)
 
 --------------------------------------------------------------------------------

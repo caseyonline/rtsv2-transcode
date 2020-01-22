@@ -6,6 +6,9 @@ module Shared.Types
        , ServerLoad(..)
        , ServerLocation(..)
        , Server(..)
+       , ServerRec
+       , RelayServer(..)
+       , EgestServer(..)
        , IngestAggregatorPublicState
        , toServer
        , toServerLoad
@@ -66,10 +69,20 @@ derive newtype instance readForeignServerLocation :: ReadForeign ServerLocation
 derive newtype instance writeForeignServerLocation :: WriteForeign ServerLocation
 
 
-newtype Server = Server { address :: ServerAddress
-                        , pop :: PoPName
-                        , region :: RegionName
-                        }
+
+
+type ServerRec = { address :: ServerAddress
+                 , pop :: PoPName
+                 , region :: RegionName
+                 }
+
+newtype Server = Server ServerRec
+newtype RelayServer = Relay ServerRec
+newtype EgestServer = Egest ServerRec
+
+
+-- newtype AggregatorServer = Aggregator Server
+-- newtype IdleServerServer = Idle Server
 
 derive instance newtypeServer :: Newtype Server _
 derive newtype instance eqServer :: Eq Server
@@ -77,6 +90,23 @@ derive newtype instance ordServer :: Ord Server
 derive newtype instance showServer :: Show Server
 derive newtype instance readForeignServer :: ReadForeign Server
 derive newtype instance writeForeignServer :: WriteForeign Server
+
+derive instance newtypeRelayServer :: Newtype RelayServer _
+derive newtype instance eqRelayServer :: Eq RelayServer
+derive newtype instance ordRelayServer :: Ord RelayServer
+derive newtype instance showRelayServer :: Show RelayServer
+derive newtype instance readForeignRelayServer :: ReadForeign RelayServer
+derive newtype instance writeForeignRelayServer :: WriteForeign RelayServer
+
+derive instance newtypeEgestServer :: Newtype EgestServer _
+derive newtype instance eqEgestServer :: Eq EgestServer
+derive newtype instance ordEgestServer :: Ord EgestServer
+derive newtype instance showEgestServer :: Show EgestServer
+derive newtype instance readForeignEgestServer :: ReadForeign EgestServer
+derive newtype instance writeForeignEgestServer :: WriteForeign EgestServer
+
+
+
 
 newtype ServerLoad = ServerLoad { address :: ServerAddress
                                 , pop :: PoPName

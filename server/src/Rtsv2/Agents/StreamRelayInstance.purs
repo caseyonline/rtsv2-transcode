@@ -1,6 +1,7 @@
 module Rtsv2.Agents.StreamRelayInstance
   ( startLink
   , isAvailable
+  , registerEgest
   , init
   , status
   , Status
@@ -9,6 +10,9 @@ module Rtsv2.Agents.StreamRelayInstance
 
 import Prelude
 
+import Data.Maybe (Maybe(..))
+import Data.Set (Set)
+import Data.Set as Set
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
@@ -20,28 +24,38 @@ import Logger as Logger
 import Pinto (ServerName(..), StartLinkResult)
 import Pinto.Gen (CallResult(..))
 import Pinto.Gen as Gen
+import Rtsv2.Agents.TransPoP (ViaPoPs)
 import Rtsv2.Names as Names
 import Shared.Agent as Agent
 import Shared.Stream (StreamId)
-import Shared.Types (PoPName, Server)
+import Shared.Types (EgestServer, PoPName, RelayServer, Server)
 
 
 type CreateRelayPayload
   = { streamId :: StreamId
     , aggregator :: Server
-    , routes :: Array (Array PoPName)
     }
 
 
-type Status = {}
+type Status = { }
 type State
-  = { status :: Status }
+  = { streamId :: StreamId
+    , aggregator :: Server
+    -- , primaryRelayRoutes :: Maybe (List ViaPoPs)
+    -- , primaryNeighbours :: Maybe (List Server)
+    -- , secondaryRelayCount :: Int
+    -- , secondaryRelayRoutes :: Maybe (List ViaPoPs)
+    , relaysServed :: Set RelayServer
+    , egestsServed :: Set EgestServer
+    , egestSourceRoutes :: Maybe (List ViaPoPs)
+    , status :: Status
+    }
 
 serverName :: StreamId -> ServerName State Unit
 serverName streamId = Via (NativeModuleName $ atom "gproc") $ unsafeToForeign (tuple3 (atom "n") (atom "l") (tuple2 "streamRelay" streamId))
 
 startLink :: CreateRelayPayload -> Effect StartLinkResult
-startLink createRelayPayload = Gen.startLink (serverName createRelayPayload.streamId) (init createRelayPayload) Gen.defaultHandleInfo
+startLink payload = Gen.startLink (serverName payload.streamId) (init payload) Gen.defaultHandleInfo
 
 isAvailable :: StreamId -> Effect Boolean
 isAvailable streamId = Names.isRegistered (serverName streamId)
@@ -52,9 +66,24 @@ status streamId =
 
 
 init :: CreateRelayPayload -> Effect State
-init streamId = do
-  _ <- logInfo "StreamRelay starting" {streamId: streamId}
-  pure {status: {}}
+init payload = do
+  _ <- logInfo "StreamRelay starting" {payload}
+  pure { streamId: payload.streamId
+       , aggregator : payload.aggregator
+       , relaysServed : mempty
+       , egestsServed : mempty
+       , egestSourceRoutes : Nothing
+       , status: {}
+       }
+
+registerEgest :: StreamId -> EgestServer -> Effect Unit
+registerEgest streamId egestServer = Gen.doCall (serverName streamId) $ doRegisterEgest egestServer
+
+doRegisterEgest :: EgestServer -> State -> Effect (CallResult Unit State)
+doRegisterEgest egestServer state@{egestsServed} = do
+  _ <- logInfo "Register egest " {egestServer}
+  pure $ CallReply unit state{ egestsServed = Set.insert egestServer egestsServed
+                             }
 
 
 exposeStateMember :: forall a. (State -> a) -> StreamId -> Effect a

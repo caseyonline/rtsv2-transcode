@@ -4,39 +4,62 @@ module Rtsv2.Agents.EgestInstance
   , addClient
   , removeClient
   , currentStats
+  , CreateEgestPayload
   ) where
 
 import Prelude
 
 import Bus as Bus
+import Data.Either (Either(..))
+import Data.Either as Either
 import Data.Maybe (Maybe(..))
 import Data.Newtype (unwrap, wrap)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, singleton)
+import Erl.Data.List as List
 import Erl.Utils (Milliseconds, Ref, makeRef)
-import Logger (Logger)
+import Logger (Logger, spy)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
+import Rtsv2.Agents.IngestAggregatorInstanceSup as IngestAggregatorInstanceSup
 import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..))
 import Rtsv2.Agents.IntraPoP as IntraPoP
+import Rtsv2.Agents.StreamRelayInstance (CreateRelayPayload)
+import Rtsv2.Agents.StreamRelayInstance as StreamRelayInstance
 import Rtsv2.Agents.StreamRelayInstanceSup as StreamRelayInstanceSup
+import Rtsv2.Agents.TransPoP as TransPoP
 import Rtsv2.Config as Config
+import Rtsv2.Load as Load
 import Rtsv2.Names as Names
+import Rtsv2.PoPDefinition as PoPDefinition
+import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
+import Rtsv2.Utils (crashIfLeft)
 import Shared.Agent as Agent
 import Shared.Stream (StreamId)
+import Shared.Types (EgestServer, Load, RelayServer, Server(..), ServerLoad(..), extractPoP, serverLoadToServer)
+import SpudGun as SpudGun
+
+type CreateEgestPayload
+  = { streamId :: StreamId
+    , aggregator :: Server
+    }
 
 type State
   = { streamId :: StreamId
+    , aggregator :: Server
+    , thisServer :: EgestServer
+    , relay :: Maybe RelayServer
     , clientCount :: Int
     , lingerTime :: Milliseconds
     , stopRef :: Maybe Ref
     }
 
 data Msg = Tick
+         | InitStreamRelays
          | MaybeStop Ref
          | IntraPoPBus IntraPoP.IntraPoPBusMessage
 
@@ -46,8 +69,8 @@ serverName streamId = Names.egestInstanceName streamId
 isActive :: StreamId -> Effect Boolean
 isActive streamId = Names.isRegistered (serverName streamId)
 
-startLink :: StreamId -> Effect StartLinkResult
-startLink streamId = Gen.startLink (serverName streamId) (init streamId) handleInfo
+startLink :: CreateEgestPayload-> Effect StartLinkResult
+startLink payload = Gen.startLink (serverName payload.streamId) (init payload) handleInfo
 
 addClient :: StreamId -> Effect Unit
 addClient streamId = Gen.doCall (serverName streamId) doAddClient
@@ -84,16 +107,24 @@ currentStats streamId =
   Gen.call (serverName streamId) \state@{clientCount} ->
     CallReply clientCount state
 
-init :: StreamId -> Effect State
-init streamId = do
-  {egestAvailableAnnounceMs, lingerTimeMs} <- Config.egestAgentConfig
-  _ <- logInfo "Egest starting" {streamId: streamId}
+
+toEgestServer :: Server -> EgestServer
+toEgestServer = unwrap >>> wrap
+
+init :: CreateEgestPayload -> Effect State
+init payload@{streamId} = do
+  _ <- logInfo "Egest starting" {payload}
   _ <- Bus.subscribe (serverName streamId) IntraPoP.bus IntraPoPBus
+  {egestAvailableAnnounceMs, lingerTimeMs} <- Config.egestAgentConfig
+
+  thisServer <- PoPDefinition.getThisServer
   _ <- IntraPoP.announceEgestIsAvailable streamId
   _ <- Timer.sendEvery (serverName streamId) egestAvailableAnnounceMs Tick
+  _ <- Timer.sendAfter (serverName streamId) 0 InitStreamRelays
   maybeRelay <- IntraPoP.whereIsStreamRelay streamId
   let
     state ={ streamId
+           , thisServer : toEgestServer thisServer
            , clientCount: 0
            , lingerTime: wrap lingerTimeMs
            , stopRef: Nothing
@@ -110,6 +141,8 @@ handleInfo :: Msg -> State -> Effect (CastResult State)
 handleInfo msg state@{streamId} =
   case msg of
     Tick -> CastNoReply <$> handleTick state
+
+    InitStreamRelays -> CastNoReply <$> initStreamRelay state
 
     MaybeStop ref -> maybeStop ref state
 
@@ -133,6 +166,141 @@ maybeStop ref state@{streamId
     pure $ CastStop state
 
   | otherwise = pure $ CastNoReply state
+
+
+initStreamRelay :: State -> Effect State
+initStreamRelay state = pure state
+
+--------------------------------------------------------------------------------
+-- Do we have a relay in this pop - yes -> use it
+-- Does the stream have an origin (aggregator) - if so build a streamRelay chain to that origin
+-- otherwise 404
+--------------------------------------------------------------------------------
+data FailureReason
+  = NotFound
+  | NoResource
+
+findRelayForStream :: State -> Effect (Either FailureReason RelayServer)
+findRelayForStream state@{streamId, thisServer} = do
+  mRelay <- IntraPoP.whereIsStreamRelay $ spy "streamId" streamId
+
+  case spy "mRelay" mRelay of
+    Just relay ->
+      pure $ Right $ toRelayServer relay
+
+    Nothing ->
+      Either.note NoResource <$> launchLocalOrRemote state
+
+
+launchLocalOrRemote :: State -> Effect (Maybe RelayServer)
+launchLocalOrRemote state@{streamId, aggregator, thisServer} = do
+  currentLoad <- Load.load
+  if
+    currentLoad < loadThresholdToCreateRelay then do
+      _ <- StreamRelayInstanceSup.startRelay {streamId, aggregator}
+      _ <- StreamRelayInstance.registerEgest streamId thisServer
+      --TODO - is this a candidate for erlang monitors etc?
+
+      pure $ Just $ toRelayServer thisServer
+    else
+      launchRemote state
+
+--toRelayServer :: Server -> RelayServer
+toRelayServer = unwrap >>> wrap
+
+launchRemote :: State -> Effect (Maybe RelayServer)
+launchRemote state@{streamId, aggregator, thisServer} = do
+  candidate <- IntraPoP.getIdleServer filterForLoad
+  case candidate of
+    Nothing ->
+      pure Nothing
+    Just idleServer -> do
+      let
+        url = makeUrl idleServer RelayE
+        payload = {streamId, aggregator} :: CreateRelayPayload
+
+        -- TODO - functions to make URLs from ServerAddress
+        --url = "http://" <> (unwrap $ extractAddress server) <> ":3000/api/agents/ingestAggregator"
+      _ <- crashIfLeft =<< SpudGun.postJson url payload
+      pure $ Just $ toRelayServer $ serverLoadToServer idleServer
+
+
+
+loadThresholdToCreateRelay :: Load
+loadThresholdToCreateRelay = wrap 50.0
+
+filterForLoad :: ServerLoad -> Boolean
+filterForLoad (ServerLoad sl) = sl.load < loadThresholdToCreateRelay
+
+
+ -- IngestAggregator - .... - .... - ... - Egest
+ -- TheirPoP ............................. OurPoP
+
+ -- 1. compute pop route ->
+ --     1. [ ThePoP ]
+ --     2.
+ --        [ TheirPoP, IntermediatePoP, OurPoP ]
+ --        [ TheirPoP, OtherIntermediatePoP1, OtherIntermediaPoP2, OurPoP ]
+
+ -- 2. Create the relay for our pop - passing it the entirety of both chains
+ --    detail: what does that means? is it just an HTTP request to some endpoint? yes
+
+ -- that is everything
+
+
+  -- from our relay's point of view, it needs to:
+  -- if we're in the same pop as the aggregator - source from the ingest aggregator directly
+  -- if we're in a different pop
+  --   for each of the chains, pick the next pop in the next chain, and ask it to relay to us passing in the chain information relevant to it
+  --      detail: to what server in the next pop do we talk?
+
+  -- additional thoughts on load and stuff:
+  -- If aggregator is in this pop pick server for the relay
+  --   Needs capacity
+  --   Prefer with most capacity (if any have enough) and create a relay and an edge on it
+  -- If we are on the same server as the IngestAggregator and we have capacity, then create a single relay here
+  -- same pop -> 1) If server with aggregator has cap
+createRelayChain :: Server -> StreamId -> Effect (Either FailureReason Server)
+createRelayChain aggregator streamId = do
+
+  let aggregatorPoP = extractPoP aggregator
+  thisServer <- PoPDefinition.getThisServer
+
+
+  upstreamPoPs <-
+    if aggregatorPoP == extractPoP thisServer then
+      pure $ List.singleton mempty
+    else
+      TransPoP.routesTo aggregatorPoP
+
+  pure $ Left NoResource
+  --createRelayInThisPoP streamId aggregatorPoP upstreamPoPs ingestAggregatorServer
+
+
+-- createRelayInThisPoP :: StreamId -> PoPName -> List ViaPoPs -> Server -> Effect (Either FailureReason Server)
+-- createRelayInThisPoP streamId thisPoPName routes ingestAggregator = do
+--   maybeCandidateRelayServer <- IntraPoP.getIdleServer (const true)
+
+--   case (spy "maybeCandidateRelayServer" maybeCandidateRelayServer) of
+--     Just candidateRelayServer ->
+--       let
+--         url = makeUrl candidateRelayServer RelayE
+
+--         request =
+--           { streamId,
+--             aggregator: ingestAggregator
+--           , routes: List.toUnfoldable <$> List.toUnfoldable routes
+--           } :: CreateRelayPayload
+--       in
+--       do
+--         -- TODO / thoughts - do we wait for the entire relay chain to exist before returning?
+--         -- what if there isn't enough resource on an intermediate PoP?
+--         -- Single relay that goes direct?
+--         _restResult <- SpudGun.postJson url request
+--         pure $ Right $ serverLoadToServer candidateRelayServer
+
+--     Nothing ->
+--       pure $ Left NoResource
 
 
 --------------------------------------------------------------------------------
