@@ -235,6 +235,11 @@ start_workflow(Rtmp, StreamId, ClientId, Path, StreamAndVariant) ->
                                          config = {StreamAndVariant, make_ref()}
                                         },
 
+                              %% #processor{name = reorder_slices,
+                              %%            subscribes_to = ?previous,
+                              %%            module = h264_reorder_slices
+                              %%           },
+
                               #processor{name = program_details,
                                          subscribes_to = ?previous,
                                          module = program_details_generator
@@ -245,13 +250,13 @@ start_workflow(Rtmp, StreamId, ClientId, Path, StreamAndVariant) ->
                                          module = send_to_bus_processor,
                                          config = #send_to_bus_processor_config{consumes = true,
                                                                                 bus_name = {ingest, StreamAndVariant}}
-                                        },
+                                        }
 
-#processor{name = writer,
-           subscribes_to = {demux, ?video_frames},
-           module = frame_writer,
-           config = #frame_writer_config{filename = "/tmp/out.h264", mode = consumes}
-          }
+                              %% #processor{name = writer,
+                              %%            subscribes_to = {reorder_slices, ?video_frames},
+                              %%            module = frame_writer,
+                              %%            config = #frame_writer_config{filename = "/tmp/out.h264", mode = consumes}
+                              %%           }
                              ]
                },
 
