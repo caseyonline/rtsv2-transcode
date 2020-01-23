@@ -3,6 +3,9 @@ module Rtsv2.Names
          agentSupName
        , egestInstanceName
        , egestInstanceSupName
+       , egestLocalProxyName
+       , egestRemoteProxyName
+       , egestRemoteProxyMatch
        , ingestAggregatorInstanceName
        , ingestAggregatorInstanceSupName
        , ingestInstanceName
@@ -24,19 +27,29 @@ import Prelude
 
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
-import Erl.Data.Tuple (tuple2, tuple3)
+import Erl.Data.Tuple (tuple2, tuple3, tuple4)
 import Erl.ModuleName (NativeModuleName(..))
 import Erl.Utils as ErlUtils
 import Foreign (unsafeToForeign)
 import Pinto (ServerName(..), SupervisorName)
 import Shared.Agent (Agent(..))
 import Shared.Stream (StreamId, StreamAndVariant)
+import Shared.Types (Server)
 
 agentSupName :: SupervisorName
 agentSupName = Local "AgentSup"
 
 egestInstanceName :: forall a b. StreamId -> ServerName a b
 egestInstanceName = gprocName2 Egest
+
+egestLocalProxyName :: forall a b. StreamId -> ServerName a b
+egestLocalProxyName = gprocProxyName2 Egest
+
+egestRemoteProxyName :: forall a b. StreamId -> Server -> ServerName a b
+egestRemoteProxyName = gprocProxyName3 Egest
+
+egestRemoteProxyMatch streamId = tuple4 (show Egest) "proxy" streamId (atom "$1")
+
 
 egestInstanceSupName :: SupervisorName
 egestInstanceSupName = instanceSup Egest
@@ -49,6 +62,7 @@ ingestAggregatorInstanceSupName = instanceSup IngestAggregator
 
 ingestInstanceName :: forall a b. StreamAndVariant -> ServerName a b
 ingestInstanceName = gprocName2 Ingest
+
 
 ingestInstanceSupName :: SupervisorName
 ingestInstanceSupName = instanceSup Ingest
@@ -111,3 +125,10 @@ gprocName term =
 
 gprocName2 :: forall a b t x. Show t => t -> x -> ServerName a b
 gprocName2 t = gprocName <<< tuple2 (show t)
+
+
+gprocProxyName2 :: forall t a s m. Show t => t -> a -> ServerName s m
+gprocProxyName2 t a = gprocName $ tuple3 (show t) "proxy" a
+
+gprocProxyName3 :: forall t a b s m. Show t => t -> a -> b -> ServerName s m
+gprocProxyName3 t a b = gprocName $ tuple4 (show t) "proxy" a b

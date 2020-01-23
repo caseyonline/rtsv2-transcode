@@ -13,7 +13,7 @@ import Bus as Bus
 import Data.Either (Either(..))
 import Data.Either as Either
 import Data.Maybe (Maybe(..))
-import Data.Newtype (unwrap, wrap)
+import Data.Newtype (class Newtype, unwrap, wrap)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, singleton)
@@ -25,7 +25,6 @@ import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
-import Rtsv2.Agents.IngestAggregatorInstanceSup as IngestAggregatorInstanceSup
 import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..))
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.StreamRelayInstance (CreateRelayPayload)
@@ -40,7 +39,7 @@ import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Rtsv2.Utils (crashIfLeft)
 import Shared.Agent as Agent
 import Shared.Stream (StreamId)
-import Shared.Types (EgestServer, Load, RelayServer, Server(..), ServerLoad(..), extractPoP, serverLoadToServer)
+import Shared.Types (EgestServer, Load, RelayServer, Server, ServerLoad(..), extractPoP, serverLoadToServer)
 import SpudGun as SpudGun
 
 type CreateEgestPayload
@@ -55,6 +54,7 @@ type State
     , relay :: Maybe RelayServer
     , clientCount :: Int
     , lingerTime :: Milliseconds
+    , relayCreationRetry :: Milliseconds
     , stopRef :: Maybe Ref
     }
 
@@ -112,10 +112,10 @@ toEgestServer :: Server -> EgestServer
 toEgestServer = unwrap >>> wrap
 
 init :: CreateEgestPayload -> Effect State
-init payload@{streamId} = do
+init payload@{streamId, aggregator} = do
   _ <- logInfo "Egest starting" {payload}
   _ <- Bus.subscribe (serverName streamId) IntraPoP.bus IntraPoPBus
-  {egestAvailableAnnounceMs, lingerTimeMs} <- Config.egestAgentConfig
+  {egestAvailableAnnounceMs, lingerTimeMs, relayCreationRetryMs} <- Config.egestAgentConfig
 
   thisServer <- PoPDefinition.getThisServer
   _ <- IntraPoP.announceEgestIsAvailable streamId
@@ -124,9 +124,12 @@ init payload@{streamId} = do
   maybeRelay <- IntraPoP.whereIsStreamRelay streamId
   let
     state ={ streamId
+           , aggregator
            , thisServer : toEgestServer thisServer
+           , relay : Nothing
            , clientCount: 0
            , lingerTime: wrap lingerTimeMs
+           , relayCreationRetry : wrap relayCreationRetryMs
            , stopRef: Nothing
            }
   case maybeRelay of
@@ -167,9 +170,15 @@ maybeStop ref state@{streamId
 
   | otherwise = pure $ CastNoReply state
 
-
 initStreamRelay :: State -> Effect State
-initStreamRelay state = pure state
+initStreamRelay state@{relayCreationRetry, streamId} = do
+  relayResp <- findOrStartRelayForStream state
+  case relayResp of
+    Left _ ->  do
+      _ <- Timer.sendAfter (serverName streamId) (unwrap relayCreationRetry) InitStreamRelays
+      pure state
+    Right relay ->
+      pure state{relay = Just relay}
 
 --------------------------------------------------------------------------------
 -- Do we have a relay in this pop - yes -> use it
@@ -180,8 +189,8 @@ data FailureReason
   = NotFound
   | NoResource
 
-findRelayForStream :: State -> Effect (Either FailureReason RelayServer)
-findRelayForStream state@{streamId, thisServer} = do
+findOrStartRelayForStream :: State -> Effect (Either FailureReason RelayServer)
+findOrStartRelayForStream state@{streamId, thisServer} = do
   mRelay <- IntraPoP.whereIsStreamRelay $ spy "streamId" streamId
 
   case spy "mRelay" mRelay of
@@ -205,7 +214,7 @@ launchLocalOrRemote state@{streamId, aggregator, thisServer} = do
     else
       launchRemote state
 
---toRelayServer :: Server -> RelayServer
+toRelayServer :: forall a b. Newtype a b => Newtype RelayServer b => a -> RelayServer
 toRelayServer = unwrap >>> wrap
 
 launchRemote :: State -> Effect (Maybe RelayServer)
