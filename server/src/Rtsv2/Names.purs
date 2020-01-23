@@ -51,6 +51,8 @@ egestRemoteProxyName = gprocProxyName3 Egest
 egestRemoteProxyMatch streamId = tuple4 (show Egest) "proxy" streamId (atom "$1")
 
 
+
+
 egestInstanceSupName :: SupervisorName
 egestInstanceSupName = instanceSup Egest
 

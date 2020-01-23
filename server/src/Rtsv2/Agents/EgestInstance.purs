@@ -39,7 +39,7 @@ import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Rtsv2.Utils (crashIfLeft)
 import Shared.Agent as Agent
 import Shared.Stream (StreamId)
-import Shared.Types (EgestServer, Load, RelayServer, Server, ServerLoad(..), extractPoP, serverLoadToServer)
+import Shared.Types (EgestServer, Load, RelayServer, Server, ServerLoad(..), APIResp, extractPoP, serverLoadToServer)
 import SpudGun as SpudGun
 
 type CreateEgestPayload
@@ -72,15 +72,16 @@ isActive streamId = Names.isRegistered (serverName streamId)
 startLink :: CreateEgestPayload-> Effect StartLinkResult
 startLink payload = Gen.startLink (serverName payload.streamId) (init payload) handleInfo
 
-addClient :: StreamId -> Effect Unit
+addClient :: StreamId -> Effect APIResp
 addClient streamId = Gen.doCall (serverName streamId) doAddClient
+--TODO noProc handling
 
-doAddClient :: State -> Effect (CallResult Unit State)
+doAddClient :: State -> Effect (CallResult APIResp State)
 doAddClient state@{clientCount} = do
   _ <- logInfo "Add client" {newCount: clientCount + 1}
-  pure $ CallReply unit state{ clientCount = clientCount + 1
-                             , stopRef = Nothing
-                             }
+  pure $ CallReply (Right unit) state{ clientCount = clientCount + 1
+                                     , stopRef = Nothing
+                                     }
 
 removeClient :: StreamId -> Effect Unit
 removeClient streamId = Gen.doCall (serverName streamId) doRemoveClient

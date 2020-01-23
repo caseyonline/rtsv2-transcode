@@ -3,35 +3,42 @@ module Rtsv2.Agents.Proxies.Egest
        , createProxyForNew
        , whereIsLocal
        , whereIsRemote
-       , foo
        , startLink
+       , findEgestForStream
        )
        where
 
 import Prelude
 
+import Data.Either (Either(..))
+import Data.Filterable (filterMap)
 import Data.Maybe (Maybe(..), maybe)
 import Data.Newtype (wrap)
+import Data.Traversable (traverse)
+import Data.Tuple (Tuple(..))
 import Debug.Trace (spy)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
-import Erl.Data.List (List, nil, (:))
+import Erl.Data.List (List, head, nil, (:))
 import Gproc as Gproc
 import Logger (Logger)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
-import Pinto.Gen (CastResult(..))
+import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
+import Rtsv2.Agents.EgestInstance as EgestInstance
+import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
+import Rtsv2.Utils (crashIfLeft)
 import Shared.Agent as Agent
 import Shared.Stream (StreamId(..))
-import Shared.Types (Server(..), ServerAddress(..))
+import Shared.Types (EgestLocation(..), FailureReason(..), Server(..), ServerAddress(..), ServerLoad(..), extractAddress, serverLoadToServer)
 
 
 
 
-type State = {}
+type State = {proxyFor :: Server}
 type Msg = Unit
 
 whereIsRemote :: StreamId -> Effect (List (ServerName State Msg))
@@ -54,46 +61,88 @@ createProxyForExisting = unit
 createProxyForNew = unit
 
 
-
---foo :: Effect Unit
-foo = do
-  startLink unit
-
-
-
-startLink :: Unit -> Effect StartLinkResult
-startLink args = do
+startLink :: StreamId -> Server -> Effect StartLinkResult
+startLink streamId proxyServer = do
   thisServer <- PoPDefinition.getThisServer
-  let (Server foo) = thisServer
-      thatServer = (Server foo{address = wrap "server2"})
-      _ = spy "name1" $ remoteServerName (wrap "slot1") thisServer
-      _ = spy "name2" $ remoteServerName (wrap "slot1") thatServer
+  let
+    isLocal = thisServer == proxyServer
+    name = if isLocal
+             then
+               Names.egestLocalProxyName streamId
+             else
+               Names.egestRemoteProxyName streamId proxyServer
+  Gen.startLink name (init streamId proxyServer isLocal) handleInfo
 
-  _ <- Gen.startLink (remoteServerName (wrap "slot1") $ spy "this" thisServer) (init args) handleInfo
-  Gen.startLink (remoteServerName (wrap "slot1") $ spy "that" thatServer) (init args) handleInfo
 
-
-init :: Unit -> Effect State
-init args = do
+init :: StreamId -> Server -> Boolean -> Effect State
+init streamId proxyFor isLocal = do
   _ <- logInfo "Egest proxy starting" {}
-  pure $ {}
+
+       -- let
+       --   url = makeUrl idleServer EgestE
+       --   payload = { streamId
+       --                    , aggregator
+       --                    } :: CreateEgestPayload
+
+                -- if extractAddress idleServer == thisAddress
+                -- then do
+                --   _ <- EgestInstanceSup.maybeStartAndAddClient payload
+                --   pure $ Right Local
+                -- else do
+                --   let
+                --     addr = extractAddress idleServer
+                --   _ <- crashIfLeft =<< SpudGun.postJson url payload
+                --   pure $ Right $ Remote addr
+
+  pure $ {proxyFor}
 
 handleInfo :: Msg -> State -> Effect (CastResult State)
 handleInfo msg state =
   pure $ CastNoReply state
 
 
+findEgestForStream :: StreamId -> Effect (Either FailureReason EgestLocation)
+findEgestForStream streamId = do
+  apiResp <- EgestInstance.addClient streamId
+  let pickCandidate = head
+  case apiResp of
+    Right _ ->
+      pure $ Right Local
+    Left _ -> do
+      proxies <- whereIsRemote streamId
+      proxiesAndCapacity <- traverse (\proxy -> do accept <- couldAcceptClient proxy
+                                                   pure $ Tuple proxy accept) proxies
+      let
+        mProxy = pickCandidate $ filterMap (\(Tuple proxy hasCap) -> if hasCap then Just proxy else Nothing) proxiesAndCapacity
+      case mProxy of
+        Just (proxy :: ServerName State Msg) -> do
+
+          proxyServer <- crashIfLeft =<< getProxyFor proxy
+          pure $ Right $ Remote $ extractAddress proxyServer
+        Nothing -> do
+          mIdleServer  <- (map serverLoadToServer) <$> IntraPoP.getIdleServer (const true)
+          case mIdleServer of
+            Nothing ->
+              pure $ Left NoResource
+            Just idleServer -> do
+               _ <- startLink streamId idleServer
+               findEgestForStream streamId
 
 
-remoteServerName :: StreamId -> Server -> ServerName State Msg
-remoteServerName streamId server =
-  Names.egestRemoteProxyName streamId server
+
+getProxyFor :: forall a. ServerName State Msg -> Effect (Either a Server)
+getProxyFor serverName = Right <$> exposeStateMember serverName _.proxyFor
 
 
---findEgestForStream :: StreamId -> Effect (Either FailureReason EgestLocation)
---findEgestForStream streamId =
+
+couldAcceptClient :: ServerName State Msg -> Effect Boolean
+couldAcceptClient sn = pure true
 
 
+
+exposeStateMember :: forall a m. ServerName State m -> (State -> a) -> Effect a
+exposeStateMember serverName member = Gen.doCall serverName
+  \state -> pure $ CallReply (member state) state
 
 --------------------------------------------------------------------------------
 -- Log helpers

@@ -24,6 +24,7 @@ import Rtsv2.Agents.EgestInstance (CreateEgestPayload)
 import Rtsv2.Agents.EgestInstance as EgestInstance
 import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
 import Rtsv2.Agents.IntraPoP as IntraPoP
+import Rtsv2.Agents.Proxies.Egest (findEgestForStream)
 import Rtsv2.Agents.StreamRelayInstance (CreateRelayPayload)
 import Rtsv2.Agents.TransPoP (ViaPoPs)
 import Rtsv2.Agents.TransPoP as TransPoP
@@ -35,7 +36,7 @@ import Rtsv2.Router.Endpoint as RoutingEndpoint
 import Rtsv2.Router.Parser as Routing
 import Rtsv2.Utils (crashIfLeft)
 import Shared.Stream (StreamId(..))
-import Shared.Types (PoPName, Server(..), ServerAddress, ServerLoad(..), ServerLocation(..), extractAddress, serverLoadToServer)
+import Shared.Types (EgestLocation(..), FailureReason(..), PoPName, Server(..), ServerAddress, ServerLoad(..), ServerLocation(..), extractAddress, serverLoadToServer)
 import Shared.Utils (lazyCrashIfMissing)
 import SpudGun (SpudResult, Url)
 import SpudGun as SpudGun
@@ -50,15 +51,6 @@ data ClientStartState
          , thisServer :: Server
          , currentEdgeLocations :: List ServerAddress
          }
-
-data EgestLocation
-  = Local
-  | Remote ServerAddress
-
-data FailureReason
-  = NotFound
-  | NoResource
-
 
 newtype State = State { streamId :: StreamId
                       , egestResp :: (Either FailureReason EgestLocation)
@@ -75,56 +67,57 @@ newtype State = State { streamId :: StreamId
 --          No -> Try to find or create a relay for this stream and also put an egest handler on the same node
 -- otherwise 404
 --------------------------------------------------------------------------------
-findEgestForStream :: Server -> StreamId -> Effect (Either FailureReason EgestLocation)
-findEgestForStream thisServer streamId = do
-  existingEgests <- IntraPoP.whereIsEgest streamId
 
-  let
-    thisAddress = extractAddress thisServer
-    egestsWithCapacity  =
-      List.filter (\(ServerLoad sl) ->
-                    sl.load < (wrap 76.323341)
-                  ) $ existingEgests
-  if any (\server ->  (extractAddress server) == thisAddress) egestsWithCapacity
-  then
-    do
-      _ <- EgestInstance.addClient streamId
-      pure $ Right Local
-  else
-   case pickInstance egestsWithCapacity of
-     Just egestServerAddress ->
-       pure $ Right $ Remote (spy "remote" egestServerAddress)
 
-     Nothing -> do
-        -- does the stream even exists
-        mAggregator <- IntraPoP.whereIsIngestAggregator streamId
-        case spy "mAggregator" mAggregator of
-          Nothing ->
-            pure $ Left NotFound
 
-          Just aggregator -> do
-            mIdleServer <- IntraPoP.getIdleServer (const true)
-            case mIdleServer of
-              Nothing ->
-                pure $ Left NoResource
-              Just idleServer ->
-                let payload = { streamId
-                              , aggregator} :: CreateEgestPayload
-                in
-                  if extractAddress idleServer == thisAddress
-                  then do
-                    _ <- EgestInstanceSup.maybeStartAndAddClient payload
-                    pure $ Right Local
-                  else do
-                    let
-                      url = makeUrl idleServer EgestE
-                      addr = extractAddress idleServer
-                    _ <- crashIfLeft =<< SpudGun.postJson url payload
-                    pure $ Right $ Remote addr
+  -- existingEgests <- IntraPoP.whereIsEgest streamId
 
-  where
-    -- TODO not just head :)
-    pickInstance = map extractAddress <<< List.head
+  -- let
+  --   thisAddress = extractAddress thisServer
+  --   egestsWithCapacity  =
+  --     List.filter (\(ServerLoad sl) ->
+  --                   sl.load < (wrap 76.323341)
+  --                 ) $ existingEgests
+  -- if any (\server ->  (extractAddress server) == thisAddress) egestsWithCapacity
+  -- then
+  --   do
+  --     _ <- EgestInstance.addClient streamId
+  --     pure $ Right Local
+  -- else
+  --  case pickInstance egestsWithCapacity of
+  --    Just egestServerAddress ->
+  --      pure $ Right $ Remote (spy "remote" egestServerAddress)
+
+  --    Nothing -> do
+  --       -- does the stream even exists
+  --       mAggregator <- IntraPoP.whereIsIngestAggregator streamId
+  --       case spy "mAggregator" mAggregator of
+  --         Nothing ->
+  --           pure $ Left NotFound
+
+  --         Just aggregator -> do
+  --           mIdleServer <- IntraPoP.getIdleServer (const true)
+  --           case mIdleServer of
+  --             Nothing ->
+  --               pure $ Left NoResource
+  --             Just idleServer ->
+  --               let payload = { streamId
+  --                             , aggregator} :: CreateEgestPayload
+  --               in
+  --                 if extractAddress idleServer == thisAddress
+  --                 then do
+  --                   _ <- EgestInstanceSup.maybeStartAndAddClient payload
+  --                   pure $ Right Local
+  --                 else do
+  --                   let
+  --                     url = makeUrl idleServer EgestE
+  --                     addr = extractAddress idleServer
+  --                   _ <- crashIfLeft =<< SpudGun.postJson url payload
+  --                   pure $ Right $ Remote addr
+
+  -- where
+  --   -- TODO not just head :)
+  --   pickInstance = map extractAddress <<< List.head
 
 
 
@@ -145,8 +138,9 @@ clientStart =
         streamId = spy "clientStartInit" $ StreamId $ fromMaybe' (lazyCrashIfMissing "stream_id binding missing") $ binding (atom "stream_id") req
       in
         do
+
           thisServer <- PoPDefinition.getThisServer
-          egestResp <- findEgestForStream thisServer streamId
+          egestResp <- findEgestForStream  streamId
           let
             req2 = setHeader "x-servedby" (unwrap $ extractAddress thisServer) req
             _ = spy "egestResp" egestResp

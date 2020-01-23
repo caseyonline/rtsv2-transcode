@@ -10,6 +10,10 @@ module Shared.Types
        , RelayServer(..)
        , EgestServer(..)
        , IngestAggregatorPublicState
+       , EgestLocation(..)
+       , FailureReason(..)
+       , APIResp(..)
+       , AddClientError(..)
        , toServer
        , toServerLoad
        , serverLoadToServer
@@ -19,6 +23,7 @@ module Shared.Types
 
 import Prelude
 
+import Data.Either (Either)
 import Data.Newtype (class Newtype, unwrap)
 import Data.Symbol (SProxy(..))
 import Record as Record
@@ -132,6 +137,24 @@ type ServerAddressRec = {address :: ServerAddress}
 type LocationRec = { pop :: PoPName
                    , region :: RegionName
                    }
+
+
+--------------------------------------------------------------------------------
+-- API Types - maybe move me
+--------------------------------------------------------------------------------
+data EgestLocation
+  = Local
+  | Remote ServerAddress
+
+data FailureReason
+  = NotFound
+  | NoResource
+
+type AddClientError = Unit
+--data AddClientError = NoProc | NoResource
+
+type APIResp = (Either AddClientError Unit)
+
 
 toServer :: ServerAddress -> ServerLocation -> Server
 toServer sa (ServerLocation ls) =
