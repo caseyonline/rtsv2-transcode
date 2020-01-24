@@ -30,6 +30,7 @@ data Endpoint
   | EgestStatsE StreamId
   | EgestE
   | RelayE
+  | RelayStatsE StreamId
   | LoadE
   | IngestAggregatorE StreamId
   | IngestAggregatorPlayerE StreamId
@@ -60,7 +61,8 @@ endpoint = root $ sum
   , "EgestStatsE"                                      : "" / "api" / "agents" / "egest" / streamId segment
   , "EgestE"                                           : "" / "api" / "agents" / path "egest" noArgs
   , "RelayE"                                           : "" / "api" / "agents" / path "relay" noArgs
-  , "LoadE"                                            : "" / "api" / path "load" noArgs
+  , "RelayStatsE"                                      : "" / "api" / "agents" / "relay" / streamId segment
+, "LoadE"                                              : "" / "api" / path "load" noArgs
 
   , "IngestAggregatorE"                                : "" / "api" / "agents" / "ingestAggregator" / streamId segment
   , "IngestAggregatorPlayerE"                          : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "player"

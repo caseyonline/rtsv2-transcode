@@ -13,7 +13,6 @@ module Shared.Types
        , EgestLocation(..)
        , FailureReason(..)
        , APIResp(..)
-       , AddClientError(..)
        , toServer
        , toServerLoad
        , serverLoadToServer
@@ -150,10 +149,7 @@ data FailureReason
   = NotFound
   | NoResource
 
-type AddClientError = Unit
---data AddClientError = NoProc | NoResource
-
-type APIResp = (Either AddClientError Unit)
+type APIResp = (Either FailureReason Unit)
 
 
 toServer :: ServerAddress -> ServerLocation -> Server

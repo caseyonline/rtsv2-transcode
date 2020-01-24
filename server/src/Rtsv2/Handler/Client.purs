@@ -154,9 +154,9 @@ clientStart =
           do
             newReq <- replyWithoutBody (StatusCode 404) Map.empty req
             Rest.stop newReq state
-        Left NoResource ->
-          -- todo
-          Rest.stop req state
+        Left NoResource -> do
+          newReq <- replyWithoutBody (StatusCode 502) Map.empty req
+          Rest.stop newReq state
         Right Local ->
           Rest.result true req state
         Right (Remote _) ->

@@ -86,6 +86,7 @@ type State
     , streamRelayLocations :: EMap StreamId Server
     , streamAggregatorLocations :: EMap StreamId Server
     , thisServer :: Server
+    , load :: Load
     , members :: Map ServerAddress MemberInfo
     , expireThreshold :: Milliseconds
     , lamportClocks :: LamportClocks
@@ -157,31 +158,35 @@ whereIsEgest streamId =
 --------------------------------------------------------------------------------
 getIdleServer :: (ServerLoad -> Boolean) -> Effect (Maybe ServerLoad)
 getIdleServer pred = Gen.doCall serverName
-  (\state@{members} ->
-    let n = 2
-        nMostIdleWithCapacity =
-          values members
-          # filterMap (\memberInfo ->
-                        let serverWithLoad = serverLoad memberInfo
-                        in if pred serverWithLoad then Just serverWithLoad else Nothing)
-          # sortBy (\(ServerLoad sl1) (ServerLoad sl2) -> compare sl1.load sl2.load)
-          # take n
-        numServers = length nMostIdleWithCapacity
-    in do
-      resp <-
-        case numServers of
-          0 ->
-            pure Nothing
-          1 ->
-            case uncons nMostIdleWithCapacity of
-              Just {head} -> pure $ Just head
-              Nothing -> pure Nothing
-          _ ->
-            do
-              -- TODO - always seems to give the same answer!
-              chosenIndex <- randomInt 0 (numServers - 1)
-              pure $ index nMostIdleWithCapacity chosenIndex
-      pure $ CallReply resp state
+  (\state@{thisServer, members, load} -> do
+      let thisServerLoad = toServerLoad thisServer load
+      if pred thisServerLoad
+      then pure $ CallReply (Just thisServerLoad) state
+      else
+        let n = 2
+            nMostIdleWithCapacity =
+              values members
+              # filterMap (\memberInfo ->
+                            let serverWithLoad = serverLoad memberInfo
+                            in if pred serverWithLoad then Just serverWithLoad else Nothing)
+              # sortBy (\(ServerLoad sl1) (ServerLoad sl2) -> compare sl1.load sl2.load)
+              # take n
+            numServers = length nMostIdleWithCapacity
+        in do
+          resp <-
+            case numServers of
+              0 ->
+                pure Nothing
+              1 ->
+                case uncons nMostIdleWithCapacity of
+                  Just {head} -> pure $ Just head
+                  Nothing -> pure Nothing
+              _ ->
+                do
+                  -- TODO - always seems to give the same answer!
+                  chosenIndex <- randomInt 0 (numServers - 1)
+                  pure $ index nMostIdleWithCapacity chosenIndex
+          pure $ CallReply resp state
   )
 
 
@@ -201,7 +206,7 @@ announceLoad load =
         thisNodeAddress = extractAddress thisServer
         newMembers = alter (map (\ memberInfo -> memberInfo { load = load })) thisNodeAddress members
       _ <- sendToIntraSerfNetwork state "loadUpdate" (IMServerLoad thisNodeAddress load)
-      pure $ Gen.CastNoReply state { members = newMembers }
+      pure $ Gen.CastNoReply state { members = newMembers , load = load}
 
 -- Called by EgestAgent to indicate egest on this node
 announceEgestIsAvailable :: StreamId -> Effect Unit
@@ -353,6 +358,7 @@ init { config: config@{rejoinEveryMs
     , thisServer: thisServer
     , currentTransPoPLeader: Nothing
     , members
+    , load: wrap 0.0
     , expireThreshold: wrap expireThresholdMs
     , lamportClocks: { streamStateClocks: Map.empty
                      , egestStateClocks: Map.empty

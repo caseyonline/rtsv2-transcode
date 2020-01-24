@@ -36,10 +36,10 @@ import Rtsv2.Load as Load
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
-import Rtsv2.Utils (crashIfLeft)
+import Rtsv2.Utils (crashIfLeft, noprocToMaybe)
 import Shared.Agent as Agent
 import Shared.Stream (StreamId)
-import Shared.Types (EgestServer, Load, RelayServer, Server, ServerLoad(..), APIResp, extractPoP, serverLoadToServer)
+import Shared.Types (APIResp, EgestServer, FailureReason(..), Load, RelayServer, Server, ServerLoad(..), extractPoP, serverLoadToServer)
 import SpudGun as SpudGun
 
 type CreateEgestPayload
@@ -73,8 +73,11 @@ startLink :: CreateEgestPayload-> Effect StartLinkResult
 startLink payload = Gen.startLink (serverName payload.streamId) (init payload) handleInfo
 
 addClient :: StreamId -> Effect APIResp
-addClient streamId = Gen.doCall (serverName streamId) doAddClient
---TODO noProc handling
+addClient streamId = do
+  mResp <- noprocToMaybe $ Gen.doCall (serverName streamId) doAddClient
+  case mResp of
+    Nothing -> pure $ Left NotFound
+    Just resp -> pure resp
 
 doAddClient :: State -> Effect (CallResult APIResp State)
 doAddClient state@{clientCount} = do
@@ -138,7 +141,7 @@ init payload@{streamId, aggregator} = do
       pure state
     Nothing -> do
       -- Launch
---      _ <- StreamRelayInstanceSup.startRelay streamId
+      _ <- StreamRelayInstanceSup.startRelay {streamId, aggregator}
       pure state
 
 handleInfo :: Msg -> State -> Effect (CastResult State)
@@ -186,10 +189,6 @@ initStreamRelay state@{relayCreationRetry, streamId} = do
 -- Does the stream have an origin (aggregator) - if so build a streamRelay chain to that origin
 -- otherwise 404
 --------------------------------------------------------------------------------
-data FailureReason
-  = NotFound
-  | NoResource
-
 findOrStartRelayForStream :: State -> Effect (Either FailureReason RelayServer)
 findOrStartRelayForStream state@{streamId, thisServer} = do
   mRelay <- IntraPoP.whereIsStreamRelay $ spy "streamId" streamId

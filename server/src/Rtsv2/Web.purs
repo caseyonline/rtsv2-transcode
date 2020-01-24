@@ -66,6 +66,9 @@ init args = do
         (printUrl endpoint RelayE)
         RelayHandler.resource
     # Stetson.route
+        (printUrl endpoint (RelayStatsE(StreamId ":stream_id")))
+        RelayHandler.resource
+    # Stetson.route
         (printUrl endpoint LoadE)
         LoadHandler.load
     # Stetson.route
