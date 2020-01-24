@@ -7,39 +7,29 @@ module Rtsv2.Handler.Client
 import Prelude
 
 import Data.Either (Either(..))
-import Data.Foldable (any)
-import Data.Maybe (Maybe(..), fromMaybe')
-import Data.Newtype (unwrap, wrap)
+import Data.Maybe (fromMaybe')
+import Data.Newtype (unwrap)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
-import Erl.Cowboy.Handlers.Rest (MovedResult, moved, notMoved, restResult)
+import Erl.Cowboy.Handlers.Rest (MovedResult, moved, notMoved)
 import Erl.Cowboy.Req (Req, StatusCode(..), binding, replyWithoutBody, setHeader)
 import Erl.Data.List (List, singleton, (:))
 import Erl.Data.List as List
 import Erl.Data.Map as Map
 import Logger (Logger, spy)
 import Logger as Logger
-import Partial.Unsafe (unsafePartial)
-import Rtsv2.Agents.EgestInstance (CreateEgestPayload)
+import Rtsv2.Agents.Egest.Locator (findEgestForStream)
 import Rtsv2.Agents.EgestInstance as EgestInstance
 import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
-import Rtsv2.Agents.IntraPoP as IntraPoP
-import Rtsv2.Agents.Proxies.Egest (findEgestForStream)
-import Rtsv2.Agents.StreamRelayInstance (CreateRelayPayload)
-import Rtsv2.Agents.TransPoP (ViaPoPs)
-import Rtsv2.Agents.TransPoP as TransPoP
 import Rtsv2.Audit as Audit
 import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.PoPDefinition as PoPDefinition
-import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
+import Rtsv2.Router.Endpoint (Endpoint(..))
 import Rtsv2.Router.Endpoint as RoutingEndpoint
 import Rtsv2.Router.Parser as Routing
-import Rtsv2.Utils (crashIfLeft)
 import Shared.Stream (StreamId(..))
-import Shared.Types (EgestLocation(..), FailureReason(..), PoPName, Server(..), ServerAddress, ServerLoad(..), ServerLocation(..), extractAddress, serverLoadToServer)
+import Shared.Types (EgestLocation(..), FailureReason(..), Server, ServerAddress, extractAddress)
 import Shared.Utils (lazyCrashIfMissing)
-import SpudGun (SpudResult, Url)
-import SpudGun as SpudGun
 import Stetson (HttpMethod(..), RestResult, StetsonHandler)
 import Stetson.Rest as Rest
 

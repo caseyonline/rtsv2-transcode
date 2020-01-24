@@ -143,111 +143,111 @@ main =
 
   in
   launchAff_ $ un Identity $ runSpecT testConfig [consoleReporter] do
-    -- describe "Ingest tests"
-    --   let
-    --     p1Nodes = [p1n1, p1n2, p1n3]
-    --     p2Nodes = [p2n1, p2n2]
-    --     nodes = p1Nodes <> p2Nodes
-    --     allNodesBar node = delete node nodes
-    --     maxOut server = setLoad server 60.0 >>= assertStatusCode 204 >>= as ("set load on " <> toAddr server)
-    --     aggregatorNotPresent slot server = aggregatorStats server slot >>= assertStatusCode 404 >>= as ("aggregator not on " <> toAddr server)
-    --   in do
-    --   before_ (launch nodes) do
-    --     after_ stopSession do
-    --       it "ingest aggregation created on ingest node" do
-    --         ingest start    p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
-    --         waitForAsyncVariantStart                                     >>= as' "wait for async start of variant"
-    --         aggregatorStats p1n1 slot1          >>= assertStatusCode 200
-    --                                                 >>= assertAggregator [low]
-    --                                                                      >>= as  "aggregator has low only"
+    describe "Ingest tests"
+      let
+        p1Nodes = [p1n1, p1n2, p1n3]
+        p2Nodes = [p2n1, p2n2]
+        nodes = p1Nodes <> p2Nodes
+        allNodesBar node = delete node nodes
+        maxOut server = setLoad server 60.0 >>= assertStatusCode 204 >>= as ("set load on " <> toAddr server)
+        aggregatorNotPresent slot server = aggregatorStats server slot >>= assertStatusCode 404 >>= as ("aggregator not on " <> toAddr server)
+      in do
+      before_ (launch nodes) do
+        after_ stopSession do
+          it "ingest aggregation created on ingest node" do
+            ingest start    p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
+            waitForAsyncVariantStart                                     >>= as' "wait for async start of variant"
+            aggregatorStats p1n1 slot1          >>= assertStatusCode 200
+                                                    >>= assertAggregator [low]
+                                                                         >>= as  "aggregator has low only"
 
-    --       it "2nd ingest does not doesn't start new aggregator since one is running" do
-    --         ingest start    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as "create low ingest"
-    --         setLoad         p1n1 60.0            >>= assertStatusCode 204 >>= as "set load on server"
-    --         ingest start    p1n1 shortName1 high >>= assertStatusCode 200 >>= as "create high ingest"
-    --         waitForAsyncVariantStart                                      >>= as' "wait for async start of variants"
-    --         aggregatorStats p1n1 slot1           >>= assertStatusCode 200
-    --                                                  >>= assertAggregator [low, high]
-    --                                                                       >>= as "aggregator has 2 variants"
+          it "2nd ingest does not doesn't start new aggregator since one is running" do
+            ingest start    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as "create low ingest"
+            setLoad         p1n1 60.0            >>= assertStatusCode 204 >>= as "set load on server"
+            ingest start    p1n1 shortName1 high >>= assertStatusCode 200 >>= as "create high ingest"
+            waitForAsyncVariantStart                                      >>= as' "wait for async start of variants"
+            aggregatorStats p1n1 slot1           >>= assertStatusCode 200
+                                                     >>= assertAggregator [low, high]
+                                                                          >>= as "aggregator has 2 variants"
 
-    --       it "if ingest node is too loaded, then ingest aggregation starts on non-ingest node" do
-    --         traverse_ maxOut (allNodesBar p1n2)                           >>= as' "load up all servers bar one"
-    --         waitForIntraPoPDisseminate                                    >>= as' "allow load to disseminate"
-    --         ingest start    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as  "create low ingest"
-    --         waitForIntraPoPDisseminate                                    >>= as' "allow remote ingest location to disseminate"
-    --         ingest start    p1n1 shortName1 high >>= assertStatusCode 200 >>= as  "create high ingest"
-    --         waitForAsyncVariantStart                                      >>= as' "wait for async start of variant"
-    --         aggregatorStats p1n2 slot1           >>= assertStatusCode 200
-    --                                                  >>= assertAggregator [low, high]
-    --                                                                       >>= as  "aggregator is on p1n2"
+          it "if ingest node is too loaded, then ingest aggregation starts on non-ingest node" do
+            traverse_ maxOut (allNodesBar p1n2)                           >>= as' "load up all servers bar one"
+            waitForIntraPoPDisseminate                                    >>= as' "allow load to disseminate"
+            ingest start    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as  "create low ingest"
+            waitForIntraPoPDisseminate                                    >>= as' "allow remote ingest location to disseminate"
+            ingest start    p1n1 shortName1 high >>= assertStatusCode 200 >>= as  "create high ingest"
+            waitForAsyncVariantStart                                      >>= as' "wait for async start of variant"
+            aggregatorStats p1n2 slot1           >>= assertStatusCode 200
+                                                     >>= assertAggregator [low, high]
+                                                                          >>= as  "aggregator is on p1n2"
 
-    --       it "ingest on different node removes itself from aggregator when stopped" do
-    --         traverse_ maxOut (allNodesBar p1n2)                          >>= as' "load up all servers bar one"
-    --         waitForIntraPoPDisseminate                                   >>= as' "allow load to disseminate"
-    --         ingest start    p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create low ingest"
-    --         waitForAsyncVariantStart                                     >>= as' "wait for async start of variant"
-    --         aggregatorStats p1n2 slot1          >>= assertStatusCode 200
-    --                                                 >>= assertAggregator [low]
-    --                                                                      >>= as  "aggregator created on idle server"
-    --         (traverse_ (aggregatorNotPresent slot1) (allNodesBar p1n2))  >>= as' "aggregator not on busy servers"
+          it "ingest on different node removes itself from aggregator when stopped" do
+            traverse_ maxOut (allNodesBar p1n2)                          >>= as' "load up all servers bar one"
+            waitForIntraPoPDisseminate                                   >>= as' "allow load to disseminate"
+            ingest start    p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create low ingest"
+            waitForAsyncVariantStart                                     >>= as' "wait for async start of variant"
+            aggregatorStats p1n2 slot1          >>= assertStatusCode 200
+                                                    >>= assertAggregator [low]
+                                                                         >>= as  "aggregator created on idle server"
+            (traverse_ (aggregatorNotPresent slot1) (allNodesBar p1n2))  >>= as' "aggregator not on busy servers"
 
-    --         ingest stop     p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "stop low ingest"
-    --         waitForAsyncVariantStop                                      >>= as' "wait for async stop of variant"
-    --         aggregatorStats p1n2 slot1          >>= assertStatusCode 200
-    --                                                 >>= assertAggregator []
-    --                                                                      >>= as  "aggregator has no variants"
+            ingest stop     p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "stop low ingest"
+            waitForAsyncVariantStop                                      >>= as' "wait for async stop of variant"
+            aggregatorStats p1n2 slot1          >>= assertStatusCode 200
+                                                    >>= assertAggregator []
+                                                                         >>= as  "aggregator has no variants"
 
-    --       it "ingest restarts aggregator if aggregator exits" do
-    --         traverse_ maxOut (allNodesBar p1n2)                           >>= as' "load up all servers bar one"
-    --         waitForIntraPoPDisseminate                                    >>= as' "allow load to disseminate"
-    --         ingest start    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as  "create low ingest"
-    --         waitForAsyncVariantStart                                      >>= as' "wait for async start of variant"
-    --         aggregatorStats p1n2 slot1           >>= assertStatusCode 200
-    --                                                  >>= assertAggregator [low]
-    --                                                                       >>= as  "aggregator created on idle server"
-    --         traverse_ (aggregatorNotPresent slot1) (allNodesBar p1n2)     >>= as' "aggregator not on busy servers"
-    --         setLoad         p1n3 0.0             >>= assertStatusCode 204 >>= as  "mark p1n3 as idle"
-    --         stopNode (toAddr p1n2)                                        >>= as' "make p1n2 fail"
-    --         waitForNodeFailureDisseminate                                 >>= as' "allow failure to disseminate"
-    --         aggregatorStats p1n3 slot1           >>= assertStatusCode 200
-    --                                                  >>= assertAggregator [low]
-    --                                                                       >>= as  "failed aggregator moved to new idle server"
+          it "ingest restarts aggregator if aggregator exits" do
+            traverse_ maxOut (allNodesBar p1n2)                           >>= as' "load up all servers bar one"
+            waitForIntraPoPDisseminate                                    >>= as' "allow load to disseminate"
+            ingest start    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as  "create low ingest"
+            waitForAsyncVariantStart                                      >>= as' "wait for async start of variant"
+            aggregatorStats p1n2 slot1           >>= assertStatusCode 200
+                                                     >>= assertAggregator [low]
+                                                                          >>= as  "aggregator created on idle server"
+            traverse_ (aggregatorNotPresent slot1) (allNodesBar p1n2)     >>= as' "aggregator not on busy servers"
+            setLoad         p1n3 0.0             >>= assertStatusCode 204 >>= as  "mark p1n3 as idle"
+            stopNode (toAddr p1n2)                                        >>= as' "make p1n2 fail"
+            waitForNodeFailureDisseminate                                 >>= as' "allow failure to disseminate"
+            aggregatorStats p1n3 slot1           >>= assertStatusCode 200
+                                                     >>= assertAggregator [low]
+                                                                          >>= as  "failed aggregator moved to new idle server"
 
-    --       it "aggregator exits after last variant stops (with linger time)" do
-    --         ingest start    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as  "create low ingest"
-    --         ingest start    p1n1 shortName1 high >>= assertStatusCode 200 >>= as  "create high ingest"
-    --         waitForAsyncVariantStart
-    --         aggregatorStats p1n1 slot1           >>= assertStatusCode 200
-    --                                                  >>= assertAggregator [low, high]
-    --                                                                       >>= as  "aggregator has both variants"
+          it "aggregator exits after last variant stops (with linger time)" do
+            ingest start    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as  "create low ingest"
+            ingest start    p1n1 shortName1 high >>= assertStatusCode 200 >>= as  "create high ingest"
+            waitForAsyncVariantStart
+            aggregatorStats p1n1 slot1           >>= assertStatusCode 200
+                                                     >>= assertAggregator [low, high]
+                                                                          >>= as  "aggregator has both variants"
 
-    --         ingest stop     p1n1 shortName1 low  >>= assertStatusCode 200 >>= as  "stop low ingest"
-    --         aggregatorStats p1n1 slot1           >>= assertStatusCode 200
-    --                                                  >>= assertAggregator [high]
-    --                                                                       >>= as  "aggregator only has high"
-    --         ingest stop     p1n1 shortName1 high >>= assertStatusCode 200 >>= as  "stop high ingest"
-    --         aggregatorStats p1n1 slot1           >>= assertStatusCode 200
-    --                                                  >>= assertAggregator []
-    --                                                                       >>= as  "aggregator has no variants"
-    --         waitForMoreThanLinger                                         >>= as' "wait for linger time"
-    --         aggregatorStats p1n1 slot1           >>= assertStatusCode 404 >>= as  "aggregator stops after linger"
+            ingest stop     p1n1 shortName1 low  >>= assertStatusCode 200 >>= as  "stop low ingest"
+            aggregatorStats p1n1 slot1           >>= assertStatusCode 200
+                                                     >>= assertAggregator [high]
+                                                                          >>= as  "aggregator only has high"
+            ingest stop     p1n1 shortName1 high >>= assertStatusCode 200 >>= as  "stop high ingest"
+            aggregatorStats p1n1 slot1           >>= assertStatusCode 200
+                                                     >>= assertAggregator []
+                                                                          >>= as  "aggregator has no variants"
+            waitForMoreThanLinger                                         >>= as' "wait for linger time"
+            aggregatorStats p1n1 slot1           >>= assertStatusCode 404 >>= as  "aggregator stops after linger"
 
-    --       it "aggregator does not exit during linger time" do
-    --         ingest start    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as  "create low ingest"
-    --         waitForAsyncVariantStart
-    --         aggregatorStats p1n1 slot1           >>= assertStatusCode 200
-    --                                                  >>= assertAggregator [low]
-    --                                                                       >>= as  "aggregator created"
-    --         ingest stop     p1n1 shortName1 low >>= assertStatusCode 200  >>= as  "stop low ingest"
-    --         aggregatorStats p1n1 slot1          >>= assertStatusCode 200
-    --                                                 >>= assertAggregator []
-    --                                                                       >>= as  "aggregator has no variants"
-    --         waitForLessThanLinger                                         >>= as' "wait for less than the linger time"
-    --         ingest start    p1n2 shortName1 high >>= assertStatusCode 200 >>= as  "create high ingest on another node"
-    --         waitForAsyncVariantStart                                      >>= as' "wait for async start of variant"
-    --         aggregatorStats p1n1 slot1           >>= assertStatusCode 200
-    --                                                  >>= assertAggregator [high]
-    --                                                                       >>= as  "lingered aggregator has high variant"
+          it "aggregator does not exit during linger time" do
+            ingest start    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as  "create low ingest"
+            waitForAsyncVariantStart
+            aggregatorStats p1n1 slot1           >>= assertStatusCode 200
+                                                     >>= assertAggregator [low]
+                                                                          >>= as  "aggregator created"
+            ingest stop     p1n1 shortName1 low >>= assertStatusCode 200  >>= as  "stop low ingest"
+            aggregatorStats p1n1 slot1          >>= assertStatusCode 200
+                                                    >>= assertAggregator []
+                                                                          >>= as  "aggregator has no variants"
+            waitForLessThanLinger                                         >>= as' "wait for less than the linger time"
+            ingest start    p1n2 shortName1 high >>= assertStatusCode 200 >>= as  "create high ingest on another node"
+            waitForAsyncVariantStart                                      >>= as' "wait for async start of variant"
+            aggregatorStats p1n1 slot1           >>= assertStatusCode 200
+                                                     >>= assertAggregator [high]
+                                                                          >>= as  "lingered aggregator has high variant"
 
     describe "Ingest egest tests" do
       describe "one pop setup"
@@ -317,34 +317,34 @@ main =
               egestStats   p1n3 slot1          >>= assertStatusCode 200
                                                    >>= assertBodyText "1"   >>= as "node 3 agent should have 1 client"
 
-      -- describe "two pop setup" do
-      --   let
-      --     p1Nodes = [p1n1, p1n2, p1n3]
-      --     p2Nodes = [p2n1, p2n2]
-      --     nodes = p1Nodes <> p2Nodes
-      --   before_ (launch nodes) do
-      --     after_ stopSession do
-      --       it "client requests stream on other pop" do
-      --         client start p2n1 slot1          >>= assertStatusCode 404 >>= as  "no egest prior to ingest"
-      --         relayStats   p1n1 slot1          >>= assertStatusCode 404 >>= as  "no remote relay prior to ingest"
-      --         relayStats   p1n1 slot1          >>= assertStatusCode 404 >>= as  "no local relay prior to ingest"
-      --         ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
-      --         waitForTransPoPDisseminate                                >>= as' "wait for transPop disseminate"
-      --         client start p2n1 slot1          >>= assertStatusCode 204 >>= as  "egest available"
-      --         relayStats   p2n1 slot1          >>= assertStatusCode 200 >>= as  "local relay exists"
-      --         -- TODO relayStatus p1n1 slot1   >>= assertStatusCode 200 >>= as "remote relay exists"
+      describe "two pop setup" do
+        let
+          p1Nodes = [p1n1, p1n2, p1n3]
+          p2Nodes = [p2n1, p2n2]
+          nodes = p1Nodes <> p2Nodes
+        before_ (launch nodes) do
+          after_ stopSession do
+            it "client requests stream on other pop" do
+              client start p2n1 slot1          >>= assertStatusCode 404 >>= as  "no egest prior to ingest"
+              relayStats   p1n1 slot1          >>= assertStatusCode 404 >>= as  "no remote relay prior to ingest"
+              relayStats   p1n1 slot1          >>= assertStatusCode 404 >>= as  "no local relay prior to ingest"
+              ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
+              waitForTransPoPDisseminate                                >>= as' "wait for transPop disseminate"
+              client start p2n1 slot1          >>= assertStatusCode 204 >>= as  "egest available"
+              relayStats   p2n1 slot1          >>= assertStatusCode 200 >>= as  "local relay exists"
+              -- TODO relayStatus p1n1 slot1   >>= assertStatusCode 200 >>= as "remote relay exists"
 
-      --       it "client ingest starts and stops" do
-      --         client start p1n2 slot1          >>= assertStatusCode 404 >>= as  "no local egest prior to ingest"
-      --         client start p2n1 slot1          >>= assertStatusCode 404 >>= as  "no remote egest prior to ingest"
-      --         ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
-      --         waitForTransPoPDisseminate                                >>= as' "wait for transPop disseminate"
-      --         client start p1n2 slot1          >>= assertStatusCode 204 >>= as  "local egest post ingest"
-      --         client start p2n1 slot1          >>= assertStatusCode 204 >>= as  "remote egest post ingest"
-      --         ingest stop  p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "stop the ingest"
-      --         waitForTransPoPStopDisseminate                            >>= as' "wait for transPop disseminate"
-      --         client start p1n2 slot1          >>= assertStatusCode 404 >>= as  "no same pop egest post stop"
-      --         client start p2n1 slot1          >>= assertStatusCode 404 >>= as  "no remote pop egest post stop"
+            it "client ingest starts and stops" do
+              client start p1n2 slot1          >>= assertStatusCode 404 >>= as  "no local egest prior to ingest"
+              client start p2n1 slot1          >>= assertStatusCode 404 >>= as  "no remote egest prior to ingest"
+              ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
+              waitForTransPoPDisseminate                                >>= as' "wait for transPop disseminate"
+              client start p1n2 slot1          >>= assertStatusCode 204 >>= as  "local egest post ingest"
+              client start p2n1 slot1          >>= assertStatusCode 204 >>= as  "remote egest post ingest"
+              ingest stop  p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "stop the ingest"
+              waitForTransPoPStopDisseminate                            >>= as' "wait for transPop disseminate"
+              client start p1n2 slot1          >>= assertStatusCode 404 >>= as  "no same pop egest post stop"
+              client start p2n1 slot1          >>= assertStatusCode 404 >>= as  "no remote pop egest post stop"
 
     describe "Cleanup" do
       after_ stopSession do

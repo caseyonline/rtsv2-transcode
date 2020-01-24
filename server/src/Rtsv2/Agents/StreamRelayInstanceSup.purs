@@ -19,14 +19,13 @@ import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChil
 import Pinto.Sup as Sup
 import Rtsv2.Agents.StreamRelayInstance (CreateRelayPayload)
 import Rtsv2.Agents.StreamRelayInstance as StreamRelayInstance
-import Rtsv2.Names as Names
 import Shared.Agent as Agent
 
 serverName :: SupervisorName
 serverName = Names.streamRelayInstanceSupName
 
 isAvailable :: Effect Boolean
-isAvailable = Names.isRegistered serverName
+isAvailable = Pinto.isRegistered serverName
 
 startLink :: forall a. a -> Effect Pinto.StartLinkResult
 startLink _ = Sup.startLink serverName init

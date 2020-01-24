@@ -18,18 +18,16 @@ import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
 import Erl.Data.Tuple (tuple2, tuple3)
 import Erl.ModuleName (NativeModuleName(..))
-import Rtsv2.Names as Names
 import Foreign (unsafeToForeign)
 import Logger (Logger)
 import Logger as Logger
-import Pinto (ServerName(..), StartLinkResult)
+import Pinto (ServerName(..), StartLinkResult, isRegistered)
 import Pinto.Gen (CallResult(..))
 import Pinto.Gen as Gen
 import Rtsv2.Agents.TransPoP (ViaPoPs)
-import Rtsv2.Names as Names
 import Shared.Agent as Agent
 import Shared.Stream (StreamId)
-import Shared.Types (EgestServer, PoPName, RelayServer, Server)
+import Shared.Types (EgestServer, RelayServer, Server)
 
 
 type CreateRelayPayload
@@ -59,7 +57,7 @@ startLink :: CreateRelayPayload -> Effect StartLinkResult
 startLink payload = Gen.startLink (serverName payload.streamId) (init payload) Gen.defaultHandleInfo
 
 isAvailable :: StreamId -> Effect Boolean
-isAvailable streamId = Names.isRegistered (serverName streamId)
+isAvailable streamId = isRegistered (serverName streamId)
 
 status  :: StreamId -> Effect Status
 status streamId =

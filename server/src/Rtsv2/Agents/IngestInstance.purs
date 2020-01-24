@@ -16,10 +16,10 @@ import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
 import Erl.Utils (Milliseconds)
-import Rtsv2.Names as Names
 import Logger (Logger, spy)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
+import Pinto as Pinto
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
@@ -30,6 +30,7 @@ import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Audit as Audit
 import Rtsv2.Config as Config
 import Rtsv2.Load as Load
+import Rtsv2.Names as Names
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Router.Endpoint (Endpoint(..))
@@ -61,7 +62,7 @@ startLink :: Tuple StreamDetails StreamAndVariant -> Effect StartLinkResult
 startLink (Tuple streamDetails streamAndVariant) = Gen.startLink (serverName streamAndVariant) (init streamDetails streamAndVariant) handleInfo
 
 isActive :: StreamAndVariant -> Effect Boolean
-isActive streamAndVariant = Names.isRegistered (serverName streamAndVariant)
+isActive streamAndVariant = Pinto.isRegistered (serverName streamAndVariant)
 
 stopIngest :: StreamAndVariant -> Effect Unit
 stopIngest streamAndVariant =

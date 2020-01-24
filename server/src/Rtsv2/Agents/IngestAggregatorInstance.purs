@@ -17,11 +17,10 @@ import Erl.Data.List (List, nil, (:))
 import Erl.Data.Map (Map, delete, insert, size, toUnfoldable)
 import Erl.Data.Map as Map
 import Erl.Data.Tuple (Tuple2, tuple2)
-import Rtsv2.Names as Names
 import Foreign (Foreign)
 import Logger (Logger)
 import Logger as Logger
-import Pinto (ServerName, StartLinkResult)
+import Pinto (ServerName, StartLinkResult, isRegistered)
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
@@ -57,7 +56,7 @@ data Msg
 
 isAvailable :: StreamId -> Effect Boolean
 isAvailable streamId = do
-  bool <- Names.isRegistered (serverName streamId)
+  bool <- isRegistered (serverName streamId)
   pure bool
 
 serverName :: StreamId -> ServerName State Msg

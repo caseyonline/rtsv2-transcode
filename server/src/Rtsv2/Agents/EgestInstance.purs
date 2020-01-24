@@ -19,10 +19,10 @@ import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, singleton)
 import Erl.Data.List as List
 import Erl.Utils (Milliseconds, Ref, makeRef)
-import Rtsv2.Names as Names
 import Logger (Logger, spy)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
+import Pinto as Pinto
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
@@ -34,6 +34,7 @@ import Rtsv2.Agents.StreamRelayInstanceSup as StreamRelayInstanceSup
 import Rtsv2.Agents.TransPoP as TransPoP
 import Rtsv2.Config as Config
 import Rtsv2.Load as Load
+import Rtsv2.Names as Names
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
@@ -68,7 +69,7 @@ serverName :: StreamId -> ServerName State Msg
 serverName streamId = Names.egestInstanceName streamId
 
 isActive :: StreamId -> Effect Boolean
-isActive streamId = Names.isRegistered (serverName streamId)
+isActive streamId = Pinto.isRegistered (serverName streamId)
 
 startLink :: CreateEgestPayload-> Effect StartLinkResult
 startLink payload = Gen.startLink (serverName payload.streamId) (init payload) handleInfo

@@ -20,13 +20,12 @@ import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChil
 import Pinto.Sup as Sup
 import Rtsv2.Agents.EgestInstance (CreateEgestPayload)
 import Rtsv2.Agents.EgestInstance as EgestInstance
-import Rtsv2.Names as Names
 
 serverName :: SupervisorName
 serverName = Names.egestInstanceSupName
 
 isAvailable :: Effect Boolean
-isAvailable = Names.isRegistered serverName
+isAvailable = Pinto.isRegistered serverName
 
 startLink :: forall a. a -> Effect Pinto.StartLinkResult
 startLink _ = Sup.startLink serverName init

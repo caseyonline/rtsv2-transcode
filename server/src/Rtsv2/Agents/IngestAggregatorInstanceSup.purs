@@ -7,10 +7,9 @@ module Rtsv2.Agents.IngestAggregatorInstanceSup
 
 import Prelude
 
-import Rtsv2.Names as Names
 import Effect (Effect)
 import Erl.Data.List (nil, (:))
-import Pinto (SupervisorName)
+import Pinto (SupervisorName, isRegistered)
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStartTemplate, childType)
 import Pinto.Sup as Sup
@@ -20,7 +19,7 @@ import Shared.LlnwApiTypes (StreamDetails)
 
 
 isAvailable :: Effect Boolean
-isAvailable = Names.isRegistered serverName
+isAvailable = isRegistered serverName
 
 serverName :: SupervisorName
 serverName = Names.ingestAggregatorInstanceSupName
