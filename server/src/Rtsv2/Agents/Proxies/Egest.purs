@@ -5,6 +5,7 @@ module Rtsv2.Agents.Proxies.Egest
        , whereIsRemote
        , startLink
        , findEgestForStream
+       , ProxyMode
        )
        where
 
@@ -35,10 +36,12 @@ import Shared.Agent as Agent
 import Shared.Stream (StreamId(..))
 import Shared.Types (EgestLocation(..), FailureReason(..), Server(..), ServerAddress(..), ServerLoad(..), extractAddress, serverLoadToServer)
 
+data ProxyMode = New | Existing
+type State = { streamId :: StreamId
+             , forServer :: Server
+             , mode :: ProxyMode
+             }
 
-
-
-type State = {proxyFor :: Server}
 type Msg = Unit
 
 whereIsRemote :: StreamId -> Effect (List (ServerName State Msg))
@@ -55,14 +58,16 @@ whereIsLocal streamId = do
   else pure $ Nothing
 
 
+createProxyForExisting :: StreamId -> Server -> Effect StartLinkResult
+createProxyForExisting  = startLink Existing
+
+createProxyForNew :: StreamId -> Server -> Effect StartLinkResult
+createProxyForNew = startLink New
 
 
-createProxyForExisting = unit
-createProxyForNew = unit
 
-
-startLink :: StreamId -> Server -> Effect StartLinkResult
-startLink streamId proxyServer = do
+startLink :: ProxyMode -> StreamId -> Server -> Effect StartLinkResult
+startLink mode streamId proxyServer = do
   thisServer <- PoPDefinition.getThisServer
   let
     isLocal = thisServer == proxyServer
@@ -71,12 +76,16 @@ startLink streamId proxyServer = do
                Names.egestLocalProxyName streamId
              else
                Names.egestRemoteProxyName streamId proxyServer
-  Gen.startLink name (init streamId proxyServer isLocal) handleInfo
+  Gen.startLink name (init streamId proxyServer isLocal mode) handleInfo
 
 
-init :: StreamId -> Server -> Boolean -> Effect State
-init streamId proxyFor isLocal = do
+init :: StreamId -> Server -> Boolean -> ProxyMode -> Effect State
+init streamId forServer isLocal mode = do
   _ <- logInfo "Egest proxy starting" {}
+  -- need flag for "should create" - then create one if you think you should
+
+  -- if local - then create and monitor
+  -- if remote post and tell IntraPoP you want egestAvailable notifications
 
        -- let
        --   url = makeUrl idleServer EgestE
@@ -94,7 +103,7 @@ init streamId proxyFor isLocal = do
                 --   _ <- crashIfLeft =<< SpudGun.postJson url payload
                 --   pure $ Right $ Remote addr
 
-  pure $ {proxyFor}
+  pure $ { streamId, forServer, mode}
 
 handleInfo :: Msg -> State -> Effect (CastResult State)
 handleInfo msg state =
@@ -125,13 +134,13 @@ findEgestForStream streamId = do
             Nothing ->
               pure $ Left NoResource
             Just idleServer -> do
-               _ <- startLink streamId idleServer
+               _ <- crashIfLeft =<< createProxyForNew streamId idleServer
                findEgestForStream streamId
 
 
 
 getProxyFor :: forall a. ServerName State Msg -> Effect (Either a Server)
-getProxyFor serverName = Right <$> exposeStateMember serverName _.proxyFor
+getProxyFor serverName = Right <$> exposeStateMember serverName _.forServer
 
 
 
