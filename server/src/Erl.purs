@@ -1,6 +1,5 @@
 module Erl.Utils
-       ( isRegistered
-       , systemTimeMs
+       ( systemTimeMs
        , sleep
        , makeRef
        , Milliseconds
@@ -16,15 +15,12 @@ import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Foreign (Foreign)
 
-foreign import isRegisteredImpl :: Atom -> Effect Boolean
 foreign import systemTimeImpl :: Atom -> Effect Int
 foreign import sleepImpl :: Int -> Effect Unit
 foreign import makeRefImpl :: Foreign
 
 sleep :: Milliseconds -> Effect Unit
 sleep = sleepImpl <<< unwrap
-
-
 
 -- TODO - find a place for these utility types to live (a la id3as_common?)
 -- | A duration measured in milliseconds.
@@ -59,9 +55,6 @@ instance monoidMilliseconds :: Monoid Milliseconds where
 
 instance showMilliseconds :: Show Milliseconds where
   show (Milliseconds n) = "(Milliseconds " <> show n <> ")"
-
-isRegistered :: String -> Effect Boolean
-isRegistered name = isRegisteredImpl (atom name)
 
 systemTimeMs :: Effect Milliseconds
 systemTimeMs = wrap <$> systemTimeImpl (atom "millisecond")

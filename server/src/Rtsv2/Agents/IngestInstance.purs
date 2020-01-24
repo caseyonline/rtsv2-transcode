@@ -16,6 +16,7 @@ import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
 import Erl.Utils (Milliseconds)
+import Rtsv2.Names as Names
 import Logger (Logger, spy)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)

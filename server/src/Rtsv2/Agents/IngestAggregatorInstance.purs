@@ -17,6 +17,7 @@ import Erl.Data.List (List, nil, (:))
 import Erl.Data.Map (Map, delete, insert, size, toUnfoldable)
 import Erl.Data.Map as Map
 import Erl.Data.Tuple (Tuple2, tuple2)
+import Rtsv2.Names as Names
 import Foreign (Foreign)
 import Logger (Logger)
 import Logger as Logger

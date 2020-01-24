@@ -18,6 +18,7 @@ import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
 import Erl.Data.Tuple (tuple2, tuple3)
 import Erl.ModuleName (NativeModuleName(..))
+import Rtsv2.Names as Names
 import Foreign (unsafeToForeign)
 import Logger (Logger)
 import Logger as Logger

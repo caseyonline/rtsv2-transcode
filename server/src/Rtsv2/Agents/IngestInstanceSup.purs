@@ -9,14 +9,15 @@ import Prelude
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Erl.Data.List (nil, (:))
+import Rtsv2.Names as Names
 import Pinto (SupervisorName)
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStartTemplate, childType)
 import Pinto.Sup as Sup
 import Rtsv2.Agents.IngestInstance as IngestInstance
 import Rtsv2.Names as Names
-import Shared.Stream (StreamAndVariant)
 import Shared.LlnwApiTypes (StreamDetails)
+import Shared.Stream (StreamAndVariant)
 
 isAvailable :: Effect Boolean
 isAvailable = Names.isRegistered serverName

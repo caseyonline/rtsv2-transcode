@@ -7,6 +7,7 @@ module Rtsv2.Agents.IngestAggregatorInstanceSup
 
 import Prelude
 
+import Rtsv2.Names as Names
 import Effect (Effect)
 import Erl.Data.List (nil, (:))
 import Pinto (SupervisorName)

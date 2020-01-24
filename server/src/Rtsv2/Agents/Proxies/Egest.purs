@@ -1,8 +1,10 @@
-module Rtsv2.Agents.Proxies.Egest
-       ( whereIs
+module Rtsv2.Agents.Egest.Locator
+       ( proxiesFor
        , startOrProxy
+       , startLink
        , findEgestForStream
-       , ProxyMode
+       , StartArgs(..)
+       , NewArgs_
        )
        where
 
@@ -36,31 +38,37 @@ import Shared.Stream (StreamId)
 import Shared.Types (EgestLocation(..), FailureReason(..), Server, extractAddress, serverLoadToServer)
 import SpudGun as SpudGun
 
-data ProxyMode = New | Existing
 type State = { streamId :: StreamId
              , forServer :: Server
-             , mode :: ProxyMode
              }
 
 type Msg = Unit
 
-whereIs :: StreamId -> Effect (List (ServerName State Msg))
-whereIs streamId = do
+proxiesFor :: StreamId -> Effect (List (ServerName State Msg))
+proxiesFor streamId = do
   Gproc.match $ Names.egestProxyMatch streamId
 
 serverName :: StreamId -> Server -> ServerName State Msg
 serverName = Names.egestProxyName
 
-type StartArgs = { mode :: ProxyMode
-                 , streamId :: StreamId
-                 , forServer :: Server
-                 , aggregator :: Server
-                 }
+
+type NewArgs_ = { streamId :: StreamId
+      , forServer :: Server
+      , aggregator :: Server
+      }
+
+data StartArgs =
+  New NewArgs_
+  | Existing { streamId :: StreamId
+             , forServer :: Server
+             }
 
 startLink :: StartArgs -> Effect StartLinkResult
-startLink args@{streamId, forServer} = Gen.startLink (serverName streamId forServer) (init args) handleInfo
+startLink args@(New {streamId, forServer}) = Gen.startLink (serverName streamId forServer) (init args) handleInfo
+startLink args@(Existing {streamId, forServer}) = Gen.startLink (serverName streamId forServer) (init args) handleInfo
 
-startOrProxy :: StartArgs -> Effect StartLinkResult
+
+startOrProxy :: NewArgs_ -> Effect StartLinkResult
 startOrProxy  args@{streamId, aggregator, forServer} = do
   thisServer <- PoPDefinition.getThisServer
   let
@@ -70,7 +78,7 @@ startOrProxy  args@{streamId, aggregator, forServer} = do
     startChildToStartLink <$> EgestInstanceSup.startEgest {streamId, aggregator}
   else
     -- TODO - via a supervisor?
-    startLink args
+    startLink (New args)
 
 
 -- TODO - this probably should not live here...
@@ -81,16 +89,17 @@ startChildToStartLink (Started pid) = Right pid
 
 
 init :: StartArgs -> Effect State
-init payload@{streamId, forServer, aggregator, mode} = do
-  _ <- logInfo "Egest proxy starting" {}
-  _ <- case mode of
-      New -> do
-        let
-          url = makeUrl forServer EgestE
-        void <$> crashIfLeft =<< SpudGun.postJson url ({streamId, aggregator} :: CreateEgestPayload)
-      Existing ->
-          pure unit
-  pure $ { streamId, forServer, mode}
+init (New payload@{streamId, forServer, aggregator}) = do
+  _ <- logInfo "Egest proxy starting for new egest" payload
+  let
+    url = makeUrl forServer EgestE
+  _ <- crashIfLeft =<< SpudGun.postJson url ({streamId, aggregator} :: CreateEgestPayload)
+  pure $ { streamId, forServer}
+
+
+init (Existing payload@{streamId, forServer}) = do
+  _ <- logInfo "Egest proxy starting for existing egest" payload
+  pure $ { streamId, forServer}
 
 handleInfo :: Msg -> State -> Effect (CastResult State)
 handleInfo msg state =
@@ -100,19 +109,19 @@ handleInfo msg state =
 findEgestForStream :: StreamId -> Effect (Either FailureReason EgestLocation)
 findEgestForStream streamId = do
 
-  -- does the stream even exists
-  mAggregator <- IntraPoP.whereIsIngestAggregator streamId
-  case spy "mAggregator" mAggregator of
-    Nothing ->
-      pure $ Left NotFound
-    Just aggregator -> do
-      apiResp <- EgestInstance.addClient streamId
-      let pickCandidate = head
-      case apiResp of
-        Right _ ->
-          pure $ Right Local
-        Left _ -> do
-          proxies <- whereIs streamId
+  apiResp <- EgestInstance.addClient streamId
+  case apiResp of
+    Right _ ->
+      pure $ Right Local
+    Left _ -> do
+      -- does the stream even exists
+      mAggregator <- IntraPoP.whereIsIngestAggregator streamId
+      case spy "mAggregator" mAggregator of
+        Nothing ->
+          pure $ Left NotFound
+
+        Just aggregator -> do
+          proxies <- proxiesFor streamId
           proxiesAndCapacity <- traverse (\proxy -> do accept <- couldAcceptClient proxy
                                                        pure $ Tuple proxy accept) proxies
           let
@@ -127,20 +136,18 @@ findEgestForStream streamId = do
                 Nothing ->
                   pure $ Left NoResource
                 Just idleServer ->
-                  let args = { mode : New
-                             , streamId
+                  let args = { streamId
                              , forServer : idleServer
                              , aggregator
                              }
                   in do
                     _ <- crashIfLeft =<< startOrProxy args
                     findEgestForStream streamId
-
+  where pickCandidate = head
 
 
 getProxyFor :: forall a. ServerName State Msg -> Effect (Either a Server)
 getProxyFor sn = Right <$> exposeStateMember sn _.forServer
-
 
 
 couldAcceptClient :: ServerName State Msg -> Effect Boolean

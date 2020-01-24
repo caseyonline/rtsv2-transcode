@@ -12,7 +12,6 @@ module Rtsv2.Names
        , ingestRtmpServerName
        , ingestSupName
        , intraPoPName
-       , isRegistered
        , loadServerName
        , popDefinitionName
        , streamRelayInstanceSupName
@@ -24,11 +23,9 @@ module Rtsv2.Names
 
 import Prelude
 
-import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.Tuple (tuple2, tuple3, tuple4)
 import Erl.ModuleName (NativeModuleName(..))
-import Erl.Utils as ErlUtils
 import Foreign (unsafeToForeign)
 import Pinto (ServerName(..), SupervisorName)
 import Shared.Agent (Agent(..))
@@ -36,7 +33,7 @@ import Shared.Stream (StreamId, StreamAndVariant)
 import Shared.Types (Server)
 
 agentSupName :: SupervisorName
-agentSupName = Local "AgentSup"
+agentSupName = Local (atom "AgentSup")
 
 egestInstanceName :: forall a b. StreamId -> ServerName a b
 egestInstanceName = gprocName2 Egest
@@ -75,10 +72,10 @@ intraPoPName :: forall a b. ServerName a b
 intraPoPName = localName IntraPoP
 
 loadServerName :: forall a b. ServerName a b
-loadServerName = Local "Load"
+loadServerName = Local (atom "Load")
 
 popDefinitionName :: forall a b. ServerName a b
-popDefinitionName = Local "PoPDefinition"
+popDefinitionName = Local (atom "PoPDefinition")
 
 streamRelayInstanceSupName :: SupervisorName
 streamRelayInstanceSupName = instanceSup StreamRelay
@@ -87,29 +84,21 @@ transPoPName :: forall a b. ServerName a b
 transPoPName = localName TransPoP
 
 webServerName :: forall a b. ServerName a b
-webServerName = Local "Web"
-
-isRegistered :: forall a b. ServerName a b -> Effect Boolean
-isRegistered (Local name) = ErlUtils.isRegistered name
-isRegistered (Global name) = ErlUtils.isRegistered name
-isRegistered (Via (NativeModuleName m) name) = viaIsRegisteredImpl m name
-
+webServerName = Local (atom "Web")
 
 toDomain :: forall a b. ServerName a b -> Atom
-toDomain (Local name) = atom name
-toDomain (Global name) = atom name
+toDomain (Local name) = name
+toDomain (Global name) = name
 toDomain _ = atom "gproc domain unknown"
 
 --------------------------------------------------------------------------------
 -- Internals
 --------------------------------------------------------------------------------
-foreign import viaIsRegisteredImpl :: forall a. Atom -> a -> Effect Boolean
-
 withSuffix :: forall a b t. Show t => String -> t -> ServerName a b
-withSuffix suffix t = Local $ (show t) <> suffix
+withSuffix suffix t = Local $ atom $ (show t) <> suffix
 
 localName :: forall a b t. Show t => t -> ServerName a b
-localName = Local <<< show
+localName = Local <<< atom <<< show
 
 instanceSup :: forall a. Show a => a -> SupervisorName
 instanceSup = withSuffix "InstanceSup"

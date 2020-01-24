@@ -10,6 +10,7 @@ import Prelude
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
+import Rtsv2.Names as Names
 import Logger (Logger)
 import Logger as Logger
 import Pinto (SupervisorName)

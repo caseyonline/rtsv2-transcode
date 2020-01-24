@@ -3,6 +3,7 @@ module Rtsv2.Sup where
 import Prelude
 
 import Effect (Effect)
+import Erl.Atom (atom)
 import Erl.Data.List (nil, (:))
 import Pinto (ServerName(..))
 import Pinto as Pinto
@@ -15,7 +16,7 @@ import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Web as Web
 
 startLink :: Effect Pinto.StartLinkResult
-startLink = Sup.startLink (Local "rtsv2sup") init
+startLink = Sup.startLink (Local (atom "rtsv2sup")) init
 
 init :: Effect SupervisorSpec
 init = do

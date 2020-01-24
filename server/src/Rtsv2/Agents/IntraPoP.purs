@@ -45,21 +45,23 @@ import Erl.Data.Map (Map, alter, fromFoldable, values)
 import Erl.Data.Map as Map
 import Erl.Process (Process, spawnLink)
 import Erl.Utils (Milliseconds)
-import Erl.Utils as Erl
 import Logger (Logger)
 import Logger as Logger
 import Partial.Unsafe (unsafeCrashWith)
-import Pinto (ServerName, StartLinkResult)
+import Pinto (ServerName, StartLinkResult, isRegistered)
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Prim.Row (class Nub, class Union)
 import Record as Record
+import Rtsv2.Agents.Proxies.Egest as EgestProxy
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
 import Rtsv2.Health (Health, percentageToHealth)
 import Rtsv2.Names as Names
+import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
+import Rtsv2.Utils (crashIfLeft)
 import Serf (IpAndPort, LamportClock)
 import Serf as Serf
 import Shared.Stream (StreamId(..), StreamAndVariant(..))
@@ -460,6 +462,13 @@ handleEgestStateChange stateChange streamId server state =
     EgestAvailable -> do
         -- egestAvailable on some other node in this PoP
         _ <- logInfo "EgestAvailable on remote node" { streamId: streamId, remoteNode: server }
+        -- create a proxy for that egest if none exists
+        if isRegistered streamId server
+        then
+          pure unit
+        else
+          void =<< crashIfLeft =<< EgestProxy.startLink (Existing { streamId, forServer: server})
+
         newEgestLocations <- MultiMap.insert' streamId server state.egestLocations
         pure $ state { egestLocations = newEgestLocations }
 
