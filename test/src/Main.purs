@@ -22,7 +22,7 @@ import Shared.Stream (StreamVariant(..))
 import Shared.Types (IngestAggregatorPublicState)
 import Simple.JSON (class ReadForeign)
 import Simple.JSON as SimpleJSON
-import Test.Spec (after_, before_, describe, it, describeOnly, itOnly)
+import Test.Spec (after_, before_, describe, it)
 import Test.Spec.Reporter.Console (consoleReporter)
 import Test.Spec.Runner (runSpecT)
 
@@ -92,10 +92,8 @@ main =
                                          , headers: M.makeHeaders { "Content-Type": "application/json" }
                                          } # attempt <#> stringifyError
 
-
-
-
-    maybeLogStep s a = --let _ = spy s a in
+    maybeLogStep s a =
+      --let _ = spy s a in
       unit
 
     as desc (Right r) =

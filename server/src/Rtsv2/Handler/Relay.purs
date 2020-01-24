@@ -1,5 +1,6 @@
 module Rtsv2.Handler.Relay
        ( resource
+       , stats
        ) where
 
 import Prelude
@@ -26,19 +27,15 @@ import Stetson (HttpMethod(..), StetsonHandler)
 import Stetson.Rest as Rest
 import Unsafe.Coerce as Unsafe.Coerce
 
-type State
+type StatsState
   = { streamId :: StreamId
-    , mCreateRelayPayload :: Maybe CreateRelayPayload
-    , method :: String
     , mStatus :: Maybe Status
     }
 
-resource :: StetsonHandler State
-resource =
+stats :: StetsonHandler StatsState
+stats =
   Rest.handler init
-  # Rest.allowedMethods (Rest.result (GET : POST : mempty))
-  # Rest.malformedRequest malformedRequest
-  # Rest.contentTypesAccepted (\req state -> Rest.result (singleton $ MimeType.json acceptJson) req state)
+  # Rest.allowedMethods (Rest.result (GET : mempty))
   # Rest.contentTypesProvided (\req state -> Rest.result (singleton $ MimeType.json provideContent) req state)
   # Rest.yeeha
   where
@@ -47,26 +44,48 @@ resource =
         streamId = wrap $ fromMaybe' (lazyCrashIfMissing "stream_id binding missing") $ binding (atom "stream_id") req
         method' = method req
       in do
-        mStatus <- case method' of
-          "POST" -> pure Nothing
-          _ -> noprocToMaybe $ StreamRelayInstance.status streamId
-        mCreateRelayPayload <-
-          case method' of
-            "POST" ->  hush <$> JSON.readJSON <$> binaryToString <$> allBody req mempty
-            _ -> pure Nothing
+        mStatus <- noprocToMaybe $ StreamRelayInstance.status streamId
         Rest.initResult req
             { streamId
-            , mCreateRelayPayload
-            , method: method'
             , mStatus
             }
 
-    malformedRequest req state@{method, streamId, mStatus, mCreateRelayPayload} =
-      case method of
-        "POST" -> do
+    provideContent req state@{mStatus} =
+      case mStatus of
+        Nothing ->
+          do
+            newReq <- replyWithoutBody (StatusCode 404) Map.empty req
+            Rest.stop newReq state
+        Just status ->
+          Rest.result "marvelous" req state
+
+type State
+  = { streamId :: StreamId
+    , mCreateRelayPayload :: Maybe CreateRelayPayload
+    }
+
+resource :: StetsonHandler State
+resource =
+  Rest.handler init
+  # Rest.allowedMethods (Rest.result (POST : mempty))
+  # Rest.malformedRequest malformedRequest
+  # Rest.contentTypesAccepted (\req state -> Rest.result (singleton $ MimeType.json acceptJson) req state)
+  # Rest.contentTypesProvided (\req state -> Rest.result (singleton $ MimeType.json provideContent) req state)
+  # Rest.yeeha
+  where
+    init req =
+      let
+        streamId = wrap $ fromMaybe' (lazyCrashIfMissing "stream_id binding missing") $ binding (atom "stream_id") req
+      in do
+        mStatus <- noprocToMaybe $ StreamRelayInstance.status streamId
+        mCreateRelayPayload <- hush <$> JSON.readJSON <$> binaryToString <$> allBody req mempty
+        Rest.initResult req
+            { streamId
+            , mCreateRelayPayload
+            }
+
+    malformedRequest req state@{streamId, mCreateRelayPayload} =
           Rest.result (isNothing mCreateRelayPayload) req state
-        _ ->
-          Rest.result false req state
 
     acceptJson req state@{streamId, mCreateRelayPayload} =
       do
@@ -76,20 +95,6 @@ resource =
         Rest.result true req state
 
     provideContent req state =
-      case method req of
-        "POST" -> provideEmpty req state
-        _ -> provideStatus req state
-
-    provideStatus req state@{mStatus} =
-      case mStatus of
-        Nothing ->
-          do
-            newReq <- replyWithoutBody (StatusCode 404) Map.empty req
-            Rest.stop newReq state
-        Just status ->
-          Rest.result "marvelous" req state
-
-    provideEmpty req state =
       Rest.result "" req state
 
 
