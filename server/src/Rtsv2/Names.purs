@@ -3,9 +3,8 @@ module Rtsv2.Names
          agentSupName
        , egestInstanceName
        , egestInstanceSupName
-       , egestLocalProxyName
-       , egestRemoteProxyName
-       , egestRemoteProxyMatch
+       , egestProxyName
+       , egestProxyMatch
        , ingestAggregatorInstanceName
        , ingestAggregatorInstanceSupName
        , ingestInstanceName
@@ -42,13 +41,10 @@ agentSupName = Local "AgentSup"
 egestInstanceName :: forall a b. StreamId -> ServerName a b
 egestInstanceName = gprocName2 Egest
 
-egestLocalProxyName :: forall a b. StreamId -> ServerName a b
-egestLocalProxyName = gprocProxyName2 Egest
+egestProxyName :: forall a b. StreamId -> Server -> ServerName a b
+egestProxyName = gprocProxyName3 Egest
 
-egestRemoteProxyName :: forall a b. StreamId -> Server -> ServerName a b
-egestRemoteProxyName = gprocProxyName3 Egest
-
-egestRemoteProxyMatch streamId = tuple4 (show Egest) "proxy" streamId (atom "$1")
+egestProxyMatch streamId = tuple4 (show Egest) "proxy" streamId (atom "$1")
 
 
 

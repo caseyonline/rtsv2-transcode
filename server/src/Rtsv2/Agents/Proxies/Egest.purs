@@ -1,7 +1,6 @@
 module Rtsv2.Agents.Proxies.Egest
-       ( whereIsLocal
-       , whereIsRemote
-       , startLink
+       ( whereIs
+       , startOrProxy
        , findEgestForStream
        , ProxyMode
        )
@@ -21,7 +20,7 @@ import Erl.Data.List (List, head, nil, (:))
 import Gproc as Gproc
 import Logger (Logger)
 import Logger as Logger
-import Pinto (ServerName, StartLinkResult)
+import Pinto (ServerName, StartChildResult(..), StartLinkResult)
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Rtsv2.Agents.EgestInstance (CreateEgestPayload)
@@ -45,21 +44,12 @@ type State = { streamId :: StreamId
 
 type Msg = Unit
 
-whereIsRemote :: StreamId -> Effect (List (ServerName State Msg))
-whereIsRemote streamId = do
-  Gproc.match $ Names.egestRemoteProxyMatch streamId
+whereIs :: StreamId -> Effect (List (ServerName State Msg))
+whereIs streamId = do
+  Gproc.match $ Names.egestProxyMatch streamId
 
-
-whereIsLocal :: StreamId -> Effect (Maybe (ServerName State Msg))
-whereIsLocal streamId = do
-  let name = Names.egestLocalProxyName streamId
-  isPresentLocally <- Gproc.isRegistered name
-  if isPresentLocally
-  then pure $ Just name
-  else pure $ Nothing
-
-
-
+serverName :: StreamId -> Server -> ServerName State Msg
+serverName = Names.egestProxyName
 
 type StartArgs = { mode :: ProxyMode
                  , streamId :: StreamId
@@ -68,36 +58,36 @@ type StartArgs = { mode :: ProxyMode
                  }
 
 startLink :: StartArgs -> Effect StartLinkResult
-startLink args@{streamId, forServer} = do
+startLink args@{streamId, forServer} = Gen.startLink (serverName streamId forServer) (init args) handleInfo
+
+startOrProxy :: StartArgs -> Effect StartLinkResult
+startOrProxy  args@{streamId, aggregator, forServer} = do
   thisServer <- PoPDefinition.getThisServer
   let
     isLocal = thisServer == forServer
-    name = if isLocal
-             then
-               Names.egestLocalProxyName streamId
-             else
-               Names.egestRemoteProxyName streamId forServer
-  Gen.startLink name (init isLocal args) handleInfo
+  if isLocal
+  then do
+    startChildToStartLink <$> EgestInstanceSup.startEgest {streamId, aggregator}
+  else
+    -- TODO - via a supervisor?
+    startLink args
 
 
-init :: Boolean -> StartArgs -> Effect State
-init isLocal {streamId, forServer, aggregator, mode} = do
+-- TODO - this probably should not live here...
+-- TODO - is alreadyStarted an error here?
+startChildToStartLink :: StartChildResult -> StartLinkResult
+startChildToStartLink (AlreadyStarted pid) =  Right pid
+startChildToStartLink (Started pid) = Right pid
+
+
+init :: StartArgs -> Effect State
+init payload@{streamId, forServer, aggregator, mode} = do
   _ <- logInfo "Egest proxy starting" {}
   _ <- case mode of
       New -> do
         let
-          payload = { streamId
-                    , aggregator
-                    } :: CreateEgestPayload
-
-        if isLocal
-        then do
-          EgestInstanceSup.startEgest payload
-
-        else do
-          let
-            url = makeUrl forServer EgestE
-          void <$> crashIfLeft =<< SpudGun.postJson url payload
+          url = makeUrl forServer EgestE
+        void <$> crashIfLeft =<< SpudGun.postJson url ({streamId, aggregator} :: CreateEgestPayload)
       Existing ->
           pure unit
   pure $ { streamId, forServer, mode}
@@ -122,7 +112,7 @@ findEgestForStream streamId = do
         Right _ ->
           pure $ Right Local
         Left _ -> do
-          proxies <- whereIsRemote streamId
+          proxies <- whereIs streamId
           proxiesAndCapacity <- traverse (\proxy -> do accept <- couldAcceptClient proxy
                                                        pure $ Tuple proxy accept) proxies
           let
@@ -136,18 +126,20 @@ findEgestForStream streamId = do
               case mIdleServer of
                 Nothing ->
                   pure $ Left NoResource
-                Just idleServer -> do
-                   let args = { mode : New
-                              , streamId
-                              , forServer : idleServer
-                              , aggregator}
-                   _ <- crashIfLeft =<< startLink args
-                   findEgestForStream streamId
+                Just idleServer ->
+                  let args = { mode : New
+                             , streamId
+                             , forServer : idleServer
+                             , aggregator
+                             }
+                  in do
+                    _ <- crashIfLeft =<< startOrProxy args
+                    findEgestForStream streamId
 
 
 
 getProxyFor :: forall a. ServerName State Msg -> Effect (Either a Server)
-getProxyFor serverName = Right <$> exposeStateMember serverName _.forServer
+getProxyFor sn = Right <$> exposeStateMember sn _.forServer
 
 
 
@@ -157,7 +149,7 @@ couldAcceptClient sn = pure true
 
 
 exposeStateMember :: forall a m. ServerName State m -> (State -> a) -> Effect a
-exposeStateMember serverName member = Gen.doCall serverName
+exposeStateMember sn member = Gen.doCall sn
   \state -> pure $ CallReply (member state) state
 
 --------------------------------------------------------------------------------

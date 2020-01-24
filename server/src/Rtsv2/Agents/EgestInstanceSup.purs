@@ -31,15 +31,9 @@ startLink :: forall a. a -> Effect Pinto.StartLinkResult
 startLink _ = Sup.startLink serverName init
 
 
-startEgest :: CreateEgestPayload -> Effect Unit
-startEgest payload = do
-  isActive <- EgestInstance.isActive payload.streamId
-  case isActive of
-    false -> do
-             _ <- Sup.startSimpleChild childTemplate serverName payload
-             pure unit
-    true ->
-      pure unit
+startEgest :: CreateEgestPayload -> Effect Pinto.StartChildResult
+startEgest payload =
+  Sup.startSimpleChild childTemplate serverName payload
 
 maybeStartAndAddClient :: CreateEgestPayload -> Effect Unit
 maybeStartAndAddClient payload = do
