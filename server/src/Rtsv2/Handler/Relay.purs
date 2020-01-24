@@ -22,6 +22,7 @@ import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.Utils (noprocToMaybe)
 import Shared.Stream (StreamId)
 import Shared.Utils (lazyCrashIfMissing)
+import Simple.JSON (writeJSON)
 import Simple.JSON as JSON
 import Stetson (HttpMethod(..), StetsonHandler)
 import Stetson.Rest as Rest
@@ -57,7 +58,7 @@ stats =
             newReq <- replyWithoutBody (StatusCode 404) Map.empty req
             Rest.stop newReq state
         Just status ->
-          Rest.result "marvelous" req state
+          Rest.result (writeJSON status) req state
 
 type State
   = { streamId :: StreamId

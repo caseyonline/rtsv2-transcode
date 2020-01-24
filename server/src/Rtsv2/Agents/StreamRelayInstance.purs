@@ -4,14 +4,13 @@ module Rtsv2.Agents.StreamRelayInstance
   , registerEgest
   , init
   , status
-  , Status
   , CreateRelayPayload
   ) where
 
 import Prelude
 
 import Data.Maybe (Maybe(..))
-import Data.Set (Set)
+import Data.Set (Set, toUnfoldable)
 import Data.Set as Set
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
@@ -27,7 +26,7 @@ import Pinto.Gen as Gen
 import Rtsv2.Agents.TransPoP (ViaPoPs)
 import Shared.Agent as Agent
 import Shared.Stream (StreamId)
-import Shared.Types (EgestServer, RelayServer, Server)
+import Shared.Types (EgestServer, RelayServer, Server, ServerAddress, extractAddress)
 
 
 type CreateRelayPayload
@@ -36,7 +35,7 @@ type CreateRelayPayload
     }
 
 
-type Status = { }
+
 type State
   = { streamId :: StreamId
     , aggregator :: Server
@@ -47,7 +46,6 @@ type State
     , relaysServed :: Set RelayServer
     , egestsServed :: Set EgestServer
     , egestSourceRoutes :: Maybe (List ViaPoPs)
-    , status :: Status
     }
 
 serverName :: StreamId -> ServerName State Unit
@@ -59,9 +57,13 @@ startLink payload = Gen.startLink (serverName payload.streamId) (init payload) G
 isAvailable :: StreamId -> Effect Boolean
 isAvailable streamId = isRegistered (serverName streamId)
 
-status  :: StreamId -> Effect Status
+status  :: StreamId -> Effect StreamRelayPublicState
 status streamId =
-  exposeStateMember _.status streamId
+  exposeState mkStatus streamId
+  where
+    mkStatus :: State -> Status
+    mkStatus state =
+       {egestsServed : extractAddress <$> toUnfoldable state.egestsServed}
 
 
 init :: CreateRelayPayload -> Effect State
@@ -72,7 +74,6 @@ init payload = do
        , relaysServed : mempty
        , egestsServed : mempty
        , egestSourceRoutes : Nothing
-       , status: {}
        }
 
 registerEgest :: StreamId -> EgestServer -> Effect Unit
@@ -85,9 +86,9 @@ doRegisterEgest egestServer state@{egestsServed} = do
                              }
 
 
-exposeStateMember :: forall a. (State -> a) -> StreamId -> Effect a
-exposeStateMember member streamId = Gen.doCall (serverName streamId)
-  \state -> pure $ CallReply (member state) state
+exposeState :: forall a. (State -> a) -> StreamId -> Effect a
+exposeState exposeFn streamId = Gen.doCall (serverName streamId)
+  \state -> pure $ CallReply (exposeFn state) state
 
 --------------------------------------------------------------------------------
 -- Log helpers

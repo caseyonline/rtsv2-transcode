@@ -54,25 +54,26 @@ init :: Config.WebConfig -> Effect State
 init args = do
   bindIp <- Env.privateInterfaceIp
   Stetson.configure
-    # mkRoute  TransPoPLeaderE TransPoPHandler.leader
-    # mkRoute  HealthCheckE HealthHandler.healthCheck
-    # mkRoute (EgestStatsE (StreamId ":stream_id")) EgestStatsHandler.stats
-    # mkRoute  RelayE RelayHandler.resource
-    # mkRoute (RelayStatsE(StreamId ":stream_id")) RelayHandler.stats
-    # mkRoute  LoadE LoadHandler.load
-    # mkRoute (IngestAggregatorE $ StreamId ":stream_id") IngestAggregatorHandler.ingestAggregator
+    # mkRoute  TransPoPLeaderE                                                                       TransPoPHandler.leader
+    # mkRoute  HealthCheckE                                                                          HealthHandler.healthCheck
+    # mkRoute (EgestStatsE (StreamId ":stream_id"))                                                  EgestStatsHandler.stats
+    # mkRoute  RelayE                                                                                RelayHandler.resource
+    # mkRoute (RelayStatsE(StreamId ":stream_id"))                                                   RelayHandler.stats
+    # mkRoute  LoadE                                                                                 LoadHandler.load
+    # mkRoute (IngestAggregatorE $ StreamId ":stream_id")                                            IngestAggregatorHandler.ingestAggregator
     # mkRoute (IngestAggregatorActiveIngestsE (StreamId ":stream_id") (StreamVariant ":variant_id")) IngestAggregatorHandler.ingestAggregatorsActiveIngest
-    # mkRoute  IngestAggregatorsE IngestAggregatorHandler.ingestAggregators
-    # mkRoute (IngestStartE ":canary" ":short_name" (StreamVariant ":variant_id")) IngestHandler.ingestStart
-    # mkRoute (IngestStopE ":canary" ":short_name" (StreamVariant ":variant_id")) IngestHandler.ingestStop
-    # mkRoute (ClientStartE ":canary" (StreamId ":stream_id")) ClientHandler.clientStart
-    # mkRoute (ClientStopE ":canary" (StreamId ":stream_id")) ClientHandler.clientStop
-    # mkRoute  StreamAuthE LlnwStubHandler.streamAuthType
-    # mkRoute  StreamAuthTypeE LlnwStubHandler.streamAuth
-    # mkRoute  StreamPublishE LlnwStubHandler.streamPublish
-    # static  (IngestAggregatorPlayerE (StreamId ":stream_id")) (PrivFile "rtsv2" "www/aggregatorPlayer.html")
-    # static' (IngestAggregatorPlayerJsE (StreamId ":stream_id")) "/[...]" (PrivDir "rtsv2" "www/js")
-    # static  (IngestAggregatorActiveIngestsPlayerE (StreamId ":stream_id") (StreamVariant ":variant_id")) (PrivFile "rtsv2" "www/play.html")
+    # mkRoute  IngestAggregatorsE                                                                    IngestAggregatorHandler.ingestAggregators
+    # mkRoute (IngestStartE ":canary" ":short_name" (StreamVariant ":variant_id"))                   IngestHandler.ingestStart
+    # mkRoute (IngestStopE ":canary" ":short_name" (StreamVariant ":variant_id"))                    IngestHandler.ingestStop
+    # mkRoute (ClientStartE ":canary" (StreamId ":stream_id"))                                       ClientHandler.clientStart
+    # mkRoute (ClientStopE ":canary" (StreamId ":stream_id"))                                        ClientHandler.clientStop
+    # mkRoute  StreamAuthE                                                                           LlnwStubHandler.streamAuthType
+    # mkRoute  StreamAuthTypeE                                                                       LlnwStubHandler.streamAuth
+    # mkRoute  StreamPublishE                                                                        LlnwStubHandler.streamPublish
+
+    # static  (IngestAggregatorPlayerE (StreamId ":stream_id"))                                                       (PrivFile "rtsv2" "www/aggregatorPlayer.html")
+    # static' (IngestAggregatorPlayerJsE (StreamId ":stream_id")) "/[...]"                                            (PrivDir "rtsv2" "www/js")
+    # static  (IngestAggregatorActiveIngestsPlayerE (StreamId ":stream_id") (StreamVariant ":variant_id"))            (PrivFile "rtsv2" "www/play.html")
     # static' (IngestAggregatorActiveIngestsPlayerJsE (StreamId ":stream_id") (StreamVariant ":variant_id")) "/[...]" (PrivDir "rtsv2" "www/js")
 
     # Stetson.cowboyRoutes cowboyRoutes

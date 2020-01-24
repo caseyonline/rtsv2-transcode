@@ -9,7 +9,6 @@ module Shared.Types
        , ServerRec
        , RelayServer(..)
        , EgestServer(..)
-       , IngestAggregatorPublicState
        , EgestLocation(..)
        , FailureReason(..)
        , APIResp(..)
@@ -26,8 +25,6 @@ import Data.Either (Either)
 import Data.Newtype (class Newtype, unwrap)
 import Data.Symbol (SProxy(..))
 import Record as Record
-import Shared.LlnwApiTypes (StreamDetails)
-import Shared.Stream (StreamVariant)
 import Simple.JSON (class ReadForeign, class WriteForeign)
 
 newtype ServerAddress = ServerAddress String
@@ -124,18 +121,14 @@ derive newtype instance showServerLoad :: Show ServerLoad
 derive newtype instance readForeignServerLoad :: ReadForeign ServerLoad
 derive newtype instance writeForeignServerLoad :: WriteForeign ServerLoad
 
-type IngestAggregatorPublicState
-   = { streamDetails :: StreamDetails
-     , activeStreamVariants :: Array { streamVariant :: StreamVariant
-                                     , serverAddress :: ServerAddress
-                                     }
-     }
 
-
-type ServerAddressRec = {address :: ServerAddress}
-type LocationRec = { pop :: PoPName
-                   , region :: RegionName
-                   }
+-- type ServerAddressRec
+--   = { address :: ServerAddress
+--     }
+-- type LocationRec
+--   = { pop :: PoPName
+--     , region :: RegionName
+--     }
 
 
 --------------------------------------------------------------------------------
