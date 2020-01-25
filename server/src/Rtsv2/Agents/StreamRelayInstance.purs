@@ -26,8 +26,8 @@ import Pinto.Gen as Gen
 import Rtsv2.Agents.TransPoP (ViaPoPs)
 import Shared.Agent as Agent
 import Shared.Stream (StreamId)
-import Shared.Types (EgestServer, RelayServer, Server, ServerAddress, extractAddress)
-
+import Shared.Types (EgestServer, RelayServer, Server, extractAddress)
+import Shared.Types.Agent.State as PublicState
 
 type CreateRelayPayload
   = { streamId :: StreamId
@@ -57,11 +57,11 @@ startLink payload = Gen.startLink (serverName payload.streamId) (init payload) G
 isAvailable :: StreamId -> Effect Boolean
 isAvailable streamId = isRegistered (serverName streamId)
 
-status  :: StreamId -> Effect StreamRelayPublicState
+status  :: StreamId -> Effect PublicState.StreamRelay
 status streamId =
   exposeState mkStatus streamId
   where
-    mkStatus :: State -> Status
+    mkStatus :: State -> PublicState.StreamRelay
     mkStatus state =
        {egestsServed : extractAddress <$> toUnfoldable state.egestsServed}
 

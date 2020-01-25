@@ -277,82 +277,82 @@ main =
               egestStats   p1n1 slot1          >>= assertStatusCode 200
                                                    >>= assertBodyText           "1"   >>= as "agent should have 1 client"
 
-      --       it "client requests stream on non-ingest node" do
-      --         client start p1n2 slot1          >>= assertStatusCode 404 >>= as  "no egest prior to ingest"
-      --         relayStats   p1n2 slot1          >>= assertStatusCode 404 >>= as  "no remote relay prior to ingest"
-      --         ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
-      --         waitForIntraPoPDisseminate                                >>= as' "allow intraPoP source avaialable to disseminate"
-      --         client start p1n2 slot1          >>= assertStatusCode 204 >>= as  "egest available"
-      --         relayStats   p1n2 slot1          >>= assertStatusCode 200 >>= as  "remote relay exists"
-      --         egestStats   p1n2 slot1          >>= assertStatusCode 200
-      --                                              >>= assertBodyText           "1"   >>= as "agent should have 1 client"
+            it "client requests stream on non-ingest node" do
+              client start p1n2 slot1          >>= assertStatusCode 404 >>= as  "no egest prior to ingest"
+              relayStats   p1n2 slot1          >>= assertStatusCode 404 >>= as  "no remote relay prior to ingest"
+              ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
+              waitForIntraPoPDisseminate                                >>= as' "allow intraPoP source avaialable to disseminate"
+              client start p1n2 slot1          >>= assertStatusCode 204 >>= as  "egest available"
+              relayStats   p1n2 slot1          >>= assertStatusCode 200 >>= as  "remote relay exists"
+              egestStats   p1n2 slot1          >>= assertStatusCode 200
+                                                   >>= assertBodyText           "1"   >>= as "agent should have 1 client"
 
-      --       it "client requests stream on 2nd node on ingest pop" do
-      --         client start p1n2 slot1          >>= assertStatusCode 404 >>= as "no egest p1n2 prior to ingest"
-      --         client start p1n3 slot1          >>= assertStatusCode 404 >>= as "no egest p1n3 prior to ingest"
-      --         ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as "create ingest"
-      --         waitForIntraPoPDisseminate                                >>= as' "allow intraPoP source avaialable to disseminate"
-      --         client start p1n2 slot1          >>= assertStatusCode 204
-      --                                              >>= assertHeader (Tuple "x-servedby" "172.16.169.2")
-      --                                                                   >>= as "first egest is same node"
-      --         waitForIntraPoPDisseminate                                >>= as' "allow intraPoP egest avaialable to disseminate"
-      --         client start p1n3 slot1          >>= assertStatusCode 204
-      --                                              >>= assertHeader (Tuple "x-servedby" "172.16.169.2")
-      --                                                                   >>= as "p1n3 egest redirects to p1n2"
-      --         egestStats   p1n2 slot1          >>= assertStatusCode 200
-      --                                              >>= assertBodyText "2"   >>= as "agent should have 2 clients"
-      --         egestStats   p1n3 slot1          >>= assertStatusCode 404 >>= as "no egest on node3"
-      --         client start p1n2 slot1          >>= assertStatusCode 204
-      --                                              >>= assertHeader (Tuple "x-servedby" "172.16.169.2")
-      --                                                                   >>= as "p1n2 stays on node2"
-      --         client start p1n3 slot1          >>= assertStatusCode 204
-      --                                              >>= assertHeader (Tuple "x-servedby" "172.16.169.2")
-      --                                                                   >>= as "p1n3 egest still redirects to p1n2"
-      --         egestStats   p1n2 slot1          >>= assertStatusCode 200
-      --                                              >>= assertBodyText "4"   >>= as "agent now has 4 clients"
-      --         egestStats   p1n3 slot1          >>= assertStatusCode 404 >>= as "still no egest on node3"
-      --         client stop  p1n2 slot1          >>= assertStatusCode 204 >>= as "stop client 1 on node2"
-      --         client stop  p1n2 slot1          >>= assertStatusCode 204 >>= as "stop client 2 on node2"
-      --         client stop  p1n2 slot1          >>= assertStatusCode 204 >>= as "stop client 3 on node2"
-      --         client stop  p1n2 slot1          >>= assertStatusCode 204 >>= as "stop client 4 on node2"
+            it "client requests stream on 2nd node on ingest pop" do
+              client start p1n2 slot1          >>= assertStatusCode 404 >>= as "no egest p1n2 prior to ingest"
+              client start p1n3 slot1          >>= assertStatusCode 404 >>= as "no egest p1n3 prior to ingest"
+              ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as "create ingest"
+              waitForIntraPoPDisseminate                                >>= as' "allow intraPoP source avaialable to disseminate"
+              client start p1n2 slot1          >>= assertStatusCode 204
+                                                   >>= assertHeader (Tuple "x-servedby" "172.16.169.2")
+                                                                        >>= as "first egest is same node"
+              waitForIntraPoPDisseminate                                >>= as' "allow intraPoP egest avaialable to disseminate"
+              client start p1n3 slot1          >>= assertStatusCode 204
+                                                   >>= assertHeader (Tuple "x-servedby" "172.16.169.2")
+                                                                        >>= as "p1n3 egest redirects to p1n2"
+              egestStats   p1n2 slot1          >>= assertStatusCode 200
+                                                   >>= assertBodyText "2"   >>= as "agent should have 2 clients"
+              egestStats   p1n3 slot1          >>= assertStatusCode 404 >>= as "no egest on node3"
+              client start p1n2 slot1          >>= assertStatusCode 204
+                                                   >>= assertHeader (Tuple "x-servedby" "172.16.169.2")
+                                                                        >>= as "p1n2 stays on node2"
+              client start p1n3 slot1          >>= assertStatusCode 204
+                                                   >>= assertHeader (Tuple "x-servedby" "172.16.169.2")
+                                                                        >>= as "p1n3 egest still redirects to p1n2"
+              egestStats   p1n2 slot1          >>= assertStatusCode 200
+                                                   >>= assertBodyText "4"   >>= as "agent now has 4 clients"
+              egestStats   p1n3 slot1          >>= assertStatusCode 404 >>= as "still no egest on node3"
+              client stop  p1n2 slot1          >>= assertStatusCode 204 >>= as "stop client 1 on node2"
+              client stop  p1n2 slot1          >>= assertStatusCode 204 >>= as "stop client 2 on node2"
+              client stop  p1n2 slot1          >>= assertStatusCode 204 >>= as "stop client 3 on node2"
+              client stop  p1n2 slot1          >>= assertStatusCode 204 >>= as "stop client 4 on node2"
 
-      --         waitForMoreThanEgestLinger                                >>= as' "allow the egest linger timer to expire"
-      --         egestStats   p1n2 slot1          >>= assertStatusCode 404 >>= as "now no egest on node2"
-      --         egestStats   p1n3 slot1          >>= assertStatusCode 404 >>= as "still no egest on node3"
-      --         client start p1n3 slot1          >>= assertStatusCode 204
-      --                                              >>= assertHeader (Tuple "x-servedby" "172.16.169.3")
-      --                                                                   >>= as "Final egest starts on node3"
-      --         egestStats   p1n3 slot1          >>= assertStatusCode 200
-      --                                              >>= assertBodyText "1"   >>= as "node 3 agent should have 1 client"
+              waitForMoreThanEgestLinger                                >>= as' "allow the egest linger timer to expire"
+              egestStats   p1n2 slot1          >>= assertStatusCode 404 >>= as "now no egest on node2"
+              egestStats   p1n3 slot1          >>= assertStatusCode 404 >>= as "still no egest on node3"
+              client start p1n3 slot1          >>= assertStatusCode 204
+                                                   >>= assertHeader (Tuple "x-servedby" "172.16.169.3")
+                                                                        >>= as "Final egest starts on node3"
+              egestStats   p1n3 slot1          >>= assertStatusCode 200
+                                                   >>= assertBodyText "1"   >>= as "node 3 agent should have 1 client"
 
-      -- describe "two pop setup" do
-      --   let
-      --     p1Nodes = [p1n1, p1n2, p1n3]
-      --     p2Nodes = [p2n1, p2n2]
-      --     nodes = p1Nodes <> p2Nodes
-      --   before_ (launch nodes) do
-      --     after_ stopSession do
-      --       it "client requests stream on other pop" do
-      --         client start p2n1 slot1          >>= assertStatusCode 404 >>= as  "no egest prior to ingest"
-      --         relayStats   p1n1 slot1          >>= assertStatusCode 404 >>= as  "no remote relay prior to ingest"
-      --         relayStats   p1n1 slot1          >>= assertStatusCode 404 >>= as  "no local relay prior to ingest"
-      --         ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
-      --         waitForTransPoPDisseminate                                >>= as' "wait for transPop disseminate"
-      --         client start p2n1 slot1          >>= assertStatusCode 204 >>= as  "egest available"
-      --         relayStats   p2n1 slot1          >>= assertStatusCode 200 >>= as  "local relay exists"
-      --         -- TODO relayStatus p1n1 slot1   >>= assertStatusCode 200 >>= as "remote relay exists"
+      describe "two pop setup" do
+        let
+          p1Nodes = [p1n1, p1n2, p1n3]
+          p2Nodes = [p2n1, p2n2]
+          nodes = p1Nodes <> p2Nodes
+        before_ (launch nodes) do
+          after_ stopSession do
+            it "client requests stream on other pop" do
+              client start p2n1 slot1          >>= assertStatusCode 404 >>= as  "no egest prior to ingest"
+              relayStats   p1n1 slot1          >>= assertStatusCode 404 >>= as  "no remote relay prior to ingest"
+              relayStats   p1n1 slot1          >>= assertStatusCode 404 >>= as  "no local relay prior to ingest"
+              ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
+              waitForTransPoPDisseminate                                >>= as' "wait for transPop disseminate"
+              client start p2n1 slot1          >>= assertStatusCode 204 >>= as  "egest available"
+              relayStats   p2n1 slot1          >>= assertStatusCode 200 >>= as  "local relay exists"
+              -- TODO relayStatus p1n1 slot1   >>= assertStatusCode 200 >>= as "remote relay exists"
 
-      --       it "client ingest starts and stops" do
-      --         client start p1n2 slot1          >>= assertStatusCode 404 >>= as  "no local egest prior to ingest"
-      --         client start p2n1 slot1          >>= assertStatusCode 404 >>= as  "no remote egest prior to ingest"
-      --         ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
-      --         waitForTransPoPDisseminate                                >>= as' "wait for transPop disseminate"
-      --         client start p1n2 slot1          >>= assertStatusCode 204 >>= as  "local egest post ingest"
-      --         client start p2n1 slot1          >>= assertStatusCode 204 >>= as  "remote egest post ingest"
-      --         ingest stop  p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "stop the ingest"
-      --         waitForTransPoPStopDisseminate                            >>= as' "wait for transPop disseminate"
-      --         client start p1n2 slot1          >>= assertStatusCode 404 >>= as  "no same pop egest post stop"
-      --         client start p2n1 slot1          >>= assertStatusCode 404 >>= as  "no remote pop egest post stop"
+            it "client ingest starts and stops" do
+              client start p1n2 slot1          >>= assertStatusCode 404 >>= as  "no local egest prior to ingest"
+              client start p2n1 slot1          >>= assertStatusCode 404 >>= as  "no remote egest prior to ingest"
+              ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
+              waitForTransPoPDisseminate                                >>= as' "wait for transPop disseminate"
+              client start p1n2 slot1          >>= assertStatusCode 204 >>= as  "local egest post ingest"
+              client start p2n1 slot1          >>= assertStatusCode 204 >>= as  "remote egest post ingest"
+              ingest stop  p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "stop the ingest"
+              waitForTransPoPStopDisseminate                            >>= as' "wait for transPop disseminate"
+              client start p1n2 slot1          >>= assertStatusCode 404 >>= as  "no same pop egest post stop"
+              client start p2n1 slot1          >>= assertStatusCode 404 >>= as  "no remote pop egest post stop"
 
     describe "Cleanup" do
       after_ stopSession do

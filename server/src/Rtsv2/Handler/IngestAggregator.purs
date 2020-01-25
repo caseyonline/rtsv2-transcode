@@ -19,39 +19,22 @@ import Erl.Data.List (nil, (:))
 import Erl.Data.Tuple (tuple2)
 import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
 import Rtsv2.Agents.IngestAggregatorInstanceSup as IngestAggregatorInstanceSup
-import Rtsv2.Handler.MimeType as MimeType
+import Rtsv2.Handler.Status as Status
 import Shared.LlnwApiTypes (StreamDetails)
-import Shared.Stream (StreamAndVariant(StreamAndVariant), StreamId(..), toStreamId)
+import Shared.Stream (StreamAndVariant(StreamAndVariant), StreamId, toStreamId)
 import Shared.Types (ServerAddress)
+import Shared.Types.Agent.State as PublicState
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (readJSON)
-import Simple.JSON as JSON
 import Stetson (HttpMethod(..), StetsonHandler)
 import Stetson.Rest as Rest
 import Unsafe.Coerce (unsafeCoerce)
 
-type IngestAggregatorState = { streamId :: StreamId}
-ingestAggregator :: StetsonHandler IngestAggregatorState
-ingestAggregator =
-  Rest.handler (\req ->
-                 let streamId = StreamId $ fromMaybe' (lazyCrashIfMissing "stream_id binding missing") $ binding (atom "stream_id") req
-                 in
-                  Rest.initResult req {streamId})
 
-  # Rest.serviceAvailable (\req state -> do
-                              isAgentAvailable <- IngestAggregatorInstanceSup.isAvailable
-                              Rest.result isAgentAvailable req state)
-  # Rest.resourceExists (\req state@{streamId} -> do
-                          isAvailable <- IngestAggregatorInstance.isAvailable streamId
-                          Rest.result isAvailable req state
-                        )
-  # Rest.allowedMethods (Rest.result (GET : nil))
-  # Rest.contentTypesProvided (\req state -> Rest.result (MimeType.json jsonHandler : nil) req state)
-  # Rest.yeeha
-  where
-    jsonHandler req state@{streamId} = do
-      aggregatorState <- IngestAggregatorInstance.getState streamId
-      Rest.result (JSON.writeJSON aggregatorState) req state
+ingestAggregator :: StetsonHandler (Status.StatusState PublicState.IngestAggregator)
+ingestAggregator = Status.status IngestAggregatorInstance.getState
+
+type IngestAggregatorState = { streamId :: StreamId}
 
 type IngestAggregatorsState = { streamDetails :: Maybe StreamDetails}
 ingestAggregators :: StetsonHandler IngestAggregatorsState

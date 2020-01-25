@@ -34,7 +34,8 @@ import Rtsv2.Router.Parser as Routing
 import Shared.Agent as Agent
 import Shared.LlnwApiTypes (StreamDetails)
 import Shared.Stream (StreamAndVariant(..), StreamId(..), StreamVariant, toStreamId, toVariant)
-import Shared.Types (IngestAggregatorPublicState, ServerAddress, extractAddress)
+import Shared.Types (ServerAddress, extractAddress)
+import Shared.Types.Agent.State as PublicState
 
 foreign import startWorkflowImpl :: String -> Array (Tuple2 StreamAndVariant String) -> Effect Foreign
 foreign import addLocalVariantImpl :: Foreign -> StreamAndVariant -> Effect Unit
@@ -92,7 +93,7 @@ removeVariant streamAndVariant = Gen.doCall (serverName (toStreamId streamAndVar
          pure unit
   pure $ CallReply unit state{activeStreamVariants = newActiveStreamVariants}
 
-getState :: StreamId -> Effect (IngestAggregatorPublicState)
+getState :: StreamId -> Effect (PublicState.IngestAggregator)
 getState streamId = Gen.call (serverName streamId)
   \state@{streamDetails, activeStreamVariants} ->
   CallReply {streamDetails, activeStreamVariants: (\(Tuple streamVariant serverAddress) -> {streamVariant, serverAddress}) <$>(toUnfoldable activeStreamVariants)} state
