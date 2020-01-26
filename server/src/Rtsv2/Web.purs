@@ -5,7 +5,7 @@ module Rtsv2.Web
 
 import Prelude
 
-import Data.Newtype (unwrap, wrap)
+import Data.Newtype (wrap)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Cowboy.Req (Req)
@@ -18,7 +18,6 @@ import Logger (Logger)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen as Gen
-import Rtsv2.Agents.IntraPoP as IntraPoPAgent
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
 import Rtsv2.Handler.Client as ClientHandler

@@ -42,6 +42,7 @@ import Rtsv2.Utils (crashIfLeft, noprocToMaybe)
 import Shared.Agent as Agent
 import Shared.Stream (StreamId)
 import Shared.Types (APIResp, EgestServer, FailureReason(..), Load, RelayServer, Server, ServerLoad(..), extractPoP, serverLoadToServer)
+import Shared.Types.Agent.State as PublicState
 import SpudGun as SpudGun
 
 type CreateEgestPayload
@@ -108,10 +109,10 @@ doRemoveClient state@{clientCount} = do
   _ <- logInfo "Remove client" { newCount: clientCount - 1 }
   pure $ CallReply unit state{ clientCount = clientCount - 1 }
 
-currentStats :: StreamId -> Effect Int
+currentStats :: StreamId -> Effect PublicState.Egest
 currentStats streamId =
   Gen.call (serverName streamId) \state@{clientCount} ->
-    CallReply clientCount state
+    CallReply {clientCount} state
 
 
 toEgestServer :: Server -> EgestServer

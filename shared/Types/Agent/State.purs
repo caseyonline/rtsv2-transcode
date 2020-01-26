@@ -1,5 +1,6 @@
 module Shared.Types.Agent.State
-       ( IngestAggregator
+       ( Egest
+       , IngestAggregator
        , StreamRelay
        ) where
 
@@ -17,4 +18,8 @@ type IngestAggregator
 
 type StreamRelay
   = { egestsServed :: Array ServerAddress
+    }
+
+type Egest
+  = { clientCount :: Int
     }
