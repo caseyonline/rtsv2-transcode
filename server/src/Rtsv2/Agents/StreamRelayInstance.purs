@@ -82,8 +82,14 @@ registerEgest streamId egestServer = Gen.doCall (serverName streamId) $ doRegist
 doRegisterEgest :: EgestServer -> State -> Effect (CallResult Unit State)
 doRegisterEgest egestServer state@{egestsServed} = do
   _ <- logInfo "Register egest " {egestServer}
-  pure $ CallReply unit state{ egestsServed = Set.insert egestServer egestsServed
-                             }
+  newState <- maybeStartEgestRelays state{ egestsServed = Set.insert egestServer egestsServed}
+  pure $ CallReply unit newState
+
+
+maybeStartEgestRelays :: State -> Effect State
+maybeStartEgestRelays state@{egestSourceRoutes: Just _} = pure state
+maybeStartEgestRelays state@{aggregator} =
+  pure state
 
 
 exposeState :: forall a. (State -> a) -> StreamId -> Effect a
