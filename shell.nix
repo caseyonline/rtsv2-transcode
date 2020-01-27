@@ -61,5 +61,6 @@ mkShell {
     # Needed by something purescript-y - hopefully A/S can pinpoint what...
     jq
     serfdom
+    iproute
   ];
 }
