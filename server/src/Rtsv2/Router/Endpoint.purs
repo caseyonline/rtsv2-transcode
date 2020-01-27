@@ -30,6 +30,7 @@ data Endpoint
   | EgestStatsE StreamId
   | EgestE
   | RelayE
+  | RelayChainE
   | RelayStatsE StreamId
   | LoadE
   | IngestAggregatorE StreamId
@@ -60,7 +61,8 @@ endpoint = root $ sum
   , "HealthCheckE"                                     : "" / "api" / path "healthCheck" noArgs
   , "EgestStatsE"                                      : "" / "api" / "agents" / "egest" / streamId segment
   , "EgestE"                                           : "" / "api" / "agents" / path "egest" noArgs
-  , "RelayE"                                           : "" / "api" / "agents" / path "relay" noArgs
+  , "RelayE"                                           : "" / "api" / "agents" / "relay" / path "egest"  noArgs
+  , "RelayChainE"                                      : "" / "api" / "agents" / "relay" / path "chain" noArgs
   , "RelayStatsE"                                      : "" / "api" / "agents" / "relay" / streamId segment
 , "LoadE"                                              : "" / "api" / path "load" noArgs
 

@@ -344,7 +344,7 @@ main =
             it "client requests stream on other pop" do
               client start p2n1 slot1          >>= assertStatusCode 404 >>= as  "no egest prior to ingest"
               relayStats   p1n1 slot1          >>= assertStatusCode 404 >>= as  "no remote relay prior to ingest"
-              relayStats   p1n1 slot1          >>= assertStatusCode 404 >>= as  "no local relay prior to ingest"
+              relayStats   p2n1 slot1          >>= assertStatusCode 404 >>= as  "no local relay prior to ingest"
               ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
               waitForTransPoPDisseminate                                >>= as' "wait for transPop disseminate"
               client start p2n1 slot1          >>= assertStatusCode 204 >>= as  "egest available"

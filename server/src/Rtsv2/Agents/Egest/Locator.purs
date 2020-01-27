@@ -16,8 +16,6 @@ import Gproc as Gproc
 import Logger (Logger)
 import Logger as Logger
 import Pinto (ServerName, StartChildResult(..), StartLinkResult)
-import Pinto.Gen (CallResult(..))
-import Pinto.Gen as Gen
 import Rtsv2.Agents.EgestInstance (CreateEgestPayload)
 import Rtsv2.Agents.EgestInstance as EgestInstance
 import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
@@ -28,7 +26,7 @@ import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Rtsv2.Utils (crashIfLeft)
 import Shared.Agent as Agent
 import Shared.Stream (StreamId)
-import Shared.Types (EgestLocation(..), FailureReason(..), Server, ServerLoad(..), extractAddress, serverLoadToServer)
+import Shared.Types (EgestLocation(..), FailureReason(..), Server, ServerLoad(..), serverLoadToServer)
 import SpudGun as SpudGun
 
 type State = { streamId :: StreamId
@@ -45,10 +43,10 @@ serverName :: StreamId -> Server -> ServerName State Msg
 serverName = Names.egestProxyName
 
 
-type StartArgs= { streamId :: StreamId
-                , forServer :: Server
-                , aggregator :: Server
-                }
+type StartArgs = { streamId :: StreamId
+                 , forServer :: Server
+                 , aggregator :: Server
+                 }
 
 startLocalOrRemote :: StartArgs -> Effect Unit
 startLocalOrRemote  args@{streamId, aggregator, forServer} = do
@@ -90,7 +88,7 @@ findEgestForStream streamId = do
             mEgest =  pickCandidate $ filter ((\(ServerLoad sl) -> unwrap sl.load < 50.0)) allEgest
           case mEgest of
             Just egest -> do
-              pure $ Right $ Remote $ extractAddress egest
+              pure $ Right $ Remote $ serverLoadToServer egest
             Nothing -> do
               mIdleServer <- (map serverLoadToServer) <$> IntraPoP.getIdleServer (const true)
               case mIdleServer of
@@ -107,18 +105,10 @@ findEgestForStream streamId = do
   where pickCandidate = head
 
 
-getProxyFor :: forall a. ServerName State Msg -> Effect (Either a Server)
-getProxyFor sn = Right <$> exposeStateMember sn _.forServer
-
 
 couldAcceptClient :: ServerName State Msg -> Effect Boolean
 couldAcceptClient sn = pure true
 
-
-
-exposeStateMember :: forall a m. ServerName State m -> (State -> a) -> Effect a
-exposeStateMember sn member = Gen.doCall sn
-  \state -> pure $ CallReply (member state) state
 
 --------------------------------------------------------------------------------
 -- Log helpers

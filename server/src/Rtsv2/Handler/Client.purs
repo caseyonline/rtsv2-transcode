@@ -8,7 +8,7 @@ import Prelude
 
 import Data.Either (Either(..))
 import Data.Maybe (fromMaybe')
-import Data.Newtype (unwrap)
+import Data.Newtype (unwrap, wrap)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Cowboy.Handlers.Rest (MovedResult, moved, notMoved)
@@ -24,11 +24,11 @@ import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
 import Rtsv2.Audit as Audit
 import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.PoPDefinition as PoPDefinition
-import Rtsv2.Router.Endpoint (Endpoint(..))
+import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Rtsv2.Router.Endpoint as RoutingEndpoint
 import Rtsv2.Router.Parser as Routing
 import Shared.Stream (StreamId(..))
-import Shared.Types (EgestLocation(..), FailureReason(..), Server, ServerAddress, extractAddress)
+import Shared.Types (EgestLocation(..), FailureReason(..), Server, ServerAddress(..), extractAddress)
 import Shared.Utils (lazyCrashIfMissing)
 import Stetson (HttpMethod(..), RestResult, StetsonHandler)
 import Stetson.Rest as Rest
@@ -162,12 +162,13 @@ clientStart =
     movedTemporarily :: Req -> State -> Effect (RestResult MovedResult State)
     movedTemporarily req state@(State {streamId, egestResp}) =
       case spy "moved" egestResp of
-        Right (Remote addr) ->
+        Right (Remote server) ->
           let
-            path = Routing.printUrl RoutingEndpoint.endpoint (ClientStartE "canary" streamId)
-            url = spy "url" $ "http://" <> unwrap addr <> ":3000" <> path
+            url = makeUrl server (ClientStartE "canary" streamId)
+            -- path = Routing.printUrl RoutingEndpoint.endpoint
+            -- url = spy "url" $ "http://" <> unwrap addr <> ":3000" <> path
           in
-            Rest.result (moved $ url) req state
+            Rest.result (moved $ unwrap url) req state
         _ ->
           Rest.result notMoved req state
 

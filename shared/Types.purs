@@ -136,7 +136,7 @@ derive newtype instance writeForeignServerLoad :: WriteForeign ServerLoad
 --------------------------------------------------------------------------------
 data EgestLocation
   = Local
-  | Remote ServerAddress
+  | Remote Server
 
 data FailureReason
   = NotFound

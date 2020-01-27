@@ -3,11 +3,10 @@ module Rtsv2.Handler.EgestStats
          stats
        ) where
 
+import PintoHelper (GenericStatusState, genericStatus)
 import Rtsv2.Agents.EgestInstance as EgestInstance
+import Shared.Types.Agent.State as PublicState
 import Stetson (StetsonHandler)
 
-import Rtsv2.Handler.Status as Status
-import Shared.Types.Agent.State as PublicState
-
-stats :: StetsonHandler (Status.StatusState PublicState.Egest)
-stats = Status.status EgestInstance.currentStats
+stats :: StetsonHandler (GenericStatusState PublicState.Egest)
+stats = genericStatus EgestInstance.currentStats

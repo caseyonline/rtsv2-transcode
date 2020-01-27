@@ -17,7 +17,6 @@ import Data.Newtype (class Newtype, unwrap, wrap)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, singleton)
-import Erl.Data.List as List
 import Erl.Utils (Milliseconds, Ref, makeRef)
 import Logger (Logger, spy)
 import Logger as Logger
@@ -31,17 +30,15 @@ import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.StreamRelayInstance (CreateRelayPayload)
 import Rtsv2.Agents.StreamRelayInstance as StreamRelayInstance
 import Rtsv2.Agents.StreamRelayInstanceSup as StreamRelayInstanceSup
-import Rtsv2.Agents.TransPoP as TransPoP
 import Rtsv2.Config as Config
 import Rtsv2.Load as Load
-import Rtsv2.Names as Names
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Rtsv2.Utils (crashIfLeft, noprocToMaybe)
 import Shared.Agent as Agent
 import Shared.Stream (StreamId)
-import Shared.Types (APIResp, EgestServer, FailureReason(..), Load, RelayServer, Server, ServerLoad(..), extractPoP, serverLoadToServer)
+import Shared.Types (APIResp, EgestServer, FailureReason(..), Load, RelayServer, Server, ServerLoad(..), serverLoadToServer)
 import Shared.Types.Agent.State as PublicState
 import SpudGun as SpudGun
 
@@ -231,8 +228,6 @@ launchRemote state@{streamId, aggregator, thisServer} = do
         url = makeUrl idleServer RelayE
         payload = {streamId, aggregator} :: CreateRelayPayload
 
-        -- TODO - functions to make URLs from ServerAddress
-        --url = "http://" <> (unwrap $ extractAddress server) <> ":3000/api/agents/ingestAggregator"
       _ <- crashIfLeft =<< SpudGun.postJson url payload
       pure $ Just $ toRelayServer $ serverLoadToServer idleServer
 
@@ -272,21 +267,6 @@ filterForLoad (ServerLoad sl) = sl.load < loadThresholdToCreateRelay
   --   Prefer with most capacity (if any have enough) and create a relay and an edge on it
   -- If we are on the same server as the IngestAggregator and we have capacity, then create a single relay here
   -- same pop -> 1) If server with aggregator has cap
-createRelayChain :: Server -> StreamId -> Effect (Either FailureReason Server)
-createRelayChain aggregator streamId = do
-
-  let aggregatorPoP = extractPoP aggregator
-  thisServer <- PoPDefinition.getThisServer
-
-
-  upstreamPoPs <-
-    if aggregatorPoP == extractPoP thisServer then
-      pure $ List.singleton mempty
-    else
-      TransPoP.routesTo aggregatorPoP
-
-  pure $ Left NoResource
-  --createRelayInThisPoP streamId aggregatorPoP upstreamPoPs ingestAggregatorServer
 
 
 -- createRelayInThisPoP :: StreamId -> PoPName -> List ViaPoPs -> Server -> Effect (Either FailureReason Server)

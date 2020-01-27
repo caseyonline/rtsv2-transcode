@@ -5,8 +5,9 @@ module Rtsv2.Agents.TransPoP
        , health
        , startLink
        , getRtts
+       , getLeaderFor -- TODO - not sure this is the way forward for remote API server selection
        , routesTo
-       , ViaPoPs
+       , PoPRoutes
        ) where
 
 import Prelude
@@ -16,7 +17,7 @@ import Data.Foldable (foldM, foldl)
 import Data.FoldableWithIndex (foldlWithIndex)
 import Data.Maybe (Maybe(..), fromMaybe, fromMaybe', maybe)
 import Data.Newtype (unwrap, wrap)
-import Data.Set (Set)
+import Data.Set (Set, toUnfoldable)
 import Data.Set as Set
 import Data.Traversable (traverse, traverse_)
 import Data.Tuple (Tuple(..))
@@ -24,7 +25,7 @@ import Effect (Effect)
 import Ephemeral.Map (EMap)
 import Ephemeral.Map as EMap
 import Erl.Atom (Atom)
-import Erl.Data.List (List, index, length, nil, singleton, (:))
+import Erl.Data.List (List, head, index, length, nil, singleton, (:))
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
 import Erl.Process (spawnLink)
@@ -38,6 +39,7 @@ import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
+import PintoHelper (exposeState)
 import Prim.Row (class Nub, class Union)
 import Record as Record
 import Rtsv2.Config (IntraPoPAgentApi, TransPoPAgentConfig)
@@ -59,6 +61,8 @@ import SpudGun as SpudGun
 type Edge = Tuple PoPName PoPName
 type Rtts = Map Edge Milliseconds
 type ViaPoPs = List PoPName
+
+type PoPRoutes = List (List PoPName)
 
 type LamportClocks =
   { streamStateClocks :: Map ServerAddress LamportClock
@@ -93,14 +97,31 @@ data Msg
 
 
 getRtts :: Effect Rtts
-getRtts = Gen.doCall serverName
-  \state@{rtts} -> pure $ CallReply rtts state
+getRtts = exposeState _.rtts serverName
+
+getLeaderFor :: PoPName -> Effect (Maybe ServerAddress)
+getLeaderFor pop =
+  exposeState (\state -> head <<< toUnfoldable =<< Map.lookup pop state.members) serverName
 
 
-routesTo :: PoPName -> Effect (List ViaPoPs)
+routesTo :: PoPName -> Effect PoPRoutes
 routesTo pop = Gen.doCall serverName
-  \state@{sourceRoutes} -> pure $ CallReply (fromMaybe goDirect (Map.lookup pop sourceRoutes)) state
-  where goDirect = (nil : nil) -- The list [[]] - i.e. one route that is to go via nowhere
+  \state@{sourceRoutes, thisServer} -> do
+    resp <-
+      if extractPoP thisServer == pop
+      then pure nil -- source and desitination are the same!
+      else
+        case Map.lookup pop sourceRoutes of
+          Nothing -> do
+            -- We could not find a route to the pop
+            -- just have a single, direct route [[pop]]
+            _ <- logWarning "No route returned for" {pop}
+            pure $ singleton $ singleton pop
+          Just viaLists ->
+            -- the map contains just the the via pops
+            -- it is convenient to have the final destination added to them...
+            pure $ (_ <> singleton pop) <$> viaLists
+    pure $ CallReply resp state
 
 
 health :: Effect Health

@@ -18,34 +18,44 @@ import Erl.Data.List (List, nil, (:))
 import Erl.Data.Tuple (tuple2, tuple3)
 import Erl.ModuleName (NativeModuleName(..))
 import Foreign (unsafeToForeign)
-import Logger (Logger)
+import Logger (Logger, spy)
 import Logger as Logger
 import Pinto (ServerName(..), StartLinkResult, isRegistered)
 import Pinto.Gen (CallResult(..))
 import Pinto.Gen as Gen
-import Rtsv2.Agents.TransPoP (ViaPoPs)
+import PintoHelper (exposeState)
+import Rtsv2.Agents.TransPoP as TransPoP
+import Rtsv2.PoPDefinition as PoPDefinition
+import Rtsv2.Utils (crashIfLeft)
 import Shared.Agent as Agent
 import Shared.Stream (StreamId)
-import Shared.Types (EgestServer, RelayServer, Server, extractAddress)
+import Shared.Types (EgestServer, PoPName(..), RelayServer, Server, extractAddress, extractPoP)
 import Shared.Types.Agent.State as PublicState
+import SpudGun as SpudGun
 
 type CreateRelayPayload
   = { streamId :: StreamId
     , aggregator :: Server
     }
 
-
+-- basically a listzipper...
+type RelayRoute
+  = { toEgest :: List PoPName
+    , thisPoP :: PoPName
+    , toSource :: List PoPName
+    }
 
 type State
   = { streamId :: StreamId
     , aggregator :: Server
+    , thisServer :: Server
     -- , primaryRelayRoutes :: Maybe (List ViaPoPs)
     -- , primaryNeighbours :: Maybe (List Server)
     -- , secondaryRelayCount :: Int
     -- , secondaryRelayRoutes :: Maybe (List ViaPoPs)
     , relaysServed :: Set RelayServer
     , egestsServed :: Set EgestServer
-    , egestSourceRoutes :: Maybe (List ViaPoPs)
+    , egestSourceRoutes :: Maybe (List RelayRoute)
     }
 
 serverName :: StreamId -> ServerName State Unit
@@ -58,8 +68,8 @@ isAvailable :: StreamId -> Effect Boolean
 isAvailable streamId = isRegistered (serverName streamId)
 
 status  :: StreamId -> Effect PublicState.StreamRelay
-status streamId =
-  exposeState mkStatus streamId
+status =
+  exposeState mkStatus <<< serverName
   where
     mkStatus :: State -> PublicState.StreamRelay
     mkStatus state =
@@ -69,8 +79,10 @@ status streamId =
 init :: CreateRelayPayload -> Effect State
 init payload = do
   _ <- logInfo "StreamRelay starting" {payload}
+  thisServer <- PoPDefinition.getThisServer
   pure { streamId: payload.streamId
        , aggregator : payload.aggregator
+       , thisServer
        , relaysServed : mempty
        , egestsServed : mempty
        , egestSourceRoutes : Nothing
@@ -88,13 +100,48 @@ doRegisterEgest egestServer state@{egestsServed} = do
 
 maybeStartEgestRelays :: State -> Effect State
 maybeStartEgestRelays state@{egestSourceRoutes: Just _} = pure state
-maybeStartEgestRelays state@{aggregator} =
-  pure state
+maybeStartEgestRelays state@{streamId, aggregator, thisServer} = do
+  relayRoutes <- (map toRelayRoute) <$> TransPoP.routesTo (spy "aggPoP" $ extractPoP aggregator)
+--  _ <- traverse startRelay
 
 
-exposeState :: forall a. (State -> a) -> StreamId -> Effect a
-exposeState exposeFn streamId = Gen.doCall (serverName streamId)
-  \state -> pure $ CallReply (exposeFn state) state
+  let _ = spy "thisServer" thisServer
+  pure state{egestSourceRoutes = Just (spy "relayRoutes" relayRoutes)}
+  where
+    toRelayRoute :: List PoPName -> RelayRoute
+    toRelayRoute pops = { toSource : pops
+                        , thisPoP  : extractPoP thisServer
+                        , toEgest  : nil
+                        }
+
+
+
+-- startRelayChain :: StreamId -> RelayRoute -> Effect Unit
+-- startRelay streamId {toSource, thisPoP, toEgest} =
+--   case uncons toSource of
+
+--     Nothing -> pure Unit
+--     Just {head, tail} -> do
+--       -- TODO - strategy for knowing which servers in a remote PoP are healthy
+--       -- Maybe always route via the transPoP leader
+--       popLeader <- TransPoP.getLeaderFor head
+--       let
+--         url = makeUrl idleServer RelayChainE
+--         payload = {streamId, aggregator} :: CreateRelayPayload
+
+--         url = makeUrl popLeader  EgestE
+--         payload = {streamId, toSouce: tail, toEgest: (thisPoP : toEgest), thisPoP: head}
+
+--   do
+
+--   void <$> crashIfLeft =<< SpudGun.postJson url ({streamId, fullRoute, remainingRoute} :: CreateEgestPayload)
+
+
+
+--------------------------------------------------------------------------------
+-- Minimal zipper helpers
+--------------------------------------------------------------------------------
+
 
 --------------------------------------------------------------------------------
 -- Log helpers

@@ -30,7 +30,6 @@ isAvailable = Pinto.isRegistered serverName
 startLink :: forall a. a -> Effect Pinto.StartLinkResult
 startLink _ = Sup.startLink serverName init
 
-
 startEgest :: CreateEgestPayload -> Effect Pinto.StartChildResult
 startEgest payload =
   Sup.startSimpleChild childTemplate serverName payload
@@ -55,17 +54,18 @@ maybeStartAndAddClient payload = do
 init :: Effect Sup.SupervisorSpec
 init = do
   _ <- logInfo "Egest Supervisor starting" {}
-  pure $ Sup.buildSupervisor
+  pure
+    $ Sup.buildSupervisor
     # Sup.supervisorStrategy Sup.SimpleOneForOne
     # Sup.supervisorChildren
-        ( ( buildChild
-              # childType Worker
-              # childId "egestAgent"
-              # childStartTemplate childTemplate
-              # childRestart Transient
-          )
-            : nil
-        )
+    ( ( buildChild
+        # childType Worker
+        # childId "egestAgent"
+        # childStartTemplate childTemplate
+        # childRestart Transient
+      )
+      : nil
+    )
 
 childTemplate :: Pinto.ChildTemplate CreateEgestPayload
 childTemplate = Pinto.ChildTemplate (EgestInstance.startLink)
