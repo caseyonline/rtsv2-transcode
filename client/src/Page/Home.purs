@@ -2,20 +2,29 @@ module Rtsv2App.Page.Home where
 
 import Prelude
 
+import CSS.Geometry as Geometry
+import CSS.Size as Size
 import Component.HOC.Connect as Connect
 import Control.Monad.Reader (class MonadAsk)
 import Data.Const (Const)
+import Data.Foldable (traverse_)
+import Data.Int (toNumber)
 import Data.Maybe (Maybe(..))
 import Data.Symbol (SProxy(..))
+import Debug.Trace (spy)
 import Effect.Aff.Class (class MonadAff)
+import Effect.Class (liftEffect)
+import Foreign.ECharts as EC
 import Halogen as H
 import Halogen.HTML as HH
+import Halogen.HTML.CSS as CSS
 import Halogen.HTML.Properties as HP
 import Rtsv2App.Capability.Navigate (class Navigate)
 import Rtsv2App.Component.HTML.Footer (footer)
 import Rtsv2App.Component.HTML.Header as HD
 import Rtsv2App.Component.HTML.MainMenu as MM
-import Rtsv2App.Component.HTML.Utils (css, dataAttr)
+import Rtsv2App.Component.HTML.Utils (css)
+import Rtsv2App.Data.Map as MapData
 import Rtsv2App.Data.Profile (Profile)
 import Rtsv2App.Data.Route (Route(..))
 import Rtsv2App.Env (UserEnv)
@@ -58,13 +67,18 @@ component = Connect.component $ H.mkComponent
   handleAction :: Action -> H.HalogenM State Action ChildSlots Void m Unit
   handleAction = case _ of
     Initialize -> do
-      state <- H.get
-      case state.currentUser of
-        Nothing -> pure unit
-        profile -> pure unit
+      H.getHTMLElementRef (H.RefLabel "mymap") >>= traverse_ \element -> do
+          chart <- H.liftEffect $ EC.makeChart element
+          liftEffect $ EC.setOption {} chart
+
+      -- state <- H.get
+      -- case state.currentUser of
+      --   Nothing -> pure unit
+      --   profile -> pure unit
 
     Receive { currentUser } ->
       H.modify_ _ { currentUser = currentUser }
+
 
   render :: State -> H.ComponentHTML Action ChildSlots m
   render state@{ currentUser } =
@@ -95,7 +109,7 @@ component = Connect.component $ H.mkComponent
               [ HH.div
                 [ css "col-12" ]
                 [ HH.div
-                  [ css "card" ]
+                  [ css "card map" ]
                   html
                 ]
               ]
@@ -107,10 +121,36 @@ component = Connect.component $ H.mkComponent
     where
       html =
         [ HH.div
-          [ css "card-body" ]
-          [ HH.img
-            [ css "col-12"
-            , HP.src "assets/images/backgrounds/world-map.png"
-            ]
+          [ css "card-body dashboard-map"
+          -- , HP.id_ "myMap"
+          , HP.ref (H.RefLabel "mymap")
+          , CSS.style do
+              Geometry.height $ Size.px (toNumber 600)
+              -- Geometry.width $ Size.pct (toNumber 100)
           ]
+          []
         ]
+
+
+-- mainOption =
+--       { title: EC.makeTitle { text: "Map Example" }
+--       , backgroundColor: "#fff"
+--       , tooltip: EC.makeTooltip { position: "bottom" }
+--       , color: ["gold","aqua","lime"]
+--       , series: pure $ EC.makeMapSeries
+--         { name: "Active"
+--         , type: "map"
+--         , mapType: "World"
+--         , roam: true
+--         , hoverable: false
+--         , markLine: { smooth: true
+--                     , effect: { show: true
+--                                  , size: 3
+--                                  , showdowColor: "yellow"
+--                                  }
+--                     , itemStyle: { normal: { borderWidth: 1 }  }
+--                     , data: MapData.data_A
+--                     }
+--         , data: Nothing
+--         }
+--       }

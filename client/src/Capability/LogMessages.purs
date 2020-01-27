@@ -1,10 +1,3 @@
--- | A capability representing the ability to save status information to some output, which could 
--- | be the console, an external service like Splunk, or to the file system for testing purposes. 
--- | The implementation can be freely swapped out without changing any application code besides 
--- | the application monad, `Rtsv2App.AppM`.
--- |
--- | To learn more about why we use capabilities and this architecture, please see the guide:
-
 module Rtsv2App.Capability.LogMessages where
 
 import Prelude
@@ -16,23 +9,13 @@ import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Halogen (HalogenM)
 
--- | We require a strict format for the messages that we log so that we can search this structured 
--- | data from our logging service later on. We can enforce this with the type system by using the 
--- | `Log` type from `Rtsv2App.Data.Log`. This type can only be constructed using helper functions
--- | in that module, which enforce the correct format. However, we'll leave it up to the implementer
--- | to decide what to do with the log once created. 
 class Monad m <= LogMessages m where
   logMessage :: Log -> m Unit
 
--- | This instance lets us avoid having to use `lift` when we use these functions in a component.
 instance logMessagesHalogenM :: LogMessages m => LogMessages (HalogenM st act slots msg m) where
   logMessage = lift <<< logMessage
 
--- | Next, we'll provide a few helper functions to help users easily create and dispatch logs
--- | from anywhere in the application. Each helper composes a couple of small functions together
--- | so that we've got less to remember later on.
-
--- | Log a message to given a particular `LogType` 
+-- | Log a message to given a particular `LogType`
 log :: forall m. LogMessages m => Now m => LogReason -> String -> m Unit
 log reason = logMessage <=< mkLog reason
 

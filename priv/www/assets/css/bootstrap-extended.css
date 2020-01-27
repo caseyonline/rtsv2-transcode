@@ -2379,6 +2379,10 @@ select.form-control
     -webkit-box-shadow: none !important;
             box-shadow: none !important;
 }
+.card.map
+{
+    background-color: #878787;
+}
 .card .card-title
 {
     font-size: 1.12rem; 

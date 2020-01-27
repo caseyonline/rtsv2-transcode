@@ -1,14 +1,3 @@
--- | We use datetimes all over the place in Rtsv2App to describe when a resource like a comment
--- | or an article was originally created. The `PreciseDateTime` type already exists as part of
--- | a useful library from Awake Security, but it doesn't have any `DecodeJson` or `EncodeJson`
--- | instances. After all, there are many ways you could represent a datetime as a string!
--- |
--- | I want to be able to generically encode and decode records that contain precise datetimes,
--- | though. I can't write type class instances for a type I don't own, so I can't write them for 
--- | the `Data.PreciseDateTime` type directly.
--- |
--- | Instead, this module demonstrates how to use a tiny wrapping type to write our own type class
--- | instances for types from external modules.
 module Rtsv2App.Data.PreciseDateTime where
 
 import Prelude
@@ -22,16 +11,10 @@ import Data.Newtype (class Newtype, unwrap)
 import Data.PreciseDateTime as PDT
 import Data.RFC3339String (RFC3339String(..))
 
--- | Newtypes have no runtime representation, so this small wrapping type lets us write new 
--- | instances for the `Data.PreciseDateTime` type without incurring costs. Since we can always
--- | remove this wrapper, we still get to access all functions and type class instances that
--- | operate on the original type, too.
 newtype PreciseDateTime = PreciseDateTime PDT.PreciseDateTime
 
 derive instance newtypePreciseDateTime :: Newtype PreciseDateTime _
 
--- | For example, we can now define a JSON decoder for the type by expecting one particular 
--- | string representation.
 instance decodeJsonPreciseDateTime :: DecodeJson PreciseDateTime where
   decodeJson = fromString <=< decodeJson
 
