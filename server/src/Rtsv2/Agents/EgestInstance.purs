@@ -11,7 +11,6 @@ import Prelude
 
 import Bus as Bus
 import Data.Either (Either(..))
-import Data.Either as Either
 import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype, unwrap, wrap)
 import Effect (Effect)
@@ -25,20 +24,19 @@ import Pinto as Pinto
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
-import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..))
+import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..), launchLocalOrRemoteGeneric)
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.StreamRelayInstance (CreateRelayPayload)
 import Rtsv2.Agents.StreamRelayInstance as StreamRelayInstance
-import Rtsv2.Agents.StreamRelayInstanceSup as StreamRelayInstanceSup
+import Rtsv2.Agents.StreamRelayInstanceSup (startRelay) as StreamRelayInstanceSup
 import Rtsv2.Config as Config
-import Rtsv2.Load as Load
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Rtsv2.Utils (crashIfLeft, noprocToMaybe)
 import Shared.Agent as Agent
 import Shared.Stream (StreamId)
-import Shared.Types (APIResp, EgestServer, FailureReason(..), Load, RelayServer, Server, ServerLoad(..), serverLoadToServer)
+import Shared.Types (APIResp, EgestServer, FailureReason(..), Load, LocalOrRemote(..), RelayServer, ResourceResponse, Server, ServerLoad(..))
 import Shared.Types.Agent.State as PublicState
 import SpudGun as SpudGun
 
@@ -51,7 +49,7 @@ type State
   = { streamId :: StreamId
     , aggregator :: Server
     , thisServer :: EgestServer
-    , relay :: Maybe RelayServer
+    , relay :: Maybe (LocalOrRemote RelayServer)
     , clientCount :: Int
     , lingerTime :: Milliseconds
     , relayCreationRetry :: Milliseconds
@@ -69,7 +67,7 @@ serverName streamId = Names.egestInstanceName streamId
 isActive :: StreamId -> Effect Boolean
 isActive streamId = Pinto.isRegistered (serverName streamId)
 
-startLink :: CreateEgestPayload-> Effect StartLinkResult
+startLink :: CreateEgestPayload -> Effect StartLinkResult
 startLink payload = Gen.startLink (serverName payload.streamId) (init payload) handleInfo
 
 addClient :: StreamId -> Effect APIResp
@@ -175,61 +173,58 @@ maybeStop ref state@{streamId
   | otherwise = pure $ CastNoReply state
 
 initStreamRelay :: State -> Effect State
-initStreamRelay state@{relayCreationRetry, streamId} = do
+initStreamRelay state@{relayCreationRetry, streamId, thisServer} = do
   relayResp <- findOrStartRelayForStream state
   case relayResp of
     Left _ ->  do
       _ <- Timer.sendAfter (serverName streamId) (unwrap relayCreationRetry) InitStreamRelays
       pure state
-    Right relay ->
-      pure state{relay = Just relay}
+    Right local@(Local relay) -> do
+      _ <- StreamRelayInstance.registerEgest streamId thisServer
+      pure state{relay = Just $ toRelayServer <$> local}
+
+    Right remote@(Remote relay) -> do
+      -- TODO - spudGun call to register with it
+      pure state{relay = Just $ toRelayServer  <$> remote}
+
+
 
 --------------------------------------------------------------------------------
 -- Do we have a relay in this pop - yes -> use it
 -- Does the stream have an origin (aggregator) - if so build a streamRelay chain to that origin
 -- otherwise 404
 --------------------------------------------------------------------------------
-findOrStartRelayForStream :: State -> Effect (Either FailureReason RelayServer)
+findOrStartRelayForStream :: State -> Effect (ResourceResponse Server)
 findOrStartRelayForStream state@{streamId, thisServer} = do
   mRelay <- IntraPoP.whereIsStreamRelay $ spy "streamId" streamId
 
   case spy "mRelay" mRelay of
-    Just relay ->
-      pure $ Right $ toRelayServer relay
+    Just local@(Local relay) -> do
+      pure $ Right local
+    Just remote@(Remote relay) ->
+      pure $ Right remote
 
-    Nothing ->
-      Either.note NoResource <$> launchLocalOrRemote state
+    Nothing -> do
+      launchLocalOrRemote state
 
 
-launchLocalOrRemote :: State -> Effect (Maybe RelayServer)
-launchLocalOrRemote state@{streamId, aggregator, thisServer} = do
-  currentLoad <- Load.load
-  if
-    currentLoad < loadThresholdToCreateRelay then do
+launchLocalOrRemote :: State -> Effect (ResourceResponse Server)
+launchLocalOrRemote state@{streamId, aggregator, thisServer} =
+  launchLocalOrRemoteGeneric filterForLoad launchLocal launchRemote
+  where
+    launchLocal _ = do
       _ <- StreamRelayInstanceSup.startRelay {streamId, aggregator}
-      _ <- StreamRelayInstance.registerEgest streamId thisServer
-      --TODO - is this a candidate for erlang monitors etc?
+      StreamRelayInstance.registerEgest streamId thisServer
+    launchRemote idleServer =
+      let
+        url = makeUrl idleServer RelayE
+        payload = {streamId, aggregator} :: CreateRelayPayload
+      in void <$> crashIfLeft =<< SpudGun.postJson url payload
 
-      pure $ Just $ toRelayServer thisServer
-    else
-      launchRemote state
 
 toRelayServer :: forall a b. Newtype a b => Newtype RelayServer b => a -> RelayServer
 toRelayServer = unwrap >>> wrap
 
-launchRemote :: State -> Effect (Maybe RelayServer)
-launchRemote state@{streamId, aggregator, thisServer} = do
-  candidate <- IntraPoP.getIdleServer filterForLoad
-  case candidate of
-    Nothing ->
-      pure Nothing
-    Just idleServer -> do
-      let
-        url = makeUrl idleServer RelayE
-        payload = {streamId, aggregator} :: CreateRelayPayload
-
-      _ <- crashIfLeft =<< SpudGun.postJson url payload
-      pure $ Just $ toRelayServer $ serverLoadToServer idleServer
 
 
 

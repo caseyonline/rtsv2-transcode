@@ -9,14 +9,17 @@ module Shared.Types
        , ServerRec
        , RelayServer(..)
        , EgestServer(..)
-       , EgestLocation(..)
        , FailureReason(..)
        , APIResp(..)
+       , ResourceResponse
+       , NoCapacity(..)
+       , LocalOrRemote(..)
        , toServer
        , toServerLoad
        , serverLoadToServer
        , extractAddress
        , extractPoP
+       , extractServer
        ) where
 
 import Prelude
@@ -134,15 +137,28 @@ derive newtype instance writeForeignServerLoad :: WriteForeign ServerLoad
 --------------------------------------------------------------------------------
 -- API Types - maybe move me
 --------------------------------------------------------------------------------
-data EgestLocation
-  = Local
-  | Remote Server
+type ResourceResponse a = Either NoCapacity (LocalOrRemote a)
+
+data NoCapacity = NoCapacity
+data LocalOrRemote a
+  = Local a
+  | Remote a
+
+derive instance functorLocalOrRemoteF :: Functor LocalOrRemote
+
+extractServer :: forall a. LocalOrRemote a -> a
+extractServer (Local a) = a
+extractServer (Remote a) = a
+
+
+
 
 data FailureReason
   = NotFound
   | NoResource
 
 type APIResp = (Either FailureReason Unit)
+
 
 
 toServer :: ServerAddress -> ServerLocation -> Server

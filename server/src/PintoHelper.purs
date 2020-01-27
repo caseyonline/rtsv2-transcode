@@ -67,7 +67,6 @@ genericCreate createFun =
         _ <- createFun payload
         Rest.result true req state
 
-
 type GenericStatusState a
   = { streamId :: StreamId
     , mStatus :: Maybe a

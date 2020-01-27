@@ -21,12 +21,11 @@ import Rtsv2.Agents.EgestInstance as EgestInstance
 import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Names as Names
-import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Rtsv2.Utils (crashIfLeft)
 import Shared.Agent as Agent
 import Shared.Stream (StreamId)
-import Shared.Types (EgestLocation(..), FailureReason(..), Server, ServerLoad(..), serverLoadToServer)
+import Shared.Types (FailureReason(..), LocalOrRemote(..), Server, ServerLoad(..), serverLoadToServer)
 import SpudGun as SpudGun
 
 type State = { streamId :: StreamId
@@ -48,19 +47,13 @@ type StartArgs = { streamId :: StreamId
                  , aggregator :: Server
                  }
 
-startLocalOrRemote :: StartArgs -> Effect Unit
-startLocalOrRemote  args@{streamId, aggregator, forServer} = do
-  thisServer <- PoPDefinition.getThisServer
+startLocalOrRemote :: (LocalOrRemote ServerLoad) -> StreamId -> Server -> Effect Unit
+startLocalOrRemote  (Local _) streamId aggregator = do
+  void <$> crashIfLeft =<< startChildToStartLink <$> EgestInstanceSup.startEgest {streamId, aggregator}
+startLocalOrRemote  (Remote remote) streamId aggregator = do
   let
-    isLocal = thisServer == forServer
-  if isLocal
-  then
-    void <$> crashIfLeft =<< startChildToStartLink <$> EgestInstanceSup.startEgest {streamId, aggregator}
-  else
-    let
-      url = makeUrl forServer EgestE
-    in
-      void <$> crashIfLeft =<< SpudGun.postJson url ({streamId, aggregator} :: CreateEgestPayload)
+    url = makeUrl remote EgestE
+  void <$> crashIfLeft =<< SpudGun.postJson url ({streamId, aggregator} :: CreateEgestPayload)
 
 
 startChildToStartLink :: StartChildResult -> StartLinkResult
@@ -68,41 +61,39 @@ startChildToStartLink (AlreadyStarted pid) =  Right pid
 startChildToStartLink (Started pid) = Right pid
 
 
-findEgestForStream :: StreamId -> Effect (Either FailureReason EgestLocation)
-findEgestForStream streamId = do
+findEgestForStream :: StreamId -> Server ->Effect (Either FailureReason (LocalOrRemote Server))
+findEgestForStream streamId thisServer = do
 
   apiResp <- EgestInstance.addClient streamId
   case apiResp of
     Right _ ->
-      pure $ Right Local
+      pure $ Right $ Local thisServer
     Left _ -> do
       -- does the stream even exists
       mAggregator <- IntraPoP.whereIsIngestAggregator streamId
       case spy "mAggregator" mAggregator of
         Nothing ->
           pure $ Left NotFound
-
         Just aggregator -> do
           allEgest <- IntraPoP.whereIsEgest streamId
           let
-            mEgest =  pickCandidate $ filter ((\(ServerLoad sl) -> unwrap sl.load < 50.0)) allEgest
+            mEgest =  pickCandidate $ filter capcityForClient allEgest
           case mEgest of
             Just egest -> do
               pure $ Right $ Remote $ serverLoadToServer egest
             Nothing -> do
-              mIdleServer <- (map serverLoadToServer) <$> IntraPoP.getIdleServer (const true)
-              case mIdleServer of
-                Nothing ->
+              resourceResp <- IntraPoP.getIdleServer capcityForEgest
+              case resourceResp of
+                Left _ ->
                   pure $ Left NoResource
-                Just idleServer ->
-                  let args = { streamId
-                             , forServer : idleServer
-                             , aggregator
-                             }
-                  in do
-                    _ <- startLocalOrRemote args
-                    findEgestForStream streamId
-  where pickCandidate = head
+                Right localOrRemote -> do
+                  startLocalOrRemote localOrRemote streamId aggregator
+                  findEgestForStream streamId thisServer
+  where
+   pickCandidate = head
+   capcityForClient (ServerLoad sl) =  unwrap sl.load < 90.0
+   capcityForEgest (ServerLoad sl) =  unwrap sl.load < 50.0
+
 
 
 

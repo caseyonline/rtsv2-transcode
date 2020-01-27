@@ -49,7 +49,7 @@ ingestStart =
   # Rest.resourceExists (\req state@{shortName, streamAndVariant} ->
                           let
                             apiBody :: StreamPublish
-                            apiBody = {host: "172.16.171.5"
+                            apiBody = { host: "172.16.171.5"
                                       , protocol: Rtmp
                                       , shortname: shortName
                                       , streamName: unwrap $ toVariant streamAndVariant

@@ -16,6 +16,7 @@ module Rtsv2.Agents.IntraPoP
   , whereIsEgest
   , getIdleServer
   , currentTransPoPLeader
+  , launchLocalOrRemoteGeneric
   , health
   , bus
   , IntraMessage(..)
@@ -54,6 +55,7 @@ import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
+import PintoHelper (exposeState)
 import Prim.Row (class Nub, class Union)
 import Record as Record
 import Rtsv2.Config as Config
@@ -64,7 +66,7 @@ import Rtsv2.PoPDefinition as PoPDefinition
 import Serf (IpAndPort, LamportClock)
 import Serf as Serf
 import Shared.Stream (StreamId(..), StreamAndVariant(..))
-import Shared.Types (Load, Server(..), ServerAddress(..), ServerLoad(..), extractAddress, toServer, toServerLoad)
+import Shared.Types (Load, LocalOrRemote(..), NoCapacity(..), ResourceResponse, Server(..), ServerAddress(..), ServerLoad(..), extractAddress, serverLoadToServer, toServer, toServerLoad)
 
 type MemberInfo = { serfMember :: Serf.SerfMember
                   , load :: Load
@@ -139,10 +141,14 @@ whereIsIngestAggregator (StreamId streamId) =
   Gen.call serverName \state ->
     CallReply (EMap.lookup (StreamId streamId) state.streamAggregatorLocations) state
 
-whereIsStreamRelay :: StreamId -> Effect (Maybe Server)
+whereIsStreamRelay :: StreamId -> Effect (Maybe (LocalOrRemote Server))
 whereIsStreamRelay streamId =
-  Gen.call serverName \state ->
-    CallReply (EMap.lookup streamId state.streamRelayLocations) state
+  exposeState lookupSR serverName
+  where
+    lookupSR state =
+      let mRelay = EMap.lookup streamId state.streamRelayLocations
+      in
+       (\rel -> if rel == state.thisServer then Local rel else Remote rel) <$>  mRelay
 
 whereIsEgest :: StreamId -> Effect (List ServerLoad)
 whereIsEgest streamId =
@@ -157,12 +163,12 @@ whereIsEgest streamId =
 -- https://www.nginx.com/blog/nginx-power-of-two-choices-load-balancing-algorithm/
 -- TODO - predicate should probable be ServerLoad -> Weighting
 --------------------------------------------------------------------------------
-getIdleServer :: (ServerLoad -> Boolean) -> Effect (Maybe ServerLoad)
+getIdleServer :: (ServerLoad -> Boolean) -> Effect (ResourceResponse ServerLoad)
 getIdleServer pred = Gen.doCall serverName
   (\state@{thisServer, members, load} -> do
       let thisServerLoad = toServerLoad thisServer load
       if pred thisServerLoad
-      then pure $ CallReply (Just thisServerLoad) state
+      then pure $ CallReply (Right $ Local thisServerLoad) state
       else
         let n = 2
             nMostIdleWithCapacity =
@@ -177,16 +183,16 @@ getIdleServer pred = Gen.doCall serverName
           resp <-
             case numServers of
               0 ->
-                pure Nothing
+                pure $ Left NoCapacity
               1 ->
                 case uncons nMostIdleWithCapacity of
-                  Just {head} -> pure $ Just head
-                  Nothing -> pure Nothing
+                  Just {head} -> pure $ Right $ Remote head
+                  Nothing -> pure $ Left NoCapacity
               _ ->
                 do
                   -- TODO - always seems to give the same answer!
                   chosenIndex <- randomInt 0 (numServers - 1)
-                  pure $ index nMostIdleWithCapacity chosenIndex
+                  pure $ maybe (Left NoCapacity) (Right <<< Remote) $ index nMostIdleWithCapacity chosenIndex
           pure $ CallReply resp state
   )
 
@@ -310,6 +316,24 @@ announceTransPoPLeader =
       _ <- sendToIntraSerfNetwork state "transPoPLeader" (IMTransPoPLeader $ extractAddress thisServer)
       pure $ Gen.CastNoReply state
 
+
+
+
+--------------------------------------------------------------------------------
+-- Helper for consistent behaivour around launching resources within a PoP
+--------------------------------------------------------------------------------
+launchLocalOrRemoteGeneric :: (ServerLoad -> Boolean) -> (ServerLoad -> Effect Unit) -> (ServerLoad -> Effect Unit) -> Effect (ResourceResponse Server)
+launchLocalOrRemoteGeneric pred launchLocal launchRemote = do
+  idleServerResp <- getIdleServer pred
+  launchResp <-  -- TODO - currently unit - maybe allow some sort of check?
+    case idleServerResp of
+      Right (Local local) ->
+        launchLocal local
+      Right (Remote remote) ->
+        launchRemote remote
+      Left NoCapacity ->
+        pure unit
+  pure $ (map serverLoadToServer) <$> idleServerResp
 
 
 --------------------------------------------------------------------------------

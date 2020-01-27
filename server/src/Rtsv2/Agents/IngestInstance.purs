@@ -7,7 +7,7 @@ module Rtsv2.Agents.IngestInstance
 import Prelude
 
 import Bus as Bus
-import Data.Either (Either(..))
+import Data.Either (Either(..), hush)
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (unwrap, wrap)
 import Data.Traversable (sequence)
@@ -16,7 +16,7 @@ import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
 import Erl.Utils (Milliseconds)
-import Logger (Logger, spy)
+import Logger (Logger)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
 import Pinto as Pinto
@@ -25,20 +25,18 @@ import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
 import Rtsv2.Agents.IngestAggregatorInstanceSup as IngestAggregatorInstanceSup
-import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..))
+import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..), launchLocalOrRemoteGeneric)
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Audit as Audit
 import Rtsv2.Config as Config
-import Rtsv2.Load as Load
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
-import Rtsv2.Router.Endpoint as RoutingEndpoint
-import Rtsv2.Router.Parser as Routing
+import Rtsv2.Utils (crashIfLeft)
 import Shared.Agent as Agent
 import Shared.LlnwApiTypes (StreamDetails)
 import Shared.Stream (StreamAndVariant, StreamId, toStreamId, toVariant)
-import Shared.Types (Load, Server, ServerLoad(..), extractAddress, serverLoadToServer)
+import Shared.Types (Load, LocalOrRemote(..), ResourceResponse, Server, ServerLoad(..), extractAddress, extractServer)
 import SpudGun (Url)
 import SpudGun as SpudGun
 
@@ -54,7 +52,7 @@ type State
     , aggregatorRetryTime :: Milliseconds
     , streamAndVariant :: StreamAndVariant
     , streamDetails :: StreamDetails
-    , aggregatorAddr :: Maybe Server
+    , aggregatorAddr :: Maybe (LocalOrRemote Server)
     }
 
 startLink :: Tuple StreamDetails StreamAndVariant -> Effect StartLinkResult
@@ -65,8 +63,8 @@ isActive streamAndVariant = Pinto.isRegistered (serverName streamAndVariant)
 
 stopIngest :: StreamAndVariant -> Effect Unit
 stopIngest streamAndVariant =
-  Gen.doCall (serverName streamAndVariant) \state@{thisServer, aggregatorAddr} -> do
-    _ <- removeVariant thisServer streamAndVariant aggregatorAddr
+  Gen.doCall (serverName streamAndVariant) \state@{aggregatorAddr} -> do
+    _ <- removeVariant streamAndVariant aggregatorAddr
     _ <- Audit.ingestStop streamAndVariant
     pure $ CallStop unit state
 
@@ -97,8 +95,8 @@ handleInfo msg state = case msg of
 
 informAggregator :: State -> Effect State
 informAggregator state@{streamDetails, streamAndVariant, thisServer, aggregatorRetryTime} = do
-  maybeAggregator <- getAggregator streamDetails streamAndVariant
-  maybeVariantAdded <- sequence ((addVariant thisServer streamAndVariant) <$> maybeAggregator)
+  maybeAggregator <- hush <$> getAggregator streamDetails streamAndVariant
+  maybeVariantAdded <- sequence ((addVariant thisServer streamAndVariant) <$> (extractServer <$>  maybeAggregator))
   case fromMaybe false maybeVariantAdded of
     true -> pure state{aggregatorAddr = maybeAggregator}
     false -> do
@@ -107,7 +105,7 @@ informAggregator state@{streamDetails, streamAndVariant, thisServer, aggregatorR
 
 handleAggregatorExit :: StreamId -> Server -> State -> Effect State
 handleAggregatorExit exitedStreamId exitedAggregatorAddr state@{streamAndVariant, aggregatorRetryTime, aggregatorAddr}
-  | exitedStreamId == (toStreamId streamAndVariant) && Just exitedAggregatorAddr == aggregatorAddr = do
+  | exitedStreamId == (toStreamId streamAndVariant) && Just exitedAggregatorAddr == (extractServer <$> aggregatorAddr) = do
       _ <- Timer.sendAfter (serverName streamAndVariant) 0 InformAggregator
       pure state
   | otherwise =
@@ -127,61 +125,42 @@ addVariant thisServer streamAndVariant aggregatorAddress
       Left _ -> pure $ false
       Right _ -> pure $ true
 
-
 makeActiveIngestUrl :: Server -> StreamAndVariant -> Url
 makeActiveIngestUrl server streamAndVariant =
   makeUrl server $ IngestAggregatorActiveIngestsE (toStreamId streamAndVariant) (toVariant streamAndVariant)
 
-
-removeVariant :: Server -> StreamAndVariant -> Maybe Server-> Effect Unit
-removeVariant thisServer streamAndVariant Nothing = pure unit
-removeVariant thisServer streamAndVariant (Just aggregatorAddress)
-  | aggregatorAddress == thisServer = do
+removeVariant :: StreamAndVariant -> Maybe (LocalOrRemote Server)-> Effect Unit
+removeVariant streamAndVariant Nothing = pure unit
+removeVariant streamAndVariant (Just (Local aggregator)) = do
     _ <- IngestAggregatorInstance.removeVariant streamAndVariant
     pure unit
-  | otherwise = do
-    let
-      url = makeActiveIngestUrl aggregatorAddress streamAndVariant
-      -- TODO - functions to make URLs from Server
-    restResult <- SpudGun.delete url {}
-    case (spy "result" restResult) of
-      Left _ -> pure $ unit
-      Right _ -> pure $ unit
+removeVariant streamAndVariant (Just (Remote aggregator)) = do
+  let
+    url = makeActiveIngestUrl aggregator streamAndVariant
+  void $ crashIfLeft =<< SpudGun.delete url {}
 
-getAggregator :: StreamDetails -> StreamAndVariant -> Effect (Maybe Server)
+getAggregator :: StreamDetails -> StreamAndVariant -> Effect (ResourceResponse Server)
 getAggregator streamDetails streamAndVariant = do
   maybeAggregator <- IntraPoP.whereIsIngestAggregator (toStreamId streamAndVariant)
   case maybeAggregator of
     Just server ->
-      pure $ Just server
+      pure $ Right $ Local server
     Nothing ->
       launchLocalOrRemote streamDetails streamAndVariant
 
-launchLocalOrRemote :: StreamDetails -> StreamAndVariant -> Effect (Maybe Server)
+launchLocalOrRemote :: StreamDetails -> StreamAndVariant -> Effect (ResourceResponse Server)
 launchLocalOrRemote streamDetails streamAndVariant = do
-  currentLoad <- Load.load
-  if
-    currentLoad < loadThresholdToCreateAggregator then do
-      _ <- IngestAggregatorInstanceSup.startAggregator streamDetails
-      Just <$> PoPDefinition.getThisServer
-    else
-      launchRemote streamDetails streamAndVariant
-
--- todo - maybe move to intrapop so we know if a second aggregator requests comes in quickly
--- it could serialise requests on a per stream / asset basis
-launchRemote :: StreamDetails -> StreamAndVariant -> Effect (Maybe Server)
-launchRemote streamDetails streamAndVariant = do
-  candidate <- IntraPoP.getIdleServer filterForAggregatorLoad
-  case candidate of
-    Nothing ->
-      pure Nothing
-    Just server -> do
+  launchLocalOrRemoteGeneric filterForAggregatorLoad launchLocal launchRemote
+  where
+    launchLocal :: ServerLoad -> Effect Unit
+    launchLocal _ = do
+      void $ IngestAggregatorInstanceSup.startAggregator streamDetails
+      pure unit
+    launchRemote idleServer = do
       let
-        url = makeUrl server IngestAggregatorsE
-      restResult <- SpudGun.postJson url streamDetails
-      case spy "restResult" restResult of
-        Left _ -> pure Nothing
-        Right _ -> pure $ serverLoadToServer <$> candidate
+        url = makeUrl idleServer IngestAggregatorsE
+      void $ crashIfLeft =<< SpudGun.postJson url streamDetails
+
 
 loadThresholdToCreateAggregator :: Load
 loadThresholdToCreateAggregator = wrap 50.0
