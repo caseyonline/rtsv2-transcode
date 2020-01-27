@@ -66,6 +66,7 @@ type IngestAggregatorAgentConfig
 type EgestAgentConfig
   = { egestAvailableAnnounceMs :: Int
     , lingerTimeMs :: Int
+    , relayCreationRetryMs :: Int
     }
 
 type IntraPoPAgentConfig

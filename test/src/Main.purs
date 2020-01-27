@@ -19,10 +19,11 @@ import Milkis as M
 import Milkis.Impl.Node (nodeFetch)
 import OsCmd (runProc)
 import Shared.Stream (StreamVariant(..))
-import Shared.Types (IngestAggregatorPublicState)
+import Shared.Types (ServerAddress(..))
+import Shared.Types.Agent.State as PublicState
 import Simple.JSON (class ReadForeign)
 import Simple.JSON as SimpleJSON
-import Test.Spec (after_, before_, describe, it, describeOnly, itOnly)
+import Test.Spec (after_, before_, describe, it)
 import Test.Spec.Reporter.Console (consoleReporter)
 import Test.Spec.Runner (runSpecT)
 
@@ -92,10 +93,8 @@ main =
                                          , headers: M.makeHeaders { "Content-Type": "application/json" }
                                          } # attempt <#> stringifyError
 
-
-
-
-    maybeLogStep s a = --let _ = spy s a in
+    maybeLogStep s a =
+      --let _ = spy s a in
       unit
 
     as desc (Right r) =
@@ -120,9 +119,20 @@ main =
       _ <- stopSession
       nodes <#> mkNode "test/config/sys.config" # launchNodes
 
-    assertAggregator variants = assertBodyFun $ predicate variants
+    assertRelayForEgest = assertBodyFun <<< predicate
       where
-        predicate :: Array String -> IngestAggregatorPublicState -> Boolean
+        predicate :: Array Node -> PublicState.StreamRelay -> Boolean
+        predicate servers {egestsServed} =
+          (sort $ (ServerAddress <<< toAddr) <$> servers) == sort egestsServed
+
+    assertEgestClients = assertBodyFun <<< predicate
+      where
+        predicate :: Int -> PublicState.Egest -> Boolean
+        predicate count {clientCount} = count == clientCount
+
+    assertAggregator = assertBodyFun <<< predicate
+      where
+        predicate :: Array String -> PublicState.IngestAggregator -> Boolean
         predicate vars {activeStreamVariants} = sort (StreamVariant <$> vars) == (sort $ _.streamVariant <$> activeStreamVariants)
 
     delayMs = delay <<< Milliseconds
@@ -265,9 +275,12 @@ main =
               ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
               waitForAsyncVariantStart                                  >>= as' "wait for async start of variant"
               client start p1n1 slot1          >>= assertStatusCode 204 >>= as  "egest available"
-              relayStats   p1n1 slot1          >>= assertStatusCode 200 >>= as  "relay exists"
+              relayStats   p1n1 slot1          >>= assertStatusCode 200
+                                                   >>= assertRelayForEgest [p1n1]
+                                                                        >>= as  "local relay exists"
               egestStats   p1n1 slot1          >>= assertStatusCode 200
-                                                   >>= assertBodyText           "1"   >>= as "agent should have 1 client"
+                                                   >>= assertEgestClients 1
+                                                                        >>= as "agent should have 1 client"
 
             it "client requests stream on non-ingest node" do
               client start p1n2 slot1          >>= assertStatusCode 404 >>= as  "no egest prior to ingest"
@@ -277,7 +290,8 @@ main =
               client start p1n2 slot1          >>= assertStatusCode 204 >>= as  "egest available"
               relayStats   p1n2 slot1          >>= assertStatusCode 200 >>= as  "remote relay exists"
               egestStats   p1n2 slot1          >>= assertStatusCode 200
-                                                   >>= assertBodyText           "1"   >>= as "agent should have 1 client"
+                                                   >>= assertEgestClients 1
+                                                                        >>= as "agent should have 1 client"
 
             it "client requests stream on 2nd node on ingest pop" do
               client start p1n2 slot1          >>= assertStatusCode 404 >>= as "no egest p1n2 prior to ingest"
@@ -292,7 +306,8 @@ main =
                                                    >>= assertHeader (Tuple "x-servedby" "172.16.169.2")
                                                                         >>= as "p1n3 egest redirects to p1n2"
               egestStats   p1n2 slot1          >>= assertStatusCode 200
-                                                   >>= assertBodyText "2"   >>= as "agent should have 2 clients"
+                                                   >>= assertEgestClients 2
+                                                                        >>= as "agent should have 2 clients"
               egestStats   p1n3 slot1          >>= assertStatusCode 404 >>= as "no egest on node3"
               client start p1n2 slot1          >>= assertStatusCode 204
                                                    >>= assertHeader (Tuple "x-servedby" "172.16.169.2")
@@ -301,7 +316,8 @@ main =
                                                    >>= assertHeader (Tuple "x-servedby" "172.16.169.2")
                                                                         >>= as "p1n3 egest still redirects to p1n2"
               egestStats   p1n2 slot1          >>= assertStatusCode 200
-                                                   >>= assertBodyText "4"   >>= as "agent now has 4 clients"
+                                                   >>= assertEgestClients 4
+                                                                        >>= as "agent now has 4 clients"
               egestStats   p1n3 slot1          >>= assertStatusCode 404 >>= as "still no egest on node3"
               client stop  p1n2 slot1          >>= assertStatusCode 204 >>= as "stop client 1 on node2"
               client stop  p1n2 slot1          >>= assertStatusCode 204 >>= as "stop client 2 on node2"
@@ -315,7 +331,8 @@ main =
                                                    >>= assertHeader (Tuple "x-servedby" "172.16.169.3")
                                                                         >>= as "Final egest starts on node3"
               egestStats   p1n3 slot1          >>= assertStatusCode 200
-                                                   >>= assertBodyText "1"   >>= as "node 3 agent should have 1 client"
+                                                   >>= assertEgestClients 1
+                                                                        >>= as "node 3 agent should have 1 client"
 
       describe "two pop setup" do
         let
@@ -327,7 +344,7 @@ main =
             it "client requests stream on other pop" do
               client start p2n1 slot1          >>= assertStatusCode 404 >>= as  "no egest prior to ingest"
               relayStats   p1n1 slot1          >>= assertStatusCode 404 >>= as  "no remote relay prior to ingest"
-              relayStats   p1n1 slot1          >>= assertStatusCode 404 >>= as  "no local relay prior to ingest"
+              relayStats   p2n1 slot1          >>= assertStatusCode 404 >>= as  "no local relay prior to ingest"
               ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
               waitForTransPoPDisseminate                                >>= as' "wait for transPop disseminate"
               client start p2n1 slot1          >>= assertStatusCode 204 >>= as  "egest available"
@@ -428,6 +445,7 @@ launchNodes sysconfigs = do
 
 stopSession :: Aff Unit
 stopSession = do
+  _ <- delay (Milliseconds 200.0)
   runProc "./scripts/stopSession.sh" [sessionName]
 
 

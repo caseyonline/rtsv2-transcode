@@ -1,5 +1,6 @@
 module Rtsv2.Agents.EgestInstanceSup
        ( startLink
+       , startEgest
        , maybeStartAndAddClient
        , isAvailable
        )
@@ -10,35 +11,39 @@ import Prelude
 import Effect (Effect)
 import Erl.Atom (Atom)
 import Erl.Data.List (List, nil, singleton, (:))
+import Rtsv2.Names as Names
 import Logger (Logger)
 import Logger as Logger
 import Pinto (SupervisorName)
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStartTemplate, childType)
 import Pinto.Sup as Sup
+import Rtsv2.Agents.EgestInstance (CreateEgestPayload)
 import Rtsv2.Agents.EgestInstance as EgestInstance
-import Rtsv2.Names as Names
-import Shared.Stream (StreamId)
 
 serverName :: SupervisorName
 serverName = Names.egestInstanceSupName
 
 isAvailable :: Effect Boolean
-isAvailable = Names.isRegistered serverName
+isAvailable = Pinto.isRegistered serverName
 
 startLink :: forall a. a -> Effect Pinto.StartLinkResult
 startLink _ = Sup.startLink serverName init
 
-maybeStartAndAddClient :: StreamId -> Effect Unit
-maybeStartAndAddClient streamId = do
-  isActive <- EgestInstance.isActive streamId
+startEgest :: CreateEgestPayload -> Effect Pinto.StartChildResult
+startEgest payload =
+  Sup.startSimpleChild childTemplate serverName payload
+
+maybeStartAndAddClient :: CreateEgestPayload -> Effect Unit
+maybeStartAndAddClient payload = do
+  isActive <- EgestInstance.isActive payload.streamId
   case isActive of
     false -> do
-             _ <- Sup.startSimpleChild childTemplate serverName streamId
-             maybeStartAndAddClient streamId
+             _ <- Sup.startSimpleChild childTemplate serverName payload
+             maybeStartAndAddClient payload
     true ->
       do
-        _ <- EgestInstance.addClient streamId
+        _ <- EgestInstance.addClient payload.streamId
         pure unit
 
   -- result <- Sup.startSimpleChild childTemplate serverName streamId
@@ -49,19 +54,20 @@ maybeStartAndAddClient streamId = do
 init :: Effect Sup.SupervisorSpec
 init = do
   _ <- logInfo "Egest Supervisor starting" {}
-  pure $ Sup.buildSupervisor
+  pure
+    $ Sup.buildSupervisor
     # Sup.supervisorStrategy Sup.SimpleOneForOne
     # Sup.supervisorChildren
-        ( ( buildChild
-              # childType Worker
-              # childId "egestAgent"
-              # childStartTemplate childTemplate
-              # childRestart Transient
-          )
-            : nil
-        )
+    ( ( buildChild
+        # childType Worker
+        # childId "egestAgent"
+        # childStartTemplate childTemplate
+        # childRestart Transient
+      )
+      : nil
+    )
 
-childTemplate :: Pinto.ChildTemplate StreamId
+childTemplate :: Pinto.ChildTemplate CreateEgestPayload
 childTemplate = Pinto.ChildTemplate (EgestInstance.startLink)
 
 --------------------------------------------------------------------------------

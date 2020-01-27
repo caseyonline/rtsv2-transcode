@@ -19,6 +19,7 @@ import Erl.Utils (Milliseconds)
 import Logger (Logger, spy)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
+import Pinto as Pinto
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
@@ -31,14 +32,14 @@ import Rtsv2.Config as Config
 import Rtsv2.Load as Load
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
-import Rtsv2.Router.Endpoint (Endpoint(..))
+import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Rtsv2.Router.Endpoint as RoutingEndpoint
 import Rtsv2.Router.Parser as Routing
 import Shared.Agent as Agent
 import Shared.LlnwApiTypes (StreamDetails)
 import Shared.Stream (StreamAndVariant, StreamId, toStreamId, toVariant)
 import Shared.Types (Load, Server, ServerLoad(..), extractAddress, serverLoadToServer)
-import Simple.JSON as JSON
+import SpudGun (Url)
 import SpudGun as SpudGun
 
 serverName :: StreamAndVariant -> ServerName State Msg
@@ -60,7 +61,7 @@ startLink :: Tuple StreamDetails StreamAndVariant -> Effect StartLinkResult
 startLink (Tuple streamDetails streamAndVariant) = Gen.startLink (serverName streamAndVariant) (init streamDetails streamAndVariant) handleInfo
 
 isActive :: StreamAndVariant -> Effect Boolean
-isActive streamAndVariant = Names.isRegistered (serverName streamAndVariant)
+isActive streamAndVariant = Pinto.isRegistered (serverName streamAndVariant)
 
 stopIngest :: StreamAndVariant -> Effect Unit
 stopIngest streamAndVariant =
@@ -121,16 +122,15 @@ addVariant thisServer streamAndVariant aggregatorAddress
     let
       -- TODO - functions to make URLs from Server
       url = makeActiveIngestUrl aggregatorAddress streamAndVariant
-    restResult <- SpudGun.postJson (wrap url) $ extractAddress thisServer
+    restResult <- SpudGun.postJson url $ extractAddress thisServer
     case restResult of
       Left _ -> pure $ false
       Right _ -> pure $ true
 
 
-makeActiveIngestUrl :: Server -> StreamAndVariant -> String
+makeActiveIngestUrl :: Server -> StreamAndVariant -> Url
 makeActiveIngestUrl server streamAndVariant =
-  "http://" <> (unwrap $ extractAddress server) <> ":3000/api/agents/ingestAggregator/"
-            <> (unwrap $ toStreamId streamAndVariant) <> "/activeIngests/" <> (unwrap $ toVariant streamAndVariant)
+  makeUrl server $ IngestAggregatorActiveIngestsE (toStreamId streamAndVariant) (toVariant streamAndVariant)
 
 
 removeVariant :: Server -> StreamAndVariant -> Maybe Server-> Effect Unit
@@ -143,7 +143,7 @@ removeVariant thisServer streamAndVariant (Just aggregatorAddress)
     let
       url = makeActiveIngestUrl aggregatorAddress streamAndVariant
       -- TODO - functions to make URLs from Server
-    restResult <- SpudGun.delete (wrap url) {}
+    restResult <- SpudGun.delete url {}
     case (spy "result" restResult) of
       Left _ -> pure $ unit
       Right _ -> pure $ unit
@@ -177,13 +177,9 @@ launchRemote streamDetails streamAndVariant = do
       pure Nothing
     Just server -> do
       let
-        path = Routing.printUrl RoutingEndpoint.endpoint IngestAggregatorsE
-        url = spy "url" $ "http://" <> toHost server <> ":3000" <> path
-
-        -- TODO - functions to make URLs from ServerAddress
-        --url = "http://" <> (unwrap $ extractAddress server) <> ":3000/api/agents/ingestAggregator"
-      restResult <- SpudGun.postJson (wrap url) streamDetails
-      case restResult of
+        url = makeUrl server IngestAggregatorsE
+      restResult <- SpudGun.postJson url streamDetails
+      case spy "restResult" restResult of
         Left _ -> pure Nothing
         Right _ -> pure $ serverLoadToServer <$> candidate
 

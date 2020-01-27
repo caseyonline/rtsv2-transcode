@@ -5,8 +5,7 @@ module Rtsv2.Web
 
 import Prelude
 
-import Data.Maybe (Maybe(..), fromMaybe, isJust)
-import Data.Newtype (unwrap, wrap)
+import Data.Newtype (wrap)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Cowboy.Req (Req)
@@ -19,7 +18,6 @@ import Logger (Logger)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen as Gen
-import Rtsv2.Agents.IntraPoP as IntraPoPAgent
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
 import Rtsv2.Handler.Client as ClientHandler
@@ -30,13 +28,14 @@ import Rtsv2.Handler.IngestAggregator as IngestAggregatorHandler
 import Rtsv2.Handler.LlnwStub as LlnwStubHandler
 import Rtsv2.Handler.Load as LoadHandler
 import Rtsv2.Handler.Relay as RelayHandler
+import Rtsv2.Handler.TransPoP as TransPoPHandler
 import Rtsv2.Names as Names
 import Rtsv2.Router.Endpoint (Endpoint(..), endpoint)
 import Rtsv2.Router.Parser (printUrl)
 import Serf (Ip(..))
 import Shared.Stream (StreamAndVariant(..), StreamId(..), StreamVariant(..))
 import Shared.Types (ServerAddress)
-import Stetson (RestResult, StaticAssetLocation(..), StetsonHandler)
+import Stetson (InnerStetsonHandler, RestResult, StaticAssetLocation(..), StetsonHandler, StetsonConfig)
 import Stetson as Stetson
 import Stetson.Rest as Rest
 
@@ -49,67 +48,32 @@ startLink :: Config.WebConfig -> Effect StartLinkResult
 startLink args =
   Gen.startLink serverName (init args) Gen.defaultHandleInfo
 
+
 init :: Config.WebConfig -> Effect State
 init args = do
   bindIp <- Env.privateInterfaceIp
   Stetson.configure
-    # Stetson.route
-        (printUrl endpoint TransPoPLeaderE)
-        transPoPLeader
-    # Stetson.route
-        (printUrl endpoint HealthCheckE)
-        HealthHandler.healthCheck
-    # Stetson.route
-        (printUrl endpoint (EgestStatsE (StreamId ":stream_id")))
-        EgestStatsHandler.stats
-    # Stetson.route
-        (printUrl endpoint (RelayE (StreamId ":stream_id")))
-        RelayHandler.resource
-    # Stetson.route
-        (printUrl endpoint LoadE)
-        LoadHandler.load
-    # Stetson.route
-        (printUrl endpoint (IngestAggregatorE $ StreamId ":stream_id"))
-        IngestAggregatorHandler.ingestAggregator
-    # Stetson.route
-        (printUrl endpoint (IngestAggregatorActiveIngestsE (StreamId ":stream_id") (StreamVariant ":variant_id")))
-        IngestAggregatorHandler.ingestAggregatorsActiveIngest
-    # Stetson.route
-        (printUrl endpoint IngestAggregatorsE)
-        IngestAggregatorHandler.ingestAggregators
-    # Stetson.route
-        (printUrl endpoint (IngestStartE ":canary" ":short_name" (StreamVariant ":variant_id")))
-        IngestHandler.ingestStart
-    # Stetson.route
-        (printUrl endpoint (IngestStopE ":canary" ":short_name" (StreamVariant ":variant_id")))
-        IngestHandler.ingestStop
-    # Stetson.route
-        (printUrl endpoint (ClientStartE ":canary" (StreamId ":stream_id")))
-        ClientHandler.clientStart
-    # Stetson.route
-        (printUrl endpoint (ClientStopE ":canary" (StreamId ":stream_id")))
-        ClientHandler.clientStop
-    # Stetson.route
-        (printUrl endpoint StreamAuthE)
-        LlnwStubHandler.streamAuthType
-    # Stetson.route
-        (printUrl endpoint StreamAuthTypeE)
-        LlnwStubHandler.streamAuth
-    # Stetson.route
-        (printUrl endpoint StreamPublishE)
-        LlnwStubHandler.streamPublish
-    # Stetson.static
-         (printUrl endpoint (IngestAggregatorPlayerE (StreamId ":stream_id")))
-         (PrivFile "rtsv2" "www/aggregatorPlayer.html")
-    # Stetson.static
-         ((printUrl endpoint (IngestAggregatorPlayerJsE (StreamId ":stream_id"))) <> "/[...]")
-         (PrivDir "rtsv2" "www/js")
-    # Stetson.static
-         (printUrl endpoint (IngestAggregatorActiveIngestsPlayerE (StreamId ":stream_id") (StreamVariant ":variant_id")))
-         (PrivFile "rtsv2" "www/play.html")
-    # Stetson.static
-         ((printUrl endpoint (IngestAggregatorActiveIngestsPlayerJsE (StreamId ":stream_id") (StreamVariant ":variant_id"))) <> "/[...]")
-         (PrivDir "rtsv2" "www/js")
+    # mkRoute  TransPoPLeaderE                                                                       TransPoPHandler.leader
+    # mkRoute  HealthCheckE                                                                          HealthHandler.healthCheck
+    # mkRoute (EgestStatsE (StreamId ":stream_id"))                                                  EgestStatsHandler.stats
+    # mkRoute  RelayE                                                                                RelayHandler.resource
+    # mkRoute (RelayStatsE(StreamId ":stream_id"))                                                   RelayHandler.stats
+    # mkRoute  LoadE                                                                                 LoadHandler.load
+    # mkRoute (IngestAggregatorE $ StreamId ":stream_id")                                            IngestAggregatorHandler.ingestAggregator
+    # mkRoute (IngestAggregatorActiveIngestsE (StreamId ":stream_id") (StreamVariant ":variant_id")) IngestAggregatorHandler.ingestAggregatorsActiveIngest
+    # mkRoute  IngestAggregatorsE                                                                    IngestAggregatorHandler.ingestAggregators
+    # mkRoute (IngestStartE ":canary" ":short_name" (StreamVariant ":variant_id"))                   IngestHandler.ingestStart
+    # mkRoute (IngestStopE ":canary" ":short_name" (StreamVariant ":variant_id"))                    IngestHandler.ingestStop
+    # mkRoute (ClientStartE ":canary" (StreamId ":stream_id"))                                       ClientHandler.clientStart
+    # mkRoute (ClientStopE ":canary" (StreamId ":stream_id"))                                        ClientHandler.clientStop
+    # mkRoute  StreamAuthE                                                                           LlnwStubHandler.streamAuthType
+    # mkRoute  StreamAuthTypeE                                                                       LlnwStubHandler.streamAuth
+    # mkRoute  StreamPublishE                                                                        LlnwStubHandler.streamPublish
+
+    # static  (IngestAggregatorPlayerE (StreamId ":stream_id"))                                                       (PrivFile "rtsv2" "www/aggregatorPlayer.html")
+    # static' (IngestAggregatorPlayerJsE (StreamId ":stream_id")) "/[...]"                                            (PrivDir "rtsv2" "www/js")
+    # static  (IngestAggregatorActiveIngestsPlayerE (StreamId ":stream_id") (StreamVariant ":variant_id"))            (PrivFile "rtsv2" "www/play.html")
+    # static' (IngestAggregatorActiveIngestsPlayerJsE (StreamId ":stream_id") (StreamVariant ":variant_id")) "/[...]" (PrivDir "rtsv2" "www/js")
 
     # Stetson.cowboyRoutes cowboyRoutes
     # Stetson.port args.port
@@ -119,39 +83,33 @@ init args = do
   where
     cowboyRoutes :: List Path
     cowboyRoutes =
-      Path (tuple3
-            (matchSpec $ printUrl endpoint (IngestInstanceLlwpE (StreamId ":stream_id") (StreamVariant ":variant_id")))
-            (NativeModuleName $ atom "llwp_stream_resource")
-            (InitialState $ unsafeToForeign makeStreamAndVariant)
-           )
-      : Path (tuple3
-              (matchSpec $ printUrl endpoint (IngestAggregatorActiveIngestsPlayerSessionStartE (StreamId ":stream_id") (StreamVariant ":variant_id")))
-              (NativeModuleName $ atom "rtsv2_webrtc_session_start_resource")
-              (InitialState $ unsafeToForeign makeStreamAndVariant)
-             )
-      : Path (tuple3
-              (matchSpec $ printUrl endpoint (IngestAggregatorActiveIngestsPlayerSessionE (StreamId ":stream_id") (StreamVariant ":variant_id") ":session_id"))
-              (NativeModuleName $ atom "rtsv2_webrtc_session_resource")
-              (InitialState $ unsafeToForeign makeStreamAndVariant)
-             )
+      cowboyRoute   (IngestInstanceLlwpE (StreamId ":stream_id") (StreamVariant ":variant_id"))                              "llwp_stream_resource" makeStreamAndVariant
+      : cowboyRoute (IngestAggregatorActiveIngestsPlayerSessionStartE (StreamId ":stream_id") (StreamVariant ":variant_id")) "rtsv2_webrtc_session_start_resource" makeStreamAndVariant
+      : cowboyRoute (IngestAggregatorActiveIngestsPlayerSessionE (StreamId ":stream_id") (StreamVariant ":variant_id")       ":session_id") "rtsv2_webrtc_session_resource" makeStreamAndVariant
       : nil
 
     makeStreamAndVariant :: String -> String -> StreamAndVariant
     makeStreamAndVariant streamId variantId = StreamAndVariant (wrap streamId) (wrap variantId)
 
+    mkRoute :: forall state msg.  Endpoint -> InnerStetsonHandler msg state -> StetsonConfig -> StetsonConfig
+    mkRoute rType handler = Stetson.route (printUrl endpoint rType) handler
+
+    static :: Endpoint -> StaticAssetLocation -> StetsonConfig -> StetsonConfig
+    static rType config = Stetson.static  (printUrl endpoint rType) config
+
+    static' :: Endpoint -> String -> StaticAssetLocation -> StetsonConfig -> StetsonConfig
+    static' rType hack config = Stetson.static ((printUrl endpoint rType) <> hack) config
+
+    cowboyRoute rType moduleName initialState =
+      Path (tuple3
+            (matchSpec $ printUrl endpoint rType)
+            (NativeModuleName $ atom moduleName)
+            (InitialState $ unsafeToForeign initialState)
+           )
+
+
 ipToTuple :: Ip -> Tuple4 Int Int Int Int
 ipToTuple (Ipv4 a b c d) = tuple4 a b c d
-
-transPoPLeader :: StetsonHandler (Maybe ServerAddress)
-transPoPLeader =
-  Rest.handler (\req -> Rest.initResult req Nothing)
-  # Rest.resourceExists (\req state -> do
-                            currentLeader <- IntraPoPAgent.currentTransPoPLeader
-                            Rest.result (isJust currentLeader) req currentLeader
-                          )
-  # Rest.contentTypesProvided (\req state ->
-                                Rest.result ((tuple2 "text/plain" (\req2 currentLeader -> Rest.result (fromMaybe "" (unwrap <$> currentLeader)) req2 state)) : nil) req state)
-  # Rest.yeeha
 
 emptyText  :: forall a. Tuple2 String (Req -> a -> (Effect (RestResult String a)))
 emptyText = textWriter ""

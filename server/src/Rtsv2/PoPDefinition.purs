@@ -35,6 +35,7 @@ import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
+import PintoHelper (exposeState)
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
 import Rtsv2.Names as Names
@@ -80,21 +81,20 @@ startLink args =
   Gen.startLink serverName (init args) handleInfo
 
 neighbourMap :: Effect NeighbourMap
-neighbourMap = exposeStateMember _.neighbourMap
+neighbourMap = exposeState _.neighbourMap serverName
 
 getOtherServersForThisPoP :: Effect (List ServerAddress)
-getOtherServersForThisPoP = exposeStateMember _.otherServersInThisPoP
+getOtherServersForThisPoP = exposeState _.otherServersInThisPoP serverName
 
 getOtherPoPs :: Effect (List PoP)
-getOtherPoPs = exposeStateMember _.otherPoPs
+getOtherPoPs = exposeState _.otherPoPs serverName
 
 
 getOtherPoPNames :: Effect (List PoPName)
-getOtherPoPNames =
-   exposeStateMember ((<$>) _.name <<< _.otherPoPs)
+getOtherPoPNames = exposeState ((<$>) _.name <<< _.otherPoPs) serverName
 
 getThisServer :: Effect Server
-getThisServer = exposeStateMember _.thisServer
+getThisServer = exposeState _.thisServer serverName
 
 whereIsServer :: ServerAddress -> Effect (Maybe ServerLocation)
 whereIsServer sa = Gen.doCall serverName
@@ -305,9 +305,6 @@ maybeLog msg Nothing = do
 serverName :: ServerName State Msg
 serverName = Names.popDefinitionName
 
-exposeStateMember :: forall a. (State -> a) -> Effect a
-exposeStateMember member = Gen.doCall serverName
-  \state -> pure $ CallReply (member state) state
 
 --------------------------------------------------------------------------------
 -- Log helpers

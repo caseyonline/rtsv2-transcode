@@ -10,29 +10,29 @@ import Prelude
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
+import Rtsv2.Names as Names
 import Logger (Logger)
 import Logger as Logger
 import Pinto (SupervisorName)
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStartTemplate, childType)
 import Pinto.Sup as Sup
+import Rtsv2.Agents.StreamRelayInstance (CreateRelayPayload)
 import Rtsv2.Agents.StreamRelayInstance as StreamRelayInstance
-import Rtsv2.Names as Names
 import Shared.Agent as Agent
-import Shared.Stream (StreamId)
 
 serverName :: SupervisorName
 serverName = Names.streamRelayInstanceSupName
 
 isAvailable :: Effect Boolean
-isAvailable = Names.isRegistered serverName
+isAvailable = Pinto.isRegistered serverName
 
 startLink :: forall a. a -> Effect Pinto.StartLinkResult
 startLink _ = Sup.startLink serverName init
 
-startRelay :: StreamId -> Effect Pinto.StartChildResult
-startRelay streamId = do
-  Sup.startSimpleChild childTemplate serverName streamId
+startRelay :: CreateRelayPayload -> Effect Pinto.StartChildResult
+startRelay createPayload = do
+  Sup.startSimpleChild childTemplate serverName createPayload
 
 init :: Effect Sup.SupervisorSpec
 init = do
@@ -49,7 +49,7 @@ init = do
             : nil
         )
 
-childTemplate :: Pinto.ChildTemplate StreamId
+childTemplate :: Pinto.ChildTemplate CreateRelayPayload
 childTemplate = Pinto.ChildTemplate (StreamRelayInstance.startLink)
 
 --------------------------------------------------------------------------------

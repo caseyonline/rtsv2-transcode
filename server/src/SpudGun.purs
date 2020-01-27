@@ -129,8 +129,12 @@ getJson :: Url -> Effect SpudResult
 getJson url = get url {headers : tuple2 "Accept" "application/json" : nil}
 
 postJson :: forall a. WriteForeign a => Url -> a -> Effect SpudResult
-postJson url bodyType = post url {body: writeJSON bodyType,
-                                  headers: tuple2 "Content-Type" "application/json" : tuple2 "Accept" "application/json" : nil}
+postJson url bodyType = post url { body: writeJSON bodyType,
+                                   headers: ( tuple2 "Content-Type" "application/json"
+--                                            : tuple2 "Accept" "application/json"
+                                            : nil
+                                            )
+                                 }
 
 
 --TODO homogeneous constraint generates a function of the wrong arity ??!!

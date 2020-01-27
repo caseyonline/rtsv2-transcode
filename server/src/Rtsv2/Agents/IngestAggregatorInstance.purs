@@ -20,7 +20,7 @@ import Erl.Data.Tuple (Tuple2, tuple2)
 import Foreign (Foreign)
 import Logger (Logger)
 import Logger as Logger
-import Pinto (ServerName, StartLinkResult)
+import Pinto (ServerName, StartLinkResult, isRegistered)
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
@@ -34,7 +34,8 @@ import Rtsv2.Router.Parser as Routing
 import Shared.Agent as Agent
 import Shared.LlnwApiTypes (StreamDetails)
 import Shared.Stream (StreamAndVariant(..), StreamId(..), StreamVariant, toStreamId, toVariant)
-import Shared.Types (IngestAggregatorPublicState, ServerAddress, extractAddress)
+import Shared.Types (ServerAddress, extractAddress)
+import Shared.Types.Agent.State as PublicState
 
 foreign import startWorkflowImpl :: String -> Array (Tuple2 StreamAndVariant String) -> Effect Foreign
 foreign import addLocalVariantImpl :: Foreign -> StreamAndVariant -> Effect Unit
@@ -56,7 +57,7 @@ data Msg
 
 isAvailable :: StreamId -> Effect Boolean
 isAvailable streamId = do
-  bool <- Names.isRegistered (serverName streamId)
+  bool <- isRegistered (serverName streamId)
   pure bool
 
 serverName :: StreamId -> ServerName State Msg
@@ -92,7 +93,7 @@ removeVariant streamAndVariant = Gen.doCall (serverName (toStreamId streamAndVar
          pure unit
   pure $ CallReply unit state{activeStreamVariants = newActiveStreamVariants}
 
-getState :: StreamId -> Effect (IngestAggregatorPublicState)
+getState :: StreamId -> Effect (PublicState.IngestAggregator)
 getState streamId = Gen.call (serverName streamId)
   \state@{streamDetails, activeStreamVariants} ->
   CallReply {streamDetails, activeStreamVariants: (\(Tuple streamVariant serverAddress) -> {streamVariant, serverAddress}) <$>(toUnfoldable activeStreamVariants)} state

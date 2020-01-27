@@ -6,7 +6,12 @@ module Shared.Types
        , ServerLoad(..)
        , ServerLocation(..)
        , Server(..)
-       , IngestAggregatorPublicState
+       , ServerRec
+       , RelayServer(..)
+       , EgestServer(..)
+       , EgestLocation(..)
+       , FailureReason(..)
+       , APIResp(..)
        , toServer
        , toServerLoad
        , serverLoadToServer
@@ -16,11 +21,10 @@ module Shared.Types
 
 import Prelude
 
+import Data.Either (Either)
 import Data.Newtype (class Newtype, unwrap)
 import Data.Symbol (SProxy(..))
 import Record as Record
-import Shared.LlnwApiTypes (StreamDetails)
-import Shared.Stream (StreamVariant)
 import Simple.JSON (class ReadForeign, class WriteForeign)
 
 newtype ServerAddress = ServerAddress String
@@ -66,10 +70,20 @@ derive newtype instance readForeignServerLocation :: ReadForeign ServerLocation
 derive newtype instance writeForeignServerLocation :: WriteForeign ServerLocation
 
 
-newtype Server = Server { address :: ServerAddress
-                        , pop :: PoPName
-                        , region :: RegionName
-                        }
+
+
+type ServerRec = { address :: ServerAddress
+                 , pop :: PoPName
+                 , region :: RegionName
+                 }
+
+newtype Server = Server ServerRec
+newtype RelayServer = Relay ServerRec
+newtype EgestServer = Egest ServerRec
+
+
+-- newtype AggregatorServer = Aggregator Server
+-- newtype IdleServerServer = Idle Server
 
 derive instance newtypeServer :: Newtype Server _
 derive newtype instance eqServer :: Eq Server
@@ -77,6 +91,23 @@ derive newtype instance ordServer :: Ord Server
 derive newtype instance showServer :: Show Server
 derive newtype instance readForeignServer :: ReadForeign Server
 derive newtype instance writeForeignServer :: WriteForeign Server
+
+derive instance newtypeRelayServer :: Newtype RelayServer _
+derive newtype instance eqRelayServer :: Eq RelayServer
+derive newtype instance ordRelayServer :: Ord RelayServer
+derive newtype instance showRelayServer :: Show RelayServer
+derive newtype instance readForeignRelayServer :: ReadForeign RelayServer
+derive newtype instance writeForeignRelayServer :: WriteForeign RelayServer
+
+derive instance newtypeEgestServer :: Newtype EgestServer _
+derive newtype instance eqEgestServer :: Eq EgestServer
+derive newtype instance ordEgestServer :: Ord EgestServer
+derive newtype instance showEgestServer :: Show EgestServer
+derive newtype instance readForeignEgestServer :: ReadForeign EgestServer
+derive newtype instance writeForeignEgestServer :: WriteForeign EgestServer
+
+
+
 
 newtype ServerLoad = ServerLoad { address :: ServerAddress
                                 , pop :: PoPName
@@ -90,18 +121,29 @@ derive newtype instance showServerLoad :: Show ServerLoad
 derive newtype instance readForeignServerLoad :: ReadForeign ServerLoad
 derive newtype instance writeForeignServerLoad :: WriteForeign ServerLoad
 
-type IngestAggregatorPublicState
-   = { streamDetails :: StreamDetails
-     , activeStreamVariants :: Array { streamVariant :: StreamVariant
-                                     , serverAddress :: ServerAddress
-                                     }
-     }
+
+-- type ServerAddressRec
+--   = { address :: ServerAddress
+--     }
+-- type LocationRec
+--   = { pop :: PoPName
+--     , region :: RegionName
+--     }
 
 
-type ServerAddressRec = {address :: ServerAddress}
-type LocationRec = { pop :: PoPName
-                   , region :: RegionName
-                   }
+--------------------------------------------------------------------------------
+-- API Types - maybe move me
+--------------------------------------------------------------------------------
+data EgestLocation
+  = Local
+  | Remote Server
+
+data FailureReason
+  = NotFound
+  | NoResource
+
+type APIResp = (Either FailureReason Unit)
+
 
 toServer :: ServerAddress -> ServerLocation -> Server
 toServer sa (ServerLocation ls) =

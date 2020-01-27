@@ -4,6 +4,7 @@ module Rtsv2.Agents.IntraPoP
   , isIngestActive
   , announceLoad
   , announceEgestIsAvailable
+  , announceRemoteEgestIsAvailable
   , announceEgestStopped
   , announceStreamIsAvailable
   , announceStreamStopped
@@ -86,6 +87,7 @@ type State
     , streamRelayLocations :: EMap StreamId Server
     , streamAggregatorLocations :: EMap StreamId Server
     , thisServer :: Server
+    , load :: Load
     , members :: Map ServerAddress MemberInfo
     , expireThreshold :: Milliseconds
     , lamportClocks :: LamportClocks
@@ -157,31 +159,35 @@ whereIsEgest streamId =
 --------------------------------------------------------------------------------
 getIdleServer :: (ServerLoad -> Boolean) -> Effect (Maybe ServerLoad)
 getIdleServer pred = Gen.doCall serverName
-  (\state@{members} ->
-    let n = 2
-        nMostIdleWithCapacity =
-          values members
-          # filterMap (\memberInfo ->
-                        let serverWithLoad = serverLoad memberInfo
-                        in if pred serverWithLoad then Just serverWithLoad else Nothing)
-          # sortBy (\(ServerLoad sl1) (ServerLoad sl2) -> compare sl1.load sl2.load)
-          # take n
-        numServers = length nMostIdleWithCapacity
-    in do
-      resp <-
-        case numServers of
-          0 ->
-            pure Nothing
-          1 ->
-            case uncons nMostIdleWithCapacity of
-              Just {head} -> pure $ Just head
-              Nothing -> pure Nothing
-          _ ->
-            do
-              -- TODO - always seems to give the same answer!
-              chosenIndex <- randomInt 0 (numServers - 1)
-              pure $ index nMostIdleWithCapacity chosenIndex
-      pure $ CallReply resp state
+  (\state@{thisServer, members, load} -> do
+      let thisServerLoad = toServerLoad thisServer load
+      if pred thisServerLoad
+      then pure $ CallReply (Just thisServerLoad) state
+      else
+        let n = 2
+            nMostIdleWithCapacity =
+              values members
+              # filterMap (\memberInfo ->
+                            let serverWithLoad = serverLoad memberInfo
+                            in if pred serverWithLoad then Just serverWithLoad else Nothing)
+              # sortBy (\(ServerLoad sl1) (ServerLoad sl2) -> compare sl1.load sl2.load)
+              # take n
+            numServers = length nMostIdleWithCapacity
+        in do
+          resp <-
+            case numServers of
+              0 ->
+                pure Nothing
+              1 ->
+                case uncons nMostIdleWithCapacity of
+                  Just {head} -> pure $ Just head
+                  Nothing -> pure Nothing
+              _ ->
+                do
+                  -- TODO - always seems to give the same answer!
+                  chosenIndex <- randomInt 0 (numServers - 1)
+                  pure $ index nMostIdleWithCapacity chosenIndex
+          pure $ CallReply resp state
   )
 
 
@@ -201,7 +207,7 @@ announceLoad load =
         thisNodeAddress = extractAddress thisServer
         newMembers = alter (map (\ memberInfo -> memberInfo { load = load })) thisNodeAddress members
       _ <- sendToIntraSerfNetwork state "loadUpdate" (IMServerLoad thisNodeAddress load)
-      pure $ Gen.CastNoReply state { members = newMembers }
+      pure $ Gen.CastNoReply state { members = newMembers , load = load}
 
 -- Called by EgestAgent to indicate egest on this node
 announceEgestIsAvailable :: StreamId -> Effect Unit
@@ -224,6 +230,15 @@ announceEgestStopped streamId =
       _ <- sendToIntraSerfNetwork state "egestStopped" $ IMEgestState EgestStopped streamId $ extractAddress thisServer
       pure $ Gen.CastNoReply state { egestLocations = newEgestLocations }
 
+-- Called when a client here result in a remote egest being created
+announceRemoteEgestIsAvailable :: StreamId -> Server -> Effect Unit
+announceRemoteEgestIsAvailable streamId server =
+  Gen.doCast serverName
+    \state -> do
+      _ <- logInfo "New remote egest is avaiable due to a local client" {streamId, server}
+      Gen.CastNoReply <$> insertEgest streamId server state
+
+
 -- Called by IngestAggregator to indicate stream on this node
 announceStreamIsAvailable :: StreamId -> Effect Unit
 announceStreamIsAvailable streamId =
@@ -234,6 +249,13 @@ announceStreamIsAvailable streamId =
       _ <- transPoP_announceStreamIsAvailable streamId thisServer
 
       Gen.CastNoReply <$> insertStreamAggregator streamId thisServer state
+
+insertEgest :: StreamId -> Server -> State -> Effect State
+insertEgest streamId server state@{ egestLocations } =
+  do
+    newEgestLocations <- MultiMap.insert' streamId server egestLocations
+    pure $ state { egestLocations = newEgestLocations }
+
 
 insertStreamAggregator :: StreamId -> Server -> State -> Effect State
 insertStreamAggregator streamId server state@{ streamAggregatorLocations } =
@@ -353,6 +375,7 @@ init { config: config@{rejoinEveryMs
     , thisServer: thisServer
     , currentTransPoPLeader: Nothing
     , members
+    , load: wrap 0.0
     , expireThreshold: wrap expireThresholdMs
     , lamportClocks: { streamStateClocks: Map.empty
                      , egestStateClocks: Map.empty
@@ -454,8 +477,7 @@ handleEgestStateChange stateChange streamId server state =
     EgestAvailable -> do
         -- egestAvailable on some other node in this PoP
         _ <- logInfo "EgestAvailable on remote node" { streamId: streamId, remoteNode: server }
-        newEgestLocations <- MultiMap.insert' streamId server state.egestLocations
-        pure $ state { egestLocations = newEgestLocations }
+        insertEgest streamId server state
 
     EgestStopped -> do
         _ <- logInfo "EgestStopped on remote node" { streamId: streamId, remoteNode: server }
