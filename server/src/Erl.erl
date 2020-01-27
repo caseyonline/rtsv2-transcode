@@ -3,6 +3,7 @@
 -export([ systemTimeImpl/1
         , sleepImpl/1
         , makeRefImpl/0
+        , privDirImpl/1
         ]).
 
 
@@ -16,3 +17,6 @@ sleepImpl(Ms) ->
 
 makeRefImpl() ->
   make_ref().
+
+privDirImpl(App) ->
+  list_to_binary(code:priv_dir(App)).

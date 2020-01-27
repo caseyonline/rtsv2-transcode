@@ -24,12 +24,12 @@ import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Ephemeral.Map (EMap)
 import Ephemeral.Map as EMap
-import Erl.Atom (Atom)
+import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, head, index, length, nil, singleton, (:))
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
 import Erl.Process (spawnLink)
-import Erl.Utils (Milliseconds, sleep, systemTimeMs)
+import Erl.Utils (Milliseconds, sleep, systemTimeMs, privDir)
 import Logger (Logger)
 import Logger as Logger
 import Network (Network, addEdge', bestPaths, emptyNetwork, pathsBetween)
@@ -607,11 +607,10 @@ screenOriginAndMessageClock thisServer messageServerAddress msgClock lastClockBy
 
 
 startScript :: String
-startScript = "scripts/startTransPoPAgent.sh"
+startScript =  privDir(atom "rtsv2") <> "/scripts/startTransPoPAgent.sh"
 
 stopScript :: String
-stopScript = "scripts/stopTransPoPAgent.sh"
-
+stopScript = privDir(atom "rtsv2") <> "/scripts/stopTransPoPAgent.sh"
 
 --------------------------------------------------------------------------------
 -- Log helpers

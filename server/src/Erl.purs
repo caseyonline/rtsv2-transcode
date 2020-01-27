@@ -2,6 +2,7 @@ module Erl.Utils
        ( systemTimeMs
        , sleep
        , makeRef
+       , privDir
        , Milliseconds
        , Url
        , Ref
@@ -18,6 +19,7 @@ import Foreign (Foreign)
 foreign import systemTimeImpl :: Atom -> Effect Int
 foreign import sleepImpl :: Int -> Effect Unit
 foreign import makeRefImpl :: Foreign
+foreign import privDirImpl :: Atom -> String
 
 sleep :: Milliseconds -> Effect Unit
 sleep = sleepImpl <<< unwrap
@@ -66,3 +68,6 @@ instance eqRef :: Eq Ref where
 
 makeRef :: Ref
 makeRef = Ref makeRefImpl
+
+privDir :: Atom -> String
+privDir = privDirImpl
