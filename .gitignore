@@ -22,4 +22,4 @@ node_modules
 .edts
 server/purs
 .DS_store
-/priv/assets/js/rts*
+priv/www/assets/js/rtsv2AppBundle*
