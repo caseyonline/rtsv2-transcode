@@ -71,11 +71,6 @@ component = Connect.component $ H.mkComponent
           chart <- H.liftEffect $ EC.makeChart element
           liftEffect $ EC.setOption {} chart
 
-      -- state <- H.get
-      -- case state.currentUser of
-      --   Nothing -> pure unit
-      --   profile -> pure unit
-
     Receive { currentUser } ->
       H.modify_ _ { currentUser = currentUser }
 
@@ -122,7 +117,6 @@ component = Connect.component $ H.mkComponent
       html =
         [ HH.div
           [ css "card-body dashboard-map"
-          -- , HP.id_ "myMap"
           , HP.ref (H.RefLabel "mymap")
           , CSS.style do
               Geometry.height $ Size.px (toNumber 600)
@@ -130,27 +124,3 @@ component = Connect.component $ H.mkComponent
           ]
           []
         ]
-
-
--- mainOption =
---       { title: EC.makeTitle { text: "Map Example" }
---       , backgroundColor: "#fff"
---       , tooltip: EC.makeTooltip { position: "bottom" }
---       , color: ["gold","aqua","lime"]
---       , series: pure $ EC.makeMapSeries
---         { name: "Active"
---         , type: "map"
---         , mapType: "World"
---         , roam: true
---         , hoverable: false
---         , markLine: { smooth: true
---                     , effect: { show: true
---                                  , size: 3
---                                  , showdowColor: "yellow"
---                                  }
---                     , itemStyle: { normal: { borderWidth: 1 }  }
---                     , data: MapData.data_A
---                     }
---         , data: Nothing
---         }
---       }

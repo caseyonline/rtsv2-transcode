@@ -72,9 +72,9 @@ init args = do
     # mkRoute  StreamPublishE                                                                        LlnwStubHandler.streamPublish
 
     # static  (IngestAggregatorPlayerE (StreamId ":stream_id"))                                                       (PrivFile "rtsv2" "www/aggregatorPlayer.html")
-    # static' (IngestAggregatorPlayerJsE (StreamId ":stream_id")) "/[...]"                                            (PrivDir "rtsv2" "www/js")
+    # static' (IngestAggregatorPlayerJsE (StreamId ":stream_id")) "/[...]"                                            (PrivDir "rtsv2" "www/assets/js")
     # static  (IngestAggregatorActiveIngestsPlayerE (StreamId ":stream_id") (StreamVariant ":variant_id"))            (PrivFile "rtsv2" "www/play.html")
-    # static' (IngestAggregatorActiveIngestsPlayerJsE (StreamId ":stream_id") (StreamVariant ":variant_id")) "/[...]" (PrivDir "rtsv2" "www/js")
+    # static' (IngestAggregatorActiveIngestsPlayerJsE (StreamId ":stream_id") (StreamVariant ":variant_id")) "/[...]" (PrivDir "rtsv2" "www/assets/js")
 
     # static' (ClientAppAssets) "/[...]"    (PrivDir Config.appName "www/assets")
     # static  (ClientAppRouteHTML)          (PrivFile Config.appName "www/index.html")

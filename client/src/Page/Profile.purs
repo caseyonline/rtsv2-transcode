@@ -120,7 +120,6 @@ component = H.mkComponent
                   [ css "col-xs-12 col-md-10 offset-md-1" ]
                   [ HH.img
                       [ css "user-img"
-                      -- , HP.src $ Avatar.toStringWithDefault (_.image =<< toMaybe state.author)
                       ]
                   , HH.h4_
                       [ HH.text $ Username.toString state.username ]
