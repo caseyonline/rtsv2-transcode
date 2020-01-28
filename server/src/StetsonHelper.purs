@@ -119,10 +119,10 @@ type Internal_GenericStatusState a
 
 
 genericGetByStreamId :: forall a. WriteForeign a =>  (StreamId -> Effect a) -> GenericStetsonGetByStreamId a
-genericGetByStreamId = genericGetBy Bindings.streamIdBinding
+genericGetByStreamId = genericGetBy Bindings.streamIdBindingLiteral
 
 genericGetByPoPName :: forall a. WriteForeign a =>  (PoPName -> Effect a) -> GenericStetsonGetByStreamId a
-genericGetByPoPName = genericGetBy  Bindings.popNameBinding
+genericGetByPoPName = genericGetBy  Bindings.popNameBindingLiteral
 
 genericGetBy :: forall a b. Newtype a String => WriteForeign b =>  String -> (a -> Effect b) -> GenericStetsonGetByStreamId b
 genericGetBy bindElement getData =

@@ -7,12 +7,11 @@ module Rtsv2.Handler.Client
 import Prelude
 
 import Data.Either (Either(..))
-import Data.Maybe (fromMaybe')
 import Data.Newtype (unwrap)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Cowboy.Handlers.Rest (MovedResult, moved, notMoved)
-import Erl.Cowboy.Req (Req, StatusCode(..), binding, replyWithoutBody, setHeader)
+import Erl.Cowboy.Req (Req, StatusCode(..), replyWithoutBody, setHeader)
 import Erl.Data.List (List, singleton, (:))
 import Erl.Data.List as List
 import Erl.Data.Map as Map
@@ -25,9 +24,9 @@ import Rtsv2.Audit as Audit
 import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
-import Shared.Stream (StreamId(..))
+import Rtsv2.Web.Bindings as Bindings
+import Shared.Stream (StreamId)
 import Shared.Types (FailureReason(..), LocalOrRemote(..), Server, ServerAddress, extractAddress)
-import Shared.Utils (lazyCrashIfMissing)
 import Stetson (HttpMethod(..), RestResult, StetsonHandler)
 import Stetson.Rest as Rest
 
@@ -121,17 +120,15 @@ clientStart =
   # Rest.yeeha
 
   where
-    init req =
+    init req = do
       let
-        streamId = spy "clientStartInit" $ StreamId $ fromMaybe' (lazyCrashIfMissing "stream_id binding missing") $ binding (atom "stream_id") req
-      in
-        do
-          thisServer <- PoPDefinition.getThisServer
-          egestResp <- findEgestForStream streamId thisServer
-          let
-            req2 = setHeader "x-servedby" (unwrap $ extractAddress thisServer) req
-            _ = spy "egestResp" egestResp
-          Rest.initResult req2 $ State { streamId, egestResp }
+        streamId = Bindings.streamId req
+      thisServer <- PoPDefinition.getThisServer
+      egestResp <- findEgestForStream streamId thisServer
+      let
+        req2 = setHeader "x-servedby" (unwrap $ extractAddress thisServer) req
+        _ = spy "egestResp" egestResp
+      Rest.initResult req2 $ State { streamId, egestResp }
 
     acceptAny req state = Rest.result true req state
 
@@ -185,13 +182,12 @@ clientStop =
   # Rest.yeeha
 
   where
-    init req =
-      let streamId = StreamId $ fromMaybe' (lazyCrashIfMissing "stream_id binding missing") $ binding (atom "stream_id") req
-      in
-       do
-         thisNode <- extractAddress <$> PoPDefinition.getThisServer
-         Rest.initResult req { streamId : spy "init" streamId
-                             }
+    init req = do
+      let
+        streamId = Bindings.streamId req
+      thisNode <- extractAddress <$> PoPDefinition.getThisServer
+      Rest.initResult req { streamId : spy "init" streamId
+                          }
 
     acceptAny req state = Rest.result true req  $ spy "accept" state
 

@@ -9,13 +9,12 @@ import Prelude
 
 import Data.Either (hush)
 import Data.Maybe (Maybe(..), fromMaybe', isNothing)
-import Data.Newtype (wrap)
-import Erl.Atom (atom)
-import Erl.Cowboy.Req (binding, method)
+import Erl.Cowboy.Req (method)
 import Erl.Data.List (nil, (:))
 import Erl.Data.Tuple (tuple2)
 import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
 import Rtsv2.Agents.IngestAggregatorInstanceSup as IngestAggregatorInstanceSup
+import Rtsv2.Web.Bindings as Bindings
 import Shared.LlnwApiTypes (StreamDetails)
 import Shared.Stream (StreamAndVariant(StreamAndVariant), toStreamId)
 import Shared.Types (ServerAddress)
@@ -40,10 +39,10 @@ ingestAggregatorsActiveIngest :: StetsonHandler IngestAggregatorsActiveIngestSta
 ingestAggregatorsActiveIngest =
   Rest.handler (\req ->
                  let
-                   streamIdStr = fromMaybe' (lazyCrashIfMissing "stream_id binding missing") $ binding (atom "stream_id") req
-                   variantIdStr = fromMaybe' (lazyCrashIfMissing "variant binding missing") $ binding (atom "variant_id") req
+                   streamId = Bindings.streamId req
+                   variant =Bindings.variant req
                  in
-                  Rest.initResult req {streamAndVariant: StreamAndVariant (wrap streamIdStr) (wrap variantIdStr)
+                  Rest.initResult req {streamAndVariant: StreamAndVariant streamId variant
                                       , serverAddress: Nothing})
   # Rest.serviceAvailable (\req state -> do
                               isAgentAvailable <- IngestAggregatorInstanceSup.isAvailable

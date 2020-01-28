@@ -6,15 +6,17 @@ module Rtsv2.Router.Endpoint ( Endpoint(..)
 
 import Prelude hiding ((/))
 
+import Data.Array ((!!))
 import Data.Either (note)
 import Data.Generic.Rep (class Generic)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype, unwrap, wrap)
+import Data.String (Pattern(..), split)
 import Routing.Duplex (RouteDuplex', as, path, root, segment)
 import Routing.Duplex.Generic (noArgs, sum)
 import Routing.Duplex.Generic.Syntax ((/))
 import Rtsv2.Router.Parser as Routing
-import Shared.Stream (StreamId(..), StreamVariant(..))
+import Shared.Stream (StreamAndVariant(..), StreamId(..), StreamVariant(..))
 import Shared.Types (PoPName(..), ServerAddress, extractAddress)
 import SpudGun (Url)
 
@@ -43,8 +45,8 @@ data Endpoint
   | IngestAggregatorActiveIngestsPlayerSessionE StreamId StreamVariant String
   | IngestAggregatorsE
   | IngestInstanceLlwpE StreamId StreamVariant
-  | IngestStartE Canary String StreamVariant
-  | IngestStopE Canary String StreamVariant
+  | IngestStartE Canary String StreamAndVariant
+  | IngestStopE Canary String StreamAndVariant
   | ClientAppAssetsE
   | ClientAppRouteHTMLE
   | ClientStartE Canary StreamId
@@ -81,8 +83,8 @@ endpoint = root $ sum
   , "IngestAggregatorsE"                               : "" / "api" / "agents" / path "ingestAggregator" noArgs
   , "IngestInstanceLlwpE"                              : "" / "api" / "agents" / "ingest" / streamId segment / variant segment / "llwp"
 
-  , "IngestStartE"                                     : "" / "api" / "public" / canary segment / "ingest" / segment / variant segment / "start"
-  , "IngestStopE"                                      : "" / "api" / "public" / canary segment / "ingest" / segment / variant segment / "stop"
+  , "IngestStartE"                                     : "" / "api" / "public" / canary segment / "ingest" / segment / streamAndVariant segment / "start"
+  , "IngestStopE"                                      : "" / "api" / "public" / canary segment / "ingest" / segment / streamAndVariant segment / "stop"
   , "ClientStartE"                                     : "" / "api" / "public" / canary segment / "client" / streamId segment / "start"
   , "ClientStopE"                                      : "" / "api" / "public" / canary segment / "client" / streamId segment / "stop"
 
@@ -122,6 +124,18 @@ parseStreamVariant  str = Just (StreamVariant str)
 variantToString :: StreamVariant -> String
 variantToString (StreamVariant str) = str
 
+-- | StreamAndVariant
+parseStreamAndVariant :: String -> Maybe StreamAndVariant
+parseStreamAndVariant  ""  = Nothing
+parseStreamAndVariant  str =
+  case split (Pattern "_") str !! 0 of
+    Just streamIdStr -> Just (StreamAndVariant (wrap streamIdStr) (wrap str))
+    _ -> Nothing
+
+streamAndVariantToString :: StreamAndVariant -> String
+streamAndVariantToString (StreamAndVariant _ (StreamVariant str)) = str
+
+
 
 -- | PoPName
 
@@ -151,10 +165,13 @@ streamId = as streamIdToString (parseStreamId >>> note "Bad StreamId")
 variant :: RouteDuplex' String -> RouteDuplex' StreamVariant
 variant = as variantToString (parseStreamVariant >>> note "Bad StreamId")
 
+-- | This combinator transforms a codec over `String` into one that operates on the `StreamAndVariant` type.
+streamAndVariant :: RouteDuplex' String -> RouteDuplex' StreamAndVariant
+streamAndVariant = as streamAndVariantToString (parseStreamAndVariant >>> note "Bad StreamAndVariant")
+
 -- | This combinator transforms a codec over `String` into one that operates on the `PoPName` type.
 popName :: RouteDuplex' String -> RouteDuplex' PoPName
 popName = as poPNameToString (parsePoPName >>> note "Bad PoPName")
-
 
 -- | This combinator transforms a codec over `String` into one that operates on the `Canary` type.
 canary :: RouteDuplex' String -> RouteDuplex' Canary

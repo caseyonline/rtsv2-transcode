@@ -6,11 +6,9 @@ module Rtsv2.Handler.Ingest
 
 import Prelude
 
-import Data.Array ((!!))
 import Data.Either (hush)
 import Data.Maybe (Maybe(..), fromMaybe')
 import Data.Newtype (unwrap, wrap)
-import Data.String (Pattern(..), split)
 import Erl.Atom (atom)
 import Erl.Cowboy.Req (binding)
 import Erl.Data.List (nil, (:))
@@ -19,8 +17,9 @@ import Logger (spy)
 import Rtsv2.Agents.IngestInstance as IngestInstance
 import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
 import Rtsv2.Config as Config
+import Rtsv2.Web.Bindings as Bindings
 import Shared.LlnwApiTypes (StreamIngestProtocol(..), StreamPublish, StreamDetails)
-import Shared.Stream (StreamAndVariant(..), toVariant)
+import Shared.Stream (StreamAndVariant, toVariant)
 import Shared.Utils (lazyCrashIfMissing)
 import SpudGun (bodyToJSON)
 import SpudGun as SpudGun
@@ -35,11 +34,10 @@ ingestStart :: StetsonHandler IngestStartState
 ingestStart =
   Rest.handler (\req ->
                  let shortName = spy "init" (fromMaybe' (lazyCrashIfMissing "short_name binding missing") $ binding (atom "short_name") req)
-                     variantId = fromMaybe' (lazyCrashIfMissing "variant_id binding missing") $ binding (atom "variant_id") req
-                     streamId = fromMaybe' (lazyCrashIfMissing "variant_id badly formed") $ (split (Pattern "_") variantId) !! 0
+                     streamAndVariant = Bindings.streamAndVariant req
                  in
                  Rest.initResult req { shortName
-                                     , streamAndVariant: StreamAndVariant (wrap streamId) (wrap variantId)
+                                     , streamAndVariant
                                      , streamDetails: Nothing})
 
   # Rest.serviceAvailable (\req state -> do
@@ -75,27 +73,27 @@ ingestStart =
   # Rest.yeeha
 
 
-type IngestStopState = { streamVariant :: StreamAndVariant }
+type IngestStopState = { streamAndVariant :: StreamAndVariant }
 
 ingestStop :: StetsonHandler IngestStopState
 ingestStop =
   Rest.handler (\req ->
-                 let variantId = fromMaybe' (lazyCrashIfMissing "variant_id binding missing") $ binding (atom "variant_id") req
-                     streamId = fromMaybe' (lazyCrashIfMissing "variant_id badly formed") $ (split (Pattern "_") variantId) !! 0
+                 let streamAndVariant = Bindings.streamAndVariant req
                  in
-                 Rest.initResult req {streamVariant: StreamAndVariant (wrap streamId) (wrap variantId)})
+                 Rest.initResult req {streamAndVariant}
+               )
 
   # Rest.serviceAvailable (\req state -> do
                             isAgentAvailable <- IngestInstanceSup.isAvailable
                             Rest.result isAgentAvailable req state)
 
-  # Rest.resourceExists (\req state@{streamVariant} -> do
-                            isActive <- IngestInstance.isActive streamVariant
+  # Rest.resourceExists (\req state@{streamAndVariant} -> do
+                            isActive <- IngestInstance.isActive streamAndVariant
                             Rest.result isActive req state
-                          )
+                        )
   # Rest.contentTypesProvided (\req state ->
                                 Rest.result (tuple2 "text/plain" (\req2 state2 -> do
-                                                                     _ <- IngestInstance.stopIngest state.streamVariant
+                                                                     _ <- IngestInstance.stopIngest state.streamAndVariant
                                                                      Rest.result "ingestStopped" req2 state2
                                                                  ) : nil) req state)
   # Rest.yeeha
