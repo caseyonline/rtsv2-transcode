@@ -4,17 +4,19 @@
 
 ## Setup
 
-install npm dependencies:
-`> npm install`
-
 If you are using Nix there is a shell.nix file in route of project which you
 can use to install all needed deps, otherwise you will need to install:
 
 `> npm install -g purescript spago`
 (-g at your own risk!)
 
-now install purescript dependencies and build project:
+having installed purescript there is a one-off installation of the dev dependencies
+`> make install`
+
+build project:
 `> spago build`
+or
+`> make` (for production workflow - see below)
 
 
 ## Dev workflow
@@ -32,9 +34,9 @@ Next you need to go to the project route and run:
 `> ./run.sh`
 
 This will start the purerl (rstv2) servers in a tmux instance, select a window and an IP
-address from it, then on browser go to `*****:3000/adminApp` for example:
+address from it, then on browser go to `*****:3000/static/adminApp` for example:
 
-`http://172.16.169.1:3000/adminApp`
+`http://172.16.169.1:3000/static/adminApp`
 
 Looking at the Make file you will see that spago does an initial build into
 `./client/dist/` and that file is then used by parcel to compile where it is
@@ -49,11 +51,11 @@ all frontend related files are stored. (css, images, js, fonts).
 
 Bundle frontend for production simply by running:
 
-`> make` 
+`> make`
 
 inside `./client` folder.
 
 
 ## More information
 
-This project is based on [purescript-halogen-realword](https://github.com/thomashoneyman/purescript-halogen-realworld) 
+This project is based on [purescript-halogen-realword](https://github.com/thomashoneyman/purescript-halogen-realworld)

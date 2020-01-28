@@ -15,7 +15,7 @@ import Routing.Duplex.Generic (noArgs, sum)
 import Routing.Duplex.Generic.Syntax ((/))
 import Rtsv2.Router.Parser as Routing
 import Shared.Stream (StreamId(..), StreamVariant(..))
-import Shared.Types (ServerAddress, extractAddress)
+import Shared.Types (PoPName(..), ServerAddress, extractAddress)
 import SpudGun (Url)
 
 -- data Canary = Live
@@ -25,7 +25,7 @@ type Canary = String
 
 data Endpoint
   = TransPoPLeaderE
-  | TimedRoutesE
+  | TimedRoutesE PoPName
   | HealthCheckE
   | EgestStatsE StreamId
   | EgestE
@@ -60,7 +60,7 @@ endpoint :: RouteDuplex' Endpoint
 endpoint = root $ sum
   {
     "TransPoPLeaderE"                                  : "" / "api" / path "transPoPLeader" noArgs
-  , "TimedRoutesE"                                     : "" / "api" / path "timedRoutes" noArgs
+  , "TimedRoutesE"                                     : "" / "api" / "timedRoutes" / popName segment
   , "HealthCheckE"                                     : "" / "api" / path "healthCheck" noArgs
   , "EgestStatsE"                                      : "" / "api" / "agents" / "egest" / streamId segment
   , "EgestE"                                           : "" / "api" / "agents" / path "egest" noArgs
@@ -83,10 +83,11 @@ endpoint = root $ sum
 
   , "IngestStartE"                                     : "" / "api" / "public" / canary segment / "ingest" / segment / variant segment / "start"
   , "IngestStopE"                                      : "" / "api" / "public" / canary segment / "ingest" / segment / variant segment / "stop"
-  , "ClientAppAssetsE"                                 : "" / path "assets" noArgs
-  , "ClientAppRouteHTMLE"                              : "" / noArgs
   , "ClientStartE"                                     : "" / "api" / "public" / canary segment / "client" / streamId segment / "start"
   , "ClientStopE"                                      : "" / "api" / "public" / canary segment / "client" / streamId segment / "stop"
+
+  , "ClientAppAssetsE"                                 : "" / "static" / path "assets" noArgs
+  , "ClientAppRouteHTMLE"                              : "" / "static" / noArgs
 
   , "StreamAuthE"                                      : "" / "llnwstub" / "rts" / "v1" / path "streamauthtype" noArgs
   , "StreamAuthTypeE"                                  : "" / "llnwstub" / "rts" / "v1" / path "streamauth" noArgs
@@ -121,6 +122,17 @@ parseStreamVariant  str = Just (StreamVariant str)
 variantToString :: StreamVariant -> String
 variantToString (StreamVariant str) = str
 
+
+-- | PoPName
+
+parsePoPName :: String -> Maybe PoPName
+parsePoPName ""  = Nothing
+parsePoPName str = Just (PoPName str)
+
+poPNameToString :: PoPName -> String
+poPNameToString = unwrap
+
+
 -- | Canary
 -- parseCanary :: String -> Maybe Canary
 -- parseCanary "live"  = Just Live
@@ -138,6 +150,11 @@ streamId = as streamIdToString (parseStreamId >>> note "Bad StreamId")
 -- | This combinator transforms a codec over `String` into one that operates on the `StreamVariant` type.
 variant :: RouteDuplex' String -> RouteDuplex' StreamVariant
 variant = as variantToString (parseStreamVariant >>> note "Bad StreamId")
+
+-- | This combinator transforms a codec over `String` into one that operates on the `PoPName` type.
+popName :: RouteDuplex' String -> RouteDuplex' PoPName
+popName = as poPNameToString (parsePoPName >>> note "Bad PoPName")
+
 
 -- | This combinator transforms a codec over `String` into one that operates on the `Canary` type.
 canary :: RouteDuplex' String -> RouteDuplex' Canary

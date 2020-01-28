@@ -2,6 +2,7 @@ module StetsonHelper
        ( genericPost
        , genericPostWithResponse
        , genericGetByStreamId
+       , genericGetByPoPName
        , GenericStetsonGetByStreamId
        , GenericStetsonHandler
        , GenericStetsonHandlerWithResponse
@@ -19,7 +20,7 @@ import Prelude
 
 import Data.Either (hush)
 import Data.Maybe (Maybe(..), fromMaybe, fromMaybe', isNothing)
-import Data.Newtype (wrap)
+import Data.Newtype (class Newtype, wrap)
 import Effect (Effect)
 import Erl.Atom (atom)
 import Erl.Cowboy.Req (ReadBodyResult(..), Req, StatusCode(..), binding, method, readBody, replyWithoutBody)
@@ -29,7 +30,9 @@ import Erl.Data.List (singleton, (:))
 import Erl.Data.Map as Map
 import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.Utils (noprocToMaybe)
+import Rtsv2.Web.Bindings as Bindings
 import Shared.Stream (StreamId)
+import Shared.Types (PoPName(..))
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (class ReadForeign, class WriteForeign, writeJSON)
 import Simple.JSON as JSON
@@ -111,13 +114,18 @@ genericPostWithResponse proxiedFun =
 type GenericStetsonGetByStreamId a = StetsonHandler (Internal_GenericStatusState a)
 
 type Internal_GenericStatusState a
-  = { streamId :: StreamId
-    , mStatus :: Maybe a
+  = { mData :: Maybe a
     }
 
 
 genericGetByStreamId :: forall a. WriteForeign a =>  (StreamId -> Effect a) -> GenericStetsonGetByStreamId a
-genericGetByStreamId statusMethod =
+genericGetByStreamId = genericGetBy Bindings.streamIdBinding
+
+genericGetByPoPName :: forall a. WriteForeign a =>  (PoPName -> Effect a) -> GenericStetsonGetByStreamId a
+genericGetByPoPName = genericGetBy  Bindings.popNameBinding
+
+genericGetBy :: forall a b. Newtype a String => WriteForeign b =>  String -> (a -> Effect b) -> GenericStetsonGetByStreamId b
+genericGetBy bindElement getData =
   Rest.handler init
   # Rest.allowedMethods (Rest.result (GET : mempty))
   # Rest.contentTypesProvided (\req state -> Rest.result (singleton $ MimeType.json provideContent) req state)
@@ -125,23 +133,22 @@ genericGetByStreamId statusMethod =
   where
     init req =
       let
-        streamId = wrap $ fromMaybe' (lazyCrashIfMissing "stream_id binding missing") $ binding (atom "stream_id") req
-        method' = method req
+        bindValue :: a
+        bindValue = wrap $ fromMaybe' (lazyCrashIfMissing "stream_id binding missing") $ binding (atom bindElement) req
       in do
-        mStatus <- noprocToMaybe $ statusMethod streamId
+        mData <- noprocToMaybe $ getData bindValue
         Rest.initResult req
-            { streamId
-            , mStatus
+            { mData
             }
 
-    provideContent req state@{mStatus} =
-      case mStatus of
+    provideContent req state@{mData} =
+      case mData of
         Nothing ->
           do
             newReq <- replyWithoutBody (StatusCode 404) Map.empty req
             Rest.stop newReq state
-        Just theStatus ->
-          Rest.result (writeJSON theStatus) req state
+        Just theData ->
+          Rest.result (writeJSON theData) req state
 
 
 --------------------------------------------------------------------------------

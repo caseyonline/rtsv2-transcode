@@ -3,26 +3,11 @@ module Rtsv2.Handler.TransPoP
          timedRoutes
        ) where
 
-import Prelude
 
-import Data.Maybe (Maybe(..), fromMaybe, isJust)
-import Data.Newtype (unwrap)
-import Erl.Data.List (nil, (:))
-import Erl.Data.Tuple (tuple2)
-import Rtsv2.Agents.IntraPoP as IntraPoPAgent
-import Shared.Types (ServerAddress)
-import Stetson (StetsonHandler)
-import Stetson.Rest as Rest
+import Rtsv2.Agents.TransPoP as TransPoP
+import Shared.Types.Agent.State as PublicState
+import StetsonHelper (GenericStetsonGetByStreamId, genericGetByPoPName)
 
 
-timedRoutes = unit
--- timedRoutes :: StetsonHandler (Maybe ServerAddress)
--- leader =
---   Rest.handler (\req -> Rest.initResult req Nothing)
---   # Rest.resourceExists (\req state -> do
---                             currentLeader <- IntraPoPAgent.currentTransPoPLeader
---                             Rest.result (isJust currentLeader) req currentLeader
---                           )
---   # Rest.contentTypesProvided (\req state ->
---                                 Rest.result ((tuple2 "text/plain" (\req2 currentLeader -> Rest.result (fromMaybe "" (unwrap <$> currentLeader)) req2 state)) : nil) req state)
---   # Rest.yeeha
+timedRoutes :: GenericStetsonGetByStreamId PublicState.TimedPoPRoutes
+timedRoutes = genericGetByPoPName TransPoP.getTimedRoutesTo
