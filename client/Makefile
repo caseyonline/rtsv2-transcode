@@ -1,25 +1,26 @@
-.PHONY: all clean
+.PHONY: all
 
-PS_SRC = src
-PS_SOURCEFILES = $(shell find ${PS_SRC} -type f -name \*.purs)
-OUTPUT = output
+PUT = output
+BUNDLE_NAME = rtsv2AppBundle.js
+PS_SOURCEFILE = ./dist/${BUNDLE_NAME}
+JS_ASSET_FOLDER = ../priv/www/assets/js/
 
-all: bundle.js
+all: spago parcel
 
-bundle.js: output
-	purs bundle 'output/**/*.js' -o bundle.js -m 'Pure.Main' --main 'Pure.Main'
-	cp bundle.js ../priv/www/assets/
+install:
+	npm install
 
-#$(PS_SRC)/**/*.purs
+spago:
+	spago bundle-app --main Main --to $(PS_SOURCEFILE)
 
-output: $(PS_SOURCEFILES) .psc-package
-	psc-package sources | xargs purs compile --codegen js  '$(PS_SRC)/**/*.purs'
-	touch output
+parcel:
+	node_modules/.bin/parcel build --out-dir $(JS_ASSET_FOLDER) --out-file $(BUNDLE_NAME) $(PS_SOURCEFILE) --no-source-maps --no-cache
 
-.psc-package: psc-package.json
-	psc-package install
-	touch .psc-package
+watch-spago:
+	spago bundle-app --watch --main Main --to $(PS_SOURCEFILE)
 
-clean:
-	rm -rf $(OUTPUT)/*
+watch-parcel:
+	node_modules/.bin/parcel watch --out-dir $(JS_ASSET_FOLDER) --out-file $(BUNDLE_NAME) $(PS_SOURCEFILE) --no-source-maps
 
+clean-all:
+	rm -rf node_modules output .spago .cache dist

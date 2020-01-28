@@ -34,12 +34,12 @@ import Rtsv2.Router.Endpoint (Endpoint(..), endpoint)
 import Rtsv2.Router.Parser (printUrl)
 import Serf (Ip(..))
 import Shared.Stream (StreamAndVariant(..), StreamId(..), StreamVariant(..))
-import Shared.Types (ServerAddress)
-import Stetson (InnerStetsonHandler, RestResult, StaticAssetLocation(..), StetsonHandler, StetsonConfig)
+import Stetson (InnerStetsonHandler, RestResult, StaticAssetLocation(..), StetsonConfig)
 import Stetson as Stetson
 import Stetson.Rest as Rest
 
 newtype State = State {}
+
 
 serverName :: ServerName State Unit
 serverName = Names.webServerName
@@ -57,6 +57,7 @@ init args = do
     # mkRoute  HealthCheckE                                                                          HealthHandler.healthCheck
     # mkRoute (EgestStatsE (StreamId ":stream_id"))                                                  EgestStatsHandler.stats
     # mkRoute  RelayE                                                                                RelayHandler.resource
+    # mkRoute  RelayRegisterE                                                                        RelayHandler.register
     # mkRoute (RelayStatsE(StreamId ":stream_id"))                                                   RelayHandler.stats
     # mkRoute  LoadE                                                                                 LoadHandler.load
     # mkRoute (IngestAggregatorE $ StreamId ":stream_id")                                            IngestAggregatorHandler.ingestAggregator
@@ -71,9 +72,13 @@ init args = do
     # mkRoute  StreamPublishE                                                                        LlnwStubHandler.streamPublish
 
     # static  (IngestAggregatorPlayerE (StreamId ":stream_id"))                                                       (PrivFile "rtsv2" "www/aggregatorPlayer.html")
-    # static' (IngestAggregatorPlayerJsE (StreamId ":stream_id")) "/[...]"                                            (PrivDir "rtsv2" "www/js")
+    # static' (IngestAggregatorPlayerJsE (StreamId ":stream_id")) "/[...]"                                            (PrivDir "rtsv2" "www/assets/js")
     # static  (IngestAggregatorActiveIngestsPlayerE (StreamId ":stream_id") (StreamVariant ":variant_id"))            (PrivFile "rtsv2" "www/play.html")
-    # static' (IngestAggregatorActiveIngestsPlayerJsE (StreamId ":stream_id") (StreamVariant ":variant_id")) "/[...]" (PrivDir "rtsv2" "www/js")
+    # static' (IngestAggregatorActiveIngestsPlayerJsE (StreamId ":stream_id") (StreamVariant ":variant_id")) "/[...]" (PrivDir "rtsv2" "www/assets/js")
+
+    # static' (ClientAppAssets) "/[...]"    (PrivDir Config.appName "www/assets")
+    # static  (ClientAppRouteHTML)          (PrivFile Config.appName "www/index.html")
+    # static' (ClientAppRouteHTML) "/[...]" (PrivFile Config.appName "www/index.html")
 
     # Stetson.cowboyRoutes cowboyRoutes
     # Stetson.port args.port
@@ -106,7 +111,6 @@ init args = do
             (NativeModuleName $ atom moduleName)
             (InitialState $ unsafeToForeign initialState)
            )
-
 
 ipToTuple :: Ip -> Tuple4 Int Int Int Int
 ipToTuple (Ipv4 a b c d) = tuple4 a b c d

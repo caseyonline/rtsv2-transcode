@@ -1,6 +1,6 @@
 module PintoHelper
        ( exposeState
-       , genericCreate
+       , genericPost
        , genericStatus
        , allBody
        , binaryToString
@@ -20,7 +20,7 @@ import Erl.Data.Binary (Binary)
 import Erl.Data.Binary.IOData (IOData, fromBinary, toBinary)
 import Erl.Data.List (singleton, (:))
 import Erl.Data.Map as Map
-import Pinto (ServerName, StartChildResult)
+import Pinto (ServerName)
 import Pinto.Gen (CallResult(..))
 import Pinto.Gen as Gen
 import Rtsv2.Handler.MimeType as MimeType
@@ -34,18 +34,16 @@ import Stetson.Rest as Rest
 import Unsafe.Coerce as Unsafe.Coerce
 
 
-type GenericHandlerState a
-  = { mPayload :: Maybe a
-    }
-
-
 exposeState :: forall a state msg. (state -> a) -> ServerName state msg -> Effect a
 exposeState exposeFn serverName = Gen.doCall serverName
   \state -> pure $ CallReply (exposeFn state) state
 
+type GenericHandlerState a
+  = { mPayload :: Maybe a
+    }
 
-genericCreate :: forall a. ReadForeign a => (a -> Effect StartChildResult) -> StetsonHandler (GenericHandlerState a)
-genericCreate createFun =
+genericPost :: forall a b. ReadForeign a => (a -> Effect b) -> StetsonHandler (GenericHandlerState a)
+genericPost createFun =
   Rest.handler init
   # Rest.allowedMethods (Rest.result (POST : mempty))
   # Rest.malformedRequest malformedRequest
@@ -66,7 +64,6 @@ genericCreate createFun =
           payload = fromMaybe' (lazyCrashIfMissing "impossible noEgestPayload") mPayload
         _ <- createFun payload
         Rest.result true req state
-
 
 type GenericStatusState a
   = { streamId :: StreamId

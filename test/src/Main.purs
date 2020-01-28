@@ -23,7 +23,7 @@ import Shared.Types (ServerAddress(..))
 import Shared.Types.Agent.State as PublicState
 import Simple.JSON (class ReadForeign)
 import Simple.JSON as SimpleJSON
-import Test.Spec (after_, before_, describe, it)
+import Test.Spec (after_, before_, describe, describeOnly, it, itOnly)
 import Test.Spec.Reporter.Console (consoleReporter)
 import Test.Spec.Runner (runSpecT)
 
@@ -349,7 +349,7 @@ main =
               waitForTransPoPDisseminate                                >>= as' "wait for transPop disseminate"
               client start p2n1 slot1          >>= assertStatusCode 204 >>= as  "egest available"
               relayStats   p2n1 slot1          >>= assertStatusCode 200 >>= as  "local relay exists"
-              -- TODO relayStatus p1n1 slot1   >>= assertStatusCode 200 >>= as "remote relay exists"
+              --relayStats   p1n1 slot1          >>= assertStatusCode 200 >>= as  "remote relay exists"
 
             it "client ingest starts and stops" do
               client start p1n2 slot1          >>= assertStatusCode 404 >>= as  "no local egest prior to ingest"

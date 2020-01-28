@@ -5,6 +5,7 @@ module Rtsv2.Agents.StreamRelayInstance
   , init
   , status
   , CreateRelayPayload
+  , RegisterEgestPayload
   ) where
 
 import Prelude
@@ -24,19 +25,24 @@ import Pinto (ServerName(..), StartLinkResult, isRegistered)
 import Pinto.Gen (CallResult(..))
 import Pinto.Gen as Gen
 import PintoHelper (exposeState)
-import Rtsv2.Agents.TransPoP as TransPoP
 import Rtsv2.PoPDefinition as PoPDefinition
-import Rtsv2.Utils (crashIfLeft)
 import Shared.Agent as Agent
 import Shared.Stream (StreamId)
-import Shared.Types (EgestServer, PoPName(..), RelayServer, Server, extractAddress, extractPoP)
+import Shared.Types (EgestServer, PoPName, RelayServer, Server, extractAddress)
 import Shared.Types.Agent.State as PublicState
-import SpudGun as SpudGun
 
 type CreateRelayPayload
   = { streamId :: StreamId
     , aggregator :: Server
     }
+
+
+type RegisterEgestPayload
+  = { streamId :: StreamId
+    , aggregator :: Server
+    , egestServer :: EgestServer
+    }
+
 
 -- basically a listzipper...
 type RelayRoute
@@ -88,31 +94,32 @@ init payload = do
        , egestSourceRoutes : Nothing
        }
 
-registerEgest :: StreamId -> EgestServer -> Effect Unit
-registerEgest streamId egestServer = Gen.doCall (serverName streamId) $ doRegisterEgest egestServer
-
-doRegisterEgest :: EgestServer -> State -> Effect (CallResult Unit State)
-doRegisterEgest egestServer state@{egestsServed} = do
-  _ <- logInfo "Register egest " {egestServer}
-  newState <- maybeStartEgestRelays state{ egestsServed = Set.insert egestServer egestsServed}
-  pure $ CallReply unit newState
+registerEgest :: RegisterEgestPayload -> Effect Unit
+registerEgest payload = Gen.doCall (serverName payload.streamId) $ doRegisterEgest
+  where
+    doRegisterEgest :: State -> Effect (CallResult Unit State)
+    doRegisterEgest state@{egestsServed} = do
+      _ <- logInfo "Register egest " {payload}
+      newState <- maybeStartEgestRelays state{ egestsServed = Set.insert payload.egestServer egestsServed}
+      pure $ CallReply unit $ spy "registerEgest" newState
 
 
 maybeStartEgestRelays :: State -> Effect State
 maybeStartEgestRelays state@{egestSourceRoutes: Just _} = pure state
 maybeStartEgestRelays state@{streamId, aggregator, thisServer} = do
-  relayRoutes <- (map toRelayRoute) <$> TransPoP.routesTo (spy "aggPoP" $ extractPoP aggregator)
---  _ <- traverse startRelay
+  pure state
+--   relayRoutes <- (map toRelayRoute) <$> TransPoP.routesTo (spy "aggPoP" $ extractPoP aggregator)
+-- --  _ <- traverse startRelay
 
 
-  let _ = spy "thisServer" thisServer
-  pure state{egestSourceRoutes = Just (spy "relayRoutes" relayRoutes)}
-  where
-    toRelayRoute :: List PoPName -> RelayRoute
-    toRelayRoute pops = { toSource : pops
-                        , thisPoP  : extractPoP thisServer
-                        , toEgest  : nil
-                        }
+--   let _ = spy "thisServer" thisServer
+--   pure state{egestSourceRoutes = Just (spy "relayRoutes" relayRoutes)}
+--   where
+--     toRelayRoute :: List PoPName -> RelayRoute
+--     toRelayRoute pops = { toSource : pops
+--                         , thisPoP  : extractPoP thisServer
+--                         , toEgest  : nil
+--                         }
 
 
 

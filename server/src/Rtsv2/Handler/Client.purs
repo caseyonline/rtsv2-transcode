@@ -8,7 +8,7 @@ import Prelude
 
 import Data.Either (Either(..))
 import Data.Maybe (fromMaybe')
-import Data.Newtype (unwrap, wrap)
+import Data.Newtype (unwrap)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Cowboy.Handlers.Rest (MovedResult, moved, notMoved)
@@ -25,10 +25,8 @@ import Rtsv2.Audit as Audit
 import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
-import Rtsv2.Router.Endpoint as RoutingEndpoint
-import Rtsv2.Router.Parser as Routing
 import Shared.Stream (StreamId(..))
-import Shared.Types (EgestLocation(..), FailureReason(..), Server, ServerAddress(..), extractAddress)
+import Shared.Types (FailureReason(..), LocalOrRemote(..), Server, ServerAddress, extractAddress)
 import Shared.Utils (lazyCrashIfMissing)
 import Stetson (HttpMethod(..), RestResult, StetsonHandler)
 import Stetson.Rest as Rest
@@ -43,7 +41,7 @@ data ClientStartState
          }
 
 newtype State = State { streamId :: StreamId
-                      , egestResp :: (Either FailureReason EgestLocation)
+                      , egestResp :: (Either FailureReason (LocalOrRemote Server))
                       }
 
 --------------------------------------------------------------------------------
@@ -128,9 +126,8 @@ clientStart =
         streamId = spy "clientStartInit" $ StreamId $ fromMaybe' (lazyCrashIfMissing "stream_id binding missing") $ binding (atom "stream_id") req
       in
         do
-
           thisServer <- PoPDefinition.getThisServer
-          egestResp <- findEgestForStream  streamId
+          egestResp <- findEgestForStream streamId thisServer
           let
             req2 = setHeader "x-servedby" (unwrap $ extractAddress thisServer) req
             _ = spy "egestResp" egestResp
@@ -147,7 +144,7 @@ clientStart =
         Left NoResource -> do
           newReq <- replyWithoutBody (StatusCode 502) Map.empty req
           Rest.stop newReq state
-        Right Local ->
+        Right (Local _)  ->
           Rest.result true req state
         Right (Remote _) ->
           Rest.result false req state

@@ -14,7 +14,7 @@ import Erl.Atom (atom)
 import Erl.Cowboy.Req (binding, method)
 import Erl.Data.List (nil, (:))
 import Erl.Data.Tuple (tuple2)
-import PintoHelper (GenericHandlerState, GenericStatusState, allBody, binaryToString, genericCreate, genericStatus)
+import PintoHelper (GenericHandlerState, GenericStatusState, allBody, binaryToString, genericPost, genericStatus)
 import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
 import Rtsv2.Agents.IngestAggregatorInstanceSup as IngestAggregatorInstanceSup
 import Shared.LlnwApiTypes (StreamDetails)
@@ -30,7 +30,7 @@ ingestAggregator :: StetsonHandler (GenericStatusState PublicState.IngestAggrega
 ingestAggregator = genericStatus IngestAggregatorInstance.getState
 
 ingestAggregators ::StetsonHandler (GenericHandlerState StreamDetails)
-ingestAggregators = genericCreate IngestAggregatorInstanceSup.startAggregator
+ingestAggregators = genericPost IngestAggregatorInstanceSup.startAggregator
 
 
 type IngestAggregatorsActiveIngestState = { streamAndVariant :: StreamAndVariant

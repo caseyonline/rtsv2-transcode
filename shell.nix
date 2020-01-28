@@ -43,6 +43,8 @@ mkShell {
 
     # Needed for UI build
     nodejs
+    nodePackages.webpack
+    nodePackages.webpack-cli
 
     # Our nativedeps environment
     id3as.nd-env

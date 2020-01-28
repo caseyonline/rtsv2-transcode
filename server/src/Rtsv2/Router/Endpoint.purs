@@ -10,13 +10,12 @@ import Data.Either (note)
 import Data.Generic.Rep (class Generic)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype, unwrap, wrap)
-import Logger (spy)
 import Routing.Duplex (RouteDuplex', as, path, root, segment)
 import Routing.Duplex.Generic (noArgs, sum)
 import Routing.Duplex.Generic.Syntax ((/))
 import Rtsv2.Router.Parser as Routing
 import Shared.Stream (StreamId(..), StreamVariant(..))
-import Shared.Types (Server, ServerAddress(..), extractAddress)
+import Shared.Types (ServerAddress, extractAddress)
 import SpudGun (Url)
 
 -- data Canary = Live
@@ -30,7 +29,7 @@ data Endpoint
   | EgestStatsE StreamId
   | EgestE
   | RelayE
-  | RelayChainE
+  | RelayRegisterE
   | RelayStatsE StreamId
   | LoadE
   | IngestAggregatorE StreamId
@@ -45,6 +44,8 @@ data Endpoint
   | IngestInstanceLlwpE StreamId StreamVariant
   | IngestStartE Canary String StreamVariant
   | IngestStopE Canary String StreamVariant
+  | ClientAppAssets
+  | ClientAppRouteHTML
   | ClientStartE Canary StreamId
   | ClientStopE Canary StreamId
   | StreamAuthE
@@ -62,9 +63,9 @@ endpoint = root $ sum
   , "EgestStatsE"                                      : "" / "api" / "agents" / "egest" / streamId segment
   , "EgestE"                                           : "" / "api" / "agents" / path "egest" noArgs
   , "RelayE"                                           : "" / "api" / "agents" / "relay" / path "egest"  noArgs
-  , "RelayChainE"                                      : "" / "api" / "agents" / "relay" / path "chain" noArgs
+  , "RelayRegisterE"                                   : "" / "api" / "agents" / "relay" / path "register" noArgs
   , "RelayStatsE"                                      : "" / "api" / "agents" / "relay" / streamId segment
-, "LoadE"                                              : "" / "api" / path "load" noArgs
+  , "LoadE"                                            : "" / "api" / path "load" noArgs
 
   , "IngestAggregatorE"                                : "" / "api" / "agents" / "ingestAggregator" / streamId segment
   , "IngestAggregatorPlayerE"                          : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "player"
@@ -80,6 +81,8 @@ endpoint = root $ sum
 
   , "IngestStartE"                                     : "" / "api" / "public" / canary segment / "ingest" / segment / variant segment / "start"
   , "IngestStopE"                                      : "" / "api" / "public" / canary segment / "ingest" / segment / variant segment / "stop"
+  , "ClientAppAssets"                                  : "" / path "assets" noArgs
+  , "ClientAppRouteHTML"                               : "" / noArgs
   , "ClientStartE"                                     : "" / "api" / "public" / canary segment / "client" / streamId segment / "start"
   , "ClientStopE"                                      : "" / "api" / "public" / canary segment / "client" / streamId segment / "stop"
 
@@ -94,7 +97,7 @@ makeUrl :: forall r a. Newtype a { address :: ServerAddress | r }
 makeUrl server ep =
   let
     path = Routing.printUrl endpoint ep
-  in spy "url" wrap $ "http://" <> toHost server <> ":3000" <> path
+  in wrap $ "http://" <> toHost server <> ":3000" <> path
   where
     toHost = extractAddress >>> unwrap
 
