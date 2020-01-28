@@ -35,7 +35,7 @@ import Rtsv2.Router.Endpoint (Endpoint(..), endpoint)
 import Rtsv2.Router.Parser (printUrl)
 import Rtsv2.Web.Bindings as Bindings
 import Serf (Ip(..))
-import Shared.Stream (StreamAndVariant(..), StreamId(..), StreamVariant(..))
+import Shared.Stream (ShortName(..), StreamAndVariant(..), StreamId(..), StreamVariant(..))
 import Shared.Types (PoPName)
 import Stetson (InnerStetsonHandler, RestResult, StaticAssetLocation(..), StetsonConfig)
 import Stetson as Stetson
@@ -57,24 +57,24 @@ init :: Config.WebConfig -> Effect State
 init args = do
   bindIp <- Env.privateInterfaceIp
   Stetson.configure
-    # mkRoute  TransPoPLeaderE                                                IntraPoPHandler.leader
-    # mkRoute (TimedRoutesE popNameBinding)                                   TransPoPHandler.timedRoutes
-    # mkRoute  HealthCheckE                                                   HealthHandler.healthCheck
-    # mkRoute (EgestStatsE streamIdBinding)                                   EgestStatsHandler.stats
-    # mkRoute  RelayE                                                         RelayHandler.resource
-    # mkRoute  RelayRegisterE                                                 RelayHandler.register
-    # mkRoute (RelayStatsE streamIdBinding)                                   RelayHandler.stats
-    # mkRoute  LoadE                                                          LoadHandler.load
-    # mkRoute (IngestAggregatorE streamIdBinding)                             IngestAggregatorHandler.ingestAggregator
-    # mkRoute (IngestAggregatorActiveIngestsE streamIdBinding variantBinding) IngestAggregatorHandler.ingestAggregatorsActiveIngest
-    # mkRoute  IngestAggregatorsE                                             IngestAggregatorHandler.ingestAggregators
-    # mkRoute (IngestStartE ":canary" ":short_name" streamAndVariantBinding)  IngestHandler.ingestStart
-    # mkRoute (IngestStopE ":canary" ":short_name" streamAndVariantBinding)   IngestHandler.ingestStop
-    # mkRoute (ClientStartE ":canary" streamIdBinding)                        ClientHandler.clientStart
-    # mkRoute (ClientStopE ":canary" streamIdBinding)                         ClientHandler.clientStop
-    # mkRoute  StreamAuthE                                                    LlnwStubHandler.streamAuthType
-    # mkRoute  StreamAuthTypeE                                                LlnwStubHandler.streamAuth
-    # mkRoute  StreamPublishE                                                 LlnwStubHandler.streamPublish
+    # mkRoute  TransPoPLeaderE                                                  IntraPoPHandler.leader
+    # mkRoute (TimedRoutesE popNameBinding)                                     TransPoPHandler.timedRoutes
+    # mkRoute  HealthCheckE                                                     HealthHandler.healthCheck
+    # mkRoute (EgestStatsE streamIdBinding)                                     EgestStatsHandler.stats
+    # mkRoute  RelayE                                                           RelayHandler.resource
+    # mkRoute  RelayRegisterE                                                   RelayHandler.register
+    # mkRoute (RelayStatsE streamIdBinding)                                     RelayHandler.stats
+    # mkRoute  LoadE                                                            LoadHandler.load
+    # mkRoute (IngestAggregatorE streamIdBinding)                               IngestAggregatorHandler.ingestAggregator
+    # mkRoute (IngestAggregatorActiveIngestsE streamIdBinding variantBinding)   IngestAggregatorHandler.ingestAggregatorsActiveIngest
+    # mkRoute  IngestAggregatorsE                                               IngestAggregatorHandler.ingestAggregators
+    # mkRoute (IngestStartE ":canary" shortNameBinding streamAndVariantBinding) IngestHandler.ingestStart
+    # mkRoute (IngestStopE ":canary" shortNameBinding streamAndVariantBinding)  IngestHandler.ingestStop
+    # mkRoute (ClientStartE ":canary" streamIdBinding)                          ClientHandler.clientStart
+    # mkRoute (ClientStopE ":canary" streamIdBinding)                           ClientHandler.clientStop
+    # mkRoute  StreamAuthE                                                      LlnwStubHandler.streamAuthType
+    # mkRoute  StreamAuthTypeE                                                  LlnwStubHandler.streamAuth
+    # mkRoute  StreamPublishE                                                   LlnwStubHandler.streamPublish
 
     # static  (IngestAggregatorPlayerE streamIdBinding)                                        (PrivFile "rtsv2" "www/aggregatorPlayer.html")
     # static' (IngestAggregatorPlayerJsE streamIdBinding)                             "/[...]" (PrivDir "rtsv2" "www/assets/js")
@@ -113,6 +113,7 @@ init args = do
     streamIdBinding = StreamId (":" <> Bindings.streamIdBindingLiteral)
     variantBinding = StreamVariant (":" <> Bindings.variantBindingLiteral)
     streamAndVariantBinding = StreamAndVariant (StreamId "ignored") (StreamVariant $ ":" <> Bindings.streamAndVariantBindingLiteral)
+    shortNameBinding = ShortName (":" <> Bindings.shortNameBindingLiteral)
 
     popNameBinding :: PoPName
     popNameBinding = wrap (":" <> Bindings.popNameBindingLiteral)

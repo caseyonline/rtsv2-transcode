@@ -3,12 +3,13 @@ module Rtsv2.Web.Bindings
        , variant
        , streamAndVariant
        , popName
-
+       , shortName
 
        , streamIdBindingLiteral
        , variantBindingLiteral
        , streamAndVariantBindingLiteral
        , popNameBindingLiteral
+       , shortNameBindingLiteral
        ) where
 
 import Prelude
@@ -19,7 +20,7 @@ import Data.Newtype (wrap)
 import Data.String (Pattern(..), split)
 import Erl.Atom (atom)
 import Erl.Cowboy.Req (Req, binding)
-import Shared.Stream (StreamAndVariant(..), StreamId, StreamVariant)
+import Shared.Stream (ShortName, StreamAndVariant(..), StreamId, StreamVariant)
 import Shared.Types (PoPName)
 import Shared.Utils (lazyCrashIfMissing)
 
@@ -28,10 +29,13 @@ streamId :: Req -> StreamId
 streamId = wrap <<< fromMaybe' (lazyCrashIfMissing $ streamIdBindingLiteral <> " binding missing") <<< binding (atom streamIdBindingLiteral)
 
 variant :: Req -> StreamVariant
-variant =  wrap <<< fromMaybe' (lazyCrashIfMissing $ variantBindingLiteral <> " binding missing") <<< binding (atom variantBindingLiteral)
+variant = wrap <<< fromMaybe' (lazyCrashIfMissing $ variantBindingLiteral <> " binding missing") <<< binding (atom variantBindingLiteral)
 
 popName :: Req -> PoPName
-popName =  wrap <<< fromMaybe' (lazyCrashIfMissing $ popNameBindingLiteral <> " binding missing") <<< binding (atom popNameBindingLiteral)
+popName = wrap <<< fromMaybe' (lazyCrashIfMissing $ popNameBindingLiteral <> " binding missing") <<< binding (atom popNameBindingLiteral)
+
+shortName :: Req -> ShortName
+shortName = wrap <<< fromMaybe' (lazyCrashIfMissing $ shortNameBindingLiteral <> " binding missing") <<< binding (atom shortNameBindingLiteral)
 
 
 streamAndVariant :: Req -> StreamAndVariant
@@ -49,8 +53,11 @@ streamIdBindingLiteral = "stream_id"
 variantBindingLiteral :: String
 variantBindingLiteral = "variant_id"
 
+streamAndVariantBindingLiteral :: String
+streamAndVariantBindingLiteral = "stream_and_variant"
+
 popNameBindingLiteral :: String
 popNameBindingLiteral = "pop_name"
 
-streamAndVariantBindingLiteral :: String
-streamAndVariantBindingLiteral = "stream_and_variant"
+shortNameBindingLiteral :: String
+shortNameBindingLiteral = "short_name"

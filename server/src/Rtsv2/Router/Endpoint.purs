@@ -16,8 +16,8 @@ import Routing.Duplex (RouteDuplex', as, path, root, segment)
 import Routing.Duplex.Generic (noArgs, sum)
 import Routing.Duplex.Generic.Syntax ((/))
 import Rtsv2.Router.Parser as Routing
-import Shared.Stream (StreamAndVariant(..), StreamId(..), StreamVariant(..))
-import Shared.Types (PoPName(..), ServerAddress, extractAddress)
+import Shared.Stream (ShortName, StreamAndVariant(..), StreamId, StreamVariant(..))
+import Shared.Types (PoPName, ServerAddress, extractAddress)
 import SpudGun (Url)
 
 -- data Canary = Live
@@ -45,8 +45,8 @@ data Endpoint
   | IngestAggregatorActiveIngestsPlayerSessionE StreamId StreamVariant String
   | IngestAggregatorsE
   | IngestInstanceLlwpE StreamId StreamVariant
-  | IngestStartE Canary String StreamAndVariant
-  | IngestStopE Canary String StreamAndVariant
+  | IngestStartE Canary ShortName StreamAndVariant
+  | IngestStopE Canary ShortName StreamAndVariant
   | ClientAppAssetsE
   | ClientAppRouteHTMLE
   | ClientStartE Canary StreamId
@@ -83,8 +83,8 @@ endpoint = root $ sum
   , "IngestAggregatorsE"                               : "" / "api" / "agents" / path "ingestAggregator" noArgs
   , "IngestInstanceLlwpE"                              : "" / "api" / "agents" / "ingest" / streamId segment / variant segment / "llwp"
 
-  , "IngestStartE"                                     : "" / "api" / "public" / canary segment / "ingest" / segment / streamAndVariant segment / "start"
-  , "IngestStopE"                                      : "" / "api" / "public" / canary segment / "ingest" / segment / streamAndVariant segment / "stop"
+  , "IngestStartE"                                     : "" / "api" / "public" / canary segment / "ingest" / shortName segment / streamAndVariant segment / "start"
+  , "IngestStopE"                                      : "" / "api" / "public" / canary segment / "ingest" / shortName segment / streamAndVariant segment / "stop"
   , "ClientStartE"                                     : "" / "api" / "public" / canary segment / "client" / streamId segment / "start"
   , "ClientStopE"                                      : "" / "api" / "public" / canary segment / "client" / streamId segment / "stop"
 
@@ -110,19 +110,27 @@ makeUrl server ep =
 -- | StreamId
 
 parseStreamId :: String -> Maybe StreamId
-parseStreamId ""  = Nothing
-parseStreamId str = Just (StreamId str)
+parseStreamId = wrapParser
 
 streamIdToString :: StreamId -> String
 streamIdToString = unwrap
 
 -- | StreamVariant
 parseStreamVariant :: String -> Maybe StreamVariant
-parseStreamVariant  ""  = Nothing
-parseStreamVariant  str = Just (StreamVariant str)
+parseStreamVariant = wrapParser
 
 variantToString :: StreamVariant -> String
-variantToString (StreamVariant str) = str
+variantToString = unwrap
+
+parseShortName :: String -> Maybe ShortName
+parseShortName = wrapParser
+
+shortNameToString :: ShortName -> String
+shortNameToString = unwrap
+
+wrapParser "" = Nothing
+wrapParser str = Just $ wrap str
+
 
 -- | StreamAndVariant
 parseStreamAndVariant :: String -> Maybe StreamAndVariant
@@ -140,8 +148,7 @@ streamAndVariantToString (StreamAndVariant _ (StreamVariant str)) = str
 -- | PoPName
 
 parsePoPName :: String -> Maybe PoPName
-parsePoPName ""  = Nothing
-parsePoPName str = Just (PoPName str)
+parsePoPName  = wrapParser
 
 poPNameToString :: PoPName -> String
 poPNameToString = unwrap
@@ -172,6 +179,10 @@ streamAndVariant = as streamAndVariantToString (parseStreamAndVariant >>> note "
 -- | This combinator transforms a codec over `String` into one that operates on the `PoPName` type.
 popName :: RouteDuplex' String -> RouteDuplex' PoPName
 popName = as poPNameToString (parsePoPName >>> note "Bad PoPName")
+
+-- | This combinator transforms a codec over `String` into one that operates on the `ShortName` type.
+shortName :: RouteDuplex' String -> RouteDuplex' ShortName
+shortName = as shortNameToString (parseShortName >>> note "Bad ShortName")
 
 -- | This combinator transforms a codec over `String` into one that operates on the `Canary` type.
 canary :: RouteDuplex' String -> RouteDuplex' Canary
