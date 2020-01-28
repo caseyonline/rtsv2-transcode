@@ -28,7 +28,7 @@ import Rtsv2.Handler.IngestAggregator as IngestAggregatorHandler
 import Rtsv2.Handler.LlnwStub as LlnwStubHandler
 import Rtsv2.Handler.Load as LoadHandler
 import Rtsv2.Handler.Relay as RelayHandler
-import Rtsv2.Handler.TransPoP as TransPoPHandler
+import Rtsv2.Handler.IntraPoP as IntraPoPHandler
 import Rtsv2.Names as Names
 import Rtsv2.Router.Endpoint (Endpoint(..), endpoint)
 import Rtsv2.Router.Parser (printUrl)
@@ -53,7 +53,8 @@ init :: Config.WebConfig -> Effect State
 init args = do
   bindIp <- Env.privateInterfaceIp
   Stetson.configure
-    # mkRoute  TransPoPLeaderE                                                                       TransPoPHandler.leader
+    # mkRoute  TransPoPLeaderE                                                                       IntraPoPHandler.leader
+--    # mkRoute  TimedRoutesE                                                                          TransPoPHandler.timedRoutes
     # mkRoute  HealthCheckE                                                                          HealthHandler.healthCheck
     # mkRoute (EgestStatsE (StreamId ":stream_id"))                                                  EgestStatsHandler.stats
     # mkRoute  RelayE                                                                                RelayHandler.resource
@@ -76,9 +77,9 @@ init args = do
     # static  (IngestAggregatorActiveIngestsPlayerE (StreamId ":stream_id") (StreamVariant ":variant_id"))            (PrivFile "rtsv2" "www/play.html")
     # static' (IngestAggregatorActiveIngestsPlayerJsE (StreamId ":stream_id") (StreamVariant ":variant_id")) "/[...]" (PrivDir "rtsv2" "www/assets/js")
 
-    # static' (ClientAppAssets) "/[...]"    (PrivDir Config.appName "www/assets")
-    # static  (ClientAppRouteHTML)          (PrivFile Config.appName "www/index.html")
-    # static' (ClientAppRouteHTML) "/[...]" (PrivFile Config.appName "www/index.html")
+    # static' (ClientAppAssetsE) "/[...]"    (PrivDir Config.appName "www/assets")
+    # static  (ClientAppRouteHTMLE)          (PrivFile Config.appName "www/index.html")
+    # static' (ClientAppRouteHTMLE) "/[...]" (PrivFile Config.appName "www/index.html")
 
     # Stetson.cowboyRoutes cowboyRoutes
     # Stetson.port args.port

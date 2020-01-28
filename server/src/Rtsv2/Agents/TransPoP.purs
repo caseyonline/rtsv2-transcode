@@ -7,6 +7,7 @@ module Rtsv2.Agents.TransPoP
        , getRtts
        , getLeaderFor -- TODO - not sure this is the way forward for remote API server selection
        , routesTo
+       , getTimedRoutesTo
        , PoPRoutes
        ) where
 
@@ -25,7 +26,7 @@ import Effect (Effect)
 import Ephemeral.Map (EMap)
 import Ephemeral.Map as EMap
 import Erl.Atom (Atom, atom)
-import Erl.Data.List (List, head, index, length, nil, singleton, (:))
+import Erl.Data.List (List, head, index, length, nil, reverse, singleton, uncons, (:))
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
 import Erl.Process (spawnLink)
@@ -64,6 +65,10 @@ type ViaPoPs = List PoPName
 
 type PoPRoutes = List (List PoPName)
 
+
+type TimedPoPStep = { from :: PoPName, to :: PoPName, lag :: Int}
+type TimedPoPRoute = List TimedPoPStep
+
 type LamportClocks =
   { streamStateClocks :: Map ServerAddress LamportClock
   }
@@ -80,7 +85,7 @@ type State
     , members :: Map PoPName (Set ServerAddress)
     , lamportClocks :: LamportClocks
     , rtts :: Rtts
-    , sourceRoutes :: Map PoPName (List ViaPoPs)
+    , sourceRoutes :: Map PoPName PoPRoutes
     }
 
 data StreamState = StreamAvailable
@@ -94,6 +99,26 @@ data Msg
   | JoinAll
   | ConnectStream
   | TransPoPSerfMsg (Serf.SerfMessage TransMessage)
+
+
+
+getTimedRoutesTo :: PoPName -> Effect (List (TimedPoPRoute))
+getTimedRoutesTo pop = exposeState doGetTimedRoutes serverName
+  where
+    getRtt rttMap from to = fromMaybe (wrap 1000) $ Map.lookup (Tuple from to) rttMap
+    augmentWithRtt :: Rtts -> PoPName -> PoPName -> TimedPoPStep
+    augmentWithRtt rttMap from to = {from, to, lag: unwrap $ getRtt rttMap from to}
+    augmentWithRtts state@{rtts: rttMap}  acc from to vias =
+      case uncons vias of
+        Nothing -> reverse $ (augmentWithRtt rttMap from to) : acc
+        Just {head, tail} ->
+          augmentWithRtts state (augmentWithRtt rttMap from head : acc) head to tail
+    doGetTimedRoutes state@{thisServer, sourceRoutes} =
+      let
+        thisPoP = extractPoP thisServer
+       in
+      (augmentWithRtts state nil thisPoP pop) <$> (fromMaybe nil $ Map.lookup pop sourceRoutes)
+
 
 
 getRtts :: Effect Rtts

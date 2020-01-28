@@ -25,6 +25,7 @@ type Canary = String
 
 data Endpoint
   = TransPoPLeaderE
+  | TimedRoutesE
   | HealthCheckE
   | EgestStatsE StreamId
   | EgestE
@@ -44,8 +45,8 @@ data Endpoint
   | IngestInstanceLlwpE StreamId StreamVariant
   | IngestStartE Canary String StreamVariant
   | IngestStopE Canary String StreamVariant
-  | ClientAppAssets
-  | ClientAppRouteHTML
+  | ClientAppAssetsE
+  | ClientAppRouteHTMLE
   | ClientStartE Canary StreamId
   | ClientStopE Canary StreamId
   | StreamAuthE
@@ -59,6 +60,7 @@ endpoint :: RouteDuplex' Endpoint
 endpoint = root $ sum
   {
     "TransPoPLeaderE"                                  : "" / "api" / path "transPoPLeader" noArgs
+  , "TimedRoutesE"                                     : "" / "api" / path "timedRoutes" noArgs
   , "HealthCheckE"                                     : "" / "api" / path "healthCheck" noArgs
   , "EgestStatsE"                                      : "" / "api" / "agents" / "egest" / streamId segment
   , "EgestE"                                           : "" / "api" / "agents" / path "egest" noArgs
@@ -81,8 +83,8 @@ endpoint = root $ sum
 
   , "IngestStartE"                                     : "" / "api" / "public" / canary segment / "ingest" / segment / variant segment / "start"
   , "IngestStopE"                                      : "" / "api" / "public" / canary segment / "ingest" / segment / variant segment / "stop"
-  , "ClientAppAssets"                                  : "" / path "assets" noArgs
-  , "ClientAppRouteHTML"                               : "" / noArgs
+  , "ClientAppAssetsE"                                 : "" / path "assets" noArgs
+  , "ClientAppRouteHTMLE"                              : "" / noArgs
   , "ClientStartE"                                     : "" / "api" / "public" / canary segment / "client" / streamId segment / "start"
   , "ClientStopE"                                      : "" / "api" / "public" / canary segment / "client" / streamId segment / "stop"
 

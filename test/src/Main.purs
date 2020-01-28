@@ -23,7 +23,7 @@ import Shared.Types (ServerAddress(..))
 import Shared.Types.Agent.State as PublicState
 import Simple.JSON (class ReadForeign)
 import Simple.JSON as SimpleJSON
-import Test.Spec (after_, before_, describe, describeOnly, it, itOnly)
+import Test.Spec (after_, before_, describe, it)
 import Test.Spec.Reporter.Console (consoleReporter)
 import Test.Spec.Runner (runSpecT)
 

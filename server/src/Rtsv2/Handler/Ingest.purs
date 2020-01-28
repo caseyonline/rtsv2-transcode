@@ -22,7 +22,6 @@ import Rtsv2.Config as Config
 import Shared.LlnwApiTypes (StreamIngestProtocol(..), StreamPublish, StreamDetails)
 import Shared.Stream (StreamAndVariant(..), toVariant)
 import Shared.Utils (lazyCrashIfMissing)
-import Simple.JSON as JSON
 import SpudGun (bodyToJSON)
 import SpudGun as SpudGun
 import Stetson (StetsonHandler)

@@ -14,7 +14,6 @@ import Erl.Atom (atom)
 import Erl.Cowboy.Req (binding, method)
 import Erl.Data.List (nil, (:))
 import Erl.Data.Tuple (tuple2)
-import PintoHelper (GenericHandlerState, GenericStatusState, allBody, binaryToString, genericPost, genericStatus)
 import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
 import Rtsv2.Agents.IngestAggregatorInstanceSup as IngestAggregatorInstanceSup
 import Shared.LlnwApiTypes (StreamDetails)
@@ -25,11 +24,12 @@ import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (readJSON)
 import Stetson (HttpMethod(..), StetsonHandler)
 import Stetson.Rest as Rest
+import StetsonHelper (GenericStetsonGetByStreamId, GenericStetsonHandler, allBody, binaryToString, genericGetByStreamId, genericPost)
 
-ingestAggregator :: StetsonHandler (GenericStatusState PublicState.IngestAggregator)
-ingestAggregator = genericStatus IngestAggregatorInstance.getState
+ingestAggregator :: GenericStetsonGetByStreamId PublicState.IngestAggregator
+ingestAggregator = genericGetByStreamId IngestAggregatorInstance.getState
 
-ingestAggregators ::StetsonHandler (GenericHandlerState StreamDetails)
+ingestAggregators :: GenericStetsonHandler StreamDetails
 ingestAggregators = genericPost IngestAggregatorInstanceSup.startAggregator
 
 
