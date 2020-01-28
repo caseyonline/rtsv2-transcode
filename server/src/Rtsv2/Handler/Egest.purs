@@ -4,14 +4,14 @@ module Rtsv2.Handler.Egest
        ) where
 
 
-import PintoHelper (GenericHandlerState, genericCreate)
+import PintoHelper (GenericHandlerState, genericPost)
 import Rtsv2.Agents.EgestInstance (CreateEgestPayload)
 import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
 import Stetson (StetsonHandler)
 
 
 resource :: StetsonHandler (GenericHandlerState CreateEgestPayload)
-resource = genericCreate EgestInstanceSup.startEgest
+resource = genericPost EgestInstanceSup.startEgest
 
 relayResource :: StetsonHandler (GenericHandlerState CreateEgestPayload)
-relayResource = genericCreate EgestInstanceSup.startEgest
+relayResource = genericPost EgestInstanceSup.startEgest

@@ -65,7 +65,7 @@ findEgestForStream :: StreamId -> Server ->Effect (Either FailureReason (LocalOr
 findEgestForStream streamId thisServer = do
 
   apiResp <- EgestInstance.addClient streamId
-  case apiResp of
+  case spy "apiResp" apiResp of
     Right _ ->
       pure $ Right $ Local thisServer
     Left _ -> do

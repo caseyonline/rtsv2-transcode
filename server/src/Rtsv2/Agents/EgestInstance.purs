@@ -11,7 +11,7 @@ import Prelude
 
 import Bus as Bus
 import Data.Either (Either(..))
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe(..), maybe')
 import Data.Newtype (class Newtype, unwrap, wrap)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
@@ -73,7 +73,7 @@ startLink payload = Gen.startLink (serverName payload.streamId) (init payload) h
 addClient :: StreamId -> Effect APIResp
 addClient streamId = do
   mResp <- noprocToMaybe $ Gen.doCall (serverName streamId) doAddClient
-  case mResp of
+  case spy "addClient" mResp of
     Nothing -> pure $ Left NotFound
     Just resp -> pure resp
 
@@ -173,19 +173,26 @@ maybeStop ref state@{streamId
   | otherwise = pure $ CastNoReply state
 
 initStreamRelay :: State -> Effect State
-initStreamRelay state@{relayCreationRetry, streamId, thisServer} = do
+initStreamRelay state@{relayCreationRetry, streamId, aggregator, thisServer} = do
   relayResp <- findOrStartRelayForStream state
-  case relayResp of
+  case spy "initStreamRelay - relayResp" relayResp of
     Left _ ->  do
       _ <- Timer.sendAfter (serverName streamId) (unwrap relayCreationRetry) InitStreamRelays
       pure state
-    Right local@(Local relay) -> do
-      _ <- StreamRelayInstance.registerEgest streamId thisServer
-      pure state{relay = Just $ toRelayServer <$> local}
+    Right local@(Local _) -> do
+      let _ = spy "initStreamRelay - register" {}
+      _ <- StreamRelayInstance.registerEgest relayRegistrationPayload
+      pure state{relay = Just $ toRelayServer <$> (spy "initStreamRelay - local" local)}
 
-    Right remote@(Remote relay) -> do
-      -- TODO - spudGun call to register with it
+    Right remote@(Remote remoteServer) -> do
+      let
+        url = makeUrl remoteServer RelayE
+      _ <- void <$> crashIfLeft =<< SpudGun.postJson url relayRegistrationPayload
       pure state{relay = Just $ toRelayServer  <$> remote}
+  where
+    relayRegistrationPayload =
+      {streamId: state.streamId, aggregator: state.aggregator, egestServer: state.thisServer}
+
 
 
 
@@ -196,29 +203,21 @@ initStreamRelay state@{relayCreationRetry, streamId, thisServer} = do
 --------------------------------------------------------------------------------
 findOrStartRelayForStream :: State -> Effect (ResourceResponse Server)
 findOrStartRelayForStream state@{streamId, thisServer} = do
-  mRelay <- IntraPoP.whereIsStreamRelay $ spy "streamId" streamId
-
-  case spy "mRelay" mRelay of
-    Just local@(Local relay) -> do
-      pure $ Right local
-    Just remote@(Remote relay) ->
-      pure $ Right remote
-
-    Nothing -> do
-      launchLocalOrRemote state
+  mRelay <- IntraPoP.whereIsStreamRelay streamId
+  maybe' (\_ -> launchLocalOrRemote state) (pure <<< Right) mRelay
 
 
 launchLocalOrRemote :: State -> Effect (ResourceResponse Server)
 launchLocalOrRemote state@{streamId, aggregator, thisServer} =
   launchLocalOrRemoteGeneric filterForLoad launchLocal launchRemote
   where
+    payload = {streamId, aggregator} :: CreateRelayPayload
     launchLocal _ = do
-      _ <- StreamRelayInstanceSup.startRelay {streamId, aggregator}
-      StreamRelayInstance.registerEgest streamId thisServer
+      _ <- StreamRelayInstanceSup.startRelay payload
+      pure unit
     launchRemote idleServer =
       let
         url = makeUrl idleServer RelayE
-        payload = {streamId, aggregator} :: CreateRelayPayload
       in void <$> crashIfLeft =<< SpudGun.postJson url payload
 
 

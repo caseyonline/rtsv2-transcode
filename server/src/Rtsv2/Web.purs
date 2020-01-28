@@ -34,8 +34,7 @@ import Rtsv2.Router.Endpoint (Endpoint(..), endpoint)
 import Rtsv2.Router.Parser (printUrl)
 import Serf (Ip(..))
 import Shared.Stream (StreamAndVariant(..), StreamId(..), StreamVariant(..))
-import Shared.Types (ServerAddress)
-import Stetson (InnerStetsonHandler, RestResult, StaticAssetLocation(..), StetsonHandler, StetsonConfig)
+import Stetson (InnerStetsonHandler, RestResult, StaticAssetLocation(..), StetsonConfig)
 import Stetson as Stetson
 import Stetson.Rest as Rest
 
@@ -57,6 +56,7 @@ init args = do
     # mkRoute  HealthCheckE                                                                          HealthHandler.healthCheck
     # mkRoute (EgestStatsE (StreamId ":stream_id"))                                                  EgestStatsHandler.stats
     # mkRoute  RelayE                                                                                RelayHandler.resource
+    # mkRoute  RelayRegisterE                                                                        RelayHandler.register
     # mkRoute (RelayStatsE(StreamId ":stream_id"))                                                   RelayHandler.stats
     # mkRoute  LoadE                                                                                 LoadHandler.load
     # mkRoute (IngestAggregatorE $ StreamId ":stream_id")                                            IngestAggregatorHandler.ingestAggregator
