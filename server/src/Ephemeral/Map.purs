@@ -1,6 +1,5 @@
 module Ephemeral.Map
-       (
-         EMap
+       ( EMap
        , empty
        , size
        , member

@@ -6,14 +6,14 @@ module Rtsv2.Agents.IngestRtmpServer
 
 import Prelude
 
-import Data.Bifunctor (lmap)
 import Data.Either (Either(..), hush)
 import Data.Foldable (any)
-import Data.List.NonEmpty (singleton)
 import Data.Maybe (Maybe)
-import Data.Tuple (Tuple(..))
+import Data.Newtype (wrap)
 import Effect (Effect)
-import Foreign (Foreign, ForeignError(..))
+import Erl.Utils
+ as Erl
+import Foreign (Foreign)
 import Pinto (ServerName)
 import Pinto as Pinto
 import Pinto.Gen as Gen
@@ -21,15 +21,15 @@ import Rtsv2.Agents.IngestInstance as IngestInstance
 import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
-import Shared.LlnwApiTypes (AuthType, PublishCredentials, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamPublish, StreamAuth)
 import Rtsv2.Names as Names
 import Serf (Ip)
-import Shared.Stream (StreamVariantId(..))
-import Simple.JSON as JSON
+import Shared.LlnwApiTypes (AuthType, PublishCredentials, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamPublish, StreamAuth)
+import Shared.Stream (StreamAndVariant(..))
+import SpudGun (bodyToJSON)
 import SpudGun as SpudGun
 
 type Callbacks
-  = { ingestStarted :: StreamDetails -> String -> Effect Boolean
+  = { ingestStarted :: StreamDetails -> String -> Effect (Either Unit StreamAndVariant)
     , ingestStopped :: StreamDetails -> String -> Effect Unit
     , streamAuthType :: String -> String -> Effect (Maybe AuthType)
     , streamAuth ::  String -> String -> String -> Effect (Maybe PublishCredentials)
@@ -37,7 +37,7 @@ type Callbacks
     }
 
 isAvailable :: Effect Boolean
-isAvailable = Names.isRegistered serverName
+isAvailable = Pinto.isRegistered serverName
 
 serverName :: ServerName State Unit
 serverName = Names.ingestRtmpServerName
@@ -67,45 +67,43 @@ init _ = do
   _ <- startServerImpl Left (Right unit) interfaceIp port nbAcceptors callbacks
   pure $ {}
   where
-    ingestStarted :: StreamDetails -> String -> Effect Boolean
+    ingestStarted :: StreamDetails -> String -> Effect (Either Unit StreamAndVariant)
     ingestStarted streamDetails@{ role
                                 , slot : {name : streamId, profiles}
                                 } streamVariantId =
       case any (\{streamName: slotStreamName} -> slotStreamName == streamVariantId) profiles of
         true ->
-          IngestInstanceSup.startIngest streamDetails (StreamVariantId streamId streamVariantId)
-          <#> const true
+          let
+            streamAndVariant = StreamAndVariant (wrap streamId) (wrap streamVariantId)
+          in
+           IngestInstanceSup.startIngest streamDetails streamAndVariant
+          <#> const (Right streamAndVariant)
         false ->
-          pure $ false
+          pure $ Left unit
 
     ingestStopped :: StreamDetails -> String -> Effect Unit
     ingestStopped { role
-                   , slot : {name : streamId}} streamVariantId = IngestInstance.stopIngest (StreamVariantId streamId streamVariantId)
+                   , slot : {name : streamId}} streamVariantId = IngestInstance.stopIngest (StreamAndVariant (wrap streamId) (wrap streamVariantId))
 
     streamAuthType url host shortname = do
-      restResult <- SpudGun.post url (JSON.writeJSON ({host
-                                                      , protocol: Rtmp
-                                                      , shortname} :: StreamConnection))
-      let
-        authType = JSON.readJSON =<< lmap (\s -> (singleton (ForeignError s))) restResult
-      pure $ hush authType
+      restResult <- SpudGun.postJson (wrap url) ({ host
+                                                 , protocol: Rtmp
+                                                 , shortname} :: StreamConnection
+                                                )
+      pure $ hush (bodyToJSON restResult)
 
     streamAuth url host shortname username = do
-      restResult <- SpudGun.post url (JSON.writeJSON ({host
-                                                      , shortname
-                                                      , username} :: StreamAuth))
-      let
-        publishCredentials = JSON.readJSON =<< lmap (\s -> (singleton (ForeignError s))) restResult
-      pure $ hush publishCredentials
+      restResult <- SpudGun.postJson (wrap url) ({ host
+                                                 , shortname
+                                                 , username} :: StreamAuth
+                                                )
+      pure $ hush (bodyToJSON restResult)
 
     streamPublish url host shortname username streamName = do
-      restResult <- SpudGun.post url (JSON.writeJSON ({host
-                                                      , protocol: Rtmp
-                                                      , shortname
-                                                      , streamName
-                                                      , username} :: StreamPublish))
-      let
-        streamDetails = JSON.readJSON =<< lmap (\s -> (singleton (ForeignError s))) restResult
-      pure $ hush streamDetails
-
-
+      restResult <- SpudGun.postJson (wrap url) ({ host
+                                                  , protocol: Rtmp
+                                                  , shortname
+                                                  , streamName
+                                                  , username} :: StreamPublish
+                                                )
+      pure $ hush (bodyToJSON restResult)

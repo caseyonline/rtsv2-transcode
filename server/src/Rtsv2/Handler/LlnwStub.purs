@@ -1,4 +1,4 @@
-module Rtsv2.Endpoints.LlnwStub
+module Rtsv2.Handler.LlnwStub
        ( streamAuthType
        , streamAuth
        , streamPublish

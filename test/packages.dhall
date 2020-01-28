@@ -3,26 +3,39 @@ let upstream =
 
 let overrides = {=}
 
-let additions = 
-      { http =
-          { dependencies = [] : List Text
-          , repo = "ssh://git@github.com/joneshf/purescript-http.git"
-          , version = "v4.0.0"
-          },
-        toppokki =
+let additions =
+      { toppokki =
           { dependencies =
-            [ "aff-promise"
-            , "node-fs-aff"
-            , "node-buffer"
-            , "node-http"
-            , "functions"
-            , "record"
-            , "prelude"
-            ] : List Text
-          , repo = "ssh://git@github.com/justinwoo/purescript-toppokki.git"
-          , version = "v2.2.0"
+                [ "aff-promise"
+                , "node-fs-aff"
+                , "node-buffer"
+                , "node-http"
+                , "functions"
+                , "record"
+                , "prelude"
+                ]
+              : List Text
+          , repo =
+              "ssh://git@github.com/justinwoo/purescript-toppokki.git"
+          , version =
+              "v2.2.0"
+          }
+      , milkis =
+          { dependencies =
+                [ "prelude"
+                , "aff-promise"
+                , "typelevel-prelude"
+                , "foreign-object"
+                , "arraybuffer-types"
+                ]
+              : List Text
+          , devDependencies =
+              [ "purescript-spec" ] : List Text
+          , repo =
+              "ssh://git@github.com/justinwoo/purescript-milkis.git"
+          , version =
+              "v7.4.0"
           }
       }
 
-
-in  upstream // overrides // additions
+in  upstream ⫽ overrides ⫽ additions

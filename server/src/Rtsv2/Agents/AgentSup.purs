@@ -8,7 +8,7 @@ import Erl.Data.List ((:))
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildSpec, SupervisorChildType(..), SupervisorSpec, SupervisorStrategy(..))
 import Pinto.Sup as Sup
-import Rtsv2.Agents.EdgeInstanceSup as EdgeInstanceSup
+import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
 import Rtsv2.Agents.IngestAggregatorInstanceSup as IngestAggregatorInstanceSup
 import Rtsv2.Agents.IngestSup as IngestSup
 import Rtsv2.Agents.IntraPoP as IntraPoP
@@ -31,11 +31,11 @@ init = do
 
   where
     makeSpec :: Agent -> Effect SupervisorChildSpec
-    makeSpec Edge =
+    makeSpec Egest =
       Sup.buildChild
         # Sup.childType Supervisor
-        # Sup.childId "edgeAgent"
-        # Sup.childStart EdgeInstanceSup.startLink unit
+        # Sup.childId "egestAgent"
+        # Sup.childStart EgestInstanceSup.startLink unit
         # pure
 
     makeSpec Ingest =
@@ -77,8 +77,8 @@ init = do
         # Sup.childType Worker
         # Sup.childId "transPopAgent"
         # Sup.childStart TransPoP.startLink { config: transPoPAgentConfig
-                                                 , intraPoPApi: { announceRemoteStreamIsAvailable: IntraPoP.announceRemoteStreamIsAvailable
-                                                                , announceRemoteStreamStopped: IntraPoP.announceRemoteStreamStopped
-                                                                , announceTransPoPLeader: IntraPoP.announceTransPoPLeader}
-                                                 }
+                                            , intraPoPApi: { announceRemoteStreamIsAvailable: IntraPoP.announceRemoteStreamIsAvailable
+                                                           , announceRemoteStreamStopped: IntraPoP.announceRemoteStreamStopped
+                                                           , announceTransPoPLeader: IntraPoP.announceTransPoPLeader}
+                                            }
         # pure

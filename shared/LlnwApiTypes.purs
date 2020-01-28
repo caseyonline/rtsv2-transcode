@@ -252,4 +252,3 @@ instance writeForeignStreamOutputFormat :: WriteForeign StreamOutputFormat where
       toString WebRTCOutput = "webrtc"
       toString RtmpOutput = "rtmp"
       toString HlsOutput = "hls"
-

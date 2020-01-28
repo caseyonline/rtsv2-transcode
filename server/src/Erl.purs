@@ -1,9 +1,10 @@
 module Erl.Utils
-       ( isRegistered
-       , systemTimeMs
+       ( systemTimeMs
        , sleep
        , makeRef
+       , privDir
        , Milliseconds
+       , Url
        , Ref
        )
        where
@@ -15,20 +16,29 @@ import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Foreign (Foreign)
 
-foreign import isRegisteredImpl :: Atom -> Effect Boolean
 foreign import systemTimeImpl :: Atom -> Effect Int
 foreign import sleepImpl :: Int -> Effect Unit
 foreign import makeRefImpl :: Foreign
+foreign import privDirImpl :: Atom -> String
 
 sleep :: Milliseconds -> Effect Unit
 sleep = sleepImpl <<< unwrap
 
+-- TODO - find a place for these utility types to live (a la id3as_common?)
 -- | A duration measured in milliseconds.
 newtype Milliseconds = Milliseconds Int
 
 derive instance newtypeMilliseconds :: Newtype Milliseconds _
 derive newtype instance eqMilliseconds :: Eq Milliseconds
 derive newtype instance ordMilliseconds :: Ord Milliseconds
+
+
+-- | Url type
+newtype Url = Url String
+derive instance newtypeURL :: Newtype Url _
+derive newtype instance eqURL :: Eq Url
+derive newtype instance ordURL :: Ord Url
+
 
 instance semigroupMilliseconds :: Semigroup Milliseconds where
   append (Milliseconds x) (Milliseconds y) = Milliseconds (x + y)
@@ -48,9 +58,6 @@ instance monoidMilliseconds :: Monoid Milliseconds where
 instance showMilliseconds :: Show Milliseconds where
   show (Milliseconds n) = "(Milliseconds " <> show n <> ")"
 
-isRegistered :: String -> Effect Boolean
-isRegistered name = isRegisteredImpl (atom name)
-
 systemTimeMs :: Effect Milliseconds
 systemTimeMs = wrap <$> systemTimeImpl (atom "millisecond")
 
@@ -61,3 +68,6 @@ instance eqRef :: Eq Ref where
 
 makeRef :: Ref
 makeRef = Ref makeRefImpl
+
+privDir :: Atom -> String
+privDir = privDirImpl

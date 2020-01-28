@@ -1,38 +1,38 @@
 module Rtsv2.Agents.StreamRelayInstanceSup
        ( startLink
        , startRelay
+       , isAvailable
        )
        where
 
 import Prelude
 
 import Effect (Effect)
-import Erl.Atom (atom)
-import Erl.Data.List (nil, (:))
-import Foreign (Foreign)
+import Erl.Atom (Atom, atom)
+import Erl.Data.List (List, nil, (:))
+import Rtsv2.Names as Names
+import Logger (Logger)
 import Logger as Logger
 import Pinto (SupervisorName)
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStartTemplate, childType)
 import Pinto.Sup as Sup
-import Record as Record
+import Rtsv2.Agents.StreamRelayInstance (CreateRelayPayload)
 import Rtsv2.Agents.StreamRelayInstance as StreamRelayInstance
-import Rtsv2.Names as Names
 import Shared.Agent as Agent
-import Shared.Stream (StreamId)
 
 serverName :: SupervisorName
 serverName = Names.streamRelayInstanceSupName
 
+isAvailable :: Effect Boolean
+isAvailable = Pinto.isRegistered serverName
+
 startLink :: forall a. a -> Effect Pinto.StartLinkResult
 startLink _ = Sup.startLink serverName init
 
-startRelay :: StreamId -> Effect Unit
-startRelay streamId = do
-  result <- Sup.startSimpleChild childTemplate serverName streamId
-  case result of
-    Pinto.AlreadyStarted pid -> pure unit
-    Pinto.Started pid -> pure unit
+startRelay :: CreateRelayPayload -> Effect Pinto.StartChildResult
+startRelay createPayload = do
+  Sup.startSimpleChild childTemplate serverName createPayload
 
 init :: Effect Sup.SupervisorSpec
 init = do
@@ -49,8 +49,20 @@ init = do
             : nil
         )
 
-childTemplate :: Pinto.ChildTemplate StreamId
+childTemplate :: Pinto.ChildTemplate CreateRelayPayload
 childTemplate = Pinto.ChildTemplate (StreamRelayInstance.startLink)
 
-logInfo :: forall a. String -> a -> Effect Foreign
-logInfo msg metaData = Logger.info msg (Record.merge { domain: ((atom (show Agent.StreamRelay)) : nil) } { misc: metaData })
+--------------------------------------------------------------------------------
+-- Log helpers
+--------------------------------------------------------------------------------
+domains :: List Atom
+domains = atom <$> (show Agent.StreamRelay :  "Instance" : nil)
+
+logInfo :: forall a. Logger a
+logInfo = domainLog Logger.info
+
+--logWarning :: forall a. Logger a
+--logWarning = domainLog Logger.warning
+
+domainLog :: forall a. Logger {domain :: List Atom, misc :: a} -> Logger a
+domainLog = Logger.doLog domains

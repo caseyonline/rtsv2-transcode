@@ -5,32 +5,37 @@ module Rtsv2.Web
 
 import Prelude
 
-import Data.Maybe (Maybe(..), fromMaybe, isJust)
-import Data.Newtype (unwrap)
+import Data.Newtype (wrap)
 import Effect (Effect)
-import Erl.Atom (atom)
+import Erl.Atom (Atom, atom)
 import Erl.Cowboy.Req (Req)
-import Erl.Data.List (nil, (:))
-import Erl.Data.Tuple (Tuple2, Tuple4, tuple2, tuple4, uncurry4)
-import Foreign (Foreign)
-import Logger (info) as Logger
+import Erl.Cowboy.Routes (InitialState(..), Path(..), matchSpec)
+import Erl.Data.List (List, nil, singleton, (:))
+import Erl.Data.Tuple (Tuple2, Tuple4, tuple2, tuple3, tuple4, uncurry4)
+import Erl.ModuleName (NativeModuleName(..))
+import Foreign (unsafeToForeign)
+import Logger (Logger)
+import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen as Gen
-import Record as Record
-import Rtsv2.Agents.IntraPoP as IntraPoPAgent
 import Rtsv2.Config as Config
-import Rtsv2.Endpoints.Client as ClientEndpoint
-import Rtsv2.Endpoints.Edge as EdgeEndpoint
-import Rtsv2.Endpoints.Health as HealthEndpoint
-import Rtsv2.Endpoints.Ingest as IngestEndpoint
-import Rtsv2.Endpoints.IngestAggregator as IngestAggregatorEndpoint
-import Rtsv2.Endpoints.LlnwStub as LlnwStub
-import Rtsv2.Endpoints.Load as LoadEndpoint
 import Rtsv2.Env as Env
+import Rtsv2.Handler.Client as ClientHandler
+import Rtsv2.Handler.EgestStats as EgestStatsHandler
+import Rtsv2.Handler.Health as HealthHandler
+import Rtsv2.Handler.Ingest as IngestHandler
+import Rtsv2.Handler.IngestAggregator as IngestAggregatorHandler
+import Rtsv2.Handler.LlnwStub as LlnwStubHandler
+import Rtsv2.Handler.Load as LoadHandler
+import Rtsv2.Handler.Relay as RelayHandler
+import Rtsv2.Handler.TransPoP as TransPoPHandler
 import Rtsv2.Names as Names
+import Rtsv2.Router.Endpoint (Endpoint(..), endpoint)
+import Rtsv2.Router.Parser (printUrl)
 import Serf (Ip(..))
+import Shared.Stream (StreamAndVariant(..), StreamId(..), StreamVariant(..))
 import Shared.Types (ServerAddress)
-import Stetson (RestResult, StaticAssetLocation(..), StetsonHandler)
+import Stetson (InnerStetsonHandler, RestResult, StaticAssetLocation(..), StetsonHandler, StetsonConfig)
 import Stetson as Stetson
 import Stetson.Rest as Rest
 
@@ -44,51 +49,71 @@ startLink :: Config.WebConfig -> Effect StartLinkResult
 startLink args =
   Gen.startLink serverName (init args) Gen.defaultHandleInfo
 
+
 init :: Config.WebConfig -> Effect State
 init args = do
   bindIp <- Env.privateInterfaceIp
   Stetson.configure
-    # Stetson.route "/api/transPoPLeader" transPoPLeader
-    # Stetson.route "/api/healthCheck" HealthEndpoint.healthCheck
-    # Stetson.route "/api/load" LoadEndpoint.load
-    # Stetson.route "/api/agents/ingestAggregator/:stream_id" IngestAggregatorEndpoint.ingestAggregator
-    # Stetson.route "/api/agents/ingestAggregator/:stream_id/activeIngests/:variant_id" IngestAggregatorEndpoint.ingestAggregatorsActiveIngest
-    # Stetson.route "/api/agents/ingestAggregator" IngestAggregatorEndpoint.ingestAggregators
+    # mkRoute  TransPoPLeaderE                                                                       TransPoPHandler.leader
+    # mkRoute  HealthCheckE                                                                          HealthHandler.healthCheck
+    # mkRoute (EgestStatsE (StreamId ":stream_id"))                                                  EgestStatsHandler.stats
+    # mkRoute  RelayE                                                                                RelayHandler.resource
+    # mkRoute (RelayStatsE(StreamId ":stream_id"))                                                   RelayHandler.stats
+    # mkRoute  LoadE                                                                                 LoadHandler.load
+    # mkRoute (IngestAggregatorE $ StreamId ":stream_id")                                            IngestAggregatorHandler.ingestAggregator
+    # mkRoute (IngestAggregatorActiveIngestsE (StreamId ":stream_id") (StreamVariant ":variant_id")) IngestAggregatorHandler.ingestAggregatorsActiveIngest
+    # mkRoute  IngestAggregatorsE                                                                    IngestAggregatorHandler.ingestAggregators
+    # mkRoute (IngestStartE ":canary" ":short_name" (StreamVariant ":variant_id"))                   IngestHandler.ingestStart
+    # mkRoute (IngestStopE ":canary" ":short_name" (StreamVariant ":variant_id"))                    IngestHandler.ingestStop
+    # mkRoute (ClientStartE ":canary" (StreamId ":stream_id"))                                       ClientHandler.clientStart
+    # mkRoute (ClientStopE ":canary" (StreamId ":stream_id"))                                        ClientHandler.clientStop
+    # mkRoute  StreamAuthE                                                                           LlnwStubHandler.streamAuthType
+    # mkRoute  StreamAuthTypeE                                                                       LlnwStubHandler.streamAuth
+    # mkRoute  StreamPublishE                                                                        LlnwStubHandler.streamPublish
 
-    # Stetson.route "/api/client/:canary/ingest/:short_name/:variant_id/start" IngestEndpoint.ingestStart
-    # Stetson.route "/api/client/:canary/ingest/:short_name/:variant_id/stop" IngestEndpoint.ingestStop
+    # static  (IngestAggregatorPlayerE (StreamId ":stream_id"))                                                       (PrivFile "rtsv2" "www/aggregatorPlayer.html")
+    # static' (IngestAggregatorPlayerJsE (StreamId ":stream_id")) "/[...]"                                            (PrivDir "rtsv2" "www/js")
+    # static  (IngestAggregatorActiveIngestsPlayerE (StreamId ":stream_id") (StreamVariant ":variant_id"))            (PrivFile "rtsv2" "www/play.html")
+    # static' (IngestAggregatorActiveIngestsPlayerJsE (StreamId ":stream_id") (StreamVariant ":variant_id")) "/[...]" (PrivDir "rtsv2" "www/js")
 
-    # Stetson.route "/api/client/:canary/client/:stream_id/start" ClientEndpoint.clientStart
-    # Stetson.route "/api/client/:canary/client/:stream_id/stop" ClientEndpoint.clientStop
+    # static' (ClientAppAssets) "/[...]"    (PrivDir Config.appName "www/assets")
+    # static  (ClientAppRouteHTML)          (PrivFile Config.appName "www/index.html")
+    # static' (ClientAppRouteHTML) "/[...]" (PrivFile Config.appName "www/index.html")
 
-    # Stetson.route "/api/client/:canary/edge/:stream_id/clientCount" EdgeEndpoint.clientCount
-
-    # Stetson.route "/llnwstub/rts/v1/streamauthtype" LlnwStub.streamAuthType
-    # Stetson.route "/llnwstub/rts/v1/streamauth" LlnwStub.streamAuth
-    # Stetson.route "/llnwstub/rts/v1/streampublish" LlnwStub.streamPublish
-
-    # Stetson.static "/assets/[...]" (PrivDir Config.appName "www/assets")
-    # Stetson.static "/adminApp" (PrivFile Config.appName "www/index.html")
-    # Stetson.static "/adminApp/[...]" (PrivFile Config.appName "www/index.html")
-
+    # Stetson.cowboyRoutes cowboyRoutes
     # Stetson.port args.port
     # (uncurry4 Stetson.bindTo) (ipToTuple bindIp)
     # Stetson.startClear "http_listener"
   pure $ State {}
+  where
+    cowboyRoutes :: List Path
+    cowboyRoutes =
+      cowboyRoute   (IngestInstanceLlwpE (StreamId ":stream_id") (StreamVariant ":variant_id"))                              "llwp_stream_resource" makeStreamAndVariant
+      : cowboyRoute (IngestAggregatorActiveIngestsPlayerSessionStartE (StreamId ":stream_id") (StreamVariant ":variant_id")) "rtsv2_webrtc_session_start_resource" makeStreamAndVariant
+      : cowboyRoute (IngestAggregatorActiveIngestsPlayerSessionE (StreamId ":stream_id") (StreamVariant ":variant_id")       ":session_id") "rtsv2_webrtc_session_resource" makeStreamAndVariant
+      : nil
+
+    makeStreamAndVariant :: String -> String -> StreamAndVariant
+    makeStreamAndVariant streamId variantId = StreamAndVariant (wrap streamId) (wrap variantId)
+
+    mkRoute :: forall state msg.  Endpoint -> InnerStetsonHandler msg state -> StetsonConfig -> StetsonConfig
+    mkRoute rType handler = Stetson.route (printUrl endpoint rType) handler
+
+    static :: Endpoint -> StaticAssetLocation -> StetsonConfig -> StetsonConfig
+    static rType config = Stetson.static  (printUrl endpoint rType) config
+
+    static' :: Endpoint -> String -> StaticAssetLocation -> StetsonConfig -> StetsonConfig
+    static' rType hack config = Stetson.static ((printUrl endpoint rType) <> hack) config
+
+    cowboyRoute rType moduleName initialState =
+      Path (tuple3
+            (matchSpec $ printUrl endpoint rType)
+            (NativeModuleName $ atom moduleName)
+            (InitialState $ unsafeToForeign initialState)
+           )
 
 ipToTuple :: Ip -> Tuple4 Int Int Int Int
 ipToTuple (Ipv4 a b c d) = tuple4 a b c d
-
-transPoPLeader :: StetsonHandler (Maybe ServerAddress)
-transPoPLeader =
-  Rest.handler (\req -> Rest.initResult req Nothing)
-  # Rest.resourceExists (\req state -> do
-                            currentLeader <- IntraPoPAgent.currentTransPoPLeader
-                            Rest.result (isJust currentLeader) req currentLeader
-                          )
-  # Rest.contentTypesProvided (\req state ->
-                                Rest.result ((tuple2 "text/plain" (\req2 currentLeader -> Rest.result (fromMaybe "" (unwrap <$> currentLeader)) req2 state)) : nil) req state)
-  # Rest.yeeha
 
 emptyText  :: forall a. Tuple2 String (Req -> a -> (Effect (RestResult String a)))
 emptyText = textWriter ""
@@ -97,5 +122,17 @@ textWriter :: forall a. String -> Tuple2 String (Req -> a -> (Effect (RestResult
 textWriter text = tuple2 "text/plain" (\req state -> Rest.result text req state)
 
 
-logInfo :: forall a. String -> a -> Effect Foreign
-logInfo msg metaData = Logger.info msg (Record.merge { domain: ((atom "Web") : nil) } { misc: metaData })
+--------------------------------------------------------------------------------
+-- Log helpers
+--------------------------------------------------------------------------------
+domains :: List Atom
+domains = serverName # Names.toDomain # singleton
+
+logInfo :: forall a. Logger a
+logInfo = domainLog Logger.info
+
+--logWarning :: forall a. Logger a
+--logWarning = domainLog Logger.warning
+
+domainLog :: forall a. Logger {domain :: List Atom, misc :: a} -> Logger a
+domainLog = Logger.doLog domains

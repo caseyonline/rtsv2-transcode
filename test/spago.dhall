@@ -4,14 +4,15 @@ You can edit this file as you like.
 -}
 { name = "my-project"
 , dependencies =
-    [ "affjax"
+    [ "aff-promise"
+    , "affjax"
     , "argonaut"
     , "console"
     , "debug"
     , "effect"
     , "foreign-generic"
     , "generics-rep"
-    , "http"
+    , "milkis"
     , "node-child-process"
     , "node-fs"
     , "node-fs-aff"

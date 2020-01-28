@@ -2,329 +2,428 @@ module Main where
 
 import Prelude
 
-import Affjax (Error, Response)
-import Affjax as AX
-import Affjax.RequestBody (RequestBody)
-import Affjax.RequestBody as RequestBody
-import Affjax.ResponseFormat as ResponseFormat
-import Affjax.ResponseHeader (ResponseHeader(..))
-import Affjax.StatusCode (StatusCode(..))
-import Data.Argonaut as Json
-import Data.Array (sort)
-import Data.Either (Either(..), hush)
-import Data.Foldable (elem)
+import Data.Array (delete, sort)
+import Data.Either (Either(..))
 import Data.Identity (Identity(..))
-import Data.List (List)
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe(..), isNothing)
 import Data.Newtype (un)
 import Data.Time.Duration (Milliseconds(..))
 import Data.Traversable (traverse_)
 import Data.Tuple (Tuple(..))
 import Debug.Trace (spy)
 import Effect (Effect)
-import Effect.Aff (Aff, delay, launchAff_, throwError)
-import Effect.Exception (error)
-import Foreign (F)
+import Effect.Aff (Aff, attempt, delay, launchAff_, throwError)
+import Effect.Exception (error) as Exception
+import Foreign.Object as Object
+import Milkis as M
+import Milkis.Impl.Node (nodeFetch)
 import OsCmd (runProc)
-import Shared.Stream (StreamVariantId(..))
-import Shared.Types (IngestAggregatorPublicState)
-import Simple.JSON (class ReadForeign, E)
+import Shared.Stream (StreamVariant(..))
+import Shared.Types (ServerAddress(..))
+import Shared.Types.Agent.State as PublicState
+import Simple.JSON (class ReadForeign)
 import Simple.JSON as SimpleJSON
-import Test.Spec (after_, before_, describe, it, itOnly)
-import Test.Spec.Assertions (fail)
+import Test.Spec (after_, before_, describe, it)
 import Test.Spec.Reporter.Console (consoleReporter)
 import Test.Spec.Runner (runSpecT)
 
+fetch :: M.Fetch
+fetch = M.fetch nodeFetch
 
 type TestNode =  { vlan :: String
                  , addr :: String
                  , sysConfig :: String
                  }
 
-node :: String -> String -> String -> TestNode
-node vlan addr sysConfig = {vlan, addr, sysConfig}
+data Node = Node Int Int
+derive instance eqNode :: Eq Node
 
 main :: Effect Unit
 main =
+  let
+
+    p1n1 = Node 1 1
+    p1n2 = Node 1 2
+    p1n3 = Node 1 3
+    p2n1 = Node 2 1
+    p2n2 = Node 2 2
+
+    slot1      = "slot1"
+    shortName1 = "mmddev001"
+    low        = "slot1_500"
+    high       = "slot1_1000"
+
+    start = "start"
+    stop  = "stop"
+
+    toAddr (Node popNum nodeNum) = "172.16." <> show (popNum + 168) <> "." <> show nodeNum
+    toVlan (Node popNum nodeNum) = "vlan" <> show (popNum * 10) <> show nodeNum
+    mkNode sysConfig node = {vlan: toVlan node, addr: toAddr node, sysConfig}
+
+    api node = "http://" <> toAddr node <> ":3000/api/"
+
+    stringifyError (Right r)      = Right r
+    stringifyError (Left axError) = Left $ show axError
+
+    client verb node streamId           = fetch (M.URL $ api node <> "public/canary/client/" <> streamId <> "/" <> verb)
+                                         { method: M.postMethod
+                                         , body: "{}"
+                                         , headers: M.makeHeaders { "Content-Type": "application/json" }
+                                         } # attempt <#> stringifyError
+    egestStats node streamId           = fetch (M.URL $ api node <> "agents/egest/" <> streamId)
+                                         { method: M.getMethod
+                                         } # attempt <#> stringifyError
+
+    aggregatorStats node streamId      = fetch (M.URL $ api node <> "agents/ingestAggregator/" <> streamId)
+                                         { method: M.getMethod
+                                         } # attempt <#> stringifyError
+
+    ingest verb node shortName variant = fetch (M.URL $ api node <> "public/canary/ingest/" <> shortName <> "/" <> variant <> "/" <> verb)
+                                         { method: M.getMethod
+                                         } # attempt <#> stringifyError
+
+    relayStats node streamId           = fetch (M.URL $ api node <> "agents/relay/" <> streamId)
+                                         { method: M.getMethod
+                                         } # attempt <#> stringifyError
+
+    setLoad :: Node -> Number -> Aff (Either String M.Response)
+    setLoad node load                  = fetch (M.URL $ api node <> "load")
+                                         { method: M.postMethod
+                                         , body: "{\"load\": " <> show load <> "}"
+                                         , headers: M.makeHeaders { "Content-Type": "application/json" }
+                                         } # attempt <#> stringifyError
+
+    maybeLogStep s a =
+      --let _ = spy s a in
+      unit
+
+    as desc (Right r) =
+      let _ = maybeLogStep "step" desc in
+      pure $ unit
+    as desc (Left err) = throwSlowError $ "Step: \"" <> desc <> "\" failed with reason: " <> err
+
+    as' :: forall a. String -> a -> Aff Unit
+    as' desc _ =
+      let _ = maybeLogStep "step" desc in
+      pure $ unit
+
+    debug either = let _ = spy "debug" either in either
+
+    debugBody (Right r) = do
+      text <- M.text r
+      let _ = spy "debugBody" text
+      pure $ Right r
+    debugBody (Left err) = let _ = spy "debugBodyErr" err in pure $ Left err
+
+    launch nodes = do
+      _ <- stopSession
+      nodes <#> mkNode "test/config/sys.config" # launchNodes
+
+    assertRelayForEgest = assertBodyFun <<< predicate
+      where
+        predicate :: Array Node -> PublicState.StreamRelay -> Boolean
+        predicate servers {egestsServed} =
+          (sort $ (ServerAddress <<< toAddr) <$> servers) == sort egestsServed
+
+    assertEgestClients = assertBodyFun <<< predicate
+      where
+        predicate :: Int -> PublicState.Egest -> Boolean
+        predicate count {clientCount} = count == clientCount
+
+    assertAggregator = assertBodyFun <<< predicate
+      where
+        predicate :: Array String -> PublicState.IngestAggregator -> Boolean
+        predicate vars {activeStreamVariants} = sort (StreamVariant <$> vars) == (sort $ _.streamVariant <$> activeStreamVariants)
+
+    delayMs = delay <<< Milliseconds
+
+    waitForAsyncVariantStart       = delayMs  100.0
+    waitForAsyncVariantStop        = delayMs  100.0
+
+    waitForIntraPoPDisseminate     = delayMs  500.0
+    waitForNodeFailureDisseminate  = delayMs 2500.0
+
+    waitForTransPoPDisseminate     = delayMs 2000.0
+    waitForTransPoPStopDisseminate = delayMs 5000.0 -- TODO - seeems big
+
+    waitForLessThanLinger          = delayMs  500.0
+    waitForMoreThanLinger          = delayMs 1500.0
+
+    waitForMoreThanEgestLinger     = delayMs 3000.0 -- TODO seems big
+
+  in
   launchAff_ $ un Identity $ runSpecT testConfig [consoleReporter] do
-    before_ (do
-                _ <- stopSession
-                launchNodes [
-                  node "vlan101" "172.16.169.1" "test/config/sys.config"
-                  , node "vlan102" "172.16.169.2" "test/config/sys.config"
-                  , node "vlan103" "172.16.169.3" "test/config/sys.config"
-                  , node "vlan201" "172.16.170.1" "test/config/sys.config"
-                  , node "vlan202" "172.16.170.2" "test/config/sys.config"
-                  ]) do
-      after_ stopSession do
-        describe "two node setup" do
-          -- it "client requests stream on ingest node" do
-          --   let
-          --     node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/mmddev001/slot1_500/start"
-          --     node1edge = "http://172.16.169.1:3000/api/client/canary/client/slot1/start"
-          --   _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node1edge
-          --   _ <- AX.get ResponseFormat.string node1ingestStart
-          --   _ <- delay (Milliseconds 500.0)
-          --   _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
-          --   _ <- delay (Milliseconds 500.0)
-          --   _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1edge
-          --   pure unit
-          -- it "client requests stream on non-ingest node" do
-          --   let
-          --     node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/mmddev001/slot1_500/start"
-          --     node2edge = "http://172.16.169.2:3000/api/client/canary/client/slot1/start"
-          --   _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node2edge
-          --   _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
-          --   _ <- delay (Milliseconds 1000.0)
-          --   _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node2edge
-          --   pure unit
-          -- it "client requests stream on other pop" do
-          --   let
-          --     node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/mmddev001/slot1_500/start"
-          --     node2edge = "http://172.16.170.2:3000/api/client/canary/client/slot1/start"
-          --   _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node2edge
-          --   _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
-          --   _ <- delay (Milliseconds 2000.0)
-          --   _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node2edge
-          --   pure unit
-          -- it "client requests stream on 2nd node on ingest pop" do
-          --   let
-          --     node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/mmddev001/slot1_500/start"
-          --     node2edge = "http://172.16.169.2:3000/api/client/canary/client/slot1/start"
-          --     node3edge = "http://172.16.169.3:3000/api/client/canary/client/slot1/start"
-          --   _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node2edge
-          --   _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node3edge
-          --   _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
-          --   _ <- delay (Milliseconds 2000.0)
-          --   _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node2edge
-          --   _ <- delay (Milliseconds 1000.0)
-          --   _ <- assertHeader (Tuple "x-servedby" "172.16.169.2") =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node3edge
-          --   pure unit
-          -- it "client ingest starts and stops" do
-          --   let
-          --     node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/mmddev001/slot1_500/start"
-          --     node1ingestStop = "http://172.16.169.1:3000/api/client/:canary/ingest/mmddev001/slot1_500/stop"
-          --     node2edge = "http://172.16.169.2:3000/api/client/canary/client/slot1/start"
-          --     node3edge = "http://172.16.170.2:3000/api/client/canary/client/slot1/start"
-          --   _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node2edge
-          --   _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node3edge
-          --   _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
-          --   _ <- delay (Milliseconds 2000.0)
-          --   _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node2edge
-          --   _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node3edge
-          --   _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStop
-          --   _ <- delay (Milliseconds 2000.0)
-          --   _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node2edge
-          --   _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node3edge
-          --   pure unit
-          -- it "client edge starts and stops" do
-          --   let
-          --     node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/mmddev001/slot1_500/start"
-          --     node2edgeStart = "http://172.16.169.2:3000/api/client/canary/client/slot1/start"
-          --     node2edgeStop = "http://172.16.169.2:3000/api/client/canary/client/slot1/stop"
-          --     node3edgeStart = "http://172.16.169.3:3000/api/client/canary/client/slot1/start"
-          --     node3edgeStop = "http://172.16.169.3:3000/api/client/canary/client/slot1/stop"
-          --     node2edgeCount = "http://172.16.169.2:3000/api/client/canary/edge/slot1/clientCount"
-          --     node3edgeCount = "http://172.16.169.3:3000/api/client/canary/edge/slot1/clientCount"
-          --   _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
-          --   _ <- delay (Milliseconds 1000.0)
-          --   _ <- assertHeader (Tuple "x-servedby" "172.16.169.2") =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node2edgeStart
-          --   _ <- delay (Milliseconds 1000.0)
-          --   _ <- assertHeader (Tuple "x-servedby" "172.16.169.2") =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node3edgeStart
-          --   _ <- assertBody "2" =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node2edgeCount
-          --   _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node3edgeCount
-          --   _ <- assertHeader (Tuple "x-servedby" "172.16.169.2") =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node2edgeStart
-          --   _ <- assertHeader (Tuple "x-servedby" "172.16.169.2") =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node3edgeStart
-          --   _ <- assertBody "4" =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node2edgeCount
-          --   _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node3edgeCount
-          --   _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node2edgeStop
-          --   _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node2edgeStop
-          --   _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node2edgeStop
-          --   _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node2edgeStop
-          --   _ <- delay (Milliseconds 3000.0) -- alslot1_500 edge linger time to expire...
-          --   _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node2edgeCount
-          --   _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node3edgeCount
-          --   _ <- delay (Milliseconds 1000.0)
-          --   _ <- assertHeader (Tuple "x-servedby" "172.16.169.3") =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node3edgeStart
-          --   _ <- assertBody "1" =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node3edgeCount
-          --   pure unit
-          -- it "ingest aggregation on ingest node" do
-          --   let
-          --     node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/mmddev001/slot1_500/start"
-          --     node1ingestAggregator = "http://172.16.169.1:3000/api/agents/ingestAggregator/slot1"
-          --   _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
-          --   _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestAggregator
-          --   pure unit
-          -- it "if ingest node is too loaded, then ingest aggregation starts on non-ingest node" do
-          --   let
-          --     node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/mmddev001/slot1_500/start"
-          --     node1ingestLoad = "http://172.16.169.1:3000/api/load"
-          --     node3ingestLoad = "http://172.16.169.3:3000/api/load"
-          --     node1ingestAggregator = "http://172.16.169.1:3000/api/agents/ingestAggregator/slot1"
-          --     node2ingestAggregator = "http://172.16.169.2:3000/api/agents/ingestAggregator/slot1"
-          --     node3ingestAggregator = "http://172.16.169.3:3000/api/agents/ingestAggregator/slot1"
-          --     assertAggregators :: E IngestAggregatorPublicState -> Boolean
-          --     assertAggregators (Left _) = false
-          --     assertAggregators (Right {activeStreamVariants}) = [StreamVariantId "slot1" "slot1_500"] == (sort $ _.streamVariant <$> activeStreamVariants)
-          --   _ <- delay (Milliseconds 500.0)
-          --   _ <- assertStatusCode 204 =<< AX.post ResponseFormat.string node1ingestLoad (jsonBody "{\"load\": 60.0}")
-          --   _ <- assertStatusCode 204 =<< AX.post ResponseFormat.string node3ingestLoad (jsonBody "{\"load\": 60.0}")
-          --   _ <- delay (Milliseconds 500.0)
-          --   _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
-          --   _ <- delay (Milliseconds 500.0)
-          --   _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node1ingestAggregator
-          --   _ <- assertBodyFun assertAggregators =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node2ingestAggregator
-          --   _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node3ingestAggregator
-          --   pure unit
-          -- it "2nd ingest doesn't start new aggregator since one is running" do
-          --   let
-          --     node1ingestStart1 = "http://172.16.169.1:3000/api/client/:canary/ingest/mmddev001/slot1_500/start"
-          --     node1ingestStart2 = "http://172.16.169.1:3000/api/client/:canary/ingest/mmddev001/slot1_1000/start"
-          --     node1ingestAggregator = "http://172.16.169.1:3000/api/agents/ingestAggregator/slot1"
-          --     node1ingestLoad = "http://172.16.169.1:3000/api/load"
-          --     assertAggregators :: E IngestAggregatorPublicState -> Boolean
-          --     assertAggregators (Left _) = false
-          --     assertAggregators (Right {activeStreamVariants}) = [StreamVariantId "slot1" "slot1_1000", StreamVariantId "slot1" "slot1_500"] == (sort $ _.streamVariant <$> activeStreamVariants)
-          --   _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart1
-          --   _ <- delay (Milliseconds 500.0)
-          --   _ <- assertStatusCode 204 =<< AX.post ResponseFormat.string node1ingestLoad (jsonBody "{\"load\": 60.0}")
-          --   _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart2
-          --   _ <- assertBodyFun assertAggregators =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestAggregator
-          --   _ <- delay (Milliseconds 1000.0)
-          --   pure unit
-          -- it "ingest restarts aggregator if aggregator exits" do
-          --   let
-          --     node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/mmddev001/slot1_500/start"
-          --     node1ingestLoad = "http://172.16.169.1:3000/api/load"
-          --     node3ingestLoad = "http://172.16.169.3:3000/api/load"
-          --     node1ingestAggregator = "http://172.16.169.1:3000/api/agents/ingestAggregator/slot1"
-          --     node2ingestAggregator = "http://172.16.169.2:3000/api/agents/ingestAggregator/slot1"
-          --     node3ingestAggregator = "http://172.16.169.3:3000/api/agents/ingestAggregator/slot1"
-          --     assertAggregators :: E IngestAggregatorPublicState -> Boolean
-          --     assertAggregators (Left _) = false
-          --     assertAggregators (Right {activeStreamVariants}) = [StreamVariantId "slot1" "slot1_500"] == (sort $ _.streamVariant <$> activeStreamVariants)
-          --   _ <- delay (Milliseconds 500.0)
-          --   _ <- assertStatusCode 204 =<< AX.post ResponseFormat.string node1ingestLoad (jsonBody "{\"load\": 60.0}")
-          --   _ <- assertStatusCode 204 =<< AX.post ResponseFormat.string node3ingestLoad (jsonBody "{\"load\": 50.0}")
-          --   _ <- delay (Milliseconds 500.0)
-          --   _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart
-          --   _ <- delay (Milliseconds 500.0)
-          --   _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node2ingestAggregator
-          --   _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node3ingestAggregator
-          --   _ <- stopNode "172.16.169.2"
-          --   _ <- delay (Milliseconds 2500.0)
-          --   _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node3ingestAggregator
-          --   pure unit
-          -- it "aggregator exits after last variant stops (with linger time)" do
-          --   let
-          --     node1ingestStart1 = "http://172.16.169.1:3000/api/client/:canary/ingest/mmddev001/slot1_500/start"
-          --     node1ingestStart2 = "http://172.16.169.1:3000/api/client/:canary/ingest/mmddev001/slot1_1000/start"
-          --     node1ingestStop1 = "http://172.16.169.1:3000/api/client/:canary/ingest/mmddev001/slot1_500/stop"
-          --     node1ingestStop2 = "http://172.16.169.1:3000/api/client/:canary/ingest/mmddev001/slot1_1000/stop"
-          --     node1ingestAggregator = "http://172.16.169.1:3000/api/agents/ingestAggregator/slot1"
-          --     assertBothVariants :: E IngestAggregatorPublicState -> Boolean
-          --     assertBothVariants (Left _) = false
-          --     assertBothVariants (Right {activeStreamVariants}) = [StreamVariantId "slot1" "slot1_1000", StreamVariantId "slot1" "slot1_500"] == (sort $ _.streamVariant <$> activeStreamVariants)
-          --     assertOneVariant :: E IngestAggregatorPublicState -> Boolean
-          --     assertOneVariant (Left _) = false
-          --     assertOneVariant (Right {activeStreamVariants}) = [StreamVariantId "slot1" "slot1_1000"] == (_.streamVariant <$> activeStreamVariants)
-          --     assertNoVariant :: E IngestAggregatorPublicState -> Boolean
-          --     assertNoVariant (Left _) = false
-          --     assertNoVariant (Right {activeStreamVariants}) = [] == activeStreamVariants
-          --   _ <- delay (Milliseconds 500.0)
-          --   _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart1
-          --   _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart2
-          --   _ <- delay (Milliseconds 500.0)
-          --   _ <- assertBodyFun assertBothVariants =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestAggregator
-          --   _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStop1
-          --   _ <- assertBodyFun assertOneVariant =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestAggregator
-          --   _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStop2
-          --   _ <- assertBodyFun assertNoVariant =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestAggregator
-          --   _ <- delay (Milliseconds 1500.0)
-          --   _ <- assertStatusCode 404 =<< AX.get ResponseFormat.string node1ingestAggregator
-          --   pure unit
-          -- it "aggregator lingers exits after last variant stops" do
-          --   let
-          --     node1ingestStart1 = "http://172.16.169.1:3000/api/client/:canary/ingest/mmddev001/slot1_500/start"
-          --     node2ingestStart2 = "http://172.16.169.2:3000/api/client/:canary/ingest/mmddev001/slot1_1000/start"
-          --     node1ingestStop1 = "http://172.16.169.1:3000/api/client/:canary/ingest/mmddev001/slot1_500/stop"
-          --     node2ingestStop2 = "http://172.16.169.2:3000/api/client/:canary/ingest/mmddev001/slot1_1000/stop"
-          --     node1ingestAggregator = "http://172.16.169.1:3000/api/agents/ingestAggregator/slot1"
-          --     assertOneVariant :: E IngestAggregatorPublicState -> Boolean
-          --     assertOneVariant (Left _) = false
-          --     assertOneVariant (Right {activeStreamVariants}) = [StreamVariantId "slot1" "slot1_1000"] == (_.streamVariant <$> activeStreamVariants)
-          --   _ <- delay (Milliseconds 500.0)
-          --   _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart1  -- start on node 1
-          --   _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestAggregator -- check aggregator is on node 1
-          --   _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStop1 -- stop on node 1
-          --   _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestAggregator -- check aggregator is still running
-          --   _ <- delay (Milliseconds 500.0) -- sleep for a bit (but less than linger time)
-          --   _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node2ingestStart2 -- start on node2
-          --   _ <- assertBodyFun assertOneVariant =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestAggregator -- check aggregator is still on node 1 and has the ingest from node 2
-          --   _ <- delay (Milliseconds 500.0)
-          --   pure unit
+    describe "Ingest tests"
+      let
+        p1Nodes = [p1n1, p1n2, p1n3]
+        p2Nodes = [p2n1, p2n2]
+        nodes = p1Nodes <> p2Nodes
+        allNodesBar node = delete node nodes
+        maxOut server = setLoad server 60.0 >>= assertStatusCode 204 >>= as ("set load on " <> toAddr server)
+        aggregatorNotPresent slot server = aggregatorStats server slot >>= assertStatusCode 404 >>= as ("aggregator not on " <> toAddr server)
+      in do
+      before_ (launch nodes) do
+        after_ stopSession do
+          it "ingest aggregation created on ingest node" do
+            ingest start    p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
+            waitForAsyncVariantStart                                     >>= as' "wait for async start of variant"
+            aggregatorStats p1n1 slot1          >>= assertStatusCode 200
+                                                    >>= assertAggregator [low]
+                                                                         >>= as  "aggregator has low only"
+
+          it "2nd ingest does not doesn't start new aggregator since one is running" do
+            ingest start    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as "create low ingest"
+            setLoad         p1n1 60.0            >>= assertStatusCode 204 >>= as "set load on server"
+            ingest start    p1n1 shortName1 high >>= assertStatusCode 200 >>= as "create high ingest"
+            waitForAsyncVariantStart                                      >>= as' "wait for async start of variants"
+            aggregatorStats p1n1 slot1           >>= assertStatusCode 200
+                                                     >>= assertAggregator [low, high]
+                                                                          >>= as "aggregator has 2 variants"
+
+          it "if ingest node is too loaded, then ingest aggregation starts on non-ingest node" do
+            traverse_ maxOut (allNodesBar p1n2)                           >>= as' "load up all servers bar one"
+            waitForIntraPoPDisseminate                                    >>= as' "allow load to disseminate"
+            ingest start    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as  "create low ingest"
+            waitForIntraPoPDisseminate                                    >>= as' "allow remote ingest location to disseminate"
+            ingest start    p1n1 shortName1 high >>= assertStatusCode 200 >>= as  "create high ingest"
+            waitForAsyncVariantStart                                      >>= as' "wait for async start of variant"
+            aggregatorStats p1n2 slot1           >>= assertStatusCode 200
+                                                     >>= assertAggregator [low, high]
+                                                                          >>= as  "aggregator is on p1n2"
+
           it "ingest on different node removes itself from aggregator when stopped" do
-            let
-              node1ingestStart = "http://172.16.169.1:3000/api/client/:canary/ingest/mmddev001/slot1_500/start"
-              node1ingestStop = "http://172.16.169.1:3000/api/client/:canary/ingest/mmddev001/slot1_500/stop"
-              node1ingestLoad = "http://172.16.169.1:3000/api/load"
-              node3ingestLoad = "http://172.16.169.3:3000/api/load"
-              node1ingestAggregator = "http://172.16.169.1:3000/api/agents/ingestAggregator/slot1"
-              node2ingestAggregator = "http://172.16.169.2:3000/api/agents/ingestAggregator/slot1"
-              node3ingestAggregator = "http://172.16.169.3:3000/api/agents/ingestAggregator/slot1"
-              hasOneVariant :: E IngestAggregatorPublicState -> Boolean
-              hasOneVariant (Left _) = false
-              hasOneVariant (Right {activeStreamVariants}) = [StreamVariantId "slot1" "slot1_500"] == (sort $ _.streamVariant <$> activeStreamVariants)
-              hasNoVariants :: E IngestAggregatorPublicState -> Boolean
-              hasNoVariants (Left _) = false
-              hasNoVariants (Right {activeStreamVariants}) = [] == activeStreamVariants
-            _ <- delay (Milliseconds 500.0)
-            _ <- assertStatusCode 204 =<< AX.post ResponseFormat.string node1ingestLoad (jsonBody "{\"load\": 60.0}")
-            _ <- assertStatusCode 204 =<< AX.post ResponseFormat.string node3ingestLoad (jsonBody "{\"load\": 50.0}")
-            _ <- delay (Milliseconds 500.0)
-            _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStart -- Aggregator will start on 2
-            _ <- delay (Milliseconds 500.0)
-            _ <- assertBodyFun hasOneVariant =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node2ingestAggregator
-            _ <- assertStatusCode 200 =<< AX.get ResponseFormat.string node1ingestStop
-            _ <- delay (Milliseconds 500.0)
-            _ <- assertBodyFun hasNoVariants =<< assertStatusCode 200 =<< AX.get ResponseFormat.string node2ingestAggregator
-            pure unit
+            traverse_ maxOut (allNodesBar p1n2)                          >>= as' "load up all servers bar one"
+            waitForIntraPoPDisseminate                                   >>= as' "allow load to disseminate"
+            ingest start    p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create low ingest"
+            waitForAsyncVariantStart                                     >>= as' "wait for async start of variant"
+            aggregatorStats p1n2 slot1          >>= assertStatusCode 200
+                                                    >>= assertAggregator [low]
+                                                                         >>= as  "aggregator created on idle server"
+            (traverse_ (aggregatorNotPresent slot1) (allNodesBar p1n2))  >>= as' "aggregator not on busy servers"
+
+            ingest stop     p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "stop low ingest"
+            waitForAsyncVariantStop                                      >>= as' "wait for async stop of variant"
+            aggregatorStats p1n2 slot1          >>= assertStatusCode 200
+                                                    >>= assertAggregator []
+                                                                         >>= as  "aggregator has no variants"
+
+          it "ingest restarts aggregator if aggregator exits" do
+            traverse_ maxOut (allNodesBar p1n2)                           >>= as' "load up all servers bar one"
+            waitForIntraPoPDisseminate                                    >>= as' "allow load to disseminate"
+            ingest start    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as  "create low ingest"
+            waitForAsyncVariantStart                                      >>= as' "wait for async start of variant"
+            aggregatorStats p1n2 slot1           >>= assertStatusCode 200
+                                                     >>= assertAggregator [low]
+                                                                          >>= as  "aggregator created on idle server"
+            traverse_ (aggregatorNotPresent slot1) (allNodesBar p1n2)     >>= as' "aggregator not on busy servers"
+            setLoad         p1n3 0.0             >>= assertStatusCode 204 >>= as  "mark p1n3 as idle"
+            stopNode (toAddr p1n2)                                        >>= as' "make p1n2 fail"
+            waitForNodeFailureDisseminate                                 >>= as' "allow failure to disseminate"
+            aggregatorStats p1n3 slot1           >>= assertStatusCode 200
+                                                     >>= assertAggregator [low]
+                                                                          >>= as  "failed aggregator moved to new idle server"
+
+          it "aggregator exits after last variant stops (with linger time)" do
+            ingest start    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as  "create low ingest"
+            ingest start    p1n1 shortName1 high >>= assertStatusCode 200 >>= as  "create high ingest"
+            waitForAsyncVariantStart
+            aggregatorStats p1n1 slot1           >>= assertStatusCode 200
+                                                     >>= assertAggregator [low, high]
+                                                                          >>= as  "aggregator has both variants"
+
+            ingest stop     p1n1 shortName1 low  >>= assertStatusCode 200 >>= as  "stop low ingest"
+            aggregatorStats p1n1 slot1           >>= assertStatusCode 200
+                                                     >>= assertAggregator [high]
+                                                                          >>= as  "aggregator only has high"
+            ingest stop     p1n1 shortName1 high >>= assertStatusCode 200 >>= as  "stop high ingest"
+            aggregatorStats p1n1 slot1           >>= assertStatusCode 200
+                                                     >>= assertAggregator []
+                                                                          >>= as  "aggregator has no variants"
+            waitForMoreThanLinger                                         >>= as' "wait for linger time"
+            aggregatorStats p1n1 slot1           >>= assertStatusCode 404 >>= as  "aggregator stops after linger"
+
+          it "aggregator does not exit during linger time" do
+            ingest start    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as  "create low ingest"
+            waitForAsyncVariantStart
+            aggregatorStats p1n1 slot1           >>= assertStatusCode 200
+                                                     >>= assertAggregator [low]
+                                                                          >>= as  "aggregator created"
+            ingest stop     p1n1 shortName1 low >>= assertStatusCode 200  >>= as  "stop low ingest"
+            aggregatorStats p1n1 slot1          >>= assertStatusCode 200
+                                                    >>= assertAggregator []
+                                                                          >>= as  "aggregator has no variants"
+            waitForLessThanLinger                                         >>= as' "wait for less than the linger time"
+            ingest start    p1n2 shortName1 high >>= assertStatusCode 200 >>= as  "create high ingest on another node"
+            waitForAsyncVariantStart                                      >>= as' "wait for async start of variant"
+            aggregatorStats p1n1 slot1           >>= assertStatusCode 200
+                                                     >>= assertAggregator [high]
+                                                                          >>= as  "lingered aggregator has high variant"
+
+    describe "Ingest egest tests" do
+      describe "one pop setup"
+        let
+          p1Nodes = [p1n1, p1n2, p1n3]
+          p2Nodes = [p2n1, p2n2]
+          nodes = p1Nodes <> p2Nodes
+          allNodesBar node = delete node nodes
+        in do
+        before_ (launch nodes) do
+          after_ stopSession do
+            it "client requests stream on ingest node" do
+              client start p1n1 slot1          >>= assertStatusCode 404 >>= as  "no egest prior to ingest"
+              relayStats   p1n1 slot1          >>= assertStatusCode 404 >>= as  "no relay prior to ingest"
+              ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
+              waitForAsyncVariantStart                                  >>= as' "wait for async start of variant"
+              client start p1n1 slot1          >>= assertStatusCode 204 >>= as  "egest available"
+              relayStats   p1n1 slot1          >>= assertStatusCode 200
+                                                   >>= assertRelayForEgest [p1n1]
+                                                                        >>= as  "local relay exists"
+              egestStats   p1n1 slot1          >>= assertStatusCode 200
+                                                   >>= assertEgestClients 1
+                                                                        >>= as "agent should have 1 client"
+
+            it "client requests stream on non-ingest node" do
+              client start p1n2 slot1          >>= assertStatusCode 404 >>= as  "no egest prior to ingest"
+              relayStats   p1n2 slot1          >>= assertStatusCode 404 >>= as  "no remote relay prior to ingest"
+              ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
+              waitForIntraPoPDisseminate                                >>= as' "allow intraPoP source avaialable to disseminate"
+              client start p1n2 slot1          >>= assertStatusCode 204 >>= as  "egest available"
+              relayStats   p1n2 slot1          >>= assertStatusCode 200 >>= as  "remote relay exists"
+              egestStats   p1n2 slot1          >>= assertStatusCode 200
+                                                   >>= assertEgestClients 1
+                                                                        >>= as "agent should have 1 client"
+
+            it "client requests stream on 2nd node on ingest pop" do
+              client start p1n2 slot1          >>= assertStatusCode 404 >>= as "no egest p1n2 prior to ingest"
+              client start p1n3 slot1          >>= assertStatusCode 404 >>= as "no egest p1n3 prior to ingest"
+              ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as "create ingest"
+              waitForIntraPoPDisseminate                                >>= as' "allow intraPoP source avaialable to disseminate"
+              client start p1n2 slot1          >>= assertStatusCode 204
+                                                   >>= assertHeader (Tuple "x-servedby" "172.16.169.2")
+                                                                        >>= as "first egest is same node"
+              waitForIntraPoPDisseminate                                >>= as' "allow intraPoP egest avaialable to disseminate"
+              client start p1n3 slot1          >>= assertStatusCode 204
+                                                   >>= assertHeader (Tuple "x-servedby" "172.16.169.2")
+                                                                        >>= as "p1n3 egest redirects to p1n2"
+              egestStats   p1n2 slot1          >>= assertStatusCode 200
+                                                   >>= assertEgestClients 2
+                                                                        >>= as "agent should have 2 clients"
+              egestStats   p1n3 slot1          >>= assertStatusCode 404 >>= as "no egest on node3"
+              client start p1n2 slot1          >>= assertStatusCode 204
+                                                   >>= assertHeader (Tuple "x-servedby" "172.16.169.2")
+                                                                        >>= as "p1n2 stays on node2"
+              client start p1n3 slot1          >>= assertStatusCode 204
+                                                   >>= assertHeader (Tuple "x-servedby" "172.16.169.2")
+                                                                        >>= as "p1n3 egest still redirects to p1n2"
+              egestStats   p1n2 slot1          >>= assertStatusCode 200
+                                                   >>= assertEgestClients 4
+                                                                        >>= as "agent now has 4 clients"
+              egestStats   p1n3 slot1          >>= assertStatusCode 404 >>= as "still no egest on node3"
+              client stop  p1n2 slot1          >>= assertStatusCode 204 >>= as "stop client 1 on node2"
+              client stop  p1n2 slot1          >>= assertStatusCode 204 >>= as "stop client 2 on node2"
+              client stop  p1n2 slot1          >>= assertStatusCode 204 >>= as "stop client 3 on node2"
+              client stop  p1n2 slot1          >>= assertStatusCode 204 >>= as "stop client 4 on node2"
+
+              waitForMoreThanEgestLinger                                >>= as' "allow the egest linger timer to expire"
+              egestStats   p1n2 slot1          >>= assertStatusCode 404 >>= as "now no egest on node2"
+              egestStats   p1n3 slot1          >>= assertStatusCode 404 >>= as "still no egest on node3"
+              client start p1n3 slot1          >>= assertStatusCode 204
+                                                   >>= assertHeader (Tuple "x-servedby" "172.16.169.3")
+                                                                        >>= as "Final egest starts on node3"
+              egestStats   p1n3 slot1          >>= assertStatusCode 200
+                                                   >>= assertEgestClients 1
+                                                                        >>= as "node 3 agent should have 1 client"
+
+      describe "two pop setup" do
+        let
+          p1Nodes = [p1n1, p1n2, p1n3]
+          p2Nodes = [p2n1, p2n2]
+          nodes = p1Nodes <> p2Nodes
+        before_ (launch nodes) do
+          after_ stopSession do
+            it "client requests stream on other pop" do
+              client start p2n1 slot1          >>= assertStatusCode 404 >>= as  "no egest prior to ingest"
+              relayStats   p1n1 slot1          >>= assertStatusCode 404 >>= as  "no remote relay prior to ingest"
+              relayStats   p2n1 slot1          >>= assertStatusCode 404 >>= as  "no local relay prior to ingest"
+              ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
+              waitForTransPoPDisseminate                                >>= as' "wait for transPop disseminate"
+              client start p2n1 slot1          >>= assertStatusCode 204 >>= as  "egest available"
+              relayStats   p2n1 slot1          >>= assertStatusCode 200 >>= as  "local relay exists"
+              -- TODO relayStatus p1n1 slot1   >>= assertStatusCode 200 >>= as "remote relay exists"
+
+            it "client ingest starts and stops" do
+              client start p1n2 slot1          >>= assertStatusCode 404 >>= as  "no local egest prior to ingest"
+              client start p2n1 slot1          >>= assertStatusCode 404 >>= as  "no remote egest prior to ingest"
+              ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
+              waitForTransPoPDisseminate                                >>= as' "wait for transPop disseminate"
+              client start p1n2 slot1          >>= assertStatusCode 204 >>= as  "local egest post ingest"
+              client start p2n1 slot1          >>= assertStatusCode 204 >>= as  "remote egest post ingest"
+              ingest stop  p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "stop the ingest"
+              waitForTransPoPStopDisseminate                            >>= as' "wait for transPop disseminate"
+              client start p1n2 slot1          >>= assertStatusCode 404 >>= as  "no same pop egest post stop"
+              client start p2n1 slot1          >>= assertStatusCode 404 >>= as  "no remote pop egest post stop"
+
+    describe "Cleanup" do
+      after_ stopSession do
+        it "final cleanup" do
+          pure unit
+
 
   where
     testConfig = { slow: Milliseconds 5000.0, timeout: Just (Milliseconds 25000.0), exit: false }
 
-assertStatusCode :: forall a. Int -> Either Error (Response a) -> Aff (Response a)
+assertStatusCode :: Int -> Either String M.Response -> Aff (Either String M.Response)
 assertStatusCode expectedCode either =
-  case spy "either" either of
-    Right response@{status : StatusCode resultCode} | resultCode == expectedCode ->
-      pure response
-    Right response@{status : StatusCode resultCode} ->
-      throwError $ error $ "Unexpected statuscode " <> show response.status <> ", expected " <> show expectedCode
-    Left err ->
-      throwError $ error $ "GET /api response failed to decode: " <> AX.printError err
+  pure $ either >>= (\response ->
+                      let statusCode = M.statusCode response
+                      in
+                      if statusCode == expectedCode
+                      then either
+                      else Left $  "Unexpected statuscode: Expected " <> show expectedCode <> ", got " <> show statusCode
+                    )
 
-assertHeader :: forall a. Tuple String String -> Response a -> Aff (Response a)
-assertHeader (Tuple header value) response@{headers} =
-  case elem (ResponseHeader header value) headers of
-    true -> pure response
-    false -> throwError $ error $ "Header " <> header <> ":" <> value <> " not present in response " <> (show headers)
+assertHeader :: Tuple String String -> Either String M.Response -> Aff (Either String M.Response)
+assertHeader (Tuple header value) either =
+  pure $ either >>= (\response ->
+                      let headers = M.headers response
+                          mEqual = Object.lookup header headers
+                                   >>= (\hdrVal -> if hdrVal == value then Just true
+                                                   else Nothing
+                                       )
 
-assertBodyFun :: forall a. ReadForeign a => (E a -> Boolean) -> Response String -> Aff (Response String)
-assertBodyFun expectedBodyFun response@{body} =
-  let
-    parsed = SimpleJSON.readJSON body
-  in
-   if expectedBodyFun parsed then pure response
-   else throwError $ error $ "Body " <> body <> " did not match expected"
+                      in
+                       if isNothing mEqual
+                       then Left $ "Header " <> header <> ":" <> value <> " not present in response " <> show headers
+                       else either
+                    )
 
-assertBody :: String -> Response String -> Aff (Response String)
-assertBody expectedBody response@{body} =
-  if expectedBody == body then pure response
-  else throwError $ error $ "Body " <> body <> " did not match expected " <> expectedBody
+assertBodyText :: String -> Either String M.Response -> Aff (Either String M.Response)
+assertBodyText expected either =
+  case either of
+    Left e -> pure $ Left e
+    Right response -> do
+      text <- M.text response
+      if text == expected
+        then pure either
+        else pure $ Left $ "Body " <> text <> " did not match expected " <> expected
 
-jsonBody :: String -> Maybe RequestBody
-jsonBody string =
-  RequestBody.json <$> hush (Json.jsonParser string)
+
+assertBodyFun ::  forall a. ReadForeign a => (a -> Boolean) -> Either String M.Response -> Aff (Either String M.Response)
+assertBodyFun pred either =
+  case either of
+    Left e -> pure $ Left e
+    Right response -> do
+      body <- M.text response
+      let
+        parsed = SimpleJSON.readJSON body
+      case parsed of
+        Right a ->
+          if pred a
+          then pure either
+          else
+            pure $ Left $ "Predicated failed for body " <> body
+        Left _ ->
+          pure $ Left $ "Could not parse json " <> body
 
 sessionName:: String
 sessionName = "testSession"
@@ -346,7 +445,15 @@ launchNodes sysconfigs = do
 
 stopSession :: Aff Unit
 stopSession = do
+  _ <- delay (Milliseconds 200.0)
   runProc "./scripts/stopSession.sh" [sessionName]
+
+
+throwSlowError :: forall e. String -> Aff e
+throwSlowError e =
+  do
+    _ <- delay (Milliseconds 200.0)
+    throwError $ Exception.error e
 
 stopNode :: String -> Aff Unit
 stopNode nodeAddr = do
@@ -354,4 +461,3 @@ stopNode nodeAddr = do
                                   , nodeAddr
                                   , nodeAddr
                                   ]
-

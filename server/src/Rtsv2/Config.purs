@@ -1,12 +1,11 @@
 module Rtsv2.Config
-  ( ServerLocation(..)
-  , GlobalConfig
+  ( GlobalConfig
   , IngestAggregatorAgentConfig
   , WebConfig
   , PoPDefinitionConfig
   , IntraPoPAgentConfig
   , TransPoPAgentConfig
-  , EdgeAgentConfig
+  , EgestAgentConfig
   , IntraPoPAgentApi
   , TransPoPAgentApi
   , LlnwApiConfig
@@ -19,7 +18,7 @@ module Rtsv2.Config
   , intraPoPAgentConfig
   , transPoPAgentConfig
   , ingestAggregatorAgentConfig
-  , edgeAgentConfig
+  , egestAgentConfig
   , rtmpIngestConfig
   , llnwApiConfig
   , loadMonitorConfig
@@ -30,29 +29,23 @@ import Prelude
 
 import Control.Monad.Except (ExceptT, runExcept)
 import Data.Either (Either(..), hush)
-import Data.Generic.Rep (class Generic)
-import Data.Generic.Rep.Eq (genericEq)
 import Data.Identity (Identity)
 import Data.Maybe (Maybe, fromMaybe, fromMaybe')
 import Data.Traversable (traverse)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
-import Erl.Data.List (List)
+import Erl.Data.List (List, singleton)
 import Foreign (F, Foreign, readString, unsafeReadTagged)
+import Logger (Logger)
 import Logger as Logger
 import Partial.Unsafe (unsafeCrashWith)
 import Rtsv2.Node as Node
 import Shared.Agent (Agent, strToAgent)
 import Shared.Stream (StreamId)
-import Shared.Types (RegionName, ServerAddress, PoPName)
+import Shared.Types (Server)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (class ReadForeign, readImpl)
 
-data ServerLocation = ServerLocation PoPName RegionName
-
-derive instance genericServerLocation :: Generic ServerLocation _
-instance eqServerLocation :: Eq ServerLocation where
-  eq = genericEq
 
 -- TODO - config should include BindIFace or BindIp
 type WebConfig = { port :: Int }
@@ -71,9 +64,10 @@ type IngestAggregatorAgentConfig
   = { streamAvailableAnnounceMs :: Int
     , shutdownLingerTimeMs :: Int}
 
-type EdgeAgentConfig
-  = { edgeAvailableAnnounceMs :: Int
+type EgestAgentConfig
+  = { egestAvailableAnnounceMs :: Int
     , lingerTimeMs :: Int
+    , relayCreationRetryMs :: Int
     }
 
 type IntraPoPAgentConfig
@@ -96,15 +90,15 @@ type TransPoPAgentConfig
     }
 
 type IntraPoPAgentApi
-  = { announceRemoteStreamIsAvailable :: StreamId -> ServerAddress -> Effect Unit
-    , announceRemoteStreamStopped :: StreamId -> ServerAddress -> Effect Unit
+  = { announceRemoteStreamIsAvailable :: StreamId -> Server -> Effect Unit
+    , announceRemoteStreamStopped :: StreamId -> Server -> Effect Unit
     , announceTransPoPLeader :: Effect Unit
     }
 
 type TransPoPAgentApi
-  = { announceStreamIsAvailable :: StreamId -> ServerAddress -> Effect Unit
-    , announceStreamStopped :: StreamId -> ServerAddress -> Effect Unit
-    , handleRemoteLeaderAnnouncement :: ServerAddress -> Effect Unit
+  = { announceStreamIsAvailable :: StreamId -> Server -> Effect Unit
+    , announceStreamStopped :: StreamId -> Server -> Effect Unit
+    , handleRemoteLeaderAnnouncement :: Server -> Effect Unit
     }
 
 type RtmpIngestConfig
@@ -164,9 +158,9 @@ ingestAggregatorAgentConfig :: Effect IngestAggregatorAgentConfig
 ingestAggregatorAgentConfig = do
   getMandatoryRecord "ingestAggregatorConfig"
 
-edgeAgentConfig :: Effect EdgeAgentConfig
-edgeAgentConfig = do
-  getMandatoryRecord "edgeConfig"
+egestAgentConfig :: Effect EgestAgentConfig
+egestAgentConfig = do
+  getMandatoryRecord "egestConfig"
 
 rtmpIngestConfig :: Effect RtmpIngestConfig
 rtmpIngestConfig = do
@@ -204,3 +198,22 @@ getMandatoryRecord v = do
         unsafeCrashWith ("invalid_config " <> v)
     Right ok ->
       pure $ ok
+
+
+--------------------------------------------------------------------------------
+-- Log helpers
+--------------------------------------------------------------------------------
+domains :: List Atom
+domains = atom "Config" # singleton
+
+--logInfo :: forall a. Logger a
+--logInfo = domainLog Logger.info
+
+--logWarning :: forall a. Logger a
+--logWarning = domainLog Logger.warning
+
+logError :: forall a. Logger a
+logError = domainLog Logger.warning
+
+domainLog :: forall a. Logger {domain :: List Atom, misc :: a} -> Logger a
+domainLog = Logger.doLog domains

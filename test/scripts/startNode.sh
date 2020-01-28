@@ -3,6 +3,10 @@
 cd ${0%/*}
 cd ../..
 
+# set -x
+# exec >>/tmp/start.txt
+# exec 2>&1
+
 # shellcheck source=../../scripts/shared_functions.sh
 source ./scripts/shared_functions.sh
 

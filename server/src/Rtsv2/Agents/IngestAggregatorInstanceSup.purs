@@ -9,17 +9,17 @@ import Prelude
 
 import Effect (Effect)
 import Erl.Data.List (nil, (:))
-import Pinto (SupervisorName)
+import Pinto (StartChildResult, SupervisorName, isRegistered)
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStartTemplate, childType)
 import Pinto.Sup as Sup
 import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
 import Rtsv2.Names as Names
 import Shared.LlnwApiTypes (StreamDetails)
-import Shared.Stream (StreamId)
+
 
 isAvailable :: Effect Boolean
-isAvailable = Names.isRegistered serverName
+isAvailable = isRegistered serverName
 
 serverName :: SupervisorName
 serverName = Names.ingestAggregatorInstanceSupName
@@ -27,12 +27,9 @@ serverName = Names.ingestAggregatorInstanceSupName
 startLink :: forall a. a -> Effect Pinto.StartLinkResult
 startLink _ = Sup.startLink serverName init
 
-startAggregator :: StreamDetails -> Effect Unit
-startAggregator streamDetails = do
-  result <- Sup.startSimpleChild childTemplate serverName streamDetails
-  case result of
-       Pinto.AlreadyStarted pid -> pure unit
-       Pinto.Started pid -> pure unit
+startAggregator :: StreamDetails -> Effect StartChildResult
+startAggregator streamDetails =
+  Sup.startSimpleChild childTemplate serverName streamDetails
 
 init :: Effect Sup.SupervisorSpec
 init = do

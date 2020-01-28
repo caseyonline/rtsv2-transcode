@@ -12,7 +12,7 @@ let
     builtins.fetchGit {
       name = "id3as-packages";
       url = "git@github.com:id3as/nixpkgs-private.git";
-      rev = "fea4d6f8a24103dd0fc42a36e8ff23f07b59e9a5";
+      rev = "086e2efca8bfd1699e7aeeda9a220b82f10fa866";
     };
 
   nixpkgs =
@@ -34,6 +34,9 @@ mkShell {
     # Use GNU coreutils - so that if we're building on OSX, we get sensible versions
     # of things like readlink
     coreutils
+
+    # Bash on macOS is ancient
+    bash
 
     nixerl.erlang-22-1-8.erlang
     nixerl.erlang-22-1-8.rebar3
@@ -60,5 +63,6 @@ mkShell {
     # Needed by something purescript-y - hopefully A/S can pinpoint what...
     jq
     serfdom
+    iproute
   ];
 }

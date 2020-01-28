@@ -8,80 +8,79 @@ import Prelude
 
 import Bus as Bus
 import Data.Either (Either(..))
-import Data.Maybe (Maybe(..), fromMaybe, fromMaybe')
+import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (unwrap, wrap)
 import Data.Traversable (sequence)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
-import Erl.Atom (atom)
-import Erl.Data.List (nil, (:))
+import Erl.Atom (Atom, atom)
+import Erl.Data.List (List, nil, (:))
 import Erl.Utils (Milliseconds)
-import Foreign (Foreign)
-import Logger (spy)
+import Logger (Logger, spy)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
+import Pinto as Pinto
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
-import Record as Record
 import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
 import Rtsv2.Agents.IngestAggregatorInstanceSup as IngestAggregatorInstanceSup
 import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..))
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Audit as Audit
-import Rtsv2.Config (PoPDefinitionConfig)
 import Rtsv2.Config as Config
 import Rtsv2.Load as Load
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
+import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
+import Rtsv2.Router.Endpoint as RoutingEndpoint
+import Rtsv2.Router.Parser as Routing
 import Shared.Agent as Agent
 import Shared.LlnwApiTypes (StreamDetails)
-import Shared.Stream (StreamId(..), StreamVariantId(..), toStreamId)
-import Shared.Types (ServerAddress(..))
-import Simple.JSON as JSON
+import Shared.Stream (StreamAndVariant, StreamId, toStreamId, toVariant)
+import Shared.Types (Load, Server, ServerLoad(..), extractAddress, serverLoadToServer)
+import SpudGun (Url)
 import SpudGun as SpudGun
 
-serverName :: StreamVariantId -> ServerName State Msg
-serverName streamVariantId = Names.ingestInstanceName streamVariantId
+serverName :: StreamAndVariant -> ServerName State Msg
+serverName streamAndVariant = Names.ingestInstanceName streamAndVariant
 
 data Msg
    = InformAggregator
    | IntraPoPBus IntraPoP.IntraPoPBusMessage
 
 type State
-  = { thisNode :: ServerAddress
+  = { thisServer :: Server
     , aggregatorRetryTime :: Milliseconds
-    , streamId :: StreamId
-    , streamVariantId :: StreamVariantId
+    , streamAndVariant :: StreamAndVariant
     , streamDetails :: StreamDetails
-    , aggregatorAddr :: Maybe ServerAddress
+    , aggregatorAddr :: Maybe Server
     }
 
-startLink :: Tuple StreamDetails StreamVariantId -> Effect StartLinkResult
-startLink (Tuple streamDetails streamVariantId) = Gen.startLink (serverName streamVariantId) (init streamDetails streamVariantId) handleInfo
+startLink :: Tuple StreamDetails StreamAndVariant -> Effect StartLinkResult
+startLink (Tuple streamDetails streamAndVariant) = Gen.startLink (serverName streamAndVariant) (init streamDetails streamAndVariant) handleInfo
 
-isActive :: StreamVariantId -> Effect Boolean
-isActive streamVariantId = Names.isRegistered (serverName streamVariantId)
+isActive :: StreamAndVariant -> Effect Boolean
+isActive streamAndVariant = Pinto.isRegistered (serverName streamAndVariant)
 
-stopIngest :: StreamVariantId -> Effect Unit
-stopIngest streamVariantId =
-  Gen.doCall (serverName streamVariantId) \state@{thisNode, aggregatorAddr} -> do
-    _ <- removeVariant thisNode streamVariantId aggregatorAddr
-    _ <- Audit.ingestStop streamVariantId
+stopIngest :: StreamAndVariant -> Effect Unit
+stopIngest streamAndVariant =
+  Gen.doCall (serverName streamAndVariant) \state@{thisServer, aggregatorAddr} -> do
+    _ <- removeVariant thisServer streamAndVariant aggregatorAddr
+    _ <- Audit.ingestStop streamAndVariant
     pure $ CallStop unit state
 
-init :: StreamDetails -> StreamVariantId -> Effect State
-init streamDetails streamVariantId = do
-  _ <- logInfo "Ingest starting" {streamVariantId: streamVariantId}
-  thisNode <- PoPDefinition.thisNode
+init :: StreamDetails -> StreamAndVariant -> Effect State
+init streamDetails streamAndVariant = do
+  _ <- logInfo "Ingest starting" {streamAndVariant: streamAndVariant}
+  thisServer <- PoPDefinition.getThisServer
   {intraPoPLatencyMs} <- Config.globalConfig
-  _ <- Bus.subscribe (serverName streamVariantId) IntraPoP.bus IntraPoPBus
-  _ <- Audit.ingestStart streamVariantId
-  _ <- Timer.sendAfter (serverName streamVariantId) 0 InformAggregator
-  pure { thisNode
+  _ <- Bus.subscribe (serverName streamAndVariant) IntraPoP.bus IntraPoPBus
+  _ <- Audit.ingestStart streamAndVariant
+  _ <- Timer.sendAfter (serverName streamAndVariant) 0 InformAggregator
+  pure { thisServer
        , streamDetails
-       , streamVariantId
-       , streamId: toStreamId streamVariantId
+       , streamAndVariant
        , aggregatorRetryTime: wrap intraPoPLatencyMs
        , aggregatorAddr: Nothing
        }
@@ -92,94 +91,120 @@ handleInfo msg state = case msg of
     state2 <- informAggregator state
     pure $ CastNoReply state2
   IntraPoPBus (IngestAggregatorExited streamId serverAddress) -> do
-    _ <- logInfo "exit" {streamId, serverAddress, thisStreamId: state.streamId}
+    _ <- logInfo "exit" {streamId, serverAddress, thisStreamId: state.streamAndVariant}
     state2 <- handleAggregatorExit streamId serverAddress state
     pure $ CastNoReply state2
 
 informAggregator :: State -> Effect State
-informAggregator state@{streamDetails, streamVariantId, thisNode, aggregatorRetryTime} = do
-  maybeAggregator <- getAggregator streamDetails streamVariantId
-  maybeVariantAdded <- sequence ((addVariant thisNode streamVariantId) <$> maybeAggregator)
+informAggregator state@{streamDetails, streamAndVariant, thisServer, aggregatorRetryTime} = do
+  maybeAggregator <- getAggregator streamDetails streamAndVariant
+  maybeVariantAdded <- sequence ((addVariant thisServer streamAndVariant) <$> maybeAggregator)
   case fromMaybe false maybeVariantAdded of
     true -> pure state{aggregatorAddr = maybeAggregator}
     false -> do
-      _ <- Timer.sendAfter (serverName streamVariantId) (unwrap aggregatorRetryTime) InformAggregator
+      _ <- Timer.sendAfter (serverName streamAndVariant) (unwrap aggregatorRetryTime) InformAggregator
       pure state
 
-handleAggregatorExit :: StreamId -> ServerAddress -> State -> Effect State
-handleAggregatorExit exitedStreamId exitedAggregatorAddr state@{streamId, streamVariantId, aggregatorRetryTime, aggregatorAddr}
-  | exitedStreamId == streamId && Just exitedAggregatorAddr == aggregatorAddr = do
-      _ <- Timer.sendAfter (serverName streamVariantId) 0 InformAggregator
+handleAggregatorExit :: StreamId -> Server -> State -> Effect State
+handleAggregatorExit exitedStreamId exitedAggregatorAddr state@{streamAndVariant, aggregatorRetryTime, aggregatorAddr}
+  | exitedStreamId == (toStreamId streamAndVariant) && Just exitedAggregatorAddr == aggregatorAddr = do
+      _ <- Timer.sendAfter (serverName streamAndVariant) 0 InformAggregator
       pure state
   | otherwise =
       pure state
 
-addVariant :: ServerAddress -> StreamVariantId -> ServerAddress -> Effect Boolean
-addVariant thisNode streamVariantId aggregatorAddress
-  | aggregatorAddress == thisNode = do
-    _ <- IngestAggregatorInstance.addVariant streamVariantId
+addVariant :: Server -> StreamAndVariant -> Server -> Effect Boolean
+addVariant thisServer streamAndVariant aggregatorAddress
+  | aggregatorAddress == thisServer = do
+    _ <- IngestAggregatorInstance.addVariant streamAndVariant
     pure true
   | otherwise = do
     let
-      -- TODO - functions to make URLs from ServerAddress
-      ServerAddress addr = aggregatorAddress
-      StreamVariantId streamId variantId = streamVariantId
-      url = "http://" <> addr <> ":3000/api/agents/ingestAggregator/" <> streamId <> "/activeIngests/" <> variantId
-    restResult <- SpudGun.post url (JSON.writeJSON thisNode)
+      -- TODO - functions to make URLs from Server
+      url = makeActiveIngestUrl aggregatorAddress streamAndVariant
+    restResult <- SpudGun.postJson url $ extractAddress thisServer
     case restResult of
       Left _ -> pure $ false
       Right _ -> pure $ true
 
-removeVariant :: ServerAddress -> StreamVariantId -> Maybe ServerAddress -> Effect Unit
-removeVariant thisNode streamVariantId Nothing = pure unit
-removeVariant thisNode streamVariantId (Just aggregatorAddress)
-  | aggregatorAddress == thisNode = do
-    _ <- IngestAggregatorInstance.removeVariant streamVariantId
+
+makeActiveIngestUrl :: Server -> StreamAndVariant -> Url
+makeActiveIngestUrl server streamAndVariant =
+  makeUrl server $ IngestAggregatorActiveIngestsE (toStreamId streamAndVariant) (toVariant streamAndVariant)
+
+
+removeVariant :: Server -> StreamAndVariant -> Maybe Server-> Effect Unit
+removeVariant thisServer streamAndVariant Nothing = pure unit
+removeVariant thisServer streamAndVariant (Just aggregatorAddress)
+  | aggregatorAddress == thisServer = do
+    _ <- IngestAggregatorInstance.removeVariant streamAndVariant
     pure unit
   | otherwise = do
     let
-      -- TODO - functions to make URLs from ServerAddress
-      ServerAddress addr = aggregatorAddress
-      StreamVariantId streamId variantId = streamVariantId
-      url = "http://" <> addr <> ":3000/api/agents/ingestAggregator/" <> streamId <> "/activeIngests/" <> variantId
-    restResult <- SpudGun.delete url
+      url = makeActiveIngestUrl aggregatorAddress streamAndVariant
+      -- TODO - functions to make URLs from Server
+    restResult <- SpudGun.delete url {}
     case (spy "result" restResult) of
       Left _ -> pure $ unit
       Right _ -> pure $ unit
 
-getAggregator :: StreamDetails -> StreamVariantId -> Effect (Maybe ServerAddress)
-getAggregator streamDetails streamVariantId = do
-  maybeAggregator <- IntraPoP.whereIsIngestAggregator streamVariantId
+getAggregator :: StreamDetails -> StreamAndVariant -> Effect (Maybe Server)
+getAggregator streamDetails streamAndVariant = do
+  maybeAggregator <- IntraPoP.whereIsIngestAggregator (toStreamId streamAndVariant)
   case maybeAggregator of
-    Just aggregator ->
-      pure maybeAggregator
+    Just server ->
+      pure $ Just server
     Nothing ->
-      launchLocalOrRemote streamDetails streamVariantId
+      launchLocalOrRemote streamDetails streamAndVariant
 
-launchLocalOrRemote :: StreamDetails -> StreamVariantId -> Effect (Maybe ServerAddress)
-launchLocalOrRemote streamDetails streamVariantId = do
+launchLocalOrRemote :: StreamDetails -> StreamAndVariant -> Effect (Maybe Server)
+launchLocalOrRemote streamDetails streamAndVariant = do
   currentLoad <- Load.load
   if
-    currentLoad < (wrap 50.0) then do
+    currentLoad < loadThresholdToCreateAggregator then do
       _ <- IngestAggregatorInstanceSup.startAggregator streamDetails
-      Just <$> PoPDefinition.thisNode
+      Just <$> PoPDefinition.getThisServer
     else
-      launchRemote streamDetails streamVariantId
+      launchRemote streamDetails streamAndVariant
 
-launchRemote :: StreamDetails -> StreamVariantId -> Effect (Maybe ServerAddress)
-launchRemote streamDetails streamVariantId = do
-  candidate <- IntraPoP.getIdleServer
+-- todo - maybe move to intrapop so we know if a second aggregator requests comes in quickly
+-- it could serialise requests on a per stream / asset basis
+launchRemote :: StreamDetails -> StreamAndVariant -> Effect (Maybe Server)
+launchRemote streamDetails streamAndVariant = do
+  candidate <- IntraPoP.getIdleServer filterForAggregatorLoad
   case candidate of
     Nothing ->
       pure Nothing
-    Just (ServerAddress addr) -> do
+    Just server -> do
       let
-        -- TODO - functions to make URLs from ServerAddress
-        url = "http://" <> addr <> ":3000/api/agents/ingestAggregator"
-      restResult <- SpudGun.post url (JSON.writeJSON streamDetails)
-      case restResult of
+        url = makeUrl server IngestAggregatorsE
+      restResult <- SpudGun.postJson url streamDetails
+      case spy "restResult" restResult of
         Left _ -> pure Nothing
-        Right _ -> pure candidate
+        Right _ -> pure $ serverLoadToServer <$> candidate
 
-logInfo :: forall a. String -> a -> Effect Foreign
-logInfo msg metaData = Logger.info msg (Record.merge { domain: ((atom (show Agent.Ingest)) : nil) } { misc: metaData })
+loadThresholdToCreateAggregator :: Load
+loadThresholdToCreateAggregator = wrap 50.0
+
+filterForAggregatorLoad :: ServerLoad -> Boolean
+filterForAggregatorLoad (ServerLoad sl) = sl.load < loadThresholdToCreateAggregator
+
+toHost :: ServerLoad -> String
+toHost =
+  unwrap <<< extractAddress
+
+
+--------------------------------------------------------------------------------
+-- Log helpers
+--------------------------------------------------------------------------------
+domains :: List Atom
+domains = atom <$> (show Agent.Ingest :  "Instance" : nil)
+
+logInfo :: forall a. Logger a
+logInfo = domainLog Logger.info
+
+--logWarning :: forall a. Logger a
+--logWarning = domainLog Logger.warning
+
+domainLog :: forall a. Logger {domain :: List Atom, misc :: a} -> Logger a
+domainLog = Logger.doLog domains

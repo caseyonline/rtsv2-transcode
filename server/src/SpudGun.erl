@@ -1,57 +1,56 @@
 -module(spudGun@foreign).
 
 -export([
-         getImpl/4,
-         putImpl/5,
-         postImpl/5,
-         deleteImpl/4
+         makeRequestImpl/6
         ]).
 
 -include_lib("id3as_common/include/spud_gun.hrl").
 -include_lib("id3as_common/include/common.hrl").
 
-getImpl(Left, Right, Url, ReqHeaders) ->
+%% makeHeadersImpl(Record) ->
+%%   Headers = lists:map(fun({K, V}) -> {atom_to_binary(K, utf8), V} end,
+%%                       maps:to_list(Record)),
+%%   io:format(user, "headers ~p~n", [Headers]),
+%%   Headers.
+
+makeRequestImpl(ReqError, RespError, RespSuccess, Method, Url, Options) ->
   fun() ->
-      case spud_gun:get(Url, ReqHeaders) of
-        {ok, StatusCode, _Headers, RespBody} when StatusCode >= 200, StatusCode < 300 ->
-          Right(RespBody);
-        Response ->
-          ?SLOG_DEBUG("spud gun get failed", #{url => Url,
-                                               response => Response}),
-          Left(<<"get error">>)
-      end
-  end.
+      #spud_request{ connect_timeout = DefaultConnectTimeout
+                   , request_timeout = DefaultRequestTimeout
+                   , body_timeout    = DefaultBodyTimeout
+                   } = #spud_request{},
 
-putImpl(Left, Right, Url, Body, UserHeaders) ->
-  sendImpl(put, Left, Right, Url, Body, UserHeaders).
+      UserHeaders = maps:get(headers, Options, []),
+      Body = maps:get(body, Options, <<>>),
+      ConnectTimeout = maps:get(request_timeout, Options, DefaultConnectTimeout),
+      RequestTimeout = maps:get(request_timeout, Options, DefaultRequestTimeout),
+      BodyTimeout = maps:get(request_timeout, Options, DefaultBodyTimeout),
+      FollowRedirect = maps:get(followRedirect, Options, false),
 
-postImpl(Left, Right, Url, Body, UserHeaders) ->
-  sendImpl(post, Left, Right, Url, Body, UserHeaders).
+      ReqHeaders = [ {<<"accept-encoding">>, <<"gzip">>} | UserHeaders ],
 
-deleteImpl(Left, Right, Url, UserHeaders) ->
-  sendImpl(delete, Left, Right, Url, <<>>, UserHeaders).
-
-sendImpl(Method, Left, Right, Url, Body, UserHeaders) ->
-  fun() ->
-      ReqHeaders = [ {<<"Accept-Encoding">>, <<"gzip">>} | UserHeaders ],
       Request = spud_gun:url_to_request_record(Url,
-                                               #spud_request{request_timeout = 30000
-                                                            ,headers = ReqHeaders
-                                                            ,method = Method
-                                                            ,body = Body }),
+                                               #spud_request{ connect_timeout = ConnectTimeout
+                                                            , request_timeout = RequestTimeout
+                                                            , body_timeout    = BodyTimeout
+                                                            , headers = ReqHeaders
+                                                            , method = Method
+                                                            , body = Body
+                                                            , options = #{follow_redirect => FollowRedirect}
+                                                            }),
       case spud_gun:simple_request(Request) of
         Response = {ok, StatusCode, Headers, RespBody} when StatusCode >= 200, StatusCode < 300 ->
-          ?SLOG_INFO("~p -> ~p", [Request, Response]),
           %% Gun lowercases response header names
-          case proplists:lookup(<<"content-encoding">>, Headers) of
-            {_, <<"gzip">>} -> Right(zlib:gunzip(RespBody));
-            none -> Right(RespBody)
-          end;
-        {ok, _Other, _Headers, Body} -> Right(Body);
-        Response ->
-          ?SLOG_DEBUG("spud gun send failed", #{url => Url,
-                                                method => Method,
-                                                response=> Response}),
-          Left(<<"request error">>)
+          UnzippedBody = case proplists:lookup(<<"content-encoding">>, Headers) of
+                           {_, <<"gzip">>} -> zlib:gunzip(RespBody);
+                           none -> RespBody
+                         end,
+          ((RespSuccess(StatusCode))(Headers))(UnzippedBody);
+
+        {ok, StatusCode, Headers, RespBody} ->
+          ((RespError(StatusCode))(Headers))(RespBody);
+
+        Error ->
+          ReqError(Error)
       end
   end.

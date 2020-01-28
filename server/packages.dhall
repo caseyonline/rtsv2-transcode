@@ -8,7 +8,7 @@ let overrides =
           , repo =
               "ssh://git@github.com/id3as/purescript-erl-pinto.git"
           , version =
-              "e0252d4be66c27bb6e357251727130dfe393a918"
+              "0c19d5db83e83f3376bc9aecc96f377733905195"
           }
       , simple-json =
           { dependencies =
@@ -67,7 +67,26 @@ let overrides =
           , repo =
               "ssh://git@github.com/id3as/purescript-erl-stetson.git"
           , version =
-              "8688462267530254365bda284f06a162672de0c1"
+              "1f03351e166e28a35ccbaff05575b8161c0900e3"
+          }
+      , routing-duplex =
+          { dependencies =
+              [ "arrays"
+              , "control"
+              , "either"
+              , "generics-rep"
+              , "globals"
+              , "lazy"
+              , "prelude"
+              , "profunctor"
+              , "record"
+              , "strings"
+              , "typelevel-prelude"
+              ]
+          , repo =
+              "ssh://git@github.com/natefaubion/purescript-routing-duplex.git"
+          , version =
+              "eceaba4ee9921250cc6640d5ead98bbfc44310f5"
           }
       }
 

@@ -4,7 +4,8 @@
   "description": "",
   "license": "Closed source!!!",
   "dependencies": {
-    "xhr2": "0.2.0",
-    "puppeteer": "2.0.0"
+    "node-fetch": "^2.6.0",
+    "puppeteer": "2.0.0",
+    "xhr2": "0.2.0"
   }
 }

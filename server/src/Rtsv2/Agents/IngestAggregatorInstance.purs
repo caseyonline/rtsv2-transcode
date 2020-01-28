@@ -9,34 +9,46 @@ module Rtsv2.Agents.IngestAggregatorInstance
 
 import Prelude
 
+import Data.Newtype (unwrap, wrap)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
-import Erl.Atom (atom)
-import Erl.Data.List (nil, (:))
-import Erl.Data.Map (Map, delete, insert, keys, size, toUnfoldable)
+import Erl.Atom (Atom, atom)
+import Erl.Data.List (List, nil, (:))
+import Erl.Data.Map (Map, delete, insert, size, toUnfoldable)
 import Erl.Data.Map as Map
+import Erl.Data.Tuple (Tuple2, tuple2)
 import Foreign (Foreign)
+import Logger (Logger)
 import Logger as Logger
-import Pinto (ServerName, StartLinkResult)
+import Pinto (ServerName, StartLinkResult, isRegistered)
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
-import Record as Record
 import Rtsv2.Agents.IntraPoP (announceStreamIsAvailable, announceStreamStopped)
 import Rtsv2.Config as Config
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
+import Rtsv2.Router.Endpoint (Endpoint(..))
+import Rtsv2.Router.Endpoint as RoutingEndpoint
+import Rtsv2.Router.Parser as Routing
 import Shared.Agent as Agent
 import Shared.LlnwApiTypes (StreamDetails)
-import Shared.Stream (StreamId(..), StreamVariantId, toStreamId)
-import Shared.Types (IngestAggregatorPublicState, ServerAddress)
+import Shared.Stream (StreamAndVariant(..), StreamId(..), StreamVariant, toStreamId, toVariant)
+import Shared.Types (ServerAddress, extractAddress)
+import Shared.Types.Agent.State as PublicState
+
+foreign import startWorkflowImpl :: String -> Array (Tuple2 StreamAndVariant String) -> Effect Foreign
+foreign import addLocalVariantImpl :: Foreign -> StreamAndVariant -> Effect Unit
+foreign import addRemoteVariantImpl :: Foreign -> StreamAndVariant -> String -> Effect Unit
+foreign import removeVariantImpl :: Foreign -> StreamAndVariant -> Effect Unit
 
 type State
   = { config :: Config.IngestAggregatorAgentConfig
-    , thisNode :: ServerAddress
+    , thisAddress :: ServerAddress
     , streamId :: StreamId
     , streamDetails :: StreamDetails
-    , activeStreamVariants :: Map StreamVariantId ServerAddress
+    , activeStreamVariants :: Map StreamVariant ServerAddress
+    , workflow :: Foreign
     }
 
 data Msg
@@ -44,26 +56,36 @@ data Msg
   | MaybeStop
 
 isAvailable :: StreamId -> Effect Boolean
-isAvailable streamId = Names.isRegistered (serverName streamId)
+isAvailable streamId = do
+  bool <- isRegistered (serverName streamId)
+  pure bool
 
 serverName :: StreamId -> ServerName State Msg
 serverName = Names.ingestAggregatorInstanceName
 
-addVariant :: StreamVariantId -> Effect Unit
-addVariant streamVariantId = Gen.call (serverName (toStreamId streamVariantId))
-  \state@{thisNode, activeStreamVariants} ->
-  CallReply unit state{activeStreamVariants = insert streamVariantId thisNode activeStreamVariants}
+addVariant :: StreamAndVariant -> Effect Unit
+addVariant streamAndVariant = Gen.doCall (serverName (toStreamId streamAndVariant))
+  \state@{thisAddress, activeStreamVariants, workflow} -> do
+    _ <- logInfo "Ingest variant added" {streamId: streamAndVariant}
+    _ <- addLocalVariantImpl workflow streamAndVariant
+    pure $ CallReply unit state{activeStreamVariants = insert (toVariant streamAndVariant) thisAddress activeStreamVariants}
 
-addRemoteVariant :: StreamVariantId -> ServerAddress -> Effect Unit
-addRemoteVariant streamVariantId remoteServer = Gen.call (serverName (toStreamId streamVariantId))
-  \state@{activeStreamVariants} ->
-  CallReply unit state{activeStreamVariants = insert streamVariantId remoteServer activeStreamVariants}
+addRemoteVariant :: StreamAndVariant -> ServerAddress -> Effect Unit
+addRemoteVariant streamAndVariant remoteServer = Gen.doCall (serverName (toStreamId streamAndVariant))
+  \state@{activeStreamVariants, workflow} -> do
+    _ <- logInfo "Remote ingest variant added" {streamId: streamAndVariant, source: remoteServer}
+    let
+      path = Routing.printUrl RoutingEndpoint.endpoint (IngestInstanceLlwpE (toStreamId streamAndVariant) (toVariant streamAndVariant))
+      url = "http://" <> (unwrap remoteServer) <> ":3000" <> path
+    _ <- addRemoteVariantImpl workflow streamAndVariant url
+    pure $ CallReply unit state{activeStreamVariants = insert (toVariant streamAndVariant) remoteServer activeStreamVariants}
 
-removeVariant :: StreamVariantId -> Effect Unit
-removeVariant streamVariantId = Gen.doCall (serverName (toStreamId streamVariantId))
-  \state@{activeStreamVariants, streamId, config:{shutdownLingerTimeMs}} -> do
+removeVariant :: StreamAndVariant -> Effect Unit
+removeVariant streamAndVariant = Gen.doCall (serverName (toStreamId streamAndVariant))
+  \state@{activeStreamVariants, streamId, workflow, config:{shutdownLingerTimeMs}} -> do
   let
-    newActiveStreamVariants = delete streamVariantId activeStreamVariants
+    newActiveStreamVariants = delete (toVariant streamAndVariant) activeStreamVariants
+  _ <- removeVariantImpl workflow streamAndVariant
   _ <- if (size newActiveStreamVariants) == 0 then do
          _ <- Timer.sendAfter (serverName streamId) shutdownLingerTimeMs MaybeStop
          pure unit
@@ -71,7 +93,7 @@ removeVariant streamVariantId = Gen.doCall (serverName (toStreamId streamVariant
          pure unit
   pure $ CallReply unit state{activeStreamVariants = newActiveStreamVariants}
 
-getState :: StreamId -> Effect (IngestAggregatorPublicState)
+getState :: StreamId -> Effect (PublicState.IngestAggregator)
 getState streamId = Gen.call (serverName streamId)
   \state@{streamDetails, activeStreamVariants} ->
   CallReply {streamDetails, activeStreamVariants: (\(Tuple streamVariant serverAddress) -> {streamVariant, serverAddress}) <$>(toUnfoldable activeStreamVariants)} state
@@ -81,16 +103,18 @@ startLink streamDetails@{slot : {name}} = Gen.startLink (serverName (StreamId na
 
 init :: StreamDetails -> Effect State
 init streamDetails = do
-  _ <- logInfo "Ingest Aggregator starting" {streamId: streamId}
+  _ <- logInfo "Ingest Aggregator starting" {streamId, streamDetails}
   config <- Config.ingestAggregatorAgentConfig
-  thisNode <- PoPDefinition.thisNode
+  thisServer <- PoPDefinition.getThisServer
   _ <- Timer.sendEvery (serverName streamId) config.streamAvailableAnnounceMs Tick
   _ <- announceStreamIsAvailable streamId
+  workflow <- startWorkflowImpl streamDetails.slot.name ((\p -> tuple2 (StreamAndVariant (wrap streamDetails.slot.name) (wrap p.streamName)) p.streamName) <$> streamDetails.slot.profiles)
   pure { config : config
-       , thisNode
+       , thisAddress : extractAddress thisServer
        , streamId
        , streamDetails
        , activeStreamVariants : Map.empty
+       , workflow
        }
   where
     streamId = StreamId streamDetails.slot.name
@@ -111,5 +135,17 @@ handleTick state@{streamId} = do
   _ <- announceStreamIsAvailable streamId
   pure state
 
-logInfo :: forall a. String -> a -> Effect Foreign
-logInfo msg metaData = Logger.info msg (Record.merge { domain: ((atom (show Agent.IngestAggregator)) : nil) } { misc: metaData })
+--------------------------------------------------------------------------------
+-- Log helpers
+--------------------------------------------------------------------------------
+domains :: List Atom
+domains = atom <$> (show Agent.IngestAggregator :  "Instance" : nil)
+
+logInfo :: forall a. Logger a
+logInfo = domainLog Logger.info
+
+logWarning :: forall a. Logger a
+logWarning = domainLog Logger.warning
+
+domainLog :: forall a. Logger {domain :: List Atom, misc :: a} -> Logger a
+domainLog = Logger.doLog domains
