@@ -10,6 +10,7 @@ module Rtsv2.Config
   , TransPoPAgentApi
   , LlnwApiConfig
   , LoadMonitorConfig
+  , appName
   , webConfig
   , globalConfig
   , nodeConfig
@@ -117,6 +118,9 @@ type LoadMonitorConfig
 foreign import getEnv_ :: Atom -> Effect Foreign
 foreign import getMap_ :: Atom -> Effect Foreign
 foreign import mergeOverrides :: Effect Foreign
+
+appName :: String
+appName = "rtsv2"
 
 webConfig :: Effect WebConfig
 webConfig = do

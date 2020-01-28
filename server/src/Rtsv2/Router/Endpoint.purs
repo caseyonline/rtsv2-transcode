@@ -44,6 +44,8 @@ data Endpoint
   | IngestInstanceLlwpE StreamId StreamVariant
   | IngestStartE Canary String StreamVariant
   | IngestStopE Canary String StreamVariant
+  | ClientAppAssets
+  | ClientAppRouteHTML
   | ClientStartE Canary StreamId
   | ClientStopE Canary StreamId
   | StreamAuthE
@@ -63,7 +65,7 @@ endpoint = root $ sum
   , "RelayE"                                           : "" / "api" / "agents" / "relay" / path "egest"  noArgs
   , "RelayRegisterE"                                   : "" / "api" / "agents" / "relay" / path "register" noArgs
   , "RelayStatsE"                                      : "" / "api" / "agents" / "relay" / streamId segment
-, "LoadE"                                              : "" / "api" / path "load" noArgs
+  , "LoadE"                                            : "" / "api" / path "load" noArgs
 
   , "IngestAggregatorE"                                : "" / "api" / "agents" / "ingestAggregator" / streamId segment
   , "IngestAggregatorPlayerE"                          : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "player"
@@ -79,6 +81,8 @@ endpoint = root $ sum
 
   , "IngestStartE"                                     : "" / "api" / "public" / canary segment / "ingest" / segment / variant segment / "start"
   , "IngestStopE"                                      : "" / "api" / "public" / canary segment / "ingest" / segment / variant segment / "stop"
+  , "ClientAppAssets"                                  : "" / path "assets" noArgs
+  , "ClientAppRouteHTML"                               : "" / noArgs
   , "ClientStartE"                                     : "" / "api" / "public" / canary segment / "client" / streamId segment / "start"
   , "ClientStopE"                                      : "" / "api" / "public" / canary segment / "client" / streamId segment / "stop"
 
