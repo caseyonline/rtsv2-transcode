@@ -52,3 +52,8 @@ Bundle frontend for production simply by running:
 `> make` 
 
 inside `./client` folder.
+
+
+## More information
+
+This project is based on [purescript-halogen-realword](https://github.com/thomashoneyman/purescript-halogen-realworld) 
