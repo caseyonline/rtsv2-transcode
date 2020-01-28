@@ -21,7 +21,9 @@
     "url": ""
   },
   "homepage": "",
-  "devDependencies": {},
+  "devDependencies": {
+    "parcel-bundler": "^1.12.4"
+  },
   "dependencies": {
     "decimal.js": "^10.2.0",
     "echarts": "^4.6.0",
