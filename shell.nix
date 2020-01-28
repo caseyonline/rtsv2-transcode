@@ -1,6 +1,13 @@
 let
   erlangReleases = builtins.fetchTarball https://github.com/nixerl/nixpkgs-nixerl/archive/v1.0.2-devel.tar.gz;
 
+  pinnedNix =
+    builtins.fetchGit {
+      name = "nixpkgs-pinned";
+      url = "https://github.com/NixOS/nixpkgs.git";
+      rev = "cc6cf0a96a627e678ffc996a8f9d1416200d6c81";
+    };
+
   purerlReleases =
     builtins.fetchGit {
       url = "https://github.com/purerl/nixpkgs-purerl.git";
@@ -16,7 +23,7 @@ let
     };
 
   nixpkgs =
-    import <nixpkgs> {
+    import pinnedNix {
       overlays = [
         (import erlangReleases)
         (import purerlReleases)
