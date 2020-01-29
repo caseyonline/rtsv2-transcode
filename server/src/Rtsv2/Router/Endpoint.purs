@@ -6,16 +6,18 @@ module Rtsv2.Router.Endpoint ( Endpoint(..)
 
 import Prelude hiding ((/))
 
+import Data.Array ((!!))
 import Data.Either (note)
 import Data.Generic.Rep (class Generic)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype, unwrap, wrap)
+import Data.String (Pattern(..), split)
 import Routing.Duplex (RouteDuplex', as, path, root, segment)
 import Routing.Duplex.Generic (noArgs, sum)
 import Routing.Duplex.Generic.Syntax ((/))
 import Rtsv2.Router.Parser as Routing
-import Shared.Stream (StreamId(..), StreamVariant(..))
-import Shared.Types (ServerAddress, extractAddress)
+import Shared.Stream (ShortName, StreamAndVariant(..), StreamId, StreamVariant(..))
+import Shared.Types (PoPName, ServerAddress, extractAddress)
 import SpudGun (Url)
 
 -- data Canary = Live
@@ -25,6 +27,7 @@ type Canary = String
 
 data Endpoint
   = TransPoPLeaderE
+  | TimedRoutesE PoPName
   | HealthCheckE
   | EgestStatsE StreamId
   | EgestE
@@ -42,10 +45,10 @@ data Endpoint
   | IngestAggregatorActiveIngestsPlayerSessionE StreamId StreamVariant String
   | IngestAggregatorsE
   | IngestInstanceLlwpE StreamId StreamVariant
-  | IngestStartE Canary String StreamVariant
-  | IngestStopE Canary String StreamVariant
-  | ClientAppAssets
-  | ClientAppRouteHTML
+  | IngestStartE Canary ShortName StreamAndVariant
+  | IngestStopE Canary ShortName StreamAndVariant
+  | ClientAppAssetsE
+  | ClientAppRouteHTMLE
   | ClientStartE Canary StreamId
   | ClientStopE Canary StreamId
   | StreamAuthE
@@ -59,6 +62,7 @@ endpoint :: RouteDuplex' Endpoint
 endpoint = root $ sum
   {
     "TransPoPLeaderE"                                  : "" / "api" / path "transPoPLeader" noArgs
+  , "TimedRoutesE"                                     : "" / "api" / "timedRoutes" / popName segment
   , "HealthCheckE"                                     : "" / "api" / path "healthCheck" noArgs
   , "EgestStatsE"                                      : "" / "api" / "agents" / "egest" / streamId segment
   , "EgestE"                                           : "" / "api" / "agents" / path "egest" noArgs
@@ -79,12 +83,13 @@ endpoint = root $ sum
   , "IngestAggregatorsE"                               : "" / "api" / "agents" / path "ingestAggregator" noArgs
   , "IngestInstanceLlwpE"                              : "" / "api" / "agents" / "ingest" / streamId segment / variant segment / "llwp"
 
-  , "IngestStartE"                                     : "" / "api" / "public" / canary segment / "ingest" / segment / variant segment / "start"
-  , "IngestStopE"                                      : "" / "api" / "public" / canary segment / "ingest" / segment / variant segment / "stop"
-  , "ClientAppAssets"                                  : "" / path "assets" noArgs
-  , "ClientAppRouteHTML"                               : "" / noArgs
+  , "IngestStartE"                                     : "" / "api" / "public" / canary segment / "ingest" / shortName segment / streamAndVariant segment / "start"
+  , "IngestStopE"                                      : "" / "api" / "public" / canary segment / "ingest" / shortName segment / streamAndVariant segment / "stop"
   , "ClientStartE"                                     : "" / "api" / "public" / canary segment / "client" / streamId segment / "start"
   , "ClientStopE"                                      : "" / "api" / "public" / canary segment / "client" / streamId segment / "stop"
+
+  , "ClientAppAssetsE"                                 : "" / "static" / path "assets" noArgs
+  , "ClientAppRouteHTMLE"                              : "" / "static" / noArgs
 
   , "StreamAuthE"                                      : "" / "llnwstub" / "rts" / "v1" / path "streamauthtype" noArgs
   , "StreamAuthTypeE"                                  : "" / "llnwstub" / "rts" / "v1" / path "streamauth" noArgs
@@ -105,19 +110,49 @@ makeUrl server ep =
 -- | StreamId
 
 parseStreamId :: String -> Maybe StreamId
-parseStreamId ""  = Nothing
-parseStreamId str = Just (StreamId str)
+parseStreamId = wrapParser
 
 streamIdToString :: StreamId -> String
 streamIdToString = unwrap
 
 -- | StreamVariant
 parseStreamVariant :: String -> Maybe StreamVariant
-parseStreamVariant  ""  = Nothing
-parseStreamVariant  str = Just (StreamVariant str)
+parseStreamVariant = wrapParser
 
 variantToString :: StreamVariant -> String
-variantToString (StreamVariant str) = str
+variantToString = unwrap
+
+parseShortName :: String -> Maybe ShortName
+parseShortName = wrapParser
+
+shortNameToString :: ShortName -> String
+shortNameToString = unwrap
+
+wrapParser "" = Nothing
+wrapParser str = Just $ wrap str
+
+
+-- | StreamAndVariant
+parseStreamAndVariant :: String -> Maybe StreamAndVariant
+parseStreamAndVariant  ""  = Nothing
+parseStreamAndVariant  str =
+  case split (Pattern "_") str !! 0 of
+    Just streamIdStr -> Just (StreamAndVariant (wrap streamIdStr) (wrap str))
+    _ -> Nothing
+
+streamAndVariantToString :: StreamAndVariant -> String
+streamAndVariantToString (StreamAndVariant _ (StreamVariant str)) = str
+
+
+
+-- | PoPName
+
+parsePoPName :: String -> Maybe PoPName
+parsePoPName  = wrapParser
+
+poPNameToString :: PoPName -> String
+poPNameToString = unwrap
+
 
 -- | Canary
 -- parseCanary :: String -> Maybe Canary
@@ -136,6 +171,18 @@ streamId = as streamIdToString (parseStreamId >>> note "Bad StreamId")
 -- | This combinator transforms a codec over `String` into one that operates on the `StreamVariant` type.
 variant :: RouteDuplex' String -> RouteDuplex' StreamVariant
 variant = as variantToString (parseStreamVariant >>> note "Bad StreamId")
+
+-- | This combinator transforms a codec over `String` into one that operates on the `StreamAndVariant` type.
+streamAndVariant :: RouteDuplex' String -> RouteDuplex' StreamAndVariant
+streamAndVariant = as streamAndVariantToString (parseStreamAndVariant >>> note "Bad StreamAndVariant")
+
+-- | This combinator transforms a codec over `String` into one that operates on the `PoPName` type.
+popName :: RouteDuplex' String -> RouteDuplex' PoPName
+popName = as poPNameToString (parsePoPName >>> note "Bad PoPName")
+
+-- | This combinator transforms a codec over `String` into one that operates on the `ShortName` type.
+shortName :: RouteDuplex' String -> RouteDuplex' ShortName
+shortName = as shortNameToString (parseShortName >>> note "Bad ShortName")
 
 -- | This combinator transforms a codec over `String` into one that operates on the `Canary` type.
 canary :: RouteDuplex' String -> RouteDuplex' Canary

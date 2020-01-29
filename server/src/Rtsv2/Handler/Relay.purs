@@ -4,20 +4,18 @@ module Rtsv2.Handler.Relay
        , stats
        ) where
 
-
-import PintoHelper (GenericHandlerState, GenericStatusState, genericPost, genericStatus)
 import Rtsv2.Agents.StreamRelayInstance (CreateRelayPayload, RegisterEgestPayload)
 import Rtsv2.Agents.StreamRelayInstance as StreamRelayInstance
 import Rtsv2.Agents.StreamRelayInstanceSup as StreamRelayInstanceSup
 import Shared.Types.Agent.State as PublicState
-import Stetson (StetsonHandler)
+import StetsonHelper (GenericStetsonGetByStreamId, GenericStetsonHandler, genericGetByStreamId, genericPost)
 
 
-stats :: StetsonHandler (GenericStatusState PublicState.StreamRelay)
-stats = genericStatus StreamRelayInstance.status
+stats :: GenericStetsonGetByStreamId PublicState.StreamRelay
+stats = genericGetByStreamId StreamRelayInstance.status
 
-resource :: StetsonHandler (GenericHandlerState CreateRelayPayload)
-resource = genericPost  StreamRelayInstanceSup.startRelay
+resource :: GenericStetsonHandler CreateRelayPayload
+resource =  genericPost  StreamRelayInstanceSup.startRelay
 
-register :: StetsonHandler (GenericHandlerState RegisterEgestPayload)
+register :: GenericStetsonHandler RegisterEgestPayload
 register = genericPost  StreamRelayInstance.registerEgest

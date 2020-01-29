@@ -3,10 +3,9 @@ module Rtsv2.Handler.EgestStats
          stats
        ) where
 
-import PintoHelper (GenericStatusState, genericStatus)
 import Rtsv2.Agents.EgestInstance as EgestInstance
 import Shared.Types.Agent.State as PublicState
-import Stetson (StetsonHandler)
+import StetsonHelper (GenericStetsonGetByStreamId, genericGetByStreamId)
 
-stats :: StetsonHandler (GenericStatusState PublicState.Egest)
-stats = genericStatus EgestInstance.currentStats
+stats :: GenericStetsonGetByStreamId PublicState.Egest
+stats = genericGetByStreamId EgestInstance.currentStats

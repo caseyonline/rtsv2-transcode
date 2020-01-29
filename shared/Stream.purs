@@ -1,5 +1,6 @@
 module Shared.Stream
-  ( StreamId(..)
+  ( ShortName(..)
+  , StreamId(..)
   , StreamVariant(..)
   , StreamAndVariant(..)
   , toStreamId
@@ -22,14 +23,26 @@ import Data.String (Pattern(..), split)
 import Foreign (ForeignError(..), readString, unsafeToForeign)
 import Simple.JSON (class ReadForeign, class WriteForeign)
 
+newtype ShortName = ShortName String
+derive instance genericShortName :: Generic ShortName _
+derive instance newtypeShortName :: Newtype ShortName _
+derive newtype instance readForeignShortName :: ReadForeign ShortName
+derive newtype instance writeForeignShortName :: WriteForeign ShortName
+
+instance eqShortName :: Eq ShortName where
+  eq = genericEq
+
+instance compareShortName :: Ord ShortName where
+  compare = genericCompare
+
+instance showShortName :: Show ShortName where
+  show = genericShow
+
+
 newtype StreamId = StreamId String
-
 derive instance genericStreamId :: Generic StreamId _
-
 derive instance newtypeStreamId :: Newtype StreamId _
-
 derive newtype instance readForeignStreamId :: ReadForeign StreamId
-
 derive newtype instance writeForeignStreamId :: WriteForeign StreamId
 
 instance eqStreamId :: Eq StreamId where
@@ -43,13 +56,9 @@ instance showStreamId :: Show StreamId where
 
 
 newtype StreamVariant = StreamVariant String
-
 derive instance genericStreamVariant :: Generic StreamVariant _
-
 derive instance newtypeStreamVariant :: Newtype StreamVariant _
-
 derive newtype instance readForeignStreamVariant :: ReadForeign StreamVariant
-
 derive newtype instance writeForeignStreamVariant :: WriteForeign StreamVariant
 
 data StreamAndVariant = StreamAndVariant StreamId StreamVariant
@@ -90,7 +99,6 @@ instance writeForeignStreamAndVariant :: WriteForeign StreamAndVariant where
 
 toStreamId :: StreamAndVariant -> StreamId
 toStreamId (StreamAndVariant s _) = s
-
 
 toVariant :: StreamAndVariant -> StreamVariant
 toVariant (StreamAndVariant _ v) = v

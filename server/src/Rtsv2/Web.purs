@@ -14,7 +14,7 @@ import Erl.Data.List (List, nil, singleton, (:))
 import Erl.Data.Tuple (Tuple2, Tuple4, tuple2, tuple3, tuple4, uncurry4)
 import Erl.ModuleName (NativeModuleName(..))
 import Foreign (unsafeToForeign)
-import Logger (Logger)
+import Logger (Logger, spy)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen as Gen
@@ -25,6 +25,7 @@ import Rtsv2.Handler.EgestStats as EgestStatsHandler
 import Rtsv2.Handler.Health as HealthHandler
 import Rtsv2.Handler.Ingest as IngestHandler
 import Rtsv2.Handler.IngestAggregator as IngestAggregatorHandler
+import Rtsv2.Handler.IntraPoP as IntraPoPHandler
 import Rtsv2.Handler.LlnwStub as LlnwStubHandler
 import Rtsv2.Handler.Load as LoadHandler
 import Rtsv2.Handler.Relay as RelayHandler
@@ -32,8 +33,10 @@ import Rtsv2.Handler.TransPoP as TransPoPHandler
 import Rtsv2.Names as Names
 import Rtsv2.Router.Endpoint (Endpoint(..), endpoint)
 import Rtsv2.Router.Parser (printUrl)
+import Rtsv2.Web.Bindings as Bindings
 import Serf (Ip(..))
-import Shared.Stream (StreamAndVariant(..), StreamId(..), StreamVariant(..))
+import Shared.Stream (ShortName(..), StreamAndVariant(..), StreamId(..), StreamVariant(..))
+import Shared.Types (PoPName)
 import Stetson (InnerStetsonHandler, RestResult, StaticAssetLocation(..), StetsonConfig)
 import Stetson as Stetson
 import Stetson.Rest as Rest
@@ -49,36 +52,38 @@ startLink args =
   Gen.startLink serverName (init args) Gen.defaultHandleInfo
 
 
+
 init :: Config.WebConfig -> Effect State
 init args = do
   bindIp <- Env.privateInterfaceIp
   Stetson.configure
-    # mkRoute  TransPoPLeaderE                                                                       TransPoPHandler.leader
-    # mkRoute  HealthCheckE                                                                          HealthHandler.healthCheck
-    # mkRoute (EgestStatsE (StreamId ":stream_id"))                                                  EgestStatsHandler.stats
-    # mkRoute  RelayE                                                                                RelayHandler.resource
-    # mkRoute  RelayRegisterE                                                                        RelayHandler.register
-    # mkRoute (RelayStatsE(StreamId ":stream_id"))                                                   RelayHandler.stats
-    # mkRoute  LoadE                                                                                 LoadHandler.load
-    # mkRoute (IngestAggregatorE $ StreamId ":stream_id")                                            IngestAggregatorHandler.ingestAggregator
-    # mkRoute (IngestAggregatorActiveIngestsE (StreamId ":stream_id") (StreamVariant ":variant_id")) IngestAggregatorHandler.ingestAggregatorsActiveIngest
-    # mkRoute  IngestAggregatorsE                                                                    IngestAggregatorHandler.ingestAggregators
-    # mkRoute (IngestStartE ":canary" ":short_name" (StreamVariant ":variant_id"))                   IngestHandler.ingestStart
-    # mkRoute (IngestStopE ":canary" ":short_name" (StreamVariant ":variant_id"))                    IngestHandler.ingestStop
-    # mkRoute (ClientStartE ":canary" (StreamId ":stream_id"))                                       ClientHandler.clientStart
-    # mkRoute (ClientStopE ":canary" (StreamId ":stream_id"))                                        ClientHandler.clientStop
-    # mkRoute  StreamAuthE                                                                           LlnwStubHandler.streamAuthType
-    # mkRoute  StreamAuthTypeE                                                                       LlnwStubHandler.streamAuth
-    # mkRoute  StreamPublishE                                                                        LlnwStubHandler.streamPublish
+    # mkRoute  TransPoPLeaderE                                                  IntraPoPHandler.leader
+    # mkRoute (TimedRoutesE popNameBinding)                                     TransPoPHandler.timedRoutes
+    # mkRoute  HealthCheckE                                                     HealthHandler.healthCheck
+    # mkRoute (EgestStatsE streamIdBinding)                                     EgestStatsHandler.stats
+    # mkRoute  RelayE                                                           RelayHandler.resource
+    # mkRoute  RelayRegisterE                                                   RelayHandler.register
+    # mkRoute (RelayStatsE streamIdBinding)                                     RelayHandler.stats
+    # mkRoute  LoadE                                                            LoadHandler.load
+    # mkRoute (IngestAggregatorE streamIdBinding)                               IngestAggregatorHandler.ingestAggregator
+    # mkRoute (IngestAggregatorActiveIngestsE streamIdBinding variantBinding)   IngestAggregatorHandler.ingestAggregatorsActiveIngest
+    # mkRoute  IngestAggregatorsE                                               IngestAggregatorHandler.ingestAggregators
+    # mkRoute (IngestStartE ":canary" shortNameBinding streamAndVariantBinding) IngestHandler.ingestStart
+    # mkRoute (IngestStopE ":canary" shortNameBinding streamAndVariantBinding)  IngestHandler.ingestStop
+    # mkRoute (ClientStartE ":canary" streamIdBinding)                          ClientHandler.clientStart
+    # mkRoute (ClientStopE ":canary" streamIdBinding)                           ClientHandler.clientStop
+    # mkRoute  StreamAuthE                                                      LlnwStubHandler.streamAuthType
+    # mkRoute  StreamAuthTypeE                                                  LlnwStubHandler.streamAuth
+    # mkRoute  StreamPublishE                                                   LlnwStubHandler.streamPublish
 
-    # static  (IngestAggregatorPlayerE (StreamId ":stream_id"))                                                       (PrivFile "rtsv2" "www/aggregatorPlayer.html")
-    # static' (IngestAggregatorPlayerJsE (StreamId ":stream_id")) "/[...]"                                            (PrivDir "rtsv2" "www/assets/js")
-    # static  (IngestAggregatorActiveIngestsPlayerE (StreamId ":stream_id") (StreamVariant ":variant_id"))            (PrivFile "rtsv2" "www/play.html")
-    # static' (IngestAggregatorActiveIngestsPlayerJsE (StreamId ":stream_id") (StreamVariant ":variant_id")) "/[...]" (PrivDir "rtsv2" "www/assets/js")
+    # static  (IngestAggregatorPlayerE streamIdBinding)                                        (PrivFile "rtsv2" "www/aggregatorPlayer.html")
+    # static' (IngestAggregatorPlayerJsE streamIdBinding)                             "/[...]" (PrivDir "rtsv2" "www/assets/js")
+    # static  (IngestAggregatorActiveIngestsPlayerE streamIdBinding variantBinding)            (PrivFile "rtsv2" "www/play.html")
+    # static' (IngestAggregatorActiveIngestsPlayerJsE streamIdBinding variantBinding) "/[...]" (PrivDir "rtsv2" "www/assets/js")
 
-    # static' (ClientAppAssets) "/[...]"    (PrivDir Config.appName "www/assets")
-    # static  (ClientAppRouteHTML)          (PrivFile Config.appName "www/index.html")
-    # static' (ClientAppRouteHTML) "/[...]" (PrivFile Config.appName "www/index.html")
+    # static' (ClientAppAssetsE) "/[...]"    (PrivDir Config.appName "www/assets")
+    # static  (ClientAppRouteHTMLE)          (PrivFile Config.appName "www/index.html")
+    # static' (ClientAppRouteHTMLE) "/[...]" (PrivFile Config.appName "www/index.html")
 
     # Stetson.cowboyRoutes cowboyRoutes
     # Stetson.port args.port
@@ -88,22 +93,30 @@ init args = do
   where
     cowboyRoutes :: List Path
     cowboyRoutes =
-      cowboyRoute   (IngestInstanceLlwpE (StreamId ":stream_id") (StreamVariant ":variant_id"))                              "llwp_stream_resource" makeStreamAndVariant
-      : cowboyRoute (IngestAggregatorActiveIngestsPlayerSessionStartE (StreamId ":stream_id") (StreamVariant ":variant_id")) "rtsv2_webrtc_session_start_resource" makeStreamAndVariant
-      : cowboyRoute (IngestAggregatorActiveIngestsPlayerSessionE (StreamId ":stream_id") (StreamVariant ":variant_id")       ":session_id") "rtsv2_webrtc_session_resource" makeStreamAndVariant
+      cowboyRoute   (IngestInstanceLlwpE streamIdBinding variantBinding)                                       "llwp_stream_resource" makeStreamAndVariant
+      : cowboyRoute (IngestAggregatorActiveIngestsPlayerSessionStartE streamIdBinding variantBinding)          "rtsv2_webrtc_session_start_resource" makeStreamAndVariant
+      : cowboyRoute (IngestAggregatorActiveIngestsPlayerSessionE streamIdBinding variantBinding ":session_id") "rtsv2_webrtc_session_resource" makeStreamAndVariant
       : nil
 
     makeStreamAndVariant :: String -> String -> StreamAndVariant
     makeStreamAndVariant streamId variantId = StreamAndVariant (wrap streamId) (wrap variantId)
 
     mkRoute :: forall state msg.  Endpoint -> InnerStetsonHandler msg state -> StetsonConfig -> StetsonConfig
-    mkRoute rType handler = Stetson.route (printUrl endpoint rType) handler
+    mkRoute rType handler = Stetson.route (spy "route" (printUrl endpoint rType)) handler
 
     static :: Endpoint -> StaticAssetLocation -> StetsonConfig -> StetsonConfig
     static rType config = Stetson.static  (printUrl endpoint rType) config
 
     static' :: Endpoint -> String -> StaticAssetLocation -> StetsonConfig -> StetsonConfig
     static' rType hack config = Stetson.static ((printUrl endpoint rType) <> hack) config
+
+    streamIdBinding = StreamId (":" <> Bindings.streamIdBindingLiteral)
+    variantBinding = StreamVariant (":" <> Bindings.variantBindingLiteral)
+    streamAndVariantBinding = StreamAndVariant (StreamId "ignored") (StreamVariant $ ":" <> Bindings.streamAndVariantBindingLiteral)
+    shortNameBinding = ShortName (":" <> Bindings.shortNameBindingLiteral)
+
+    popNameBinding :: PoPName
+    popNameBinding = wrap (":" <> Bindings.popNameBindingLiteral)
 
     cowboyRoute rType moduleName initialState =
       Path (tuple3

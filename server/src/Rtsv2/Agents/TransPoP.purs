@@ -7,6 +7,7 @@ module Rtsv2.Agents.TransPoP
        , getRtts
        , getLeaderFor -- TODO - not sure this is the way forward for remote API server selection
        , routesTo
+       , getTimedRoutesTo
        , PoPRoutes
        ) where
 
@@ -17,7 +18,7 @@ import Data.Foldable (foldM, foldl)
 import Data.FoldableWithIndex (foldlWithIndex)
 import Data.Maybe (Maybe(..), fromMaybe, fromMaybe', maybe)
 import Data.Newtype (unwrap, wrap)
-import Data.Set (Set, toUnfoldable)
+import Data.Set (Set)
 import Data.Set as Set
 import Data.Traversable (traverse, traverse_)
 import Data.Tuple (Tuple(..))
@@ -25,7 +26,8 @@ import Effect (Effect)
 import Ephemeral.Map (EMap)
 import Ephemeral.Map as EMap
 import Erl.Atom (Atom, atom)
-import Erl.Data.List (List, head, index, length, nil, singleton, (:))
+import Erl.Data.List (List, head, index, length, nil, reverse, singleton, uncons, (:))
+import Erl.Data.List as List
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
 import Erl.Process (spawnLink)
@@ -52,6 +54,7 @@ import Rtsv2.PoPDefinition as PoPDefinition
 import Serf (IpAndPort, LamportClock, SerfCoordinate, calcRtt)
 import Serf as Serf
 import Shared.Stream (StreamId)
+import Shared.Types.Agent.State as PublicState
 import Shared.Types (PoPName, Server, ServerAddress(..), extractAddress, extractPoP, toServer)
 import Shared.Utils (distinctRandomNumbers)
 import SpudGun (bodyToString)
@@ -63,6 +66,7 @@ type Rtts = Map Edge Milliseconds
 type ViaPoPs = List PoPName
 
 type PoPRoutes = List (List PoPName)
+
 
 type LamportClocks =
   { streamStateClocks :: Map ServerAddress LamportClock
@@ -80,7 +84,7 @@ type State
     , members :: Map PoPName (Set ServerAddress)
     , lamportClocks :: LamportClocks
     , rtts :: Rtts
-    , sourceRoutes :: Map PoPName (List ViaPoPs)
+    , sourceRoutes :: Map PoPName PoPRoutes
     }
 
 data StreamState = StreamAvailable
@@ -96,12 +100,36 @@ data Msg
   | TransPoPSerfMsg (Serf.SerfMessage TransMessage)
 
 
+getTimedRoutesTo :: PoPName -> Effect PublicState.TimedPoPRoutes
+getTimedRoutesTo pop = exposeState doGetTimedRoutes serverName
+  where
+    getRtt rttMap from to = fromMaybe (wrap 1000) $ Map.lookup (Tuple from to) rttMap
+    augmentWithRtt :: Rtts -> PoPName -> PoPName -> PublicState.TimedPoPStep
+    augmentWithRtt rttMap from to = {from, to, rtt: unwrap $ getRtt rttMap from to}
+    augmentWithRtts state@{rtts: rttMap}  acc from to vias =
+      case uncons vias of
+        Nothing -> reverse $ (augmentWithRtt rttMap from to) : acc
+        Just {head, tail} ->
+          augmentWithRtts state (augmentWithRtt rttMap from head : acc) head to tail
+    doGetTimedRoutes state@{thisServer, sourceRoutes} =
+      let
+        thisPoP = extractPoP thisServer
+        routes = (augmentWithRtts state nil thisPoP pop) <$> (fromMaybe nil $ Map.lookup pop sourceRoutes)
+       in
+      { from: thisPoP
+      , to: pop
+      , routes: List.toUnfoldable $ List.toUnfoldable <$> routes
+      --, routes -- TODO can we uses Lists this side and arrays on the client?
+      }
+
+
+
 getRtts :: Effect Rtts
 getRtts = exposeState _.rtts serverName
 
 getLeaderFor :: PoPName -> Effect (Maybe ServerAddress)
 getLeaderFor pop =
-  exposeState (\state -> head <<< toUnfoldable =<< Map.lookup pop state.members) serverName
+  exposeState (\state -> head <<< Set.toUnfoldable =<< Map.lookup pop state.members) serverName
 
 
 routesTo :: PoPName -> Effect PoPRoutes
