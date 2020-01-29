@@ -19,7 +19,7 @@ import Effect.Aff.Class (class MonadAff, liftAff)
 import Effect.Class (class MonadEffect, liftEffect)
 import Effect.Ref as Ref
 
-mkRequest 
+mkRequest
   :: forall m r
    . MonadAff m
   => MonadAsk { baseUrl :: BaseURL | r } m
@@ -30,7 +30,7 @@ mkRequest opts = do
   response <- liftAff $ request $ defaultRequest baseUrl Nothing opts
   pure $ hush response.body
 
-mkAuthRequest 
+mkAuthRequest
   :: forall m r
    . MonadAff m
   => MonadAsk { baseUrl :: BaseURL | r } m
@@ -42,7 +42,7 @@ mkAuthRequest opts = do
   response <- liftAff $ request $ defaultRequest baseUrl token opts
   pure $ hush response.body
 
-authenticate 
+authenticate
   :: forall m a r
    . MonadAff m
   => MonadAsk { baseUrl :: BaseURL, userEnv :: UserEnv | r } m
@@ -69,7 +69,7 @@ decode decoder (Just json) = case decoder json of
   Left err -> logError err *> pure Nothing
   Right response -> pure (Just response)
 
-decodeWithUser 
+decodeWithUser
   :: forall m a r
    . MonadEffect m
   => MonadAsk { userEnv :: UserEnv | r } m
