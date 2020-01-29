@@ -74,7 +74,7 @@ component = Connect.component $ H.mkComponent
     
   handleAction = case _ of
     HandleRegisterForm fields ->
-      registerUser fields >>= traverse_ (\_ -> navigate Home)
+      registerUser fields >>= traverse_ (\_ -> navigate Dashboard)
     Receive { currentUser } ->
       H.modify_ _ { currentUser = currentUser }
 

@@ -31,6 +31,7 @@ main = HA.runHalogenAff do
 
   body <- HA.awaitBody
   let
+    -- TODO: will need to change this when we point to a local OAUTH
     baseUrl = BaseURL "https://conduit.productionready.io"
     logLevel = Dev
 

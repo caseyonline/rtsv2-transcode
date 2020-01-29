@@ -11,6 +11,7 @@ import Data.Argonaut.Encode (class EncodeJson)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show (genericShow)
 import Data.Maybe (Maybe(..))
+import Simple.JSON (class ReadForeign, class WriteForeign)
 
 newtype Username = Username String
 
@@ -20,6 +21,9 @@ derive instance ordUsername :: Ord Username
 
 derive newtype instance encodeJsonUsername :: EncodeJson Username
 derive newtype instance decodeJsonUsername :: DecodeJson Username
+
+derive newtype instance readForeignUsername  :: ReadForeign Username
+derive newtype instance writeForeignUsername :: WriteForeign Username
 
 instance showUsername :: Show Username where
   show = genericShow

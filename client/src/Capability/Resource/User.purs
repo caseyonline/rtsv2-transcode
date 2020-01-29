@@ -2,11 +2,11 @@ module Rtsv2App.Capability.Resource.User where
 
 import Prelude
 
+import Data.Maybe (Maybe)
+import Halogen (HalogenM, lift)
 import Rtsv2App.Api.Request (AuthFieldsRep, LoginFields, RegisterFields)
 import Rtsv2App.Data.Profile (Profile, ProfileRep, ProfileWithEmail, Author)
 import Rtsv2App.Data.Username (Username)
-import Data.Maybe (Maybe)
-import Halogen (HalogenM, lift)
 import Type.Row (type (+))
 
 type UpdateProfileFields = { | ProfileRep + AuthFieldsRep Maybe () }

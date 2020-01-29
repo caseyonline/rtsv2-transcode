@@ -1,4 +1,4 @@
-module Rtsv2App.Page.Home where
+module Rtsv2App.Page.Dashboard where
 
 import Prelude
 
@@ -80,7 +80,7 @@ component = Connect.component $ H.mkComponent
     HH.div
       [ css "main" ]
       [ HH.slot (SProxy :: _ "header") unit HD.component { currentUser, route: Login } absurd
-      , HH.slot (SProxy :: _ "mainMenu") unit MM.component { currentUser, route: Home } absurd
+      , HH.slot (SProxy :: _ "mainMenu") unit MM.component { currentUser, route: Dashboard } absurd
       , HH.div
         [ css "app-content content" ]
         [ HH.div
@@ -94,7 +94,7 @@ component = Connect.component $ H.mkComponent
               [ css "content-header-left col-md-4 col-12 mb-2" ]
               [ HH.h3
                 [ css "content-header-h3" ]
-                [ HH.text "Home" ]
+                [ HH.text "Dashboard" ]
               ]
             ]
           , HH.div

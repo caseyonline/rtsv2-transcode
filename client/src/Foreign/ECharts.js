@@ -321,10 +321,10 @@ var optionz = {
           },
           effect : {
               show: true,
-              scaleSize: 1,
-              period: 5,
+              scaleSize: 3,
+              period: 4,
               color: '#fff',
-              shadowBlur: 5
+              shadowBlur: 6
           },
            zlevel: 10,
 

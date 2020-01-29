@@ -103,12 +103,12 @@ component = H.mkComponent
                         [ css "arrow_box_right" ]
                         [ HH.a
                         [ css "dropdown-item"
-                        , safeHref $ Profile cu.username
+                        , safeHref $ Settings
                         ]
                         [ HH.i
                             [ css "ft-user" ]
                             []
-                        , HH.text "Edit Profile"
+                        , HH.text "Settings"
                         ]
                         ]
                     ]

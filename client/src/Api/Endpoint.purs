@@ -8,8 +8,9 @@ import Data.Maybe (Maybe(..))
 import Routing.Duplex (RouteDuplex', prefix, root, segment)
 import Routing.Duplex.Generic (noArgs, sum)
 import Routing.Duplex.Generic.Syntax ((/))
-import Rtsv2App.Data.Route (uname)
+import Rtsv2App.Data.Route (uname, pName)
 import Rtsv2App.Data.Username (Username)
+import Shared.Types (PoPName)
 
 type PaginationRep =
   ( limit :: Maybe Int
@@ -38,7 +39,7 @@ data Endpoint
   = Login
   | User
   | Users
-  | RoundTripTimes
+  | TimedRoutes PoPName
   | Profiles Username
 
 derive instance genericEndpoint :: Generic Endpoint _
@@ -51,7 +52,7 @@ endpointCodec = root $ prefix "api" $ sum
   { "Login"         : "users" / "login" / noArgs
   , "User"          : "user" / noArgs
   , "Users"         : "users" / noArgs
-  , "RoundTripTimes": "roundtriptimes" / noArgs
+  , "TimedRoutes"   : "timedRoutes" / pName segment
   -- automatically create query parameters
-  , "Profiles": "profiles" / uname segment
+  , "Profiles"      : "profiles" / uname segment
   }

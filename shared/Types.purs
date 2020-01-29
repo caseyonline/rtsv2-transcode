@@ -20,11 +20,15 @@ module Shared.Types
        , extractAddress
        , extractPoP
        , extractServer
+       , toStringPname
+       , parsePname
        ) where
 
 import Prelude
 
 import Data.Either (Either)
+import Data.Generic.Rep (class Generic)
+import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype, unwrap)
 import Data.Symbol (SProxy(..))
 import Record as Record
@@ -47,12 +51,21 @@ derive newtype instance readForeignRegionName :: ReadForeign RegionName
 derive newtype instance writeForeignRegionName :: WriteForeign RegionName
 
 newtype PoPName = PoPName String
+derive instance genericUsername :: Generic PoPName _
 derive instance newtypePoPName :: Newtype PoPName _
 derive newtype instance eqPoPName :: Eq PoPName
 derive newtype instance ordPoPName :: Ord PoPName
 derive newtype instance showPoPName :: Show PoPName
 derive newtype instance readForeignPoPName :: ReadForeign PoPName
 derive newtype instance writeForeignPoPName :: WriteForeign PoPName
+
+parsePname :: String -> Maybe PoPName
+parsePname "" = Nothing
+parsePname str = Just (PoPName str)
+
+toStringPname :: PoPName -> String
+toStringPname (PoPName str) = str
+
 
 newtype Load = Load Number
 derive instance newtypeLoad :: Newtype Load _
@@ -72,9 +85,6 @@ derive newtype instance showServerLocation :: Show ServerLocation
 derive newtype instance readForeignServerLocation :: ReadForeign ServerLocation
 derive newtype instance writeForeignServerLocation :: WriteForeign ServerLocation
 
-
-
-
 type ServerRec = { address :: ServerAddress
                  , pop :: PoPName
                  , region :: RegionName
@@ -83,10 +93,6 @@ type ServerRec = { address :: ServerAddress
 newtype Server = Server ServerRec
 newtype RelayServer = Relay ServerRec
 newtype EgestServer = Egest ServerRec
-
-
--- newtype AggregatorServer = Aggregator Server
--- newtype IdleServerServer = Idle Server
 
 derive instance newtypeServer :: Newtype Server _
 derive newtype instance eqServer :: Eq Server
@@ -124,16 +130,6 @@ derive newtype instance showServerLoad :: Show ServerLoad
 derive newtype instance readForeignServerLoad :: ReadForeign ServerLoad
 derive newtype instance writeForeignServerLoad :: WriteForeign ServerLoad
 
-
--- type ServerAddressRec
---   = { address :: ServerAddress
---     }
--- type LocationRec
---   = { pop :: PoPName
---     , region :: RegionName
---     }
-
-
 --------------------------------------------------------------------------------
 -- API Types - maybe move me
 --------------------------------------------------------------------------------
@@ -150,16 +146,11 @@ extractServer :: forall a. LocalOrRemote a -> a
 extractServer (Local a) = a
 extractServer (Remote a) = a
 
-
-
-
 data FailureReason
   = NotFound
   | NoResource
 
 type APIResp = (Either FailureReason Unit)
-
-
 
 toServer :: ServerAddress -> ServerLocation -> Server
 toServer sa (ServerLocation ls) =

@@ -11,7 +11,7 @@ import Halogen.HTML as HH
 import Halogen.HTML.Events as HE
 import Halogen.HTML.Properties as HP
 import Rtsv2App.Capability.Navigate (class Navigate, logout)
-import Rtsv2App.Component.HTML.Utils (css, dataAttr, maybeElem, safeHref, whenElem)
+import Rtsv2App.Component.HTML.Utils (css, dataAttr, safeHref, whenElem)
 import Rtsv2App.Data.Profile (Profile)
 import Rtsv2App.Data.Route (Route(..))
 
@@ -71,7 +71,7 @@ component = H.mkComponent
           [ css "nav-item mr-auto" ]
           [ HH.a
             [ css "navbar-brand"
-            , safeHref Home
+            , safeHref Dashboard
             ]
             [ HH.img
               [ css "brand-logo"
@@ -99,7 +99,7 @@ component = H.mkComponent
         [ css "navigation navigation-main"
         , HP.id_ "main-menu-navigation"
         ]
-        [ navItem Home
+        [ navItem Dashboard
           [ HH.i
             [css "ft-home"]
             []
@@ -124,15 +124,6 @@ component = H.mkComponent
            , HH.span
              [css "menu-title"]
              [ HH.text "Settings" ]
-           ]
-         , maybeElem currentUser \c ->
-             navItem (Profile c.username)
-             [ HH.i
-               [css "ft-user"]
-               []
-             , HH.span
-               [css "menu-title"]
-               [ HH.text "Profile" ]
            ]
          , whenElem (isJust currentUser) \_ ->
            HH.li

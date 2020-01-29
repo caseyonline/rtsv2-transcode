@@ -21,12 +21,14 @@ import Rtsv2App.Api.Utils (authenticate, decode, decodeWithUser, mkAuthRequest, 
 import Rtsv2App.Capability.LogMessages (class LogMessages)
 import Rtsv2App.Capability.Navigate (class Navigate, navigate)
 import Rtsv2App.Capability.Now (class Now)
+import Rtsv2App.Capability.Resource.Stats (class ManageStats)
 import Rtsv2App.Capability.Resource.User (class ManageUser)
 import Rtsv2App.Data.Log as Log
 import Rtsv2App.Data.Profile (decodeProfileAuthor)
 import Rtsv2App.Data.Route as Route
 import Rtsv2App.Data.Utils (decodeAt)
 import Rtsv2App.Env (Env, LogLevel(..))
+import Simple.JSON (readJSON)
 import Type.Equality (class TypeEquals, from)
 
 -- | `AppM` combines the `Aff` and `Reader` monads under a new type, which we can now use to write
@@ -81,7 +83,7 @@ instance navigateAppM :: Navigate AppM where
       Request.removeToken
     liftAff do
       Bus.write Nothing userBus
-    navigate Route.Home
+    navigate Route.Dashboard
 
 -- | all of the available requests
 instance manageUserAppM :: ManageUser AppM where
@@ -101,3 +103,8 @@ instance manageUserAppM :: ManageUser AppM where
 
   updateUser fields =
     void $ mkAuthRequest { endpoint: User, method: Put (Just (encodeJson fields)) }
+
+-- instance manageStatsAppM :: ManageStats AppM where
+--    postTimedRoutes popName =
+--      mkRequest { endpoint: TimedRoutes popName , method: Post (Nothing) }
+--        >>= decode (decodeAt "")

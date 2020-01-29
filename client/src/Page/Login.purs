@@ -64,7 +64,7 @@ component = H.mkComponent
         Just profile -> do
           void $ H.query F._formless unit $ F.injQuery $ SetLoginError false unit
           st <- H.get
-          when st.redirect (navigate Home)
+          when st.redirect (navigate Dashboard)
 
   render :: State -> H.ComponentHTML Action ChildSlots m
   render _  =
