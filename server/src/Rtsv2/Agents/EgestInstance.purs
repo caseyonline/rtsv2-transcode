@@ -26,6 +26,7 @@ import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..), launchLocalOrRemoteGeneric)
 import Rtsv2.Agents.IntraPoP as IntraPoP
+import Rtsv2.Agents.Locator (APIResp, FailureReason(..), LocalOrRemote(..), ResourceResponse)
 import Rtsv2.Agents.StreamRelayInstance (CreateRelayPayload)
 import Rtsv2.Agents.StreamRelayInstance as StreamRelayInstance
 import Rtsv2.Agents.StreamRelayInstanceSup (startRelay) as StreamRelayInstanceSup
@@ -36,7 +37,7 @@ import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Rtsv2.Utils (crashIfLeft, noprocToMaybe)
 import Shared.Agent as Agent
 import Shared.Stream (StreamId)
-import Shared.Types (APIResp, EgestServer, FailureReason(..), Load, LocalOrRemote(..), RelayServer, ResourceResponse, Server, ServerLoad(..))
+import Shared.Types (EgestServer, Load, RelayServer, Server, ServerLoad(..))
 import Shared.Types.Agent.State as PublicState
 import SpudGun as SpudGun
 

@@ -2,6 +2,7 @@ module Rtsv2.Utils
   ( member
   , noprocToMaybe
   , crashIfLeft
+  , undefined
   ) where
 
 import Prelude
@@ -11,6 +12,7 @@ import Data.Maybe (Maybe(..), fromMaybe)
 import Effect (Effect)
 import Erl.Data.List (List, findIndex)
 import Partial.Unsafe (unsafePartial)
+import Unsafe.Coerce as Unsafe.Coerce
 
 member :: forall a. Eq a => a -> List a -> Boolean
 member a as = fromMaybe false $ const true <$> findIndex ((==) a) as
@@ -24,3 +26,7 @@ noprocToMaybe = noprocToMaybeImpl Nothing Just
 crashIfLeft :: forall e a m. Monad m => Either e a -> m a
 crashIfLeft either = unsafePartial $
   case either of Right a -> pure a
+
+
+undefined :: forall a. a
+undefined = Unsafe.Coerce.unsafeCoerce unit

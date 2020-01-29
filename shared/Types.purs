@@ -9,22 +9,15 @@ module Shared.Types
        , ServerRec
        , RelayServer(..)
        , EgestServer(..)
-       , FailureReason(..)
-       , APIResp(..)
-       , ResourceResponse
-       , NoCapacity(..)
-       , LocalOrRemote(..)
        , toServer
        , toServerLoad
        , serverLoadToServer
        , extractAddress
        , extractPoP
-       , extractServer
        ) where
 
 import Prelude
 
-import Data.Either (Either)
 import Data.Newtype (class Newtype, unwrap)
 import Data.Symbol (SProxy(..))
 import Record as Record
@@ -132,33 +125,6 @@ derive newtype instance writeForeignServerLoad :: WriteForeign ServerLoad
 --   = { pop :: PoPName
 --     , region :: RegionName
 --     }
-
-
---------------------------------------------------------------------------------
--- API Types - maybe move me
---------------------------------------------------------------------------------
-type ResourceResponse a = Either NoCapacity (LocalOrRemote a)
-
-data NoCapacity = NoCapacity
-data LocalOrRemote a
-  = Local a
-  | Remote a
-
-derive instance functorLocalOrRemoteF :: Functor LocalOrRemote
-
-extractServer :: forall a. LocalOrRemote a -> a
-extractServer (Local a) = a
-extractServer (Remote a) = a
-
-
-
-
-data FailureReason
-  = NotFound
-  | NoResource
-
-type APIResp = (Either FailureReason Unit)
-
 
 
 toServer :: ServerAddress -> ServerLocation -> Server
