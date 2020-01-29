@@ -13,7 +13,7 @@ install:
 spago:
 	spago bundle-app --main Main --to $(PS_SOURCEFILE)
 
-parcel:
+parcel: | node_modules
 	node_modules/.bin/parcel build --out-dir $(JS_ASSET_FOLDER) --out-file $(BUNDLE_NAME) $(PS_SOURCEFILE) --no-source-maps --no-cache
 
 watch-spago:
@@ -24,3 +24,6 @@ watch-parcel:
 
 clean-all:
 	rm -rf node_modules output .spago .cache dist
+
+node_modules:
+	npm install
