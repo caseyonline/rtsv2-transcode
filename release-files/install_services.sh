@@ -11,6 +11,9 @@ cd ${0%/*}
 BinDir=$(pwd)
 RootDir=$(readlink -f $BinDir/../..)
 
+systemctl stop rtsv2-serf.service 2>/dev/null || true
+systemctl stop rtsv2-node.service 2>/dev/null || true
+
 cat > /usr/lib/systemd/system/rtsv2-serf.service <<EOF
 [Unit]
 Description=RTS-V2 Serf

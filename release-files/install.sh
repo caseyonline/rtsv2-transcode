@@ -16,4 +16,7 @@ if [[ -L rtsv2 ]]; then
 fi
 
 ln -s "$InstallName" rtsv2
-sudo rtsv2/bin/install_service.sh
+
+cd rtsv2/bin
+nix-shell --run "echo Nix setup complete"
+sudo ./install_services.sh
