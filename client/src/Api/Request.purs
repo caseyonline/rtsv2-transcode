@@ -49,7 +49,9 @@ derive instance ordToken :: Ord Token
 instance showToken :: Show Token where
   show (Token _) = "Token {- token -}"
 
-newtype BaseURL = BaseURL String
+data BaseURL =
+    ApiUrl String
+  | AuthURL String
 
 data RequestMethod
   = Get
@@ -63,9 +65,9 @@ type RequestOptions =
   }
 
 defaultRequest :: BaseURL -> Maybe Token -> RequestOptions -> Request Json
-defaultRequest (BaseURL baseUrl) auth { endpoint, method } =
+defaultRequest baseUrl auth { endpoint, method } =
   { method: Left method 
-  , url: baseUrl <> print endpointCodec endpoint
+  , url: (printUrl baseUrl) <> print endpointCodec endpoint
   , headers: case auth of
       Nothing -> []
       Just (Token t) -> [ RequestHeader "Authorization" $ "Token " <> t ]
@@ -89,6 +91,11 @@ type AuthFieldsRep box r = ( email :: Email, password :: box String | r )
 type RegisterFields = { | AuthFieldsRep Unlifted (username :: Username) }
 
 type LoginFields = { | AuthFieldsRep Unlifted () }
+
+printUrl :: BaseURL -> String
+printUrl url = case url of
+  ApiUrl a -> a
+  AuthURL a -> a
 
 login :: forall m. MonadAff m => BaseURL -> LoginFields -> m (Either String (Tuple Token Profile))
 login baseUrl fields = 

@@ -22,38 +22,38 @@ import Effect.Ref as Ref
 mkRequest
   :: forall m r
    . MonadAff m
-  => MonadAsk { baseUrl :: BaseURL | r } m
+  => MonadAsk { apiUrl :: BaseURL | r } m
   => RequestOptions
   -> m (Maybe Json)
 mkRequest opts = do
-  { baseUrl } <- ask
-  response <- liftAff $ request $ defaultRequest baseUrl Nothing opts
+  { apiUrl } <- ask
+  response <- liftAff $ request $ defaultRequest apiUrl Nothing opts
   pure $ hush response.body
 
 mkAuthRequest
   :: forall m r
    . MonadAff m
-  => MonadAsk { baseUrl :: BaseURL | r } m
+  => MonadAsk { authUrl :: BaseURL | r } m
   => RequestOptions
   -> m (Maybe Json)
 mkAuthRequest opts = do
-  { baseUrl } <- ask
+  { authUrl } <- ask
   token <- liftEffect readToken
-  response <- liftAff $ request $ defaultRequest baseUrl token opts
+  response <- liftAff $ request $ defaultRequest authUrl token opts
   pure $ hush response.body
 
 authenticate
   :: forall m a r
    . MonadAff m
-  => MonadAsk { baseUrl :: BaseURL, userEnv :: UserEnv | r } m
+  => MonadAsk { authUrl :: BaseURL, userEnv :: UserEnv | r } m
   => LogMessages m
   => Now m
   => (BaseURL -> a -> m (Either String (Tuple Token Profile))) 
   -> a 
   -> m (Maybe Profile)
 authenticate req fields = do 
-  { baseUrl, userEnv } <- ask
-  req baseUrl fields >>= case _ of
+  { authUrl, userEnv } <- ask
+  req authUrl fields >>= case _ of
     Left err -> logError err *> pure Nothing
     Right (Tuple token profile) -> do 
       liftEffect do 

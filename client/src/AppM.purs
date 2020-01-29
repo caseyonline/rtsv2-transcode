@@ -28,7 +28,6 @@ import Rtsv2App.Data.Profile (decodeProfileAuthor)
 import Rtsv2App.Data.Route as Route
 import Rtsv2App.Data.Utils (decodeAt)
 import Rtsv2App.Env (Env, LogLevel(..))
-import Simple.JSON (readJSON)
 import Type.Equality (class TypeEquals, from)
 
 -- | `AppM` combines the `Aff` and `Reader` monads under a new type, which we can now use to write
@@ -50,7 +49,6 @@ derive newtype instance bindAppM :: Bind AppM
 derive newtype instance monadAppM :: Monad AppM
 derive newtype instance monadEffectAppM :: MonadEffect AppM
 derive newtype instance monadAffAppM :: MonadAff AppM
-
 
 instance monadAskAppM :: TypeEquals e Env => MonadAsk e AppM where
   ask = AppM $ asks from
@@ -104,7 +102,7 @@ instance manageUserAppM :: ManageUser AppM where
   updateUser fields =
     void $ mkAuthRequest { endpoint: User, method: Put (Just (encodeJson fields)) }
 
--- instance manageStatsAppM :: ManageStats AppM where
---    postTimedRoutes popName =
---      mkRequest { endpoint: TimedRoutes popName , method: Post (Nothing) }
---        >>= decode (decodeAt "")
+instance manageStatsAppM :: ManageStats AppM where
+   postTimedRoutes popName =
+     mkRequest { endpoint: TimedRoutes popName , method: Post (Nothing) }
+       >>= decode (decodeAt "")

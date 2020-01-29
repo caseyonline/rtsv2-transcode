@@ -15,7 +15,6 @@ var echarts = require("echarts");
 
 })();
 
-
 exports.makeChart_ = function(node) {
   return function() {
       return echarts.init(node);
@@ -109,6 +108,7 @@ var geoCoordMap = {
     "Vienna": [16.373819,48.208174],
     "Vilnius": [25.279651,54.687156],
     "Warsaw": [21.012229,52.229676],
+    "DIA": [-77.0363700, 38.8951100],
     "Zurich": [8.541694,47.376887],
 }
        
@@ -127,6 +127,7 @@ var data_good = [ {"name": "Amsterdam", "value": 4}
     , {"name": "Bucharest", "value": 26}
     , {"name": "Caracas", "value": 66}
     , {"name": "Chicago", "value": 87}
+    , {"name": "Dalas", "value": 77}
     , {"name": "Delhi", "value": 77}
     , {"name": "Doha", "value": 51}
     , {"name": "Dubai", "value": 55}
@@ -183,6 +184,7 @@ var data_good = [ {"name": "Amsterdam", "value": 4}
     , {"name": "Toronto", "value": 79}
     , {"name": "Vilnius", "value": 25}
     , {"name": "Warsaw", "value": 21}
+    , {"name": "DIA", "value": 21}
     , {"name": "Vienna", "value": 16}
     , {"name": "Zurich", "value": 8}
 
@@ -233,17 +235,40 @@ function convertData(data, geoCoordMap) {
 };
 
 var optionz = {
+    legend: {
+        orient: 'vertical',
+        x:'left',
+        y:'bottom',
+        data:['Journey Primary', 'Journey Secondary'],
+        selectedMode: 'single',
+        selected:{
+            'Journey Primary' : false,
+            'Journey Secondary' : false
+        },
+        textStyle : {
+            color: '#fff'
+        },
+    },
     tooltip: {
         padding: 10,
         backgroundColor: '#222',
         borderColor: '#777',
         borderWidth: 1,
         formatter: function (obj) {
-            if (obj.seriesType == "lines") {
-                var data = obj.data
-                return data.fromName + " > " + data.toName
-            } else {
+            var data = obj.data
             var value = obj.value;
+            if (obj.seriesType == "lines") {
+                console.log(data)
+
+
+                return '<div style="border-bottom: 1px solid rgba(255,255,255,.3); font-size: 18px;padding-bottom: 7px;margin-bottom: 7px">'
+                + data.fromName + " > " + data.toName
+                + '</div>'
+                    + 'Time' + '：' + data.data[0] + 'ms' + '<br>'
+                    + 'Total' + '：' + data.data[1] + 'ms' + '<br>'
+                    + 'Total' + '：' + data.data[1] + 'ms' + '<br>'
+            } else {
+
             return '<div style="border-bottom: 1px solid rgba(255,255,255,.3); font-size: 18px;padding-bottom: 7px;margin-bottom: 7px">'
                 + obj.name
                 + '</div>'
@@ -305,7 +330,39 @@ var optionz = {
           },
           zlevel: 3,
         },
-         { name: "Journey A",
+         { name: "Journey Primary",
+          type: "lines",
+          coordinateSystem: 'geo',
+          label: {
+              show: false
+          },
+
+          lineStyle: {
+              color: '#afc343',
+              width: 2,
+              type: "solid",
+              shadowColor: "red",
+              curveness: 0.3
+          },
+          effect : {
+              show: true,
+              scaleSize: 3,
+              period: 4,
+              color: '#fff',
+              shadowBlur: 6
+          },
+           zlevel: 10,
+
+          data:  [
+              [ {name:'Dalas - DAL', coord: [-96.796989,32.776665], data: [30, 120]}
+              , {name:'London - LCY', coord: [-0.127758,51.507351]}
+              ]
+            , [ {name:'London - LCY', coord: [-0.127758,51.507351], data: [30, 120]}
+              , {name:"Frankfurt - FRA", coord:[8.682127,50.110922]}
+              ]
+          ],
+        },
+        { name: "Journey Secondary",
           type: "lines",
           coordinateSystem: 'geo',
           label: {
@@ -330,16 +387,16 @@ var optionz = {
 
 
           data:  [
-                  [ {name:'Los Angeles', coord:[-118.243685, 34.052234]}
-                  , {name:'Barcelona', coord:[2.173404, 41.385063]}
-                  ]
-                , [ {name:'Barcelona', coord:[2.173404, 41.385063]}
-                  , {name:"Sydney", coord:[151.209296,-33.86882]}
-                  ]
-                , [ {name:"Sydney", coord:[151.209296,-33.86882]}
-                  , {name:"Auckland", coord:[174.763332,-36.84846],}
-                  ]
-                ],
+              [ {name:'Dalas - DAL', coord: [-96.796989,32.776665], data: [30, 120]}
+                , {name:'Washington - DIA', coord: [-77.0363700, 38.8951100]}
+              ]
+              , [ {name:'Washington - DIA', coord: [-77.0363700, 38.8951100], data:[60, 120]}
+                  , {name:'London - LCY', coord: [-0.127758,51.507351]}
+              ]
+            , [ {name:'London - LCY', coord: [-0.127758,51.507351], data: [30, 120]}
+                , {name:"Frankfurt - FRA", coord:[8.682127,50.110922]}
+              ]
+          ],
         },
 
    ]

@@ -32,7 +32,9 @@ main = HA.runHalogenAff do
   body <- HA.awaitBody
   let
     -- TODO: will need to change this when we point to a local OAUTH
-    baseUrl = BaseURL "https://conduit.productionready.io"
+    authUrl = AuthURL "https://conduit.productionready.io"
+    apiUrl = ApiUrl "https://conduit.productionready.io"
+
     logLevel = Dev
 
   -- default currentUser Ref to Nothing when starting app
@@ -46,13 +48,13 @@ main = HA.runHalogenAff do
   -- if it gets a valid result, write it to our mutable reference.
   liftEffect readToken >>= traverse_ \token -> do
     let requestOptions = { endpoint: User, method: Get }
-    res <- liftAff $ request $ defaultRequest baseUrl (Just token) requestOptions
+    res <- liftAff $ request $ defaultRequest authUrl (Just token) requestOptions
     let u = decodeAt "user" =<< lmap printResponseFormatError res.body
     liftEffect $ Ref.write (hush u) currentUser
 
   let
     environment :: Env
-    environment = { baseUrl, logLevel, userEnv }
+    environment = { apiUrl, authUrl, logLevel, userEnv }
       where
       userEnv :: UserEnv
       userEnv = { currentUser, userBus }
