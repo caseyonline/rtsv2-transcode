@@ -1,4 +1,4 @@
-module Rtsv2App.Api.Request 
+module Rtsv2App.Api.Request
   ( Token -- constructor and decoders not exported
   , BaseURL(..)
   , RequestMethod(..)
@@ -51,7 +51,7 @@ instance showToken :: Show Token where
 
 newtype BaseURL = BaseURL String
 
-data RequestMethod 
+data RequestMethod
   = Get
   | Post (Maybe Json)
   | Put (Maybe Json)
@@ -82,7 +82,7 @@ defaultRequest (BaseURL baseUrl) auth { endpoint, method } =
     Put b -> Tuple PUT b
     Delete -> Tuple DELETE Nothing
 
-type Unlifted a = a 
+type Unlifted a = a
 
 type AuthFieldsRep box r = ( email :: Email, password :: box String | r )
 
