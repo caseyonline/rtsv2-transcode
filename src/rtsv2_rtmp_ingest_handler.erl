@@ -177,7 +177,7 @@ handle(State = #?state{rtmp_pid = Rtmp,
                                          path => Path,
                                          stream_name => StreamName}),
 
-          case ((IngestStarted(StreamDetails))(StreamName))() of
+          case (((IngestStarted(StreamDetails))(StreamName))(self()))() of
             {right, StreamAndVariant} ->
               {ok, WorkflowPid} = start_workflow(Rtmp, StreamId, ClientId, Path, StreamAndVariant),
 
@@ -205,16 +205,23 @@ workflow_loop(StreamName, WorkflowPid, State = #?state{ingestStopped = IngestSto
       unit = ((IngestStopped(StreamDetails))(StreamName))(),
       ok;
 
+    #workflow_output{message = #workflow_data_msg{data = #rtmp_client_metadata{}}} ->
+      ?SLOG_DEBUG("Got client metadata"),
+      workflow_loop(StreamName, WorkflowPid, State);
+
     Other ->
       ?SLOG_WARNING("Unexpected workflow output ~p", [Other]),
       workflow_loop(StreamName, WorkflowPid, State)
   end.
 
-start_workflow(Rtmp, StreamId, ClientId, Path, StreamAndVariant) ->
+start_workflow(Rtmp, StreamId, ClientId, Path, StreamAndVariant = {streamAndVariant, SlotName, ProfileName}) ->
 
   Workflow = #workflow{
-                name = rtmp_ingest_handler,
+                name = {rtmp_ingest_handler, StreamAndVariant},
                 display_name = <<"RTMP Ingest">>,
+                tags = #{type => rtmp_ingest_handler,
+                         slot => SlotName,
+                         profile => ProfileName},
                 generators = [
                               #generator{name = rtmp_ingest,
                                          module = rtmp_push_ingest_generator,

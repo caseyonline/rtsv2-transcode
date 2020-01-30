@@ -11,6 +11,8 @@ import Data.Maybe (Maybe(..), fromMaybe')
 import Data.Newtype (unwrap, wrap)
 import Erl.Data.List (nil, (:))
 import Erl.Data.Tuple (tuple2)
+import Erl.Process.Raw as Raw
+import Erl.Utils as Timer
 import Rtsv2.Agents.IngestInstance as IngestInstance
 import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
 import Rtsv2.Config as Config
@@ -56,15 +58,14 @@ ingestStart =
                                streamDetails = hush $ restResult
                              Rest.result true req state{streamDetails = streamDetails}
                           )
-  -- TODO - would conflict if stream exists, but this won't be REST once media plugged...
-  -- # Rest.isConflict (\req state@{streamVariant} -> do
-
-  --                           isAvailable <- isIngestActive streamVariant
-  --                           Rest.result isAvailable req $ spy "state" state
-  --                         )
+  -- TODO - hideous spawn here, but ingestInstance needs to do a monitor... - ideally we sleep forever and kill it in ingestStop...
   # Rest.contentTypesProvided (\req state ->
                                   Rest.result (tuple2 "text/plain" (\req2 state2@{streamDetails, streamAndVariant} -> do
-                                                                       _ <- IngestInstanceSup.startIngest (fromMaybe' (lazyCrashIfMissing "stream_details missing") streamDetails) streamAndVariant
+                                                                       pid <- Raw.spawn ((\_ -> Timer.sleep (wrap 10000))
+                                                                                         { receive: Raw.receive
+                                                                                         , receiveWithTimeout: Raw.receiveWithTimeout
+                                                                                         })
+                                                                       _ <- IngestInstanceSup.startIngest (fromMaybe' (lazyCrashIfMissing "stream_details missing") streamDetails) streamAndVariant pid
                                                                        Rest.result "ingestStarted" req2 state2
                                                                    ) : nil) req state)
   # Rest.yeeha

@@ -35,6 +35,10 @@ data Endpoint
   | RelayRegisterE
   | RelayStatsE StreamId
   | LoadE
+  | WorkflowsE
+  | WorkflowGraphE String
+  | WorkflowMetricsE String
+  | WorkflowStructureE String
   | IngestAggregatorE StreamId
   | IngestAggregatorPlayerE StreamId
   | IngestAggregatorPlayerJsE StreamId
@@ -70,6 +74,11 @@ endpoint = root $ sum
   , "RelayRegisterE"                                   : "" / "api" / "agents" / "relay" / path "register" noArgs
   , "RelayStatsE"                                      : "" / "api" / "agents" / "relay" / streamId segment
   , "LoadE"                                            : "" / "api" / path "load" noArgs
+
+  , "WorkflowsE"                                       : "" / "api" / path "workflows" noArgs
+  , "WorkflowGraphE"                                   : "" / "api" / "workflows" / segment / "graph"
+  , "WorkflowMetricsE"                                 : "" / "api" / "workflows" / segment / "metrics"
+  , "WorkflowStructureE"                               : "" / "api" / "workflows" / segment / "structure"
 
   , "IngestAggregatorE"                                : "" / "api" / "agents" / "ingestAggregator" / streamId segment
   , "IngestAggregatorPlayerE"                          : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "player"
