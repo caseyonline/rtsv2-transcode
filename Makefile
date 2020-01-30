@@ -1,6 +1,6 @@
 .PHONY: all server client test
 
-all: server
+all: client server
 
 server:
 	$(MAKE) -C server all

@@ -10,10 +10,15 @@ all: spago parcel
 install:
 	npm install
 
-spago:
+spago: $(PS_SOURCEFILE)
+
+parcel: $(JS_ASSET_FOLDER)$(BUNDLE_NAME) | node_modules
+
+$(PS_SOURCEFILE): $(shell find src -type f)
 	spago bundle-app --main Main --to $(PS_SOURCEFILE)
 
-parcel: | node_modules
+$(JS_ASSET_FOLDER)$(BUNDLE_NAME): $(PS_SOURCEFILE)
+	echo B $(BUNDLE_NAME), P $(PS_SOURCEFILE)
 	node_modules/.bin/parcel build --out-dir $(JS_ASSET_FOLDER) --out-file $(BUNDLE_NAME) $(PS_SOURCEFILE) --no-source-maps --no-cache
 
 watch-spago:
