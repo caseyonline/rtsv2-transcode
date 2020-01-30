@@ -28,6 +28,7 @@ import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
 import Rtsv2.Agents.IngestAggregatorInstanceSup as IngestAggregatorInstanceSup
 import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..), launchLocalOrRemoteGeneric)
 import Rtsv2.Agents.IntraPoP as IntraPoP
+import Rtsv2.Agents.Locator (LocalOrRemote(..), ResourceResponse, extractServer)
 import Rtsv2.Audit as Audit
 import Rtsv2.Config as Config
 import Rtsv2.Names as Names
@@ -37,7 +38,7 @@ import Rtsv2.Utils (crashIfLeft)
 import Shared.Agent as Agent
 import Shared.LlnwApiTypes (StreamDetails)
 import Shared.Stream (StreamAndVariant, StreamId, toStreamId, toVariant)
-import Shared.Types (Load, LocalOrRemote(..), ResourceResponse, Server, ServerLoad(..), extractAddress, extractServer)
+import Shared.Types (Load, Server, ServerLoad(..), extractAddress)
 import SpudGun (Url)
 import SpudGun as SpudGun
 

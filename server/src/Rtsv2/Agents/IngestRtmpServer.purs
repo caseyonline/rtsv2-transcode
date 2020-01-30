@@ -12,7 +12,6 @@ import Data.Maybe (Maybe)
 import Data.Newtype (wrap)
 import Effect (Effect)
 import Erl.Process.Raw (Pid)
-import Erl.Utils as Erl
 import Foreign (Foreign)
 import Pinto (ServerName)
 import Pinto as Pinto

@@ -5,19 +5,26 @@ module Rtsv2.Agents.StreamRelayInstance
   , init
   , status
   , CreateRelayPayload
+  , CreateRealyChainPayload
+  , RelayRoute
   , RegisterEgestPayload
   ) where
 
 import Prelude
 
+import Data.Either (isRight)
 import Data.Maybe (Maybe(..))
+import Data.Newtype (wrap)
 import Data.Set (Set, toUnfoldable)
 import Data.Set as Set
+import Data.Traversable (traverse_)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
-import Erl.Data.List (List, nil, (:))
+import Erl.Data.List (List, nil, uncons, (:))
 import Erl.Data.Tuple (tuple2, tuple3)
 import Erl.ModuleName (NativeModuleName(..))
+import Erl.Process (spawnLink)
+import Erl.Utils as Erl
 import Foreign (unsafeToForeign)
 import Logger (Logger, spy)
 import Logger as Logger
@@ -25,15 +32,23 @@ import Pinto (ServerName(..), StartLinkResult, isRegistered)
 import Pinto.Gen (CallResult(..))
 import Pinto.Gen as Gen
 import PintoHelper (exposeState)
+import Rtsv2.Agents.TransPoP as TransPoP
 import Rtsv2.PoPDefinition as PoPDefinition
+import Rtsv2.Router.Endpoint (Endpoint(..), makeUrlAddr)
 import Shared.Agent as Agent
 import Shared.Stream (StreamId)
-import Shared.Types (EgestServer, PoPName, RelayServer, Server, extractAddress)
+import Shared.Types (EgestServer, PoPName, RelayServer, Server, extractAddress, extractPoP)
 import Shared.Types.Agent.State as PublicState
+import SpudGun as SpudGun
 
 type CreateRelayPayload
   = { streamId :: StreamId
     , aggregator :: Server
+    }
+
+type CreateRealyChainPayload
+  = { streamId :: StreamId
+    , route :: RelayRoute
     }
 
 
@@ -107,41 +122,59 @@ registerEgest payload = Gen.doCall (serverName payload.streamId) $ doRegisterEge
 maybeStartEgestRelays :: State -> Effect State
 maybeStartEgestRelays state@{egestSourceRoutes: Just _} = pure state
 maybeStartEgestRelays state@{streamId, aggregator, thisServer} = do
-  pure state
---   relayRoutes <- (map toRelayRoute) <$> TransPoP.routesTo (spy "aggPoP" $ extractPoP aggregator)
--- --  _ <- traverse startRelay
+  let
+    thisPoP = spy "thisPoP" $ extractPoP thisServer
+    aggregatorPoP = spy "aggPoP" $ extractPoP aggregator
+    toRelayRoute :: List PoPName -> RelayRoute
+    toRelayRoute pops = { toSource : pops
+                        , thisPoP  : thisPoP
+                        , toEgest  : nil
+                        }
+  relayRoutes <- (map toRelayRoute) <$> TransPoP.routesTo aggregatorPoP
+  _ <- traverse_ (walkRelayChain streamId) relayRoutes
+  pure state{egestSourceRoutes = Just (spy "relayRoutes" relayRoutes)}
 
 
---   let _ = spy "thisServer" thisServer
---   pure state{egestSourceRoutes = Just (spy "relayRoutes" relayRoutes)}
---   where
---     toRelayRoute :: List PoPName -> RelayRoute
---     toRelayRoute pops = { toSource : pops
---                         , thisPoP  : extractPoP thisServer
---                         , toEgest  : nil
---                         }
+walkRelayChain :: StreamId -> RelayRoute -> Effect Unit
+walkRelayChain streamId {toSource, thisPoP, toEgest} = do
+  case uncons toSource of
+    Nothing -> pure unit
+    Just {head, tail} -> do
+      let
+        thePayload :: CreateRealyChainPayload
+        thePayload = { streamId
+                     , route : { toEgest: (thisPoP : toEgest)
+                               , thisPoP: head
+                               , toSource: tail
+                               }
+                     }
+      void $ spawnLink (\_ -> notifyNextInChain thePayload)
+  where
+    notifyNextInChain :: CreateRealyChainPayload -> Effect Unit
+    notifyNextInChain payload@{route: {thisPoP: nextInChain}} = do
+      -- TODO - strategy for knowing which servers in a remote PoP are healthy
+      -- for now route via the transPoP leader
+      mPoPLeader <- TransPoP.getLeaderFor nextInChain
+      case mPoPLeader of
+        Nothing -> do
+          _ <- logWarning "No PoP Leader for relay chain" {nextInChain}
+          notifyNextInChain payload
+        Just popLeader -> do
+          let
+            url = makeUrlAddr popLeader RelayChainE
+          resp <- SpudGun.postJson url payload
+          if isRight resp then
+            pure unit
+          else do
+            _ <- logWarning "Bad return code from post to create relay chain" {nextInChain, resp}
+            -- TODO sleep duration from config
+            _ <- Erl.sleep (wrap 500)
+            notifyNextInChain payload
 
 
 
--- startRelayChain :: StreamId -> RelayRoute -> Effect Unit
--- startRelay streamId {toSource, thisPoP, toEgest} =
---   case uncons toSource of
 
---     Nothing -> pure Unit
---     Just {head, tail} -> do
---       -- TODO - strategy for knowing which servers in a remote PoP are healthy
---       -- Maybe always route via the transPoP leader
---       popLeader <- TransPoP.getLeaderFor head
---       let
---         url = makeUrl idleServer RelayChainE
---         payload = {streamId, aggregator} :: CreateRelayPayload
-
---         url = makeUrl popLeader  EgestE
---         payload = {streamId, toSouce: tail, toEgest: (thisPoP : toEgest), thisPoP: head}
-
---   do
-
---   void <$> crashIfLeft =<< SpudGun.postJson url ({streamId, fullRoute, remainingRoute} :: CreateEgestPayload)
+--  void <$> crashIfLeft =<<
 
 
 
@@ -159,8 +192,8 @@ domains = atom <$> (show Agent.StreamRelay :  "Instance" : nil)
 logInfo :: forall a. Logger a
 logInfo = domainLog Logger.info
 
---logWarning :: forall a. Logger a
---logWarning = domainLog Logger.warning
+logWarning :: forall a. Logger a
+logWarning = domainLog Logger.warning
 
 domainLog :: forall a. Logger {domain :: List Atom, misc :: a} -> Logger a
 domainLog = Logger.doLog domains

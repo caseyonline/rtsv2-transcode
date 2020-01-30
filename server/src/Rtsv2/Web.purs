@@ -61,17 +61,23 @@ init args = do
     # mkRoute (TimedRoutesE popNameBinding)                                     TransPoPHandler.timedRoutes
     # mkRoute  HealthCheckE                                                     HealthHandler.healthCheck
     # mkRoute (EgestStatsE streamIdBinding)                                     EgestStatsHandler.stats
-    # mkRoute  RelayE                                                           RelayHandler.resource
-    # mkRoute  RelayRegisterE                                                   RelayHandler.register
+
+    # mkRoute  RelayE                                                           RelayHandler.startResource
+    # mkRoute  RelayRegisterE                                                   RelayHandler.registerEgest
+    # mkRoute  RelayChainE                                                      RelayHandler.chainResource
     # mkRoute (RelayStatsE streamIdBinding)                                     RelayHandler.stats
+
     # mkRoute  LoadE                                                            LoadHandler.load
+
     # mkRoute (IngestAggregatorE streamIdBinding)                               IngestAggregatorHandler.ingestAggregator
     # mkRoute (IngestAggregatorActiveIngestsE streamIdBinding variantBinding)   IngestAggregatorHandler.ingestAggregatorsActiveIngest
     # mkRoute  IngestAggregatorsE                                               IngestAggregatorHandler.ingestAggregators
     # mkRoute (IngestStartE ":canary" shortNameBinding streamAndVariantBinding) IngestHandler.ingestStart
     # mkRoute (IngestStopE ":canary" shortNameBinding streamAndVariantBinding)  IngestHandler.ingestStop
+
     # mkRoute (ClientStartE ":canary" streamIdBinding)                          ClientHandler.clientStart
     # mkRoute (ClientStopE ":canary" streamIdBinding)                           ClientHandler.clientStop
+
     # mkRoute  StreamAuthE                                                      LlnwStubHandler.streamAuthType
     # mkRoute  StreamAuthTypeE                                                  LlnwStubHandler.streamAuth
     # mkRoute  StreamPublishE                                                   LlnwStubHandler.streamPublish
