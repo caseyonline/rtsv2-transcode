@@ -15,6 +15,7 @@
     , "halogen"
     , "halogen-css"
     , "halogen-formless"
+    , "milkis"
     , "nonempty"
     , "now"
     , "precise-datetime"

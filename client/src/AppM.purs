@@ -3,8 +3,8 @@ module Rtsv2App.AppM where
 import Prelude
 
 import Control.Monad.Reader.Trans (class MonadAsk, ReaderT, ask, asks, runReaderT)
-import Data.Argonaut.Encode (encodeJson)
-import Data.Maybe (Maybe(..))
+import Data.Either (Either(..))
+import Data.Maybe (Maybe(..), fromMaybe)
 import Effect.Aff (Aff)
 import Effect.Aff.Bus as Bus
 import Effect.Aff.Class (class MonadAff, liftAff)
@@ -24,11 +24,12 @@ import Rtsv2App.Capability.Now (class Now)
 import Rtsv2App.Capability.Resource.Stats (class ManageStats)
 import Rtsv2App.Capability.Resource.User (class ManageUser)
 import Rtsv2App.Data.Log as Log
-import Rtsv2App.Data.Profile (decodeProfileAuthor)
+import Rtsv2App.Data.Profile (Profile, ProfileWithEmail)
 import Rtsv2App.Data.Route as Route
-import Rtsv2App.Data.Utils (decodeAt)
 import Rtsv2App.Env (Env, LogLevel(..))
+import Simple.JSON as JSON
 import Type.Equality (class TypeEquals, from)
+
 
 -- | `AppM` combines the `Aff` and `Reader` monads under a new type, which we can now use to write
 -- | instances for our capabilities. We're able to combine these monads because `ReaderT` is a
@@ -91,18 +92,17 @@ instance manageUserAppM :: ManageUser AppM where
   registerUser =
     authenticate Request.register
 
-  getCurrentUser =
-    mkAuthRequest { endpoint: User, method: Get }
-      >>= decode (decodeAt "user")
-
-  getAuthor username =
-    mkRequest { endpoint: Profiles username, method: Get }
-      >>= decodeWithUser decodeProfileAuthor
+  getCurrentUser = do
+    response <- mkAuthRequest { endpoint: User, method: Get }
+    case JSON.readJSON response of
+      Left e -> pure Nothing
+      Right (res :: ProfileWithEmail) -> do
+        pure $ Just res
 
   updateUser fields =
-    void $ mkAuthRequest { endpoint: User, method: Put (Just (encodeJson fields)) }
+    void $ mkAuthRequest { endpoint: User, method: Put (Just (JSON.writeJSON fields)) }
 
-instance manageStatsAppM :: ManageStats AppM where
-   postTimedRoutes popName =
-     mkRequest { endpoint: TimedRoutes popName , method: Post (Nothing) }
-       >>= decode (decodeAt "")
+-- instance manageStatsAppM :: ManageStats AppM where
+--    postTimedRoutes popName =
+--      mkRequest { endpoint: TimedRoutes popName , method: Post (Nothing) }
+--        >>= decode (decodeAt "")

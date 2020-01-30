@@ -6,8 +6,6 @@ module Rtsv2App.Data.Username
 
 import Prelude
 
-import Data.Argonaut.Decode (class DecodeJson)
-import Data.Argonaut.Encode (class EncodeJson)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show (genericShow)
 import Data.Maybe (Maybe(..))
@@ -18,9 +16,6 @@ newtype Username = Username String
 derive instance genericUsername :: Generic Username _
 derive instance eqUsername :: Eq Username
 derive instance ordUsername :: Ord Username
-
-derive newtype instance encodeJsonUsername :: EncodeJson Username
-derive newtype instance decodeJsonUsername :: DecodeJson Username
 
 derive newtype instance readForeignUsername  :: ReadForeign Username
 derive newtype instance writeForeignUsername :: WriteForeign Username

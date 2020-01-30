@@ -2,45 +2,52 @@ module Rtsv2App.Api.Utils where
 
 import Prelude
 
-import Affjax (request)
-import Rtsv2App.Api.Request (BaseURL, RequestOptions, Token, defaultRequest, readToken, writeToken)
+import Control.Monad.Reader (class MonadAsk, ask, asks)
+import Data.Either (Either(..))
+import Data.Maybe (Maybe(..))
+import Data.Tuple (Tuple(..))
+import Effect.Aff as Aff
+import Effect.Aff.Bus as Bus
+import Effect.Aff.Class (class MonadAff, liftAff)
+import Effect.Class (class MonadEffect, liftEffect)
+import Effect.Ref as Ref
+import Foreign (Foreign)
+import Milkis as M
+import Rtsv2App.Api.Request (BaseURL, Token, OptionMethod, defaultRequest, fetch, printBaseUrl, readToken, writeToken)
 import Rtsv2App.Capability.LogMessages (class LogMessages, logError)
 import Rtsv2App.Capability.Now (class Now)
 import Rtsv2App.Data.Profile (Profile)
 import Rtsv2App.Data.Username (Username)
 import Rtsv2App.Env (UserEnv)
-import Control.Monad.Reader (class MonadAsk, ask, asks)
-import Data.Argonaut.Core (Json)
-import Data.Either (Either(..), hush)
-import Data.Maybe (Maybe(..))
-import Data.Tuple (Tuple(..))
-import Effect.Aff.Bus as Bus
-import Effect.Aff.Class (class MonadAff, liftAff)
-import Effect.Class (class MonadEffect, liftEffect)
-import Effect.Ref as Ref
 
 mkRequest
   :: forall m r
    . MonadAff m
   => MonadAsk { apiUrl :: BaseURL | r } m
-  => RequestOptions
-  -> m (Maybe Json)
+  => OptionMethod
+  -> m String
 mkRequest opts = do
   { apiUrl } <- ask
-  response <- liftAff $ request $ defaultRequest apiUrl Nothing opts
-  pure $ hush response.body
+  response <- liftAff $ Aff.attempt $ fetch (M.URL $ printBaseUrl apiUrl) $ defaultRequest Nothing opts
+  case response of
+    Left e    -> pure $ "Error making request: " <> show e
+    Right res -> do
+      pure =<< liftAff $ M.text res
 
 mkAuthRequest
   :: forall m r
    . MonadAff m
   => MonadAsk { authUrl :: BaseURL | r } m
-  => RequestOptions
-  -> m (Maybe Json)
+  => OptionMethod
+  -> m String
 mkAuthRequest opts = do
   { authUrl } <- ask
   token <- liftEffect readToken
-  response <- liftAff $ request $ defaultRequest authUrl token opts
-  pure $ hush response.body
+  response <- liftAff $ Aff.attempt $ fetch (M.URL $ printBaseUrl authUrl) $ defaultRequest token opts
+  case response of
+    Left e    -> pure $ "Error making request: " <> show e
+    Right res -> do
+      pure =<< liftAff $ M.text res
 
 authenticate
   :: forall m a r
@@ -63,7 +70,7 @@ authenticate req fields = do
       liftAff $ Bus.write (Just profile) userEnv.userBus
       pure (Just profile)
 
-decode :: forall m a. LogMessages m => Now m => (Json -> Either String a) -> Maybe Json -> m (Maybe a)
+decode :: forall m a. LogMessages m => Now m => (Foreign -> Either String a) -> Maybe Foreign -> m (Maybe a)
 decode _ Nothing = logError "Response malformed" *> pure Nothing 
 decode decoder (Just json) = case decoder json of
   Left err -> logError err *> pure Nothing
@@ -75,8 +82,8 @@ decodeWithUser
   => MonadAsk { userEnv :: UserEnv | r } m
   => LogMessages m 
   => Now m
-  => (Maybe Username -> Json -> Either String a) 
-  -> Maybe Json 
+  => (Maybe Username -> Foreign -> Either String a)
+  -> Maybe Foreign
   -> m (Maybe a)
 decodeWithUser decoder json = do
   maybeProfile <- (liftEffect <<< Ref.read) =<< asks _.userEnv.currentUser
