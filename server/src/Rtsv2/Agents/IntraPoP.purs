@@ -58,7 +58,7 @@ import Pinto.Timer as Timer
 import PintoHelper (exposeState)
 import Prim.Row (class Nub, class Union)
 import Record as Record
-import Rtsv2.Agents.Locator (LocalOrRemote(..), NoCapacity(..), ResourceResponse)
+import Rtsv2.Agents.Locator.Types (LocalOrRemote(..), NoCapacity(..), ResourceResp, ServerSelectionPredicate)
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
 import Rtsv2.Health (Health, percentageToHealth)
@@ -164,7 +164,7 @@ whereIsEgest streamId =
 -- https://www.nginx.com/blog/nginx-power-of-two-choices-load-balancing-algorithm/
 -- TODO - predicate should probable be ServerLoad -> Weighting
 --------------------------------------------------------------------------------
-getIdleServer :: (ServerLoad -> Boolean) -> Effect (ResourceResponse ServerLoad)
+getIdleServer :: ServerSelectionPredicate -> Effect (ResourceResp ServerLoad)
 getIdleServer pred = Gen.doCall serverName
   (\state@{thisServer, members, load} -> do
       let thisServerLoad = toServerLoad thisServer load
@@ -323,7 +323,7 @@ announceTransPoPLeader =
 --------------------------------------------------------------------------------
 -- Helper for consistent behaivour around launching resources within a PoP
 --------------------------------------------------------------------------------
-launchLocalOrRemoteGeneric :: (ServerLoad -> Boolean) -> (ServerLoad -> Effect Unit) -> (ServerLoad -> Effect Unit) -> Effect (ResourceResponse Server)
+launchLocalOrRemoteGeneric :: (ServerLoad -> Boolean) -> (ServerLoad -> Effect Unit) -> (ServerLoad -> Effect Unit) -> Effect (ResourceResp Server)
 launchLocalOrRemoteGeneric pred launchLocal launchRemote = do
   idleServerResp <- getIdleServer pred
   launchResp <-  -- TODO - currently unit - maybe allow some sort of check?

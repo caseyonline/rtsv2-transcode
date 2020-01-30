@@ -1,5 +1,5 @@
 module Rtsv2.Agents.Locator.Egest
-       ( findEgestForStream
+       ( findEgestAndRegister
        )
        where
 
@@ -19,12 +19,12 @@ import Rtsv2.Agents.EgestInstance (CreateEgestPayload)
 import Rtsv2.Agents.EgestInstance as EgestInstance
 import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
 import Rtsv2.Agents.IntraPoP as IntraPoP
-import Rtsv2.Agents.Locator (FailureReason(..), LocalOrRemote(..), LocationResp)
+import Rtsv2.Agents.Locator.Types (FailureReason(..), LocalOrRemote(..), LocationResp)
 import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
-import Rtsv2.Utils (crashIfLeft)
+import Rtsv2.Utils (crashIfLeft, noprocToMaybe)
 import Shared.Agent as Agent
 import Shared.Stream (StreamId)
-import Shared.Types (Server, ServerLoad(..), serverLoadToServer)
+import Shared.Types (PoPName, Server, ServerLoad(..), extractPoP, serverLoadToServer)
 import SpudGun as SpudGun
 
 
@@ -33,14 +33,14 @@ type StartArgs = { streamId :: StreamId
                  , aggregator :: Server
                  }
 
-findEgestForStream :: StreamId -> Server -> Effect LocationResp
-findEgestForStream streamId thisServer = do
+findEgestAndRegister :: StreamId -> Server -> Effect LocationResp
+findEgestAndRegister streamId thisServer = do
 
-  apiResp <- EgestInstance.addClient streamId
+  apiResp <- noprocToMaybe $ EgestInstance.addClient streamId
   case spy "apiResp" apiResp of
-    Right _ ->
+    Just _ ->
       pure $ Right $ Local thisServer
-    Left _ -> do
+    Nothing -> do
       -- does the stream even exists
       mAggregator <- IntraPoP.whereIsIngestAggregator streamId
       case spy "mAggregator" mAggregator of
@@ -60,12 +60,20 @@ findEgestForStream streamId thisServer = do
                 Left _ ->
                   pure $ Left NoResource
                 Right localOrRemote -> do
-                  startLocalOrRemote localOrRemote streamId aggregator
-                  findEgestForStream streamId thisServer
+                  startLocalOrRemote localOrRemote (extractPoP aggregator)
+                  findEgestAndRegister streamId thisServer
   where
    pickCandidate = head
    capcityForClient (ServerLoad sl) =  unwrap sl.load < 90.0
    capcityForEgest (ServerLoad sl) =  unwrap sl.load < 50.0
+   startLocalOrRemote :: (LocalOrRemote ServerLoad) -> PoPName -> Effect Unit
+   startLocalOrRemote  (Local _) aggregatorPoP = do
+     void <$> crashIfLeft =<< startChildToStartLink <$> EgestInstanceSup.startEgest {streamId, aggregatorPoP}
+   startLocalOrRemote  (Remote remote) aggregatorPoP = do
+     let
+       url = makeUrl remote EgestE
+     void <$> crashIfLeft =<< SpudGun.postJson url ({streamId, aggregatorPoP} :: CreateEgestPayload)
+
 
 
 
@@ -75,13 +83,6 @@ findEgestForStream streamId thisServer = do
 -- Internal
 --------------------------------------------------------------------------------
 -- TODO use launchLocalOrRemoteGeneric
-startLocalOrRemote :: (LocalOrRemote ServerLoad) -> StreamId -> Server -> Effect Unit
-startLocalOrRemote  (Local _) streamId aggregator = do
-  void <$> crashIfLeft =<< startChildToStartLink <$> EgestInstanceSup.startEgest {streamId, aggregator}
-startLocalOrRemote  (Remote remote) streamId aggregator = do
-  let
-    url = makeUrl remote EgestE
-  void <$> crashIfLeft =<< SpudGun.postJson url ({streamId, aggregator} :: CreateEgestPayload)
 
 
 startChildToStartLink :: StartChildResult -> StartLinkResult

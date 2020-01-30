@@ -2,10 +2,11 @@ module Rtsv2.Agents.StreamRelayInstance
   ( startLink
   , isAvailable
   , registerEgest
+  , registerRelayChain
   , init
   , status
   , CreateRelayPayload
-  , CreateRealyChainPayload
+  , RegisterRelayChainPayload
   , RelayRoute
   , RegisterEgestPayload
   ) where
@@ -43,18 +44,19 @@ import SpudGun as SpudGun
 
 type CreateRelayPayload
   = { streamId :: StreamId
-    , aggregator :: Server
+    , aggregatorPoP :: PoPName
     }
 
-type CreateRealyChainPayload
+type RegisterRelayChainPayload
   = { streamId :: StreamId
+    , aggregatorPoP :: PoPName
     , route :: RelayRoute
     }
 
 
 type RegisterEgestPayload
   = { streamId :: StreamId
-    , aggregator :: Server
+    , aggregatorPoP :: PoPName
     , egestServer :: EgestServer
     }
 
@@ -68,7 +70,7 @@ type RelayRoute
 
 type State
   = { streamId :: StreamId
-    , aggregator :: Server
+    , aggregatorPoP :: PoPName
     , thisServer :: Server
     -- , primaryRelayRoutes :: Maybe (List ViaPoPs)
     -- , primaryNeighbours :: Maybe (List Server)
@@ -102,7 +104,7 @@ init payload = do
   _ <- logInfo "StreamRelay starting" {payload}
   thisServer <- PoPDefinition.getThisServer
   pure { streamId: payload.streamId
-       , aggregator : payload.aggregator
+       , aggregatorPoP : payload.aggregatorPoP
        , thisServer
        , relaysServed : mempty
        , egestsServed : mempty
@@ -118,31 +120,33 @@ registerEgest payload = Gen.doCall (serverName payload.streamId) $ doRegisterEge
       newState <- maybeStartEgestRelays state{ egestsServed = Set.insert payload.egestServer egestsServed}
       pure $ CallReply unit $ spy "registerEgest" newState
 
+registerRelayChain :: RegisterRelayChainPayload -> Effect Unit
+registerRelayChain payload = pure unit
 
 maybeStartEgestRelays :: State -> Effect State
 maybeStartEgestRelays state@{egestSourceRoutes: Just _} = pure state
-maybeStartEgestRelays state@{streamId, aggregator, thisServer} = do
+maybeStartEgestRelays state@{streamId, aggregatorPoP, thisServer} = do
   let
     thisPoP = spy "thisPoP" $ extractPoP thisServer
-    aggregatorPoP = spy "aggPoP" $ extractPoP aggregator
     toRelayRoute :: List PoPName -> RelayRoute
     toRelayRoute pops = { toSource : pops
                         , thisPoP  : thisPoP
                         , toEgest  : nil
                         }
   relayRoutes <- (map toRelayRoute) <$> TransPoP.routesTo aggregatorPoP
-  _ <- traverse_ (walkRelayChain streamId) relayRoutes
+  _ <- traverse_ (walkRelayChain streamId aggregatorPoP) relayRoutes
   pure state{egestSourceRoutes = Just (spy "relayRoutes" relayRoutes)}
 
 
-walkRelayChain :: StreamId -> RelayRoute -> Effect Unit
-walkRelayChain streamId {toSource, thisPoP, toEgest} = do
+walkRelayChain :: StreamId -> PoPName -> RelayRoute -> Effect Unit
+walkRelayChain streamId aggregatorPoP {toSource, thisPoP, toEgest} = do
   case uncons toSource of
     Nothing -> pure unit
     Just {head, tail} -> do
       let
-        thePayload :: CreateRealyChainPayload
+        thePayload :: RegisterRelayChainPayload
         thePayload = { streamId
+                     , aggregatorPoP
                      , route : { toEgest: (thisPoP : toEgest)
                                , thisPoP: head
                                , toSource: tail
@@ -150,7 +154,7 @@ walkRelayChain streamId {toSource, thisPoP, toEgest} = do
                      }
       void $ spawnLink (\_ -> notifyNextInChain thePayload)
   where
-    notifyNextInChain :: CreateRealyChainPayload -> Effect Unit
+    notifyNextInChain :: RegisterRelayChainPayload -> Effect Unit
     notifyNextInChain payload@{route: {thisPoP: nextInChain}} = do
       -- TODO - strategy for knowing which servers in a remote PoP are healthy
       -- for now route via the transPoP leader

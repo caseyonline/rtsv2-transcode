@@ -19,8 +19,8 @@ import Logger (Logger, spy)
 import Logger as Logger
 import Rtsv2.Agents.EgestInstance as EgestInstance
 import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
-import Rtsv2.Agents.Locator (FailureReason(..), LocalOrRemote(..))
-import Rtsv2.Agents.Locator.Egest (findEgestForStream)
+import Rtsv2.Agents.Locator.Types (FailureReason(..), LocalOrRemote(..))
+import Rtsv2.Agents.Locator.Egest (findEgestAndRegister)
 import Rtsv2.Audit as Audit
 import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.PoPDefinition as PoPDefinition
@@ -47,11 +47,12 @@ clientStart =
   # Rest.yeeha
 
   where
+    -- TODO - almost identical to Relay.purs - would be identical if this used payload, not bindings
     init req = do
       let
         streamId = Bindings.streamId req
       thisServer <- PoPDefinition.getThisServer
-      egestResp <- findEgestForStream streamId thisServer
+      egestResp <- findEgestAndRegister streamId thisServer
       let
         req2 = setHeader "x-servedby" (unwrap $ extractAddress thisServer) req
         _ = spy "egestResp" egestResp
@@ -66,6 +67,7 @@ clientStart =
             newReq <- replyWithoutBody (StatusCode 404) Map.empty req
             Rest.stop newReq state
         Left NoResource -> do
+          --TODO - don't think this should be a 502
           newReq <- replyWithoutBody (StatusCode 502) Map.empty req
           Rest.stop newReq state
         Right (Local _)  ->

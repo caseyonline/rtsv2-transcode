@@ -79,6 +79,7 @@ spyImpl(Msg, Args) ->
 %% Internal
 %%------------------------------------------------------------------------------
 walk_stack([_LoggerFrame,{TopModule, TopFun, TopArity, [{file, TopFile}, {line, TopLine}]} | Rest]) ->
+  %% walk_stack_internal({TopModule, Rest, TopArity, TopFile, TopLine}, Rest).
   walk_stack_internal({TopModule, TopFun, TopArity, TopFile, TopLine}, Rest).
 
 walk_stack_internal(Default, [{Module, Fun, Arity, [{file, File}, {line, Line}]} | Rest]) ->

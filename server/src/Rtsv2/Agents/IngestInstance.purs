@@ -27,7 +27,8 @@ import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
 import Rtsv2.Agents.IngestAggregatorInstanceSup as IngestAggregatorInstanceSup
 import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..), launchLocalOrRemoteGeneric)
 import Rtsv2.Agents.IntraPoP as IntraPoP
-import Rtsv2.Agents.Locator (LocalOrRemote(..), ResourceResponse, extractServer)
+import Rtsv2.Agents.Locator (extractServer)
+import Rtsv2.Agents.Locator.Types (LocalOrRemote(..), ResourceResp)
 import Rtsv2.Audit as Audit
 import Rtsv2.Config as Config
 import Rtsv2.Names as Names
@@ -140,7 +141,7 @@ removeVariant streamAndVariant (Just (Remote aggregator)) = do
     url = makeActiveIngestUrl aggregator streamAndVariant
   void $ crashIfLeft =<< SpudGun.delete url {}
 
-getAggregator :: StreamDetails -> StreamAndVariant -> Effect (ResourceResponse Server)
+getAggregator :: StreamDetails -> StreamAndVariant -> Effect (ResourceResp Server)
 getAggregator streamDetails streamAndVariant = do
   maybeAggregator <- IntraPoP.whereIsIngestAggregator (toStreamId streamAndVariant)
   case maybeAggregator of
@@ -149,7 +150,7 @@ getAggregator streamDetails streamAndVariant = do
     Nothing ->
       launchLocalOrRemote streamDetails streamAndVariant
 
-launchLocalOrRemote :: StreamDetails -> StreamAndVariant -> Effect (ResourceResponse Server)
+launchLocalOrRemote :: StreamDetails -> StreamAndVariant -> Effect (ResourceResp Server)
 launchLocalOrRemote streamDetails streamAndVariant = do
   launchLocalOrRemoteGeneric filterForAggregatorLoad launchLocal launchRemote
   where
@@ -168,11 +169,6 @@ loadThresholdToCreateAggregator = wrap 50.0
 
 filterForAggregatorLoad :: ServerLoad -> Boolean
 filterForAggregatorLoad (ServerLoad sl) = sl.load < loadThresholdToCreateAggregator
-
-toHost :: ServerLoad -> String
-toHost =
-  unwrap <<< extractAddress
-
 
 --------------------------------------------------------------------------------
 -- Log helpers

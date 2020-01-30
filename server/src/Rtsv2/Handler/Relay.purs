@@ -15,9 +15,9 @@ import Erl.Cowboy.Handlers.Rest (moved, notMoved)
 import Erl.Cowboy.Req (StatusCode(..), replyWithoutBody, setHeader)
 import Erl.Data.List (singleton, (:))
 import Erl.Data.Map as Map
-import Rtsv2.Agents.Locator (FailureReason(..), LocalOrRemote(..), LocationResp)
-import Rtsv2.Agents.Locator.Relay (findRelayForChain)
-import Rtsv2.Agents.StreamRelayInstance (CreateRelayPayload, RegisterEgestPayload, CreateRealyChainPayload)
+import Rtsv2.Agents.Locator.Types (FailureReason(..), LocalOrRemote(..), LocationResp)
+import Rtsv2.Agents.Locator.Relay (findRelayAndRegisterForChain)
+import Rtsv2.Agents.StreamRelayInstance (CreateRelayPayload, RegisterEgestPayload, RegisterRelayChainPayload)
 import Rtsv2.Agents.StreamRelayInstance as StreamRelayInstance
 import Rtsv2.Agents.StreamRelayInstanceSup as StreamRelayInstanceSup
 import Rtsv2.Handler.MimeType as MimeType
@@ -43,7 +43,7 @@ registerEgest :: GenericStetsonHandler RegisterEgestPayload
 registerEgest = genericPost  StreamRelayInstance.registerEgest
 
 
-newtype ChainState = ChainState { mPayload :: Maybe CreateRealyChainPayload
+newtype ChainState = ChainState { mPayload :: Maybe RegisterRelayChainPayload
                                 , apiResp  :: LocationResp
                                 }
 
@@ -75,7 +75,7 @@ chainResource =
     acceptJson req (ChainState recState@{mPayload}) = do
       let
         payload = fromMaybe' (lazyCrashIfMissing "impossible payload") mPayload
-      apiResp <- findRelayForChain payload
+      apiResp <- findRelayAndRegisterForChain payload
       Rest.result true req (ChainState recState{apiResp = apiResp})
 
     resourceExists req state@(ChainState {apiResp}) =
@@ -85,6 +85,7 @@ chainResource =
             newReq <- replyWithoutBody (StatusCode 404) Map.empty req
             Rest.stop newReq state
         Left NoResource -> do
+          --TODO - don't think this should be a 502
           newReq <- replyWithoutBody (StatusCode 502) Map.empty req
           Rest.stop newReq state
         Right (Local _)  ->

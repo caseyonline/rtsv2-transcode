@@ -26,7 +26,7 @@ import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..), launchLocalOrRemoteGeneric)
 import Rtsv2.Agents.IntraPoP as IntraPoP
-import Rtsv2.Agents.Locator (APIResp, FailureReason(..), LocalOrRemote(..), ResourceResponse)
+import Rtsv2.Agents.Locator.Types (LocalOrRemote(..), RegistrationResp, ResourceResp)
 import Rtsv2.Agents.StreamRelayInstance (CreateRelayPayload)
 import Rtsv2.Agents.StreamRelayInstance as StreamRelayInstance
 import Rtsv2.Agents.StreamRelayInstanceSup (startRelay) as StreamRelayInstanceSup
@@ -34,21 +34,21 @@ import Rtsv2.Config as Config
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
-import Rtsv2.Utils (crashIfLeft, noprocToMaybe)
+import Rtsv2.Utils (crashIfLeft)
 import Shared.Agent as Agent
 import Shared.Stream (StreamId)
-import Shared.Types (EgestServer, Load, RelayServer, Server, ServerLoad(..))
+import Shared.Types (EgestServer, Load, PoPName, RelayServer, Server, ServerLoad(..))
 import Shared.Types.Agent.State as PublicState
 import SpudGun as SpudGun
 
 type CreateEgestPayload
   = { streamId :: StreamId
-    , aggregator :: Server
+    , aggregatorPoP :: PoPName
     }
 
 type State
   = { streamId :: StreamId
-    , aggregator :: Server
+    , aggregatorPoP :: PoPName
     , thisServer :: EgestServer
     , relay :: Maybe (LocalOrRemote RelayServer)
     , clientCount :: Int
@@ -71,14 +71,11 @@ isActive streamId = Pinto.isRegistered (serverName streamId)
 startLink :: CreateEgestPayload -> Effect StartLinkResult
 startLink payload = Gen.startLink (serverName payload.streamId) (init payload) handleInfo
 
-addClient :: StreamId -> Effect APIResp
+addClient :: StreamId -> Effect RegistrationResp
 addClient streamId = do
-  mResp <- noprocToMaybe $ Gen.doCall (serverName streamId) doAddClient
-  case spy "addClient" mResp of
-    Nothing -> pure $ Left NotFound
-    Just resp -> pure resp
+  Gen.doCall (serverName streamId) doAddClient
 
-doAddClient :: State -> Effect (CallResult APIResp State)
+doAddClient :: State -> Effect (CallResult RegistrationResp State)
 doAddClient state@{clientCount} = do
   _ <- logInfo "Add client" {newCount: clientCount + 1}
   pure $ CallReply (Right unit) state{ clientCount = clientCount + 1
@@ -115,7 +112,7 @@ toEgestServer :: Server -> EgestServer
 toEgestServer = unwrap >>> wrap
 
 init :: CreateEgestPayload -> Effect State
-init payload@{streamId, aggregator} = do
+init payload@{streamId, aggregatorPoP} = do
   _ <- logInfo "Egest starting" {payload}
   _ <- Bus.subscribe (serverName streamId) IntraPoP.bus IntraPoPBus
   {egestAvailableAnnounceMs, lingerTimeMs, relayCreationRetryMs} <- Config.egestAgentConfig
@@ -127,7 +124,7 @@ init payload@{streamId, aggregator} = do
   maybeRelay <- IntraPoP.whereIsStreamRelay streamId
   let
     state ={ streamId
-           , aggregator
+           , aggregatorPoP
            , thisServer : toEgestServer thisServer
            , relay : Nothing
            , clientCount: 0
@@ -140,7 +137,7 @@ init payload@{streamId, aggregator} = do
       pure state
     Nothing -> do
       -- Launch
-      _ <- StreamRelayInstanceSup.startRelay {streamId, aggregator}
+      _ <- StreamRelayInstanceSup.startRelay {streamId, aggregatorPoP}
       pure state
 
 handleInfo :: Msg -> State -> Effect (CastResult State)
@@ -174,7 +171,7 @@ maybeStop ref state@{streamId
   | otherwise = pure $ CastNoReply state
 
 initStreamRelay :: State -> Effect State
-initStreamRelay state@{relayCreationRetry, streamId, aggregator, thisServer} = do
+initStreamRelay state@{relayCreationRetry, streamId, aggregatorPoP, thisServer} = do
   relayResp <- findOrStartRelayForStream state
   case spy "initStreamRelay - relayResp" relayResp of
     Left _ ->  do
@@ -192,7 +189,7 @@ initStreamRelay state@{relayCreationRetry, streamId, aggregator, thisServer} = d
       pure state{relay = Just $ toRelayServer  <$> remote}
   where
     relayRegistrationPayload =
-      {streamId: state.streamId, aggregator: state.aggregator, egestServer: state.thisServer}
+      {streamId: state.streamId, aggregatorPoP: state.aggregatorPoP, egestServer: state.thisServer}
 
 
 
@@ -202,17 +199,17 @@ initStreamRelay state@{relayCreationRetry, streamId, aggregator, thisServer} = d
 -- Does the stream have an origin (aggregator) - if so build a streamRelay chain to that origin
 -- otherwise 404
 --------------------------------------------------------------------------------
-findOrStartRelayForStream :: State -> Effect (ResourceResponse Server)
+findOrStartRelayForStream :: State -> Effect (ResourceResp Server)
 findOrStartRelayForStream state@{streamId, thisServer} = do
   mRelay <- IntraPoP.whereIsStreamRelay streamId
   maybe' (\_ -> launchLocalOrRemote state) (pure <<< Right) mRelay
 
 
-launchLocalOrRemote :: State -> Effect (ResourceResponse Server)
-launchLocalOrRemote state@{streamId, aggregator, thisServer} =
+launchLocalOrRemote :: State -> Effect (ResourceResp Server)
+launchLocalOrRemote state@{streamId, aggregatorPoP, thisServer} =
   launchLocalOrRemoteGeneric filterForLoad launchLocal launchRemote
   where
-    payload = {streamId, aggregator} :: CreateRelayPayload
+    payload = {streamId, aggregatorPoP} :: CreateRelayPayload
     launchLocal _ = do
       _ <- StreamRelayInstanceSup.startRelay payload
       pure unit
