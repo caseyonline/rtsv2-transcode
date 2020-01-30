@@ -11,6 +11,7 @@ import Data.Foldable (any)
 import Data.Maybe (Maybe)
 import Data.Newtype (wrap)
 import Effect (Effect)
+import Erl.Process.Raw (Pid)
 import Foreign (Foreign)
 import Pinto (ServerName)
 import Pinto as Pinto
@@ -27,7 +28,7 @@ import SpudGun (bodyToJSON)
 import SpudGun as SpudGun
 
 type Callbacks
-  = { ingestStarted :: StreamDetails -> String -> Effect (Either Unit StreamAndVariant)
+  = { ingestStarted :: StreamDetails -> String -> Pid -> Effect (Either Unit StreamAndVariant)
     , ingestStopped :: StreamDetails -> String -> Effect Unit
     , streamAuthType :: String -> String -> Effect (Maybe AuthType)
     , streamAuth ::  String -> String -> String -> Effect (Maybe PublishCredentials)
@@ -65,16 +66,16 @@ init _ = do
   _ <- startServerImpl Left (Right unit) interfaceIp port nbAcceptors callbacks
   pure $ {}
   where
-    ingestStarted :: StreamDetails -> String -> Effect (Either Unit StreamAndVariant)
+    ingestStarted :: StreamDetails -> String -> Pid -> Effect (Either Unit StreamAndVariant)
     ingestStarted streamDetails@{ role
                                 , slot : {name : streamId, profiles}
-                                } streamVariantId =
+                                } streamVariantId pid =
       case any (\{streamName: slotStreamName} -> slotStreamName == streamVariantId) profiles of
         true ->
           let
             streamAndVariant = StreamAndVariant (wrap streamId) (wrap streamVariantId)
           in
-           IngestInstanceSup.startIngest streamDetails streamAndVariant
+           IngestInstanceSup.startIngest streamDetails streamAndVariant pid
           <#> const (Right streamAndVariant)
         false ->
           pure $ Left unit

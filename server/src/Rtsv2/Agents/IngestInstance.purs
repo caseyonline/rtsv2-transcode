@@ -2,6 +2,7 @@ module Rtsv2.Agents.IngestInstance
   ( startLink
   , isActive
   , stopIngest
+  , Args
   ) where
 
 import Prelude
@@ -11,10 +12,10 @@ import Data.Either (Either(..), hush)
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (unwrap, wrap)
 import Data.Traversable (sequence)
-import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
+import Erl.Process.Raw (Pid)
 import Erl.Utils (Milliseconds)
 import Logger (Logger)
 import Logger as Logger
@@ -48,6 +49,7 @@ serverName streamAndVariant = Names.ingestInstanceName streamAndVariant
 data Msg
    = InformAggregator
    | IntraPoPBus IntraPoP.IntraPoPBusMessage
+   | HandlerDown
 
 type State
   = { thisServer :: Server
@@ -57,43 +59,63 @@ type State
     , aggregatorAddr :: Maybe (LocalOrRemote Server)
     }
 
-startLink :: Tuple StreamDetails StreamAndVariant -> Effect StartLinkResult
-startLink (Tuple streamDetails streamAndVariant) = Gen.startLink (serverName streamAndVariant) (init streamDetails streamAndVariant) handleInfo
+type Args
+  = { streamDetails :: StreamDetails
+    , streamAndVariant :: StreamAndVariant
+    , handlerPid :: Pid
+    }
+
+startLink :: Args -> Effect StartLinkResult
+startLink args@{streamAndVariant} = Gen.startLink (serverName streamAndVariant) (init args) handleInfo
 
 isActive :: StreamAndVariant -> Effect Boolean
 isActive streamAndVariant = Pinto.isRegistered (serverName streamAndVariant)
 
 stopIngest :: StreamAndVariant -> Effect Unit
 stopIngest streamAndVariant =
-  Gen.doCall (serverName streamAndVariant) \state@{aggregatorAddr} -> do
-    _ <- removeVariant streamAndVariant aggregatorAddr
-    _ <- Audit.ingestStop streamAndVariant
+  Gen.doCall (serverName streamAndVariant) \state -> do
+    _ <- doStopIngest state
     pure $ CallStop unit state
 
-init :: StreamDetails -> StreamAndVariant -> Effect State
-init streamDetails streamAndVariant = do
-  _ <- logInfo "Ingest starting" {streamAndVariant: streamAndVariant}
+init :: Args -> Effect State
+init {streamDetails, streamAndVariant, handlerPid} = do
+  _ <- logInfo "Ingest starting" {streamAndVariant, handlerPid}
+  _ <- Gen.monitorPid ourServerName handlerPid (\_ -> HandlerDown)
   thisServer <- PoPDefinition.getThisServer
   {intraPoPLatencyMs} <- Config.globalConfig
-  _ <- Bus.subscribe (serverName streamAndVariant) IntraPoP.bus IntraPoPBus
+  _ <- Bus.subscribe ourServerName IntraPoP.bus IntraPoPBus
   _ <- Audit.ingestStart streamAndVariant
-  _ <- Timer.sendAfter (serverName streamAndVariant) 0 InformAggregator
+  _ <- Timer.sendAfter ourServerName 0 InformAggregator
   pure { thisServer
        , streamDetails
        , streamAndVariant
        , aggregatorRetryTime: wrap intraPoPLatencyMs
        , aggregatorAddr: Nothing
        }
+  where
+    ourServerName = (serverName streamAndVariant)
 
 handleInfo :: Msg -> State -> Effect (CastResult State)
-handleInfo msg state = case msg of
+handleInfo msg state@{streamAndVariant} = case msg of
   InformAggregator -> do
     state2 <- informAggregator state
     pure $ CastNoReply state2
+
   IntraPoPBus (IngestAggregatorExited streamId serverAddress) -> do
     _ <- logInfo "exit" {streamId, serverAddress, thisStreamId: state.streamAndVariant}
     state2 <- handleAggregatorExit streamId serverAddress state
     pure $ CastNoReply state2
+
+  HandlerDown -> do
+    _ <- logInfo "RTMP Handler has exited" {streamAndVariant}
+    _ <- doStopIngest state
+    pure $ CastStop state
+
+doStopIngest :: State -> Effect Unit
+doStopIngest state@{aggregatorAddr, streamAndVariant} = do
+  _ <- removeVariant streamAndVariant aggregatorAddr
+  _ <- Audit.ingestStop streamAndVariant
+  pure unit
 
 informAggregator :: State -> Effect State
 informAggregator state@{streamDetails, streamAndVariant, thisServer, aggregatorRetryTime} = do
