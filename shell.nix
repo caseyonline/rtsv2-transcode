@@ -35,6 +35,10 @@ in
 
 with nixpkgs;
 
+let
+    inherit (stdenv.lib) optionals;
+in
+
 mkShell {
   buildInputs = with pkgs; [
 
@@ -70,6 +74,7 @@ mkShell {
     # Needed by something purescript-y - hopefully A/S can pinpoint what...
     jq
     serfdom
-    iproute
-  ];
+  ] ++ optionals stdenv.isLinux [ iproute
+                                ]
+;
 }
