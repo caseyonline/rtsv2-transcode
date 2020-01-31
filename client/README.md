@@ -34,9 +34,9 @@ Next you need to go to the project route and run:
 `> ./run.sh`
 
 This will start the purerl (rstv2) servers in a tmux instance, select a window and an IP
-address from it, then on browser go to `*****:3000/static/adminApp` for example:
+address from it, then on browser go to `*****:3000/app/` for example:
 
-`http://172.16.169.1:3000/static/adminApp`
+`http://172.16.169.1:3000/app/`
 
 Looking at the Make file you will see that spago does an initial build into
 `./client/dist/` and that file is then used by parcel to compile where it is

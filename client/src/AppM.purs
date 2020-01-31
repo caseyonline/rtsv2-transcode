@@ -3,7 +3,7 @@ module Rtsv2App.AppM where
 import Prelude
 
 import Control.Monad.Reader.Trans (class MonadAsk, ReaderT, ask, asks, runReaderT)
-import Data.Argonaut.Encode (encodeJson)
+import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Effect.Aff (Aff)
 import Effect.Aff.Bus as Bus
@@ -17,17 +17,18 @@ import Routing.Hash (setHash)
 import Rtsv2App.Api.Endpoint (Endpoint(..))
 import Rtsv2App.Api.Request (RequestMethod(..))
 import Rtsv2App.Api.Request as Request
-import Rtsv2App.Api.Utils (authenticate, decode, decodeWithUser, mkAuthRequest, mkRequest)
+import Rtsv2App.Api.Utils (authenticate, mkAuthRequest)
 import Rtsv2App.Capability.LogMessages (class LogMessages)
 import Rtsv2App.Capability.Navigate (class Navigate, navigate)
 import Rtsv2App.Capability.Now (class Now)
 import Rtsv2App.Capability.Resource.User (class ManageUser)
 import Rtsv2App.Data.Log as Log
-import Rtsv2App.Data.Profile (decodeProfileAuthor)
+import Rtsv2App.Data.Profile (ProfileEmailRes)
 import Rtsv2App.Data.Route as Route
-import Rtsv2App.Data.Utils (decodeAt)
 import Rtsv2App.Env (Env, LogLevel(..))
+import Simple.JSON as JSON
 import Type.Equality (class TypeEquals, from)
+
 
 -- | `AppM` combines the `Aff` and `Reader` monads under a new type, which we can now use to write
 -- | instances for our capabilities. We're able to combine these monads because `ReaderT` is a
@@ -48,7 +49,6 @@ derive newtype instance bindAppM :: Bind AppM
 derive newtype instance monadAppM :: Monad AppM
 derive newtype instance monadEffectAppM :: MonadEffect AppM
 derive newtype instance monadAffAppM :: MonadAff AppM
-
 
 instance monadAskAppM :: TypeEquals e Env => MonadAsk e AppM where
   ask = AppM $ asks from
@@ -81,7 +81,7 @@ instance navigateAppM :: Navigate AppM where
       Request.removeToken
     liftAff do
       Bus.write Nothing userBus
-    navigate Route.Home
+    navigate Route.Dashboard
 
 -- | all of the available requests
 instance manageUserAppM :: ManageUser AppM where
@@ -91,13 +91,12 @@ instance manageUserAppM :: ManageUser AppM where
   registerUser =
     authenticate Request.register
 
-  getCurrentUser =
-    mkAuthRequest { endpoint: User, method: Get }
-      >>= decode (decodeAt "user")
-
-  getAuthor username =
-    mkRequest { endpoint: Profiles username, method: Get }
-      >>= decodeWithUser decodeProfileAuthor
+  getCurrentUser = do
+    response <- mkAuthRequest { endpoint: User, method: Get }
+    case JSON.readJSON response of
+      Left e -> pure Nothing
+      Right (res :: ProfileEmailRes) -> do
+        pure $ Just res.user
 
   updateUser fields =
-    void $ mkAuthRequest { endpoint: User, method: Put (Just (encodeJson fields)) }
+    void $ mkAuthRequest { endpoint: User, method: Put (Just (JSON.writeJSON fields)) }

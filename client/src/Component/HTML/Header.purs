@@ -14,6 +14,9 @@ import Rtsv2App.Data.Profile (Profile)
 import Rtsv2App.Data.Route (Route(..))
 
 
+-------------------------------------------------------------------------------
+-- Types
+-------------------------------------------------------------------------------
 data Action
   = LogUserOut
   | Receive Input
@@ -31,6 +34,10 @@ type Input =
 type Slot
   = H.Slot (Const Void) Void
 
+
+-------------------------------------------------------------------------------
+-- Header Component
+-------------------------------------------------------------------------------
 component
   :: forall m
    . MonadAff m
@@ -103,12 +110,12 @@ component = H.mkComponent
                         [ css "arrow_box_right" ]
                         [ HH.a
                         [ css "dropdown-item"
-                        , safeHref $ Profile cu.username
+                        , safeHref $ Settings
                         ]
                         [ HH.i
                             [ css "ft-user" ]
                             []
-                        , HH.text "Edit Profile"
+                        , HH.text "Settings"
                         ]
                         ]
                     ]

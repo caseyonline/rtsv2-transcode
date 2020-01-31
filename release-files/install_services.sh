@@ -45,10 +45,10 @@ WorkingDirectory=$RootDir
 ExecStart=$BinDir/start_node_nix.sh
 ExecStop=$BinDir/rtsv2 stop
 Restart=always
+Environment=LD_LIBRARY_PATH=/home/id3as/rtsv2/lib/id3as_media-1/priv
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
 systemctl enable rtsv2-node.service
-

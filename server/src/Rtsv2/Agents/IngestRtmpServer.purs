@@ -13,6 +13,7 @@ import Data.Newtype (wrap)
 import Effect (Effect)
 import Erl.Process.Raw (Pid)
 import Foreign (Foreign)
+import Logger (spy)
 import Pinto (ServerName)
 import Pinto as Pinto
 import Pinto.Gen as Gen
@@ -50,7 +51,6 @@ type State =
   {
   }
 
-
 init :: forall a. a -> Effect State
 init _ = do
   interfaceIp <- Env.publicInterfaceIp
@@ -85,24 +85,24 @@ init _ = do
                    , slot : {name : streamId}} streamVariantId = IngestInstance.stopIngest (StreamAndVariant (wrap streamId) (wrap streamVariantId))
 
     streamAuthType url host shortname = do
-      restResult <- SpudGun.postJson (wrap url) ({ host
-                                                 , protocol: Rtmp
-                                                 , shortname} :: StreamConnection
-                                                )
-      pure $ hush (bodyToJSON restResult)
+      restResult <- SpudGun.postJson (wrap (spy "authtype url" url)) (spy "authtype body" { host
+                                                                                          , protocol: Rtmp
+                                                                                          , shortname} :: StreamConnection
+                                                                     )
+      pure $ hush (bodyToJSON (spy "authtype result" restResult))
 
     streamAuth url host shortname username = do
-      restResult <- SpudGun.postJson (wrap url) ({ host
-                                                 , shortname
-                                                 , username} :: StreamAuth
-                                                )
-      pure $ hush (bodyToJSON restResult)
+      restResult <- SpudGun.postJson (wrap (spy "auth url" url)) (spy "auth body" { host
+                                                                                  , shortname
+                                                                                  , username} :: StreamAuth
+                                                                 )
+      pure $ hush (bodyToJSON (spy "auth result" restResult))
 
     streamPublish url host shortname username streamName = do
-      restResult <- SpudGun.postJson (wrap url) ({ host
-                                                  , protocol: Rtmp
-                                                  , shortname
-                                                  , streamName
-                                                  , username} :: StreamPublish
-                                                )
-      pure $ hush (bodyToJSON restResult)
+      restResult <- SpudGun.postJson (wrap (spy "publish url" url)) (spy "publish body" { host
+                                                                                        , protocol: Rtmp
+                                                                                        , shortname
+                                                                                        , streamName
+                                                                                        , username} :: StreamPublish
+                                                                    )
+      pure $ hush (spy "publish parse" (bodyToJSON (spy "publish result" restResult)))

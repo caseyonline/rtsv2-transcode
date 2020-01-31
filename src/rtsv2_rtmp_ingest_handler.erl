@@ -55,10 +55,12 @@ init(Rtmp, ConnectArgs, [#{ingestStarted := IngestStarted,
 
       case Reply of
         {nothing} ->
+          ?SLOG_INFO("Abobe StreamAuth rejected", #{host => Host,
+                                                    shortName => ShortName,
+                                                    username => UserName}),
           {stop, rejected};
 
-        {just, #{authType := {adobe},
-                 username := ExpectedUserName,
+        {just, #{username := ExpectedUserName,
                  password := ExpectedPassword}} ->
 
           case rtmp:compare_adobe_challenge_response(ExpectedUserName,
@@ -100,10 +102,12 @@ init(Rtmp, ConnectArgs, [#{ingestStarted := IngestStarted,
 
       case Reply of
         {nothing} ->
+          ?SLOG_INFO("LLNW StreamAuth rejected", #{host => Host,
+                                                   shortName => ShortName,
+                                                   username => UserName}),
           {stop, rejected};
 
-        {just, #{authType := {llnw},
-                 username := ExpectedUserName,
+        {just, #{username := ExpectedUserName,
                  password := ExpectedPassword}} ->
           Realm = <<"live">>,
           Method = <<"publish">>,

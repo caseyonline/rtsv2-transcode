@@ -36,11 +36,10 @@ streamAuthDb :: Map StreamAuth PublishCredentials
 streamAuthDb =
   fromFoldable (Tuple { host: "172.16.171.5"
                       , shortname: "mmddev001"
-                      , username: "user"
+                      , username: "my-username"
                       }
-                      (PublishCredentials { authType: Adobe
-                                          , username: "user"
-                                          , password: "password"})
+                      (PublishCredentials { username: "my-username"
+                                          , password: "my-password"})
                 : nil)
 
 streamPublishDb :: Map StreamPublish StreamDetails
@@ -49,7 +48,7 @@ streamPublishDb =
                       , protocol: Rtmp
                       , shortname: "mmddev001"
                       , streamName: "slot1_1000"
-                      , username: "user" }
+                      , username: "my-username" }
                       { role: Primary
                       , slot : { name: "slot1"
                                , subscribeValidation: false
@@ -60,15 +59,15 @@ streamPublishDb =
                                                streamName: "slot1_500",
                                                bitrate: 500000}
                                            ]
+                               , outputFormats : []
                               }
-                      , outputFormats : []
                       , push : []
                       }
                 : Tuple { host: "172.16.171.5"
                         , protocol: Rtmp
                         , shortname: "mmddev001"
                         , streamName: "slot1_500"
-                        , username: "user" }
+                        , username: "my-username" }
                         { role: Primary
                         , slot : { name: "slot1"
                                  , subscribeValidation: false
@@ -79,8 +78,8 @@ streamPublishDb =
                                                  streamName: "slot1_500",
                                                  bitrate: 500000}
                                              ]
+                                 , outputFormats : []
                                  }
-                        , outputFormats : []
                         , push : []
                         }
                 : nil )
