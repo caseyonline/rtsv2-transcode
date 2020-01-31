@@ -55,6 +55,9 @@ init(Rtmp, ConnectArgs, [#{ingestStarted := IngestStarted,
 
       case Reply of
         {nothing} ->
+          ?SLOG_INFO("Abobe StreamAuth rejected", #{host => Host,
+                                                    shortName => ShortName,
+                                                    username => UserName}),
           {stop, rejected};
 
         {just, #{authType := {adobe},
@@ -100,6 +103,9 @@ init(Rtmp, ConnectArgs, [#{ingestStarted := IngestStarted,
 
       case Reply of
         {nothing} ->
+          ?SLOG_INFO("LLNW StreamAuth rejected", #{host => Host,
+                                                   shortName => ShortName,
+                                                   username => UserName}),
           {stop, rejected};
 
         {just, #{authType := {llnw},

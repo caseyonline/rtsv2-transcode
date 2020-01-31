@@ -63,8 +63,7 @@ type StreamAuth =
   }
 
 newtype PublishCredentials = PublishCredentials
-                             { authType :: SlotPublishAuthType
-                             , username :: String
+                             { username :: String
                              , password :: String
                              }
 
@@ -147,6 +146,9 @@ instance compareStreamIngestProtocol :: Ord StreamIngestProtocol where
 instance showStreamIngestProtocol :: Show StreamIngestProtocol where
   show = genericShow
 
+derive newtype instance readForeignPublishCredentials :: ReadForeign PublishCredentials
+derive newtype instance writeForeignPublishCredentials :: WriteForeign PublishCredentials
+
 derive instance genericSlotPublishAuthType :: Generic SlotPublishAuthType _
 
 instance readForeignSlotPublishAuthType :: ReadForeign SlotPublishAuthType where
@@ -177,27 +179,6 @@ instance compareSlotPublishAuthType :: Ord SlotPublishAuthType where
 
 instance showSlotPublishAuthType :: Show SlotPublishAuthType where
   show = genericShow
-
-instance readForeignPublishCredentials :: ReadForeign PublishCredentials where
-  readImpl o = decode =<< readString o
-    where
-    decode :: String -> F PublishCredentials
-    decode s = do
-      parsed <- readJSON' s
-      pure $ PublishCredentials $ rename
-        (SProxy :: SProxy "type")
-        (SProxy :: SProxy "authType")
-        parsed
-
-instance writeForeignPublishCredentials :: WriteForeign PublishCredentials where
-  writeImpl = (unsafeToForeign <<< encode)
-    where
-      encode :: PublishCredentials -> String
-      encode (PublishCredentials r) = do
-        writeJSON $ rename
-          (SProxy :: SProxy "authType")
-          (SProxy :: SProxy "type")
-          r
 
 instance readForeignHlsPushSpecFormat :: ReadForeign HlsPushSpecFormat where
   readImpl =
