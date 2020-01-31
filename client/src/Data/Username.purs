@@ -11,6 +11,10 @@ import Data.Generic.Rep.Show (genericShow)
 import Data.Maybe (Maybe(..))
 import Simple.JSON (class ReadForeign, class WriteForeign)
 
+
+-------------------------------------------------------------------------------
+-- User Types
+-------------------------------------------------------------------------------
 newtype Username = Username String
 
 derive instance genericUsername :: Generic Username _

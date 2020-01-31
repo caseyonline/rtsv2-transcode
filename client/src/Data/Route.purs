@@ -12,6 +12,10 @@ import Rtsv2App.Data.Username (Username)
 import Rtsv2App.Data.Username as Username
 import Shared.Types (PoPName, parsePname, toStringPname)
 
+
+-------------------------------------------------------------------------------
+-- App Routes
+-------------------------------------------------------------------------------
 data Route
   = Dashboard
   | Login

@@ -14,6 +14,9 @@ import Rtsv2App.Data.Profile (Profile)
 import Rtsv2App.Data.Route (Route(..))
 
 
+-------------------------------------------------------------------------------
+-- Types
+-------------------------------------------------------------------------------
 data Action
   = LogUserOut
   | Receive Input
@@ -31,6 +34,10 @@ type Input =
 type Slot
   = H.Slot (Const Void) Void
 
+
+-------------------------------------------------------------------------------
+-- Header Component
+-------------------------------------------------------------------------------
 component
   :: forall m
    . MonadAff m

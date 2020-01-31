@@ -8,16 +8,16 @@ module Rtsv2App.Api.Request
   , ProfileWithToken(..)
   , RegisterFields(..)
   , RequestMethod(..)
-  , RequestOptions(..)
   , Token -- constructor and decoders not exported
   , Unlifted(..)
-  , defaultRequest
   , fetch
   , login
   , printBaseUrl
+  , printFullUrl 
   , readToken
   , register
   , removeToken
+  , requestUser
   , writeToken
   ) where
 
@@ -27,6 +27,7 @@ import Data.Either (Either(..))
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
+import Effect.Aff (Aff)
 import Effect.Aff as Aff
 import Effect.Aff.Class (class MonadAff, liftAff)
 import Milkis as M
@@ -80,13 +81,6 @@ type OptionMethod =
   , method   :: RequestMethod
   }
 
-type RequestOptions =
-  { method      :: M.Method
-  , body        :: String
-  , headers     :: M.Headers
-  , credentials :: M.Credentials
-  }
-
 type Unlifted a = a
 
 type AuthFieldsRep box r = ( email :: Email, password :: box String | r )
@@ -99,43 +93,53 @@ type LoginFields = { | AuthFieldsRep Unlifted () }
 -------------------------------------------------------------------------------
 -- Default RequestOptions
 -------------------------------------------------------------------------------
-fetch :: M.Fetch
-fetch = M.fetch MW.windowFetch
+fetch :: M.URL -> Maybe Token -> OptionMethod -> Aff M.Response
+fetch url token { method } = case method of
+  Get    -> f url
+            { method: M.getMethod
+            , headers: getHeader token
+            }
 
-defaultRequest :: Maybe Token -> OptionMethod -> RequestOptions
-defaultRequest auth { method } =
-  { method: mMethod
-  , headers: case auth of
-      Nothing -> M.makeHeaders { "Content-Type": "application/json" }
-      Just (Token t) ->  M.makeHeaders { "Authorization": "Token " <> t }
-  , body: fromMaybe "{}" body
-  , credentials: M.omitCredentials
-  -- if we need to chage credentials then this is the place
-  }
+  Post b -> f url
+            { method: M.postMethod
+            , headers: getHeader token
+            , body: fromMaybe "" b
+            }
+
+  Put b  -> f url
+            { method: M.postMethod
+            , headers: getHeader token
+            , body: fromMaybe "" b
+            }
+
+  Delete -> f url { method: M.deleteMethod
+            , headers: getHeader token
+            }
   where
-  Tuple mMethod body = case method of
-    Get -> Tuple M.getMethod Nothing
-    Post b -> Tuple M.postMethod b
-    Put b -> Tuple M.putMethod b
-    Delete -> Tuple M.deleteMethod Nothing
+    f :: M.Fetch
+    f = M.fetch MW.windowFetch
 
+getHeader :: Maybe Token -> M.Headers
+getHeader = case _ of
+  Nothing -> M.makeHeaders { "Content-Type": "application/json" }
+  Just (Token t) ->  M.makeHeaders { "Authorization": "Token " <> t }
 
 -------------------------------------------------------------------------------
--- Request functions
+-- User Request functions
 -------------------------------------------------------------------------------
 login :: forall m. MonadAff m => BaseURL -> LoginFields -> m (Either String (Tuple Token Profile))
 login baseUrl fields =
-  let method = Post $ Just $ JSON.writeJSON { user: fields }
+  let method = Post (Just (JSON.writeJSON { user: fields }))
    in requestUser baseUrl { endpoint: Login, method }
 
 register :: forall m. MonadAff m => BaseURL -> RegisterFields -> m (Either String (Tuple Token Profile))
 register baseUrl fields =
-  let method = Post $ Just $ JSON.writeJSON $ { user: fields }
+  let method = Post (Just (JSON.writeJSON { user: fields }))
    in requestUser baseUrl { endpoint: Users, method }
 
 requestUser :: forall m. MonadAff m => BaseURL -> OptionMethod -> m (Either String (Tuple Token Profile))
 requestUser baseUrl opts@{ endpoint } = do
-  response <- liftAff $ Aff.attempt $ fetch (M.URL $ printFullUrl baseUrl endpoint) $ defaultRequest Nothing opts
+  response <- liftAff $ Aff.attempt $ fetch (M.URL $ printFullUrl baseUrl endpoint) Nothing opts
   case response of
     Left e    -> pure $ Left $ show e
     Right res -> do
@@ -147,10 +151,10 @@ requestUser baseUrl opts@{ endpoint } = do
           let u = result.user
           pure (Right
                 $ Tuple (u.token)
-                        ({ bio: u.bio
-                         , image: u.image
-                         , username: u.username
-                         }))
+                        { bio: u.bio
+                        , image: u.image
+                        , username: u.username
+                        })
 
 -------------------------------------------------------------------------------
 -- Print URL helpers

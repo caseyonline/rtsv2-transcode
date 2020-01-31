@@ -31,7 +31,9 @@ import Rtsv2App.Env (UserEnv)
 import Rtsv2App.Form.Field as Field
 import Rtsv2App.Form.Validation as V
 
-
+-------------------------------------------------------------------------------
+-- Types for Register Page (which we might not need)
+-------------------------------------------------------------------------------
 type State =
   { currentUser :: Maybe Profile }
 
@@ -53,6 +55,9 @@ type ChildSlots =
   , header :: MM.Slot Unit
   )
 
+-------------------------------------------------------------------------------
+-- Component
+-------------------------------------------------------------------------------
 component
   :: forall m r
    . MonadAff m

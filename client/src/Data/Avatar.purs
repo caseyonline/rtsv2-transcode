@@ -12,6 +12,9 @@ import Data.Generic.Rep.Show (genericShow)
 import Data.Maybe (Maybe(..))
 import Simple.JSON (class ReadForeign, class WriteForeign)
 
+-------------------------------------------------------------------------------
+-- Types
+-------------------------------------------------------------------------------
 newtype Avatar = Avatar String
 
 derive instance genericAvatar :: Generic Avatar _
@@ -23,6 +26,10 @@ derive newtype instance decodeJsonAvatar :: WriteForeign Avatar
 instance showAvatar :: Show Avatar where
   show = genericShow
 
+
+-------------------------------------------------------------------------------
+-- Helper functions
+-------------------------------------------------------------------------------
 parse :: String -> Maybe Avatar
 parse "" = Nothing
 parse str = Just (Avatar str)

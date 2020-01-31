@@ -19,7 +19,7 @@ import Milkis as M
 import Routing.Duplex (parse)
 import Routing.Hash (matchesWith)
 import Rtsv2App.Api.Endpoint (Endpoint(..))
-import Rtsv2App.Api.Request (BaseURL(..), RequestMethod(..), ProfileJson, defaultRequest, fetch, printBaseUrl, readToken)
+import Rtsv2App.Api.Request (BaseURL(..), ProfileJson, RequestMethod(..), fetch, printFullUrl, readToken)
 import Rtsv2App.AppM (runAppM)
 import Rtsv2App.Component.Router as Router
 import Rtsv2App.Data.Route (routeCodec)
@@ -32,7 +32,7 @@ main = HA.runHalogenAff do
 
   body <- HA.awaitBody
   let
-    -- TODO: will need to change this when we point to a local OAUTH
+    -- TODO: need to add apiURL to look at current location address
     authUrl = AuthURL "https://conduit.productionready.io"
     apiUrl = ApiUrl "https://conduit.productionready.io"
 
@@ -48,17 +48,16 @@ main = HA.runHalogenAff do
   -- local storage (if there is one). Read the token, request the user's profile if it can, and
   -- if it gets a valid result, write it to our mutable reference.
   liftEffect readToken >>= traverse_ \token -> do
-    let requestOptions = { endpoint: User, method: Get }
-    response <- liftAff $ Aff.attempt $ fetch (M.URL $ printBaseUrl $ authUrl ) $ defaultRequest (Just token) requestOptions
+    let method = { endpoint: User, method: Get }
+    response <- liftAff $ Aff.attempt $ fetch (M.URL $ printFullUrl authUrl method.endpoint) (Just token) method
     case response of
-      Left _    -> mempty
+      Left err  -> mempty
       Right res -> do
         r <- liftAff $ M.text res
         case JSON.readJSON r of
           Left e -> mempty
           Right (result :: ProfileJson) -> do
             liftEffect $ Ref.write (Just result.user) currentUser
-            pure unit
 
   let
     environment :: Env

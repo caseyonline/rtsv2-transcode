@@ -26,7 +26,7 @@ import Rtsv2App.Component.HTML.Utils (css)
 import Rtsv2App.Data.Avatar (Avatar)
 import Rtsv2App.Data.Avatar as Avatar
 import Rtsv2App.Data.Email (Email)
-import Rtsv2App.Data.Profile (Profile, ProfileWithEmail)
+import Rtsv2App.Data.Profile (ProfileEmail, Profile)
 import Rtsv2App.Data.Route (Route(..))
 import Rtsv2App.Data.Username (Username)
 import Rtsv2App.Data.Username as Username
@@ -34,7 +34,9 @@ import Rtsv2App.Env (UserEnv)
 import Rtsv2App.Form.Field as Field
 import Rtsv2App.Form.Validation as V
 
-
+-------------------------------------------------------------------------------
+-- Types for Settings Page
+-------------------------------------------------------------------------------
 newtype SettingsForm r f = SettingsForm (r
   ( image :: f V.FormError String (Maybe Avatar)
   , username :: f V.FormError String Username
@@ -51,7 +53,7 @@ data Action
   | LogUserOut
 
 type State =
-  { profile :: RemoteData String ProfileWithEmail
+  { profile :: RemoteData String ProfileEmail
   , currentUser :: Maybe Profile
   }
 
@@ -61,6 +63,9 @@ type ChildSlots =
   , formless :: F.Slot SettingsForm (Const Void) () UpdateProfileFields Unit
   )
 
+-------------------------------------------------------------------------------
+-- Component
+-------------------------------------------------------------------------------
 component
   :: forall m r
    . MonadAff m

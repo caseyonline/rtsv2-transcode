@@ -28,6 +28,9 @@ import Rtsv2App.Page.Login as Login
 import Rtsv2App.Page.Register as Register
 import Rtsv2App.Page.Settings as Settings
 
+-------------------------------------------------------------------------------
+-- Types
+-------------------------------------------------------------------------------
 type State =
   { route :: Maybe Route 
   , currentUser :: Maybe Profile
@@ -47,6 +50,9 @@ type ChildSlots =
   , settings :: OpaqueSlot Unit
   )
 
+-------------------------------------------------------------------------------
+-- Router Component
+-------------------------------------------------------------------------------
 component
   :: forall m r
    . MonadAff m
@@ -70,9 +76,9 @@ component = Connect.component $ H.mkComponent
   handleAction :: Action -> H.HalogenM State Action ChildSlots Void m Unit
   handleAction = case _ of
     Initialize -> do
-      -- first we'll get the route the user landed on
+      -- get the route the user landed on
       initialRoute <- hush <<< (RD.parse routeCodec) <$> liftEffect getHash
-      -- then we'll navigate to the new route (also setting the hash)
+      -- navigate to the new route (also setting the hash)
       navigate $ fromMaybe Dashboard initialRoute
     
     Receive { currentUser } ->
@@ -100,6 +106,7 @@ component = Connect.component $ H.mkComponent
     Just _ ->
       html
 
+  -- connecting the routes to the components
   render :: State -> H.ComponentHTML Action ChildSlots m
   render { route, currentUser } = case route of
     Just r -> case r of

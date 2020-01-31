@@ -18,9 +18,11 @@ type ProfileRep row =
 
 -- | The `Profile` type consists only of three core fields: the username, biography, and avatar.
 type Profile = { | ProfileRep () }
+type ProfileRes = { user :: Profile }
 
--- | The `ProfileWithEmail` type extends the `Profile` fields with an additional `Email` type.
-type ProfileWithEmail = { | ProfileRep (email :: Email) }
+-- | The `ProfileEmail` type extends the `Profile` fields with an additional `Email` type.
+type ProfileEmail = { | ProfileRep (email :: Email) }
+type ProfileEmailRes = { user :: ProfileEmail }
 
 -- | A lens for a username field within a record
 _username :: forall r. Lens' { username :: Username | r } Username

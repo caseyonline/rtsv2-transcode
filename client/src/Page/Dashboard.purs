@@ -11,7 +11,6 @@ import Data.Foldable (traverse_)
 import Data.Int (toNumber)
 import Data.Maybe (Maybe(..))
 import Data.Symbol (SProxy(..))
-import Debug.Trace (spy)
 import Effect.Aff.Class (class MonadAff)
 import Effect.Class (liftEffect)
 import Foreign.ECharts as EC
@@ -24,11 +23,14 @@ import Rtsv2App.Component.HTML.Footer (footer)
 import Rtsv2App.Component.HTML.Header as HD
 import Rtsv2App.Component.HTML.MainMenu as MM
 import Rtsv2App.Component.HTML.Utils (css)
-import Rtsv2App.Data.Map as MapData
 import Rtsv2App.Data.Profile (Profile)
 import Rtsv2App.Data.Route (Route(..))
 import Rtsv2App.Env (UserEnv)
 
+
+-------------------------------------------------------------------------------
+-- Types for Dashboard Page
+-------------------------------------------------------------------------------
 data Action
   = Initialize
   | Receive { currentUser :: Maybe Profile }
@@ -43,6 +45,10 @@ type ChildSlots =
   , header :: MM.Slot Unit
   )
 
+
+-------------------------------------------------------------------------------
+-- Components
+-------------------------------------------------------------------------------
 component
   :: forall m r
    . MonadAff m
@@ -73,7 +79,6 @@ component = Connect.component $ H.mkComponent
 
     Receive { currentUser } ->
       H.modify_ _ { currentUser = currentUser }
-
 
   render :: State -> H.ComponentHTML Action ChildSlots m
   render state@{ currentUser } =
