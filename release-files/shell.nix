@@ -33,5 +33,7 @@ mkShell {
     bash
     nixerl.erlang-22-1-8.erlang
     serfdom
+    iproute
+    id3as.nd-env
   ];
 }

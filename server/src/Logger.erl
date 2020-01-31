@@ -13,7 +13,8 @@
         ]).
 
 -define(do_log(Level, Msg, Args),
-        [{current_stacktrace, [_LoggerFrame, {Module, Fun, Arity, [{file, File}, {line, Line}]} | _]}] = erlang:process_info(self(), [current_stacktrace]),
+        [{current_stacktrace, Stack}] = erlang:process_info(self(), [current_stacktrace]),
+        {Module, Fun, Arity, File, Line} = walk_stack(Stack),
 
         Location = #{mfa=> {Module, Fun, Arity},
                      line=> Line,
@@ -25,6 +26,8 @@
           false ->
             ok
         end).
+
+
 
 emergency(Msg, Args) ->
   fun() ->
@@ -70,3 +73,19 @@ spyImpl(Msg, Args) ->
   fun() ->
       ?do_log(notice, Msg, Args)
   end.
+
+
+%%------------------------------------------------------------------------------
+%% Internal
+%%------------------------------------------------------------------------------
+walk_stack([_LoggerFrame,{TopModule, TopFun, TopArity, [{file, TopFile}, {line, TopLine}]} | Rest]) ->
+  walk_stack_internal({TopModule, TopFun, TopArity, TopFile, TopLine}, Rest).
+
+walk_stack_internal(Default, [{Module, Fun, Arity, [{file, File}, {line, Line}]} | Rest]) ->
+  case string:find(atom_to_list(Module), "@ps") of
+    "@ps" ->
+      {Module, Fun, Arity, File, Line};
+    Z ->
+      walk_stack_internal(Default, Rest)
+  end;
+walk_stack_internal(Default, []) -> Default.

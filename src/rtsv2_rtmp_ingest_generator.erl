@@ -69,6 +69,7 @@ start_workflow_for_local_variant(StreamAndVariant, Context) ->
                 display_name = <<>>,
                 generators = [
                               #generator{name = bus,
+                                         display_name = <<"Receive from Bus">>,
                                          module = receive_from_bus_generator,
                                          config = #receive_from_bus_generator_config{bus_name = {ingest, StreamAndVariant}}
                                         }

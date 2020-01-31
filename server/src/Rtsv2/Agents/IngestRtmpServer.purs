@@ -11,9 +11,9 @@ import Data.Foldable (any)
 import Data.Maybe (Maybe)
 import Data.Newtype (wrap)
 import Effect (Effect)
-import Erl.Utils
- as Erl
+import Erl.Process.Raw (Pid)
 import Foreign (Foreign)
+import Logger (spy)
 import Pinto (ServerName)
 import Pinto as Pinto
 import Pinto.Gen as Gen
@@ -29,7 +29,7 @@ import SpudGun (bodyToJSON)
 import SpudGun as SpudGun
 
 type Callbacks
-  = { ingestStarted :: StreamDetails -> String -> Effect (Either Unit StreamAndVariant)
+  = { ingestStarted :: StreamDetails -> String -> Pid -> Effect (Either Unit StreamAndVariant)
     , ingestStopped :: StreamDetails -> String -> Effect Unit
     , streamAuthType :: String -> String -> Effect (Maybe AuthType)
     , streamAuth ::  String -> String -> String -> Effect (Maybe PublishCredentials)
@@ -51,7 +51,6 @@ type State =
   {
   }
 
-
 init :: forall a. a -> Effect State
 init _ = do
   interfaceIp <- Env.publicInterfaceIp
@@ -67,16 +66,16 @@ init _ = do
   _ <- startServerImpl Left (Right unit) interfaceIp port nbAcceptors callbacks
   pure $ {}
   where
-    ingestStarted :: StreamDetails -> String -> Effect (Either Unit StreamAndVariant)
+    ingestStarted :: StreamDetails -> String -> Pid -> Effect (Either Unit StreamAndVariant)
     ingestStarted streamDetails@{ role
                                 , slot : {name : streamId, profiles}
-                                } streamVariantId =
+                                } streamVariantId pid =
       case any (\{streamName: slotStreamName} -> slotStreamName == streamVariantId) profiles of
         true ->
           let
             streamAndVariant = StreamAndVariant (wrap streamId) (wrap streamVariantId)
           in
-           IngestInstanceSup.startIngest streamDetails streamAndVariant
+           IngestInstanceSup.startIngest streamDetails streamAndVariant pid
           <#> const (Right streamAndVariant)
         false ->
           pure $ Left unit
@@ -86,24 +85,24 @@ init _ = do
                    , slot : {name : streamId}} streamVariantId = IngestInstance.stopIngest (StreamAndVariant (wrap streamId) (wrap streamVariantId))
 
     streamAuthType url host shortname = do
-      restResult <- SpudGun.postJson (wrap url) ({ host
-                                                 , protocol: Rtmp
-                                                 , shortname} :: StreamConnection
-                                                )
-      pure $ hush (bodyToJSON restResult)
+      restResult <- SpudGun.postJson (wrap (spy "authtype url" url)) (spy "authtype body" { host
+                                                                                          , protocol: Rtmp
+                                                                                          , shortname} :: StreamConnection
+                                                                     )
+      pure $ hush (bodyToJSON (spy "authtype result" restResult))
 
     streamAuth url host shortname username = do
-      restResult <- SpudGun.postJson (wrap url) ({ host
-                                                 , shortname
-                                                 , username} :: StreamAuth
-                                                )
-      pure $ hush (bodyToJSON restResult)
+      restResult <- SpudGun.postJson (wrap (spy "auth url" url)) (spy "auth body" { host
+                                                                                  , shortname
+                                                                                  , username} :: StreamAuth
+                                                                 )
+      pure $ hush (bodyToJSON (spy "auth result" restResult))
 
     streamPublish url host shortname username streamName = do
-      restResult <- SpudGun.postJson (wrap url) ({ host
-                                                  , protocol: Rtmp
-                                                  , shortname
-                                                  , streamName
-                                                  , username} :: StreamPublish
-                                                )
-      pure $ hush (bodyToJSON restResult)
+      restResult <- SpudGun.postJson (wrap (spy "publish url" url)) (spy "publish body" { host
+                                                                                        , protocol: Rtmp
+                                                                                        , shortname
+                                                                                        , streamName
+                                                                                        , username} :: StreamPublish
+                                                                    )
+      pure $ hush (spy "publish parse" (bodyToJSON (spy "publish result" restResult)))

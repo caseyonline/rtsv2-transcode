@@ -8,7 +8,7 @@ let overrides =
           , repo =
               "ssh://git@github.com/id3as/purescript-erl-pinto.git"
           , version =
-              "0c19d5db83e83f3376bc9aecc96f377733905195"
+              "cabf27e0467d2340f4fff675bb30ec9f07ee2bb6"
           }
       , simple-json =
           { dependencies =

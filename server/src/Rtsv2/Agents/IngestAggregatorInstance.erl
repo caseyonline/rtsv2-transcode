@@ -84,16 +84,20 @@ startWorkflow(SlotName, StreamNames) ->
   H264EncodingId = 125,
 
   Workflow = #workflow{
-                name = ingest_aggregator_instance,
-                display_name = SlotName,
+                name = {ingest_aggregator_instance, SlotName},
+                display_name = <<"RTMP Ingest Aggregator">>,
+                tags = #{type => ingest_aggregator,
+                         slot => SlotName},
                 generators = [
                               #generator{name = ingests,
+                                         display_name = <<"Ingests">>,
                                          module = rtsv2_rtmp_ingest_generator
                                         }
                              ],
 
                 processors = [
                               #processor{name = aggregate,
+                                         display_name = <<"Gather Ingests">>,
                                          subscribes_to = ingests,
                                          module = rtsv2_rtmp_ingest_aggregator_processor
                                         },

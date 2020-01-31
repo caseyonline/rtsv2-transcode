@@ -2,6 +2,7 @@ module Rtsv2.Router.Endpoint ( Endpoint(..)
                              , Canary(..)
                              , endpoint
                              , makeUrl
+                             , makeUrlAddr
                              ) where
 
 import Prelude hiding ((/))
@@ -32,9 +33,14 @@ data Endpoint
   | EgestStatsE StreamId
   | EgestE
   | RelayE
+  | RelayChainE
   | RelayRegisterE
   | RelayStatsE StreamId
   | LoadE
+  | WorkflowsE
+  | WorkflowGraphE String
+  | WorkflowMetricsE String
+  | WorkflowStructureE String
   | IngestAggregatorE StreamId
   | IngestAggregatorPlayerE StreamId
   | IngestAggregatorPlayerJsE StreamId
@@ -67,9 +73,15 @@ endpoint = root $ sum
   , "EgestStatsE"                                      : "" / "api" / "agents" / "egest" / streamId segment
   , "EgestE"                                           : "" / "api" / "agents" / path "egest" noArgs
   , "RelayE"                                           : "" / "api" / "agents" / "relay" / path "egest"  noArgs
+  , "RelayChainE"                                      : "" / "api" / "agents" / "relay" / path "chain"  noArgs
   , "RelayRegisterE"                                   : "" / "api" / "agents" / "relay" / path "register" noArgs
   , "RelayStatsE"                                      : "" / "api" / "agents" / "relay" / streamId segment
   , "LoadE"                                            : "" / "api" / path "load" noArgs
+
+  , "WorkflowsE"                                       : "" / "api" / path "workflows" noArgs
+  , "WorkflowGraphE"                                   : "" / "api" / "workflows" / segment / "graph"
+  , "WorkflowMetricsE"                                 : "" / "api" / "workflows" / segment / "metrics"
+  , "WorkflowStructureE"                               : "" / "api" / "workflows" / segment / "structure"
 
   , "IngestAggregatorE"                                : "" / "api" / "agents" / "ingestAggregator" / streamId segment
   , "IngestAggregatorPlayerE"                          : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "player"
@@ -99,12 +111,15 @@ endpoint = root $ sum
 
 makeUrl :: forall r a. Newtype a { address :: ServerAddress | r }
         => a -> Endpoint -> Url
-makeUrl server ep =
+makeUrl server ep = makeUrlAddr (extractAddress server) ep
+
+makeUrlAddr :: ServerAddress -> Endpoint -> Url
+makeUrlAddr serverAddr ep =
   let
     path = Routing.printUrl endpoint ep
-  in wrap $ "http://" <> toHost server <> ":3000" <> path
+  in wrap $ "http://" <> toHost serverAddr <> ":3000" <> path
   where
-    toHost = extractAddress >>> unwrap
+    toHost = unwrap
 
 
 -- | StreamId
@@ -122,14 +137,26 @@ parseStreamVariant = wrapParser
 variantToString :: StreamVariant -> String
 variantToString = unwrap
 
+-- | ShortName
 parseShortName :: String -> Maybe ShortName
 parseShortName = wrapParser
 
 shortNameToString :: ShortName -> String
 shortNameToString = unwrap
 
+
+-- | Generic parser for newtypes
+wrapParser :: forall a. Newtype a String => String -> Maybe a
 wrapParser "" = Nothing
 wrapParser str = Just $ wrap str
+
+
+-- | PoPName
+parsePoPName :: String -> Maybe PoPName
+parsePoPName  = wrapParser
+
+poPNameToString :: PoPName -> String
+poPNameToString = unwrap
 
 
 -- | StreamAndVariant
@@ -143,15 +170,6 @@ parseStreamAndVariant  str =
 streamAndVariantToString :: StreamAndVariant -> String
 streamAndVariantToString (StreamAndVariant _ (StreamVariant str)) = str
 
-
-
--- | PoPName
-
-parsePoPName :: String -> Maybe PoPName
-parsePoPName  = wrapParser
-
-poPNameToString :: PoPName -> String
-poPNameToString = unwrap
 
 
 -- | Canary

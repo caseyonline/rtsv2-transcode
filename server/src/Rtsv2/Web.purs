@@ -61,17 +61,23 @@ init args = do
     # mkRoute (TimedRoutesE popNameBinding)                                     TransPoPHandler.timedRoutes
     # mkRoute  HealthCheckE                                                     HealthHandler.healthCheck
     # mkRoute (EgestStatsE streamIdBinding)                                     EgestStatsHandler.stats
-    # mkRoute  RelayE                                                           RelayHandler.resource
-    # mkRoute  RelayRegisterE                                                   RelayHandler.register
+
+    # mkRoute  RelayE                                                           RelayHandler.startResource
+    # mkRoute  RelayRegisterE                                                   RelayHandler.registerEgest
+    # mkRoute  RelayChainE                                                      RelayHandler.chainResource
     # mkRoute (RelayStatsE streamIdBinding)                                     RelayHandler.stats
+
     # mkRoute  LoadE                                                            LoadHandler.load
+
     # mkRoute (IngestAggregatorE streamIdBinding)                               IngestAggregatorHandler.ingestAggregator
     # mkRoute (IngestAggregatorActiveIngestsE streamIdBinding variantBinding)   IngestAggregatorHandler.ingestAggregatorsActiveIngest
     # mkRoute  IngestAggregatorsE                                               IngestAggregatorHandler.ingestAggregators
     # mkRoute (IngestStartE ":canary" shortNameBinding streamAndVariantBinding) IngestHandler.ingestStart
     # mkRoute (IngestStopE ":canary" shortNameBinding streamAndVariantBinding)  IngestHandler.ingestStop
+
     # mkRoute (ClientStartE ":canary" streamIdBinding)                          ClientHandler.clientStart
     # mkRoute (ClientStopE ":canary" streamIdBinding)                           ClientHandler.clientStop
+
     # mkRoute  StreamAuthE                                                      LlnwStubHandler.streamAuthType
     # mkRoute  StreamAuthTypeE                                                  LlnwStubHandler.streamAuth
     # mkRoute  StreamPublishE                                                   LlnwStubHandler.streamPublish
@@ -93,9 +99,15 @@ init args = do
   where
     cowboyRoutes :: List Path
     cowboyRoutes =
-      cowboyRoute   (IngestInstanceLlwpE streamIdBinding variantBinding)                                       "llwp_stream_resource" makeStreamAndVariant
-      : cowboyRoute (IngestAggregatorActiveIngestsPlayerSessionStartE streamIdBinding variantBinding)          "rtsv2_webrtc_session_start_resource" makeStreamAndVariant
-      : cowboyRoute (IngestAggregatorActiveIngestsPlayerSessionE streamIdBinding variantBinding ":session_id") "rtsv2_webrtc_session_resource" makeStreamAndVariant
+      cowboyRoute   (IngestInstanceLlwpE streamIdBinding variantBinding)                                       "llwp_stream_resource" ((unsafeToForeign) makeStreamAndVariant)
+      : cowboyRoute (IngestAggregatorActiveIngestsPlayerSessionStartE streamIdBinding variantBinding)          "rtsv2_webrtc_session_start_resource" ((unsafeToForeign) makeStreamAndVariant)
+      : cowboyRoute (IngestAggregatorActiveIngestsPlayerSessionE streamIdBinding variantBinding ":session_id") "rtsv2_webrtc_session_resource" ((unsafeToForeign) makeStreamAndVariant)
+      : cowboyRoute WorkflowsE "id3as_workflows_resource" (unsafeToForeign unit)
+
+      : cowboyRoute (WorkflowGraphE ":reference") "id3as_workflow_graph_resource" (unsafeToForeign (atom "graph"))
+      : cowboyRoute (WorkflowMetricsE ":reference") "id3as_workflow_graph_resource" (unsafeToForeign (atom "metrics"))
+      : cowboyRoute (WorkflowStructureE ":reference") "id3as_workflow_graph_resource" (unsafeToForeign (atom "structure"))
+
       : nil
 
     makeStreamAndVariant :: String -> String -> StreamAndVariant
@@ -122,7 +134,7 @@ init args = do
       Path (tuple3
             (matchSpec $ printUrl endpoint rType)
             (NativeModuleName $ atom moduleName)
-            (InitialState $ unsafeToForeign initialState)
+            (InitialState $ initialState)
            )
 
 ipToTuple :: Ip -> Tuple4 Int Int Int Int

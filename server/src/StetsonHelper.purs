@@ -23,7 +23,7 @@ import Data.Maybe (Maybe(..), fromMaybe, fromMaybe', isNothing)
 import Data.Newtype (class Newtype, wrap)
 import Effect (Effect)
 import Erl.Atom (atom)
-import Erl.Cowboy.Req (ReadBodyResult(..), Req, StatusCode(..), binding, method, readBody, replyWithoutBody)
+import Erl.Cowboy.Req (ReadBodyResult(..), Req, StatusCode(..), binding, readBody, replyWithoutBody)
 import Erl.Data.Binary (Binary)
 import Erl.Data.Binary.IOData (IOData, fromBinary, toBinary)
 import Erl.Data.List (singleton, (:))
@@ -32,7 +32,7 @@ import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.Utils (noprocToMaybe)
 import Rtsv2.Web.Bindings as Bindings
 import Shared.Stream (StreamId)
-import Shared.Types (PoPName(..))
+import Shared.Types (PoPName)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (class ReadForeign, class WriteForeign, writeJSON)
 import Simple.JSON as JSON
@@ -52,8 +52,8 @@ genericPost :: forall a b. ReadForeign a => (a -> Effect b) -> GenericStetsonHan
 genericPost proxiedFun =
   Rest.handler init
   # Rest.allowedMethods (Rest.result (POST : mempty))
-  # Rest.malformedRequest malformedRequest
   # Rest.contentTypesAccepted (\req state -> Rest.result (singleton $ MimeType.json acceptJson) req state)
+  # Rest.malformedRequest malformedRequest
   # Rest.yeeha
   where
     init req =
@@ -62,14 +62,15 @@ genericPost proxiedFun =
         Rest.initResult req { mPayload
                             }
 
-    malformedRequest req state@{mPayload} =
-      Rest.result (isNothing mPayload) req state
-
     acceptJson req state@{mPayload} = do
       let
         payload = fromMaybe' (lazyCrashIfMissing "impossible noEgestPayload") mPayload
       _ <- proxiedFun payload
       Rest.result true req state
+
+    malformedRequest req state@{mPayload} =
+      Rest.result (isNothing mPayload) req state
+
 
 
 type GenericStetsonHandlerWithResponse a b = StetsonHandler (Internal_GenericHandlerWithResponseState a b)
@@ -82,8 +83,8 @@ genericPostWithResponse :: forall a b. ReadForeign a => WriteForeign b => (a -> 
 genericPostWithResponse proxiedFun =
   Rest.handler init
   # Rest.allowedMethods (Rest.result (POST : mempty))
-  # Rest.malformedRequest malformedRequest
   # Rest.contentTypesAccepted (\req state -> Rest.result (singleton $ MimeType.json acceptJson) req state)
+  # Rest.malformedRequest malformedRequest
   # Rest.contentTypesProvided (\req state -> Rest.result (singleton $ MimeType.json provideJson) req state)
   # Rest.yeeha
   where
@@ -94,14 +95,14 @@ genericPostWithResponse proxiedFun =
                             , mResponse : Nothing
                             }
 
-    malformedRequest req state@{mPayload} =
-      Rest.result (isNothing mPayload) req state
-
     acceptJson req state@{mPayload} = do
       let
         payload = fromMaybe' (lazyCrashIfMissing "impossible noEgestPayload") mPayload
       mResp <- proxiedFun payload
       Rest.result true req state{mResponse = mResp}
+
+    malformedRequest req state@{mPayload} =
+      Rest.result (isNothing mPayload) req state
 
     provideJson req state@{mResponse} = do
       let

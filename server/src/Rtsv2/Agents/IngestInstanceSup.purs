@@ -6,15 +6,15 @@
 
 import Prelude
 
-import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Erl.Data.List (nil, (:))
-import Rtsv2.Names as Names
+import Erl.Process.Raw (Pid)
 import Pinto (SupervisorName)
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStartTemplate, childType)
 import Pinto.Sup as Sup
 import Rtsv2.Agents.IngestInstance as IngestInstance
+import Rtsv2.Names as Names
 import Shared.LlnwApiTypes (StreamDetails)
 import Shared.Stream (StreamAndVariant)
 
@@ -27,9 +27,9 @@ serverName = Names.ingestInstanceSupName
 startLink :: forall a. a -> Effect Pinto.StartLinkResult
 startLink _ = Sup.startLink serverName init
 
-startIngest :: StreamDetails -> StreamAndVariant -> Effect Unit
-startIngest streamDetails streamAndVariant = do
-  result <- Sup.startSimpleChild childTemplate serverName (Tuple streamDetails streamAndVariant)
+startIngest :: StreamDetails -> StreamAndVariant -> Pid -> Effect Unit
+startIngest streamDetails streamAndVariant handlerPid = do
+  result <- Sup.startSimpleChild childTemplate serverName {streamDetails, streamAndVariant, handlerPid}
   case result of
     Pinto.AlreadyStarted pid -> pure unit
     Pinto.Started pid -> pure unit
@@ -48,5 +48,5 @@ init = do
             : nil
         )
 
-childTemplate :: Pinto.ChildTemplate (Tuple StreamDetails StreamAndVariant)
+childTemplate :: Pinto.ChildTemplate IngestInstance.Args
 childTemplate = Pinto.ChildTemplate (IngestInstance.startLink)
