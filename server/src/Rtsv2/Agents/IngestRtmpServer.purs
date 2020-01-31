@@ -105,4 +105,4 @@ init _ = do
                                                                                         , streamName
                                                                                         , username} :: StreamPublish
                                                                     )
-      pure $ hush (bodyToJSON (spy "publish result" restResult))
+      pure $ hush (spy "publish parse" (bodyToJSON (spy "publish result" restResult)))

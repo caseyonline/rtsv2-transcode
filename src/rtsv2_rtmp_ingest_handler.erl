@@ -60,8 +60,7 @@ init(Rtmp, ConnectArgs, [#{ingestStarted := IngestStarted,
                                                     username => UserName}),
           {stop, rejected};
 
-        {just, #{authType := {adobe},
-                 username := ExpectedUserName,
+        {just, #{username := ExpectedUserName,
                  password := ExpectedPassword}} ->
 
           case rtmp:compare_adobe_challenge_response(ExpectedUserName,
@@ -108,8 +107,7 @@ init(Rtmp, ConnectArgs, [#{ingestStarted := IngestStarted,
                                                    username => UserName}),
           {stop, rejected};
 
-        {just, #{authType := {llnw},
-                 username := ExpectedUserName,
+        {just, #{username := ExpectedUserName,
                  password := ExpectedPassword}} ->
           Realm = <<"live">>,
           Method = <<"publish">>,
