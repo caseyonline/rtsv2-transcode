@@ -59,8 +59,8 @@ streamPublishDb =
                                                streamName: "slot1_500",
                                                bitrate: 500000}
                                            ]
+                               , outputFormats : []
                               }
-                      , outputFormats : []
                       , push : []
                       }
                 : Tuple { host: "172.16.171.5"
@@ -78,8 +78,8 @@ streamPublishDb =
                                                  streamName: "slot1_500",
                                                  bitrate: 500000}
                                              ]
+                                 , outputFormats : []
                                  }
-                        , outputFormats : []
                         , push : []
                         }
                 : nil )
