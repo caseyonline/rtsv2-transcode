@@ -9,6 +9,9 @@ import Halogen.HTML.Properties as HP
 import Routing.Duplex (print)
 import Rtsv2App.Data.Route (Route, routeCodec)
 
+-------------------------------------------------------------------------------
+-- Useful Halogen Utils
+-------------------------------------------------------------------------------
 -- | I get annoyed writing `class_ $ ClassName "..."` over and over again. This small utility saves
 -- | a few characters all over our HTML.
 css :: forall r i. String -> HH.IProp ( class :: String | r ) i

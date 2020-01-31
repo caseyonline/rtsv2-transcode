@@ -2,13 +2,12 @@ module Main where
 
 import Prelude
 
-import Affjax (printResponseFormatError, request)
-import Data.Bifunctor (lmap)
-import Data.Either (hush)
+import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Data.Traversable (traverse_)
 import Effect (Effect)
 import Effect.Aff (Aff, launchAff_)
+import Effect.Aff as Aff
 import Effect.Aff.Bus as Bus
 import Effect.Ref as Ref
 import Halogen (liftAff, liftEffect)
@@ -16,22 +15,27 @@ import Halogen as H
 import Halogen.Aff as HA
 import Halogen.HTML as HH
 import Halogen.VDom.Driver (runUI)
+import Milkis as M
 import Routing.Duplex (parse)
 import Routing.Hash (matchesWith)
 import Rtsv2App.Api.Endpoint (Endpoint(..))
-import Rtsv2App.Api.Request (BaseURL(..), RequestMethod(..), defaultRequest, readToken)
+import Rtsv2App.Api.Request (BaseURL(..), ProfileJson, RequestMethod(..), fetch, printFullUrl, readToken)
 import Rtsv2App.AppM (runAppM)
 import Rtsv2App.Component.Router as Router
 import Rtsv2App.Data.Route (routeCodec)
-import Rtsv2App.Data.Utils (decodeAt)
 import Rtsv2App.Env (LogLevel(..), UserEnv, Env)
+import Simple.JSON as JSON
+
 
 main :: Effect Unit
 main = HA.runHalogenAff do
 
   body <- HA.awaitBody
   let
-    baseUrl = BaseURL "https://conduit.productionready.io"
+    -- TODO: need to add apiURL to look at current location address
+    authUrl = AuthURL "https://conduit.productionready.io"
+    apiUrl = ApiUrl "https://conduit.productionready.io"
+
     logLevel = Dev
 
   -- default currentUser Ref to Nothing when starting app
@@ -44,14 +48,20 @@ main = HA.runHalogenAff do
   -- local storage (if there is one). Read the token, request the user's profile if it can, and
   -- if it gets a valid result, write it to our mutable reference.
   liftEffect readToken >>= traverse_ \token -> do
-    let requestOptions = { endpoint: User, method: Get }
-    res <- liftAff $ request $ defaultRequest baseUrl (Just token) requestOptions
-    let u = decodeAt "user" =<< lmap printResponseFormatError res.body
-    liftEffect $ Ref.write (hush u) currentUser
+    let method = { endpoint: User, method: Get }
+    response <- liftAff $ Aff.attempt $ fetch (M.URL $ printFullUrl authUrl method.endpoint) (Just token) method
+    case response of
+      Left err  -> mempty
+      Right res -> do
+        r <- liftAff $ M.text res
+        case JSON.readJSON r of
+          Left e -> mempty
+          Right (result :: ProfileJson) -> do
+            liftEffect $ Ref.write (Just result.user) currentUser
 
   let
     environment :: Env
-    environment = { baseUrl, logLevel, userEnv }
+    environment = { apiUrl, authUrl, logLevel, userEnv }
       where
       userEnv :: UserEnv
       userEnv = { currentUser, userBus }

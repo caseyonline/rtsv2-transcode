@@ -2,16 +2,19 @@ module Rtsv2App.Form.Validation where
 
 import Prelude
 
+import Data.Either (Either(..), note)
+import Data.Maybe (Maybe(..))
+import Data.String as String
+import Formless as F
 import Rtsv2App.Data.Avatar (Avatar)
 import Rtsv2App.Data.Avatar as Avatar
 import Rtsv2App.Data.Email (Email(..))
 import Rtsv2App.Data.Username (Username)
 import Rtsv2App.Data.Username as Username
-import Data.Either (Either(..), note)
-import Data.Maybe (Maybe(..))
-import Data.String as String
-import Formless as F
 
+-------------------------------------------------------------------------------
+-- Types for form validation
+-------------------------------------------------------------------------------
 data FormError
   = Required
   | TooShort
@@ -29,6 +32,9 @@ errorToString = case _ of
   InvalidUsername -> "Invalid username"
   InvalidAvatar -> "Invalid image URL"
 
+-------------------------------------------------------------------------------
+-- Functions
+-------------------------------------------------------------------------------
 required :: ∀ form m a. Eq a => Monoid a => Monad m => F.Validation form m FormError a a
 required = F.hoistFnE_ $ cond (_ /= mempty) Required
 

@@ -25,7 +25,7 @@ watch-spago:
 	spago bundle-app --watch --main Main --to $(PS_SOURCEFILE)
 
 watch-parcel:
-	node_modules/.bin/parcel watch --out-dir $(JS_ASSET_FOLDER) --out-file $(BUNDLE_NAME) $(PS_SOURCEFILE) --no-source-maps
+	./node_modules/.bin/parcel watch --out-dir $(JS_ASSET_FOLDER) --out-file $(BUNDLE_NAME) $(PS_SOURCEFILE) --no-source-maps
 
 clean-all:
 	rm -rf node_modules output .spago .cache dist

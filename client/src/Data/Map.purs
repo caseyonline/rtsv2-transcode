@@ -6,6 +6,9 @@ import Data.Tuple (Tuple(..))
 import Foreign.ECharts as EC
 import Foreign.Object (fromFoldable)
 
+-------------------------------------------------------------------------------
+--  GEO Locations TODO: work out what needs to be done here
+-------------------------------------------------------------------------------
 data_A :: Array (Array EC.CityName)
 data_A =
   [

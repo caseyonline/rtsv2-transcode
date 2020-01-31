@@ -23,12 +23,14 @@ import Rtsv2App.Component.Utils (OpaqueSlot)
 import Rtsv2App.Data.Profile (Profile)
 import Rtsv2App.Data.Route (Route(..), routeCodec)
 import Rtsv2App.Env (UserEnv)
-import Rtsv2App.Page.Home as Home
+import Rtsv2App.Page.Dashboard as Dashboard
 import Rtsv2App.Page.Login as Login
-import Rtsv2App.Page.Profile as Profile
 import Rtsv2App.Page.Register as Register
 import Rtsv2App.Page.Settings as Settings
 
+-------------------------------------------------------------------------------
+-- Types
+-------------------------------------------------------------------------------
 type State =
   { route :: Maybe Route 
   , currentUser :: Maybe Profile
@@ -42,13 +44,15 @@ data Action
   | Receive { | WithCurrentUser () }
 
 type ChildSlots = 
-  ( home :: OpaqueSlot Unit
+  ( dashboard :: OpaqueSlot Unit
   , login :: OpaqueSlot Unit
   , register :: OpaqueSlot Unit
   , settings :: OpaqueSlot Unit
-  , profile :: OpaqueSlot Unit
   )
 
+-------------------------------------------------------------------------------
+-- Router Component
+-------------------------------------------------------------------------------
 component
   :: forall m r
    . MonadAff m
@@ -72,10 +76,10 @@ component = Connect.component $ H.mkComponent
   handleAction :: Action -> H.HalogenM State Action ChildSlots Void m Unit
   handleAction = case _ of
     Initialize -> do
-      -- first we'll get the route the user landed on
+      -- get the route the user landed on
       initialRoute <- hush <<< (RD.parse routeCodec) <$> liftEffect getHash
-      -- then we'll navigate to the new route (also setting the hash)
-      navigate $ fromMaybe Home initialRoute
+      -- navigate to the new route (also setting the hash)
+      navigate $ fromMaybe Dashboard initialRoute
     
     Receive { currentUser } ->
       H.modify_ _ { currentUser = currentUser }
@@ -102,11 +106,13 @@ component = Connect.component $ H.mkComponent
     Just _ ->
       html
 
+  -- connecting the routes to the components
   render :: State -> H.ComponentHTML Action ChildSlots m
   render { route, currentUser } = case route of
     Just r -> case r of
-      Home -> 
-        HH.slot (SProxy :: _ "home") unit Home.component {} absurd
+      Dashboard ->
+        HH.slot (SProxy :: _ "dashboard") unit Dashboard.component {} absurd
+          # authorize currentUser
       Login -> 
         HH.slot (SProxy :: _ "login") unit Login.component { redirect: true } absurd
       Register ->
@@ -114,7 +120,5 @@ component = Connect.component $ H.mkComponent
       Settings -> 
         HH.slot (SProxy :: _ "settings") unit Settings.component {} absurd
           # authorize currentUser
-      Profile username ->
-        HH.slot (SProxy :: _ "profile") unit Profile.component { username } absurd
     Nothing ->
       HH.div_ [ HH.text "Oh no! That page wasn't found." ]

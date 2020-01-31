@@ -1,10 +1,10 @@
--- | This module exports a pure HTML function to render a consistent footer throughout the app.
 module Rtsv2App.Component.HTML.Footer where
 
 import Halogen.HTML as HH
 import Halogen.HTML.Properties as HP
 import Rtsv2App.Component.HTML.Utils (css)
 
+-- | Footer Component used through out the app
 footer :: forall i p. HH.HTML i p
 footer = 
   HH.footer

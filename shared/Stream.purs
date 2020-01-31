@@ -26,6 +26,7 @@ import Simple.JSON (class ReadForeign, class WriteForeign)
 newtype ShortName = ShortName String
 derive instance genericShortName :: Generic ShortName _
 derive instance newtypeShortName :: Newtype ShortName _
+
 derive newtype instance readForeignShortName :: ReadForeign ShortName
 derive newtype instance writeForeignShortName :: WriteForeign ShortName
 

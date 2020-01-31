@@ -2,7 +2,6 @@ module Rtsv2App.Data.PreciseDateTime where
 
 import Prelude
 
-import Data.Argonaut.Decode (class DecodeJson, decodeJson)
 import Data.DateTime (DateTime)
 import Data.Either (Either, note)
 import Data.Formatter.DateTime (FormatterCommand(..), format)
@@ -14,9 +13,6 @@ import Data.RFC3339String (RFC3339String(..))
 newtype PreciseDateTime = PreciseDateTime PDT.PreciseDateTime
 
 derive instance newtypePreciseDateTime :: Newtype PreciseDateTime _
-
-instance decodeJsonPreciseDateTime :: DecodeJson PreciseDateTime where
-  decodeJson = fromString <=< decodeJson
 
 -- | Try to parse a `PreciseDateTime` from a string.
 fromString :: String -> Either String PreciseDateTime
