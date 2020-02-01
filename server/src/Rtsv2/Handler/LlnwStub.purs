@@ -36,10 +36,10 @@ streamAuthDb :: Map StreamAuth PublishCredentials
 streamAuthDb =
   fromFoldable (Tuple { host: "172.16.171.5"
                       , shortname: "mmddev001"
-                      , username: "my-username"
+                      , username: "user"
                       }
-                      (PublishCredentials { username: "my-username"
-                                          , password: "my-password"})
+                      (PublishCredentials { username: "user"
+                                          , password: "password"})
                 : nil)
 
 streamPublishDb :: Map StreamPublish StreamDetails
@@ -48,7 +48,7 @@ streamPublishDb =
                       , protocol: Rtmp
                       , shortname: "mmddev001"
                       , streamName: "slot1_1000"
-                      , username: "my-username" }
+                      , username: "user" }
                       { role: Primary
                       , slot : { name: "slot1"
                                , subscribeValidation: false
@@ -67,7 +67,7 @@ streamPublishDb =
                         , protocol: Rtmp
                         , shortname: "mmddev001"
                         , streamName: "slot1_500"
-                        , username: "my-username" }
+                        , username: "user" }
                         { role: Primary
                         , slot : { name: "slot1"
                                  , subscribeValidation: false
