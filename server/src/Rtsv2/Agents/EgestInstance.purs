@@ -27,9 +27,9 @@ import Pinto.Timer as Timer
 import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..), launchLocalOrRemoteGeneric)
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.Locator.Types (LocalOrRemote(..), RegistrationResp, ResourceResp)
-import Rtsv2.Agents.StreamRelayInstance (CreateRelayPayload)
-import Rtsv2.Agents.StreamRelayInstance as StreamRelayInstance
-import Rtsv2.Agents.StreamRelayInstanceSup (startRelay) as StreamRelayInstanceSup
+import Rtsv2.Agents.StreamRelay.Instance as StreamRelayInstance
+import Rtsv2.Agents.StreamRelay.InstanceSup (startRelay) as StreamRelayInstanceSup
+import Rtsv2.Agents.StreamRelay.Types (CreateRelayPayload, RegisterEgestPayload)
 import Rtsv2.Config as Config
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
@@ -188,8 +188,9 @@ initStreamRelay state@{relayCreationRetry, streamId, aggregatorPoP, thisServer} 
       _ <- void <$> crashIfLeft =<< SpudGun.postJson url relayRegistrationPayload
       pure state{relay = Just $ toRelayServer  <$> remote}
   where
+    relayRegistrationPayload  :: RegisterEgestPayload
     relayRegistrationPayload =
-      {streamId: state.streamId, aggregatorPoP: state.aggregatorPoP, egestServer: state.thisServer}
+      {streamId, deliverTo: state.thisServer}
 
 
 

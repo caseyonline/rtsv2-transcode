@@ -21,6 +21,7 @@ import Shared.LlnwApiTypes (AuthType, PublishCredentials(..), SlotPublishAuthTyp
 import Simple.JSON (readJSON, writeJSON)
 import Stetson (Authorized(..), HttpMethod(..), StetsonHandler)
 import Stetson.Rest as Rest
+import StetsonHelper (preHookSpyState)
 import Unsafe.Coerce (unsafeCoerce)
 
 streamAuthTypeDb :: Map StreamConnection AuthType
@@ -243,7 +244,7 @@ streamPublish =
   # Rest.allowMissingPost (Rest.result false)
 
   # Rest.contentTypesProvided (\req state -> Rest.result (tuple2 "application/json" (Rest.result ""): nil) req state)
-
+  # Rest.preHook (preHookSpyState "LLNW:streamPublish")
   # Rest.yeeha
 
 

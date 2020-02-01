@@ -3,8 +3,6 @@ module Rtsv2.Names
          agentSupName
        , egestInstanceName
        , egestInstanceSupName
-       , egestProxyName
-       , egestProxyMatch
        , ingestAggregatorInstanceName
        , ingestAggregatorInstanceSupName
        , ingestInstanceName
@@ -14,6 +12,8 @@ module Rtsv2.Names
        , intraPoPName
        , loadServerName
        , popDefinitionName
+       , streamRelayDownstreamProxyName
+       , streamRelayInstanceName
        , streamRelayInstanceSupName
        , transPoPName
        , webServerName
@@ -30,7 +30,7 @@ import Foreign (unsafeToForeign)
 import Pinto (ServerName(..), SupervisorName)
 import Shared.Agent (Agent(..))
 import Shared.Stream (StreamId, StreamAndVariant)
-import Shared.Types (Server)
+import Shared.Types (PoPName)
 
 agentSupName :: SupervisorName
 agentSupName = Local (atom "AgentSup")
@@ -38,13 +38,11 @@ agentSupName = Local (atom "AgentSup")
 egestInstanceName :: forall a b. StreamId -> ServerName a b
 egestInstanceName = gprocName2 Egest
 
-egestProxyName :: forall a b. StreamId -> Server -> ServerName a b
-egestProxyName = gprocProxyName3 Egest
+-- egestProxyName :: forall a b. StreamId -> Server -> ServerName a b
+-- egestProxyName = gprocProxyName3 Egest
 
-egestProxyMatch streamId = tuple4 (show Egest) "proxy" streamId (atom "$1")
-
-
-
+-- egestProxyMatch :: StreamId -> Tuple4 String String StreamId Atom
+-- egestProxyMatch streamId = tuple4 (show Egest) "proxy" streamId (atom "$1")
 
 egestInstanceSupName :: SupervisorName
 egestInstanceSupName = instanceSup Egest
@@ -57,7 +55,6 @@ ingestAggregatorInstanceSupName = instanceSup IngestAggregator
 
 ingestInstanceName :: forall a b. StreamAndVariant -> ServerName a b
 ingestInstanceName = gprocName2 Ingest
-
 
 ingestInstanceSupName :: SupervisorName
 ingestInstanceSupName = instanceSup Ingest
@@ -79,6 +76,12 @@ popDefinitionName = Local (atom "PoPDefinition")
 
 streamRelayInstanceSupName :: SupervisorName
 streamRelayInstanceSupName = instanceSup StreamRelay
+
+streamRelayInstanceName :: forall a b. StreamId -> ServerName a b
+streamRelayInstanceName = gprocName2 StreamRelay
+
+streamRelayDownstreamProxyName :: forall a b. StreamId -> PoPName -> ServerName a b
+streamRelayDownstreamProxyName = gprocName4 StreamRelay "proxy"
 
 transPoPName :: forall a b. ServerName a b
 transPoPName = localName TransPoP
@@ -113,9 +116,8 @@ gprocName term =
 gprocName2 :: forall a b t x. Show t => t -> x -> ServerName a b
 gprocName2 t = gprocName <<< tuple2 (show t)
 
+gprocName3 :: forall a b t x y. Show t => t -> x -> y -> ServerName a b
+gprocName3 t x y = gprocName $ tuple3 (show t) x y
 
-gprocProxyName2 :: forall t a s m. Show t => t -> a -> ServerName s m
-gprocProxyName2 t a = gprocName $ tuple3 (show t) "proxy" a
-
-gprocProxyName3 :: forall t a b s m. Show t => t -> a -> b -> ServerName s m
-gprocProxyName3 t a b = gprocName $ tuple4 (show t) "proxy" a b
+gprocName4 :: forall a b t x y z. Show t => t -> x -> y -> z -> ServerName a b
+gprocName4 t x y z = gprocName $ tuple4 (show t) x y z

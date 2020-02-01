@@ -7,6 +7,7 @@ module Rtsv2.Agents.Locator.Types
        , RegistrationResp(..)
        , ServerSelectionPredicate
        , FindAndRegisterConfig
+       , FindOrStartConfig
        )
        where
 
@@ -17,6 +18,16 @@ import Data.Maybe (Maybe)
 import Effect (Effect)
 import Logger (Logger)
 import Shared.Types (Server, ServerLoad)
+
+
+
+type FindOrStartConfig payload
+  = { findFun :: (payload -> Effect (Maybe (LocalOrRemote Server)))
+    , handlerCreationPredicate :: ServerSelectionPredicate
+    , startLocalFun :: payload -> Effect Unit
+    , logWarning :: forall a. Logger a
+    }
+
 
 
 type FindAndRegisterConfig payload

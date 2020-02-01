@@ -134,6 +134,8 @@ postJson url bodyType = post url { body: writeJSON bodyType,
 --                                            : tuple2 "Accept" "application/json"
                                             : nil
                                             )
+                                   -- TODO - HTTP redirect or app level?
+--                                 , followRedirect : true
                                  }
 
 

@@ -35,6 +35,7 @@ type IngestAggregator
 
 type StreamRelay
   = { egestsServed :: Array ServerAddress
+    , relaysServed :: Array ServerAddress
     }
 
 type Egest

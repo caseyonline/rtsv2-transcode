@@ -10,6 +10,10 @@ module StetsonHelper
        , allBody
        , binaryToString
 
+       , preHookSpyReq
+       , preHookSpyReqState
+       , preHookSpyState
+
          -- internal - not for public consumption!
        , Internal_GenericStatusState
        , Internal_GenericHandlerState
@@ -28,6 +32,7 @@ import Erl.Data.Binary (Binary)
 import Erl.Data.Binary.IOData (IOData, fromBinary, toBinary)
 import Erl.Data.List (singleton, (:))
 import Erl.Data.Map as Map
+import Logger (spy)
 import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.Utils (noprocToMaybe)
 import Rtsv2.Web.Bindings as Bindings
@@ -36,7 +41,7 @@ import Shared.Types (PoPName)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (class ReadForeign, class WriteForeign, writeJSON)
 import Simple.JSON as JSON
-import Stetson (HttpMethod(..), StetsonHandler)
+import Stetson (HttpMethod(..), StetsonHandler, RestHandler)
 import Stetson.Rest as Rest
 import Unsafe.Coerce as Unsafe.Coerce
 
@@ -164,3 +169,21 @@ allBody req acc = do
 
 binaryToString :: Binary -> String
 binaryToString = Unsafe.Coerce.unsafeCoerce
+
+
+--------------------------------------------------------------------------------
+-- Debug helpers
+--------------------------------------------------------------------------------
+preHookSpyReq :: forall req state. String -> String -> req -> state -> Effect Unit
+preHookSpyReq prefix name req _ = hookSpy prefix name {req}
+
+preHookSpyReqState :: forall req state. String -> String -> req -> state -> Effect Unit
+preHookSpyReqState prefix name req state = hookSpy prefix name {req, state}
+
+preHookSpyState :: forall req state. String -> String -> req -> state -> Effect Unit
+preHookSpyState prefix name _ state = hookSpy prefix name {state}
+
+hookSpy :: forall a. String -> String -> a -> Effect Unit
+hookSpy prefix name what =
+  let _ = spy (prefix <> "->" <> name) what
+  in pure unit

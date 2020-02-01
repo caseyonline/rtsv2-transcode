@@ -63,8 +63,9 @@ init args = do
     # mkRoute (EgestStatsE streamIdBinding)                                     EgestStatsHandler.stats
 
     # mkRoute  RelayE                                                           RelayHandler.startResource
+    # mkRoute  RelayEnsureStartedE                                              RelayHandler.ensureStarted
     # mkRoute  RelayRegisterE                                                   RelayHandler.registerEgest
-    # mkRoute  RelayChainE                                                      RelayHandler.chainResource
+--    # mkRoute  RelayChainE                                                      RelayHandler.chainResource
     # mkRoute (RelayStatsE streamIdBinding)                                     RelayHandler.stats
 
     # mkRoute  LoadE                                                            LoadHandler.load
