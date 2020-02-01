@@ -10,7 +10,8 @@ import Rtsv2App.Data.Profile (Profile)
 
 type Env =
   { logLevel :: LogLevel
-  , baseUrl :: BaseURL
+  , apiUrl :: BaseURL
+  , authUrl :: BaseURL
   , userEnv :: UserEnv
   }
 

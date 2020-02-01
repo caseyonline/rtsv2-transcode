@@ -7,23 +7,29 @@ module Rtsv2App.Data.Avatar
 
 import Prelude
 
-import Data.Argonaut.Decode (class DecodeJson)
-import Data.Argonaut.Encode (class EncodeJson)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show (genericShow)
 import Data.Maybe (Maybe(..))
+import Simple.JSON (class ReadForeign, class WriteForeign)
 
+-------------------------------------------------------------------------------
+-- Types
+-------------------------------------------------------------------------------
 newtype Avatar = Avatar String
 
 derive instance genericAvatar :: Generic Avatar _
 derive instance eqAvatar :: Eq Avatar
 
-derive newtype instance encodeJsonAvatar :: EncodeJson Avatar
-derive newtype instance decodeJsonAvatar :: DecodeJson Avatar
+derive newtype instance encodeJsonAvatar :: ReadForeign Avatar
+derive newtype instance decodeJsonAvatar :: WriteForeign Avatar
 
 instance showAvatar :: Show Avatar where
   show = genericShow
 
+
+-------------------------------------------------------------------------------
+-- Helper functions
+-------------------------------------------------------------------------------
 parse :: String -> Maybe Avatar
 parse "" = Nothing
 parse str = Just (Avatar str)

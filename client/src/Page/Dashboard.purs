@@ -1,4 +1,4 @@
-module Rtsv2App.Page.Home where
+module Rtsv2App.Page.Dashboard where
 
 import Prelude
 
@@ -11,7 +11,6 @@ import Data.Foldable (traverse_)
 import Data.Int (toNumber)
 import Data.Maybe (Maybe(..))
 import Data.Symbol (SProxy(..))
-import Debug.Trace (spy)
 import Effect.Aff.Class (class MonadAff)
 import Effect.Class (liftEffect)
 import Foreign.ECharts as EC
@@ -24,11 +23,14 @@ import Rtsv2App.Component.HTML.Footer (footer)
 import Rtsv2App.Component.HTML.Header as HD
 import Rtsv2App.Component.HTML.MainMenu as MM
 import Rtsv2App.Component.HTML.Utils (css)
-import Rtsv2App.Data.Map as MapData
 import Rtsv2App.Data.Profile (Profile)
 import Rtsv2App.Data.Route (Route(..))
 import Rtsv2App.Env (UserEnv)
 
+
+-------------------------------------------------------------------------------
+-- Types for Dashboard Page
+-------------------------------------------------------------------------------
 data Action
   = Initialize
   | Receive { currentUser :: Maybe Profile }
@@ -43,6 +45,10 @@ type ChildSlots =
   , header :: MM.Slot Unit
   )
 
+
+-------------------------------------------------------------------------------
+-- Components
+-------------------------------------------------------------------------------
 component
   :: forall m r
    . MonadAff m
@@ -74,13 +80,12 @@ component = Connect.component $ H.mkComponent
     Receive { currentUser } ->
       H.modify_ _ { currentUser = currentUser }
 
-
   render :: State -> H.ComponentHTML Action ChildSlots m
   render state@{ currentUser } =
     HH.div
       [ css "main" ]
       [ HH.slot (SProxy :: _ "header") unit HD.component { currentUser, route: Login } absurd
-      , HH.slot (SProxy :: _ "mainMenu") unit MM.component { currentUser, route: Home } absurd
+      , HH.slot (SProxy :: _ "mainMenu") unit MM.component { currentUser, route: Dashboard } absurd
       , HH.div
         [ css "app-content content" ]
         [ HH.div
@@ -94,7 +99,7 @@ component = Connect.component $ H.mkComponent
               [ css "content-header-left col-md-4 col-12 mb-2" ]
               [ HH.h3
                 [ css "content-header-h3" ]
-                [ HH.text "Home" ]
+                [ HH.text "Dashboard" ]
               ]
             ]
           , HH.div

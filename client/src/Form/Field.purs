@@ -16,6 +16,10 @@ import Halogen.HTML.Events as HE
 import Halogen.HTML.Properties as HP
 import Type.Row as Row
 
+
+-------------------------------------------------------------------------------
+-- Field Helpers components
+-------------------------------------------------------------------------------
 submit :: forall form act slots m. String -> F.ComponentHTML form act slots m
 submit buttonText =
   HH.button

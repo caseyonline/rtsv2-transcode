@@ -100,8 +100,8 @@ endpoint = root $ sum
   , "ClientStartE"                                     : "" / "api" / "public" / canary segment / "client" / streamId segment / "start"
   , "ClientStopE"                                      : "" / "api" / "public" / canary segment / "client" / streamId segment / "stop"
 
-  , "ClientAppAssetsE"                                 : "" / "static" / path "assets" noArgs
-  , "ClientAppRouteHTMLE"                              : "" / "static" / noArgs
+  , "ClientAppAssetsE"                                 : "" / "app" / path "assets" noArgs
+  , "ClientAppRouteHTMLE"                              : "" / "app" / noArgs
 
   , "StreamAuthE"                                      : "" / "llnwstub" / "rts" / "v1" / path "streamauthtype" noArgs
   , "StreamAuthTypeE"                                  : "" / "llnwstub" / "rts" / "v1" / path "streamauth" noArgs

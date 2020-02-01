@@ -15,6 +15,9 @@ import Data.Formatter.DateTime (formatDateTime)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show (genericShow)
 
+-------------------------------------------------------------------------------
+-- Types
+-------------------------------------------------------------------------------
 data LogReason = Debug | Info | Warn | Error
 
 derive instance genericLogReason :: Generic LogReason _
@@ -33,6 +36,9 @@ newtype Log = Log
 derive instance genericLog :: Generic Log _
 derive instance eqLog :: Eq Log
 
+-------------------------------------------------------------------------------
+-- Functions
+-------------------------------------------------------------------------------
 message :: Log -> String
 message (Log { message: m }) = m
 

@@ -17,8 +17,8 @@ import Rtsv2App.Api.Request (LoginFields)
 import Rtsv2App.Capability.Navigate (class Navigate, navigate)
 import Rtsv2App.Capability.Resource.User (class ManageUser, loginUser)
 import Rtsv2App.Component.HTML.Footer (footer)
-import Rtsv2App.Component.HTML.MainMenu as MM
 import Rtsv2App.Component.HTML.Header as HD
+import Rtsv2App.Component.HTML.MainMenu as MM
 import Rtsv2App.Component.HTML.Utils (css, safeHref, whenElem)
 import Rtsv2App.Data.Email (Email)
 import Rtsv2App.Data.Route (Route(..))
@@ -26,6 +26,9 @@ import Rtsv2App.Form.Field (submit)
 import Rtsv2App.Form.Field as Field
 import Rtsv2App.Form.Validation as V
 
+-------------------------------------------------------------------------------
+-- Types for Login Page
+-------------------------------------------------------------------------------
 data Action
   = HandleLoginForm LoginFields
 
@@ -64,7 +67,7 @@ component = H.mkComponent
         Just profile -> do
           void $ H.query F._formless unit $ F.injQuery $ SetLoginError false unit
           st <- H.get
-          when st.redirect (navigate Home)
+          when st.redirect (navigate Dashboard)
 
   render :: State -> H.ComponentHTML Action ChildSlots m
   render _  =
