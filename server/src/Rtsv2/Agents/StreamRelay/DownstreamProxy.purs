@@ -7,6 +7,7 @@ import Prelude
 
 import Data.Either (Either(..))
 import Data.Filterable (filterMap)
+import Data.Foldable (traverse_)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (wrap)
 import Data.Set (Set)
@@ -16,15 +17,13 @@ import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
 import Erl.Data.List as List
 import Erl.Data.Tuple (fst, snd)
+import Erl.Process (spawnLink)
 import Erl.Utils as Erl
 import Logger (Logger)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
-import Pinto.Gen (CastResult(..))
 import Pinto.Gen as Gen
-import Pinto.Timer as Timer
-import Rtsv2.Agents.StreamRelay.Types (CreateRelayPayload, CreateProxyPayload)
-import Rtsv2.Agents.TransPoP as TransPoP
+import Rtsv2.Agents.StreamRelay.Types (CreateProxyPayload, CreateRelayPayload, SourceRoute)
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Router.Endpoint (Endpoint(..), makeUrlAddr)
@@ -35,7 +34,7 @@ import SpudGun as SpudGun
 
 
 data Msg
-  = Connect
+  = Unit
 
 
 type ProxyRoute = List PoPName
@@ -55,12 +54,12 @@ serverName :: StreamId -> PoPName -> ServerName State Msg
 serverName = Names.streamRelayDownstreamProxyName
 
 startLink :: CreateProxyPayload -> Effect StartLinkResult
-startLink payload = Gen.startLink (serverName payload.streamId payload.proxyFor) (init payload) handleInfo
+startLink payload = Gen.startLink (serverName payload.streamId payload.proxyFor) (init payload) Gen.defaultHandleInfo
 
 init :: CreateProxyPayload -> Effect State
 init payload@{streamId, proxyFor, aggregatorPoP} = do
   _ <- logInfo "streamRelayDownstreamProxy starting" {payload}
-  _ <- Timer.sendAfter (serverName streamId proxyFor) 0 Connect
+  void $ spawnLink (\_ -> connect streamId proxyFor aggregatorPoP)
   -- TODO - monitor our parent
   thisServer <- PoPDefinition.getThisServer
   pure { streamId
@@ -71,6 +70,20 @@ init payload@{streamId, proxyFor, aggregatorPoP} = do
        , proxiedServer: Nothing
        }
 
+
+setProxyServer :: StreamId -> PoPName -> ServerAddress -> Effect Unit
+setProxyServer streamId popName serverAddr = Gen.doCast (serverName streamId popName)
+  \state@{routesThroughThisProxy} -> Gen.CastNoReply <$> do
+    traverse_ (callProxyWithRoute state serverAddr) routesThroughThisProxy
+    pure state{proxiedServer = Just serverAddr}
+
+
+callProxyWithRoute :: State -> ServerAddress -> SourceRoute -> Effect Unit
+callProxyWithRoute {streamId, thisServer} remoteRelay sourceRoute = do
+  let
+    payload = {streamId, deliverTo: thisServer, sourceRoute}
+    url = makeUrlAddr remoteRelay RelayChainE
+  void $ SpudGun.postJson url payload
 
 addRelayRoute :: StreamId -> PoPName -> List PoPName -> Effect Unit
 addRelayRoute streamId popName route = Gen.doCast (serverName streamId popName)
@@ -84,28 +97,28 @@ addRelayRoute streamId popName route = Gen.doCast (serverName streamId popName)
 
 
 
-handleInfo :: Msg -> State -> Effect (CastResult State)
-handleInfo msg state@{streamId, proxyFor, aggregatorPoP} = case msg of
-  Connect -> CastNoReply <$> connectRetry
-    where
-      retrySleep :: Effect Unit
-      retrySleep = Erl.sleep (wrap 500)
+-- handleInfo :: Msg -> State -> Effect (CastResult State)
+-- handleInfo msg state@{streamId, proxyFor, aggregatorPoP} = case msg of
+--   Connect -> CastNoReply <$> connectRetry
+--     where
 
-      connectRetry :: Effect State
-      connectRetry = do
+--       connectRetry :: Effect State
+--       connectRetry = do
+
+connect :: StreamId -> PoPName -> PoPName -> Effect Unit
+connect streamId proxyFor aggregatorPoP = do
         -- TODO - strategy for knowing which servers in a remote PoP are healthy
-        -- for now route via the transPoP leader
-        mPoPLeader <- TransPoP.getLeaderFor proxyFor
-        case mPoPLeader of
+        mRandomAddr <- PoPDefinition.getRandomServerInPoP proxyFor
+        case mRandomAddr of
           Nothing -> do
-            _ <- logWarning "No PoP Leader known for" {proxyFor}
+            _ <- logWarning "No random server found in" {proxyFor}
             retrySleep
-            connectRetry
+            connect streamId proxyFor aggregatorPoP
 
-          Just popLeader -> do
+          Just randomAddr -> do
             let
               payload = {streamId, aggregatorPoP} :: CreateRelayPayload
-              url = makeUrlAddr popLeader RelayEnsureStartedE
+              url = makeUrlAddr randomAddr RelayEnsureStartedE
             resp <- SpudGun.postJson url payload
             case resp of
               Right (SpudGun.SpudResponse sc headers body) -> do
@@ -116,14 +129,17 @@ handleInfo msg state@{streamId, proxyFor, aggregatorPoP} = case msg of
                     _ <- logError "x-servedby header missing in StreamRelayDownstreamProxy" {resp}
                     -- TODO - crash??
                     retrySleep
-                    connectRetry
-                  Just addr ->
-                    pure $ state{proxiedServer = Just $ wrap addr}
+                    connect streamId proxyFor aggregatorPoP
+                  Just addr -> do
+                    _ <- logInfo "Located relay to proxy" {streamId, proxyFor, aggregatorPoP, addr}
+                    setProxyServer streamId proxyFor $ wrap addr
               Left _ -> do
-                _ <- logWarning "Error returned from ensureStarted request" {resp, state}
+                _ <- logWarning "Error returned from ensureStarted request" {resp, streamId, proxyFor, aggregatorPoP}
                 retrySleep
-                connectRetry
-
+                connect streamId proxyFor aggregatorPoP
+  where
+    retrySleep :: Effect Unit
+    retrySleep = Erl.sleep (wrap 500)
 
 --------------------------------------------------------------------------------
 -- Log helpers

@@ -3,6 +3,7 @@ module Rtsv2.PoPDefinition
        , getOtherServersForThisPoP
        , getOtherPoPs
        , getOtherPoPNames
+       , getRandomServerInPoP
        , whereIsServer
        , getThisServer
        , neighbourMap
@@ -22,8 +23,9 @@ import Data.Maybe (Maybe(..), fromMaybe)
 import Data.String (joinWith)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
+import Effect.Random (randomInt)
 import Erl.Atom (Atom)
-import Erl.Data.List (List, nil, singleton, (:))
+import Erl.Data.List (List, index, length, nil, singleton, (:))
 import Erl.Data.Map (Map, mapMaybeWithKey)
 import Erl.Data.Map as Map
 import File as File
@@ -35,7 +37,7 @@ import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
-import PintoHelper (exposeState)
+import PintoHelper (doExposeState, exposeState)
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
 import Rtsv2.Names as Names
@@ -57,7 +59,7 @@ type State =  { config :: Config.PoPDefinitionConfig
               , servers :: Map ServerAddress ServerLocation
               , thisServer :: Server
               , otherServersInThisPoP :: List ServerAddress
-              , otherPoPs :: List PoP
+              , otherPoPs :: Map PoPName PoP
               , neighbourMap :: NeighbourMap
               }
 
@@ -86,15 +88,27 @@ neighbourMap = exposeState _.neighbourMap serverName
 getOtherServersForThisPoP :: Effect (List ServerAddress)
 getOtherServersForThisPoP = exposeState _.otherServersInThisPoP serverName
 
-getOtherPoPs :: Effect (List PoP)
+getOtherPoPs :: Effect (Map PoPName PoP)
 getOtherPoPs = exposeState _.otherPoPs serverName
 
-
 getOtherPoPNames :: Effect (List PoPName)
-getOtherPoPNames = exposeState ((<$>) _.name <<< _.otherPoPs) serverName
+getOtherPoPNames = exposeState (Map.keys <<< _.otherPoPs) serverName
 
 getThisServer :: Effect Server
 getThisServer = exposeState _.thisServer serverName
+
+getRandomServerInPoP :: PoPName -> Effect (Maybe ServerAddress)
+getRandomServerInPoP popName = doExposeState stateFn serverName
+  where
+    stateFn state = do
+      let
+        mPoP = Map.lookup popName state.otherPoPs
+      case mPoP of
+        Nothing -> pure Nothing
+        Just {servers} -> do
+          pos <- randomInt 0 ((length servers) -1)
+          pure $ index servers pos
+
 
 whereIsServer :: ServerAddress -> Effect (Maybe ServerLocation)
 whereIsServer sa = Gen.doCall serverName
@@ -142,7 +156,7 @@ init config = do
         , regions : popInfo.regions
         , servers : popInfo.servers
         , thisServer : thisServer'
-        , otherPoPs : popInfo.otherPoPs
+        , otherPoPs : toMap popInfo.otherPoPs
         , otherServersInThisPoP : popInfo.otherServersInThisPoP
         , neighbourMap : popInfo.neighbourMap
         }
@@ -172,7 +186,7 @@ handleInfo msg state@{thisServer: (Server thisServer)}=
                   pure $ (state { regions = popInfo.regions
                                , servers = popInfo.servers
                                , otherServersInThisPoP = popInfo.otherServersInThisPoP
-                               , otherPoPs = popInfo.otherPoPs
+                               , otherPoPs = toMap popInfo.otherPoPs
                                } :: State)
                 | otherwise ->
                     do _ <- logWarning "This node seems to have changed pop - ignoring" { currentLocation: state.thisServer
@@ -182,7 +196,6 @@ handleInfo msg state@{thisServer: (Server thisServer)}=
 
         _ <- Timer.sendAfter serverName 1000 Tick
         pure $ CastNoReply newState
-
 
 --------------------------------------------------------------------------------
 -- Internal funcitons
@@ -301,6 +314,10 @@ maybeLog _ val@(Just _) = pure $ val
 maybeLog msg Nothing = do
   _ <- logWarning msg {}
   pure $ Nothing
+
+toMap :: List PoP -> Map PoPName PoP
+toMap list = foldl (\acc pop@{name} -> Map.insert name pop acc) Map.empty list
+
 
 serverName :: ServerName State Msg
 serverName = Names.popDefinitionName

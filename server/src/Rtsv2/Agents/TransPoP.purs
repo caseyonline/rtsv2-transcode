@@ -161,7 +161,7 @@ health =
     getHealth {weAreLeader: false} = pure Health.NA
     getHealth {members} = do
       allOtherPoPs <- PoPDefinition.getOtherPoPs
-      pure $ Health.percentageToHealth $ (Map.size members) / ((length allOtherPoPs) + 1) * 100
+      pure $ Health.percentageToHealth $ (Map.size members) / ((Map.size allOtherPoPs) + 1) * 100
 
 announceStreamIsAvailable :: StreamId -> Server -> Effect Unit
 announceStreamIsAvailable streamId server =
@@ -579,8 +579,8 @@ joinAllSerf state@{ config: config@{rejoinEveryMs}, serfRpcAddress, members } =
       _ <- Timer.sendAfter serverName rejoinEveryMs JoinAll
 
       let
-        toJoin = Map.values $ Map.difference (toMap allOtherPoPs) members :: List PoP
-      if length toJoin < (length allOtherPoPs) / 2 then
+        toJoin = Map.values $ Map.difference allOtherPoPs members :: List PoP
+      if length toJoin < (Map.size allOtherPoPs) / 2 then
         pure unit
       else
         traverse_ (\{ name, servers: serversInPoP } ->
@@ -595,9 +595,6 @@ joinAllSerf state@{ config: config@{rejoinEveryMs}, serfRpcAddress, members } =
                   )
                   toJoin
   where
-  toMap :: List PoP -> Map PoPName PoP
-  toMap list = foldl (\acc pop@{name} -> Map.insert name pop acc) Map.empty list
-
   spawnFun :: (String -> IpAndPort) -> List ServerAddress -> Effect Unit
   spawnFun addressMapper popsToJoin = void $ spawnLink (\_ -> do
                              foldl
