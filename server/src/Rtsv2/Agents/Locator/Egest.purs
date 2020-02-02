@@ -14,7 +14,7 @@ import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, filter, head, nil, (:))
 import Logger (Logger)
 import Logger as Logger
-import Pinto (StartChildResult(..), StartLinkResult)
+import Pinto (okAlreadyStarted)
 import Rtsv2.Agents.EgestInstance (CreateEgestPayload)
 import Rtsv2.Agents.EgestInstance as EgestInstance
 import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
@@ -68,7 +68,7 @@ findEgestAndRegister streamId thisServer = do
    capcityForEgest (ServerLoad sl) =  unwrap sl.load < 50.0
    startLocalOrRemote :: (LocalOrRemote ServerLoad) -> PoPName -> Effect Unit
    startLocalOrRemote  (Local _) aggregatorPoP = do
-     void <$> crashIfLeft =<< startChildToStartLink <$> EgestInstanceSup.startEgest {streamId, aggregatorPoP}
+     void <$> okAlreadyStarted =<<  EgestInstanceSup.startEgest {streamId, aggregatorPoP}
    startLocalOrRemote  (Remote remote) aggregatorPoP = do
      let
        url = makeUrl remote EgestE
@@ -76,18 +76,10 @@ findEgestAndRegister streamId thisServer = do
 
 
 
-
-
-
 --------------------------------------------------------------------------------
 -- Internal
 --------------------------------------------------------------------------------
 -- TODO use launchLocalOrRemoteGeneric
-
-
-startChildToStartLink :: StartChildResult -> StartLinkResult
-startChildToStartLink (AlreadyStarted pid) =  Right pid
-startChildToStartLink (Started pid) = Right pid
 
 --------------------------------------------------------------------------------
 -- Log helpers

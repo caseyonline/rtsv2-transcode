@@ -98,7 +98,7 @@ maybeStartRelaysForEgest :: State -> Effect State
 maybeStartRelaysForEgest state@{egestSourceRoutes: Just _} = pure state
 maybeStartRelaysForEgest state@{streamId, aggregatorPoP, thisServer} = do
   relayRoutes <- TransPoP.routesTo aggregatorPoP
-  _ <- traverse_ (maybeStartRelayProxies streamId aggregatorPoP) relayRoutes
+  _ <- traverse_ (registerWithRelayProxy streamId aggregatorPoP) relayRoutes
   pure state{egestSourceRoutes = Just (spy "relayRoutes" relayRoutes)}
 
 
@@ -121,12 +121,13 @@ registerRelayChain payload = Gen.doCast (serverName payload.streamId)
     else do
       let
         newRelaysServed = Map.insert payload.deliverTo (Set.insert payload.sourceRoute routesViaThisServer) relaysServed
-      _ <- maybeStartRelayProxies streamId aggregatorPoP payload.sourceRoute
+      _ <- registerWithRelayProxy streamId aggregatorPoP payload.sourceRoute
       pure $ Gen.CastNoReply state {relaysServed = newRelaysServed}
 
 
 
-maybeStartRelayProxies streamId aggregatorPoP sourceRoute = do
+registerWithRelayProxy :: StreamId -> PoPName -> SourceRoute -> Effect Unit
+registerWithRelayProxy streamId aggregatorPoP sourceRoute = do
   case uncons sourceRoute of
     Just {head: nextPoP, tail: remainingRoute} -> do
       -- TODO okAlreadyStarted

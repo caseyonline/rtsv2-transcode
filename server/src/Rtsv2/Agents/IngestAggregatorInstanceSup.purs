@@ -9,7 +9,7 @@ import Prelude
 
 import Effect (Effect)
 import Erl.Data.List (nil, (:))
-import Pinto (StartChildResult, SupervisorName, isRegistered)
+import Pinto (SupervisorName, StartLinkResult, isRegistered)
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStartTemplate, childType)
 import Pinto.Sup as Sup
@@ -27,7 +27,7 @@ serverName = Names.ingestAggregatorInstanceSupName
 startLink :: forall a. a -> Effect Pinto.StartLinkResult
 startLink _ = Sup.startLink serverName init
 
-startAggregator :: StreamDetails -> Effect StartChildResult
+startAggregator :: StreamDetails -> Effect StartLinkResult
 startAggregator streamDetails =
   Sup.startSimpleChild childTemplate serverName streamDetails
 

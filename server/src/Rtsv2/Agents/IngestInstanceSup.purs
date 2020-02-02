@@ -9,7 +9,7 @@ import Prelude
 import Effect (Effect)
 import Erl.Data.List (nil, (:))
 import Erl.Process.Raw (Pid)
-import Pinto (SupervisorName)
+import Pinto (SupervisorName, okAlreadyStarted)
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStartTemplate, childType)
 import Pinto.Sup as Sup
@@ -29,10 +29,7 @@ startLink _ = Sup.startLink serverName init
 
 startIngest :: StreamDetails -> StreamAndVariant -> Pid -> Effect Unit
 startIngest streamDetails streamAndVariant handlerPid = do
-  result <- Sup.startSimpleChild childTemplate serverName {streamDetails, streamAndVariant, handlerPid}
-  case result of
-    Pinto.AlreadyStarted pid -> pure unit
-    Pinto.Started pid -> pure unit
+  void <$> okAlreadyStarted =<< Sup.startSimpleChild childTemplate serverName {streamDetails, streamAndVariant, handlerPid}
 
 init :: Effect Sup.SupervisorSpec
 init = do

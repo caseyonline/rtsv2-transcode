@@ -41,7 +41,7 @@ import Shared.Types (PoPName)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (class ReadForeign, class WriteForeign, writeJSON)
 import Simple.JSON as JSON
-import Stetson (HttpMethod(..), StetsonHandler, RestHandler)
+import Stetson (HttpMethod(..), StetsonHandler)
 import Stetson.Rest as Rest
 import Unsafe.Coerce as Unsafe.Coerce
 

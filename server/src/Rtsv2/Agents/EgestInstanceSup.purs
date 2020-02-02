@@ -30,7 +30,7 @@ isAvailable = Pinto.isRegistered serverName
 startLink :: forall a. a -> Effect Pinto.StartLinkResult
 startLink _ = Sup.startLink serverName init
 
-startEgest :: CreateEgestPayload -> Effect Pinto.StartChildResult
+startEgest :: CreateEgestPayload -> Effect Pinto.StartLinkResult
 startEgest payload =
   Sup.startSimpleChild childTemplate serverName payload
 

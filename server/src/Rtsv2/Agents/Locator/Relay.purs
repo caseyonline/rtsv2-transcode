@@ -5,14 +5,12 @@ module Rtsv2.Agents.Locator.Relay
 
 import Prelude
 
-import Data.Either (Either(..))
 import Data.Newtype (unwrap)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
 import Logger (Logger)
 import Logger as Logger
-import Pinto (StartChildResult(..), StartLinkResult)
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.Locator (findOrStart) as Locator
 import Rtsv2.Agents.Locator.Types (ResourceResp)
@@ -72,11 +70,6 @@ findOrStart =
 --   let
 --     url = makeUrl remote EgestE
 --   void <$> crashIfLeft =<< SpudGun.postJson url ({streamId, aggregator} :: CreateEgestPayload)
-
-
-startChildToStartLink :: StartChildResult -> StartLinkResult
-startChildToStartLink (AlreadyStarted pid) =  Right pid
-startChildToStartLink (Started pid) = Right pid
 
 --------------------------------------------------------------------------------
 -- Log helpers
