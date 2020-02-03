@@ -2,15 +2,29 @@ module Rtsv2.Agents.IntraPoP
   ( startLink
   , isStreamIngestAvailable
   , isIngestActive
+
   , announceLoad
+
+  , announceTransPoPLeader
+
   , announceEgestIsAvailable
-  , announceRemoteEgestIsAvailable
   , announceEgestStopped
   , announceStreamIsAvailable
   , announceStreamStopped
+
+  , announceStreamRelayIsAvailable
+
   , announceRemoteStreamIsAvailable
   , announceRemoteStreamStopped
-  , announceTransPoPLeader
+
+    -- TODO - delete me
+    -- if out of capacity pick a random pop - ask if it has capacity
+  , announceRemoteEgestIsAvailable
+
+
+  , getPublicState
+
+
   , whereIsIngestAggregator
   , whereIsStreamRelay
   , whereIsEgest
@@ -24,6 +38,7 @@ module Rtsv2.Agents.IntraPoP
   , EgestState(..)
   , IntraPoPBusMessage(..)
   ) where
+
 
 import Prelude
 
@@ -68,6 +83,10 @@ import Serf (IpAndPort, LamportClock)
 import Serf as Serf
 import Shared.Stream (StreamId(..), StreamAndVariant(..))
 import Shared.Types (Load, Server(..), ServerAddress(..), ServerLoad(..), extractAddress, serverLoadToServer, toServer, toServerLoad)
+import Shared.Types.Agent.State as PublicState
+
+
+announceStreamRelayIsAvailable = pure unit
 
 type MemberInfo = { serfMember :: Serf.SerfMember
                   , load :: Load
@@ -88,7 +107,10 @@ type State
     , currentTransPoPLeader :: Maybe ServerAddress
     , egestLocations :: EMultiMap StreamId Server
     , streamRelayLocations :: EMap StreamId Server
-    , streamAggregatorLocations :: EMap StreamId Server
+
+    , streamAggregatorLocations :: Map StreamId Server
+--    , remoteAggregatorLocations :: EMap Server (Tuple Ref  (Map StreamId Server))
+
     , thisServer :: Server
     , load :: Load
     , members :: Map ServerAddress MemberInfo
@@ -115,6 +137,8 @@ data Msg
 data IntraPoPBusMessage =
   IngestAggregatorExited StreamId Server
 
+
+
 --------------------------------------------------------------------------------
 -- API
 --------------------------------------------------------------------------------
@@ -129,10 +153,21 @@ health =
 bus :: Bus.Bus IntraPoPBusMessage
 bus = Bus.bus "intrapop_bus"
 
+
+
+getPublicState :: Effect PublicState.IntraPoP
+getPublicState = exposeState publicState serverName
+  where
+    toFoo (Tuple k v) = {streamId: k
+                         , server: v}
+    publicState state =
+      { aggregatorLocations: toFoo <$>  Map.toUnfoldable state.streamAggregatorLocations
+      }
+
 isStreamIngestAvailable :: StreamId -> Effect Boolean
 isStreamIngestAvailable streamId =
   Gen.call serverName \state@{ streamAggregatorLocations } ->
-    CallReply (EMap.member streamId streamAggregatorLocations) state
+    CallReply (Map.member streamId streamAggregatorLocations) state
 
 isIngestActive :: StreamAndVariant -> Effect Boolean
 isIngestActive (StreamAndVariant s v) = Gen.call serverName \state -> CallReply false state
@@ -140,7 +175,7 @@ isIngestActive (StreamAndVariant s v) = Gen.call serverName \state -> CallReply 
 whereIsIngestAggregator :: StreamId -> Effect (Maybe Server)
 whereIsIngestAggregator (StreamId streamId) =
   Gen.call serverName \state ->
-    CallReply (EMap.lookup (StreamId streamId) state.streamAggregatorLocations) state
+    CallReply (Map.lookup (StreamId streamId) state.streamAggregatorLocations) state
 
 whereIsStreamRelay :: StreamId -> Effect (Maybe (LocalOrRemote Server))
 whereIsStreamRelay streamId =
@@ -251,11 +286,11 @@ announceStreamIsAvailable :: StreamId -> Effect Unit
 announceStreamIsAvailable streamId =
   Gen.doCast serverName
     \state@{ streamAggregatorLocations, thisServer, transPoPApi:{announceStreamIsAvailable: transPoP_announceStreamIsAvailable} } -> do
-      logIfNew streamId streamAggregatorLocations "New local stream is available" {streamId}
+      _ <- logInfo "New local stream is available" {streamId}
       _ <- sendToIntraSerfNetwork state "streamAvailable" (IMStreamState StreamAvailable streamId (extractAddress thisServer))
       _ <- transPoP_announceStreamIsAvailable streamId thisServer
 
-      Gen.CastNoReply <$> insertStreamAggregator streamId thisServer state
+      pure $ Gen.CastNoReply $ insertStreamAggregator streamId thisServer state
 
 insertEgest :: StreamId -> Server -> State -> Effect State
 insertEgest streamId server state@{ egestLocations } =
@@ -263,12 +298,9 @@ insertEgest streamId server state@{ egestLocations } =
     newEgestLocations <- MultiMap.insert' streamId server egestLocations
     pure $ state { egestLocations = newEgestLocations }
 
-
-insertStreamAggregator :: StreamId -> Server -> State -> Effect State
+insertStreamAggregator :: StreamId -> Server -> State -> State
 insertStreamAggregator streamId server state@{ streamAggregatorLocations } =
-  do
-    newStreamAggregatorLocations <- EMap.insert' streamId server streamAggregatorLocations
-    pure $ state { streamAggregatorLocations = newStreamAggregatorLocations }
+    state { streamAggregatorLocations = Map.insert streamId server streamAggregatorLocations }
 
 -- Called by IngestAggregator to indicate stream stopped on this node
 announceStreamStopped :: StreamId -> Effect Unit
@@ -281,7 +313,7 @@ announceStreamStopped streamId =
       _ <- transPoP_announceStreamStopped streamId thisServer
 
       let
-        newStreamAggregatorLocations = EMap.delete streamId streamAggregatorLocations
+        newStreamAggregatorLocations = Map.delete streamId streamAggregatorLocations
       pure $ Gen.CastNoReply state { streamAggregatorLocations = newStreamAggregatorLocations }
 
 -- Called by TransPoP to indicate stream that is present on a node in another PoP
@@ -289,10 +321,10 @@ announceRemoteStreamIsAvailable :: StreamId -> Server -> Effect Unit
 announceRemoteStreamIsAvailable streamId server =
   Gen.doCast serverName
     \state@{ streamAggregatorLocations } -> do
-      logIfNew streamId streamAggregatorLocations "New remote stream is avaiable" {streamId}
+      --logIfNew streamId streamAggregatorLocations "New remote stream is avaiable" {streamId}
       _ <- sendToIntraSerfNetwork state "streamAvailable" (IMStreamState StreamAvailable streamId (extractAddress server))
 
-      Gen.CastNoReply <$> insertStreamAggregator streamId server state
+      pure $ Gen.CastNoReply $ insertStreamAggregator streamId server state
 
 -- Called by TransPoP to indicate stream that has stopped on a node in another PoP
 announceRemoteStreamStopped :: StreamId -> Server -> Effect Unit
@@ -304,7 +336,7 @@ announceRemoteStreamStopped streamId server =
       _ <- Bus.raise bus (IngestAggregatorExited streamId server)
       _ <- sendToIntraSerfNetwork state "streamStopped" (IMStreamState StreamStopped streamId (extractAddress server))
       let
-        newStreamAggregatorLocations = EMap.delete streamId streamAggregatorLocations
+        newStreamAggregatorLocations = Map.delete streamId streamAggregatorLocations
       pure $ Gen.CastNoReply state { streamAggregatorLocations = newStreamAggregatorLocations }
 
 -- Called by TransPoP to indicate that it is acting as this PoP's leader
@@ -396,7 +428,7 @@ init { config: config@{rejoinEveryMs
     , serfRpcAddress
     , egestLocations: MultiMap.empty
     , streamRelayLocations: EMap.empty
-    , streamAggregatorLocations: EMap.empty
+    , streamAggregatorLocations: Map.empty
     , thisServer: thisServer
     , currentTransPoPLeader: Nothing
     , members
@@ -482,9 +514,9 @@ handleStreamStateChange streamState streamId server state =
       -- streamAvailable on some other node in this PoP - we need to tell Trans-PoP
       --_ <- logInfo "StreamAvailable on remote node" { streamId: streamId, remoteNode: address }
       _ <- state.transPoPApi.announceStreamIsAvailable streamId server
-      _ <- logIfNew streamId state.streamAggregatorLocations "StreamAvailable on remote node" { streamId: streamId, remoteNode: server }
+      --_ <- logIfNew streamId state.streamAggregatorLocations "StreamAvailable on remote node" { streamId: streamId, remoteNode: server }
 
-      insertStreamAggregator streamId server state
+      pure $ insertStreamAggregator streamId server state
 
     StreamStopped -> do
       -- streamStopped on some other node in this PoP - we need to tell Trans-PoP
@@ -493,7 +525,7 @@ handleStreamStateChange streamState streamId server state =
       _ <- logInfo "StreamStopped on remote node" { streamId: streamId, remoteNode: server }
       _ <- state.transPoPApi.announceStreamStopped streamId server
       let
-        newStreamAggregatorLocations = EMap.delete streamId state.streamAggregatorLocations
+        newStreamAggregatorLocations = Map.delete streamId state.streamAggregatorLocations
       pure $ state { streamAggregatorLocations = newStreamAggregatorLocations }
 
 handleEgestStateChange :: EgestState -> StreamId -> Server -> State -> Effect State
@@ -572,12 +604,12 @@ garbageCollect state@{ expireThreshold
   do
     now <- Erl.systemTimeMs
     let threshold = now - expireThreshold
-        Tuple newStreamAggregatorLocations aggregatorGarbage = EMap.garbageCollect2 threshold streamAggregatorLocations
+        --Tuple newStreamAggregatorLocations aggregatorGarbage = EMap.garbageCollect2 threshold streamAggregatorLocations
         newStreamRelayLocations = EMap.garbageCollect threshold streamRelayLocations
         newEgestLocations = MultiMap.garbageCollect threshold egestLocations
-    _ <- traverse (\(Tuple streamId aggregator) -> Bus.raise bus (IngestAggregatorExited streamId aggregator)) aggregatorGarbage
-    pure state{ streamAggregatorLocations = newStreamAggregatorLocations
-              , streamRelayLocations = newStreamRelayLocations
+--    _ <- traverse (\(Tuple streamId aggregator) -> Bus.raise bus (IngestAggregatorExited streamId aggregator)) aggregatorGarbage
+    pure state{ --streamAggregatorLocations = newStreamAggregatorLocations
+              streamRelayLocations = newStreamRelayLocations
               , egestLocations = newEgestLocations
               }
 

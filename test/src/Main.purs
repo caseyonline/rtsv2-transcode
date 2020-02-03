@@ -4,9 +4,10 @@ import Prelude
 
 import Data.Array (delete, sort)
 import Data.Either (Either(..))
+import Data.Foldable (foldl)
 import Data.Identity (Identity(..))
 import Data.Maybe (Maybe(..), isNothing)
-import Data.Newtype (un)
+import Data.Newtype (un, wrap)
 import Data.Time.Duration (Milliseconds(..))
 import Data.Traversable (traverse_)
 import Data.Tuple (Tuple(..))
@@ -19,11 +20,11 @@ import Milkis as M
 import Milkis.Impl.Node (nodeFetch)
 import OsCmd (runProc)
 import Shared.Stream (StreamVariant(..))
-import Shared.Types (ServerAddress(..))
+import Shared.Types (ServerAddress(..), extractAddress)
 import Shared.Types.Agent.State as PublicState
 import Simple.JSON (class ReadForeign)
 import Simple.JSON as SimpleJSON
-import Test.Spec (after_, before_, describe, it)
+import Test.Spec (after_, before_, describe, describeOnly, it, itOnly)
 import Test.Spec.Reporter.Console (consoleReporter)
 import Test.Spec.Runner (runSpecT)
 
@@ -86,6 +87,11 @@ main =
                                          { method: M.getMethod
                                          } # attempt <#> stringifyError
 
+    intraPoPState node                      = fetch (M.URL $ api node <> "state")
+                                         { method: M.getMethod
+                                         } # attempt <#> stringifyError
+
+
     setLoad :: Node -> Number -> Aff (Either String M.Response)
     setLoad node load                  = fetch (M.URL $ api node <> "load")
                                          { method: M.postMethod
@@ -94,7 +100,7 @@ main =
                                          } # attempt <#> stringifyError
 
     maybeLogStep s a =
-      --let _ = spy s a in
+      let _ = spy s a in
       unit
 
     as desc (Right r) =
@@ -135,7 +141,25 @@ main =
         predicate :: Array String -> PublicState.IngestAggregator -> Boolean
         predicate vars {activeStreamVariants} = sort (StreamVariant <$> vars) == (sort $ _.streamVariant <$> activeStreamVariants)
 
+--    assertIngestOn :: Array Node -> String -> PublicState.IntraPoP -> Boolean
+    assertIngestOn nodes slotName  = assertBodyFun $ predicate
+      where
+        predicate :: PublicState.IntraPoP -> Boolean
+        predicate popState =
+          let
+            nodeAddresses = toAddr
+            serverAddressesForStreamId = foldl (\acc {streamId, server} ->
+                                                 if streamId == wrap slotName
+                                                 then acc <> [extractAddress server]
+                                                 else acc
+                                               ) []  popState.aggregatorLocations
+          in
+          (sort $ (ServerAddress <<< toAddr) <$> nodes) == sort serverAddressesForStreamId
+
     delayMs = delay <<< Milliseconds
+
+    waitForAsyncRelayStart         = delayMs  100.0
+    waitForAsyncRelayStop          = delayMs  100.0
 
     waitForAsyncVariantStart       = delayMs  100.0
     waitForAsyncVariantStop        = delayMs  100.0
@@ -153,7 +177,7 @@ main =
 
   in
   launchAff_ $ un Identity $ runSpecT testConfig [consoleReporter] do
-    describe "Ingest tests"
+    describeOnly "Ingest tests"
       let
         p1Nodes = [p1n1, p1n2, p1n3]
         p2Nodes = [p2n1, p2n2]
@@ -259,6 +283,30 @@ main =
                                                      >>= assertAggregator [high]
                                                                           >>= as  "lingered aggregator has high variant"
 
+          itOnly "agg -> n1 : detect on n2 - kill node 1 n2 gets to hear about it" do
+            ingest start    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as  "create low ingest"
+            waitForIntraPoPDisseminate
+            intraPoPState p1n1                   >>= assertIngestOn [p1n1] slot1
+                                                                          >>= as "p1n1 is aware of the ingest on p1n1"
+            intraPoPState p1n2                   >>= assertIngestOn [p1n1] slot1
+                                                                          >>= as "p1n2 is aware of the ingest on p1n1"
+
+            -- aggregatorStats p1n1 slot1           >>= assertStatusCode 200
+            --                                          >>= assertAggregator [low]
+            --                                                               >>= as  "aggregator created"
+
+            -- ingest stop     p1n1 shortName1 low >>= assertStatusCode 200  >>= as  "stop low ingest"
+            -- aggregatorStats p1n1 slot1          >>= assertStatusCode 200
+            --                                         >>= assertAggregator []
+            --                                                               >>= as  "aggregator has no variants"
+            -- waitForLessThanLinger                                         >>= as' "wait for less than the linger time"
+            -- ingest start    p1n2 shortName1 high >>= assertStatusCode 200 >>= as  "create high ingest on another node"
+            -- waitForAsyncVariantStart                                      >>= as' "wait for async start of variant"
+            -- aggregatorStats p1n1 slot1           >>= assertStatusCode 200
+            --                                          >>= assertAggregator [high]
+            --                                                               >>= as  "lingered aggregator has high variant"
+
+
     describe "Ingest egest tests" do
       describe "one pop setup"
         let
@@ -349,7 +397,8 @@ main =
               waitForTransPoPDisseminate                                >>= as' "wait for transPop disseminate"
               client start p2n1 slot1          >>= assertStatusCode 204 >>= as  "egest available"
               relayStats   p2n1 slot1          >>= assertStatusCode 200 >>= as  "local relay exists"
-              --relayStats   p1n1 slot1          >>= assertStatusCode 200 >>= as  "remote relay exists"
+              waitForAsyncRelayStart                                    >>= as' "wait for the relay chain to start"
+              relayStats   p1n1 slot1          >>= assertStatusCode 200 >>= as  "remote relay exists"
 
             it "client ingest starts and stops" do
               client start p1n2 slot1          >>= assertStatusCode 404 >>= as  "no local egest prior to ingest"

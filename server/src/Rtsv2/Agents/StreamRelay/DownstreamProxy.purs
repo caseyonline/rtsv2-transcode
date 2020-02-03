@@ -74,40 +74,40 @@ init payload@{streamId, proxyFor, aggregatorPoP} = do
 setProxyServer :: StreamId -> PoPName -> ServerAddress -> Effect Unit
 setProxyServer streamId popName serverAddr = Gen.doCast (serverName streamId popName)
   \state@{routesThroughThisProxy} -> Gen.CastNoReply <$> do
-    traverse_ (callProxyWithRoute state serverAddr) routesThroughThisProxy
-    pure state{proxiedServer = Just serverAddr}
+    let newState = state{proxiedServer = Just serverAddr}
+    traverse_ (maybeCallProxyWithRoute newState) routesThroughThisProxy
+    pure newState
 
 
-callProxyWithRoute :: State -> ServerAddress -> SourceRoute -> Effect Unit
-callProxyWithRoute {streamId, thisServer} remoteRelay sourceRoute = do
+maybeCallProxyWithRoute :: State -> SourceRoute -> Effect Unit
+maybeCallProxyWithRoute {proxiedServer: Nothing} _ = pure unit
+maybeCallProxyWithRoute {streamId, thisServer, proxiedServer: Just remoteRelay} sourceRoute = do
   let
     payload = {streamId, deliverTo: thisServer, sourceRoute}
     url = makeUrlAddr remoteRelay RelayChainE
-  void $ SpudGun.postJson url payload
+  void $ spawnLink (\_ -> do
+                     -- TODO - send message to parent saying the register worked?
+                     -- Retry loop?  DOn't use follow here are we should be talking to the
+                     -- correct server directly
+                     _ <- logInfo "Registering route" {payload}
+                     void $ SpudGun.postJson url payload)
 
 addRelayRoute :: StreamId -> PoPName -> List PoPName -> Effect Unit
 addRelayRoute streamId popName route = Gen.doCast (serverName streamId popName)
-  \state@{routesThroughThisProxy} -> Gen.CastNoReply <$> do
+  \state@{routesThroughThisProxy, proxiedServer} -> Gen.CastNoReply <$> do
       if Set.member route routesThroughThisProxy
       then do
         _ <- logWarning "Duplicate Registration" {streamId, popName, route}
         pure state
-      else
-        pure state{routesThroughThisProxy = Set.insert route routesThroughThisProxy}
+      else do
+        let
+          newState = state{routesThroughThisProxy = Set.insert route routesThroughThisProxy}
+        maybeCallProxyWithRoute newState route
+        pure newState
 
-
-
--- handleInfo :: Msg -> State -> Effect (CastResult State)
--- handleInfo msg state@{streamId, proxyFor, aggregatorPoP} = case msg of
---   Connect -> CastNoReply <$> connectRetry
---     where
-
---       connectRetry :: Effect State
---       connectRetry = do
 
 connect :: StreamId -> PoPName -> PoPName -> Effect Unit
 connect streamId proxyFor aggregatorPoP = do
-        -- TODO - strategy for knowing which servers in a remote PoP are healthy
         mRandomAddr <- PoPDefinition.getRandomServerInPoP proxyFor
         case mRandomAddr of
           Nothing -> do
@@ -119,7 +119,7 @@ connect streamId proxyFor aggregatorPoP = do
             let
               payload = {streamId, aggregatorPoP} :: CreateRelayPayload
               url = makeUrlAddr randomAddr RelayEnsureStartedE
-            resp <- SpudGun.postJson url payload
+            resp <- SpudGun.postJsonFollow url payload
             case resp of
               Right (SpudGun.SpudResponse sc headers body) -> do
                 let

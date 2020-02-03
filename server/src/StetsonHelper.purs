@@ -3,6 +3,8 @@ module StetsonHelper
        , genericPostWithResponse
        , genericGetByStreamId
        , genericGetByPoPName
+       , genericGet
+       , GenericStetsonGet
        , GenericStetsonGetByStreamId
        , GenericStetsonHandler
        , GenericStetsonHandlerWithResponse
@@ -117,6 +119,10 @@ genericPostWithResponse proxiedFun =
 
 
 
+
+
+type GenericStetsonGet a = StetsonHandler (Internal_GenericStatusState a)
+
 type GenericStetsonGetByStreamId a = StetsonHandler (Internal_GenericStatusState a)
 
 type Internal_GenericStatusState a
@@ -129,6 +135,28 @@ genericGetByStreamId = genericGetBy Bindings.streamIdBindingLiteral
 
 genericGetByPoPName :: forall a. WriteForeign a =>  (PoPName -> Effect a) -> GenericStetsonGetByStreamId a
 genericGetByPoPName = genericGetBy  Bindings.popNameBindingLiteral
+
+genericGet :: forall a. WriteForeign a => (Unit -> Effect a) -> GenericStetsonGetByStreamId a
+genericGet getData =
+  Rest.handler init
+  # Rest.allowedMethods (Rest.result (GET : mempty))
+  # Rest.contentTypesProvided (\req state -> Rest.result (singleton $ MimeType.json provideContent) req state)
+  # Rest.yeeha
+  where
+    init req = do
+      mData <- noprocToMaybe $ getData unit
+      Rest.initResult req
+            { mData
+            }
+
+    provideContent req state@{mData} =
+      case mData of
+        Nothing ->
+          do
+            newReq <- replyWithoutBody (StatusCode 404) Map.empty req
+            Rest.stop newReq state
+        Just theData ->
+          Rest.result (writeJSON theData) req state
 
 genericGetBy :: forall a b. Newtype a String => WriteForeign b =>  String -> (a -> Effect b) -> GenericStetsonGetByStreamId b
 genericGetBy bindElement getData =

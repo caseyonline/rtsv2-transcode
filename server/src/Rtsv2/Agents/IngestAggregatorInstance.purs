@@ -106,7 +106,7 @@ init streamDetails = do
   _ <- logInfo "Ingest Aggregator starting" {streamId, streamDetails}
   config <- Config.ingestAggregatorAgentConfig
   thisServer <- PoPDefinition.getThisServer
-  _ <- Timer.sendEvery (serverName streamId) config.streamAvailableAnnounceMs Tick
+--  _ <- Timer.sendEvery (serverName streamId) config.streamAvailableAnnounceMs Tick
   _ <- announceStreamIsAvailable streamId
   workflow <- startWorkflowImpl streamDetails.slot.name ((\p -> tuple2 (StreamAndVariant (wrap streamDetails.slot.name) (wrap p.streamName)) p.streamName) <$> streamDetails.slot.profiles)
   pure { config : config
