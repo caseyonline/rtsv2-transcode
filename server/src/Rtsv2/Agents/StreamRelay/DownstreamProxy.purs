@@ -58,7 +58,7 @@ startLink payload = Gen.startLink (serverName payload.streamId payload.proxyFor)
 
 init :: CreateProxyPayload -> Effect State
 init payload@{streamId, proxyFor, aggregatorPoP} = do
-  _ <- logInfo "streamRelayDownstreamProxy starting" {payload}
+  logInfo "streamRelayDownstreamProxy starting" {payload}
   void $ spawnLink (\_ -> connect streamId proxyFor aggregatorPoP)
   -- TODO - monitor our parent
   thisServer <- PoPDefinition.getThisServer
@@ -89,7 +89,7 @@ maybeCallProxyWithRoute {streamId, thisServer, proxiedServer: Just remoteRelay} 
                      -- TODO - send message to parent saying the register worked?
                      -- Retry loop?  DOn't use follow here are we should be talking to the
                      -- correct server directly
-                     _ <- logInfo "Registering route" {payload}
+                     logInfo "Registering route" {payload}
                      void $ SpudGun.postJson url payload)
 
 addRelayRoute :: StreamId -> PoPName -> List PoPName -> Effect Unit
@@ -131,7 +131,7 @@ connect streamId proxyFor aggregatorPoP = do
                     retrySleep
                     connect streamId proxyFor aggregatorPoP
                   Just addr -> do
-                    _ <- logInfo "Located relay to proxy" {streamId, proxyFor, aggregatorPoP, addr}
+                    logInfo "Located relay to proxy" {streamId, proxyFor, aggregatorPoP, addr}
                     setProxyServer streamId proxyFor $ wrap addr
               Left _ -> do
                 _ <- logWarning "Error returned from ensureStarted request" {resp, streamId, proxyFor, aggregatorPoP}

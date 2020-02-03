@@ -79,7 +79,7 @@ stopIngest streamAndVariant =
 
 init :: Args -> Effect State
 init {streamDetails, streamAndVariant, handlerPid} = do
-  _ <- logInfo "Ingest starting" {streamAndVariant, handlerPid}
+  logInfo "Ingest starting" {streamAndVariant, handlerPid}
   _ <- Gen.monitorPid ourServerName handlerPid (\_ -> HandlerDown)
   thisServer <- PoPDefinition.getThisServer
   {intraPoPLatencyMs} <- Config.globalConfig
@@ -102,12 +102,12 @@ handleInfo msg state@{streamAndVariant} = case msg of
     pure $ CastNoReply state2
 
   IntraPoPBus (IngestAggregatorExited streamId serverAddress) -> do
-    _ <- logInfo "exit" {streamId, serverAddress, thisStreamId: state.streamAndVariant}
+    logInfo "exit" {streamId, serverAddress, thisStreamId: state.streamAndVariant}
     state2 <- handleAggregatorExit streamId serverAddress state
     pure $ CastNoReply state2
 
   HandlerDown -> do
-    _ <- logInfo "RTMP Handler has exited" {streamAndVariant}
+    logInfo "RTMP Handler has exited" {streamAndVariant}
     _ <- doStopIngest state
     pure $ CastStop state
 

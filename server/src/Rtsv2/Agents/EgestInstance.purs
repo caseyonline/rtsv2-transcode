@@ -77,7 +77,7 @@ addClient streamId = do
 
 doAddClient :: State -> Effect (CallResult RegistrationResp State)
 doAddClient state@{clientCount} = do
-  _ <- logInfo "Add client" {newCount: clientCount + 1}
+  logInfo "Add client" {newCount: clientCount + 1}
   pure $ CallReply (Right unit) state{ clientCount = clientCount + 1
                                      , stopRef = Nothing
                                      }
@@ -87,18 +87,18 @@ removeClient streamId = Gen.doCall (serverName streamId) doRemoveClient
 
 doRemoveClient :: State -> Effect (CallResult Unit State)
 doRemoveClient state@{clientCount: 0} = do
-  _ <- logInfo "Remove client - already zero" {}
+  logInfo "Remove client - already zero" {}
   pure $ CallReply unit state
 doRemoveClient state@{clientCount: 1, lingerTime, streamId} = do
   ref <- makeRef
-  _ <- logInfo "Last client gone, start stop timer" {}
+  logInfo "Last client gone, start stop timer" {}
   _ <- Timer.sendAfter (serverName streamId) (unwrap lingerTime) (MaybeStop ref)
   pure $ CallReply unit state{ clientCount = 0
                              , stopRef = Just ref
                              }
 
 doRemoveClient state@{clientCount} = do
-  _ <- logInfo "Remove client" { newCount: clientCount - 1 }
+  logInfo "Remove client" { newCount: clientCount - 1 }
   pure $ CallReply unit state{ clientCount = clientCount - 1 }
 
 currentStats :: StreamId -> Effect PublicState.Egest
@@ -112,7 +112,7 @@ toEgestServer = unwrap >>> wrap
 
 init :: CreateEgestPayload -> Effect State
 init payload@{streamId, aggregatorPoP} = do
-  _ <- logInfo "Egest starting" {payload}
+  logInfo "Egest starting" {payload}
   _ <- Bus.subscribe (serverName streamId) IntraPoP.bus IntraPoPBus
   {egestAvailableAnnounceMs, lingerTimeMs, relayCreationRetryMs} <- Config.egestAgentConfig
 
@@ -163,7 +163,7 @@ maybeStop ref state@{streamId
                     , clientCount
                     , stopRef}
   | (clientCount == 0) && (Just ref == stopRef) = do
-    _ <- logInfo "Egest stopping" {streamId: streamId}
+    logInfo "Egest stopping" {streamId: streamId}
     _ <- IntraPoP.announceEgestStopped streamId
     pure $ CastStop state
 
