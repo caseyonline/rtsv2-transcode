@@ -57,9 +57,6 @@ main =
     start = "start"
     stop  = "stop"
 
-    toAddr (Node popNum nodeNum) = "172.16." <> show (popNum + 168) <> "." <> show nodeNum
-    toVlan (Node popNum nodeNum) = "vlan" <> show (popNum * 10) <> show nodeNum
-    mkNode sysConfig node = {vlan: toVlan node, addr: toAddr node, sysConfig}
 
     api node = "http://" <> toAddr node <> ":3000/api/"
 
@@ -165,7 +162,7 @@ main =
     waitForAsyncVariantStop        = delayMs  100.0
 
     waitForIntraPoPDisseminate     = delayMs  500.0
-    waitForNodeFailureDisseminate  = delayMs 2500.0
+    waitForNodeFailureDisseminate  = delayMs 3500.0
 
     waitForTransPoPDisseminate     = delayMs 2000.0
     waitForTransPoPStopDisseminate = delayMs 5000.0 -- TODO - seeems big
@@ -177,7 +174,7 @@ main =
 
   in
   launchAff_ $ un Identity $ runSpecT testConfig [consoleReporter] do
-    describeOnly "Ingest tests"
+    describe "Ingest tests"
       let
         p1Nodes = [p1n1, p1n2, p1n3]
         p2Nodes = [p2n1, p2n2]
@@ -241,7 +238,7 @@ main =
                                                                           >>= as  "aggregator created on idle server"
             traverse_ (aggregatorNotPresent slot1) (allNodesBar p1n2)     >>= as' "aggregator not on busy servers"
             setLoad         p1n3 0.0             >>= assertStatusCode 204 >>= as  "mark p1n3 as idle"
-            stopNode (toAddr p1n2)                                        >>= as' "make p1n2 fail"
+            stopNode p1n2                        >>= as' "make p1n2 fail"
             waitForNodeFailureDisseminate                                 >>= as' "allow failure to disseminate"
             aggregatorStats p1n3 slot1           >>= assertStatusCode 200
                                                      >>= assertAggregator [low]
@@ -283,13 +280,17 @@ main =
                                                      >>= assertAggregator [high]
                                                                           >>= as  "lingered aggregator has high variant"
 
-          itOnly "agg -> n1 : detect on n2 - kill node 1 n2 gets to hear about it" do
+          it "aggregator liveness detected on node stop" do
             ingest start    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as  "create low ingest"
             waitForIntraPoPDisseminate
             intraPoPState p1n1                   >>= assertIngestOn [p1n1] slot1
                                                                           >>= as "p1n1 is aware of the ingest on p1n1"
             intraPoPState p1n2                   >>= assertIngestOn [p1n1] slot1
                                                                           >>= as "p1n2 is aware of the ingest on p1n1"
+            stopNode p1n1                        >>= as' "make p1n1 fail"
+            waitForNodeFailureDisseminate                                 >>= as' "allow failure to disseminate"
+            intraPoPState p1n2                   >>= assertIngestOn [] slot1
+                                                                          >>= as "p1n2 is aware the ingest stopped"
 
             -- aggregatorStats p1n1 slot1           >>= assertStatusCode 200
             --                                          >>= assertAggregator [low]
@@ -474,6 +475,14 @@ assertBodyFun pred either =
         Left _ ->
           pure $ Left $ "Could not parse json " <> body
 
+toAddr :: Node -> String
+toAddr (Node popNum nodeNum) = "172.16." <> show (popNum + 168) <> "." <> show nodeNum
+toVlan :: Node -> String
+toVlan (Node popNum nodeNum) = "vlan" <> show (popNum * 10) <> show nodeNum
+mkNode :: String  -> Node -> TestNode
+mkNode sysConfig node = {vlan: toVlan node, addr: toAddr node, sysConfig}
+
+
 sessionName:: String
 sessionName = "testSession"
 
@@ -504,8 +513,9 @@ throwSlowError e =
     _ <- delay (Milliseconds 200.0)
     throwError $ Exception.error e
 
-stopNode :: String -> Aff Unit
-stopNode nodeAddr = do
+stopNode :: Node -> Aff Unit
+stopNode node = do
+  let nodeAddr = toAddr node
   runProc "./scripts/stopNode.sh" [ sessionName
                                   , nodeAddr
                                   , nodeAddr

@@ -60,7 +60,7 @@ init args = do
     # mkRoute  TransPoPLeaderE                                                  IntraPoPHandler.leader
     # mkRoute (TimedRoutesE popNameBinding)                                     TransPoPHandler.timedRoutes
     # mkRoute  HealthCheckE                                                     HealthHandler.healthCheck
-    # mkRoute  ServerStateE                                                     IntraPoPHandler.state
+    # mkRoute  ServerStateE                                                     IntraPoPHandler.publicState
     # mkRoute (EgestStatsE streamIdBinding)                                     EgestStatsHandler.stats
 
     # mkRoute  RelayE                                                           RelayHandler.startResource

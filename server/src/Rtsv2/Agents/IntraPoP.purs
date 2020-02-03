@@ -114,7 +114,7 @@ type State
   = { transPoPApi :: Config.TransPoPAgentApi
     , config :: Config.IntraPoPAgentConfig
     , serfRpcAddress :: IpAndPort
-    , currentTransPoPLeader :: Maybe ServerAddress
+    , currentTransPoPLeader :: Maybe Server
     , egestLocations :: EMultiMap StreamId Server
     , streamRelayLocations :: EMap StreamId Server
 
@@ -249,7 +249,7 @@ getIdleServer pred = Gen.doCall serverName
   )
 
 
-currentTransPoPLeader :: Effect (Maybe ServerAddress)
+currentTransPoPLeader :: Effect (Maybe Server)
 currentTransPoPLeader =
   Gen.call serverName
     ( \state@{ currentTransPoPLeader: value } ->
@@ -505,98 +505,74 @@ handleIntraPoPSerfMsg imsg state@{ transPoPApi: {handleRemoteLeaderAnnouncement}
     Serf.StreamFailed -> do
       logInfo "Lost connection to IntraPoP Serf Agent" {}
       _ <- Erl.sleep (wrap 100) -- Just so we don't spin like crazy...
+      -- TODO send a "stepping down message?" - except without Serf I guess we can't
       unsafeCrashWith ("lost_serf_connection")
 
     Serf.UserEvent name ltime coalesce intraMessage -> do
-     let screen = screenMessage thisServer ltime
-     case intraMessage of
-       IMStreamState stateChange streamId address -> do
-         mTuple <- screen address lamportClocks.streamStateClocks
-         case mTuple of
-           Nothing -> pure state
-           Just (Tuple newClockState server) ->
-             handleStreamStateChange stateChange streamId server (state {lamportClocks = lamportClocks {streamStateClocks = newClockState}})
+      let
+        screenAndHandle address getClockElement setClockElement handler = do
+          mTuple <- screenOriginAndMessageClock thisServer ltime address (getClockElement lamportClocks)
+          case mTuple of
+            Nothing -> pure state
+            Just (Tuple newClockState server) ->
+              handler server state{lamportClocks = setClockElement newClockState}
 
-       IMEgestState stateChange streamId address -> do
-         mTuple <- screen address lamportClocks.egestStateClocks
-         case mTuple of
-           Nothing -> pure state
-           Just (Tuple newClockState server) ->
-             handleEgestStateChange stateChange streamId server (state {lamportClocks = lamportClocks {egestStateClocks = newClockState}})
+      case intraMessage of
+        IMStreamState stateChange streamId address -> do
+          let
+            get = _.streamStateClocks
+            set newClocks = lamportClocks{streamStateClocks = newClocks}
+          screenAndHandle address get set (handleStreamStateChange stateChange streamId)
 
-       IMServerLoad address load -> do
-         mTuple <- screen address lamportClocks.loadClocks
-         case mTuple of
-           Nothing -> pure state
-           Just (Tuple newClockState server) ->
-             let
-               newMembers = alter (map (\ memberInfo -> memberInfo { load = load })) address state.members
-             in
-               pure state{ members = newMembers
-                         , lamportClocks = lamportClocks {loadClocks = newClockState}
-                         }
+        IMEgestState stateChange streamId address -> do
+          let
+            get = _.egestStateClocks
+            set newClocks = lamportClocks{egestStateClocks = newClocks}
+          screenAndHandle address get set (handleEgestStateChange stateChange streamId)
 
-       IMTransPoPLeader address -> do
-         mTuple <- screen address lamportClocks.popLeaderClocks
-         case mTuple of
-           Nothing -> pure state
-           Just (Tuple newClockState server) -> do
-             _ <- handleRemoteLeaderAnnouncement server
-             pure state { currentTransPoPLeader = Just address
-                        , lamportClocks = lamportClocks {popLeaderClocks = newClockState}
-                        }
+        IMServerLoad address load -> do
+          let
+            get = _.loadClocks
+            set newClocks = lamportClocks{loadClocks = newClocks}
+          screenAndHandle address get set (handleLoadChange address load)
 
-       IMLiveness address ref -> do
-         mTuple <- screenOriginAndMessageClock thisServer ltime address lamportClocks.popLeaderClocks
-         case mTuple of
-           Nothing -> pure state
-           Just (Tuple newClockState server) -> do
-             -- Has the ref for this server changed
-             newState <- case EMap.lookup server state.serverRefs of
-               Nothing ->
-                 pure state
-               Just curRef
-                 | ref == curRef ->
-                   pure state
-                 | otherwise ->
-                   garbageCollectServer state server
-             newServerRefs <- EMap.insert' server ref state.serverRefs
-             pure newState { serverRefs = newServerRefs
-                           , lamportClocks = lamportClocks {livenessClocks = newClockState}
-                           }
+        IMTransPoPLeader address -> do
+          let
+            get = _.popLeaderClocks
+            set newClocks = lamportClocks{popLeaderClocks = newClocks}
+          screenAndHandle address get set handleTransPoPLeader
+
+        IMLiveness address ref -> do
+          let
+            get = _.livenessClocks
+            set newClocks = lamportClocks{livenessClocks = newClocks}
+          screenAndHandle address get set (handleLiveness ref)
 
 
+handleLiveness :: Ref -> Server -> State -> Effect State
+handleLiveness ref server state = do
+  newState <- case EMap.lookup server state.serverRefs of
+    Nothing ->
+      pure state
+    Just curRef
+      | ref == curRef ->
+        pure state
+      | otherwise ->
+        garbageCollectServer state server
+  newServerRefs <- EMap.insert' server ref state.serverRefs
+  pure newState { serverRefs = newServerRefs }
 
 
-         -- mTuple <- screen address lamportClocks.livenessClocks
-         -- case mTuple of
-         --   Nothing -> pure state
-         --   Just (Tuple newClockState server) -> do
-         --     let
-         --       mRefTuple = EMap.lookup server state.remoteAggregatorLocations
-         --     state2 <-
-         --       case mRefTuple of
-         --         Nothing -> do
-         --           newRemoteAggregatorLocations <- EMap.insert' server (Tuple ref Map.empty) state.remoteAggregatorLocations
-         --           pure state{remoteAggregatorLocations = newRemoteAggregatorLocations}
-         --         Just cur@(Tuple curRef curMap)
-         --         | curRef == ref -> do
-         --           -- Just refresh the emap with the current time
-         --           newRemoteAggregatorLocations <- EMap.insert' server cur state.remoteAggregatorLocations
-         --           pure state{remoteAggregatorLocations = newRemoteAggregatorLocations}
-         --         otherwise -> do
-         --           -- Invlaidate all the current locations
-         --           let
-         --             garbageStreams = Map.keys Map.empty --curMap
-         --             newAggregatorLocations = foldl (\acc k -> Map.delete k acc) state.aggregatorLocations garbageStreams
-         --           newRemoteAggregatorLocations <- EMap.insert' server (Tuple ref Map.empty) state.remoteAggregatorLocations
-         --           garbageCollectAggregators server garbageStreams
-         --           pure state{ remoteAggregatorLocations = newRemoteAggregatorLocations
-         --                     , aggregatorLocations = newAggregatorLocations
-         --                     }
-         --     pure state2 {lamportClocks = lamportClocks {livenessClocks = newClockState}}
+handleTransPoPLeader :: Server -> State -> Effect State
+handleTransPoPLeader server state =
+   pure state{ currentTransPoPLeader = Just server }
 
-
+handleLoadChange :: ServerAddress -> Load -> Server -> State -> Effect State
+handleLoadChange address load server state =
+  let
+    newMembers = alter (map (\ memberInfo -> memberInfo { load = load })) address state.members
+  in
+   pure state{ members = newMembers }
 
 
 handleStreamStateChange :: StreamState -> StreamId -> Server -> State -> Effect State
@@ -767,10 +743,6 @@ joinAllSerf { config, serfRpcAddress, members } =
   where
   toMap :: forall a. List a -> Map a Unit
   toMap list = foldl (\acc item -> Map.insert item unit acc) Map.empty list
-
-
-
-
 
 
 
