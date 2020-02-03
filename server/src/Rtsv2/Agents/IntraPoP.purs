@@ -108,6 +108,8 @@ type LamportClocks =
   , livenessClocks :: Map ServerAddress LamportClock
   }
 
+type AggregatorLocations = Map StreamId Server
+
 type State
   = { transPoPApi :: Config.TransPoPAgentApi
     , config :: Config.IntraPoPAgentConfig
@@ -116,8 +118,7 @@ type State
     , egestLocations :: EMultiMap StreamId Server
     , streamRelayLocations :: EMap StreamId Server
 
-    , aggregatorLocations :: Map StreamId Server
---    , remoteAggregatorLocations :: EMap Server (Tuple Ref  (Map StreamId Server))
+    , aggregatorLocations :: AggregatorLocations
     , remoteAggregatorLocations :: Map Server (Set StreamId)
 
     , thisServerRef :: Ref
@@ -305,7 +306,7 @@ announceStreamIsAvailable streamId =
       _ <- sendToIntraSerfNetwork state "streamAvailable" (IMStreamState StreamAvailable streamId (extractAddress thisServer))
       _ <- transPoP_announceStreamIsAvailable streamId thisServer
 
-      pure $ Gen.CastNoReply $ insertStreamAggregator streamId thisServer state
+      pure $ Gen.CastNoReply $ insertAggregator streamId thisServer state
 
 insertEgest :: StreamId -> Server -> State -> Effect State
 insertEgest streamId server state@{ egestLocations } =
@@ -314,16 +315,16 @@ insertEgest streamId server state@{ egestLocations } =
     pure $ state { egestLocations = newEgestLocations }
 
 
-insertRemoteStreamAggregator :: StreamId -> Server -> State -> State
-insertRemoteStreamAggregator streamId server state@{ remoteAggregatorLocations } =
+insertRemoteAggregator :: StreamId -> Server -> State -> State
+insertRemoteAggregator streamId server state@{ remoteAggregatorLocations } =
   let
     currentStreamsOnRemoteServer = fromMaybe Set.empty (Map.lookup server remoteAggregatorLocations)
     newStreams = Set.insert streamId currentStreamsOnRemoteServer
   in
-  insertStreamAggregator streamId server state{ remoteAggregatorLocations = Map.insert server newStreams remoteAggregatorLocations }
+  insertAggregator streamId server state{ remoteAggregatorLocations = Map.insert server newStreams remoteAggregatorLocations }
 
-insertStreamAggregator :: StreamId -> Server -> State -> State
-insertStreamAggregator streamId server state@{ aggregatorLocations } =
+insertAggregator :: StreamId -> Server -> State -> State
+insertAggregator streamId server state@{ aggregatorLocations } =
     state { aggregatorLocations = Map.insert streamId server aggregatorLocations }
 
 -- Called by IngestAggregator to indicate stream stopped on this node
@@ -337,8 +338,8 @@ announceStreamStopped streamId =
       _ <- transPoP_announceStreamStopped streamId thisServer
 
       let
-        newStreamAggregatorLocations = Map.delete streamId aggregatorLocations
-      pure $ Gen.CastNoReply state { aggregatorLocations = newStreamAggregatorLocations }
+        newAggregatorLocations = Map.delete streamId aggregatorLocations
+      pure $ Gen.CastNoReply state { aggregatorLocations = newAggregatorLocations }
 
 -- Called by TransPoP to indicate stream that is present on a node in another PoP
 announceRemoteStreamIsAvailable :: StreamId -> Server -> Effect Unit
@@ -348,7 +349,7 @@ announceRemoteStreamIsAvailable streamId server =
       --logIfNew streamId aggregatorLocations "New remote stream is avaiable" {streamId}
       _ <- sendToIntraSerfNetwork state "streamAvailable" (IMStreamState StreamAvailable streamId (extractAddress server))
 
-      pure $ Gen.CastNoReply $ insertStreamAggregator streamId server state
+      pure $ Gen.CastNoReply $ insertAggregator streamId server state
 
 -- Called by TransPoP to indicate stream that has stopped on a node in another PoP
 announceRemoteStreamStopped :: StreamId -> Server -> Effect Unit
@@ -360,8 +361,8 @@ announceRemoteStreamStopped streamId server =
       _ <- Bus.raise bus (IngestAggregatorExited streamId server)
       _ <- sendToIntraSerfNetwork state "streamStopped" (IMStreamState StreamStopped streamId (extractAddress server))
       let
-        newStreamAggregatorLocations = Map.delete streamId aggregatorLocations
-      pure $ Gen.CastNoReply state { aggregatorLocations = newStreamAggregatorLocations }
+        newAggregatorLocations = Map.delete streamId aggregatorLocations
+      pure $ Gen.CastNoReply state { aggregatorLocations = newAggregatorLocations }
 
 -- Called by TransPoP to indicate that it is acting as this PoP's leader
 announceTransPoPLeader :: Effect Unit
@@ -507,23 +508,24 @@ handleIntraPoPSerfMsg imsg state@{ transPoPApi: {handleRemoteLeaderAnnouncement}
       unsafeCrashWith ("lost_serf_connection")
 
     Serf.UserEvent name ltime coalesce intraMessage -> do
+     let screen = screenMessage thisServer ltime
      case intraMessage of
        IMStreamState stateChange streamId address -> do
-         mTuple <- screenOriginAndMessageClock thisServer address ltime lamportClocks.streamStateClocks
+         mTuple <- screen address lamportClocks.streamStateClocks
          case mTuple of
            Nothing -> pure state
            Just (Tuple newClockState server) ->
              handleStreamStateChange stateChange streamId server (state {lamportClocks = lamportClocks {streamStateClocks = newClockState}})
 
        IMEgestState stateChange streamId address -> do
-         mTuple <- screenOriginAndMessageClock thisServer address ltime lamportClocks.egestStateClocks
+         mTuple <- screen address lamportClocks.egestStateClocks
          case mTuple of
            Nothing -> pure state
            Just (Tuple newClockState server) ->
              handleEgestStateChange stateChange streamId server (state {lamportClocks = lamportClocks {egestStateClocks = newClockState}})
 
        IMServerLoad address load -> do
-         mTuple <- screenOriginAndMessageClock thisServer address ltime lamportClocks.loadClocks
+         mTuple <- screen address lamportClocks.loadClocks
          case mTuple of
            Nothing -> pure state
            Just (Tuple newClockState server) ->
@@ -535,7 +537,7 @@ handleIntraPoPSerfMsg imsg state@{ transPoPApi: {handleRemoteLeaderAnnouncement}
                          }
 
        IMTransPoPLeader address -> do
-         mTuple <- screenOriginAndMessageClock thisServer address ltime lamportClocks.popLeaderClocks
+         mTuple <- screen address lamportClocks.popLeaderClocks
          case mTuple of
            Nothing -> pure state
            Just (Tuple newClockState server) -> do
@@ -545,7 +547,7 @@ handleIntraPoPSerfMsg imsg state@{ transPoPApi: {handleRemoteLeaderAnnouncement}
                         }
 
        IMLiveness address ref -> do
-         mTuple <- screenOriginAndMessageClock thisServer address ltime lamportClocks.popLeaderClocks
+         mTuple <- screenOriginAndMessageClock thisServer ltime address lamportClocks.popLeaderClocks
          case mTuple of
            Nothing -> pure state
            Just (Tuple newClockState server) -> do
@@ -566,7 +568,7 @@ handleIntraPoPSerfMsg imsg state@{ transPoPApi: {handleRemoteLeaderAnnouncement}
 
 
 
-         -- mTuple <- screenOriginAndMessageClock thisServer address ltime lamportClocks.livenessClocks
+         -- mTuple <- screen address lamportClocks.livenessClocks
          -- case mTuple of
          --   Nothing -> pure state
          --   Just (Tuple newClockState server) -> do
@@ -586,11 +588,11 @@ handleIntraPoPSerfMsg imsg state@{ transPoPApi: {handleRemoteLeaderAnnouncement}
          --           -- Invlaidate all the current locations
          --           let
          --             garbageStreams = Map.keys Map.empty --curMap
-         --             newStreamAggregatorLocations = foldl (\acc k -> Map.delete k acc) state.aggregatorLocations garbageStreams
+         --             newAggregatorLocations = foldl (\acc k -> Map.delete k acc) state.aggregatorLocations garbageStreams
          --           newRemoteAggregatorLocations <- EMap.insert' server (Tuple ref Map.empty) state.remoteAggregatorLocations
-         --           garbageCollectStreamAggregators server garbageStreams
+         --           garbageCollectAggregators server garbageStreams
          --           pure state{ remoteAggregatorLocations = newRemoteAggregatorLocations
-         --                     , aggregatorLocations = newStreamAggregatorLocations
+         --                     , aggregatorLocations = newAggregatorLocations
          --                     }
          --     pure state2 {lamportClocks = lamportClocks {livenessClocks = newClockState}}
 
@@ -607,7 +609,7 @@ handleStreamStateChange streamState streamId server state =
       _ <- state.transPoPApi.announceStreamIsAvailable streamId server
       --_ <- logIfNew streamId state.aggregatorLocations "StreamAvailable on remote node" { streamId: streamId, remoteNode: server }
 
-      pure $ insertRemoteStreamAggregator streamId server state
+      pure $ insertRemoteAggregator streamId server state
 
     StreamStopped -> do
       -- streamStopped on some other node in this PoP - we need to tell Trans-PoP
@@ -616,8 +618,8 @@ handleStreamStateChange streamState streamId server state =
       logInfo "StreamStopped on remote node" { streamId: streamId, remoteNode: server }
       _ <- state.transPoPApi.announceStreamStopped streamId server
       let
-        newStreamAggregatorLocations = Map.delete streamId state.aggregatorLocations
-      pure $ state { aggregatorLocations = newStreamAggregatorLocations }
+        newAggregatorLocations = Map.delete streamId state.aggregatorLocations
+      pure $ state { aggregatorLocations = newAggregatorLocations }
 
 handleEgestStateChange :: EgestState -> StreamId -> Server -> State -> Effect State
 handleEgestStateChange stateChange streamId server state =
@@ -708,6 +710,7 @@ garbageCollect state@{ expireThreshold
 
     pure newState{ streamRelayLocations = newStreamRelayLocations
                  , egestLocations = newEgestLocations
+                 , serverRefs = newServerRefs
                  }
 
 
@@ -715,19 +718,24 @@ garbageCollectServer :: State -> Server -> Effect State
 garbageCollectServer state server = do
   -- TODO - add a server decomissioning message to do this cleanly
   logWarning "server liveness timeout" {server}
-  garbageCollectStreamAggregators state server
-  pure state {remoteAggregatorLocations = Map.delete server state.remoteAggregatorLocations}
+  newAggregatorLocations <- garbageCollectAggregators state state.aggregatorLocations server
+  pure state { remoteAggregatorLocations = Map.delete server state.remoteAggregatorLocations
+             , aggregatorLocations = newAggregatorLocations
+             }
 
-garbageCollectStreamAggregators :: State -> Server -> Effect Unit
-garbageCollectStreamAggregators state server  = do
+garbageCollectAggregators :: State -> AggregatorLocations -> Server -> Effect AggregatorLocations
+garbageCollectAggregators state locations server  = do
   case Map.lookup server state.remoteAggregatorLocations of
-    Nothing -> pure unit
+    Nothing -> pure locations
     Just garbageStreams -> do
-      traverse_ (garbageCollectStreamAggregator server) garbageStreams
+      logWarning "remoteStream liveness timeout" {garbageStreams}
+      foldM (garbageCollectAggregator server) locations garbageStreams
 
-garbageCollectStreamAggregator :: Server -> StreamId -> Effect Unit
-garbageCollectStreamAggregator server streamId = do
+garbageCollectAggregator :: Server -> AggregatorLocations -> StreamId -> Effect AggregatorLocations
+garbageCollectAggregator server locations streamId = do
+  let _ = spy "garbageCollectAggregator" {streamId, server}
   Bus.raise bus (IngestAggregatorExited streamId server)
+  pure $ Map.delete streamId locations
 
 
 joinAllSerf :: State -> Effect Unit
@@ -761,8 +769,17 @@ joinAllSerf { config, serfRpcAddress, members } =
   toMap list = foldl (\acc item -> Map.insert item unit acc) Map.empty list
 
 
-screenOriginAndMessageClock :: Server -> ServerAddress -> LamportClock -> Map ServerAddress LamportClock -> Effect (Maybe (Tuple (Map ServerAddress LamportClock) Server))
-screenOriginAndMessageClock (Server thisServer) messageServerAddress msgClock lastClockByServer =
+
+
+
+
+
+screenMessage :: Server -> LamportClock -> ServerAddress -> Map ServerAddress LamportClock -> Effect (Maybe (Tuple (Map ServerAddress LamportClock) Server))
+screenMessage = screenOriginAndMessageClock
+
+
+screenOriginAndMessageClock :: Server -> LamportClock -> ServerAddress -> Map ServerAddress LamportClock -> Effect (Maybe (Tuple (Map ServerAddress LamportClock) Server))
+screenOriginAndMessageClock (Server thisServer) msgClock messageServerAddress lastClockByServer =
   if Map.lookup messageServerAddress lastClockByServer # maybe false (_ >= msgClock)
   then do
     pure Nothing
