@@ -90,12 +90,11 @@ doRemoveClient state@{clientCount: 0} = do
   _ <- logInfo "Remove client - already zero" {}
   pure $ CallReply unit state
 doRemoveClient state@{clientCount: 1, lingerTime, streamId} = do
-  let
-    ref = makeRef
+  ref <- makeRef
   _ <- logInfo "Last client gone, start stop timer" {}
   _ <- Timer.sendAfter (serverName streamId) (unwrap lingerTime) (MaybeStop ref)
   pure $ CallReply unit state{ clientCount = 0
-                             , stopRef = Just makeRef
+                             , stopRef = Just ref
                              }
 
 doRemoveClient state@{clientCount} = do
