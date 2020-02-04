@@ -1,6 +1,8 @@
 module Rtsv2.Agents.IngestInstance
   ( startLink
   , isActive
+  , setClientMetadata
+  , getPublicState
   , stopIngest
   , Args
   ) where
@@ -39,7 +41,8 @@ import Rtsv2.Utils (crashIfLeft)
 import Shared.Agent as Agent
 import Shared.LlnwApiTypes (StreamDetails)
 import Shared.Stream (StreamAndVariant, StreamId, toStreamId, toVariant)
-import Shared.Types (Load, Server, ServerLoad(..), extractAddress)
+import Shared.Types (Load, RtmpClientMetadata, RtmpClientMetadataItem(..), Server, ServerLoad(..), extractAddress)
+import Shared.Types.Agent.State as PublicState
 import SpudGun (Url)
 import SpudGun as SpudGun
 
@@ -57,6 +60,7 @@ type State
     , streamAndVariant :: StreamAndVariant
     , streamDetails :: StreamDetails
     , aggregatorAddr :: Maybe (LocalOrRemote Server)
+    , clientMetadata :: Maybe RtmpClientMetadata
     }
 
 type Args
@@ -71,11 +75,21 @@ startLink args@{streamAndVariant} = Gen.startLink (serverName streamAndVariant) 
 isActive :: StreamAndVariant -> Effect Boolean
 isActive streamAndVariant = Pinto.isRegistered (serverName streamAndVariant)
 
+setClientMetadata :: StreamAndVariant -> RtmpClientMetadata -> Effect Unit
+setClientMetadata streamAndVariant metadata =
+  Gen.doCall (serverName streamAndVariant) \state -> do
+    pure $ CallReply unit state{clientMetadata = Just metadata}
+
 stopIngest :: StreamAndVariant -> Effect Unit
 stopIngest streamAndVariant =
   Gen.doCall (serverName streamAndVariant) \state -> do
     _ <- doStopIngest state
     pure $ CallStop unit state
+
+getPublicState :: StreamAndVariant -> Effect PublicState.Ingest
+getPublicState streamAndVariant =
+  Gen.call (serverName streamAndVariant) \state@{clientMetadata: rtmpClientMetadata} -> do
+    CallReply {rtmpClientMetadata} state
 
 init :: Args -> Effect State
 init {streamDetails, streamAndVariant, handlerPid} = do
@@ -86,11 +100,13 @@ init {streamDetails, streamAndVariant, handlerPid} = do
   _ <- Bus.subscribe ourServerName IntraPoP.bus IntraPoPBus
   _ <- Audit.ingestStart streamAndVariant
   _ <- Timer.sendAfter ourServerName 0 InformAggregator
+
   pure { thisServer
        , streamDetails
        , streamAndVariant
        , aggregatorRetryTime: wrap intraPoPLatencyMs
        , aggregatorAddr: Nothing
+       , clientMetadata: Nothing
        }
   where
     ourServerName = (serverName streamAndVariant)

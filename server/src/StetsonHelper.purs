@@ -3,6 +3,9 @@ module StetsonHelper
        , genericPostWithResponse
        , genericGetByStreamId
        , genericGetByPoPName
+       , genericGetBy
+       , genericGetBy2
+       , GenericStetsonGet
        , GenericStetsonGetByStreamId
        , GenericStetsonHandler
        , GenericStetsonHandlerWithResponse
@@ -116,6 +119,7 @@ genericPostWithResponse proxiedFun =
 
 
 
+type GenericStetsonGet a = StetsonHandler (Internal_GenericStatusState a)
 
 type GenericStetsonGetByStreamId a = StetsonHandler (Internal_GenericStatusState a)
 
@@ -140,9 +144,37 @@ genericGetBy bindElement getData =
     init req =
       let
         bindValue :: a
-        bindValue = wrap $ fromMaybe' (lazyCrashIfMissing "stream_id binding missing") $ binding (atom bindElement) req
+        bindValue = wrap $ fromMaybe' (lazyCrashIfMissing (bindElement <> " binding missing")) $ binding (atom bindElement) req
       in do
         mData <- noprocToMaybe $ getData bindValue
+        Rest.initResult req
+            { mData
+            }
+
+    provideContent req state@{mData} =
+      case mData of
+        Nothing ->
+          do
+            newReq <- replyWithoutBody (StatusCode 404) Map.empty req
+            Rest.stop newReq state
+        Just theData ->
+          Rest.result (writeJSON theData) req state
+
+genericGetBy2 :: forall a b c. Newtype a String => Newtype b String => WriteForeign c =>  String -> String -> (a -> b -> Effect c) -> GenericStetsonGet c
+genericGetBy2 bindElement1 bindElement2 getData =
+  Rest.handler init
+  # Rest.allowedMethods (Rest.result (GET : mempty))
+  # Rest.contentTypesProvided (\req state -> Rest.result (singleton $ MimeType.json provideContent) req state)
+  # Rest.yeeha
+  where
+    init req =
+      let
+        bindValue1 :: a
+        bindValue1 = wrap $ fromMaybe' (lazyCrashIfMissing (bindElement1 <> " binding missing")) $ binding (atom bindElement1) req
+        bindValue2 :: b
+        bindValue2 = wrap $ fromMaybe' (lazyCrashIfMissing (bindElement2 <> " binding missing")) $ binding (atom bindElement2) req
+      in do
+        mData <- noprocToMaybe $ getData bindValue1 bindValue2
         Rest.initResult req
             { mData
             }

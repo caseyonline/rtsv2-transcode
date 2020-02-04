@@ -1,5 +1,6 @@
 module Shared.Types.Agent.State
        ( Egest
+       , Ingest
        , IngestAggregator
        , StreamRelay
        , TimedPoPStep
@@ -7,9 +8,10 @@ module Shared.Types.Agent.State
        , TimedPoPRoutes
        ) where
 
+import Data.Maybe (Maybe)
 import Shared.LlnwApiTypes (StreamDetails)
 import Shared.Stream (StreamVariant)
-import Shared.Types (PoPName, ServerAddress)
+import Shared.Types (PoPName, RtmpClientMetadata, ServerAddress)
 
 type TimedPoPRoutes
   = { from :: PoPName
@@ -24,6 +26,10 @@ type TimedPoPStep
   = { from :: PoPName
     , to :: PoPName
     , rtt :: Int
+    }
+
+type Ingest
+  = { rtmpClientMetadata :: Maybe RtmpClientMetadata
     }
 
 type IngestAggregator

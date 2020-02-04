@@ -23,14 +23,17 @@
          streamAuthType :: fun(),
          streamAuth :: fun(),
          streamPublish :: fun(),
-         streamDetails :: term()
+         clientMetadata :: fun(),
+         streamDetails :: term(),
+         streamAndVariant :: term()
         }).
 
-init(Rtmp, ConnectArgs, [#{ingestStarted := IngestStarted,
-                           ingestStopped := IngestStopped,
-                           streamAuthType := StreamAuthType,
-                           streamAuth := StreamAuth,
-                           streamPublish := StreamPublish}]) ->
+init(Rtmp, ConnectArgs, [#{ ingestStarted := IngestStarted
+                          , ingestStopped := IngestStopped
+                          , streamAuthType := StreamAuthType
+                          , streamAuth := StreamAuth
+                          , streamPublish := StreamPublish
+                          , clientMetadata := ClientMetadata }]) ->
 
   {_, TcUrl} = lists:keyfind("tcUrl", 1, ConnectArgs),
 
@@ -75,7 +78,8 @@ init(Rtmp, ConnectArgs, [#{ingestStarted := IngestStarted,
                            ingestStopped = IngestStopped,
                            streamAuthType = StreamAuthType,
                            streamAuth = StreamAuth,
-                           streamPublish = (((StreamPublish)(Host))(ShortName))(UserName)
+                           streamPublish = (((StreamPublish)(Host))(ShortName))(UserName),
+                           clientMetadata = ClientMetadata
                           }};
 
             false ->
@@ -130,7 +134,8 @@ init(Rtmp, ConnectArgs, [#{ingestStarted := IngestStarted,
                            ingestStopped = IngestStopped,
                            streamAuthType = StreamAuthType,
                            streamAuth = StreamAuth,
-                           streamPublish = (((StreamPublish)(Host))(ShortName))(UserName)
+                           streamPublish = (((StreamPublish)(Host))(ShortName))(UserName),
+                           clientMetadata = ClientMetadata
                           }};
 
             false ->
@@ -186,7 +191,8 @@ handle(State = #?state{rtmp_pid = Rtmp,
               {ok, WorkflowPid} = start_workflow(Rtmp, StreamId, ClientId, Path, StreamAndVariant),
 
               %% Stream is now connected - we block in here, when we return the rtmp_server instance will close
-              workflow_loop(StreamName, WorkflowPid, State#?state{streamDetails = StreamDetails});
+              workflow_loop(StreamName, WorkflowPid, State#?state{streamDetails = StreamDetails,
+                                                                  streamAndVariant = StreamAndVariant});
 
             {left, _} ->
               ?SLOG_INFO("Invalid stream name"),
@@ -200,7 +206,9 @@ handle(State = #?state{rtmp_pid = Rtmp,
   end.
 
 workflow_loop(StreamName, WorkflowPid, State = #?state{ingestStopped = IngestStopped,
-                                                       streamDetails = StreamDetails}) ->
+                                                       streamDetails = StreamDetails,
+                                                       clientMetadata = ClientMetadata,
+                                                       streamAndVariant = StreamAndVariant}) ->
   %% the workflow is dealing with the RTMP, so just wait until it says we are done
   receive
     #workflow_output{message = #no_active_generators_msg{}} ->
@@ -209,8 +217,11 @@ workflow_loop(StreamName, WorkflowPid, State = #?state{ingestStopped = IngestSto
       unit = ((IngestStopped(StreamDetails))(StreamName))(),
       ok;
 
-    #workflow_output{message = #workflow_data_msg{data = #rtmp_client_metadata{}}} ->
-      ?SLOG_DEBUG("Got client metadata"),
+    #workflow_output{message = #workflow_data_msg{data = #rtmp_client_metadata{metadata = Metadata}}} ->
+      PursMetadata = rtmp_metadata_to_purs(Metadata),
+      unit = ((ClientMetadata(StreamAndVariant))(PursMetadata))(),
+      ?SLOG_DEBUG("Got client metadata", #{purs => PursMetadata}),
+
       workflow_loop(StreamName, WorkflowPid, State);
 
     Other ->
@@ -274,3 +285,26 @@ start_workflow(Rtmp, StreamId, ClientId, Path, StreamAndVariant = {streamAndVari
   {ok, WorkflowPid} = id3as_workflow:start_link(Workflow),
 
   {ok, WorkflowPid}.
+
+rtmp_metadata_to_purs(Metadata) ->
+  array:from_list(rtmp_metadata_to_purs_(Metadata)).
+
+rtmp_metadata_to_purs_([]) ->
+  [];
+
+rtmp_metadata_to_purs_([{Name, Value} | T]) ->
+  [#{name => Name,
+     value => rtmp_metadata_value_to_purs(Value)} | rtmp_metadata_to_purs_(T)].
+
+rtmp_metadata_value_to_purs(Value) when Value == true;
+                                       Value == false ->
+  {rtmpBool, Value};
+
+rtmp_metadata_value_to_purs(Value) when is_integer(Value) ->
+  {rtmpInt, Value};
+
+rtmp_metadata_value_to_purs(Value) when is_float(Value) ->
+  {rtmpFloat, Value};
+
+rtmp_metadata_value_to_purs(Value) when is_binary(Value) ->
+  {rtmpString, Value}.
