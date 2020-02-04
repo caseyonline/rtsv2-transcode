@@ -14,7 +14,6 @@ You can edit this file as you like.
     , "erl-atom"
     , "erl-binary"
     , "erl-cowboy"
-    , "erl-lager"
     , "erl-lists"
     , "erl-maps"
     , "erl-pinto"

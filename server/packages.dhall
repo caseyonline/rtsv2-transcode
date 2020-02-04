@@ -71,7 +71,7 @@ let overrides =
           }
       , erl-stetson =
           { dependencies =
-              [ "erl-cowboy", "erl-lager" ]
+              [ "erl-cowboy" ]
           , repo =
               "ssh://git@github.com/id3as/purescript-erl-stetson.git"
           , version =
