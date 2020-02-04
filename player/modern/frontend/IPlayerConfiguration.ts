@@ -40,4 +40,5 @@ export default interface IPlayerConfiguration {
 export interface IPlayerOverrides {
   socketAuthority?: string;
   socketSecure?: boolean;
+  socketPath?: string;
 }

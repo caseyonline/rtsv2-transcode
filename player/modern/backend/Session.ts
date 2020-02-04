@@ -210,6 +210,17 @@ export default class Session extends EventEmitter implements ISession {
         }
         break;
 
+      case "ice.candidate":
+        {
+          console.debug("Remote ICE candidate obtained.", message);
+          await this.peer.addIceCandidate(new RTCIceCandidate({
+            sdpMLineIndex: message.lineIndex,
+            candidate: message.candidate
+          }));
+          console.debug("Remote ICE candidate applied.");
+        }
+        break;
+
       default:
         this.unexpectedMessage(message);
     }

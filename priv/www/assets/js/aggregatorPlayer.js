@@ -14,15 +14,8 @@ function update_state(allProfiles) {
        var id = '#' + profile.streamName;
        var last = $(id).children().last();
        if (activeProfiles.includes(profile.streamName)) {
-         if (last[0].localName != "rtc-video") {
+         if (last[0].localName != "video") {
            last.replaceWith(videoTemplate(profile.streamName));
-         }
-         else {
-           if (last[0].readyState() == 0) {
-             if (((new Date()) - last[0].startTime()) > 2000) {
-               last[0]._maybeStartPlayback();
-             }
-           }
          }
        }
        else {
@@ -41,9 +34,12 @@ function update_state(allProfiles) {
     });
 }
 
-function videoTemplate(streamName) {
-  var src = "/../activeIngests/" + streamName;
-  return "<rtc-video src='" + src + "'></rtc-video>";
+function videoTemplate(videoElementId) {
+  return `<video id="${videoElementId}" autoplay controls muted></video>`;
+}
+
+function videoElementId(streamName) {
+  return `ve-${streamName}`;
 }
 
 function noIngestTemplate() {
@@ -57,7 +53,29 @@ function setActiveContent(aggregatorPublicState) {
   });
 
   $.each(aggregatorPublicState.activeStreamVariants, function(index, variant) {
-    $('#' + variant.streamVariant).children().last().replaceWith(videoTemplate(variant.streamVariant));
+    const id = videoElementId(variant.streamVariant);
+    $('#' + variant.streamVariant).children().last().replaceWith(videoTemplate(id));
+  });
+
+  const pathname = window.location.pathname;
+  const parent = pathname.substring(1, pathname.lastIndexOf("/"));
+  const activeIngests = parent + "/activeIngests";
+
+  $.each(aggregatorPublicState.activeStreamVariants, function(index, variant) {
+    const id = videoElementId(variant.streamVariant);
+
+    var config = {
+      account: "",
+      streamName: "",
+      videoElementId: id,
+      overrides: {
+        socketAuthority: window.location.host,
+        socketSecure: window.location.protocol === "https:",
+        socketPath: `${activeIngests}/${variant.streamVariant}/control`,
+      }
+    };
+
+    LimelightSDK.createPlayer(config);
   });
 }
 

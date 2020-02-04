@@ -54,8 +54,7 @@ data Endpoint
   | IngestAggregatorActiveIngestsE StreamId StreamRole StreamVariant
   | IngestAggregatorActiveIngestsPlayerE StreamId StreamVariant
   | IngestAggregatorActiveIngestsPlayerJsE StreamId StreamVariant
-  | IngestAggregatorActiveIngestsPlayerSessionStartE StreamId StreamVariant
-  | IngestAggregatorActiveIngestsPlayerSessionE StreamId StreamVariant String
+  | IngestAggregatorActiveIngestsPlayerControlE StreamId StreamVariant
   | IngestAggregatorsE
   | IngestInstancesE
   | IngestInstancesMetricsE
@@ -107,8 +106,7 @@ endpoint = root $ sum
   , "IngestAggregatorActiveIngestsE"                   : "" / "api" / "agents" / "ingestAggregator" / streamId segment / streamRole segment / "activeIngests" / variant segment
   , "IngestAggregatorActiveIngestsPlayerE"             : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "activeIngests" / variant segment / "player" -- TODO - streamRole for these as well
   , "IngestAggregatorActiveIngestsPlayerJsE"           : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "activeIngests" / variant segment / "js" -- TODO - would like to add '/ "[...]"' bit it causes compiler error that I don't understand
-  , "IngestAggregatorActiveIngestsPlayerSessionStartE" : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "activeIngests" / variant segment / "session"
-  , "IngestAggregatorActiveIngestsPlayerSessionE"      : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "activeIngests" / variant segment / "session" / segment
+  , "IngestAggregatorActiveIngestsPlayerControlE"      : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "activeIngests" / variant segment / "control"
 
   , "IngestAggregatorsE"                               : "" / "api" / "agents" / path "ingestAggregator" noArgs
 

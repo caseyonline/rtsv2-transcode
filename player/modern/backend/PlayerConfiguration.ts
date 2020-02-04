@@ -18,5 +18,6 @@ function defaultOverrides(overrides) {
   return {
     socketAuthority: defaultValue(overrides.socketAuthority, null),
     socketSecure: defaultValue(overrides.socketSecure, null),
+    socketPath: defaultValue(overrides.socketPath, null),
   };
 }

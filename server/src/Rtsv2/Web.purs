@@ -103,25 +103,28 @@ init args = do
 
     # static  (IngestAggregatorPlayerE streamIdBinding)                                        (PrivFile "rtsv2" "www/aggregatorPlayer.html")
     # static' (IngestAggregatorPlayerJsE streamIdBinding)                             "/[...]" (PrivDir "rtsv2" "www/assets/js")
-    # static  (IngestAggregatorActiveIngestsPlayerE streamIdBinding variantBinding)            (PrivFile "rtsv2" "www/play.html")
+    # static  (IngestAggregatorActiveIngestsPlayerE streamIdBinding variantBinding)            (PrivFile "rtsv2" "www/unifiedPlayer.html")
     # static' (IngestAggregatorActiveIngestsPlayerJsE streamIdBinding variantBinding) "/[...]" (PrivDir "rtsv2" "www/assets/js")
+
+    # Stetson.cowboyRoutes cowboyRoutes
 
     # static' (ClientAppAssetsE) "/[...]"    (PrivDir Config.appName "www/assets")
     # static  (ClientAppRouteHTMLE)          (PrivFile Config.appName "www/index.html")
     # static' (ClientAppRouteHTMLE) "/[...]" (PrivFile Config.appName "www/index.html")
 
-    # Stetson.cowboyRoutes cowboyRoutes
     # Stetson.port args.port
     # (uncurry4 Stetson.bindTo) (ipToTuple bindIp)
     # Stetson.startClear "http_listener"
   pure $ State {}
+
   where
     cowboyRoutes :: List Path
     cowboyRoutes =
    -- cowboyRoute   (IngestInstanceLlwpE streamIdBinding streamRoleBinding variantBinding)                                       "llwp_stream_resource" ((unsafeToForeign) makeStreamAndVariant)
       cowboyHack   "/api/agents/ingest/:stream_id/:stream_role/:variant/llwp"                               "llwp_stream_resource" ((unsafeToForeign) makeStreamAndVariant)
-      : cowboyRoute (IngestAggregatorActiveIngestsPlayerSessionStartE streamIdBinding variantBinding)          "rtsv2_webrtc_session_start_resource" ((unsafeToForeign) makeStreamAndVariant)
-      : cowboyRoute (IngestAggregatorActiveIngestsPlayerSessionE streamIdBinding variantBinding ":session_id") "rtsv2_webrtc_session_resource" ((unsafeToForeign) makeStreamAndVariant)
+
+      : cowboyRoute (IngestAggregatorActiveIngestsPlayerControlE streamIdBinding variantBinding)               "rtsv2_player_ws_resource" ((unsafeToForeign) makeStreamAndVariant)
+
       : cowboyRoute WorkflowsE "id3as_workflows_resource" (unsafeToForeign unit)
 
       : cowboyRoute (WorkflowGraphE ":reference") "id3as_workflow_graph_resource" (unsafeToForeign (atom "graph"))

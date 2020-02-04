@@ -1,8 +1,9 @@
 <head>
-  <title>Ingest Aggregator Test Player</title>
+  <title>LLNW Ingest Aggregator Player</title>
+  <link href=data:, rel=icon">
   <script src="https://code.jquery.com/jquery-1.11.3.js"></script>
-  <script type="text/javascript" src="js/aggregatorPlayer.js"></script>
-  <script src="js/rtc-video.js" type="module" async></script>
+  <script src="js/llnwrtssdk-2.0.0.js"></script>
+  <script src="js/aggregatorPlayer.js"></script>
   <style>
     body {
       font-family: Arial, Helvetica, sans-serif;
@@ -22,16 +23,15 @@
       margin: 10px;
     }
 
+    video {
+      width: 400px;
+    }
+
     .ingestTitle {
       font-weight: bold;
       padding-bottom: 5px;
       align: centre;
     }
-
-    rtc-video {
-      --width: 400px;
-    }
-
   </style>
 </head>
 <body>

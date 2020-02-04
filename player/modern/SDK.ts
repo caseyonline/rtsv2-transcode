@@ -34,8 +34,9 @@ function socketUrl(configuration: IPlayerConfiguration) {
   const overrides = configuration.overrides || {};
   const authority = overrides.socketAuthority || `${configuration.account}.${DOMAIN_NAME}`;
   const scheme = socketScheme(overrides.socketSecure);
+  const path = overrides.socketPath || `play/${API_VERSION}/${configuration.account}/${configuration.streamName}`;
 
-  return `${scheme}://${authority}/play/${API_VERSION}/${configuration.account}/${configuration.streamName}`;
+  return `${scheme}://${authority}/${path}`;
 }
 
 function socketScheme(secureOption) {

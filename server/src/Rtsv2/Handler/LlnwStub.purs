@@ -27,7 +27,7 @@ import Unsafe.Coerce (unsafeCoerce)
 
 streamAuthTypeDb :: Map StreamConnection AuthType
 streamAuthTypeDb =
-  fromFoldable (Tuple { host: "172.16.171.5"
+  fromFoldable (Tuple { host: "172.16.171.1"
                       , protocol: Rtmp
                       , shortname: "mmddev001"
                       }
@@ -36,7 +36,7 @@ streamAuthTypeDb =
 
 streamAuthDb :: Map StreamAuth PublishCredentials
 streamAuthDb =
-  fromFoldable (Tuple { host: "172.16.171.5"
+  fromFoldable (Tuple { host: "172.16.171.1"
                       , shortname: "mmddev001"
                       , username: "user"
                       }
@@ -46,7 +46,7 @@ streamAuthDb =
 
 streamPublishDb :: Map StreamPublish StreamDetails
 streamPublishDb =
-  fromFoldable (Tuple { host: "172.16.171.5"
+  fromFoldable (Tuple { host: "172.16.171.1"
                       , protocol: Rtmp
                       , shortname: "mmddev001"
                       , streamName: "slot1_1000"
@@ -65,7 +65,7 @@ streamPublishDb =
                               }
                       , push : []
                       }
-                : Tuple { host: "172.16.171.5"
+                : Tuple { host: "172.16.171.1"
                         , protocol: Rtmp
                         , shortname: "mmddev001"
                         , streamName: "slot1_500"
