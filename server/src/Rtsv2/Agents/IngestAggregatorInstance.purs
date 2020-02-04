@@ -66,14 +66,14 @@ serverName = Names.ingestAggregatorInstanceName
 addVariant :: StreamAndVariant -> Effect Unit
 addVariant streamAndVariant = Gen.doCall (serverName (toStreamId streamAndVariant))
   \state@{thisAddress, activeStreamVariants, workflow} -> do
-    _ <- logInfo "Ingest variant added" {streamId: streamAndVariant}
+    logInfo "Ingest variant added" {streamId: streamAndVariant}
     _ <- addLocalVariantImpl workflow streamAndVariant
     pure $ CallReply unit state{activeStreamVariants = insert (toVariant streamAndVariant) thisAddress activeStreamVariants}
 
 addRemoteVariant :: StreamAndVariant -> ServerAddress -> Effect Unit
 addRemoteVariant streamAndVariant remoteServer = Gen.doCall (serverName (toStreamId streamAndVariant))
   \state@{activeStreamVariants, workflow} -> do
-    _ <- logInfo "Remote ingest variant added" {streamId: streamAndVariant, source: remoteServer}
+    logInfo "Remote ingest variant added" {streamId: streamAndVariant, source: remoteServer}
     let
       path = Routing.printUrl RoutingEndpoint.endpoint (IngestInstanceLlwpE (toStreamId streamAndVariant) (toVariant streamAndVariant))
       url = "http://" <> (unwrap remoteServer) <> ":3000" <> path
@@ -103,10 +103,10 @@ startLink streamDetails@{slot : {name}} = Gen.startLink (serverName (StreamId na
 
 init :: StreamDetails -> Effect State
 init streamDetails = do
-  _ <- logInfo "Ingest Aggregator starting" {streamId, streamDetails}
+  logInfo "Ingest Aggregator starting" {streamId, streamDetails}
   config <- Config.ingestAggregatorAgentConfig
   thisServer <- PoPDefinition.getThisServer
-  _ <- Timer.sendEvery (serverName streamId) config.streamAvailableAnnounceMs Tick
+--  _ <- Timer.sendEvery (serverName streamId) config.streamAvailableAnnounceMs Tick
   _ <- announceStreamIsAvailable streamId
   workflow <- startWorkflowImpl streamDetails.slot.name ((\p -> tuple2 (StreamAndVariant (wrap streamDetails.slot.name) (wrap p.streamName)) p.streamName) <$> streamDetails.slot.profiles)
   pure { config : config
@@ -125,7 +125,7 @@ handleInfo msg state@{activeStreamVariants, streamId} =
     Tick -> CastNoReply <$> handleTick state
     MaybeStop
       | size activeStreamVariants == 0 -> do
-        _ <- logInfo "Ingest Aggregator stopping" {streamId: streamId}
+        logInfo "Ingest Aggregator stopping" {streamId: streamId}
         _ <- announceStreamStopped streamId
         pure $ CastStop state
       | otherwise -> pure $ CastNoReply state

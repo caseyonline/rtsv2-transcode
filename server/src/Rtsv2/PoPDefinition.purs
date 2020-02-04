@@ -161,7 +161,7 @@ init config = do
         , neighbourMap : popInfo.neighbourMap
         }
 
-  _ <- logInfo "PoPDefinition Starting" { thisServer : thisServer'
+  logInfo "PoPDefinition Starting" { thisServer : thisServer'
                                         , otherServers : state.otherServersInThisPoP}
   _ <- Timer.sendAfter serverName 1000 Tick
   pure state

@@ -75,7 +75,7 @@ status =
 
 init :: CreateRelayPayload -> Effect State
 init payload = do
-  _ <- logInfo "StreamRelay starting" {payload}
+  logInfo "StreamRelay starting" {payload}
   thisServer <- PoPDefinition.getThisServer
   pure { streamId: payload.streamId
        , aggregatorPoP : payload.aggregatorPoP
@@ -90,7 +90,7 @@ registerEgest payload = Gen.doCall (serverName payload.streamId) doRegisterEgest
   where
     doRegisterEgest :: State -> Effect (CallResult Unit State)
     doRegisterEgest state@{egestsServed} = do
-      _ <- logInfo "Register egest " {payload}
+      logInfo "Register egest " {payload}
       newState <- maybeStartRelaysForEgest state{ egestsServed = Set.insert payload.deliverTo egestsServed}
       pure $ CallReply unit $ spy "registerEgest" newState
 
@@ -110,7 +110,7 @@ maybeStartRelaysForEgest state@{streamId, aggregatorPoP, thisServer} = do
 registerRelayChain :: RegisterRelayChainPayload -> Effect Unit
 registerRelayChain payload = Gen.doCast (serverName payload.streamId)
   \state@{streamId, relaysServed, egestSourceRoutes, aggregatorPoP} -> do
-    _ <- logInfo "Register relay chain " {payload}
+    logInfo "Register relay chain " {payload}
     -- Do we already have this registration
     let
       routesViaThisServer = fromMaybe Set.empty $ Map.lookup payload.deliverTo relaysServed

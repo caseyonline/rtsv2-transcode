@@ -46,7 +46,7 @@ setLoad newLoad = do
 
 init :: Unit -> Effect State
 init args = do
-  _ <- logInfo "Load monitor starting" {}
+  logInfo "Load monitor starting" {}
   config <- Config.loadMonitorConfig
   _ <- Timer.sendEvery serverName config.loadAnnounceMs Tick
   pure $ {load: (wrap 0.0)}

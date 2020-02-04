@@ -30,6 +30,7 @@ data Endpoint
   = TransPoPLeaderE
   | TimedRoutesE PoPName
   | HealthCheckE
+  | ServerStateE
   | EgestStatsE StreamId
   | EgestE
   | RelayE
@@ -73,6 +74,7 @@ endpoint = root $ sum
     "TransPoPLeaderE"                                  : "" / "api" / path "transPoPLeader" noArgs
   , "TimedRoutesE"                                     : "" / "api" / "timedRoutes" / popName segment
   , "HealthCheckE"                                     : "" / "api" / path "healthCheck" noArgs
+  , "ServerStateE"                                     : "" / "api" / path "state" noArgs
   , "EgestStatsE"                                      : "" / "api" / "agents" / "egest" / streamId segment
   , "EgestE"                                           : "" / "api" / "agents" / path "egest" noArgs
   , "RelayE"                                           : "" / "api" / "agents" / "relay" / path "egest"  noArgs

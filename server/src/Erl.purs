@@ -14,12 +14,13 @@ import Prelude
 import Data.Newtype (class Newtype, unwrap, wrap)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
-import Foreign (Foreign)
 
 foreign import systemTimeImpl :: Atom -> Effect Int
 foreign import sleepImpl :: Int -> Effect Unit
-foreign import makeRefImpl :: Foreign
+foreign import makeRefImpl :: Effect Ref
 foreign import privDirImpl :: Atom -> String
+foreign import eqRefImpl :: Ref -> Ref -> Boolean
+foreign import data Ref :: Type
 
 sleep :: Milliseconds -> Effect Unit
 sleep = sleepImpl <<< unwrap
@@ -61,13 +62,13 @@ instance showMilliseconds :: Show Milliseconds where
 systemTimeMs :: Effect Milliseconds
 systemTimeMs = wrap <$> systemTimeImpl (atom "millisecond")
 
-newtype Ref = Ref Foreign
+
 
 instance eqRef :: Eq Ref where
-  eq _ _ = true
+  eq = eqRefImpl
 
-makeRef :: Ref
-makeRef = Ref makeRefImpl
+makeRef :: Effect Ref
+makeRef = makeRefImpl
 
 privDir :: Atom -> String
 privDir = privDirImpl

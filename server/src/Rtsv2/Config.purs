@@ -76,6 +76,7 @@ type IntraPoPAgentConfig
     , rejoinEveryMs :: Int
     , expireThresholdMs :: Int
     , expireEveryMs :: Int
+    , livenessMs :: Int
     }
 
 type TransPoPAgentConfig

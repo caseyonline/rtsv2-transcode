@@ -5,12 +5,13 @@ module Rtsv2.Handler.Health
 
 import Prelude
 
-import Data.Maybe (fromMaybe)
+import Data.Maybe (maybe)
 import Data.Newtype (wrap)
 import Erl.Data.List (nil, (:))
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.TransPoP as TransPoP
 import Rtsv2.Handler.MimeType as MimeType
+import Shared.Types (extractAddress)
 import Simple.JSON as JSON
 import Stetson (StetsonHandler)
 import Stetson.Rest as Rest
@@ -28,5 +29,5 @@ healthCheck =
       let
         result = {intraPoPHealth,
                   transPoPHealth,
-                  currentTransPoP : fromMaybe (wrap "") currentTransPoP}
+                  currentTransPoP : maybe (wrap "") extractAddress currentTransPoP}
       Rest.result (JSON.writeJSON result) req state

@@ -22,9 +22,10 @@
 
         case logger:allow(Level, Module) of
           true ->
-            apply(logger, macro_log, [Location, Level, binary_to_list(Msg), [], Args]);
+            apply(logger, macro_log, [Location, Level, binary_to_list(Msg), [], Args]),
+            unit;
           false ->
-            ok
+            unit
         end).
 
 
