@@ -98,14 +98,14 @@ type TransPoPAgentConfig
     }
 
 type IntraPoPAgentApi
-  = { announceRemoteStreamIsAvailable :: StreamId -> Server -> Effect Unit
-    , announceRemoteStreamStopped :: StreamId -> Server -> Effect Unit
+  = { announceOtherPoPAggregatorIsAvailable :: StreamId -> Server -> Effect Unit
+    , announceOtherPoPAggregatorStopped :: StreamId -> Server -> Effect Unit
     , announceTransPoPLeader :: Effect Unit
     }
 
 type TransPoPAgentApi
-  = { announceStreamIsAvailable :: StreamId -> Server -> Effect Unit
-    , announceStreamStopped :: StreamId -> Server -> Effect Unit
+  = { announceAggregatorIsAvailable :: StreamId -> Server -> Effect Unit
+    , announceAggregatorStopped :: StreamId -> Server -> Effect Unit
     , handleRemoteLeaderAnnouncement :: Server -> Effect Unit
     }
 

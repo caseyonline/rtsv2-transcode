@@ -54,7 +54,7 @@ type Egest
 
 type IntraPoP
   = { aggregatorLocations :: Array { streamId :: StreamId
-                                   , server :: Server
+                                   , servers :: Array Server
                                    }
     }
 

@@ -65,9 +65,10 @@ init = do
         # Sup.childType Worker
         # Sup.childId "intraPopAgent"
         # Sup.childStart IntraPoP.startLink { config: intraPoPAgentConfig
-                                            , transPoPApi: { announceStreamIsAvailable: TransPoP.announceStreamIsAvailable
-                                                           , announceStreamStopped: TransPoP.announceStreamStopped
-                                                           , handleRemoteLeaderAnnouncement: TransPoP.handleRemoteLeaderAnnouncement}
+                                            , transPoPApi: { announceAggregatorIsAvailable: TransPoP.announceAggregatorIsAvailable
+                                                           , announceAggregatorStopped: TransPoP.announceAggregatorStopped
+                                                           , handleRemoteLeaderAnnouncement: TransPoP.handleRemoteLeaderAnnouncement
+                                                           }
                                             }
         # pure
 
@@ -77,8 +78,9 @@ init = do
         # Sup.childType Worker
         # Sup.childId "transPopAgent"
         # Sup.childStart TransPoP.startLink { config: transPoPAgentConfig
-                                            , intraPoPApi: { announceRemoteStreamIsAvailable: IntraPoP.announceRemoteStreamIsAvailable
-                                                           , announceRemoteStreamStopped: IntraPoP.announceRemoteStreamStopped
-                                                           , announceTransPoPLeader: IntraPoP.announceTransPoPLeader}
+                                            , intraPoPApi: { announceOtherPoPAggregatorIsAvailable: IntraPoP.announceOtherPoPAggregatorIsAvailable
+                                                           , announceOtherPoPAggregatorStopped: IntraPoP.announceOtherPoPAggregatorStopped
+                                                           , announceTransPoPLeader: IntraPoP.announceTransPoPLeader
+                                                           }
                                             }
         # pure

@@ -24,7 +24,7 @@ import Pinto (ServerName, StartLinkResult, isRegistered)
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
-import Rtsv2.Agents.IntraPoP (announceStreamIsAvailable, announceStreamStopped)
+import Rtsv2.Agents.IntraPoP (announceLocalAggregatorIsAvailable, announceLocalAggregatorStopped)
 import Rtsv2.Config as Config
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
@@ -107,7 +107,7 @@ init streamDetails = do
   config <- Config.ingestAggregatorAgentConfig
   thisServer <- PoPDefinition.getThisServer
 --  _ <- Timer.sendEvery (serverName streamId) config.streamAvailableAnnounceMs Tick
-  _ <- announceStreamIsAvailable streamId
+  _ <- announceLocalAggregatorIsAvailable streamId
   workflow <- startWorkflowImpl streamDetails.slot.name ((\p -> tuple2 (StreamAndVariant (wrap streamDetails.slot.name) (wrap p.streamName)) p.streamName) <$> streamDetails.slot.profiles)
   pure { config : config
        , thisAddress : extractAddress thisServer
@@ -126,13 +126,13 @@ handleInfo msg state@{activeStreamVariants, streamId} =
     MaybeStop
       | size activeStreamVariants == 0 -> do
         logInfo "Ingest Aggregator stopping" {streamId: streamId}
-        _ <- announceStreamStopped streamId
+        _ <- announceLocalAggregatorStopped streamId
         pure $ CastStop state
       | otherwise -> pure $ CastNoReply state
 
 handleTick :: State -> Effect State
 handleTick state@{streamId} = do
-  _ <- announceStreamIsAvailable streamId
+  _ <- announceLocalAggregatorIsAvailable streamId
   pure state
 
 --------------------------------------------------------------------------------
