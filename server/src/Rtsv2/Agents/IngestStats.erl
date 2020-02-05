@@ -17,39 +17,42 @@ getStatsImpl() ->
 
       Refs = ets:select(id3as_workflows, WorkflowSpec),
 
-      lists:map(fun({Ref, StreamAndVariant}) ->
-                    MetricsSpec = [{#workflow_node_status{id =
-                                                            #workflow_node_id{ref = Ref,
-                                                                              path = ['$1', {rtmp_ingest_handler, {streamAndVariant,'_','_'}}]},
-                                                          status = '$2',
-                                                          _ = '_'},
-                                    [{'orelse',
-                                      {'==', '$1', source_bitrate_monitor},
-                                      {'orelse',
-                                       {'==', '$1', rtmp_ingest},
-                                       {'==', '$1', source_frame_meter}}}],
-                                    ['$2']}],
+      lists:filtermap(fun({Ref, StreamAndVariant}) ->
+                          MetricsSpec = [{#workflow_node_status{id =
+                                                                  #workflow_node_id{ref = Ref,
+                                                                                    path = ['$1', {rtmp_ingest_handler, {streamAndVariant,'_','_'}}]},
+                                                                status = '$2',
+                                                                _ = '_'},
+                                          [{'orelse',
+                                            {'==', '$1', source_bitrate_monitor},
+                                            {'orelse',
+                                             {'==', '$1', rtmp_ingest},
+                                             {'==', '$1', source_frame_meter}}}],
+                                          ['$2']}],
 
-                    Statuses = ets:select(id3as_workflow_node_metrics, MetricsSpec),
+                          Statuses = ets:select(id3as_workflow_node_metrics, MetricsSpec),
 
-                    Initial = #{streamAndVariant => StreamAndVariant},
+                          Initial = #{streamAndVariant => StreamAndVariant},
 
-                    %% TODO -if we don't get everything, then need to return nothing - so lists:filtermap
-                    Output = lists:foldl(fun(#status{module = frame_flow_meter,
-                                                     metrics = Metrics}, Acc) ->
-                                             Acc#{frameFlowMeterMetrics => frame_flow_metrics_to_purs(Metrics)};
-                                            (#status{module = stream_bitrate_monitor,
-                                                     metrics = Metrics}, Acc) ->
-                                             Acc#{streamBitrateMetrics => stream_bitrate_metrics_to_purs(Metrics)};
-                                            (#status{module = rtmp_push_ingest_generator,
-                                                     metrics = Metrics}, Acc) ->
-                                             Acc#{rtmpIngestMetrics => rtmp_metrics_metrics_to_purs(Metrics)}
-                                         end,
-                                         Initial,
-                                         Statuses),
-                    Output
-                end,
-                Refs)
+                          Output = lists:foldl(fun(#status{module = frame_flow_meter,
+                                                           metrics = Metrics}, Acc) ->
+                                                   Acc#{frameFlowMeterMetrics => frame_flow_metrics_to_purs(Metrics)};
+                                                  (#status{module = stream_bitrate_monitor,
+                                                           metrics = Metrics}, Acc) ->
+                                                   Acc#{streamBitrateMetrics => stream_bitrate_metrics_to_purs(Metrics)};
+                                                  (#status{module = rtmp_push_ingest_generator,
+                                                           metrics = Metrics}, Acc) ->
+                                                   Acc#{rtmpIngestMetrics => rtmp_metrics_metrics_to_purs(Metrics)}
+                                               end,
+                                               Initial,
+                                               Statuses),
+                          Fields = maps:size(Output),
+                          if
+                            Fields == 4 -> {true, Output};
+                            ?otherwise -> false
+                          end
+                      end,
+                      Refs)
   end.
 
 rtmp_metrics_metrics_to_purs(Metrics) ->
