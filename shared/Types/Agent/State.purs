@@ -2,19 +2,19 @@ module Shared.Types.Agent.State
        ( Egest
        , Ingest
        , IngestAggregator
+       , IngestStats
        , IntraPoP
        , StreamRelay
        , TimedPoPStep
        , TimedPoPRoute
        , TimedPoPRoutes
-
        ) where
 
 
 import Data.Maybe (Maybe)
 import Shared.LlnwApiTypes (StreamDetails)
-import Shared.Stream (StreamId, StreamVariant)
-import Shared.Types (PoPName, RtmpClientMetadata, Server, ServerAddress)
+import Shared.Stream (StreamAndVariant(..), StreamId, StreamVariant)
+import Shared.Types (Container, PoPName, RtmpClientMetadata, Server, ServerAddress, WorkflowMetric)
 
 type TimedPoPRoutes
   = { from :: PoPName
@@ -57,3 +57,9 @@ type IntraPoP
                                    , server :: Server
                                    }
     }
+
+type IngestStats a = Container a { streamAndVariant :: StreamAndVariant
+                                 , metrics :: Container a { source :: String
+                                                          , metrics :: Container a (WorkflowMetric a)
+                                                          }
+                                 }

@@ -1,6 +1,7 @@
 module Rtsv2.Config
   ( GlobalConfig
   , IngestAggregatorAgentConfig
+  , IngestStatsConfig
   , WebConfig
   , PoPDefinitionConfig
   , IntraPoPAgentConfig
@@ -17,6 +18,7 @@ module Rtsv2.Config
   , popDefinitionConfig
   , intraPoPAgentConfig
   , transPoPAgentConfig
+  , ingestStatsConfig
   , ingestAggregatorAgentConfig
   , egestAgentConfig
   , rtmpIngestConfig
@@ -62,7 +64,12 @@ type PoPDefinitionConfig
 
 type IngestAggregatorAgentConfig
   = { streamAvailableAnnounceMs :: Int
-    , shutdownLingerTimeMs :: Int}
+    , shutdownLingerTimeMs :: Int
+    }
+
+type IngestStatsConfig
+  = { pollPeriodMs :: Int
+    }
 
 type EgestAgentConfig
   = { egestAvailableAnnounceMs :: Int
@@ -158,6 +165,10 @@ transPoPAgentConfig = do
 ingestAggregatorAgentConfig :: Effect IngestAggregatorAgentConfig
 ingestAggregatorAgentConfig = do
   getMandatoryRecord "ingestAggregatorConfig"
+
+ingestStatsConfig :: Effect IngestStatsConfig
+ingestStatsConfig = do
+  getMandatoryRecord "ingestStatsConfig"
 
 egestAgentConfig :: Effect EgestAgentConfig
 egestAgentConfig = do

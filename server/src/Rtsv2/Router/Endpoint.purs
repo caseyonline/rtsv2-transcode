@@ -53,6 +53,7 @@ data Endpoint
   | IngestAggregatorActiveIngestsPlayerSessionE StreamId StreamVariant String
   | IngestAggregatorsE
   | IngestInstancesE
+  | IngestInstancesStatsE
   | IngestInstanceE StreamId StreamVariant
   | IngestInstanceLlwpE StreamId StreamVariant
   | IngestStartE Canary ShortName StreamAndVariant
@@ -101,8 +102,8 @@ endpoint = root $ sum
   , "IngestAggregatorsE"                               : "" / "api" / "agents" / path "ingestAggregator" noArgs
 
   , "IngestInstancesE"                                 : "" / "api" / "agents" / path "ingest" noArgs
+  , "IngestInstancesStatsE"                            : "" / "api" / "agents" / "ingest" / path "stats" noArgs
   , "IngestInstanceE"                                  : "" / "api" / "agents" / "ingest" / streamId segment / variant segment
-
   , "IngestInstanceLlwpE"                              : "" / "api" / "agents" / "ingest" / streamId segment / variant segment / "llwp"
 
   , "IngestStartE"                                     : "" / "api" / "public" / canary segment / "ingest" / shortName segment / streamAndVariant segment / "start"

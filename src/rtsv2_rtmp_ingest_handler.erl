@@ -7,6 +7,7 @@
 -include_lib("id3as_media/include/rtmp.hrl").
 -include_lib("id3as_media/include/send_to_bus_processor.hrl").
 -include_lib("id3as_media/include/frame_writer.hrl").
+-include_lib("id3as_media/include/bitrate_monitor.hrl").
 
 -export([
          init/3,
@@ -225,7 +226,7 @@ workflow_loop(StreamName, WorkflowPid, State = #?state{ingestStopped = IngestSto
       workflow_loop(StreamName, WorkflowPid, State);
 
     Other ->
-      ?SLOG_WARNING("Unexpected workflow output ~p", [Other]),
+      ?SLOG_WARNING("Unexpected workflow output", #{output => Other}),
       workflow_loop(StreamName, WorkflowPid, State)
   end.
 
@@ -267,18 +268,50 @@ start_workflow(Rtmp, StreamId, ClientId, Path, StreamAndVariant = {streamAndVari
                                          module = program_details_generator
                                         },
 
-                              #processor{name = send_to_bus,
+                              %% Updates frame to add estimated bitrate,
+                              %% and outputs #bitrate_info messages
+                              #processor{name = source_bitrate_monitor,
+                                         display_name = <<"Source Bitrate Monitor">>,
                                          subscribes_to = ?previous,
+                                         module = stream_bitrate_monitor,
+                                         config = #bitrate_monitor_config{
+                                                     default_profile_name = source,
+                                                     mode = passthrough_with_update,
+                                                     output_bitrate_info_messages = false
+                                                    }
+                                        },
+
+                              #processor{name = send_to_bus,
+                                         subscribes_to = {?previous, ?frames},
                                          module = send_to_bus_processor,
                                          config = #send_to_bus_processor_config{consumes = true,
                                                                                 bus_name = {ingest, StreamAndVariant}}
-                                        }
+                                        },
+
+                              %%--------------------------------------------------
+                              %% Reporting
+                              %%--------------------------------------------------
+
+                              %% Count inbound frames - no output, just meters
+                              #processor{name = source_frame_meter,
+                                         display_name = <<"Source Frame Meter">>,
+                                         subscribes_to = source_bitrate_monitor,
+                                         module = frame_flow_meter},
+
+                              %% Extracts source details (frame rates etc) for reporting purposes
+                              %% Generates #source_info{} records
+                              #processor{name = source_details_extractor,
+                                         display_name = <<"Source Details Extractor">>,
+                                         subscribes_to = source_bitrate_monitor,
+                                         module = source_details_extractor},
 
                               %% #processor{name = writer,
                               %%            subscribes_to = {reorder_slices, ?video_frames},
                               %%            module = frame_writer,
                               %%            config = #frame_writer_config{filename = "/tmp/out.h264", mode = consumes}
                               %%           }
+
+                              []
                              ]
                },
 

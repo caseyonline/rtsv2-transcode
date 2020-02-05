@@ -675,7 +675,7 @@ garbageCollect state@{ expireThreshold
     now <- Erl.systemTimeMs
     let
       threshold = now - expireThreshold
-      Tuple newServerRefs garbageRefs = spy "gc2" $ EMap.garbageCollect2 threshold serverRefs
+      Tuple newServerRefs garbageRefs = EMap.garbageCollect2 threshold serverRefs
       garbageServers = fst <$> garbageRefs
       newStreamRelayLocations = EMap.garbageCollect threshold streamRelayLocations
       newEgestLocations = MultiMap.garbageCollect threshold egestLocations

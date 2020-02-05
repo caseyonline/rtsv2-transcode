@@ -76,6 +76,7 @@ init args = do
     # mkRoute  IngestAggregatorsE                                               IngestAggregatorHandler.ingestAggregators
 
     # mkRoute (IngestInstancesE)                                                IngestHandler.ingestInstances
+    # mkRoute (IngestInstancesStatsE)                                           IngestHandler.ingestInstancesStats
     # mkRoute (IngestInstanceE streamIdBinding variantBinding)                  IngestHandler.ingestInstance
 
     # mkRoute (IngestStartE ":canary" shortNameBinding streamAndVariantBinding) IngestHandler.ingestStart
