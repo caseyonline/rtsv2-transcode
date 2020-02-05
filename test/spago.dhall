@@ -2,7 +2,8 @@
 Welcome to a Spago project!
 You can edit this file as you like.
 -}
-{ name = "my-project"
+{ name =
+    "my-project"
 , dependencies =
     [ "aff-promise"
     , "affjax"
@@ -20,11 +21,14 @@ You can edit this file as you like.
     , "psci-support"
     , "quickcheck"
     , "simple-json"
+    , "simple-json-generics"
     , "spec"
     , "test-unit"
     , "toppokki"
     , "tuples"
     ]
-, packages = ./packages.dhall
-, sources = [ "src/**/*.purs" ]
+, packages =
+    ./packages.dhall
+, sources =
+    [ "src/**/*.purs" ]
 }

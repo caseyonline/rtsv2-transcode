@@ -9,6 +9,8 @@ module Shared.Types
        , ServerRec
        , RelayServer(..)
        , EgestServer(..)
+       , RtmpClientMetadata(..)
+       , RtmpClientMetadataItem(..)
        , toServer
        , toServerLoad
        , serverLoadToServer
@@ -21,11 +23,13 @@ module Shared.Types
 import Prelude
 
 import Data.Generic.Rep (class Generic)
+import Data.Generic.Rep.Show (genericShow)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype, unwrap)
 import Data.Symbol (SProxy(..))
 import Record as Record
-import Simple.JSON (class ReadForeign, class WriteForeign)
+import Simple.JSON (class ReadForeign, class WriteForeign, writeImpl)
+import Simple.JSON.Generics.TaggedSumRep (taggedSumRep)
 
 newtype ServerAddress = ServerAddress String
 derive instance newtypeServerAddress :: Newtype ServerAddress _
@@ -108,9 +112,6 @@ derive newtype instance showEgestServer :: Show EgestServer
 derive newtype instance readForeignEgestServer :: ReadForeign EgestServer
 derive newtype instance writeForeignEgestServer :: WriteForeign EgestServer
 
-
-
-
 newtype ServerLoad = ServerLoad { address :: ServerAddress
                                 , pop :: PoPName
                                 , region :: RegionName
@@ -140,6 +141,29 @@ extractPoP = unwrap >>> _.pop
 
 extractAddress :: forall r a. Newtype a { address :: ServerAddress | r } => a -> ServerAddress
 extractAddress = unwrap >>> _.address
+
+
+data RtmpClientMetadataItem = RtmpBool Boolean
+                            | RtmpString String
+                            | RtmpInt Int
+                            | RtmpFloat Number
+
+derive instance genericRtmpClientMetadataItem :: Generic RtmpClientMetadataItem _
+derive instance eqRtmpClientMetadataItem :: Eq RtmpClientMetadataItem
+instance showRtmpClientMetadataItem :: Show RtmpClientMetadataItem where show = genericShow
+instance readRtmpClientMetadataItem :: ReadForeign RtmpClientMetadataItem where readImpl = taggedSumRep
+
+instance writeForeignRtmpClientMetadataItem :: WriteForeign RtmpClientMetadataItem where
+  writeImpl (RtmpBool bool) = writeImpl bool
+  writeImpl (RtmpString string) = writeImpl string
+  writeImpl (RtmpInt int) = writeImpl int
+  writeImpl (RtmpFloat float) = writeImpl float
+
+newtype RtmpClientMetadata = RtmpClientMetadata (Array { name :: String
+                                                       , value :: RtmpClientMetadataItem})
+derive instance newtypeRtmpClientMetadata :: Newtype RtmpClientMetadata _
+derive newtype instance readForeignRtmpClientMetadata :: ReadForeign RtmpClientMetadata
+derive newtype instance writeForeignRtmpClientMetadata :: WriteForeign RtmpClientMetadata
 
 --------------------------------------------------------------------------------
 -- internal

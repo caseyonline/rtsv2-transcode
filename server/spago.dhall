@@ -14,7 +14,6 @@ You can edit this file as you like.
     , "erl-atom"
     , "erl-binary"
     , "erl-cowboy"
-    , "erl-lager"
     , "erl-lists"
     , "erl-maps"
     , "erl-pinto"
@@ -27,6 +26,7 @@ You can edit this file as you like.
     , "random"
     , "routing-duplex"
     , "simple-json"
+    , "simple-json-generics"
     ]
 , packages =
     ./packages.dhall
