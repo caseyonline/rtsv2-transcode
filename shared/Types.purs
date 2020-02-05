@@ -3,6 +3,7 @@ module Shared.Types
        , ServerAddress(..)
        , RegionName(..)
        , PoPName(..)
+       , GeoLoc(..)
        , ServerLoad(..)
        , ServerLocation(..)
        , Server(..)
@@ -59,6 +60,13 @@ parsePname str = Just (PoPName str)
 toStringPname :: PoPName -> String
 toStringPname (PoPName str) = str
 
+newtype GeoLoc = GeoLoc String
+derive instance newtypeGeoLoc :: Newtype GeoLoc _
+derive newtype instance eqGeoLoc :: Eq GeoLoc
+derive newtype instance ordGeoLoc :: Ord GeoLoc
+derive newtype instance showGeoLoc :: Show GeoLoc
+derive newtype instance readForeignGeoLoc :: ReadForeign GeoLoc
+derive newtype instance writeForeignGeoLoc :: WriteForeign GeoLoc
 
 newtype Load = Load Number
 derive instance newtypeLoad :: Newtype Load _
@@ -107,9 +115,6 @@ derive newtype instance ordEgestServer :: Ord EgestServer
 derive newtype instance showEgestServer :: Show EgestServer
 derive newtype instance readForeignEgestServer :: ReadForeign EgestServer
 derive newtype instance writeForeignEgestServer :: WriteForeign EgestServer
-
-
-
 
 newtype ServerLoad = ServerLoad { address :: ServerAddress
                                 , pop :: PoPName

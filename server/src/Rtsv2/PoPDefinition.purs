@@ -41,7 +41,7 @@ import PintoHelper (doExposeState, exposeState)
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
 import Rtsv2.Names as Names
-import Shared.Types (PoPName, RegionName, Server(..), ServerAddress(..), ServerLocation(..), extractPoP, toServer)
+import Shared.Types (GeoLoc, PoPName, RegionName, Server(..), ServerAddress(..), ServerLocation(..), extractPoP, toServer)
 import Simple.JSON as JSON
 
 type PoPInfo =
@@ -68,12 +68,19 @@ type Region = { name :: RegionName
               }
 
 type PoP = { name :: PoPName
+           , geoLoc :: List GeoLoc
            , servers :: List ServerAddress
            , neighbours :: List PoPName
            }
 
 type NetworkJson = Map RegionName PoPJson
-type PoPJson =  Map PoPName (List ServerAddress)
+
+type PoPJson =  Map PoPName PoPInfoJson
+
+type PoPInfoJson = { geoLoc :: (List GeoLoc)
+                   , nodes :: (List ServerAddress)
+                   }
+
 type NeighbourMap =  Map PoPName (List PoPName)
 
 data Msg = Tick
@@ -209,14 +216,13 @@ readAndProcessPoPDefinition :: Config.PoPDefinitionConfig -> ServerAddress -> Ne
 readAndProcessPoPDefinition config thisServerAddress nMap = do
   -- In Effect
   file <- readFile $ joinWith "/" [config.directory, config.popDefinitionFile]
-  let ePoPJson =(JSON.readJSON =<< file)
+  let ePoPJson = (JSON.readJSON =<< file)
   pure do -- In either
         popJson <- ePoPJson
         let allPops = Map.keys =<< Map.values popJson
             filteredNeighbours = filterNeighbours allPops nMap
             regionMap = mapRegionJson filteredNeighbours popJson
         processPoPJson thisServerAddress regionMap filteredNeighbours
-
 
 readFile :: String -> Effect (Either MultipleErrors String)
 readFile fileName = do
@@ -235,11 +241,11 @@ mapRegionJson nMap nwMap =
    Map.mapWithKey (\name pops -> {name : name, pops : mapPoPJson nMap pops}) nwMap
 
 mapPoPJson :: NeighbourMap -> PoPJson -> Map PoPName PoP
-mapPoPJson nMap =
-  Map.mapWithKey (\name servers ->
+mapPoPJson nMap popJson =
+  Map.mapWithKey (\name pop ->
                    let neighbours = Map.lookup name nMap # fromMaybe nil
                    in
-                    {name : name, servers : servers, neighbours})
+                    {name: name, geoLoc: pop.geoLoc ,servers: pop.nodes, neighbours}) popJson
 
 processPoPJson :: ServerAddress -> (Map RegionName Region) -> NeighbourMap -> Either MultipleErrors PoPInfo
 processPoPJson thisServerAddress regions nMap =

@@ -41,5 +41,5 @@ routeCodec = root $ sum
 uname :: RouteDuplex' String -> RouteDuplex' Username
 uname = as Username.toString (Username.parse >>> note "Bad username")
 
-pName :: RouteDuplex' String -> RouteDuplex' PoPName
-pName = as toStringPname (parsePname >>> note "Bad username")
+popLeaderName :: RouteDuplex' String -> RouteDuplex' PoPName
+popLeaderName = as toStringPname (parsePname >>> note "Bad username")

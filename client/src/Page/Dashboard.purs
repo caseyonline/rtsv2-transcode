@@ -7,10 +7,12 @@ import CSS.Size as Size
 import Component.HOC.Connect as Connect
 import Control.Monad.Reader (class MonadAsk)
 import Data.Const (Const)
+import Data.Either (Either(..))
 import Data.Foldable (traverse_)
 import Data.Int (toNumber)
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Symbol (SProxy(..))
+import Debug.Trace (spy)
 import Effect.Aff.Class (class MonadAff)
 import Effect.Class (liftEffect)
 import Foreign.ECharts as EC
@@ -19,6 +21,8 @@ import Halogen.HTML as HH
 import Halogen.HTML.CSS as CSS
 import Halogen.HTML.Properties as HP
 import Rtsv2App.Capability.Navigate (class Navigate)
+import Rtsv2App.Capability.Resource.Api (class ManageApi, getTimedRoutes)
+import Rtsv2App.Capability.Resource.User (class ManageUser)
 import Rtsv2App.Component.HTML.Footer (footer)
 import Rtsv2App.Component.HTML.Header as HD
 import Rtsv2App.Component.HTML.MainMenu as MM
@@ -26,7 +30,8 @@ import Rtsv2App.Component.HTML.Utils (css)
 import Rtsv2App.Data.Profile (Profile)
 import Rtsv2App.Data.Route (Route(..))
 import Rtsv2App.Env (UserEnv)
-
+import Shared.Types (PoPName(..))
+import Shared.Types.Agent.State (TimedPoPRoutes)
 
 -------------------------------------------------------------------------------
 -- Types for Dashboard Page
@@ -36,15 +41,18 @@ data Action
   | Receive { currentUser :: Maybe Profile }
 
 type State =
-  { page :: Int
-  , currentUser :: Maybe Profile
+  { currentUser     :: Maybe Profile
+  , timedRoutes     :: Maybe (Array TimedPoPRoutes)
+  , chart           :: Maybe EC.Instance
+  , isOpen          :: Boolean
+  , selectedRoute   :: Maybe String
+  , availableRoutes :: Array String
   }
 
 type ChildSlots =
   ( mainMenu :: MM.Slot Unit
   , header :: MM.Slot Unit
   )
-
 
 -------------------------------------------------------------------------------
 -- Components
@@ -54,6 +62,8 @@ component
    . MonadAff m
   => MonadAsk { userEnv :: UserEnv | r } m
   => Navigate m
+  => ManageUser m
+  => ManageApi m
   => H.Component HH.HTML (Const Void) {} Void m
 component = Connect.component $ H.mkComponent
   { initialState
@@ -67,15 +77,26 @@ component = Connect.component $ H.mkComponent
   where
   initialState { currentUser } =
     { currentUser
-    , page: 1
+    , timedRoutes: Nothing
+    , selectedRoute: Just "fra"
+    , isOpen: false
+    , availableRoutes: ["dia", "Dal", "lax", "fra"]
+    , chart: Nothing
     }
-    
+
   handleAction :: Action -> H.HalogenM State Action ChildSlots Void m Unit
   handleAction = case _ of
     Initialize -> do
-      H.getHTMLElementRef (H.RefLabel "mymap") >>= traverse_ \element -> do
-          chart <- H.liftEffect $ EC.makeChart element
-          liftEffect $ EC.setOption {} chart
+      st ← H.get
+      mbTimedRoutes <- getTimedRoutes $ PoPName $ fromMaybe "" st.selectedRoute
+      case mbTimedRoutes of
+        Left e -> H.modify_ _ { timedRoutes = Nothing }
+        Right timedRoutes -> do
+          
+          H.getHTMLElementRef (H.RefLabel "mymap") >>= traverse_ \element -> do
+              chart <- H.liftEffect $ EC.makeChart element
+              H.modify_ _ { chart = Just chart }
+              liftEffect $ EC.setOption {} $ spy "chart" chart
 
     Receive { currentUser } ->
       H.modify_ _ { currentUser = currentUser }
