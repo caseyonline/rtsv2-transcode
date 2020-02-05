@@ -25,26 +25,46 @@ getStatsImpl() ->
                                                           _ = '_'},
                                     [{'orelse',
                                       {'==', '$1', source_bitrate_monitor},
-                                      {'==', '$1', source_frame_meter}}],
+                                      {'orelse',
+                                       {'==', '$1', rtmp_ingest},
+                                       {'==', '$1', source_frame_meter}}}],
                                     ['$2']}],
 
-                    Metrics = ets:select(id3as_workflow_node_metrics, MetricsSpec),
+                    Statuses = ets:select(id3as_workflow_node_metrics, MetricsSpec),
 
                     Initial = #{streamAndVariant => StreamAndVariant},
 
+                    %% TODO -if we don't get everything, then need to return nothing - so lists:filtermap
                     Output = lists:foldl(fun(#status{module = frame_flow_meter,
-                                                     metrics = FrameFlowMetrics}, Acc) ->
-                                             Acc#{frameFlowMeterMetrics => frame_flow_metrics_to_purs(FrameFlowMetrics)};
+                                                     metrics = Metrics}, Acc) ->
+                                             Acc#{frameFlowMeterMetrics => frame_flow_metrics_to_purs(Metrics)};
                                             (#status{module = stream_bitrate_monitor,
-                                                     metrics = BitrateMetrics}, Acc) ->
-                                             Acc#{streamBitrateMetrics => stream_bitrate_metrics_to_purs(BitrateMetrics)}
+                                                     metrics = Metrics}, Acc) ->
+                                             Acc#{streamBitrateMetrics => stream_bitrate_metrics_to_purs(Metrics)};
+                                            (#status{module = rtmp_push_ingest_generator,
+                                                     metrics = Metrics}, Acc) ->
+                                             Acc#{rtmpIngestMetrics => rtmp_metrics_metrics_to_purs(Metrics)}
                                          end,
                                          Initial,
-                                         Metrics),
+                                         Statuses),
                     Output
                 end,
                 Refs)
   end.
+
+rtmp_metrics_metrics_to_purs(Metrics) ->
+
+  lists:foldl(fun(#text_metric{name = remote_ip, value = Value}, Acc) ->
+                  Acc#{remoteIp => Value};
+                 (#gauge_metric{name = remote_port, value = Value}, Acc) ->
+                  Acc#{remotePort => Value};
+                 (#counter_metric{name = bytes_read, value = Value}, Acc) ->
+                  Acc#{bytesRead => Value};
+                 (_, Acc) ->
+                  Acc
+              end,
+              #{},
+              Metrics).
 
 frame_flow_metrics_to_purs(Metrics) ->
 
