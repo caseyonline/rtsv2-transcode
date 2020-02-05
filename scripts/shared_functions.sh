@@ -92,7 +92,7 @@ function start_node {
   touch "logs/$nodeName/t-serf.log"
 
   tmux -L "$tmuxSession" send-keys " export HOSTNAME=$addr" C-m
-  tmux -L "$tmuxSession" send-keys " serf agent -iface $iface -node $nodeName -bind $addr:7946 -rpc-addr $addr:7373 | tee -a logs/$nodeName/i-serf.log | grep -v 'Accepted client'" C-m
+  tmux -L "$tmuxSession" send-keys " serf agent -iface $iface -node $nodeName -bind $addr:7946 -rpc-addr $addr:7373 | tee -a logs/$nodeName/i-serf.log | grep -v 'Accepted client' | grep -v 'liveness' | grep -v 'transPoPLeader'" C-m
   tmux -L "$tmuxSession" split-window -h -p 80
   tmux -L "$tmuxSession" send-keys " export HOSTNAME=$addr" C-m
   tmux -L "$tmuxSession" send-keys " tail -f logs/$nodeName/t-serf.log | grep -v 'Accepted client'" C-m

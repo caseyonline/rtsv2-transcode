@@ -338,7 +338,7 @@ handleInfo msg state@{ thisServer
 
 handleTransPoPMessage :: TransMessage -> State -> Effect State
 handleTransPoPMessage (TMStreamState StreamAvailable streamId address) state@{intraPoPApi} = do
-  --logInfo "Remote stream available" {streamId, server}
+  logInfo "Remote stream available" {streamId, address}
   mServerLocation <- PoPDefinition.whereIsServer address
   case mServerLocation of
     Nothing -> pure state

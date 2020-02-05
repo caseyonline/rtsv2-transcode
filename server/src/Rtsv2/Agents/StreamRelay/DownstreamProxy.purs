@@ -90,7 +90,8 @@ maybeCallProxyWithRoute {streamId, thisServer, proxiedServer: Just remoteRelay} 
                      -- Retry loop?  DOn't use follow here are we should be talking to the
                      -- correct server directly
                      logInfo "Registering route" {payload}
-                     void $ SpudGun.postJson url payload)
+                     void $ SpudGun.postJson url payload
+                   )
 
 addRelayRoute :: StreamId -> PoPName -> List PoPName -> Effect Unit
 addRelayRoute streamId popName route = Gen.doCast (serverName streamId popName)

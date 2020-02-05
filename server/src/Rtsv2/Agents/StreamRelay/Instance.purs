@@ -32,6 +32,7 @@ import Pinto (ServerName(..), StartLinkResult, isRegistered)
 import Pinto.Gen (CallResult(..))
 import Pinto.Gen as Gen
 import PintoHelper (exposeState)
+import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.StreamRelay.DownstreamProxy as DownstreamProxy
 import Rtsv2.Agents.StreamRelay.Types (CreateRelayPayload, RegisterEgestPayload, SourceRoute, RegisterRelayChainPayload)
 import Rtsv2.Agents.TransPoP as TransPoP
@@ -74,10 +75,12 @@ status =
        }
 
 init :: CreateRelayPayload -> Effect State
-init payload = do
+init payload@{streamId} = do
   logInfo "StreamRelay starting" {payload}
   thisServer <- PoPDefinition.getThisServer
-  pure { streamId: payload.streamId
+  IntraPoP.announceRelayIsAvailable streamId
+  -- TODO - linger timeout / exit if idle
+  pure { streamId: streamId
        , aggregatorPoP : payload.aggregatorPoP
        , thisServer
        , relaysServed : Map.empty

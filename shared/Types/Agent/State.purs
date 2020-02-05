@@ -59,6 +59,9 @@ type IntraPoP
   = { aggregatorLocations :: Array { streamId :: StreamId
                                    , servers :: Array Server
                                    }
+    , relayLocations :: Array { streamId :: StreamId
+                              , servers :: Array Server
+                              }
     }
 
 type IngestStats f = Container f { streamAndVariant :: StreamAndVariant
