@@ -15,8 +15,6 @@ module Shared.Types
        , WorkflowMetric(..)
        , MetricData(..)
        , MetricTag(..)
-       , MetricTags(..)
-       , MT(..)
        , MetricValue(..)
        , toServer
        , toServerLoad
@@ -33,13 +31,11 @@ import Data.Array (fromFoldable, toUnfoldable)
 import Data.Foldable (class Foldable)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show (genericShow)
-import Data.Map (Map)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype, unwrap)
 import Data.Symbol (SProxy(..))
-import Data.Tuple (Tuple(..))
 import Data.Unfoldable (class Unfoldable)
-import Foreign (F, unsafeToForeign)
+import Foreign (F)
 import Record as Record
 import Simple.JSON (class ReadForeign, class WriteForeign, readImpl, writeImpl)
 import Simple.JSON.Generics (untaggedSumRep)
@@ -205,16 +201,6 @@ derive newtype instance eqMetricTag :: Eq MetricTag
 derive newtype instance showMetricTag :: Show MetricTag
 derive newtype instance readForeignMetricTag :: ReadForeign MetricTag
 derive newtype instance writeForeignMetricTag :: WriteForeign MetricTag
-
-type MT = {name :: String, value :: String}
-
-newtype MetricTags f = MetricTags (Container f MT)
-derive instance newtypeMetricTags :: Newtype (MetricTags f) _
-derive newtype instance eqMetricTags :: (Eq (f MT)) => Eq (MetricTags f)
-derive newtype instance showMetricTags :: (Show (f MT)) => Show (MetricTags f)
-derive newtype instance readForeignMetricTags :: (Unfoldable f, ReadForeign (f MT)) => ReadForeign (MetricTags f)
-instance writeForeignMetricTags :: (Foldable f, WriteForeign MT) => WriteForeign (MetricTags f) where
-  writeImpl tags = unsafeToForeign 1
 
 newtype MetricData f = MetricData
                        { name :: String

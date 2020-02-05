@@ -1,5 +1,6 @@
 -module(rtsv2_agents_ingestStats@foreign).
 
+-include_lib("id3as_common/include/common.hrl").
 -include_lib("id3as_media/include/id3as_workflow.hrl").
 
 -export([
@@ -29,75 +30,112 @@ getStatsImpl() ->
 
                     Metrics = ets:select(id3as_workflow_node_metrics, MetricsSpec),
 
-                    Extracted = lists:map(fun(#status{module = frame_flow_meter,
-                                                      metrics = FrameFlowMetrics}) ->
-                                              #{source => <<"frame_flow_meter">>,
-                                                metrics => metrics_to_purs(FrameFlowMetrics)};
-                                             (#status{module = stream_bitrate_monitor,
-                                                      metrics = BitrateMetrics}) ->
-                                              #{source => <<"stream_bitrate_monitor">>,
-                                                metrics => metrics_to_purs(BitrateMetrics)}
-                                          end,
-                                          Metrics),
+                    Initial = #{streamAndVariant => StreamAndVariant},
 
-                    #{streamAndVariant => StreamAndVariant,
-                       metrics => Extracted}
+                    Output = lists:foldl(fun(#status{module = frame_flow_meter,
+                                                     metrics = FrameFlowMetrics}, Acc) ->
+                                             Acc#{frameFlowMeterMetrics => frame_flow_metrics_to_purs(FrameFlowMetrics)};
+                                            (#status{module = stream_bitrate_monitor,
+                                                     metrics = BitrateMetrics}, Acc) ->
+                                             Acc#{streamBitrateMetrics => stream_bitrate_metrics_to_purs(BitrateMetrics)}
+                                         end,
+                                         Initial,
+                                         Metrics),
+                    Output
                 end,
                 Refs)
   end.
 
-metrics_to_purs(Metrics) ->
-  [metric_to_purs(Metric) || Metric <- Metrics].
+frame_flow_metrics_to_purs(Metrics) ->
 
-metric_to_purs(#counter_metric{name = Name,
-                               display_name = DisplayName,
-                               value = Value,
-                               tags = Tags}) ->
-  {counter, #{name => Name,
-              displayName => DisplayName,
-              value => value_to_purs(Value),
-              tags => [tag_to_purs(Tag) || Tag <- Tags]
-             }};
+  Streams = lists:foldl(fun(#counter_metric{name = frame_count,
+                                            value = Value,
+                                            tags = Tags}, Acc) ->
+                            update(frameCount, Value, Tags, Acc);
+                           (#counter_metric{name = byte_count,
+                                            value = Value,
+                                            tags = Tags}, Acc) ->
+                            update(byteCount, Value, Tags, Acc);
+                           (#counter_metric{name = last_dts,
+                                            value = Value,
+                                            tags = Tags}, Acc) ->
+                            update(lastDts, Value, Tags, Acc);
+                           (#counter_metric{name = last_pts,
+                                            value = Value,
+                                            tags = Tags}, Acc) ->
+                            update(lastPts, Value, Tags, Acc);
+                           (#counter_metric{name = last_capture_ms,
+                                            value = Value,
+                                            tags = Tags}, Acc) ->
+                            update(lastCaptureMs, Value, Tags, Acc);
+                           (#text_metric{name = codec,
+                                         value = Value,
+                                         tags = Tags}, Acc) ->
+                            update(codec, Value, Tags, Acc);
+                           (_, Acc) ->
+                            Acc
+                        end,
+                        #{},
+                        Metrics),
 
-metric_to_purs(#gauge_metric{name = Name,
-                             display_name = DisplayName,
-                             value = Value,
-                             tags = Tags}) ->
-  {gauge, #{name => Name,
-            displayName => DisplayName,
-            value => value_to_purs(Value),
-            tags => [tag_to_purs(Tag) || Tag <- Tags]
-           }};
+  #{perStreamMetrics => [maps:put(metrics, StreamMetrics, tags_to_stream(Tags))
+                         || {Tags, StreamMetrics} <- maps:to_list(Streams)]}.
 
-metric_to_purs(#text_metric{name = Name,
-                            display_name = DisplayName,
-                            value = Value,
-                            tags = Tags}) ->
+stream_bitrate_metrics_to_purs(Metrics) ->
 
-  {text, #{name => Name,
-           displayName => DisplayName,
-           value => value_to_purs(Value),
-           tags => [tag_to_purs(Tag) || Tag <- Tags]
-           }}.
+  Outer = lists:foldl(fun(#gauge_metric{name = window_size, value = WindowSize}, Acc) ->
+                          Acc#{windowSize => WindowSize};
+                         (#gauge_metric{name = notification_frequency, value = NotificationFrequency}, Acc) ->
+                          Acc#{notificationFrequency => NotificationFrequency};
+                         (_, Acc) ->
+                          Acc
+                      end,
+                      #{},
+                      Metrics),
 
-tag_to_purs({Name, Value}) ->
-  #{name => to_binary(Name),
-    value => to_binary(Value)}.
+  Streams = lists:foldl(fun(#counter_metric{name = frame_count,
+                                            value = Value,
+                                            tags = Tags}, Acc) ->
+                            update(frameCount, Value, Tags, Acc);
+                           (#gauge_metric{name = packets_per_second,
+                                          value = Value,
+                                          tags = Tags}, Acc) ->
+                            update(packetsPerSecond, Value, Tags, Acc);
+                           (#gauge_metric{name = bitrate,
+                                          value = Value,
+                                          tags = Tags}, Acc) ->
+                            update(bitrate, Value, Tags, Acc);
+                           (#gauge_metric{name = average_packet_size,
+                                          value = Value,
+                                          tags = Tags}, Acc) ->
+                            update(averagePacketSize, Value, Tags, Acc);
+                           (_, Acc) ->
+                            Acc
+                        end,
+                        #{},
+                        Metrics),
 
-value_to_purs(Value) when is_integer(Value) ->
-  {metricInt, Value};
+  Outer#{perStreamMetrics => [maps:put(metrics, StreamMetrics, tags_to_stream(Tags))
+                              || {Tags, StreamMetrics} <- maps:to_list(Streams)]}.
 
-value_to_purs(Value) when is_float(Value) ->
-  {metricFloat, Value};
+tags_to_stream(Tags) ->
+  lists:foldl(fun({profile_name, Name}, Acc) ->
+                  Acc#{profileName => atom_to_binary(Name, utf8)};
+                 ({stream_id, StreamId}, Acc) ->
+                  Acc#{streamId => StreamId};
+                 ({frame_type, FrameType}, Acc) ->
+                  Acc#{frameType => {case FrameType of
+                                       video -> 'video';
+                                       audio -> 'audio';
+                                       subtitles -> 'subtitles';
+                                       program_details -> 'programDetails';
+                                       pcr -> 'pCR'
+                                     end}}
+              end,
+              #{},
+              Tags).
 
-value_to_purs(Value) when is_binary(Value) ->
-  {metricString, Value};
-
-value_to_purs(Value) when is_atom(Value) ->
-  {metricString, atom_to_binary(Value, utf8)}.
-
-to_binary(Bin) when is_binary(Bin) ->
-  Bin;
-
-to_binary(Atom) when is_atom(Atom) ->
-  atom_to_binary(Atom, utf8).
+update(Name, Value, Tags, Streams) ->
+  Stream = maps:get(Tags, Streams, #{}),
+  Stream2 = maps:put(Name, Value, Stream),
+  maps:put(Tags, Stream2, Streams).
