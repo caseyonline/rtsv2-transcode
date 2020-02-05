@@ -24,6 +24,7 @@
     , "routing"
     , "routing-duplex"
     , "simple-json"
+    , "simple-json-generics"
     , "slug"
     , "struct"
     , "tolerant-argonaut"
