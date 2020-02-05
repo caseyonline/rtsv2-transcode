@@ -2,8 +2,8 @@ module Rtsv2.Agents.IntraPoP
   ( startLink
 
     -- This data is essentially global - within and across PoPs
-  , announceAggregatorIsAvailable
-  , announceAggregatorStopped
+  , announceLocalAggregatorIsAvailable
+  , announceLocalAggregatorStopped
   , announceOtherPoPAggregatorIsAvailable
   , announceOtherPoPAggregatorStopped
 
@@ -58,7 +58,7 @@ import Effect.Random (randomInt)
 import Ephemeral.Map (EMap)
 import Ephemeral.Map as EMap
 import Erl.Atom (Atom)
-import Erl.Data.List (List, index, length, nil, singleton, sortBy, take, uncons)
+import Erl.Data.List (List, head, index, length, nil, singleton, sortBy, take, uncons)
 import Erl.Data.Map (Map, alter, fromFoldable, values)
 import Erl.Data.Map as Map
 import Erl.Process (Process, spawnLink)
@@ -182,14 +182,31 @@ isStreamIngestAvailable streamId =
 isIngestActive :: StreamAndVariant -> Effect Boolean
 isIngestActive (StreamAndVariant s v) = Gen.call serverName \state -> CallReply false state
 
-whereIsIngestAggregator :: StreamId -> Effect (List (LocalOrRemote ServerLoad))
-whereIsIngestAggregator = whereIs_ _.aggregators
 
-whereIsStreamRelay :: StreamId -> Effect (List (LocalOrRemote ServerLoad))
-whereIsStreamRelay = whereIs_ _.streamRelays
 
-whereIsEgest :: StreamId -> Effect (List (LocalOrRemote ServerLoad))
-whereIsEgest = whereIs_ _.egests
+-- TODO - we should be calling the prime' versions and handling that there might, in fact be more than
+-- one instance of things we'd like to be singletons
+whereIsIngestAggregator :: StreamId -> Effect (Maybe Server)
+whereIsIngestAggregator streamId  = head <$> (map serverLoadToServer) <$> (map (fromLocalOrRemote)) <$> whereIsIngestAggregator' streamId
+
+whereIsStreamRelay :: StreamId -> Effect (Maybe (LocalOrRemote Server))
+whereIsStreamRelay streamId  = head <$> (map $ map serverLoadToServer) <$> whereIsStreamRelay' streamId
+
+whereIsEgest :: StreamId -> Effect (List ServerLoad)
+whereIsEgest streamId = (map fromLocalOrRemote) <$> whereIsEgest' streamId
+
+fromLocalOrRemote :: forall a. LocalOrRemote a -> a
+fromLocalOrRemote (Local a) = a
+fromLocalOrRemote (Remote a) = a
+
+whereIsIngestAggregator' :: StreamId -> Effect (List (LocalOrRemote ServerLoad))
+whereIsIngestAggregator' = whereIs_ _.aggregators
+
+whereIsStreamRelay' :: StreamId -> Effect (List (LocalOrRemote ServerLoad))
+whereIsStreamRelay' = whereIs_ _.streamRelays
+
+whereIsEgest' :: StreamId -> Effect (List (LocalOrRemote ServerLoad))
+whereIsEgest' = whereIs_ _.egests
 
 
 whereIs_ ::(State -> StreamLocations) -> StreamId -> Effect (List (LocalOrRemote ServerLoad))
@@ -347,12 +364,12 @@ aggregatorHandler
                     }
 
 -- Called by IngestAggregator to indicate stream on this node
-announceAggregatorIsAvailable :: StreamId -> Effect Unit
-announceAggregatorIsAvailable = announceAvailableLocal aggregatorHandler
+announceLocalAggregatorIsAvailable :: StreamId -> Effect Unit
+announceLocalAggregatorIsAvailable = announceAvailableLocal aggregatorHandler
 
 -- Called by IngestAggregator to indicate stream stopped on this node
-announceAggregatorStopped :: StreamId -> Effect Unit
-announceAggregatorStopped = stopLocal aggregatorHandler
+announceLocalAggregatorStopped :: StreamId -> Effect Unit
+announceLocalAggregatorStopped = stopLocal aggregatorHandler
 
 -- Called by TransPoP to indicate stream that is present on a node in another PoP
 announceOtherPoPAggregatorIsAvailable :: StreamId -> Server -> Effect Unit
@@ -801,12 +818,14 @@ removeLocation streamId server locations =
   , byServer : mapSetDelete server streamId locations.byServer
   }
 
+mapSetInsert :: forall k v. Ord k => Ord v => k -> v -> Map k (Set v) -> Map k (Set v)
 mapSetInsert k v mapSet =
   let
     current = fromMaybe Set.empty $ Map.lookup k mapSet
   in
     Map.insert k (Set.insert v current) mapSet
 
+mapSetDelete :: forall k v. Ord k => Ord v => k -> v -> Map k (Set v) -> Map k (Set v)
 mapSetDelete k v mapSet =
   case Map.lookup k mapSet of
     Nothing -> mapSet

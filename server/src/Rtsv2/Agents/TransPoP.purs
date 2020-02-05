@@ -1,6 +1,6 @@
 module Rtsv2.Agents.TransPoP
-       ( announceStreamIsAvailable
-       , announceStreamStopped
+       ( announceAggregatorIsAvailable
+       , announceAggregatorStopped
        , handleRemoteLeaderAnnouncement
        , health
        , startLink
@@ -163,8 +163,8 @@ health =
       allOtherPoPs <- PoPDefinition.getOtherPoPs
       pure $ Health.percentageToHealth $ (Map.size members) / ((Map.size allOtherPoPs) + 1) * 100
 
-announceStreamIsAvailable :: StreamId -> Server -> Effect Unit
-announceStreamIsAvailable streamId server =
+announceAggregatorIsAvailable :: StreamId -> Server -> Effect Unit
+announceAggregatorIsAvailable streamId server =
   Gen.doCast serverName ((map CastNoReply) <<< doAnnounceStreamIsAvailable)
   where
     doAnnounceStreamIsAvailable :: State -> Effect State
@@ -183,8 +183,8 @@ announceStreamIsAvailable streamId server =
             pure state
       else pure state
 
-announceStreamStopped :: StreamId -> Server -> Effect Unit
-announceStreamStopped streamId server =
+announceAggregatorStopped :: StreamId -> Server -> Effect Unit
+announceAggregatorStopped streamId server =
   Gen.doCast serverName ((map CastNoReply) <<< doAnnounceStreamStopped)
   where
     doAnnounceStreamStopped :: State -> Effect State
@@ -337,22 +337,22 @@ handleInfo msg state@{ thisServer
 
 
 handleTransPoPMessage :: TransMessage -> State -> Effect State
-handleTransPoPMessage (TMStreamState StreamAvailable streamId address) state@{intraPoPApi: {announceRemoteStreamIsAvailable}} = do
+handleTransPoPMessage (TMStreamState StreamAvailable streamId address) state@{intraPoPApi} = do
   --logInfo "Remote stream available" {streamId, server}
   mServerLocation <- PoPDefinition.whereIsServer address
   case mServerLocation of
     Nothing -> pure state
     Just location -> do
-      _ <- announceRemoteStreamIsAvailable streamId (toServer address location)
+      _ <- intraPoPApi.announceOtherPoPAggregatorIsAvailable streamId (toServer address location)
       pure state
 
-handleTransPoPMessage (TMStreamState StreamStopped streamId address) state@{intraPoPApi: {announceRemoteStreamStopped}} = do
+handleTransPoPMessage (TMStreamState StreamStopped streamId address) state@{intraPoPApi} = do
   logInfo "Remote stream stopped" {streamId, address}
   mServerLocation <- PoPDefinition.whereIsServer address
   case mServerLocation of
     Nothing -> pure state
     Just location -> do
-      _ <- announceRemoteStreamStopped streamId (toServer address location)
+      _ <- intraPoPApi.announceOtherPoPAggregatorStopped streamId (toServer address location)
       pure state
 
 --------------------------------------------------------------------------------

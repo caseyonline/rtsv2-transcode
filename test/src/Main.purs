@@ -139,15 +139,15 @@ main =
         predicate vars {activeStreamVariants} = sort (StreamVariant <$> vars) == (sort $ _.streamVariant <$> activeStreamVariants)
 
 --    assertIngestOn :: Array Node -> String -> PublicState.IntraPoP -> Boolean
-    assertIngestOn nodes slotName  = assertBodyFun $ predicate
+    assertAggregatorOn nodes slotName  = assertBodyFun $ predicate
       where
         predicate :: PublicState.IntraPoP -> Boolean
         predicate popState =
           let
             nodeAddresses = toAddr
-            serverAddressesForStreamId = foldl (\acc {streamId, server} ->
+            serverAddressesForStreamId = foldl (\acc {streamId, servers} ->
                                                  if streamId == wrap slotName
-                                                 then acc <> [extractAddress server]
+                                                 then acc <> (extractAddress <$> servers)
                                                  else acc
                                                ) []  popState.aggregatorLocations
           in
@@ -283,13 +283,13 @@ main =
           it "aggregator liveness detected on node stop" do
             ingest start    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as  "create low ingest"
             waitForIntraPoPDisseminate
-            intraPoPState p1n1                   >>= assertIngestOn [p1n1] slot1
+            intraPoPState p1n1                   >>= assertAggregatorOn [p1n1] slot1
                                                                           >>= as "p1n1 is aware of the ingest on p1n1"
-            intraPoPState p1n2                   >>= assertIngestOn [p1n1] slot1
+            intraPoPState p1n2                   >>= assertAggregatorOn [p1n1] slot1
                                                                           >>= as "p1n2 is aware of the ingest on p1n1"
             stopNode p1n1                        >>= as' "make p1n1 fail"
             waitForNodeFailureDisseminate                                 >>= as' "allow failure to disseminate"
-            intraPoPState p1n2                   >>= assertIngestOn [] slot1
+            intraPoPState p1n2                   >>= assertAggregatorOn [] slot1
                                                                           >>= as "p1n2 is aware the ingest stopped"
 
             -- aggregatorStats p1n1 slot1           >>= assertStatusCode 200
