@@ -64,7 +64,7 @@ import Erl.Data.Map as Map
 import Erl.Process (Process, spawnLink)
 import Erl.Utils (Milliseconds, Ref, makeRef)
 import Erl.Utils as Erl
-import Logger (Logger)
+import Logger (Logger, spy)
 import Logger as Logger
 import Partial.Unsafe (unsafeCrashWith)
 import Pinto (ServerName, StartLinkResult)
@@ -301,7 +301,9 @@ type LocationLense = { get :: State -> StreamLocations
 -- TODO should the handlers only be called on state transitions
 -- TODO rename SlotAssetHandler (StreamIdAssetHandler)?
 type AssetHandler =
-  { availableLocal    :: EventHandler
+  { name              :: String
+
+  , availableLocal    :: EventHandler
   , availableThisPoP  :: EventHandler
   , availableOtherPoP :: EventHandler
   , stopLocal         :: EventHandler
@@ -316,7 +318,8 @@ type AssetHandler =
 
 aggregatorHandler :: AssetHandler
 aggregatorHandler
-  = { availableLocal    : availableLocal
+  = { name              : "aggregator"
+    , availableLocal    : availableLocal
     , availableThisPoP  : availableThisPoP
     , availableOtherPoP : availableOtherPoP
     , stopLocal         : stopLocal'
@@ -329,11 +332,11 @@ aggregatorHandler
     availableLocal state streamId server = do
       logInfo "Local aggregator available" {streamId}
       sendToIntraSerfNetwork state "aggregatorAvailable" (IMAggregatorState Available streamId (extractAddress server))
+      state.transPoPApi.announceAggregatorIsAvailable streamId server
 
     availableThisPoP state streamId server = do
       logInfo "New aggregator is avaiable in this PoP" {streamId, server}
       state.transPoPApi.announceAggregatorIsAvailable streamId server
-      sendToIntraSerfNetwork state "aggregatorAvailable" (IMAggregatorState Available streamId (extractAddress server))
 
     availableOtherPoP state streamId server = do
       logInfo "New aggregator is avaiable in another PoP" {streamId, server}
@@ -382,7 +385,8 @@ announceOtherPoPAggregatorStopped = stopOtherPoP aggregatorHandler
 
 egestHandler :: AssetHandler
 egestHandler
-  = { availableLocal    : availableLocal
+  = { name              : "egest"
+    , availableLocal    : availableLocal
     , availableThisPoP  : availableThisPoP
     , availableOtherPoP : availableOtherPoP
     , stopLocal         : stopLocal'
@@ -436,6 +440,7 @@ announceAvailableLocal :: AssetHandler -> StreamId -> Effect Unit
 announceAvailableLocal handler@{locationLense} streamId =
   Gen.doCast serverName
     \state@{ thisServer } -> do
+      let _ = spy "announceAvailableLocal" {name: handler.name, streamId}
       handler.availableLocal state streamId thisServer
       let
         newLocations = recordLocation streamId thisServer (locationLense.get state)
@@ -445,6 +450,7 @@ stopLocal :: AssetHandler -> StreamId -> Effect Unit
 stopLocal handler@{locationLense} streamId = do
   Gen.doCast serverName
     \state@{ thisServer } -> do
+      let _ = spy "stopLocal" {name: handler.name, streamId}
       handler.stopLocal state streamId thisServer
       let
         newLocations = removeLocation streamId thisServer (locationLense.get state)
@@ -456,15 +462,17 @@ announceAvailableOtherPoP :: AssetHandler -> StreamId -> Server -> Effect Unit
 announceAvailableOtherPoP handler@{locationLense} streamId server =
   Gen.doCast serverName
     \state -> do
+      let _ = spy "announceAvailableOtherPoP" {name: handler.name, streamId}
       handler.availableOtherPoP state streamId server
       let
-        newLocations = removeLocation streamId server (locationLense.get state)
+        newLocations = recordLocation streamId server (locationLense.get state)
       pure $ Gen.CastNoReply $ locationLense.set newLocations state
 
 stopOtherPoP :: AssetHandler -> StreamId -> Server -> Effect Unit
 stopOtherPoP handler@{locationLense} streamId server =
   Gen.doCast serverName
     \state -> do
+      let _ = spy "stopOtherPoP" {name: handler.name, streamId}
       handler.stopOtherPoP state streamId server
       let
         newLocations = removeLocation streamId server (locationLense.get state)
@@ -475,12 +483,13 @@ announceAvailableThisPoP :: AssetHandler -> StreamId -> Server -> State -> Effec
 announceAvailableThisPoP handler@{locationLense} streamId server state = do
   handler.availableThisPoP  state streamId server
   let
-    newLocations = removeLocation streamId server (locationLense.get state)
+    newLocations = recordLocation streamId server (locationLense.get state)
   pure $ locationLense.set newLocations state
 
 stopThisPoP :: AssetHandler -> StreamId -> Server -> State -> Effect State
 stopThisPoP handler@{locationLense} streamId server state = do
   handler.stopThisPoP state streamId server
+  let _ = spy "stopThisPoP" {name: handler.name, streamId}
   let
     newLocations = removeLocation streamId server (locationLense.get state)
   pure $ locationLense.set newLocations state
