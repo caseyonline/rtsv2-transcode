@@ -7,6 +7,7 @@ module StetsonHelper
        , genericGetBy2
        , genericGet
        , genericGet2
+       , genericProxyByStreamId
        , GenericStetsonGet
        , GenericStetsonGet2
        , GenericStetsonGetByStreamId
@@ -21,19 +22,22 @@ module StetsonHelper
        , preHookSpyState
 
          -- internal - not for public consumption!
+         -- TODO - move these to newtypes, lose Internal name and don't export the constructor
+       , GenericHandlerState
        , Internal_GenericStatusState
        , Internal_GenericStatusState2
-       , Internal_GenericHandlerState
        , Internal_GenericHandlerWithResponseState
+       , Internal_GenericProxyState
        ) where
 
 import Prelude
 
 import Data.Either (hush)
-import Data.Maybe (Maybe(..), fromMaybe, fromMaybe', isNothing)
-import Data.Newtype (class Newtype, wrap)
+import Data.Maybe (Maybe(..), fromMaybe, fromMaybe', isJust, isNothing)
+import Data.Newtype (class Newtype, unwrap, wrap)
 import Effect (Effect)
 import Erl.Atom (atom)
+import Erl.Cowboy.Handlers.Rest (moved, notMoved)
 import Erl.Cowboy.Req (ReadBodyResult(..), Req, StatusCode(..), binding, readBody, replyWithoutBody)
 import Erl.Data.Binary (Binary)
 import Erl.Data.Binary.IOData (IOData, fromBinary, toBinary)
@@ -41,11 +45,13 @@ import Erl.Data.List (List, singleton, (:))
 import Erl.Data.Map as Map
 import Erl.Data.Tuple (Tuple2, fst, snd, tuple2)
 import Logger (spy)
+import Rtsv2.Agents.Locator.Types (LocalOrRemote, fromLocalOrRemote)
 import Rtsv2.Handler.MimeType as MimeType
+import Rtsv2.Router.Endpoint (Endpoint, makeUrl)
 import Rtsv2.Utils (noprocToMaybe)
 import Rtsv2.Web.Bindings as Bindings
 import Shared.Stream (StreamId)
-import Shared.Types (PoPName)
+import Shared.Types (PoPName, Server)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (class ReadForeign, class WriteForeign, writeJSON)
 import Simple.JSON as JSON
@@ -56,10 +62,10 @@ import Unsafe.Coerce as Unsafe.Coerce
 
 
 
-type GenericStetsonHandler a = StetsonHandler (Internal_GenericHandlerState a)
-type Internal_GenericHandlerState a
-  = { mPayload :: Maybe a
-    }
+type GenericStetsonHandler a = StetsonHandler (GenericHandlerState a)
+newtype GenericHandlerState a
+  = GenericHandlerState { mPayload :: Maybe a
+                        }
 
 genericPost :: forall a b. ReadForeign a => (a -> Effect b) -> GenericStetsonHandler a
 genericPost proxiedFun =
@@ -72,16 +78,15 @@ genericPost proxiedFun =
     init req =
       do
         (mPayload :: Maybe a) <- (hush <$> JSON.readJSON <$> binaryToString <$> allBody req mempty)
-        Rest.initResult req { mPayload
-                            }
+        Rest.initResult req $ GenericHandlerState{ mPayload }
 
-    acceptJson req state@{mPayload} = do
+    acceptJson req state@(GenericHandlerState {mPayload}) = do
       let
         payload = fromMaybe' (lazyCrashIfMissing "impossible noEgestPayload") mPayload
       _ <- proxiedFun payload
       Rest.result true req state
 
-    malformedRequest req state@{mPayload} =
+    malformedRequest req state@(GenericHandlerState {mPayload}) =
       Rest.result (isNothing mPayload) req state
 
 
@@ -245,6 +250,52 @@ genericGetBy2 bindElement1 bindElement2 getData =
             Rest.stop newReq state
         Just theData ->
           Rest.result (writeJSON theData) req state
+
+
+
+type Internal_GenericProxyState
+  = { whereIsResp :: Maybe Server
+    , streamId :: StreamId
+    }
+
+genericProxyByStreamId :: (StreamId -> Effect (Maybe (LocalOrRemote Server))) -> (StreamId -> Endpoint) -> StetsonHandler Internal_GenericProxyState
+genericProxyByStreamId whereIsFun endpointFun =
+  Rest.handler init
+  # Rest.allowedMethods (Rest.result (GET : mempty))
+  # Rest.resourceExists resourceExists
+  # Rest.previouslyExisted previouslyExisted
+  # Rest.movedTemporarily movedTemporarily
+
+  # Rest.yeeha
+  where
+    init req =
+      let
+        bindElement = Bindings.streamIdBindingLiteral
+        bindValue :: StreamId
+        bindValue = wrap $ fromMaybe' (lazyCrashIfMissing (bindElement <> " binding missing")) $ binding (atom bindElement) req
+      in do
+        whereIsResp <- (map fromLocalOrRemote) <$> whereIsFun bindValue
+        Rest.initResult req
+            { whereIsResp
+            , streamId : bindValue
+            }
+
+    resourceExists req state =
+      Rest.result false req state
+
+    previouslyExisted req state@{whereIsResp} =
+      Rest.result (isJust whereIsResp) req state
+
+    movedTemporarily req state@{whereIsResp, streamId} =
+      case whereIsResp of
+        Just server ->
+          let
+            url = makeUrl server (endpointFun streamId)
+          in
+            Rest.result (moved $ unwrap url) req state
+        _ ->
+          Rest.result notMoved req state
+
 
 
 --------------------------------------------------------------------------------

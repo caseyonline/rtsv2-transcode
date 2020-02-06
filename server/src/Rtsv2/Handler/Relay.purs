@@ -12,33 +12,28 @@ module Rtsv2.Handler.Relay
 import Prelude
 
 import Data.Either (Either(..), hush, isRight)
-import Data.Maybe (Maybe(..), fromMaybe', isJust, isNothing, maybe)
-import Data.Newtype (unwrap, wrap)
-import Effect (Effect)
-import Erl.Atom (atom)
+import Data.Maybe (Maybe, isNothing, maybe)
+import Data.Newtype (unwrap)
 import Erl.Cowboy.Handlers.Rest (moved, notMoved)
-import Erl.Cowboy.Req (StatusCode(..), binding, replyWithoutBody, setHeader)
+import Erl.Cowboy.Req (StatusCode(..), replyWithoutBody, setHeader)
 import Erl.Data.List (singleton, (:))
 import Erl.Data.Map as Map
 import Logger (spy)
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.Locator.Relay (findOrStart)
-import Rtsv2.Agents.Locator.Types (LocalOrRemote(..), LocationResp, NoCapacity(..), ResourceResp, fromLocalOrRemote)
+import Rtsv2.Agents.Locator.Types (LocalOrRemote(..), LocationResp, NoCapacity(..), ResourceResp)
 import Rtsv2.Agents.StreamRelay.Instance as StreamRelayInstance
 import Rtsv2.Agents.StreamRelay.InstanceSup as StreamRelayInstanceSup
 import Rtsv2.Agents.StreamRelay.Types (CreateRelayPayload, RegisterEgestPayload, RegisterRelayChainPayload)
 import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
-import Rtsv2.Web.Bindings as Bindings
-import Shared.Stream (StreamId)
 import Shared.Types (Server, extractAddress)
 import Shared.Types.Agent.State as PublicState
-import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON as JSON
 import Stetson (HttpMethod(..), StetsonHandler)
 import Stetson.Rest as Rest
-import StetsonHelper (GenericStetsonGetByStreamId, GenericStetsonHandler, allBody, binaryToString, genericGetByStreamId, genericPost, preHookSpyState)
+import StetsonHelper (GenericStetsonGetByStreamId, GenericStetsonHandler, Internal_GenericProxyState, allBody, binaryToString, genericGetByStreamId, genericPost, genericProxyByStreamId, preHookSpyState)
 
 
 stats :: GenericStetsonGetByStreamId PublicState.StreamRelay
@@ -51,51 +46,8 @@ registerEgest :: GenericStetsonHandler RegisterEgestPayload
 registerEgest = genericPost  StreamRelayInstance.registerEgest
 
 
-proxiedStats :: StetsonHandler ProxyState
+proxiedStats :: StetsonHandler Internal_GenericProxyState
 proxiedStats = genericProxyByStreamId IntraPoP.whereIsStreamRelay RelayStatsE
-
-type ProxyState = { whereIsResp :: Maybe Server
-                  , streamId :: StreamId
-                  }
-
-genericProxyByStreamId :: (StreamId -> Effect (Maybe (LocalOrRemote Server))) -> (StreamId -> Endpoint) -> StetsonHandler ProxyState
-genericProxyByStreamId whereIsFun endpointFun =
-  Rest.handler init
-  # Rest.allowedMethods (Rest.result (GET : mempty))
-  # Rest.resourceExists resourceExists
-  # Rest.previouslyExisted previouslyExisted
-  # Rest.movedTemporarily movedTemporarily
-
-  # Rest.yeeha
-  where
-    init req =
-      let
-        bindElement = Bindings.streamIdBindingLiteral
-        bindValue :: StreamId
-        bindValue = wrap $ fromMaybe' (lazyCrashIfMissing (bindElement <> " binding missing")) $ binding (atom bindElement) req
-      in do
-        whereIsResp <- (map fromLocalOrRemote) <$> whereIsFun bindValue
-        Rest.initResult req
-            { whereIsResp
-            , streamId : bindValue
-            }
-
-    resourceExists req state =
-      Rest.result false req state
-
-    previouslyExisted req state@{whereIsResp} =
-      Rest.result (isJust whereIsResp) req state
-
-    movedTemporarily req state@{whereIsResp, streamId} =
-      case whereIsResp of
-        Just server ->
-          let
-            url = makeUrl server (endpointFun streamId)
-          in
-            let _ = spy "movedTemporarily - to " {url} in
-            Rest.result (moved $ unwrap url) req state
-        _ ->
-          Rest.result notMoved req state
 
 
 newtype StartState = StartState { mPayload :: Maybe CreateRelayPayload
