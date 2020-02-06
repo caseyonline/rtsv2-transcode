@@ -15,10 +15,9 @@ module Shared.Types.Agent.State
 
 
 import Data.Maybe (Maybe)
-import Erl.Utils (Milliseconds)
 import Shared.LlnwApiTypes (StreamDetails)
 import Shared.Stream (StreamAndVariant, StreamId, StreamVariant)
-import Shared.Types (Container, GeoLoc, PoPName, RegionName, RtmpClientMetadata, Server, ServerAddress)
+import Shared.Types (GeoLoc, Milliseconds, PoPName, RegionName, RtmpClientMetadata, Server, ServerAddress)
 import Shared.Types.Workflow.Metrics.FrameFlow as FrameFlow
 import Shared.Types.Workflow.Metrics.RtmpPushIngest as RtmpIngest
 import Shared.Types.Workflow.Metrics.StreamBitrateMonitor as StreamBitrateMonitor

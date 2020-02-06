@@ -16,7 +16,7 @@ import Data.Newtype (class Newtype, unwrap, wrap)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, singleton)
-import Erl.Utils (Milliseconds, Ref, makeRef)
+import Erl.Utils (Ref, makeRef)
 import Logger (Logger, spy)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
@@ -37,7 +37,7 @@ import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Rtsv2.Utils (crashIfLeft)
 import Shared.Agent as Agent
 import Shared.Stream (StreamId)
-import Shared.Types (EgestServer, Load, PoPName, RelayServer, Server, ServerLoad(..))
+import Shared.Types (Milliseconds, EgestServer, Load, PoPName, RelayServer, Server, ServerLoad(..))
 import Shared.Types.Agent.State as PublicState
 import SpudGun as SpudGun
 

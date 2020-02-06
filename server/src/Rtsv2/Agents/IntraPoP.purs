@@ -62,7 +62,8 @@ import Erl.Data.List (List, head, index, length, nil, singleton, sortBy, take, u
 import Erl.Data.Map (Map, alter, fromFoldable, values)
 import Erl.Data.Map as Map
 import Erl.Process (Process, spawnLink)
-import Erl.Utils (Milliseconds, Ref, makeRef)
+import Shared.Types (Milliseconds)
+import Erl.Utils (Ref, makeRef)
 import Erl.Utils as Erl
 import Logger (Logger, spy)
 import Logger as Logger
