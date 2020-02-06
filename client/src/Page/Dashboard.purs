@@ -32,6 +32,7 @@ import Rtsv2App.Data.Route (Route(..))
 import Rtsv2App.Env (UserEnv)
 import Shared.Types (PoPName(..))
 import Shared.Types.Agent.State (TimedPoPRoutes)
+import Component.HTML.Dropdown as DP
 
 -------------------------------------------------------------------------------
 -- Types for Dashboard Page
@@ -52,6 +53,7 @@ type State =
 type ChildSlots =
   ( mainMenu :: MM.Slot Unit
   , header :: MM.Slot Unit
+  , dropDown :: MM.Slot Unit
   )
 
 -------------------------------------------------------------------------------
@@ -132,6 +134,7 @@ component = Connect.component $ H.mkComponent
                 [ HH.div
                   [ css "card map" ]
                   html
+                , HH.slot (SProxy :: _ "dropDown") unit DP.component unit absurd
                 ]
               ]
             ]

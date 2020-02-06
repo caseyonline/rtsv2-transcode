@@ -2,15 +2,23 @@ module Foreign.ECharts where
 
 import Prelude
 
+import Control.Monad.Except (throwError)
 import Data.Either (Either)
+import Data.Generic.Rep (class Generic, Constructor(..), NoArguments(..), Sum(..), to)
+import Data.Generic.Rep.Eq (genericEq)
+import Data.Generic.Rep.Ord (genericCompare)
+import Data.Generic.Rep.Show (genericShow)
 import Data.Maybe (Maybe)
-import Data.Symbol (SProxy(..))
+import Data.Symbol (class IsSymbol, SProxy(..), reflectSymbol)
 import Effect (Effect)
 import Effect.Aff (Aff)
+import Foreign as Foreign
 import Foreign.Object (Object)
 import Halogen as H
 import Prim.Row as Row
 import Record as Record
+import Shared.Types (PoPName)
+import Simple.JSON as JSON
 import Unsafe.Coerce (unsafeCoerce)
 import Web.DOM.ParentNode (QuerySelector(..), querySelector)
 import Web.HTML (HTMLElement, window)
@@ -117,7 +125,7 @@ type MarkLine =
   { smooth :: Boolean
   , effect :: MarkLineEffect
   , itemStyle :: Record ItemStyle
-  , data :: Array (Array CityName)
+  , data :: Array (Array PoPName)
   }
 
 type MarkLineEffect =
@@ -146,10 +154,6 @@ type HeatMapSeries =
   , coordinateSystem :: String
   , calendarIndex :: Int
   )
-
-type GeoLocations = Object (Array Number)
-
-type CityName = { name :: String }
 
 -- helpers
 makeTitle
