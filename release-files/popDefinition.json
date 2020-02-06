@@ -1,38 +1,50 @@
 {
   "north-america": {
-      "iad": [
-         "rts-1.iad.llnw.net",
-         "rts-2.iad.llnw.net",
-         "rts-3.iad.llnw.net",
-         "rts-4.iad.llnw.net",
-         "rts-5.iad.llnw.net",
-         "rts-6.iad.llnw.net"
-      ],
-      "dal": [
-         "rts-1.dal.llnw.net",
-         "rts-2.dal.llnw.net",
-         "rts-3.dal.llnw.net",
-         "rts-4.dal.llnw.net",
-         "rts-5.dal.llnw.net",
-         "rts-6.dal.llnw.net"
-      ],
-      "lax": [
-         "rts-1.lax.llnw.net",
-         "rts-2.lax.llnw.net",
-         "rts-3.lax.llnw.net",
-         "rts-4.lax.llnw.net",
-         "rts-5.lax.llnw.net",
-         "rts-6.lax.llnw.net"
+    "iad": {
+      "geoLoc": ["-96.796989","32.776665"],
+      "nodes": [
+        "rts-1.iad.llnw.net",
+        "rts-2.iad.llnw.net",
+        "rts-3.iad.llnw.net",
+        "rts-4.iad.llnw.net",
+        "rts-5.iad.llnw.net",
+        "rts-6.iad.llnw.net"
       ]
-   },
-   "europe": {
-      "fra": [
-         "rts-1.fra.llnw.net",
-         "rts-2.fra.llnw.net",
-         "rts-3.fra.llnw.net",
-         "rts-4.fra.llnw.net",
-         "rts-5.fra.llnw.net",
-         "rts-6.fra.llnw.net"
+    },
+    "dal": {
+      "geoLoc": ["-96.796989","32.776665"],
+      "nodes" [
+        "rts-1.dal.llnw.net",
+        "rts-2.dal.llnw.net",
+        "rts-3.dal.llnw.net",
+        "rts-4.dal.llnw.net",
+        "rts-5.dal.llnw.net",
+        "rts-6.dal.llnw.net"
       ]
-   }
+    },
+    "lax": {
+      "geoLoc": ["-118.243685","34.052234"],
+      "nodes": [
+        "rts-1.lax.llnw.net",
+        "rts-2.lax.llnw.net",
+        "rts-3.lax.llnw.net",
+        "rts-4.lax.llnw.net",
+        "rts-5.lax.llnw.net",
+        "rts-6.lax.llnw.net"
+      ]
+    }
+  },
+  "europe": {
+    "fra": {
+      "geoLoc": ["8.682127","50.110922"],
+      "nodes": [
+        "rts-1.fra.llnw.net",
+        "rts-2.fra.llnw.net",
+        "rts-3.fra.llnw.net",
+        "rts-4.fra.llnw.net",
+        "rts-5.fra.llnw.net",
+        "rts-6.fra.llnw.net"
+      ]
+    }
+  }
 }

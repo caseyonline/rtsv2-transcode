@@ -5,7 +5,6 @@ module Rtsv2.Agents.IngestStats
 
 import Prelude
 
-import Data.Newtype (wrap)
 import Effect (Effect)
 import Erl.Data.List (List, nil)
 import Logger (spy)
@@ -42,7 +41,7 @@ init _ = do
   config@{pollPeriodMs} <- Config.ingestStatsConfig
   _ <- Timer.sendEvery serverName pollPeriodMs Tick
   pure $ { config
-         , currentStats: wrap nil}
+         , currentStats: nil}
 
 handleInfo :: Msg -> State -> Effect (CastResult State)
 handleInfo msg state = do

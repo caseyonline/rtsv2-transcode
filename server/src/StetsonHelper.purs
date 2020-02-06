@@ -128,14 +128,13 @@ type Internal_GenericStatusState a
   = { mData :: Maybe a
     }
 
-
 genericGetByStreamId :: forall a. WriteForeign a =>  (StreamId -> Effect a) -> GenericStetsonGetByStreamId a
 genericGetByStreamId = genericGetBy Bindings.streamIdBindingLiteral
 
 genericGetByPoPName :: forall a. WriteForeign a =>  (PoPName -> Effect a) -> GenericStetsonGetByStreamId a
 genericGetByPoPName = genericGetBy  Bindings.popNameBindingLiteral
 
-genericGet :: forall a. WriteForeign a => (Unit -> Effect a) -> GenericStetsonGetByStreamId a
+genericGet :: forall a. WriteForeign a => (Unit -> Effect a) -> GenericStetsonGet a
 genericGet getData =
   Rest.handler init
   # Rest.allowedMethods (Rest.result (GET : mempty))

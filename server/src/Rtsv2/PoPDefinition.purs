@@ -1,5 +1,6 @@
 module Rtsv2.PoPDefinition
        ( startLink
+       , getPublicPoPDefinition
        , getOtherServersForThisPoP
        , getOtherPoPs
        , getOtherPoPNames
@@ -26,7 +27,7 @@ import Effect (Effect)
 import Effect.Random (randomInt)
 import Erl.Atom (Atom)
 import Erl.Data.List (List, index, length, nil, singleton, (:))
-import Erl.Data.Map (Map, mapMaybeWithKey)
+import Erl.Data.Map (Map, mapMaybeWithKey, toUnfoldable)
 import Erl.Data.Map as Map
 import File as File
 import Foreign (ForeignError(..), MultipleErrors)
@@ -42,6 +43,7 @@ import Rtsv2.Config as Config
 import Rtsv2.Env as Env
 import Rtsv2.Names as Names
 import Shared.Types (GeoLoc, PoPName, RegionName, Server(..), ServerAddress(..), ServerLocation(..), extractPoP, toServer)
+import Shared.Types.Agent.State as PublicState
 import Simple.JSON as JSON
 
 type PoPInfo =
@@ -91,6 +93,16 @@ startLink args =
 
 neighbourMap :: Effect NeighbourMap
 neighbourMap = exposeState _.neighbourMap serverName
+
+getPublicPoPDefinition :: Effect (PublicState.PoPDefinition List)
+getPublicPoPDefinition =
+  exposeState publicPoPDefinition serverName
+  where
+    publicPoPDefinition :: State -> PublicState.PoPDefinition List
+    publicPoPDefinition state@{regions, neighbourMap: neighbours} =
+      { regions : (\{name, pops} -> {name, pops: Map.values pops}) <$> Map.values regions
+      , neighbourMap : (\(Tuple popName popNeighbours) -> {popName, neighbours: popNeighbours}) <$> toUnfoldable neighbours
+      }
 
 getOtherServersForThisPoP :: Effect (List ServerAddress)
 getOtherServersForThisPoP = exposeState _.otherServersInThisPoP serverName
