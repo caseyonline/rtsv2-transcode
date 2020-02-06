@@ -4,6 +4,9 @@ module Shared.Types.Agent.State
        , IngestAggregator
        , IngestStats
        , IntraPoP
+       , PoPDefinition
+       , Region
+       , PoP
        , StreamRelay
        , TimedPoPStep
        , TimedPoPRoute
@@ -14,9 +17,9 @@ module Shared.Types.Agent.State
 import Data.Maybe (Maybe)
 import Shared.LlnwApiTypes (StreamDetails)
 import Shared.Stream (StreamAndVariant, StreamId, StreamVariant)
-import Shared.Types (Container, PoPName, RtmpClientMetadata, Server, ServerAddress)
-import Shared.Types.Workflow.Metrics.RtmpPushIngest as RtmpIngest
+import Shared.Types (Container, GeoLoc, PoPName, RegionName, RtmpClientMetadata, Server, ServerAddress)
 import Shared.Types.Workflow.Metrics.FrameFlow as FrameFlow
+import Shared.Types.Workflow.Metrics.RtmpPushIngest as RtmpIngest
 import Shared.Types.Workflow.Metrics.StreamBitrateMonitor as StreamBitrateMonitor
 
 type TimedPoPRoutes
@@ -64,8 +67,25 @@ type IntraPoP
                               }
     }
 
-type IngestStats f = Container f { streamAndVariant :: StreamAndVariant
-                                 , streamBitrateMetrics :: StreamBitrateMonitor.Metrics f
-                                 , frameFlowMeterMetrics :: FrameFlow.Metrics f
-                                 , rtmpIngestMetrics :: RtmpIngest.Metrics
-                                 }
+type Region f = { name :: RegionName
+                , pops :: f (PoP f)
+                }
+
+type PoP f = { name :: PoPName
+             , geoLoc :: f GeoLoc
+             , servers :: f ServerAddress
+             , neighbours :: f PoPName
+             }
+
+type PoPDefinition f
+  = { regions :: f (Region f)
+    , neighbourMap :: f { popName :: PoPName,
+                          neighbours :: f PoPName
+                        }
+    }
+
+type IngestStats f = f { streamAndVariant :: StreamAndVariant
+                       , streamBitrateMetrics :: StreamBitrateMonitor.Metrics f
+                       , frameFlowMeterMetrics :: FrameFlow.Metrics f
+                       , rtmpIngestMetrics :: RtmpIngest.Metrics
+                       }

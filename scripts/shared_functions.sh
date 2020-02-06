@@ -66,7 +66,9 @@ function destroy_net {
         sudo ip link delete "${name}"
       done
 
-      sudo ip link delete rtsv2-br || true
+      if [[ -n "$(ip -j link | jq -r '.[] | select(.ifname == "rtsv2-br") | .ifindex')" ]]; then
+        sudo ip link delete rtsv2-br
+      fi
       ;;
   esac
 }
@@ -82,9 +84,11 @@ function destroy_beams {
 function start_node {
   local -r tmuxSession=$1
   local -r nodeName=$2
-  local -r iface=$3
+  local -r ifaceIndex=$3
   local -r addr=$4
   local -r sysConfig=$5
+
+  iface=$(interface_name_from_index "${ifaceIndex}")
 
   create_iface "$iface" "$addr"
 

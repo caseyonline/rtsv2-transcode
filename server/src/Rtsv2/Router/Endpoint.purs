@@ -31,6 +31,7 @@ data Endpoint
   | TimedRoutesE PoPName
   | HealthCheckE
   | ServerStateE
+  | PoPDefinitionE
   | EgestStatsE StreamId
   | EgestE
   | RelayE
@@ -77,6 +78,7 @@ endpoint = root $ sum
   , "TimedRoutesE"                                     : "" / "api" / "timedRoutes" / popName segment
   , "HealthCheckE"                                     : "" / "api" / path "healthCheck" noArgs
   , "ServerStateE"                                     : "" / "api" / path "state" noArgs
+  , "PoPDefinitionE"                                   : "" / "api" / path "popDefinition" noArgs
   , "EgestStatsE"                                      : "" / "api" / "agents" / "egest" / streamId segment
   , "EgestE"                                           : "" / "api" / "agents" / path "egest" noArgs
 
