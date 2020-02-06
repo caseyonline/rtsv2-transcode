@@ -37,6 +37,7 @@ data Endpoint
   | RelayEnsureStartedE
   | RelayChainE
   | RelayRegisterE
+  | RelayProxiedStatsE StreamId
   | RelayStatsE StreamId
   | LoadE
   | WorkflowsE
@@ -78,11 +79,14 @@ endpoint = root $ sum
   , "ServerStateE"                                     : "" / "api" / path "state" noArgs
   , "EgestStatsE"                                      : "" / "api" / "agents" / "egest" / streamId segment
   , "EgestE"                                           : "" / "api" / "agents" / path "egest" noArgs
+
   , "RelayE"                                           : "" / "api" / "agents" / "relay" / path "egest"  noArgs
   , "RelayEnsureStartedE"                              : "" / "api" / "agents" / "relay" / path "ensureStarted"  noArgs
   , "RelayChainE"                                      : "" / "api" / "agents" / "relay" / path "chain"  noArgs
   , "RelayRegisterE"                                   : "" / "api" / "agents" / "relay" / path "register" noArgs
   , "RelayStatsE"                                      : "" / "api" / "agents" / "relay" / streamId segment
+  , "RelayProxiedStatsE"                               : "" / "api" / "agents" / "proxied" / "relay" / streamId segment
+
   , "LoadE"                                            : "" / "api" / path "load" noArgs
 
   , "WorkflowsE"                                       : "" / "api" / path "workflows" noArgs

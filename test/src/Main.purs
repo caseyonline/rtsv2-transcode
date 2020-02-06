@@ -84,6 +84,10 @@ main =
                                          { method: M.getMethod
                                          } # attempt <#> stringifyError
 
+    proxiedRelayStats node streamId    = fetch (M.URL $ api node <> "agents/proxied/relay/" <> streamId)
+                                         { method: M.getMethod
+                                         } # attempt <#> stringifyError
+
     intraPoPState node                 = fetch (M.URL $ api node <> "state")
                                          { method: M.getMethod
                                          } # attempt <#> stringifyError
@@ -417,7 +421,7 @@ main =
               waitForIntraPoPDisseminate                                >>= as' "allow intraPoP to spread location of relay"
               intraPoPState p1n1               >>= assertRelayCount slot1 1
                                                                         >>= as  "relay created in aggregator pop"
-              --relayStats   p1n1 slot1          >>= assertStatusCode 200 >>= as  "remote relay exists"
+              proxiedRelayStats p1n1 slot1     >>= assertStatusCode 200 >>= as  "remote relay exists"
 
             it "client ingest starts and stops" do
               client start p1n2 slot1          >>= assertStatusCode 404 >>= as  "no local egest prior to ingest"

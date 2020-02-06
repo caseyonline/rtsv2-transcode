@@ -183,7 +183,7 @@ initStreamRelay state@{relayCreationRetry, streamId, aggregatorPoP, thisServer} 
 
     Right remote@(Remote remoteServer) -> do
       let
-        url = makeUrl remoteServer RelayE
+        url = makeUrl remoteServer RelayRegisterE
       _ <- void <$> crashIfLeft =<< SpudGun.postJson url relayRegistrationPayload
       pure state{relay = Just $ toRelayServer  <$> remote}
   where

@@ -8,6 +8,7 @@ module Rtsv2.Agents.Locator.Types
        , ServerSelectionPredicate
        , FindAndRegisterConfig
        , FindOrStartConfig
+       , fromLocalOrRemote
        )
        where
 
@@ -28,8 +29,6 @@ type FindOrStartConfig payload
     , logWarning :: forall a. Logger a
     }
 
-
-
 type FindAndRegisterConfig payload
   = { registerFun :: payload -> Effect Unit
     , findFun :: (payload -> Effect (Maybe (LocalOrRemote Server)))
@@ -38,10 +37,6 @@ type FindAndRegisterConfig payload
     , startRemoteFun :: ServerLoad -> payload -> Effect Unit
     , logWarning :: forall a. Logger a
     }
-
-
-
-
 
 type ServerSelectionPredicate = ServerLoad -> Boolean
 
@@ -55,6 +50,12 @@ data LocalOrRemote a
 derive instance functorLocalOrRemoteF :: Functor LocalOrRemote
 
 type LocationResp = (Either FailureReason (LocalOrRemote Server))
+
+
+fromLocalOrRemote :: forall a. LocalOrRemote a -> a
+fromLocalOrRemote (Local a) = a
+fromLocalOrRemote (Remote a) = a
+
 
 
 --------------------------------------------------------------------------------
