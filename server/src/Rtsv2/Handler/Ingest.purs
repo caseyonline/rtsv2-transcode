@@ -10,9 +10,12 @@ module Rtsv2.Handler.Ingest
 import Prelude
 
 import Data.Either (hush)
+import Data.Foldable (foldl)
 import Data.Maybe (Maybe(..), fromMaybe')
 import Data.Newtype (unwrap, wrap)
 import Effect (Effect)
+import Erl.Data.Binary (Binary)
+import Erl.Data.Binary.IOData (IOData, fromBinary, toBinary, concat)
 import Erl.Data.List (List, nil, (:))
 import Erl.Data.Tuple (tuple2)
 import Erl.Process.Raw as Raw
@@ -21,28 +24,178 @@ import Rtsv2.Agents.IngestInstance as IngestInstance
 import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
 import Rtsv2.Agents.IngestStats as IngestStats
 import Rtsv2.Config as Config
+import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.Web.Bindings as Bindings
 import Shared.LlnwApiTypes (StreamIngestProtocol(..), StreamPublish, StreamDetails)
 import Shared.Stream (ShortName, StreamAndVariant(..), StreamId, StreamVariant, toVariant)
-import Shared.Types.Agent.State (IngestStats)
 import Shared.Types.Agent.State as PublicState
+import Shared.Types.Workflow.Metrics.Commmon (Stream)
 import Shared.Utils (lazyCrashIfMissing)
+import Simple.JSON (writeJSON)
 import SpudGun (bodyToJSON)
 import SpudGun as SpudGun
 import Stetson (StetsonHandler)
 import Stetson.Rest as Rest
-import StetsonHelper (GenericStetsonGet, genericGet, genericGetBy2)
+import StetsonHelper (GenericStetsonGet, GenericStetsonGet2, genericGet, genericGet2, genericGetBy2)
+import Unsafe.Coerce (unsafeCoerce)
 
 ingestInstances :: StetsonHandler Unit
 ingestInstances =
   Rest.handler (\req -> Rest.initResult req unit)
   # Rest.yeeha
 
-ingestInstancesStats :: GenericStetsonGet (IngestStats List)
-ingestInstancesStats = genericGet (\_ -> do
-                                      stats <- IngestStats.getStats
-                                      pure stats
-                                  )
+ingestInstancesStats :: GenericStetsonGet2
+ingestInstancesStats =
+  genericGet2 nil ((MimeType.json getJson) : (MimeType.text getText) : nil)
+  where
+    getJson _ = do
+      stats <- IngestStats.getStats
+      pure $ writeJSON stats
+    getText _ = do
+      stats <- IngestStats.getStats
+      pure $ stats_to_prometheus stats
+
+stats_to_prometheus :: PublicState.IngestStats List -> String
+stats_to_prometheus stats =
+  foldl (\acc { timestamp
+              , streamBitrateMetrics
+              , frameFlowMeterMetrics
+              } ->
+         let
+           time = toIOData $ show (unwrap timestamp)
+         in
+          streamBitrateMetricsToPrometheus streamBitrateMetrics time acc
+          # frameFlowMetricsToPrometheus frameFlowMeterMetrics time
+        )
+        { frameCountAcc : mempty :: IOData
+        , ppsAcc : mempty :: IOData
+        , bitrateAcc : mempty :: IOData
+        , averagePacketSizeAcc : mempty :: IOData
+        , frameCount2Acc : mempty :: IOData
+        , byteCountAcc : mempty :: IOData
+        , lastDtsAcc : mempty :: IOData
+        , lastPtsAcc : mempty :: IOData
+        , lastCaptureMsAcc : mempty :: IOData
+        , codecAcc : mempty :: IOData
+        }
+  stats
+  # (\{ frameCountAcc
+      , ppsAcc
+      , bitrateAcc
+      , averagePacketSizeAcc
+      , frameCount2Acc
+      , byteCountAcc
+      , lastDtsAcc
+      , lastPtsAcc
+      , lastCaptureMsAcc
+      , codecAcc
+      } -> concat (frameCountHeader : frameCountAcc :
+                   packetsPerSecondHeader : ppsAcc :
+                   bitrateHeader : bitrateAcc :
+                   averagePacketSizeHeader : averagePacketSizeAcc :
+                   frameCount2Header : frameCountAcc :
+                   byteCountHeader : byteCountAcc :
+                   lastDtsHeader : lastDtsAcc :
+                   lastPtsHeader : lastPtsAcc :
+                   lastCaptureMsHeader : lastCaptureMsAcc :
+                   codecHeader : codecAcc :
+                   nil) )
+  # toString
+  where
+    streamBitrateMetricsToPrometheus {perStreamMetrics} time acc =
+      foldl
+      (\innerAcc@{ frameCountAcc
+                 , ppsAcc
+                 , bitrateAcc
+                 , averagePacketSizeAcc}
+        perStream@{ metrics: { frameCount
+                             , packetsPerSecond
+                             , bitrate
+                             , averagePacketSize }} ->
+       let
+         labels = labelsForStream(perStream)
+         line2 = line labels time :: forall a. Show a => String -> a -> IOData
+         frameCountLine    = line2 "ingest_frame_count" frameCount
+         ppsLine           = line2 "ingest_frames_per_second" packetsPerSecond
+         bitrateLine       = line2 "ingest_bitrate" bitrate
+         avgPacketSizeLine = line2 "ingest_average_frame_size" averagePacketSize
+       in
+        innerAcc{ frameCountAcc = frameCountLine <> frameCountAcc
+                , ppsAcc = ppsLine <> ppsAcc
+                , bitrateAcc = bitrateLine <> bitrateAcc
+                , averagePacketSizeAcc = avgPacketSizeLine <> averagePacketSizeAcc
+                }
+      )
+      acc
+      perStreamMetrics
+
+    frameFlowMetricsToPrometheus {perStreamMetrics} time acc =
+      foldl
+      (\innerAcc@{ frameCount2Acc
+                 , byteCountAcc
+                 , lastDtsAcc
+                 , lastPtsAcc
+                 , lastCaptureMsAcc
+                 , codecAcc }
+        perStream@{ metrics: { frameCount
+                             , byteCount
+                             , lastDts
+                             , lastPts
+                             , lastCaptureMs
+                             , codec }} ->
+       let
+         labels = labelsForStream(perStream)
+         line2 = line labels time :: forall a. Show a => String -> a -> IOData
+         frameCountLine    = line2 "ingest_frame_count2" frameCount
+         byteCountLine    = line2 "ingest_byte_count" byteCount
+         lastDtsLine    = line2 "ingest_last_dts" lastDts
+         lastPtsLine    = line2 "ingest_last_pts" lastPts
+         lastCaptureMsLine    = line2 "ingest_last_capture_ms" lastCaptureMs
+         codecLine    = line2 "ingest_codec" codec
+       in
+        innerAcc{ frameCount2Acc = frameCountLine <> frameCount2Acc
+                , byteCountAcc = byteCountLine <> byteCountAcc
+                , lastDtsAcc = lastDtsLine <> lastDtsAcc
+                , lastPtsAcc = lastPtsLine <> lastPtsAcc
+                , lastCaptureMsAcc = lastCaptureMsLine <> lastCaptureMsAcc
+                , codecAcc = codecLine <> codecAcc
+                }
+      )
+      acc
+      perStreamMetrics
+
+    labelsForStream :: forall a. Stream a -> IOData
+    labelsForStream { streamId
+                    , frameType
+                    , profileName} =
+      concat $ toIOData <$> "stream_id=\"" : show streamId : "\",frame_type=\"" : show frameType : "\",profile_name=\"" : profileName : "\"" : nil
+
+    line :: forall a. Show a => IOData -> IOData -> String -> a -> IOData
+    line labels time name value =
+      concat $ (toIOData name) : (toIOData "{") : labels : (toIOData "} ") : (toIOData (show value)) : (toIOData " ") : time : (toIOData "\n") : nil
+
+    frameCountHeader = toIOData "\n# HELP ingest_frame_count The number of frames processed in this stream\n# TYPE ingest_frame_count counter\n"
+    packetsPerSecondHeader = toIOData "\n# HELP ingest_frames_per_second The number of frames per second measured in this stream\n# TYPE ingest_frames_per_second gauge\n"
+    bitrateHeader = toIOData "\n# HELP ingest_frame_bitrate The measured bitrate for this stream\n# TYPE ingest_frame_bitrate gauge\n"
+    averagePacketSizeHeader = toIOData "\n# HELP ingest_average_frame_size The average size of frames in this stream\n# TYPE ingest_average_frame_size gauge\n"
+    frameCount2Header = toIOData "\n# HELP\n# TYPE \n"
+    byteCountHeader = toIOData "\n# HELP\n# TYPE \n"
+    lastDtsHeader = toIOData "\n# HELP\n# TYPE \n"
+    lastPtsHeader = toIOData "\n# HELP\n# TYPE \n"
+    lastCaptureMsHeader = toIOData "\n# HELP\n# TYPE \n"
+    codecHeader = toIOData "\n# HELP\n# TYPE \n"
+
+    toIOData :: String -> IOData
+    toIOData = fromBinary <<< stringToBinary
+
+    toString :: IOData -> String
+    toString = binaryToString <<< toBinary
+
+    stringToBinary :: String -> Binary
+    stringToBinary = unsafeCoerce
+
+    binaryToString :: Binary -> String
+    binaryToString = unsafeCoerce
 
 ingestInstance :: GenericStetsonGet PublicState.Ingest
 ingestInstance =

@@ -14,6 +14,7 @@ import Prelude
 import Data.Newtype (class Newtype, unwrap, wrap)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
+import Simple.JSON (class ReadForeign, class WriteForeign)
 
 foreign import systemTimeImpl :: Atom -> Effect Int
 foreign import sleepImpl :: Int -> Effect Unit
@@ -32,6 +33,8 @@ newtype Milliseconds = Milliseconds Int
 derive instance newtypeMilliseconds :: Newtype Milliseconds _
 derive newtype instance eqMilliseconds :: Eq Milliseconds
 derive newtype instance ordMilliseconds :: Ord Milliseconds
+derive newtype instance readForeignMilliseconds :: ReadForeign Milliseconds
+derive newtype instance writeForeignMilliseconds :: WriteForeign Milliseconds
 
 
 -- | Url type

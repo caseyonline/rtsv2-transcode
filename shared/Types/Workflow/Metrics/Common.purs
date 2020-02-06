@@ -28,7 +28,12 @@ type Stream a = { streamId :: Int
 ------------------------------------------------------------------------------
 derive instance genericFrameType :: Generic FrameType _
 derive instance eqFrameType :: Eq FrameType
-instance showFrameType :: Show FrameType where show = genericShow
+instance showFrameType :: Show FrameType where
+  show Video = "video"
+  show Audio = "audio"
+  show Subtitles = "subtitles"
+  show ProgramDetails = "program_details"
+  show PCR = "pcr"
 instance readFrameType :: ReadForeign FrameType where readImpl = enumSumRep
 instance writeForeignFrameType :: WriteForeign FrameType where
   writeImpl Video = writeImpl "video"

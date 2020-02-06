@@ -15,6 +15,7 @@ module Shared.Types.Agent.State
 
 
 import Data.Maybe (Maybe)
+import Erl.Utils (Milliseconds)
 import Shared.LlnwApiTypes (StreamDetails)
 import Shared.Stream (StreamAndVariant, StreamId, StreamVariant)
 import Shared.Types (Container, GeoLoc, PoPName, RegionName, RtmpClientMetadata, Server, ServerAddress)
@@ -84,7 +85,8 @@ type PoPDefinition f
                         }
     }
 
-type IngestStats f = f { streamAndVariant :: StreamAndVariant
+type IngestStats f = f { timestamp :: Milliseconds
+                       , streamAndVariant :: StreamAndVariant
                        , streamBitrateMetrics :: StreamBitrateMonitor.Metrics f
                        , frameFlowMeterMetrics :: FrameFlow.Metrics f
                        , rtmpIngestMetrics :: RtmpIngest.Metrics
