@@ -13,13 +13,17 @@ import Data.Either (hush)
 import Data.Foldable (foldl)
 import Data.Maybe (Maybe(..), fromMaybe')
 import Data.Newtype (unwrap, wrap)
+import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Erl.Data.Binary (Binary)
 import Erl.Data.Binary.IOData (IOData, fromBinary, toBinary, concat)
 import Erl.Data.List (List, nil, (:))
-import Erl.Data.Tuple (tuple2)
+import Erl.Data.Map (Map, fromFoldable, update)
+import Erl.Data.Tuple (Tuple2, tuple2)
 import Erl.Process.Raw as Raw
+import Erl.Utils (Milliseconds)
 import Erl.Utils as Timer
+import Logger (spy)
 import Rtsv2.Agents.IngestInstance as IngestInstance
 import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
 import Rtsv2.Agents.IngestStats as IngestStats
@@ -55,8 +59,120 @@ ingestInstancesStats =
       stats <- IngestStats.getStats
       pure $ stats_to_prometheus stats
 
+data PrometheusMetricType = Counter
+                          | Gauge
+                          | Histogram
+                          | Summary
+                          | Untyped
+
+type PrometheusMetric = { name :: String
+                        , help :: String
+                        , metricType :: PrometheusMetricType
+                        }
+
+newtype PrometheusTimestamp = PrometheusTimestamp IOData
+
+newtype PrometheusLabels = PrometheusLabels IOData
+
+type PrometheusMetricValue = { value :: String
+                             , timestamp :: PrometheusTimestamp
+                             , labels :: PrometheusLabels
+                             }
+
+type PrometheusPage = { metrics :: List PrometheusMetric
+                      , metricsData ::  Map String (List PrometheusMetricValue)
+                      }
+
+metrics :: List PrometheusMetric
+metrics = { name: "ingest_frame_count"
+          , help: "The number of frames processed in this stream"
+          , metricType: Counter
+          } :
+          { name: "ingest_frames_per_second"
+          , help: "The number of frames per second measured in this stream"
+          , metricType: Gauge
+          } :
+          { name: "ingest_frame_bitrate"
+          , help: "The measured bitrate for this stream"
+          , metricType: Gauge
+          } :
+          { name: "ingest_average_frame_size"
+          , help: "The average size of frames in this stream"
+          , metricType: Gauge
+          } :
+          nil
+
+newPage :: List PrometheusMetric -> PrometheusPage
+newPage pageMetrics =
+  { metrics: pageMetrics
+  , metricsData: fromFoldable $ (\{name} -> Tuple name nil) <$> metrics
+  }
+
+pageToString :: PrometheusPage -> String
+pageToString page =
+  let
+    _ = spy "hello" page
+  in
+   ""
+
+addMetric :: forall a. Show a => String -> a -> PrometheusLabels -> PrometheusTimestamp -> PrometheusPage -> PrometheusPage
+addMetric name value labels timestamp page@{metricsData} =
+  let
+    metric = {value: show value, timestamp, labels}
+  in
+   page{metricsData = update (\v -> Just (metric : v)) name metricsData}
+
 stats_to_prometheus :: PublicState.IngestStats List -> String
 stats_to_prometheus stats =
+  foldl (\page { timestamp
+              , streamBitrateMetrics
+              , frameFlowMeterMetrics
+              } ->
+         let
+           prometheusTimestamp = PrometheusTimestamp $ toIOData $ show (unwrap timestamp)
+         in
+          foldl
+          (\innerPage
+            perStream@{ metrics: { frameCount
+                                 , packetsPerSecond
+                                 , bitrate
+                                 , averagePacketSize }} ->
+           let
+             labels = labelsForStream(perStream)
+           in
+            innerPage
+            # addMetric "ingest_frame_count" frameCount labels prometheusTimestamp
+            # addMetric "ingest_frames_per_second" packetsPerSecond labels prometheusTimestamp
+            # addMetric "ingest_bitrate" bitrate labels prometheusTimestamp
+            # addMetric "ingest_average_frame_size" averagePacketSize labels prometheusTimestamp
+          )
+          page
+          streamBitrateMetrics.perStreamMetrics
+        )
+  (newPage metrics)
+  stats
+  # pageToString
+  where
+    labelsForStream :: forall a. Stream a -> PrometheusLabels
+    labelsForStream { streamId
+                    , frameType
+                    , profileName} =
+      PrometheusLabels $ concat $ toIOData <$> "stream_id=\"" : show streamId : "\",frame_type=\"" : show frameType : "\",profile_name=\"" : profileName : "\"" : nil
+
+    toIOData :: String -> IOData
+    toIOData = fromBinary <<< stringToBinary
+
+    toString :: IOData -> String
+    toString = binaryToString <<< toBinary
+
+    stringToBinary :: String -> Binary
+    stringToBinary = unsafeCoerce
+
+    binaryToString :: Binary -> String
+    binaryToString = unsafeCoerce
+
+stats_to_prometheus2 :: PublicState.IngestStats List -> String
+stats_to_prometheus2 stats =
   foldl (\acc { timestamp
               , streamBitrateMetrics
               , frameFlowMeterMetrics
@@ -144,6 +260,8 @@ stats_to_prometheus stats =
                              , lastCaptureMs
                              , codec }} ->
        let
+         -- Lookup frame_count metric and add my value - with my labels and timestamp
+
          labels = labelsForStream(perStream)
          line2 = line labels time :: forall a. Show a => String -> a -> IOData
          frameCountLine    = line2 "ingest_frame_count2" frameCount
