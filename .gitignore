@@ -24,3 +24,4 @@ server/purs
 .DS_store
 priv/www/assets/js/rtsv2AppBundle.js
 _checkoutsx
+./test/config/popDefinition.json

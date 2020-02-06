@@ -2,10 +2,11 @@ module Main where
 
 import Prelude
 
-import Data.Array (delete, length, sort)
+import Data.Array (catMaybes, delete, filter, intercalate, length, sort)
 import Data.Either (Either(..))
 import Data.Foldable (foldl)
 import Data.Identity (Identity(..))
+import Data.Map as Map
 import Data.Maybe (Maybe(..), isNothing)
 import Data.Newtype (un, wrap)
 import Data.Time.Duration (Milliseconds(..))
@@ -18,6 +19,8 @@ import Effect.Exception (error) as Exception
 import Foreign.Object as Object
 import Milkis as M
 import Milkis.Impl.Node (nodeFetch)
+import Node.Encoding (Encoding(..))
+import Node.FS.Aff (writeTextFile)
 import OsCmd (runProc)
 import Shared.Stream (StreamVariant(..))
 import Shared.Types (ServerAddress(..), extractAddress)
@@ -38,6 +41,58 @@ type TestNode =  { vlan :: String
 
 data Node = Node Int Int
 derive instance eqNode :: Eq Node
+
+
+type PoPInfo = { name :: String
+               , number :: Int
+               , x :: Number
+               , y :: Number
+               }
+
+mkPoPJson :: Array Node -> String
+mkPoPJson  nodes =
+  let
+
+    iad = {name: "iad", number: 1, x: 0.0, y: 0.0} :: PoPInfo
+    dal = {name: "dal", number: 2, x: 0.0, y: 0.0} :: PoPInfo
+    lax = {name: "lax", number: 3, x: 0.0, y: 0.0} :: PoPInfo
+    fra = {name: "fra", number: 4, x: 0.0, y: 0.0} :: PoPInfo
+
+    popNodes pop = filter (\(Node popNum  _) -> popNum == pop.number)
+
+
+    insertNodes k [] acc = acc
+    insertNodes k v acc = Map.insert k v acc
+
+    nodeMap = Map.empty
+              # insertNodes iad.number (popNodes iad nodes)
+              # insertNodes dal.number (popNodes dal nodes)
+              # insertNodes lax.number (popNodes lax nodes)
+              # insertNodes fra.number (popNodes fra nodes)
+
+    quote = show
+    mkPoP :: PoPInfo -> Maybe String
+    mkPoP pop =
+      case Map.lookup pop.number nodeMap of
+        Nothing -> Nothing
+        Just nodesThisPoP -> Just $
+          show pop.name <> ": { \"geoLoc\" : [" <> (quote $ show pop.x) <> "," <> (quote $ show pop.y) <> "], \"nodes\": ["
+                    <> intercalate ", " (quote <<< toAddr <$> nodesThisPoP)
+                    <> "]}"
+
+    mkRegion :: String -> (Array String) -> Maybe String
+    mkRegion name [] = Nothing
+    mkRegion name pops = Just $
+      quote name <> ": {"
+                 <> intercalate ", " pops
+                 <> "}"
+
+    america = mkRegion "americas" $ catMaybes $ mkPoP <$> [iad, dal, lax]
+    europe  = mkRegion "europe"   $ catMaybes $ mkPoP <$> [fra]
+
+  in
+   "{"  <> (intercalate ", " $ catMaybes [america, europe]) <> "}"
+
 
 main :: Effect Unit
 main =
@@ -123,6 +178,7 @@ main =
     debugBody (Left err) = let _ = spy "debugBodyErr" err in pure $ Left err
 
     launch nodes = do
+      writeTextFile UTF8 "config/popDefinition.json" $ mkPoPJson nodes
       _ <- stopSession
       nodes <#> mkNode "test/config/sys.config" # launchNodes
 
@@ -142,7 +198,6 @@ main =
         predicate :: Array String -> PublicState.IngestAggregator -> Boolean
         predicate vars {activeStreamVariants} = sort (StreamVariant <$> vars) == (sort $ _.streamVariant <$> activeStreamVariants)
 
---    assertIngestOn :: Array Node -> String -> PublicState.IntraPoP -> Boolean
     assertAggregatorOn nodes slotName  = assertBodyFun $ predicate
       where
         predicate :: PublicState.IntraPoP -> Boolean
@@ -196,8 +251,7 @@ main =
     describe "Ingest tests"
       let
         p1Nodes = [p1n1, p1n2, p1n3]
-        p2Nodes = [p2n1, p2n2]
-        nodes = p1Nodes <> p2Nodes
+        nodes = p1Nodes
         allNodesBar node = delete node nodes
         maxOut server = setLoad server 60.0 >>= assertStatusCode 204 >>= as ("set load on " <> toAddr server)
         aggregatorNotPresent slot server = aggregatorStats server slot >>= assertStatusCode 404 >>= as ("aggregator not on " <> toAddr server)
@@ -331,8 +385,7 @@ main =
       describe "one pop setup"
         let
           p1Nodes = [p1n1, p1n2, p1n3]
-          p2Nodes = [p2n1, p2n2]
-          nodes = p1Nodes <> p2Nodes
+          nodes = p1Nodes
           allNodesBar node = delete node nodes
         in do
         before_ (launch nodes) do
@@ -501,6 +554,7 @@ toAddr :: Node -> String
 toAddr (Node popNum nodeNum) = "172.16." <> show (popNum + 168) <> "." <> show nodeNum
 toVlan :: Node -> String
 toVlan (Node popNum nodeNum) = "vlan" <> show (popNum * 10) <> show nodeNum
+
 mkNode :: String  -> Node -> TestNode
 mkNode sysConfig node = {vlan: toVlan node, addr: toAddr node, sysConfig}
 
