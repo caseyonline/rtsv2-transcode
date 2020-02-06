@@ -11,6 +11,7 @@ module SpudGun
        , getText
        , getJson
        , postJson
+       , postJsonFollow
        , JsonResponseError
        , SpudResult
        , SpudResponse(..)
@@ -131,12 +132,18 @@ getJson url = get url {headers : tuple2 "Accept" "application/json" : nil}
 postJson :: forall a. WriteForeign a => Url -> a -> Effect SpudResult
 postJson url bodyType = post url { body: writeJSON bodyType,
                                    headers: ( tuple2 "Content-Type" "application/json"
---                                            : tuple2 "Accept" "application/json"
                                             : nil
                                             )
-                                   -- TODO - HTTP redirect or app level?
---                                 , followRedirect : true
                                  }
+
+postJsonFollow :: forall a. WriteForeign a => Url -> a -> Effect SpudResult
+postJsonFollow url bodyType = post url { body: writeJSON bodyType,
+                                         headers: ( tuple2 "Content-Type" "application/json"
+                                                  : nil
+                                                  )
+                                       , followRedirect : true
+                                       }
+
 
 
 --TODO homogeneous constraint generates a function of the wrong arity ??!!

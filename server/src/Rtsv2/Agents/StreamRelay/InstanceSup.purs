@@ -36,7 +36,7 @@ startRelay createPayload = do
 
 init :: Effect Sup.SupervisorSpec
 init = do
-  _ <- logInfo "StreamRelay Supervisor starting" {}
+  logInfo "StreamRelay Supervisor starting" {}
   pure $ Sup.buildSupervisor
     # Sup.supervisorStrategy Sup.SimpleOneForOne
     # Sup.supervisorChildren

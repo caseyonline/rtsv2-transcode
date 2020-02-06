@@ -1,5 +1,6 @@
 module Shared.Types
        ( Load
+       , Container(..)
        , ServerAddress(..)
        , RegionName(..)
        , PoPName(..)
@@ -10,6 +11,12 @@ module Shared.Types
        , ServerRec
        , RelayServer(..)
        , EgestServer(..)
+       , RtmpClientMetadata(..)
+       , RtmpClientMetadataItem(..)
+       , WorkflowMetric(..)
+       , MetricData(..)
+       , MetricTag(..)
+       , MetricValue(..)
        , toServer
        , toServerLoad
        , serverLoadToServer
@@ -21,12 +28,19 @@ module Shared.Types
 
 import Prelude
 
+import Data.Array (fromFoldable, toUnfoldable)
+import Data.Foldable (class Foldable)
 import Data.Generic.Rep (class Generic)
+import Data.Generic.Rep.Show (genericShow)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype, unwrap)
 import Data.Symbol (SProxy(..))
+import Data.Unfoldable (class Unfoldable)
+import Foreign (F)
 import Record as Record
-import Simple.JSON (class ReadForeign, class WriteForeign)
+import Simple.JSON (class ReadForeign, class WriteForeign, readImpl, writeImpl)
+import Simple.JSON.Generics (untaggedSumRep)
+import Simple.JSON.Generics.TaggedSumRep (taggedSumRep)
 
 newtype ServerAddress = ServerAddress String
 derive instance newtypeServerAddress :: Newtype ServerAddress _
@@ -145,6 +159,102 @@ extractPoP = unwrap >>> _.pop
 
 extractAddress :: forall r a. Newtype a { address :: ServerAddress | r } => a -> ServerAddress
 extractAddress = unwrap >>> _.address
+
+------------------------------------------------------------------------------
+-- RTMP Client Metadata - currently there's erlang code in rtsv2_rtmp_ingest_handler that
+-- knows these types - so if you change these, then you need to change that
+------------------------------------------------------------------------------
+data RtmpClientMetadataItem = RtmpBool Boolean
+                            | RtmpString String
+                            | RtmpInt Int
+                            | RtmpFloat Number
+
+derive instance genericRtmpClientMetadataItem :: Generic RtmpClientMetadataItem _
+derive instance eqRtmpClientMetadataItem :: Eq RtmpClientMetadataItem
+instance showRtmpClientMetadataItem :: Show RtmpClientMetadataItem where show = genericShow
+instance readRtmpClientMetadataItem :: ReadForeign RtmpClientMetadataItem where readImpl = untaggedSumRep
+instance writeForeignRtmpClientMetadataItem :: WriteForeign RtmpClientMetadataItem where
+  writeImpl (RtmpBool bool) = writeImpl bool
+  writeImpl (RtmpString string) = writeImpl string
+  writeImpl (RtmpInt int) = writeImpl int
+  writeImpl (RtmpFloat float) = writeImpl float
+
+newtype RtmpClientMetadata = RtmpClientMetadata (Array { name :: String
+                                                       , value :: RtmpClientMetadataItem})
+derive instance newtypeRtmpClientMetadata :: Newtype RtmpClientMetadata _
+derive newtype instance readForeignRtmpClientMetadata :: ReadForeign RtmpClientMetadata
+derive newtype instance writeForeignRtmpClientMetadata :: WriteForeign RtmpClientMetadata
+
+------------------------------------------------------------------------------
+-- Workflow Metrics - currently there's erlang code in IngestStats.erl that
+-- knows these types - so if you change these, then you need to change that
+------------------------------------------------------------------------------
+data MetricValue = MetricInt Int
+                 | MetricFloat Number
+                 | MetricString String
+
+derive instance genericMetricValue :: Generic MetricValue _
+derive instance eqMetricValue :: Eq MetricValue
+instance showMetricValue :: Show MetricValue where show = genericShow
+instance readMetricValue :: ReadForeign MetricValue where readImpl = untaggedSumRep
+instance writeForeignMetricValue :: WriteForeign MetricValue where
+  writeImpl (MetricInt int) = writeImpl int
+  writeImpl (MetricFloat float) = writeImpl float
+  writeImpl (MetricString string) = writeImpl string
+
+newtype MetricTag = MetricTag {name :: String, value :: String}
+
+derive instance newtypeMetricTag :: Newtype MetricTag _
+derive newtype instance eqMetricTag :: Eq MetricTag
+derive newtype instance showMetricTag :: Show MetricTag
+derive newtype instance readForeignMetricTag :: ReadForeign MetricTag
+derive newtype instance writeForeignMetricTag :: WriteForeign MetricTag
+
+newtype MetricData f = MetricData
+                       { name :: String
+                       , displayName :: String
+                       , value :: MetricValue
+                       , tags :: Container f MetricTag
+                       }
+
+derive instance newtypeMetricData :: Newtype (MetricData f) _
+derive newtype instance eqMetricData :: Eq (f MetricTag) => Eq (MetricData f)
+derive newtype instance showMetricData :: Show (f MetricTag) => Show (MetricData f)
+derive newtype instance readForeignMetricData :: Unfoldable f => ReadForeign (MetricData f)
+derive newtype instance writeForeignMetricData :: Foldable f => WriteForeign (MetricData f)
+
+data WorkflowMetric f = Counter (MetricData f)
+                      | Gauge (MetricData f)
+                      | Text (MetricData f)
+
+derive instance genericWorkflowMetric :: Generic (WorkflowMetric f) _
+derive instance eqWorkflowMetric :: Eq (f MetricTag) => Eq (WorkflowMetric f)
+instance showWorkflowMetric :: Show (f MetricTag) => Show (WorkflowMetric f) where show = genericShow
+instance readWorkflowMetric :: (Unfoldable f) => ReadForeign (WorkflowMetric f) where readImpl = taggedSumRep
+instance writeForeignWorkflowMetric :: (Foldable f) => WriteForeign (WorkflowMetric f) where
+  writeImpl (Counter metric) = writeImpl metric
+  writeImpl (Gauge metric) = writeImpl metric
+  writeImpl (Text metric) = writeImpl metric
+
+-- Could possibly treat 'f a' as a single thing and have a Foldable<a> constraint in the readForeign etc
+newtype Container f a = Cont (f a)
+derive instance newtypeContainer :: Newtype (Container f a) _
+derive newtype instance showContainer :: Show (f a) => Show (Container f a)
+derive newtype instance eqContainer :: Eq (f a) => Eq (Container f a)
+instance readForeignContainer :: (Unfoldable f, ReadForeign a) => ReadForeign (Container f a) where
+  readImpl f =
+    let
+      array :: F (Array a)
+      array = readImpl f
+    in
+     Cont <$> toUnfoldable <$> array
+
+instance writeForeignContainer :: (Foldable f, WriteForeign a) => WriteForeign (Container f a) where
+  writeImpl (Cont list) =
+    let
+      array = fromFoldable
+    in
+     writeImpl (array list)
 
 --------------------------------------------------------------------------------
 -- internal

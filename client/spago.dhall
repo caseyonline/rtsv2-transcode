@@ -1,6 +1,9 @@
-{ sources = [ "src/**/*.purs", "test/**/*.purs" ]
-, name = "rsvt2-app"
-, packages = ./packages.dhall
+{ sources =
+    [ "src/**/*.purs", "test/**/*.purs" ]
+, name =
+    "rsvt2-app"
+, packages =
+    ./packages.dhall
 , dependencies =
     [ "aff"
     , "aff-bus"
@@ -26,6 +29,7 @@
     , "routing"
     , "routing-duplex"
     , "simple-json"
+    , "simple-json-generics"
     , "typelevel-prelude"
     , "variant"
     ]

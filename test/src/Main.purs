@@ -4,9 +4,10 @@ import Prelude
 
 import Data.Array (delete, sort)
 import Data.Either (Either(..))
+import Data.Foldable (foldl)
 import Data.Identity (Identity(..))
 import Data.Maybe (Maybe(..), isNothing)
-import Data.Newtype (un)
+import Data.Newtype (un, wrap)
 import Data.Time.Duration (Milliseconds(..))
 import Data.Traversable (traverse_)
 import Data.Tuple (Tuple(..))
@@ -19,11 +20,11 @@ import Milkis as M
 import Milkis.Impl.Node (nodeFetch)
 import OsCmd (runProc)
 import Shared.Stream (StreamVariant(..))
-import Shared.Types (ServerAddress(..))
+import Shared.Types (ServerAddress(..), extractAddress)
 import Shared.Types.Agent.State as PublicState
 import Simple.JSON (class ReadForeign)
 import Simple.JSON as SimpleJSON
-import Test.Spec (after_, before_, describe, it)
+import Test.Spec (after_, before_, describe, describeOnly, it, itOnly)
 import Test.Spec.Reporter.Console (consoleReporter)
 import Test.Spec.Runner (runSpecT)
 
@@ -56,9 +57,6 @@ main =
     start = "start"
     stop  = "stop"
 
-    toAddr (Node popNum nodeNum) = "172.16." <> show (popNum + 168) <> "." <> show nodeNum
-    toVlan (Node popNum nodeNum) = "vlan" <> show (popNum * 10) <> show nodeNum
-    mkNode sysConfig node = {vlan: toVlan node, addr: toAddr node, sysConfig}
 
     api node = "http://" <> toAddr node <> ":3000/api/"
 
@@ -86,6 +84,11 @@ main =
                                          { method: M.getMethod
                                          } # attempt <#> stringifyError
 
+    intraPoPState node                      = fetch (M.URL $ api node <> "state")
+                                         { method: M.getMethod
+                                         } # attempt <#> stringifyError
+
+
     setLoad :: Node -> Number -> Aff (Either String M.Response)
     setLoad node load                  = fetch (M.URL $ api node <> "load")
                                          { method: M.postMethod
@@ -94,7 +97,7 @@ main =
                                          } # attempt <#> stringifyError
 
     maybeLogStep s a =
-      --let _ = spy s a in
+      let _ = spy s a in
       unit
 
     as desc (Right r) =
@@ -135,13 +138,31 @@ main =
         predicate :: Array String -> PublicState.IngestAggregator -> Boolean
         predicate vars {activeStreamVariants} = sort (StreamVariant <$> vars) == (sort $ _.streamVariant <$> activeStreamVariants)
 
+--    assertIngestOn :: Array Node -> String -> PublicState.IntraPoP -> Boolean
+    assertAggregatorOn nodes slotName  = assertBodyFun $ predicate
+      where
+        predicate :: PublicState.IntraPoP -> Boolean
+        predicate popState =
+          let
+            nodeAddresses = toAddr
+            serverAddressesForStreamId = foldl (\acc {streamId, servers} ->
+                                                 if streamId == wrap slotName
+                                                 then acc <> (extractAddress <$> servers)
+                                                 else acc
+                                               ) []  popState.aggregatorLocations
+          in
+          (sort $ (ServerAddress <<< toAddr) <$> nodes) == sort serverAddressesForStreamId
+
     delayMs = delay <<< Milliseconds
+
+    waitForAsyncRelayStart         = delayMs  100.0
+    waitForAsyncRelayStop          = delayMs  100.0
 
     waitForAsyncVariantStart       = delayMs  100.0
     waitForAsyncVariantStop        = delayMs  100.0
 
     waitForIntraPoPDisseminate     = delayMs  500.0
-    waitForNodeFailureDisseminate  = delayMs 2500.0
+    waitForNodeFailureDisseminate  = delayMs 3500.0
 
     waitForTransPoPDisseminate     = delayMs 2000.0
     waitForTransPoPStopDisseminate = delayMs 5000.0 -- TODO - seeems big
@@ -217,7 +238,7 @@ main =
                                                                           >>= as  "aggregator created on idle server"
             traverse_ (aggregatorNotPresent slot1) (allNodesBar p1n2)     >>= as' "aggregator not on busy servers"
             setLoad         p1n3 0.0             >>= assertStatusCode 204 >>= as  "mark p1n3 as idle"
-            stopNode (toAddr p1n2)                                        >>= as' "make p1n2 fail"
+            stopNode p1n2                        >>= as' "make p1n2 fail"
             waitForNodeFailureDisseminate                                 >>= as' "allow failure to disseminate"
             aggregatorStats p1n3 slot1           >>= assertStatusCode 200
                                                      >>= assertAggregator [low]
@@ -258,6 +279,34 @@ main =
             aggregatorStats p1n1 slot1           >>= assertStatusCode 200
                                                      >>= assertAggregator [high]
                                                                           >>= as  "lingered aggregator has high variant"
+
+          it "aggregator liveness detected on node stop" do
+            ingest start    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as  "create low ingest"
+            waitForIntraPoPDisseminate
+            intraPoPState p1n1                   >>= assertAggregatorOn [p1n1] slot1
+                                                                          >>= as "p1n1 is aware of the ingest on p1n1"
+            intraPoPState p1n2                   >>= assertAggregatorOn [p1n1] slot1
+                                                                          >>= as "p1n2 is aware of the ingest on p1n1"
+            stopNode p1n1                        >>= as' "make p1n1 fail"
+            waitForNodeFailureDisseminate                                 >>= as' "allow failure to disseminate"
+            intraPoPState p1n2                   >>= assertAggregatorOn [] slot1
+                                                                          >>= as "p1n2 is aware the ingest stopped"
+
+            -- aggregatorStats p1n1 slot1           >>= assertStatusCode 200
+            --                                          >>= assertAggregator [low]
+            --                                                               >>= as  "aggregator created"
+
+            -- ingest stop     p1n1 shortName1 low >>= assertStatusCode 200  >>= as  "stop low ingest"
+            -- aggregatorStats p1n1 slot1          >>= assertStatusCode 200
+            --                                         >>= assertAggregator []
+            --                                                               >>= as  "aggregator has no variants"
+            -- waitForLessThanLinger                                         >>= as' "wait for less than the linger time"
+            -- ingest start    p1n2 shortName1 high >>= assertStatusCode 200 >>= as  "create high ingest on another node"
+            -- waitForAsyncVariantStart                                      >>= as' "wait for async start of variant"
+            -- aggregatorStats p1n1 slot1           >>= assertStatusCode 200
+            --                                          >>= assertAggregator [high]
+            --                                                               >>= as  "lingered aggregator has high variant"
+
 
     describe "Ingest egest tests" do
       describe "one pop setup"
@@ -349,7 +398,8 @@ main =
               waitForTransPoPDisseminate                                >>= as' "wait for transPop disseminate"
               client start p2n1 slot1          >>= assertStatusCode 204 >>= as  "egest available"
               relayStats   p2n1 slot1          >>= assertStatusCode 200 >>= as  "local relay exists"
-              --relayStats   p1n1 slot1          >>= assertStatusCode 200 >>= as  "remote relay exists"
+              waitForAsyncRelayStart                                    >>= as' "wait for the relay chain to start"
+              relayStats   p1n1 slot1          >>= assertStatusCode 200 >>= as  "remote relay exists"
 
             it "client ingest starts and stops" do
               client start p1n2 slot1          >>= assertStatusCode 404 >>= as  "no local egest prior to ingest"
@@ -425,6 +475,14 @@ assertBodyFun pred either =
         Left _ ->
           pure $ Left $ "Could not parse json " <> body
 
+toAddr :: Node -> String
+toAddr (Node popNum nodeNum) = "172.16." <> show (popNum + 168) <> "." <> show nodeNum
+toVlan :: Node -> String
+toVlan (Node popNum nodeNum) = "vlan" <> show (popNum * 10) <> show nodeNum
+mkNode :: String  -> Node -> TestNode
+mkNode sysConfig node = {vlan: toVlan node, addr: toAddr node, sysConfig}
+
+
 sessionName:: String
 sessionName = "testSession"
 
@@ -455,8 +513,9 @@ throwSlowError e =
     _ <- delay (Milliseconds 200.0)
     throwError $ Exception.error e
 
-stopNode :: String -> Aff Unit
-stopNode nodeAddr = do
+stopNode :: Node -> Aff Unit
+stopNode node = do
+  let nodeAddr = toAddr node
   runProc "./scripts/stopNode.sh" [ sessionName
                                   , nodeAddr
                                   , nodeAddr

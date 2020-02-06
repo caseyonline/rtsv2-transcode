@@ -1,6 +1,6 @@
 module Rtsv2.Agents.TransPoP
-       ( announceStreamIsAvailable
-       , announceStreamStopped
+       ( announceAggregatorIsAvailable
+       , announceAggregatorStopped
        , handleRemoteLeaderAnnouncement
        , health
        , startLink
@@ -163,8 +163,8 @@ health =
       allOtherPoPs <- PoPDefinition.getOtherPoPs
       pure $ Health.percentageToHealth $ (Map.size members) / ((Map.size allOtherPoPs) + 1) * 100
 
-announceStreamIsAvailable :: StreamId -> Server -> Effect Unit
-announceStreamIsAvailable streamId server =
+announceAggregatorIsAvailable :: StreamId -> Server -> Effect Unit
+announceAggregatorIsAvailable streamId server =
   Gen.doCast serverName ((map CastNoReply) <<< doAnnounceStreamIsAvailable)
   where
     doAnnounceStreamIsAvailable :: State -> Effect State
@@ -177,14 +177,14 @@ announceStreamIsAvailable streamId server =
       if extractPoP server == extractPoP thisServer
       then do
             -- Message from our pop - distribute over trans-pop
-            --_ <- logInfo "Local stream being delivered to trans-pop" { streamId: streamId }
+            --logInfo "Local stream being delivered to trans-pop" { streamId: streamId }
             result <- Serf.event state.serfRpcAddress "streamAvailable" (TMStreamState StreamAvailable streamId (extractAddress server)) false
             _ <- maybeLogError "Trans-PoP serf event failed" result {}
             pure state
       else pure state
 
-announceStreamStopped :: StreamId -> Server -> Effect Unit
-announceStreamStopped streamId server =
+announceAggregatorStopped :: StreamId -> Server -> Effect Unit
+announceAggregatorStopped streamId server =
   Gen.doCast serverName ((map CastNoReply) <<< doAnnounceStreamStopped)
   where
     doAnnounceStreamStopped :: State -> Effect State
@@ -197,7 +197,7 @@ announceStreamStopped streamId server =
       if extractPoP server == extractPoP thisServer
       then do
             -- Message from our pop - distribute over trans-pop
-            --_ <- logInfo "Local stream stopped being delivered to trans-pop" { streamId: streamId }
+            --logInfo "Local stream stopped being delivered to trans-pop" { streamId: streamId }
             result <- Serf.event state.serfRpcAddress "streamStopped" (TMStreamState StreamStopped streamId (extractAddress server)) false
             _ <- maybeLogError "Trans-PoP serf event failed" result {}
             pure state
@@ -213,7 +213,7 @@ handleRemoteLeaderAnnouncement server =
                                            , serfRpcAddress
                                            }
       | extractAddress server < extractAddress thisServer = do
-        _ <- logInfo "Another node has taken over as transpop leader; stepping down" { leader: server }
+        logInfo "Another node has taken over as transpop leader; stepping down" { leader: server }
         result <- Serf.leave serfRpcAddress
         _ <- osCmd stopScript
 
@@ -234,7 +234,7 @@ handleRemoteLeaderAnnouncement server =
                                            }
       | Just server /= currentLeader
           && extractAddress server /= extractAddress thisServer = do
-        _ <- logInfo "Another node has announced as transpop leader, remember which one" { leader: server }
+        logInfo "Another node has announced as transpop leader, remember which one" { leader: server }
         now <- systemTimeMs
         pure
           $ state
@@ -258,7 +258,7 @@ init { config: config@{ leaderTimeoutMs
                       , defaultRttMs
                       }
      , intraPoPApi} = do
-  _ <- logInfo "Trans-PoP Agent Starting" {config: config}
+  logInfo "Trans-PoP Agent Starting" {config: config}
   -- Stop any agent that might be running (in case we crashed)
   _ <- osCmd stopScript
 
@@ -322,7 +322,7 @@ handleInfo msg state@{ thisServer
           Serf.MemberLeft members -> membersLeft members state
           Serf.MemberFailed -> pure state
           Serf.StreamFailed -> do
-            _ <- logInfo "Lost connection to TransPoP Serf Agent" {}
+            logInfo "Lost connection to TransPoP Serf Agent" {}
             unsafeCrashWith ("lost_serf_connection")
           Serf.UserEvent name ltime coalesce transMessage ->
             case transMessage of
@@ -337,22 +337,22 @@ handleInfo msg state@{ thisServer
 
 
 handleTransPoPMessage :: TransMessage -> State -> Effect State
-handleTransPoPMessage (TMStreamState StreamAvailable streamId address) state@{intraPoPApi: {announceRemoteStreamIsAvailable}} = do
-  --_ <- logInfo "Remote stream available" {streamId, server}
+handleTransPoPMessage (TMStreamState StreamAvailable streamId address) state@{intraPoPApi} = do
+  --logInfo "Remote stream available" {streamId, server}
   mServerLocation <- PoPDefinition.whereIsServer address
   case mServerLocation of
     Nothing -> pure state
     Just location -> do
-      _ <- announceRemoteStreamIsAvailable streamId (toServer address location)
+      _ <- intraPoPApi.announceOtherPoPAggregatorIsAvailable streamId (toServer address location)
       pure state
 
-handleTransPoPMessage (TMStreamState StreamStopped streamId address) state@{intraPoPApi: {announceRemoteStreamStopped}} = do
-  _ <- logInfo "Remote stream stopped" {streamId, address}
+handleTransPoPMessage (TMStreamState StreamStopped streamId address) state@{intraPoPApi} = do
+  logInfo "Remote stream stopped" {streamId, address}
   mServerLocation <- PoPDefinition.whereIsServer address
   case mServerLocation of
     Nothing -> pure state
     Just location -> do
-      _ <- announceRemoteStreamStopped streamId (toServer address location)
+      _ <- intraPoPApi.announceOtherPoPAggregatorStopped streamId (toServer address location)
       pure state
 
 --------------------------------------------------------------------------------
@@ -389,7 +389,7 @@ shouldProcessStreamState streamId ltime streamStateClocks =
 membersAlive :: (List Serf.SerfMember) -> State -> Effect State
 membersAlive aliveMembers state =
   do
-    _ <- logInfo "Members Alive" {members: _.name <$> aliveMembers}
+    logInfo "Members Alive" {members: _.name <$> aliveMembers}
     newMembers <- foldl addPoP (pure $ state.members) aliveMembers
     pure state {members = newMembers}
   where
@@ -411,7 +411,7 @@ membersAlive aliveMembers state =
 membersLeft :: (List Serf.SerfMember) -> State -> Effect State
 membersLeft leftMembers state =
   do
-    _ <- logInfo "Members Left" {members: _.name <$> leftMembers}
+    logInfo "Members Left" {members: _.name <$> leftMembers}
     newMembers <- foldl removePoP (pure state.members) leftMembers
     pure state {members = newMembers}
   where
@@ -524,7 +524,7 @@ becomeLeader now state@{ lastLeaderAnnouncement
                        , config: {connectStreamAfterMs, rttRefreshMs}
                        , intraPoPApi: {announceTransPoPLeader: intraPoP_announceTransPoPLeader}
                        } = do
-  _ <- logInfo "Leader is absent, becoming leader" {}
+  logInfo "Leader is absent, becoming leader" {}
   _ <- osCmd startScript
   _ <- intraPoP_announceTransPoPLeader
   _ <- Timer.sendAfter serverName connectStreamAfterMs ConnectStream
@@ -554,7 +554,7 @@ connectStream state@{serfRpcAddress} = do
             Left error ->
               case n of
                    0 -> do
-                        _ <- logInfo "Could not connect to TransPoP Serf Agent" { error: error }
+                        logInfo "Could not connect to TransPoP Serf Agent" { error: error }
                         unsafeCrashWith ("could_not_connect_stream")
                    _ -> do
                          _ <- sleep (wrap 100)
@@ -655,5 +655,5 @@ domainLog = Logger.doLog domains
 maybeLogError :: forall r b c d e. Union b (error :: e) c => Nub c d => String -> Either e r -> Record b  -> Effect Unit
 maybeLogError _ (Right _) _ = pure unit
 maybeLogError msg (Left err) metadata = do
-  _ <- logInfo msg (Record.merge metadata {error: err})
+  logInfo msg (Record.merge metadata {error: err})
   pure unit

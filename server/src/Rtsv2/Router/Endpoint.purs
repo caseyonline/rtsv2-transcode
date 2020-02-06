@@ -30,6 +30,7 @@ data Endpoint
   = TransPoPLeaderE
   | TimedRoutesE PoPName
   | HealthCheckE
+  | ServerStateE
   | EgestStatsE StreamId
   | EgestE
   | RelayE
@@ -51,6 +52,9 @@ data Endpoint
   | IngestAggregatorActiveIngestsPlayerSessionStartE StreamId StreamVariant
   | IngestAggregatorActiveIngestsPlayerSessionE StreamId StreamVariant String
   | IngestAggregatorsE
+  | IngestInstancesE
+  | IngestInstancesStatsE
+  | IngestInstanceE StreamId StreamVariant
   | IngestInstanceLlwpE StreamId StreamVariant
   | IngestStartE Canary ShortName StreamAndVariant
   | IngestStopE Canary ShortName StreamAndVariant
@@ -71,6 +75,7 @@ endpoint = root $ sum
     "TransPoPLeaderE"                                  : "" / "api" / path "transPoPLeader" noArgs
   , "TimedRoutesE"                                     : "" / "api" / "timedRoutes" / popName segment
   , "HealthCheckE"                                     : "" / "api" / path "healthCheck" noArgs
+  , "ServerStateE"                                     : "" / "api" / path "state" noArgs
   , "EgestStatsE"                                      : "" / "api" / "agents" / "egest" / streamId segment
   , "EgestE"                                           : "" / "api" / "agents" / path "egest" noArgs
   , "RelayE"                                           : "" / "api" / "agents" / "relay" / path "egest"  noArgs
@@ -95,6 +100,10 @@ endpoint = root $ sum
   , "IngestAggregatorActiveIngestsPlayerSessionE"      : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "activeIngests" / variant segment / "session" / segment
 
   , "IngestAggregatorsE"                               : "" / "api" / "agents" / path "ingestAggregator" noArgs
+
+  , "IngestInstancesE"                                 : "" / "api" / "agents" / path "ingest" noArgs
+  , "IngestInstancesStatsE"                            : "" / "api" / "agents" / "ingest" / path "stats" noArgs
+  , "IngestInstanceE"                                  : "" / "api" / "agents" / "ingest" / streamId segment / variant segment
   , "IngestInstanceLlwpE"                              : "" / "api" / "agents" / "ingest" / streamId segment / variant segment / "llwp"
 
   , "IngestStartE"                                     : "" / "api" / "public" / canary segment / "ingest" / shortName segment / streamAndVariant segment / "start"

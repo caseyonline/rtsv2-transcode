@@ -39,6 +39,14 @@ let overrides =
           , version =
               "c1c7e23a60b22c4813d56abb6600ce7a5eb66c55"
           }
+      , simple-json-generics =
+          { dependencies =
+              [ "simple-json" ]
+          , repo =
+              "ssh://git@github.com/justinwoo/purescript-simple-json-generics.git"
+          , version =
+              "f7127b94bd2da73b28e863c299edb72a42ee4bce"
+          }
       , erl-maps =
           { dependencies =
               [ "console"
@@ -63,7 +71,7 @@ let overrides =
           }
       , erl-stetson =
           { dependencies =
-              [ "erl-cowboy", "erl-lager" ]
+              [ "erl-cowboy" ]
           , repo =
               "ssh://git@github.com/id3as/purescript-erl-stetson.git"
           , version =

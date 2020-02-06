@@ -53,7 +53,7 @@ maybeStartAndAddClient payload = do
 
 init :: Effect Sup.SupervisorSpec
 init = do
-  _ <- logInfo "Egest Supervisor starting" {}
+  logInfo "Egest Supervisor starting" {}
   pure
     $ Sup.buildSupervisor
     # Sup.supervisorStrategy Sup.SimpleOneForOne

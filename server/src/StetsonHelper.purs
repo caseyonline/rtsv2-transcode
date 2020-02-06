@@ -3,6 +3,10 @@ module StetsonHelper
        , genericPostWithResponse
        , genericGetByStreamId
        , genericGetByPoPName
+       , genericGetBy
+       , genericGetBy2
+       , genericGet
+       , GenericStetsonGet
        , GenericStetsonGetByStreamId
        , GenericStetsonHandler
        , GenericStetsonHandlerWithResponse
@@ -116,6 +120,7 @@ genericPostWithResponse proxiedFun =
 
 
 
+type GenericStetsonGet a = StetsonHandler (Internal_GenericStatusState a)
 
 type GenericStetsonGetByStreamId a = StetsonHandler (Internal_GenericStatusState a)
 
@@ -130,6 +135,28 @@ genericGetByStreamId = genericGetBy Bindings.streamIdBindingLiteral
 genericGetByPoPName :: forall a. WriteForeign a =>  (PoPName -> Effect a) -> GenericStetsonGetByStreamId a
 genericGetByPoPName = genericGetBy  Bindings.popNameBindingLiteral
 
+genericGet :: forall a. WriteForeign a => (Unit -> Effect a) -> GenericStetsonGetByStreamId a
+genericGet getData =
+  Rest.handler init
+  # Rest.allowedMethods (Rest.result (GET : mempty))
+  # Rest.contentTypesProvided (\req state -> Rest.result (singleton $ MimeType.json provideContent) req state)
+  # Rest.yeeha
+  where
+    init req = do
+      mData <- noprocToMaybe $ getData unit
+      Rest.initResult req
+            { mData
+            }
+
+    provideContent req state@{mData} =
+      case mData of
+        Nothing ->
+          do
+            newReq <- replyWithoutBody (StatusCode 404) Map.empty req
+            Rest.stop newReq state
+        Just theData ->
+          Rest.result (writeJSON theData) req state
+
 genericGetBy :: forall a b. Newtype a String => WriteForeign b =>  String -> (a -> Effect b) -> GenericStetsonGetByStreamId b
 genericGetBy bindElement getData =
   Rest.handler init
@@ -140,9 +167,37 @@ genericGetBy bindElement getData =
     init req =
       let
         bindValue :: a
-        bindValue = wrap $ fromMaybe' (lazyCrashIfMissing "stream_id binding missing") $ binding (atom bindElement) req
+        bindValue = wrap $ fromMaybe' (lazyCrashIfMissing (bindElement <> " binding missing")) $ binding (atom bindElement) req
       in do
         mData <- noprocToMaybe $ getData bindValue
+        Rest.initResult req
+            { mData
+            }
+
+    provideContent req state@{mData} =
+      case mData of
+        Nothing ->
+          do
+            newReq <- replyWithoutBody (StatusCode 404) Map.empty req
+            Rest.stop newReq state
+        Just theData ->
+          Rest.result (writeJSON theData) req state
+
+genericGetBy2 :: forall a b c. Newtype a String => Newtype b String => WriteForeign c =>  String -> String -> (a -> b -> Effect c) -> GenericStetsonGet c
+genericGetBy2 bindElement1 bindElement2 getData =
+  Rest.handler init
+  # Rest.allowedMethods (Rest.result (GET : mempty))
+  # Rest.contentTypesProvided (\req state -> Rest.result (singleton $ MimeType.json provideContent) req state)
+  # Rest.yeeha
+  where
+    init req =
+      let
+        bindValue1 :: a
+        bindValue1 = wrap $ fromMaybe' (lazyCrashIfMissing (bindElement1 <> " binding missing")) $ binding (atom bindElement1) req
+        bindValue2 :: b
+        bindValue2 = wrap $ fromMaybe' (lazyCrashIfMissing (bindElement2 <> " binding missing")) $ binding (atom bindElement2) req
+      in do
+        mData <- noprocToMaybe $ getData bindValue1 bindValue2
         Rest.initResult req
             { mData
             }

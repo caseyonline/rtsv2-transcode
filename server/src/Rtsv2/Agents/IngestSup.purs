@@ -7,13 +7,14 @@ import Prelude
 
 import Effect (Effect)
 import Erl.Data.List (nil, (:))
-import Rtsv2.Names as Names
 import Pinto (SupervisorName)
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStart, childType)
 import Pinto.Sup as Sup
 import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
 import Rtsv2.Agents.IngestRtmpServer as IngestRtmpServer
+import Rtsv2.Agents.IngestStats as IngestStats
+import Rtsv2.Names as Names
 
 isAvailable :: Effect Boolean
 isAvailable = Pinto.isRegistered serverName
@@ -33,6 +34,12 @@ init = do
               # childType Worker
               # childId "ingestRtmpServer"
               # childStart IngestRtmpServer.startLink unit
+              # childRestart Transient
+          )
+          : ( buildChild
+              # childType Worker
+              # childId "ingestStatsServer"
+              # childStart IngestStats.startLink unit
               # childRestart Transient
           )
           : ( buildChild

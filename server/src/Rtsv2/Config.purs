@@ -1,6 +1,7 @@
 module Rtsv2.Config
   ( GlobalConfig
   , IngestAggregatorAgentConfig
+  , IngestStatsConfig
   , WebConfig
   , PoPDefinitionConfig
   , IntraPoPAgentConfig
@@ -17,6 +18,7 @@ module Rtsv2.Config
   , popDefinitionConfig
   , intraPoPAgentConfig
   , transPoPAgentConfig
+  , ingestStatsConfig
   , ingestAggregatorAgentConfig
   , egestAgentConfig
   , rtmpIngestConfig
@@ -62,7 +64,12 @@ type PoPDefinitionConfig
 
 type IngestAggregatorAgentConfig
   = { streamAvailableAnnounceMs :: Int
-    , shutdownLingerTimeMs :: Int}
+    , shutdownLingerTimeMs :: Int
+    }
+
+type IngestStatsConfig
+  = { pollPeriodMs :: Int
+    }
 
 type EgestAgentConfig
   = { egestAvailableAnnounceMs :: Int
@@ -76,6 +83,7 @@ type IntraPoPAgentConfig
     , rejoinEveryMs :: Int
     , expireThresholdMs :: Int
     , expireEveryMs :: Int
+    , livenessMs :: Int
     }
 
 type TransPoPAgentConfig
@@ -90,14 +98,14 @@ type TransPoPAgentConfig
     }
 
 type IntraPoPAgentApi
-  = { announceRemoteStreamIsAvailable :: StreamId -> Server -> Effect Unit
-    , announceRemoteStreamStopped :: StreamId -> Server -> Effect Unit
+  = { announceOtherPoPAggregatorIsAvailable :: StreamId -> Server -> Effect Unit
+    , announceOtherPoPAggregatorStopped :: StreamId -> Server -> Effect Unit
     , announceTransPoPLeader :: Effect Unit
     }
 
 type TransPoPAgentApi
-  = { announceStreamIsAvailable :: StreamId -> Server -> Effect Unit
-    , announceStreamStopped :: StreamId -> Server -> Effect Unit
+  = { announceAggregatorIsAvailable :: StreamId -> Server -> Effect Unit
+    , announceAggregatorStopped :: StreamId -> Server -> Effect Unit
     , handleRemoteLeaderAnnouncement :: Server -> Effect Unit
     }
 
@@ -157,6 +165,10 @@ transPoPAgentConfig = do
 ingestAggregatorAgentConfig :: Effect IngestAggregatorAgentConfig
 ingestAggregatorAgentConfig = do
   getMandatoryRecord "ingestAggregatorConfig"
+
+ingestStatsConfig :: Effect IngestStatsConfig
+ingestStatsConfig = do
+  getMandatoryRecord "ingestStatsConfig"
 
 egestAgentConfig :: Effect EgestAgentConfig
 egestAgentConfig = do

@@ -1,7 +1,10 @@
 module Rtsv2.Handler.Ingest
        (
-         ingestStart
+         ingestInstances
+       , ingestInstance
+       , ingestStart
        , ingestStop
+       , ingestInstancesStats
        ) where
 
 import Prelude
@@ -9,21 +12,44 @@ import Prelude
 import Data.Either (hush)
 import Data.Maybe (Maybe(..), fromMaybe')
 import Data.Newtype (unwrap, wrap)
-import Erl.Data.List (nil, (:))
+import Effect (Effect)
+import Erl.Data.List (List, nil, (:))
 import Erl.Data.Tuple (tuple2)
 import Erl.Process.Raw as Raw
 import Erl.Utils as Timer
 import Rtsv2.Agents.IngestInstance as IngestInstance
 import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
+import Rtsv2.Agents.IngestStats as IngestStats
 import Rtsv2.Config as Config
 import Rtsv2.Web.Bindings as Bindings
 import Shared.LlnwApiTypes (StreamIngestProtocol(..), StreamPublish, StreamDetails)
-import Shared.Stream (ShortName, StreamAndVariant, toVariant)
+import Shared.Stream (ShortName, StreamAndVariant(..), StreamId, StreamVariant, toVariant)
+import Shared.Types.Agent.State (IngestStats)
+import Shared.Types.Agent.State as PublicState
 import Shared.Utils (lazyCrashIfMissing)
 import SpudGun (bodyToJSON)
 import SpudGun as SpudGun
 import Stetson (StetsonHandler)
 import Stetson.Rest as Rest
+import StetsonHelper (GenericStetsonGet, genericGet, genericGetBy2)
+
+ingestInstances :: StetsonHandler Unit
+ingestInstances =
+  Rest.handler (\req -> Rest.initResult req unit)
+  # Rest.yeeha
+
+ingestInstancesStats :: GenericStetsonGet (IngestStats List)
+ingestInstancesStats = genericGet (\_ -> do
+                                      stats <- IngestStats.getStats
+                                      pure stats
+                                  )
+
+ingestInstance :: GenericStetsonGet PublicState.Ingest
+ingestInstance =
+  genericGetBy2 Bindings.streamIdBindingLiteral Bindings.variantBindingLiteral getState
+  where
+    getState :: StreamId -> StreamVariant -> Effect PublicState.Ingest
+    getState streamId variant = IngestInstance.getPublicState (StreamAndVariant streamId variant)
 
 type IngestStartState = { shortName :: ShortName
                         , streamAndVariant :: StreamAndVariant
