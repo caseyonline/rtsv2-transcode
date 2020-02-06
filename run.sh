@@ -49,7 +49,7 @@ currentRegionPop=""
 popIndex=0
 
 array=()
-while IFS='' read -r line; do array+=("$line"); done < <(jq -r 'keys_unsorted[] as $region | .[$region] | keys[] as $pop | .[$pop] | values[] as $addr | [$region, $pop, $addr] | @csv' "$POP_DEFINITION" | sed 's/"//g' )
+while IFS='' read -r line; do array+=("$line"); done < <(jq -r 'keys_unsorted[] as $region | .[$region] | keys[] as $pop | .[$pop] | .nodes[] as $addr | [$region, $pop, $addr] | @csv' "$POP_DEFINITION" | sed 's/"//g' )
 
 for i in "${array[@]}"; do
 

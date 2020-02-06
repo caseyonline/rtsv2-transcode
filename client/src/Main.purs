@@ -5,6 +5,7 @@ import Prelude
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Data.Traversable (traverse_)
+import Debug.Trace (traceM)
 import Effect (Effect)
 import Effect.Aff (Aff, launchAff_)
 import Effect.Aff as Aff
@@ -19,22 +20,23 @@ import Milkis as M
 import Routing.Duplex (parse)
 import Routing.Hash (matchesWith)
 import Rtsv2App.Api.Endpoint (Endpoint(..))
-import Rtsv2App.Api.Request (BaseURL(..), ProfileJson, RequestMethod(..), fetch, printFullUrl, readToken)
+import Rtsv2App.Api.Request (BaseURL(..), ProfileJson, RequestMethod(..), fetch, printFullUrl, readToken, withResponse)
 import Rtsv2App.AppM (runAppM)
 import Rtsv2App.Component.Router as Router
 import Rtsv2App.Data.Route (routeCodec)
-import Rtsv2App.Env (LogLevel(..), UserEnv, Env)
-import Simple.JSON as JSON
+import Rtsv2App.Env (Env, LogLevel(..), UserEnv, getCurOrigin)
 
 
 main :: Effect Unit
 main = HA.runHalogenAff do
 
   body <- HA.awaitBody
+  curHost <- liftEffect getCurOrigin
   let
-    -- TODO: need to add apiURL to look at current location address
+    -- TODO: this will need changing to our Auth
     authUrl = AuthURL "https://conduit.productionready.io"
-    apiUrl = ApiUrl "https://conduit.productionready.io"
+    -- current host location for use with API
+    apiUrl = ApiUrl curHost
 
     logLevel = Dev
 
@@ -50,14 +52,10 @@ main = HA.runHalogenAff do
   liftEffect readToken >>= traverse_ \token -> do
     let method = { endpoint: User, method: Get }
     response <- liftAff $ Aff.attempt $ fetch (M.URL $ printFullUrl authUrl method.endpoint) (Just token) method
-    case response of
-      Left err  -> mempty
-      Right res -> do
-        r <- liftAff $ M.text res
-        case JSON.readJSON r of
-          Left e -> mempty
-          Right (result :: ProfileJson) -> do
-            liftEffect $ Ref.write (Just result.user) currentUser
+    user <- withResponse response \(result :: ProfileJson) -> result.user
+    case user of
+      Left err -> traceM err -- need to do some proper error handling here
+      Right u -> liftEffect $ Ref.write (Just u) currentUser
 
   let
     environment :: Env

@@ -19,6 +19,7 @@ module Rtsv2App.Api.Request
   , removeToken
   , requestUser
   , writeToken
+    , withResponse
   ) where
 
 import Prelude
@@ -27,7 +28,7 @@ import Data.Either (Either(..))
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
-import Effect.Aff (Aff)
+import Effect.Aff (Aff, Error)
 import Effect.Aff as Aff
 import Effect.Aff.Class (class MonadAff, liftAff)
 import Milkis as M
@@ -140,21 +141,31 @@ register baseUrl fields =
 requestUser :: forall m. MonadAff m => BaseURL -> OptionMethod -> m (Either String (Tuple Token Profile))
 requestUser baseUrl opts@{ endpoint } = do
   response <- liftAff $ Aff.attempt $ fetch (M.URL $ printFullUrl baseUrl endpoint) Nothing opts
+  withResponse response \(result :: ProfileTokenJson) -> do
+                            let u = result.user
+                            (Tuple (u.token) { bio: u.bio
+                                             , image: u.image
+                                             , username: u.username
+                                             })
+
+withResponse
+  :: forall a b m
+  .  MonadAff m
+  => JSON.ReadForeign a
+  => Either Error (M.Response)
+  -> (a -> b)
+  -> m (Either String b)
+withResponse response action =
   case response of
     Left e    -> pure $ Left $ show e
     Right res -> do
       r <- liftAff $ M.text res
-      case JSON.readJSON r of
-        Left e -> do
-          pure $ Left $ show e
-        Right (result :: ProfileTokenJson ) -> do
-          let u = result.user
-          pure (Right
-                $ Tuple (u.token)
-                        { bio: u.bio
-                        , image: u.image
-                        , username: u.username
-                        })
+      withDecoded r action
+
+withDecoded :: forall a b m. MonadAff m => JSON.ReadForeign a => String -> (a -> b) -> m (Either String b)
+withDecoded json action = case JSON.readJSON json of
+  Left err -> pure $ Left $ show err
+  Right v -> pure $ Right $ action v
 
 -------------------------------------------------------------------------------
 -- Print URL helpers

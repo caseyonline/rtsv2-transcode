@@ -18,6 +18,7 @@ import Routing.Hash (getHash)
 import Rtsv2App.Capability.LogMessages (class LogMessages)
 import Rtsv2App.Capability.Navigate (class Navigate, navigate)
 import Rtsv2App.Capability.Now (class Now)
+import Rtsv2App.Capability.Resource.Api (class ManageApi)
 import Rtsv2App.Capability.Resource.User (class ManageUser)
 import Rtsv2App.Component.Utils (OpaqueSlot)
 import Rtsv2App.Data.Profile (Profile)
@@ -61,6 +62,7 @@ component
   => LogMessages m
   => Navigate m
   => ManageUser m
+  => ManageApi m
   => H.Component HH.HTML Query {} Void m
 component = Connect.component $ H.mkComponent
   { initialState: \{ currentUser } -> { route: Nothing, currentUser } 

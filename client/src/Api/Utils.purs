@@ -6,6 +6,7 @@ import Control.Monad.Reader (class MonadAsk, ask)
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple(..))
+import Debug.Trace (spy)
 import Effect.Aff as Aff
 import Effect.Aff.Bus as Bus
 import Effect.Aff.Class (class MonadAff, liftAff)
@@ -27,9 +28,9 @@ mkRequest
   => MonadAsk { apiUrl :: BaseURL | r } m
   => OptionMethod
   -> m String
-mkRequest opts = do
+mkRequest opts@{ endpoint } = do
   { apiUrl } <- ask
-  response <- liftAff $ Aff.attempt $ fetch (M.URL $ printBaseUrl apiUrl) Nothing opts
+  response <- liftAff $ Aff.attempt $ fetch (M.URL $ spy "API URL" $ printFullUrl apiUrl endpoint) Nothing opts
   case response of
     Left e    -> pure $ "Error making request: " <> show e
     Right res -> do
