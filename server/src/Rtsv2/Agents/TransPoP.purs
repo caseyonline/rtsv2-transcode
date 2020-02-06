@@ -31,7 +31,8 @@ import Erl.Data.List as List
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
 import Erl.Process (spawnLink)
-import Erl.Utils (Milliseconds, sleep, systemTimeMs, privDir)
+import Shared.Types (Milliseconds)
+import Erl.Utils (sleep, systemTimeMs, privDir)
 import Logger (Logger)
 import Logger as Logger
 import Network (Network, addEdge', bestPaths, emptyNetwork, pathsBetween)

@@ -18,7 +18,6 @@ import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
 import Erl.Process.Raw (Pid)
-import Erl.Utils (Milliseconds)
 import Logger (Logger)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
@@ -41,7 +40,7 @@ import Rtsv2.Utils (crashIfLeft)
 import Shared.Agent as Agent
 import Shared.LlnwApiTypes (StreamDetails)
 import Shared.Stream (StreamAndVariant, StreamId, toStreamId, toVariant)
-import Shared.Types (Load, RtmpClientMetadata, RtmpClientMetadataItem(..), Server, ServerLoad(..), extractAddress)
+import Shared.Types (Load, Milliseconds, RtmpClientMetadata, Server, ServerLoad(..), extractAddress)
 import Shared.Types.Agent.State as PublicState
 import SpudGun (Url)
 import SpudGun as SpudGun
