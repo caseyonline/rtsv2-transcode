@@ -31,7 +31,7 @@ import Test.Spec.Runner (runSpecT)
 fetch :: M.Fetch
 fetch = M.fetch nodeFetch
 
-type TestNode =  { vlan :: String
+type TestNode =  { ifaceIndexString :: String
                  , addr :: String
                  , sysConfig :: String
                  }
@@ -499,10 +499,10 @@ assertBodyFun pred either =
 
 toAddr :: Node -> String
 toAddr (Node popNum nodeNum) = "172.16." <> show (popNum + 168) <> "." <> show nodeNum
-toVlan :: Node -> String
-toVlan (Node popNum nodeNum) = "vlan" <> show (popNum * 10) <> show nodeNum
+toIfaceIndexString :: Node -> String
+toIfaceIndexString (Node popNum nodeNum) = show (popNum * 10) <> show nodeNum
 mkNode :: String  -> Node -> TestNode
-mkNode sysConfig node = {vlan: toVlan node, addr: toAddr node, sysConfig}
+mkNode sysConfig node = {ifaceIndexString: toIfaceIndexString node, addr: toAddr node, sysConfig}
 
 
 sessionName:: String
@@ -514,7 +514,7 @@ launchNodes sysconfigs = do
   _ <- traverse_ (\tn -> runProc "./scripts/startNode.sh"
                          [ sessionName
                          , tn.addr
-                         , tn.vlan
+                         , tn.ifaceIndexString
                          , tn.addr
                          , tn.sysConfig
                          ]) sysconfigs

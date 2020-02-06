@@ -63,13 +63,13 @@ for i in "${array[@]}"; do
         tmux -L "$SESSION" new-window -t $regionPopIndex -n "$currentRegionPop"
     fi
 
-    # NOTE: these have to be named this way to work on macOS
-    iface=$(interface_name_from_index $(((regionPopIndex * 100) + popIndex)))
+    # NOTE: these have to be named in a particular way to work on macOS
+    ifaceIndex=$(((regionPopIndex * 100) + popIndex))
 
     if (( popIndex > 1 )); then
         tmux -L "$SESSION" split-window -v -p 50 -f
     fi
-    start_node "$SESSION" "$addr" "$iface" "$addr" "$SYSCONFIG"
+    start_node "$SESSION" "$addr" "$ifaceIndex" "$addr" "$SYSCONFIG"
     popIndex=$((popIndex + 1))
 done
 
