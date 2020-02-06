@@ -59,10 +59,12 @@ init args = do
   bindIp <- Env.privateInterfaceIp
   Stetson.configure
     # mkRoute  TransPoPLeaderE                                                  IntraPoPHandler.leader
+    # mkRoute  ServerStateE                                                     IntraPoPHandler.publicState
+
     # mkRoute (TimedRoutesE popNameBinding)                                     TransPoPHandler.timedRoutes
     # mkRoute  HealthCheckE                                                     HealthHandler.healthCheck
-    # mkRoute  ServerStateE                                                     IntraPoPHandler.publicState
     # mkRoute  PoPDefinitionE                                                   PoPDefinitionHandler.popDefinition
+
     # mkRoute (EgestStatsE streamIdBinding)                                     EgestStatsHandler.stats
 
     # mkRoute  RelayE                                                           RelayHandler.startResource
@@ -70,6 +72,8 @@ init args = do
     # mkRoute  RelayRegisterE                                                   RelayHandler.registerEgest
 --    # mkRoute  RelayChainE                                                      RelayHandler.chainResource
     # mkRoute (RelayStatsE streamIdBinding)                                     RelayHandler.stats
+    # mkRoute (RelayProxiedStatsE streamIdBinding)                              RelayHandler.proxiedStats
+
 
     # mkRoute  LoadE                                                            LoadHandler.load
 

@@ -62,6 +62,9 @@ type IntraPoP
   = { aggregatorLocations :: Array { streamId :: StreamId
                                    , servers :: Array Server
                                    }
+    , relayLocations :: Array { streamId :: StreamId
+                              , servers :: Array Server
+                              }
     }
 
 type Region f = { name :: RegionName

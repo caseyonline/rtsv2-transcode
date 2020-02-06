@@ -2,7 +2,7 @@ module Main where
 
 import Prelude
 
-import Data.Array (delete, sort)
+import Data.Array (delete, length, sort)
 import Data.Either (Either(..))
 import Data.Foldable (foldl)
 import Data.Identity (Identity(..))
@@ -84,7 +84,11 @@ main =
                                          { method: M.getMethod
                                          } # attempt <#> stringifyError
 
-    intraPoPState node                      = fetch (M.URL $ api node <> "state")
+    proxiedRelayStats node streamId    = fetch (M.URL $ api node <> "agents/proxied/relay/" <> streamId)
+                                         { method: M.getMethod
+                                         } # attempt <#> stringifyError
+
+    intraPoPState node                 = fetch (M.URL $ api node <> "state")
                                          { method: M.getMethod
                                          } # attempt <#> stringifyError
 
@@ -152,6 +156,21 @@ main =
                                                ) []  popState.aggregatorLocations
           in
           (sort $ (ServerAddress <<< toAddr) <$> nodes) == sort serverAddressesForStreamId
+
+    assertRelayCount slotName count = assertBodyFun $ predicate
+      where
+        predicate :: PublicState.IntraPoP -> Boolean
+        predicate popState =
+          let
+            nodeAddresses = toAddr
+            serverAddressesForStreamId = foldl (\acc {streamId, servers} ->
+                                                 if streamId == wrap slotName
+                                                 then acc <> (extractAddress <$> servers)
+                                                 else acc
+                                               ) []  popState.relayLocations
+          in
+          length (sort serverAddressesForStreamId) == count
+
 
     delayMs = delay <<< Milliseconds
 
@@ -399,7 +418,10 @@ main =
               client start p2n1 slot1          >>= assertStatusCode 204 >>= as  "egest available"
               relayStats   p2n1 slot1          >>= assertStatusCode 200 >>= as  "local relay exists"
               waitForAsyncRelayStart                                    >>= as' "wait for the relay chain to start"
-              relayStats   p1n1 slot1          >>= assertStatusCode 200 >>= as  "remote relay exists"
+              waitForIntraPoPDisseminate                                >>= as' "allow intraPoP to spread location of relay"
+              intraPoPState p1n1               >>= assertRelayCount slot1 1
+                                                                        >>= as  "relay created in aggregator pop"
+              proxiedRelayStats p1n1 slot1     >>= assertStatusCode 200 >>= as  "remote relay exists"
 
             it "client ingest starts and stops" do
               client start p1n2 slot1          >>= assertStatusCode 404 >>= as  "no local egest prior to ingest"

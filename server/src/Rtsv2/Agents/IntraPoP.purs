@@ -14,7 +14,7 @@ module Rtsv2.Agents.IntraPoP
 
   , announceEgestIsAvailable
   , announceEgestStopped
-  , announceStreamRelayIsAvailable
+  , announceRelayIsAvailable
 
     -- State queries
 
@@ -74,7 +74,7 @@ import Pinto.Timer as Timer
 import PintoHelper (exposeState)
 import Prim.Row (class Nub, class Union)
 import Record as Record
-import Rtsv2.Agents.Locator.Types (LocalOrRemote(..), NoCapacity(..), ResourceResp, ServerSelectionPredicate)
+import Rtsv2.Agents.Locator.Types (LocalOrRemote(..), NoCapacity(..), ResourceResp, ServerSelectionPredicate, fromLocalOrRemote)
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
 import Rtsv2.Health (Health, percentageToHealth)
@@ -83,11 +83,9 @@ import Rtsv2.PoPDefinition as PoPDefinition
 import Serf (IpAndPort, LamportClock)
 import Serf as Serf
 import Shared.Stream (StreamAndVariant(..), StreamId)
-import Shared.Types (Load, Server(..), ServerAddress(..), ServerLoad(..), extractAddress, serverLoadToServer, toServer, toServerLoad)
+import Shared.Types (Load, Server(..), ServerAddress(..), ServerLoad(..), extractAddress, extractPoP, serverLoadToServer, toServer, toServerLoad)
 import Shared.Types.Agent.State as PublicState
 
-
-announceStreamRelayIsAvailable = pure unit
 
 type MemberInfo = { serfMember :: Serf.SerfMember
                   , load :: Load
@@ -96,10 +94,11 @@ type MemberInfo = { serfMember :: Serf.SerfMember
 
 type LamportClocks =
   { aggregatorClocks :: Map ServerAddress LamportClock
-  , egestClocks :: Map ServerAddress LamportClock
-  , loadClocks :: Map ServerAddress LamportClock
-  , popLeaderClocks :: Map ServerAddress LamportClock
-  , livenessClocks :: Map ServerAddress LamportClock
+  , egestClocks      :: Map ServerAddress LamportClock
+  , relayClocks      :: Map ServerAddress LamportClock
+  , loadClocks       :: Map ServerAddress LamportClock
+  , popLeaderClocks  :: Map ServerAddress LamportClock
+  , livenessClocks   :: Map ServerAddress LamportClock
   }
 
 type StreamLocations = { byStreamId :: Map StreamId (Set Server)
@@ -107,23 +106,23 @@ type StreamLocations = { byStreamId :: Map StreamId (Set Server)
                        }
 
 type State
-  = { config :: Config.IntraPoPAgentConfig
-    , transPoPApi :: Config.TransPoPAgentApi
-    , serfRpcAddress :: IpAndPort
+  = { config                :: Config.IntraPoPAgentConfig
+    , transPoPApi           :: Config.TransPoPAgentApi
+    , serfRpcAddress        :: IpAndPort
     , currentTransPoPLeader :: Maybe Server
 
-    , streamRelays :: StreamLocations
-    , aggregators :: StreamLocations
-    , egests :: StreamLocations
+    , relays                :: StreamLocations
+    , aggregators           :: StreamLocations
+    , egests                :: StreamLocations
 
-    , thisServerRef :: Ref
-    , serverRefs :: EMap Server Ref
+    , thisServerRef         :: Ref
+    , serverRefs            :: EMap Server Ref
 
-    , thisServer :: Server
-    , load :: Load
-    , members :: Map ServerAddress MemberInfo
-    , expireThreshold :: Milliseconds
-    , lamportClocks :: LamportClocks
+    , thisServer            :: Server
+    , load                  :: Load
+    , members               :: Map ServerAddress MemberInfo
+    , expireThreshold       :: Milliseconds
+    , lamportClocks         :: LamportClocks
     }
 
 data EventType = Available
@@ -131,6 +130,8 @@ data EventType = Available
 
 data IntraMessage = IMAggregatorState EventType StreamId ServerAddress
                   | IMEgestState EventType StreamId ServerAddress
+                  | IMRelayState EventType StreamId ServerAddress
+
                   | IMServerLoad ServerAddress Load
                   | IMTransPoPLeader ServerAddress
 
@@ -170,6 +171,7 @@ getPublicState = exposeState publicState serverName
                               , servers: Set.toUnfoldable v}
     publicState state =
       { aggregatorLocations: toLocations <$>  Map.toUnfoldable state.aggregators.byStreamId
+      , relayLocations: toLocations <$>  Map.toUnfoldable state.relays.byStreamId
       }
 
 isStreamIngestAvailable :: StreamId -> Effect Boolean
@@ -187,7 +189,7 @@ isIngestActive (StreamAndVariant s v) = Gen.call serverName \state -> CallReply 
 -- TODO - we should be calling the prime' versions and handling that there might, in fact be more than
 -- one instance of things we'd like to be singletons
 whereIsIngestAggregator :: StreamId -> Effect (Maybe Server)
-whereIsIngestAggregator streamId  = head <$> (map serverLoadToServer) <$> (map (fromLocalOrRemote)) <$> whereIsIngestAggregator' streamId
+whereIsIngestAggregator streamId  = head <$> whereIs _.aggregators streamId
 
 whereIsStreamRelay :: StreamId -> Effect (Maybe (LocalOrRemote Server))
 whereIsStreamRelay streamId  = head <$> (map $ map serverLoadToServer) <$> whereIsStreamRelay' streamId
@@ -195,28 +197,38 @@ whereIsStreamRelay streamId  = head <$> (map $ map serverLoadToServer) <$> where
 whereIsEgest :: StreamId -> Effect (List ServerLoad)
 whereIsEgest streamId = (map fromLocalOrRemote) <$> whereIsEgest' streamId
 
-fromLocalOrRemote :: forall a. LocalOrRemote a -> a
-fromLocalOrRemote (Local a) = a
-fromLocalOrRemote (Remote a) = a
-
-whereIsIngestAggregator' :: StreamId -> Effect (List (LocalOrRemote ServerLoad))
-whereIsIngestAggregator' = whereIs_ _.aggregators
-
 whereIsStreamRelay' :: StreamId -> Effect (List (LocalOrRemote ServerLoad))
-whereIsStreamRelay' = whereIs_ _.streamRelays
+whereIsStreamRelay' = whereIsWithLoad _.relays
 
 whereIsEgest' :: StreamId -> Effect (List (LocalOrRemote ServerLoad))
-whereIsEgest' = whereIs_ _.egests
+whereIsEgest' = whereIsWithLoad _.egests
 
 
-whereIs_ ::(State -> StreamLocations) -> StreamId -> Effect (List (LocalOrRemote ServerLoad))
-whereIs_ extractMap streamId =
+whereIs ::(State -> StreamLocations) -> StreamId -> Effect (List Server)
+whereIs extractMap streamId =
   Gen.call serverName
   \state@{thisServer, members} ->
     let
       streamLocations = _.byStreamId $ extractMap state
+      mLocations = Map.lookup streamId streamLocations :: Maybe (Set Server)
+      locations = maybe nil toUnfoldable mLocations
+    in
+    CallReply locations state
+
+
+whereIsWithLoad ::(State -> StreamLocations) -> StreamId -> Effect (List (LocalOrRemote ServerLoad))
+whereIsWithLoad extractMap streamId =
+  Gen.call serverName
+  \state@{thisServer, members} ->
+    let
+      _ = spy "extractMap" $  extractMap  state
+      _ = spy "streamId" $  {streamId}
+      streamLocations = _.byStreamId $ extractMap state
+      _ = spy "streamLocations" $  {streamLocations}
       withLoad (Server el) = serverLoad <$> Map.lookup el.address members
       mLocations = Map.lookup streamId streamLocations :: Maybe (Set Server)
+      _ = spy "mLocations" $  {mLocations, members}
+
       locations = maybe nil toUnfoldable mLocations
       filtered = filterMap withLoad locations
     in
@@ -290,11 +302,11 @@ type EventHandler = State -> StreamId -> Server -> Effect Unit
 type GetClocks = LamportClocks -> Map ServerAddress LamportClock
 type SetClocks = Map ServerAddress LamportClock -> LamportClocks -> LamportClocks
 
-type ClockLense = { get :: LamportClocks -> Map ServerAddress LamportClock
+type ClockLens = { get :: LamportClocks -> Map ServerAddress LamportClock
                   , set :: Map ServerAddress LamportClock -> LamportClocks -> LamportClocks
                   }
 
-type LocationLense = { get :: State -> StreamLocations
+type LocationLens = { get :: State -> StreamLocations
                      , set :: StreamLocations -> State -> State
                      }
 
@@ -310,8 +322,8 @@ type AssetHandler =
   , stopThisPoP       :: EventHandler
   , stopOtherPoP      :: EventHandler
 
-  , clockLense        :: ClockLense
-  , locationLense     :: LocationLense
+  , clockLens         :: ClockLens
+  , locationLens      :: LocationLens
     -- TODO -- Maybe add isSingleton - to generate warnings if the sets have more than one entry?
   }
 
@@ -325,8 +337,9 @@ aggregatorHandler
     , stopLocal         : stopLocal'
     , stopThisPoP       : stopThisPoP'
     , stopOtherPoP      : stopOtherPoP'
-    , clockLense        : clockLense
-    , locationLense     : locationLense
+
+    , clockLens        : clockLens
+    , locationLens     : locationLens
     }
   where
     availableLocal state streamId server = do
@@ -358,11 +371,11 @@ aggregatorHandler
       Bus.raise bus (IngestAggregatorExited streamId server)
       sendToIntraSerfNetwork state "aggregatorStopped" (IMAggregatorState Stopped streamId (extractAddress server))
 
-    clockLense = { get : _.aggregatorClocks
+    clockLens = { get : _.aggregatorClocks
                  , set : \newClocks lamportClocks -> lamportClocks{aggregatorClocks = newClocks}
                  }
 
-    locationLense = { get : _.aggregators
+    locationLens = { get : _.aggregators
                     , set : \newLocations state -> state {aggregators = newLocations}
                     }
 
@@ -393,8 +406,8 @@ egestHandler
     , stopThisPoP       : stopThisPoP'
     , stopOtherPoP      : stopOtherPoP'
 
-    , clockLense        : clockLense
-    , locationLense     : locationLense
+    , clockLens         : clockLens
+    , locationLens      : locationLens
     }
   where
     availableLocal state streamId server = do
@@ -419,11 +432,11 @@ egestHandler
       -- Not expecting any of these
       logWarning "Egest stopped in another PoP" {streamId, server}
 
-    clockLense = { get : _.egestClocks
+    clockLens = { get : _.egestClocks
                  , set : \newClocks lamportClocks -> lamportClocks{egestClocks = newClocks}
                  }
 
-    locationLense = { get : _.egests
+    locationLens = { get : _.egests
                     , set : \newLocations state -> state {egests = newLocations}
                     }
 
@@ -435,64 +448,127 @@ announceEgestStopped :: StreamId -> Effect Unit
 announceEgestStopped = stopLocal egestHandler
 
 
+--TODO - relay and egest are literally identical other than the names...
+relayHandler :: AssetHandler
+relayHandler
+  = { name              : "relay"
+    , availableLocal    : availableLocal
+    , availableThisPoP  : availableThisPoP
+    , availableOtherPoP : availableOtherPoP
+    , stopLocal         : stopLocal'
+    , stopThisPoP       : stopThisPoP'
+    , stopOtherPoP      : stopOtherPoP'
+
+    , clockLens         : clockLens
+    , locationLens      : locationLens
+    }
+  where
+    availableLocal state streamId server = do
+      logInfo "Local relay available" {streamId}
+      sendToIntraSerfNetwork state "relayAvailable" (IMRelayState Available streamId $ extractAddress server)
+
+    availableThisPoP state streamId server = do
+      logInfo "New relay is avaiable in this PoP" {streamId, server}
+
+    availableOtherPoP state streamId server = do
+      -- Not expecting any of these
+      logWarning "New relay is avaiable in another PoP" {streamId, server}
+
+    stopLocal' state streamId server = do
+      logInfo "Local relay stopped" {streamId}
+      sendToIntraSerfNetwork state "relayStopped" $ IMRelayState Stopped streamId $ extractAddress server
+
+    stopThisPoP' state streamId server = do
+      logInfo "Remote relay stopped" {streamId, server}
+
+    stopOtherPoP' state streamId server = do
+      -- Not expecting any of these
+      logWarning "Relay stopped in another PoP" {streamId, server}
+
+    clockLens = { get : _.relayClocks
+                 , set : \newClocks lamportClocks -> lamportClocks{relayClocks = newClocks}
+                 }
+
+    locationLens = { get : _.relays
+                    , set : \newLocations state -> state {relays = newLocations}
+                    }
+
+-- Called by RelayAgent to indicate relay on this node
+announceRelayIsAvailable :: StreamId -> Effect Unit
+announceRelayIsAvailable = announceAvailableLocal relayHandler
+
+announceRelayStopped :: StreamId -> Effect Unit
+announceRelayStopped = stopLocal relayHandler
+
+
 -- Builds public API for events on this server
 announceAvailableLocal :: AssetHandler -> StreamId -> Effect Unit
-announceAvailableLocal handler@{locationLense} streamId =
+announceAvailableLocal handler@{locationLens} streamId =
   Gen.doCast serverName
     \state@{ thisServer } -> do
       let _ = spy "announceAvailableLocal" {name: handler.name, streamId}
       handler.availableLocal state streamId thisServer
       let
-        newLocations = recordLocation streamId thisServer (locationLense.get state)
-      pure $ Gen.CastNoReply $ locationLense.set newLocations state
+        newLocations = recordLocation streamId thisServer (locationLens.get state)
+      pure $ Gen.CastNoReply $ locationLens.set newLocations state
 
 stopLocal :: AssetHandler -> StreamId -> Effect Unit
-stopLocal handler@{locationLense} streamId = do
+stopLocal handler@{locationLens} streamId = do
   Gen.doCast serverName
     \state@{ thisServer } -> do
       let _ = spy "stopLocal" {name: handler.name, streamId}
       handler.stopLocal state streamId thisServer
       let
-        newLocations = removeLocation streamId thisServer (locationLense.get state)
-      pure $ Gen.CastNoReply $ locationLense.set newLocations state
+        newLocations = removeLocation streamId thisServer (locationLens.get state)
+      pure $ Gen.CastNoReply $ locationLens.set newLocations state
 
 
 -- Builds public API for message from other PoP
 announceAvailableOtherPoP :: AssetHandler -> StreamId -> Server -> Effect Unit
-announceAvailableOtherPoP handler@{locationLense} streamId server =
+announceAvailableOtherPoP handler@{locationLens} streamId server =
   Gen.doCast serverName
     \state -> do
       let _ = spy "announceAvailableOtherPoP" {name: handler.name, streamId}
       handler.availableOtherPoP state streamId server
       let
-        newLocations = recordLocation streamId server (locationLense.get state)
-      pure $ Gen.CastNoReply $ locationLense.set newLocations state
+        newLocations = recordLocation streamId server (locationLens.get state)
+      let _ = spy "newLocations" {newLocations}
+      pure $ Gen.CastNoReply $ locationLens.set newLocations state
 
 stopOtherPoP :: AssetHandler -> StreamId -> Server -> Effect Unit
-stopOtherPoP handler@{locationLense} streamId server =
+stopOtherPoP handler@{locationLens} streamId server =
   Gen.doCast serverName
     \state -> do
       let _ = spy "stopOtherPoP" {name: handler.name, streamId}
       handler.stopOtherPoP state streamId server
       let
-        newLocations = removeLocation streamId server (locationLense.get state)
-      pure $ Gen.CastNoReply $ locationLense.set newLocations state
+        newLocations = removeLocation streamId server (locationLens.get state)
+      let _ = spy "newLocations" {newLocations}
+      pure $ Gen.CastNoReply $ locationLens.set newLocations state
 
 -- Private API called in response to IntraPoP bus message relating to events in this PoP
-announceAvailableThisPoP :: AssetHandler -> StreamId -> Server -> State -> Effect State
-announceAvailableThisPoP handler@{locationLense} streamId server state = do
-  handler.availableThisPoP  state streamId server
+-- We need to not re-broadcast messages from other PoPs that we have already relayed
+maybeAnnounceAvailableThisPoP :: AssetHandler -> StreamId -> Server -> State -> Effect State
+maybeAnnounceAvailableThisPoP handler@{locationLens} streamId server state = do
+  if extractPoP server == extractPoP state.thisServer
+  then
+    handler.availableThisPoP state streamId server
+  else
+    pure unit
   let
-    newLocations = recordLocation streamId server (locationLense.get state)
-  pure $ locationLense.set newLocations state
+    newLocations = recordLocation streamId server (locationLens.get state)
+  pure $ locationLens.set newLocations state
 
-stopThisPoP :: AssetHandler -> StreamId -> Server -> State -> Effect State
-stopThisPoP handler@{locationLense} streamId server state = do
-  handler.stopThisPoP state streamId server
-  let _ = spy "stopThisPoP" {name: handler.name, streamId}
+maybeStopThisPoP :: AssetHandler -> StreamId -> Server -> State -> Effect State
+maybeStopThisPoP handler@{locationLens} streamId server state = do
+  if extractPoP server == extractPoP state.thisServer
+  then do
+    handler.stopThisPoP state streamId server
+  else
+    pure unit
   let
-    newLocations = removeLocation streamId server (locationLense.get state)
-  pure $ locationLense.set newLocations state
+    newLocations = removeLocation streamId server (locationLens.get state)
+  pure $ locationLens.set newLocations state
 
 
 -- Called by TransPoP to indicate that it is acting as this PoP's leader
@@ -589,7 +665,7 @@ init { config: config@{rejoinEveryMs
     , serfRpcAddress
     , currentTransPoPLeader: Nothing
 
-    , streamRelays: emptyLocations
+    , relays: emptyLocations
     , aggregators:  emptyLocations
     , egests :  emptyLocations
 
@@ -602,6 +678,7 @@ init { config: config@{rejoinEveryMs
     , expireThreshold: wrap expireThresholdMs
     , lamportClocks: { aggregatorClocks: Map.empty
                      , egestClocks: Map.empty
+                     , relayClocks: Map.empty
                      , loadClocks: Map.empty
                      , popLeaderClocks: Map.empty
                      , livenessClocks : Map.empty
@@ -644,52 +721,48 @@ handleIntraPoPSerfMsg imsg state@{ transPoPApi: {handleRemoteLeaderAnnouncement}
 
     Serf.UserEvent name ltime coalesce intraMessage -> do
       let
-        screenAndHandle :: ServerAddress -> ClockLense -> (Server -> State -> Effect State) -> Effect State --Server -> LamportClock -> ServerAddress -> Map ServerAddress LamportClock -> Effect (Maybe (Tuple (Map ServerAddress LamportClock) Server))
-        screenAndHandle address clockLense messageHandler = do
-          mTuple <- screenOriginAndMessageClock thisServer ltime address (clockLense.get lamportClocks)
+        screenAndHandle :: ServerAddress -> ClockLens -> (Server -> State -> Effect State) -> Effect State
+        screenAndHandle address clockLens messageHandler = do
+          mTuple <- screenOriginAndMessageClock thisServer ltime address (clockLens.get lamportClocks)
           case mTuple of
             Nothing -> pure state
             Just (Tuple newClockState server) ->
-              messageHandler server state{lamportClocks = clockLense.set newClockState lamportClocks}
+              messageHandler server state{lamportClocks = clockLens.set newClockState lamportClocks}
 
       case intraMessage of
         IMAggregatorState eventType streamId address -> do
-          screenAndHandle address aggregatorHandler.clockLense $ handleThisPoPAsset eventType aggregatorHandler streamId
-
-        -- IMAggregatorState stateChange streamId address -> do
-        --   screenAndHandle address aggregatorHandler (handleAggregatorStateChange stateChange streamId)
+          screenAndHandle address aggregatorHandler.clockLens $ handleThisPoPAsset eventType aggregatorHandler streamId
 
         IMEgestState eventType streamId address -> do
-          screenAndHandle address egestHandler.clockLense $ handleThisPoPAsset eventType egestHandler streamId
+          screenAndHandle address egestHandler.clockLens $ handleThisPoPAsset eventType egestHandler streamId
 
-
-        -- IMEgestState stateChange streamId address -> do
-        --   screenAndHandle address egestHandler (handleEgestStateChange stateChange streamId)
+        IMRelayState eventType streamId address -> do
+          screenAndHandle address relayHandler.clockLens $ handleThisPoPAsset eventType relayHandler streamId
 
         IMServerLoad address load -> do
           let
-            clockLense = { get : _.loadClocks
+            clockLens = { get : _.loadClocks
                          , set : \newClocks lc -> lc{loadClocks = newClocks}
                          }
-          screenAndHandle address clockLense (handleLoadChange address load)
+          screenAndHandle address clockLens (handleLoadChange address load)
 
         IMTransPoPLeader address -> do
           let
-            clockLense = { get : _.popLeaderClocks
+            clockLens = { get : _.popLeaderClocks
                          , set : \newClocks lc -> lc{popLeaderClocks = newClocks}
                          }
-          screenAndHandle address clockLense handleTransPoPLeader
+          screenAndHandle address clockLens handleTransPoPLeader
 
         IMLiveness address ref -> do
           let
-            clockLense = { get : _.livenessClocks
+            clockLens = { get : _.livenessClocks
                          , set : \newClocks lc -> lc{livenessClocks = newClocks}
                          }
-          screenAndHandle address clockLense (handleLiveness ref)
+          screenAndHandle address clockLens (handleLiveness ref)
   where
     handleThisPoPAsset :: EventType -> AssetHandler -> StreamId -> Server -> State -> Effect State
-    handleThisPoPAsset Available = announceAvailableThisPoP
-    handleThisPoPAsset Stopped = stopThisPoP
+    handleThisPoPAsset Available = maybeAnnounceAvailableThisPoP
+    handleThisPoPAsset Stopped = maybeStopThisPoP
 
 
 handleLiveness :: Ref -> Server -> State -> Effect State
@@ -781,8 +854,7 @@ garbageCollect state@{ expireThreshold
       threshold = now - expireThreshold
       Tuple newServerRefs garbageRefs = EMap.garbageCollect2 threshold serverRefs
       garbageServers = fst <$> garbageRefs
-    foldM  garbageCollectServer state garbageServers
-
+    foldM garbageCollectServer state{serverRefs = newServerRefs} garbageServers
 
 
 garbageCollectServer :: State -> Server -> Effect State
@@ -790,14 +862,14 @@ garbageCollectServer state deadServer = do
   -- TODO - add a server decomissioning message to do this cleanly
   logWarning "server liveness timeout" {server: deadServer}
   newState <- gc "aggregators" aggregatorHandler deadServer
-              =<< gc "egests" egestHandler deadServer state
---              =<< gc "relays" relayHandler deadServer state
+              =<< gc "egests" egestHandler deadServer
+              =<< gc "relays" relayHandler deadServer state
   pure newState
 
 gc :: String -> AssetHandler -> Server -> State -> Effect State
-gc assetType assetHandler@{locationLense} deadServer state = do
+gc assetType assetHandler@{locationLens} deadServer state = do
   let
-    locations = locationLense.get state
+    locations = locationLens.get state
   case Map.lookup deadServer locations.byServer of
     Nothing -> pure state
     Just garbageStreams -> do
@@ -807,7 +879,7 @@ gc assetType assetHandler@{locationLense} deadServer state = do
         newLocations = { byStreamId : newByStreamId
                        , byServer : Map.delete deadServer locations.byServer
                        }
-      pure $ locationLense.set newLocations state
+      pure $ locationLens.set newLocations state
   where
     cleanUp acc streamId = do
       assetHandler.stopThisPoP state streamId deadServer
@@ -887,6 +959,7 @@ screenOriginAndMessageClock (Server thisServer) msgClock messageServerAddress la
     if thisServer.address == messageServerAddress then
       pure Nothing
     else do
+      -- TODO - maybe cache the db for a while to prevent hot calls, or use ETS etc
       mLocation <- PoPDefinition.whereIsServer messageServerAddress
       case mLocation of
         Nothing -> do
