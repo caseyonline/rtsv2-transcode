@@ -15,8 +15,6 @@ import Data.Maybe (Maybe(..), fromMaybe')
 import Data.Newtype (unwrap, wrap)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
-import Erl.Data.Binary (Binary)
-import Erl.Data.Binary.IOData (IOData, fromBinary, toBinary, concat)
 import Erl.Data.List (List, nil, (:))
 import Erl.Data.Tuple (tuple2)
 import Erl.Process.Raw as Raw
@@ -40,7 +38,6 @@ import SpudGun as SpudGun
 import Stetson (StetsonHandler)
 import Stetson.Rest as Rest
 import StetsonHelper (GenericStetsonGet, GenericStetsonGet2, genericGet, genericGet2, genericGetBy2)
-import Unsafe.Coerce (unsafeCoerce)
 
 ingestInstances :: StetsonHandler Unit
 ingestInstances =
@@ -56,7 +53,7 @@ ingestInstancesStats =
       pure $ writeJSON stats
     getText _ = do
       stats <- IngestStats.getStats
-      pure $ stats_to_prometheus stats
+      pure $ statsToPrometheus stats
 
 metrics :: List Prometheus.PrometheusMetric
 metrics = { name: "ingest_frame_count"
@@ -75,12 +72,38 @@ metrics = { name: "ingest_frame_count"
           , help: "The average size of frames in this stream"
           , metricType: Prometheus.Gauge
           } :
+          { name: "ingest_frame_count2"
+          , help: "The number of frames processed in this stream"
+          , metricType: Prometheus.Counter
+          } :
+          { name: "ingest_byte_count"
+          , help: "The number of bytes processed in this stream"
+          , metricType: Prometheus.Counter
+          } :
+          { name: "ingest_last_dts"
+          , help: "The last DTS value measured in this stream"
+          , metricType: Prometheus.Counter
+          } :
+          { name: "ingest_last_pts"
+          , help: "The last PTS value measured in this stream"
+          , metricType: Prometheus.Counter
+          } :
+          { name: "ingest_last_capture_ms"
+          , help: "The last Capture-MS value measured in this stream"
+          , metricType: Prometheus.Counter
+          } :
+          { name: "ingest_codec"
+          , help: "The stream codec"
+          , metricType: Prometheus.Gauge
+          } :
           nil
 
--- TODO - frameFlowMeter and rtmpStats, and include streamAndVariant in labels
+-- TODO - rtmpStats
+-- TODO - include streamAndVariant in labels
+-- TODO - handle maybe fields
 -- TODO - make metric names a sum type?
-stats_to_prometheus :: PublicState.IngestStats List -> String
-stats_to_prometheus stats =
+statsToPrometheus :: PublicState.IngestStats List -> String
+statsToPrometheus stats =
   foldl (\page { timestamp
                , streamAndVariant
                , streamBitrateMetrics
@@ -89,6 +112,15 @@ stats_to_prometheus stats =
          let
            prometheusTimestamp = Prometheus.toTimestamp timestamp
          in
+          page
+          # streamBitrateMetricsToPrometheus prometheusTimestamp streamBitrateMetrics
+          # frameFlowMetricsToPrometheus prometheusTimestamp frameFlowMeterMetrics
+        )
+  (Prometheus.newPage metrics)
+  stats
+  # Prometheus.pageToString
+  where
+    streamBitrateMetricsToPrometheus timestamp streamBitrateMetrics page =
           foldl
           (\innerPage
             perStream@{ metrics: { frameCount
@@ -99,170 +131,43 @@ stats_to_prometheus stats =
              labels = labelsForStream(perStream)
            in
             innerPage
-            # Prometheus.addMetric "ingest_frame_count" frameCount labels prometheusTimestamp
-            # Prometheus.addMetric "ingest_frames_per_second" packetsPerSecond labels prometheusTimestamp
-            # Prometheus.addMetric "ingest_bitrate" bitrate labels prometheusTimestamp
-            # Prometheus.addMetric "ingest_average_frame_size" averagePacketSize labels prometheusTimestamp
+            # Prometheus.addMetric "ingest_frame_count" frameCount labels timestamp
+            # Prometheus.addMetric "ingest_frames_per_second" packetsPerSecond labels timestamp
+            # Prometheus.addMetric "ingest_bitrate" bitrate labels timestamp
+            # Prometheus.addMetric "ingest_average_frame_size" averagePacketSize labels timestamp
           )
           page
           streamBitrateMetrics.perStreamMetrics
-        )
-  (Prometheus.newPage metrics)
-  stats
-  # Prometheus.pageToString
-  where
+
+    frameFlowMetricsToPrometheus timestamp frameFlowMetrics page =
+          foldl
+          (\innerPage
+            perStream@{ metrics: { frameCount
+                                 , byteCount
+                                 , lastDts
+                                 , lastPts
+                                 , lastCaptureMs
+                                 , codec }} ->
+           let
+             labels = labelsForStream(perStream)
+           in
+            innerPage
+            # Prometheus.addMetric "ingest_frame_count2" frameCount labels timestamp
+            # Prometheus.addMetric "ingest_byte_count" byteCount labels timestamp
+            # Prometheus.addMetric "ingest_last_dts" lastDts labels timestamp
+            # Prometheus.addMetric "ingest_last_pts" lastPts labels timestamp
+            # Prometheus.addMetric "ingest_last_capture_ms" lastCaptureMs labels timestamp
+            # Prometheus.addMetric "ingest_codec" codec labels timestamp
+          )
+          page
+          frameFlowMetrics.perStreamMetrics
+
     labelsForStream :: forall a. Stream a -> Prometheus.PrometheusLabels
-    labelsForStream { streamId
-                    , frameType
-                    , profileName} =
+    labelsForStream { streamId, frameType, profileName} =
       Prometheus.toLabels $ (Tuple "stream_id" (show streamId)) :
                             (Tuple "frame_type" (show frameType)) :
                             (Tuple "profile_name" profileName) :
                             nil
-
-stats_to_prometheus2 :: PublicState.IngestStats List -> String
-stats_to_prometheus2 stats =
-  foldl (\acc { timestamp
-              , streamBitrateMetrics
-              , frameFlowMeterMetrics
-              } ->
-         let
-           time = toIOData $ show (unwrap timestamp)
-         in
-          streamBitrateMetricsToPrometheus streamBitrateMetrics time acc
-          # frameFlowMetricsToPrometheus frameFlowMeterMetrics time
-        )
-        { frameCountAcc : mempty :: IOData
-        , ppsAcc : mempty :: IOData
-        , bitrateAcc : mempty :: IOData
-        , averagePacketSizeAcc : mempty :: IOData
-        , frameCount2Acc : mempty :: IOData
-        , byteCountAcc : mempty :: IOData
-        , lastDtsAcc : mempty :: IOData
-        , lastPtsAcc : mempty :: IOData
-        , lastCaptureMsAcc : mempty :: IOData
-        , codecAcc : mempty :: IOData
-        }
-  stats
-  # (\{ frameCountAcc
-      , ppsAcc
-      , bitrateAcc
-      , averagePacketSizeAcc
-      , frameCount2Acc
-      , byteCountAcc
-      , lastDtsAcc
-      , lastPtsAcc
-      , lastCaptureMsAcc
-      , codecAcc
-      } -> concat (frameCountHeader : frameCountAcc :
-                   packetsPerSecondHeader : ppsAcc :
-                   bitrateHeader : bitrateAcc :
-                   averagePacketSizeHeader : averagePacketSizeAcc :
-                   frameCount2Header : frameCountAcc :
-                   byteCountHeader : byteCountAcc :
-                   lastDtsHeader : lastDtsAcc :
-                   lastPtsHeader : lastPtsAcc :
-                   lastCaptureMsHeader : lastCaptureMsAcc :
-                   codecHeader : codecAcc :
-                   nil) )
-  # toString
-  where
-    streamBitrateMetricsToPrometheus {perStreamMetrics} time acc =
-      foldl
-      (\innerAcc@{ frameCountAcc
-                 , ppsAcc
-                 , bitrateAcc
-                 , averagePacketSizeAcc}
-        perStream@{ metrics: { frameCount
-                             , packetsPerSecond
-                             , bitrate
-                             , averagePacketSize }} ->
-       let
-         labels = labelsForStream(perStream)
-         line2 = line labels time :: forall a. Show a => String -> a -> IOData
-         frameCountLine    = line2 "ingest_frame_count" frameCount
-         ppsLine           = line2 "ingest_frames_per_second" packetsPerSecond
-         bitrateLine       = line2 "ingest_bitrate" bitrate
-         avgPacketSizeLine = line2 "ingest_average_frame_size" averagePacketSize
-       in
-        innerAcc{ frameCountAcc = frameCountLine <> frameCountAcc
-                , ppsAcc = ppsLine <> ppsAcc
-                , bitrateAcc = bitrateLine <> bitrateAcc
-                , averagePacketSizeAcc = avgPacketSizeLine <> averagePacketSizeAcc
-                }
-      )
-      acc
-      perStreamMetrics
-
-    frameFlowMetricsToPrometheus {perStreamMetrics} time acc =
-      foldl
-      (\innerAcc@{ frameCount2Acc
-                 , byteCountAcc
-                 , lastDtsAcc
-                 , lastPtsAcc
-                 , lastCaptureMsAcc
-                 , codecAcc }
-        perStream@{ metrics: { frameCount
-                             , byteCount
-                             , lastDts
-                             , lastPts
-                             , lastCaptureMs
-                             , codec }} ->
-       let
-         -- Lookup frame_count metric and add my value - with my labels and timestamp
-
-         labels = labelsForStream(perStream)
-         line2 = line labels time :: forall a. Show a => String -> a -> IOData
-         frameCountLine    = line2 "ingest_frame_count2" frameCount
-         byteCountLine    = line2 "ingest_byte_count" byteCount
-         lastDtsLine    = line2 "ingest_last_dts" lastDts
-         lastPtsLine    = line2 "ingest_last_pts" lastPts
-         lastCaptureMsLine    = line2 "ingest_last_capture_ms" lastCaptureMs
-         codecLine    = line2 "ingest_codec" codec
-       in
-        innerAcc{ frameCount2Acc = frameCountLine <> frameCount2Acc
-                , byteCountAcc = byteCountLine <> byteCountAcc
-                , lastDtsAcc = lastDtsLine <> lastDtsAcc
-                , lastPtsAcc = lastPtsLine <> lastPtsAcc
-                , lastCaptureMsAcc = lastCaptureMsLine <> lastCaptureMsAcc
-                , codecAcc = codecLine <> codecAcc
-                }
-      )
-      acc
-      perStreamMetrics
-
-    labelsForStream :: forall a. Stream a -> IOData
-    labelsForStream { streamId
-                    , frameType
-                    , profileName} =
-      concat $ toIOData <$> "stream_id=\"" : show streamId : "\",frame_type=\"" : show frameType : "\",profile_name=\"" : profileName : "\"" : nil
-
-    line :: forall a. Show a => IOData -> IOData -> String -> a -> IOData
-    line labels time name value =
-      concat $ (toIOData name) : (toIOData "{") : labels : (toIOData "} ") : (toIOData (show value)) : (toIOData " ") : time : (toIOData "\n") : nil
-
-    frameCountHeader = toIOData "\n# HELP ingest_frame_count The number of frames processed in this stream\n# TYPE ingest_frame_count counter\n"
-    packetsPerSecondHeader = toIOData "\n# HELP ingest_frames_per_second The number of frames per second measured in this stream\n# TYPE ingest_frames_per_second gauge\n"
-    bitrateHeader = toIOData "\n# HELP ingest_frame_bitrate The measured bitrate for this stream\n# TYPE ingest_frame_bitrate gauge\n"
-    averagePacketSizeHeader = toIOData "\n# HELP ingest_average_frame_size The average size of frames in this stream\n# TYPE ingest_average_frame_size gauge\n"
-    frameCount2Header = toIOData "\n# HELP\n# TYPE \n"
-    byteCountHeader = toIOData "\n# HELP\n# TYPE \n"
-    lastDtsHeader = toIOData "\n# HELP\n# TYPE \n"
-    lastPtsHeader = toIOData "\n# HELP\n# TYPE \n"
-    lastCaptureMsHeader = toIOData "\n# HELP\n# TYPE \n"
-    codecHeader = toIOData "\n# HELP\n# TYPE \n"
-
-    toIOData :: String -> IOData
-    toIOData = fromBinary <<< stringToBinary
-
-    toString :: IOData -> String
-    toString = binaryToString <<< toBinary
-
-    stringToBinary :: String -> Binary
-    stringToBinary = unsafeCoerce
-
-    binaryToString :: Binary -> String
-    binaryToString = unsafeCoerce
 
 ingestInstance :: GenericStetsonGet PublicState.Ingest
 ingestInstance =
