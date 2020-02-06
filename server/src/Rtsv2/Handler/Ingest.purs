@@ -18,7 +18,7 @@ import Effect (Effect)
 import Erl.Data.Binary (Binary)
 import Erl.Data.Binary.IOData (IOData, fromBinary, toBinary, concat)
 import Erl.Data.List (List, nil, (:))
-import Erl.Data.Map (Map, fromFoldable, update)
+import Erl.Data.Map (Map, fromFoldable, lookup, update)
 import Erl.Data.Tuple (Tuple2, tuple2)
 import Erl.Process.Raw as Raw
 import Erl.Utils (Milliseconds)
@@ -64,6 +64,12 @@ data PrometheusMetricType = Counter
                           | Histogram
                           | Summary
                           | Untyped
+instance showPrometheusMetricType :: Show PrometheusMetricType where
+  show Counter = "counter"
+  show Gauge = "gauge"
+  show Histogram = "histogram"
+  show Summary = "summary"
+  show Untyped = "untyped"
 
 type PrometheusMetric = { name :: String
                         , help :: String
@@ -109,11 +115,45 @@ newPage pageMetrics =
   }
 
 pageToString :: PrometheusPage -> String
-pageToString page =
-  let
-    _ = spy "hello" page
-  in
-   ""
+pageToString {metrics, metricsData} =
+  foldl (\acc {name, help, metricType} ->
+          case lookup name metricsData of
+            Nothing -> acc
+            Just values ->
+              let
+                ioName = toIOData name
+                header = concat $ (toIOData "\n") :
+                                  (toIOData "# HELP ") : ioName : (toIOData " ") : (toIOData help) : (toIOData "\n") :
+                                  (toIOData "# TYPE ") : ioName : (toIOData (show metricType)) :
+                                  nil
+
+                lines = foldl (\lineAcc {value, timestamp: (PrometheusTimestamp timestamp), labels: (PrometheusLabels labels)} ->
+                                let
+                                  line = concat $ ioName : (toIOData "{") : labels : (toIOData "} ") : (toIOData value) : (toIOData " ") : timestamp : (toIOData "\n") : nil
+                                in
+                                 line <> lineAcc
+                              )
+                        acc
+                        values
+              in
+               header <> lines
+        )
+        (mempty :: IOData)
+        metrics
+  # toString
+  where
+    toIOData :: String -> IOData
+    toIOData = fromBinary <<< stringToBinary
+
+    toString :: IOData -> String
+    toString = binaryToString <<< toBinary
+
+    stringToBinary :: String -> Binary
+    stringToBinary = unsafeCoerce
+
+    binaryToString :: Binary -> String
+    binaryToString = unsafeCoerce
+
 
 addMetric :: forall a. Show a => String -> a -> PrometheusLabels -> PrometheusTimestamp -> PrometheusPage -> PrometheusPage
 addMetric name value labels timestamp page@{metricsData} =
