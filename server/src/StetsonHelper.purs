@@ -21,9 +21,9 @@ module StetsonHelper
        , preHookSpyReqState
        , preHookSpyState
 
-         -- internal - not for public consumption!
        , GenericHandlerState
        , GenericStatusState
+       , GenericStatusState2
        , GenericHandlerWithResponseState
        , GenericProxyState
        ) where
@@ -56,9 +56,6 @@ import Simple.JSON as JSON
 import Stetson (HttpMethod(..), RestResult, StetsonHandler)
 import Stetson.Rest as Rest
 import Unsafe.Coerce as Unsafe.Coerce
-
-
-
 
 type GenericStetsonHandler a = StetsonHandler (GenericHandlerState a)
 newtype GenericHandlerState a = GenericHandlerState { mPayload :: Maybe a }
@@ -147,11 +144,9 @@ genericGet getData =
       mData <- noprocToMaybe $ getData unit
       Rest.initResult req $ GenericStatusState { mData }
 
-type GenericStetsonGet2 = StetsonHandler Internal_GenericStatusState2
+type GenericStetsonGet2 = StetsonHandler GenericStatusState2
 
-type Internal_GenericStatusState2
-  = { bindValues :: List String
-    }
+newtype GenericStatusState2 = GenericStatusState2 { bindValues :: List String }
 
 genericGet2 :: List String -> List (Tuple2 String (List String -> Effect String)) -> GenericStetsonGet2
 genericGet2 bindings getDatas =
@@ -165,11 +160,9 @@ genericGet2 bindings getDatas =
         bindValues :: List String
         bindValues = (\bindElement -> fromMaybe' (lazyCrashIfMissing (bindElement <> " binding missing")) $ binding (atom bindElement) req) <$> bindings
       in
-       Rest.initResult req
-            { bindValues
-            }
+       Rest.initResult req $ GenericStatusState2 { bindValues }
 
-    provideContent getData req state@{bindValues} = do
+    provideContent getData req state@(GenericStatusState2 {bindValues}) = do
       mData <- noprocToMaybe $ getData bindValues
       case mData of
         Nothing ->

@@ -9,26 +9,18 @@ module Rtsv2.Agents.StreamRelay.Instance
 
 import Prelude
 
-import Data.Either (isRight)
-import Data.Foldable (foldl)
-import Data.Maybe (Maybe(..), fromMaybe, maybe)
-import Data.Newtype (wrap)
+import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Set (Set, toUnfoldable)
 import Data.Set as Set
 import Data.Traversable (traverse_)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
-import Erl.Data.List (List, catMaybes, head, nil, uncons, (:))
+import Erl.Data.List (List, nil, uncons, (:))
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
-import Erl.Data.Tuple (tuple2, tuple3)
-import Erl.ModuleName (NativeModuleName(..))
-import Erl.Process (spawnLink)
-import Erl.Utils as Erl
-import Foreign (unsafeToForeign)
 import Logger (Logger, spy)
 import Logger as Logger
-import Pinto (ServerName(..), StartLinkResult, isRegistered)
+import Pinto (ServerName, StartLinkResult, isRegistered)
 import Pinto.Gen (CallResult(..))
 import Pinto.Gen as Gen
 import PintoHelper (exposeState)
@@ -38,12 +30,10 @@ import Rtsv2.Agents.StreamRelay.Types (CreateRelayPayload, RegisterEgestPayload,
 import Rtsv2.Agents.TransPoP as TransPoP
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
-import Rtsv2.Router.Endpoint (Endpoint(..), makeUrlAddr)
 import Shared.Agent as Agent
 import Shared.Stream (StreamId)
-import Shared.Types (EgestServer, PoPName, RelayServer, Server, ServerAddress(..), extractAddress, extractPoP)
+import Shared.Types (EgestServer, PoPName, RelayServer, Server, extractAddress)
 import Shared.Types.Agent.State as PublicState
-import SpudGun as SpudGun
 
 
 type State
@@ -105,11 +95,6 @@ maybeStartRelaysForEgest state@{streamId, aggregatorPoP, thisServer} = do
   pure state{egestSourceRoutes = Just (spy "relayRoutes" relayRoutes)}
 
 
--- egestSourceNeighbours :: Maybe (List RelayRoute) -> Set (Maybe PoPName)
--- egestSourceNeighbours Nothing = Set.empty
--- egestSourceNeighbours (Just egestSourceRoutes) =
---   Set.fromFoldable (head <<< _.toSource <$> egestSourceRoutes)
-
 registerRelayChain :: RegisterRelayChainPayload -> Effect Unit
 registerRelayChain payload = Gen.doCast (serverName payload.streamId)
   \state@{streamId, relaysServed, egestSourceRoutes, aggregatorPoP} -> do
@@ -141,50 +126,6 @@ registerWithRelayProxy streamId aggregatorPoP sourceRoute = do
       -- This relay request is for content aggregated in this popdefinition
       -- TODO - media stuff
       pure unit
-
-
-
-
-
--- walkRelayChain :: StreamId -> PoPName -> SourceRoute -> Effect Unit
--- walkRelayChain streamId aggregatorPoP {toSource, thisPoP, toEgest} = do
---   case uncons toSource of
---     Nothing -> pure unit
---     Just {head, tail} -> do
---       let
---         thePayload :: RegisterRelayChainPayload
---         thePayload = { streamId
---                      , aggregatorPoP
---                      , route : { toEgest: (thisPoP : toEgest)
---                                , thisPoP: head
---                                , toSource: tail
---                                }
---                      }
---       void $ spawnLink (\_ -> notifyNextInChain thePayload)
---   where
---     notifyNextInChain :: RegisterRelayChainPayload -> Effect Unit
---     notifyNextInChain payload@{route: {thisPoP: nextInChain}} = do
---       -- TODO - strategy for knowing which servers in a remote PoP are healthy
---       -- for now route via the transPoP leader
---       mPoPLeader <- TransPoP.getLeaderFor nextInChain
---       case mPoPLeader of
---         Nothing -> do
---           _ <- logWarning "No PoP Leader for relay chain" {nextInChain}
---           notifyNextInChain payload
---         Just popLeader -> do
---           let
---             url = makeUrlAddr popLeader RelayChainE
---           resp <- SpudGun.postJson url payload
---           if isRight resp then
---             pure unit
---           else do
---             _ <- logWarning "Bad return code from post to create relay chain" {nextInChain, resp}
---             -- TODO sleep duration from config
---             _ <- Erl.sleep (wrap 500)
---             notifyNextInChain payload
-
-
-
 
 
 --------------------------------------------------------------------------------
