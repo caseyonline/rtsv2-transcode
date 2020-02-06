@@ -3,7 +3,7 @@ module Rtsv2App.Page.Settings where
 import Prelude
 
 import Component.HOC.Connect as Connect
-import Control.Monad.Reader (class MonadAsk, asks)
+import Control.Monad.Reader (class MonadAsk, ask)
 import Data.Const (Const)
 import Data.Maybe (Maybe(..))
 import Data.Maybe as Maybe
@@ -90,7 +90,8 @@ component = Connect.component $ H.mkComponent
   handleAction :: Action -> H.HalogenM State Action ChildSlots Void m Unit
   handleAction = case _ of
     Initialize -> do
-      mbProfile <- H.liftEffect <<< Ref.read =<< asks _.userEnv.currentUser
+      { userEnv } <- ask
+      mbProfile <- H.liftEffect $ Ref.read userEnv.currentUser
       st <- H.modify _ { currentUser = mbProfile }
       H.modify_ _ { profile = Loading }
       mbProfileWithEmail <- getCurrentUser

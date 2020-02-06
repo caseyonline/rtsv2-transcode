@@ -266,7 +266,6 @@ var optionz = {
                 + '</div>'
                     + 'Time' + '：' + data.data[0] + 'ms' + '<br>'
                     + 'Total' + '：' + data.data[1] + 'ms' + '<br>'
-                    + 'Total' + '：' + data.data[1] + 'ms' + '<br>'
             } else {
 
             return '<div style="border-bottom: 1px solid rgba(255,255,255,.3); font-size: 18px;padding-bottom: 7px;margin-bottom: 7px">'
@@ -354,11 +353,11 @@ var optionz = {
            zlevel: 10,
 
           data:  [
-              [ {name:'Dalas - DAL', coord: [-96.796989,32.776665], data: [30, 120]}
-              , {name:'London - LCY', coord: [-0.127758,51.507351]}
+              [ {name:'Dal', coord: [-96.796989,32.776665], data: [30, 120]}
+              , {name:'Lcy', coord: [-0.127758,51.507351]}
               ]
-            , [ {name:'London - LCY', coord: [-0.127758,51.507351], data: [30, 120]}
-              , {name:"Frankfurt - FRA", coord:[8.682127,50.110922]}
+            , [ {name:'Lcy', coord: [-0.127758,51.507351], data: [30, 120]}
+              , {name:"Fra", coord:[8.682127,50.110922]}
               ]
           ],
         },
@@ -387,14 +386,14 @@ var optionz = {
 
 
           data:  [
-              [ {name:'Dalas - DAL', coord: [-96.796989,32.776665], data: [30, 120]}
-                , {name:'Washington - DIA', coord: [-77.0363700, 38.8951100]}
+              [ {name:'Dal', coord: [-96.796989,32.776665], data: [30, 120]}
+                , {name:'Dia', coord: [-77.0363700, 38.8951100]}
               ]
-              , [ {name:'Washington - DIA', coord: [-77.0363700, 38.8951100], data:[60, 120]}
-                  , {name:'London - LCY', coord: [-0.127758,51.507351]}
+              , [ {name:'Dia', coord: [-77.0363700, 38.8951100], data:[60, 120]}
+                  , {name:'Lcy', coord: [-0.127758,51.507351]}
               ]
-            , [ {name:'London - LCY', coord: [-0.127758,51.507351], data: [30, 120]}
-                , {name:"Frankfurt - FRA", coord:[8.682127,50.110922]}
+            , [ {name:'Lcy', coord: [-0.127758,51.507351], data: [30, 120]}
+                , {name:"Fra", coord:[8.682127,50.110922]}
               ]
           ],
         },

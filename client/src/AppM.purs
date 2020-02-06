@@ -5,6 +5,7 @@ import Prelude
 import Control.Monad.Reader.Trans (class MonadAsk, ReaderT, ask, asks, runReaderT)
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
+import Debug.Trace (spy)
 import Effect.Aff (Aff)
 import Effect.Aff.Bus as Bus
 import Effect.Aff.Class (class MonadAff, liftAff)
@@ -17,15 +18,17 @@ import Routing.Hash (setHash)
 import Rtsv2App.Api.Endpoint (Endpoint(..))
 import Rtsv2App.Api.Request (RequestMethod(..))
 import Rtsv2App.Api.Request as Request
-import Rtsv2App.Api.Utils (authenticate, mkAuthRequest)
+import Rtsv2App.Api.Utils (authenticate, mkAuthRequest, mkRequest)
 import Rtsv2App.Capability.LogMessages (class LogMessages)
 import Rtsv2App.Capability.Navigate (class Navigate, navigate)
 import Rtsv2App.Capability.Now (class Now)
+import Rtsv2App.Capability.Resource.Api (class ManageApi)
 import Rtsv2App.Capability.Resource.User (class ManageUser)
 import Rtsv2App.Data.Log as Log
 import Rtsv2App.Data.Profile (ProfileEmailRes)
 import Rtsv2App.Data.Route as Route
 import Rtsv2App.Env (Env, LogLevel(..))
+import Shared.Types.Agent.State (TimedPoPRoutes)
 import Simple.JSON as JSON
 import Type.Equality (class TypeEquals, from)
 
@@ -83,7 +86,7 @@ instance navigateAppM :: Navigate AppM where
       Bus.write Nothing userBus
     navigate Route.Dashboard
 
--- | all of the available requests
+-- | all of the available user requests
 instance manageUserAppM :: ManageUser AppM where
   loginUser =
     authenticate Request.login
@@ -100,3 +103,13 @@ instance manageUserAppM :: ManageUser AppM where
 
   updateUser fields =
     void $ mkAuthRequest { endpoint: User, method: Put (Just (JSON.writeJSON fields)) }
+
+-- | all api stats related requests
+instance manageAPIAppM :: ManageApi AppM where
+  --  
+  getTimedRoutes toPopName = do
+    response <- mkRequest { endpoint: TimedRoutes toPopName, method: Get }
+    case JSON.readJSON response of
+      Left e -> pure $ Left $ show e
+      Right (res :: TimedPoPRoutes) -> do
+        pure $ Right res

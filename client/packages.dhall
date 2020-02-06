@@ -4,12 +4,11 @@ let mkPackage =
 let upstream =
       https://raw.githubusercontent.com/purescript/package-sets/psc-0.13.2-20190725/src/packages.dhall sha256:60cc03d2c3a99a0e5eeebb16a22aac219fa76fe6a1686e8c2bd7a11872527ea3
 
-
 let overrides =
       { halogen =
-          upstream.halogen // { version = "v5.0.0-rc.5" }
+          upstream.halogen ⫽ { version = "v5.0.0-rc.5" }
       , halogen-vdom =
-          upstream.halogen-vdom // { version = "v6.1.0" }
+          upstream.halogen-vdom ⫽ { version = "v6.1.0" }
       }
 
 let additions =
@@ -23,17 +22,6 @@ let additions =
           ]
           "https://github.com/thomashoneyman/purescript-halogen-formless.git"
           "v1.0.0-rc.1"
-      , slug =
-          mkPackage
-          [ "prelude"
-          , "maybe"
-          , "strings"
-          , "unicode"
-          , "generics-rep"
-          , "argonaut-codecs"
-          ]
-          "https://github.com/thomashoneyman/purescript-slug.git"
-          "v1.0.0"
       , precise-datetime =
           mkPackage
           [ "arrays"
@@ -59,68 +47,39 @@ let additions =
           "v5.1.1"
       , higher-order =
           mkPackage
-            [ "catenable-lists"
-            , "const"
-            , "effect"
-            , "errors"
-            , "generics-rep"
-            , "lists"
-            , "ordered-collections"
-            , "orders"
-            , "profunctor"
-            ]
-            "https://github.com/matthew-hilty/purescript-higher-order.git"
-            "v0.2.0"
+          [ "catenable-lists"
+          , "const"
+          , "effect"
+          , "errors"
+          , "generics-rep"
+          , "lists"
+          , "ordered-collections"
+          , "orders"
+          , "profunctor"
+          ]
+          "https://github.com/matthew-hilty/purescript-higher-order.git"
+          "v0.2.0"
       , proxying =
           mkPackage
-            [ "console"
-            , "effect"
-            , "generics-rep"
-            , "prelude"
-            , "test-unit"
-            , "typelevel-prelude"
-            ]
-            "https://github.com/matthew-hilty/purescript-proxying.git"
-            "v1.1.0"
-      , struct =
-          mkPackage
-            [ "argonaut"
-            , "argonaut-codecs"
-            , "console"
-            , "effect"
-            , "proxying"
-            , "record"
-            , "record-extra"
-            , "subcategory"
-            , "test-unit"
-            , "variant"
-            ]
-            "https://github.com/matthew-hilty/purescript-struct.git"
-            "v1.1.0"
+          [ "console"
+          , "effect"
+          , "generics-rep"
+          , "prelude"
+          , "test-unit"
+          , "typelevel-prelude"
+          ]
+          "https://github.com/matthew-hilty/purescript-proxying.git"
+          "v1.1.0"
       , subcategory =
           mkPackage
-            [ "prelude"
-            , "profunctor"
-            , "record"
-            ]
-            "https://github.com/matthew-hilty/purescript-subcategory.git"
-            "v0.2.0"
-      , tolerant-argonaut =
+          [ "prelude", "profunctor", "record" ]
+          "https://github.com/matthew-hilty/purescript-subcategory.git"
+          "v0.2.0"
+      , halogen-nselect =
           mkPackage
-            [ "argonaut-codecs"
-            , "argonaut-core"
-            , "arrays"
-            , "console"
-            , "effect"
-            , "higher-order"
-            , "lists"
-            , "psci-support"
-            , "record"
-            , "struct"
-            , "typelevel-prelude"
-            ]
-            "https://github.com/matthew-hilty/purescript-tolerant-argonaut.git"
-            "v1.1.0"
+          [ "halogen" ]
+          "https://github.com/nonbili/purescript-halogen-nselect.git"
+          "master"
       }
 
-in  upstream // overrides // additions
+in  upstream ⫽ overrides ⫽ additions

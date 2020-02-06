@@ -22,6 +22,7 @@ type ProfileRes = { user :: Profile }
 
 -- | The `ProfileEmail` type extends the `Profile` fields with an additional `Email` type.
 type ProfileEmail = { | ProfileRep (email :: Email) }
+
 type ProfileEmailRes = { user :: ProfileEmail }
 
 -- | A lens for a username field within a record

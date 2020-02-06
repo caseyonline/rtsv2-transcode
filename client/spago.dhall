@@ -1,6 +1,9 @@
-{ sources = [ "src/**/*.purs", "test/**/*.purs" ]
-, name = "rsvt2-app"
-, packages = ./packages.dhall
+{ sources =
+    [ "src/**/*.purs", "test/**/*.purs" ]
+, name =
+    "rsvt2-app"
+, packages =
+    ./packages.dhall
 , dependencies =
     [ "aff"
     , "aff-bus"
@@ -15,19 +18,18 @@
     , "halogen"
     , "halogen-css"
     , "halogen-formless"
+    , "halogen-nselect"
     , "milkis"
     , "nonempty"
     , "now"
     , "precise-datetime"
     , "prelude"
+    , "random"
     , "remotedata"
     , "routing"
     , "routing-duplex"
     , "simple-json"
     , "simple-json-generics"
-    , "slug"
-    , "struct"
-    , "tolerant-argonaut"
     , "typelevel-prelude"
     , "variant"
     ]
