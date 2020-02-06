@@ -21,13 +21,11 @@ module StetsonHelper
        , preHookSpyReqState
        , preHookSpyState
 
-         -- internal - not for public consumption!
-         -- TODO - move these to newtypes, lose Internal name and don't export the constructor
        , GenericHandlerState
-       , Internal_GenericStatusState
-       , Internal_GenericStatusState2
-       , Internal_GenericHandlerWithResponseState
-       , Internal_GenericProxyState
+       , GenericStatusState
+       , GenericStatusState2
+       , GenericHandlerWithResponseState
+       , GenericProxyState
        ) where
 
 import Prelude
@@ -55,17 +53,12 @@ import Shared.Types (PoPName, Server)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (class ReadForeign, class WriteForeign, writeJSON)
 import Simple.JSON as JSON
-import Stetson (HttpMethod(..), StetsonHandler)
+import Stetson (HttpMethod(..), RestResult, StetsonHandler)
 import Stetson.Rest as Rest
 import Unsafe.Coerce as Unsafe.Coerce
 
-
-
-
 type GenericStetsonHandler a = StetsonHandler (GenericHandlerState a)
-newtype GenericHandlerState a
-  = GenericHandlerState { mPayload :: Maybe a
-                        }
+newtype GenericHandlerState a = GenericHandlerState { mPayload :: Maybe a }
 
 genericPost :: forall a b. ReadForeign a => (a -> Effect b) -> GenericStetsonHandler a
 genericPost proxiedFun =
@@ -91,8 +84,8 @@ genericPost proxiedFun =
 
 
 
-type GenericStetsonHandlerWithResponse a b = StetsonHandler (Internal_GenericHandlerWithResponseState a b)
-type Internal_GenericHandlerWithResponseState a b
+type GenericStetsonHandlerWithResponse a b = StetsonHandler (GenericHandlerWithResponseState a b)
+type GenericHandlerWithResponseState a b
   = { mPayload :: Maybe a
     , mResponse :: Maybe b
     }
@@ -129,13 +122,10 @@ genericPostWithResponse proxiedFun =
 
 
 
-type GenericStetsonGet a = StetsonHandler (Internal_GenericStatusState a)
+type GenericStetsonGet a = StetsonHandler (GenericStatusState a)
+type GenericStetsonGetByStreamId a = StetsonHandler (GenericStatusState a)
 
-type GenericStetsonGetByStreamId a = StetsonHandler (Internal_GenericStatusState a)
-
-type Internal_GenericStatusState a
-  = { mData :: Maybe a
-    }
+newtype GenericStatusState a = GenericStatusState { mData :: Maybe a }
 
 genericGetByStreamId :: forall a. WriteForeign a =>  (StreamId -> Effect a) -> GenericStetsonGetByStreamId a
 genericGetByStreamId = genericGetBy Bindings.streamIdBindingLiteral
@@ -147,29 +137,16 @@ genericGet :: forall a. WriteForeign a => (Unit -> Effect a) -> GenericStetsonGe
 genericGet getData =
   Rest.handler init
   # Rest.allowedMethods (Rest.result (GET : mempty))
-  # Rest.contentTypesProvided (\req state -> Rest.result (singleton $ MimeType.json provideContent) req state)
+  # Rest.contentTypesProvided (\req state -> Rest.result (singleton $ MimeType.json genericProvideContent) req state)
   # Rest.yeeha
   where
     init req = do
       mData <- noprocToMaybe $ getData unit
-      Rest.initResult req
-            { mData
-            }
+      Rest.initResult req $ GenericStatusState { mData }
 
-    provideContent req state@{mData} =
-      case mData of
-        Nothing ->
-          do
-            newReq <- replyWithoutBody (StatusCode 404) Map.empty req
-            Rest.stop newReq state
-        Just theData ->
-          Rest.result (writeJSON theData) req state
+type GenericStetsonGet2 = StetsonHandler GenericStatusState2
 
-type GenericStetsonGet2 = StetsonHandler Internal_GenericStatusState2
-
-type Internal_GenericStatusState2
-  = { bindValues :: List String
-    }
+newtype GenericStatusState2 = GenericStatusState2 { bindValues :: List String }
 
 genericGet2 :: List String -> List (Tuple2 String (List String -> Effect String)) -> GenericStetsonGet2
 genericGet2 bindings getDatas =
@@ -183,11 +160,9 @@ genericGet2 bindings getDatas =
         bindValues :: List String
         bindValues = (\bindElement -> fromMaybe' (lazyCrashIfMissing (bindElement <> " binding missing")) $ binding (atom bindElement) req) <$> bindings
       in
-       Rest.initResult req
-            { bindValues
-            }
+       Rest.initResult req $ GenericStatusState2 { bindValues }
 
-    provideContent getData req state@{bindValues} = do
+    provideContent getData req state@(GenericStatusState2 {bindValues}) = do
       mData <- noprocToMaybe $ getData bindValues
       case mData of
         Nothing ->
@@ -201,7 +176,7 @@ genericGetBy :: forall a b. Newtype a String => WriteForeign b =>  String -> (a 
 genericGetBy bindElement getData =
   Rest.handler init
   # Rest.allowedMethods (Rest.result (GET : mempty))
-  # Rest.contentTypesProvided (\req state -> Rest.result (singleton $ MimeType.json provideContent) req state)
+  # Rest.contentTypesProvided (\req state -> Rest.result (singleton $ MimeType.json genericProvideContent) req state)
   # Rest.yeeha
   where
     init req =
@@ -210,24 +185,14 @@ genericGetBy bindElement getData =
         bindValue = wrap $ fromMaybe' (lazyCrashIfMissing (bindElement <> " binding missing")) $ binding (atom bindElement) req
       in do
         mData <- noprocToMaybe $ getData bindValue
-        Rest.initResult req
-            { mData
-            }
+        Rest.initResult req $ GenericStatusState { mData }
 
-    provideContent req state@{mData} =
-      case mData of
-        Nothing ->
-          do
-            newReq <- replyWithoutBody (StatusCode 404) Map.empty req
-            Rest.stop newReq state
-        Just theData ->
-          Rest.result (writeJSON theData) req state
 
 genericGetBy2 :: forall a b c. Newtype a String => Newtype b String => WriteForeign c =>  String -> String -> (a -> b -> Effect c) -> GenericStetsonGet c
 genericGetBy2 bindElement1 bindElement2 getData =
   Rest.handler init
   # Rest.allowedMethods (Rest.result (GET : mempty))
-  # Rest.contentTypesProvided (\req state -> Rest.result (singleton $ MimeType.json provideContent) req state)
+  # Rest.contentTypesProvided (\req state -> Rest.result (singleton $ MimeType.json genericProvideContent) req state)
   # Rest.yeeha
   where
     init req =
@@ -238,27 +203,27 @@ genericGetBy2 bindElement1 bindElement2 getData =
         bindValue2 = wrap $ fromMaybe' (lazyCrashIfMissing (bindElement2 <> " binding missing")) $ binding (atom bindElement2) req
       in do
         mData <- noprocToMaybe $ getData bindValue1 bindValue2
-        Rest.initResult req
-            { mData
-            }
-
-    provideContent req state@{mData} =
-      case mData of
-        Nothing ->
-          do
-            newReq <- replyWithoutBody (StatusCode 404) Map.empty req
-            Rest.stop newReq state
-        Just theData ->
-          Rest.result (writeJSON theData) req state
+        Rest.initResult req $ GenericStatusState { mData }
 
 
+genericProvideContent :: forall a. WriteForeign a => Req -> GenericStatusState a -> Effect (RestResult String (GenericStatusState a))
+genericProvideContent req state@(GenericStatusState {mData}) =
+  case mData of
+    Nothing ->
+      do
+        newReq <- replyWithoutBody (StatusCode 404) Map.empty req
+        Rest.stop newReq state
+    Just theData ->
+      Rest.result (writeJSON theData) req state
 
-type Internal_GenericProxyState
-  = { whereIsResp :: Maybe Server
-    , streamId :: StreamId
-    }
 
-genericProxyByStreamId :: (StreamId -> Effect (Maybe (LocalOrRemote Server))) -> (StreamId -> Endpoint) -> StetsonHandler Internal_GenericProxyState
+
+newtype GenericProxyState
+  = GenericProxyState { whereIsResp :: Maybe Server
+                      , streamId :: StreamId
+                      }
+
+genericProxyByStreamId :: (StreamId -> Effect (Maybe (LocalOrRemote Server))) -> (StreamId -> Endpoint) -> StetsonHandler GenericProxyState
 genericProxyByStreamId whereIsFun endpointFun =
   Rest.handler init
   # Rest.allowedMethods (Rest.result (GET : mempty))
@@ -275,18 +240,18 @@ genericProxyByStreamId whereIsFun endpointFun =
         bindValue = wrap $ fromMaybe' (lazyCrashIfMissing (bindElement <> " binding missing")) $ binding (atom bindElement) req
       in do
         whereIsResp <- (map fromLocalOrRemote) <$> whereIsFun bindValue
-        Rest.initResult req
-            { whereIsResp
-            , streamId : bindValue
-            }
+        Rest.initResult req $
+            GenericProxyState { whereIsResp
+                              , streamId : bindValue
+                              }
 
     resourceExists req state =
       Rest.result false req state
 
-    previouslyExisted req state@{whereIsResp} =
+    previouslyExisted req state@(GenericProxyState {whereIsResp}) =
       Rest.result (isJust whereIsResp) req state
 
-    movedTemporarily req state@{whereIsResp, streamId} =
+    movedTemporarily req state@(GenericProxyState {whereIsResp, streamId}) =
       case whereIsResp of
         Just server ->
           let

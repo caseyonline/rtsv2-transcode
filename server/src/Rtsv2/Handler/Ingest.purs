@@ -19,7 +19,6 @@ import Erl.Data.List (List, nil, (:))
 import Erl.Data.Tuple (tuple2)
 import Erl.Process.Raw as Raw
 import Erl.Utils as Timer
-import Logger (spy)
 import Prometheus as Prometheus
 import Rtsv2.Agents.IngestInstance as IngestInstance
 import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
@@ -37,7 +36,7 @@ import SpudGun (bodyToJSON)
 import SpudGun as SpudGun
 import Stetson (StetsonHandler)
 import Stetson.Rest as Rest
-import StetsonHelper (GenericStetsonGet, GenericStetsonGet2, genericGet, genericGet2, genericGetBy2)
+import StetsonHelper (GenericStetsonGet, GenericStetsonGet2, genericGet2, genericGetBy2)
 
 ingestInstances :: StetsonHandler Unit
 ingestInstances =

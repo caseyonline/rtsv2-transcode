@@ -33,7 +33,7 @@ import Shared.Types.Agent.State as PublicState
 import Simple.JSON as JSON
 import Stetson (HttpMethod(..), StetsonHandler)
 import Stetson.Rest as Rest
-import StetsonHelper (GenericStetsonGetByStreamId, GenericStetsonHandler, Internal_GenericProxyState, allBody, binaryToString, genericGetByStreamId, genericPost, genericProxyByStreamId, preHookSpyState)
+import StetsonHelper (GenericStetsonGetByStreamId, GenericStetsonHandler, GenericProxyState, allBody, binaryToString, genericGetByStreamId, genericPost, genericProxyByStreamId, preHookSpyState)
 
 
 stats :: GenericStetsonGetByStreamId PublicState.StreamRelay
@@ -46,7 +46,7 @@ registerEgest :: GenericStetsonHandler RegisterEgestPayload
 registerEgest = genericPost  StreamRelayInstance.registerEgest
 
 
-proxiedStats :: StetsonHandler Internal_GenericProxyState
+proxiedStats :: StetsonHandler GenericProxyState
 proxiedStats = genericProxyByStreamId IntraPoP.whereIsStreamRelay RelayStatsE
 
 
