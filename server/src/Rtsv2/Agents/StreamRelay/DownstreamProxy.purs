@@ -84,7 +84,7 @@ maybeCallProxyWithRoute {proxiedServer: Nothing} _ = pure unit
 maybeCallProxyWithRoute {streamId, thisServer, proxiedServer: Just remoteRelay} sourceRoute = do
   let
     payload = {streamId, deliverTo: thisServer, sourceRoute}
-    url = makeUrlAddr remoteRelay RelayChainE
+    url = makeUrlAddr remoteRelay RelayRegisterRelayE
   void $ spawnLink (\_ -> do
                      -- TODO - send message to parent saying the register worked?
                      -- Retry loop?  DOn't use follow here are we should be talking to the

@@ -69,11 +69,10 @@ init args = do
 
     # mkRoute  RelayE                                                           RelayHandler.startResource
     # mkRoute  RelayEnsureStartedE                                              RelayHandler.ensureStarted
-    # mkRoute  RelayRegisterE                                                   RelayHandler.registerEgest
---    # mkRoute  RelayChainE                                                      RelayHandler.chainResource
+    # mkRoute  RelayRegisterEgestE                                              RelayHandler.registerEgest
+    # mkRoute  RelayRegisterRelayE                                              RelayHandler.registerRelay
     # mkRoute (RelayStatsE streamIdBinding)                                     RelayHandler.stats
     # mkRoute (RelayProxiedStatsE streamIdBinding)                              RelayHandler.proxiedStats
-
 
     # mkRoute  LoadE                                                            LoadHandler.load
 

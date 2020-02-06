@@ -36,8 +36,8 @@ data Endpoint
   | EgestE
   | RelayE
   | RelayEnsureStartedE
-  | RelayChainE
-  | RelayRegisterE
+  | RelayRegisterEgestE
+  | RelayRegisterRelayE
   | RelayProxiedStatsE StreamId
   | RelayStatsE StreamId
   | LoadE
@@ -84,8 +84,8 @@ endpoint = root $ sum
 
   , "RelayE"                                           : "" / "api" / "agents" / "relay" / path "egest"  noArgs
   , "RelayEnsureStartedE"                              : "" / "api" / "agents" / "relay" / path "ensureStarted"  noArgs
-  , "RelayChainE"                                      : "" / "api" / "agents" / "relay" / path "chain"  noArgs
-  , "RelayRegisterE"                                   : "" / "api" / "agents" / "relay" / path "register" noArgs
+  , "RelayRegisterEgestE"                              : "" / "api" / "agents" / "relay" / "register" / path "egest" noArgs
+  , "RelayRegisterRelayE"                              : "" / "api" / "agents" / "relay" / "register" / path "relay" noArgs
   , "RelayStatsE"                                      : "" / "api" / "agents" / "relay" / streamId segment
   , "RelayProxiedStatsE"                               : "" / "api" / "agents" / "proxied" / "relay" / streamId segment
 

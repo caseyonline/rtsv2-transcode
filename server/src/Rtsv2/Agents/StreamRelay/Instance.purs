@@ -2,7 +2,7 @@ module Rtsv2.Agents.StreamRelay.Instance
   ( startLink
   , isAvailable
   , registerEgest
-  , registerRelayChain
+  , registerRelay
   , init
   , status
   ) where
@@ -10,12 +10,13 @@ module Rtsv2.Agents.StreamRelay.Instance
 import Prelude
 
 import Data.Maybe (Maybe(..), fromMaybe)
-import Data.Set (Set, toUnfoldable)
+import Data.Set (Set)
 import Data.Set as Set
 import Data.Traversable (traverse_)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, uncons, (:))
+import Erl.Data.List as List
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
 import Logger (Logger, spy)
@@ -26,7 +27,7 @@ import Pinto.Gen as Gen
 import PintoHelper (exposeState)
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.StreamRelay.DownstreamProxy as DownstreamProxy
-import Rtsv2.Agents.StreamRelay.Types (CreateRelayPayload, RegisterEgestPayload, SourceRoute, RegisterRelayChainPayload)
+import Rtsv2.Agents.StreamRelay.Types (CreateRelayPayload, RegisterEgestPayload, SourceRoute, RegisterRelayPayload)
 import Rtsv2.Agents.TransPoP as TransPoP
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
@@ -60,8 +61,8 @@ status =
   where
     mkStatus :: State -> PublicState.StreamRelay
     mkStatus state =
-       { egestsServed : extractAddress <$> toUnfoldable state.egestsServed
-       , relaysServed : [] --extractAddress <$> toUnfoldable state.relaysServed
+       { egestsServed : extractAddress <$> Set.toUnfoldable state.egestsServed
+       , relaysServed : List.toUnfoldable $ extractAddress <$> Map.keys state.relaysServed
        }
 
 init :: CreateRelayPayload -> Effect State
@@ -95,8 +96,8 @@ maybeStartRelaysForEgest state@{streamId, aggregatorPoP, thisServer} = do
   pure state{egestSourceRoutes = Just (spy "relayRoutes" relayRoutes)}
 
 
-registerRelayChain :: RegisterRelayChainPayload -> Effect Unit
-registerRelayChain payload = Gen.doCast (serverName payload.streamId)
+registerRelay :: RegisterRelayPayload -> Effect Unit
+registerRelay payload = Gen.doCast (serverName payload.streamId)
   \state@{streamId, relaysServed, egestSourceRoutes, aggregatorPoP} -> do
     logInfo "Register relay chain " {payload}
     -- Do we already have this registration

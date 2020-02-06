@@ -60,7 +60,6 @@ mkPoPJson  nodes =
 
     popNodes pop = filter (\(Node popNum  _) -> popNum == pop.number)
 
-
     insertNodes k [] acc = acc
     insertNodes k v acc = Map.insert k v acc
 
@@ -103,6 +102,10 @@ main =
     p1n3 = Node 1 3
     p2n1 = Node 2 1
     p2n2 = Node 2 2
+    p3n1 = Node 3 1
+    p3n2 = Node 3 2
+    p4n1 = Node 4 1
+    p4n2 = Node 4 2
 
     slot1      = "slot1"
     shortName1 = "mmddev001"
@@ -156,7 +159,7 @@ main =
                                          } # attempt <#> stringifyError
 
     maybeLogStep s a =
-      let _ = spy s a in
+      --let _ = spy s a in
       unit
 
     as desc (Right r) =
@@ -187,6 +190,12 @@ main =
         predicate :: Array Node -> PublicState.StreamRelay -> Boolean
         predicate servers {egestsServed} =
           (sort $ (ServerAddress <<< toAddr) <$> servers) == sort egestsServed
+
+    assertRelayForRelay = assertBodyFun <<< predicate
+      where
+        predicate :: Array Node -> PublicState.StreamRelay -> Boolean
+        predicate servers {relaysServed} =
+          (sort $ (ServerAddress <<< toAddr) <$> servers) == sort relaysServed
 
     assertEgestClients = assertBodyFun <<< predicate
       where
@@ -472,9 +481,12 @@ main =
               relayStats   p2n1 slot1          >>= assertStatusCode 200 >>= as  "local relay exists"
               waitForAsyncRelayStart                                    >>= as' "wait for the relay chain to start"
               waitForIntraPoPDisseminate                                >>= as' "allow intraPoP to spread location of relay"
-              intraPoPState p1n1               >>= assertRelayCount slot1 1
+              intraPoPState p1n1               >>= assertStatusCode 200
+                                                   >>= assertRelayCount slot1 1
                                                                         >>= as  "relay created in aggregator pop"
-              proxiedRelayStats p1n1 slot1     >>= assertStatusCode 200 >>= as  "remote relay exists"
+              proxiedRelayStats p1n1 slot1     >>= assertStatusCode 200
+                                                   >>= assertRelayForRelay [p2n1]
+                                                                        >>= as  "remote relay is serving local relay"
 
             it "client ingest starts and stops" do
               client start p1n2 slot1          >>= assertStatusCode 404 >>= as  "no local egest prior to ingest"
@@ -487,6 +499,44 @@ main =
               waitForTransPoPStopDisseminate                            >>= as' "wait for transPop disseminate"
               client start p1n2 slot1          >>= assertStatusCode 404 >>= as  "no same pop egest post stop"
               client start p2n1 slot1          >>= assertStatusCode 404 >>= as  "no remote pop egest post stop"
+              -- TODO - assert the relays stop as well - might be slow with timeouts chaining...
+
+
+      describe "four pop setup" do
+        let
+          p1Nodes = [p1n1, p1n2]  -- iad
+          p2Nodes = [p2n1, p2n2]  -- dal
+          p3Nodes = [p3n1, p3n2]  -- fra
+          p4Nodes = [p4n1, p4n2]  -- lax
+          -- the topology in wanDefinition.json is important - maybe make explicit for this test...
+          -- todo - why don't singleton pops work?
+          nodes = p1Nodes <> p2Nodes <> p3Nodes <> p4Nodes
+          maxOut server = setLoad server 99.0 >>= assertStatusCode 204 >>= as ("set load on " <> toAddr server)
+
+        before_ (launch nodes) do
+          after_ stopSession do
+            it "lax -> fra sets up 2 non-overlapping relay chains" do
+              traverse_ maxOut [p1n2, p2n2, p3n2, p4n2]                    >>= as' "load up all servers bar one in each pop"
+              waitForIntraPoPDisseminate                                >>= as' "allow intraPoP to spread location of relay"
+              ingest start p3n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
+              waitForTransPoPDisseminate                                >>= as' "wait for transPop disseminate"
+              client start p4n1 slot1          >>= assertStatusCode 204 >>= as  "egest available in lax"
+              relayStats   p4n1 slot1          >>= assertStatusCode 200 >>= as  "local relay exists"
+              waitForAsyncRelayStart                                    >>= as' "wait for the relay chain to start"
+              waitForIntraPoPDisseminate                                >>= as' "allow intraPoP to spread location of relay"
+              relayStats p1n1 slot1            >>= assertStatusCode 200
+                                                   >>= assertRelayForRelay [p4n1]
+--                                                       >>= assertRelayForEgest []
+                                                                        >>= as  "iad relays for lax with no egests of its own"
+
+              relayStats p2n1 slot1            >>= assertStatusCode 200
+                                                   >>= assertRelayForRelay [p4n1]
+--                                                       >>= assertRelayForEgest []
+                                                                        >>= as  "dal relays for lax with no egests of its own"
+              relayStats p3n1 slot1            >>= assertStatusCode 200
+                                                   >>= assertRelayForRelay [p1n1, p2n1]
+--                                                       >>= assertRelayForEgest []
+                                                                        >>= as  "fra relays for both iad and dal with no egests of its own"
 
     describe "Cleanup" do
       after_ stopSession do
