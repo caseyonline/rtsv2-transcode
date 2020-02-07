@@ -11,6 +11,7 @@ module Rtsv2.Config
   , TransPoPAgentApi
   , LlnwApiConfig
   , LoadMonitorConfig
+  , HealthConfig
   , appName
   , webConfig
   , globalConfig
@@ -24,6 +25,7 @@ module Rtsv2.Config
   , rtmpIngestConfig
   , llnwApiConfig
   , loadMonitorConfig
+  , healthConfig
   , mergeOverrides
   ) where
 
@@ -63,8 +65,7 @@ type PoPDefinitionConfig
     }
 
 type IngestAggregatorAgentConfig
-  = { streamAvailableAnnounceMs :: Int
-    , shutdownLingerTimeMs :: Int
+  = { shutdownLingerTimeMs :: Int
     }
 
 type IngestStatsConfig
@@ -83,7 +84,9 @@ type IntraPoPAgentConfig
     , rejoinEveryMs :: Int
     , expireThresholdMs :: Int
     , expireEveryMs :: Int
-    , livenessMs :: Int
+    , vmLivenessMs :: Int
+    , assetLivenessMs :: Int
+    , replayMessagesOnJoin :: Boolean
     }
 
 type TransPoPAgentConfig
@@ -95,6 +98,7 @@ type TransPoPAgentConfig
     , rejoinEveryMs :: Int
     , defaultRttMs :: Int
     , connectStreamAfterMs :: Int
+    , replayMessagesOnJoin :: Boolean
     }
 
 type IntraPoPAgentApi
@@ -122,6 +126,16 @@ type LlnwApiConfig
 
 type LoadMonitorConfig
   = {loadAnnounceMs :: Int}
+
+
+type HealthConfig
+  = { thresholds :: { perfect :: Int
+                    , excellent :: Int
+                    , good :: Int
+                    , poor :: Int
+                      }
+    }
+
 
 foreign import getEnv_ :: Atom -> Effect Foreign
 foreign import getMap_ :: Atom -> Effect Foreign
@@ -185,6 +199,11 @@ llnwApiConfig = do
 loadMonitorConfig :: Effect LoadMonitorConfig
 loadMonitorConfig = do
   getMandatoryRecord "loadMonitorConfig"
+
+
+healthConfig :: Effect HealthConfig
+healthConfig = do
+  getMandatoryRecord "healthConfig"
 
 get :: forall a e. (Foreign -> ExceptT e Identity a) -> String -> Effect (Maybe a)
 get f v = hush <<< runExcept <<< f <$> getEnv_ (atom v)

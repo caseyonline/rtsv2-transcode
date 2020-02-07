@@ -13,19 +13,19 @@ function wait_for_server {
   do
     IFS=, read -r intra trans transpop <<< $(curl --silent --fail http://$addr:3000/api/healthCheck | jq -r '[.intraPoPHealth, .transPoPHealth, .currentTransPoP] | @csv' | sed 's/"//g')
     #echo $addr: intraHealth $intra, transHealth: $trans
-    if [[ "$intra" != "Excellent" && "$intra" != "Perfect" ]]; then
+    if [[ "$intra" != "Perfect" ]]; then
         sleep 0.5
         continue
     fi
 
-    if [[ "$trans" == "Excellent" || "$trans" == "Perfect" ]]; then
+    if [[ "$trans" == "Perfect" ]]; then
         break
     fi
 
     if [[ "$trans" == "NA" ]]; then
          IFS=, read -r intra trans  <<< $(curl --silent --fail http://$transpop:3000/api/healthCheck | jq -r '[.intraPoPHealth, .transPoPHealth] | @csv' | sed 's/"//g')
          #echo $addr: trans: $transpop, transHealth: $trans
-        if [[ "$trans" == "Excellent" || "$trans" == "Perfect" ]]; then
+        if [[ "$trans" == "Perfect" ]]; then
             break
         fi
 

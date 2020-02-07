@@ -180,10 +180,6 @@ main =
       pure $ Right r
     debugBody (Left err) = let _ = spy "debugBodyErr" err in pure $ Left err
 
-    launch nodes = do
-      writeTextFile UTF8 "config/popDefinition.json" $ mkPoPJson nodes
-      _ <- stopSession
-      nodes <#> mkNode "test/config/sys.config" # launchNodes
 
     assertRelayForEgest = assertBodyFun <<< predicate
       where
@@ -245,6 +241,8 @@ main =
     waitForAsyncVariantStop        = delayMs  100.0
 
     waitForIntraPoPDisseminate     = delayMs  500.0
+
+    waitForNodeStartDisseminate    = delayMs 1000.0
     waitForNodeFailureDisseminate  = delayMs 3500.0
 
     waitForTransPoPDisseminate     = delayMs 2000.0
@@ -265,7 +263,10 @@ main =
         maxOut server = setLoad server 60.0 >>= assertStatusCode 204 >>= as ("set load on " <> toAddr server)
         aggregatorNotPresent slot server = aggregatorStats server slot >>= assertStatusCode 404 >>= as ("aggregator not on " <> toAddr server)
       in do
-      before_ (launch nodes) do
+      before_ (do
+                 startSession nodes
+                 launch nodes
+              ) do
         after_ stopSession do
           it "ingest aggregation created on ingest node" do
             ingest start    p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
@@ -397,7 +398,10 @@ main =
           nodes = p1Nodes
           allNodesBar node = delete node nodes
         in do
-        before_ (launch nodes) do
+        before_ (do
+                   startSession nodes
+                   launch nodes
+                ) do
           after_ stopSession do
             it "client requests stream on ingest node" do
               client start p1n1 slot1          >>= assertStatusCode 404 >>= as  "no egest prior to ingest"
@@ -469,7 +473,10 @@ main =
           p1Nodes = [p1n1, p1n2, p1n3]
           p2Nodes = [p2n1, p2n2]
           nodes = p1Nodes <> p2Nodes
-        before_ (launch nodes) do
+        before_ (do
+                   startSession nodes
+                   launch nodes
+                ) do
           after_ stopSession do
             it "client requests stream on other pop" do
               client start p2n1 slot1          >>= assertStatusCode 404 >>= as  "no egest prior to ingest"
@@ -502,6 +509,25 @@ main =
               -- TODO - assert the relays stop as well - might be slow with timeouts chaining...
 
 
+      describeOnly "node startup test - one pop" do
+        let
+          phase1Nodes = [p1n1, p1n2]
+          phase2Nodes = [p1n3]
+          nodes = phase1Nodes <> phase2Nodes
+          sysconfig = "test/config/partial_nodes/sys.config"
+        before_ (do
+                   startSession nodes
+                   launch' phase1Nodes sysconfig
+                ) do
+          after_ stopSession do
+            itOnly "client requests stream on other pop" do
+              ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
+              waitForIntraPoPDisseminate                                >>= as' "let ingest presence disseminate"
+              launch' phase2Nodes sysconfig
+              waitForNodeStartDisseminate                               >>= as' "let ingest presence disseminate"
+              client start p1n3 slot1          >>= assertStatusCode 204 >>= as  "local egest post ingest"
+
+            -- TODO - egest - test stream we think is not present when it is
       describe "four pop setup" do
         let
           p1Nodes = [p1n1, p1n2]  -- iad
@@ -513,7 +539,10 @@ main =
           nodes = p1Nodes <> p2Nodes <> p3Nodes <> p4Nodes
           maxOut server = setLoad server 99.0 >>= assertStatusCode 204 >>= as ("set load on " <> toAddr server)
 
-        before_ (launch nodes) do
+        before_ (do
+                   startSession nodes
+                   launch nodes
+                ) do
           after_ stopSession do
             it "lax -> fra sets up 2 non-overlapping relay chains" do
               traverse_ maxOut [p1n2, p2n2, p3n2, p4n2]                    >>= as' "load up all servers bar one in each pop"
@@ -613,20 +642,35 @@ mkNode sysConfig node = {ifaceIndexString: toIfaceIndexString node, addr: toAddr
 sessionName:: String
 sessionName = "testSession"
 
-launchNodes :: Array TestNode -> Aff Unit
-launchNodes sysconfigs = do
-  _ <- runProc "./scripts/startSession.sh" [sessionName]
-  _ <- traverse_ (\tn -> runProc "./scripts/startNode.sh"
-                         [ sessionName
-                         , tn.addr
-                         , tn.ifaceIndexString
-                         , tn.addr
-                         , tn.sysConfig
-                         ]) sysconfigs
 
-  traverse_ (\tn -> runProc "./scripts/waitForNode.sh"
-                    [ tn.addr
-                    ]) sysconfigs
+startSession :: Array Node -> Aff Unit
+startSession allNodes = do
+  stopSession
+  writeTextFile UTF8 "config/popDefinition.json" $ mkPoPJson allNodes
+
+  runProc "./scripts/startSession.sh" [sessionName]
+
+
+launch :: Array Node -> Aff Unit
+launch nodes = launch' nodes "test/config/sys.config"
+
+launch' :: Array Node -> String -> Aff Unit
+launch' nodesToStart sysconfig = do
+  nodesToStart <#> mkNode  sysconfig # launchNodes
+  where
+  launchNodes :: Array TestNode -> Aff Unit
+  launchNodes nodes = do
+    traverse_ (\tn -> runProc "./scripts/startNode.sh"
+                      [ sessionName
+                      , tn.addr
+                      , tn.ifaceIndexString
+                      , tn.addr
+                      , tn.sysConfig
+                      ]) nodes
+
+    traverse_ (\tn -> runProc "./scripts/waitForNode.sh"
+                      [ tn.addr
+                      ]) nodes
 
 stopSession :: Aff Unit
 stopSession = do

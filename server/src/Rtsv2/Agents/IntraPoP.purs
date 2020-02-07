@@ -99,7 +99,8 @@ type LamportClocks =
   , relayClocks      :: Map ServerAddress LamportClock
   , loadClocks       :: Map ServerAddress LamportClock
   , popLeaderClocks  :: Map ServerAddress LamportClock
-  , livenessClocks   :: Map ServerAddress LamportClock
+  , vmLivenessClocks   :: Map ServerAddress LamportClock
+  , assetLivenessClocks   :: Map ServerAddress LamportClock
   }
 
 type StreamLocations = { byStreamId :: Map StreamId (Set Server)
@@ -108,6 +109,7 @@ type StreamLocations = { byStreamId :: Map StreamId (Set Server)
 
 type State
   = { config                :: Config.IntraPoPAgentConfig
+    , healthConfig          :: Config.HealthConfig
     , transPoPApi           :: Config.TransPoPAgentApi
     , serfRpcAddress        :: IpAndPort
     , currentTransPoPLeader :: Maybe Server
@@ -133,16 +135,21 @@ data IntraMessage = IMAggregatorState EventType StreamId ServerAddress
                   | IMEgestState EventType StreamId ServerAddress
                   | IMRelayState EventType StreamId ServerAddress
 
+                  | IMAggregatorLiveness ServerAddress (List StreamId)
+                  | IMEgestLiveness ServerAddress (List StreamId)
+                  | IMRelayLiveness ServerAddress (List StreamId)
+
                   | IMServerLoad ServerAddress Load
                   | IMTransPoPLeader ServerAddress
 
-                  | IMLiveness ServerAddress Ref
+                  | IMVMLiveness ServerAddress Ref
 
 data Msg
   = JoinAll
   | GarbageCollect
   | IntraPoPSerfMsg (Serf.SerfMessage IntraMessage)
-  | Liveness
+  | VMLiveness
+  | AssetLiveness
 
 data IntraPoPBusMessage =
   IngestAggregatorExited StreamId Server
@@ -154,10 +161,10 @@ data IntraPoPBusMessage =
 --------------------------------------------------------------------------------
 health :: Effect Health
 health =
-  Gen.doCall serverName \state@{ members } -> do
+  Gen.doCall serverName \state@{ members, healthConfig } -> do
     allOtherServers <- PoPDefinition.getOtherServersForThisPoP
     let
-      currentHealth = percentageToHealth $ (Map.size members) / ((length allOtherServers) + 1) * 100
+      currentHealth = percentageToHealth healthConfig $ (Map.size members) * 100 / ((length allOtherServers) + 1)
     pure $ CallReply currentHealth state
 
 bus :: Bus.Bus IntraPoPBusMessage
@@ -222,13 +229,9 @@ whereIsWithLoad extractMap streamId =
   Gen.call serverName
   \state@{thisServer, members} ->
     let
-      _ = spy "extractMap" $  extractMap  state
-      _ = spy "streamId" $  {streamId}
       streamLocations = _.byStreamId $ extractMap state
-      _ = spy "streamLocations" $  {streamLocations}
       withLoad (Server el) = serverLoad <$> Map.lookup el.address members
       mLocations = Map.lookup streamId streamLocations :: Maybe (Set Server)
-      _ = spy "mLocations" $  {mLocations, members}
 
       locations = maybe nil toUnfoldable mLocations
       filtered = filterMap withLoad locations
@@ -349,11 +352,11 @@ aggregatorHandler
       state.transPoPApi.announceAggregatorIsAvailable streamId server
 
     availableThisPoP state streamId server = do
-      logInfo "New aggregator is avaiable in this PoP" {streamId, server}
+      logInfo "New aggregator is available in this PoP" {streamId, server}
       state.transPoPApi.announceAggregatorIsAvailable streamId server
 
     availableOtherPoP state streamId server = do
-      logInfo "New aggregator is avaiable in another PoP" {streamId, server}
+      logInfo "New aggregator is available in another PoP" {streamId, server}
       sendToIntraSerfNetwork state "aggregatorAvailable" (IMAggregatorState Available streamId (extractAddress server))
 
     stopLocal' state streamId server = do
@@ -469,11 +472,11 @@ relayHandler
       sendToIntraSerfNetwork state "relayAvailable" (IMRelayState Available streamId $ extractAddress server)
 
     availableThisPoP state streamId server = do
-      logInfo "New relay is avaiable in this PoP" {streamId, server}
+      logInfo "New relay is available in this PoP" {streamId, server}
 
     availableOtherPoP state streamId server = do
       -- Not expecting any of these
-      logWarning "New relay is avaiable in another PoP" {streamId, server}
+      logWarning "New relay is available in another PoP" {streamId, server}
 
     stopLocal' state streamId server = do
       logInfo "Local relay stopped" {streamId}
@@ -552,24 +555,24 @@ stopOtherPoP handler@{locationLens} streamId server =
 maybeAnnounceAvailableThisPoP :: AssetHandler -> StreamId -> Server -> State -> Effect State
 maybeAnnounceAvailableThisPoP handler@{locationLens} streamId server state = do
   if extractPoP server == extractPoP state.thisServer
-  then
+  then do
     handler.availableThisPoP state streamId server
+    let
+      newLocations = recordLocation streamId server (locationLens.get state)
+    pure $ locationLens.set newLocations state
   else
-    pure unit
-  let
-    newLocations = recordLocation streamId server (locationLens.get state)
-  pure $ locationLens.set newLocations state
+    pure state
 
 maybeStopThisPoP :: AssetHandler -> StreamId -> Server -> State -> Effect State
 maybeStopThisPoP handler@{locationLens} streamId server state = do
   if extractPoP server == extractPoP state.thisServer
   then do
     handler.stopThisPoP state streamId server
+    let
+      newLocations = removeLocation streamId server (locationLens.get state)
+    pure $ locationLens.set newLocations state
   else
-    pure unit
-  let
-    newLocations = removeLocation streamId server (locationLens.get state)
-  pure $ locationLens.set newLocations state
+    pure state
 
 
 -- Called by TransPoP to indicate that it is acting as this PoP's leader
@@ -610,19 +613,23 @@ init :: {config :: Config.IntraPoPAgentConfig, transPoPApi :: Config.TransPoPAge
 init { config: config@{rejoinEveryMs
                       , expireThresholdMs
                       , expireEveryMs
-                      , livenessMs
+                      , vmLivenessMs
+                      , assetLivenessMs
                       }
      , transPoPApi}
                = do
   logInfo "Intra-PoP Agent Starting" {config: config}
+  healthConfig <- Config.healthConfig
   Gen.registerExternalMapping serverName (\m -> IntraPoPSerfMsg <$> (Serf.messageMapper m))
-  _ <- Timer.sendAfter serverName 0 JoinAll
-  _ <- Timer.sendEvery serverName rejoinEveryMs JoinAll
-  _ <- Timer.sendEvery serverName livenessMs Liveness
-  _ <- Timer.sendEvery serverName expireEveryMs GarbageCollect
+  void $ Timer.sendAfter serverName 0 JoinAll
+  void $ Timer.sendEvery serverName rejoinEveryMs JoinAll
+  void $ Timer.sendEvery serverName vmLivenessMs VMLiveness
+  void $ Timer.sendEvery serverName assetLivenessMs AssetLiveness
+  void $ Timer.sendEvery serverName expireEveryMs GarbageCollect
   rpcBindIp <- Env.privateInterfaceIp
   thisServer <- PoPDefinition.getThisServer
   let
+    _ = spy "healthConfig" healthConfig
     serfRpcAddress =
       { ip: show rpcBindIp
       , port: config.rpcPort
@@ -662,6 +669,7 @@ init { config: config@{rejoinEveryMs
               # fromFoldable
   pure
     { config
+    , healthConfig
     , transPoPApi
     , serfRpcAddress
     , currentTransPoPLeader: Nothing
@@ -682,7 +690,8 @@ init { config: config@{rejoinEveryMs
                      , relayClocks: Map.empty
                      , loadClocks: Map.empty
                      , popLeaderClocks: Map.empty
-                     , livenessClocks : Map.empty
+                     , vmLivenessClocks : Map.empty
+                     , assetLivenessClocks : Map.empty
                      }
     }
 
@@ -698,9 +707,25 @@ handleInfo msg state = case msg of
   IntraPoPSerfMsg imsg ->
     CastNoReply <$> handleIntraPoPSerfMsg imsg state
 
-  Liveness -> do
-    sendToIntraSerfNetwork state "liveness" (IMLiveness (extractAddress state.thisServer) state.thisServerRef )
+  VMLiveness -> do
+    sendToIntraSerfNetwork state "vmLiveness" (IMVMLiveness (extractAddress state.thisServer) state.thisServerRef )
     pure $ CastNoReply state
+
+  AssetLiveness -> do
+    let
+--      egestKeys = maybe nil Set.toUnfoldable $ Map.lookup state.thisServer  state.egests.byServer
+      aggregatorKeys = maybe nil Set.toUnfoldable $ Map.lookup state.thisServer state.aggregators.byServer
+      egestKeys = maybe nil Set.toUnfoldable $ Map.lookup state.thisServer state.egests.byServer
+      relayKeys = maybe nil Set.toUnfoldable $ Map.lookup state.thisServer state.relays.byServer
+
+    -- TODO - make sure the message fits into a single packet
+    -- TODO - randomise and maybe separate the time interval between the messages?
+    sendToIntraSerfNetwork state "assetLiveness" (IMAggregatorLiveness (extractAddress state.thisServer) aggregatorKeys)
+    sendToIntraSerfNetwork state "assetLiveness" (IMEgestLiveness (extractAddress state.thisServer) egestKeys)
+    sendToIntraSerfNetwork state "assetLiveness" (IMRelayLiveness (extractAddress state.thisServer) relayKeys)
+    pure $ CastNoReply state
+
+
 
 
 handleIntraPoPSerfMsg :: (Serf.SerfMessage IntraMessage) -> State -> Effect State
@@ -733,12 +758,18 @@ handleIntraPoPSerfMsg imsg state@{ transPoPApi: {handleRemoteLeaderAnnouncement}
       case intraMessage of
         IMAggregatorState eventType streamId address -> do
           screenAndHandle address aggregatorHandler.clockLens $ handleThisPoPAsset eventType aggregatorHandler streamId
+        IMAggregatorLiveness address aggregatorStreamIds -> do
+          screenAndHandle address aggregatorHandler.clockLens (handleAssetLiveness aggregatorHandler aggregatorStreamIds)
 
         IMEgestState eventType streamId address -> do
           screenAndHandle address egestHandler.clockLens $ handleThisPoPAsset eventType egestHandler streamId
+        IMEgestLiveness address egestStreamIds -> do
+          screenAndHandle address egestHandler.clockLens (handleAssetLiveness egestHandler egestStreamIds)
 
         IMRelayState eventType streamId address -> do
           screenAndHandle address relayHandler.clockLens $ handleThisPoPAsset eventType relayHandler streamId
+        IMRelayLiveness address relayStreamIds -> do
+          screenAndHandle address relayHandler.clockLens (handleAssetLiveness relayHandler relayStreamIds)
 
         IMServerLoad address load -> do
           let
@@ -754,16 +785,28 @@ handleIntraPoPSerfMsg imsg state@{ transPoPApi: {handleRemoteLeaderAnnouncement}
                          }
           screenAndHandle address clockLens handleTransPoPLeader
 
-        IMLiveness address ref -> do
+        IMVMLiveness address ref -> do
           let
-            clockLens = { get : _.livenessClocks
-                         , set : \newClocks lc -> lc{livenessClocks = newClocks}
+            clockLens = { get : _.vmLivenessClocks
+                         , set : \newClocks lc -> lc{vmLivenessClocks = newClocks}
                          }
           screenAndHandle address clockLens (handleLiveness ref)
+
+
   where
     handleThisPoPAsset :: EventType -> AssetHandler -> StreamId -> Server -> State -> Effect State
     handleThisPoPAsset Available = maybeAnnounceAvailableThisPoP
     handleThisPoPAsset Stopped = maybeStopThisPoP
+
+
+
+handleAssetLiveness :: AssetHandler -> List StreamId -> Server -> State -> Effect State
+handleAssetLiveness handler streamIds server state = do
+  -- fold over the events ids we received - delete any assets we have that are absent, add any assets they have that we don't
+
+  let _ = spy "assets" {streamIds, name : handler.name}
+  pure state
+
 
 
 handleLiveness :: Ref -> Server -> State -> Effect State
@@ -941,7 +984,8 @@ joinAllSerf { config, serfRpcAddress, members } =
           joinAsync addr =
             spawnLink
               ( \_ -> do
-                  result <- Serf.join serfRpcAddress (singleton $ serverAddressToSerfAddress addr) true
+                  result <- Serf.join serfRpcAddress (singleton $ serverAddressToSerfAddress addr) config.replayMessagesOnJoin
+
                   _ <- maybeLogError "Intra-PoP serf join failed" result {}
                   pure unit
               )
