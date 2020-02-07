@@ -9,12 +9,13 @@ module Rtsv2.Agents.IntraPoP
 
 
     -- Data scoped to this PoP
+  , announceLocalEgestIsAvailable
+  , announceLocalEgestStopped
+  , announceLocalRelayIsAvailable
+
   , announceLoad
   , announceTransPoPLeader
 
-  , announceEgestIsAvailable
-  , announceEgestStopped
-  , announceRelayIsAvailable
 
     -- State queries
 
@@ -444,11 +445,11 @@ egestHandler
                     }
 
 -- Called by EgestAgent to indicate egest on this node
-announceEgestIsAvailable :: StreamId -> Effect Unit
-announceEgestIsAvailable = announceAvailableLocal egestHandler
+announceLocalEgestIsAvailable :: StreamId -> Effect Unit
+announceLocalEgestIsAvailable = announceAvailableLocal egestHandler
 
-announceEgestStopped :: StreamId -> Effect Unit
-announceEgestStopped = announceStoppedLocal egestHandler
+announceLocalEgestStopped :: StreamId -> Effect Unit
+announceLocalEgestStopped = announceStoppedLocal egestHandler
 
 
 --TODO - relay and egest are literally identical other than the names...
@@ -497,11 +498,11 @@ relayHandler
                     }
 
 -- Called by RelayAgent to indicate relay on this node
-announceRelayIsAvailable :: StreamId -> Effect Unit
-announceRelayIsAvailable = announceAvailableLocal relayHandler
+announceLocalRelayIsAvailable :: StreamId -> Effect Unit
+announceLocalRelayIsAvailable = announceAvailableLocal relayHandler
 
-announceRelayStopped :: StreamId -> Effect Unit
-announceRelayStopped = announceStoppedLocal relayHandler
+announceLocalRelayStopped :: StreamId -> Effect Unit
+announceLocalRelayStopped = announceStoppedLocal relayHandler
 
 
 -- Builds public API for events on this server

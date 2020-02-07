@@ -69,7 +69,7 @@ init :: CreateRelayPayload -> Effect State
 init payload@{streamId} = do
   logInfo "StreamRelay starting" {payload}
   thisServer <- PoPDefinition.getThisServer
-  IntraPoP.announceRelayIsAvailable streamId
+  IntraPoP.announceLocalRelayIsAvailable streamId
   -- TODO - linger timeout / exit if idle
   pure { streamId: streamId
        , aggregatorPoP : payload.aggregatorPoP
@@ -92,7 +92,7 @@ maybeStartRelaysForEgest :: State -> Effect State
 maybeStartRelaysForEgest state@{egestSourceRoutes: Just _} = pure state
 maybeStartRelaysForEgest state@{streamId, aggregatorPoP, thisServer} = do
   relayRoutes <- TransPoP.routesTo aggregatorPoP
-  _ <- traverse_ (registerWithRelayProxy streamId aggregatorPoP) relayRoutes
+  traverse_ (registerWithRelayProxy streamId aggregatorPoP) relayRoutes
   pure state{egestSourceRoutes = Just (spy "relayRoutes" relayRoutes)}
 
 
@@ -105,12 +105,12 @@ registerRelay payload = Gen.doCast (serverName payload.streamId)
       routesViaThisServer = fromMaybe Set.empty $ Map.lookup payload.deliverTo relaysServed
     if Set.member payload.sourceRoute routesViaThisServer
     then do
-      _ <- logWarning "Duplicate Relay Registration" {payload}
+      logWarning "Duplicate Relay Registration" {payload}
       pure $ Gen.CastNoReply state
     else do
       let
         newRelaysServed = Map.insert payload.deliverTo (Set.insert payload.sourceRoute routesViaThisServer) relaysServed
-      _ <- registerWithRelayProxy streamId aggregatorPoP payload.sourceRoute
+      registerWithRelayProxy streamId aggregatorPoP payload.sourceRoute
       pure $ Gen.CastNoReply state {relaysServed = newRelaysServed}
 
 

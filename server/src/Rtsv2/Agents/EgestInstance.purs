@@ -117,7 +117,7 @@ init payload@{streamId, aggregatorPoP} = do
   {egestAvailableAnnounceMs, lingerTimeMs, relayCreationRetryMs} <- Config.egestAgentConfig
 
   thisServer <- PoPDefinition.getThisServer
-  _ <- IntraPoP.announceEgestIsAvailable streamId
+  _ <- IntraPoP.announceLocalEgestIsAvailable streamId
   _ <- Timer.sendEvery (serverName streamId) egestAvailableAnnounceMs Tick
   _ <- Timer.sendAfter (serverName streamId) 0 InitStreamRelays
   maybeRelay <- IntraPoP.whereIsStreamRelay streamId
@@ -155,7 +155,7 @@ handleInfo msg state@{streamId} =
 
 handleTick :: State -> Effect State
 handleTick state@{streamId} = do
-  _ <- IntraPoP.announceEgestIsAvailable streamId
+  _ <- IntraPoP.announceLocalEgestIsAvailable streamId
   pure state
 
 maybeStop :: Ref -> State -> Effect (CastResult State)
@@ -164,7 +164,7 @@ maybeStop ref state@{streamId
                     , stopRef}
   | (clientCount == 0) && (Just ref == stopRef) = do
     logInfo "Egest stopping" {streamId: streamId}
-    _ <- IntraPoP.announceEgestStopped streamId
+    _ <- IntraPoP.announceLocalEgestStopped streamId
     pure $ CastStop state
 
   | otherwise = pure $ CastNoReply state
