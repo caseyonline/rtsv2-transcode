@@ -135,11 +135,14 @@ data IntraMessage = IMAggregatorState EventType StreamId ServerAddress
                   | IMEgestState EventType StreamId ServerAddress
                   | IMRelayState EventType StreamId ServerAddress
 
+                  | IMAggregatorLiveness ServerAddress (List StreamId)
+                  | IMEgestLiveness ServerAddress (List StreamId)
+                  | IMRelayLiveness ServerAddress (List StreamId)
+
                   | IMServerLoad ServerAddress Load
                   | IMTransPoPLeader ServerAddress
 
                   | IMVMLiveness ServerAddress Ref
-                  | IMAssetLiveness ServerAddress (List StreamId)
 
 data Msg
   = JoinAll
@@ -712,8 +715,14 @@ handleInfo msg state = case msg of
     let
 --      egestKeys = maybe nil Set.toUnfoldable $ Map.lookup state.thisServer  state.egests.byServer
       aggregatorKeys = maybe nil Set.toUnfoldable $ Map.lookup state.thisServer state.aggregators.byServer
+      egestKeys = maybe nil Set.toUnfoldable $ Map.lookup state.thisServer state.egests.byServer
+      relayKeys = maybe nil Set.toUnfoldable $ Map.lookup state.thisServer state.relays.byServer
 
-    sendToIntraSerfNetwork state "assetLiveness" (IMAssetLiveness (extractAddress state.thisServer) aggregatorKeys )
+    -- TODO - make sure the message fits into a single packet
+    -- TODO - randomise and maybe separate the time interval between the messages?
+    sendToIntraSerfNetwork state "assetLiveness" (IMAggregatorLiveness (extractAddress state.thisServer) aggregatorKeys)
+    sendToIntraSerfNetwork state "assetLiveness" (IMEgestLiveness (extractAddress state.thisServer) egestKeys)
+    sendToIntraSerfNetwork state "assetLiveness" (IMRelayLiveness (extractAddress state.thisServer) relayKeys)
     pure $ CastNoReply state
 
 
@@ -749,12 +758,18 @@ handleIntraPoPSerfMsg imsg state@{ transPoPApi: {handleRemoteLeaderAnnouncement}
       case intraMessage of
         IMAggregatorState eventType streamId address -> do
           screenAndHandle address aggregatorHandler.clockLens $ handleThisPoPAsset eventType aggregatorHandler streamId
+        IMAggregatorLiveness address aggregatorStreamIds -> do
+          screenAndHandle address aggregatorHandler.clockLens (handleAssetLiveness aggregatorHandler aggregatorStreamIds)
 
         IMEgestState eventType streamId address -> do
           screenAndHandle address egestHandler.clockLens $ handleThisPoPAsset eventType egestHandler streamId
+        IMEgestLiveness address egestStreamIds -> do
+          screenAndHandle address egestHandler.clockLens (handleAssetLiveness egestHandler egestStreamIds)
 
         IMRelayState eventType streamId address -> do
           screenAndHandle address relayHandler.clockLens $ handleThisPoPAsset eventType relayHandler streamId
+        IMRelayLiveness address relayStreamIds -> do
+          screenAndHandle address relayHandler.clockLens (handleAssetLiveness relayHandler relayStreamIds)
 
         IMServerLoad address load -> do
           let
@@ -777,12 +792,6 @@ handleIntraPoPSerfMsg imsg state@{ transPoPApi: {handleRemoteLeaderAnnouncement}
                          }
           screenAndHandle address clockLens (handleLiveness ref)
 
-        IMAssetLiveness address aggregatorStreamIds -> do
-          let
-            clockLens = { get : _.assetLivenessClocks
-                         , set : \newClocks lc -> lc{assetLivenessClocks = newClocks}
-                         }
-          screenAndHandle address clockLens (handleAssetLiveness aggregatorStreamIds)
 
   where
     handleThisPoPAsset :: EventType -> AssetHandler -> StreamId -> Server -> State -> Effect State
@@ -791,9 +800,11 @@ handleIntraPoPSerfMsg imsg state@{ transPoPApi: {handleRemoteLeaderAnnouncement}
 
 
 
-handleAssetLiveness :: List StreamId -> Server -> State -> Effect State
-handleAssetLiveness streamIds serever state = do
-  let _ = spy "assets" streamIds
+handleAssetLiveness :: AssetHandler -> List StreamId -> Server -> State -> Effect State
+handleAssetLiveness handler streamIds server state = do
+  -- fold over the events ids we received - delete any assets we have that are absent, add any assets they have that we don't
+
+  let _ = spy "assets" {streamIds, name : handler.name}
   pure state
 
 

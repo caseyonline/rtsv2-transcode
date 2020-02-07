@@ -527,6 +527,7 @@ main =
               waitForNodeStartDisseminate                               >>= as' "let ingest presence disseminate"
               client start p1n3 slot1          >>= assertStatusCode 204 >>= as  "local egest post ingest"
 
+            -- TODO - egest - test stream we think is not present when it is
       describe "four pop setup" do
         let
           p1Nodes = [p1n1, p1n2]  -- iad
