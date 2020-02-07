@@ -10,6 +10,7 @@ import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Eq (genericEq)
 import Data.Generic.Rep.Show (genericShow)
 import Foreign (unsafeToForeign)
+import Rtsv2.Config (HealthConfig)
 import Simple.JSON (class WriteForeign)
 
 data Health = Perfect
@@ -30,10 +31,11 @@ instance showAgent :: Show Health where
 instance foreignHealth :: WriteForeign Health where
   writeImpl = unsafeToForeign <<< show
 
-percentageToHealth :: Int -> Health
-percentageToHealth percentage
-  | percentage == 100 = Perfect
-  | percentage > 75 = Excellent
-  | percentage > 50 = Good
-  | percentage > 25 = Poor
+
+percentageToHealth :: HealthConfig -> Int -> Health
+percentageToHealth {thresholds} percentage
+  | percentage >= thresholds.perfect = Perfect
+  | percentage >  thresholds.excellent = Excellent
+  | percentage >  thresholds.good = Good
+  | percentage >  thresholds.poor = Poor
   | otherwise = Critical

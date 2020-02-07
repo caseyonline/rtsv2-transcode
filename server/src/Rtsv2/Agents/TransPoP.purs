@@ -31,7 +31,6 @@ import Erl.Data.List as List
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
 import Erl.Process (spawnLink)
-import Shared.Types (Milliseconds)
 import Erl.Utils (sleep, systemTimeMs, privDir)
 import Logger (Logger)
 import Logger as Logger
@@ -46,6 +45,7 @@ import PintoHelper (exposeState)
 import Prim.Row (class Nub, class Union)
 import Record as Record
 import Rtsv2.Config (IntraPoPAgentApi, TransPoPAgentConfig)
+import Rtsv2.Config as Config
 import Rtsv2.Env as Env
 import Rtsv2.Health (Health)
 import Rtsv2.Health as Health
@@ -55,8 +55,8 @@ import Rtsv2.PoPDefinition as PoPDefinition
 import Serf (IpAndPort, LamportClock, SerfCoordinate, calcRtt)
 import Serf as Serf
 import Shared.Stream (StreamId)
+import Shared.Types (Milliseconds, PoPName, Server, ServerAddress(..), extractAddress, extractPoP, toServer)
 import Shared.Types.Agent.State as PublicState
-import Shared.Types (PoPName, Server, ServerAddress(..), extractAddress, extractPoP, toServer)
 import Shared.Utils (distinctRandomNumbers)
 import SpudGun (bodyToString)
 import SpudGun as SpudGun
@@ -81,6 +81,7 @@ type State
     , leaderAnnouncementTimeout :: Milliseconds
     , thisServer :: Server
     , config :: TransPoPAgentConfig
+    , healthConfig :: Config.HealthConfig
     , serfRpcAddress :: IpAndPort
     , members :: Map PoPName (Set ServerAddress)
     , lamportClocks :: LamportClocks
@@ -160,9 +161,9 @@ health =
     pure $ CallReply currentHealth state
   where
     getHealth {weAreLeader: false} = pure Health.NA
-    getHealth {members} = do
+    getHealth {members, healthConfig} = do
       allOtherPoPs <- PoPDefinition.getOtherPoPs
-      pure $ Health.percentageToHealth $ (Map.size members) / ((Map.size allOtherPoPs) + 1) * 100
+      pure $ Health.percentageToHealth healthConfig $ (Map.size members) * 100 / ((Map.size allOtherPoPs) + 1)
 
 announceAggregatorIsAvailable :: StreamId -> Server -> Effect Unit
 announceAggregatorIsAvailable streamId server =
@@ -260,6 +261,7 @@ init { config: config@{ leaderTimeoutMs
                       }
      , intraPoPApi} = do
   logInfo "Trans-PoP Agent Starting" {config: config}
+  healthConfig <- Config.healthConfig
   -- Stop any agent that might be running (in case we crashed)
   _ <- osCmd stopScript
 
@@ -283,7 +285,8 @@ init { config: config@{ leaderTimeoutMs
 
   pure
     $ { intraPoPApi
-      , config: config
+      , config
+      , healthConfig
       , currentLeader: Nothing
       , weAreLeader: false
       , lastLeaderAnnouncement: now

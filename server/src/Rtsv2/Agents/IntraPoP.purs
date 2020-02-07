@@ -108,6 +108,7 @@ type StreamLocations = { byStreamId :: Map StreamId (Set Server)
 
 type State
   = { config                :: Config.IntraPoPAgentConfig
+    , healthConfig          :: Config.HealthConfig
     , transPoPApi           :: Config.TransPoPAgentApi
     , serfRpcAddress        :: IpAndPort
     , currentTransPoPLeader :: Maybe Server
@@ -154,10 +155,10 @@ data IntraPoPBusMessage =
 --------------------------------------------------------------------------------
 health :: Effect Health
 health =
-  Gen.doCall serverName \state@{ members } -> do
+  Gen.doCall serverName \state@{ members, healthConfig } -> do
     allOtherServers <- PoPDefinition.getOtherServersForThisPoP
     let
-      currentHealth = percentageToHealth $ (Map.size members) / ((length allOtherServers) + 1) * 100
+      currentHealth = percentageToHealth healthConfig $ (Map.size members) * 100 / ((length allOtherServers) + 1)
     pure $ CallReply currentHealth state
 
 bus :: Bus.Bus IntraPoPBusMessage
@@ -222,13 +223,9 @@ whereIsWithLoad extractMap streamId =
   Gen.call serverName
   \state@{thisServer, members} ->
     let
-      _ = spy "extractMap" $  extractMap  state
-      _ = spy "streamId" $  {streamId}
       streamLocations = _.byStreamId $ extractMap state
-      _ = spy "streamLocations" $  {streamLocations}
       withLoad (Server el) = serverLoad <$> Map.lookup el.address members
       mLocations = Map.lookup streamId streamLocations :: Maybe (Set Server)
-      _ = spy "mLocations" $  {mLocations, members}
 
       locations = maybe nil toUnfoldable mLocations
       filtered = filterMap withLoad locations
@@ -349,11 +346,11 @@ aggregatorHandler
       state.transPoPApi.announceAggregatorIsAvailable streamId server
 
     availableThisPoP state streamId server = do
-      logInfo "New aggregator is avaiable in this PoP" {streamId, server}
+      logInfo "New aggregator is available in this PoP" {streamId, server}
       state.transPoPApi.announceAggregatorIsAvailable streamId server
 
     availableOtherPoP state streamId server = do
-      logInfo "New aggregator is avaiable in another PoP" {streamId, server}
+      logInfo "New aggregator is available in another PoP" {streamId, server}
       sendToIntraSerfNetwork state "aggregatorAvailable" (IMAggregatorState Available streamId (extractAddress server))
 
     stopLocal' state streamId server = do
@@ -469,11 +466,11 @@ relayHandler
       sendToIntraSerfNetwork state "relayAvailable" (IMRelayState Available streamId $ extractAddress server)
 
     availableThisPoP state streamId server = do
-      logInfo "New relay is avaiable in this PoP" {streamId, server}
+      logInfo "New relay is available in this PoP" {streamId, server}
 
     availableOtherPoP state streamId server = do
       -- Not expecting any of these
-      logWarning "New relay is avaiable in another PoP" {streamId, server}
+      logWarning "New relay is available in another PoP" {streamId, server}
 
     stopLocal' state streamId server = do
       logInfo "Local relay stopped" {streamId}
@@ -552,24 +549,24 @@ stopOtherPoP handler@{locationLens} streamId server =
 maybeAnnounceAvailableThisPoP :: AssetHandler -> StreamId -> Server -> State -> Effect State
 maybeAnnounceAvailableThisPoP handler@{locationLens} streamId server state = do
   if extractPoP server == extractPoP state.thisServer
-  then
+  then do
     handler.availableThisPoP state streamId server
+    let
+      newLocations = recordLocation streamId server (locationLens.get state)
+    pure $ locationLens.set newLocations state
   else
-    pure unit
-  let
-    newLocations = recordLocation streamId server (locationLens.get state)
-  pure $ locationLens.set newLocations state
+    pure state
 
 maybeStopThisPoP :: AssetHandler -> StreamId -> Server -> State -> Effect State
 maybeStopThisPoP handler@{locationLens} streamId server state = do
   if extractPoP server == extractPoP state.thisServer
   then do
     handler.stopThisPoP state streamId server
+    let
+      newLocations = removeLocation streamId server (locationLens.get state)
+    pure $ locationLens.set newLocations state
   else
-    pure unit
-  let
-    newLocations = removeLocation streamId server (locationLens.get state)
-  pure $ locationLens.set newLocations state
+    pure state
 
 
 -- Called by TransPoP to indicate that it is acting as this PoP's leader
@@ -615,14 +612,16 @@ init { config: config@{rejoinEveryMs
      , transPoPApi}
                = do
   logInfo "Intra-PoP Agent Starting" {config: config}
+  healthConfig <- Config.healthConfig
   Gen.registerExternalMapping serverName (\m -> IntraPoPSerfMsg <$> (Serf.messageMapper m))
-  _ <- Timer.sendAfter serverName 0 JoinAll
-  _ <- Timer.sendEvery serverName rejoinEveryMs JoinAll
-  _ <- Timer.sendEvery serverName livenessMs Liveness
-  _ <- Timer.sendEvery serverName expireEveryMs GarbageCollect
+  void $ Timer.sendAfter serverName 0 JoinAll
+  void $ Timer.sendEvery serverName rejoinEveryMs JoinAll
+  void $ Timer.sendEvery serverName livenessMs Liveness
+  void $ Timer.sendEvery serverName expireEveryMs GarbageCollect
   rpcBindIp <- Env.privateInterfaceIp
   thisServer <- PoPDefinition.getThisServer
   let
+    _ = spy "healthConfig" healthConfig
     serfRpcAddress =
       { ip: show rpcBindIp
       , port: config.rpcPort
@@ -662,6 +661,7 @@ init { config: config@{rejoinEveryMs
               # fromFoldable
   pure
     { config
+    , healthConfig
     , transPoPApi
     , serfRpcAddress
     , currentTransPoPLeader: Nothing
