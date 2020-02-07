@@ -91,22 +91,21 @@ metrics = { name: "ingest_frame_count"
           , help: "The last Capture-MS value measured in this stream"
           , metricType: Prometheus.Counter
           } :
-          { name: "ingest_codec"
-          , help: "The stream codec"
-          , metricType: Prometheus.Gauge
+          { name: "ingest_bytes_read"
+          , help: "The last bytes-read report sent to the client"
+          , metricType: Prometheus.Counter
           } :
           nil
 
 -- TODO - rtmpStats
 -- TODO - include streamAndVariant in labels
--- TODO - handle maybe fields
--- TODO - make metric names a sum type?
 statsToPrometheus :: PublicState.IngestStats List -> String
 statsToPrometheus stats =
   foldl (\page { timestamp
                , streamAndVariant
                , streamBitrateMetrics
                , frameFlowMeterMetrics
+               , rtmpIngestMetrics
                } ->
          let
            prometheusTimestamp = Prometheus.toTimestamp timestamp
@@ -114,6 +113,7 @@ statsToPrometheus stats =
           page
           # streamBitrateMetricsToPrometheus prometheusTimestamp streamBitrateMetrics
           # frameFlowMetricsToPrometheus prometheusTimestamp frameFlowMeterMetrics
+          # rtmpMetricsToPrometheus prometheusTimestamp rtmpIngestMetrics
         )
   (Prometheus.newPage metrics)
   stats
@@ -146,7 +146,7 @@ statsToPrometheus stats =
                                  , lastDts
                                  , lastPts
                                  , lastCaptureMs
-                                 , codec }} ->
+                                 }} ->
            let
              labels = labelsForStream(perStream)
            in
@@ -156,16 +156,18 @@ statsToPrometheus stats =
             # Prometheus.addMetric "ingest_last_dts" lastDts labels timestamp
             # Prometheus.addMetric "ingest_last_pts" lastPts labels timestamp
             # Prometheus.addMetric "ingest_last_capture_ms" lastCaptureMs labels timestamp
-            # Prometheus.addMetric "ingest_codec" codec labels timestamp
           )
           page
           frameFlowMetrics.perStreamMetrics
 
-    labelsForStream :: forall a. Stream a -> Prometheus.PrometheusLabels
+    rtmpMetricsToPrometheus timestamp {bytesRead} page =
+      Prometheus.addMetric "ingest_bytes_read" bytesRead (Prometheus.toLabels nil) timestamp page
+
+    labelsForStream :: forall a. Stream a -> Prometheus.IOLabels
     labelsForStream { streamId, frameType, profileName} =
-      Prometheus.toLabels $ (Tuple "stream_id" (show streamId)) :
-                            (Tuple "frame_type" (show frameType)) :
-                            (Tuple "profile_name" profileName) :
+      Prometheus.toLabels $ (Tuple "stream_id" (Prometheus.toLabelValue streamId)) :
+                            (Tuple "frame_type" (Prometheus.toLabelValue (show frameType))) :
+                            (Tuple "profile_name" (Prometheus.toLabelValue profileName)) :
                             nil
 
 ingestInstance :: GenericStetsonGet PublicState.Ingest
