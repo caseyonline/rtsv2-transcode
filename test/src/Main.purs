@@ -509,7 +509,7 @@ main =
               -- TODO - assert the relays stop as well - might be slow with timeouts chaining...
 
 
-      describe "node startup test - one pop" do
+      describeOnly "node startup test - one pop" do
         let
           phase1Nodes = [p1n1, p1n2]
           phase2Nodes = [p1n3]
@@ -520,7 +520,7 @@ main =
                    launch' phase1Nodes sysconfig
                 ) do
           after_ stopSession do
-            it "client requests stream on other pop" do
+            itOnly "client requests stream on other pop" do
               ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
               waitForIntraPoPDisseminate                                >>= as' "let ingest presence disseminate"
               launch' phase2Nodes sysconfig

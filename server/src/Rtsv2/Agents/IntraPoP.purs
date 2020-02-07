@@ -139,7 +139,7 @@ data IntraMessage = IMAggregatorState EventType StreamId ServerAddress
                   | IMTransPoPLeader ServerAddress
 
                   | IMVMLiveness ServerAddress Ref
-                  | IMAssetLiveness ServerAddress Ref
+                  | IMAssetLiveness ServerAddress (List StreamId)
 
 data Msg
   = JoinAll
@@ -709,7 +709,11 @@ handleInfo msg state = case msg of
     pure $ CastNoReply state
 
   AssetLiveness -> do
-    sendToIntraSerfNetwork state "assetLiveness" (IMAssetLiveness (extractAddress state.thisServer) state.thisServerRef )
+    let
+--      egestKeys = maybe nil Set.toUnfoldable $ Map.lookup state.thisServer  state.egests.byServer
+      aggregatorKeys = maybe nil Set.toUnfoldable $ Map.lookup state.thisServer state.aggregators.byServer
+
+    sendToIntraSerfNetwork state "assetLiveness" (IMAssetLiveness (extractAddress state.thisServer) aggregatorKeys )
     pure $ CastNoReply state
 
 
@@ -773,17 +777,25 @@ handleIntraPoPSerfMsg imsg state@{ transPoPApi: {handleRemoteLeaderAnnouncement}
                          }
           screenAndHandle address clockLens (handleLiveness ref)
 
-        IMAssetLiveness address ref -> do
+        IMAssetLiveness address aggregatorStreamIds -> do
           let
             clockLens = { get : _.assetLivenessClocks
                          , set : \newClocks lc -> lc{assetLivenessClocks = newClocks}
                          }
-          screenAndHandle address clockLens (handleLiveness ref)
+          screenAndHandle address clockLens (handleAssetLiveness aggregatorStreamIds)
 
   where
     handleThisPoPAsset :: EventType -> AssetHandler -> StreamId -> Server -> State -> Effect State
     handleThisPoPAsset Available = maybeAnnounceAvailableThisPoP
     handleThisPoPAsset Stopped = maybeStopThisPoP
+
+
+
+handleAssetLiveness :: List StreamId -> Server -> State -> Effect State
+handleAssetLiveness streamIds serever state = do
+  let _ = spy "assets" streamIds
+  pure state
+
 
 
 handleLiveness :: Ref -> Server -> State -> Effect State
