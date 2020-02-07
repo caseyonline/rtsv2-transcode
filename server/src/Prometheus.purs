@@ -111,8 +111,7 @@ pageToString (PrometheusPage {metrics, metricsData}) =
             Just values ->
               let
                 ioName = toIOData name
-                header = concat $ (toIOData "\n") :
-                                  (toIOData "# HELP ") : ioName : (toIOData " ") : (toIOData help) : (toIOData "\n") :
+                header = concat $ (toIOData "# HELP ") : ioName : (toIOData " ") : (toIOData help) : (toIOData "\n") :
                                   (toIOData "# TYPE ") : ioName : (toIOData " ") : (toValue metricType) : (toIOData "\n") :
                                   nil
 
@@ -120,7 +119,7 @@ pageToString (PrometheusPage {metrics, metricsData}) =
                                         , timestamp: (IOTimestamp timestamp)
                                         , labels: (IOLabels labels)} ->
                                 let
-                                  line = concat $ ioName : (toIOData "{") : labels : (toIOData "} ") : value : (toIOData " ") : timestamp : (toIOData "\n") : nil
+                                  line = concat $ ioName : (toIOData "{") : labels : (toIOData "} ") : value : (toIOData "\n") : nil -- (toIOData " ") : timestamp : (toIOData "\n") : nil
                                 in
                                  line <> lineAcc
                               )
