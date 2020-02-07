@@ -99,7 +99,8 @@ type LamportClocks =
   , relayClocks      :: Map ServerAddress LamportClock
   , loadClocks       :: Map ServerAddress LamportClock
   , popLeaderClocks  :: Map ServerAddress LamportClock
-  , livenessClocks   :: Map ServerAddress LamportClock
+  , vmLivenessClocks   :: Map ServerAddress LamportClock
+  , assetLivenessClocks   :: Map ServerAddress LamportClock
   }
 
 type StreamLocations = { byStreamId :: Map StreamId (Set Server)
@@ -137,13 +138,15 @@ data IntraMessage = IMAggregatorState EventType StreamId ServerAddress
                   | IMServerLoad ServerAddress Load
                   | IMTransPoPLeader ServerAddress
 
-                  | IMLiveness ServerAddress Ref
+                  | IMVMLiveness ServerAddress Ref
+                  | IMAssetLiveness ServerAddress Ref
 
 data Msg
   = JoinAll
   | GarbageCollect
   | IntraPoPSerfMsg (Serf.SerfMessage IntraMessage)
-  | Liveness
+  | VMLiveness
+  | AssetLiveness
 
 data IntraPoPBusMessage =
   IngestAggregatorExited StreamId Server
@@ -607,7 +610,8 @@ init :: {config :: Config.IntraPoPAgentConfig, transPoPApi :: Config.TransPoPAge
 init { config: config@{rejoinEveryMs
                       , expireThresholdMs
                       , expireEveryMs
-                      , livenessMs
+                      , vmLivenessMs
+                      , assetLivenessMs
                       }
      , transPoPApi}
                = do
@@ -616,7 +620,8 @@ init { config: config@{rejoinEveryMs
   Gen.registerExternalMapping serverName (\m -> IntraPoPSerfMsg <$> (Serf.messageMapper m))
   void $ Timer.sendAfter serverName 0 JoinAll
   void $ Timer.sendEvery serverName rejoinEveryMs JoinAll
-  void $ Timer.sendEvery serverName livenessMs Liveness
+  void $ Timer.sendEvery serverName vmLivenessMs VMLiveness
+  void $ Timer.sendEvery serverName assetLivenessMs AssetLiveness
   void $ Timer.sendEvery serverName expireEveryMs GarbageCollect
   rpcBindIp <- Env.privateInterfaceIp
   thisServer <- PoPDefinition.getThisServer
@@ -682,7 +687,8 @@ init { config: config@{rejoinEveryMs
                      , relayClocks: Map.empty
                      , loadClocks: Map.empty
                      , popLeaderClocks: Map.empty
-                     , livenessClocks : Map.empty
+                     , vmLivenessClocks : Map.empty
+                     , assetLivenessClocks : Map.empty
                      }
     }
 
@@ -698,9 +704,15 @@ handleInfo msg state = case msg of
   IntraPoPSerfMsg imsg ->
     CastNoReply <$> handleIntraPoPSerfMsg imsg state
 
-  Liveness -> do
-    sendToIntraSerfNetwork state "liveness" (IMLiveness (extractAddress state.thisServer) state.thisServerRef )
+  VMLiveness -> do
+    sendToIntraSerfNetwork state "vmLiveness" (IMVMLiveness (extractAddress state.thisServer) state.thisServerRef )
     pure $ CastNoReply state
+
+  AssetLiveness -> do
+    sendToIntraSerfNetwork state "assetLiveness" (IMAssetLiveness (extractAddress state.thisServer) state.thisServerRef )
+    pure $ CastNoReply state
+
+
 
 
 handleIntraPoPSerfMsg :: (Serf.SerfMessage IntraMessage) -> State -> Effect State
@@ -754,12 +766,20 @@ handleIntraPoPSerfMsg imsg state@{ transPoPApi: {handleRemoteLeaderAnnouncement}
                          }
           screenAndHandle address clockLens handleTransPoPLeader
 
-        IMLiveness address ref -> do
+        IMVMLiveness address ref -> do
           let
-            clockLens = { get : _.livenessClocks
-                         , set : \newClocks lc -> lc{livenessClocks = newClocks}
+            clockLens = { get : _.vmLivenessClocks
+                         , set : \newClocks lc -> lc{vmLivenessClocks = newClocks}
                          }
           screenAndHandle address clockLens (handleLiveness ref)
+
+        IMAssetLiveness address ref -> do
+          let
+            clockLens = { get : _.assetLivenessClocks
+                         , set : \newClocks lc -> lc{assetLivenessClocks = newClocks}
+                         }
+          screenAndHandle address clockLens (handleLiveness ref)
+
   where
     handleThisPoPAsset :: EventType -> AssetHandler -> StreamId -> Server -> State -> Effect State
     handleThisPoPAsset Available = maybeAnnounceAvailableThisPoP
@@ -941,7 +961,8 @@ joinAllSerf { config, serfRpcAddress, members } =
           joinAsync addr =
             spawnLink
               ( \_ -> do
-                  result <- Serf.join serfRpcAddress (singleton $ serverAddressToSerfAddress addr) true
+                  result <- Serf.join serfRpcAddress (singleton $ serverAddressToSerfAddress addr) config.replayMessagesOnJoin
+
                   _ <- maybeLogError "Intra-PoP serf join failed" result {}
                   pure unit
               )

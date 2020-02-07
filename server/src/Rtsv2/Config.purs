@@ -84,7 +84,9 @@ type IntraPoPAgentConfig
     , rejoinEveryMs :: Int
     , expireThresholdMs :: Int
     , expireEveryMs :: Int
-    , livenessMs :: Int
+    , vmLivenessMs :: Int
+    , assetLivenessMs :: Int
+    , replayMessagesOnJoin :: Boolean
     }
 
 type TransPoPAgentConfig
@@ -96,6 +98,7 @@ type TransPoPAgentConfig
     , rejoinEveryMs :: Int
     , defaultRttMs :: Int
     , connectStreamAfterMs :: Int
+    , replayMessagesOnJoin :: Boolean
     }
 
 type IntraPoPAgentApi

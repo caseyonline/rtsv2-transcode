@@ -180,12 +180,6 @@ main =
       pure $ Right r
     debugBody (Left err) = let _ = spy "debugBodyErr" err in pure $ Left err
 
-    launch nodes = launch' nodes nodes "test/config/sys.config"
-
-    launch' allNodes nodesToStart sysconfig = do
-      writeTextFile UTF8 "config/popDefinition.json" $ mkPoPJson allNodes
-      nodesToStart <#> mkNode  sysconfig # launchNodes
-
 
     assertRelayForEgest = assertBodyFun <<< predicate
       where
@@ -270,7 +264,7 @@ main =
         aggregatorNotPresent slot server = aggregatorStats server slot >>= assertStatusCode 404 >>= as ("aggregator not on " <> toAddr server)
       in do
       before_ (do
-                 startSession
+                 startSession nodes
                  launch nodes
               ) do
         after_ stopSession do
@@ -405,7 +399,7 @@ main =
           allNodesBar node = delete node nodes
         in do
         before_ (do
-                   startSession
+                   startSession nodes
                    launch nodes
                 ) do
           after_ stopSession do
@@ -480,7 +474,7 @@ main =
           p2Nodes = [p2n1, p2n2]
           nodes = p1Nodes <> p2Nodes
         before_ (do
-                   startSession
+                   startSession nodes
                    launch nodes
                 ) do
           after_ stopSession do
@@ -515,21 +509,21 @@ main =
               -- TODO - assert the relays stop as well - might be slow with timeouts chaining...
 
 
-      describeOnly "node startup test - one pop" do
+      describe "node startup test - one pop" do
         let
           phase1Nodes = [p1n1, p1n2]
           phase2Nodes = [p1n3]
           nodes = phase1Nodes <> phase2Nodes
           sysconfig = "test/config/partial_nodes/sys.config"
         before_ (do
-                   startSession
-                   launch' nodes phase1Nodes sysconfig
+                   startSession nodes
+                   launch' phase1Nodes sysconfig
                 ) do
           after_ stopSession do
-            itOnly "client requests stream on other pop" do
+            it "client requests stream on other pop" do
               ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
               waitForIntraPoPDisseminate                                >>= as' "let ingest presence disseminate"
-              phase2Nodes <#> mkNode sysconfig # launchNodes
+              launch' phase2Nodes sysconfig
               waitForNodeStartDisseminate                               >>= as' "let ingest presence disseminate"
               client start p1n3 slot1          >>= assertStatusCode 204 >>= as  "local egest post ingest"
 
@@ -545,7 +539,7 @@ main =
           maxOut server = setLoad server 99.0 >>= assertStatusCode 204 >>= as ("set load on " <> toAddr server)
 
         before_ (do
-                   startSession
+                   startSession nodes
                    launch nodes
                 ) do
           after_ stopSession do
@@ -648,25 +642,34 @@ sessionName:: String
 sessionName = "testSession"
 
 
-startSession :: Aff Unit
-startSession = do
+startSession :: Array Node -> Aff Unit
+startSession allNodes = do
   stopSession
+  writeTextFile UTF8 "config/popDefinition.json" $ mkPoPJson allNodes
+
   runProc "./scripts/startSession.sh" [sessionName]
 
 
-launchNodes :: Array TestNode -> Aff Unit
-launchNodes nodes = do
-  traverse_ (\tn -> runProc "./scripts/startNode.sh"
-                    [ sessionName
-                    , tn.addr
-                    , tn.ifaceIndexString
-                    , tn.addr
-                    , tn.sysConfig
-                    ]) nodes
+launch :: Array Node -> Aff Unit
+launch nodes = launch' nodes "test/config/sys.config"
 
-  traverse_ (\tn -> runProc "./scripts/waitForNode.sh"
-                    [ tn.addr
-                    ]) nodes
+launch' :: Array Node -> String -> Aff Unit
+launch' nodesToStart sysconfig = do
+  nodesToStart <#> mkNode  sysconfig # launchNodes
+  where
+  launchNodes :: Array TestNode -> Aff Unit
+  launchNodes nodes = do
+    traverse_ (\tn -> runProc "./scripts/startNode.sh"
+                      [ sessionName
+                      , tn.addr
+                      , tn.ifaceIndexString
+                      , tn.addr
+                      , tn.sysConfig
+                      ]) nodes
+
+    traverse_ (\tn -> runProc "./scripts/waitForNode.sh"
+                      [ tn.addr
+                      ]) nodes
 
 stopSession :: Aff Unit
 stopSession = do

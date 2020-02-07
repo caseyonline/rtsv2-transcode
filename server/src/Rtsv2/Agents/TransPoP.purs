@@ -607,7 +607,7 @@ joinAllSerf state@{ config: config@{rejoinEveryMs}, serfRpcAddress, members } =
                                    _ <- case restResult of
                                      Left _ -> pure unit
                                      Right addr -> do
-                                       result <- Serf.join serfRpcAddress ((addressMapper addr) : nil) true
+                                       result <- Serf.join serfRpcAddress ((addressMapper addr) : nil) config.replayMessagesOnJoin
                                        _ <- maybeLogError "Trans-PoP serf join failed" result { server: addr }
                                        pure unit
                                    pure unit
