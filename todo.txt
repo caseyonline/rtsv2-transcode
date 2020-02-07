@@ -19,7 +19,7 @@
 [S] - RTMP metadata
 [ ] - Canary / startup / migrating clients away etc
 [ ] - review timeouts in tests
-
+[ ] - VM liveness messages for transPoP as well
 
 
 

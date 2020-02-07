@@ -82,11 +82,15 @@ type IntraPoPAgentConfig
   = { bindPort :: Int
     , rpcPort :: Int
     , rejoinEveryMs :: Int
-    , expireThresholdMs :: Int
-    , expireEveryMs :: Int
-    , vmLivenessMs :: Int
-    , assetLivenessMs :: Int
     , replayMessagesOnJoin :: Boolean
+    , checkVMExpiryEveryMs :: Int
+    , checkAssetExpiryEveryMs :: Int
+    , reannounceEveryMs :: { vm :: Int
+                           , aggregator :: Int
+                           , relay :: Int
+                           , egest :: Int
+                           }
+    , missCountBeforeExpiry :: Int
     }
 
 type TransPoPAgentConfig

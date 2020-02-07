@@ -49,7 +49,7 @@ import Data.Either (Either(..), hush)
 import Data.Filterable (filterMap)
 import Data.Foldable (foldM, foldl)
 import Data.Maybe (Maybe(..), fromMaybe, maybe)
-import Data.Newtype (wrap)
+import Data.Newtype (wrap, unwrap)
 import Data.Set (Set)
 import Data.Set as Set
 import Data.Traversable (traverse_)
@@ -67,7 +67,7 @@ import Erl.Utils (Ref, makeRef)
 import Erl.Utils as Erl
 import Logger (Logger, spy)
 import Logger as Logger
-import Partial.Unsafe (unsafeCrashWith)
+import Partial.Unsafe (unsafeCrashWith, unsafePartial)
 import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
@@ -99,8 +99,7 @@ type LamportClocks =
   , relayClocks      :: Map ServerAddress LamportClock
   , loadClocks       :: Map ServerAddress LamportClock
   , popLeaderClocks  :: Map ServerAddress LamportClock
-  , vmLivenessClocks   :: Map ServerAddress LamportClock
-  , assetLivenessClocks   :: Map ServerAddress LamportClock
+  , vmLivenessClocks :: Map ServerAddress LamportClock
   }
 
 type StreamLocations = { byStreamId :: Map StreamId (Set Server)
@@ -124,7 +123,6 @@ type State
     , thisServer            :: Server
     , load                  :: Load
     , members               :: Map ServerAddress MemberInfo
-    , expireThreshold       :: Milliseconds
     , lamportClocks         :: LamportClocks
     }
 
@@ -135,10 +133,6 @@ data IntraMessage = IMAggregatorState EventType StreamId ServerAddress
                   | IMEgestState EventType StreamId ServerAddress
                   | IMRelayState EventType StreamId ServerAddress
 
-                  | IMAggregatorLiveness ServerAddress (List StreamId)
-                  | IMEgestLiveness ServerAddress (List StreamId)
-                  | IMRelayLiveness ServerAddress (List StreamId)
-
                   | IMServerLoad ServerAddress Load
                   | IMTransPoPLeader ServerAddress
 
@@ -146,10 +140,11 @@ data IntraMessage = IMAggregatorState EventType StreamId ServerAddress
 
 data Msg
   = JoinAll
-  | GarbageCollect
+  | GarbageCollectVM
+  | GarbageCollectAssets
   | IntraPoPSerfMsg (Serf.SerfMessage IntraMessage)
   | VMLiveness
-  | AssetLiveness
+  | ReAnnounce StreamId HandlerName
 
 data IntraPoPBusMessage =
   IngestAggregatorExited StreamId Server
@@ -314,10 +309,11 @@ type LocationLens = { get :: State -> StreamLocations
                      , set :: StreamLocations -> State -> State
                      }
 
--- TODO should the handlers only be called on state transitions
--- TODO rename SlotAssetHandler (StreamIdAssetHandler)?
+
+newtype HandlerName = HandlerName String
+
 type AssetHandler =
-  { name              :: String
+  { name              :: HandlerName
 
   , availableLocal    :: EventHandler
   , availableThisPoP  :: EventHandler
@@ -328,13 +324,23 @@ type AssetHandler =
 
   , clockLens         :: ClockLens
   , locationLens      :: LocationLens
+
+  , reannounceEveryMs :: (State -> Milliseconds)
     -- TODO -- Maybe add isSingleton - to generate warnings if the sets have more than one entry?
   }
 
 
+handlerFor :: HandlerName -> AssetHandler
+handlerFor (HandlerName name) = unsafePartial $
+  case name of
+    "aggregator" -> aggregatorHandler
+    "egest"      -> egestHandler
+    "relay"      -> relayHandler
+
+
 aggregatorHandler :: AssetHandler
 aggregatorHandler
-  = { name              : "aggregator"
+  = { name              : HandlerName "aggregator"
     , availableLocal    : availableLocal
     , availableThisPoP  : availableThisPoP
     , availableOtherPoP : availableOtherPoP
@@ -344,6 +350,8 @@ aggregatorHandler
 
     , clockLens         : clockLens
     , locationLens      : locationLens
+
+    , reannounceEveryMs : _.config >>> _.reannounceEveryMs >>> _.aggregator >>> wrap
     }
   where
     availableLocal state streamId server = do
@@ -402,7 +410,7 @@ announceOtherPoPAggregatorStopped = announceStoppedOtherPoP aggregatorHandler
 
 egestHandler :: AssetHandler
 egestHandler
-  = { name              : "egest"
+  = { name              : HandlerName "egest"
     , availableLocal    : availableLocal
     , availableThisPoP  : availableThisPoP
     , availableOtherPoP : availableOtherPoP
@@ -412,6 +420,9 @@ egestHandler
 
     , clockLens         : clockLens
     , locationLens      : locationLens
+
+    , reannounceEveryMs : _.config >>> _.reannounceEveryMs >>> _.egest >>> wrap
+
     }
   where
     availableLocal state streamId server = do
@@ -451,11 +462,9 @@ announceLocalEgestIsAvailable = announceAvailableLocal egestHandler
 announceLocalEgestStopped :: StreamId -> Effect Unit
 announceLocalEgestStopped = announceStoppedLocal egestHandler
 
-
---TODO - relay and egest are literally identical other than the names...
 relayHandler :: AssetHandler
 relayHandler
-  = { name              : "relay"
+  = { name              : HandlerName "relay"
     , availableLocal    : availableLocal
     , availableThisPoP  : availableThisPoP
     , availableOtherPoP : availableOtherPoP
@@ -465,6 +474,8 @@ relayHandler
 
     , clockLens         : clockLens
     , locationLens      : locationLens
+
+    , reannounceEveryMs : _.config >>> _.reannounceEveryMs >>> _.relay >>> wrap
     }
   where
     availableLocal state streamId server = do
@@ -509,12 +520,18 @@ announceLocalRelayStopped = announceStoppedLocal relayHandler
 announceAvailableLocal :: AssetHandler -> StreamId -> Effect Unit
 announceAvailableLocal handler@{locationLens} streamId =
   Gen.doCast serverName
-    \state@{ thisServer } -> do
-      let _ = spy "announceAvailableLocal" {name: handler.name, streamId}
-      handler.availableLocal state streamId thisServer
-      let
-        newLocations = recordLocation streamId thisServer (locationLens.get state)
-      pure $ Gen.CastNoReply $ locationLens.set newLocations state
+    \state -> Gen.CastNoReply <$> doAnnounceAvailableLocal handler streamId state
+
+doAnnounceAvailableLocal :: AssetHandler -> StreamId -> State -> Effect State
+doAnnounceAvailableLocal handler@{locationLens} streamId state@{thisServer} = do
+  let
+    _ = spy "announceAvailableLocal" {name: handler.name, streamId}
+  handler.availableLocal state streamId thisServer
+  void $ Timer.sendAfter serverName (unwrap $ handler.reannounceEveryMs state) $ ReAnnounce streamId handler.name
+  let
+    newLocations = recordLocation streamId thisServer (locationLens.get state)
+  pure $ locationLens.set newLocations state
+
 
 announceStoppedLocal :: AssetHandler -> StreamId -> Effect Unit
 announceStoppedLocal handler@{locationLens} streamId = do
@@ -610,11 +627,10 @@ startLink :: {config :: Config.IntraPoPAgentConfig, transPoPApi :: Config.TransP
 startLink args = Gen.startLink serverName (init args) handleInfo
 
 init :: {config :: Config.IntraPoPAgentConfig, transPoPApi :: Config.TransPoPAgentApi} -> Effect State
-init { config: config@{rejoinEveryMs
-                      , expireThresholdMs
-                      , expireEveryMs
-                      , vmLivenessMs
-                      , assetLivenessMs
+init { config: config@{ rejoinEveryMs
+                      , checkVMExpiryEveryMs
+                      , checkAssetExpiryEveryMs
+                      , reannounceEveryMs
                       }
      , transPoPApi}
                = do
@@ -623,9 +639,9 @@ init { config: config@{rejoinEveryMs
   Gen.registerExternalMapping serverName (\m -> IntraPoPSerfMsg <$> (Serf.messageMapper m))
   void $ Timer.sendAfter serverName 0 JoinAll
   void $ Timer.sendEvery serverName rejoinEveryMs JoinAll
-  void $ Timer.sendEvery serverName vmLivenessMs VMLiveness
-  void $ Timer.sendEvery serverName assetLivenessMs AssetLiveness
-  void $ Timer.sendEvery serverName expireEveryMs GarbageCollect
+  void $ Timer.sendEvery serverName reannounceEveryMs.vm VMLiveness
+  void $ Timer.sendEvery serverName checkVMExpiryEveryMs GarbageCollectVM
+  void $ Timer.sendEvery serverName checkAssetExpiryEveryMs GarbageCollectAssets
   rpcBindIp <- Env.privateInterfaceIp
   thisServer <- PoPDefinition.getThisServer
   let
@@ -684,49 +700,49 @@ init { config: config@{rejoinEveryMs
     , thisServer: thisServer
     , load: wrap 0.0
     , members
-    , expireThreshold: wrap expireThresholdMs
     , lamportClocks: { aggregatorClocks: Map.empty
                      , egestClocks: Map.empty
                      , relayClocks: Map.empty
                      , loadClocks: Map.empty
                      , popLeaderClocks: Map.empty
                      , vmLivenessClocks : Map.empty
-                     , assetLivenessClocks : Map.empty
                      }
     }
 
 handleInfo :: Msg -> State -> Effect (CastResult State)
 handleInfo msg state = case msg of
+
+  IntraPoPSerfMsg imsg ->
+    CastNoReply <$> handleIntraPoPSerfMsg imsg state
+
   JoinAll -> do
     _ <- joinAllSerf state
     pure $ CastNoReply state
 
-  GarbageCollect ->
-    CastNoReply <$> (garbageCollect state)
+  GarbageCollectVM ->
+    CastNoReply <$> garbageCollectVM state
 
-  IntraPoPSerfMsg imsg ->
-    CastNoReply <$> handleIntraPoPSerfMsg imsg state
+  GarbageCollectAssets ->
+    CastNoReply <$> garbageCollectAssets state
+
+  ReAnnounce streamId handlerName -> do
+    CastNoReply <$> maybeReannounce streamId handlerName state
 
   VMLiveness -> do
     sendToIntraSerfNetwork state "vmLiveness" (IMVMLiveness (extractAddress state.thisServer) state.thisServerRef )
     pure $ CastNoReply state
 
-  AssetLiveness -> do
-    let
---      egestKeys = maybe nil Set.toUnfoldable $ Map.lookup state.thisServer  state.egests.byServer
-      aggregatorKeys = maybe nil Set.toUnfoldable $ Map.lookup state.thisServer state.aggregators.byServer
-      egestKeys = maybe nil Set.toUnfoldable $ Map.lookup state.thisServer state.egests.byServer
-      relayKeys = maybe nil Set.toUnfoldable $ Map.lookup state.thisServer state.relays.byServer
-
-    -- TODO - make sure the message fits into a single packet
-    -- TODO - randomise and maybe separate the time interval between the messages?
-    sendToIntraSerfNetwork state "assetLiveness" (IMAggregatorLiveness (extractAddress state.thisServer) aggregatorKeys)
-    sendToIntraSerfNetwork state "assetLiveness" (IMEgestLiveness (extractAddress state.thisServer) egestKeys)
-    sendToIntraSerfNetwork state "assetLiveness" (IMRelayLiveness (extractAddress state.thisServer) relayKeys)
-    pure $ CastNoReply state
-
-
-
+maybeReannounce :: StreamId -> HandlerName -> State -> Effect State
+maybeReannounce streamId handlerName state = do
+  let
+    handler = handlerFor handlerName
+    -- Do we still know about the asset? If we do, rebroadcast its existence and set up another timer for next time
+    locations = handler.locationLens.get state
+  if mapSetMember state.thisServer streamId  locations.byServer
+  then
+   doAnnounceAvailableLocal handler streamId state
+  else
+    pure state
 
 handleIntraPoPSerfMsg :: (Serf.SerfMessage IntraMessage) -> State -> Effect State
 handleIntraPoPSerfMsg imsg state@{ transPoPApi: {handleRemoteLeaderAnnouncement}
@@ -758,18 +774,12 @@ handleIntraPoPSerfMsg imsg state@{ transPoPApi: {handleRemoteLeaderAnnouncement}
       case intraMessage of
         IMAggregatorState eventType streamId address -> do
           screenAndHandle address aggregatorHandler.clockLens $ handleThisPoPAsset eventType aggregatorHandler streamId
-        IMAggregatorLiveness address aggregatorStreamIds -> do
-          screenAndHandle address aggregatorHandler.clockLens (handleAssetLiveness aggregatorHandler aggregatorStreamIds)
 
         IMEgestState eventType streamId address -> do
           screenAndHandle address egestHandler.clockLens $ handleThisPoPAsset eventType egestHandler streamId
-        IMEgestLiveness address egestStreamIds -> do
-          screenAndHandle address egestHandler.clockLens (handleAssetLiveness egestHandler egestStreamIds)
 
         IMRelayState eventType streamId address -> do
           screenAndHandle address relayHandler.clockLens $ handleThisPoPAsset eventType relayHandler streamId
-        IMRelayLiveness address relayStreamIds -> do
-          screenAndHandle address relayHandler.clockLens (handleAssetLiveness relayHandler relayStreamIds)
 
         IMServerLoad address load -> do
           let
@@ -797,33 +807,6 @@ handleIntraPoPSerfMsg imsg state@{ transPoPApi: {handleRemoteLeaderAnnouncement}
     handleThisPoPAsset :: EventType -> AssetHandler -> StreamId -> Server -> State -> Effect State
     handleThisPoPAsset Available = maybeAnnounceAvailableThisPoP
     handleThisPoPAsset Stopped = maybeStopThisPoP
-
-
-handleAssetLiveness :: AssetHandler -> List StreamId -> Server -> State -> Effect State
-handleAssetLiveness handler@{locationLens} streamIds server state = do
-  let
-    assetLocations = locationLens.get state
-    ourVersion = fromMaybe Set.empty $ Map.lookup server assetLocations.byServer
-    livenessVersion = Set.fromFoldable streamIds
-    newAssets = Set.difference livenessVersion ourVersion
-    expiredAssets = Set.difference ourVersion livenessVersion
-
-    processNew :: StreamLocations -> StreamId -> Effect StreamLocations
-    processNew location streamId = do
-      let _ = spy "processNew" {streamId, server, name: handler.name}
-      handler.availableThisPoP state streamId server
-      pure $ recordLocation streamId server location
-
-    processExpired :: StreamLocations -> StreamId -> Effect StreamLocations
-    processExpired location streamId = do
-      let _ = spy "processExpired" {streamId, server, name: handler.name}
-      handler.stoppedThisPoP state streamId server
-      pure $ removeLocation streamId server location
-
-  withNew <- foldM processNew assetLocations newAssets
-  withoutExpired <- foldM processExpired withNew expiredAssets
-  pure $ locationLens.set withoutExpired state
-
 
 handleLiveness :: Ref -> Server -> State -> Effect State
 handleLiveness ref server state = do
@@ -904,17 +887,22 @@ membersLeft members state = do
     newMembers = foldl (\acc { name } -> Map.delete (ServerAddress name) acc) state.members members
   pure state { members = newMembers }
 
-garbageCollect :: State -> Effect State
-garbageCollect state@{ expireThreshold
-                     , serverRefs
-                     } =
+garbageCollectVM :: State -> Effect State
+garbageCollectVM state@{ config
+                       , serverRefs
+                       } =
   do
     now <- Erl.systemTimeMs
     let
+      expireThreshold = wrap $ config.missCountBeforeExpiry * config.reannounceEveryMs.vm
       threshold = now - expireThreshold
       Tuple newServerRefs garbageRefs = EMap.garbageCollect2 threshold serverRefs
       garbageServers = fst <$> garbageRefs
     foldM garbageCollectServer state{serverRefs = newServerRefs} garbageServers
+
+
+garbageCollectAssets :: State -> Effect State
+garbageCollectAssets state = pure state
 
 
 garbageCollectServer :: State -> Server -> Effect State
@@ -977,6 +965,9 @@ mapSetDelete k v mapSet =
        if Set.isEmpty newSet
        then Map.delete k mapSet
        else Map.insert k newSet mapSet
+
+mapSetMember :: forall k v. Ord k => Ord v => k -> v -> Map k (Set v) -> Boolean
+mapSetMember k v ms = fromMaybe false $ Set.member v <$> Map.lookup k ms
 
 
 joinAllSerf :: State -> Effect Unit
