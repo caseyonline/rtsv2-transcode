@@ -23,7 +23,7 @@ import Rtsv2App.Capability.Resource.User (class ManageUser)
 import Rtsv2App.Component.Utils (OpaqueSlot)
 import Rtsv2App.Data.Profile (Profile)
 import Rtsv2App.Data.Route (Route(..), routeCodec)
-import Rtsv2App.Env (UserEnv)
+import Rtsv2App.Env (UserEnv, UrlEnv)
 import Rtsv2App.Page.Dashboard as Dashboard
 import Rtsv2App.Page.Login as Login
 import Rtsv2App.Page.Register as Register
@@ -57,7 +57,7 @@ type ChildSlots =
 component
   :: forall m r
    . MonadAff m
-  => MonadAsk { userEnv :: UserEnv | r } m
+  => MonadAsk { userEnv :: UserEnv, urlEnv :: UrlEnv | r } m
   => Now m
   => LogMessages m
   => Navigate m

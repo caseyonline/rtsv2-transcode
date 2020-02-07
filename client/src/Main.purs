@@ -20,28 +20,27 @@ import Milkis as M
 import Routing.Duplex (parse)
 import Routing.Hash (matchesWith)
 import Rtsv2App.Api.Endpoint (Endpoint(..))
-import Rtsv2App.Api.Request (BaseURL(..), ProfileJson, RequestMethod(..), fetch, printFullUrl, readToken, withResponse)
+import Rtsv2App.Api.Request (ProfileJson, RequestMethod(..), fetch, printUrl, readToken, withResponse)
 import Rtsv2App.AppM (runAppM)
 import Rtsv2App.Component.Router as Router
 import Rtsv2App.Data.Route (routeCodec)
-import Rtsv2App.Env (Env, LogLevel(..), UserEnv, getCurOrigin)
+import Rtsv2App.Env (AuthUrl(..), CurHostUrl(..), Env, LogLevel(..), UrlEnv, UserEnv, getCurOrigin)
 
 
 main :: Effect Unit
 main = HA.runHalogenAff do
 
   body <- HA.awaitBody
-  curHost <- liftEffect getCurOrigin
   let
     -- TODO: this will need changing to our Auth
-    authUrl = AuthURL "https://conduit.productionready.io"
-    -- current host location for use with API
-    apiUrl = ApiUrl curHost
+    authUrl = AuthUrl "https://conduit.productionready.io"
 
     logLevel = Dev
 
   -- default currentUser Ref to Nothing when starting app
   currentUser <- liftEffect $ Ref.new Nothing
+  curHostUrl <- liftEffect getCurOrigin
+  -- authUrl <- liftEffect $ Ref.new authUrl_
 
   -- new bus to broadcast updates when the value of the current user changes;
   userBus <- liftEffect Bus.make 
@@ -51,7 +50,7 @@ main = HA.runHalogenAff do
   -- if it gets a valid result, write it to our mutable reference.
   liftEffect readToken >>= traverse_ \token -> do
     let method = { endpoint: User, method: Get }
-    response <- liftAff $ Aff.attempt $ fetch (M.URL $ printFullUrl authUrl method.endpoint) (Just token) method
+    response <- liftAff $ Aff.attempt $ fetch (M.URL $ printUrl authUrl method.endpoint) (Just token) method
     user <- withResponse response \(result :: ProfileJson) -> result.user
     case user of
       Left err -> traceM err -- need to do some proper error handling here
@@ -59,8 +58,11 @@ main = HA.runHalogenAff do
 
   let
     environment :: Env
-    environment = { apiUrl, authUrl, logLevel, userEnv }
+    environment = { urlEnv, logLevel, userEnv }
       where
+      urlEnv :: UrlEnv
+      urlEnv = { curHostUrl: (CurHostUrl curHostUrl), authUrl }
+
       userEnv :: UserEnv
       userEnv = { currentUser, userBus }
 

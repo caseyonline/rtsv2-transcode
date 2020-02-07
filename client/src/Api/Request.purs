@@ -1,6 +1,5 @@
 module Rtsv2App.Api.Request
   ( AuthFieldsRep(..)
-  , BaseURL(..)
   , LoginFields(..)
   , OptionMethod(..)
   , ProfileJson(..)
@@ -12,8 +11,7 @@ module Rtsv2App.Api.Request
   , Unlifted(..)
   , fetch
   , login
-  , printBaseUrl
-  , printFullUrl 
+  , printUrl
   , readToken
   , register
   , removeToken
@@ -26,6 +24,7 @@ import Prelude
 
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Newtype (class Newtype, un, unwrap)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Effect.Aff (Aff, Error)
@@ -38,6 +37,7 @@ import Rtsv2App.Api.Endpoint (Endpoint(..), endpointCodec)
 import Rtsv2App.Data.Email (Email)
 import Rtsv2App.Data.Profile (ProfileRep, Profile)
 import Rtsv2App.Data.Username (Username)
+import Rtsv2App.Env (UrlEnv)
 import Simple.JSON (class ReadForeign, class WriteForeign)
 import Simple.JSON as JSON
 import Web.HTML (window)
@@ -66,10 +66,6 @@ type ProfileTokenJson =
 
 type ProfileJson =
   { user :: Profile }
-
-data BaseURL =
-    ApiUrl String
-  | AuthURL String
 
 data RequestMethod
   = Get
@@ -128,25 +124,25 @@ getHeader = case _ of
 -------------------------------------------------------------------------------
 -- User Request functions
 -------------------------------------------------------------------------------
-login :: forall m. MonadAff m => BaseURL -> LoginFields -> m (Either String (Tuple Token Profile))
-login baseUrl fields =
-  let method = Post (Just (JSON.writeJSON { user: fields }))
-   in requestUser baseUrl { endpoint: Login, method }
-
-register :: forall m. MonadAff m => BaseURL -> RegisterFields -> m (Either String (Tuple Token Profile))
-register baseUrl fields =
-  let method = Post (Just (JSON.writeJSON { user: fields }))
-   in requestUser baseUrl { endpoint: Users, method }
-
-requestUser :: forall m. MonadAff m => BaseURL -> OptionMethod -> m (Either String (Tuple Token Profile))
-requestUser baseUrl opts@{ endpoint } = do
-  response <- liftAff $ Aff.attempt $ fetch (M.URL $ printFullUrl baseUrl endpoint) Nothing opts
+requestUser :: forall m. MonadAff m => UrlEnv -> OptionMethod -> m (Either String (Tuple Token Profile))
+requestUser url opts@{ endpoint } = do
+  response <- liftAff $ Aff.attempt $ fetch (M.URL $ printUrl url.curHostUrl endpoint) Nothing opts
   withResponse response \(result :: ProfileTokenJson) -> do
                             let u = result.user
                             (Tuple (u.token) { bio: u.bio
                                              , image: u.image
                                              , username: u.username
                                              })
+
+login :: forall m. MonadAff m => UrlEnv -> LoginFields -> m (Either String (Tuple Token Profile))
+login urlEnv fields =
+  let method = Post (Just (JSON.writeJSON { user: fields }))
+   in requestUser urlEnv { endpoint: Login, method }
+
+register :: forall m. MonadAff m => UrlEnv -> RegisterFields -> m (Either String (Tuple Token Profile))
+register urlEnv fields =
+  let method = Post (Just (JSON.writeJSON { user: fields }))
+   in requestUser urlEnv { endpoint: Users, method }
 
 withResponse
   :: forall a b m
@@ -168,15 +164,10 @@ withDecoded json action = case JSON.readJSON json of
   Right v -> pure $ Right $ action v
 
 -------------------------------------------------------------------------------
--- Print URL helpers
+-- Print URL helper
 -------------------------------------------------------------------------------
-printBaseUrl :: BaseURL -> String
-printBaseUrl url = case url of
-  ApiUrl a -> a
-  AuthURL a -> a
-
-printFullUrl :: BaseURL -> Endpoint -> String
-printFullUrl baseUrl endpoint = printBaseUrl baseUrl <> (print endpointCodec endpoint)
+printUrl :: forall a. Newtype a String => a -> Endpoint -> String
+printUrl url endpoint = (unwrap url) <> (print endpointCodec endpoint)
 
 -------------------------------------------------------------------------------
 -- LocalStorage Token actions

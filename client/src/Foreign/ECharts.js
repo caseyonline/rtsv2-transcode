@@ -29,6 +29,17 @@ exports.setOption_ = function(option) {
   };
 };
 
+exports.setClick_ = function(option) {
+  return function(chart) {
+    return function() {
+        return chart.on('click', 'series.scatter', function (opts) {
+            console.log(opts);
+            // window.location.href = options.curHost + option.url + opts.name
+        });
+    };
+  };
+};
+
 var geoCoordMap = {
     "Amsterdam": [4.895168,52.370216],
     "Athens": [-83.357567,33.951935],
@@ -258,9 +269,6 @@ var optionz = {
             var data = obj.data
             var value = obj.value;
             if (obj.seriesType == "lines") {
-                console.log(data)
-
-
                 return '<div style="border-bottom: 1px solid rgba(255,255,255,.3); font-size: 18px;padding-bottom: 7px;margin-bottom: 7px">'
                 + data.fromName + " > " + data.toName
                 + '</div>'

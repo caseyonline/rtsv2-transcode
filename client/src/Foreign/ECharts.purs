@@ -33,6 +33,8 @@ foreign import makeChart_ :: HTMLElement -> Effect Instance
 
 foreign import setOption_ :: forall option. option -> Instance -> Effect Unit
 
+foreign import setClick_ :: forall option. option -> Instance -> Effect Unit
+
 -- main function
 makeChart
   :: HTMLElement
@@ -47,7 +49,20 @@ setOption
   -> Effect Unit
 setOption = setOption_
 
+setClick
+  :: forall option option'
+   . Row.Union option option' ClickOption
+  => Record option
+  -> Instance
+  -> Effect Unit
+setClick = setClick_
+
 -- types
+type ClickOption =
+  ( curHost :: String
+  , url :: String
+  )
+
 type Option =
   ( title :: TitleOption
   , tooltip :: TooltipOption

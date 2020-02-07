@@ -3,7 +3,6 @@ module Rtsv2App.Capability.Resource.Api where
 import Prelude
 
 import Data.Either (Either)
-import Data.Maybe (Maybe)
 import Halogen (HalogenM, lift)
 import Shared.Types (PoPName)
 import Shared.Types.Agent.State (TimedPoPRoutes)
