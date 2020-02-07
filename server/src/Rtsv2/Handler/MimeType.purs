@@ -2,6 +2,7 @@ module Rtsv2.Handler.MimeType
        ( json
        , text
        , llwp
+       , openmetrics
        , any
        ) where
 
@@ -15,6 +16,9 @@ json = tuple2 "application/json"
 
 llwp :: forall a. a -> Tuple2 String a
 llwp = tuple2 "application/vnd.id3as.media+llwp"
+
+openmetrics :: forall a. a -> Tuple2 String a
+openmetrics = tuple2 "application/openmetrics-text"
 
 any :: forall a. a -> Tuple2 String a
 any = tuple2 "*/*"

@@ -27,7 +27,7 @@ import Rtsv2.Config as Config
 import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.Web.Bindings as Bindings
 import Shared.LlnwApiTypes (StreamIngestProtocol(..), StreamPublish, StreamDetails)
-import Shared.Stream (ShortName, StreamAndVariant(..), StreamId, StreamVariant, toVariant)
+import Shared.Stream (ShortName, StreamAndVariant(..), StreamId, StreamVariant, toStreamId, toVariant)
 import Shared.Types.Agent.State as PublicState
 import Shared.Types.Workflow.Metrics.Commmon (Stream)
 import Shared.Utils (lazyCrashIfMissing)
@@ -45,7 +45,7 @@ ingestInstances =
 
 ingestInstancesStats :: GenericStetsonGet2
 ingestInstancesStats =
-  genericGet2 nil ((MimeType.json getJson) : (MimeType.text getText) : nil)
+  genericGet2 nil ((MimeType.openmetrics getText) : (MimeType.json getJson) : nil)
   where
     getJson _ = do
       stats <- IngestStats.getStats
@@ -108,18 +108,20 @@ statsToPrometheus stats =
                , rtmpIngestMetrics
                } ->
          let
+           slotId = toStreamId streamAndVariant
+           profileId = toVariant streamAndVariant
            prometheusTimestamp = Prometheus.toTimestamp timestamp
          in
           page
-          # streamBitrateMetricsToPrometheus prometheusTimestamp streamBitrateMetrics
-          # frameFlowMetricsToPrometheus prometheusTimestamp frameFlowMeterMetrics
-          # rtmpMetricsToPrometheus prometheusTimestamp rtmpIngestMetrics
+          # streamBitrateMetricsToPrometheus prometheusTimestamp slotId profileId streamBitrateMetrics
+          # frameFlowMetricsToPrometheus prometheusTimestamp slotId profileId frameFlowMeterMetrics
+          # rtmpMetricsToPrometheus prometheusTimestamp slotId profileId rtmpIngestMetrics
         )
   (Prometheus.newPage metrics)
   stats
   # Prometheus.pageToString
   where
-    streamBitrateMetricsToPrometheus timestamp streamBitrateMetrics page =
+    streamBitrateMetricsToPrometheus timestamp slotId profileId streamBitrateMetrics page =
           foldl
           (\innerPage
             perStream@{ metrics: { frameCount
@@ -127,7 +129,7 @@ statsToPrometheus stats =
                                  , bitrate
                                  , averagePacketSize }} ->
            let
-             labels = labelsForStream(perStream)
+             labels = labelsForStream slotId profileId perStream
            in
             innerPage
             # Prometheus.addMetric "ingest_frame_count" frameCount labels timestamp
@@ -138,7 +140,7 @@ statsToPrometheus stats =
           page
           streamBitrateMetrics.perStreamMetrics
 
-    frameFlowMetricsToPrometheus timestamp frameFlowMetrics page =
+    frameFlowMetricsToPrometheus timestamp slotId profileId frameFlowMetrics page =
           foldl
           (\innerPage
             perStream@{ metrics: { frameCount
@@ -148,7 +150,7 @@ statsToPrometheus stats =
                                  , lastCaptureMs
                                  }} ->
            let
-             labels = labelsForStream(perStream)
+             labels = labelsForStream slotId profileId perStream
            in
             innerPage
             # Prometheus.addMetric "ingest_frame_count2" frameCount labels timestamp
@@ -160,12 +162,19 @@ statsToPrometheus stats =
           page
           frameFlowMetrics.perStreamMetrics
 
-    rtmpMetricsToPrometheus timestamp {bytesRead} page =
-      Prometheus.addMetric "ingest_bytes_read" bytesRead (Prometheus.toLabels nil) timestamp page
+    rtmpMetricsToPrometheus timestamp slotId profileId {bytesRead} page =
+      let
+        labels = Prometheus.toLabels $ (Tuple "slot" (Prometheus.toLabelValue (unwrap slotId))) :
+                                       (Tuple "profile" (Prometheus.toLabelValue (unwrap profileId))) :
+                                       nil
+      in
+       Prometheus.addMetric "ingest_bytes_read" bytesRead labels timestamp page
 
-    labelsForStream :: forall a. Stream a -> Prometheus.IOLabels
-    labelsForStream { streamId, frameType, profileName} =
-      Prometheus.toLabels $ (Tuple "stream_id" (Prometheus.toLabelValue streamId)) :
+    labelsForStream :: forall a. StreamId -> StreamVariant -> Stream a -> Prometheus.IOLabels
+    labelsForStream slotId profileId { streamId, frameType, profileName} =
+      Prometheus.toLabels $ (Tuple "slot" (Prometheus.toLabelValue (unwrap slotId))) :
+                            (Tuple "profile" (Prometheus.toLabelValue (unwrap profileId))) :
+                            (Tuple "stream_id" (Prometheus.toLabelValue streamId)) :
                             (Tuple "frame_type" (Prometheus.toLabelValue (show frameType))) :
                             (Tuple "profile_name" (Prometheus.toLabelValue profileName)) :
                             nil
