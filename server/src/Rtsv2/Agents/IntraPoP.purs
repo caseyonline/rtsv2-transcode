@@ -103,7 +103,7 @@ type LamportClocks =
   }
 
 type StreamLocations = { byStreamId :: Map StreamId (Set Server)
-                       , byServer :: Map Server (Set StreamId)
+                       , byServer   :: Map Server (Set StreamId)
                        }
 
 type State
@@ -798,10 +798,8 @@ handleIntraPoPSerfMsg imsg state@{ transPoPApi: {handleRemoteLeaderAnnouncement}
     handleThisPoPAsset Stopped = maybeStopThisPoP
 
 
-
 handleAssetLiveness :: AssetHandler -> List StreamId -> Server -> State -> Effect State
 handleAssetLiveness handler@{locationLens} streamIds server state = do
-  -- fold over the events ids we received - delete any assets we have that are absent, add any assets they have that we don't
   let
     assetLocations = locationLens.get state
     ourVersion = fromMaybe Set.empty $ Map.lookup server assetLocations.byServer
@@ -824,8 +822,6 @@ handleAssetLiveness handler@{locationLens} streamIds server state = do
   withNew <- foldM processNew assetLocations newAssets
   withoutExpired <- foldM processExpired withNew expiredAssets
   pure $ locationLens.set withoutExpired state
-
-
 
 
 handleLiveness :: Ref -> Server -> State -> Effect State
