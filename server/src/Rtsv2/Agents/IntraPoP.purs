@@ -151,7 +151,7 @@ data IntraMessage
 data Msg
   = JoinAll
   | GarbageCollectVM
-  | GarbageCollectAssets
+  | GarbageCollectAgents
   | IntraPoPSerfMsg (Serf.SerfMessage IntraMessage)
   | VMLiveness
   | ReAnnounce StreamId HandlerName
@@ -593,8 +593,6 @@ announceAvailableLocal handler@{locationLens} streamId =
 
 doAnnounceAvailableLocal :: AgentHandler -> StreamId -> State -> Effect State
 doAnnounceAvailableLocal handler@{locationLens} streamId state@{thisServer, agentLocations} = do
-  let
-    _ = spy "announceAvailableLocal" {name: handler.name, streamId}
   handler.availableLocal state streamId thisServer
   void $ Timer.sendAfter serverName (unwrap $ handler.reannounceEveryMs state) $ ReAnnounce streamId handler.name
   pure $ updateAgentLocation recordLocation locationLens streamId thisServer state
@@ -604,7 +602,6 @@ announceStoppedLocal :: AgentHandler -> StreamId -> Effect Unit
 announceStoppedLocal handler@{locationLens} streamId = do
   Gen.doCast serverName
     \state@{ thisServer } -> do
-      let _ = spy "stoppedLocal" {name: handler.name, streamId}
       handler.stoppedLocal state streamId thisServer
       pure $ Gen.CastNoReply $ updateAgentLocation removeLocation locationLens streamId thisServer state
 
@@ -615,7 +612,6 @@ announceAvailableOtherPoP :: AgentHandler -> StreamId -> Server -> Effect Unit
 announceAvailableOtherPoP handler@{locationLens} streamId server =
   Gen.doCast serverName
     \state -> do
-      let _ = spy "announceAvailableOtherPoP" {name: handler.name, streamId}
       handler.availableOtherPoP state streamId server
       pure $ Gen.CastNoReply $ updateAgentLocation recordLocation locationLens streamId server state
 
@@ -623,34 +619,8 @@ announceStoppedOtherPoP :: AgentHandler -> StreamId -> Server -> Effect Unit
 announceStoppedOtherPoP handler@{locationLens} streamId server =
   Gen.doCast serverName
     \state -> do
-      let _ = spy "stoppedOtherPoP" {name: handler.name, streamId}
       handler.stoppedOtherPoP state streamId server
       pure $ Gen.CastNoReply $ updateAgentLocation removeLocation locationLens streamId server state
-
--- Private API called in response to IntraPoP bus message relating to events in this PoP
--- We need to not re-broadcast messages from other PoPs that we have already relayed
--- maybeAnnounceAvailableThisPoP :: AgentHandler -> StreamId -> Server -> State -> Effect State
--- maybeAnnounceAvailableThisPoP handler@{locationLens} streamId server state@{agentLocations} = do
---   if extractPoP server == extractPoP state.thisServer
---   then do
---     handler.availableThisPoP state streamId server
---     let
---       newLocations = recordLocation streamId server (locationLens.get agentLocations)
---     pure $ locationLens.set newLocations state
---   else
---     pure state
-
--- maybeStopThisPoP :: AgentHandler -> StreamId -> Server -> State -> Effect State
--- maybeStopThisPoP handler@{locationLens} streamId server state = do
---   if extractPoP server == extractPoP state.thisServer
---   then do
---     handler.stoppedThisPoP state streamId server
---     let
---       newLocations = removeLocation streamId server (locationLens.get state)
---     pure $ locationLens.set newLocations state
---   else
---     pure state
-
 
 -- Called by TransPoP to indicate that it is acting as this PoP's leader
 announceTransPoPLeader :: Effect Unit
@@ -700,7 +670,7 @@ startLink args = Gen.startLink serverName (init args) handleInfo
 init :: {config :: Config.IntraPoPAgentConfig, transPoPApi :: Config.TransPoPAgentApi} -> Effect State
 init { config: config@{ rejoinEveryMs
                       , checkVMExpiryEveryMs
-                      , checkAssetExpiryEveryMs
+                      , checkAgentExpiryEveryMs
                       , reannounceEveryMs
                       }
      , transPoPApi}
@@ -712,11 +682,10 @@ init { config: config@{ rejoinEveryMs
   void $ Timer.sendEvery serverName rejoinEveryMs JoinAll
   void $ Timer.sendEvery serverName reannounceEveryMs.vm VMLiveness
   void $ Timer.sendEvery serverName checkVMExpiryEveryMs GarbageCollectVM
-  void $ Timer.sendEvery serverName checkAssetExpiryEveryMs GarbageCollectAssets
+  void $ Timer.sendEvery serverName checkAgentExpiryEveryMs GarbageCollectAgents
   rpcBindIp <- Env.privateInterfaceIp
   thisServer <- PoPDefinition.getThisServer
   let
-    _ = spy "healthConfig" healthConfig
     serfRpcAddress =
       { ip: show rpcBindIp
       , port: config.rpcPort
@@ -768,9 +737,9 @@ init { config: config@{ rejoinEveryMs
     , load: wrap 0.0
     , members
     , agentClocks  : { aggregatorClocks: Map.empty
-                    , egestClocks: Map.empty
-                    , relayClocks: Map.empty
-                    }
+                     , egestClocks: Map.empty
+                     , relayClocks: Map.empty
+                     }
     , agentLocations : { relays: emptyLocations
                        , aggregators:  emptyLocations
                        , egests :  emptyLocations
@@ -795,8 +764,8 @@ handleInfo msg state = case msg of
   GarbageCollectVM ->
     CastNoReply <$> garbageCollectVM state
 
-  GarbageCollectAssets ->
-    CastNoReply <$> garbageCollectAssets state
+  GarbageCollectAgents ->
+    CastNoReply <$> garbageCollectAgents state
 
   ReAnnounce streamId handlerName -> do
 --    CastNoReply <$> maybeReannounce streamId handlerName state
@@ -847,29 +816,13 @@ handleIntraPoPSerfMsg imsg state@{ transPoPApi: {handleRemoteLeaderAnnouncement}
           handleAgentMessage ltime eventType streamId msgOrigin state relayHandler
 
         IMServerLoad msgOrigin load -> do
-          pure state
-          -- let
-          --   clockLens = { get : _.loadClocks
-          --                , set : \newClocks lc -> lc{loadClocks = newClocks}
-          --                }
-          -- screenAndHandle address clockLens (handleLoadChange address load)
+          handleServerMessage ltime msgOrigin state $ loadHandler load
 
         IMTransPoPLeader msgOrigin -> do
---          handleServerMessage ltime leaderHandler
-          pure state
-          -- let
-          --   clockLens = { get : _.popLeaderClocks
-          --                , set : \newClocks lc -> lc{popLeaderClocks = newClocks}
-          --                }
-          -- screenAndHandle address clockLens handleTransPoPLeader
+          handleServerMessage ltime msgOrigin state popLeaderHandler
 
         IMVMLiveness msgOrigin ref -> do
-          pure state
-          -- let
-          --   clockLens = { get : _.vmLivenessClocks
-          --                , set : \newClocks lc -> lc{vmLivenessClocks = newClocks}
-          --                }
-          -- screenAndHandle address clockLens (handleLiveness ref)
+          handleServerMessage ltime msgOrigin state $ vmLivenessHandler ref
 
 
 
@@ -915,7 +868,8 @@ handleServerMessage msgLTime msgServerAddress
 handleAgentMessage :: LamportClock -> EventType -> StreamId -> ServerAddress -> State -> AgentHandler -> Effect State
 handleAgentMessage msgLTime eventType streamId msgServerAddress
                   state@{thisServer, agentClocks, agentLocations}
-                  slotAssetHandler@{clockLens, locationLens} = do
+                  agentMessageHandler@{clockLens, locationLens} = do
+  let _ = spy "agentMessage" {name: agentMessageHandler.name, eventType, streamId, msgServerAddress}
   -- Make sure the message is from a known origin and does not have an expired Lamport clock
   if msgServerAddress == extractAddress thisServer
   then
@@ -929,7 +883,7 @@ handleAgentMessage msgLTime eventType streamId msgServerAddress
       mLocation <- PoPDefinition.whereIsServer msgServerAddress
       case mLocation of
         Nothing -> do
-          logWarning "message from unknown server" {msgServerAddress, msgType: slotAssetHandler.name}
+          logWarning "message from unknown server" {msgServerAddress, msgType: agentMessageHandler.name}
           pure state
         Just msgLocation
           | extractPoP msgLocation /= extractPoP state.thisServer ->
@@ -944,16 +898,16 @@ handleAgentMessage msgLTime eventType streamId msgServerAddress
             case eventType of
               Available -> do
                 let
-                  newLocations = recordLocation streamId thisServer locations
-                slotAssetHandler.availableThisPoP state streamId msgServer
+                  newLocations = recordLocation streamId msgServer locations
+                agentMessageHandler.availableThisPoP state streamId msgServer
                 pure $ state { agentClocks = newAgentClocks
                              , agentLocations = locationLens.set newLocations agentLocations
                              }
 
               Stopped -> do
                 let
-                  newLocations = removeLocation streamId thisServer locations
-                slotAssetHandler.stoppedThisPoP state streamId msgServer
+                  newLocations = removeLocation streamId msgServer locations
+                agentMessageHandler.stoppedThisPoP state streamId msgServer
                 pure $ state { agentClocks = newAgentClocks
                              , agentLocations = locationLens.set newLocations agentLocations
                              }
@@ -1052,8 +1006,8 @@ garbageCollectVM state@{ config
     foldM garbageCollectServer state{serverRefs = newServerRefs} garbageServers
 
 
-garbageCollectAssets :: State -> Effect State
-garbageCollectAssets state = pure state
+garbageCollectAgents :: State -> Effect State
+garbageCollectAgents state = pure state
 
 
 garbageCollectServer :: State -> Server -> Effect State
@@ -1066,13 +1020,13 @@ garbageCollectServer state deadServer = do
   pure newState
 
 gc :: String -> AgentHandler -> Server -> State -> Effect State
-gc assetType assetHandler@{locationLens} deadServer state@{agentLocations} = do
+gc agentType agentHandler@{locationLens} deadServer state@{agentLocations} = do
   let
     locations = locationLens.get agentLocations
   case Map.lookup deadServer locations.byServer of
     Nothing -> pure state
     Just garbageStreams -> do
-      logWarning (assetType <> " liveness timeout") {garbageStreams}
+      logWarning (agentType <> " liveness timeout") {garbageStreams}
       newByStreamId <- foldM cleanUp locations.byStreamId  garbageStreams
       let
         newLocations = { byStreamId : newByStreamId
@@ -1081,7 +1035,7 @@ gc assetType assetHandler@{locationLens} deadServer state@{agentLocations} = do
       pure $ state {agentLocations = locationLens.set newLocations agentLocations}
   where
     cleanUp acc streamId = do
-      assetHandler.stoppedThisPoP state streamId deadServer
+      agentHandler.stoppedThisPoP state streamId deadServer
       pure $ mapSetDelete streamId deadServer acc
 
 

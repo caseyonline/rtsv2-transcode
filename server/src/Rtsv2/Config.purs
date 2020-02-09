@@ -84,7 +84,7 @@ type IntraPoPAgentConfig
     , rejoinEveryMs :: Int
     , replayMessagesOnJoin :: Boolean
     , checkVMExpiryEveryMs :: Int
-    , checkAssetExpiryEveryMs :: Int
+    , checkAgentExpiryEveryMs :: Int
     , reannounceEveryMs :: { vm :: Int
                            , aggregator :: Int
                            , relay :: Int

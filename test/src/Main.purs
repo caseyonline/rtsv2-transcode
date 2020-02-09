@@ -159,7 +159,7 @@ main =
                                          } # attempt <#> stringifyError
 
     maybeLogStep s a =
-      --let _ = spy s a in
+      let _ = spy s a in
       unit
 
     as desc (Right r) =

@@ -41,14 +41,14 @@ load =
 
 setLoad :: Number -> Effect Unit
 setLoad newLoad = do
-  _ <- IntraPop.announceLoad (wrap newLoad)
+  IntraPop.announceLoad (wrap newLoad)
   Gen.call serverName \state -> CallReply unit state{load = (wrap newLoad)}
 
 init :: Unit -> Effect State
 init args = do
   logInfo "Load monitor starting" {}
   config <- Config.loadMonitorConfig
-  _ <- Timer.sendEvery serverName config.loadAnnounceMs Tick
+  void $ Timer.sendEvery serverName config.loadAnnounceMs Tick
   pure $ {load: (wrap 0.0)}
 
 handleInfo :: Msg -> State -> Effect (CastResult State)
@@ -56,7 +56,7 @@ handleInfo msg state@{load: currentLoad} =
   case msg of
     Tick ->
       do
-        _ <- IntraPop.announceLoad currentLoad
+        IntraPop.announceLoad currentLoad
         pure $ CastNoReply state
 
 --------------------------------------------------------------------------------
