@@ -113,8 +113,9 @@ type AgentLocations = { relays                :: Locations
                       }
 
 
-type Locations = { byStreamId :: Map StreamId (Set Server)
-                 , byServer   :: Map Server (Set StreamId)
+type Locations = { byStreamId     :: Map StreamId (Set Server)
+                 , byRemoteServer :: Map Server (Set StreamId)
+                 , remoteTimeouts :: Map (Tuple StreamId Server) Milliseconds
                  }
 
 type State
@@ -580,21 +581,23 @@ announceLocalRelayStopped = announceStoppedLocal relayHandler
 announceAvailableLocal :: AgentHandler -> StreamId -> Effect Unit
 announceAvailableLocal handler@{locationLens} streamId =
   Gen.doCast serverName
-    \state -> Gen.CastNoReply <$> doAnnounceAvailableLocal handler streamId state
+    \state@{thisServer} -> do
+      doAnnounceAvailableLocal handler streamId state
+      pure $ Gen.CastNoReply $ updateAgentLocation recordLocalAgent locationLens streamId thisServer state
 
-doAnnounceAvailableLocal :: AgentHandler -> StreamId -> State -> Effect State
+doAnnounceAvailableLocal :: AgentHandler -> StreamId -> State -> Effect Unit
 doAnnounceAvailableLocal handler@{locationLens} streamId state@{thisServer, agentLocations} = do
   handler.availableLocal state streamId thisServer
   void $ Timer.sendAfter serverName (unwrap $ handler.reannounceEveryMs state) $ ReAnnounce streamId handler.name
-  pure $ updateAgentLocation recordLocation locationLens streamId thisServer state
 
+--TODO - don't need to update the loaction here - top level function is enough
 
 announceStoppedLocal :: AgentHandler -> StreamId -> Effect Unit
 announceStoppedLocal handler@{locationLens} streamId = do
   Gen.doCast serverName
     \state@{ thisServer } -> do
       handler.stoppedLocal state streamId thisServer
-      pure $ Gen.CastNoReply $ updateAgentLocation removeLocation locationLens streamId thisServer state
+      pure $ Gen.CastNoReply $ updateAgentLocation removeLocalAgent locationLens streamId thisServer state
 
 
 
@@ -603,15 +606,16 @@ announceAvailableOtherPoP :: AgentHandler -> StreamId -> Server -> Effect Unit
 announceAvailableOtherPoP handler@{locationLens} streamId server =
   Gen.doCast serverName
     \state -> do
+      timeout <- messageTimeout handler state
       handler.availableOtherPoP state streamId server
-      pure $ Gen.CastNoReply $ updateAgentLocation recordLocation locationLens streamId server state
+      pure $ Gen.CastNoReply $ updateAgentLocation (recordRemoteAgent timeout) locationLens streamId server state
 
 announceStoppedOtherPoP :: AgentHandler -> StreamId -> Server -> Effect Unit
 announceStoppedOtherPoP handler@{locationLens} streamId server =
   Gen.doCast serverName
     \state -> do
       handler.stoppedOtherPoP state streamId server
-      pure $ Gen.CastNoReply $ updateAgentLocation removeLocation locationLens streamId server state
+      pure $ Gen.CastNoReply $ updateAgentLocation removeRemoteAgent locationLens streamId server state
 
 -- Called by TransPoP to indicate that it is acting as this PoP's leader
 announceTransPoPLeader :: Effect Unit
@@ -696,8 +700,9 @@ init { config: config@{ rejoinEveryMs
 
   let
     busy = wrap 100.0 :: Load
-    emptyLocations = { byStreamId : Map.empty
-                     , byServer   : Map.empty
+    emptyLocations = { byStreamId       : Map.empty
+                     , byRemoteServer   : Map.empty
+                     , remoteTimeouts   : Map.empty
                      }
     members = membersResp
               # hush
@@ -765,24 +770,25 @@ handleInfo msg state = case msg of
   ReAnnounce streamId handlerName -> do
     CastNoReply <$> maybeReannounce
     where
-      handlerFor :: HandlerName -> AgentHandler
-      handlerFor (HandlerName name) = unsafePartial $
-        case name of
-          "aggregator" -> aggregatorHandler
-          "egest"      -> egestHandler
-          "relay"      -> relayHandler
-
       maybeReannounce :: Effect State
       maybeReannounce = do
         let
           handler = handlerFor handlerName
           -- Do we still know about the asset? If we do, rebroadcast its existence and set up another timer for next time
           locations = handler.locationLens.get state.agentLocations
-        if mapSetMember state.thisServer streamId  locations.byServer
+        if mapSetMember streamId state.thisServer locations.byStreamId
         then do
           doAnnounceAvailableLocal handler streamId state
+          pure state
         else
           pure state
+
+      handlerFor :: HandlerName -> AgentHandler
+      handlerFor (HandlerName name) = unsafePartial $
+        case name of
+          "aggregator" -> aggregatorHandler
+          "egest"      -> egestHandler
+          "relay"      -> relayHandler
 
 
 
@@ -886,8 +892,9 @@ handleAgentMessage msgLTime eventType streamId msgServerAddress
 
             case eventType of
               Available -> do
+                timeout <- messageTimeout agentMessageHandler state
                 let
-                  newLocations = recordLocation streamId msgServer locations
+                  newLocations = recordRemoteAgent timeout streamId msgServer locations
                 agentMessageHandler.availableThisPoP state streamId msgServer
                 pure $ state { agentClocks = newAgentClocks
                              , agentLocations = locationLens.set newLocations agentLocations
@@ -895,11 +902,17 @@ handleAgentMessage msgLTime eventType streamId msgServerAddress
 
               Stopped -> do
                 let
-                  newLocations = removeLocation streamId msgServer locations
+                  newLocations = removeRemoteAgent streamId msgServer locations
                 agentMessageHandler.stoppedThisPoP state streamId msgServer
                 pure $ state { agentClocks = newAgentClocks
                              , agentLocations = locationLens.set newLocations agentLocations
                              }
+
+
+messageTimeout :: AgentHandler -> State -> Effect Milliseconds
+messageTimeout agentMessageHandler state = do
+  now <- Erl.systemTimeMs
+  pure $ now + ((agentMessageHandler.reannounceEveryMs state) * (wrap state.config.missCountBeforeExpiry))
 
 
 handleLiveness :: Ref -> Server -> State -> Effect State
@@ -1003,23 +1016,25 @@ garbageCollectServer :: State -> Server -> Effect State
 garbageCollectServer state deadServer = do
   -- TODO - add a server decomissioning message to do this cleanly
   logWarning "server liveness timeout" {server: deadServer}
-  newState <- gc "aggregators" aggregatorHandler deadServer
-              =<< gc "egests" egestHandler deadServer
-              =<< gc "relays" relayHandler deadServer state
+  newState <- gcServer "aggregators" aggregatorHandler deadServer
+              =<< gcServer "egests" egestHandler deadServer
+              =<< gcServer "relays" relayHandler deadServer state
   pure newState
 
-gc :: String -> AgentHandler -> Server -> State -> Effect State
-gc agentType agentHandler@{locationLens} deadServer state@{agentLocations} = do
+gcServer :: String -> AgentHandler -> Server -> State -> Effect State
+gcServer agentType agentHandler@{locationLens} deadServer state@{agentLocations} = do
   let
     locations = locationLens.get agentLocations
-  case Map.lookup deadServer locations.byServer of
+  case Map.lookup deadServer locations.byRemoteServer of
     Nothing -> pure state
     Just garbageStreams -> do
       logWarning (agentType <> " liveness timeout") {garbageStreams}
       newByStreamId <- foldM cleanUp locations.byStreamId  garbageStreams
       let
+        newTimeouts = foldl (\acc k -> Map.delete (Tuple k deadServer) acc) locations.remoteTimeouts garbageStreams
         newLocations = { byStreamId : newByStreamId
-                       , byServer : Map.delete deadServer locations.byServer
+                       , byRemoteServer : Map.delete deadServer locations.byRemoteServer
+                       , remoteTimeouts : newTimeouts
                        }
       pure $ state {agentLocations = locationLens.set newLocations agentLocations}
   where
@@ -1029,16 +1044,29 @@ gc agentType agentHandler@{locationLens} deadServer state@{agentLocations} = do
 
 
 
-recordLocation :: StreamId -> Server -> Locations -> Locations
-recordLocation streamId server locations =
-  { byStreamId : mapSetInsert streamId server locations.byStreamId
-  , byServer : mapSetInsert server streamId locations.byServer
+recordLocalAgent :: StreamId -> Server -> Locations -> Locations
+recordLocalAgent streamId thisServer locations =
+  locations { byStreamId = mapSetInsert streamId thisServer locations.byStreamId
+            }
+
+removeLocalAgent :: StreamId -> Server -> Locations -> Locations
+removeLocalAgent streamId thisServer locations =
+  locations { byStreamId = mapSetDelete streamId thisServer locations.byStreamId
+            }
+
+
+recordRemoteAgent :: Milliseconds -> StreamId -> Server -> Locations -> Locations
+recordRemoteAgent timeout streamId server locations =
+  { byStreamId     : mapSetInsert streamId server locations.byStreamId
+  , byRemoteServer : mapSetInsert server streamId locations.byRemoteServer
+  , remoteTimeouts : Map.insert (Tuple streamId server) timeout locations.remoteTimeouts
   }
 
-removeLocation :: StreamId -> Server -> Locations -> Locations
-removeLocation streamId server locations =
-  { byStreamId : mapSetDelete streamId server locations.byStreamId
-  , byServer : mapSetDelete server streamId locations.byServer
+removeRemoteAgent :: StreamId -> Server -> Locations -> Locations
+removeRemoteAgent streamId server locations =
+  { byStreamId     : mapSetDelete streamId server locations.byStreamId
+  , byRemoteServer : mapSetDelete server streamId locations.byRemoteServer
+  , remoteTimeouts : Map.delete(Tuple streamId server) locations.remoteTimeouts
   }
 
 mapSetInsert :: forall k v. Ord k => Ord v => k -> v -> Map k (Set v) -> Map k (Set v)
