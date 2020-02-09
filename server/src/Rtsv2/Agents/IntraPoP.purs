@@ -51,8 +51,9 @@ import Bus as Bus
 import Data.Either (Either(..), hush)
 import Data.Filterable (filterMap)
 import Data.Foldable (foldM, foldl)
+import Data.FoldableWithIndex (foldlWithIndex)
 import Data.Maybe (Maybe(..), fromMaybe, maybe)
-import Data.Newtype (wrap, unwrap)
+import Data.Newtype (class Newtype, unwrap, wrap)
 import Data.Set (Set)
 import Data.Set as Set
 import Data.Traversable (traverse_)
@@ -62,7 +63,7 @@ import Effect.Random (randomInt)
 import Ephemeral.Map (EMap)
 import Ephemeral.Map as EMap
 import Erl.Atom (Atom)
-import Erl.Data.List (List, head, index, length, nil, singleton, sortBy, take, uncons)
+import Erl.Data.List (List, head, index, length, nil, singleton, sortBy, take, uncons, (:))
 import Erl.Data.Map (Map, alter, fromFoldable, values)
 import Erl.Data.Map as Map
 import Erl.Process (Process, spawnLink)
@@ -329,11 +330,10 @@ type AgentClockLens = { get :: AgentClocks -> AgentClock
                       }
 
 type AgentLocationLens = { get :: AgentLocations -> Locations
-                         , set :: Locations -> AgentLocations ->AgentLocations
+                         , set :: Locations -> AgentLocations -> AgentLocations
                          }
-
-
 newtype HandlerName = HandlerName String
+derive instance newtypeHandlerName :: Newtype HandlerName _
 
 type AgentHandler =
   { name              :: HandlerName
@@ -344,6 +344,8 @@ type AgentHandler =
   , stoppedLocal      :: AgentMessageHandler
   , stoppedThisPoP    :: AgentMessageHandler
   , stoppedOtherPoP   :: AgentMessageHandler
+  , gcThisPoP         :: AgentMessageHandler
+  , gcOtherPoP        :: AgentMessageHandler
 
   , clockLens         :: AgentClockLens
   , locationLens      :: AgentLocationLens
@@ -428,6 +430,8 @@ aggregatorHandler
     , stoppedLocal      : stoppedLocal
     , stoppedThisPoP    : stoppedThisPoP
     , stoppedOtherPoP   : stoppedOtherPoP
+    , gcThisPoP         : gcThisPoP
+    , gcOtherPoP        : gcOtherPoP
 
     , clockLens         : clockLens
     , locationLens      : locationLens
@@ -464,6 +468,18 @@ aggregatorHandler
       Bus.raise bus (IngestAggregatorExited streamId server)
       sendToIntraSerfNetwork state "aggregatorStopped" (IMAggregatorState Stopped streamId (extractAddress server))
 
+    gcThisPoP state streamId server = do
+      logWarning "Remote aggregator timed out" {streamId, server}
+      Bus.raise bus (IngestAggregatorExited streamId server)
+      -- we don't relay timeout messages - should only happen with stressed network anyway...
+
+    gcOtherPoP state streamId server = do
+      logWarning "Aggregator from other pop timed out" {streamId, server}
+      Bus.raise bus (IngestAggregatorExited streamId server)
+      -- we don't relay timeout messages - should only happen with stressed network anyway...
+
+
+
     clockLens = { get : _.aggregatorClocks
                  , set : \newClocks agentClocks -> agentClocks{aggregatorClocks = newClocks}
                  }
@@ -496,6 +512,8 @@ egestHandler
     , stoppedLocal      : stoppedLocal
     , stoppedThisPoP    : stoppedThisPoP
     , stoppedOtherPoP   : stoppedOtherPoP
+    , gcThisPoP         : gcThisPoP
+    , gcOtherPoP        : gcOtherPoP
 
     , clockLens         : clockLens
     , locationLens      : locationLens
@@ -526,6 +544,13 @@ egestHandler
       -- Not expecting any of these
       logWarning "Egest stopped in another PoP" {streamId, server}
 
+    gcThisPoP state streamId server = do
+      logWarning "Remote egest timed out" {streamId, server}
+
+    gcOtherPoP state streamId server = do
+      -- Not expecting any of these
+      logWarning "Egest from other pop timed out" {streamId, server}
+
     clockLens = { get : _.egestClocks
                  , set : \newClocks agentClocks -> agentClocks{egestClocks = newClocks}
                  }
@@ -550,6 +575,8 @@ relayHandler
     , stoppedLocal      : stoppedLocal
     , stoppedThisPoP    : stoppedThisPoP
     , stoppedOtherPoP   : stoppedOtherPoP
+    , gcThisPoP         : gcThisPoP
+    , gcOtherPoP        : gcOtherPoP
 
     , clockLens         : clockLens
     , locationLens      : locationLens
@@ -578,6 +605,14 @@ relayHandler
     stoppedOtherPoP state streamId server = do
       -- Not expecting any of these
       logWarning "Relay stopped in another PoP" {streamId, server}
+
+    gcThisPoP state streamId server = do
+      logWarning "Remote relay timed out" {streamId, server}
+
+    gcOtherPoP state streamId server = do
+      -- Not expecting any of these
+      logWarning "Relay from other pop timed out" {streamId, server}
+
 
     clockLens = { get : _.relayClocks
                  , set : \newClocks agentClocks -> agentClocks{relayClocks = newClocks}
@@ -1029,26 +1064,46 @@ garbageCollectVM state@{ config
 
 
 garbageCollectAgents :: State -> Effect State
-garbageCollectAgents state = pure state
+garbageCollectAgents state = do
+  now <- Erl.systemTimeMs
+  foldHandlers (gcAgent now) state
 
+gcAgent :: Milliseconds -> AgentHandler -> State -> Effect State
+gcAgent now handler@{locationLens} state = do
+  let
+    thisPoP = extractPoP state.thisServer
+    locations = locationLens.get state.agentLocations
+    garbage = foldlWithIndex expired nil locations.remoteTimeouts
+  foldM (gc thisPoP) state garbage
+--  pure $ locationLens.set newLocations state
+  --key@(Tuple streamId server) acc v = if v < now then (key : acc) else acc
+  where
+    expired k acc v = if v < now then (k : acc) else acc
+    gc thisPoP state' (Tuple streamId server) = do
+      if extractPoP server == thisPoP
+      then handler.gcThisPoP state' streamId server
+      else handler.gcOtherPoP state' streamId server
+      pure $ updateAgentLocation removeRemoteAgent handler.locationLens streamId server state'
+
+
+foldHandlers :: forall acc. (AgentHandler -> acc -> Effect acc) -> acc -> Effect acc
+foldHandlers perHandlerFun =
+  perHandlerFun relayHandler >=> perHandlerFun aggregatorHandler >=> perHandlerFun egestHandler
 
 garbageCollectServer :: State -> Server -> Effect State
 garbageCollectServer state deadServer = do
   -- TODO - add a server decomissioning message to do this cleanly
   logWarning "server liveness timeout" {server: deadServer}
-  newState <- gcServer "aggregators" aggregatorHandler deadServer
-              =<< gcServer "egests" egestHandler deadServer
-              =<< gcServer "relays" relayHandler deadServer state
-  pure newState
+  foldHandlers (gcServer deadServer) state
 
-gcServer :: String -> AgentHandler -> Server -> State -> Effect State
-gcServer agentType agentHandler@{locationLens} deadServer state@{agentLocations} = do
+gcServer :: Server -> AgentHandler -> State -> Effect State
+gcServer deadServer agentHandler@{locationLens, name, stoppedThisPoP} state@{agentLocations} = do
   let
     locations = locationLens.get agentLocations
   case Map.lookup deadServer locations.byRemoteServer of
     Nothing -> pure state
     Just garbageStreams -> do
-      logWarning (agentType <> " liveness timeout") {garbageStreams}
+      logWarning (unwrap name <> " liveness timeout") {garbageStreams}
       newByStreamId <- foldM cleanUp locations.byStreamId  garbageStreams
       let
         newTimeouts = foldl (\acc k -> Map.delete (Tuple k deadServer) acc) locations.remoteTimeouts garbageStreams
@@ -1059,7 +1114,7 @@ gcServer agentType agentHandler@{locationLens} deadServer state@{agentLocations}
       pure $ state {agentLocations = locationLens.set newLocations agentLocations}
   where
     cleanUp acc streamId = do
-      agentHandler.stoppedThisPoP state streamId deadServer
+      stoppedThisPoP state streamId deadServer
       pure $ mapSetDelete streamId deadServer acc
 
 
