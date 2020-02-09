@@ -400,15 +400,6 @@ loadHandler load =
       pure state{ members = newMembers }
 
 
-
-handlerFor :: HandlerName -> AgentHandler
-handlerFor (HandlerName name) = unsafePartial $
-  case name of
-    "aggregator" -> aggregatorHandler
-    "egest"      -> egestHandler
-    "relay"      -> relayHandler
-
-
 aggregatorHandler :: AgentHandler
 aggregatorHandler
   = { name              : HandlerName "aggregator"
@@ -767,24 +758,34 @@ handleInfo msg state = case msg of
   GarbageCollectAgents ->
     CastNoReply <$> garbageCollectAgents state
 
-  ReAnnounce streamId handlerName -> do
---    CastNoReply <$> maybeReannounce streamId handlerName state
-    pure $ CastNoReply state
   VMLiveness -> do
     sendToIntraSerfNetwork state "vmLiveness" (IMVMLiveness (extractAddress state.thisServer) state.thisServerRef )
     pure $ CastNoReply state
 
--- maybeReannounce :: StreamId -> HandlerName -> State -> Effect State
--- maybeReannounce streamId handlerName state = do
---   let
---     handler = handlerFor handlerName
---     -- Do we still know about the asset? If we do, rebroadcast its existence and set up another timer for next time
---     locations = handler.locationLens.get state
---   -- if mapSetMember state.thisServer streamId  locations.byServer
---   -- then
---   --  doAnnounceAvailableLocal handler streamId state
---   -- else
---   pure state
+  ReAnnounce streamId handlerName -> do
+    CastNoReply <$> maybeReannounce
+    where
+      handlerFor :: HandlerName -> AgentHandler
+      handlerFor (HandlerName name) = unsafePartial $
+        case name of
+          "aggregator" -> aggregatorHandler
+          "egest"      -> egestHandler
+          "relay"      -> relayHandler
+
+      maybeReannounce :: Effect State
+      maybeReannounce = do
+        let
+          handler = handlerFor handlerName
+          -- Do we still know about the asset? If we do, rebroadcast its existence and set up another timer for next time
+          locations = handler.locationLens.get state.agentLocations
+        if mapSetMember state.thisServer streamId  locations.byServer
+        then do
+          doAnnounceAvailableLocal handler streamId state
+        else
+          pure state
+
+
+
 
 handleIntraPoPSerfMsg :: (Serf.SerfMessage IntraMessage) -> State -> Effect State
 handleIntraPoPSerfMsg imsg state@{ transPoPApi: {handleRemoteLeaderAnnouncement}
@@ -825,23 +826,11 @@ handleIntraPoPSerfMsg imsg state@{ transPoPApi: {handleRemoteLeaderAnnouncement}
           handleServerMessage ltime msgOrigin state $ vmLivenessHandler ref
 
 
-
-      -- let
-      --   screenAndHandle :: ServerAddress -> AgentClockLens -> (Server -> State -> Effect State) -> Effect State
-      --   screenAndHandle address clockLens messageHandler = do
-      --     mTuple <- screenOriginAndMessageClock thisServer ltime address (clockLens.get agentClocks)
-      --     case mTuple of
-      --       Nothing -> pure state
-      --       Just (Tuple newClockState server) ->
-      --         messageHandler server state{agentClocks = clockLens.set newClockState agentClocks}
-
-
-
-
 handleServerMessage :: LamportClock -> ServerAddress -> State -> ServerMessageHandler -> Effect State
 handleServerMessage msgLTime msgServerAddress
                     state@{thisServer, serverClocks}
                     serverMessageHandler@{clockLens, handleMessage} = do
+  -- let _ = spy "serverMessage" {name: serverMessageHandler.name, msgServerAddress}
   -- Make sure the message is from a known origin and does not have an expired Lamport clock
   if msgServerAddress == extractAddress thisServer
   then
@@ -869,7 +858,7 @@ handleAgentMessage :: LamportClock -> EventType -> StreamId -> ServerAddress -> 
 handleAgentMessage msgLTime eventType streamId msgServerAddress
                   state@{thisServer, agentClocks, agentLocations}
                   agentMessageHandler@{clockLens, locationLens} = do
-  let _ = spy "agentMessage" {name: agentMessageHandler.name, eventType, streamId, msgServerAddress}
+  -- let _ = spy "agentMessage" {name: agentMessageHandler.name, eventType, streamId, msgServerAddress}
   -- Make sure the message is from a known origin and does not have an expired Lamport clock
   if msgServerAddress == extractAddress thisServer
   then
