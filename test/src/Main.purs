@@ -158,6 +158,15 @@ main =
                                          , headers: M.makeHeaders { "Content-Type": "application/json" }
                                          } # attempt <#> stringifyError
 
+    dropAgentMessages :: Node -> Boolean -> Aff (Either String M.Response)
+    dropAgentMessages node flag        = fetch (M.URL $ api node <> "test/intraPoP")
+                                         { method: M.postMethod
+                                         , body: "{\"dropAgentMessages\": " <> show flag <> "}"
+                                         , headers: M.makeHeaders { "Content-Type": "application/json" }
+                                         } # attempt <#> stringifyError
+
+
+
     maybeLogStep s a =
       let _ = spy s a in
       unit
@@ -234,6 +243,8 @@ main =
 
     delayMs = delay <<< Milliseconds
 
+    waitForMessageTimeout          = delayMs 2000.0
+
     waitForAsyncRelayStart         = delayMs  100.0
     waitForAsyncRelayStop          = delayMs  100.0
 
@@ -243,7 +254,7 @@ main =
     waitForIntraPoPDisseminate     = delayMs  500.0
 
     waitForNodeStartDisseminate    = delayMs 1000.0
-    waitForNodeFailureDisseminate  = delayMs 3500.0
+    waitForNodeFailureDisseminate  = delayMs 3500.0 -- TODO - seems big
 
     waitForTransPoPDisseminate     = delayMs 2000.0
     waitForTransPoPStopDisseminate = delayMs 5000.0 -- TODO - seeems big
@@ -390,7 +401,6 @@ main =
             --                                          >>= assertAggregator [high]
             --                                                               >>= as  "lingered aggregator has high variant"
 
-
     describe "Ingest egest tests" do
       describe "one pop setup"
         let
@@ -509,7 +519,7 @@ main =
               -- TODO - assert the relays stop as well - might be slow with timeouts chaining...
 
 
-      describe "node startup test - one pop" do
+      describe "node startup - one pop" do
         let
           phase1Nodes = [p1n1, p1n2]
           phase2Nodes = [p1n3]
@@ -528,6 +538,33 @@ main =
               client start p1n3 slot1          >>= assertStatusCode 204 >>= as  "local egest post ingest"
 
             -- TODO - egest - test stream we think is not present when it is
+
+      describe "packet loss - one pop" do
+        let
+          nodes = [p1n1, p1n2]
+          sysconfig = "test/config/partial_nodes/sys.config"
+        before_ (do
+                   startSession nodes
+                   launch' nodes sysconfig
+                ) do
+          after_ stopSession do
+            it "aggregator expired after extended packet loss" do
+              ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
+              waitForIntraPoPDisseminate                                >>= as' "let ingest presence disseminate"
+              client start p1n2 slot1          >>= assertStatusCode 204 >>= as  "local egest post ingest"
+              dropAgentMessages p1n2 true                               >>= as  "Drop all agent messages"
+              waitForIntraPoPDisseminate                                >>= as' "Wait for less than message expiry"
+              client start p1n2 slot1          >>= assertStatusCode 204 >>= as  "Initially clients can still join"
+              waitForMessageTimeout                                     >>= as' "Wait for less than message expiry"
+              client start p1n2 slot1          >>= assertStatusCode 404 >>= as  "Clients can no longer join"
+              dropAgentMessages p1n2 false                              >>= as  "Alow messages to flow once more"
+              waitForNodeStartDisseminate                               >>= as' "let ingest presence disseminate"
+              client start p1n2 slot1          >>= assertStatusCode 204 >>= as  "Client can join once more"
+
+
+            -- TODO - egest - test stream we think is not present when it is
+
+
       describe "four pop setup" do
         let
           p1Nodes = [p1n1, p1n2]  -- iad

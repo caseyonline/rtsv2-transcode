@@ -28,6 +28,7 @@ type Canary = String
 
 data Endpoint
   = TransPoPLeaderE
+  | IntraPoPTestHelperE
   | TimedRoutesE PoPName
   | HealthCheckE
   | ServerStateE
@@ -75,6 +76,7 @@ endpoint :: RouteDuplex' Endpoint
 endpoint = root $ sum
   {
     "TransPoPLeaderE"                                  : "" / "api" / path "transPoPLeader" noArgs
+  , "IntraPoPTestHelperE"                              : "" / "api" / "test" / path "intraPoP" noArgs
   , "TimedRoutesE"                                     : "" / "api" / "timedRoutes" / popName segment
   , "HealthCheckE"                                     : "" / "api" / path "healthCheck" noArgs
   , "ServerStateE"                                     : "" / "api" / path "state" noArgs

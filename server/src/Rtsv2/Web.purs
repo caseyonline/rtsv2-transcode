@@ -60,6 +60,7 @@ init args = do
   Stetson.configure
     # mkRoute  TransPoPLeaderE                                                  IntraPoPHandler.leader
     # mkRoute  ServerStateE                                                     IntraPoPHandler.publicState
+    # mkRoute  IntraPoPTestHelperE                                              IntraPoPHandler.testHelper
 
     # mkRoute (TimedRoutesE popNameBinding)                                     TransPoPHandler.timedRoutes
     # mkRoute  HealthCheckE                                                     HealthHandler.healthCheck

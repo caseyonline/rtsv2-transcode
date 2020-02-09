@@ -7,6 +7,7 @@ module StetsonHelper
        , genericGetBy2
        , genericGet
        , genericGet2
+       , genericGetText
        , genericProxyByStreamId
        , GenericStetsonGet
        , GenericStetsonGet2
@@ -137,12 +138,26 @@ genericGet :: forall a. WriteForeign a => (Unit -> Effect a) -> GenericStetsonGe
 genericGet getData =
   Rest.handler init
   # Rest.allowedMethods (Rest.result (GET : mempty))
-  # Rest.contentTypesProvided (\req state -> Rest.result (singleton $ MimeType.json genericProvideContent) req state)
+  # Rest.contentTypesProvided (\req state -> Rest.result (singleton $ MimeType.json genericProvideJson) req state)
   # Rest.yeeha
   where
     init req = do
       mData <- noprocToMaybe $ getData unit
       Rest.initResult req $ GenericStatusState { mData }
+
+genericGetText :: (Unit -> Effect String) -> GenericStetsonGet String
+genericGetText getData =
+  Rest.handler init
+  # Rest.allowedMethods (Rest.result (GET : mempty))
+  # Rest.contentTypesProvided (\req state -> Rest.result (singleton $ MimeType.text genericProvideText) req state)
+  # Rest.yeeha
+  where
+    init req = do
+      mData <- noprocToMaybe $ getData unit
+      Rest.initResult req $ GenericStatusState { mData }
+
+
+
 
 type GenericStetsonGet2 = StetsonHandler GenericStatusState2
 
@@ -176,7 +191,7 @@ genericGetBy :: forall a b. Newtype a String => WriteForeign b =>  String -> (a 
 genericGetBy bindElement getData =
   Rest.handler init
   # Rest.allowedMethods (Rest.result (GET : mempty))
-  # Rest.contentTypesProvided (\req state -> Rest.result (singleton $ MimeType.json genericProvideContent) req state)
+  # Rest.contentTypesProvided (\req state -> Rest.result (singleton $ MimeType.json genericProvideJson) req state)
   # Rest.yeeha
   where
     init req =
@@ -192,7 +207,7 @@ genericGetBy2 :: forall a b c. Newtype a String => Newtype b String => WriteFore
 genericGetBy2 bindElement1 bindElement2 getData =
   Rest.handler init
   # Rest.allowedMethods (Rest.result (GET : mempty))
-  # Rest.contentTypesProvided (\req state -> Rest.result (singleton $ MimeType.json genericProvideContent) req state)
+  # Rest.contentTypesProvided (\req state -> Rest.result (singleton $ MimeType.json genericProvideJson) req state)
   # Rest.yeeha
   where
     init req =
@@ -206,8 +221,19 @@ genericGetBy2 bindElement1 bindElement2 getData =
         Rest.initResult req $ GenericStatusState { mData }
 
 
-genericProvideContent :: forall a. WriteForeign a => Req -> GenericStatusState a -> Effect (RestResult String (GenericStatusState a))
-genericProvideContent req state@(GenericStatusState {mData}) =
+genericProvideText :: Req -> GenericStatusState String -> Effect (RestResult String (GenericStatusState String))
+genericProvideText req state@(GenericStatusState {mData}) =
+  case mData of
+    Nothing ->
+      do
+        newReq <- replyWithoutBody (StatusCode 404) Map.empty req
+        Rest.stop newReq state
+    Just theData ->
+      Rest.result theData req state
+
+
+genericProvideJson :: forall a. WriteForeign a => Req -> GenericStatusState a -> Effect (RestResult String (GenericStatusState a))
+genericProvideJson req state@(GenericStatusState {mData}) =
   case mData of
     Nothing ->
       do

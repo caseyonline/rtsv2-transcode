@@ -20,6 +20,7 @@
 [ ] - Canary / startup / migrating clients away etc
 [ ] - review timeouts in tests
 [ ] - VM liveness messages for transPoP as well
+[A] - test methods to allow multple body checks
 
 
 

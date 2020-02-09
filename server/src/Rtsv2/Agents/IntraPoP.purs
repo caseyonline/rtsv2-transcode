@@ -33,11 +33,15 @@ module Rtsv2.Agents.IntraPoP
     -- Helper - not sure it's used... -- TODO
   , launchLocalOrRemoteGeneric
 
+    -- Test helper
+  , testHelper
   , health
   , bus
   , IntraMessage(..)
   , EventType(..)
   , IntraPoPBusMessage(..)
+
+  , TestHelperPayload
   ) where
 
 
@@ -87,10 +91,16 @@ import Shared.Types (Load, Milliseconds, Server(..), ServerAddress(..), ServerLo
 import Shared.Types.Agent.State as PublicState
 
 
-type MemberInfo = { serfMember :: Serf.SerfMember
-                  , load :: Load
-                  , server :: Server
-                  }
+type TestHelperPayload =
+  { dropAgentMessages :: Boolean
+  }
+
+
+type MemberInfo =
+  { serfMember :: Serf.SerfMember
+  , load :: Load
+  , server :: Server
+  }
 
 type ServerClock = Map ServerAddress LamportClock
 type AgentClock = Map (Tuple ServerAddress StreamId) LamportClock
@@ -124,6 +134,8 @@ type State
     , transPoPApi           :: Config.TransPoPAgentApi
     , serfRpcAddress        :: IpAndPort
     , currentTransPoPLeader :: Maybe Server
+
+    , testDropAgentMessages :: Boolean
 
     , thisServerRef         :: Ref
     , serverRefs            :: EMap Server Ref
@@ -175,6 +187,12 @@ health =
 
 bus :: Bus.Bus IntraPoPBusMessage
 bus = Bus.bus "intrapop_bus"
+
+
+testHelper :: TestHelperPayload -> Effect Unit
+testHelper payload =
+  Gen.doCall serverName \state -> do
+    pure $ CallReply unit state {testDropAgentMessages = payload.dropAgentMessages}
 
 
 
@@ -726,6 +744,8 @@ init { config: config@{ rejoinEveryMs
     , serfRpcAddress
     , currentTransPoPLeader: Nothing
 
+    , testDropAgentMessages: false
+
     , thisServerRef
     , serverRefs: EMap.empty
 
@@ -866,7 +886,7 @@ handleAgentMessage msgLTime eventType streamId msgServerAddress
                   agentMessageHandler@{clockLens, locationLens} = do
   -- let _ = spy "agentMessage" {name: agentMessageHandler.name, eventType, streamId, msgServerAddress}
   -- Make sure the message is from a known origin and does not have an expired Lamport clock
-  if msgServerAddress == extractAddress thisServer
+  if msgServerAddress == extractAddress thisServer || state.testDropAgentMessages
   then
     pure state
   else let agentClock = clockLens.get state.agentClocks in
