@@ -22,6 +22,7 @@ import Milkis.Impl.Node (nodeFetch)
 import Node.Encoding (Encoding(..))
 import Node.FS.Aff (writeTextFile)
 import OsCmd (runProc)
+import Prim.Row (class Union)
 import Shared.Stream (StreamVariant(..))
 import Shared.Types (ServerAddress(..), extractAddress)
 import Shared.Types.Agent.State as PublicState
@@ -31,8 +32,46 @@ import Test.Spec (after_, before_, describe, describeOnly, it, itOnly)
 import Test.Spec.Reporter.Console (consoleReporter)
 import Test.Spec.Runner (runSpecT)
 
-fetch :: M.Fetch
-fetch = M.fetch nodeFetch
+
+type ResponseWithBody =
+  { headers :: M.Headers
+  , body :: String
+  , statusCode :: Int
+  }
+
+
+fetch :: forall options trash.
+  Union options trash M.Options
+   => M.URL -> Record (method :: M.Method | options) -> Aff (Either String ResponseWithBody)
+fetch url options = M.fetch nodeFetch url options # attempt >>= standarise
+ where
+   standarise (Right response) = do
+     body <- M.text response
+     pure $ Right { headers   : M.headers response
+                  , statusCode : M.statusCode response
+                  , body
+                  }
+   standarise (Left axError) = pure $ Left $ show axError
+
+
+
+get :: M.URL -> Aff (Either String ResponseWithBody)
+get url = fetch url { method: M.getMethod }
+
+
+api node = "http://" <> toAddr node <> ":3000/api/"
+
+stringifyError (Right r)      = Right r
+stringifyError (Left axError) = Left $ show axError
+
+
+--client :: String -> Node -> String -> Aff (Either String M.Response)
+client verb node streamId           = fetch (M.URL $ api node <> "public/canary/client/" <> streamId <> "/" <> verb)
+                                     { method: M.postMethod
+                                     , body: "{}"
+                                     , headers: M.makeHeaders { "Content-Type": "application/json" }
+                                     }
+
 
 type TestNode =  { ifaceIndexString :: String
                  , addr :: String
@@ -115,57 +154,32 @@ main =
     start = "start"
     stop  = "stop"
 
+    egestStats node streamId           = get (M.URL $ api node <> "agents/egest/" <> streamId)
 
-    api node = "http://" <> toAddr node <> ":3000/api/"
+    aggregatorStats node streamId      = get (M.URL $ api node <> "agents/ingestAggregator/" <> streamId)
 
-    stringifyError (Right r)      = Right r
-    stringifyError (Left axError) = Left $ show axError
+    ingest verb node shortName variant = get (M.URL $ api node <> "public/canary/ingest/" <> shortName <> "/" <> variant <> "/" <> verb)
 
-    client verb node streamId           = fetch (M.URL $ api node <> "public/canary/client/" <> streamId <> "/" <> verb)
-                                         { method: M.postMethod
-                                         , body: "{}"
-                                         , headers: M.makeHeaders { "Content-Type": "application/json" }
-                                         } # attempt <#> stringifyError
-    egestStats node streamId           = fetch (M.URL $ api node <> "agents/egest/" <> streamId)
-                                         { method: M.getMethod
-                                         } # attempt <#> stringifyError
+    relayStats node streamId           = get (M.URL $ api node <> "agents/relay/" <> streamId)
 
-    aggregatorStats node streamId      = fetch (M.URL $ api node <> "agents/ingestAggregator/" <> streamId)
-                                         { method: M.getMethod
-                                         } # attempt <#> stringifyError
+    proxiedRelayStats node streamId    = get (M.URL $ api node <> "agents/proxied/relay/" <> streamId)
 
-    ingest verb node shortName variant = fetch (M.URL $ api node <> "public/canary/ingest/" <> shortName <> "/" <> variant <> "/" <> verb)
-                                         { method: M.getMethod
-                                         } # attempt <#> stringifyError
-
-    relayStats node streamId           = fetch (M.URL $ api node <> "agents/relay/" <> streamId)
-                                         { method: M.getMethod
-                                         } # attempt <#> stringifyError
-
-    proxiedRelayStats node streamId    = fetch (M.URL $ api node <> "agents/proxied/relay/" <> streamId)
-                                         { method: M.getMethod
-                                         } # attempt <#> stringifyError
-
-    intraPoPState node                 = fetch (M.URL $ api node <> "state")
-                                         { method: M.getMethod
-                                         } # attempt <#> stringifyError
+    intraPoPState node                 = get (M.URL $ api node <> "state")
 
 
-    setLoad :: Node -> Number -> Aff (Either String M.Response)
+--    setLoad :: Node -> Number -> Aff (Either String M.Response)
     setLoad node load                  = fetch (M.URL $ api node <> "load")
                                          { method: M.postMethod
                                          , body: "{\"load\": " <> show load <> "}"
                                          , headers: M.makeHeaders { "Content-Type": "application/json" }
-                                         } # attempt <#> stringifyError
+                                         }
 
-    dropAgentMessages :: Node -> Boolean -> Aff (Either String M.Response)
+--    dropAgentMessages :: Node -> Boolean -> Aff (Either String M.Response)
     dropAgentMessages node flag        = fetch (M.URL $ api node <> "test/intraPoP")
                                          { method: M.postMethod
                                          , body: "{\"dropAgentMessages\": " <> show flag <> "}"
                                          , headers: M.makeHeaders { "Content-Type": "application/json" }
-                                         } # attempt <#> stringifyError
-
-
+                                         }
 
     maybeLogStep s a =
       let _ = spy s a in
@@ -266,6 +280,25 @@ main =
 
   in
   launchAff_ $ un Identity $ runSpecT testConfig [consoleReporter] do
+    describe "Startup tests"
+      let
+        p1Nodes = [p1n1, p1n2, p1n3]
+        nodes = p1Nodes
+      in do
+      before_ (do
+                 startSession nodes
+                 launch nodes
+              ) do
+        after_ stopSession do
+          it "Nodes all come up and agree on who the leader is" do
+
+            ingest start    p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
+            waitForAsyncVariantStart                                     >>= as' "wait for async start of variant"
+            aggregatorStats p1n1 slot1          >>= assertStatusCode 200
+                                                    >>= assertAggregator [low]
+                                                                         >>= as  "aggregator has low only"
+
+
     describe "Ingest tests"
       let
         p1Nodes = [p1n1, p1n2, p1n3]
@@ -530,10 +563,10 @@ main =
                    launch' phase1Nodes sysconfig
                 ) do
           after_ stopSession do
-            it "client requests stream on other pop" do
+            it "a node thats start late gets to see existing streams" do
               ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
               waitForIntraPoPDisseminate                                >>= as' "let ingest presence disseminate"
-              launch' phase2Nodes sysconfig
+              launch' phase2Nodes sysconfig                             >>= as' "start new node after ingest already running"
               waitForNodeStartDisseminate                               >>= as' "let ingest presence disseminate"
               client start p1n3 slot1          >>= assertStatusCode 204 >>= as  "local egest post ingest"
 
@@ -567,10 +600,10 @@ main =
 
       describe "four pop setup" do
         let
-          p1Nodes = [p1n1, p1n2]  -- iad
-          p2Nodes = [p2n1, p2n2]  -- dal
-          p3Nodes = [p3n1, p3n2]  -- fra
-          p4Nodes = [p4n1, p4n2]  -- lax
+          p1Nodes = [p1n1]  -- iad
+          p2Nodes = [p2n1]  -- dal
+          p3Nodes = [p3n1]  -- fra
+          p4Nodes = [p4n1]  -- lax
           -- the topology in wanDefinition.json is important - maybe make explicit for this test...
           -- todo - why don't singleton pops work?
           nodes = p1Nodes <> p2Nodes <> p3Nodes <> p4Nodes
@@ -582,7 +615,7 @@ main =
                 ) do
           after_ stopSession do
             it "lax -> fra sets up 2 non-overlapping relay chains" do
-              traverse_ maxOut [p1n2, p2n2, p3n2, p4n2]                    >>= as' "load up all servers bar one in each pop"
+              --traverse_ maxOut [p1n2, p2n2, p3n2, p4n2]                    >>= as' "load up all servers bar one in each pop"
               waitForIntraPoPDisseminate                                >>= as' "allow intraPoP to spread location of relay"
               ingest start p3n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
               waitForTransPoPDisseminate                                >>= as' "wait for transPop disseminate"
@@ -613,24 +646,22 @@ main =
   where
     testConfig = { slow: Milliseconds 5000.0, timeout: Just (Milliseconds 25000.0), exit: false }
 
-assertStatusCode :: Int -> Either String M.Response -> Aff (Either String M.Response)
+assertStatusCode :: Int -> Either String ResponseWithBody -> Aff (Either String ResponseWithBody)
 assertStatusCode expectedCode either =
-  pure $ either >>= (\response ->
-                      let statusCode = M.statusCode response
-                      in
-                      if statusCode == expectedCode
+  pure $ either >>= (\rwb ->
+                      if rwb.statusCode == expectedCode
                       then either
-                      else Left $  "Unexpected statuscode: Expected " <> show expectedCode <> ", got " <> show statusCode
+                      else Left $  "Unexpected statuscode: Expected " <> show expectedCode <> ", got " <> show rwb.statusCode
                     )
 
-assertHeader :: Tuple String String -> Either String M.Response -> Aff (Either String M.Response)
+assertHeader :: Tuple String String -> Either String ResponseWithBody -> Aff (Either String ResponseWithBody)
 assertHeader (Tuple header value) either =
-  pure $ either >>= (\response ->
-                      let headers = M.headers response
-                          mEqual = Object.lookup header headers
-                                   >>= (\hdrVal -> if hdrVal == value then Just true
-                                                   else Nothing
-                                       )
+  pure $ either >>= (\rwb@{headers} ->
+                      let
+                        mEqual = Object.lookup header headers
+                                 >>= (\hdrVal -> if hdrVal == value then Just true
+                                                 else Nothing
+                                     )
 
                       in
                        if isNothing mEqual
@@ -649,22 +680,21 @@ assertBodyText expected either =
         else pure $ Left $ "Body " <> text <> " did not match expected " <> expected
 
 
-assertBodyFun ::  forall a. ReadForeign a => (a -> Boolean) -> Either String M.Response -> Aff (Either String M.Response)
+assertBodyFun ::  forall a. ReadForeign a => (a -> Boolean) -> Either String ResponseWithBody -> Aff (Either String ResponseWithBody)
 assertBodyFun pred either =
   case either of
     Left e -> pure $ Left e
-    Right response -> do
-      body <- M.text response
+    Right rwb -> do
       let
-        parsed = SimpleJSON.readJSON body
+        parsed = SimpleJSON.readJSON rwb.body
       case parsed of
         Right a ->
           if pred a
           then pure either
           else
-            pure $ Left $ "Predicated failed for body " <> body
+            pure $ Left $ "Predicated failed for body " <> rwb.body
         Left _ ->
-          pure $ Left $ "Could not parse json " <> body
+          pure $ Left $ "Could not parse json " <> rwb.body
 
 toAddr :: Node -> String
 toAddr (Node popNum nodeNum) = "172.16." <> show (popNum + 168) <> "." <> show nodeNum
