@@ -107,7 +107,7 @@ function start_node {
   tmux -L "$tmuxSession" send-keys " export PRIVATE_IFACE=$iface" C-m
   tmux -L "$tmuxSession" send-keys " export PUBLIC_IFACE=$iface" C-m
   tmux -L "$tmuxSession" send-keys " export DISK_LOG_ROOT=$(pwd)/logs/$nodeName" C-m
-  tmux -L "$tmuxSession" send-keys " erl -pa _build/default/lib/*/ebin -config $sysConfig -rtsv2 id '\"rtsv2TestRunner$nodeName\"' -eval 'application:ensure_all_started(rtsv2).'" C-m
+  tmux -L "$tmuxSession" send-keys " erl +sbwt none +sbwtdcpu none +sbwtdio none -pa _build/default/lib/*/ebin -config $sysConfig -rtsv2 id '\"rtsv2TestRunner$nodeName\"' -eval 'application:ensure_all_started(rtsv2).'" C-m
 }
 
 function stop_node {
