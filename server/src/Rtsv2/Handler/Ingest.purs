@@ -179,11 +179,10 @@ statsToPrometheus stats =
                             (Tuple "profile_name" (Prometheus.toLabelValue profileName)) :
                             nil
 
-ingestInstance :: GenericStetsonGet PublicState.Ingest
+ingestInstance :: GenericStetsonGet (PublicState.Ingest List)
 ingestInstance =
   genericGetBy2 Bindings.streamIdBindingLiteral Bindings.variantBindingLiteral getState
   where
-    getState :: StreamId -> StreamVariant -> Effect PublicState.Ingest
     getState streamId variant = IngestInstance.getPublicState (StreamAndVariant streamId variant)
 
 type IngestStartState = { shortName :: ShortName

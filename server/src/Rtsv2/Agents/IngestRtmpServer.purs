@@ -25,7 +25,7 @@ import Rtsv2.Names as Names
 import Serf (Ip)
 import Shared.LlnwApiTypes (AuthType, PublishCredentials, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamPublish, StreamAuth)
 import Shared.Stream (StreamAndVariant(..))
-import Shared.Types (RtmpClientMetadata)
+import Shared.Types.Media.Types.Rtmp (foreignToMetadata)
 import SpudGun (bodyToJSON)
 import SpudGun as SpudGun
 
@@ -35,7 +35,7 @@ type Callbacks
     , streamAuthType :: String -> String -> Effect (Maybe AuthType)
     , streamAuth ::  String -> String -> String -> Effect (Maybe PublishCredentials)
     , streamPublish :: String -> String -> String -> String -> Effect (Maybe StreamDetails)
-    , clientMetadata :: StreamAndVariant -> RtmpClientMetadata -> Effect Unit
+    , clientMetadata :: StreamAndVariant -> Foreign -> Effect Unit
     }
 
 isAvailable :: Effect Boolean
@@ -111,5 +111,5 @@ init _ = do
       pure $ hush (spy "publish parse" (bodyToJSON (spy "publish result" restResult)))
 
     clientMetadata streamAndVariant metadata = do
-      _ <- IngestInstance.setClientMetadata streamAndVariant metadata
+      _ <- IngestInstance.setClientMetadata streamAndVariant (foreignToMetadata metadata)
       pure unit

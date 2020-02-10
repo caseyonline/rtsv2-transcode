@@ -40,8 +40,9 @@ import Rtsv2.Utils (crashIfLeft)
 import Shared.Agent as Agent
 import Shared.LlnwApiTypes (StreamDetails)
 import Shared.Stream (StreamAndVariant, StreamId, toStreamId, toVariant)
-import Shared.Types (Load, Milliseconds, RtmpClientMetadata, Server, ServerLoad(..), extractAddress)
+import Shared.Types (Load, Milliseconds, Server, ServerLoad(..), extractAddress)
 import Shared.Types.Agent.State as PublicState
+import Shared.Types.Media.Types.Rtmp (RtmpClientMetadata)
 import SpudGun (Url)
 import SpudGun as SpudGun
 
@@ -59,7 +60,7 @@ type State
     , streamAndVariant :: StreamAndVariant
     , streamDetails :: StreamDetails
     , aggregatorAddr :: Maybe (LocalOrRemote Server)
-    , clientMetadata :: Maybe RtmpClientMetadata
+    , clientMetadata :: Maybe (RtmpClientMetadata List)
     }
 
 type Args
@@ -74,7 +75,7 @@ startLink args@{streamAndVariant} = Gen.startLink (serverName streamAndVariant) 
 isActive :: StreamAndVariant -> Effect Boolean
 isActive streamAndVariant = Pinto.isRegistered (serverName streamAndVariant)
 
-setClientMetadata :: StreamAndVariant -> RtmpClientMetadata -> Effect Unit
+setClientMetadata :: StreamAndVariant -> (RtmpClientMetadata List) -> Effect Unit
 setClientMetadata streamAndVariant metadata =
   Gen.doCall (serverName streamAndVariant) \state -> do
     pure $ CallReply unit state{clientMetadata = Just metadata}
@@ -85,7 +86,7 @@ stopIngest streamAndVariant =
     _ <- doStopIngest state
     pure $ CallStop unit state
 
-getPublicState :: StreamAndVariant -> Effect PublicState.Ingest
+getPublicState :: StreamAndVariant -> Effect (PublicState.Ingest List)
 getPublicState streamAndVariant =
   Gen.call (serverName streamAndVariant) \state@{clientMetadata: rtmpClientMetadata} -> do
     CallReply {rtmpClientMetadata} state

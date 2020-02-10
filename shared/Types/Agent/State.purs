@@ -17,7 +17,8 @@ module Shared.Types.Agent.State
 import Data.Maybe (Maybe)
 import Shared.LlnwApiTypes (StreamDetails)
 import Shared.Stream (StreamAndVariant, StreamId, StreamVariant)
-import Shared.Types (GeoLoc, Milliseconds, PoPName, RegionName, RtmpClientMetadata, Server, ServerAddress)
+import Shared.Types (GeoLoc, Milliseconds, PoPName, RegionName, Server, ServerAddress)
+import Shared.Types.Media.Types.Rtmp (RtmpClientMetadata)
 import Shared.Types.Workflow.Metrics.FrameFlow as FrameFlow
 import Shared.Types.Workflow.Metrics.RtmpPushIngest as RtmpIngest
 import Shared.Types.Workflow.Metrics.StreamBitrateMonitor as StreamBitrateMonitor
@@ -37,8 +38,8 @@ type TimedPoPStep
     , rtt :: Int
     }
 
-type Ingest
-  = { rtmpClientMetadata :: Maybe RtmpClientMetadata
+type Ingest f
+  = { rtmpClientMetadata :: Maybe (RtmpClientMetadata f)
     }
 
 type IngestAggregator

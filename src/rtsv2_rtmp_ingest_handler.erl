@@ -219,10 +219,7 @@ workflow_loop(StreamName, WorkflowPid, State = #?state{ingestStopped = IngestSto
       ok;
 
     #workflow_output{message = #workflow_data_msg{data = #rtmp_client_metadata{metadata = Metadata}}} ->
-      PursMetadata = rtmp_metadata_to_purs(Metadata),
-      unit = ((ClientMetadata(StreamAndVariant))(PursMetadata))(),
-      ?SLOG_DEBUG("Got client metadata", #{purs => PursMetadata}),
-
+      unit = ((ClientMetadata(StreamAndVariant))(Metadata))(),
       workflow_loop(StreamName, WorkflowPid, State);
 
     Other ->
@@ -318,26 +315,3 @@ start_workflow(Rtmp, StreamId, ClientId, Path, StreamAndVariant = {streamAndVari
   {ok, WorkflowPid} = id3as_workflow:start_link(Workflow),
 
   {ok, WorkflowPid}.
-
-rtmp_metadata_to_purs(Metadata) ->
-  array:from_list(rtmp_metadata_to_purs_(Metadata)).
-
-rtmp_metadata_to_purs_([]) ->
-  [];
-
-rtmp_metadata_to_purs_([{Name, Value} | T]) ->
-  [#{name => Name,
-     value => rtmp_metadata_value_to_purs(Value)} | rtmp_metadata_to_purs_(T)].
-
-rtmp_metadata_value_to_purs(Value) when Value == true;
-                                       Value == false ->
-  {rtmpBool, Value};
-
-rtmp_metadata_value_to_purs(Value) when is_integer(Value) ->
-  {rtmpInt, Value};
-
-rtmp_metadata_value_to_purs(Value) when is_float(Value) ->
-  {rtmpFloat, Value};
-
-rtmp_metadata_value_to_purs(Value) when is_binary(Value) ->
-  {rtmpString, Value}.
