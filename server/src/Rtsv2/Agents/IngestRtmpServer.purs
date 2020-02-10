@@ -38,7 +38,7 @@ type Callbacks
     , streamAuth ::  Fn3 String String String (Effect (Maybe PublishCredentials))
     , streamPublish :: Fn3 String String String (Fn1 String (Effect (Maybe StreamDetails)))
     , clientMetadata :: Fn2 StreamAndVariant Foreign (Effect Unit)
-    , sourceMetadata :: Fn2 StreamAndVariant Foreign (Effect Unit)
+    , sourceInfo :: Fn2 StreamAndVariant Foreign (Effect Unit)
     }
 
 isAvailable :: Effect Boolean
@@ -68,7 +68,7 @@ init _ = do
                 , streamAuth: mkFn3 (streamAuth streamAuthUrl)
                 , streamPublish: mkFn3 (streamPublish streamPublishUrl)
                 , clientMetadata: mkFn2 clientMetadata
-                , sourceMetadata: mkFn2 sourceMetadata
+                , sourceInfo: mkFn2 sourceInfo
                 }
   _ <- startServerImpl Left (Right unit) interfaceIp port nbAcceptors callbacks
   pure $ {}
@@ -114,10 +114,10 @@ init _ = do
                                                                     )
       pure $ hush (spy "publish parse" (bodyToJSON (spy "publish result" restResult)))
 
-    clientMetadata streamAndVariant metadata = do
-      _ <- IngestInstance.setClientMetadata streamAndVariant (Rtmp.foreignToMetadata metadata)
+    clientMetadata streamAndVariant foreignMetadata = do
+      _ <- IngestInstance.setClientMetadata streamAndVariant (Rtmp.foreignToMetadata foreignMetadata)
       pure unit
 
-    sourceMetadata streamAndVariant metadata = do
-      _ <- IngestInstance.setSourceInfo streamAndVariant (SourceDetails.foreignToSourceInfo metadata)
+    sourceInfo streamAndVariant foreignSourceInfo = do
+      _ <- IngestInstance.setSourceInfo streamAndVariant (SourceDetails.foreignToSourceInfo (spy "foreign" foreignSourceInfo))
       pure unit

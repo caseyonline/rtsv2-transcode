@@ -8,7 +8,7 @@
 
 foreignToPursImpl(#source_info{ audio_streams = AudioStreams
                               , video_streams = VideoStreams}) ->
-  #{ audio_streams => map_audio_streams(AudioStreams)
+  #{ audioStreams => map_audio_streams(AudioStreams)
    , videoStreams => map_video_streams(VideoStreams)
    }.
 
@@ -48,15 +48,15 @@ map_video_streams(VideoStreams) ->
                                     }, Acc) ->
 
                   [#{ streamId => StreamId
-  %% , codec :: Maybe VideoCodec
-  %% , width :: Maybe Width
-  %% , height :: Maybe Height
-  %% , pixelAspectRatio :: Maybe PixelAspectRatio
-  %% , interlaced :: Maybe Boolean
-  %% , resolutionName :: Maybe String
-  %% , frameRateName :: Maybe String
-  %% , language :: Maybe String
-  %% , inFillinMode :: Boolean
+                    , codec => map_video_format(Format)
+                    , width => to_maybe(Width)
+                    , height => to_maybe(Height)
+                    , pixelAspectRatio => map_pixel_aspect_ratio(PixelAspectRatio)
+                    , interlaced => to_maybe(Interlaced)
+                    , resolutionName => to_maybe(ResolutionName)
+                    , frameRateName => to_maybe(FrameRateName)
+                    , language => to_maybe(Language)
+                    , inFillinMode => ?null_coalesce(InFillinMode, false)
                     } | Acc]
               end,
               [],
@@ -67,11 +67,51 @@ map_audio_format(undefined) ->
 
 map_audio_format(Format) ->
   {just, case Format of
-           1 -> 1
+           raw -> {'rawAudio'};
+           adpcm -> {'aDPCM'};
+           mp2 -> {'mP2'};
+           mp3 -> {'mP3'};
+           linear_pcm -> {'linearPCM'};
+           nellymoser -> {'nellymoser'};
+           alaw -> {'aLaw'};
+           ulaw -> {'uLaw'};
+           aac -> {'aAC'};
+           speex -> {'speex'};
+           ac3 -> {'aC3'};
+           eac3 -> {'eAC3'};
+           g722 -> {'g722'};
+           opus -> {'opus'}
          end}.
 
-map_channel_layout(_) ->
-  {nothing}.
+map_channel_layout(undefined) ->
+  {nothing};
+
+map_channel_layout(Layout) ->
+  {just, case Layout of
+           mono -> {'mono'};
+           stereo -> {'stereo'}
+         end}.
+
+map_video_format(undefined) ->
+  {nothing};
+
+map_video_format(Format) ->
+  {just, case Format of
+           raw -> {'rawVideo'};
+           vc1 -> {'vC1'};
+           h263 -> {'h263'};
+           h264 -> {'h264'};
+           h265 -> {'h265'};
+           mpeg2video -> {'mPEG2'};
+           jpeg -> {'jPEG'};
+           jpeg2000 -> {'jPEG2000'}
+         end}.
+
+map_pixel_aspect_ratio(undefined) ->
+  {nothing};
+
+map_pixel_aspect_ratio({Width, Height}) ->
+  {just, {tuple, Width, Height}}.
 
 to_maybe(undefined) ->
   {nothing};
