@@ -92,10 +92,10 @@ removeVariant streamAndVariant = Gen.doCall (serverName (toStreamId streamAndVar
          pure unit
   pure $ CallReply unit state{activeStreamVariants = newActiveStreamVariants}
 
-getState :: StreamId -> Effect (PublicState.IngestAggregator)
+getState :: StreamId -> Effect (PublicState.IngestAggregator List)
 getState streamId = Gen.call (serverName streamId)
   \state@{streamDetails, activeStreamVariants} ->
-  CallReply {streamDetails, activeStreamVariants: (\(Tuple streamVariant serverAddress) -> {streamVariant, serverAddress}) <$>(toUnfoldable activeStreamVariants)} state
+  CallReply {streamDetails, activeStreamVariants: (\(Tuple streamVariant serverAddress) -> {streamVariant, serverAddress}) <$> (toUnfoldable activeStreamVariants)} state
 
 startLink :: StreamDetails -> Effect StartLinkResult
 startLink streamDetails@{slot : {name}} = Gen.startLink (serverName (StreamId name)) (init streamDetails) handleInfo

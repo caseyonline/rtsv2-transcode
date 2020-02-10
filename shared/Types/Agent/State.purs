@@ -24,14 +24,14 @@ import Shared.Types.Workflow.Metrics.FrameFlow as FrameFlow
 import Shared.Types.Workflow.Metrics.RtmpPushIngest as RtmpIngest
 import Shared.Types.Workflow.Metrics.StreamBitrateMonitor as StreamBitrateMonitor
 
-type TimedPoPRoutes
+type TimedPoPRoutes f
   = { from :: PoPName
     , to :: PoPName
-    , routes :: Array TimedPoPRoute
+    , routes :: f (TimedPoPRoute f)
     }
 
-type TimedPoPRoute
-  = Array TimedPoPStep
+type TimedPoPRoute f
+  = f TimedPoPStep
 
 type TimedPoPStep
   = { from :: PoPName
@@ -44,16 +44,16 @@ type Ingest f
     , sourceInfo :: Maybe (SourceInfo f)
     }
 
-type IngestAggregator
+type IngestAggregator f
    = { streamDetails :: StreamDetails
-     , activeStreamVariants :: Array { streamVariant :: StreamVariant
-                                     , serverAddress :: ServerAddress
-                                     }
+     , activeStreamVariants :: f { streamVariant :: StreamVariant
+                                 , serverAddress :: ServerAddress
+                                 }
      }
 
-type StreamRelay
-  = { egestsServed :: Array ServerAddress
-    , relaysServed :: Array ServerAddress
+type StreamRelay f
+  = { egestsServed :: f ServerAddress
+    , relaysServed :: f ServerAddress
     }
 
 type Egest
@@ -61,13 +61,17 @@ type Egest
     }
 
 
-type IntraPoP
-  = { aggregatorLocations :: Array { streamId :: StreamId
-                                   , servers :: Array Server
-                                   }
-    , relayLocations :: Array { streamId :: StreamId
-                              , servers :: Array Server
-                              }
+type IntraPoP f
+  = { aggregatorLocations :: f { streamId :: StreamId
+                               , servers  :: f Server
+                               }
+    , relayLocations      :: f { streamId :: StreamId
+                               , servers  :: f Server
+                               }
+    , egestLocations      :: f { streamId :: StreamId
+                               , servers  :: f Server
+                          }
+    , currentTransPoPLeader :: Maybe Server
     }
 
 type Region f = { name :: RegionName

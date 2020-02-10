@@ -16,7 +16,6 @@ import Data.Traversable (traverse_)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, uncons, (:))
-import Erl.Data.List as List
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
 import Logger (Logger, spy)
@@ -55,14 +54,13 @@ startLink payload = Gen.startLink (serverName payload.streamId) (init payload) G
 isAvailable :: StreamId -> Effect Boolean
 isAvailable streamId = isRegistered (serverName streamId)
 
-status  :: StreamId -> Effect PublicState.StreamRelay
+status  :: StreamId -> Effect (PublicState.StreamRelay List)
 status =
   exposeState mkStatus <<< serverName
   where
-    mkStatus :: State -> PublicState.StreamRelay
     mkStatus state =
        { egestsServed : extractAddress <$> Set.toUnfoldable state.egestsServed
-       , relaysServed : List.toUnfoldable $ extractAddress <$> Map.keys state.relaysServed
+       , relaysServed : extractAddress <$> Map.keys state.relaysServed
        }
 
 init :: CreateRelayPayload -> Effect State

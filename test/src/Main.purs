@@ -3,14 +3,16 @@ module Main where
 import Prelude
 
 import Data.Array (catMaybes, delete, filter, intercalate, length, sort)
+import Data.Array as Array
 import Data.Either (Either(..))
 import Data.Foldable (foldl)
 import Data.Identity (Identity(..))
+import Data.List (List(..))
 import Data.Map as Map
 import Data.Maybe (Maybe(..), isNothing)
 import Data.Newtype (un, wrap)
 import Data.Time.Duration (Milliseconds(..))
-import Data.Traversable (traverse_)
+import Data.Traversable (traverse, traverse_)
 import Data.Tuple (Tuple(..))
 import Debug.Trace (spy)
 import Effect (Effect)
@@ -22,6 +24,8 @@ import Milkis.Impl.Node (nodeFetch)
 import Node.Encoding (Encoding(..))
 import Node.FS.Aff (writeTextFile)
 import OsCmd (runProc)
+import Partial.Unsafe (unsafePartial)
+import Prim.Row (class Union)
 import Shared.Stream (StreamVariant(..))
 import Shared.Types (ServerAddress(..), extractAddress)
 import Shared.Types.Agent.State as PublicState
@@ -31,8 +35,32 @@ import Test.Spec (after_, before_, describe, describeOnly, it, itOnly)
 import Test.Spec.Reporter.Console (consoleReporter)
 import Test.Spec.Runner (runSpecT)
 
-fetch :: M.Fetch
-fetch = M.fetch nodeFetch
+
+type ResponseWithBody =
+  { headers :: M.Headers
+  , body :: String
+  , statusCode :: Int
+  }
+
+
+fetch :: forall options trash.
+  Union options trash M.Options
+   => M.URL -> Record (method :: M.Method | options) -> Aff (Either String ResponseWithBody)
+fetch url options = M.fetch nodeFetch url options # attempt >>= standarise
+ where
+   standarise (Right response) = do
+     body <- M.text response
+     pure $ Right { headers   : M.headers response
+                  , statusCode : M.statusCode response
+                  , body
+                  }
+   standarise (Left axError) = pure $ Left $ show axError
+
+
+
+get :: M.URL -> Aff (Either String ResponseWithBody)
+get url = fetch url { method: M.getMethod }
+
 
 type TestNode =  { ifaceIndexString :: String
                  , addr :: String
@@ -93,6 +121,12 @@ mkPoPJson  nodes =
    "{"  <> (intercalate ", " $ catMaybes [america, europe]) <> "}"
 
 
+forceRight :: forall a b. Either a b -> b
+forceRight e = unsafePartial $ case e of
+  Right b -> b
+
+
+
 main :: Effect Unit
 main =
   let
@@ -115,62 +149,43 @@ main =
     start = "start"
     stop  = "stop"
 
-
     api node = "http://" <> toAddr node <> ":3000/api/"
 
-    stringifyError (Right r)      = Right r
-    stringifyError (Left axError) = Left $ show axError
+    egestStats node streamId           = get (M.URL $ api node <> "agents/egest/" <> streamId)
+
+    aggregatorStats node streamId      = get (M.URL $ api node <> "agents/ingestAggregator/" <> streamId)
+
+    ingest verb node shortName variant = get (M.URL $ api node <> "public/canary/ingest/" <> shortName <> "/" <> variant <> "/" <> verb)
+
+    relayStats node streamId           = get (M.URL $ api node <> "agents/relay/" <> streamId)
+
+    proxiedRelayStats node streamId    = get (M.URL $ api node <> "agents/proxied/relay/" <> streamId)
+
+    intraPoPState node                 = get (M.URL $ api node <> "state")
 
     client verb node streamId           = fetch (M.URL $ api node <> "public/canary/client/" <> streamId <> "/" <> verb)
                                          { method: M.postMethod
                                          , body: "{}"
                                          , headers: M.makeHeaders { "Content-Type": "application/json" }
-                                         } # attempt <#> stringifyError
-    egestStats node streamId           = fetch (M.URL $ api node <> "agents/egest/" <> streamId)
-                                         { method: M.getMethod
-                                         } # attempt <#> stringifyError
+                                         }
 
-    aggregatorStats node streamId      = fetch (M.URL $ api node <> "agents/ingestAggregator/" <> streamId)
-                                         { method: M.getMethod
-                                         } # attempt <#> stringifyError
-
-    ingest verb node shortName variant = fetch (M.URL $ api node <> "public/canary/ingest/" <> shortName <> "/" <> variant <> "/" <> verb)
-                                         { method: M.getMethod
-                                         } # attempt <#> stringifyError
-
-    relayStats node streamId           = fetch (M.URL $ api node <> "agents/relay/" <> streamId)
-                                         { method: M.getMethod
-                                         } # attempt <#> stringifyError
-
-    proxiedRelayStats node streamId    = fetch (M.URL $ api node <> "agents/proxied/relay/" <> streamId)
-                                         { method: M.getMethod
-                                         } # attempt <#> stringifyError
-
-    intraPoPState node                 = fetch (M.URL $ api node <> "state")
-                                         { method: M.getMethod
-                                         } # attempt <#> stringifyError
-
-
-    setLoad :: Node -> Number -> Aff (Either String M.Response)
     setLoad node load                  = fetch (M.URL $ api node <> "load")
                                          { method: M.postMethod
                                          , body: "{\"load\": " <> show load <> "}"
                                          , headers: M.makeHeaders { "Content-Type": "application/json" }
-                                         } # attempt <#> stringifyError
+                                         }
 
-    dropAgentMessages :: Node -> Boolean -> Aff (Either String M.Response)
     dropAgentMessages node flag        = fetch (M.URL $ api node <> "test/intraPoP")
                                          { method: M.postMethod
                                          , body: "{\"dropAgentMessages\": " <> show flag <> "}"
                                          , headers: M.makeHeaders { "Content-Type": "application/json" }
-                                         } # attempt <#> stringifyError
-
-
+                                         }
 
     maybeLogStep s a =
       let _ = spy s a in
       unit
 
+    as :: forall r. String -> Either String r -> Aff Unit
     as desc (Right r) =
       let _ = maybeLogStep "step" desc in
       pure $ unit
@@ -192,13 +207,13 @@ main =
 
     assertRelayForEgest = assertBodyFun <<< predicate
       where
-        predicate :: Array Node -> PublicState.StreamRelay -> Boolean
+        predicate :: Array Node -> PublicState.StreamRelay Array -> Boolean
         predicate servers {egestsServed} =
           (sort $ (ServerAddress <<< toAddr) <$> servers) == sort egestsServed
 
     assertRelayForRelay = assertBodyFun <<< predicate
       where
-        predicate :: Array Node -> PublicState.StreamRelay -> Boolean
+        predicate :: Array Node -> PublicState.StreamRelay Array -> Boolean
         predicate servers {relaysServed} =
           (sort $ (ServerAddress <<< toAddr) <$> servers) == sort relaysServed
 
@@ -209,12 +224,12 @@ main =
 
     assertAggregator = assertBodyFun <<< predicate
       where
-        predicate :: Array String -> PublicState.IngestAggregator -> Boolean
+        predicate :: Array String -> PublicState.IngestAggregator Array -> Boolean
         predicate vars {activeStreamVariants} = sort (StreamVariant <$> vars) == (sort $ _.streamVariant <$> activeStreamVariants)
 
     assertAggregatorOn nodes slotName  = assertBodyFun $ predicate
       where
-        predicate :: PublicState.IntraPoP -> Boolean
+        predicate :: PublicState.IntraPoP Array -> Boolean
         predicate popState =
           let
             nodeAddresses = toAddr
@@ -228,7 +243,7 @@ main =
 
     assertRelayCount slotName count = assertBodyFun $ predicate
       where
-        predicate :: PublicState.IntraPoP -> Boolean
+        predicate :: (PublicState.IntraPoP Array) -> Boolean
         predicate popState =
           let
             nodeAddresses = toAddr
@@ -266,6 +281,34 @@ main =
 
   in
   launchAff_ $ un Identity $ runSpecT testConfig [consoleReporter] do
+    describe "Startup tests"
+      let
+        p1Nodes = [p1n1, p1n2, p1n3]
+        nodes = p1Nodes
+        forceGetState node = forceRight <$> intraPoPState node
+        assertBodiesSame :: List ResponseWithBody -> Aff (Either String Unit)
+        assertBodiesSame Nil = pure $ Right unit
+        assertBodiesSame (Cons x xs) = pure $ assertBodiesSame_ x.body xs
+          where
+            assertBodiesSame_ :: String -> List ResponseWithBody -> Either String Unit
+            assertBodiesSame_ _ Nil = Right unit
+            assertBodiesSame_ firstBody (Cons y ys) =
+              if y.body == firstBody
+              then assertBodiesSame_ firstBody ys
+              else Left $ "\"" <> firstBody <> "\" is not the same as \"" <> y.body <> "\""
+
+
+      in do
+      before_ (do
+                 startSession nodes
+                 launch nodes
+              ) do
+        after_ stopSession do
+          it "Nodes all come up and agree on who the leader is" do
+            states <- traverse forceGetState (Array.toUnfoldable p1Nodes)
+            assertBodiesSame states                                      >>= as "All nodes agree on leader and other intial state"
+            pure unit
+
     describe "Ingest tests"
       let
         p1Nodes = [p1n1, p1n2, p1n3]
@@ -385,21 +428,6 @@ main =
             waitForNodeFailureDisseminate                                 >>= as' "allow failure to disseminate"
             intraPoPState p1n2                   >>= assertAggregatorOn [] slot1
                                                                           >>= as "p1n2 is aware the ingest stopped"
-
-            -- aggregatorStats p1n1 slot1           >>= assertStatusCode 200
-            --                                          >>= assertAggregator [low]
-            --                                                               >>= as  "aggregator created"
-
-            -- ingest stop     p1n1 shortName1 low >>= assertStatusCode 200  >>= as  "stop low ingest"
-            -- aggregatorStats p1n1 slot1          >>= assertStatusCode 200
-            --                                         >>= assertAggregator []
-            --                                                               >>= as  "aggregator has no variants"
-            -- waitForLessThanLinger                                         >>= as' "wait for less than the linger time"
-            -- ingest start    p1n2 shortName1 high >>= assertStatusCode 200 >>= as  "create high ingest on another node"
-            -- waitForAsyncVariantStart                                      >>= as' "wait for async start of variant"
-            -- aggregatorStats p1n1 slot1           >>= assertStatusCode 200
-            --                                          >>= assertAggregator [high]
-            --                                                               >>= as  "lingered aggregator has high variant"
 
     describe "Ingest egest tests" do
       describe "one pop setup"
@@ -530,10 +558,10 @@ main =
                    launch' phase1Nodes sysconfig
                 ) do
           after_ stopSession do
-            it "client requests stream on other pop" do
+            it "a node thats start late gets to see existing streams" do
               ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
               waitForIntraPoPDisseminate                                >>= as' "let ingest presence disseminate"
-              launch' phase2Nodes sysconfig
+              launch' phase2Nodes sysconfig                             >>= as' "start new node after ingest already running"
               waitForNodeStartDisseminate                               >>= as' "let ingest presence disseminate"
               client start p1n3 slot1          >>= assertStatusCode 204 >>= as  "local egest post ingest"
 
@@ -567,14 +595,13 @@ main =
 
       describe "four pop setup" do
         let
-          p1Nodes = [p1n1, p1n2]  -- iad
-          p2Nodes = [p2n1, p2n2]  -- dal
-          p3Nodes = [p3n1, p3n2]  -- fra
-          p4Nodes = [p4n1, p4n2]  -- lax
+          p1Nodes = [p1n1]  -- iad
+          p2Nodes = [p2n1]  -- dal
+          p3Nodes = [p3n1]  -- fra
+          p4Nodes = [p4n1]  -- lax
           -- the topology in wanDefinition.json is important - maybe make explicit for this test...
           -- todo - why don't singleton pops work?
           nodes = p1Nodes <> p2Nodes <> p3Nodes <> p4Nodes
-          maxOut server = setLoad server 99.0 >>= assertStatusCode 204 >>= as ("set load on " <> toAddr server)
 
         before_ (do
                    startSession nodes
@@ -582,7 +609,6 @@ main =
                 ) do
           after_ stopSession do
             it "lax -> fra sets up 2 non-overlapping relay chains" do
-              traverse_ maxOut [p1n2, p2n2, p3n2, p4n2]                    >>= as' "load up all servers bar one in each pop"
               waitForIntraPoPDisseminate                                >>= as' "allow intraPoP to spread location of relay"
               ingest start p3n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
               waitForTransPoPDisseminate                                >>= as' "wait for transPop disseminate"
@@ -592,16 +618,16 @@ main =
               waitForIntraPoPDisseminate                                >>= as' "allow intraPoP to spread location of relay"
               relayStats p1n1 slot1            >>= assertStatusCode 200
                                                    >>= assertRelayForRelay [p4n1]
---                                                       >>= assertRelayForEgest []
+                                                       >>= assertRelayForEgest []
                                                                         >>= as  "iad relays for lax with no egests of its own"
 
               relayStats p2n1 slot1            >>= assertStatusCode 200
                                                    >>= assertRelayForRelay [p4n1]
---                                                       >>= assertRelayForEgest []
+                                                       >>= assertRelayForEgest []
                                                                         >>= as  "dal relays for lax with no egests of its own"
               relayStats p3n1 slot1            >>= assertStatusCode 200
                                                    >>= assertRelayForRelay [p1n1, p2n1]
---                                                       >>= assertRelayForEgest []
+                                                       >>= assertRelayForEgest []
                                                                         >>= as  "fra relays for both iad and dal with no egests of its own"
 
     describe "Cleanup" do
@@ -613,24 +639,22 @@ main =
   where
     testConfig = { slow: Milliseconds 5000.0, timeout: Just (Milliseconds 25000.0), exit: false }
 
-assertStatusCode :: Int -> Either String M.Response -> Aff (Either String M.Response)
+assertStatusCode :: Int -> Either String ResponseWithBody -> Aff (Either String ResponseWithBody)
 assertStatusCode expectedCode either =
-  pure $ either >>= (\response ->
-                      let statusCode = M.statusCode response
-                      in
-                      if statusCode == expectedCode
+  pure $ either >>= (\rwb ->
+                      if rwb.statusCode == expectedCode
                       then either
-                      else Left $  "Unexpected statuscode: Expected " <> show expectedCode <> ", got " <> show statusCode
+                      else Left $  "Unexpected statuscode: Expected " <> show expectedCode <> ", got " <> show rwb.statusCode
                     )
 
-assertHeader :: Tuple String String -> Either String M.Response -> Aff (Either String M.Response)
+assertHeader :: Tuple String String -> Either String ResponseWithBody -> Aff (Either String ResponseWithBody)
 assertHeader (Tuple header value) either =
-  pure $ either >>= (\response ->
-                      let headers = M.headers response
-                          mEqual = Object.lookup header headers
-                                   >>= (\hdrVal -> if hdrVal == value then Just true
-                                                   else Nothing
-                                       )
+  pure $ either >>= (\rwb@{headers} ->
+                      let
+                        mEqual = Object.lookup header headers
+                                 >>= (\hdrVal -> if hdrVal == value then Just true
+                                                 else Nothing
+                                     )
 
                       in
                        if isNothing mEqual
@@ -649,22 +673,21 @@ assertBodyText expected either =
         else pure $ Left $ "Body " <> text <> " did not match expected " <> expected
 
 
-assertBodyFun ::  forall a. ReadForeign a => (a -> Boolean) -> Either String M.Response -> Aff (Either String M.Response)
+assertBodyFun ::  forall a. ReadForeign a => (a -> Boolean) -> Either String ResponseWithBody -> Aff (Either String ResponseWithBody)
 assertBodyFun pred either =
   case either of
     Left e -> pure $ Left e
-    Right response -> do
-      body <- M.text response
+    Right rwb -> do
       let
-        parsed = SimpleJSON.readJSON body
+        parsed = SimpleJSON.readJSON rwb.body
       case parsed of
         Right a ->
           if pred a
           then pure either
           else
-            pure $ Left $ "Predicated failed for body " <> body
+            pure $ Left $ "Predicated failed for body " <> rwb.body
         Left _ ->
-          pure $ Left $ "Could not parse json " <> body
+          pure $ Left $ "Could not parse json " <> rwb.body
 
 toAddr :: Node -> String
 toAddr (Node popNum nodeNum) = "172.16." <> show (popNum + 168) <> "." <> show nodeNum
