@@ -15,6 +15,8 @@ import Effect (Effect)
 import Erl.Process.Raw (Pid)
 import Foreign (Foreign)
 import Logger (spy)
+import Media.Rtmp as Rtmp
+import Media.SourceDetails as SourceDetails
 import Pinto (ServerName)
 import Pinto as Pinto
 import Pinto.Gen as Gen
@@ -23,11 +25,10 @@ import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
 import Rtsv2.Names as Names
+import Rtsv2.Utils (crashIfLeft)
 import Serf (Ip)
 import Shared.LlnwApiTypes (AuthType, PublishCredentials, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamPublish, StreamAuth)
 import Shared.Stream (StreamAndVariant(..))
-import Media.Rtmp as Rtmp
-import Media.SourceDetails as SourceDetails
 import SpudGun (bodyToJSON)
 import SpudGun as SpudGun
 
@@ -38,7 +39,7 @@ type Callbacks
     , streamAuth ::  Fn3 String String String (Effect (Maybe PublishCredentials))
     , streamPublish :: Fn3 String String String (Fn1 String (Effect (Maybe StreamDetails)))
     , clientMetadata :: Fn2 StreamAndVariant Foreign (Effect Unit)
-    , sourceMetadata :: Fn2 StreamAndVariant Foreign (Effect Unit)
+    , sourceInfo :: Fn2 StreamAndVariant Foreign (Effect Unit)
     }
 
 isAvailable :: Effect Boolean
@@ -68,9 +69,9 @@ init _ = do
                 , streamAuth: mkFn3 (streamAuth streamAuthUrl)
                 , streamPublish: mkFn3 (streamPublish streamPublishUrl)
                 , clientMetadata: mkFn2 clientMetadata
-                , sourceMetadata: mkFn2 sourceMetadata
+                , sourceInfo: mkFn2 sourceInfo
                 }
-  _ <- startServerImpl Left (Right unit) interfaceIp port nbAcceptors callbacks
+  crashIfLeft =<< startServerImpl Left (Right unit) interfaceIp port nbAcceptors callbacks
   pure $ {}
   where
     ingestStarted :: StreamDetails -> String -> Pid -> Effect (Either Unit StreamAndVariant)
@@ -114,10 +115,10 @@ init _ = do
                                                                     )
       pure $ hush (spy "publish parse" (bodyToJSON (spy "publish result" restResult)))
 
-    clientMetadata streamAndVariant metadata = do
-      _ <- IngestInstance.setClientMetadata streamAndVariant (Rtmp.foreignToMetadata metadata)
+    clientMetadata streamAndVariant foreignMetadata = do
+      IngestInstance.setClientMetadata streamAndVariant (Rtmp.foreignToMetadata foreignMetadata)
       pure unit
 
-    sourceMetadata streamAndVariant metadata = do
-      _ <- IngestInstance.setSourceInfo streamAndVariant (SourceDetails.foreignToSourceInfo metadata)
+    sourceInfo streamAndVariant foreignSourceInfo = do
+      IngestInstance.setSourceInfo streamAndVariant (SourceDetails.foreignToSourceInfo (spy "foreign" foreignSourceInfo))
       pure unit

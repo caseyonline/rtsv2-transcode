@@ -43,12 +43,12 @@ data AudioCodec = RawAudio
                 | Speex
                 | AC3
                 | EAC3
-                | Opus
                 | G722
+                | Opus
 
 data VideoCodec = RawVideo
                 | VC1
-                | H253
+                | H263
                 | H264
                 | H265
                 | MPEG2
@@ -180,7 +180,7 @@ instance readVideoCodec :: ReadForeign VideoCodec where
       parseStr s = except $ note (error s) (toType s)
       toType "raw" = pure RawVideo
       toType "vc1" = pure VC1
-      toType "h253" = pure H253
+      toType "h263" = pure H263
       toType "h264" = pure H264
       toType "h265" = pure H265
       toType "mpeg2" = pure MPEG2
@@ -194,7 +194,7 @@ instance writeForeignVideoCodec :: WriteForeign VideoCodec where
     where
       toString RawVideo = "raw"
       toString VC1 = "vc1"
-      toString H253 = "h253"
+      toString H263 = "h263"
       toString H264 = "h264"
       toString H265 = "h265"
       toString MPEG2 = "mpeg2"

@@ -225,7 +225,7 @@ ingestStart =
                                                                                          { receive: Raw.receive
                                                                                          , receiveWithTimeout: Raw.receiveWithTimeout
                                                                                          })
-                                                                       _ <- IngestInstanceSup.startIngest (fromMaybe' (lazyCrashIfMissing "stream_details missing") streamDetails) streamAndVariant pid
+                                                                       IngestInstanceSup.startIngest (fromMaybe' (lazyCrashIfMissing "stream_details missing") streamDetails) streamAndVariant pid
                                                                        Rest.result "ingestStarted" req2 state2
                                                                    ) : nil) req state)
   # Rest.yeeha
@@ -251,7 +251,7 @@ ingestStop =
                         )
   # Rest.contentTypesProvided (\req state ->
                                 Rest.result (tuple2 "text/plain" (\req2 state2 -> do
-                                                                     _ <- IngestInstance.stopIngest state.streamAndVariant
+                                                                     IngestInstance.stopIngest state.streamAndVariant
                                                                      Rest.result "ingestStopped" req2 state2
                                                                  ) : nil) req state)
   # Rest.yeeha

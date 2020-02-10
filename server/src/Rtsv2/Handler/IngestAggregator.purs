@@ -74,7 +74,7 @@ ingestAggregatorsActiveIngest =
                                                                             serverAddress = fromMaybe' (lazyCrashIfMissing "server_address is nothing") maybeServerAddress
                                                                           in
                                                                             do
-                                                                              _ <- IngestAggregatorInstance.addRemoteVariant streamAndVariant serverAddress
+                                                                              IngestAggregatorInstance.addRemoteVariant streamAndVariant serverAddress
                                                                               Rest.result true req2 state2
                                                                         )) : nil)
                                 req state
@@ -86,7 +86,7 @@ ingestAggregatorsActiveIngest =
   # Rest.allowMissingPost (Rest.result false)
 
   # Rest.deleteResource (\req state@{streamAndVariant} -> do
-                            _ <- IngestAggregatorInstance.removeVariant streamAndVariant
+                            IngestAggregatorInstance.removeVariant streamAndVariant
                             Rest.result true req state
                         )
 

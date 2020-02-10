@@ -20,22 +20,24 @@
 -record(?state,
         {
          rtmp_pid :: pid(),
-         ingestStarted :: fun(),
-         ingestStopped :: fun(),
-         streamAuthType :: fun(),
-         streamAuth :: fun(),
-         streamPublish :: fun(),
-         clientMetadata :: fun(),
+         ingestStartedFn :: fun(),
+         ingestStoppedFn :: fun(),
+         streamAuthTypeFn :: fun(),
+         streamAuthFn :: fun(),
+         streamPublishFn :: fun(),
+         clientMetadataFn :: fun(),
+         sourceInfoFn :: fun(),
          streamDetails :: term(),
          streamAndVariant :: term()
         }).
 
-init(Rtmp, ConnectArgs, [#{ ingestStarted := IngestStarted
-                          , ingestStopped := IngestStopped
-                          , streamAuthType := StreamAuthType
-                          , streamAuth := StreamAuth
-                          , streamPublish := StreamPublish
-                          , clientMetadata := ClientMetadata }]) ->
+init(Rtmp, ConnectArgs, [#{ ingestStarted := IngestStartedFn
+                          , ingestStopped := IngestStoppedFn
+                          , streamAuthType := StreamAuthTypeFn
+                          , streamAuth := StreamAuthFn
+                          , streamPublish := StreamPublishFn
+                          , clientMetadata := ClientMetadataFn
+                          , sourceInfo := SourceInfoFn }]) ->
 
   {_, TcUrl} = lists:keyfind("tcUrl", 1, ConnectArgs),
 
@@ -49,6 +51,15 @@ init(Rtmp, ConnectArgs, [#{ ingestStarted := IngestStarted
      query = Query
     } = rtmp_utils:parse_url(TcUrl),
 
+  State = #?state{rtmp_pid = Rtmp,
+                  ingestStartedFn = IngestStartedFn,
+                  ingestStoppedFn = IngestStoppedFn,
+                  streamAuthTypeFn = StreamAuthTypeFn,
+                  streamAuthFn = StreamAuthFn,
+                  clientMetadataFn = ClientMetadataFn,
+                  sourceInfoFn = SourceInfoFn
+                 },
+
   case Query of
     #{<<"authmod">> := <<"adobe">>,
       <<"user">> := UserName,
@@ -56,7 +67,7 @@ init(Rtmp, ConnectArgs, [#{ ingestStarted := IngestStarted
       <<"response">> := ClientResponse} ->
       %% We have a adobe completed digest
 
-      Reply = (StreamAuth(Host, ShortName, UserName))(),
+      Reply = (StreamAuthFn(Host, ShortName, UserName))(),
 
       case Reply of
         {nothing} ->
@@ -75,14 +86,7 @@ init(Rtmp, ConnectArgs, [#{ ingestStarted := IngestStarted
                                                      ClientChallenge,
                                                      ClientResponse) of
             true ->
-              {ok, #?state{rtmp_pid = Rtmp,
-                           ingestStarted = IngestStarted,
-                           ingestStopped = IngestStopped,
-                           streamAuthType = StreamAuthType,
-                           streamAuth = StreamAuth,
-                           streamPublish = StreamPublish(Host, ShortName, UserName),
-                           clientMetadata = ClientMetadata
-                          }};
+              {ok, State#?state{streamPublishFn = StreamPublishFn(Host, ShortName, UserName)}};
 
             false ->
               ?SLOG_INFO("Challenge failed", #{client_challenge => ClientChallenge,
@@ -104,7 +108,7 @@ init(Rtmp, ConnectArgs, [#{ ingestStarted := IngestStarted
       <<"response">> := ClientResponse} ->
       %% We have a llnw completed digest
 
-      Reply = (StreamAuth(Host, ShortName, UserName))(),
+      Reply = (StreamAuthFn(Host, ShortName, UserName))(),
 
       case Reply of
         {nothing} ->
@@ -131,14 +135,7 @@ init(Rtmp, ConnectArgs, [#{ ingestStarted := IngestStarted
                                                     Qop,
                                                     ClientResponse) of
             true ->
-              {ok, #?state{rtmp_pid = Rtmp,
-                           ingestStarted = IngestStarted,
-                           ingestStopped = IngestStopped,
-                           streamAuthType = StreamAuthType,
-                           streamAuth = StreamAuth,
-                           streamPublish = StreamPublish(Host, ShortName, UserName),
-                           clientMetadata = ClientMetadata
-                          }};
+              {ok, State#?state{streamPublishFn = StreamPublishFn(Host, ShortName, UserName)}};
 
             false ->
               ?SLOG_INFO("Challenge failed", #{client_response => ClientResponse}),
@@ -155,7 +152,7 @@ init(Rtmp, ConnectArgs, [#{ ingestStarted := IngestStarted
     #{} ->
       ?SLOG_INFO("No authmod - start authentication", #{host => Host,
                                                         shortName => ShortName}),
-      Reply = (StreamAuthType(Host, ShortName))(),
+      Reply = (StreamAuthTypeFn(Host, ShortName))(),
 
       case Reply of
         {nothing} ->
@@ -167,8 +164,8 @@ init(Rtmp, ConnectArgs, [#{ ingestStarted := IngestStarted
   end.
 
 handle(State = #?state{rtmp_pid = Rtmp,
-                       streamPublish = StreamPublish,
-                       ingestStarted = IngestStarted}) ->
+                       streamPublishFn = StreamPublishFn,
+                       ingestStartedFn = IngestStartedFn}) ->
 
   receive
     {Rtmp, {request, publish, {StreamId, ClientId, Path}}} ->
@@ -176,7 +173,7 @@ handle(State = #?state{rtmp_pid = Rtmp,
 
       StreamName = list_to_binary(StreamNameStr),
 
-      case (StreamPublish(StreamName))() of
+      case (StreamPublishFn(StreamName))() of
         {nothing} ->
           ?SLOG_INFO("Streamname rejected", #{stream_name => StreamName}),
           rtmp:close(Rtmp),
@@ -188,7 +185,7 @@ handle(State = #?state{rtmp_pid = Rtmp,
                                          path => Path,
                                          stream_name => StreamName}),
 
-          case (IngestStarted(StreamDetails, StreamName, self()))() of
+          case (IngestStartedFn(StreamDetails, StreamName, self()))() of
             {right, StreamAndVariant} ->
               {ok, WorkflowPid} = start_workflow(Rtmp, StreamId, ClientId, Path, StreamAndVariant),
 
@@ -207,24 +204,25 @@ handle(State = #?state{rtmp_pid = Rtmp,
       ok
   end.
 
-workflow_loop(StreamName, WorkflowPid, State = #?state{ingestStopped = IngestStopped,
+workflow_loop(StreamName, WorkflowPid, State = #?state{ingestStoppedFn = IngestStoppedFn,
                                                        streamDetails = StreamDetails,
-                                                       clientMetadata = ClientMetadata,
+                                                       clientMetadataFn = ClientMetadataFn,
+                                                       sourceInfoFn = SourceInfoFn,
                                                        streamAndVariant = StreamAndVariant}) ->
   %% the workflow is dealing with the RTMP, so just wait until it says we are done
   receive
     #workflow_output{message = #no_active_generators_msg{}} ->
       ?SLOG_WARNING("Client exited"),
 
-      unit = (IngestStopped(StreamDetails, StreamName))(),
+      unit = (IngestStoppedFn(StreamDetails, StreamName))(),
       ok;
 
     #workflow_output{message = #workflow_data_msg{data = #rtmp_client_metadata{metadata = Metadata}}} ->
-      unit = (ClientMetadata(StreamAndVariant, Metadata))(),
+      unit = (ClientMetadataFn(StreamAndVariant, Metadata))(),
       workflow_loop(StreamName, WorkflowPid, State);
 
     #workflow_output{message = #workflow_data_msg{data = SourceInfo = #source_info{}}} ->
-      %%unit = ((ClientMetadata(StreamAndVariant))(Metadata))(),
+      unit = (SourceInfoFn(StreamAndVariant, SourceInfo))(),
       workflow_loop(StreamName, WorkflowPid, State);
 
     Other ->
