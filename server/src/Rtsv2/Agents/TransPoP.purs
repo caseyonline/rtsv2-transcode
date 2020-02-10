@@ -177,15 +177,9 @@ announceAggregatorIsAvailable streamId server =
     doAnnounceStreamIsAvailable state@{ thisServer
                                       , serfRpcAddress
                                       } = do
-      -- Don't think this test is required - surely it can only be from this pop...
-      if extractPoP server == extractPoP thisServer
-      then do
-            -- Message from our pop - distribute over trans-pop
-            --logInfo "Local stream being delivered to trans-pop" { streamId: streamId }
-            result <- Serf.event state.serfRpcAddress "streamAvailable" (TMAggregatorState Available streamId (extractAddress server)) false
-            _ <- maybeLogError "Trans-PoP serf event failed" result {}
-            pure state
-      else pure state
+      result <- Serf.event state.serfRpcAddress "streamAvailable" (TMAggregatorState Available streamId (extractAddress server)) false
+      maybeLogError "Trans-PoP serf event failed" result {}
+      pure state
 
 announceAggregatorStopped :: StreamId -> Server -> Effect Unit
 announceAggregatorStopped streamId server =
@@ -638,7 +632,8 @@ handleAgentMessage msgLTime eventType streamId msgServerAddress
           logWarning "message from unknown server" {msgServerAddress}
           pure state
         Just msgLocation
-          | extractPoP msgLocation /= extractPoP state.thisServer ->
+          -- Opposite logic to IntraPoP - only forward things that are NOT from this pop
+          | extractPoP msgLocation == extractPoP state.thisServer ->
             pure state
           | otherwise -> do
             let
