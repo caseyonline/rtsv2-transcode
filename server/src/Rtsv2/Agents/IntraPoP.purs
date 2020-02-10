@@ -405,6 +405,7 @@ popLeaderHandler =
                 }
 
     handleMessage server state = do
+      state.transPoPApi.handleRemoteLeaderAnnouncement server
       pure state{ currentTransPoPLeader = Just server }
 
 loadHandler :: Load -> ServerMessageHandler
