@@ -685,7 +685,7 @@ assertBodyFun pred either =
           if pred a
           then pure either
           else
-            pure $ Left $ "Predicated failed for body " <> rwb.body
+            pure $ Left $ "Predicate failed for body " <> rwb.body
         Left _ ->
           pure $ Left $ "Could not parse json " <> rwb.body
 
