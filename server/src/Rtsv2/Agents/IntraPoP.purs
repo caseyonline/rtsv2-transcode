@@ -37,10 +37,11 @@ module Rtsv2.Agents.IntraPoP
   , testHelper
   , health
   , bus
-  , IntraMessage(..)
-  , EventType(..)
+--  , IntraMessage(..)
+--  , EventType(..)
   , IntraPoPBusMessage(..)
 
+  , AgentClock
   , TestHelperPayload
   ) where
 
@@ -1172,28 +1173,6 @@ joinAllSerf { config, serfRpcAddress, members } =
   where
   toMap :: forall a. List a -> Map a Unit
   toMap list = foldl (\acc item -> Map.insert item unit acc) Map.empty list
-
-
-screenOriginAndMessageClock :: Server -> LamportClock -> ServerAddress -> Map ServerAddress LamportClock -> Effect (Maybe (Tuple (Map ServerAddress LamportClock) Server))
-screenOriginAndMessageClock (Server thisServer) msgLTime messageServerAddress lastClockByServer =
-  if Map.lookup messageServerAddress lastClockByServer # maybe false (_ >= msgLTime)
-  then do
-    pure Nothing
-  else
-    if thisServer.address == messageServerAddress then
-      pure Nothing
-    else do
-      -- TODO - maybe cache the db for a while to prevent hot calls, or use ETS etc
-      mLocation <- PoPDefinition.whereIsServer messageServerAddress
-      case mLocation of
-        Nothing -> do
-          pure Nothing
-        Just location ->
-          pure $ Just $ Tuple (Map.insert messageServerAddress msgLTime lastClockByServer) $ toServer messageServerAddress location
-          -- pure $ Just { clockState : Map.insert messageServerAddress msgLTime lastClockByServer
-          --             , from : toServer messageServerAddress location
-          --           }
-
 
 serverLoad :: MemberInfo -> ServerLoad
 serverLoad {server, load} = toServerLoad server load

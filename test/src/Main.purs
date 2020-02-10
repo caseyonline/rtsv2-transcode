@@ -305,8 +305,7 @@ main =
               ) do
         after_ stopSession do
           it "Nodes all come up and agree on who the leader is" do
-            states <- traverse forceGetState (Array.toUnfoldable p1Nodes) :: Aff (List ResponseWithBody)
-            let _ = spy "states" states
+            states <- traverse forceGetState (Array.toUnfoldable p1Nodes)
             assertBodiesSame states                                      >>= as "All nodes agree on leader and other intial state"
             pure unit
 
