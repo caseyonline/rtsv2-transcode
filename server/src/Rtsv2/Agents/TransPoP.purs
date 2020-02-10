@@ -32,7 +32,7 @@ import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
 import Erl.Process (spawnLink)
 import Erl.Utils (sleep, systemTimeMs, privDir)
-import Logger (Logger)
+import Logger (Logger, spy)
 import Logger as Logger
 import Network (Network, addEdge', bestPaths, emptyNetwork, pathsBetween)
 import Os (osCmd)
@@ -52,6 +52,7 @@ import Rtsv2.Health as Health
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition (PoP)
 import Rtsv2.PoPDefinition as PoPDefinition
+import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl, makeUrlAddr)
 import Serf (IpAndPort, LamportClock, SerfCoordinate, calcRtt)
 import Serf as Serf
 import Shared.Stream (StreamId)
@@ -71,6 +72,7 @@ type PoPRoutes = List (List PoPName)
 
 type LamportClocks =
   { streamStateClocks :: Map ServerAddress LamportClock
+    -- TODO lamport clocks per streamId and ServerAddress
   }
 
 type State
@@ -102,7 +104,7 @@ data Msg
   | TransPoPSerfMsg (Serf.SerfMessage TransMessage)
 
 
-getTimedRoutesTo :: PoPName -> Effect PublicState.TimedPoPRoutes
+getTimedRoutesTo :: PoPName -> Effect (PublicState.TimedPoPRoutes List)
 getTimedRoutesTo pop = exposeState doGetTimedRoutes serverName
   where
     getRtt rttMap from to = fromMaybe (wrap 1000) $ Map.lookup (Tuple from to) rttMap
@@ -120,8 +122,7 @@ getTimedRoutesTo pop = exposeState doGetTimedRoutes serverName
        in
       { from: thisPoP
       , to: pop
-      , routes: List.toUnfoldable $ List.toUnfoldable <$> routes
-      --, routes -- TODO can we uses Lists this side and arrays on the client?
+      , routes
       }
 
 
@@ -530,10 +531,9 @@ becomeLeader now state@{ lastLeaderAnnouncement
                        } = do
   logInfo "Leader is absent, becoming leader" {}
   _ <- osCmd startScript
-  _ <- intraPoP_announceTransPoPLeader
-  _ <- Timer.sendAfter serverName connectStreamAfterMs ConnectStream
-  -- TODO: build default network topology map
-  _ <- Timer.sendAfter serverName rttRefreshMs RttRefreshTick
+  intraPoP_announceTransPoPLeader
+  void $ Timer.sendAfter serverName connectStreamAfterMs ConnectStream
+  void $ Timer.sendAfter serverName rttRefreshMs RttRefreshTick
   pure
     $ state
         { lastLeaderAnnouncement = now
@@ -561,7 +561,7 @@ connectStream state@{serfRpcAddress} = do
                         logInfo "Could not connect to TransPoP Serf Agent" { error: error }
                         unsafeCrashWith ("could_not_connect_stream")
                    _ -> do
-                         _ <- sleep (wrap 100)
+                         sleep (wrap 100)
                          loopStreamJoin serfRpcAddress $ n - 1
             Right x ->
               pure resp
@@ -580,21 +580,23 @@ joinAllSerf state@{ config: config@{rejoinEveryMs}, serfRpcAddress, members } =
   in
     do
       allOtherPoPs <- PoPDefinition.getOtherPoPs
-      _ <- Timer.sendAfter serverName rejoinEveryMs JoinAll
+      void $ Timer.sendAfter serverName rejoinEveryMs JoinAll
 
       let
         toJoin = Map.values $ Map.difference allOtherPoPs members :: List PoP
       if length toJoin < (Map.size allOtherPoPs) / 2 then
         pure unit
       else
+        let _ = spy "toJoin" {toJoin} in
         traverse_ (\{ name, servers: serversInPoP } ->
                     do
                      indexes <- distinctRandomNumbers 1 ((length serversInPoP) - 1)
                      let
+                       _ = spy "indexes" {indexes}
                        servers :: List ServerAddress
                        servers = traverse (\i -> index serversInPoP i) indexes
                                  # fromMaybe nil
-
+                       _ = spy "servers" {servers}
                      (spawnFun serverAddressToSerfAddress servers)
                   )
                   toJoin
@@ -602,15 +604,17 @@ joinAllSerf state@{ config: config@{rejoinEveryMs}, serfRpcAddress, members } =
   spawnFun :: (String -> IpAndPort) -> List ServerAddress -> Effect Unit
   spawnFun addressMapper popsToJoin = void $ spawnLink (\_ -> do
                              foldl
-                               ( \iAcc (ServerAddress address) -> do
-                                   restResult <- bodyToString <$> SpudGun.getText (wrap $ "http://" <> address <> ":3000/api/transPoPLeader")
-                                   _ <- case restResult of
+                               ( \iAcc serverAddress  -> do
+                                   let
+                                     url = makeUrlAddr serverAddress TransPoPLeaderE
+
+                                   restResult <- bodyToString <$> SpudGun.getText url
+                                   case spy "spawnFunrestResult" restResult of
                                      Left _ -> pure unit
+                                     Right "" -> pure unit
                                      Right addr -> do
                                        result <- Serf.join serfRpcAddress ((addressMapper addr) : nil) config.replayMessagesOnJoin
-                                       _ <- maybeLogError "Trans-PoP serf join failed" result { server: addr }
-                                       pure unit
-                                   pure unit
+                                       maybeLogError "Trans-PoP serf join failed" result { server: addr }
                                )
                                mempty
                                popsToJoin

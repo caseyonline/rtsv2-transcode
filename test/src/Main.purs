@@ -3,14 +3,16 @@ module Main where
 import Prelude
 
 import Data.Array (catMaybes, delete, filter, intercalate, length, sort)
+import Data.Array as Array
 import Data.Either (Either(..))
 import Data.Foldable (foldl)
 import Data.Identity (Identity(..))
+import Data.List (List(..))
 import Data.Map as Map
 import Data.Maybe (Maybe(..), isNothing)
 import Data.Newtype (un, wrap)
 import Data.Time.Duration (Milliseconds(..))
-import Data.Traversable (traverse_)
+import Data.Traversable (traverse, traverse_)
 import Data.Tuple (Tuple(..))
 import Debug.Trace (spy)
 import Effect (Effect)
@@ -22,6 +24,7 @@ import Milkis.Impl.Node (nodeFetch)
 import Node.Encoding (Encoding(..))
 import Node.FS.Aff (writeTextFile)
 import OsCmd (runProc)
+import Partial.Unsafe (unsafePartial)
 import Prim.Row (class Union)
 import Shared.Stream (StreamVariant(..))
 import Shared.Types (ServerAddress(..), extractAddress)
@@ -57,20 +60,6 @@ fetch url options = M.fetch nodeFetch url options # attempt >>= standarise
 
 get :: M.URL -> Aff (Either String ResponseWithBody)
 get url = fetch url { method: M.getMethod }
-
-
-api node = "http://" <> toAddr node <> ":3000/api/"
-
-stringifyError (Right r)      = Right r
-stringifyError (Left axError) = Left $ show axError
-
-
---client :: String -> Node -> String -> Aff (Either String M.Response)
-client verb node streamId           = fetch (M.URL $ api node <> "public/canary/client/" <> streamId <> "/" <> verb)
-                                     { method: M.postMethod
-                                     , body: "{}"
-                                     , headers: M.makeHeaders { "Content-Type": "application/json" }
-                                     }
 
 
 type TestNode =  { ifaceIndexString :: String
@@ -132,6 +121,12 @@ mkPoPJson  nodes =
    "{"  <> (intercalate ", " $ catMaybes [america, europe]) <> "}"
 
 
+forceRight :: forall a b. Either a b -> b
+forceRight e = unsafePartial $ case e of
+  Right b -> b
+
+
+
 main :: Effect Unit
 main =
   let
@@ -154,6 +149,8 @@ main =
     start = "start"
     stop  = "stop"
 
+    api node = "http://" <> toAddr node <> ":3000/api/"
+
     egestStats node streamId           = get (M.URL $ api node <> "agents/egest/" <> streamId)
 
     aggregatorStats node streamId      = get (M.URL $ api node <> "agents/ingestAggregator/" <> streamId)
@@ -166,15 +163,18 @@ main =
 
     intraPoPState node                 = get (M.URL $ api node <> "state")
 
+    client verb node streamId           = fetch (M.URL $ api node <> "public/canary/client/" <> streamId <> "/" <> verb)
+                                         { method: M.postMethod
+                                         , body: "{}"
+                                         , headers: M.makeHeaders { "Content-Type": "application/json" }
+                                         }
 
---    setLoad :: Node -> Number -> Aff (Either String M.Response)
     setLoad node load                  = fetch (M.URL $ api node <> "load")
                                          { method: M.postMethod
                                          , body: "{\"load\": " <> show load <> "}"
                                          , headers: M.makeHeaders { "Content-Type": "application/json" }
                                          }
 
---    dropAgentMessages :: Node -> Boolean -> Aff (Either String M.Response)
     dropAgentMessages node flag        = fetch (M.URL $ api node <> "test/intraPoP")
                                          { method: M.postMethod
                                          , body: "{\"dropAgentMessages\": " <> show flag <> "}"
@@ -185,6 +185,7 @@ main =
       let _ = spy s a in
       unit
 
+    as :: forall r. String -> Either String r -> Aff Unit
     as desc (Right r) =
       let _ = maybeLogStep "step" desc in
       pure $ unit
@@ -206,13 +207,13 @@ main =
 
     assertRelayForEgest = assertBodyFun <<< predicate
       where
-        predicate :: Array Node -> PublicState.StreamRelay -> Boolean
+        predicate :: Array Node -> PublicState.StreamRelay Array -> Boolean
         predicate servers {egestsServed} =
           (sort $ (ServerAddress <<< toAddr) <$> servers) == sort egestsServed
 
     assertRelayForRelay = assertBodyFun <<< predicate
       where
-        predicate :: Array Node -> PublicState.StreamRelay -> Boolean
+        predicate :: Array Node -> PublicState.StreamRelay Array -> Boolean
         predicate servers {relaysServed} =
           (sort $ (ServerAddress <<< toAddr) <$> servers) == sort relaysServed
 
@@ -223,12 +224,12 @@ main =
 
     assertAggregator = assertBodyFun <<< predicate
       where
-        predicate :: Array String -> PublicState.IngestAggregator -> Boolean
+        predicate :: Array String -> PublicState.IngestAggregator Array -> Boolean
         predicate vars {activeStreamVariants} = sort (StreamVariant <$> vars) == (sort $ _.streamVariant <$> activeStreamVariants)
 
     assertAggregatorOn nodes slotName  = assertBodyFun $ predicate
       where
-        predicate :: PublicState.IntraPoP -> Boolean
+        predicate :: PublicState.IntraPoP Array -> Boolean
         predicate popState =
           let
             nodeAddresses = toAddr
@@ -242,7 +243,7 @@ main =
 
     assertRelayCount slotName count = assertBodyFun $ predicate
       where
-        predicate :: PublicState.IntraPoP -> Boolean
+        predicate :: (PublicState.IntraPoP Array) -> Boolean
         predicate popState =
           let
             nodeAddresses = toAddr
@@ -284,6 +285,19 @@ main =
       let
         p1Nodes = [p1n1, p1n2, p1n3]
         nodes = p1Nodes
+        forceGetState node = forceRight <$> intraPoPState node
+        assertBodiesSame :: List ResponseWithBody -> Aff (Either String Unit)
+        assertBodiesSame Nil = pure $ Right unit
+        assertBodiesSame (Cons x xs) = pure $ assertBodiesSame_ x.body xs
+          where
+            assertBodiesSame_ :: String -> List ResponseWithBody -> Either String Unit
+            assertBodiesSame_ _ Nil = Right unit
+            assertBodiesSame_ firstBody (Cons y ys) =
+              if y.body == firstBody
+              then assertBodiesSame_ firstBody ys
+              else Left $ "\"" <> firstBody <> "\" is not the same as \"" <> y.body <> "\""
+
+
       in do
       before_ (do
                  startSession nodes
@@ -291,13 +305,10 @@ main =
               ) do
         after_ stopSession do
           it "Nodes all come up and agree on who the leader is" do
-
-            ingest start    p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
-            waitForAsyncVariantStart                                     >>= as' "wait for async start of variant"
-            aggregatorStats p1n1 slot1          >>= assertStatusCode 200
-                                                    >>= assertAggregator [low]
-                                                                         >>= as  "aggregator has low only"
-
+            states <- traverse forceGetState (Array.toUnfoldable p1Nodes) :: Aff (List ResponseWithBody)
+            let _ = spy "states" states
+            assertBodiesSame states                                      >>= as "All nodes agree on leader and other intial state"
+            pure unit
 
     describe "Ingest tests"
       let
@@ -418,21 +429,6 @@ main =
             waitForNodeFailureDisseminate                                 >>= as' "allow failure to disseminate"
             intraPoPState p1n2                   >>= assertAggregatorOn [] slot1
                                                                           >>= as "p1n2 is aware the ingest stopped"
-
-            -- aggregatorStats p1n1 slot1           >>= assertStatusCode 200
-            --                                          >>= assertAggregator [low]
-            --                                                               >>= as  "aggregator created"
-
-            -- ingest stop     p1n1 shortName1 low >>= assertStatusCode 200  >>= as  "stop low ingest"
-            -- aggregatorStats p1n1 slot1          >>= assertStatusCode 200
-            --                                         >>= assertAggregator []
-            --                                                               >>= as  "aggregator has no variants"
-            -- waitForLessThanLinger                                         >>= as' "wait for less than the linger time"
-            -- ingest start    p1n2 shortName1 high >>= assertStatusCode 200 >>= as  "create high ingest on another node"
-            -- waitForAsyncVariantStart                                      >>= as' "wait for async start of variant"
-            -- aggregatorStats p1n1 slot1           >>= assertStatusCode 200
-            --                                          >>= assertAggregator [high]
-            --                                                               >>= as  "lingered aggregator has high variant"
 
     describe "Ingest egest tests" do
       describe "one pop setup"
@@ -607,7 +603,6 @@ main =
           -- the topology in wanDefinition.json is important - maybe make explicit for this test...
           -- todo - why don't singleton pops work?
           nodes = p1Nodes <> p2Nodes <> p3Nodes <> p4Nodes
-          maxOut server = setLoad server 99.0 >>= assertStatusCode 204 >>= as ("set load on " <> toAddr server)
 
         before_ (do
                    startSession nodes
@@ -615,7 +610,6 @@ main =
                 ) do
           after_ stopSession do
             it "lax -> fra sets up 2 non-overlapping relay chains" do
-              --traverse_ maxOut [p1n2, p2n2, p3n2, p4n2]                    >>= as' "load up all servers bar one in each pop"
               waitForIntraPoPDisseminate                                >>= as' "allow intraPoP to spread location of relay"
               ingest start p3n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
               waitForTransPoPDisseminate                                >>= as' "wait for transPop disseminate"
@@ -625,16 +619,16 @@ main =
               waitForIntraPoPDisseminate                                >>= as' "allow intraPoP to spread location of relay"
               relayStats p1n1 slot1            >>= assertStatusCode 200
                                                    >>= assertRelayForRelay [p4n1]
---                                                       >>= assertRelayForEgest []
+                                                       >>= assertRelayForEgest []
                                                                         >>= as  "iad relays for lax with no egests of its own"
 
               relayStats p2n1 slot1            >>= assertStatusCode 200
                                                    >>= assertRelayForRelay [p4n1]
---                                                       >>= assertRelayForEgest []
+                                                       >>= assertRelayForEgest []
                                                                         >>= as  "dal relays for lax with no egests of its own"
               relayStats p3n1 slot1            >>= assertStatusCode 200
                                                    >>= assertRelayForRelay [p1n1, p2n1]
---                                                       >>= assertRelayForEgest []
+                                                       >>= assertRelayForEgest []
                                                                         >>= as  "fra relays for both iad and dal with no egests of its own"
 
     describe "Cleanup" do

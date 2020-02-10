@@ -15,7 +15,7 @@ import Data.Maybe (Maybe, isNothing, maybe)
 import Data.Newtype (unwrap)
 import Erl.Cowboy.Handlers.Rest (moved, notMoved)
 import Erl.Cowboy.Req (StatusCode(..), replyWithoutBody, setHeader)
-import Erl.Data.List (singleton, (:))
+import Erl.Data.List (List, singleton, (:))
 import Erl.Data.Map as Map
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.Locator.Relay (findOrStart)
@@ -34,7 +34,7 @@ import Stetson.Rest as Rest
 import StetsonHelper (GenericStetsonGetByStreamId, GenericStetsonHandler, GenericProxyState, allBody, binaryToString, genericGetByStreamId, genericPost, genericProxyByStreamId, preHookSpyState)
 
 
-stats :: GenericStetsonGetByStreamId PublicState.StreamRelay
+stats :: GenericStetsonGetByStreamId (PublicState.StreamRelay List)
 stats = genericGetByStreamId StreamRelayInstance.status
 
 startResource :: GenericStetsonHandler CreateRelayPayload

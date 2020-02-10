@@ -23,7 +23,7 @@ healthCheck =
   # Rest.yeeha
   where
     jsonHandler req state = do
-      currentTransPoP <- IntraPoP.currentTransPoPLeader
+      currentTransPoP <- IntraPoP.getCurrentTransPoPLeader
       intraPoPHealth <- IntraPoP.health
       transPoPHealth <- TransPoP.health
       let

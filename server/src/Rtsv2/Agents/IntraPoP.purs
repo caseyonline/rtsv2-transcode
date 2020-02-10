@@ -25,7 +25,7 @@ module Rtsv2.Agents.IntraPoP
   , whereIsStreamRelay
   , whereIsEgest
   , getIdleServer
-  , currentTransPoPLeader
+  , getCurrentTransPoPLeader
 
   , isIngestActive
 
@@ -197,15 +197,18 @@ testHelper payload =
 
 
 
-getPublicState :: Effect PublicState.IntraPoP
+getPublicState :: Effect (PublicState.IntraPoP List)
 getPublicState = exposeState publicState serverName
   where
-    toLocations (Tuple k v) = { streamId: k
-                              , servers: Set.toUnfoldable v}
-    publicState {agentLocations} =
+    publicState state@{agentLocations, currentTransPoPLeader} =
       { aggregatorLocations: toLocations <$>  Map.toUnfoldable agentLocations.aggregators.byStreamId
       , relayLocations: toLocations <$>  Map.toUnfoldable agentLocations.relays.byStreamId
+      , egestLocations: toLocations <$>  Map.toUnfoldable agentLocations.egests.byStreamId
+      , currentTransPoPLeader
       }
+    toLocations (Tuple k v) = { streamId: k
+                              , servers:  Set.toUnfoldable v
+                              }
 
 
 --TODO....
@@ -303,8 +306,8 @@ getIdleServer pred = Gen.doCall serverName
   )
 
 
-currentTransPoPLeader :: Effect (Maybe Server)
-currentTransPoPLeader =
+getCurrentTransPoPLeader :: Effect (Maybe Server)
+getCurrentTransPoPLeader =
   Gen.call serverName
     ( \state@{ currentTransPoPLeader: value } ->
         CallReply value state
@@ -676,10 +679,9 @@ announceTransPoPLeader =
   Gen.doCast serverName
     \state@{ thisServer, transPoPApi:{handleRemoteLeaderAnnouncement: transPoP_announceTransPoPLeader} } ->
     do
-      _ <- transPoP_announceTransPoPLeader thisServer
-      _ <- sendToIntraSerfNetwork state "transPoPLeader" (IMTransPoPLeader $ extractAddress thisServer)
-      pure $ Gen.CastNoReply state
-
+      transPoP_announceTransPoPLeader thisServer
+      sendToIntraSerfNetwork state "transPoPLeader" (IMTransPoPLeader $ extractAddress thisServer)
+      pure $ Gen.CastNoReply state{currentTransPoPLeader = Just thisServer}
 
 
 updateAgentLocation :: (StreamId -> Server -> Locations -> Locations) -> AgentLocationLens -> StreamId -> Server -> State -> State
@@ -968,34 +970,6 @@ messageTimeout :: AgentHandler -> State -> Effect Milliseconds
 messageTimeout agentMessageHandler state = do
   now <- Erl.systemTimeMs
   pure $ now + ((agentMessageHandler.reannounceEveryMs state) * (wrap state.config.missCountBeforeExpiry))
-
-
-handleLiveness :: Ref -> Server -> State -> Effect State
-handleLiveness ref server state = do
-  newState <- case EMap.lookup server state.serverRefs of
-    Nothing ->
-      pure state
-    Just curRef
-      | ref == curRef ->
-        pure state
-      | otherwise ->
-        garbageCollectServer state server
-  newServerRefs <- EMap.insert' server ref state.serverRefs
-  pure newState { serverRefs = newServerRefs }
-
-
-handleTransPoPLeader :: Server -> State -> Effect State
-handleTransPoPLeader server state =
-   pure state{ currentTransPoPLeader = Just server }
-
-handleLoadChange :: ServerAddress -> Load -> Server -> State -> Effect State
-handleLoadChange address load server state =
-  let
-    newMembers = alter (map (\ memberInfo -> memberInfo { load = load })) address state.members
-  in
-   pure state{ members = newMembers }
-
-
 
 --------------------------------------------------------------------------------
 -- Internal functions
