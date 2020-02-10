@@ -1,4 +1,4 @@
-module Rtsv2App.Page.Dashboard where
+module Rtsv2App.Page.PoPHome where
 
 import Prelude
 
@@ -40,9 +40,13 @@ import Shared.Types.Agent.State (TimedPoPRoutes, PoPDefinition)
 -------------------------------------------------------------------------------
 -- Types for Dashboard Page
 -------------------------------------------------------------------------------
+type Input =
+  { popName :: String
+  }
+
 data Action
   = Initialize
-  | Receive { currentUser :: Maybe Profile }
+  | Receive { popName :: String, currentUser :: Maybe Profile }
 
 type State =
   { currentUser     :: Maybe Profile
@@ -53,6 +57,7 @@ type State =
   , isOpen          :: Boolean
   , selectedRoute   :: Maybe String
   , availableRoutes :: Array String
+  , popName         :: String
   }
 
 type ChildSlots =
@@ -71,7 +76,7 @@ component
   => Navigate m
   => ManageUser m
   => ManageApi m
-  => H.Component HH.HTML (Const Void) {} Void m
+  => H.Component HH.HTML (Const Void) Input Void m
 component = Connect.component $ H.mkComponent
   { initialState
   , render
@@ -82,11 +87,12 @@ component = Connect.component $ H.mkComponent
       }
   }
   where
-  initialState { currentUser } =
+  initialState { popName, currentUser } =
     { currentUser
     , timedRoutes: Nothing
     , popDefenition: Nothing
     , popDefEcharts: []
+    , popName
     , selectedRoute: Just "fra"
     , isOpen: false
     , availableRoutes: ["dia", "Dal", "lax", "fra"]
@@ -130,15 +136,14 @@ component = Connect.component $ H.mkComponent
           H.getHTMLElementRef (H.RefLabel "mymap") >>= traverse_ \element -> do
               chart <- H.liftEffect $ EC.makeChart element
               H.modify_ _ { chart = Just chart }
-              liftEffect $ EC.setOption { scatterData: newSt.popDefEcharts } chart
-              -- liftEffect $ EC.setClick { } chart
-              liftEffect $ EC.setClick { curHost: (unwrap urlEnv.curHostUrl), url: "/app/?#/pop/" } chart
+              liftEffect $ EC.setOptionPoP {} chart
+              -- liftEffect $ EC.setClick { curHost: (unwrap urlEnv.curHostUrl), url: "/app/?#/pop/" } chart
 
-    Receive { currentUser } ->
+    Receive { popName, currentUser } ->
       H.modify_ _ { currentUser = currentUser }
 
   render :: State -> H.ComponentHTML Action ChildSlots m
-  render state@{ currentUser } =
+  render state@{ popName, currentUser } =
     HH.div
       [ css_ "main" ]
       [ HH.slot (SProxy :: _ "header") unit HD.component { currentUser, route: Login } absurd
@@ -156,7 +161,7 @@ component = Connect.component $ H.mkComponent
               [ css_ "content-header-left col-md-4 col-12 mb-2" ]
               [ HH.h3
                 [ css_ "content-header-h3" ]
-                [ HH.text "Dashboard" ]
+                [ HH.text popName ]
               ]
             ]
           , HH.div

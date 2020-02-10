@@ -24,7 +24,15 @@ exports.makeChart_ = function(node) {
 exports.setOption_ = function(option) {
   return function(chart) {
     return function() {
-        return chart.setOption(optionz)
+        return chart.setOption(dashboardChart(option.scatterData))
+    };
+  };
+};
+
+exports.setOptionPoP_ = function(option) {
+  return function(chart) {
+    return function() {
+        return chart.setOption(popChart())
     };
   };
 };
@@ -33,12 +41,12 @@ exports.setClick_ = function(option) {
   return function(chart) {
     return function() {
         return chart.on('click', 'series.scatter', function (opts) {
-            console.log(opts);
-            // window.location.href = options.curHost + option.url + opts.name
+           window.location.href = option.curHost + option.url + opts.name
         });
     };
   };
 };
+
 
 var geoCoordMap = {
     "Amsterdam": [4.895168,52.370216],
@@ -122,7 +130,7 @@ var geoCoordMap = {
     "DIA": [-77.0363700, 38.8951100],
     "Zurich": [8.541694,47.376887],
 }
-       
+
 var data_good = [ {"name": "Amsterdam", "value": 4}
     , {"name": "Athens", "value": 83}
     , {"name": "Auckland", "value": 74}
@@ -207,30 +215,6 @@ var data_bad = [
     , {"name": "Beijing", "value": 90}
 ]
 
-var data_A = [
-    [{name:'Los Angeles'}, {name:'Barcelona'}],
-    [{name:'Barcelona'}, {name:'London'}],
-    [{name:'London'}, {name:'Stockholm'}]
-
-]
-
-var data_B = [
-    [{name:'Los Angeles'}, {name:'Milan'}],
-    [{name:'Milan'}, {name:'London'}],
-    [{name:'London'}, {name:'Stockholm'}]
-]
-
-var schema = [
-    {name: 'location', index: 0, text: 'location'},
-    {name: 'health', index: 1, text: 'Health'},
-    {name: 'popNum', index: 2, text: 'Number pops'},
-    {name: 'streams', index: 3, text: 'Number streams'},
-];
-
-var poop = [ {name:'Los Angeles', "coords": [], "value": 4}
-           , {name:'Barcelona', "coords": [], "value": 4}
-           ]
-
 function convertData(data, geoCoordMap) {
    var res = [];
    for (var i = 0; i < data.length; i++) {
@@ -245,7 +229,15 @@ function convertData(data, geoCoordMap) {
    return res;
 };
 
-var optionz = {
+function dashboardChart(scatterData) {
+    var schema = [
+        {name: 'location', index: 0, text: 'location'},
+        {name: 'health', index: 1, text: 'Health'},
+        {name: 'popNum', index: 2, text: 'Number pops'},
+        {name: 'streams', index: 3, text: 'Number streams'},
+    ];
+
+    return {
     legend: {
         orient: 'vertical',
         x:'left',
@@ -279,9 +271,9 @@ var optionz = {
             return '<div style="border-bottom: 1px solid rgba(255,255,255,.3); font-size: 18px;padding-bottom: 7px;margin-bottom: 7px">'
                 + obj.name
                 + '</div>'
-                + schema[1].text + '：' + value[2] + '%' + '<br>'
-                + schema[2].text + '：' + value[1] + '<br>'
-                + schema[3].text + '：' + value[3] + '<br>'
+                + schema[1].text + '：' + value[1] + '%' + '<br>'
+                + schema[2].text + '：' + value[0] + '<br>'
+                + schema[3].text + '：' + value[0] + '<br>'
             }
         }
     },
@@ -302,42 +294,84 @@ var optionz = {
     },
     series : [
         { type: 'scatter',
-          name: "bad",
+          name: "locations",
           coordinateSystem: 'geo',
-          data: [ {name: "Rio de Janeiro", value:[-43.172896,-22.906847, 4]}
-                , {name: "Geneva", value:[6.143158,46.204391, 1]}
-                , {name: "Beijing", value: [116.407395,39.904211, 5]}
-                ],
+          data: scatterData,
           symbolSize: 15,
           animation: true,
-          itemStyle: {
-              color: '#a3535c'
-          },
-          emphasis: {
-              label: {
-                  show: false
-              },
-          },
-          tooltip: { backgroundColor: '#a3535c'},
-          zlevel: 5,
-        },
-        { type: 'scatter',
-          name: "good",
-          coordinateSystem: 'geo',
-          data: convertData(data_good, geoCoordMap),
-          symbolSize: 15,
-          symbolRotate: 0,
           itemStyle: {
               color: '#269788'
           },
           emphasis: {
               label: {
                   show: false
-              }
+              },
           },
-          zlevel: 3,
+          tooltip: { backgroundColor: '#269788'},
+          zlevel: 5,
         },
-         { name: "Journey Primary",
+    ]
+    };
+}
+
+function popChart() {
+    return {
+    legend: {
+        orient: 'vertical',
+        x:'left',
+        y:'bottom',
+        data:['Journey Primary', 'Journey Secondary'],
+        selectedMode: 'single',
+        selected:{
+            'Journey Primary' : false,
+            'Journey Secondary' : false
+        },
+        textStyle : {
+            color: '#fff'
+        },
+    },
+    tooltip: {
+        padding: 10,
+        backgroundColor: '#222',
+        borderColor: '#777',
+        borderWidth: 1,
+        formatter: function (obj) {
+            var data = obj.data
+            var value = obj.value;
+            if (obj.seriesType == "lines") {
+                return '<div style="border-bottom: 1px solid rgba(255,255,255,.3); font-size: 18px;padding-bottom: 7px;margin-bottom: 7px">'
+                + data.fromName + " > " + data.toName
+                + '</div>'
+                    + 'Time' + '：' + data.data[0] + 'ms' + '<br>'
+                    + 'Total' + '：' + data.data[1] + 'ms' + '<br>'
+            } else {
+
+            return '<div style="border-bottom: 1px solid rgba(255,255,255,.3); font-size: 18px;padding-bottom: 7px;margin-bottom: 7px">'
+                + obj.name
+                + '</div>'
+                + schema[1].text + '：' + value[1] + '%' + '<br>'
+                + schema[2].text + '：' + value[0] + '<br>'
+                + schema[3].text + '：' + value[0] + '<br>'
+            }
+        }
+    },
+    geo: {
+        map: 'world',
+        silent: true,
+        roam: true,
+        scaleLimit: {min: 1.25},
+        zoom: 1.25,
+        label: {
+            show: false,
+            color: 'rgba(0,0,0,0.4)'
+        },
+        itemStyle: {
+            borderColor: '#667576',
+            areaColor: '#3a454e'
+        },
+    },
+    series : [
+        { name: "Journey Primary",
           type: "lines",
           coordinateSystem: 'geo',
           label: {
@@ -358,7 +392,7 @@ var optionz = {
               color: '#fff',
               shadowBlur: 6
           },
-           zlevel: 10,
+          zlevel: 10,
 
           data:  [
               [ {name:'Dal', coord: [-96.796989,32.776665], data: [30, 120]}
@@ -406,5 +440,6 @@ var optionz = {
           ],
         },
 
-   ]
-};
+    ]
+    };
+}

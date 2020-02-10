@@ -6,14 +6,13 @@ import Control.Monad.Reader (class MonadAsk, ask)
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple(..))
-import Debug.Trace (spy)
 import Effect.Aff as Aff
 import Effect.Aff.Bus as Bus
 import Effect.Aff.Class (class MonadAff, liftAff)
 import Effect.Class (liftEffect)
 import Effect.Ref as Ref
 import Milkis as M
-import Rtsv2App.Api.Request (OptionMethod, Token, fetch, printUrl, readToken, writeToken)
+import Rtsv2App.Api.Request (OptionMethod, Token, fetchReq, printUrl, readToken, writeToken)
 import Rtsv2App.Capability.LogMessages (class LogMessages, logError)
 import Rtsv2App.Capability.Now (class Now)
 import Rtsv2App.Data.Profile (Profile)
@@ -29,9 +28,9 @@ mkRequest
   => MonadAsk { urlEnv :: UrlEnv | r } m
   => OptionMethod
   -> m String
-mkRequest opts@{ endpoint } = do
+mkRequest opts@{ endpoint, method } = do
   { urlEnv } <- ask
-  response <- liftAff $ Aff.attempt $ fetch (M.URL $ printUrl urlEnv.curHostUrl endpoint) Nothing opts
+  response <- liftAff $ Aff.attempt $ fetchReq (M.URL $ printUrl urlEnv.curHostUrl endpoint) Nothing method
   case response of
     Left e    -> pure $ "Error making request: " <> show e
     Right res -> do
@@ -43,10 +42,10 @@ mkAuthRequest
   => MonadAsk { urlEnv :: UrlEnv | r } m
   => OptionMethod
   -> m String
-mkAuthRequest opts@{ endpoint } = do
+mkAuthRequest opts@{ endpoint, method } = do
   { urlEnv } <- ask
   token <- liftEffect readToken
-  response <- liftAff $ Aff.attempt $ fetch (M.URL $ printUrl urlEnv.authUrl endpoint) token opts
+  response <- liftAff $ Aff.attempt $ fetchReq (M.URL $ printUrl urlEnv.authUrl endpoint) token method
   case response of
     Left e    -> pure $ "Error making request: " <> show e
     Right res -> do

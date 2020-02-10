@@ -17,6 +17,7 @@ import Foreign.Object (Object)
 import Halogen as H
 import Prim.Row as Row
 import Record as Record
+import Rtsv2App.Data.PoPDef (PoPDefEcharts)
 import Shared.Types (PoPName)
 import Simple.JSON as JSON
 import Unsafe.Coerce (unsafeCoerce)
@@ -32,6 +33,9 @@ foreign import data Instance :: Type
 foreign import makeChart_ :: HTMLElement -> Effect Instance
 
 foreign import setOption_ :: forall option. option -> Instance -> Effect Unit
+
+foreign import setOptionPoP_ :: forall option. option -> Instance -> Effect Unit
+
 
 foreign import setClick_ :: forall option. option -> Instance -> Effect Unit
 
@@ -49,6 +53,14 @@ setOption
   -> Effect Unit
 setOption = setOption_
 
+setOptionPoP
+  :: forall option option'
+   . Row.Union option option' Option
+  => Record option
+  -> Instance
+  -> Effect Unit
+setOptionPoP = setOptionPoP_
+
 setClick
   :: forall option option'
    . Row.Union option option' ClickOption
@@ -65,6 +77,9 @@ type ClickOption =
 
 type Option =
   ( title :: TitleOption
+  , scatterData :: Array PoPDefEcharts
+  , curHost :: String
+  , url :: String
   , tooltip :: TooltipOption
   , backgroundColor :: String
   , color :: Array String

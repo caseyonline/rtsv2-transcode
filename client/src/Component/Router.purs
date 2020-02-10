@@ -23,9 +23,10 @@ import Rtsv2App.Capability.Resource.User (class ManageUser)
 import Rtsv2App.Component.Utils (OpaqueSlot)
 import Rtsv2App.Data.Profile (Profile)
 import Rtsv2App.Data.Route (Route(..), routeCodec)
-import Rtsv2App.Env (UserEnv, UrlEnv)
+import Rtsv2App.Env (UrlEnv, UserEnv, PoPDefEnv)
 import Rtsv2App.Page.Dashboard as Dashboard
 import Rtsv2App.Page.Login as Login
+import Rtsv2App.Page.PoPHome as PoPHome
 import Rtsv2App.Page.Register as Register
 import Rtsv2App.Page.Settings as Settings
 
@@ -46,6 +47,7 @@ data Action
 
 type ChildSlots = 
   ( dashboard :: OpaqueSlot Unit
+  , popHome :: OpaqueSlot Unit
   , login :: OpaqueSlot Unit
   , register :: OpaqueSlot Unit
   , settings :: OpaqueSlot Unit
@@ -57,7 +59,7 @@ type ChildSlots =
 component
   :: forall m r
    . MonadAff m
-  => MonadAsk { userEnv :: UserEnv, urlEnv :: UrlEnv | r } m
+  => MonadAsk { userEnv :: UserEnv, urlEnv :: UrlEnv, popDefEnv :: PoPDefEnv | r } m
   => Now m
   => LogMessages m
   => Navigate m
@@ -114,6 +116,9 @@ component = Connect.component $ H.mkComponent
     Just r -> case r of
       Dashboard ->
         HH.slot (SProxy :: _ "dashboard") unit Dashboard.component {} absurd
+          # authorize currentUser
+      PoPHome popName  ->
+        HH.slot (SProxy :: _ "popHome") unit PoPHome.component {popName: popName} absurd
           # authorize currentUser
       Login -> 
         HH.slot (SProxy :: _ "login") unit Login.component { redirect: true } absurd

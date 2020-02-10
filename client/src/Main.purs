@@ -20,11 +20,12 @@ import Milkis as M
 import Routing.Duplex (parse)
 import Routing.Hash (matchesWith)
 import Rtsv2App.Api.Endpoint (Endpoint(..))
-import Rtsv2App.Api.Request (ProfileJson, RequestMethod(..), fetch, printUrl, readToken, withResponse)
+import Rtsv2App.Api.Request (ProfileJson, RequestMethod(..), fetchReq, printUrl, readToken, withResponse)
 import Rtsv2App.AppM (runAppM)
 import Rtsv2App.Component.Router as Router
 import Rtsv2App.Data.Route (routeCodec)
-import Rtsv2App.Env (AuthUrl(..), CurHostUrl(..), Env, LogLevel(..), UrlEnv, UserEnv, getCurOrigin)
+import Rtsv2App.Env (AuthUrl(..), CurHostUrl(..), Env, LogLevel(..), UrlEnv, UserEnv, PoPDefEnv, getCurOrigin)
+import Shared.Types.Agent.State (PoPDefinition)
 
 
 main :: Effect Unit
@@ -32,25 +33,31 @@ main = HA.runHalogenAff do
 
   body <- HA.awaitBody
   let
+    logLevel = Dev
     -- TODO: this will need changing to our Auth
     authUrl = AuthUrl "https://conduit.productionready.io"
 
-    logLevel = Dev
-
+  curHostUrl <- liftEffect getCurOrigin
   -- default currentUser Ref to Nothing when starting app
   currentUser <- liftEffect $ Ref.new Nothing
-  curHostUrl <- liftEffect getCurOrigin
-  -- authUrl <- liftEffect $ Ref.new authUrl_
+
+  popDefinition <- liftEffect $ Ref.new Nothing
 
   -- new bus to broadcast updates when the value of the current user changes;
-  userBus <- liftEffect Bus.make 
+  userBus <- liftEffect Bus.make
+
+  liftEffect readToken >>= traverse_ \token -> do
+    response <- liftAff $ Aff.attempt $ fetchReq (M.URL $ printUrl (CurHostUrl curHostUrl) PopDefinitionE) Nothing Get
+    popDef <- withResponse response \(result :: PoPDefinition Array) -> result
+    case popDef of
+      Left err -> traceM err -- need to do some proper error handling here
+      Right pd -> liftEffect $ Ref.write (Just pd) popDefinition
 
   -- Attempt to fill the reference with the user profile associated with the token in
   -- local storage (if there is one). Read the token, request the user's profile if it can, and
   -- if it gets a valid result, write it to our mutable reference.
   liftEffect readToken >>= traverse_ \token -> do
-    let method = { endpoint: User, method: Get }
-    response <- liftAff $ Aff.attempt $ fetch (M.URL $ printUrl authUrl method.endpoint) (Just token) method
+    response <- liftAff $ Aff.attempt $ fetchReq (M.URL $ printUrl authUrl UserE) (Just token) Get
     user <- withResponse response \(result :: ProfileJson) -> result.user
     case user of
       Left err -> traceM err -- need to do some proper error handling here
@@ -58,7 +65,7 @@ main = HA.runHalogenAff do
 
   let
     environment :: Env
-    environment = { urlEnv, logLevel, userEnv }
+    environment = { urlEnv, logLevel, userEnv, popDefEnv }
       where
       urlEnv :: UrlEnv
       urlEnv = { curHostUrl: (CurHostUrl curHostUrl), authUrl }
@@ -66,6 +73,8 @@ main = HA.runHalogenAff do
       userEnv :: UserEnv
       userEnv = { currentUser, userBus }
 
+      popDefEnv :: PoPDefEnv
+      popDefEnv = { popDefinition }
   -- Produce a proper root component for Halogen to run. combining `hoist`, `runAppM`, our environment, and our router component
     rootComponent :: H.Component HH.HTML Router.Query {} Void Aff
     rootComponent = H.hoist (runAppM environment) Router.component

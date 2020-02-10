@@ -28,7 +28,7 @@ import Rtsv2App.Data.Log as Log
 import Rtsv2App.Data.Profile (ProfileEmailRes)
 import Rtsv2App.Data.Route as Route
 import Rtsv2App.Env (Env, LogLevel(..))
-import Shared.Types.Agent.State (TimedPoPRoutes)
+import Shared.Types.Agent.State (TimedPoPRoutes, PoPDefinition)
 import Simple.JSON as JSON
 import Type.Equality (class TypeEquals, from)
 
@@ -95,21 +95,28 @@ instance manageUserAppM :: ManageUser AppM where
     authenticate Request.register
 
   getCurrentUser = do
-    response <- mkAuthRequest { endpoint: User, method: Get }
+    response <- mkAuthRequest { endpoint: UserE, method: Get }
     case JSON.readJSON response of
       Left e -> pure Nothing
       Right (res :: ProfileEmailRes) -> do
         pure $ Just res.user
 
   updateUser fields =
-    void $ mkAuthRequest { endpoint: User, method: Put (Just (JSON.writeJSON fields)) }
+    void $ mkAuthRequest { endpoint: UserE, method: Put (Just (JSON.writeJSON fields)) }
 
 -- | all api stats related requests
 instance manageAPIAppM :: ManageApi AppM where
   --  
   getTimedRoutes toPopName = do
-    response <- mkRequest { endpoint: TimedRoutes toPopName, method: Get }
+    response <- mkRequest { endpoint: TimedRoutesE toPopName, method: Get }
     case JSON.readJSON response of
       Left e -> pure $ Left $ show e
       Right (res :: TimedPoPRoutes) -> do
+        pure $ Right res
+
+  getPoPdefinition = do
+    response <- mkRequest { endpoint: PopDefinitionE, method: Get }
+    case JSON.readJSON response of
+      Left e -> pure $ Left $ show e
+      Right (res :: PoPDefinition Array) -> do
         pure $ Right res

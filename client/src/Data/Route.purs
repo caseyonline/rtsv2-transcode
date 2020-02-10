@@ -5,7 +5,7 @@ import Prelude hiding ((/))
 import Data.Either (note)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show (genericShow)
-import Routing.Duplex (RouteDuplex', as, root)
+import Routing.Duplex (RouteDuplex', as, path, root, segment, string)
 import Routing.Duplex.Generic (noArgs, sum)
 import Routing.Duplex.Generic.Syntax ((/))
 import Rtsv2App.Data.Username (Username)
@@ -18,6 +18,7 @@ import Shared.Types (PoPName, parsePname, toStringPname)
 -------------------------------------------------------------------------------
 data Route
   = Dashboard
+  | PoPHome String
   | Login
   | Register
   | Settings
@@ -33,6 +34,7 @@ routeCodec :: RouteDuplex' Route
 routeCodec = root $ sum
   { "Dashboard": noArgs
   , "Login": "login" / noArgs
+  , "PoPHome": "pop" / string segment
   , "Register": "register" / noArgs
   , "Settings": "settings" / noArgs
   }

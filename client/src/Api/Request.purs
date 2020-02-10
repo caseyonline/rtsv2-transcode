@@ -9,7 +9,7 @@ module Rtsv2App.Api.Request
   , RequestMethod(..)
   , Token -- constructor and decoders not exported
   , Unlifted(..)
-  , fetch
+  , fetchReq
   , login
   , printUrl
   , readToken
@@ -24,7 +24,7 @@ import Prelude
 
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..), fromMaybe)
-import Data.Newtype (class Newtype, un, unwrap)
+import Data.Newtype (class Newtype, unwrap)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Effect.Aff (Aff, Error)
@@ -90,8 +90,8 @@ type LoginFields = { | AuthFieldsRep Unlifted () }
 -------------------------------------------------------------------------------
 -- Default RequestOptions
 -------------------------------------------------------------------------------
-fetch :: M.URL -> Maybe Token -> OptionMethod -> Aff M.Response
-fetch url token { method } = case method of
+fetchReq :: M.URL -> Maybe Token -> RequestMethod -> Aff M.Response
+fetchReq url token method = case method of
   Get    -> f url
             { method: M.getMethod
             , headers: getHeader token
@@ -125,8 +125,8 @@ getHeader = case _ of
 -- User Request functions
 -------------------------------------------------------------------------------
 requestUser :: forall m. MonadAff m => UrlEnv -> OptionMethod -> m (Either String (Tuple Token Profile))
-requestUser url opts@{ endpoint } = do
-  response <- liftAff $ Aff.attempt $ fetch (M.URL $ printUrl url.curHostUrl endpoint) Nothing opts
+requestUser url opts@{ endpoint, method } = do
+  response <- liftAff $ Aff.attempt $ fetchReq (M.URL $ printUrl url.curHostUrl endpoint) Nothing method
   withResponse response \(result :: ProfileTokenJson) -> do
                             let u = result.user
                             (Tuple (u.token) { bio: u.bio
@@ -137,12 +137,12 @@ requestUser url opts@{ endpoint } = do
 login :: forall m. MonadAff m => UrlEnv -> LoginFields -> m (Either String (Tuple Token Profile))
 login urlEnv fields =
   let method = Post (Just (JSON.writeJSON { user: fields }))
-   in requestUser urlEnv { endpoint: Login, method }
+   in requestUser urlEnv { endpoint: LoginE, method }
 
 register :: forall m. MonadAff m => UrlEnv -> RegisterFields -> m (Either String (Tuple Token Profile))
 register urlEnv fields =
   let method = Post (Just (JSON.writeJSON { user: fields }))
-   in requestUser urlEnv { endpoint: Users, method }
+   in requestUser urlEnv { endpoint: UsersE, method }
 
 withResponse
   :: forall a b m

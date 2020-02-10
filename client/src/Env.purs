@@ -9,14 +9,16 @@ import Effect (Effect)
 import Effect.Aff.Bus (BusRW)
 import Effect.Ref (Ref)
 import Rtsv2App.Data.Profile (Profile)
+import Shared.Types.Agent.State (PoPDefinition)
 import Web.HTML (window)
 import Web.HTML.Location as L
 import Web.HTML.Window as Window
 
 type Env =
-  { logLevel :: LogLevel
-  , urlEnv :: UrlEnv
-  , userEnv :: UserEnv
+  { logLevel  :: LogLevel
+  , urlEnv    :: UrlEnv
+  , userEnv   :: UserEnv
+  , popDefEnv :: PoPDefEnv
   }
 
 data LogLevel = Dev | Prod
@@ -28,6 +30,9 @@ type UserEnv =
   { currentUser :: Ref (Maybe Profile)
   , userBus :: BusRW (Maybe Profile)
   }
+
+type PoPDefEnv =
+  { popDefinition :: Ref (Maybe (PoPDefinition Array)) }
 
 newtype CurHostUrl = CurHostUrl String
 derive instance genericCurHostUrl :: Generic CurHostUrl _
