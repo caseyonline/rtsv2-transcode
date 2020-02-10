@@ -7,26 +7,23 @@ module Shared.Types.Media.Types.Rtmp
        , RtmpAudioCodecId(..)
        , RtmpVideoCodecId(..)
        , emptyRtmpClientMetadata
-       , foreignToMetadata
        ) where
 
 import Prelude
 
 import Control.Monad.Except (except)
 import Data.Either (note)
-import Data.Function.Uncurried (Fn2, Fn3, mkFn2, runFn2, runFn3)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show (genericShow)
 import Data.List.NonEmpty (singleton)
 import Data.Maybe (Maybe(..))
-import Foreign (Foreign, ForeignError(..), readString, unsafeToForeign)
+import Foreign (ForeignError(..), readString, unsafeToForeign)
 import Shared.Types.Media.Types.Avc (AvcProfile, AvcLevel)
 import Simple.JSON (class ReadForeign, class WriteForeign, writeImpl)
 import Simple.JSON.Generics (untaggedSumRep)
 
 ------------------------------------------------------------------------------
--- RTMP Client Metadata - currently there's erlang code in rtsv2_rtmp_ingest_handler that
--- knows these types - so if you change these, then you need to change that
+-- RTMP Client Metadata - if you change these, then you need to change Rtmp.erl
 ------------------------------------------------------------------------------
 data RtmpAudioCodecId = Uncompressed
                         | ADPCM
@@ -108,18 +105,10 @@ emptyRtmpClientMetadata = { audio: { codecId: Nothing
                           , other: mempty
                           }
 
-foreign import foreignToPursImpl :: forall f. Monoid (f RtmpClientMetadataNamedValue) =>
-                                    Fn3
-                                    Foreign
-                                    (RtmpClientMetadata f)
-                                    (Fn2 (f RtmpClientMetadataNamedValue) (f RtmpClientMetadataNamedValue) (f RtmpClientMetadataNamedValue))
-                                    (RtmpClientMetadata f)
-
-foreignToMetadata :: forall f. Monoid (f RtmpClientMetadataNamedValue) => Foreign -> (RtmpClientMetadata f)
-foreignToMetadata proplist = runFn3 foreignToPursImpl proplist emptyRtmpClientMetadata (mkFn2 append)
-
 --------------------------------------------------------------------------------
 -- Type class derivations
+--------------------------------------------------------------------------------
+
 --------------------------------------------------------------------------------
 -- RtmpAudioCodecId
 derive instance genericRtmpAudioCodecId :: Generic RtmpAudioCodecId _
@@ -127,10 +116,10 @@ derive instance eqRtmpAudioCodecId :: Eq RtmpAudioCodecId
 instance showRtmpAudioCodecId :: Show RtmpAudioCodecId where show = genericShow
 instance readRtmpAudioCodecId :: ReadForeign RtmpAudioCodecId where
   readImpl =
-    readString >=> parseCodecId
+    readString >=> parseStr
     where
       error s = singleton (ForeignError (errorString s))
-      parseCodecId s = except $ note (error s) (toType s)
+      parseStr s = except $ note (error s) (toType s)
       toType "uncompressed" = pure Uncompressed
       toType "adpcm" = pure ADPCM
       toType "mp3" = pure MP3
@@ -152,16 +141,17 @@ instance writeForeignRtmpAudioCodecId :: WriteForeign RtmpAudioCodecId where
       toString AAC = "aac"
       toString Speex = "speex"
 
+--------------------------------------------------------------------------------
 -- RtmpVideoCodecId
 derive instance genericRtmpVideoCodecId :: Generic RtmpVideoCodecId _
 derive instance eqRtmpVideoCodecId :: Eq RtmpVideoCodecId
 instance showRtmpVideoCodecId :: Show RtmpVideoCodecId where show = genericShow
 instance readRtmpVideoCodecId :: ReadForeign RtmpVideoCodecId where
   readImpl =
-    readString >=> parseCodecId
+    readString >=> parseStr
     where
       error s = singleton (ForeignError (errorString s))
-      parseCodecId s = except $ note (error s) (toType s)
+      parseStr s = except $ note (error s) (toType s)
       toType "sorenson" = pure SorensonH263
       toType "screen" = pure Screen
       toType "on2vp6" = pure On2VP6
@@ -179,6 +169,7 @@ instance writeForeignRtmpVideoCodecId :: WriteForeign RtmpVideoCodecId where
       toString On2VP6Transparency = "on2vp6transparency"
       toString H264 = "h264"
 
+--------------------------------------------------------------------------------
 -- RtmpClientMetadataValue
 derive instance genericRtmpClientMetadataValue :: Generic RtmpClientMetadataValue _
 derive instance eqRtmpClientMetadataValue :: Eq RtmpClientMetadataValue

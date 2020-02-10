@@ -8,6 +8,7 @@
 -include_lib("id3as_media/include/send_to_bus_processor.hrl").
 -include_lib("id3as_media/include/frame_writer.hrl").
 -include_lib("id3as_media/include/bitrate_monitor.hrl").
+-include_lib("id3as_avp/include/avp_ingest_source_details_extractor.hrl").
 
 -export([
          init/3,
@@ -55,7 +56,7 @@ init(Rtmp, ConnectArgs, [#{ ingestStarted := IngestStarted
       <<"response">> := ClientResponse} ->
       %% We have a adobe completed digest
 
-      Reply = (((StreamAuth(Host))(ShortName))(UserName))(),
+      Reply = (StreamAuth(Host, ShortName, UserName))(),
 
       case Reply of
         {nothing} ->
@@ -79,7 +80,7 @@ init(Rtmp, ConnectArgs, [#{ ingestStarted := IngestStarted
                            ingestStopped = IngestStopped,
                            streamAuthType = StreamAuthType,
                            streamAuth = StreamAuth,
-                           streamPublish = (((StreamPublish)(Host))(ShortName))(UserName),
+                           streamPublish = StreamPublish(Host, ShortName, UserName),
                            clientMetadata = ClientMetadata
                           }};
 
@@ -103,7 +104,7 @@ init(Rtmp, ConnectArgs, [#{ ingestStarted := IngestStarted
       <<"response">> := ClientResponse} ->
       %% We have a llnw completed digest
 
-      Reply = (((StreamAuth(Host))(ShortName))(UserName))(),
+      Reply = (StreamAuth(Host, ShortName, UserName))(),
 
       case Reply of
         {nothing} ->
@@ -135,7 +136,7 @@ init(Rtmp, ConnectArgs, [#{ ingestStarted := IngestStarted
                            ingestStopped = IngestStopped,
                            streamAuthType = StreamAuthType,
                            streamAuth = StreamAuth,
-                           streamPublish = (((StreamPublish)(Host))(ShortName))(UserName),
+                           streamPublish = StreamPublish(Host, ShortName, UserName),
                            clientMetadata = ClientMetadata
                           }};
 
@@ -154,7 +155,7 @@ init(Rtmp, ConnectArgs, [#{ ingestStarted := IngestStarted
     #{} ->
       ?SLOG_INFO("No authmod - start authentication", #{host => Host,
                                                         shortName => ShortName}),
-      Reply = ((StreamAuthType(Host))(ShortName))(),
+      Reply = (StreamAuthType(Host, ShortName))(),
 
       case Reply of
         {nothing} ->
@@ -175,7 +176,7 @@ handle(State = #?state{rtmp_pid = Rtmp,
 
       StreamName = list_to_binary(StreamNameStr),
 
-      case ((StreamPublish)(StreamName))() of
+      case (StreamPublish(StreamName))() of
         {nothing} ->
           ?SLOG_INFO("Streamname rejected", #{stream_name => StreamName}),
           rtmp:close(Rtmp),
@@ -187,7 +188,7 @@ handle(State = #?state{rtmp_pid = Rtmp,
                                          path => Path,
                                          stream_name => StreamName}),
 
-          case (((IngestStarted(StreamDetails))(StreamName))(self()))() of
+          case (IngestStarted(StreamDetails, StreamName, self()))() of
             {right, StreamAndVariant} ->
               {ok, WorkflowPid} = start_workflow(Rtmp, StreamId, ClientId, Path, StreamAndVariant),
 
@@ -215,11 +216,15 @@ workflow_loop(StreamName, WorkflowPid, State = #?state{ingestStopped = IngestSto
     #workflow_output{message = #no_active_generators_msg{}} ->
       ?SLOG_WARNING("Client exited"),
 
-      unit = ((IngestStopped(StreamDetails))(StreamName))(),
+      unit = (IngestStopped(StreamDetails, StreamName))(),
       ok;
 
     #workflow_output{message = #workflow_data_msg{data = #rtmp_client_metadata{metadata = Metadata}}} ->
-      unit = ((ClientMetadata(StreamAndVariant))(Metadata))(),
+      unit = (ClientMetadata(StreamAndVariant, Metadata))(),
+      workflow_loop(StreamName, WorkflowPid, State);
+
+    #workflow_output{message = #workflow_data_msg{data = SourceInfo = #source_info{}}} ->
+      %%unit = ((ClientMetadata(StreamAndVariant))(Metadata))(),
       workflow_loop(StreamName, WorkflowPid, State);
 
     Other ->

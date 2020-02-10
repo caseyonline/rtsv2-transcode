@@ -19,6 +19,7 @@ import Shared.LlnwApiTypes (StreamDetails)
 import Shared.Stream (StreamAndVariant, StreamId, StreamVariant)
 import Shared.Types (GeoLoc, Milliseconds, PoPName, RegionName, Server, ServerAddress)
 import Shared.Types.Media.Types.Rtmp (RtmpClientMetadata)
+import Shared.Types.Media.Types.SourceDetails (SourceInfo)
 import Shared.Types.Workflow.Metrics.FrameFlow as FrameFlow
 import Shared.Types.Workflow.Metrics.RtmpPushIngest as RtmpIngest
 import Shared.Types.Workflow.Metrics.StreamBitrateMonitor as StreamBitrateMonitor
@@ -40,6 +41,7 @@ type TimedPoPStep
 
 type Ingest f
   = { rtmpClientMetadata :: Maybe (RtmpClientMetadata f)
+    , sourceInfo :: Maybe (SourceInfo f)
     }
 
 type IngestAggregator

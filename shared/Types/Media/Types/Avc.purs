@@ -26,6 +26,8 @@ newtype AvcLevel = AvcLevel Number
 --------------------------------------------------------------------------------
 -- Type class derivations
 --------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
 -- AvcProfile
 derive instance genericAvcProfile :: Generic AvcProfile _
 instance eqAvcProfile :: Eq AvcProfile where eq = genericEq
@@ -50,6 +52,7 @@ instance writeForeignAvcProfile :: WriteForeign AvcProfile where
       toString Main = "main"
       toString Baseline = "baseline"
 
+--------------------------------------------------------------------------------
 -- AvcLevel
 derive newtype instance readForeignAvcLevel :: ReadForeign AvcLevel
 derive newtype instance writeForeignAvcLevel :: WriteForeign AvcLevel

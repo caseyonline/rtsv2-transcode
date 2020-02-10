@@ -2,6 +2,7 @@ module Rtsv2.Agents.IngestInstance
   ( startLink
   , isActive
   , setClientMetadata
+  , setSourceInfo
   , getPublicState
   , stopIngest
   , Args
@@ -43,6 +44,7 @@ import Shared.Stream (StreamAndVariant, StreamId, toStreamId, toVariant)
 import Shared.Types (Load, Milliseconds, Server, ServerLoad(..), extractAddress)
 import Shared.Types.Agent.State as PublicState
 import Shared.Types.Media.Types.Rtmp (RtmpClientMetadata)
+import Shared.Types.Media.Types.SourceDetails (SourceInfo)
 import SpudGun (Url)
 import SpudGun as SpudGun
 
@@ -61,6 +63,7 @@ type State
     , streamDetails :: StreamDetails
     , aggregatorAddr :: Maybe (LocalOrRemote Server)
     , clientMetadata :: Maybe (RtmpClientMetadata List)
+    , sourceInfo :: Maybe (SourceInfo List)
     }
 
 type Args
@@ -80,6 +83,11 @@ setClientMetadata streamAndVariant metadata =
   Gen.doCall (serverName streamAndVariant) \state -> do
     pure $ CallReply unit state{clientMetadata = Just metadata}
 
+setSourceInfo :: StreamAndVariant -> (SourceInfo List) -> Effect Unit
+setSourceInfo streamAndVariant sourceInfo =
+  Gen.doCall (serverName streamAndVariant) \state -> do
+    pure $ CallReply unit state{sourceInfo = Just sourceInfo}
+
 stopIngest :: StreamAndVariant -> Effect Unit
 stopIngest streamAndVariant =
   Gen.doCall (serverName streamAndVariant) \state -> do
@@ -88,8 +96,9 @@ stopIngest streamAndVariant =
 
 getPublicState :: StreamAndVariant -> Effect (PublicState.Ingest List)
 getPublicState streamAndVariant =
-  Gen.call (serverName streamAndVariant) \state@{clientMetadata: rtmpClientMetadata} -> do
-    CallReply {rtmpClientMetadata} state
+  Gen.call (serverName streamAndVariant) \state@{clientMetadata: rtmpClientMetadata,
+                                                 sourceInfo: sourceInfo} -> do
+    CallReply {rtmpClientMetadata, sourceInfo} state
 
 init :: Args -> Effect State
 init {streamDetails, streamAndVariant, handlerPid} = do
@@ -107,6 +116,7 @@ init {streamDetails, streamAndVariant, handlerPid} = do
        , aggregatorRetryTime: wrap intraPoPLatencyMs
        , aggregatorAddr: Nothing
        , clientMetadata: Nothing
+       , sourceInfo: Nothing
        }
   where
     ourServerName = (serverName streamAndVariant)

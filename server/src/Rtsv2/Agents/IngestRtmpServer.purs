@@ -8,6 +8,7 @@ import Prelude
 
 import Data.Either (Either(..), hush)
 import Data.Foldable (any)
+import Data.Function.Uncurried (Fn1, Fn2, Fn3, mkFn2, mkFn3)
 import Data.Maybe (Maybe)
 import Data.Newtype (wrap)
 import Effect (Effect)
@@ -25,17 +26,19 @@ import Rtsv2.Names as Names
 import Serf (Ip)
 import Shared.LlnwApiTypes (AuthType, PublishCredentials, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamPublish, StreamAuth)
 import Shared.Stream (StreamAndVariant(..))
-import Shared.Types.Media.Types.Rtmp (foreignToMetadata)
+import Media.Rtmp as Rtmp
+import Media.SourceDetails as SourceDetails
 import SpudGun (bodyToJSON)
 import SpudGun as SpudGun
 
 type Callbacks
-  = { ingestStarted :: StreamDetails -> String -> Pid -> Effect (Either Unit StreamAndVariant)
-    , ingestStopped :: StreamDetails -> String -> Effect Unit
-    , streamAuthType :: String -> String -> Effect (Maybe AuthType)
-    , streamAuth ::  String -> String -> String -> Effect (Maybe PublishCredentials)
-    , streamPublish :: String -> String -> String -> String -> Effect (Maybe StreamDetails)
-    , clientMetadata :: StreamAndVariant -> Foreign -> Effect Unit
+  = { ingestStarted :: Fn3 StreamDetails String Pid (Effect (Either Unit StreamAndVariant))
+    , ingestStopped :: Fn2 StreamDetails String (Effect Unit)
+    , streamAuthType :: Fn2 String String (Effect (Maybe AuthType))
+    , streamAuth ::  Fn3 String String String (Effect (Maybe PublishCredentials))
+    , streamPublish :: Fn3 String String String (Fn1 String (Effect (Maybe StreamDetails)))
+    , clientMetadata :: Fn2 StreamAndVariant Foreign (Effect Unit)
+    , sourceMetadata :: Fn2 StreamAndVariant Foreign (Effect Unit)
     }
 
 isAvailable :: Effect Boolean
@@ -59,12 +62,13 @@ init _ = do
   {port, nbAcceptors} <- Config.rtmpIngestConfig
   {streamAuthTypeUrl, streamAuthUrl, streamPublishUrl} <- Config.llnwApiConfig
   let
-    callbacks = { ingestStarted
-                , ingestStopped
-                , streamAuthType: streamAuthType streamAuthTypeUrl
-                , streamAuth: streamAuth streamAuthUrl
-                , streamPublish: streamPublish streamPublishUrl
-                , clientMetadata
+    callbacks = { ingestStarted: mkFn3 ingestStarted
+                , ingestStopped: mkFn2 ingestStopped
+                , streamAuthType: mkFn2 (streamAuthType streamAuthTypeUrl)
+                , streamAuth: mkFn3 (streamAuth streamAuthUrl)
+                , streamPublish: mkFn3 (streamPublish streamPublishUrl)
+                , clientMetadata: mkFn2 clientMetadata
+                , sourceMetadata: mkFn2 sourceMetadata
                 }
   _ <- startServerImpl Left (Right unit) interfaceIp port nbAcceptors callbacks
   pure $ {}
@@ -111,5 +115,9 @@ init _ = do
       pure $ hush (spy "publish parse" (bodyToJSON (spy "publish result" restResult)))
 
     clientMetadata streamAndVariant metadata = do
-      _ <- IngestInstance.setClientMetadata streamAndVariant (foreignToMetadata metadata)
+      _ <- IngestInstance.setClientMetadata streamAndVariant (Rtmp.foreignToMetadata metadata)
+      pure unit
+
+    sourceMetadata streamAndVariant metadata = do
+      _ <- IngestInstance.setSourceInfo streamAndVariant (SourceDetails.foreignToSourceInfo metadata)
       pure unit
