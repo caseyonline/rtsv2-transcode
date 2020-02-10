@@ -16,7 +16,7 @@ import Data.Newtype (class Newtype, unwrap, wrap)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, singleton)
-import Erl.Utils (Milliseconds, Ref, makeRef)
+import Erl.Utils (Ref, makeRef)
 import Logger (Logger, spy)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
@@ -37,7 +37,7 @@ import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Rtsv2.Utils (crashIfLeft)
 import Shared.Agent as Agent
 import Shared.Stream (StreamId)
-import Shared.Types (EgestServer, Load, PoPName, RelayServer, Server, ServerLoad(..))
+import Shared.Types (Milliseconds, EgestServer, Load, PoPName, RelayServer, Server, ServerLoad(..))
 import Shared.Types.Agent.State as PublicState
 import SpudGun as SpudGun
 
@@ -117,7 +117,7 @@ init payload@{streamId, aggregatorPoP} = do
   {egestAvailableAnnounceMs, lingerTimeMs, relayCreationRetryMs} <- Config.egestAgentConfig
 
   thisServer <- PoPDefinition.getThisServer
-  _ <- IntraPoP.announceEgestIsAvailable streamId
+  _ <- IntraPoP.announceLocalEgestIsAvailable streamId
   _ <- Timer.sendEvery (serverName streamId) egestAvailableAnnounceMs Tick
   _ <- Timer.sendAfter (serverName streamId) 0 InitStreamRelays
   maybeRelay <- IntraPoP.whereIsStreamRelay streamId
@@ -155,7 +155,7 @@ handleInfo msg state@{streamId} =
 
 handleTick :: State -> Effect State
 handleTick state@{streamId} = do
-  _ <- IntraPoP.announceEgestIsAvailable streamId
+  _ <- IntraPoP.announceLocalEgestIsAvailable streamId
   pure state
 
 maybeStop :: Ref -> State -> Effect (CastResult State)
@@ -164,7 +164,7 @@ maybeStop ref state@{streamId
                     , stopRef}
   | (clientCount == 0) && (Just ref == stopRef) = do
     logInfo "Egest stopping" {streamId: streamId}
-    _ <- IntraPoP.announceEgestStopped streamId
+    _ <- IntraPoP.announceLocalEgestStopped streamId
     pure $ CastStop state
 
   | otherwise = pure $ CastNoReply state
@@ -183,7 +183,7 @@ initStreamRelay state@{relayCreationRetry, streamId, aggregatorPoP, thisServer} 
 
     Right remote@(Remote remoteServer) -> do
       let
-        url = makeUrl remoteServer RelayE
+        url = makeUrl remoteServer RelayRegisterEgestE
       _ <- void <$> crashIfLeft =<< SpudGun.postJson url relayRegistrationPayload
       pure state{relay = Just $ toRelayServer  <$> remote}
   where

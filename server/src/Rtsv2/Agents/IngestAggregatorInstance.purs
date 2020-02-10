@@ -52,8 +52,7 @@ type State
     }
 
 data Msg
-  = Tick
-  | MaybeStop
+  = MaybeStop
 
 isAvailable :: StreamId -> Effect Boolean
 isAvailable streamId = do
@@ -106,8 +105,7 @@ init streamDetails = do
   logInfo "Ingest Aggregator starting" {streamId, streamDetails}
   config <- Config.ingestAggregatorAgentConfig
   thisServer <- PoPDefinition.getThisServer
---  _ <- Timer.sendEvery (serverName streamId) config.streamAvailableAnnounceMs Tick
-  _ <- announceLocalAggregatorIsAvailable streamId
+  announceLocalAggregatorIsAvailable streamId
   workflow <- startWorkflowImpl streamDetails.slot.name ((\p -> tuple2 (StreamAndVariant (wrap streamDetails.slot.name) (wrap p.streamName)) p.streamName) <$> streamDetails.slot.profiles)
   pure { config : config
        , thisAddress : extractAddress thisServer
@@ -122,18 +120,12 @@ init streamDetails = do
 handleInfo :: Msg -> State -> Effect (CastResult State)
 handleInfo msg state@{activeStreamVariants, streamId} =
   case msg of
-    Tick -> CastNoReply <$> handleTick state
     MaybeStop
       | size activeStreamVariants == 0 -> do
         logInfo "Ingest Aggregator stopping" {streamId: streamId}
         _ <- announceLocalAggregatorStopped streamId
         pure $ CastStop state
       | otherwise -> pure $ CastNoReply state
-
-handleTick :: State -> Effect State
-handleTick state@{streamId} = do
-  _ <- announceLocalAggregatorIsAvailable streamId
-  pure state
 
 --------------------------------------------------------------------------------
 -- Log helpers

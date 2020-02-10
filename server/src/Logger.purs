@@ -10,11 +10,12 @@ module Logger
        , spy
        , doLog
        , Logger
+       , class SpyWarning
        ) where
 
 import Prelude
 
-import Debug.Trace (class DebugWarning)
+import Prim.TypeError (class Warn, Text)
 import Effect (Effect)
 import Effect.Unsafe (unsafePerformEffect)
 import Erl.Atom (Atom)
@@ -33,7 +34,11 @@ foreign import info      :: forall a. String -> a -> Effect Unit
 foreign import debug     :: forall a. String -> a -> Effect Unit
 foreign import spyImpl   :: forall a. String -> a -> Effect Unit
 
-spy :: forall a. DebugWarning => String -> a -> a
+
+class SpyWarning
+instance warn :: Warn (Text "Logger.spy usage") => SpyWarning
+
+spy :: forall a. SpyWarning => String -> a -> a
 spy str a = unsafePerformEffect do
   _ <-  spyImpl str {misc : a}
   pure a

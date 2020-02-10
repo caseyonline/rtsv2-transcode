@@ -32,7 +32,8 @@ getStatsImpl() ->
 
                           Statuses = ets:select(id3as_workflow_node_metrics, MetricsSpec),
 
-                          Initial = #{streamAndVariant => StreamAndVariant},
+                          Initial = #{ timestamp => ?now_ms
+                                     , streamAndVariant => StreamAndVariant},
 
                           Output = lists:foldl(fun(#status{module = frame_flow_meter,
                                                            metrics = Metrics}, Acc) ->
@@ -48,7 +49,7 @@ getStatsImpl() ->
                                                Statuses),
                           Fields = maps:size(Output),
                           if
-                            Fields == 4 -> {true, Output};
+                            Fields == 5 -> {true, Output};
                             ?otherwise -> false
                           end
                       end,
@@ -90,11 +91,14 @@ frame_flow_metrics_to_purs(Metrics) ->
                            (#counter_metric{name = last_capture_ms,
                                             value = Value,
                                             tags = Tags}, Acc) ->
-                            update(lastCaptureMs, Value, Tags, Acc);
+                            update(lastCaptureMs, to_maybe(Value), Tags, Acc);
                            (#text_metric{name = codec,
                                          value = Value,
                                          tags = Tags}, Acc) ->
-                            update(codec, Value, Tags, Acc);
+                            update(codec, to_maybe(case Value of
+                                                     undefined -> undefined;
+                                                     _ -> atom_to_binary(Value, utf8)
+                                                   end), Tags, Acc);
                            (_, Acc) ->
                             Acc
                         end,
@@ -145,7 +149,7 @@ tags_to_stream(Tags) ->
   lists:foldl(fun({profile_name, Name}, Acc) ->
                   Acc#{profileName => atom_to_binary(Name, utf8)};
                  ({stream_id, StreamId}, Acc) ->
-                  Acc#{streamId => StreamId};
+                  Acc#{streamId => binary_to_integer(StreamId)};
                  ({frame_type, FrameType}, Acc) ->
                   Acc#{frameType => {case FrameType of
                                        video -> 'video';
@@ -162,3 +166,9 @@ update(Name, Value, Tags, Streams) ->
   Stream = maps:get(Tags, Streams, #{}),
   Stream2 = maps:put(Name, Value, Stream),
   maps:put(Tags, Stream2, Streams).
+
+to_maybe(undefined) ->
+  {nothing};
+
+to_maybe(Value) ->
+  {just, Value}.

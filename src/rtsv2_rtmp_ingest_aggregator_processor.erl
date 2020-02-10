@@ -108,10 +108,8 @@ process_input(Input = #frame{source_metadata = #source_metadata{source_id = Id,
 
   Output = case maps:get(Id, PendingProgramDetails, undefined) of
              undefined ->
-?INFO("XXX NO PROG DETAILS ~p -> ~p", [Id, PendingProgramDetails]),
                Input;
              ProgramDetails ->
-?INFO("XXX SENDING PROG DETAILS ~p", [ProgramDetails]),
                [ProgramDetails, Input]
            end,
 
@@ -125,12 +123,10 @@ process_input(Input = #frame{type = program_details,
               State = #?state{reference_stream = undefined,
                               pending_program_details = PendingProgramDetails}) ->
   %% We need an iframe to create a reference stream
-  ?INFO("XXX STORE PD ~p", [Input]),
   {ok, State#?state{pending_program_details = maps:put(Id, Input, PendingProgramDetails)}};
 
 process_input(_Input, State = #?state{reference_stream = undefined}) ->
   %% We need an iframe to create a reference stream
-  ?INFO("XXX DROP ~p", [trace_formatter:format(_Input)]),
   {ok, State};
 
 process_input(Input = #frame{source_metadata = #source_metadata{source_id = Id,
@@ -182,10 +178,8 @@ process_input(Input = #frame{source_metadata = #source_metadata{source_id = Id,
 
           Output = case maps:get(Id, PendingProgramDetails, undefined) of
                      undefined ->
-                       ?INFO("XXX NO PROG DETAILS2 ~p -> ~p", [Id, PendingProgramDetails]),
                        DeltadFrame;
                      ProgramDetails ->
-                       ?INFO("XXX SENDING PROG DETAILS2 ~p", [ProgramDetails]),
                        [ProgramDetails#frame{dts = DeltadFrame#frame.dts,
                                              pts = DeltadFrame#frame.dts}, DeltadFrame]
                    end,
@@ -196,7 +190,6 @@ process_input(Input = #frame{source_metadata = #source_metadata{source_id = Id,
           %% We can't generate a reference delta on a non-iframe
           case Input of
             #frame{type = program_details} ->
-  ?INFO("XXX STORE2 PD ~p", [Input]),
               {ok, State#?state{pending_program_details = maps:put(Id, Input, PendingProgramDetails)}};
             _ ->
               {ok, State}

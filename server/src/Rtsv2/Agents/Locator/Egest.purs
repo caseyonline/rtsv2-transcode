@@ -75,12 +75,6 @@ findEgestAndRegister streamId thisServer = do
      void <$> crashIfLeft =<< SpudGun.postJson url ({streamId, aggregatorPoP} :: CreateEgestPayload)
 
 
-
---------------------------------------------------------------------------------
--- Internal
---------------------------------------------------------------------------------
--- TODO use launchLocalOrRemoteGeneric
-
 --------------------------------------------------------------------------------
 -- Log helpers
 --------------------------------------------------------------------------------

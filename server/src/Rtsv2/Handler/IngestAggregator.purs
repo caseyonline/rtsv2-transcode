@@ -40,7 +40,7 @@ ingestAggregatorsActiveIngest =
   Rest.handler (\req ->
                  let
                    streamId = Bindings.streamId req
-                   variant =Bindings.variant req
+                   variant = Bindings.variant req
                  in
                   Rest.initResult req {streamAndVariant: StreamAndVariant streamId variant
                                       , serverAddress: Nothing})

@@ -28,15 +28,18 @@ type Canary = String
 
 data Endpoint
   = TransPoPLeaderE
+  | IntraPoPTestHelperE
   | TimedRoutesE PoPName
   | HealthCheckE
   | ServerStateE
+  | PoPDefinitionE
   | EgestStatsE StreamId
   | EgestE
   | RelayE
   | RelayEnsureStartedE
-  | RelayChainE
-  | RelayRegisterE
+  | RelayRegisterEgestE
+  | RelayRegisterRelayE
+  | RelayProxiedStatsE StreamId
   | RelayStatsE StreamId
   | LoadE
   | WorkflowsE
@@ -73,16 +76,21 @@ endpoint :: RouteDuplex' Endpoint
 endpoint = root $ sum
   {
     "TransPoPLeaderE"                                  : "" / "api" / path "transPoPLeader" noArgs
+  , "IntraPoPTestHelperE"                              : "" / "api" / "test" / path "intraPoP" noArgs
   , "TimedRoutesE"                                     : "" / "api" / "timedRoutes" / popName segment
   , "HealthCheckE"                                     : "" / "api" / path "healthCheck" noArgs
   , "ServerStateE"                                     : "" / "api" / path "state" noArgs
+  , "PoPDefinitionE"                                   : "" / "api" / path "popDefinition" noArgs
   , "EgestStatsE"                                      : "" / "api" / "agents" / "egest" / streamId segment
   , "EgestE"                                           : "" / "api" / "agents" / path "egest" noArgs
+
   , "RelayE"                                           : "" / "api" / "agents" / "relay" / path "egest"  noArgs
   , "RelayEnsureStartedE"                              : "" / "api" / "agents" / "relay" / path "ensureStarted"  noArgs
-  , "RelayChainE"                                      : "" / "api" / "agents" / "relay" / path "chain"  noArgs
-  , "RelayRegisterE"                                   : "" / "api" / "agents" / "relay" / path "register" noArgs
+  , "RelayRegisterEgestE"                              : "" / "api" / "agents" / "relay" / "register" / path "egest" noArgs
+  , "RelayRegisterRelayE"                              : "" / "api" / "agents" / "relay" / "register" / path "relay" noArgs
   , "RelayStatsE"                                      : "" / "api" / "agents" / "relay" / streamId segment
+  , "RelayProxiedStatsE"                               : "" / "api" / "agents" / "proxied" / "relay" / streamId segment
+
   , "LoadE"                                            : "" / "api" / path "load" noArgs
 
   , "WorkflowsE"                                       : "" / "api" / path "workflows" noArgs

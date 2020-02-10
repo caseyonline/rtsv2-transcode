@@ -1,7 +1,7 @@
 module Rtsv2.Agents.StreamRelay.Types
   ( CreateRelayPayload
   , CreateProxyPayload
-  , RegisterRelayChainPayload
+  , RegisterRelayPayload
   , RegisterEgestPayload
   , SourceRoute
   ) where
@@ -21,9 +21,7 @@ type CreateProxyPayload
     , aggregatorPoP :: PoPName
     }
 
-
-
-type RegisterRelayChainPayload
+type RegisterRelayPayload
   = { streamId :: StreamId
     , deliverTo :: RelayServer
     , sourceRoute :: SourceRoute

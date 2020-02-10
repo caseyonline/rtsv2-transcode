@@ -66,7 +66,9 @@ function destroy_net {
         sudo ip link delete "${name}"
       done
 
-      sudo ip link delete rtsv2-br || true
+      if [[ -n "$(ip -j link | jq -r '.[] | select(.ifname == "rtsv2-br") | .ifindex')" ]]; then
+        sudo ip link delete rtsv2-br
+      fi
       ;;
   esac
 }
@@ -82,9 +84,11 @@ function destroy_beams {
 function start_node {
   local -r tmuxSession=$1
   local -r nodeName=$2
-  local -r iface=$3
+  local -r ifaceIndex=$3
   local -r addr=$4
   local -r sysConfig=$5
+
+  iface=$(interface_name_from_index "${ifaceIndex}")
 
   create_iface "$iface" "$addr"
 
@@ -92,7 +96,7 @@ function start_node {
   touch "logs/$nodeName/t-serf.log"
 
   tmux -L "$tmuxSession" send-keys " export HOSTNAME=$addr" C-m
-  tmux -L "$tmuxSession" send-keys " serf agent -iface $iface -node $nodeName -bind $addr:7946 -rpc-addr $addr:7373 | tee -a logs/$nodeName/i-serf.log | grep -v 'Accepted client'" C-m
+  tmux -L "$tmuxSession" send-keys " serf agent -iface $iface -node $nodeName -bind $addr:7946 -rpc-addr $addr:7373 | tee -a logs/$nodeName/i-serf.log | grep -v 'Accepted client' | grep -v 'liveness' | grep -v 'transPoPLeader'" C-m
   tmux -L "$tmuxSession" split-window -h -p 80
   tmux -L "$tmuxSession" send-keys " export HOSTNAME=$addr" C-m
   tmux -L "$tmuxSession" send-keys " tail -f logs/$nodeName/t-serf.log | grep -v 'Accepted client'" C-m
@@ -103,7 +107,7 @@ function start_node {
   tmux -L "$tmuxSession" send-keys " export PRIVATE_IFACE=$iface" C-m
   tmux -L "$tmuxSession" send-keys " export PUBLIC_IFACE=$iface" C-m
   tmux -L "$tmuxSession" send-keys " export DISK_LOG_ROOT=$(pwd)/logs/$nodeName" C-m
-  tmux -L "$tmuxSession" send-keys " erl -pa _build/default/lib/*/ebin -config $sysConfig -rtsv2 id '\"rtsv2TestRunner$nodeName\"' -eval 'application:ensure_all_started(rtsv2).'" C-m
+  tmux -L "$tmuxSession" send-keys " erl +sbwt none +sbwtdcpu none +sbwtdio none -pa _build/default/lib/*/ebin -config $sysConfig -rtsv2 id '\"rtsv2TestRunner$nodeName\"' -eval 'application:ensure_all_started(rtsv2).'" C-m
 }
 
 function stop_node {

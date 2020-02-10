@@ -2,10 +2,11 @@ module Main where
 
 import Prelude
 
-import Data.Array (delete, sort)
+import Data.Array (catMaybes, delete, filter, intercalate, length, sort)
 import Data.Either (Either(..))
 import Data.Foldable (foldl)
 import Data.Identity (Identity(..))
+import Data.Map as Map
 import Data.Maybe (Maybe(..), isNothing)
 import Data.Newtype (un, wrap)
 import Data.Time.Duration (Milliseconds(..))
@@ -18,6 +19,8 @@ import Effect.Exception (error) as Exception
 import Foreign.Object as Object
 import Milkis as M
 import Milkis.Impl.Node (nodeFetch)
+import Node.Encoding (Encoding(..))
+import Node.FS.Aff (writeTextFile)
 import OsCmd (runProc)
 import Shared.Stream (StreamVariant(..))
 import Shared.Types (ServerAddress(..), extractAddress)
@@ -31,13 +34,64 @@ import Test.Spec.Runner (runSpecT)
 fetch :: M.Fetch
 fetch = M.fetch nodeFetch
 
-type TestNode =  { vlan :: String
+type TestNode =  { ifaceIndexString :: String
                  , addr :: String
                  , sysConfig :: String
                  }
 
 data Node = Node Int Int
 derive instance eqNode :: Eq Node
+
+
+type PoPInfo = { name :: String
+               , number :: Int
+               , x :: Number
+               , y :: Number
+               }
+
+mkPoPJson :: Array Node -> String
+mkPoPJson  nodes =
+  let
+
+    iad = {name: "iad", number: 1, x: 0.0, y: 0.0} :: PoPInfo
+    dal = {name: "dal", number: 2, x: 0.0, y: 0.0} :: PoPInfo
+    lax = {name: "lax", number: 3, x: 0.0, y: 0.0} :: PoPInfo
+    fra = {name: "fra", number: 4, x: 0.0, y: 0.0} :: PoPInfo
+
+    popNodes pop = filter (\(Node popNum  _) -> popNum == pop.number)
+
+    insertNodes k [] acc = acc
+    insertNodes k v acc = Map.insert k v acc
+
+    nodeMap = Map.empty
+              # insertNodes iad.number (popNodes iad nodes)
+              # insertNodes dal.number (popNodes dal nodes)
+              # insertNodes lax.number (popNodes lax nodes)
+              # insertNodes fra.number (popNodes fra nodes)
+
+    quote = show
+    mkPoP :: PoPInfo -> Maybe String
+    mkPoP pop =
+      case Map.lookup pop.number nodeMap of
+        Nothing -> Nothing
+        Just nodesThisPoP -> Just $
+          show pop.name <> ": { \"geoLoc\" : [" <> (quote $ show pop.x) <> "," <> (quote $ show pop.y) <> "], \"nodes\": ["
+                    <> intercalate ", " (quote <<< toAddr <$> nodesThisPoP)
+                    <> "]}"
+
+    mkRegion :: String -> (Array String) -> Maybe String
+    mkRegion name [] = Nothing
+    mkRegion name pops = Just $
+      quote name <> ": {"
+                 <> intercalate ", " pops
+                 <> "}"
+
+    america = mkRegion "americas" $ catMaybes $ mkPoP <$> [iad, dal, lax]
+    europe  = mkRegion "europe"   $ catMaybes $ mkPoP <$> [fra]
+
+  in
+   "{"  <> (intercalate ", " $ catMaybes [america, europe]) <> "}"
+
 
 main :: Effect Unit
 main =
@@ -48,6 +102,10 @@ main =
     p1n3 = Node 1 3
     p2n1 = Node 2 1
     p2n2 = Node 2 2
+    p3n1 = Node 3 1
+    p3n2 = Node 3 2
+    p4n1 = Node 4 1
+    p4n2 = Node 4 2
 
     slot1      = "slot1"
     shortName1 = "mmddev001"
@@ -84,7 +142,11 @@ main =
                                          { method: M.getMethod
                                          } # attempt <#> stringifyError
 
-    intraPoPState node                      = fetch (M.URL $ api node <> "state")
+    proxiedRelayStats node streamId    = fetch (M.URL $ api node <> "agents/proxied/relay/" <> streamId)
+                                         { method: M.getMethod
+                                         } # attempt <#> stringifyError
+
+    intraPoPState node                 = fetch (M.URL $ api node <> "state")
                                          { method: M.getMethod
                                          } # attempt <#> stringifyError
 
@@ -95,6 +157,15 @@ main =
                                          , body: "{\"load\": " <> show load <> "}"
                                          , headers: M.makeHeaders { "Content-Type": "application/json" }
                                          } # attempt <#> stringifyError
+
+    dropAgentMessages :: Node -> Boolean -> Aff (Either String M.Response)
+    dropAgentMessages node flag        = fetch (M.URL $ api node <> "test/intraPoP")
+                                         { method: M.postMethod
+                                         , body: "{\"dropAgentMessages\": " <> show flag <> "}"
+                                         , headers: M.makeHeaders { "Content-Type": "application/json" }
+                                         } # attempt <#> stringifyError
+
+
 
     maybeLogStep s a =
       let _ = spy s a in
@@ -118,15 +189,18 @@ main =
       pure $ Right r
     debugBody (Left err) = let _ = spy "debugBodyErr" err in pure $ Left err
 
-    launch nodes = do
-      _ <- stopSession
-      nodes <#> mkNode "test/config/sys.config" # launchNodes
 
     assertRelayForEgest = assertBodyFun <<< predicate
       where
         predicate :: Array Node -> PublicState.StreamRelay -> Boolean
         predicate servers {egestsServed} =
           (sort $ (ServerAddress <<< toAddr) <$> servers) == sort egestsServed
+
+    assertRelayForRelay = assertBodyFun <<< predicate
+      where
+        predicate :: Array Node -> PublicState.StreamRelay -> Boolean
+        predicate servers {relaysServed} =
+          (sort $ (ServerAddress <<< toAddr) <$> servers) == sort relaysServed
 
     assertEgestClients = assertBodyFun <<< predicate
       where
@@ -138,7 +212,6 @@ main =
         predicate :: Array String -> PublicState.IngestAggregator -> Boolean
         predicate vars {activeStreamVariants} = sort (StreamVariant <$> vars) == (sort $ _.streamVariant <$> activeStreamVariants)
 
---    assertIngestOn :: Array Node -> String -> PublicState.IntraPoP -> Boolean
     assertAggregatorOn nodes slotName  = assertBodyFun $ predicate
       where
         predicate :: PublicState.IntraPoP -> Boolean
@@ -153,7 +226,24 @@ main =
           in
           (sort $ (ServerAddress <<< toAddr) <$> nodes) == sort serverAddressesForStreamId
 
+    assertRelayCount slotName count = assertBodyFun $ predicate
+      where
+        predicate :: PublicState.IntraPoP -> Boolean
+        predicate popState =
+          let
+            nodeAddresses = toAddr
+            serverAddressesForStreamId = foldl (\acc {streamId, servers} ->
+                                                 if streamId == wrap slotName
+                                                 then acc <> (extractAddress <$> servers)
+                                                 else acc
+                                               ) []  popState.relayLocations
+          in
+          length (sort serverAddressesForStreamId) == count
+
+
     delayMs = delay <<< Milliseconds
+
+    waitForMessageTimeout          = delayMs 2000.0
 
     waitForAsyncRelayStart         = delayMs  100.0
     waitForAsyncRelayStop          = delayMs  100.0
@@ -162,7 +252,9 @@ main =
     waitForAsyncVariantStop        = delayMs  100.0
 
     waitForIntraPoPDisseminate     = delayMs  500.0
-    waitForNodeFailureDisseminate  = delayMs 3500.0
+
+    waitForNodeStartDisseminate    = delayMs 1000.0
+    waitForNodeFailureDisseminate  = delayMs 3500.0 -- TODO - seems big
 
     waitForTransPoPDisseminate     = delayMs 2000.0
     waitForTransPoPStopDisseminate = delayMs 5000.0 -- TODO - seeems big
@@ -177,13 +269,15 @@ main =
     describe "Ingest tests"
       let
         p1Nodes = [p1n1, p1n2, p1n3]
-        p2Nodes = [p2n1, p2n2]
-        nodes = p1Nodes <> p2Nodes
+        nodes = p1Nodes
         allNodesBar node = delete node nodes
         maxOut server = setLoad server 60.0 >>= assertStatusCode 204 >>= as ("set load on " <> toAddr server)
         aggregatorNotPresent slot server = aggregatorStats server slot >>= assertStatusCode 404 >>= as ("aggregator not on " <> toAddr server)
       in do
-      before_ (launch nodes) do
+      before_ (do
+                 startSession nodes
+                 launch nodes
+              ) do
         after_ stopSession do
           it "ingest aggregation created on ingest node" do
             ingest start    p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
@@ -307,16 +401,17 @@ main =
             --                                          >>= assertAggregator [high]
             --                                                               >>= as  "lingered aggregator has high variant"
 
-
     describe "Ingest egest tests" do
       describe "one pop setup"
         let
           p1Nodes = [p1n1, p1n2, p1n3]
-          p2Nodes = [p2n1, p2n2]
-          nodes = p1Nodes <> p2Nodes
+          nodes = p1Nodes
           allNodesBar node = delete node nodes
         in do
-        before_ (launch nodes) do
+        before_ (do
+                   startSession nodes
+                   launch nodes
+                ) do
           after_ stopSession do
             it "client requests stream on ingest node" do
               client start p1n1 slot1          >>= assertStatusCode 404 >>= as  "no egest prior to ingest"
@@ -388,7 +483,10 @@ main =
           p1Nodes = [p1n1, p1n2, p1n3]
           p2Nodes = [p2n1, p2n2]
           nodes = p1Nodes <> p2Nodes
-        before_ (launch nodes) do
+        before_ (do
+                   startSession nodes
+                   launch nodes
+                ) do
           after_ stopSession do
             it "client requests stream on other pop" do
               client start p2n1 slot1          >>= assertStatusCode 404 >>= as  "no egest prior to ingest"
@@ -399,7 +497,13 @@ main =
               client start p2n1 slot1          >>= assertStatusCode 204 >>= as  "egest available"
               relayStats   p2n1 slot1          >>= assertStatusCode 200 >>= as  "local relay exists"
               waitForAsyncRelayStart                                    >>= as' "wait for the relay chain to start"
-              relayStats   p1n1 slot1          >>= assertStatusCode 200 >>= as  "remote relay exists"
+              waitForIntraPoPDisseminate                                >>= as' "allow intraPoP to spread location of relay"
+              intraPoPState p1n1               >>= assertStatusCode 200
+                                                   >>= assertRelayCount slot1 1
+                                                                        >>= as  "relay created in aggregator pop"
+              proxiedRelayStats p1n1 slot1     >>= assertStatusCode 200
+                                                   >>= assertRelayForRelay [p2n1]
+                                                                        >>= as  "remote relay is serving local relay"
 
             it "client ingest starts and stops" do
               client start p1n2 slot1          >>= assertStatusCode 404 >>= as  "no local egest prior to ingest"
@@ -412,6 +516,93 @@ main =
               waitForTransPoPStopDisseminate                            >>= as' "wait for transPop disseminate"
               client start p1n2 slot1          >>= assertStatusCode 404 >>= as  "no same pop egest post stop"
               client start p2n1 slot1          >>= assertStatusCode 404 >>= as  "no remote pop egest post stop"
+              -- TODO - assert the relays stop as well - might be slow with timeouts chaining...
+
+
+      describe "node startup - one pop" do
+        let
+          phase1Nodes = [p1n1, p1n2]
+          phase2Nodes = [p1n3]
+          nodes = phase1Nodes <> phase2Nodes
+          sysconfig = "test/config/partial_nodes/sys.config"
+        before_ (do
+                   startSession nodes
+                   launch' phase1Nodes sysconfig
+                ) do
+          after_ stopSession do
+            it "client requests stream on other pop" do
+              ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
+              waitForIntraPoPDisseminate                                >>= as' "let ingest presence disseminate"
+              launch' phase2Nodes sysconfig
+              waitForNodeStartDisseminate                               >>= as' "let ingest presence disseminate"
+              client start p1n3 slot1          >>= assertStatusCode 204 >>= as  "local egest post ingest"
+
+            -- TODO - egest - test stream we think is not present when it is
+
+      describe "packet loss - one pop" do
+        let
+          nodes = [p1n1, p1n2]
+          sysconfig = "test/config/partial_nodes/sys.config"
+        before_ (do
+                   startSession nodes
+                   launch' nodes sysconfig
+                ) do
+          after_ stopSession do
+            it "aggregator expired after extended packet loss" do
+              ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
+              waitForIntraPoPDisseminate                                >>= as' "let ingest presence disseminate"
+              client start p1n2 slot1          >>= assertStatusCode 204 >>= as  "local egest post ingest"
+              dropAgentMessages p1n2 true                               >>= as  "Drop all agent messages"
+              waitForIntraPoPDisseminate                                >>= as' "Wait for less than message expiry"
+              client start p1n2 slot1          >>= assertStatusCode 204 >>= as  "Initially clients can still join"
+              waitForMessageTimeout                                     >>= as' "Wait for less than message expiry"
+              client start p1n2 slot1          >>= assertStatusCode 404 >>= as  "Clients can no longer join"
+              dropAgentMessages p1n2 false                              >>= as  "Alow messages to flow once more"
+              waitForNodeStartDisseminate                               >>= as' "let ingest presence disseminate"
+              client start p1n2 slot1          >>= assertStatusCode 204 >>= as  "Client can join once more"
+
+
+            -- TODO - egest - test stream we think is not present when it is
+
+
+      describe "four pop setup" do
+        let
+          p1Nodes = [p1n1, p1n2]  -- iad
+          p2Nodes = [p2n1, p2n2]  -- dal
+          p3Nodes = [p3n1, p3n2]  -- fra
+          p4Nodes = [p4n1, p4n2]  -- lax
+          -- the topology in wanDefinition.json is important - maybe make explicit for this test...
+          -- todo - why don't singleton pops work?
+          nodes = p1Nodes <> p2Nodes <> p3Nodes <> p4Nodes
+          maxOut server = setLoad server 99.0 >>= assertStatusCode 204 >>= as ("set load on " <> toAddr server)
+
+        before_ (do
+                   startSession nodes
+                   launch nodes
+                ) do
+          after_ stopSession do
+            it "lax -> fra sets up 2 non-overlapping relay chains" do
+              traverse_ maxOut [p1n2, p2n2, p3n2, p4n2]                    >>= as' "load up all servers bar one in each pop"
+              waitForIntraPoPDisseminate                                >>= as' "allow intraPoP to spread location of relay"
+              ingest start p3n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
+              waitForTransPoPDisseminate                                >>= as' "wait for transPop disseminate"
+              client start p4n1 slot1          >>= assertStatusCode 204 >>= as  "egest available in lax"
+              relayStats   p4n1 slot1          >>= assertStatusCode 200 >>= as  "local relay exists"
+              waitForAsyncRelayStart                                    >>= as' "wait for the relay chain to start"
+              waitForIntraPoPDisseminate                                >>= as' "allow intraPoP to spread location of relay"
+              relayStats p1n1 slot1            >>= assertStatusCode 200
+                                                   >>= assertRelayForRelay [p4n1]
+--                                                       >>= assertRelayForEgest []
+                                                                        >>= as  "iad relays for lax with no egests of its own"
+
+              relayStats p2n1 slot1            >>= assertStatusCode 200
+                                                   >>= assertRelayForRelay [p4n1]
+--                                                       >>= assertRelayForEgest []
+                                                                        >>= as  "dal relays for lax with no egests of its own"
+              relayStats p3n1 slot1            >>= assertStatusCode 200
+                                                   >>= assertRelayForRelay [p1n1, p2n1]
+--                                                       >>= assertRelayForEgest []
+                                                                        >>= as  "fra relays for both iad and dal with no egests of its own"
 
     describe "Cleanup" do
       after_ stopSession do
@@ -477,29 +668,46 @@ assertBodyFun pred either =
 
 toAddr :: Node -> String
 toAddr (Node popNum nodeNum) = "172.16." <> show (popNum + 168) <> "." <> show nodeNum
-toVlan :: Node -> String
-toVlan (Node popNum nodeNum) = "vlan" <> show (popNum * 10) <> show nodeNum
+
+toIfaceIndexString :: Node -> String
+toIfaceIndexString (Node popNum nodeNum) = show (popNum * 10) <> show nodeNum
+
 mkNode :: String  -> Node -> TestNode
-mkNode sysConfig node = {vlan: toVlan node, addr: toAddr node, sysConfig}
+mkNode sysConfig node = {ifaceIndexString: toIfaceIndexString node, addr: toAddr node, sysConfig}
 
 
 sessionName:: String
 sessionName = "testSession"
 
-launchNodes :: Array TestNode -> Aff Unit
-launchNodes sysconfigs = do
-  _ <- runProc "./scripts/startSession.sh" [sessionName]
-  _ <- traverse_ (\tn -> runProc "./scripts/startNode.sh"
-                         [ sessionName
-                         , tn.addr
-                         , tn.vlan
-                         , tn.addr
-                         , tn.sysConfig
-                         ]) sysconfigs
 
-  traverse_ (\tn -> runProc "./scripts/waitForNode.sh"
-                    [ tn.addr
-                    ]) sysconfigs
+startSession :: Array Node -> Aff Unit
+startSession allNodes = do
+  stopSession
+  writeTextFile UTF8 "config/popDefinition.json" $ mkPoPJson allNodes
+
+  runProc "./scripts/startSession.sh" [sessionName]
+
+
+launch :: Array Node -> Aff Unit
+launch nodes = launch' nodes "test/config/sys.config"
+
+launch' :: Array Node -> String -> Aff Unit
+launch' nodesToStart sysconfig = do
+  nodesToStart <#> mkNode  sysconfig # launchNodes
+  where
+  launchNodes :: Array TestNode -> Aff Unit
+  launchNodes nodes = do
+    traverse_ (\tn -> runProc "./scripts/startNode.sh"
+                      [ sessionName
+                      , tn.addr
+                      , tn.ifaceIndexString
+                      , tn.addr
+                      , tn.sysConfig
+                      ]) nodes
+
+    traverse_ (\tn -> runProc "./scripts/waitForNode.sh"
+                      [ tn.addr
+                      ]) nodes
 
 stopSession :: Aff Unit
 stopSession = do

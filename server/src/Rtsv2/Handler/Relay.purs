@@ -2,9 +2,9 @@ module Rtsv2.Handler.Relay
        ( startResource
        , ensureStarted
        , registerEgest
---       , chainResource
+       , registerRelay
        , stats
-       , ChainState
+       , proxiedStats
        , StartState
        ) where
 
@@ -17,12 +17,12 @@ import Erl.Cowboy.Handlers.Rest (moved, notMoved)
 import Erl.Cowboy.Req (StatusCode(..), replyWithoutBody, setHeader)
 import Erl.Data.List (singleton, (:))
 import Erl.Data.Map as Map
-import Logger (spy)
+import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.Locator.Relay (findOrStart)
-import Rtsv2.Agents.Locator.Types (LocalOrRemote(..), LocationResp, NoCapacity(..), ResourceResp)
-import Rtsv2.Agents.StreamRelay.Types (CreateRelayPayload, RegisterEgestPayload, RegisterRelayChainPayload)
+import Rtsv2.Agents.Locator.Types (LocalOrRemote(..), NoCapacity(..), ResourceResp)
 import Rtsv2.Agents.StreamRelay.Instance as StreamRelayInstance
 import Rtsv2.Agents.StreamRelay.InstanceSup as StreamRelayInstanceSup
+import Rtsv2.Agents.StreamRelay.Types (CreateRelayPayload, RegisterEgestPayload, RegisterRelayPayload)
 import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
@@ -31,7 +31,7 @@ import Shared.Types.Agent.State as PublicState
 import Simple.JSON as JSON
 import Stetson (HttpMethod(..), StetsonHandler)
 import Stetson.Rest as Rest
-import StetsonHelper (GenericStetsonGetByStreamId, GenericStetsonHandler, allBody, binaryToString, genericGetByStreamId, genericPost, preHookSpyState)
+import StetsonHelper (GenericStetsonGetByStreamId, GenericStetsonHandler, GenericProxyState, allBody, binaryToString, genericGetByStreamId, genericPost, genericProxyByStreamId, preHookSpyState)
 
 
 stats :: GenericStetsonGetByStreamId PublicState.StreamRelay
@@ -42,6 +42,12 @@ startResource =  genericPost  StreamRelayInstanceSup.startRelay
 
 registerEgest :: GenericStetsonHandler RegisterEgestPayload
 registerEgest = genericPost  StreamRelayInstance.registerEgest
+
+registerRelay :: GenericStetsonHandler RegisterRelayPayload
+registerRelay = genericPost  StreamRelayInstance.registerRelay
+
+proxiedStats :: StetsonHandler GenericProxyState
+proxiedStats = genericProxyByStreamId IntraPoP.whereIsStreamRelay RelayStatsE
 
 
 newtype StartState = StartState { mPayload :: Maybe CreateRelayPayload
@@ -66,22 +72,17 @@ ensureStarted =
       mPayload <- (hush <$> JSON.readJSON <$> binaryToString <$> allBody req mempty)
       apiResp <- maybe (pure $ Left NoCapacity) findOrStart mPayload
 
-      let _ = spy "ensureStarted - init" {mPayload, apiResp}
-
       let
         req2 = setHeader "x-servedby" (unwrap $ extractAddress thisServer) req
       Rest.initResult req2 $ StartState {mPayload, apiResp}
 
     malformedRequest req state@(StartState {mPayload}) =
-      let _ = spy "malformed" {mPayload} in
       Rest.result (isNothing mPayload) req state
 
     acceptJson req state =
-      let _ = spy "acceptJson" {state} in
       Rest.result true req state
 
     resourceExists req state@(StartState {apiResp}) =
-      let _ = spy "exists" {state} in
       case apiResp of
         Left NoCapacity -> do
           --TODO - don't think this should be a 502
@@ -93,26 +94,18 @@ ensureStarted =
           Rest.result false req state
 
     previouslyExisted req state@(StartState {apiResp}) =
-      let _ = spy "previouslyExisted" {state} in
       Rest.result (isRight apiResp) req state
 
     movedTemporarily req state@(StartState {apiResp}) =
-      let _ = spy "movedTemporarily" {state} in
       case apiResp of
         Right (Remote server) ->
           let
-            url = makeUrl server RelayChainE
+            url = makeUrl server RelayEnsureStartedE
           in
-            let _ = spy "movedTemporarily - to " {url} in
             Rest.result (moved $ unwrap url) req state
         _ ->
           Rest.result notMoved req state
 
-
-
-newtype ChainState = ChainState { mPayload :: Maybe RegisterRelayChainPayload
-                                , apiResp  :: LocationResp
-                                }
 
 -- chainResource :: StetsonHandler ChainState
 -- chainResource =

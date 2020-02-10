@@ -31,10 +31,11 @@ import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
 import Erl.Data.Tuple (Tuple2, tuple2)
-import Erl.Utils (Milliseconds, Url)
-import Erl.Utils (Url, Milliseconds) as Erl
+import Erl.Utils (Url)
+import Erl.Utils (Url) as Erl
 import Foreign (Foreign, MultipleErrors)
 import Prim.Row (class Union)
+import Shared.Types (Milliseconds)
 import Simple.JSON (class ReadForeign, class WriteForeign, writeJSON)
 import Simple.JSON as JSON
 

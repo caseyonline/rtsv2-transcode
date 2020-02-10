@@ -8,7 +8,6 @@ import Prelude
 
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show (genericShow)
-import Data.Newtype (class Newtype)
 import Simple.JSON (class ReadForeign, class WriteForeign, writeImpl)
 import Simple.JSON.Generics (enumSumRep)
 
@@ -18,19 +17,23 @@ data FrameType = Video
                | ProgramDetails
                | PCR
 
-newtype Stream a = Stream
-                   { streamId :: Int
-                   , frameType :: FrameType
-                   , profileName :: String
-                   , metrics :: a
-                   }
+type Stream a = { streamId :: Int
+                , frameType :: FrameType
+                , profileName :: String
+                , metrics :: a
+                }
 
 ------------------------------------------------------------------------------
 -- Type class derivations
 ------------------------------------------------------------------------------
 derive instance genericFrameType :: Generic FrameType _
 derive instance eqFrameType :: Eq FrameType
-instance showFrameType :: Show FrameType where show = genericShow
+instance showFrameType :: Show FrameType where
+  show Video = "video"
+  show Audio = "audio"
+  show Subtitles = "subtitles"
+  show ProgramDetails = "program_details"
+  show PCR = "pcr"
 instance readFrameType :: ReadForeign FrameType where readImpl = enumSumRep
 instance writeForeignFrameType :: WriteForeign FrameType where
   writeImpl Video = writeImpl "video"
@@ -38,9 +41,3 @@ instance writeForeignFrameType :: WriteForeign FrameType where
   writeImpl Subtitles = writeImpl "subtitles"
   writeImpl ProgramDetails = writeImpl "programDetails"
   writeImpl PCR = writeImpl "pcr"
-
-derive instance newtypeStream :: Newtype (Stream a) _
-derive newtype instance eqStream :: (Eq a) => Eq (Stream a)
-derive newtype instance showStream :: (Show a) => Show (Stream a)
-derive newtype instance readForeignStream :: (ReadForeign a) => ReadForeign (Stream a)
-derive newtype instance writeForeignStream :: (WriteForeign a) => WriteForeign (Stream a)
