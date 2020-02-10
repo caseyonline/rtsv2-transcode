@@ -91,7 +91,7 @@ setSourceInfo streamAndVariant sourceInfo =
 stopIngest :: StreamAndVariant -> Effect Unit
 stopIngest streamAndVariant =
   Gen.doCall (serverName streamAndVariant) \state -> do
-    _ <- doStopIngest state
+    doStopIngest state
     pure $ CallStop unit state
 
 getPublicState :: StreamAndVariant -> Effect (PublicState.Ingest List)
@@ -103,12 +103,12 @@ getPublicState streamAndVariant =
 init :: Args -> Effect State
 init {streamDetails, streamAndVariant, handlerPid} = do
   logInfo "Ingest starting" {streamAndVariant, handlerPid}
-  _ <- Gen.monitorPid ourServerName handlerPid (\_ -> HandlerDown)
+  Gen.monitorPid ourServerName handlerPid (\_ -> HandlerDown)
   thisServer <- PoPDefinition.getThisServer
   {intraPoPLatencyMs} <- Config.globalConfig
-  _ <- Bus.subscribe ourServerName IntraPoP.bus IntraPoPBus
-  _ <- Audit.ingestStart streamAndVariant
-  _ <- Timer.sendAfter ourServerName 0 InformAggregator
+  void $ Bus.subscribe ourServerName IntraPoP.bus IntraPoPBus
+  void $ Timer.sendAfter ourServerName 0 InformAggregator
+  Audit.ingestStart streamAndVariant
 
   pure { thisServer
        , streamDetails
@@ -134,13 +134,13 @@ handleInfo msg state@{streamAndVariant} = case msg of
 
   HandlerDown -> do
     logInfo "RTMP Handler has exited" {streamAndVariant}
-    _ <- doStopIngest state
+    doStopIngest state
     pure $ CastStop state
 
 doStopIngest :: State -> Effect Unit
 doStopIngest state@{aggregatorAddr, streamAndVariant} = do
-  _ <- removeVariant streamAndVariant aggregatorAddr
-  _ <- Audit.ingestStop streamAndVariant
+  removeVariant streamAndVariant aggregatorAddr
+  Audit.ingestStop streamAndVariant
   pure unit
 
 informAggregator :: State -> Effect State
@@ -150,13 +150,13 @@ informAggregator state@{streamDetails, streamAndVariant, thisServer, aggregatorR
   case fromMaybe false maybeVariantAdded of
     true -> pure state{aggregatorAddr = maybeAggregator}
     false -> do
-      _ <- Timer.sendAfter (serverName streamAndVariant) (unwrap aggregatorRetryTime) InformAggregator
+      void $ Timer.sendAfter (serverName streamAndVariant) (unwrap aggregatorRetryTime) InformAggregator
       pure state
 
 handleAggregatorExit :: StreamId -> Server -> State -> Effect State
 handleAggregatorExit exitedStreamId exitedAggregatorAddr state@{streamAndVariant, aggregatorRetryTime, aggregatorAddr}
   | exitedStreamId == (toStreamId streamAndVariant) && Just exitedAggregatorAddr == (extractServer <$> aggregatorAddr) = do
-      _ <- Timer.sendAfter (serverName streamAndVariant) 0 InformAggregator
+      void $ Timer.sendAfter (serverName streamAndVariant) 0 InformAggregator
       pure state
   | otherwise =
       pure state
@@ -164,7 +164,7 @@ handleAggregatorExit exitedStreamId exitedAggregatorAddr state@{streamAndVariant
 addVariant :: Server -> StreamAndVariant -> Server -> Effect Boolean
 addVariant thisServer streamAndVariant aggregatorAddress
   | aggregatorAddress == thisServer = do
-    _ <- IngestAggregatorInstance.addVariant streamAndVariant
+    IngestAggregatorInstance.addVariant streamAndVariant
     pure true
   | otherwise = do
     let
@@ -182,7 +182,7 @@ makeActiveIngestUrl server streamAndVariant =
 removeVariant :: StreamAndVariant -> Maybe (LocalOrRemote Server)-> Effect Unit
 removeVariant streamAndVariant Nothing = pure unit
 removeVariant streamAndVariant (Just (Local aggregator)) = do
-    _ <- IngestAggregatorInstance.removeVariant streamAndVariant
+    IngestAggregatorInstance.removeVariant streamAndVariant
     pure unit
 removeVariant streamAndVariant (Just (Remote aggregator)) = do
   let
