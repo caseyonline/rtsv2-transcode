@@ -77,7 +77,10 @@ let overrides =
           , version =
               "dfe1aa594822708e2593000523d29881d25d4ef5"
           }
-      , routing-duplex =
+      }
+
+let additions =
+      { routing-duplex =
           { dependencies =
               [ "arrays"
               , "control"
@@ -96,8 +99,14 @@ let overrides =
           , version =
               "eceaba4ee9921250cc6640d5ead98bbfc44310f5"
           }
+      , heterogeneous =
+          { dependencies =
+              [ "prelude", "record", "tuples", "functors", "variant", "either" ]
+          , repo =
+              "ssh://git@github.com/natefaubion/purescript-heterogeneous.git"
+          , version =
+              "854e6fe8e52c570954c22275aaf657ef068c73f8"
+          }
       }
-
-let additions = {=}
 
 in  upstream ⫽ overrides ⫽ additions

@@ -70,6 +70,7 @@ import Erl.Data.Map as Map
 import Erl.Process (Process, spawnLink)
 import Erl.Utils (Ref, makeRef)
 import Erl.Utils as Erl
+import Heterogeneous.Folding (hfoldl)
 import Logger (Logger, spy)
 import Logger as Logger
 import Partial.Unsafe (unsafeCrashWith, unsafePartial)
@@ -322,7 +323,7 @@ announceLoad load =
       let
         thisNodeAddress = extractAddress thisServer
         newMembers = alter (map (\ memberInfo -> memberInfo { load = load })) thisNodeAddress members
-      _ <- sendToIntraSerfNetwork state "loadUpdate" (IMServerLoad thisNodeAddress load)
+      sendToIntraSerfNetwork state "loadUpdate" (IMServerLoad thisNodeAddress load)
       pure $ Gen.CastNoReply state { members = newMembers , load = load}
 
 
@@ -441,7 +442,7 @@ aggregatorHandler
     , clockLens         : clockLens
     , locationLens      : locationLens
 
-    , reannounceEveryMs : _.config >>> _.reannounceEveryMs >>> _.aggregator >>> wrap
+    , reannounceEveryMs : _.config >>> _.reannounceAgentEveryMs >>> _.aggregator >>> wrap
     }
   where
     availableLocal state streamId server = do
@@ -523,7 +524,7 @@ egestHandler
     , clockLens         : clockLens
     , locationLens      : locationLens
 
-    , reannounceEveryMs : _.config >>> _.reannounceEveryMs >>> _.egest >>> wrap
+    , reannounceEveryMs : _.config >>> _.reannounceAgentEveryMs >>> _.egest >>> wrap
 
     }
   where
@@ -586,7 +587,7 @@ relayHandler
     , clockLens         : clockLens
     , locationLens      : locationLens
 
-    , reannounceEveryMs : _.config >>> _.reannounceEveryMs >>> _.relay >>> wrap
+    , reannounceEveryMs : _.config >>> _.reannounceAgentEveryMs >>> _.relay >>> wrap
     }
   where
     availableLocal state streamId server = do
@@ -720,21 +721,25 @@ startLink :: {config :: Config.IntraPoPAgentConfig, transPoPApi :: Config.TransP
 startLink args = Gen.startLink serverName (init args) handleInfo
 
 init :: {config :: Config.IntraPoPAgentConfig, transPoPApi :: Config.TransPoPAgentApi} -> Effect State
-init { config: config@{ rejoinEveryMs
-                      , checkVMExpiryEveryMs
-                      , checkAgentExpiryEveryMs
-                      , reannounceEveryMs
-                      }
-     , transPoPApi}
-               = do
+init { config
+     , transPoPApi
+     } = do
+
   logInfo "Intra-PoP Agent Starting" {config: config}
   healthConfig <- Config.healthConfig
   Gen.registerExternalMapping serverName (\m -> IntraPoPSerfMsg <$> (Serf.messageMapper m))
+
+  let
+    garbageCollectVMInterval = config.vmLivenessIntervalMs / 2
+    garbageollectAgentInterval = ( hfoldl (min :: Int -> Int -> Int) config.reannounceAgentEveryMs.aggregator
+                                     config.reannounceAgentEveryMs
+                                 ) / 2
+
   void $ Timer.sendAfter serverName 0 JoinAll
-  void $ Timer.sendEvery serverName rejoinEveryMs JoinAll
-  void $ Timer.sendEvery serverName reannounceEveryMs.vm VMLiveness
-  void $ Timer.sendEvery serverName checkVMExpiryEveryMs GarbageCollectVM
-  void $ Timer.sendEvery serverName checkAgentExpiryEveryMs GarbageCollectAgents
+  void $ Timer.sendEvery serverName config.rejoinEveryMs JoinAll
+  void $ Timer.sendEvery serverName config.vmLivenessIntervalMs VMLiveness
+  void $ Timer.sendEvery serverName garbageCollectVMInterval GarbageCollectVM
+  void $ Timer.sendEvery serverName garbageollectAgentInterval GarbageCollectAgents
   rpcBindIp <- Env.privateInterfaceIp
   thisServer <- PoPDefinition.getThisServer
   let
@@ -744,13 +749,13 @@ init { config: config@{ rejoinEveryMs
       }
   membersResp <- Serf.members serfRpcAddress
   streamResp <- Serf.stream serfRpcAddress
-  _ <- case streamResp of
-         Left error -> do
-           logInfo "Could not connect to IntraPoP Serf Agent" { error: error }
-           _ <- Erl.sleep (wrap 100) -- Just so we don't spin like crazy...
-           unsafeCrashWith ("could_not_connect_stream")
-         Right r ->
-           pure r
+  case streamResp of
+    Left error -> do
+      logInfo "Could not connect to IntraPoP Serf Agent" { error: error }
+      Erl.sleep (wrap 100) -- Just so we don't spin like crazy...
+      unsafeCrashWith ("could_not_connect_stream")
+    Right _ ->
+      pure unit
 
   serversInPoP <- PoPDefinition.serversInThisPoPByAddress
   thisServerRef <- makeRef
@@ -813,7 +818,7 @@ handleInfo msg state = case msg of
     CastNoReply <$> handleIntraPoPSerfMsg imsg state
 
   JoinAll -> do
-    _ <- joinAllSerf state
+    joinAllSerf state
     pure $ CastNoReply state
 
   GarbageCollectVM ->
@@ -866,7 +871,7 @@ handleIntraPoPSerfMsg imsg state@{ transPoPApi: {handleRemoteLeaderAnnouncement}
 
     Serf.StreamFailed -> do
       logInfo "Lost connection to IntraPoP Serf Agent" {}
-      _ <- Erl.sleep (wrap 100) -- Just so we don't spin like crazy...
+      Erl.sleep (wrap 100) -- Just so we don't spin like crazy...
       -- TODO send a "stepping down message?" - except without Serf I guess we can't
       unsafeCrashWith ("lost_serf_connection")
 
@@ -988,7 +993,7 @@ logIfNew streamId m str metadata =
 sendToIntraSerfNetwork :: State -> String -> IntraMessage -> Effect Unit
 sendToIntraSerfNetwork state name msg = do
   result <- Serf.event state.serfRpcAddress name msg false
-  _ <- maybeLogError "Intra-PoP serf event failed" result {}
+  maybeLogError "Intra-PoP serf event failed" result {}
   pure unit
 
 
@@ -1032,7 +1037,7 @@ garbageCollectVM state@{ config
   do
     now <- Erl.systemTimeMs
     let
-      expireThreshold = wrap $ config.missCountBeforeExpiry * config.reannounceEveryMs.vm
+      expireThreshold = wrap $ config.missCountBeforeExpiry * config.vmLivenessIntervalMs
       threshold = now - expireThreshold
       Tuple newServerRefs garbageRefs = EMap.garbageCollect2 threshold serverRefs
       garbageServers = fst <$> garbageRefs
@@ -1166,7 +1171,7 @@ joinAllSerf { config, serfRpcAddress, members } =
               ( \_ -> do
                   result <- Serf.join serfRpcAddress (singleton $ serverAddressToSerfAddress addr) config.replayMessagesOnJoin
 
-                  _ <- maybeLogError "Intra-PoP serf join failed" result {}
+                  maybeLogError "Intra-PoP serf join failed" result {}
                   pure unit
               )
         traverse_ joinAsync toJoin
@@ -1196,5 +1201,5 @@ domainLog = Logger.doLog domains
 maybeLogError :: forall a b c d e. Union b (error :: e) c => Nub c d => String -> Either e a -> Record b  -> Effect Unit
 maybeLogError _ (Right _) _ = pure unit
 maybeLogError msg (Left err) metadata = do
-  _ <- logInfo msg (Record.merge metadata {error: err})
+  logInfo msg (Record.merge metadata {error: err})
   pure unit
