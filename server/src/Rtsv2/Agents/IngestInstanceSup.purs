@@ -27,9 +27,13 @@ serverName = Names.ingestInstanceSupName
 startLink :: forall a. a -> Effect Pinto.StartLinkResult
 startLink _ = Sup.startLink serverName init
 
-startIngest :: StreamDetails -> StreamAndVariant -> Pid -> Effect Unit
-startIngest streamDetails streamAndVariant handlerPid = do
-  void <$> okAlreadyStarted =<< Sup.startSimpleChild childTemplate serverName {streamDetails, streamAndVariant, handlerPid}
+startIngest :: StreamDetails -> StreamAndVariant -> String -> Int -> Pid -> Effect Unit
+startIngest streamDetails streamAndVariant remoteAddress remotePort handlerPid = do
+  void <$> okAlreadyStarted =<< Sup.startSimpleChild childTemplate serverName { streamDetails
+                                                                              , streamAndVariant
+                                                                              , remoteAddress
+                                                                              , remotePort
+                                                                              , handlerPid}
 
 init :: Effect Sup.SupervisorSpec
 init = do

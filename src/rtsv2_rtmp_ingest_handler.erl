@@ -185,7 +185,9 @@ handle(State = #?state{rtmp_pid = Rtmp,
                                          path => Path,
                                          stream_name => StreamName}),
 
-          case (IngestStartedFn(StreamDetails, StreamName, self()))() of
+          {ok, {RemoteIp, RemotePort}} = rtmp:peername(Rtmp),
+
+          case (IngestStartedFn(StreamDetails, StreamName, list_to_binary(inet:ntoa(RemoteIp)), RemotePort, self()))() of
             {right, StreamAndVariant} ->
               {ok, WorkflowPid} = start_workflow(Rtmp, StreamId, ClientId, Path, StreamAndVariant),
 
