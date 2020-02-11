@@ -149,7 +149,7 @@ handleInfo msg state@{streamId} =
     MaybeStop ref -> maybeStop ref state
 
     IntraPoPBus (IngestAggregatorExited stoppingStreamId serverAddress)
-      | stoppingStreamId == streamId -> pure $ CastStop state
+      | stoppingStreamId == streamId -> doStop state
       | otherwise -> pure $ CastNoReply state
 
 
@@ -159,15 +159,18 @@ handleTick state@{streamId} = do
   pure state
 
 maybeStop :: Ref -> State -> Effect (CastResult State)
-maybeStop ref state@{streamId
-                    , clientCount
-                    , stopRef}
-  | (clientCount == 0) && (Just ref == stopRef) = do
-    logInfo "Egest stopping" {streamId: streamId}
-    _ <- IntraPoP.announceLocalEgestStopped streamId
-    pure $ CastStop state
-
+maybeStop ref state@{ clientCount
+                    , stopRef
+                    }
+  | (clientCount == 0) && (Just ref == stopRef) = doStop state
   | otherwise = pure $ CastNoReply state
+
+doStop :: State -> Effect (CastResult State)
+doStop state@{streamId} = do
+  logInfo "Egest stopping" {streamId: streamId}
+  IntraPoP.announceLocalEgestStopped streamId
+  pure $ CastStop state
+
 
 initStreamRelay :: State -> Effect State
 initStreamRelay state@{relayCreationRetry, streamId, aggregatorPoP, thisServer} = do

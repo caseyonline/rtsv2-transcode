@@ -446,16 +446,13 @@ aggregatorHandler
     }
   where
     availableLocal state streamId server = do
-      logInfo "Local aggregator available" {streamId}
       sendToIntraSerfNetwork state "aggregatorAvailable" (IMAggregatorState Available streamId (extractAddress server))
       state.transPoPApi.announceAggregatorIsAvailable streamId server
 
     availableThisPoP state streamId server = do
-      logInfo "New aggregator is available in this PoP" {streamId, server}
       state.transPoPApi.announceAggregatorIsAvailable streamId server
 
     availableOtherPoP state streamId server = do
-      logInfo "New aggregator is available in another PoP" {streamId, server}
       sendToIntraSerfNetwork state "aggregatorAvailable" (IMAggregatorState Available streamId (extractAddress server))
 
     stoppedLocal state streamId server = do
@@ -496,7 +493,9 @@ aggregatorHandler
 
 -- Called by IngestAggregator to indicate aggregator start / stop on this node
 announceLocalAggregatorIsAvailable :: StreamId -> Effect Unit
-announceLocalAggregatorIsAvailable = announceAvailableLocal aggregatorHandler
+announceLocalAggregatorIsAvailable streamId = do
+  logInfo "New aggregator is available on this node" {streamId}
+  announceAvailableLocal aggregatorHandler streamId
 
 announceLocalAggregatorStopped :: StreamId -> Effect Unit
 announceLocalAggregatorStopped = announceStoppedLocal aggregatorHandler
@@ -529,7 +528,6 @@ egestHandler
     }
   where
     availableLocal state streamId server = do
-      logInfo "Local egest available" {streamId}
       sendToIntraSerfNetwork state "egestAvailable" (IMEgestState Available streamId $ extractAddress server)
 
     availableThisPoP state streamId server = do
@@ -567,7 +565,9 @@ egestHandler
 
 -- Called by EgestAgent to indicate egest on this node
 announceLocalEgestIsAvailable :: StreamId -> Effect Unit
-announceLocalEgestIsAvailable = announceAvailableLocal egestHandler
+announceLocalEgestIsAvailable streamId = do
+  logInfo "New egest is available on this node" {streamId}
+  announceAvailableLocal egestHandler streamId
 
 announceLocalEgestStopped :: StreamId -> Effect Unit
 announceLocalEgestStopped = announceStoppedLocal egestHandler
@@ -591,11 +591,10 @@ relayHandler
     }
   where
     availableLocal state streamId server = do
-      logInfo "Local relay available" {streamId}
       sendToIntraSerfNetwork state "relayAvailable" (IMRelayState Available streamId $ extractAddress server)
 
     availableThisPoP state streamId server = do
-      logInfo "New relay is available in this PoP" {streamId, server}
+      pure unit
 
     availableOtherPoP state streamId server = do
       -- Not expecting any of these
@@ -630,7 +629,9 @@ relayHandler
 
 -- Called by RelayAgent to indicate relay on this node
 announceLocalRelayIsAvailable :: StreamId -> Effect Unit
-announceLocalRelayIsAvailable = announceAvailableLocal relayHandler
+announceLocalRelayIsAvailable streamId = do
+  logInfo "New relay is available on this node" {streamId}
+  announceAvailableLocal relayHandler streamId
 
 announceLocalRelayStopped :: StreamId -> Effect Unit
 announceLocalRelayStopped = announceStoppedLocal relayHandler
@@ -959,6 +960,7 @@ handleAgentMessage msgLTime eventType streamId msgServerAddress
                 timeout <- messageTimeout agentMessageHandler state
                 let
                   newLocations = recordRemoteAgent timeout streamId msgServer locations
+                logIfNewAgent agentMessageHandler locations streamId msgServer
                 agentMessageHandler.availableThisPoP state streamId msgServer
                 pure $ state { agentClocks = newAgentClocks
                              , agentLocations = locationLens.set newLocations agentLocations
@@ -984,17 +986,16 @@ messageTimeout agentMessageHandler state = do
 serverName :: ServerName State Msg
 serverName = Names.intraPoPName
 
-logIfNew :: forall a v. StreamId -> EMap StreamId v -> String -> Record a -> Effect Unit
-logIfNew streamId m str metadata =
-  if EMap.member streamId m
+logIfNewAgent :: AgentHandler -> Locations -> StreamId -> Server -> Effect Unit
+logIfNewAgent  handler locations streamId server =
+  if Map.member (Tuple streamId server) locations.remoteTimeouts
   then pure unit
-  else void $ logInfo str metadata
+  else logInfo ("New " <> unwrap handler.name <> " is available in this PoP") {streamId, server}
 
 sendToIntraSerfNetwork :: State -> String -> IntraMessage -> Effect Unit
 sendToIntraSerfNetwork state name msg = do
   result <- Serf.event state.serfRpcAddress name msg false
-  maybeLogError "Intra-PoP serf event failed" result {}
-  pure unit
+  maybeLogError "Intra-PoP serf event failed" result {name, msg}
 
 
 membersAlive :: (List Serf.SerfMember) -> State -> Effect State
