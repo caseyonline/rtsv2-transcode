@@ -40,7 +40,10 @@ type TimedPoPStep
     }
 
 type Ingest f
-  = { rtmpClientMetadata :: Maybe (RtmpClientMetadata f)
+  = { ingestStartedTime :: Milliseconds
+    , remoteAddress :: String
+    , remotePort :: Int
+    , rtmpClientMetadata :: Maybe (RtmpClientMetadata f)
     , sourceInfo :: Maybe (SourceInfo f)
     }
 

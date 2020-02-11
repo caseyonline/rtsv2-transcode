@@ -225,7 +225,7 @@ ingestStart =
                                                                                          { receive: Raw.receive
                                                                                          , receiveWithTimeout: Raw.receiveWithTimeout
                                                                                          })
-                                                                       IngestInstanceSup.startIngest (fromMaybe' (lazyCrashIfMissing "stream_details missing") streamDetails) streamAndVariant pid
+                                                                       IngestInstanceSup.startIngest (fromMaybe' (lazyCrashIfMissing "stream_details missing") streamDetails) streamAndVariant "127.0.0.1" 0 pid
                                                                        Rest.result "ingestStarted" req2 state2
                                                                    ) : nil) req state)
   # Rest.yeeha

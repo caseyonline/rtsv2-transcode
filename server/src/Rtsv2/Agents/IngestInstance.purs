@@ -19,6 +19,7 @@ import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
 import Erl.Process.Raw (Pid)
+import Erl.Utils (systemTimeMs)
 import Logger (Logger)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
@@ -61,6 +62,9 @@ type State
     , aggregatorRetryTime :: Milliseconds
     , streamAndVariant :: StreamAndVariant
     , streamDetails :: StreamDetails
+    , ingestStartedTime :: Milliseconds
+    , remoteAddress :: String
+    , remotePort :: Int
     , aggregatorAddr :: Maybe (LocalOrRemote Server)
     , clientMetadata :: Maybe (RtmpClientMetadata List)
     , sourceInfo :: Maybe (SourceInfo List)
@@ -69,6 +73,8 @@ type State
 type Args
   = { streamDetails :: StreamDetails
     , streamAndVariant :: StreamAndVariant
+    , remoteAddress :: String
+    , remotePort :: Int
     , handlerPid :: Pid
     }
 
@@ -96,15 +102,28 @@ stopIngest streamAndVariant =
 
 getPublicState :: StreamAndVariant -> Effect (PublicState.Ingest List)
 getPublicState streamAndVariant =
-  Gen.call (serverName streamAndVariant) \state@{clientMetadata: rtmpClientMetadata,
-                                                 sourceInfo: sourceInfo} -> do
-    CallReply {rtmpClientMetadata, sourceInfo} state
+  Gen.call (serverName streamAndVariant) \state@{ clientMetadata
+                                                 , sourceInfo
+                                                 , remoteAddress
+                                                 , remotePort
+                                                 , ingestStartedTime} -> do
+    CallReply { rtmpClientMetadata: clientMetadata
+              , sourceInfo
+              , remoteAddress
+              , remotePort
+              , ingestStartedTime } state
 
 init :: Args -> Effect State
-init {streamDetails, streamAndVariant, handlerPid} = do
+init { streamDetails
+     , streamAndVariant
+     , remoteAddress
+     , remotePort
+     , handlerPid} = do
+
   logInfo "Ingest starting" {streamAndVariant, handlerPid}
   Gen.monitorPid ourServerName handlerPid (\_ -> HandlerDown)
   thisServer <- PoPDefinition.getThisServer
+  now <- systemTimeMs
   {intraPoPLatencyMs} <- Config.globalConfig
   void $ Bus.subscribe ourServerName IntraPoP.bus IntraPoPBus
   void $ Timer.sendAfter ourServerName 0 InformAggregator
@@ -117,6 +136,9 @@ init {streamDetails, streamAndVariant, handlerPid} = do
        , aggregatorAddr: Nothing
        , clientMetadata: Nothing
        , sourceInfo: Nothing
+       , remoteAddress
+       , remotePort
+       , ingestStartedTime: now
        }
   where
     ourServerName = (serverName streamAndVariant)

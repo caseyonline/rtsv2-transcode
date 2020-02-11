@@ -17,7 +17,7 @@ import Prelude
 import Control.Apply (lift2)
 import Control.Monad.Except (except)
 import Data.Array ((!!))
-import Data.Either (note)
+import Data.Either (Either, note)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show (genericShow)
 import Data.Int (fromString)
@@ -26,8 +26,8 @@ import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype, unwrap, wrap)
 import Data.String (Pattern(..), split)
 import Data.Tuple (Tuple(..))
-import Foreign (ForeignError(..), readString, unsafeToForeign)
-import Simple.JSON (class ReadForeign, class WriteForeign)
+import Foreign (F, Foreign, ForeignError(..), MultipleErrors, readArray, readInt, readString, unsafeToForeign)
+import Simple.JSON (class ReadForeign, class WriteForeign, writeImpl)
 
 newtype StreamId = StreamId Int
 
@@ -229,14 +229,20 @@ derive newtype instance writeForeignHeight :: WriteForeign Height
 -- PixelAspectRatio
 instance readForeignPixelAspectRatio :: ReadForeign PixelAspectRatio where
   readImpl fgn = do
-                 x <- readString fgn
+                 x <- readArray fgn
                  let
-                   y = split (Pattern ":") x
-                   f = (y !! 0) >>= fromString <#> wrap
-                   s = (y !! 1) >>= fromString <#> wrap
+                   f = wrap <$> readIndex 0 x
+                   s = wrap <$> readIndex 1 x
                    t = lift2 Tuple f s
                    result = t <#> PixelAspectRatio
-                 except $ note (singleton (ForeignError "Failed to parse")) result
+
+                   readIndex :: Int -> Array Foreign -> F Int
+                   readIndex index array = readInt =<< (error $ array !! index)
+
+                   error :: forall a. Maybe a -> F a
+                   error m = except $ note (singleton (ForeignError "Failed to parse")) m
+
+                 result
 
 instance writeForeignPixelAspectRatio :: WriteForeign PixelAspectRatio where
-  writeImpl (PixelAspectRatio (Tuple width height)) = unsafeToForeign $ ((show <<< unwrap) width) <> ":" <> ((show <<< unwrap) height)
+  writeImpl (PixelAspectRatio (Tuple width height)) = writeImpl [unwrap width, unwrap height]
