@@ -2,6 +2,7 @@ module Rtsv2.Agents.IngestInstance
   ( startLink
   , isActive
   , setClientMetadata
+  , setSourceInfo
   , getPublicState
   , stopIngest
   , Args
@@ -18,6 +19,7 @@ import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
 import Erl.Process.Raw (Pid)
+import Erl.Utils (systemTimeMs)
 import Logger (Logger)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
@@ -40,8 +42,10 @@ import Rtsv2.Utils (crashIfLeft)
 import Shared.Agent as Agent
 import Shared.LlnwApiTypes (StreamDetails)
 import Shared.Stream (StreamAndVariant, StreamId, toStreamId, toVariant)
-import Shared.Types (Load, Milliseconds, RtmpClientMetadata, Server, ServerLoad(..), extractAddress)
+import Shared.Types (Load, Milliseconds, Server, ServerLoad(..), extractAddress)
 import Shared.Types.Agent.State as PublicState
+import Shared.Types.Media.Types.Rtmp (RtmpClientMetadata)
+import Shared.Types.Media.Types.SourceDetails (SourceInfo)
 import SpudGun (Url)
 import SpudGun as SpudGun
 
@@ -58,13 +62,19 @@ type State
     , aggregatorRetryTime :: Milliseconds
     , streamAndVariant :: StreamAndVariant
     , streamDetails :: StreamDetails
+    , ingestStartedTime :: Milliseconds
+    , remoteAddress :: String
+    , remotePort :: Int
     , aggregatorAddr :: Maybe (LocalOrRemote Server)
-    , clientMetadata :: Maybe RtmpClientMetadata
+    , clientMetadata :: Maybe (RtmpClientMetadata List)
+    , sourceInfo :: Maybe (SourceInfo List)
     }
 
 type Args
   = { streamDetails :: StreamDetails
     , streamAndVariant :: StreamAndVariant
+    , remoteAddress :: String
+    , remotePort :: Int
     , handlerPid :: Pid
     }
 
@@ -74,31 +84,50 @@ startLink args@{streamAndVariant} = Gen.startLink (serverName streamAndVariant) 
 isActive :: StreamAndVariant -> Effect Boolean
 isActive streamAndVariant = Pinto.isRegistered (serverName streamAndVariant)
 
-setClientMetadata :: StreamAndVariant -> RtmpClientMetadata -> Effect Unit
+setClientMetadata :: StreamAndVariant -> (RtmpClientMetadata List) -> Effect Unit
 setClientMetadata streamAndVariant metadata =
   Gen.doCall (serverName streamAndVariant) \state -> do
     pure $ CallReply unit state{clientMetadata = Just metadata}
 
+setSourceInfo :: StreamAndVariant -> (SourceInfo List) -> Effect Unit
+setSourceInfo streamAndVariant sourceInfo =
+  Gen.doCall (serverName streamAndVariant) \state -> do
+    pure $ CallReply unit state{sourceInfo = Just sourceInfo}
+
 stopIngest :: StreamAndVariant -> Effect Unit
 stopIngest streamAndVariant =
   Gen.doCall (serverName streamAndVariant) \state -> do
-    _ <- doStopIngest state
+    doStopIngest state
     pure $ CallStop unit state
 
-getPublicState :: StreamAndVariant -> Effect PublicState.Ingest
+getPublicState :: StreamAndVariant -> Effect (PublicState.Ingest List)
 getPublicState streamAndVariant =
-  Gen.call (serverName streamAndVariant) \state@{clientMetadata: rtmpClientMetadata} -> do
-    CallReply {rtmpClientMetadata} state
+  Gen.call (serverName streamAndVariant) \state@{ clientMetadata
+                                                 , sourceInfo
+                                                 , remoteAddress
+                                                 , remotePort
+                                                 , ingestStartedTime} -> do
+    CallReply { rtmpClientMetadata: clientMetadata
+              , sourceInfo
+              , remoteAddress
+              , remotePort
+              , ingestStartedTime } state
 
 init :: Args -> Effect State
-init {streamDetails, streamAndVariant, handlerPid} = do
+init { streamDetails
+     , streamAndVariant
+     , remoteAddress
+     , remotePort
+     , handlerPid} = do
+
   logInfo "Ingest starting" {streamAndVariant, handlerPid}
-  _ <- Gen.monitorPid ourServerName handlerPid (\_ -> HandlerDown)
+  Gen.monitorPid ourServerName handlerPid (\_ -> HandlerDown)
   thisServer <- PoPDefinition.getThisServer
+  now <- systemTimeMs
   {intraPoPLatencyMs} <- Config.globalConfig
-  _ <- Bus.subscribe ourServerName IntraPoP.bus IntraPoPBus
-  _ <- Audit.ingestStart streamAndVariant
-  _ <- Timer.sendAfter ourServerName 0 InformAggregator
+  void $ Bus.subscribe ourServerName IntraPoP.bus IntraPoPBus
+  void $ Timer.sendAfter ourServerName 0 InformAggregator
+  Audit.ingestStart streamAndVariant
 
   pure { thisServer
        , streamDetails
@@ -106,6 +135,10 @@ init {streamDetails, streamAndVariant, handlerPid} = do
        , aggregatorRetryTime: wrap intraPoPLatencyMs
        , aggregatorAddr: Nothing
        , clientMetadata: Nothing
+       , sourceInfo: Nothing
+       , remoteAddress
+       , remotePort
+       , ingestStartedTime: now
        }
   where
     ourServerName = (serverName streamAndVariant)
@@ -123,13 +156,13 @@ handleInfo msg state@{streamAndVariant} = case msg of
 
   HandlerDown -> do
     logInfo "RTMP Handler has exited" {streamAndVariant}
-    _ <- doStopIngest state
+    doStopIngest state
     pure $ CastStop state
 
 doStopIngest :: State -> Effect Unit
 doStopIngest state@{aggregatorAddr, streamAndVariant} = do
-  _ <- removeVariant streamAndVariant aggregatorAddr
-  _ <- Audit.ingestStop streamAndVariant
+  removeVariant streamAndVariant aggregatorAddr
+  Audit.ingestStop streamAndVariant
   pure unit
 
 informAggregator :: State -> Effect State
@@ -139,13 +172,13 @@ informAggregator state@{streamDetails, streamAndVariant, thisServer, aggregatorR
   case fromMaybe false maybeVariantAdded of
     true -> pure state{aggregatorAddr = maybeAggregator}
     false -> do
-      _ <- Timer.sendAfter (serverName streamAndVariant) (unwrap aggregatorRetryTime) InformAggregator
+      void $ Timer.sendAfter (serverName streamAndVariant) (unwrap aggregatorRetryTime) InformAggregator
       pure state
 
 handleAggregatorExit :: StreamId -> Server -> State -> Effect State
 handleAggregatorExit exitedStreamId exitedAggregatorAddr state@{streamAndVariant, aggregatorRetryTime, aggregatorAddr}
   | exitedStreamId == (toStreamId streamAndVariant) && Just exitedAggregatorAddr == (extractServer <$> aggregatorAddr) = do
-      _ <- Timer.sendAfter (serverName streamAndVariant) 0 InformAggregator
+      void $ Timer.sendAfter (serverName streamAndVariant) 0 InformAggregator
       pure state
   | otherwise =
       pure state
@@ -153,7 +186,7 @@ handleAggregatorExit exitedStreamId exitedAggregatorAddr state@{streamAndVariant
 addVariant :: Server -> StreamAndVariant -> Server -> Effect Boolean
 addVariant thisServer streamAndVariant aggregatorAddress
   | aggregatorAddress == thisServer = do
-    _ <- IngestAggregatorInstance.addVariant streamAndVariant
+    IngestAggregatorInstance.addVariant streamAndVariant
     pure true
   | otherwise = do
     let
@@ -171,7 +204,7 @@ makeActiveIngestUrl server streamAndVariant =
 removeVariant :: StreamAndVariant -> Maybe (LocalOrRemote Server)-> Effect Unit
 removeVariant streamAndVariant Nothing = pure unit
 removeVariant streamAndVariant (Just (Local aggregator)) = do
-    _ <- IngestAggregatorInstance.removeVariant streamAndVariant
+    IngestAggregatorInstance.removeVariant streamAndVariant
     pure unit
 removeVariant streamAndVariant (Just (Remote aggregator)) = do
   let

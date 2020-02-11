@@ -32,7 +32,7 @@ import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
 import Erl.Process (spawnLink)
 import Erl.Utils (sleep, systemTimeMs, privDir)
-import Logger (Logger)
+import Logger (Logger, spy)
 import Logger as Logger
 import Network (Network, addEdge', bestPaths, emptyNetwork, pathsBetween)
 import Os (osCmd)
@@ -44,6 +44,7 @@ import Pinto.Timer as Timer
 import PintoHelper (exposeState)
 import Prim.Row (class Nub, class Union)
 import Record as Record
+import Rtsv2.Agents.IntraPoP (AgentClock)
 import Rtsv2.Config (IntraPoPAgentApi, TransPoPAgentConfig)
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
@@ -52,6 +53,7 @@ import Rtsv2.Health as Health
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition (PoP)
 import Rtsv2.PoPDefinition as PoPDefinition
+import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl, makeUrlAddr)
 import Serf (IpAndPort, LamportClock, SerfCoordinate, calcRtt)
 import Serf as Serf
 import Shared.Stream (StreamId)
@@ -70,7 +72,7 @@ type PoPRoutes = List (List PoPName)
 
 
 type LamportClocks =
-  { streamStateClocks :: Map ServerAddress LamportClock
+  { aggregatorClocks :: AgentClock
   }
 
 type State
@@ -84,15 +86,16 @@ type State
     , healthConfig :: Config.HealthConfig
     , serfRpcAddress :: IpAndPort
     , members :: Map PoPName (Set ServerAddress)
-    , lamportClocks :: LamportClocks
+    , agentClocks :: LamportClocks
     , rtts :: Rtts
     , sourceRoutes :: Map PoPName PoPRoutes
     }
 
-data StreamState = StreamAvailable
-                 | StreamStopped
+data EventType
+  = Available
+  | Stopped
 
-data TransMessage = TMStreamState StreamState StreamId ServerAddress
+data TransMessage = TMAggregatorState EventType StreamId ServerAddress
 
 data Msg
   = LeaderTimeoutTick
@@ -102,7 +105,7 @@ data Msg
   | TransPoPSerfMsg (Serf.SerfMessage TransMessage)
 
 
-getTimedRoutesTo :: PoPName -> Effect PublicState.TimedPoPRoutes
+getTimedRoutesTo :: PoPName -> Effect (PublicState.TimedPoPRoutes List)
 getTimedRoutesTo pop = exposeState doGetTimedRoutes serverName
   where
     getRtt rttMap from to = fromMaybe (wrap 1000) $ Map.lookup (Tuple from to) rttMap
@@ -120,8 +123,7 @@ getTimedRoutesTo pop = exposeState doGetTimedRoutes serverName
        in
       { from: thisPoP
       , to: pop
-      , routes: List.toUnfoldable $ List.toUnfoldable <$> routes
-      --, routes -- TODO can we uses Lists this side and arrays on the client?
+      , routes
       }
 
 
@@ -175,15 +177,9 @@ announceAggregatorIsAvailable streamId server =
     doAnnounceStreamIsAvailable state@{ thisServer
                                       , serfRpcAddress
                                       } = do
-      -- Don't think this test is required - surely it can only be from this pop...
-      if extractPoP server == extractPoP thisServer
-      then do
-            -- Message from our pop - distribute over trans-pop
-            --logInfo "Local stream being delivered to trans-pop" { streamId: streamId }
-            result <- Serf.event state.serfRpcAddress "streamAvailable" (TMStreamState StreamAvailable streamId (extractAddress server)) false
-            _ <- maybeLogError "Trans-PoP serf event failed" result {}
-            pure state
-      else pure state
+      result <- Serf.event state.serfRpcAddress "streamAvailable" (TMAggregatorState Available streamId (extractAddress server)) false
+      maybeLogError "Trans-PoP serf event failed" result {}
+      pure state
 
 announceAggregatorStopped :: StreamId -> Server -> Effect Unit
 announceAggregatorStopped streamId server =
@@ -200,7 +196,7 @@ announceAggregatorStopped streamId server =
       then do
             -- Message from our pop - distribute over trans-pop
             --logInfo "Local stream stopped being delivered to trans-pop" { streamId: streamId }
-            result <- Serf.event state.serfRpcAddress "streamStopped" (TMStreamState StreamStopped streamId (extractAddress server)) false
+            result <- Serf.event state.serfRpcAddress "streamStopped" (TMAggregatorState Stopped streamId (extractAddress server)) false
             _ <- maybeLogError "Trans-PoP serf event failed" result {}
             pure state
       else pure state
@@ -294,8 +290,8 @@ init { config: config@{ leaderTimeoutMs
       , thisServer: thisServer
       , serfRpcAddress: serfRpcAddress
       , members: Map.empty
-      , lamportClocks: { streamStateClocks: Map.empty
-                       }
+      , agentClocks: { aggregatorClocks: Map.empty
+                     }
       , rtts: defaultRtts'
       , sourceRoutes: initialSourceRoutes
     }
@@ -304,8 +300,7 @@ init { config: config@{ leaderTimeoutMs
 -- Genserver callbacks
 --------------------------------------------------------------------------------
 handleInfo :: Msg -> State -> Effect (CastResult State)
-handleInfo msg state@{ thisServer
-                     , lamportClocks } =
+handleInfo msg state =
  case msg of
   LeaderTimeoutTick -> CastNoReply <$> handleTick state
 
@@ -330,18 +325,13 @@ handleInfo msg state@{ thisServer
             unsafeCrashWith ("lost_serf_connection")
           Serf.UserEvent name ltime coalesce transMessage ->
             case transMessage of
-              TMStreamState stateChange streamId originServer -> do
-                mTuple <- screenOriginAndMessageClock thisServer originServer ltime lamportClocks.streamStateClocks
-                case mTuple of
-                  Nothing -> pure state
-                  Just (Tuple newClockState server) ->
-                    handleTransPoPMessage transMessage (state {lamportClocks = lamportClocks {streamStateClocks = newClockState}})
-                    --handleStreamStateChange stateChange streamId server intraMessage (state {lamportClocks = lamportClocks {streamStateClocks = newClockState}})
+              TMAggregatorState eventType streamId msgOrigin -> do
+                handleAgentMessage ltime eventType streamId msgOrigin state
 
 
 
 handleTransPoPMessage :: TransMessage -> State -> Effect State
-handleTransPoPMessage (TMStreamState StreamAvailable streamId address) state@{intraPoPApi} = do
+handleTransPoPMessage (TMAggregatorState Available streamId address) state@{intraPoPApi} = do
   logInfo "Remote stream available" {streamId, address}
   mServerLocation <- PoPDefinition.whereIsServer address
   case mServerLocation of
@@ -350,7 +340,7 @@ handleTransPoPMessage (TMStreamState StreamAvailable streamId address) state@{in
       _ <- intraPoPApi.announceOtherPoPAggregatorIsAvailable streamId (toServer address location)
       pure state
 
-handleTransPoPMessage (TMStreamState StreamStopped streamId address) state@{intraPoPApi} = do
+handleTransPoPMessage (TMAggregatorState Stopped streamId address) state@{intraPoPApi} = do
   logInfo "Remote stream stopped" {streamId, address}
   mServerLocation <- PoPDefinition.whereIsServer address
   case mServerLocation of
@@ -530,10 +520,9 @@ becomeLeader now state@{ lastLeaderAnnouncement
                        } = do
   logInfo "Leader is absent, becoming leader" {}
   _ <- osCmd startScript
-  _ <- intraPoP_announceTransPoPLeader
-  _ <- Timer.sendAfter serverName connectStreamAfterMs ConnectStream
-  -- TODO: build default network topology map
-  _ <- Timer.sendAfter serverName rttRefreshMs RttRefreshTick
+  intraPoP_announceTransPoPLeader
+  void $ Timer.sendAfter serverName connectStreamAfterMs ConnectStream
+  void $ Timer.sendAfter serverName rttRefreshMs RttRefreshTick
   pure
     $ state
         { lastLeaderAnnouncement = now
@@ -561,7 +550,7 @@ connectStream state@{serfRpcAddress} = do
                         logInfo "Could not connect to TransPoP Serf Agent" { error: error }
                         unsafeCrashWith ("could_not_connect_stream")
                    _ -> do
-                         _ <- sleep (wrap 100)
+                         sleep (wrap 100)
                          loopStreamJoin serfRpcAddress $ n - 1
             Right x ->
               pure resp
@@ -580,21 +569,23 @@ joinAllSerf state@{ config: config@{rejoinEveryMs}, serfRpcAddress, members } =
   in
     do
       allOtherPoPs <- PoPDefinition.getOtherPoPs
-      _ <- Timer.sendAfter serverName rejoinEveryMs JoinAll
+      void $ Timer.sendAfter serverName rejoinEveryMs JoinAll
 
       let
         toJoin = Map.values $ Map.difference allOtherPoPs members :: List PoP
       if length toJoin < (Map.size allOtherPoPs) / 2 then
         pure unit
       else
+        let _ = spy "toJoin" {toJoin} in
         traverse_ (\{ name, servers: serversInPoP } ->
                     do
                      indexes <- distinctRandomNumbers 1 ((length serversInPoP) - 1)
                      let
+                       _ = spy "indexes" {indexes}
                        servers :: List ServerAddress
                        servers = traverse (\i -> index serversInPoP i) indexes
                                  # fromMaybe nil
-
+                       _ = spy "servers" {servers}
                      (spawnFun serverAddressToSerfAddress servers)
                   )
                   toJoin
@@ -602,38 +593,59 @@ joinAllSerf state@{ config: config@{rejoinEveryMs}, serfRpcAddress, members } =
   spawnFun :: (String -> IpAndPort) -> List ServerAddress -> Effect Unit
   spawnFun addressMapper popsToJoin = void $ spawnLink (\_ -> do
                              foldl
-                               ( \iAcc (ServerAddress address) -> do
-                                   restResult <- bodyToString <$> SpudGun.getText (wrap $ "http://" <> address <> ":3000/api/transPoPLeader")
-                                   _ <- case restResult of
+                               ( \iAcc serverAddress  -> do
+                                   let
+                                     url = makeUrlAddr serverAddress TransPoPLeaderE
+
+                                   restResult <- bodyToString <$> SpudGun.getText url
+                                   case spy "spawnFunrestResult" restResult of
                                      Left _ -> pure unit
+                                     Right "" -> pure unit
                                      Right addr -> do
                                        result <- Serf.join serfRpcAddress ((addressMapper addr) : nil) config.replayMessagesOnJoin
-                                       _ <- maybeLogError "Trans-PoP serf join failed" result { server: addr }
-                                       pure unit
-                                   pure unit
+                                       maybeLogError "Trans-PoP serf join failed" result { server: addr }
                                )
                                mempty
                                popsToJoin
                          )
 
 
-screenOriginAndMessageClock :: Server -> ServerAddress -> LamportClock -> Map ServerAddress LamportClock -> Effect (Maybe (Tuple (Map ServerAddress LamportClock) Server))
-screenOriginAndMessageClock thisServer messageServerAddress msgClock lastClockByServer =
-  if Map.lookup messageServerAddress lastClockByServer # maybe false (_ >= msgClock)
-  then do
-    pure Nothing
-  else do
-    mLocation <- PoPDefinition.whereIsServer messageServerAddress
-    case mLocation of
-      Nothing -> do
-        pure Nothing
-      Just location ->
-        if extractPoP thisServer == extractPoP location
-        then
-          pure Nothing
-        else do
-          pure $ Just $ Tuple (Map.insert messageServerAddress msgClock lastClockByServer) $ toServer messageServerAddress location
 
+
+handleAgentMessage :: LamportClock -> EventType -> StreamId -> ServerAddress -> State -> Effect State
+handleAgentMessage msgLTime eventType streamId msgServerAddress
+                   state@{thisServer} = do
+  -- let _ = spy "agentMessage" {name: agentMessageHandler.name, eventType, streamId, msgServerAddress}
+  -- Make sure the message is from a known origin and does not have an expired Lamport clock
+  if msgServerAddress == extractAddress thisServer
+  then
+    pure state
+  else let agentClock = state.agentClocks.aggregatorClocks in
+    if Map.lookup (Tuple msgServerAddress streamId) agentClock # maybe false (_ >= msgLTime)
+    then
+      pure state
+    else do
+      -- TODO - maybe cache the db for a while to prevent hot calls, or use ETS etc
+      mLocation <- PoPDefinition.whereIsServer msgServerAddress
+      case mLocation of
+        Nothing -> do
+          logWarning "message from unknown server" {msgServerAddress}
+          pure state
+        Just msgLocation
+          -- Opposite logic to IntraPoP - only forward things that are NOT from this pop
+          | extractPoP msgLocation == extractPoP state.thisServer ->
+            pure state
+          | otherwise -> do
+            let
+              msgServer = toServer msgServerAddress msgLocation
+              newAgentClock = Map.insert (Tuple msgServerAddress streamId) msgLTime agentClock
+
+            case eventType of
+              Available -> do
+                state.intraPoPApi.announceOtherPoPAggregatorIsAvailable streamId msgServer
+              Stopped -> do
+                state.intraPoPApi.announceOtherPoPAggregatorStopped streamId msgServer
+            pure $ state { agentClocks = {aggregatorClocks : newAgentClock} }
 
 startScript :: String
 startScript =  privDir(atom "rtsv2") <> "/scripts/startTransPoPAgent.sh"

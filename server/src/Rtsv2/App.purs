@@ -11,13 +11,14 @@ import Pinto.App as App
 import Rtsv2.Config (mergeOverrides)
 import Rtsv2.Sup as Sup
 
-foreign import setLogRoot :: Effect Foreign
+foreign import setLogRootImpl :: Effect Foreign
+foreign import enableSchedulerWallTimeImpl :: Effect Foreign
 
 
 start :: forall a. EffectFn2 Atom (List a) (Tuple2 Atom Foreign)
 start =
   let
---    _ = unsafePerformEffect setLogRoot
+    _ = unsafePerformEffect enableSchedulerWallTimeImpl
     _ = unsafePerformEffect mergeOverrides
   in
    App.simpleStart Sup.startLink

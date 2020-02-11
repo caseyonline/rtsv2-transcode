@@ -1,10 +1,16 @@
 -module(rtsv2_app@foreign).
 
 -export([
-         setLogRoot/0
+         enableSchedulerWallTimeImpl/0,
+         setLogRootImpl/0
         ]).
 
-setLogRoot() ->
+enableSchedulerWallTimeImpl() ->
+  fun() ->
+      erlang:system_flag(scheduler_wall_time, true)
+  end.
+
+setLogRootImpl() ->
   fun() ->
       Root = gproc:get_env(l, rtsv2, disk_log_root, [os_env, app_env, {default, "logs"}]),
 

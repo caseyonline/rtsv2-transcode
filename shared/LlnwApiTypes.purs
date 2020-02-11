@@ -38,7 +38,7 @@ import Foreign (ForeignError(..), readString, unsafeToForeign)
 import Simple.JSON (class ReadForeign, class WriteForeign)
 
 data StreamIngestProtocol = Rtmp
-                           | WebRTC
+                          | WebRTC
 
 type StreamConnection =
   { host :: String

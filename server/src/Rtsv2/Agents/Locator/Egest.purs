@@ -8,11 +8,10 @@ import Prelude
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Data.Newtype (unwrap)
-import Debug.Trace (spy)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, filter, head, nil, (:))
-import Logger (Logger)
+import Logger (Logger, spy)
 import Logger as Logger
 import Pinto (okAlreadyStarted)
 import Rtsv2.Agents.EgestInstance (CreateEgestPayload)
@@ -49,7 +48,9 @@ findEgestAndRegister streamId thisServer = do
         Just aggregator -> do
           allEgest <- IntraPoP.whereIsEgest streamId
           let
+            _ = spy "allEgest" allEgest
             mEgest =  pickCandidate $ filter capcityForClient allEgest
+            _ = spy "mEgest" mEgest
           case mEgest of
             Just egest -> do
               pure $ Right $ Remote $ serverLoadToServer egest

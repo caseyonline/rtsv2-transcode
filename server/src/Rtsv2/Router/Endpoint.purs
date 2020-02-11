@@ -27,7 +27,8 @@ import SpudGun (Url)
 type Canary = String
 
 data Endpoint
-  = TransPoPLeaderE
+  = VMMetricsE
+  | TransPoPLeaderE
   | IntraPoPTestHelperE
   | TimedRoutesE PoPName
   | HealthCheckE
@@ -56,7 +57,7 @@ data Endpoint
   | IngestAggregatorActiveIngestsPlayerSessionE StreamId StreamVariant String
   | IngestAggregatorsE
   | IngestInstancesE
-  | IngestInstancesStatsE
+  | IngestInstancesMetricsE
   | IngestInstanceE StreamId StreamVariant
   | IngestInstanceLlwpE StreamId StreamVariant
   | IngestStartE Canary ShortName StreamAndVariant
@@ -75,7 +76,8 @@ derive instance genericEndpoint :: Generic Endpoint _
 endpoint :: RouteDuplex' Endpoint
 endpoint = root $ sum
   {
-    "TransPoPLeaderE"                                  : "" / "api" / path "transPoPLeader" noArgs
+    "VMMetricsE"                                       : "" / "api" / "vm" / path "metrics" noArgs
+  , "TransPoPLeaderE"                                  : "" / "api" / path "transPoPLeader" noArgs
   , "IntraPoPTestHelperE"                              : "" / "api" / "test" / path "intraPoP" noArgs
   , "TimedRoutesE"                                     : "" / "api" / "timedRoutes" / popName segment
   , "HealthCheckE"                                     : "" / "api" / path "healthCheck" noArgs
@@ -110,7 +112,7 @@ endpoint = root $ sum
   , "IngestAggregatorsE"                               : "" / "api" / "agents" / path "ingestAggregator" noArgs
 
   , "IngestInstancesE"                                 : "" / "api" / "agents" / path "ingest" noArgs
-  , "IngestInstancesStatsE"                            : "" / "api" / "agents" / "ingest" / path "stats" noArgs
+  , "IngestInstancesMetricsE"                            : "" / "api" / "agents" / "ingest" / path "metrics" noArgs
   , "IngestInstanceE"                                  : "" / "api" / "agents" / "ingest" / streamId segment / variant segment
   , "IngestInstanceLlwpE"                              : "" / "api" / "agents" / "ingest" / streamId segment / variant segment / "llwp"
 

@@ -4,7 +4,7 @@ module Rtsv2.Handler.Ingest
        , ingestInstance
        , ingestStart
        , ingestStop
-       , ingestInstancesStats
+       , ingestInstancesMetrics
        ) where
 
 import Prelude
@@ -14,7 +14,6 @@ import Data.Foldable (foldl)
 import Data.Maybe (Maybe(..), fromMaybe')
 import Data.Newtype (unwrap, wrap)
 import Data.Tuple (Tuple(..))
-import Effect (Effect)
 import Erl.Data.List (List, nil, (:))
 import Erl.Data.Tuple (tuple2)
 import Erl.Process.Raw as Raw
@@ -43,8 +42,8 @@ ingestInstances =
   Rest.handler (\req -> Rest.initResult req unit)
   # Rest.yeeha
 
-ingestInstancesStats :: GenericStetsonGet2
-ingestInstancesStats =
+ingestInstancesMetrics :: GenericStetsonGet2
+ingestInstancesMetrics =
   genericGet2 nil ((MimeType.openmetrics getText) : (MimeType.json getJson) : nil)
   where
     getJson _ = do
@@ -179,11 +178,10 @@ statsToPrometheus stats =
                             (Tuple "profile_name" (Prometheus.toLabelValue profileName)) :
                             nil
 
-ingestInstance :: GenericStetsonGet PublicState.Ingest
+ingestInstance :: GenericStetsonGet (PublicState.Ingest List)
 ingestInstance =
   genericGetBy2 Bindings.streamIdBindingLiteral Bindings.variantBindingLiteral getState
   where
-    getState :: StreamId -> StreamVariant -> Effect PublicState.Ingest
     getState streamId variant = IngestInstance.getPublicState (StreamAndVariant streamId variant)
 
 type IngestStartState = { shortName :: ShortName
@@ -226,7 +224,7 @@ ingestStart =
                                                                                          { receive: Raw.receive
                                                                                          , receiveWithTimeout: Raw.receiveWithTimeout
                                                                                          })
-                                                                       _ <- IngestInstanceSup.startIngest (fromMaybe' (lazyCrashIfMissing "stream_details missing") streamDetails) streamAndVariant pid
+                                                                       IngestInstanceSup.startIngest (fromMaybe' (lazyCrashIfMissing "stream_details missing") streamDetails) streamAndVariant "127.0.0.1" 0 pid
                                                                        Rest.result "ingestStarted" req2 state2
                                                                    ) : nil) req state)
   # Rest.yeeha
@@ -252,7 +250,7 @@ ingestStop =
                         )
   # Rest.contentTypesProvided (\req state ->
                                 Rest.result (tuple2 "text/plain" (\req2 state2 -> do
-                                                                     _ <- IngestInstance.stopIngest state.streamAndVariant
+                                                                     IngestInstance.stopIngest state.streamAndVariant
                                                                      Rest.result "ingestStopped" req2 state2
                                                                  ) : nil) req state)
   # Rest.yeeha

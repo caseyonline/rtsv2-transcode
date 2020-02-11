@@ -66,7 +66,7 @@ addVariant :: StreamAndVariant -> Effect Unit
 addVariant streamAndVariant = Gen.doCall (serverName (toStreamId streamAndVariant))
   \state@{thisAddress, activeStreamVariants, workflow} -> do
     logInfo "Ingest variant added" {streamId: streamAndVariant}
-    _ <- addLocalVariantImpl workflow streamAndVariant
+    addLocalVariantImpl workflow streamAndVariant
     pure $ CallReply unit state{activeStreamVariants = insert (toVariant streamAndVariant) thisAddress activeStreamVariants}
 
 addRemoteVariant :: StreamAndVariant -> ServerAddress -> Effect Unit
@@ -76,7 +76,7 @@ addRemoteVariant streamAndVariant remoteServer = Gen.doCall (serverName (toStrea
     let
       path = Routing.printUrl RoutingEndpoint.endpoint (IngestInstanceLlwpE (toStreamId streamAndVariant) (toVariant streamAndVariant))
       url = "http://" <> (unwrap remoteServer) <> ":3000" <> path
-    _ <- addRemoteVariantImpl workflow streamAndVariant url
+    addRemoteVariantImpl workflow streamAndVariant url
     pure $ CallReply unit state{activeStreamVariants = insert (toVariant streamAndVariant) remoteServer activeStreamVariants}
 
 removeVariant :: StreamAndVariant -> Effect Unit
@@ -84,18 +84,18 @@ removeVariant streamAndVariant = Gen.doCall (serverName (toStreamId streamAndVar
   \state@{activeStreamVariants, streamId, workflow, config:{shutdownLingerTimeMs}} -> do
   let
     newActiveStreamVariants = delete (toVariant streamAndVariant) activeStreamVariants
-  _ <- removeVariantImpl workflow streamAndVariant
-  _ <- if (size newActiveStreamVariants) == 0 then do
-         _ <- Timer.sendAfter (serverName streamId) shutdownLingerTimeMs MaybeStop
-         pure unit
-       else
-         pure unit
+  removeVariantImpl workflow streamAndVariant
+  if (size newActiveStreamVariants) == 0 then do
+    void $ Timer.sendAfter (serverName streamId) shutdownLingerTimeMs MaybeStop
+    pure unit
+  else
+    pure unit
   pure $ CallReply unit state{activeStreamVariants = newActiveStreamVariants}
 
-getState :: StreamId -> Effect (PublicState.IngestAggregator)
+getState :: StreamId -> Effect (PublicState.IngestAggregator List)
 getState streamId = Gen.call (serverName streamId)
   \state@{streamDetails, activeStreamVariants} ->
-  CallReply {streamDetails, activeStreamVariants: (\(Tuple streamVariant serverAddress) -> {streamVariant, serverAddress}) <$>(toUnfoldable activeStreamVariants)} state
+  CallReply {streamDetails, activeStreamVariants: (\(Tuple streamVariant serverAddress) -> {streamVariant, serverAddress}) <$> (toUnfoldable activeStreamVariants)} state
 
 startLink :: StreamDetails -> Effect StartLinkResult
 startLink streamDetails@{slot : {name}} = Gen.startLink (serverName (StreamId name)) (init streamDetails) handleInfo
@@ -123,7 +123,7 @@ handleInfo msg state@{activeStreamVariants, streamId} =
     MaybeStop
       | size activeStreamVariants == 0 -> do
         logInfo "Ingest Aggregator stopping" {streamId: streamId}
-        _ <- announceLocalAggregatorStopped streamId
+        announceLocalAggregatorStopped streamId
         pure $ CastStop state
       | otherwise -> pure $ CastNoReply state
 

@@ -8,6 +8,7 @@
 -include_lib("id3as_media/include/send_to_bus_processor.hrl").
 -include_lib("id3as_media/include/frame_writer.hrl").
 -include_lib("id3as_media/include/bitrate_monitor.hrl").
+-include_lib("id3as_avp/include/avp_ingest_source_details_extractor.hrl").
 
 -export([
          init/3,
@@ -19,22 +20,24 @@
 -record(?state,
         {
          rtmp_pid :: pid(),
-         ingestStarted :: fun(),
-         ingestStopped :: fun(),
-         streamAuthType :: fun(),
-         streamAuth :: fun(),
-         streamPublish :: fun(),
-         clientMetadata :: fun(),
+         ingestStartedFn :: fun(),
+         ingestStoppedFn :: fun(),
+         streamAuthTypeFn :: fun(),
+         streamAuthFn :: fun(),
+         streamPublishFn :: fun(),
+         clientMetadataFn :: fun(),
+         sourceInfoFn :: fun(),
          streamDetails :: term(),
          streamAndVariant :: term()
         }).
 
-init(Rtmp, ConnectArgs, [#{ ingestStarted := IngestStarted
-                          , ingestStopped := IngestStopped
-                          , streamAuthType := StreamAuthType
-                          , streamAuth := StreamAuth
-                          , streamPublish := StreamPublish
-                          , clientMetadata := ClientMetadata }]) ->
+init(Rtmp, ConnectArgs, [#{ ingestStarted := IngestStartedFn
+                          , ingestStopped := IngestStoppedFn
+                          , streamAuthType := StreamAuthTypeFn
+                          , streamAuth := StreamAuthFn
+                          , streamPublish := StreamPublishFn
+                          , clientMetadata := ClientMetadataFn
+                          , sourceInfo := SourceInfoFn }]) ->
 
   {_, TcUrl} = lists:keyfind("tcUrl", 1, ConnectArgs),
 
@@ -48,6 +51,15 @@ init(Rtmp, ConnectArgs, [#{ ingestStarted := IngestStarted
      query = Query
     } = rtmp_utils:parse_url(TcUrl),
 
+  State = #?state{rtmp_pid = Rtmp,
+                  ingestStartedFn = IngestStartedFn,
+                  ingestStoppedFn = IngestStoppedFn,
+                  streamAuthTypeFn = StreamAuthTypeFn,
+                  streamAuthFn = StreamAuthFn,
+                  clientMetadataFn = ClientMetadataFn,
+                  sourceInfoFn = SourceInfoFn
+                 },
+
   case Query of
     #{<<"authmod">> := <<"adobe">>,
       <<"user">> := UserName,
@@ -55,7 +67,7 @@ init(Rtmp, ConnectArgs, [#{ ingestStarted := IngestStarted
       <<"response">> := ClientResponse} ->
       %% We have a adobe completed digest
 
-      Reply = (((StreamAuth(Host))(ShortName))(UserName))(),
+      Reply = (StreamAuthFn(Host, ShortName, UserName))(),
 
       case Reply of
         {nothing} ->
@@ -74,14 +86,7 @@ init(Rtmp, ConnectArgs, [#{ ingestStarted := IngestStarted
                                                      ClientChallenge,
                                                      ClientResponse) of
             true ->
-              {ok, #?state{rtmp_pid = Rtmp,
-                           ingestStarted = IngestStarted,
-                           ingestStopped = IngestStopped,
-                           streamAuthType = StreamAuthType,
-                           streamAuth = StreamAuth,
-                           streamPublish = (((StreamPublish)(Host))(ShortName))(UserName),
-                           clientMetadata = ClientMetadata
-                          }};
+              {ok, State#?state{streamPublishFn = StreamPublishFn(Host, ShortName, UserName)}};
 
             false ->
               ?SLOG_INFO("Challenge failed", #{client_challenge => ClientChallenge,
@@ -103,7 +108,7 @@ init(Rtmp, ConnectArgs, [#{ ingestStarted := IngestStarted
       <<"response">> := ClientResponse} ->
       %% We have a llnw completed digest
 
-      Reply = (((StreamAuth(Host))(ShortName))(UserName))(),
+      Reply = (StreamAuthFn(Host, ShortName, UserName))(),
 
       case Reply of
         {nothing} ->
@@ -130,14 +135,7 @@ init(Rtmp, ConnectArgs, [#{ ingestStarted := IngestStarted
                                                     Qop,
                                                     ClientResponse) of
             true ->
-              {ok, #?state{rtmp_pid = Rtmp,
-                           ingestStarted = IngestStarted,
-                           ingestStopped = IngestStopped,
-                           streamAuthType = StreamAuthType,
-                           streamAuth = StreamAuth,
-                           streamPublish = (((StreamPublish)(Host))(ShortName))(UserName),
-                           clientMetadata = ClientMetadata
-                          }};
+              {ok, State#?state{streamPublishFn = StreamPublishFn(Host, ShortName, UserName)}};
 
             false ->
               ?SLOG_INFO("Challenge failed", #{client_response => ClientResponse}),
@@ -154,7 +152,7 @@ init(Rtmp, ConnectArgs, [#{ ingestStarted := IngestStarted
     #{} ->
       ?SLOG_INFO("No authmod - start authentication", #{host => Host,
                                                         shortName => ShortName}),
-      Reply = ((StreamAuthType(Host))(ShortName))(),
+      Reply = (StreamAuthTypeFn(Host, ShortName))(),
 
       case Reply of
         {nothing} ->
@@ -166,8 +164,8 @@ init(Rtmp, ConnectArgs, [#{ ingestStarted := IngestStarted
   end.
 
 handle(State = #?state{rtmp_pid = Rtmp,
-                       streamPublish = StreamPublish,
-                       ingestStarted = IngestStarted}) ->
+                       streamPublishFn = StreamPublishFn,
+                       ingestStartedFn = IngestStartedFn}) ->
 
   receive
     {Rtmp, {request, publish, {StreamId, ClientId, Path}}} ->
@@ -175,7 +173,7 @@ handle(State = #?state{rtmp_pid = Rtmp,
 
       StreamName = list_to_binary(StreamNameStr),
 
-      case ((StreamPublish)(StreamName))() of
+      case (StreamPublishFn(StreamName))() of
         {nothing} ->
           ?SLOG_INFO("Streamname rejected", #{stream_name => StreamName}),
           rtmp:close(Rtmp),
@@ -187,7 +185,9 @@ handle(State = #?state{rtmp_pid = Rtmp,
                                          path => Path,
                                          stream_name => StreamName}),
 
-          case (((IngestStarted(StreamDetails))(StreamName))(self()))() of
+          {ok, {RemoteIp, RemotePort}} = rtmp:peername(Rtmp),
+
+          case (IngestStartedFn(StreamDetails, StreamName, list_to_binary(inet:ntoa(RemoteIp)), RemotePort, self()))() of
             {right, StreamAndVariant} ->
               {ok, WorkflowPid} = start_workflow(Rtmp, StreamId, ClientId, Path, StreamAndVariant),
 
@@ -206,23 +206,25 @@ handle(State = #?state{rtmp_pid = Rtmp,
       ok
   end.
 
-workflow_loop(StreamName, WorkflowPid, State = #?state{ingestStopped = IngestStopped,
+workflow_loop(StreamName, WorkflowPid, State = #?state{ingestStoppedFn = IngestStoppedFn,
                                                        streamDetails = StreamDetails,
-                                                       clientMetadata = ClientMetadata,
+                                                       clientMetadataFn = ClientMetadataFn,
+                                                       sourceInfoFn = SourceInfoFn,
                                                        streamAndVariant = StreamAndVariant}) ->
   %% the workflow is dealing with the RTMP, so just wait until it says we are done
   receive
     #workflow_output{message = #no_active_generators_msg{}} ->
       ?SLOG_WARNING("Client exited"),
 
-      unit = ((IngestStopped(StreamDetails))(StreamName))(),
+      unit = (IngestStoppedFn(StreamDetails, StreamName))(),
       ok;
 
     #workflow_output{message = #workflow_data_msg{data = #rtmp_client_metadata{metadata = Metadata}}} ->
-      PursMetadata = rtmp_metadata_to_purs(Metadata),
-      unit = ((ClientMetadata(StreamAndVariant))(PursMetadata))(),
-      ?SLOG_DEBUG("Got client metadata", #{purs => PursMetadata}),
+      unit = (ClientMetadataFn(StreamAndVariant, Metadata))(),
+      workflow_loop(StreamName, WorkflowPid, State);
 
+    #workflow_output{message = #workflow_data_msg{data = SourceInfo = #source_info{}}} ->
+      unit = (SourceInfoFn(StreamAndVariant, SourceInfo))(),
       workflow_loop(StreamName, WorkflowPid, State);
 
     Other ->
@@ -318,26 +320,3 @@ start_workflow(Rtmp, StreamId, ClientId, Path, StreamAndVariant = {streamAndVari
   {ok, WorkflowPid} = id3as_workflow:start_link(Workflow),
 
   {ok, WorkflowPid}.
-
-rtmp_metadata_to_purs(Metadata) ->
-  array:from_list(rtmp_metadata_to_purs_(Metadata)).
-
-rtmp_metadata_to_purs_([]) ->
-  [];
-
-rtmp_metadata_to_purs_([{Name, Value} | T]) ->
-  [#{name => Name,
-     value => rtmp_metadata_value_to_purs(Value)} | rtmp_metadata_to_purs_(T)].
-
-rtmp_metadata_value_to_purs(Value) when Value == true;
-                                       Value == false ->
-  {rtmpBool, Value};
-
-rtmp_metadata_value_to_purs(Value) when is_integer(Value) ->
-  {rtmpInt, Value};
-
-rtmp_metadata_value_to_purs(Value) when is_float(Value) ->
-  {rtmpFloat, Value};
-
-rtmp_metadata_value_to_purs(Value) when is_binary(Value) ->
-  {rtmpString, Value}.

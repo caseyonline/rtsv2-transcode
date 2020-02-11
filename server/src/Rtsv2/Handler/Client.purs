@@ -47,7 +47,6 @@ clientStart =
   # Rest.yeeha
 
   where
-    -- TODO - almost identical to Relay.purs - would be identical if this used payload, not bindings
     init req = do
       let
         streamId = Bindings.streamId req

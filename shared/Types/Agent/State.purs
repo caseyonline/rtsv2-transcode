@@ -16,19 +16,21 @@ module Shared.Types.Agent.State
 import Data.Maybe (Maybe)
 import Shared.LlnwApiTypes (StreamDetails)
 import Shared.Stream (StreamAndVariant, StreamId, StreamVariant)
-import Shared.Types (GeoLoc, Milliseconds, PoPName, RegionName, RtmpClientMetadata, Server, ServerAddress)
+import Shared.Types (GeoLoc, Milliseconds, PoPName, RegionName, Server, ServerAddress)
+import Shared.Types.Media.Types.Rtmp (RtmpClientMetadata)
+import Shared.Types.Media.Types.SourceDetails (SourceInfo)
 import Shared.Types.Workflow.Metrics.FrameFlow as FrameFlow
 import Shared.Types.Workflow.Metrics.RtmpPushIngest as RtmpIngest
 import Shared.Types.Workflow.Metrics.StreamBitrateMonitor as StreamBitrateMonitor
 
-type TimedPoPRoutes
+type TimedPoPRoutes f
   = { from :: PoPName
     , to :: PoPName
-    , routes :: Array TimedPoPRoute
+    , routes :: f (TimedPoPRoute f)
     }
 
-type TimedPoPRoute
-  = Array TimedPoPStep
+type TimedPoPRoute f
+  = f TimedPoPStep
 
 type TimedPoPStep
   = { from :: PoPName
@@ -36,20 +38,24 @@ type TimedPoPStep
     , rtt :: Int
     }
 
-type Ingest
-  = { rtmpClientMetadata :: Maybe RtmpClientMetadata
+type Ingest f
+  = { ingestStartedTime :: Milliseconds
+    , remoteAddress :: String
+    , remotePort :: Int
+    , rtmpClientMetadata :: Maybe (RtmpClientMetadata f)
+    , sourceInfo :: Maybe (SourceInfo f)
     }
 
-type IngestAggregator
+type IngestAggregator f
    = { streamDetails :: StreamDetails
-     , activeStreamVariants :: Array { streamVariant :: StreamVariant
-                                     , serverAddress :: ServerAddress
-                                     }
+     , activeStreamVariants :: f { streamVariant :: StreamVariant
+                                 , serverAddress :: ServerAddress
+                                 }
      }
 
-type StreamRelay
-  = { egestsServed :: Array ServerAddress
-    , relaysServed :: Array ServerAddress
+type StreamRelay f
+  = { egestsServed :: f ServerAddress
+    , relaysServed :: f ServerAddress
     }
 
 type Egest
@@ -57,13 +63,17 @@ type Egest
     }
 
 
-type IntraPoP
-  = { aggregatorLocations :: Array { streamId :: StreamId
-                                   , servers :: Array Server
-                                   }
-    , relayLocations :: Array { streamId :: StreamId
-                              , servers :: Array Server
-                              }
+type IntraPoP f
+  = { aggregatorLocations :: f { streamId :: StreamId
+                               , servers  :: f Server
+                               }
+    , relayLocations      :: f { streamId :: StreamId
+                               , servers  :: f Server
+                               }
+    , egestLocations      :: f { streamId :: StreamId
+                               , servers  :: f Server
+                          }
+    , currentTransPoPLeader :: Maybe Server
     }
 
 type Region f = { name :: RegionName

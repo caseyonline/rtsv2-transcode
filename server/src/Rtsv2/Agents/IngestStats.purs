@@ -39,7 +39,7 @@ getStats = Gen.call serverName \state@{currentStats} -> CallReply currentStats s
 init :: Unit -> Effect State
 init _ = do
   config@{pollPeriodMs} <- Config.ingestStatsConfig
-  _ <- Timer.sendEvery serverName pollPeriodMs Tick
+  void $ Timer.sendEvery serverName pollPeriodMs Tick
   pure $ { config
          , currentStats: nil}
 

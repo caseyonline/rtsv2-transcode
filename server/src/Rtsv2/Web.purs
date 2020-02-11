@@ -58,6 +58,7 @@ init :: Config.WebConfig -> Effect State
 init args = do
   bindIp <- Env.privateInterfaceIp
   Stetson.configure
+    # mkRoute  VMMetricsE                                                       HealthHandler.vmMetrics
     # mkRoute  TransPoPLeaderE                                                  IntraPoPHandler.leader
     # mkRoute  ServerStateE                                                     IntraPoPHandler.publicState
     # mkRoute  IntraPoPTestHelperE                                              IntraPoPHandler.testHelper
@@ -82,7 +83,7 @@ init args = do
     # mkRoute  IngestAggregatorsE                                               IngestAggregatorHandler.ingestAggregators
 
     # mkRoute (IngestInstancesE)                                                IngestHandler.ingestInstances
-    # mkRoute (IngestInstancesStatsE)                                           IngestHandler.ingestInstancesStats
+    # mkRoute (IngestInstancesMetricsE)                                         IngestHandler.ingestInstancesMetrics
     # mkRoute (IngestInstanceE streamIdBinding variantBinding)                  IngestHandler.ingestInstance
 
     # mkRoute (IngestStartE ":canary" shortNameBinding streamAndVariantBinding) IngestHandler.ingestStart
