@@ -24,6 +24,7 @@ exports.makeChart_ = function(node) {
 exports.setOption_ = function(option) {
   return function(chart) {
     return function() {
+        console.log(JSON.stringify(option.scatterData))
         return chart.setOption(dashboardChart(option.scatterData))
     };
   };
@@ -288,8 +289,11 @@ function dashboardChart(scatterData) {
             color: 'rgba(0,0,0,0.4)'
         },
         itemStyle: {
-            borderColor: '#667576',
-            areaColor: '#3a454e'
+            borderColor:'#9ea1ae',
+            borderWidth:0.5,
+            areaStyle:{
+                color: '#1b1b1b'
+            }
         },
     },
     series : [
@@ -314,17 +318,17 @@ function dashboardChart(scatterData) {
     };
 }
 
-function popChart() {
+function popChart(scatterData) {
     return {
     legend: {
         orient: 'vertical',
         x:'left',
         y:'bottom',
-        data:['Journey Primary', 'Journey Secondary'],
+        data:['Both','A', 'B'],
         selectedMode: 'single',
         selected:{
-            'Journey Primary' : false,
-            'Journey Secondary' : false
+            'Both' : true
+            
         },
         textStyle : {
             color: '#fff'
@@ -366,12 +370,37 @@ function popChart() {
             color: 'rgba(0,0,0,0.4)'
         },
         itemStyle: {
-            borderColor: '#667576',
-            areaColor: '#3a454e'
+            borderColor:'#9ea1ae',
+            borderWidth:1,
+            areaStyle:{
+                color: '#1b1b1b'
+            }
         },
     },
     series : [
-        { name: "Journey Primary",
+         { type: 'scatter',
+          name: "locations",
+          coordinateSystem: 'geo',
+          data: [
+              {"name":"dal","value":[-96.796989,32.776665]},
+              {"name":"iad","value":[-77.039851, 38.877270]},
+              {"name":"lax","value":[-118.243685,34.052234]},
+              {"name":"fra","value":[8.682127,50.110922]}
+          ],
+          symbolSize: 15,
+          animation: true,
+          itemStyle: {
+              color: '#269788'
+          },
+          emphasis: {
+              label: {
+                  show: false
+              },
+          },
+          tooltip: { backgroundColor: '#269788'},
+          zlevel: 5,
+        },
+        { name: "A",
           type: "lines",
           coordinateSystem: 'geo',
           label: {
@@ -379,31 +408,31 @@ function popChart() {
           },
 
           lineStyle: {
-              color: '#afc343',
+              color: '#CD7840',
               width: 2,
               type: "solid",
-              shadowColor: "red",
+              shadowColor: "#717171",
               curveness: 0.3
           },
           effect : {
               show: true,
               scaleSize: 3,
               period: 4,
-              color: '#fff',
+              color: '#e8c675',
               shadowBlur: 6
           },
           zlevel: 10,
 
           data:  [
-              [ {name:'Dal', coord: [-96.796989,32.776665], data: [30, 120]}
-              , {name:'Lcy', coord: [-0.127758,51.507351]}
+              [ {name:'Lax', coord: [-118.243685,34.052234], data: [30, 120]}
+              , {name:'Dal', coord: [-96.796989,32.776665]}
               ]
-            , [ {name:'Lcy', coord: [-0.127758,51.507351], data: [30, 120]}
+            , [ {name:'Dal', coord: [-96.796989,32.776665], data: [30, 120]}
               , {name:"Fra", coord:[8.682127,50.110922]}
               ]
           ],
         },
-        { name: "Journey Secondary",
+        { name: "B",
           type: "lines",
           coordinateSystem: 'geo',
           label: {
@@ -411,31 +440,66 @@ function popChart() {
           },
 
           lineStyle: {
-              color: '#afc343',
+              color: '#CD7840',
               width: 2,
               type: "solid",
-              shadowColor: "red",
+              shadowColor: "#717171",
               curveness: 0.3
           },
           effect : {
               show: true,
               scaleSize: 3,
               period: 4,
-              color: '#fff',
+              color: '#e8c675',
               shadowBlur: 6
           },
            zlevel: 10,
 
 
           data:  [
-              [ {name:'Dal', coord: [-96.796989,32.776665], data: [30, 120]}
-                , {name:'Dia', coord: [-77.0363700, 38.8951100]}
+              [ {name:'Lax', coord: [-118.243685,34.052234], data: [30, 120]}
+                , {name:'Iad', coord: [-77.039851, 38.877270]}
               ]
-              , [ {name:'Dia', coord: [-77.0363700, 38.8951100], data:[60, 120]}
-                  , {name:'Lcy', coord: [-0.127758,51.507351]}
+              , [ {name:'Iad', coord: [-77.039851, 38.877270], data:[60, 120]}
+                , {name:'Fra', coord: [8.682127,50.110922]}
               ]
-            , [ {name:'Lcy', coord: [-0.127758,51.507351], data: [30, 120]}
-                , {name:"Fra", coord:[8.682127,50.110922]}
+          ],
+        },
+        { name: "Both",
+          type: "lines",
+          coordinateSystem: 'geo',
+          label: {
+              show: false
+          },
+
+          lineStyle: {
+              color: '#CD7840',
+              width: 2,
+              type: "solid",
+              shadowColor: "#717171",
+              curveness: 0.3
+          },
+          effect : {
+              show: true,
+              scaleSize: 3,
+              period: 4,
+              color: '#e8c675',
+              shadowBlur: 6
+          },
+          zlevel: 10,
+
+          data:  [
+              [ {name:'Lax', coord: [-118.243685,34.052234], data: [30, 120]}
+              , {name:'Dal', coord: [-96.796989,32.776665]}
+              ]
+            , [ {name:'Dal', coord: [-96.796989,32.776665], data: [30, 120]}
+              , {name:"Fra", coord:[8.682127,50.110922]}
+              ]
+              ,   [ {name:'Lax', coord: [-118.243685,34.052234], data: [30, 120]}
+                , {name:'Iad', coord: [-77.039851, 38.877270]}
+              ]
+              , [ {name:'Iad', coord: [-77.039851, 38.877270], data:[60, 120]}
+                , {name:'Fra', coord: [8.682127,50.110922]}
               ]
           ],
         },

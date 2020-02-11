@@ -126,7 +126,7 @@ getHeader = case _ of
 -------------------------------------------------------------------------------
 requestUser :: forall m. MonadAff m => UrlEnv -> OptionMethod -> m (Either String (Tuple Token Profile))
 requestUser url opts@{ endpoint, method } = do
-  response <- liftAff $ Aff.attempt $ fetchReq (M.URL $ printUrl url.curHostUrl endpoint) Nothing method
+  response <- liftAff $ Aff.attempt $ fetchReq (M.URL $ printUrl url.authUrl endpoint) Nothing method
   withResponse response \(result :: ProfileTokenJson) -> do
                             let u = result.user
                             (Tuple (u.token) { bio: u.bio

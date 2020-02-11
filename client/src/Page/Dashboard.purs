@@ -131,7 +131,6 @@ component = Connect.component $ H.mkComponent
               chart <- H.liftEffect $ EC.makeChart element
               H.modify_ _ { chart = Just chart }
               liftEffect $ EC.setOption { scatterData: newSt.popDefEcharts } chart
-              -- liftEffect $ EC.setClick { } chart
               liftEffect $ EC.setClick { curHost: (unwrap urlEnv.curHostUrl), url: "/app/?#/pop/" } chart
 
     Receive { currentUser } ->
@@ -148,9 +147,6 @@ component = Connect.component $ H.mkComponent
         [ HH.div
           [ css_ "content-wrapper" ]
           [ HH.div
-            [ css_ "content-wrapper-before" ]
-            []
-          , HH.div
             [ css_ "content-header row" ]
             [ HH.div
               [ css_ "content-header-left col-md-4 col-12 mb-2" ]
@@ -168,8 +164,8 @@ component = Connect.component $ H.mkComponent
                 [ HH.div
                   [ css_ "card map" ]
                   html
-                , HH.slot (SProxy :: _ "dropDown") unit DP.component { items: ["dal", "lax", "dia", "fran"]
-                                                                     , buttonLabel: "select pop"} \_ -> Nothing
+                -- , HH.slot (SProxy :: _ "dropDown") unit DP.component { items: ["dal", "lax", "dia", "fran"]
+                --                                                      , buttonLabel: "select pop"} \_ -> Nothing
                 ]
               ]
             ]

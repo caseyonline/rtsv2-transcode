@@ -80,9 +80,6 @@ component = H.mkComponent
         [ HH.div
           [ css_ "content-wrapper" ]
           [ HH.div
-            [ css_ "content-wrapper-before" ]
-            []
-          , HH.div
             [ css_ "content-header row" ]
             [ HH.div
               [ css_ "content-header-left col-md-4 col-12 mb-2" ]

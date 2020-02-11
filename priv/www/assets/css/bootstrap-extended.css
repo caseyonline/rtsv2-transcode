@@ -2382,7 +2382,15 @@ select.form-control
 .card.map
 {
     background-color: #878787;
+    padding-bottom: 3rem;
 }
+
+.card.map .card-title
+{
+    margin-bottom: 0;
+    color: white;
+}
+
 .card .card-title
 {
     font-size: 1.12rem; 

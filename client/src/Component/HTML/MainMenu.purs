@@ -5,6 +5,7 @@ import Prelude
 import Data.Const (Const)
 import Data.Maybe (Maybe(..), isJust)
 import Data.Monoid (guard)
+import Data.Newtype (unwrap)
 import Effect.Aff.Class (class MonadAff)
 import Halogen as H
 import Halogen.HTML as HH
@@ -60,9 +61,10 @@ component = H.mkComponent
 
   render state@{ currentUser, route } =
     HH.div
-    [ css_ "main-menu menu-fixed menu-light menu-accordion menu-shadow "
+    [ css_ "main-menu menu-fixed menu-light menu-accordion menu-shadow"
     , dataAttr "scroll-to-active" "true"
-    , dataAttr "img" "assets/images/backgrounds/02.jpg"]
+    , dataAttr "img" ""
+    ]
     [ HH.div
       [ css_ "navbar-header" ]
       [ HH.ul
@@ -97,6 +99,7 @@ component = H.mkComponent
       [ css_ "main-menu-content" ]
       [ HH.ul
         [ css_ "navigation navigation-main"
+        , dataAttr "data-menu" "menu-navigation"
         , HP.id_ "main-menu-navigation"
         ]
         [ navItem Dashboard
@@ -107,6 +110,46 @@ component = H.mkComponent
             [css_ "menu-title"]
             [ HH.text "Dashboard" ]
           ]
+        , HH.li
+            [ css_ $ "nav-item has-sub " <> guard (route == (PoPHome "") ) "active"  ]
+            [ HH.a
+              []
+              [ HH.i
+                [ css_ "ft-server" ]
+                []
+              , HH.span
+                [css_ "menu-title"]
+                [ HH.text "PoP" ]
+              ]
+            , HH.ul
+              [ css_ "menu-content"]
+              [ HH.li
+                [ css_ "has-sub" ]
+                [ HH.a
+                  [ css_ "menu-item" ]
+                  [ HH.text "America" ]
+                , HH.ul
+                  [ css_ "menu-content" ]
+                  [ HH.li
+                    []
+                    [ HH.a
+                      [ css_ "menu-item" ]
+                      [ HH.text "poop" ]
+                    ]
+
+                  ]
+                ]
+              ]
+            ]
+         , navItem Settings
+           [ HH.i
+             [css_ "ft-settings"]
+             []
+           , HH.span
+             [css_ "menu-title"]
+             [ HH.text "Settings" ]
+           ]
+
          , whenElem (not $ isJust currentUser) \_ ->
              navItem Login
              [ HH.i
@@ -116,15 +159,6 @@ component = H.mkComponent
                [css_ "menu-title"]
                [ HH.text "Login" ]
              ]
-         , whenElem (isJust currentUser) \_ ->
-           navItem Settings
-           [ HH.i
-             [css_ "ft-settings"]
-             []
-           , HH.span
-             [css_ "menu-title"]
-             [ HH.text "Settings" ]
-           ]
          , whenElem (isJust currentUser) \_ ->
            HH.li
            []
@@ -144,7 +178,7 @@ component = H.mkComponent
     where
     navItem r html =
       HH.li
-        [css_ $ "" <> guard (route == r) "active"  ]
+        [css_ $ "nav-item " <> guard (route == r) "active"  ]
         [ HH.a
           [ safeHref r ]
           html
