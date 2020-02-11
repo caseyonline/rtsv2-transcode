@@ -516,8 +516,10 @@ main =
                 ) do
           after_ stopSession do
             it "aggregator presence is disseminated to all servers" do
-              ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
-              waitForTransPoPDisseminate                                >>= as' "wait for transPop disseminate"
+              ingest start p1n1 shortName1 low >>= assertStatusCode 200     >>= as  "create ingest"
+              waitForTransPoPDisseminate                                    >>= as' "wait for transPop disseminate"
+              intraPoPState p1n1                   >>= assertAggregatorOn [p1n1] slot1
+                                                                            >>= as "p1n1 is aware of the ingest on p1n1"
               states1 <- traverse forceGetState (Array.toUnfoldable p1Nodes)
               assertBodiesSame states1                                      >>= as "All pop 1 nodes agree on leader and aggregator presence"
               states2 <- traverse forceGetState (Array.toUnfoldable p2Nodes)
@@ -565,7 +567,7 @@ main =
                    launch' phase1Nodes sysconfig
                 ) do
           after_ stopSession do
-            it "a node thats start late gets to see existing streams" do
+            it "a node that starts late gets to see existing streams" do
               ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
               waitForIntraPoPDisseminate                                >>= as' "let ingest presence disseminate"
               launch' phase2Nodes sysconfig                             >>= as' "start new node after ingest already running"
