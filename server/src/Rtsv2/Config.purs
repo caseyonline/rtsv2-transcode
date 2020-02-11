@@ -83,13 +83,11 @@ type IntraPoPAgentConfig
     , rpcPort :: Int
     , rejoinEveryMs :: Int
     , replayMessagesOnJoin :: Boolean
-    , checkVMExpiryEveryMs :: Int
-    , checkAgentExpiryEveryMs :: Int
-    , reannounceEveryMs :: { vm :: Int
-                           , aggregator :: Int
-                           , relay :: Int
-                           , egest :: Int
-                           }
+    , vmLivenessIntervalMs :: Int
+    , reannounceAgentEveryMs :: { aggregator :: Int
+                                , relay :: Int
+                                , egest :: Int
+                                }
     , missCountBeforeExpiry :: Int
     }
 

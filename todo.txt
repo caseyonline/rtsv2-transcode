@@ -19,15 +19,15 @@
 [ ] - review timeouts in tests
 [ ] - egest / client merging when load drops
 [ ] - relay merging when multiple instances start
-[ ] - TransPoP clock by streamId and server
 [ ] - what does /api/state return for aggregators when both primary and backup preset - suspect it needs role in there...
-
 
 [ ] - Shared objects
 
 [.] - Erl.Cowboy.Req.binding - returns Maybe a - it doesn't know what a is.  Should be Maybe Foreign
 [.] - Clean up / rewrite gproc.purs - is it a direct mapping, or do we want our own API
 
+[x] - derive regularity of liveness checks from re-broadcast interval
+[x] - TransPoP clock by streamId and server
 [x] - RTMP metadata
 [x] - Ephemeral asset maps - and retransmission by intrapop based on timers.  Sendafter with the message....
 [x] - Ensure everyone agrees on the transPoPLeader

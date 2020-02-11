@@ -3,10 +3,8 @@ Welcome to a Spago project!
 You can edit this file as you like.
 -}
 
-{ name =
-    "rtsv2"
-, backend =
-    "purerl"
+{ name = "rtsv2"
+, backend = "purerl"
 , dependencies =
     [ "console"
     , "debug"
@@ -21,6 +19,7 @@ You can edit this file as you like.
     , "erl-stetson"
     , "erl-tuples"
     , "generics-rep"
+    , "heterogeneous"
     , "partial"
     , "psci-support"
     , "random"
@@ -28,8 +27,6 @@ You can edit this file as you like.
     , "simple-json"
     , "simple-json-generics"
     ]
-, packages =
-    ./packages.dhall
-, sources =
-    [ "src/**/*.purs" ]
+, packages = ./packages.dhall
+, sources = [ "src/**/*.purs" ]
 }
