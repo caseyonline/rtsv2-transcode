@@ -5,8 +5,8 @@ all: client server
 server:
 	$(MAKE) -C server all
 
-client:
-	$(MAKE) -C client all
+#client:
+#	$(MAKE) -C client all
 
 test:
 	$(MAKE) -C test all

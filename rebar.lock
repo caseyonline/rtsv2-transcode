@@ -50,6 +50,15 @@
   {git,"https://github.com/yuce/png",
        {ref,"b6af0face98495f10fba3f638f1f36931ff2b3fe"}},
   1},
+ {<<"prometheus">>,{pkg,<<"prometheus">>,<<"4.2.2">>},1},
+ {<<"prometheus_erl">>,
+  {git,"git://github.com/deadtrickster/prometheus.erl.git",
+       {ref,"39ef9d000e265d0fe2716c1c7ac1a2dc95767fa2"}},
+  0},
+ {<<"prometheus_process_collector">>,
+  {git,"git://github.com/deadtrickster/prometheus_process_collector.git",
+       {ref,"34fcae46d226771fb54278c5cf40530baced8267"}},
+  0},
  {<<"qdate">>,
   {git,"git@github.com:id3as/qdate.git",
        {ref,"e08c4f638c094db9707422f90b6d886a8ef4738a"}},
@@ -81,6 +90,7 @@
  {<<"cf">>, <<"5CB902239476E141EA70A740340233782D363A31EEA8AD37049561542E6CD641">>},
  {<<"erlware_commons">>, <<"0CE192AD69BC6FD0880246D852D0ECE17631E234878011D1586E053641ED4C04">>},
  {<<"jsx">>, <<"749BEC6D205C694AE1786D62CEA6CC45A390437E24835FD16D12D74F07097727">>},
+ {<<"prometheus">>, <<"A830E77B79DC6D28183F4DB050A7CAC926A6C58F1872F9EF94A35CD989ACEEF8">>},
  {<<"recon">>, <<"2BCAD0CF621FB277CABBB6413159CD3AA30265C2DEE42C968697988B30108604">>},
  {<<"stacktrace_compat">>, <<"9769D80AE7B09E0BE405927561127D410FEC7A340E52E9286CE1F73DD1639095">>}]}
 ].

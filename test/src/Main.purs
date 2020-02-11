@@ -586,11 +586,11 @@ main =
               waitForMessageTimeout                                     >>= as' "Wait for less than message expiry"
               client start p1n2 slot1          >>= assertStatusCode 404 >>= as  "Clients can no longer join"
               dropAgentMessages p1n2 false                              >>= as  "Alow messages to flow once more"
+
               waitForNodeStartDisseminate                               >>= as' "let ingest presence disseminate"
+              waitForNodeStartDisseminate                               >>= as' "let ingest presence disseminate"
+
               client start p1n2 slot1          >>= assertStatusCode 204 >>= as  "Client can join once more"
-
-
-            -- TODO - egest - test stream we think is not present when it is
 
 
       describe "four pop setup" do
