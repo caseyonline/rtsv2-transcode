@@ -255,6 +255,19 @@ main =
           in
           length (sort serverAddressesForStreamId) == count
 
+    forceGetState node = forceRight <$> intraPoPState node
+
+    assertBodiesSame :: List ResponseWithBody -> Aff (Either String Unit)
+    assertBodiesSame Nil = pure $ Right unit
+    assertBodiesSame (Cons x xs) = pure $ assertBodiesSame_ x.body xs
+      where
+        assertBodiesSame_ :: String -> List ResponseWithBody -> Either String Unit
+        assertBodiesSame_ _ Nil = Right unit
+        assertBodiesSame_ firstBody (Cons y ys) =
+          if y.body == firstBody
+          then assertBodiesSame_ firstBody ys
+          else Left $ "\"" <> firstBody <> "\" is not the same as \"" <> y.body <> "\""
+
 
     delayMs = delay <<< Milliseconds
 
@@ -285,19 +298,6 @@ main =
       let
         p1Nodes = [p1n1, p1n2, p1n3]
         nodes = p1Nodes
-        forceGetState node = forceRight <$> intraPoPState node
-        assertBodiesSame :: List ResponseWithBody -> Aff (Either String Unit)
-        assertBodiesSame Nil = pure $ Right unit
-        assertBodiesSame (Cons x xs) = pure $ assertBodiesSame_ x.body xs
-          where
-            assertBodiesSame_ :: String -> List ResponseWithBody -> Either String Unit
-            assertBodiesSame_ _ Nil = Right unit
-            assertBodiesSame_ firstBody (Cons y ys) =
-              if y.body == firstBody
-              then assertBodiesSame_ firstBody ys
-              else Left $ "\"" <> firstBody <> "\" is not the same as \"" <> y.body <> "\""
-
-
       in do
       before_ (do
                  startSession nodes
@@ -307,7 +307,6 @@ main =
           it "Nodes all come up and agree on who the leader is" do
             states <- traverse forceGetState (Array.toUnfoldable p1Nodes)
             assertBodiesSame states                                      >>= as "All nodes agree on leader and other intial state"
-            pure unit
 
     describe "Ingest tests"
       let
@@ -506,7 +505,7 @@ main =
                                                    >>= assertEgestClients 1
                                                                         >>= as "node 3 agent should have 1 client"
 
-      describe "two pop setup" do
+      describeOnly "two pop setup" do
         let
           p1Nodes = [p1n1, p1n2, p1n3]
           p2Nodes = [p2n1, p2n2]
@@ -516,6 +515,14 @@ main =
                    launch nodes
                 ) do
           after_ stopSession do
+            itOnly "aggregator presence is disseminated to all servers" do
+              ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
+              waitForTransPoPDisseminate                                >>= as' "wait for transPop disseminate"
+              states1 <- traverse forceGetState (Array.toUnfoldable p1Nodes)
+              assertBodiesSame states1                                      >>= as "All pop 1 nodes agree on leader and aggregator presence"
+              states2 <- traverse forceGetState (Array.toUnfoldable p2Nodes)
+              assertBodiesSame states2                                      >>= as "All pop 2 nodes agree on leader and aggregator presence"
+
             it "client requests stream on other pop" do
               client start p2n1 slot1          >>= assertStatusCode 404 >>= as  "no egest prior to ingest"
               relayStats   p1n1 slot1          >>= assertStatusCode 404 >>= as  "no remote relay prior to ingest"
