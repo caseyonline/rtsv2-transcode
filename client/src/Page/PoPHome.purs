@@ -50,7 +50,7 @@ data Action
 
 type State =
   { currentUser     :: Maybe Profile
-  , timedRoutes     :: Maybe (Array TimedPoPRoutes)
+  , timedRoutes     :: Maybe (Array (TimedPoPRoutes Array))
   , popDefenition   :: Maybe (PoPDefinition Array)
   , popDefEcharts   :: Array PoPDefEcharts
   , chart           :: Maybe EC.Instance
@@ -138,6 +138,7 @@ component = Connect.component $ H.mkComponent
               H.modify_ _ { chart = Just chart }
               liftEffect $ EC.setOptionPoP {} chart
               -- liftEffect $ EC.setClick { curHost: (unwrap urlEnv.curHostUrl), url: "/app/?#/pop/" } chart
+
 
     Receive { popName, currentUser } ->
       H.modify_ _ { currentUser = currentUser }

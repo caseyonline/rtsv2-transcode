@@ -111,7 +111,7 @@ instance manageAPIAppM :: ManageApi AppM where
     response <- mkRequest { endpoint: TimedRoutesE toPopName, method: Get }
     case JSON.readJSON response of
       Left e -> pure $ Left $ show e
-      Right (res :: TimedPoPRoutes) -> do
+      Right (res :: (TimedPoPRoutes Array)) -> do
         pure $ Right res
 
   getPoPdefinition = do

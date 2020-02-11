@@ -8,7 +8,7 @@ import Shared.Types (PoPName)
 import Shared.Types.Agent.State (TimedPoPRoutes, PoPDefinition)
 
 class Monad m <= ManageApi m where
-  getTimedRoutes :: PoPName -> m (Either String TimedPoPRoutes)
+  getTimedRoutes :: PoPName -> m (Either String (TimedPoPRoutes Array))
   getPoPdefinition  :: m (Either String (PoPDefinition Array))
 
 instance manageApiHalogenM :: ManageApi m => ManageApi (HalogenM st act slots msg m) where

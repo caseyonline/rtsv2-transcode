@@ -46,7 +46,7 @@ data Action
 
 type State =
   { currentUser     :: Maybe Profile
-  , timedRoutes     :: Maybe (Array TimedPoPRoutes)
+  , timedRoutes     :: Maybe (Array (TimedPoPRoutes Array))
   , popDefenition   :: Maybe (PoPDefinition Array)
   , popDefEcharts   :: Array PoPDefEcharts
   , chart           :: Maybe EC.Instance
