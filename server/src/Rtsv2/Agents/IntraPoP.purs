@@ -1,3 +1,6 @@
+-- TODO: I (Stears) have commented out various logging in this module because it's very verbose due to
+--       announcements being periodically resent. We should only log if the announcements disagree with
+--       our current view of the world
 module Rtsv2.Agents.IntraPoP
   ( startLink
 
@@ -537,11 +540,12 @@ egestHandler
       sendToIntraSerfNetwork state "egestAvailable" (IMEgestState Available agentKey $ extractAddress server)
 
     availableThisPoP state agentKey server = do
-      logInfo "New egest is avaiable in this PoP" {agentKey, server}
+      -- logInfo "New egest is avaiable in this PoP" {agentKey, server}
+      pure unit
 
     availableOtherPoP state agentKey server = do
       -- Not expecting any of these
-      logWarning "New egest is avaiable in another PoP" {agentKey, server}
+      logWarning "New egest is available in another PoP" {agentKey, server}
 
     stoppedLocal state agentKey server = do
       logInfo "Local egest stopped" {agentKey}
@@ -576,10 +580,7 @@ egestKeyToAgentKey (EgestKey streamId) = AgentKey streamId Primary
 
 -- Called by EgestAgent to indicate egest on this node
 announceLocalEgestIsAvailable :: EgestKey -> Effect Unit
-announceLocalEgestIsAvailable egestKey = do
-  let agentKey = egestKeyToAgentKey egestKey
-  logInfo "New egest is available on this node" {egestKey}
-  announceAvailableLocal egestHandler agentKey
+announceLocalEgestIsAvailable = announceAvailableLocal egestHandler <<< egestKeyToAgentKey
 
 announceLocalEgestStopped :: EgestKey -> Effect Unit
 announceLocalEgestStopped = announceStoppedLocal egestHandler <<< egestKeyToAgentKey
@@ -653,7 +654,7 @@ announceAvailableLocal :: AgentHandler -> AgentKey -> Effect Unit
 announceAvailableLocal handler@{locationLens} agentKey =
   Gen.doCast serverName
     \state@{thisServer} -> do
-      logInfo ("New " <> unwrap handler.name <> " is available on this node") {agentKey}
+      --logInfo ("New " <> unwrap handler.name <> " is available on this node") {agentKey}
       doAnnounceAvailableLocal handler agentKey state
       pure $ Gen.CastNoReply $ updateAgentLocation recordLocalAgent locationLens agentKey thisServer state
 

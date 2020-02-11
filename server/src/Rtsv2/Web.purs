@@ -18,6 +18,7 @@ import Logger (Logger, spy)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen as Gen
+import Rtsv2.Agents.EgestInstance as EgestInstance
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
 import Rtsv2.Handler.Client as ClientHandler
@@ -36,11 +37,16 @@ import Rtsv2.Router.Endpoint (Endpoint(..), endpoint)
 import Rtsv2.Router.Parser (printUrl)
 import Rtsv2.Web.Bindings as Bindings
 import Serf (Ip(..))
-import Shared.Stream (ShortName(..), StreamAndVariant(..), StreamId(..), StreamVariant(..))
+import Shared.Stream (ShortName(..), StreamAndVariant(..), StreamId(..), StreamVariant(..), EgestKey(..), IngestKey(..), StreamRole(..))
 import Shared.Types (PoPName)
 import Stetson (InnerStetsonHandler, RestResult, StaticAssetLocation(..), StetsonConfig)
 import Stetson as Stetson
 import Stetson.Rest as Rest
+
+  -- TODO: This code doesn't belong here
+import Rtsv2.PoPDefinition as PoPDefinition
+import Rtsv2.Agents.Locator.Egest (findEgestAndRegister)
+import Rtsv2.Agents.Locator.Types (FailureReason(..), LocalOrRemote(..), LocationResp)
 
 newtype State = State {}
 
@@ -74,7 +80,7 @@ init args = do
     # mkRoute  RelayRegisterEgestE                                              RelayHandler.registerEgest
     # mkRoute  RelayRegisterRelayE                                              RelayHandler.registerRelay
  -- # mkRoute (RelayStatsE streamIdBinding streamRoleBinding)                   RelayHandler.stats
-    # mkHack  "/api/agents/relay/:stream_id/:stream_role"                        RelayHandler.stats
+    # mkHack  "/api/agents/relay/:stream_id/:stream_role"                       RelayHandler.stats
  -- # mkRoute (RelayProxiedStatsE streamIdBinding streamRoleBinding)            RelayHandler.proxiedStats
     # mkHack  "/api/agents/proxied/relay/:stream_id/:stream_role"               RelayHandler.proxiedStats
 
@@ -84,6 +90,7 @@ init args = do
     # mkHack  "/api/agents/ingestAggregator/:stream_id/:stream_role"            IngestAggregatorHandler.ingestAggregator
  -- # mkRoute (IngestAggregatorActiveIngestsE streamIdBinding streamRoleBinding variantBinding) IngestAggregatorHandler.ingestAggregatorsActiveIngest
     # mkHack  "/api/agents/ingestAggregator/:stream_id/:stream_role/activeIngests/:variant" IngestAggregatorHandler.ingestAggregatorsActiveIngest
+    # mkRoute  IngestAggregatorRegisterRelayE                                   IngestAggregatorHandler.registerRelay
     # mkRoute  IngestAggregatorsE                                               IngestAggregatorHandler.ingestAggregators
 
     # mkRoute (IngestInstancesE)                                                IngestHandler.ingestInstances
@@ -101,10 +108,22 @@ init args = do
     # mkRoute  StreamAuthTypeE                                                  LlnwStubHandler.streamAuth
     # mkRoute  StreamPublishE                                                   LlnwStubHandler.streamPublish
 
-    # static  (IngestAggregatorPlayerE streamIdBinding)                                        (PrivFile "rtsv2" "www/aggregatorPlayer.html")
-    # static' (IngestAggregatorPlayerJsE streamIdBinding)                             "/[...]" (PrivDir "rtsv2" "www/assets/js")
-    # static  (IngestAggregatorActiveIngestsPlayerE streamIdBinding variantBinding)            (PrivFile "rtsv2" "www/unifiedPlayer.html")
-    # static' (IngestAggregatorActiveIngestsPlayerJsE streamIdBinding variantBinding) "/[...]" (PrivDir "rtsv2" "www/assets/js")
+    -- Slot configuration endpoints
+    # mkHack  "/api/agents/ingestAggregator/:stream_id/:stream_role/slot"       IngestAggregatorHandler.slotConfiguration
+    # mkHack  "/api/agents/relay/:stream_id/:stream_role/slot"                  RelayHandler.slotConfiguration
+
+    # staticHack "/api/agents/ingestAggregator/:stream_id/:stream_role/player"                                   (PrivFile "rtsv2" "www/aggregatorPlayer.html")
+    # staticHack "/api/agents/ingestAggregator/:stream_id/:stream_role/js/[...]"                                 (PrivDir "rtsv2" "www/assets/js")
+    # staticHack "/api/agents/ingestAggregator/:stream_id/:stream_role/activeIngests/:variant/player"            (PrivFile "rtsv2" "www/unifiedPlayer.html")
+    # staticHack "/api/agents/ingestAggregator/:stream_id/:stream_role/activeIngests/:variant/js/[...]"          (PrivDir "rtsv2" "www/assets/js")
+    -- # static  (IngestAggregatorPlayerE streamIdBinding)                                        (PrivFile "rtsv2" "www/aggregatorPlayer.html")
+    -- # static' (IngestAggregatorPlayerJsE streamIdBinding)                             "/[...]" (PrivDir "rtsv2" "www/assets/js")
+    -- # static  (IngestAggregatorActiveIngestsPlayerE streamIdBinding variantBinding)            (PrivFile "rtsv2" "www/unifiedPlayer.html")
+    -- # static' (IngestAggregatorActiveIngestsPlayerJsE streamIdBinding variantBinding) "/[...]" (PrivDir "rtsv2" "www/assets/js")
+
+    -- We wouldn't host this in a production system, this is just for reference
+    # staticHack "/api/public/:canary/client/:stream_id/player"                (PrivFile "rtsv2" "www/egestReferencePlayer.html")
+    # staticHack "/api/public/:canary/client/:stream_id/js/[...]"              (PrivDir "rtsv2" "www/assets/js")
 
     # Stetson.cowboyRoutes cowboyRoutes
 
@@ -121,9 +140,12 @@ init args = do
     cowboyRoutes :: List Path
     cowboyRoutes =
    -- cowboyRoute   (IngestInstanceLlwpE streamIdBinding streamRoleBinding variantBinding)                                       "llwp_stream_resource" ((unsafeToForeign) makeStreamAndVariant)
-      cowboyHack   "/api/agents/ingest/:stream_id/:stream_role/:variant/llwp"                               "llwp_stream_resource" ((unsafeToForeign) makeStreamAndVariant)
+      cowboyHack   "/api/agents/ingest/:stream_id/:stream_role/:variant/llwp"                                  "llwp_stream_resource" ((unsafeToForeign) makeStreamAndVariant)
 
-      : cowboyRoute (IngestAggregatorActiveIngestsPlayerControlE streamIdBinding variantBinding)               "rtsv2_player_ws_resource" ((unsafeToForeign) makeStreamAndVariant)
+      -- : cowboyRoute (IngestAggregatorActiveIngestsPlayerControlE streamIdBinding variantBinding)               "rtsv2_player_ws_resource" ((unsafeToForeign) makeStreamAndVariant)
+      : cowboyHack "/api/agents/ingestAggregator/:stream_id/:stream_role/activeIngests/:variant_id/session"    "rtsv2_player_ws_resource" (unsafeToForeign { mode: (atom "ingest"), make_ingest_key: makeIngestKey })
+
+      : cowboyHack "/api/public/:canary/client/:stream_id/session"                                             "rtsv2_player_ws_resource" (unsafeToForeign { mode: (atom "egest"), make_egest_key: EgestKey, start_stream: startStream, get_slot_configuration: EgestInstance.slotConfiguration })
 
       : cowboyRoute WorkflowsE "id3as_workflows_resource" (unsafeToForeign unit)
 
@@ -136,6 +158,22 @@ init args = do
     makeStreamAndVariant :: String -> String -> StreamAndVariant
     makeStreamAndVariant streamId variantId = StreamAndVariant (wrap streamId) (wrap variantId)
 
+    makeIngestKey :: String -> String -> String -> IngestKey
+    makeIngestKey streamId streamRole variantId =
+      IngestKey (wrap streamId) (parseStreamRole streamRole) (wrap variantId)
+      where
+        parseStreamRole "primary" = Primary
+        parseStreamRole "backup" = Backup
+        parseStreamRole _ = Primary
+
+    -- TODO: This code doesn't belong here
+    startStream :: String -> Effect LocationResp
+    startStream streamId =
+      do
+        thisServer <- PoPDefinition.getThisServer
+
+        findEgestAndRegister (wrap streamId) thisServer
+
     mkRoute :: forall state msg.  Endpoint -> InnerStetsonHandler msg state -> StetsonConfig -> StetsonConfig
     mkRoute rType handler = Stetson.route (spy "route" (printUrl endpoint rType)) handler
 
@@ -147,6 +185,9 @@ init args = do
 
     static' :: Endpoint -> String -> StaticAssetLocation -> StetsonConfig -> StetsonConfig
     static' rType hack config = Stetson.static ((printUrl endpoint rType) <> hack) config
+
+    staticHack :: String -> StaticAssetLocation -> StetsonConfig -> StetsonConfig
+    staticHack path config = Stetson.static  (spy "route" path) config
 
     streamIdBinding = StreamId (":" <> Bindings.streamIdBindingLiteral)
     variantBinding = StreamVariant (":" <> Bindings.variantBindingLiteral)

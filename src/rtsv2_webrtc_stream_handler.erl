@@ -18,9 +18,15 @@
          stats_gatherer :: atom()
         }).
 
-init(_Args = [StreamAndVariant]) -> %% , StatsGatherer]) ->
+-spec init([ Key ]) -> #?state{} when
+    Key :: IngestKey | EgestKey | StreamAndVariant,
+    IngestKey :: term(),
+    EgestKey :: term(),
+    StreamAndVariant :: term().
 
-  gproc:reg({p, l, {webrtc_stream_output, StreamAndVariant}}),
+init(_Args = [Key]) -> %% , StatsGatherer]) ->
+
+  gproc:reg({p, l, {webrtc_stream_output, Key}}),
 
   timer:send_interval(1000, stats),
 

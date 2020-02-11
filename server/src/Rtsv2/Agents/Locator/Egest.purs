@@ -23,7 +23,7 @@ import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Rtsv2.Utils (crashIfLeft, noprocToMaybe)
 import Shared.Agent as Agent
 import Shared.Stream (AggregatorKey(..), EgestKey(..), StreamId, StreamRole(..))
-import Shared.Types (PoPName, Server, ServerLoad(..), extractPoP, serverLoadToServer)
+import Shared.Types (Server, ServerLoad(..), serverLoadToServer)
 import SpudGun as SpudGun
 
 
@@ -37,7 +37,7 @@ findEgestAndRegister streamId thisServer = do
   let
     egestKey = (EgestKey streamId)
   apiResp <- noprocToMaybe $ EgestInstance.addClient egestKey
-  case spy "apiResp" apiResp of
+  case spy "findEgestAndRegister apiResp" apiResp of
     Just _ ->
       pure $ Right $ Local thisServer
     Nothing -> do
@@ -51,31 +51,31 @@ findEgestAndRegister streamId thisServer = do
           allEgest <- IntraPoP.whereIsEgest egestKey
           let
             _ = spy "allEgest" allEgest
-            mEgest =  pickCandidate $ filter capcityForClient allEgest
+            mEgest =  pickCandidate $ filter capacityForClient allEgest
             _ = spy "mEgest" mEgest
           case mEgest of
             Just egest -> do
               pure $ Right $ Remote $ serverLoadToServer egest
             Nothing -> do
               -- TODO use launchLocalOrRemoteGeneric
-              resourceResp <- IntraPoP.getIdleServer capcityForEgest
+              resourceResp <- IntraPoP.getIdleServer capacityForEgest
               case resourceResp of
                 Left _ ->
                   pure $ Left NoResource
                 Right localOrRemote -> do
-                  startLocalOrRemote localOrRemote (extractPoP aggregator)
+                  startLocalOrRemote localOrRemote aggregator
                   findEgestAndRegister streamId thisServer
   where
    pickCandidate = head
-   capcityForClient (ServerLoad sl) =  unwrap sl.load < 90.0
-   capcityForEgest (ServerLoad sl) =  unwrap sl.load < 50.0
-   startLocalOrRemote :: (LocalOrRemote ServerLoad) -> PoPName -> Effect Unit
-   startLocalOrRemote  (Local _) aggregatorPoP = do
-     void <$> okAlreadyStarted =<<  EgestInstanceSup.startEgest {streamId, aggregatorPoP}
-   startLocalOrRemote  (Remote remote) aggregatorPoP = do
+   capacityForClient (ServerLoad sl) =  unwrap sl.load < 90.0
+   capacityForEgest (ServerLoad sl) =  unwrap sl.load < 50.0
+   startLocalOrRemote :: (LocalOrRemote ServerLoad) -> Server -> Effect Unit
+   startLocalOrRemote  (Local _) aggregator = do
+     void <$> okAlreadyStarted =<<  EgestInstanceSup.startEgest {streamId, aggregator}
+   startLocalOrRemote  (Remote remote) aggregator = do
      let
        url = makeUrl remote EgestE
-     void <$> crashIfLeft =<< SpudGun.postJson url ({streamId, aggregatorPoP} :: CreateEgestPayload)
+     void <$> crashIfLeft =<< SpudGun.postJson url ({streamId, aggregator} :: CreateEgestPayload)
 
 
 --------------------------------------------------------------------------------

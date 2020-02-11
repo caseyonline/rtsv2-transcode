@@ -2,6 +2,8 @@ module Rtsv2.Handler.IngestAggregator
        ( ingestAggregator
        , ingestAggregators
        , ingestAggregatorsActiveIngest
+       , registerRelay
+       , slotConfiguration
        )
        where
 
@@ -14,6 +16,8 @@ import Erl.Data.List (List, nil, (:))
 import Erl.Data.Tuple (tuple2)
 import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
 import Rtsv2.Agents.IngestAggregatorInstanceSup as IngestAggregatorInstanceSup
+import Rtsv2.Agents.SlotTypes (SlotConfiguration)
+import Rtsv2.Agents.StreamRelayTypes (RegisterRelayPayload)
 import Rtsv2.Web.Bindings as Bindings
 import Shared.LlnwApiTypes (StreamDetails)
 import Shared.Stream (AggregatorKey(..), IngestKey(..))
@@ -24,10 +28,25 @@ import Simple.JSON (readJSON)
 import Stetson (HttpMethod(..), StetsonHandler)
 import Stetson.Rest as Rest
 import StetsonHelper (GenericStatusState, GenericStetsonHandler, allBody, binaryToString, genericGetByStreamIdAndRole, genericPost)
+import Logger (spy)
+
+-- TODO: PS: Should we model this in PS?
+import Foreign (Foreign)
 
 ingestAggregator :: StetsonHandler (GenericStatusState (PublicState.IngestAggregator List))
 ingestAggregator = genericGetByStreamIdAndRole
                    \streamId role -> IngestAggregatorInstance.getState $ AggregatorKey streamId role
+
+slotConfiguration :: StetsonHandler (GenericStatusState (Maybe SlotConfiguration))
+slotConfiguration =
+  genericGetByStreamIdAndRole slotConfigurationByStreamIdAndRole
+
+  where
+    slotConfigurationByStreamIdAndRole streamId role =
+      do
+        result <- IngestAggregatorInstance.slotConfiguration (AggregatorKey streamId role)
+        let _ = spy "Ingest Aggregator Slot Config" result
+        pure result
 
 ingestAggregators :: GenericStetsonHandler StreamDetails
 ingestAggregators = genericPost IngestAggregatorInstanceSup.startAggregator
@@ -97,3 +116,7 @@ ingestAggregatorsActiveIngest =
   # Rest.contentTypesProvided (\req state -> Rest.result (tuple2 "application/json" (Rest.result ""): nil) req state)
 
   # Rest.yeeha
+
+
+registerRelay :: GenericStetsonHandler RegisterRelayPayload
+registerRelay = genericPost  IngestAggregatorInstance.registerRelay

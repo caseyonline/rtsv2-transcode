@@ -2,6 +2,9 @@ import ISession from "./ISession";
 import EventEmitter from "./util/EventEmitter.ts";
 import { WebSocketProtocolStatusCode } from "./util/WebSocketUtil.ts";
 
+import * as ClientMessages from "./signaling/clientMessages.ts";
+import * as ServerMessages from "./signaling/serverMessages.ts";
+
 enum SessionState {
   Opening = 1000,
   AwaitingInitialization = 2000,
@@ -165,18 +168,21 @@ export default class Session extends EventEmitter implements ISession {
   }
 
   init_handleSocketMessage(event) {
-    const message = JSON.parse(event.data);
+    const message = <ServerMessages.Message> JSON.parse(event.data);
 
     switch (message.type) {
       case "init":
         {
+          const thisEdge = message.thisEdge;
+
           this.state = SessionState.Negotiating;
           this.traceId = message.traceId;
-          this.serverConfig = Object.assign({
+          this.serverConfig = {
             iceTransportPolicy: "all",
-          }, message.serverConfig);
+            iceServers: thisEdge.iceServers
+          };
 
-          console.log(`Initialized Session with identifier ${message.traceId}, moved to state ${SessionState[this.state]} (${this.state}). Final endpoint: ${message.socketURL}`, message.serverConfig);
+          console.log(`Initialized Session with identifier ${message.traceId}, moved to state ${SessionState[this.state]} (${this.state}). Final endpoint: ${thisEdge.socketURL}`, thisEdge);
 
           this.beginNegotiation();
         }
@@ -184,9 +190,14 @@ export default class Session extends EventEmitter implements ISession {
 
       case "bye":
         {
-          this.socketURL = message.alternatives[0];
-          console.log(`Rejected by server, we're being redirected to ${this.socketURL}.`);
-          this.createSocket();
+          if (message.otherEdges.length > 0) {
+            this.socketURL = message.otherEdges[0].socketURL;
+            console.log(`Rejected by server, we're being redirected to ${this.socketURL}.`);
+            this.createSocket();
+          }
+          else {
+            console.log(`Rejected by server, no alternatives were provided.`);
+          }
         }
         break;
 
@@ -196,7 +207,7 @@ export default class Session extends EventEmitter implements ISession {
   }
 
   async negotiating_handleSocketMessage(event) {
-    const message = JSON.parse(event.data);
+    const message = <ServerMessages.Message> JSON.parse(event.data);
 
     switch (message.type) {
       case "pong":
@@ -214,7 +225,7 @@ export default class Session extends EventEmitter implements ISession {
         {
           console.debug("Remote ICE candidate obtained.", message);
           await this.peer.addIceCandidate(new RTCIceCandidate({
-            sdpMLineIndex: message.lineIndex,
+            sdpMLineIndex: message.index,
             candidate: message.candidate
           }));
           console.debug("Remote ICE candidate applied.");
@@ -322,7 +333,7 @@ export default class Session extends EventEmitter implements ISession {
     this.emit("stream", event.streams[0]);
   }
 
-  sendToSocket(message) {
+  sendToSocket(message: ClientMessages.Message) {
     try {
       this.socket.send(JSON.stringify(message));
     }

@@ -214,7 +214,7 @@ ingestStart =
   # Rest.resourceExists (\req state@{shortName, streamAndVariant: (StreamAndVariant _ variant)} ->
                           let
                             streamPublishPayload :: StreamPublish
-                            streamPublishPayload = { host: "172.16.171.1"
+                            streamPublishPayload = { host: "172.16.171.5"
                                                    , protocol: Rtmp
                                                    , shortname: unwrap shortName
                                                    , streamName: unwrap variant

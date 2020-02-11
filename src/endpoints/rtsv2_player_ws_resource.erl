@@ -19,10 +19,10 @@
         ]).
 
 
--define(state_running,       rtsv2_player_ws_resource_state_running).
--define(state_redirect,      rtsv2_player_ws_resource_state_redirect).
--define(state_not_found,     rtsv2_player_ws_resource_state_not_found).
--define(state_retry,         rtsv2_player_ws_resource_state_retry).
+-define(state_running,      rtsv2_player_ws_resource_state_running).
+-define(state_redirect,     rtsv2_player_ws_resource_state_redirect).
+-define(state_not_found,    rtsv2_player_ws_resource_state_not_found).
+-define(state_retry,        rtsv2_player_ws_resource_state_retry).
 
 -define(stream_desc_ingest, rtsv2_player_ws_resource_ingest_stream_descriptor).
 -define(stream_desc_egest,  rtsv2_player_ws_resource_egest_stream_descriptor).
@@ -37,6 +37,7 @@
         , start_options :: webrtc_stream_server:start_options()
         , server_id :: term()
         , ice_servers :: list(map())
+        , profiles :: list(rtsv2_slot_configuration:slot_profile())
         }).
 
 
@@ -54,14 +55,17 @@
 -record(?stream_desc_ingest,
         { stream_id :: binary_string()
         , variant_id :: binary_string()
-        , make_stream_and_variant :: fun((binary_string()) -> fun((binary_string()) -> term()))
+        , stream_role :: binary_string()
+        , ingest_key :: term()
         }).
 -type stream_desc_ingest() :: #?stream_desc_ingest{}.
 
 
 -record(?stream_desc_egest,
-        { account :: binary_string()
-        , stream_name :: binary_string()
+        { stream_id  :: binary_string()
+        , egest_key :: term()
+        , start_stream_result :: term()
+        , get_slot_configuration :: fun()
         }).
 -type stream_desc_egest() :: #?stream_desc_egest{}.
 
@@ -80,8 +84,51 @@
 
 
 init(Req,
-     MakeStreamAndVariant
+     #{ mode := egest
+      , make_egest_key := MakeEgestKey
+      , start_stream := StartStream
+      , get_slot_configuration := GetSlotConfiguration
+      }
     ) ->
+
+  %% Ensure the relay is set-up and get the relay key
+  StreamId = cowboy_req:binding(stream_id, Req),
+
+  %% NOTE: StartStream returns an effect, hence the extra invocation
+  StartStreamResult =
+    (StartStream(StreamId))(),
+
+  io:format(user, "START STREAM RESULT: ~p~n~n", [StartStreamResult]),
+
+  StreamDesc =
+    #?stream_desc_egest{ stream_id =  StreamId
+                       , egest_key = MakeEgestKey(StreamId)
+                       , start_stream_result = StartStreamResult
+                       , get_slot_configuration = GetSlotConfiguration
+                       },
+
+  init_prime(Req, StreamDesc);
+
+init(Req,
+     #{ mode := ingest
+      , make_ingest_key := MakeIngestKey
+      }
+    ) ->
+
+  StreamId = cowboy_req:binding(stream_id, Req),
+  StreamRole = cowboy_req:binding(stream_role, Req),
+  VariantId = cowboy_req:binding(variant_id, Req),
+
+  StreamDesc =
+    #?stream_desc_ingest{ stream_id = StreamId
+                        , stream_role = StreamRole
+                        , variant_id = VariantId
+                        , ingest_key = ((MakeIngestKey(StreamId))(StreamRole))(VariantId)
+                        },
+
+  init_prime(Req, StreamDesc).
+
+init_prime(Req, StreamDesc) ->
 
   %% Needs to come from config!
   PublicIP = this_server_ip(Req),
@@ -93,22 +140,6 @@ init(Req,
   TurnPort = 4000,
   TurnUsername = <<"username">>,
   TurnPassword = <<"password">>,
-
-  StreamId = cowboy_req:binding(stream_id, Req),
-  VariantId = cowboy_req:binding(variant_id, Req),
-
-  StreamDesc =
-    #?stream_desc_ingest{ stream_id = StreamId
-                        , variant_id = VariantId
-                        , make_stream_and_variant = MakeStreamAndVariant
-                        },
-
-  %% StreamDesc =
-  %%   #?stream_desc_egest{ account = cowboy_req:binding(account, Req)
-  %%                      , stream_name = cowboy_req:binding(stream_name, Req)
-  %%                      },
-
-  %% Stuff that isn't a hack
 
   { TraceId, NewReq } = maybe_allocate_trace_id(ServerId, ServerEpoch, CookieDomainName, Req),
 
@@ -148,7 +179,7 @@ init(Req,
          }
       };
 
-    { available_here, _BusName } ->
+    { available_here, Profiles } ->
       PublicIPString = i_convert:convert(PublicIP, binary_string),
       SocketURL = <<"wss://", PublicIPString/binary, (cowboy_req:path(Req))/binary>>,
 
@@ -158,9 +189,10 @@ init(Req,
                        , public_ip_string = PublicIPString
                        , socket_url = SocketURL
                        , stream_desc = StreamDesc
-                       , start_options = construct_start_options(TraceId, PublicIPString, StreamDesc)
+                       , start_options = construct_start_options(TraceId, PublicIPString, Profiles, StreamDesc)
                        , server_id = construct_server_id(StreamDesc)
                        , ice_servers = stun_turn_config(none, TurnIP, TurnPort, TurnUsername, TurnPassword)
+                       , profiles = Profiles
                        }
       , #{ max_frame_size => ?MAX_PAYLOAD_SIZE
          , idle_timeout => ?IDLE_TIMEOUT_MS
@@ -169,7 +201,13 @@ init(Req,
   end.
 
 
-terminate(_Reason, _PartialReq, #?state_redirect{}) ->
+terminate(stop, _PartialReq, #?state_redirect{}) ->
+  ok;
+
+terminate(stop, _PartialReq, #?state_not_found{}) ->
+  ok;
+
+terminate(stop, _PartialReq, #?state_retry{}) ->
   ok;
 
 terminate(_Reason, _PartialReq, #?state_running{ server_id = ServerId, trace_id = TraceId }) ->
@@ -223,6 +261,7 @@ websocket_init(#?state_running{ trace_id = TraceId
                               , start_options = InitialStartOptions
                               , socket_url = SocketURL
                               , ice_servers = ICEServers
+                              , profiles = [ #{ name := ActiveProfileName } | _OtherProfiles ] = Profiles
                               } = State) ->
 
   logger:set_process_metadata(#{ correlation_id => TraceId }),
@@ -247,8 +286,12 @@ websocket_init(#?state_running{ trace_id = TraceId
   InitialMessage =
     #{ type => init
      , traceId => TraceId
-     , serverConfig => #{ <<"iceServers">> => ICEServers }
-     , socketURL => SocketURL
+     , thisEdge =>
+         #{ socketURL => SocketURL
+          , iceServers => ICEServers
+          }
+     , activeVariant => ActiveProfileName
+     , variants => [ ProfileName || #{ name := ProfileName } <- Profiles ]
      },
 
   { [ {text, jsx:encode(InitialMessage)} ]
@@ -302,7 +345,7 @@ websocket_info({ session_event
                State
               ) ->
   { [ json_frame( <<"ice.candidate">>,
-                  #{ <<"lineIndex">> => LineIndex
+                  #{ <<"index">> => LineIndex
                    , <<"candidate">> => Candidate
                    }
                 ) ]
@@ -316,20 +359,51 @@ websocket_info(not_implemented, State) ->
 %%% ----------------------------------------------------------------------------
 %%% Private Functions
 %%% ----------------------------------------------------------------------------
-determine_stream_availability(#?stream_desc_ingest{ stream_id = StreamId, variant_id = VariantId, make_stream_and_variant = MakeStreamAndVariant }) ->
-  StreamAndVariant = (MakeStreamAndVariant(StreamId))(VariantId),
+determine_stream_availability(#?stream_desc_ingest{ ingest_key = IngestKey, stream_id = StreamId, variant_id = VariantId }) ->
 
-  BusName = {webrtc_stream_output, StreamAndVariant},
+  BusName = {webrtc_stream_output, IngestKey},
 
   case pubsub:exists(BusName) of
     true ->
+
       case pubsub:read_bus_metadata(BusName) of
         { ok, #live_stream_metadata{ program_details = _Frame = #frame{} } } ->
-          { available_here, BusName };
-        _ ->
+
+          case rtsv2_slot_media_source_publish_processor:maybe_slot_configuration(StreamId) of
+            #{ profiles := Profiles } ->
+
+              case [ Profile || Profile = #{ name := ProfileName } <- Profiles, ProfileName =:= VariantId ] of
+                [ MatchingProfile | _ ] ->
+                  { available_here, [ MatchingProfile ] };
+
+                _NoMatchingProfile ->
+                  available_nowhere
+              end;
+
+            _NoSlotConfigAvailable ->
+              initializing_here
+          end;
+
+        _NotReceivingMediaYet ->
           initializing_here
       end;
+
     false ->
+      available_nowhere
+  end;
+
+determine_stream_availability(#?stream_desc_egest{ egest_key = EgestKey, get_slot_configuration = GetSlotConfiguration }) ->
+
+  %% TODO: PS: liveness information?
+  %% TODO: PS: getting slot config should be part of the stream detection
+  %% NOTE: GetSlotConfiguration returns an effect
+  case (GetSlotConfiguration(EgestKey))() of
+    {just, #{ profiles := Profiles }} ->
+      { available_here, Profiles };
+
+    {nothing} ->
+
+      %% TODO: PS: available elsewhere detection
       available_nowhere
   end.
 
@@ -468,7 +542,12 @@ this_server_ip(Req) ->
   IP.
 
 
-construct_start_options(TraceId, IP, #?stream_desc_ingest{}) ->
+construct_start_options(TraceId, IP, [ SlotProfile ], #?stream_desc_ingest{}) ->
+
+  #{ firstAudioSSRC := AudioSSRC
+   , firstVideoSSRC := VideoSSRC
+   } = SlotProfile,
+
   #{ session_id => TraceId
    , local_address => IP
    , handler_module => rtsv2_webrtc_session_handler
@@ -481,12 +560,18 @@ construct_start_options(TraceId, IP, #?stream_desc_ingest{}) ->
 
    , rtp_egest_config =>
        { passthrough
-       , #{ audio_ssrc => 10
-          , video_ssrc => 20
+       , #{ audio_ssrc => AudioSSRC
+          , video_ssrc => VideoSSRC
           }
        }
    };
-construct_start_options(TraceId, IP, #?stream_desc_egest{}) ->
+
+construct_start_options(TraceId, IP, [ SlotProfile | _IgnoreTheseForNow ], #?stream_desc_egest{}) ->
+
+  #{ firstAudioSSRC := AudioSSRC
+   , firstVideoSSRC := VideoSSRC
+   } = SlotProfile,
+
   #{ session_id => TraceId
    , local_address => IP
    , handler_module => rtsv2_webrtc_session_handler
@@ -499,15 +584,15 @@ construct_start_options(TraceId, IP, #?stream_desc_egest{}) ->
 
    , rtp_egest_config =>
        { passthrough
-       , #{ audio_ssrc => 10
-          , video_ssrc => 20
+       , #{ audio_ssrc => AudioSSRC
+          , video_ssrc => VideoSSRC
           }
        }
    }.
 
 
-construct_server_id(#?stream_desc_ingest{ stream_id = StreamId, variant_id = VariantId, make_stream_and_variant = MakeStreamAndVariant }) ->
-  (MakeStreamAndVariant(StreamId))(VariantId);
+construct_server_id(#?stream_desc_ingest{ ingest_key = IngestKey }) ->
+  IngestKey;
 
-construct_server_id(#?stream_desc_egest{ account = Account, stream_name = Stream }) ->
-  { Account, Stream }.
+construct_server_id(#?stream_desc_egest{ egest_key = EgestKey }) ->
+  EgestKey.
