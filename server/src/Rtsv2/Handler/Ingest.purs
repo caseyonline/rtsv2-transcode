@@ -4,7 +4,7 @@ module Rtsv2.Handler.Ingest
        , ingestInstance
        , ingestStart
        , ingestStop
-       , ingestInstancesStats
+       , ingestInstancesMetrics
        ) where
 
 import Prelude
@@ -14,7 +14,6 @@ import Data.Foldable (foldl)
 import Data.Maybe (Maybe(..), fromMaybe')
 import Data.Newtype (unwrap, wrap)
 import Data.Tuple (Tuple(..))
-import Effect (Effect)
 import Erl.Data.List (List, nil, (:))
 import Erl.Data.Tuple (tuple2)
 import Erl.Process.Raw as Raw
@@ -43,8 +42,8 @@ ingestInstances =
   Rest.handler (\req -> Rest.initResult req unit)
   # Rest.yeeha
 
-ingestInstancesStats :: GenericStetsonGet2
-ingestInstancesStats =
+ingestInstancesMetrics :: GenericStetsonGet2
+ingestInstancesMetrics =
   genericGet2 nil ((MimeType.openmetrics getText) : (MimeType.json getJson) : nil)
   where
     getJson _ = do

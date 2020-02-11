@@ -20,9 +20,7 @@
 [ ] - egest / client merging when load drops
 [ ] - relay merging when multiple instances start
 [ ] - TransPoP clock by streamId and server
-
-
-
+[ ] - what does /api/state return for aggregators when both primary and backup preset - suspect it needs role in there...
 
 
 [ ] - Shared objects

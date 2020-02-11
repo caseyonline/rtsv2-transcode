@@ -16,7 +16,9 @@
     id3as_media,
     id3as_rtc,
     uuid,
-    msgpack
+    msgpack,
+    prometheus_process_collector,
+    prometheus
    ]},
   {env,[]},
   {modules, []},
