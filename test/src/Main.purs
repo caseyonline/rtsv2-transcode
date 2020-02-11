@@ -505,7 +505,7 @@ main =
                                                    >>= assertEgestClients 1
                                                                         >>= as "node 3 agent should have 1 client"
 
-      describeOnly "two pop setup" do
+      describe "two pop setup" do
         let
           p1Nodes = [p1n1, p1n2, p1n3]
           p2Nodes = [p2n1, p2n2]
@@ -515,7 +515,7 @@ main =
                    launch nodes
                 ) do
           after_ stopSession do
-            itOnly "aggregator presence is disseminated to all servers" do
+            it "aggregator presence is disseminated to all servers" do
               ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
               waitForTransPoPDisseminate                                >>= as' "wait for transPop disseminate"
               states1 <- traverse forceGetState (Array.toUnfoldable p1Nodes)

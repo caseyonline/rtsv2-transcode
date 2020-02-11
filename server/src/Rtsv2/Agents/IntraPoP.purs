@@ -666,6 +666,7 @@ announceAvailableOtherPoP handler@{locationLens} streamId msgServer =
     \state@{agentLocations, thisServer} -> do
       let
         locations = locationLens.get agentLocations
+        _ = spy "announceAvailableOtherPoP" {name: handler.name, streamId, msgServer}
       timeout <- messageTimeout handler state
       logIfNewAgent handler locations thisServer streamId msgServer
       handler.availableOtherPoP state streamId msgServer
@@ -946,34 +947,36 @@ handleAgentMessage msgLTime eventType streamId msgServerAddress
         Nothing -> do
           logWarning "message from unknown server" {msgServerAddress, msgType: agentMessageHandler.name}
           pure state
-        Just msgLocation
-          | extractPoP msgLocation /= extractPoP state.thisServer ->
-            pure state
-          | otherwise -> do
-            let
-              msgServer = toServer msgServerAddress msgLocation
-              newAgentClock = Map.insert (Tuple msgServerAddress streamId) msgLTime agentClock
-              newAgentClocks = clockLens.set newAgentClock state.agentClocks
-              locations = locationLens.get agentLocations
+        Just msgLocation -> do
+          let
+            fromThisPoP =  extractPoP msgLocation == extractPoP state.thisServer
+            msgServer = toServer msgServerAddress msgLocation
+            newAgentClock = Map.insert (Tuple msgServerAddress streamId) msgLTime agentClock
+            newAgentClocks = clockLens.set newAgentClock state.agentClocks
+            locations = locationLens.get agentLocations
 
-            case eventType of
-              Available -> do
-                timeout <- messageTimeout agentMessageHandler state
-                logIfNewAgent agentMessageHandler locations thisServer streamId msgServer
-                let
-                  newLocations = recordRemoteAgent timeout streamId msgServer locations
-                agentMessageHandler.availableThisPoP state streamId msgServer
-                pure $ state { agentClocks = newAgentClocks
-                             , agentLocations = locationLens.set newLocations agentLocations
-                             }
+          case eventType of
+            Available -> do
+              timeout <- messageTimeout agentMessageHandler state
+              logIfNewAgent agentMessageHandler locations thisServer streamId msgServer
+              let
+                newLocations = recordRemoteAgent timeout streamId msgServer locations
+              if fromThisPoP
+              then agentMessageHandler.availableThisPoP state streamId msgServer
+              else pure unit
+              pure $ state { agentClocks = newAgentClocks
+                           , agentLocations = locationLens.set newLocations agentLocations
+                           }
 
-              Stopped -> do
-                let
-                  newLocations = removeRemoteAgent streamId msgServer locations
-                agentMessageHandler.stoppedThisPoP state streamId msgServer
-                pure $ state { agentClocks = newAgentClocks
-                             , agentLocations = locationLens.set newLocations agentLocations
-                             }
+            Stopped -> do
+              let
+                newLocations = removeRemoteAgent streamId msgServer locations
+              if fromThisPoP
+              then agentMessageHandler.stoppedThisPoP state streamId msgServer
+              else pure unit
+              pure $ state { agentClocks = newAgentClocks
+                           , agentLocations = locationLens.set newLocations agentLocations
+                           }
 
 
 messageTimeout :: AgentHandler -> State -> Effect Milliseconds
