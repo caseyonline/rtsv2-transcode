@@ -147,7 +147,7 @@ routesTo pop = Gen.doCall serverName
           Nothing -> do
             -- We could not find a route to the pop
             -- just have a single, direct route [[pop]]
-            _ <- logWarning "No route returned for" {pop}
+            logWarning "No route returned for" {pop}
             pure $ singleton $ singleton pop
           Just viaLists ->
             -- the map contains just the the via pops
@@ -197,7 +197,7 @@ announceAggregatorStopped streamId server =
             -- Message from our pop - distribute over trans-pop
             --logInfo "Local stream stopped being delivered to trans-pop" { streamId: streamId }
             result <- Serf.event state.serfRpcAddress "streamStopped" (TMAggregatorState Stopped streamId (extractAddress server)) false
-            _ <- maybeLogError "Trans-PoP serf event failed" result {}
+            maybeLogError "Trans-PoP serf event failed" result {}
             pure state
       else pure state
 
@@ -261,8 +261,8 @@ init { config: config@{ leaderTimeoutMs
   -- Stop any agent that might be running (in case we crashed)
   _ <- osCmd stopScript
 
-  _ <- Gen.registerExternalMapping serverName (\m -> TransPoPSerfMsg <$> (Serf.messageMapper m))
-  _ <- Timer.sendEvery serverName leaderAnnounceMs LeaderTimeoutTick
+  Gen.registerExternalMapping serverName (\m -> TransPoPSerfMsg <$> (Serf.messageMapper m))
+  void $ Timer.sendEvery serverName leaderAnnounceMs LeaderTimeoutTick
 
   now <- systemTimeMs
 
@@ -337,7 +337,7 @@ handleTransPoPMessage (TMAggregatorState Available streamId address) state@{intr
   case mServerLocation of
     Nothing -> pure state
     Just location -> do
-      _ <- intraPoPApi.announceOtherPoPAggregatorIsAvailable streamId (toServer address location)
+      intraPoPApi.announceOtherPoPAggregatorIsAvailable streamId (toServer address location)
       pure state
 
 handleTransPoPMessage (TMAggregatorState Stopped streamId address) state@{intraPoPApi} = do
@@ -346,7 +346,7 @@ handleTransPoPMessage (TMAggregatorState Stopped streamId address) state@{intraP
   case mServerLocation of
     Nothing -> pure state
     Just location -> do
-      _ <- intraPoPApi.announceOtherPoPAggregatorStopped streamId (toServer address location)
+      intraPoPApi.announceOtherPoPAggregatorStopped streamId (toServer address location)
       pure state
 
 --------------------------------------------------------------------------------
@@ -450,12 +450,12 @@ handleRttRefresh state@{ weAreLeader: true
                   mPoP <- originPoP sa
                   case mPoP of
                     Nothing -> do
-                      _ <- logWarning "Unknown pop for server" {misc: sa}
+                      logWarning "Unknown pop for server" {misc: sa}
                       pure acc
                     Just pop -> do
                       pure $ Map.insert pop coord acc
                 Left error -> do
-                  _ <- logWarning "Coordinate error" {misc: {server: sa, error}}
+                  logWarning "Coordinate error" {misc: {server: sa, error}}
                   pure acc
             ) Map.empty eCoordinates
     defaultRtts <- getDefaultRtts config
@@ -465,7 +465,7 @@ handleRttRefresh state@{ weAreLeader: true
       thisPoP = extractPoP thisServer
       Tuple newRtts newSourceRoutes = calculateRoutes poPCoordinates rtts defaultRtts thisPoP otherPoPNames
 
-    _ <- Timer.sendAfter serverName rttRefreshMs RttRefreshTick
+    void $ Timer.sendAfter serverName rttRefreshMs RttRefreshTick
     pure $ state { rtts = newRtts
                  , sourceRoutes = newSourceRoutes}
 
@@ -500,7 +500,7 @@ calculateRoutes poPCoordinates currentRtts defaultRtts thisPoP otherPoPNames =
 handleTick :: State -> Effect State
 handleTick = case _ of
   state@{ weAreLeader: true } -> do
-            _ <- state.intraPoPApi.announceTransPoPLeader
+            state.intraPoPApi.announceTransPoPLeader
             pure state
 
   state -> do
@@ -536,8 +536,8 @@ connectStream state@{ weAreLeader: false } = do
 
 connectStream state@{serfRpcAddress} = do
 
-  _ <- loopStreamJoin serfRpcAddress 5
-  _ <- Timer.sendAfter serverName 0 JoinAll
+  loopStreamJoin serfRpcAddress 5
+  void $ Timer.sendAfter serverName 0 JoinAll
   pure unit
 
   where
@@ -553,7 +553,7 @@ connectStream state@{serfRpcAddress} = do
                          sleep (wrap 100)
                          loopStreamJoin serfRpcAddress $ n - 1
             Right x ->
-              pure resp
+              pure unit
 
 joinAllSerf :: State -> Effect Unit
 joinAllSerf state@{ weAreLeader: false } = do
