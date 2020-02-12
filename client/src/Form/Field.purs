@@ -2,7 +2,7 @@ module Rtsv2App.Form.Field where
 
 import Prelude
 
-import Rtsv2App.Component.HTML.Utils (css, maybeElem)
+import Rtsv2App.Component.HTML.Utils (css_, maybeElem)
 import Rtsv2App.Form.Validation (errorToString)
 import Rtsv2App.Form.Validation as V
 import DOM.HTML.Indexed (HTMLinput)
@@ -23,7 +23,7 @@ import Type.Row as Row
 submit :: forall form act slots m. String -> F.ComponentHTML form act slots m
 submit buttonText =
   HH.button
-    [ css "btn btn-lg btn-primary pull-xs-right"
+    [ css_ "btn btn-lg btn-primary pull-xs-right"
     , HE.onClick \_ -> Just F.submit 
     ]
     [ HH.text buttonText ]
@@ -41,10 +41,10 @@ input
   -> F.ComponentHTML form act slots m
 input sym form props =
   HH.fieldset
-    [ css "form-group" ]
+    [ css_ "form-group" ]
     [ HH.input 
       ( append
-          [ css "form-control form-control-lg"
+          [ css_ "form-control form-control-lg"
           , HP.value $ F.getInput sym form
           , HE.onValueInput $ Just <<< F.setValidate sym
           ]
@@ -52,6 +52,6 @@ input sym form props =
       )
     , maybeElem (F.getError sym form) \err ->
         HH.div
-          [ css "error-messages" ]
+          [ css_ "error-messages" ]
           [ HH.text $ errorToString err ]
     ] 

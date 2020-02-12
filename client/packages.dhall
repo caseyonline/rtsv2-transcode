@@ -75,11 +75,11 @@ let additions =
           [ "prelude", "profunctor", "record" ]
           "https://github.com/matthew-hilty/purescript-subcategory.git"
           "v0.2.0"
-      , halogen-nselect =
+      , halogen-select =
           mkPackage
-          [ "halogen" ]
-          "https://github.com/nonbili/purescript-halogen-nselect.git"
-          "master"
+          [ "halogen", "record" ]
+          "https://github.com/citizennet/purescript-halogen-select.git"
+          "v5.0.0-rc.3"
       }
 
 in  upstream ⫽ overrides ⫽ additions

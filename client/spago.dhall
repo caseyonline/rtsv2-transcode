@@ -18,7 +18,7 @@
     , "halogen"
     , "halogen-css"
     , "halogen-formless"
-    , "halogen-nselect"
+    , "halogen-select"
     , "milkis"
     , "nonempty"
     , "now"

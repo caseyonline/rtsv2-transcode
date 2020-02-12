@@ -5,13 +5,14 @@ import Prelude
 import Data.Const (Const)
 import Data.Maybe (Maybe(..), isJust)
 import Data.Monoid (guard)
+import Data.Newtype (unwrap)
 import Effect.Aff.Class (class MonadAff)
 import Halogen as H
 import Halogen.HTML as HH
 import Halogen.HTML.Events as HE
 import Halogen.HTML.Properties as HP
 import Rtsv2App.Capability.Navigate (class Navigate, logout)
-import Rtsv2App.Component.HTML.Utils (css, dataAttr, safeHref, whenElem)
+import Rtsv2App.Component.HTML.Utils (css_, dataAttr, safeHref, whenElem)
 import Rtsv2App.Data.Profile (Profile)
 import Rtsv2App.Data.Route (Route(..))
 
@@ -60,81 +61,114 @@ component = H.mkComponent
 
   render state@{ currentUser, route } =
     HH.div
-    [ css "main-menu menu-fixed menu-light menu-accordion menu-shadow "
+    [ css_ "main-menu menu-fixed menu-light menu-accordion menu-shadow"
     , dataAttr "scroll-to-active" "true"
-    , dataAttr "img" "assets/images/backgrounds/02.jpg"]
+    , dataAttr "img" ""
+    ]
     [ HH.div
-      [ css "navbar-header" ]
+      [ css_ "navbar-header" ]
       [ HH.ul
-        [ css "nav navbar-nav flex-row" ]
+        [ css_ "nav navbar-nav flex-row" ]
         [ HH.li
-          [ css "nav-item mr-auto" ]
+          [ css_ "nav-item mr-auto" ]
           [ HH.a
-            [ css "navbar-brand"
+            [ css_ "navbar-brand"
             , safeHref Dashboard
             ]
             [ HH.img
-              [ css "brand-logo"
+              [ css_ "brand-logo"
               , HP.src "assets/images/logo/logo.png"
               ]
             , HH.h3
-                [css "brand-text"]
+                [css_ "brand-text"]
                 [ HH.text "Limelight Admin" ]
             ]
           ]
         ,  HH.li
-           [ css "nav-item d-md-none" ]
+           [ css_ "nav-item d-md-none" ]
            [ HH.a
-             [ css "nav-link close-navbar" ]
+             [ css_ "nav-link close-navbar" ]
              [ HH.i
-               [ css "ft-x" ]
+               [ css_ "ft-x" ]
                []
              ]
            ]
         ]
       ]
     , HH.div
-      [ css "main-menu-content" ]
+      [ css_ "main-menu-content" ]
       [ HH.ul
-        [ css "navigation navigation-main"
+        [ css_ "navigation navigation-main"
+        , dataAttr "data-menu" "menu-navigation"
         , HP.id_ "main-menu-navigation"
         ]
         [ navItem Dashboard
           [ HH.i
-            [css "ft-home"]
+            [css_ "ft-home"]
             []
           , HH.span
-            [css "menu-title"]
+            [css_ "menu-title"]
             [ HH.text "Dashboard" ]
           ]
+        , HH.li
+            [ css_ $ "nav-item has-sub " <> guard (route == (PoPHome "") ) "active"  ]
+            [ HH.a
+              []
+              [ HH.i
+                [ css_ "ft-server" ]
+                []
+              , HH.span
+                [css_ "menu-title"]
+                [ HH.text "PoP" ]
+              ]
+            , HH.ul
+              [ css_ "menu-content"]
+              [ HH.li
+                [ css_ "has-sub" ]
+                [ HH.a
+                  [ css_ "menu-item" ]
+                  [ HH.text "America" ]
+                , HH.ul
+                  [ css_ "menu-content" ]
+                  [ HH.li
+                    []
+                    [ HH.a
+                      [ css_ "menu-item" ]
+                      [ HH.text "poop" ]
+                    ]
+
+                  ]
+                ]
+              ]
+            ]
+         , navItem Settings
+           [ HH.i
+             [css_ "ft-settings"]
+             []
+           , HH.span
+             [css_ "menu-title"]
+             [ HH.text "Settings" ]
+           ]
+
          , whenElem (not $ isJust currentUser) \_ ->
              navItem Login
              [ HH.i
-               [css "ft-lock"]
+               [css_ "ft-lock"]
                []
              , HH.span
-               [css "menu-title"]
+               [css_ "menu-title"]
                [ HH.text "Login" ]
              ]
-         , whenElem (isJust currentUser) \_ ->
-           navItem Settings
-           [ HH.i
-             [css "ft-settings"]
-             []
-           , HH.span
-             [css "menu-title"]
-             [ HH.text "Settings" ]
-           ]
          , whenElem (isJust currentUser) \_ ->
            HH.li
            []
            [ HH.a
              [ HE.onClick \_ -> Just LogUserOut ]
              [ HH.i
-               [css "ft-lock"]
+               [css_ "ft-lock"]
                []
              , HH.span
-               [css "menu-title"]
+               [css_ "menu-title"]
                [ HH.text "Logout" ]
              ]
            ]
@@ -144,7 +178,7 @@ component = H.mkComponent
     where
     navItem r html =
       HH.li
-        [css $ "" <> guard (route == r) "active"  ]
+        [css_ $ "nav-item " <> guard (route == r) "active"  ]
         [ HH.a
           [ safeHref r ]
           html

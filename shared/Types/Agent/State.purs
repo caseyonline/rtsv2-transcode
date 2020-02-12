@@ -13,7 +13,6 @@ module Shared.Types.Agent.State
        , TimedPoPRoutes
        ) where
 
-
 import Data.Maybe (Maybe)
 import Shared.LlnwApiTypes (StreamDetails)
 import Shared.Stream (StreamAndVariant, StreamId, StreamVariant)

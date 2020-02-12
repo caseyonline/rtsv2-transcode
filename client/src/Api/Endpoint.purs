@@ -16,11 +16,12 @@ import Shared.Types (PoPName)
 -- API RouteDuplex Endpoints
 -------------------------------------------------------------------------------
 data Endpoint
-  = Login
-  | User
-  | Users
-  | TimedRoutes PoPName
-  | Profiles Username
+  = LoginE
+  | UserE
+  | UsersE
+  | TimedRoutesE PoPName
+  | PopDefinitionE
+  | ProfilesE Username
 
 derive instance genericEndpoint :: Generic Endpoint _
 
@@ -29,10 +30,11 @@ instance showEndpoint :: Show Endpoint where
 
 endpointCodec :: RouteDuplex' Endpoint
 endpointCodec = root $ prefix "api" $ sum
-  { "Login"         : "users" / "login" / noArgs
-  , "User"          : "user" / noArgs
-  , "Users"         : "users" / noArgs
-  , "TimedRoutes"   : "timedRoutes" / popLeaderName segment
+  { "LoginE"         : "users" / "login" / noArgs
+  , "UserE"          : "user" / noArgs
+  , "UsersE"         : "users" / noArgs
+  , "TimedRoutesE"   : "timedRoutes" / popLeaderName segment
+  , "PopDefinitionE" : "popDefinition" / noArgs
   -- automatically create query parameters
-  , "Profiles"      : "profiles" / uname segment
+  , "ProfilesE"      : "profiles" / uname segment
   }

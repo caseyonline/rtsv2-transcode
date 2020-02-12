@@ -6,18 +6,18 @@ import Control.Monad.Reader (class MonadAsk, ask)
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple(..))
-import Debug.Trace (spy)
 import Effect.Aff as Aff
 import Effect.Aff.Bus as Bus
 import Effect.Aff.Class (class MonadAff, liftAff)
 import Effect.Class (liftEffect)
 import Effect.Ref as Ref
 import Milkis as M
-import Rtsv2App.Api.Request (BaseURL, OptionMethod, Token, fetch, printBaseUrl, printFullUrl, readToken, writeToken)
+import Rtsv2App.Api.Request (OptionMethod, Token, fetchReq, printUrl, readToken, writeToken)
 import Rtsv2App.Capability.LogMessages (class LogMessages, logError)
 import Rtsv2App.Capability.Now (class Now)
 import Rtsv2App.Data.Profile (Profile)
-import Rtsv2App.Env (UserEnv)
+import Rtsv2App.Env (UserEnv, UrlEnv)
+
 
 -------------------------------------------------------------------------------
 -- Request Helpers
@@ -25,12 +25,12 @@ import Rtsv2App.Env (UserEnv)
 mkRequest
   :: forall m r
    . MonadAff m
-  => MonadAsk { apiUrl :: BaseURL | r } m
+  => MonadAsk { urlEnv :: UrlEnv | r } m
   => OptionMethod
   -> m String
-mkRequest opts@{ endpoint } = do
-  { apiUrl } <- ask
-  response <- liftAff $ Aff.attempt $ fetch (M.URL $ spy "API URL" $ printFullUrl apiUrl endpoint) Nothing opts
+mkRequest opts@{ endpoint, method } = do
+  { urlEnv } <- ask
+  response <- liftAff $ Aff.attempt $ fetchReq (M.URL $ printUrl urlEnv.curHostUrl endpoint) Nothing method
   case response of
     Left e    -> pure $ "Error making request: " <> show e
     Right res -> do
@@ -39,13 +39,13 @@ mkRequest opts@{ endpoint } = do
 mkAuthRequest
   :: forall m r
    . MonadAff m
-  => MonadAsk { authUrl :: BaseURL | r } m
+  => MonadAsk { urlEnv :: UrlEnv | r } m
   => OptionMethod
   -> m String
-mkAuthRequest opts@{ endpoint } = do
-  { authUrl } <- ask
+mkAuthRequest opts@{ endpoint, method } = do
+  { urlEnv } <- ask
   token <- liftEffect readToken
-  response <- liftAff $ Aff.attempt $ fetch (M.URL $ printFullUrl authUrl endpoint) token opts
+  response <- liftAff $ Aff.attempt $ fetchReq (M.URL $ printUrl urlEnv.authUrl endpoint) token method
   case response of
     Left e    -> pure $ "Error making request: " <> show e
     Right res -> do
@@ -58,15 +58,15 @@ mkAuthRequest opts@{ endpoint } = do
 authenticate
   :: forall m a r
    . MonadAff m
-  => MonadAsk { authUrl :: BaseURL, userEnv :: UserEnv | r } m
+  => MonadAsk { urlEnv :: UrlEnv, userEnv :: UserEnv | r } m
   => LogMessages m
   => Now m
-  => (BaseURL -> a -> m (Either String (Tuple Token Profile))) 
+  => (UrlEnv -> a -> m (Either String (Tuple Token Profile)))
   -> a 
   -> m (Maybe Profile)
 authenticate req fields = do 
-  { authUrl, userEnv } <- ask
-  req authUrl fields >>= case _ of
+  { userEnv, urlEnv } <- ask
+  req urlEnv fields >>= case _ of
     Left err -> logError err *> pure Nothing
     Right (Tuple token profile) -> do 
       liftEffect do 

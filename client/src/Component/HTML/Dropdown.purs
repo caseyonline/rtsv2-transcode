@@ -1,99 +1,89 @@
-module Component.HTML.Dropdown where
+module Rtsv2App.Component.HTML.Dropdown where
 
 import Prelude
 
-import Control.MonadPlus (guard)
-import Data.Const (Const)
-import Data.Maybe (Maybe(..))
-import Data.Symbol (SProxy(..))
-import Effect.Aff (Aff)
+import Data.Array ((!!), mapWithIndex, length)
+import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Monoid (guard)
 import Effect.Aff.Class (class MonadAff)
 import Halogen as H
 import Halogen.HTML as HH
-import Halogen.HTML.Events as HE
-import Halogen.HTML.Properties as HP
-import NSelect as Select
 import Rtsv2App.Capability.Navigate (class Navigate)
-import Rtsv2App.Component.HTML.Utils (css)
+import Rtsv2App.Component.HTML.Utils (css_, css, whenElem)
+import Select as S
+import Select.Setters as SS
 
-type Query = Const Void
-
-data Action
-  = OnInput String
-  | HandleDropdown (Select.Message Action)
+type Slot =
+  H.Slot S.Query' Message
 
 type State =
-  { value :: String
-  }
-
-type Slots =
-  ( dropdown :: Select.Slot Action Unit
+  ( items :: Array String
+  , selection :: Maybe String
+  , buttonLabel :: String
   )
 
-_dropdown = SProxy :: SProxy "dropdown"
+data Message
+  = SelectionChanged (Maybe String) (Maybe String)
 
+-- it is unnecessary to export your own input type, but doing so helps if you
+-- would like to set some sensible defaults behind the scenes.
+type Input =
+  { items :: Array String
+  , buttonLabel :: String
+  }
 
 component
   :: forall m
    . MonadAff m
   => Navigate m
-  => H.Component HH.HTML (Const Void) Unit Void m
-component = H.mkComponent
-  { initialState: const initialState
-  , render
-  , eval: H.mkEval $ H.defaultEval
-      { handleAction = handleAction }
+  => H.Component HH.HTML S.Query' Input Message m
+component = S.component input $ S.defaultSpec
+  { render = render
+  , handleEvent = handleEvent
   }
   where
-  initialState :: State
-  initialState =
-    { value: ""
+  input :: Input -> S.Input State
+  input { items, buttonLabel } =
+    { inputType: S.Toggle
+    , search: Nothing
+    , debounceTime: Nothing
+    , getItemCount: length <<< _.items
+    , items
+    , buttonLabel
+    , selection: Nothing
     }
 
-  handleAction = case _ of
-    OnInput value -> H.modify_ $ _ { value = value }
+  handleEvent = case _ of
+    S.Selected ix -> do
+      st <- H.get
+      let selection = st.items !! ix
+      H.modify_ _ { selection = selection, visibility = S.Off }
+      H.raise $ SelectionChanged st.selection selection
+    _ -> pure unit
 
-    HandleDropdown msg -> do
-      case msg of
-        Select.Emit q -> handleAction q
-        _ -> pure unit
+  render :: S.State State -> H.ComponentHTML S.Action' () m
+  render st =
+    HH.div
+      [ css_ "Dropdown" ]
+      [ renderToggle, renderContainer ]
+    where
+    renderToggle =
+      HH.button
+        ( SS.setToggleProps [ css_ "Dropdown__toggle" ] )
+        [ HH.text (fromMaybe st.buttonLabel st.selection) ]
 
-  render :: State -> H.ComponentHTML Action Slots m
-  render state =
-    HH.div_
-    [ HH.p
-      [ css "mb-3"]
-      [ HH.text "Trigger parent action from dropdown."]
-    , HH.slot _dropdown unit Select.component
-      { render: renderSelect state
-      , itemCount: 0
-      } $ Just <<< HandleDropdown
-    ]
-
-
-renderSelect
-  :: forall m
-   . MonadAff m
-  => Navigate m
-  => State
-  -> Select.State
-  -> Select.HTML Action () m
-renderSelect state st =
-  HH.div
-  ( Select.setRootProps [ css "inline-block"]
-  ) $ join
-  [ pure $ HH.button
-    ( Select.setToggleProps [])
-    [ HH.text "toggle" ]
-  , guard st.isOpen $> HH.div
-    [ css "Dropdown p-4"
-    ]
-    [ HH.input
-      [ HP.value state.value
-      , HE.onValueInput $ Just <<< Select.raise <<< OnInput
-      ]
-    , HH.div_
-      [ HH.text $ "You typed: " <> state.value
-      ]
-    ]
-  ]
+    renderContainer = whenElem (st.visibility == S.On) \_ ->
+      HH.div
+        ( SS.setContainerProps [ css_ "Dropdown__container" ] )
+        ( renderItem `mapWithIndex` st.items )
+      where
+      renderItem index item =
+        HH.div
+          ( SS.setItemProps index
+              [ css
+                  [ "Dropdown__item"
+                  , "Dropdown__item--highlighted" # guard (st.highlightedIndex == Just index)
+                  ]
+              ]
+          )
+          [ HH.text item ]

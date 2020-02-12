@@ -8,16 +8,15 @@
   Author: ThemeSelection
   Author URL: https://themeselection.com/
 ==========================================================================================*/
+
 (function(window, document, $) {
   'use strict';
-
   $.app = $.app || {};
-
+  console.log('runnn app-melite')
   var $body       = $('body');
   var $window     = $( window );
   var menuWrapper_el = $('div[data-menu="menu-wrapper"]').html();
   var menuWrapperClasses = $('div[data-menu="menu-wrapper"]').attr('class');
-
   // Main menu
   $.app.menu = {
     expanded: null,

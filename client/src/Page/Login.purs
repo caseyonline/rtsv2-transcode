@@ -19,7 +19,7 @@ import Rtsv2App.Capability.Resource.User (class ManageUser, loginUser)
 import Rtsv2App.Component.HTML.Footer (footer)
 import Rtsv2App.Component.HTML.Header as HD
 import Rtsv2App.Component.HTML.MainMenu as MM
-import Rtsv2App.Component.HTML.Utils (css, safeHref, whenElem)
+import Rtsv2App.Component.HTML.Utils (css_, safeHref, whenElem)
 import Rtsv2App.Data.Email (Email)
 import Rtsv2App.Data.Route (Route(..))
 import Rtsv2App.Form.Field (submit)
@@ -72,33 +72,30 @@ component = H.mkComponent
   render :: State -> H.ComponentHTML Action ChildSlots m
   render _  =
      HH.div
-      [ css "main" ]
+      [ css_ "main" ]
       [ HH.slot (SProxy :: _ "header") unit HD.component { currentUser: Nothing , route: Login } absurd
       , HH.slot (SProxy :: _ "mainMenu") unit MM.component { currentUser: Nothing , route: Login } absurd
       , HH.div
-        [ css "app-content content" ]
+        [ css_ "app-content content" ]
         [ HH.div
-          [ css "content-wrapper" ]
+          [ css_ "content-wrapper" ]
           [ HH.div
-            [ css "content-wrapper-before" ]
-            []
-          , HH.div
-            [ css "content-header row" ]
+            [ css_ "content-header row" ]
             [ HH.div
-              [ css "content-header-left col-md-4 col-12 mb-2" ]
+              [ css_ "content-header-left col-md-4 col-12 mb-2" ]
               [ HH.h3
-                [ css "content-header-h3" ]
+                [ css_ "content-header-h3" ]
                 [ HH.text "Login" ]
               ]
             ]
           , HH.div
-            [ css "content-body" ]
+            [ css_ "content-body" ]
             [ HH.div
-              [ css "row" ]
+              [ css_ "row" ]
               [ HH.div
-                [ css "col-12" ]
+                [ css_ "col-12" ]
                 [ HH.div
-                  [ css "card" ]
+                  [ css_ "card" ]
                   html
                 ]
               ]
@@ -110,12 +107,12 @@ component = H.mkComponent
     where
       html =
         [ HH.div
-            [ css "card-header" ]
+            [ css_ "card-header" ]
             [ HH.text "Sign In" ]
         , HH.div
-            [ css "card-content collapse show" ]
+            [ css_ "card-content collapse show" ]
             [ HH.div
-              [ css "card-body" ]
+              [ css_ "card-body" ]
               [ HH.a
                 [ safeHref Register ]
                 [ HH.text "Need an account?" ]
@@ -170,7 +167,7 @@ formComponent = F.component formInput $ F.defaultSpec
     HH.form_
       [ whenElem loginError \_ ->
           HH.div
-            [ css "error-messages" ]
+            [ css_ "error-messages" ]
             [ HH.text "Email or password is invalid" ]
       , HH.fieldset_
           [ Field.input proxies.email form

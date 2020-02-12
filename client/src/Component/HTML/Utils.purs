@@ -14,8 +14,13 @@ import Rtsv2App.Data.Route (Route, routeCodec)
 -------------------------------------------------------------------------------
 -- | I get annoyed writing `class_ $ ClassName "..."` over and over again. This small utility saves
 -- | a few characters all over our HTML.
-css :: forall r i. String -> HH.IProp ( class :: String | r ) i
-css = HP.class_ <<< HH.ClassName
+css_ :: forall r i. String -> HH.IProp ( class :: String | r ) i
+css_ = HP.class_ <<< HH.ClassName
+
+
+css :: forall p i. Array String -> HH.IProp (class :: String | i) p
+css = HP.classes <<< map HH.ClassName
+
 
 -- | custom data attribute pass name and it's value as `String`s
 dataAttr :: forall r i. String -> String -> HH.IProp r i

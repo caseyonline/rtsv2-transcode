@@ -22,7 +22,7 @@ import Rtsv2App.Capability.Resource.User (class ManageUser, UpdateProfileFields,
 import Rtsv2App.Component.HTML.Footer (footer)
 import Rtsv2App.Component.HTML.Header as HD
 import Rtsv2App.Component.HTML.MainMenu as MM
-import Rtsv2App.Component.HTML.Utils (css)
+import Rtsv2App.Component.HTML.Utils (css_)
 import Rtsv2App.Data.Avatar (Avatar)
 import Rtsv2App.Data.Avatar as Avatar
 import Rtsv2App.Data.Email (Email)
@@ -122,33 +122,30 @@ component = Connect.component $ H.mkComponent
   render :: State -> H.ComponentHTML Action ChildSlots m
   render state@{ profile, currentUser } =
     HH.div
-      [ css "main" ]
+      [ css_ "main" ]
       [ HH.slot (SProxy :: _ "header") unit HD.component { currentUser, route: Settings } absurd
       , HH.slot (SProxy :: _ "mainMenu") unit MM.component { currentUser, route: Settings } absurd
       , HH.div
-        [ css "app-content content" ]
+        [ css_ "app-content content" ]
         [ HH.div
-          [ css "content-wrapper" ]
+          [ css_ "content-wrapper" ]
           [ HH.div
-            [ css "content-wrapper-before" ]
-            []
-          , HH.div
-            [ css "content-header row" ]
+            [ css_ "content-header row" ]
             [ HH.div
-              [ css "content-header-left col-md-4 col-12 mb-2" ]
+              [ css_ "content-header-left col-md-4 col-12 mb-2" ]
               [ HH.h3
-                [ css "content-header-h3" ]
+                [ css_ "content-header-h3" ]
                 [ HH.text "Settings" ]
               ]
             ]
           , HH.div
-            [ css "content-body" ]
+            [ css_ "content-body" ]
             [ HH.div
-              [ css "row" ]
+              [ css_ "row" ]
               [ HH.div
-                [ css "col-12" ]
+                [ css_ "col-12" ]
                 [ HH.div
-                  [ css "card" ]
+                  [ css_ "card" ]
                   html
                 ]
               ]
@@ -160,16 +157,16 @@ component = Connect.component $ H.mkComponent
     where
       html =
         [ HH.div
-            [ css "card-header" ]
+            [ css_ "card-header" ]
             [ HH.text "Your Settings" ]
         , HH.div
-            [ css "card-content collapse show" ]
+            [ css_ "card-content collapse show" ]
             [ HH.div
-              [ css "card-body" ]
+              [ css_ "card-body" ]
               [ HH.slot F._formless unit formComponent unit (Just <<< HandleForm)
               , HH.hr_
               , HH.button
-                [ css "btn btn-outline-danger"
+                [ css_ "btn btn-outline-danger"
                 , HE.onClick \_ -> Just LogUserOut
                 ]
                 [ HH.text "Log out" ]
@@ -220,9 +217,9 @@ component = Connect.component $ H.mkComponent
 
           bio =
             HH.fieldset
-              [ css "form-group" ]
+              [ css_ "form-group" ]
               [ HH.textarea
-                  [ css "form-control form-control-lg"
+                  [ css_ "form-control form-control-lg"
                   , HP.placeholder "Short bio about you"
                   , HP.rows 8
                   , HP.value $ F.getInput proxies.bio form
