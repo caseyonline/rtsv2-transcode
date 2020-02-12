@@ -17,7 +17,8 @@ import Erl.Data.List (nil, (:))
 import Erl.Data.Map (Map, fromFoldable, lookup)
 import Erl.Data.Tuple (tuple2)
 import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
-import Shared.LlnwApiTypes (AuthType, PublishCredentials(..), SlotPublishAuthType(..), StreamAuth, StreamDetails, StreamIngestProtocol(..), StreamPublish, StreamRole(..), StreamConnection)
+import Shared.LlnwApiTypes (AuthType, PublishCredentials(..), SlotPublishAuthType(..), StreamAuth, StreamDetails, StreamIngestProtocol(..), StreamPublish, StreamConnection)
+import Shared.Stream (StreamRole(..))
 import Simple.JSON (readJSON, writeJSON)
 import Stetson (Authorized(..), HttpMethod(..), StetsonHandler)
 import Stetson.Rest as Rest

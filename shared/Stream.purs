@@ -1,6 +1,7 @@
 module Shared.Stream
   ( ShortName(..)
   , StreamId(..)
+  , StreamRole(..)
   , StreamVariant(..)
   , StreamAndVariant(..)
   , toStreamId
@@ -18,6 +19,7 @@ import Data.Generic.Rep.Eq (genericEq)
 import Data.Generic.Rep.Ord (genericCompare)
 import Data.Generic.Rep.Show (genericShow)
 import Data.List.NonEmpty (singleton)
+import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype, unwrap)
 import Data.String (Pattern(..), split)
 import Foreign (ForeignError(..), readString, unsafeToForeign)
@@ -97,6 +99,29 @@ instance readForeignStreamAndVariant :: ReadForeign StreamAndVariant where
 
 instance writeForeignStreamAndVariant :: WriteForeign StreamAndVariant where
   writeImpl (StreamAndVariant streamId streamVariant) = unsafeToForeign $ (unwrap streamId) <> ":" <> (unwrap streamVariant)
+
+
+data StreamRole = Primary
+                | Backup
+
+instance readForeignStreamRole :: ReadForeign StreamRole where
+  readImpl =
+    readString >=> parseAgent
+    where
+      error s = singleton (ForeignError (errorString s))
+      parseAgent s = except $ note (error s) (toType s)
+      toType "primary" = pure Primary
+      toType "backup" = pure Backup
+      toType unknown = Nothing
+      errorString s = "Unknown StreamRole: " <> s
+
+instance writeForeignStreamRole :: WriteForeign StreamRole where
+  writeImpl =
+    toString >>> unsafeToForeign
+    where
+      toString Primary = "primary"
+      toString Backup = "backup"
+
 
 toStreamId :: StreamAndVariant -> StreamId
 toStreamId (StreamAndVariant s _) = s

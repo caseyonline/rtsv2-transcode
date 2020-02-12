@@ -14,7 +14,6 @@ module Shared.LlnwApiTypes
        , PublishCredentials(..)
        , StreamPublish
        , StreamDetails
-       , StreamRole(..)
        , SlotDetails
        , StreamOutputFormat
        , HlsPushSpec
@@ -35,6 +34,7 @@ import Data.Generic.Rep.Show (genericShow)
 import Data.List.NonEmpty (singleton)
 import Data.Maybe (Maybe(..))
 import Foreign (ForeignError(..), readString, unsafeToForeign)
+import Shared.Stream (StreamRole)
 import Simple.JSON (class ReadForeign, class WriteForeign)
 
 data StreamIngestProtocol = Rtmp
@@ -98,9 +98,6 @@ type HlsPushSpec =
   , baseUrl :: String
   , auth :: HlsPushAuth
   }
-
-data StreamRole = Primary
-                | Backup
 
 data StreamOutputFormat = WebRTCOutput
                         | RtmpOutput
@@ -193,24 +190,6 @@ instance writeForeignHlsPushSpecFormat :: WriteForeign HlsPushSpecFormat where
     toString >>> unsafeToForeign
     where
       toString Hls = "hls"
-
-instance readForeignStreamRole :: ReadForeign StreamRole where
-  readImpl =
-    readString >=> parseAgent
-    where
-      error s = singleton (ForeignError (errorString s))
-      parseAgent s = except $ note (error s) (toType s)
-      toType "primary" = pure Primary
-      toType "backup" = pure Backup
-      toType unknown = Nothing
-      errorString s = "Unknown StreamRole: " <> s
-
-instance writeForeignStreamRole :: WriteForeign StreamRole where
-  writeImpl =
-    toString >>> unsafeToForeign
-    where
-      toString Primary = "primary"
-      toString Backup = "backup"
 
 instance readForeignStreamOutputFormat :: ReadForeign StreamOutputFormat where
   readImpl =
