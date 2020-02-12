@@ -7,6 +7,7 @@ module Shared.Types.Agent.State
        , PoPDefinition
        , Region
        , PoP
+       , AgentLocation
        , StreamRelay
        , TimedPoPStep
        , TimedPoPRoute
@@ -16,8 +17,8 @@ module Shared.Types.Agent.State
 
 import Data.Maybe (Maybe)
 import Shared.LlnwApiTypes (StreamDetails)
-import Shared.Stream (StreamAndVariant, StreamId, StreamVariant)
-import Shared.Types (GeoLoc, Milliseconds, PoPName, RegionName, Server, ServerAddress)
+import Shared.Stream (AgentKey, StreamAndVariant, StreamId, StreamRole, StreamVariant)
+import Shared.Types (GeoLoc, Milliseconds, PoPName, RegionName, Server, ServerAddress, ServerRec)
 import Shared.Types.Media.Types.Rtmp (RtmpClientMetadata)
 import Shared.Types.Media.Types.SourceDetails (SourceInfo)
 import Shared.Types.Workflow.Metrics.FrameFlow as FrameFlow
@@ -64,16 +65,13 @@ type Egest
     }
 
 
+type AgentLocation f = { agentKey :: AgentKey
+                       , servers :: f Server
+                       }
 type IntraPoP f
-  = { aggregatorLocations :: f { streamId :: StreamId
-                               , servers  :: f Server
-                               }
-    , relayLocations      :: f { streamId :: StreamId
-                               , servers  :: f Server
-                               }
-    , egestLocations      :: f { streamId :: StreamId
-                               , servers  :: f Server
-                          }
+  = { aggregatorLocations :: f (AgentLocation f)
+    , relayLocations      :: f (AgentLocation f)
+    , egestLocations      :: f (AgentLocation f)
     , currentTransPoPLeader :: Maybe Server
     }
 

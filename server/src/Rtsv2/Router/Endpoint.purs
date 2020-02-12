@@ -17,7 +17,7 @@ import Routing.Duplex (RouteDuplex', as, path, root, segment)
 import Routing.Duplex.Generic (noArgs, sum)
 import Routing.Duplex.Generic.Syntax ((/))
 import Rtsv2.Router.Parser as Routing
-import Shared.Stream (ShortName, StreamAndVariant(..), StreamId, StreamVariant(..))
+import Shared.Stream (ShortName, StreamAndVariant(..), StreamId, StreamRole(..), StreamVariant(..))
 import Shared.Types (PoPName, ServerAddress, extractAddress)
 import SpudGun (Url)
 
@@ -59,7 +59,7 @@ data Endpoint
   | IngestInstancesE
   | IngestInstancesMetricsE
   | IngestInstanceE StreamId StreamVariant
-  | IngestInstanceLlwpE StreamId StreamVariant
+  | IngestInstanceLlwpE StreamId StreamVariant StreamRole
   | IngestStartE Canary ShortName StreamAndVariant
   | IngestStopE Canary ShortName StreamAndVariant
   | ClientAppAssetsE
@@ -114,7 +114,7 @@ endpoint = root $ sum
   , "IngestInstancesE"                                 : "" / "api" / "agents" / path "ingest" noArgs
   , "IngestInstancesMetricsE"                            : "" / "api" / "agents" / "ingest" / path "metrics" noArgs
   , "IngestInstanceE"                                  : "" / "api" / "agents" / "ingest" / streamId segment / variant segment
-  , "IngestInstanceLlwpE"                              : "" / "api" / "agents" / "ingest" / streamId segment / variant segment / "llwp"
+  , "IngestInstanceLlwpE"                              : "" / "api" / "agents" / "ingest" / streamId segment / variant segment / streamRole segment / "llwp"
 
   , "IngestStartE"                                     : "" / "api" / "public" / canary segment / "ingest" / shortName segment / streamAndVariant segment / "start"
   , "IngestStopE"                                      : "" / "api" / "public" / canary segment / "ingest" / shortName segment / streamAndVariant segment / "stop"
@@ -144,7 +144,6 @@ makeUrlAddr serverAddr ep =
 
 
 -- | StreamId
-
 parseStreamId :: String -> Maybe StreamId
 parseStreamId = wrapParser
 
@@ -157,6 +156,16 @@ parseStreamVariant = wrapParser
 
 variantToString :: StreamVariant -> String
 variantToString = unwrap
+
+-- | StreamRole
+parseStreamRole :: String -> Maybe StreamRole
+parseStreamRole "primary" = Just Primary
+parseStreamRole "backup" = Just Backup
+parseStreamRole _ = Nothing
+
+streamRoleToString :: StreamRole -> String
+streamRoleToString Primary = "primary"
+streamRoleToString Backup = "primary"
 
 -- | ShortName
 parseShortName :: String -> Maybe ShortName
@@ -210,6 +219,10 @@ streamId = as streamIdToString (parseStreamId >>> note "Bad StreamId")
 -- | This combinator transforms a codec over `String` into one that operates on the `StreamVariant` type.
 variant :: RouteDuplex' String -> RouteDuplex' StreamVariant
 variant = as variantToString (parseStreamVariant >>> note "Bad StreamId")
+
+-- | This combinator transforms a codec over `String` into one that operates on the `StreamVariant` type.
+streamRole :: RouteDuplex' String -> RouteDuplex' StreamRole
+streamRole = as streamRoleToString (parseStreamRole >>> note "Bad StreamRole")
 
 -- | This combinator transforms a codec over `String` into one that operates on the `StreamAndVariant` type.
 streamAndVariant :: RouteDuplex' String -> RouteDuplex' StreamAndVariant

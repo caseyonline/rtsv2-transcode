@@ -27,7 +27,6 @@ import Ephemeral.Map (EMap)
 import Ephemeral.Map as EMap
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, head, index, length, nil, reverse, singleton, uncons, (:))
-import Erl.Data.List as List
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
 import Erl.Process (spawnLink)
@@ -53,10 +52,10 @@ import Rtsv2.Health as Health
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition (PoP)
 import Rtsv2.PoPDefinition as PoPDefinition
-import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl, makeUrlAddr)
+import Rtsv2.Router.Endpoint (Endpoint(..), makeUrlAddr)
 import Serf (IpAndPort, LamportClock, SerfCoordinate, calcRtt)
 import Serf as Serf
-import Shared.Stream (StreamId)
+import Shared.Stream (AgentKey)
 import Shared.Types (Milliseconds, PoPName, Server, ServerAddress(..), extractAddress, extractPoP, toServer)
 import Shared.Types.Agent.State as PublicState
 import Shared.Utils (distinctRandomNumbers)
@@ -95,7 +94,7 @@ data EventType
   = Available
   | Stopped
 
-data TransMessage = TMAggregatorState EventType StreamId ServerAddress
+data TransMessage = TMAggregatorState EventType AgentKey ServerAddress
 
 data Msg
   = LeaderTimeoutTick
@@ -167,7 +166,7 @@ health =
       allOtherPoPs <- PoPDefinition.getOtherPoPs
       pure $ Health.percentageToHealth healthConfig $ (Map.size members) * 100 / ((Map.size allOtherPoPs) + 1)
 
-announceAggregatorIsAvailable :: StreamId -> Server -> Effect Unit
+announceAggregatorIsAvailable :: AgentKey -> Server -> Effect Unit
 announceAggregatorIsAvailable streamId server =
   Gen.doCast serverName ((map CastNoReply) <<< doAnnounceStreamIsAvailable)
   where
@@ -181,7 +180,7 @@ announceAggregatorIsAvailable streamId server =
       maybeLogError "Trans-PoP serf event failed" result {}
       pure state
 
-announceAggregatorStopped :: StreamId -> Server -> Effect Unit
+announceAggregatorStopped :: AgentKey -> Server -> Effect Unit
 announceAggregatorStopped streamId server =
   Gen.doCast serverName ((map CastNoReply) <<< doAnnounceStreamStopped)
   where
@@ -371,7 +370,7 @@ getDefaultRtts {defaultRttMs} = do
     ) Map.empty neighbourMap
 
 
-shouldProcessStreamState :: StreamId -> LamportClock -> EMap StreamId LamportClock -> Boolean
+shouldProcessStreamState :: AgentKey -> LamportClock -> EMap AgentKey LamportClock -> Boolean
 shouldProcessStreamState streamId ltime streamStateClocks =
   case EMap.lookup streamId streamStateClocks of
     Just lastLTime
@@ -612,7 +611,7 @@ joinAllSerf state@{ config: config@{rejoinEveryMs}, serfRpcAddress, members } =
 
 
 
-handleAgentMessage :: LamportClock -> EventType -> StreamId -> ServerAddress -> State -> Effect State
+handleAgentMessage :: LamportClock -> EventType -> AgentKey -> ServerAddress -> State -> Effect State
 handleAgentMessage msgLTime eventType streamId msgServerAddress
                    state@{thisServer} = do
   -- let _ = spy "agentMessage" {name: agentMessageHandler.name, eventType, streamId, msgServerAddress}
