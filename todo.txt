@@ -10,6 +10,7 @@
 [ ] - transPoP load messages
 [ ] - Lots of gen server calls are not checking return values.  Let It Crash
 [ ] - relay exit management
+[ ] - double check remote status through TransPoP
 [ ] - onFi passthrough from RTMP
 [ ] - audio only - needs change to StreamDetails to indicate no video, since aggregator is currently waiting for iframe to sync multiple streams
 [ ] - Mediavault API integration

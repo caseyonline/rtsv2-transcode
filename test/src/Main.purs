@@ -255,6 +255,19 @@ main =
           in
           length (sort serverAddressesForStreamId) == count
 
+    forceGetState node = forceRight <$> intraPoPState node
+
+    assertBodiesSame :: List ResponseWithBody -> Aff (Either String Unit)
+    assertBodiesSame Nil = pure $ Right unit
+    assertBodiesSame (Cons x xs) = pure $ assertBodiesSame_ x.body xs
+      where
+        assertBodiesSame_ :: String -> List ResponseWithBody -> Either String Unit
+        assertBodiesSame_ _ Nil = Right unit
+        assertBodiesSame_ firstBody (Cons y ys) =
+          if y.body == firstBody
+          then assertBodiesSame_ firstBody ys
+          else Left $ "\"" <> firstBody <> "\" is not the same as \"" <> y.body <> "\""
+
 
     delayMs = delay <<< Milliseconds
 
@@ -285,19 +298,6 @@ main =
       let
         p1Nodes = [p1n1, p1n2, p1n3]
         nodes = p1Nodes
-        forceGetState node = forceRight <$> intraPoPState node
-        assertBodiesSame :: List ResponseWithBody -> Aff (Either String Unit)
-        assertBodiesSame Nil = pure $ Right unit
-        assertBodiesSame (Cons x xs) = pure $ assertBodiesSame_ x.body xs
-          where
-            assertBodiesSame_ :: String -> List ResponseWithBody -> Either String Unit
-            assertBodiesSame_ _ Nil = Right unit
-            assertBodiesSame_ firstBody (Cons y ys) =
-              if y.body == firstBody
-              then assertBodiesSame_ firstBody ys
-              else Left $ "\"" <> firstBody <> "\" is not the same as \"" <> y.body <> "\""
-
-
       in do
       before_ (do
                  startSession nodes
@@ -307,7 +307,6 @@ main =
           it "Nodes all come up and agree on who the leader is" do
             states <- traverse forceGetState (Array.toUnfoldable p1Nodes)
             assertBodiesSame states                                      >>= as "All nodes agree on leader and other intial state"
-            pure unit
 
     describe "Ingest tests"
       let
@@ -516,6 +515,16 @@ main =
                    launch nodes
                 ) do
           after_ stopSession do
+            it "aggregator presence is disseminated to all servers" do
+              ingest start p1n1 shortName1 low >>= assertStatusCode 200     >>= as  "create ingest"
+              waitForTransPoPDisseminate                                    >>= as' "wait for transPop disseminate"
+              intraPoPState p1n1                   >>= assertAggregatorOn [p1n1] slot1
+                                                                            >>= as "p1n1 is aware of the ingest on p1n1"
+              states1 <- traverse forceGetState (Array.toUnfoldable p1Nodes)
+              assertBodiesSame states1                                      >>= as "All pop 1 nodes agree on leader and aggregator presence"
+              states2 <- traverse forceGetState (Array.toUnfoldable p2Nodes)
+              assertBodiesSame states2                                      >>= as "All pop 2 nodes agree on leader and aggregator presence"
+
             it "client requests stream on other pop" do
               client start p2n1 slot1          >>= assertStatusCode 404 >>= as  "no egest prior to ingest"
               relayStats   p1n1 slot1          >>= assertStatusCode 404 >>= as  "no remote relay prior to ingest"
@@ -558,7 +567,7 @@ main =
                    launch' phase1Nodes sysconfig
                 ) do
           after_ stopSession do
-            it "a node thats start late gets to see existing streams" do
+            it "a node that starts late gets to see existing streams" do
               ingest start p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
               waitForIntraPoPDisseminate                                >>= as' "let ingest presence disseminate"
               launch' phase2Nodes sysconfig                             >>= as' "start new node after ingest already running"
@@ -586,11 +595,11 @@ main =
               waitForMessageTimeout                                     >>= as' "Wait for less than message expiry"
               client start p1n2 slot1          >>= assertStatusCode 404 >>= as  "Clients can no longer join"
               dropAgentMessages p1n2 false                              >>= as  "Alow messages to flow once more"
+
               waitForNodeStartDisseminate                               >>= as' "let ingest presence disseminate"
+              waitForNodeStartDisseminate                               >>= as' "let ingest presence disseminate"
+
               client start p1n2 slot1          >>= assertStatusCode 204 >>= as  "Client can join once more"
-
-
-            -- TODO - egest - test stream we think is not present when it is
 
 
       describe "four pop setup" do
