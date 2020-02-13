@@ -28,7 +28,7 @@ import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Router.Endpoint (Endpoint(..), makeUrlAddr)
 import Shared.Agent as Agent
-import Shared.Stream (StreamId)
+import Shared.Stream (RelayKey(..), StreamId, StreamRole)
 import Shared.Types (PoPName, Server, ServerAddress)
 import SpudGun as SpudGun
 
@@ -40,7 +40,7 @@ data Msg
 type ProxyRoute = List PoPName
 
 type State
-  = { streamId :: StreamId
+  = { relayKey :: RelayKey
     , proxyFor :: PoPName
     , thisServer :: Server
     , proxiedServer :: Maybe ServerAddress
@@ -50,19 +50,29 @@ type State
     }
 
 
-serverName :: StreamId -> PoPName -> ServerName State Msg
+serverName :: RelayKey -> PoPName -> ServerName State Msg
 serverName = Names.streamRelayDownstreamProxyName
 
+
+payloadToRelayKey :: forall r.
+  { streamId :: StreamId
+  , streamRole :: StreamRole
+  | r
+  }
+  -> RelayKey
+payloadToRelayKey payload = RelayKey payload.streamId payload.streamRole
+
 startLink :: CreateProxyPayload -> Effect StartLinkResult
-startLink payload = Gen.startLink (serverName payload.streamId payload.proxyFor) (init payload) Gen.defaultHandleInfo
+startLink payload = Gen.startLink (serverName (payloadToRelayKey payload) payload.proxyFor) (init payload) Gen.defaultHandleInfo
 
 init :: CreateProxyPayload -> Effect State
-init payload@{streamId, proxyFor, aggregatorPoP} = do
+init payload@{proxyFor, aggregatorPoP} = do
+  let relayKey = payloadToRelayKey payload
   logInfo "streamRelayDownstreamProxy starting" {payload}
-  void $ spawnLink (\_ -> connect streamId proxyFor aggregatorPoP)
+  void $ spawnLink (\_ -> connect relayKey proxyFor aggregatorPoP)
   -- TODO - monitor our parent
   thisServer <- PoPDefinition.getThisServer
-  pure { streamId
+  pure { relayKey
        , proxyFor
        , thisServer
        , aggregatorPoP
@@ -71,8 +81,8 @@ init payload@{streamId, proxyFor, aggregatorPoP} = do
        }
 
 
-setProxyServer :: StreamId -> PoPName -> ServerAddress -> Effect Unit
-setProxyServer streamId popName serverAddr = Gen.doCast (serverName streamId popName)
+setProxyServer :: RelayKey -> PoPName -> ServerAddress -> Effect Unit
+setProxyServer relayKey popName serverAddr = Gen.doCast (serverName relayKey popName)
   \state@{routesThroughThisProxy} -> Gen.CastNoReply <$> do
     let newState = state{proxiedServer = Just serverAddr}
     traverse_ (maybeCallProxyWithRoute newState) routesThroughThisProxy
@@ -81,9 +91,9 @@ setProxyServer streamId popName serverAddr = Gen.doCast (serverName streamId pop
 
 maybeCallProxyWithRoute :: State -> SourceRoute -> Effect Unit
 maybeCallProxyWithRoute {proxiedServer: Nothing} _ = pure unit
-maybeCallProxyWithRoute {streamId, thisServer, proxiedServer: Just remoteRelay} sourceRoute = do
+maybeCallProxyWithRoute {relayKey: RelayKey streamId streamRole, thisServer, proxiedServer: Just remoteRelay} sourceRoute = do
   let
-    payload = {streamId, deliverTo: thisServer, sourceRoute}
+    payload = {streamId, streamRole, deliverTo: thisServer, sourceRoute}
     url = makeUrlAddr remoteRelay RelayRegisterRelayE
   void $ spawnLink (\_ -> do
                      -- TODO - send message to parent saying the register worked?
@@ -93,12 +103,12 @@ maybeCallProxyWithRoute {streamId, thisServer, proxiedServer: Just remoteRelay} 
                      void $ SpudGun.postJson url payload
                    )
 
-addRelayRoute :: StreamId -> PoPName -> List PoPName -> Effect Unit
-addRelayRoute streamId popName route = Gen.doCast (serverName streamId popName)
+addRelayRoute :: RelayKey -> PoPName -> List PoPName -> Effect Unit
+addRelayRoute relayKey popName route = Gen.doCast (serverName relayKey popName)
   \state@{routesThroughThisProxy, proxiedServer} -> Gen.CastNoReply <$> do
       if Set.member route routesThroughThisProxy
       then do
-        _ <- logWarning "Duplicate Registration" {streamId, popName, route}
+        _ <- logWarning "Duplicate Registration" {relayKey, popName, route}
         pure state
       else do
         let
@@ -107,18 +117,18 @@ addRelayRoute streamId popName route = Gen.doCast (serverName streamId popName)
         pure newState
 
 
-connect :: StreamId -> PoPName -> PoPName -> Effect Unit
-connect streamId proxyFor aggregatorPoP = do
+connect :: RelayKey -> PoPName -> PoPName -> Effect Unit
+connect relayKey@(RelayKey streamId streamRole) proxyFor aggregatorPoP = do
         mRandomAddr <- PoPDefinition.getRandomServerInPoP proxyFor
         case mRandomAddr of
           Nothing -> do
             _ <- logWarning "No random server found in" {proxyFor}
             retrySleep
-            connect streamId proxyFor aggregatorPoP
+            connect relayKey proxyFor aggregatorPoP
 
           Just randomAddr -> do
             let
-              payload = {streamId, aggregatorPoP} :: CreateRelayPayload
+              payload = {streamId, streamRole, aggregatorPoP} :: CreateRelayPayload
               url = makeUrlAddr randomAddr RelayEnsureStartedE
             resp <- SpudGun.postJsonFollow url payload
             case resp of
@@ -130,14 +140,14 @@ connect streamId proxyFor aggregatorPoP = do
                     _ <- logError "x-servedby header missing in StreamRelayDownstreamProxy" {resp}
                     -- TODO - crash??
                     retrySleep
-                    connect streamId proxyFor aggregatorPoP
+                    connect relayKey proxyFor aggregatorPoP
                   Just addr -> do
-                    logInfo "Located relay to proxy" {streamId, proxyFor, aggregatorPoP, addr}
-                    setProxyServer streamId proxyFor $ wrap addr
+                    logInfo "Located relay to proxy" {relayKey, proxyFor, aggregatorPoP, addr}
+                    setProxyServer relayKey proxyFor $ wrap addr
               Left _ -> do
-                _ <- logWarning "Error returned from ensureStarted request" {resp, streamId, proxyFor, aggregatorPoP}
+                _ <- logWarning "Error returned from ensureStarted request" {resp, relayKey, proxyFor, aggregatorPoP}
                 retrySleep
-                connect streamId proxyFor aggregatorPoP
+                connect relayKey proxyFor aggregatorPoP
   where
     retrySleep :: Effect Unit
     retrySleep = Erl.sleep (wrap 500)

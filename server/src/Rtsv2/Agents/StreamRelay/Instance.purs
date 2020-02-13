@@ -31,13 +31,13 @@ import Rtsv2.Agents.TransPoP as TransPoP
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Agent as Agent
-import Shared.Stream (StreamId)
+import Shared.Stream (RelayKey(..), StreamId, StreamRole)
 import Shared.Types (EgestServer, PoPName, RelayServer, Server, extractAddress)
 import Shared.Types.Agent.State as PublicState
 
 
 type State
-  = { streamId :: StreamId
+  = { relayKey :: RelayKey
     , aggregatorPoP :: PoPName
     , thisServer :: Server
     , relaysServed :: Map RelayServer (Set SourceRoute)
@@ -45,16 +45,29 @@ type State
     , egestSourceRoutes :: Maybe (List SourceRoute)
     }
 
-serverName :: StreamId -> ServerName State Unit
+
+payloadToRelayKey :: forall r.
+  { streamId :: StreamId
+  , streamRole :: StreamRole
+  | r
+  }
+  -> RelayKey
+payloadToRelayKey payload = RelayKey payload.streamId payload.streamRole
+
+serverName :: RelayKey -> ServerName State Unit
 serverName = Names.streamRelayInstanceName
 
 startLink :: CreateRelayPayload -> Effect StartLinkResult
-startLink payload = Gen.startLink (serverName payload.streamId) (init payload) Gen.defaultHandleInfo
+startLink payload =
+  let
+    relayKey = payloadToRelayKey payload
+  in
+  Gen.startLink (serverName relayKey) (init payload) Gen.defaultHandleInfo
 
-isAvailable :: StreamId -> Effect Boolean
-isAvailable streamId = isRegistered (serverName streamId)
+isAvailable :: RelayKey -> Effect Boolean
+isAvailable relayKey = isRegistered (serverName relayKey)
 
-status  :: StreamId -> Effect (PublicState.StreamRelay List)
+status  :: RelayKey -> Effect (PublicState.StreamRelay List)
 status =
   exposeState mkStatus <<< serverName
   where
@@ -64,12 +77,15 @@ status =
        }
 
 init :: CreateRelayPayload -> Effect State
-init payload@{streamId} = do
+init payload@{streamId, streamRole} = do
+  let
+    relayKey = RelayKey streamId streamRole
   logInfo "StreamRelay starting" {payload}
   thisServer <- PoPDefinition.getThisServer
-  IntraPoP.announceLocalRelayIsAvailable streamId
+
+  IntraPoP.announceLocalRelayIsAvailable relayKey
   -- TODO - linger timeout / exit if idle
-  pure { streamId: streamId
+  pure { relayKey: relayKey
        , aggregatorPoP : payload.aggregatorPoP
        , thisServer
        , relaysServed : Map.empty
@@ -78,7 +94,7 @@ init payload@{streamId} = do
        }
 
 registerEgest :: RegisterEgestPayload -> Effect Unit
-registerEgest payload = Gen.doCall (serverName payload.streamId) doRegisterEgest
+registerEgest payload = Gen.doCall (serverName $ payloadToRelayKey payload) doRegisterEgest
   where
     doRegisterEgest :: State -> Effect (CallResult Unit State)
     doRegisterEgest state@{egestsServed} = do
@@ -88,15 +104,15 @@ registerEgest payload = Gen.doCall (serverName payload.streamId) doRegisterEgest
 
 maybeStartRelaysForEgest :: State -> Effect State
 maybeStartRelaysForEgest state@{egestSourceRoutes: Just _} = pure state
-maybeStartRelaysForEgest state@{streamId, aggregatorPoP, thisServer} = do
+maybeStartRelaysForEgest state@{relayKey, aggregatorPoP, thisServer} = do
   relayRoutes <- TransPoP.routesTo aggregatorPoP
-  traverse_ (registerWithRelayProxy streamId aggregatorPoP) relayRoutes
+  traverse_ (registerWithRelayProxy relayKey aggregatorPoP) relayRoutes
   pure state{egestSourceRoutes = Just (spy "relayRoutes" relayRoutes)}
 
 
 registerRelay :: RegisterRelayPayload -> Effect Unit
-registerRelay payload = Gen.doCast (serverName payload.streamId)
-  \state@{streamId, relaysServed, egestSourceRoutes, aggregatorPoP} -> do
+registerRelay payload = Gen.doCast (serverName $ payloadToRelayKey payload)
+  \state@{relayKey, relaysServed, egestSourceRoutes, aggregatorPoP} -> do
     logInfo "Register relay chain " {payload}
     -- Do we already have this registration
     let
@@ -108,19 +124,19 @@ registerRelay payload = Gen.doCast (serverName payload.streamId)
     else do
       let
         newRelaysServed = Map.insert payload.deliverTo (Set.insert payload.sourceRoute routesViaThisServer) relaysServed
-      registerWithRelayProxy streamId aggregatorPoP payload.sourceRoute
+      registerWithRelayProxy relayKey aggregatorPoP payload.sourceRoute
       pure $ Gen.CastNoReply state {relaysServed = newRelaysServed}
 
 
 
-registerWithRelayProxy :: StreamId -> PoPName -> SourceRoute -> Effect Unit
-registerWithRelayProxy streamId aggregatorPoP sourceRoute = do
+registerWithRelayProxy :: RelayKey -> PoPName -> SourceRoute -> Effect Unit
+registerWithRelayProxy relayKey@(RelayKey streamId streamRole) aggregatorPoP sourceRoute = do
   case uncons sourceRoute of
     Just {head: nextPoP, tail: remainingRoute} -> do
       -- TODO okAlreadyStarted
-      _ <- DownstreamProxy.startLink {streamId, proxyFor: nextPoP, aggregatorPoP}
+      _ <- DownstreamProxy.startLink {streamId, streamRole, proxyFor: nextPoP, aggregatorPoP}
       -- TODO ok
-      DownstreamProxy.addRelayRoute streamId  nextPoP remainingRoute
+      DownstreamProxy.addRelayRoute relayKey  nextPoP remainingRoute
     Nothing ->
       -- This relay request is for content aggregated in this popdefinition
       -- TODO - media stuff

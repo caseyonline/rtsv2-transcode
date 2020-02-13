@@ -16,7 +16,7 @@ import Pinto.Sup as Sup
 import Rtsv2.Agents.IngestInstance as IngestInstance
 import Rtsv2.Names as Names
 import Shared.LlnwApiTypes (StreamDetails)
-import Shared.Stream (StreamAndVariant)
+import Shared.Stream (IngestKey)
 
 isAvailable :: Effect Boolean
 isAvailable = Pinto.isRegistered serverName
@@ -27,13 +27,14 @@ serverName = Names.ingestInstanceSupName
 startLink :: forall a. a -> Effect Pinto.StartLinkResult
 startLink _ = Sup.startLink serverName init
 
-startIngest :: StreamDetails -> StreamAndVariant -> String -> Int -> Pid -> Effect Unit
-startIngest streamDetails streamAndVariant remoteAddress remotePort handlerPid = do
+startIngest :: StreamDetails -> IngestKey -> String -> Int -> Pid -> Effect Unit
+startIngest streamDetails ingestKey remoteAddress remotePort handlerPid = do
   void <$> okAlreadyStarted =<< Sup.startSimpleChild childTemplate serverName { streamDetails
-                                                                              , streamAndVariant
+                                                                              , ingestKey
                                                                               , remoteAddress
                                                                               , remotePort
-                                                                              , handlerPid}
+                                                                              , handlerPid
+                                                                              }
 
 init :: Effect Sup.SupervisorSpec
 init = do

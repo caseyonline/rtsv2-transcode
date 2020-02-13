@@ -30,7 +30,7 @@ import Erl.ModuleName (NativeModuleName(..))
 import Foreign (unsafeToForeign)
 import Pinto (ServerName(..), SupervisorName)
 import Shared.Agent (Agent(..))
-import Shared.Stream (AgentKey, AggregatorKey, EgestKey, IngestKey)
+import Shared.Stream (AgentKey, AggregatorKey, EgestKey, IngestKey, RelayKey)
 import Shared.Types (PoPName)
 
 agentSupName :: SupervisorName
@@ -75,10 +75,10 @@ popDefinitionName = Local (atom "PoPDefinition")
 streamRelayInstanceSupName :: SupervisorName
 streamRelayInstanceSupName = instanceSup StreamRelay
 
-streamRelayInstanceName :: forall a b. AgentKey -> ServerName a b
+streamRelayInstanceName :: forall a b. RelayKey -> ServerName a b
 streamRelayInstanceName = gprocName2 StreamRelay
 
-streamRelayDownstreamProxyName :: forall a b. AgentKey -> PoPName -> ServerName a b
+streamRelayDownstreamProxyName :: forall a b. RelayKey -> PoPName -> ServerName a b
 streamRelayDownstreamProxyName = gprocName4 StreamRelay "proxy"
 
 transPoPName :: forall a b. ServerName a b

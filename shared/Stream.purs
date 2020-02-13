@@ -5,12 +5,13 @@ module Shared.Stream
   , StreamRole(..)
   , StreamVariant(..)
   , StreamAndVariant(..)
-  , AgentKey
-  , EgestKey
+  , AgentKey(..)
+  , EgestKey(..)
   , AggregatorKey(..)
-  , RelayKey
+  , RelayKey(..)
   , IngestKey(..)
 
+  , agentKeyToAggregatorKey
   , aggregatorKeyToAgentKey
   , ingestKeyToAggregatorKey
   , ingestKeyToVariant
@@ -74,8 +75,11 @@ derive instance ordStreamIdAndRole :: Ord StreamIdAndRole
 
 newtype EgestKey = EgestKey StreamId
 data AggregatorKey = AggregatorKey StreamId StreamRole
+derive instance eqAggregatorKey :: Eq AggregatorKey
+derive instance ordAggregatorKey :: Ord AggregatorKey
+
 data RelayKey = RelayKey StreamId StreamRole
-data IngestKey = IngestKey StreamId StreamVariant StreamRole
+data IngestKey = IngestKey StreamId StreamRole StreamVariant
 
 
 aggregatorKeyToAgentKey :: AggregatorKey -> AgentKey
@@ -94,11 +98,14 @@ derive newtype instance writeForeignStreamVariant :: WriteForeign StreamVariant
 
 
 ingestKeyToAggregatorKey :: IngestKey -> AggregatorKey
-ingestKeyToAggregatorKey (IngestKey streamId streamVariant streamRole) = (AggregatorKey streamId streamRole)
+ingestKeyToAggregatorKey (IngestKey streamId streamRole streamVariant) = (AggregatorKey streamId streamRole)
 
+
+agentKeyToAggregatorKey :: AgentKey -> AggregatorKey
+agentKeyToAggregatorKey (AgentKey streamId streamRole) = AggregatorKey streamId streamRole
 
 ingestKeyToVariant :: IngestKey -> StreamVariant
-ingestKeyToVariant (IngestKey streamId streamVariant streamRole) = streamVariant
+ingestKeyToVariant (IngestKey streamId streamRole streamVariant) = streamVariant
 
 data StreamAndVariant = StreamAndVariant StreamId StreamVariant
 

@@ -3,6 +3,7 @@ module Rtsv2.Router.Endpoint ( Endpoint(..)
                              , endpoint
                              , makeUrl
                              , makeUrlAddr
+                             , parseStreamRole
                              ) where
 
 import Prelude hiding ((/))
@@ -40,8 +41,8 @@ data Endpoint
   | RelayEnsureStartedE
   | RelayRegisterEgestE
   | RelayRegisterRelayE
-  | RelayProxiedStatsE StreamId
-  | RelayStatsE StreamId
+  | RelayProxiedStatsE StreamId StreamRole
+  | RelayStatsE StreamId StreamRole
   | LoadE
   | WorkflowsE
   | WorkflowGraphE String
@@ -50,7 +51,7 @@ data Endpoint
   | IngestAggregatorE StreamId
   | IngestAggregatorPlayerE StreamId
   | IngestAggregatorPlayerJsE StreamId
-  | IngestAggregatorActiveIngestsE StreamId StreamVariant
+  | IngestAggregatorActiveIngestsE StreamId StreamVariant StreamRole
   | IngestAggregatorActiveIngestsPlayerE StreamId StreamVariant
   | IngestAggregatorActiveIngestsPlayerJsE StreamId StreamVariant
   | IngestAggregatorActiveIngestsPlayerSessionStartE StreamId StreamVariant
@@ -90,8 +91,8 @@ endpoint = root $ sum
   , "RelayEnsureStartedE"                              : "" / "api" / "agents" / "relay" / path "ensureStarted"  noArgs
   , "RelayRegisterEgestE"                              : "" / "api" / "agents" / "relay" / "register" / path "egest" noArgs
   , "RelayRegisterRelayE"                              : "" / "api" / "agents" / "relay" / "register" / path "relay" noArgs
-  , "RelayStatsE"                                      : "" / "api" / "agents" / "relay" / streamId segment
-  , "RelayProxiedStatsE"                               : "" / "api" / "agents" / "proxied" / "relay" / streamId segment
+  , "RelayStatsE"                                      : "" / "api" / "agents" / "relay" / streamId segment / streamRole segment
+  , "RelayProxiedStatsE"                               : "" / "api" / "agents" / "proxied" / "relay" / streamId segment / streamRole segment
 
   , "LoadE"                                            : "" / "api" / path "load" noArgs
 
@@ -103,7 +104,7 @@ endpoint = root $ sum
   , "IngestAggregatorE"                                : "" / "api" / "agents" / "ingestAggregator" / streamId segment
   , "IngestAggregatorPlayerE"                          : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "player"
   , "IngestAggregatorPlayerJsE"                        : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "js" -- TODO - would like to add '/ "[...]"' bit it causes compiler error that I don't understand
-  , "IngestAggregatorActiveIngestsE"                   : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "activeIngests" / variant segment
+  , "IngestAggregatorActiveIngestsE"                   : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "activeIngests" / variant segment / streamRole segment
   , "IngestAggregatorActiveIngestsPlayerE"             : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "activeIngests" / variant segment / "player"
   , "IngestAggregatorActiveIngestsPlayerJsE"           : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "activeIngests" / variant segment / "js" -- TODO - would like to add '/ "[...]"' bit it causes compiler error that I don't understand
   , "IngestAggregatorActiveIngestsPlayerSessionStartE" : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "activeIngests" / variant segment / "session"
@@ -165,7 +166,7 @@ parseStreamRole _ = Nothing
 
 streamRoleToString :: StreamRole -> String
 streamRoleToString Primary = "primary"
-streamRoleToString Backup = "primary"
+streamRoleToString Backup = "backup"
 
 -- | ShortName
 parseShortName :: String -> Maybe ShortName

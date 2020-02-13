@@ -289,7 +289,7 @@ start_workflow(Rtmp, StreamId, ClientId, Path, Key = {ingestKey, SlotName, Profi
                                          subscribes_to = {?previous, ?frames},
                                          module = send_to_bus_processor,
                                          config = #send_to_bus_processor_config{consumes = true,
-                                                                                bus_name = {ingest, IngestKey}}
+                                                                                bus_name = {ingest, Key}}
                                         },
 
                               %%--------------------------------------------------

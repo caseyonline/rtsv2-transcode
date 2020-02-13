@@ -9,6 +9,7 @@ module StetsonHelper
        , genericGet2
        , genericGetText
        , genericProxyByStreamId
+       , genericProvideJson
        , GenericStetsonGet
        , GenericStetsonGet2
        , GenericStetsonGetByStreamId
@@ -23,10 +24,10 @@ module StetsonHelper
        , preHookSpyState
 
        , GenericHandlerState
-       , GenericStatusState
+       , GenericStatusState(..)
        , GenericStatusState2
        , GenericHandlerWithResponseState
-       , GenericProxyState
+       , GenericProxyState(..)
        ) where
 
 import Prelude

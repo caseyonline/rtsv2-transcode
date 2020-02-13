@@ -64,14 +64,23 @@ type Egest
   = { clientCount :: Int
     }
 
-
 type AgentLocation f = { agentKey :: AgentKey
                        , servers :: f Server
                        }
+
+
 type IntraPoP f
-  = { aggregatorLocations :: f (AgentLocation f)
-    , relayLocations      :: f (AgentLocation f)
-    , egestLocations      :: f (AgentLocation f)
+  = { aggregatorLocations :: f { streamId :: StreamId
+                               , servers :: f Server
+                               }
+    , relayLocations      :: f { streamId :: StreamId
+                               , streamRole :: StreamRole
+                               , servers :: f Server
+                               }
+    , egestLocations      :: f { streamId :: StreamId
+                               , streamRole :: StreamRole
+                               , servers :: f Server
+                               }
     , currentTransPoPLeader :: Maybe Server
     }
 

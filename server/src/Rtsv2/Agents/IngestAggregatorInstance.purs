@@ -33,7 +33,7 @@ import Rtsv2.Router.Endpoint as RoutingEndpoint
 import Rtsv2.Router.Parser as Routing
 import Shared.Agent as Agent
 import Shared.LlnwApiTypes (StreamDetails)
-import Shared.Stream (AgentKey, AggregatorKey(..), IngestKey(..), StreamId(..), StreamVariant, ingestKeyToAggregatorKey, ingestKeyToVariant, toStreamId, toVariant)
+import Shared.Stream (AggregatorKey(..), IngestKey(..), StreamVariant, ingestKeyToAggregatorKey, ingestKeyToVariant)
 import Shared.Types (ServerAddress, extractAddress)
 import Shared.Types.Agent.State as PublicState
 
@@ -63,8 +63,8 @@ serverName :: AggregatorKey -> ServerName State Msg
 serverName = Names.ingestAggregatorInstanceName
 
 
+serverNameFromIngestKey :: IngestKey -> ServerName State Msg
 serverNameFromIngestKey = serverName <<< ingestKeyToAggregatorKey
-
 
 addVariant :: IngestKey -> Effect Unit
 addVariant ingestKey = Gen.doCall (serverNameFromIngestKey ingestKey)
@@ -81,7 +81,7 @@ addRemoteVariant ingestKey@(IngestKey streamId streamVariant streamRole)  remote
       path = Routing.printUrl RoutingEndpoint.endpoint (IngestInstanceLlwpE streamId streamVariant streamRole)
       url = "http://" <> (unwrap remoteServer) <> ":3000" <> path
     addRemoteVariantImpl workflow ingestKey url
-    pure $ CallReply unit state{activeStreamVariants = insert (toVariant ingestKey) remoteServer activeStreamVariants}
+    pure $ CallReply unit state{activeStreamVariants = insert (ingestKeyToVariant ingestKey) remoteServer activeStreamVariants}
 
 removeVariant :: IngestKey -> Effect Unit
 removeVariant ingestKey@(IngestKey _ streamVariant _)  = Gen.doCall (serverName (ingestKeyToAggregatorKey ingestKey))
@@ -122,6 +122,7 @@ init streamDetails = do
     mkKey p = tuple2 (IngestKey (wrap streamDetails.slot.name) (wrap p.streamName) streamDetails.role) p.streamName
     aggregatorKey = (AggregatorKey  (wrap streamDetails.slot.name) streamDetails.role)
 
+streamDetailsToAggregatorKey :: StreamDetails -> AggregatorKey
 streamDetailsToAggregatorKey streamDetails =
   AggregatorKey (wrap streamDetails.slot.name) streamDetails.role
 
