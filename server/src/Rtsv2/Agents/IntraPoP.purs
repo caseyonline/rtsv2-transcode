@@ -224,8 +224,8 @@ whereIsIngestAggregator aggregatorKey = head <$> whereIs (_.aggregators) (aggreg
 whereIsStreamRelay :: RelayKey -> Effect (Maybe (LocalOrRemote Server))
 whereIsStreamRelay (RelayKey streamId streamRole)  = head <$> (map $ map serverLoadToServer) <$> whereIsStreamRelay' (AgentKey streamId streamRole)
 
-whereIsEgest :: AgentKey -> Effect (List ServerLoad)
-whereIsEgest agentKey = (map fromLocalOrRemote) <$> whereIsEgest' agentKey
+whereIsEgest :: EgestKey -> Effect (List ServerLoad)
+whereIsEgest egestKey = (map fromLocalOrRemote) <$> (whereIsEgest' $ egestKeyToAgentKey egestKey)
 
 whereIsStreamRelay' :: AgentKey -> Effect (List (LocalOrRemote ServerLoad))
 whereIsStreamRelay' = whereIsWithLoad _.relays
@@ -458,14 +458,18 @@ aggregatorHandler
 
     stoppedLocal :: AgentMessageHandler
     stoppedLocal state agentKey server = do
-      Bus.raise bus (IngestAggregatorExited (agentKeyToAggregatorKey agentKey) server)
+      let
+        aggregatorKey = agentKeyToAggregatorKey agentKey
+      Bus.raise bus (IngestAggregatorExited aggregatorKey server)
       sendToIntraSerfNetwork state "aggregatorStopped" $ IMAggregatorState Stopped agentKey $ extractAddress server
       state.transPoPApi.announceAggregatorStopped agentKey server
 
     stoppedThisPoP :: AgentMessageHandler
     stoppedThisPoP state agentKey server = do
+      let
+        aggregatorKey = agentKeyToAggregatorKey agentKey
       logInfo "Remote aggregator stopped in this PoP" {agentKey, server}
-      Bus.raise bus (IngestAggregatorExited (agentKeyToAggregatorKey agentKey) server)
+      Bus.raise bus (IngestAggregatorExited aggregatorKey server)
       state.transPoPApi.announceAggregatorStopped agentKey server
 
     stoppedOtherPoP :: AgentMessageHandler
@@ -504,11 +508,11 @@ announceLocalAggregatorStopped :: AggregatorKey -> Effect Unit
 announceLocalAggregatorStopped = announceStoppedLocal aggregatorHandler <<< aggregatorKeyToAgentKey
 
 -- -- Called by TransPoP to indicate aggregator start / stop on a node in another PoP
-announceOtherPoPAggregatorIsAvailable :: AggregatorKey -> Server -> Effect Unit
-announceOtherPoPAggregatorIsAvailable = announceAvailableOtherPoP aggregatorHandler <<< aggregatorKeyToAgentKey
+announceOtherPoPAggregatorIsAvailable :: AgentKey -> Server -> Effect Unit
+announceOtherPoPAggregatorIsAvailable = announceAvailableOtherPoP aggregatorHandler
 
-announceOtherPoPAggregatorStopped :: AggregatorKey -> Server -> Effect Unit
-announceOtherPoPAggregatorStopped = announceStoppedOtherPoP aggregatorHandler <<< aggregatorKeyToAgentKey
+announceOtherPoPAggregatorStopped :: AgentKey -> Server -> Effect Unit
+announceOtherPoPAggregatorStopped = announceStoppedOtherPoP aggregatorHandler
 
 egestHandler :: AgentHandler
 egestHandler
@@ -565,15 +569,20 @@ egestHandler
                     , set : \newLocations state -> state {egests = newLocations}
                     }
 
+
+-- Egests do not have different instances for Primary and Backup, so model them all as Primary
+egestKeyToAgentKey :: EgestKey -> AgentKey
+egestKeyToAgentKey (EgestKey streamId) = AgentKey streamId Primary
+
 -- Called by EgestAgent to indicate egest on this node
 announceLocalEgestIsAvailable :: EgestKey -> Effect Unit
-announceLocalEgestIsAvailable (EgestKey streamId) = do
-  let agentKey = AgentKey streamId Primary
-  logInfo "New egest is available on this node" {agentKey}
+announceLocalEgestIsAvailable egestKey = do
+  let agentKey = egestKeyToAgentKey egestKey
+  logInfo "New egest is available on this node" {egestKey}
   announceAvailableLocal egestHandler agentKey
 
 announceLocalEgestStopped :: EgestKey -> Effect Unit
-announceLocalEgestStopped (EgestKey streamId) = announceStoppedLocal egestHandler $ AgentKey streamId Primary
+announceLocalEgestStopped = announceStoppedLocal egestHandler <<< egestKeyToAgentKey
 
 relayHandler :: AgentHandler
 relayHandler

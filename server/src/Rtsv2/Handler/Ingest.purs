@@ -26,7 +26,7 @@ import Rtsv2.Config as Config
 import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.Web.Bindings as Bindings
 import Shared.LlnwApiTypes (StreamIngestProtocol(..), StreamPublish, StreamDetails)
-import Shared.Stream (ShortName, StreamAndVariant(..), StreamId, StreamVariant, toStreamId, toVariant)
+import Shared.Stream (IngestKey(..), ShortName, StreamAndVariant(..), StreamId, StreamRole(..), StreamVariant, toStreamId, toVariant)
 import Shared.Types.Agent.State as PublicState
 import Shared.Types.Workflow.Metrics.Commmon (Stream)
 import Shared.Utils (lazyCrashIfMissing)
@@ -182,32 +182,42 @@ ingestInstance :: GenericStetsonGet (PublicState.Ingest List)
 ingestInstance =
   genericGetBy2 Bindings.streamIdBindingLiteral Bindings.variantBindingLiteral getState
   where
-    getState streamId variant = IngestInstance.getPublicState (StreamAndVariant streamId variant)
+    -- TODO - hardcoded Primary
+    getState streamId variant = IngestInstance.getPublicState (IngestKey streamId Primary variant)
 
 type IngestStartState = { shortName :: ShortName
-                        , streamAndVariant :: StreamAndVariant
-                        , streamDetails :: Maybe StreamDetails}
+                        , ingestKey :: IngestKey
+                        , streamDetails :: Maybe StreamDetails
+                        , streamId :: StreamId
+                        , variant :: StreamVariant
+                        }
 
 ingestStart :: StetsonHandler IngestStartState
 ingestStart =
   Rest.handler (\req ->
-                 let shortName = Bindings.shortName req
-                     streamAndVariant = Bindings.streamAndVariant req
+                 let
+                   shortName = Bindings.shortName req
+                   streamId = Bindings.streamId req
+                   role = Bindings.streamRole req
+                   variant = Bindings.variant req
                  in
-                 Rest.initResult req { shortName
-                                     , streamAndVariant
-                                     , streamDetails: Nothing})
-
+                 Rest.initResult req { ingestKey: IngestKey streamId role variant
+                                     , streamDetails: Nothing
+                                     , streamId
+                                     , variant
+                                     , shortName
+                                     }
+               )
   # Rest.serviceAvailable (\req state -> do
                             isAgentAvailable <- IngestInstanceSup.isAvailable
                             Rest.result isAgentAvailable req state)
-  # Rest.resourceExists (\req state@{shortName, streamAndVariant} ->
+  # Rest.resourceExists (\req state@{shortName, ingestKey, variant} ->
                           let
                             apiBody :: StreamPublish
                             apiBody = { host: "172.16.171.5"
                                       , protocol: Rtmp
                                       , shortname: unwrap shortName
-                                      , streamName: unwrap $ toVariant streamAndVariant
+                                      , streamName: unwrap variant
                                       , username: "user"}
                           in
                            do
@@ -219,38 +229,41 @@ ingestStart =
                           )
   -- TODO - hideous spawn here, but ingestInstance needs to do a monitor... - ideally we sleep forever and kill it in ingestStop...
   # Rest.contentTypesProvided (\req state ->
-                                  Rest.result (tuple2 "text/plain" (\req2 state2@{streamDetails, streamAndVariant} -> do
+                                  Rest.result (tuple2 "text/plain" (\req2 state2@{streamDetails, streamId, variant} -> do
                                                                        pid <- Raw.spawn ((\_ -> Timer.sleep (wrap 10000))
                                                                                          { receive: Raw.receive
                                                                                          , receiveWithTimeout: Raw.receiveWithTimeout
                                                                                          })
-                                                                       IngestInstanceSup.startIngest (fromMaybe' (lazyCrashIfMissing "stream_details missing") streamDetails) streamAndVariant "127.0.0.1" 0 pid
+                                                                       IngestInstanceSup.startIngest (fromMaybe' (lazyCrashIfMissing "stream_details missing") streamDetails) (StreamAndVariant streamId variant) "127.0.0.1" 0 pid
                                                                        Rest.result "ingestStarted" req2 state2
                                                                    ) : nil) req state)
   # Rest.yeeha
 
 
-type IngestStopState = { streamAndVariant :: StreamAndVariant }
+type IngestStopState = { ingestKey :: IngestKey }
 
 ingestStop :: StetsonHandler IngestStopState
 ingestStop =
   Rest.handler (\req ->
-                 let streamAndVariant = Bindings.streamAndVariant req
+                 let
+                   streamId = Bindings.streamId req
+                   role = Bindings.streamRole req
+                   variant = Bindings.variant req
                  in
-                 Rest.initResult req {streamAndVariant}
+                 Rest.initResult req {ingestKey: IngestKey streamId role variant}
                )
 
   # Rest.serviceAvailable (\req state -> do
                             isAgentAvailable <- IngestInstanceSup.isAvailable
                             Rest.result isAgentAvailable req state)
 
-  # Rest.resourceExists (\req state@{streamAndVariant} -> do
-                            isActive <- IngestInstance.isActive streamAndVariant
+  # Rest.resourceExists (\req state@{ingestKey} -> do
+                            isActive <- IngestInstance.isActive ingestKey
                             Rest.result isActive req state
                         )
   # Rest.contentTypesProvided (\req state ->
                                 Rest.result (tuple2 "text/plain" (\req2 state2 -> do
-                                                                     IngestInstance.stopIngest state.streamAndVariant
+                                                                     IngestInstance.stopIngest state.ingestKey
                                                                      Rest.result "ingestStopped" req2 state2
                                                                  ) : nil) req state)
   # Rest.yeeha

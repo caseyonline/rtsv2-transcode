@@ -27,31 +27,19 @@ import Rtsv2.Agents.StreamRelay.Types (CreateRelayPayload, RegisterEgestPayload,
 import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
-import Rtsv2.Utils (noprocToMaybe)
 import Rtsv2.Web.Bindings as Bindings
 import Shared.Stream (RelayKey(..))
 import Shared.Types (Server, extractAddress)
 import Shared.Types.Agent.State (StreamRelay)
-import Shared.Types.Agent.State as PublicState
 import Simple.JSON as JSON
 import Stetson (HttpMethod(..), StetsonHandler)
 import Stetson.Rest as Rest
-import StetsonHelper (GenericStatusState(..), GenericStetsonGetByStreamId, GenericStetsonHandler, allBody, binaryToString, genericGetByStreamId, genericPost, genericProvideJson, genericProxyByStreamId, preHookSpyState)
+import StetsonHelper (GenericStatusState, GenericStetsonHandler, allBody, binaryToString, genericGetByStreamIdAndRole, genericPost, preHookSpyState)
 
 
 stats :: StetsonHandler (GenericStatusState (StreamRelay List))
-stats =  Rest.handler init
-  # Rest.allowedMethods (Rest.result (GET : mempty))
-  # Rest.contentTypesProvided (\req state -> Rest.result (singleton $ MimeType.json genericProvideJson) req state)
-  # Rest.yeeha
-  where
-    init req =
-      let
-        streamId = Bindings.streamId req
-        streamRole = Bindings.streamRole req
-      in do
-        mData <- noprocToMaybe $ StreamRelayInstance.status $ RelayKey streamId streamRole
-        Rest.initResult req $ GenericStatusState { mData }
+stats =  genericGetByStreamIdAndRole
+         \streamId streamRole -> StreamRelayInstance.status $ RelayKey streamId streamRole
 
 startResource :: GenericStetsonHandler CreateRelayPayload
 startResource =  genericPost  StreamRelayInstanceSup.startRelay
@@ -63,15 +51,12 @@ registerRelay :: GenericStetsonHandler RegisterRelayPayload
 registerRelay = genericPost  StreamRelayInstance.registerRelay
 
 
-
---genericProxyByStreamIdAndRole :: (StreamId -> StreamRole -> Effect (Maybe (LocalOrRemote Server))) -> (StreamId -> Endpoint) -> StetsonHandler GenericProxyState
-
-
 newtype ProxyState
   = ProxyState { whereIsResp :: Maybe Server
                , relayKey:: RelayKey
                }
 
+proxiedStats :: StetsonHandler ProxyState
 proxiedStats =
   Rest.handler init
   # Rest.allowedMethods (Rest.result (GET : mempty))

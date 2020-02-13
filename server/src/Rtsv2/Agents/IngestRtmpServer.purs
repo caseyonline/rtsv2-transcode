@@ -28,7 +28,7 @@ import Rtsv2.Names as Names
 import Rtsv2.Utils (crashIfLeft)
 import Serf (Ip)
 import Shared.LlnwApiTypes (AuthType, PublishCredentials, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamPublish, StreamAuth)
-import Shared.Stream (StreamAndVariant(..))
+import Shared.Stream (IngestKey(..), StreamAndVariant(..), StreamRole(..))
 import SpudGun (bodyToJSON)
 import SpudGun as SpudGun
 
@@ -63,6 +63,7 @@ init _ = do
   {port, nbAcceptors} <- Config.rtmpIngestConfig
   {streamAuthTypeUrl, streamAuthUrl, streamPublishUrl} <- Config.llnwApiConfig
   let
+    callbacks :: Callbacks
     callbacks = { ingestStarted: mkFn5 ingestStarted
                 , ingestStopped: mkFn2 ingestStopped
                 , streamAuthType: mkFn2 (streamAuthType streamAuthTypeUrl)
@@ -90,7 +91,7 @@ init _ = do
 
     ingestStopped :: StreamDetails -> String -> Effect Unit
     ingestStopped { role
-                   , slot : {name : streamId}} streamVariantId = IngestInstance.stopIngest (StreamAndVariant (wrap streamId) (wrap streamVariantId))
+                   , slot : {name : streamId}} streamVariantId = IngestInstance.stopIngest (IngestKey (wrap streamId) role (wrap streamVariantId))
 
     streamAuthType url host shortname = do
       restResult <- SpudGun.postJson (wrap (spy "authtype url" url)) (spy "authtype body" { host
@@ -115,10 +116,9 @@ init _ = do
                                                                     )
       pure $ hush (spy "publish parse" (bodyToJSON (spy "publish result" restResult)))
 
-    clientMetadata streamAndVariant foreignMetadata = do
-      IngestInstance.setClientMetadata streamAndVariant (Rtmp.foreignToMetadata foreignMetadata)
-      pure unit
+    clientMetadata (StreamAndVariant streamId variant) foreignMetadata = do
+      IngestInstance.setClientMetadata (IngestKey streamId Primary variant) (Rtmp.foreignToMetadata foreignMetadata)
 
-    sourceInfo streamAndVariant foreignSourceInfo = do
-      IngestInstance.setSourceInfo streamAndVariant (SourceDetails.foreignToSourceInfo (spy "foreign" foreignSourceInfo))
-      pure unit
+    sourceInfo (StreamAndVariant streamId variant) foreignSourceInfo = do
+
+      IngestInstance.setSourceInfo (IngestKey streamId Primary variant) (SourceDetails.foreignToSourceInfo (spy "foreign" foreignSourceInfo))

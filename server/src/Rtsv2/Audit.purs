@@ -13,7 +13,7 @@ import Effect (Effect)
 import Erl.Atom (atom)
 import Erl.Data.List (List, nil, (:))
 import Logger as Logger
-import Shared.Stream (IngestKey(..), StreamAndVariant(..), StreamId(..))
+import Shared.Stream (EgestKey(..), IngestKey(..), StreamAndVariant(..), StreamId(..))
 
 foreign import toList :: String -> List Char
 
@@ -44,8 +44,8 @@ clientStart (StreamId streamId) = do
                       , streamId: toList streamId}
   pure unit
 
-clientStop :: StreamId -> Effect Unit
-clientStop (StreamId streamId) = do
+clientStop :: EgestKey -> Effect Unit
+clientStop (EgestKey (StreamId streamId)) = do
   _ <- Logger.info "" { domain: (atom "audit") : (atom "client") : nil
                       , event: toList "stop"
                       , streamId: toList streamId}

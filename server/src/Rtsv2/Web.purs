@@ -41,6 +41,7 @@ import Shared.Types (PoPName)
 import Stetson (InnerStetsonHandler, RestResult, StaticAssetLocation(..), StetsonConfig)
 import Stetson as Stetson
 import Stetson.Rest as Rest
+import Unsafe.Coerce (unsafeCoerce)
 
 newtype State = State {}
 
@@ -73,13 +74,13 @@ init args = do
     # mkRoute  RelayEnsureStartedE                                              RelayHandler.ensureStarted
     # mkRoute  RelayRegisterEgestE                                              RelayHandler.registerEgest
     # mkRoute  RelayRegisterRelayE                                              RelayHandler.registerRelay
-    # mkRoute (RelayStatsE streamIdBinding)                                     RelayHandler.stats
-    # mkRoute (RelayProxiedStatsE streamIdBinding)                              RelayHandler.proxiedStats
+    # mkRoute (RelayStatsE streamIdBinding streamRoleBinding)                   RelayHandler.stats
+    # mkRoute (RelayProxiedStatsE streamIdBinding streamRoleBinding)            RelayHandler.proxiedStats
 
     # mkRoute  LoadE                                                            LoadHandler.load
 
     # mkRoute (IngestAggregatorE streamIdBinding)                               IngestAggregatorHandler.ingestAggregator
-    # mkRoute (IngestAggregatorActiveIngestsE streamIdBinding variantBinding)   IngestAggregatorHandler.ingestAggregatorsActiveIngest
+    # mkRoute (IngestAggregatorActiveIngestsE streamIdBinding streamRoleBinding variantBinding)   IngestAggregatorHandler.ingestAggregatorsActiveIngest
     # mkRoute  IngestAggregatorsE                                               IngestAggregatorHandler.ingestAggregators
 
     # mkRoute (IngestInstancesE)                                                IngestHandler.ingestInstances
@@ -113,7 +114,7 @@ init args = do
   where
     cowboyRoutes :: List Path
     cowboyRoutes =
-      cowboyRoute   (IngestInstanceLlwpE streamIdBinding variantBinding)                                       "llwp_stream_resource" ((unsafeToForeign) makeStreamAndVariant)
+      cowboyRoute   (IngestInstanceLlwpE streamIdBinding streamRoleBinding variantBinding)                                       "llwp_stream_resource" ((unsafeToForeign) makeStreamAndVariant)
       : cowboyRoute (IngestAggregatorActiveIngestsPlayerSessionStartE streamIdBinding variantBinding)          "rtsv2_webrtc_session_start_resource" ((unsafeToForeign) makeStreamAndVariant)
       : cowboyRoute (IngestAggregatorActiveIngestsPlayerSessionE streamIdBinding variantBinding ":session_id") "rtsv2_webrtc_session_resource" ((unsafeToForeign) makeStreamAndVariant)
       : cowboyRoute WorkflowsE "id3as_workflows_resource" (unsafeToForeign unit)
@@ -137,6 +138,7 @@ init args = do
     static' rType hack config = Stetson.static ((printUrl endpoint rType) <> hack) config
 
     streamIdBinding = StreamId (":" <> Bindings.streamIdBindingLiteral)
+    streamRoleBinding = unsafeCoerce (":" <> Bindings.streamRoleBindingLiteral)
     variantBinding = StreamVariant (":" <> Bindings.variantBindingLiteral)
     streamAndVariantBinding = StreamAndVariant (StreamId "ignored") (StreamVariant $ ":" <> Bindings.streamAndVariantBindingLiteral)
     shortNameBinding = ShortName (":" <> Bindings.shortNameBindingLiteral)

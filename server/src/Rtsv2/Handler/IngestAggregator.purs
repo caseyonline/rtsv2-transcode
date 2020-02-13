@@ -16,17 +16,18 @@ import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
 import Rtsv2.Agents.IngestAggregatorInstanceSup as IngestAggregatorInstanceSup
 import Rtsv2.Web.Bindings as Bindings
 import Shared.LlnwApiTypes (StreamDetails)
-import Shared.Stream (AggregatorKey(..), IngestKey(..), StreamAndVariant(StreamAndVariant), toStreamId)
+import Shared.Stream (AggregatorKey(..), IngestKey(..))
 import Shared.Types (ServerAddress)
 import Shared.Types.Agent.State as PublicState
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (readJSON)
 import Stetson (HttpMethod(..), StetsonHandler)
 import Stetson.Rest as Rest
-import StetsonHelper (GenericStetsonGetByStreamId, GenericStetsonHandler, allBody, binaryToString, genericGetByStreamId, genericPost)
+import StetsonHelper (GenericStatusState, GenericStetsonHandler, allBody, binaryToString, genericGetByStreamIdAndRole, genericPost)
 
-ingestAggregator :: GenericStetsonGetByStreamId (PublicState.IngestAggregator List)
-ingestAggregator = genericGetByStreamId IngestAggregatorInstance.getState
+ingestAggregator :: StetsonHandler (GenericStatusState (PublicState.IngestAggregator List))
+ingestAggregator = genericGetByStreamIdAndRole
+                   \streamId role -> IngestAggregatorInstance.getState $ AggregatorKey streamId role
 
 ingestAggregators :: GenericStetsonHandler StreamDetails
 ingestAggregators = genericPost IngestAggregatorInstanceSup.startAggregator
@@ -71,13 +72,13 @@ ingestAggregatorsActiveIngest =
 
                           )
   # Rest.contentTypesAccepted (\req state ->
-                                Rest.result ((tuple2 "application/json" (\req2 state2@{ streamAndVariant
+                                Rest.result ((tuple2 "application/json" (\req2 state2@{ ingestKey
                                                                                       , serverAddress: maybeServerAddress} ->
                                                                           let
                                                                             serverAddress = fromMaybe' (lazyCrashIfMissing "server_address is nothing") maybeServerAddress
                                                                           in
                                                                             do
-                                                                              IngestAggregatorInstance.addRemoteVariant streamAndVariant serverAddress
+                                                                              IngestAggregatorInstance.addRemoteVariant ingestKey serverAddress
                                                                               Rest.result true req2 state2
                                                                         )) : nil)
                                 req state
@@ -88,8 +89,8 @@ ingestAggregatorsActiveIngest =
 
   # Rest.allowMissingPost (Rest.result false)
 
-  # Rest.deleteResource (\req state@{streamAndVariant} -> do
-                            IngestAggregatorInstance.removeVariant streamAndVariant
+  # Rest.deleteResource (\req state@{ingestKey} -> do
+                            IngestAggregatorInstance.removeVariant ingestKey
                             Rest.result true req state
                         )
 

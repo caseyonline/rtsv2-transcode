@@ -2,6 +2,7 @@ module StetsonHelper
        ( genericPost
        , genericPostWithResponse
        , genericGetByStreamId
+       , genericGetByStreamIdAndRole
        , genericGetByPoPName
        , genericGetBy
        , genericGetBy2
@@ -50,7 +51,7 @@ import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.Router.Endpoint (Endpoint, makeUrl)
 import Rtsv2.Utils (noprocToMaybe)
 import Rtsv2.Web.Bindings as Bindings
-import Shared.Stream (StreamId)
+import Shared.Stream (StreamId, StreamRole)
 import Shared.Types (PoPName, Server)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (class ReadForeign, class WriteForeign, writeJSON)
@@ -128,6 +129,25 @@ type GenericStetsonGet a = StetsonHandler (GenericStatusState a)
 type GenericStetsonGetByStreamId a = StetsonHandler (GenericStatusState a)
 
 newtype GenericStatusState a = GenericStatusState { mData :: Maybe a }
+
+
+
+genericGetByStreamIdAndRole :: forall a. WriteForeign a =>  (StreamId -> StreamRole -> Effect a) -> GenericStetsonGet a
+genericGetByStreamIdAndRole getFun =  Rest.handler init
+  # Rest.allowedMethods (Rest.result (GET : mempty))
+  # Rest.contentTypesProvided (\req state -> Rest.result (singleton $ MimeType.json genericProvideJson) req state)
+  # Rest.yeeha
+  where
+    init req =
+      let
+        streamId = Bindings.streamId req
+        streamRole = Bindings.streamRole req
+      in do
+        mData <- noprocToMaybe $ getFun streamId streamRole
+        Rest.initResult req $ GenericStatusState { mData }
+
+
+
 
 genericGetByStreamId :: forall a. WriteForeign a =>  (StreamId -> Effect a) -> GenericStetsonGetByStreamId a
 genericGetByStreamId = genericGetBy Bindings.streamIdBindingLiteral
@@ -249,6 +269,10 @@ newtype GenericProxyState
   = GenericProxyState { whereIsResp :: Maybe Server
                       , streamId :: StreamId
                       }
+
+
+
+
 
 genericProxyByStreamId :: (StreamId -> Effect (Maybe (LocalOrRemote Server))) -> (StreamId -> Endpoint) -> StetsonHandler GenericProxyState
 genericProxyByStreamId whereIsFun endpointFun =

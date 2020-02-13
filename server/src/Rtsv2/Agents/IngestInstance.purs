@@ -41,7 +41,7 @@ import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Rtsv2.Utils (crashIfLeft)
 import Shared.Agent as Agent
 import Shared.LlnwApiTypes (StreamDetails)
-import Shared.Stream (AggregatorKey(..), IngestKey(..), IngestKey, StreamId, ingestKeyToAggregatorKey, toStreamId, toVariant)
+import Shared.Stream (AggregatorKey, IngestKey(..), ingestKeyToAggregatorKey)
 import Shared.Types (Load, Milliseconds, Server, ServerLoad(..), extractAddress)
 import Shared.Types.Agent.State as PublicState
 import Shared.Types.Media.Types.Rtmp (RtmpClientMetadata)
@@ -198,8 +198,8 @@ addVariant thisServer ingestKey aggregatorAddress
       Right _ -> pure $ true
 
 makeActiveIngestUrl :: Server -> IngestKey -> Url
-makeActiveIngestUrl server (IngestKey streamId streamVariant streamRole) =
-  makeUrl server $ IngestAggregatorActiveIngestsE streamId streamVariant streamRole
+makeActiveIngestUrl server (IngestKey streamId streamRole streamVariant) =
+  makeUrl server $ IngestAggregatorActiveIngestsE streamId streamRole streamVariant
 
 removeVariant :: IngestKey -> Maybe (LocalOrRemote Server)-> Effect Unit
 removeVariant ingestKey Nothing = pure unit

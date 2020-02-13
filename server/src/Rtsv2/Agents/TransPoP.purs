@@ -330,22 +330,22 @@ handleInfo msg state =
 
 
 handleTransPoPMessage :: TransMessage -> State -> Effect State
-handleTransPoPMessage (TMAggregatorState Available streamId address) state@{intraPoPApi} = do
-  logInfo "Remote stream available" {streamId, address}
+handleTransPoPMessage (TMAggregatorState Available agentKey address) state@{intraPoPApi} = do
+  logInfo "Remote stream available" {agentKey, address}
   mServerLocation <- PoPDefinition.whereIsServer address
   case mServerLocation of
     Nothing -> pure state
     Just location -> do
-      intraPoPApi.announceOtherPoPAggregatorIsAvailable streamId (toServer address location)
+      intraPoPApi.announceOtherPoPAggregatorIsAvailable agentKey (toServer address location)
       pure state
 
-handleTransPoPMessage (TMAggregatorState Stopped streamId address) state@{intraPoPApi} = do
-  logInfo "Remote stream stopped" {streamId, address}
+handleTransPoPMessage (TMAggregatorState Stopped agentKey address) state@{intraPoPApi} = do
+  logInfo "Remote stream stopped" {agentKey, address}
   mServerLocation <- PoPDefinition.whereIsServer address
   case mServerLocation of
     Nothing -> pure state
     Just location -> do
-      intraPoPApi.announceOtherPoPAggregatorStopped streamId (toServer address location)
+      intraPoPApi.announceOtherPoPAggregatorStopped agentKey (toServer address location)
       pure state
 
 --------------------------------------------------------------------------------
@@ -612,7 +612,7 @@ joinAllSerf state@{ config: config@{rejoinEveryMs}, serfRpcAddress, members } =
 
 
 handleAgentMessage :: LamportClock -> EventType -> AgentKey -> ServerAddress -> State -> Effect State
-handleAgentMessage msgLTime eventType streamId msgServerAddress
+handleAgentMessage msgLTime eventType agentKey msgServerAddress
                    state@{thisServer} = do
   -- let _ = spy "agentMessage" {name: agentMessageHandler.name, eventType, streamId, msgServerAddress}
   -- Make sure the message is from a known origin and does not have an expired Lamport clock
@@ -620,7 +620,7 @@ handleAgentMessage msgLTime eventType streamId msgServerAddress
   then
     pure state
   else let agentClock = state.agentClocks.aggregatorClocks in
-    if Map.lookup (Tuple msgServerAddress streamId) agentClock # maybe false (_ >= msgLTime)
+    if Map.lookup (Tuple msgServerAddress agentKey) agentClock # maybe false (_ >= msgLTime)
     then
       pure state
     else do
@@ -637,13 +637,13 @@ handleAgentMessage msgLTime eventType streamId msgServerAddress
           | otherwise -> do
             let
               msgServer = toServer msgServerAddress msgLocation
-              newAgentClock = Map.insert (Tuple msgServerAddress streamId) msgLTime agentClock
+              newAgentClock = Map.insert (Tuple msgServerAddress agentKey) msgLTime agentClock
 
             case eventType of
               Available -> do
-                state.intraPoPApi.announceOtherPoPAggregatorIsAvailable streamId msgServer
+                state.intraPoPApi.announceOtherPoPAggregatorIsAvailable agentKey msgServer
               Stopped -> do
-                state.intraPoPApi.announceOtherPoPAggregatorStopped streamId msgServer
+                state.intraPoPApi.announceOtherPoPAggregatorStopped agentKey msgServer
             pure $ state { agentClocks = {aggregatorClocks : newAgentClock} }
 
 startScript :: String

@@ -74,17 +74,17 @@ addVariant ingestKey = Gen.doCall (serverNameFromIngestKey ingestKey)
     pure $ CallReply unit state{activeStreamVariants = insert (ingestKeyToVariant ingestKey) thisAddress activeStreamVariants}
 
 addRemoteVariant :: IngestKey -> ServerAddress -> Effect Unit
-addRemoteVariant ingestKey@(IngestKey streamId streamVariant streamRole)  remoteServer = Gen.doCall (serverNameFromIngestKey ingestKey)
+addRemoteVariant ingestKey@(IngestKey streamId streamRole streamVariant)  remoteServer = Gen.doCall (serverNameFromIngestKey ingestKey)
   \state@{activeStreamVariants, workflow} -> do
     logInfo "Remote ingest variant added" {ingestKey, source: remoteServer}
     let
-      path = Routing.printUrl RoutingEndpoint.endpoint (IngestInstanceLlwpE streamId streamVariant streamRole)
+      path = Routing.printUrl RoutingEndpoint.endpoint (IngestInstanceLlwpE streamId streamRole streamVariant)
       url = "http://" <> (unwrap remoteServer) <> ":3000" <> path
     addRemoteVariantImpl workflow ingestKey url
     pure $ CallReply unit state{activeStreamVariants = insert (ingestKeyToVariant ingestKey) remoteServer activeStreamVariants}
 
 removeVariant :: IngestKey -> Effect Unit
-removeVariant ingestKey@(IngestKey _ streamVariant _)  = Gen.doCall (serverName (ingestKeyToAggregatorKey ingestKey))
+removeVariant ingestKey@(IngestKey _ _ streamVariant )  = Gen.doCall (serverName (ingestKeyToAggregatorKey ingestKey))
   \state@{activeStreamVariants, aggregatorKey, workflow, config:{shutdownLingerTimeMs}} -> do
   let
     newActiveStreamVariants = delete streamVariant activeStreamVariants
@@ -119,7 +119,7 @@ init streamDetails = do
        , workflow
        }
   where
-    mkKey p = tuple2 (IngestKey (wrap streamDetails.slot.name) (wrap p.streamName) streamDetails.role) p.streamName
+    mkKey p = tuple2 (IngestKey (wrap streamDetails.slot.name) streamDetails.role (wrap p.streamName)) p.streamName
     aggregatorKey = (AggregatorKey  (wrap streamDetails.slot.name) streamDetails.role)
 
 streamDetailsToAggregatorKey :: StreamDetails -> AggregatorKey

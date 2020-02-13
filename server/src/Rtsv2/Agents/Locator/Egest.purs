@@ -22,7 +22,7 @@ import Rtsv2.Agents.Locator.Types (FailureReason(..), LocalOrRemote(..), Locatio
 import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Rtsv2.Utils (crashIfLeft, noprocToMaybe)
 import Shared.Agent as Agent
-import Shared.Stream (StreamId)
+import Shared.Stream (AggregatorKey(..), EgestKey(..), StreamId, StreamRole(..))
 import Shared.Types (PoPName, Server, ServerLoad(..), extractPoP, serverLoadToServer)
 import SpudGun as SpudGun
 
@@ -34,19 +34,21 @@ type StartArgs = { streamId :: StreamId
 
 findEgestAndRegister :: StreamId -> Server -> Effect LocationResp
 findEgestAndRegister streamId thisServer = do
-
-  apiResp <- noprocToMaybe $ EgestInstance.addClient streamId
+  let
+    egestKey = (EgestKey streamId)
+  apiResp <- noprocToMaybe $ EgestInstance.addClient egestKey
   case spy "apiResp" apiResp of
     Just _ ->
       pure $ Right $ Local thisServer
     Nothing -> do
       -- does the stream even exists
-      mAggregator <- IntraPoP.whereIsIngestAggregator streamId
+      -- TODO - Primary and Backup
+      mAggregator <- IntraPoP.whereIsIngestAggregator (AggregatorKey streamId Primary)
       case spy "mAggregator" mAggregator of
         Nothing ->
           pure $ Left NotFound
         Just aggregator -> do
-          allEgest <- IntraPoP.whereIsEgest streamId
+          allEgest <- IntraPoP.whereIsEgest egestKey
           let
             _ = spy "allEgest" allEgest
             mEgest =  pickCandidate $ filter capcityForClient allEgest

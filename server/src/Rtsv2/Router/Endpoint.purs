@@ -51,7 +51,7 @@ data Endpoint
   | IngestAggregatorE StreamId
   | IngestAggregatorPlayerE StreamId
   | IngestAggregatorPlayerJsE StreamId
-  | IngestAggregatorActiveIngestsE StreamId StreamVariant StreamRole
+  | IngestAggregatorActiveIngestsE StreamId StreamRole StreamVariant
   | IngestAggregatorActiveIngestsPlayerE StreamId StreamVariant
   | IngestAggregatorActiveIngestsPlayerJsE StreamId StreamVariant
   | IngestAggregatorActiveIngestsPlayerSessionStartE StreamId StreamVariant
@@ -60,7 +60,7 @@ data Endpoint
   | IngestInstancesE
   | IngestInstancesMetricsE
   | IngestInstanceE StreamId StreamVariant
-  | IngestInstanceLlwpE StreamId StreamVariant StreamRole
+  | IngestInstanceLlwpE StreamId StreamRole StreamVariant
   | IngestStartE Canary ShortName StreamAndVariant
   | IngestStopE Canary ShortName StreamAndVariant
   | ClientAppAssetsE
@@ -104,7 +104,7 @@ endpoint = root $ sum
   , "IngestAggregatorE"                                : "" / "api" / "agents" / "ingestAggregator" / streamId segment
   , "IngestAggregatorPlayerE"                          : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "player"
   , "IngestAggregatorPlayerJsE"                        : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "js" -- TODO - would like to add '/ "[...]"' bit it causes compiler error that I don't understand
-  , "IngestAggregatorActiveIngestsE"                   : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "activeIngests" / variant segment / streamRole segment
+  , "IngestAggregatorActiveIngestsE"                   : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "activeIngests" / streamRole segment / variant segment
   , "IngestAggregatorActiveIngestsPlayerE"             : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "activeIngests" / variant segment / "player"
   , "IngestAggregatorActiveIngestsPlayerJsE"           : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "activeIngests" / variant segment / "js" -- TODO - would like to add '/ "[...]"' bit it causes compiler error that I don't understand
   , "IngestAggregatorActiveIngestsPlayerSessionStartE" : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "activeIngests" / variant segment / "session"
@@ -115,7 +115,7 @@ endpoint = root $ sum
   , "IngestInstancesE"                                 : "" / "api" / "agents" / path "ingest" noArgs
   , "IngestInstancesMetricsE"                            : "" / "api" / "agents" / "ingest" / path "metrics" noArgs
   , "IngestInstanceE"                                  : "" / "api" / "agents" / "ingest" / streamId segment / variant segment
-  , "IngestInstanceLlwpE"                              : "" / "api" / "agents" / "ingest" / streamId segment / variant segment / streamRole segment / "llwp"
+  , "IngestInstanceLlwpE"                              : "" / "api" / "agents" / "ingest" / streamId segment / streamRole segment / variant segment / "llwp"
 
   , "IngestStartE"                                     : "" / "api" / "public" / canary segment / "ingest" / shortName segment / streamAndVariant segment / "start"
   , "IngestStopE"                                      : "" / "api" / "public" / canary segment / "ingest" / shortName segment / streamAndVariant segment / "stop"

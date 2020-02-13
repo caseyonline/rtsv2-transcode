@@ -11,7 +11,6 @@ import Prelude
 import Effect (Effect)
 import Erl.Atom (Atom)
 import Erl.Data.List (List, nil, singleton, (:))
-import Rtsv2.Names as Names
 import Logger (Logger)
 import Logger as Logger
 import Pinto (SupervisorName)
@@ -20,6 +19,8 @@ import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChil
 import Pinto.Sup as Sup
 import Rtsv2.Agents.EgestInstance (CreateEgestPayload)
 import Rtsv2.Agents.EgestInstance as EgestInstance
+import Rtsv2.Names as Names
+import Shared.Stream (EgestKey(..))
 
 serverName :: SupervisorName
 serverName = Names.egestInstanceSupName
@@ -36,14 +37,15 @@ startEgest payload =
 
 maybeStartAndAddClient :: CreateEgestPayload -> Effect Unit
 maybeStartAndAddClient payload = do
-  isActive <- EgestInstance.isActive payload.streamId
+  let egestKey = (EgestKey payload.streamId)
+  isActive <- EgestInstance.isActive egestKey
   case isActive of
     false -> do
              _ <- Sup.startSimpleChild childTemplate serverName payload
              maybeStartAndAddClient payload
     true ->
       do
-        _ <- EgestInstance.addClient payload.streamId
+        _ <- EgestInstance.addClient egestKey
         pure unit
 
   -- result <- Sup.startSimpleChild childTemplate serverName streamId
