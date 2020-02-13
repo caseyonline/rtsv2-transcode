@@ -41,7 +41,6 @@ import Shared.Types (PoPName)
 import Stetson (InnerStetsonHandler, RestResult, StaticAssetLocation(..), StetsonConfig)
 import Stetson as Stetson
 import Stetson.Rest as Rest
-import Unsafe.Coerce (unsafeCoerce)
 
 newtype State = State {}
 
@@ -74,13 +73,17 @@ init args = do
     # mkRoute  RelayEnsureStartedE                                              RelayHandler.ensureStarted
     # mkRoute  RelayRegisterEgestE                                              RelayHandler.registerEgest
     # mkRoute  RelayRegisterRelayE                                              RelayHandler.registerRelay
-    # mkRoute (RelayStatsE streamIdBinding streamRoleBinding)                   RelayHandler.stats
-    # mkRoute (RelayProxiedStatsE streamIdBinding streamRoleBinding)            RelayHandler.proxiedStats
+ -- # mkRoute (RelayStatsE streamIdBinding streamRoleBinding)                   RelayHandler.stats
+    # mkHack  "/api/agents/relay/:stream_id/:stream_role"                        RelayHandler.stats
+ -- # mkRoute (RelayProxiedStatsE streamIdBinding streamRoleBinding)            RelayHandler.proxiedStats
+    # mkHack  "/api/agents/proxied/relay/:stream_id/:stream_role"               RelayHandler.proxiedStats
 
     # mkRoute  LoadE                                                            LoadHandler.load
 
-    # mkRoute (IngestAggregatorE streamIdBinding)                               IngestAggregatorHandler.ingestAggregator
-    # mkRoute (IngestAggregatorActiveIngestsE streamIdBinding streamRoleBinding variantBinding)   IngestAggregatorHandler.ingestAggregatorsActiveIngest
+ -- # mkRoute (IngestAggregatorE streamIdBinding)                               IngestAggregatorHandler.ingestAggregator
+    # mkHack  "/api/agents/ingestAggregator/:stream_id/:stream_role"            IngestAggregatorHandler.ingestAggregator
+ -- # mkRoute (IngestAggregatorActiveIngestsE streamIdBinding streamRoleBinding variantBinding) IngestAggregatorHandler.ingestAggregatorsActiveIngest
+    # mkHack  "/api/agents/ingestAggregator/:stream_id/:stream_role/activeIngests/:variant" IngestAggregatorHandler.ingestAggregatorsActiveIngest
     # mkRoute  IngestAggregatorsE                                               IngestAggregatorHandler.ingestAggregators
 
     # mkRoute (IngestInstancesE)                                                IngestHandler.ingestInstances
@@ -88,7 +91,8 @@ init args = do
     # mkRoute (IngestInstanceE streamIdBinding variantBinding)                  IngestHandler.ingestInstance
 
     # mkRoute (IngestStartE ":canary" shortNameBinding streamAndVariantBinding) IngestHandler.ingestStart
-    # mkRoute (IngestStopE ":canary" shortNameBinding streamAndVariantBinding)  IngestHandler.ingestStop
+ -- # mkRoute (IngestStopE ":canary" shortNameBinding streamAndVariantBinding)  IngestHandler.ingestStop
+    # mkHack  "/api/public/:canary/ingest/:stream_id/:stream_role/:variant/stop" IngestHandler.ingestStop
 
     # mkRoute (ClientStartE ":canary" streamIdBinding)                          ClientHandler.clientStart
     # mkRoute (ClientStopE ":canary" streamIdBinding)                           ClientHandler.clientStop
@@ -114,7 +118,8 @@ init args = do
   where
     cowboyRoutes :: List Path
     cowboyRoutes =
-      cowboyRoute   (IngestInstanceLlwpE streamIdBinding streamRoleBinding variantBinding)                                       "llwp_stream_resource" ((unsafeToForeign) makeStreamAndVariant)
+   -- cowboyRoute   (IngestInstanceLlwpE streamIdBinding streamRoleBinding variantBinding)                                       "llwp_stream_resource" ((unsafeToForeign) makeStreamAndVariant)
+      cowboyHack   "/api/agents/ingest/:stream_id/:stream_role/:variant/llwp"                               "llwp_stream_resource" ((unsafeToForeign) makeStreamAndVariant)
       : cowboyRoute (IngestAggregatorActiveIngestsPlayerSessionStartE streamIdBinding variantBinding)          "rtsv2_webrtc_session_start_resource" ((unsafeToForeign) makeStreamAndVariant)
       : cowboyRoute (IngestAggregatorActiveIngestsPlayerSessionE streamIdBinding variantBinding ":session_id") "rtsv2_webrtc_session_resource" ((unsafeToForeign) makeStreamAndVariant)
       : cowboyRoute WorkflowsE "id3as_workflows_resource" (unsafeToForeign unit)
@@ -131,6 +136,9 @@ init args = do
     mkRoute :: forall state msg.  Endpoint -> InnerStetsonHandler msg state -> StetsonConfig -> StetsonConfig
     mkRoute rType handler = Stetson.route (spy "route" (printUrl endpoint rType)) handler
 
+    mkHack :: forall state msg. String -> InnerStetsonHandler msg state -> StetsonConfig -> StetsonConfig
+    mkHack path  = Stetson.route (spy "route" path)
+
     static :: Endpoint -> StaticAssetLocation -> StetsonConfig -> StetsonConfig
     static rType config = Stetson.static  (printUrl endpoint rType) config
 
@@ -138,7 +146,6 @@ init args = do
     static' rType hack config = Stetson.static ((printUrl endpoint rType) <> hack) config
 
     streamIdBinding = StreamId (":" <> Bindings.streamIdBindingLiteral)
-    streamRoleBinding = unsafeCoerce (":" <> Bindings.streamRoleBindingLiteral)
     variantBinding = StreamVariant (":" <> Bindings.variantBindingLiteral)
     streamAndVariantBinding = StreamAndVariant (StreamId "ignored") (StreamVariant $ ":" <> Bindings.streamAndVariantBindingLiteral)
     shortNameBinding = ShortName (":" <> Bindings.shortNameBindingLiteral)
@@ -152,6 +159,13 @@ init args = do
             (NativeModuleName $ atom moduleName)
             (InitialState $ initialState)
            )
+    cowboyHack path moduleName initialState =
+      Path (tuple3
+            (matchSpec path)
+            (NativeModuleName $ atom moduleName)
+            (InitialState $ initialState)
+           )
+
 
 ipToTuple :: Ip -> Tuple4 Int Int Int Int
 ipToTuple (Ipv4 a b c d) = tuple4 a b c d

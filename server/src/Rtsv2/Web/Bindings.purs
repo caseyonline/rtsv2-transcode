@@ -60,7 +60,7 @@ streamIdBindingLiteral :: String
 streamIdBindingLiteral = "stream_id"
 
 variantBindingLiteral :: String
-variantBindingLiteral = "variant_id"
+variantBindingLiteral = "variant"
 
 streamRoleBindingLiteral :: String
 streamRoleBindingLiteral = "stream_role"

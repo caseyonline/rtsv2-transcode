@@ -62,7 +62,7 @@ data Endpoint
   | IngestInstanceE StreamId StreamVariant
   | IngestInstanceLlwpE StreamId StreamRole StreamVariant
   | IngestStartE Canary ShortName StreamAndVariant
-  | IngestStopE Canary ShortName StreamAndVariant
+  | IngestStopE Canary StreamId StreamRole StreamVariant
   | ClientAppAssetsE
   | ClientAppRouteHTMLE
   | ClientStartE Canary StreamId
@@ -104,8 +104,8 @@ endpoint = root $ sum
   , "IngestAggregatorE"                                : "" / "api" / "agents" / "ingestAggregator" / streamId segment
   , "IngestAggregatorPlayerE"                          : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "player"
   , "IngestAggregatorPlayerJsE"                        : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "js" -- TODO - would like to add '/ "[...]"' bit it causes compiler error that I don't understand
-  , "IngestAggregatorActiveIngestsE"                   : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "activeIngests" / streamRole segment / variant segment
-  , "IngestAggregatorActiveIngestsPlayerE"             : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "activeIngests" / variant segment / "player"
+  , "IngestAggregatorActiveIngestsE"                   : "" / "api" / "agents" / "ingestAggregator" / streamId segment / streamRole segment / "activeIngests" / variant segment
+  , "IngestAggregatorActiveIngestsPlayerE"             : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "activeIngests" / variant segment / "player" -- TODO - streamRole for these as well
   , "IngestAggregatorActiveIngestsPlayerJsE"           : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "activeIngests" / variant segment / "js" -- TODO - would like to add '/ "[...]"' bit it causes compiler error that I don't understand
   , "IngestAggregatorActiveIngestsPlayerSessionStartE" : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "activeIngests" / variant segment / "session"
   , "IngestAggregatorActiveIngestsPlayerSessionE"      : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "activeIngests" / variant segment / "session" / segment
@@ -118,7 +118,7 @@ endpoint = root $ sum
   , "IngestInstanceLlwpE"                              : "" / "api" / "agents" / "ingest" / streamId segment / streamRole segment / variant segment / "llwp"
 
   , "IngestStartE"                                     : "" / "api" / "public" / canary segment / "ingest" / shortName segment / streamAndVariant segment / "start"
-  , "IngestStopE"                                      : "" / "api" / "public" / canary segment / "ingest" / shortName segment / streamAndVariant segment / "stop"
+  , "IngestStopE"                                      : "" / "api" / "public" / canary segment / "ingest" / streamId segment / streamRole segment / variant  segment / "stop"
   , "ClientStartE"                                     : "" / "api" / "public" / canary segment / "client" / streamId segment / "start"
   , "ClientStopE"                                      : "" / "api" / "public" / canary segment / "client" / streamId segment / "stop"
 

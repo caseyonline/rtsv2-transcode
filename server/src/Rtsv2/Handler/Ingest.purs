@@ -186,10 +186,8 @@ ingestInstance =
     getState streamId variant = IngestInstance.getPublicState (IngestKey streamId Primary variant)
 
 type IngestStartState = { shortName :: ShortName
-                        , ingestKey :: IngestKey
                         , streamDetails :: Maybe StreamDetails
-                        , streamId :: StreamId
-                        , variant :: StreamVariant
+                        , streamAndVariant :: StreamAndVariant
                         }
 
 ingestStart :: StetsonHandler IngestStartState
@@ -197,21 +195,17 @@ ingestStart =
   Rest.handler (\req ->
                  let
                    shortName = Bindings.shortName req
-                   streamId = Bindings.streamId req
-                   role = Bindings.streamRole req
-                   variant = Bindings.variant req
+                   streamAndVariant = Bindings.streamAndVariant req
                  in
-                 Rest.initResult req { ingestKey: IngestKey streamId role variant
+                 Rest.initResult req { shortName
+                                     , streamAndVariant
                                      , streamDetails: Nothing
-                                     , streamId
-                                     , variant
-                                     , shortName
                                      }
                )
   # Rest.serviceAvailable (\req state -> do
                             isAgentAvailable <- IngestInstanceSup.isAvailable
                             Rest.result isAgentAvailable req state)
-  # Rest.resourceExists (\req state@{shortName, ingestKey, variant} ->
+  # Rest.resourceExists (\req state@{shortName, streamAndVariant: (StreamAndVariant _ variant)} ->
                           let
                             apiBody :: StreamPublish
                             apiBody = { host: "172.16.171.5"
@@ -229,12 +223,12 @@ ingestStart =
                           )
   -- TODO - hideous spawn here, but ingestInstance needs to do a monitor... - ideally we sleep forever and kill it in ingestStop...
   # Rest.contentTypesProvided (\req state ->
-                                  Rest.result (tuple2 "text/plain" (\req2 state2@{streamDetails, streamId, variant} -> do
+                                  Rest.result (tuple2 "text/plain" (\req2 state2@{streamDetails, streamAndVariant} -> do
                                                                        pid <- Raw.spawn ((\_ -> Timer.sleep (wrap 10000))
                                                                                          { receive: Raw.receive
                                                                                          , receiveWithTimeout: Raw.receiveWithTimeout
                                                                                          })
-                                                                       IngestInstanceSup.startIngest (fromMaybe' (lazyCrashIfMissing "stream_details missing") streamDetails) (StreamAndVariant streamId variant) "127.0.0.1" 0 pid
+                                                                       IngestInstanceSup.startIngest (fromMaybe' (lazyCrashIfMissing "stream_details missing") streamDetails) streamAndVariant "127.0.0.1" 0 pid
                                                                        Rest.result "ingestStarted" req2 state2
                                                                    ) : nil) req state)
   # Rest.yeeha
