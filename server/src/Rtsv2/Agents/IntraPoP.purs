@@ -27,9 +27,6 @@ module Rtsv2.Agents.IntraPoP
   , getIdleServer
   , getCurrentTransPoPLeader
 
-  , isIngestActive
-
-
     -- Helper - not sure it's used... -- TODO
   , launchLocalOrRemoteGeneric
 
@@ -37,8 +34,6 @@ module Rtsv2.Agents.IntraPoP
   , testHelper
   , health
   , bus
---  , IntraMessage(..)
---  , EventType(..)
   , IntraPoPBusMessage(..)
 
   , AgentClock
@@ -89,7 +84,7 @@ import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Serf (IpAndPort, LamportClock)
 import Serf as Serf
-import Shared.Stream (StreamAndVariant(..), StreamId)
+import Shared.Stream (AgentKey(..), AggregatorKey, EgestKey(..), RelayKey(..), StreamRole(..), agentKeyToAggregatorKey, aggregatorKeyToAgentKey)
 import Shared.Types (Load, Milliseconds, Server(..), ServerAddress(..), ServerLoad(..), extractAddress, extractPoP, serverLoadToServer, toServer, toServerLoad)
 import Shared.Types.Agent.State as PublicState
 
@@ -106,7 +101,7 @@ type MemberInfo =
   }
 
 type ServerClock = Map ServerAddress LamportClock
-type AgentClock = Map (Tuple ServerAddress StreamId) LamportClock
+type AgentClock = Map (Tuple ServerAddress AgentKey) LamportClock
 
 type AgentClocks =
   { aggregatorClocks :: AgentClock
@@ -126,9 +121,9 @@ type AgentLocations = { relays                :: Locations
                       }
 
 
-type Locations = { byStreamId     :: Map StreamId (Set Server)
-                 , byRemoteServer :: Map Server (Set StreamId)
-                 , remoteTimeouts :: Map (Tuple StreamId Server) Milliseconds
+type Locations = { byAgentKey     :: Map AgentKey (Set Server)
+                 , byRemoteServer :: Map Server (Set AgentKey)
+                 , remoteTimeouts :: Map (Tuple AgentKey Server) Milliseconds
                  }
 
 type State
@@ -156,9 +151,9 @@ data EventType
   | Stopped
 
 data IntraMessage
-  = IMAggregatorState EventType StreamId ServerAddress
-  | IMEgestState EventType StreamId ServerAddress
-  | IMRelayState EventType StreamId ServerAddress
+  = IMAggregatorState EventType AgentKey ServerAddress
+  | IMEgestState EventType AgentKey ServerAddress
+  | IMRelayState EventType AgentKey ServerAddress
 
   | IMServerLoad ServerAddress Load
   | IMTransPoPLeader ServerAddress
@@ -170,10 +165,10 @@ data Msg
   | GarbageCollectAgents
   | IntraPoPSerfMsg (Serf.SerfMessage IntraMessage)
   | VMLiveness
-  | ReAnnounce StreamId HandlerName
+  | ReAnnounce AgentKey HandlerName
 
 data IntraPoPBusMessage =
-  IngestAggregatorExited StreamId Server
+  IngestAggregatorExited AggregatorKey Server
 
 
 
@@ -203,60 +198,62 @@ getPublicState :: Effect (PublicState.IntraPoP List)
 getPublicState = exposeState publicState serverName
   where
     publicState state@{agentLocations, currentTransPoPLeader} =
-      { aggregatorLocations: toLocations <$>  Map.toUnfoldable agentLocations.aggregators.byStreamId
-      , relayLocations: toLocations <$>  Map.toUnfoldable agentLocations.relays.byStreamId
-      , egestLocations: toLocations <$>  Map.toUnfoldable agentLocations.egests.byStreamId
+      { aggregatorLocations: toStreamId <$>  Map.toUnfoldable agentLocations.aggregators.byAgentKey
+      , relayLocations: toStreamAndVariant <$>  Map.toUnfoldable agentLocations.relays.byAgentKey
+      , egestLocations: toStreamAndVariant <$>  Map.toUnfoldable agentLocations.egests.byAgentKey
       , currentTransPoPLeader
       }
-    toLocations (Tuple k v) = { streamId: k
-                              , servers:  Set.toUnfoldable v
-                              }
+    toStreamId (Tuple (AgentKey streamId streamRole) v) =
+      { streamId
+      , servers:  Set.toUnfoldable v
+      }
+    toStreamAndVariant (Tuple (AgentKey streamId streamRole) v) =
+      { streamId
+      , streamRole
+      , servers:  Set.toUnfoldable v
+      }
 
-
---TODO....
-isIngestActive :: StreamAndVariant -> Effect Boolean
-isIngestActive (StreamAndVariant s v) = Gen.call serverName \state -> CallReply false state
 
 
 
 -- TODO - we should be calling the prime' versions and handling that there might, in fact be more than
 -- one instance of things we'd like to be singletons
-whereIsIngestAggregator :: StreamId -> Effect (Maybe Server)
-whereIsIngestAggregator streamId  = head <$> whereIs (_.aggregators) streamId
+whereIsIngestAggregator :: AggregatorKey -> Effect (Maybe Server)
+whereIsIngestAggregator aggregatorKey = head <$> whereIs (_.aggregators) (aggregatorKeyToAgentKey aggregatorKey)
 
-whereIsStreamRelay :: StreamId -> Effect (Maybe (LocalOrRemote Server))
-whereIsStreamRelay streamId  = head <$> (map $ map serverLoadToServer) <$> whereIsStreamRelay' streamId
+whereIsStreamRelay :: RelayKey -> Effect (Maybe (LocalOrRemote Server))
+whereIsStreamRelay (RelayKey streamId streamRole)  = head <$> (map $ map serverLoadToServer) <$> whereIsStreamRelay' (AgentKey streamId streamRole)
 
-whereIsEgest :: StreamId -> Effect (List ServerLoad)
-whereIsEgest streamId = (map fromLocalOrRemote) <$> whereIsEgest' streamId
+whereIsEgest :: EgestKey -> Effect (List ServerLoad)
+whereIsEgest egestKey = (map fromLocalOrRemote) <$> (whereIsEgest' $ egestKeyToAgentKey egestKey)
 
-whereIsStreamRelay' :: StreamId -> Effect (List (LocalOrRemote ServerLoad))
+whereIsStreamRelay' :: AgentKey -> Effect (List (LocalOrRemote ServerLoad))
 whereIsStreamRelay' = whereIsWithLoad _.relays
 
-whereIsEgest' :: StreamId -> Effect (List (LocalOrRemote ServerLoad))
+whereIsEgest' :: AgentKey -> Effect (List (LocalOrRemote ServerLoad))
 whereIsEgest' = whereIsWithLoad _.egests
 
 
-whereIs ::(AgentLocations -> Locations) -> StreamId -> Effect (List Server)
-whereIs extractMap streamId =
+whereIs ::(AgentLocations -> Locations) -> AgentKey -> Effect (List Server)
+whereIs extractMap agentKey =
   Gen.call serverName
   \state@{thisServer, members, agentLocations} ->
     let
-      streamLocations = _.byStreamId $ extractMap agentLocations
-      mLocations = Map.lookup streamId streamLocations :: Maybe (Set Server)
+      streamLocations = _.byAgentKey $ extractMap agentLocations
+      mLocations = Map.lookup agentKey streamLocations :: Maybe (Set Server)
       locations = maybe nil Set.toUnfoldable mLocations
     in
     CallReply locations state
 
 
-whereIsWithLoad ::(AgentLocations -> Locations) -> StreamId -> Effect (List (LocalOrRemote ServerLoad))
-whereIsWithLoad extractMap streamId =
+whereIsWithLoad ::(AgentLocations -> Locations) -> AgentKey -> Effect (List (LocalOrRemote ServerLoad))
+whereIsWithLoad extractMap agentKey =
   Gen.call serverName
   \state@{thisServer, members, agentLocations} ->
     let
-      streamLocations = _.byStreamId $ extractMap agentLocations
+      streamLocations = _.byAgentKey $ extractMap agentLocations
       withLoad (Server el) = serverLoad <$> Map.lookup el.address members
-      mLocations = Map.lookup streamId streamLocations :: Maybe (Set Server)
+      mLocations = Map.lookup agentKey streamLocations :: Maybe (Set Server)
 
       locations = maybe nil Set.toUnfoldable mLocations
       filtered = filterMap withLoad locations
@@ -327,7 +324,7 @@ announceLoad load =
       pure $ Gen.CastNoReply state { members = newMembers , load = load}
 
 
-type AgentMessageHandler = State -> StreamId -> Server -> Effect Unit
+type AgentMessageHandler = State -> AgentKey -> Server -> Effect Unit
 
 type SetAgentClock = AgentClock -> AgentClocks -> AgentClocks
 type AgentClockLens = { get :: AgentClocks -> AgentClock
@@ -445,39 +442,52 @@ aggregatorHandler
     , reannounceEveryMs : _.config >>> _.reannounceAgentEveryMs >>> _.aggregator >>> wrap
     }
   where
-    availableLocal state streamId server = do
-      sendToIntraSerfNetwork state "aggregatorAvailable" (IMAggregatorState Available streamId (extractAddress server))
-      state.transPoPApi.announceAggregatorIsAvailable streamId server
+    availableLocal :: AgentMessageHandler
+    availableLocal state agentKey server = do
+      sendToIntraSerfNetwork state "aggregatorAvailable" (IMAggregatorState Available agentKey (extractAddress server))
+      state.transPoPApi.announceAggregatorIsAvailable agentKey server
 
-    availableThisPoP state streamId server = do
-      state.transPoPApi.announceAggregatorIsAvailable streamId server
+    availableThisPoP :: AgentMessageHandler
+    availableThisPoP state agentKey server = do
+      state.transPoPApi.announceAggregatorIsAvailable agentKey server
 
-    availableOtherPoP state streamId server = do
-      sendToIntraSerfNetwork state "aggregatorAvailable" (IMAggregatorState Available streamId (extractAddress server))
+    availableOtherPoP :: AgentMessageHandler
+    availableOtherPoP state agentKey server = do
+      sendToIntraSerfNetwork state "aggregatorAvailable" (IMAggregatorState Available agentKey (extractAddress server))
 
-    stoppedLocal state streamId server = do
-      Bus.raise bus (IngestAggregatorExited streamId server)
-      sendToIntraSerfNetwork state "aggregatorStopped" $ IMAggregatorState Stopped streamId $ extractAddress server
-      state.transPoPApi.announceAggregatorStopped streamId server
 
-    stoppedThisPoP state streamId server = do
-      logInfo "Remote aggregator stopped in this PoP" {streamId, server}
-      Bus.raise bus (IngestAggregatorExited streamId server)
-      state.transPoPApi.announceAggregatorStopped streamId server
+    stoppedLocal :: AgentMessageHandler
+    stoppedLocal state agentKey server = do
+      let
+        aggregatorKey = agentKeyToAggregatorKey agentKey
+      Bus.raise bus (IngestAggregatorExited aggregatorKey server)
+      sendToIntraSerfNetwork state "aggregatorStopped" $ IMAggregatorState Stopped agentKey $ extractAddress server
+      state.transPoPApi.announceAggregatorStopped agentKey server
 
-    stoppedOtherPoP state streamId server = do
-      logInfo "Remote aggregator stopped in another PoP" {streamId, server}
-      Bus.raise bus (IngestAggregatorExited streamId server)
-      sendToIntraSerfNetwork state "aggregatorStopped" (IMAggregatorState Stopped streamId (extractAddress server))
+    stoppedThisPoP :: AgentMessageHandler
+    stoppedThisPoP state agentKey server = do
+      let
+        aggregatorKey = agentKeyToAggregatorKey agentKey
+      logInfo "Remote aggregator stopped in this PoP" {agentKey, server}
+      Bus.raise bus (IngestAggregatorExited aggregatorKey server)
+      state.transPoPApi.announceAggregatorStopped agentKey server
 
-    gcThisPoP state streamId server = do
-      logWarning "Remote aggregator timed out" {streamId, server}
-      Bus.raise bus (IngestAggregatorExited streamId server)
+    stoppedOtherPoP :: AgentMessageHandler
+    stoppedOtherPoP state agentKey server = do
+      logInfo "Remote aggregator stopped in another PoP" {agentKey, server}
+      Bus.raise bus (IngestAggregatorExited (agentKeyToAggregatorKey agentKey)  server)
+      sendToIntraSerfNetwork state "aggregatorStopped" (IMAggregatorState Stopped agentKey (extractAddress server))
+
+    gcThisPoP :: AgentMessageHandler
+    gcThisPoP state agentKey server = do
+      logWarning "Remote aggregator timed out" {agentKey, server}
+      Bus.raise bus (IngestAggregatorExited (agentKeyToAggregatorKey agentKey) server)
       -- we don't relay timeout messages - should only happen with stressed network anyway...
 
-    gcOtherPoP state streamId server = do
-      logWarning "Aggregator from other pop timed out" {streamId, server}
-      Bus.raise bus (IngestAggregatorExited streamId server)
+    gcOtherPoP :: AgentMessageHandler
+    gcOtherPoP state agentKey server = do
+      logWarning "Aggregator from other pop timed out" {agentKey, server}
+      Bus.raise bus (IngestAggregatorExited (agentKeyToAggregatorKey agentKey) server)
       -- we don't relay timeout messages - should only happen with stressed network anyway...
 
 
@@ -491,21 +501,18 @@ aggregatorHandler
                    }
 
 -- Called by IngestAggregator to indicate aggregator start / stop on this node
-announceLocalAggregatorIsAvailable :: StreamId -> Effect Unit
-announceLocalAggregatorIsAvailable streamId = do
-  logInfo "New aggregator is available on this node" {streamId}
-  announceAvailableLocal aggregatorHandler streamId
+announceLocalAggregatorIsAvailable :: AggregatorKey -> Effect Unit
+announceLocalAggregatorIsAvailable = announceAvailableLocal aggregatorHandler <<< aggregatorKeyToAgentKey
 
-announceLocalAggregatorStopped :: StreamId -> Effect Unit
-announceLocalAggregatorStopped = announceStoppedLocal aggregatorHandler
+announceLocalAggregatorStopped :: AggregatorKey -> Effect Unit
+announceLocalAggregatorStopped = announceStoppedLocal aggregatorHandler <<< aggregatorKeyToAgentKey
 
 -- -- Called by TransPoP to indicate aggregator start / stop on a node in another PoP
-announceOtherPoPAggregatorIsAvailable :: StreamId -> Server -> Effect Unit
+announceOtherPoPAggregatorIsAvailable :: AgentKey -> Server -> Effect Unit
 announceOtherPoPAggregatorIsAvailable = announceAvailableOtherPoP aggregatorHandler
 
-announceOtherPoPAggregatorStopped :: StreamId -> Server -> Effect Unit
+announceOtherPoPAggregatorStopped :: AgentKey -> Server -> Effect Unit
 announceOtherPoPAggregatorStopped = announceStoppedOtherPoP aggregatorHandler
-
 
 egestHandler :: AgentHandler
 egestHandler
@@ -526,33 +533,33 @@ egestHandler
 
     }
   where
-    availableLocal state streamId server = do
-      sendToIntraSerfNetwork state "egestAvailable" (IMEgestState Available streamId $ extractAddress server)
+    availableLocal state agentKey server = do
+      sendToIntraSerfNetwork state "egestAvailable" (IMEgestState Available agentKey $ extractAddress server)
 
-    availableThisPoP state streamId server = do
-      logInfo "New egest is avaiable in this PoP" {streamId, server}
+    availableThisPoP state agentKey server = do
+      logInfo "New egest is avaiable in this PoP" {agentKey, server}
 
-    availableOtherPoP state streamId server = do
+    availableOtherPoP state agentKey server = do
       -- Not expecting any of these
-      logWarning "New egest is avaiable in another PoP" {streamId, server}
+      logWarning "New egest is avaiable in another PoP" {agentKey, server}
 
-    stoppedLocal state streamId server = do
-      logInfo "Local egest stopped" {streamId}
-      sendToIntraSerfNetwork state "egestStopped" $ IMEgestState Stopped streamId $ extractAddress server
+    stoppedLocal state agentKey server = do
+      logInfo "Local egest stopped" {agentKey}
+      sendToIntraSerfNetwork state "egestStopped" $ IMEgestState Stopped agentKey $ extractAddress server
 
-    stoppedThisPoP state streamId server = do
-      logInfo "Remote egest stopped" {streamId, server}
+    stoppedThisPoP state agentKey server = do
+      logInfo "Remote egest stopped" {agentKey, server}
 
-    stoppedOtherPoP state streamId server = do
+    stoppedOtherPoP state agentKey server = do
       -- Not expecting any of these
-      logWarning "Egest stopped in another PoP" {streamId, server}
+      logWarning "Egest stopped in another PoP" {agentKey, server}
 
-    gcThisPoP state streamId server = do
-      logWarning "Remote egest timed out" {streamId, server}
+    gcThisPoP state agentKey server = do
+      logWarning "Remote egest timed out" {agentKey, server}
 
-    gcOtherPoP state streamId server = do
+    gcOtherPoP state agentKey server = do
       -- Not expecting any of these
-      logWarning "Egest from other pop timed out" {streamId, server}
+      logWarning "Egest from other pop timed out" {agentKey, server}
 
     clockLens = { get : _.egestClocks
                  , set : \newClocks agentClocks -> agentClocks{egestClocks = newClocks}
@@ -562,14 +569,20 @@ egestHandler
                     , set : \newLocations state -> state {egests = newLocations}
                     }
 
--- Called by EgestAgent to indicate egest on this node
-announceLocalEgestIsAvailable :: StreamId -> Effect Unit
-announceLocalEgestIsAvailable streamId = do
-  logInfo "New egest is available on this node" {streamId}
-  announceAvailableLocal egestHandler streamId
 
-announceLocalEgestStopped :: StreamId -> Effect Unit
-announceLocalEgestStopped = announceStoppedLocal egestHandler
+-- Egests do not have different instances for Primary and Backup, so model them all as Primary
+egestKeyToAgentKey :: EgestKey -> AgentKey
+egestKeyToAgentKey (EgestKey streamId) = AgentKey streamId Primary
+
+-- Called by EgestAgent to indicate egest on this node
+announceLocalEgestIsAvailable :: EgestKey -> Effect Unit
+announceLocalEgestIsAvailable egestKey = do
+  let agentKey = egestKeyToAgentKey egestKey
+  logInfo "New egest is available on this node" {egestKey}
+  announceAvailableLocal egestHandler agentKey
+
+announceLocalEgestStopped :: EgestKey -> Effect Unit
+announceLocalEgestStopped = announceStoppedLocal egestHandler <<< egestKeyToAgentKey
 
 relayHandler :: AgentHandler
 relayHandler
@@ -589,33 +602,33 @@ relayHandler
     , reannounceEveryMs : _.config >>> _.reannounceAgentEveryMs >>> _.relay >>> wrap
     }
   where
-    availableLocal state streamId server = do
-      sendToIntraSerfNetwork state "relayAvailable" (IMRelayState Available streamId $ extractAddress server)
+    availableLocal state agentKey server = do
+      sendToIntraSerfNetwork state "relayAvailable" (IMRelayState Available agentKey $ extractAddress server)
 
-    availableThisPoP state streamId server = do
+    availableThisPoP state agentKey server = do
       pure unit
 
-    availableOtherPoP state streamId server = do
+    availableOtherPoP state agentKey server = do
       -- Not expecting any of these
-      logWarning "New relay is available in another PoP" {streamId, server}
+      logWarning "New relay is available in another PoP" {agentKey, server}
 
-    stoppedLocal state streamId server = do
-      logInfo "Local relay stopped" {streamId}
-      sendToIntraSerfNetwork state "relayStopped" $ IMRelayState Stopped streamId $ extractAddress server
+    stoppedLocal state agentKey server = do
+      logInfo "Local relay stopped" {agentKey}
+      sendToIntraSerfNetwork state "relayStopped" $ IMRelayState Stopped agentKey $ extractAddress server
 
-    stoppedThisPoP state streamId server = do
-      logInfo "Remote relay stopped" {streamId, server}
+    stoppedThisPoP state agentKey server = do
+      logInfo "Remote relay stopped" {agentKey, server}
 
-    stoppedOtherPoP state streamId server = do
+    stoppedOtherPoP state agentKey server = do
       -- Not expecting any of these
-      logWarning "Relay stopped in another PoP" {streamId, server}
+      logWarning "Relay stopped in another PoP" {agentKey, server}
 
-    gcThisPoP state streamId server = do
-      logWarning "Remote relay timed out" {streamId, server}
+    gcThisPoP state agentKey server = do
+      logWarning "Remote relay timed out" {agentKey, server}
 
-    gcOtherPoP state streamId server = do
+    gcOtherPoP state agentKey server = do
       -- Not expecting any of these
-      logWarning "Relay from other pop timed out" {streamId, server}
+      logWarning "Relay from other pop timed out" {agentKey, server}
 
 
     clockLens = { get : _.relayClocks
@@ -627,57 +640,57 @@ relayHandler
                     }
 
 -- Called by RelayAgent to indicate relay on this node
-announceLocalRelayIsAvailable :: StreamId -> Effect Unit
-announceLocalRelayIsAvailable streamId = do
-  announceAvailableLocal relayHandler streamId
+announceLocalRelayIsAvailable :: RelayKey -> Effect Unit
+announceLocalRelayIsAvailable (RelayKey streamId streamRole) = do
+  announceAvailableLocal relayHandler (AgentKey streamId streamRole)
 
-announceLocalRelayStopped :: StreamId -> Effect Unit
+announceLocalRelayStopped :: AgentKey -> Effect Unit
 announceLocalRelayStopped = announceStoppedLocal relayHandler
 
 
 -- Builds public API for events on this server
-announceAvailableLocal :: AgentHandler -> StreamId -> Effect Unit
-announceAvailableLocal handler@{locationLens} streamId =
+announceAvailableLocal :: AgentHandler -> AgentKey -> Effect Unit
+announceAvailableLocal handler@{locationLens} agentKey =
   Gen.doCast serverName
     \state@{thisServer} -> do
-      logInfo ("New " <> unwrap handler.name <> " is available on this node") {streamId}
-      doAnnounceAvailableLocal handler streamId state
-      pure $ Gen.CastNoReply $ updateAgentLocation recordLocalAgent locationLens streamId thisServer state
+      logInfo ("New " <> unwrap handler.name <> " is available on this node") {agentKey}
+      doAnnounceAvailableLocal handler agentKey state
+      pure $ Gen.CastNoReply $ updateAgentLocation recordLocalAgent locationLens agentKey thisServer state
 
-doAnnounceAvailableLocal :: AgentHandler -> StreamId -> State -> Effect Unit
-doAnnounceAvailableLocal handler@{locationLens} streamId state@{thisServer, agentLocations} = do
-  handler.availableLocal state streamId thisServer
-  void $ Timer.sendAfter serverName (unwrap $ handler.reannounceEveryMs state) $ ReAnnounce streamId handler.name
+doAnnounceAvailableLocal :: AgentHandler -> AgentKey -> State -> Effect Unit
+doAnnounceAvailableLocal handler@{locationLens} agentKey state@{thisServer, agentLocations} = do
+  handler.availableLocal state agentKey thisServer
+  void $ Timer.sendAfter serverName (unwrap $ handler.reannounceEveryMs state) $ ReAnnounce agentKey handler.name
 
-announceStoppedLocal :: AgentHandler -> StreamId -> Effect Unit
-announceStoppedLocal handler@{locationLens} streamId = do
+announceStoppedLocal :: AgentHandler -> AgentKey -> Effect Unit
+announceStoppedLocal handler@{locationLens} agentKey = do
   Gen.doCast serverName
     \state@{ thisServer } -> do
-      logInfo (unwrap handler.name <> " stopped on this node") {streamId}
-      handler.stoppedLocal state streamId thisServer
-      pure $ Gen.CastNoReply $ updateAgentLocation removeLocalAgent locationLens streamId thisServer state
+      logInfo (unwrap handler.name <> " stopped on this node") {agentKey}
+      handler.stoppedLocal state agentKey thisServer
+      pure $ Gen.CastNoReply $ updateAgentLocation removeLocalAgent locationLens agentKey thisServer state
 
 
 
 -- Builds public API for message from other PoP
-announceAvailableOtherPoP :: AgentHandler -> StreamId -> Server -> Effect Unit
-announceAvailableOtherPoP handler@{locationLens} streamId msgServer =
+announceAvailableOtherPoP :: AgentHandler -> AgentKey -> Server -> Effect Unit
+announceAvailableOtherPoP handler@{locationLens} agentKey msgServer =
   Gen.doCast serverName
     \state@{agentLocations, thisServer} -> do
       let
         locations = locationLens.get agentLocations
-        _ = spy "announceAvailableOtherPoP" {name: handler.name, streamId, msgServer}
+        _ = spy "announceAvailableOtherPoP" {name: handler.name, agentKey, msgServer}
       timeout <- messageTimeout handler state
-      logIfNewAgent handler locations thisServer streamId msgServer
-      handler.availableOtherPoP state streamId msgServer
-      pure $ Gen.CastNoReply $ updateAgentLocation (recordRemoteAgent timeout) locationLens streamId msgServer state
+      logIfNewAgent handler locations thisServer agentKey msgServer
+      handler.availableOtherPoP state agentKey msgServer
+      pure $ Gen.CastNoReply $ updateAgentLocation (recordRemoteAgent timeout) locationLens agentKey msgServer state
 
-announceStoppedOtherPoP :: AgentHandler -> StreamId -> Server -> Effect Unit
-announceStoppedOtherPoP handler@{locationLens} streamId server =
+announceStoppedOtherPoP :: AgentHandler -> AgentKey -> Server -> Effect Unit
+announceStoppedOtherPoP handler@{locationLens} agentKey server =
   Gen.doCast serverName
     \state -> do
-      handler.stoppedOtherPoP state streamId server
-      pure $ Gen.CastNoReply $ updateAgentLocation removeRemoteAgent locationLens streamId server state
+      handler.stoppedOtherPoP state agentKey server
+      pure $ Gen.CastNoReply $ updateAgentLocation removeRemoteAgent locationLens agentKey server state
 
 -- Called by TransPoP to indicate that it is acting as this PoP's leader
 announceTransPoPLeader :: Effect Unit
@@ -690,11 +703,11 @@ announceTransPoPLeader =
       pure $ Gen.CastNoReply state{currentTransPoPLeader = Just thisServer}
 
 
-updateAgentLocation :: (StreamId -> Server -> Locations -> Locations) -> AgentLocationLens -> StreamId -> Server -> State -> State
-updateAgentLocation action lens streamId server state@{agentLocations} =
+updateAgentLocation :: (AgentKey -> Server -> Locations -> Locations) -> AgentLocationLens -> AgentKey -> Server -> State -> State
+updateAgentLocation action lens agentKey server state@{agentLocations} =
   let
     locations = lens.get agentLocations
-    newLocations = action streamId server locations
+    newLocations = action agentKey server locations
     newAgentLocations = lens.set newLocations agentLocations
   in
     state { agentLocations = newAgentLocations }
@@ -765,7 +778,7 @@ init { config
 
   let
     busy = wrap 100.0 :: Load
-    emptyLocations = { byStreamId       : Map.empty
+    emptyLocations = { byAgentKey       : Map.empty
                      , byRemoteServer   : Map.empty
                      , remoteTimeouts   : Map.empty
                      }
@@ -834,7 +847,7 @@ handleInfo msg state = case msg of
     sendToIntraSerfNetwork state "vmLiveness" (IMVMLiveness (extractAddress state.thisServer) state.thisServerRef )
     pure $ CastNoReply state
 
-  ReAnnounce streamId handlerName -> do
+  ReAnnounce agentKey handlerName -> do
     CastNoReply <$> maybeReannounce
     where
       maybeReannounce :: Effect State
@@ -843,9 +856,9 @@ handleInfo msg state = case msg of
           handler = handlerFor handlerName
           -- Do we still know about the asset? If we do, rebroadcast its existence and set up another timer for next time
           locations = handler.locationLens.get state.agentLocations
-        if mapSetMember streamId state.thisServer locations.byStreamId
+        if mapSetMember agentKey state.thisServer locations.byAgentKey
         then do
-          doAnnounceAvailableLocal handler streamId state
+          doAnnounceAvailableLocal handler agentKey state
           pure state
         else
           pure state
@@ -880,14 +893,14 @@ handleIntraPoPSerfMsg imsg state@{ transPoPApi: {handleRemoteLeaderAnnouncement}
 
     Serf.UserEvent name ltime coalesce intraMessage -> do
       case intraMessage of
-        IMAggregatorState eventType streamId msgOrigin -> do
-          handleAgentMessage ltime eventType streamId msgOrigin state aggregatorHandler
+        IMAggregatorState eventType agentKey msgOrigin -> do
+          handleAgentMessage ltime eventType agentKey msgOrigin state aggregatorHandler
 
-        IMEgestState eventType streamId msgOrigin -> do
-          handleAgentMessage ltime eventType streamId msgOrigin state egestHandler
+        IMEgestState eventType agentKey msgOrigin -> do
+          handleAgentMessage ltime eventType agentKey msgOrigin state egestHandler
 
-        IMRelayState eventType streamId msgOrigin -> do
-          handleAgentMessage ltime eventType streamId msgOrigin state relayHandler
+        IMRelayState eventType agentKey msgOrigin -> do
+          handleAgentMessage ltime eventType agentKey msgOrigin state relayHandler
 
         IMServerLoad msgOrigin load -> do
           handleServerMessage ltime msgOrigin state $ loadHandler load
@@ -927,17 +940,17 @@ handleServerMessage msgLTime msgServerAddress
           handleMessage  msgServer state{ serverClocks = newServerClocks}
 
 
-handleAgentMessage :: LamportClock -> EventType -> StreamId -> ServerAddress -> State -> AgentHandler -> Effect State
-handleAgentMessage msgLTime eventType streamId msgServerAddress
+handleAgentMessage :: LamportClock -> EventType -> AgentKey -> ServerAddress -> State -> AgentHandler -> Effect State
+handleAgentMessage msgLTime eventType agentKey msgServerAddress
                   state@{thisServer, agentClocks, agentLocations}
                   agentMessageHandler@{clockLens, locationLens} = do
-  -- let _ = spy "agentMessage" {name: agentMessageHandler.name, eventType, streamId, msgServerAddress}
+  -- let _ = spy "agentMessage" {name: agentMessageHandler.name, eventType, agentKey, msgServerAddress}
   -- Make sure the message is from a known origin and does not have an expired Lamport clock
   if msgServerAddress == extractAddress thisServer || state.testDropAgentMessages
   then
     pure state
   else let agentClock = clockLens.get state.agentClocks in
-    if Map.lookup (Tuple msgServerAddress streamId) agentClock # maybe false (_ >= msgLTime)
+    if Map.lookup (Tuple msgServerAddress agentKey) agentClock # maybe false (_ >= msgLTime)
     then
       pure state
     else do
@@ -951,18 +964,18 @@ handleAgentMessage msgLTime eventType streamId msgServerAddress
           let
             fromThisPoP =  extractPoP msgLocation == extractPoP state.thisServer
             msgServer = toServer msgServerAddress msgLocation
-            newAgentClock = Map.insert (Tuple msgServerAddress streamId) msgLTime agentClock
+            newAgentClock = Map.insert (Tuple msgServerAddress agentKey) msgLTime agentClock
             newAgentClocks = clockLens.set newAgentClock state.agentClocks
             locations = locationLens.get agentLocations
 
           case eventType of
             Available -> do
               timeout <- messageTimeout agentMessageHandler state
-              logIfNewAgent agentMessageHandler locations thisServer streamId msgServer
+              logIfNewAgent agentMessageHandler locations thisServer agentKey msgServer
               let
-                newLocations = recordRemoteAgent timeout streamId msgServer locations
+                newLocations = recordRemoteAgent timeout agentKey msgServer locations
               if fromThisPoP
-              then agentMessageHandler.availableThisPoP state streamId msgServer
+              then agentMessageHandler.availableThisPoP state agentKey msgServer
               else pure unit
               pure $ state { agentClocks = newAgentClocks
                            , agentLocations = locationLens.set newLocations agentLocations
@@ -970,9 +983,9 @@ handleAgentMessage msgLTime eventType streamId msgServerAddress
 
             Stopped -> do
               let
-                newLocations = removeRemoteAgent streamId msgServer locations
+                newLocations = removeRemoteAgent agentKey msgServer locations
               if fromThisPoP
-              then agentMessageHandler.stoppedThisPoP state streamId msgServer
+              then agentMessageHandler.stoppedThisPoP state agentKey msgServer
               else pure unit
               pure $ state { agentClocks = newAgentClocks
                            , agentLocations = locationLens.set newLocations agentLocations
@@ -990,16 +1003,16 @@ messageTimeout agentMessageHandler state = do
 serverName :: ServerName State Msg
 serverName = Names.intraPoPName
 
-logIfNewAgent :: AgentHandler -> Locations -> Server -> StreamId -> Server -> Effect Unit
-logIfNewAgent handler locations thisServer streamId agentServer =
-  if Map.member (Tuple streamId agentServer) locations.remoteTimeouts
+logIfNewAgent :: AgentHandler -> Locations -> Server -> AgentKey -> Server -> Effect Unit
+logIfNewAgent handler locations thisServer agentKey agentServer =
+  if Map.member (Tuple agentKey agentServer) locations.remoteTimeouts
   then pure unit
   else do
     let
       scope = if extractPoP thisServer == extractPoP agentServer
               then "in this PoP"
               else "in another PoP"
-    logInfo ("New " <> unwrap handler.name <> " is available " <> scope) {streamId, agentServer}
+    logInfo ("New " <> unwrap handler.name <> " is available " <> scope) {agentKey, agentServer}
 
 sendToIntraSerfNetwork :: State -> String -> IntraMessage -> Effect Unit
 sendToIntraSerfNetwork state name msg = do
@@ -1067,14 +1080,14 @@ gcAgent now handler@{locationLens} state = do
     garbage = foldlWithIndex expired nil locations.remoteTimeouts
   foldM (gc thisPoP) state garbage
 --  pure $ locationLens.set newLocations state
-  --key@(Tuple streamId server) acc v = if v < now then (key : acc) else acc
+  --key@(Tuple agentKey server) acc v = if v < now then (key : acc) else acc
   where
     expired k acc v = if v < now then (k : acc) else acc
-    gc thisPoP state' (Tuple streamId server) = do
+    gc thisPoP state' (Tuple agentKey server) = do
       if extractPoP server == thisPoP
-      then handler.gcThisPoP state' streamId server
-      else handler.gcOtherPoP state' streamId server
-      pure $ updateAgentLocation removeRemoteAgent handler.locationLens streamId server state'
+      then handler.gcThisPoP state' agentKey server
+      else handler.gcOtherPoP state' agentKey server
+      pure $ updateAgentLocation removeRemoteAgent handler.locationLens agentKey server state'
 
 
 foldHandlers :: forall acc. (AgentHandler -> acc -> Effect acc) -> acc -> Effect acc
@@ -1095,44 +1108,44 @@ gcServer deadServer agentHandler@{locationLens, name, stoppedThisPoP} state@{age
     Nothing -> pure state
     Just garbageStreams -> do
       logWarning (unwrap name <> " liveness timeout") {garbageStreams}
-      newByStreamId <- foldM cleanUp locations.byStreamId  garbageStreams
+      newByAgentKey <- foldM cleanUp locations.byAgentKey  garbageStreams
       let
         newTimeouts = foldl (\acc k -> Map.delete (Tuple k deadServer) acc) locations.remoteTimeouts garbageStreams
-        newLocations = { byStreamId : newByStreamId
+        newLocations = { byAgentKey : newByAgentKey
                        , byRemoteServer : Map.delete deadServer locations.byRemoteServer
                        , remoteTimeouts : newTimeouts
                        }
       pure $ state {agentLocations = locationLens.set newLocations agentLocations}
   where
-    cleanUp acc streamId = do
-      stoppedThisPoP state streamId deadServer
-      pure $ mapSetDelete streamId deadServer acc
+    cleanUp acc agentKey = do
+      stoppedThisPoP state agentKey deadServer
+      pure $ mapSetDelete agentKey deadServer acc
 
 
 
-recordLocalAgent :: StreamId -> Server -> Locations -> Locations
-recordLocalAgent streamId thisServer locations =
-  locations { byStreamId = mapSetInsert streamId thisServer locations.byStreamId
+recordLocalAgent :: AgentKey -> Server -> Locations -> Locations
+recordLocalAgent agentKey thisServer locations =
+  locations { byAgentKey = mapSetInsert agentKey thisServer locations.byAgentKey
             }
 
-removeLocalAgent :: StreamId -> Server -> Locations -> Locations
-removeLocalAgent streamId thisServer locations =
-  locations { byStreamId = mapSetDelete streamId thisServer locations.byStreamId
+removeLocalAgent :: AgentKey -> Server -> Locations -> Locations
+removeLocalAgent agentKey thisServer locations =
+  locations { byAgentKey = mapSetDelete agentKey thisServer locations.byAgentKey
             }
 
 
-recordRemoteAgent :: Milliseconds -> StreamId -> Server -> Locations -> Locations
-recordRemoteAgent timeout streamId server locations =
-  { byStreamId     : mapSetInsert streamId server locations.byStreamId
-  , byRemoteServer : mapSetInsert server streamId locations.byRemoteServer
-  , remoteTimeouts : Map.insert (Tuple streamId server) timeout locations.remoteTimeouts
+recordRemoteAgent :: Milliseconds -> AgentKey -> Server -> Locations -> Locations
+recordRemoteAgent timeout agentKey server locations =
+  { byAgentKey     : mapSetInsert agentKey server locations.byAgentKey
+  , byRemoteServer : mapSetInsert server agentKey locations.byRemoteServer
+  , remoteTimeouts : Map.insert (Tuple agentKey server) timeout locations.remoteTimeouts
   }
 
-removeRemoteAgent :: StreamId -> Server -> Locations -> Locations
-removeRemoteAgent streamId server locations =
-  { byStreamId     : mapSetDelete streamId server locations.byStreamId
-  , byRemoteServer : mapSetDelete server streamId locations.byRemoteServer
-  , remoteTimeouts : Map.delete(Tuple streamId server) locations.remoteTimeouts
+removeRemoteAgent :: AgentKey -> Server -> Locations -> Locations
+removeRemoteAgent agentKey server locations =
+  { byAgentKey     : mapSetDelete agentKey server locations.byAgentKey
+  , byRemoteServer : mapSetDelete server agentKey locations.byRemoteServer
+  , remoteTimeouts : Map.delete(Tuple agentKey server) locations.remoteTimeouts
   }
 
 mapSetInsert :: forall k v. Ord k => Ord v => k -> v -> Map k (Set v) -> Map k (Set v)

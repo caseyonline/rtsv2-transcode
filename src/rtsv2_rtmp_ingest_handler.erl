@@ -179,7 +179,7 @@ handle(State = #?state{rtmp_pid = Rtmp,
           rtmp:close(Rtmp),
           ok;
 
-        {just, StreamDetails} ->
+        {just, {StreamPublish, StreamDetails}} ->
           ?SLOG_INFO("Inbound stream", #{stream_id => StreamId,
                                          client_id => ClientId,
                                          path => Path,
@@ -187,13 +187,13 @@ handle(State = #?state{rtmp_pid = Rtmp,
 
           {ok, {RemoteIp, RemotePort}} = rtmp:peername(Rtmp),
 
-          case (IngestStartedFn(StreamDetails, StreamName, list_to_binary(inet:ntoa(RemoteIp)), RemotePort, self()))() of
-            {right, StreamAndVariant} ->
-              {ok, WorkflowPid} = start_workflow(Rtmp, StreamId, ClientId, Path, StreamAndVariant),
+          case (IngestStartedFn(StreamPublish, StreamDetails, StreamName, list_to_binary(inet:ntoa(RemoteIp)), RemotePort, self()))() of
+            {right, IngestKey} ->
+              {ok, WorkflowPid} = start_workflow(Rtmp, StreamId, ClientId, Path, IngestKey),
 
               %% Stream is now connected - we block in here, when we return the rtmp_server instance will close
               workflow_loop(StreamName, WorkflowPid, State#?state{streamDetails = StreamDetails,
-                                                                  streamAndVariant = StreamAndVariant});
+                                                                  streamAndVariant = IngestKey});
 
             {left, _} ->
               ?SLOG_INFO("Invalid stream name"),
@@ -210,7 +210,7 @@ workflow_loop(StreamName, WorkflowPid, State = #?state{ingestStoppedFn = IngestS
                                                        streamDetails = StreamDetails,
                                                        clientMetadataFn = ClientMetadataFn,
                                                        sourceInfoFn = SourceInfoFn,
-                                                       streamAndVariant = StreamAndVariant}) ->
+                                                       streamAndVariant = IngestKey}) ->
   %% the workflow is dealing with the RTMP, so just wait until it says we are done
   receive
     #workflow_output{message = #no_active_generators_msg{}} ->
@@ -220,11 +220,11 @@ workflow_loop(StreamName, WorkflowPid, State = #?state{ingestStoppedFn = IngestS
       ok;
 
     #workflow_output{message = #workflow_data_msg{data = #rtmp_client_metadata{metadata = Metadata}}} ->
-      unit = (ClientMetadataFn(StreamAndVariant, Metadata))(),
+      unit = (ClientMetadataFn(IngestKey, Metadata))(),
       workflow_loop(StreamName, WorkflowPid, State);
 
     #workflow_output{message = #workflow_data_msg{data = SourceInfo = #source_info{}}} ->
-      unit = (SourceInfoFn(StreamAndVariant, SourceInfo))(),
+      unit = (SourceInfoFn(IngestKey, SourceInfo))(),
       workflow_loop(StreamName, WorkflowPid, State);
 
     Other ->
@@ -232,14 +232,16 @@ workflow_loop(StreamName, WorkflowPid, State = #?state{ingestStoppedFn = IngestS
       workflow_loop(StreamName, WorkflowPid, State)
   end.
 
-start_workflow(Rtmp, StreamId, ClientId, Path, StreamAndVariant = {streamAndVariant, SlotName, ProfileName}) ->
+start_workflow(Rtmp, StreamId, ClientId, Path, Key = {ingestKey, SlotName, StreamRole, ProfileName}) ->
 
   Workflow = #workflow{
-                name = {rtmp_ingest_handler, StreamAndVariant},
+                name = {rtmp_ingest_handler, Key},
                 display_name = <<"RTMP Ingest">>,
                 tags = #{type => rtmp_ingest_handler,
                          slot => SlotName,
-                         profile => ProfileName},
+                         profile => ProfileName,
+                         stream_role => StreamRole
+                        },
                 generators = [
                               #generator{name = rtmp_ingest,
                                          module = rtmp_push_ingest_generator,
@@ -257,7 +259,7 @@ start_workflow(Rtmp, StreamId, ClientId, Path, StreamAndVariant = {streamAndVari
                               #processor{name = set_source_id,
                                          subscribes_to = ?previous,
                                          module = set_source_id,
-                                         config = {StreamAndVariant, make_ref()}
+                                         config = {ProfileName, make_ref()}
                                         },
 
                               %% #processor{name = reorder_slices,
@@ -287,7 +289,7 @@ start_workflow(Rtmp, StreamId, ClientId, Path, StreamAndVariant = {streamAndVari
                                          subscribes_to = {?previous, ?frames},
                                          module = send_to_bus_processor,
                                          config = #send_to_bus_processor_config{consumes = true,
-                                                                                bus_name = {ingest, StreamAndVariant}}
+                                                                                bus_name = {ingest, Key}}
                                         },
 
                               %%--------------------------------------------------

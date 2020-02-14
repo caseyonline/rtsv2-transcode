@@ -7,6 +7,7 @@ module Shared.Types.Agent.State
        , PoPDefinition
        , Region
        , PoP
+       , AgentLocation
        , StreamRelay
        , TimedPoPStep
        , TimedPoPRoute
@@ -15,8 +16,8 @@ module Shared.Types.Agent.State
 
 import Data.Maybe (Maybe)
 import Shared.LlnwApiTypes (StreamDetails)
-import Shared.Stream (StreamAndVariant, StreamId, StreamVariant)
-import Shared.Types (GeoLoc, Milliseconds, PoPName, RegionName, Server, ServerAddress)
+import Shared.Stream (AgentKey, IngestKey(..), StreamAndVariant, StreamId, StreamRole, StreamVariant)
+import Shared.Types (GeoLoc, Milliseconds, PoPName, RegionName, Server, ServerAddress, ServerRec)
 import Shared.Types.Media.Types.Rtmp (RtmpClientMetadata)
 import Shared.Types.Media.Types.SourceDetails (SourceInfo)
 import Shared.Types.Workflow.Metrics.FrameFlow as FrameFlow
@@ -62,17 +63,23 @@ type Egest
   = { clientCount :: Int
     }
 
+type AgentLocation f = { agentKey :: AgentKey
+                       , servers :: f Server
+                       }
+
 
 type IntraPoP f
   = { aggregatorLocations :: f { streamId :: StreamId
-                               , servers  :: f Server
+                               , servers :: f Server
                                }
     , relayLocations      :: f { streamId :: StreamId
-                               , servers  :: f Server
+                               , streamRole :: StreamRole
+                               , servers :: f Server
                                }
     , egestLocations      :: f { streamId :: StreamId
-                               , servers  :: f Server
-                          }
+                               , streamRole :: StreamRole
+                               , servers :: f Server
+                               }
     , currentTransPoPLeader :: Maybe Server
     }
 
@@ -93,9 +100,9 @@ type PoPDefinition f
                         }
     }
 
-type IngestStats f = f { timestamp :: Milliseconds
-                       , streamAndVariant :: StreamAndVariant
-                       , streamBitrateMetrics :: StreamBitrateMonitor.Metrics f
-                       , frameFlowMeterMetrics :: FrameFlow.Metrics f
-                       , rtmpIngestMetrics :: RtmpIngest.Metrics
-                       }
+type IngestStats f = { timestamp :: Milliseconds
+                     , ingestKey :: IngestKey
+                     , streamBitrateMetrics :: StreamBitrateMonitor.Metrics f
+                     , frameFlowMeterMetrics :: FrameFlow.Metrics f
+                     , rtmpIngestMetrics :: RtmpIngest.Metrics
+                     }

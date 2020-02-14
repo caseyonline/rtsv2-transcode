@@ -1,9 +1,21 @@
 module Shared.Stream
   ( ShortName(..)
   , StreamId(..)
+  , StreamIdAndRole(..)
   , StreamRole(..)
   , StreamVariant(..)
   , StreamAndVariant(..)
+  , AgentKey(..)
+  , EgestKey(..)
+  , AggregatorKey(..)
+  , RelayKey(..)
+  , IngestKey(..)
+
+  , agentKeyToAggregatorKey
+  , aggregatorKeyToAgentKey
+  , ingestKeyToAggregatorKey
+  , ingestKeyToVariant
+
   , toStreamId
   , toVariant
   ) where
@@ -23,7 +35,7 @@ import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype, unwrap)
 import Data.String (Pattern(..), split)
 import Foreign (ForeignError(..), readString, unsafeToForeign)
-import Simple.JSON (class ReadForeign, class WriteForeign)
+import Simple.JSON (class ReadForeign, class WriteForeign, readImpl, writeImpl)
 
 newtype ShortName = ShortName String
 derive instance genericShortName :: Generic ShortName _
@@ -57,12 +69,60 @@ instance compareStreamId :: Ord StreamId where
 instance showStreamId :: Show StreamId where
   show = genericShow
 
+data StreamIdAndRole = StreamIdAndRole StreamId StreamRole
+derive instance eqStreamIdAndRole :: Eq StreamIdAndRole
+derive instance ordStreamIdAndRole :: Ord StreamIdAndRole
+
+newtype EgestKey = EgestKey StreamId
+data AggregatorKey = AggregatorKey StreamId StreamRole
+derive instance eqAggregatorKey :: Eq AggregatorKey
+derive instance ordAggregatorKey :: Ord AggregatorKey
+
+data RelayKey = RelayKey StreamId StreamRole
+
+data IngestKey = IngestKey StreamId StreamRole StreamVariant
+derive instance eqIngestKey :: Eq IngestKey
+
+type IngestKeyJson = { streamId :: StreamId
+                     , role :: StreamRole
+                       , profile :: StreamVariant
+                     }
+instance readForeignIngestKey :: ReadForeign IngestKey where
+  readImpl f =
+    mapper <$> readImpl f
+    where
+      mapper :: IngestKeyJson -> IngestKey
+      mapper {streamId, role: streamRole, profile: streamVariant} = IngestKey streamId streamRole streamVariant
+
+instance writeForeignIngestKey :: WriteForeign IngestKey where
+  writeImpl (IngestKey streamId streamRole streamVariant) = writeImpl { streamId: streamId
+                                                                      , role: streamRole
+                                                                      , profile: streamVariant}
+
+aggregatorKeyToAgentKey :: AggregatorKey -> AgentKey
+aggregatorKeyToAgentKey (AggregatorKey streamId streamRole) = AgentKey streamId streamRole
+
+data AgentKey = AgentKey StreamId StreamRole
+derive instance eqAgentKey :: Eq AgentKey
+derive instance ordAgentKey :: Ord AgentKey
+
 
 newtype StreamVariant = StreamVariant String
 derive instance genericStreamVariant :: Generic StreamVariant _
 derive instance newtypeStreamVariant :: Newtype StreamVariant _
 derive newtype instance readForeignStreamVariant :: ReadForeign StreamVariant
 derive newtype instance writeForeignStreamVariant :: WriteForeign StreamVariant
+
+
+ingestKeyToAggregatorKey :: IngestKey -> AggregatorKey
+ingestKeyToAggregatorKey (IngestKey streamId streamRole streamVariant) = (AggregatorKey streamId streamRole)
+
+
+agentKeyToAggregatorKey :: AgentKey -> AggregatorKey
+agentKeyToAggregatorKey (AgentKey streamId streamRole) = AggregatorKey streamId streamRole
+
+ingestKeyToVariant :: IngestKey -> StreamVariant
+ingestKeyToVariant (IngestKey streamId streamRole streamVariant) = streamVariant
 
 data StreamAndVariant = StreamAndVariant StreamId StreamVariant
 
@@ -103,7 +163,11 @@ instance writeForeignStreamAndVariant :: WriteForeign StreamAndVariant where
 
 data StreamRole = Primary
                 | Backup
-
+derive instance eqStreamRole :: Eq StreamRole
+derive instance ordStreamRole :: Ord StreamRole
+instance showStreamRole :: Show StreamRole where
+  show Primary = "primary"
+  show Backup = "backup"
 instance readForeignStreamRole :: ReadForeign StreamRole where
   readImpl =
     readString >=> parseAgent
@@ -114,14 +178,12 @@ instance readForeignStreamRole :: ReadForeign StreamRole where
       toType "backup" = pure Backup
       toType unknown = Nothing
       errorString s = "Unknown StreamRole: " <> s
-
 instance writeForeignStreamRole :: WriteForeign StreamRole where
   writeImpl =
     toString >>> unsafeToForeign
     where
       toString Primary = "primary"
       toString Backup = "backup"
-
 
 toStreamId :: StreamAndVariant -> StreamId
 toStreamId (StreamAndVariant s _) = s

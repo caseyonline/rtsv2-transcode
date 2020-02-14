@@ -1,5 +1,6 @@
 module Rtsv2.Config
   ( GlobalConfig
+  , IngestInstanceConfig
   , IngestAggregatorAgentConfig
   , IngestStatsConfig
   , WebConfig
@@ -20,6 +21,7 @@ module Rtsv2.Config
   , intraPoPAgentConfig
   , transPoPAgentConfig
   , ingestStatsConfig
+  , ingestInstanceConfig
   , ingestAggregatorAgentConfig
   , egestAgentConfig
   , rtmpIngestConfig
@@ -45,7 +47,7 @@ import Logger as Logger
 import Partial.Unsafe (unsafeCrashWith)
 import Rtsv2.Node as Node
 import Shared.Agent (Agent, strToAgent)
-import Shared.Stream (StreamId)
+import Shared.Stream (AgentKey, AggregatorKey(..))
 import Shared.Types (Server)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (class ReadForeign, readImpl)
@@ -62,6 +64,10 @@ type PoPDefinitionConfig
   = { directory :: String
     , popDefinitionFile :: String
     , wanDefinitionFile :: String
+    }
+
+type IngestInstanceConfig
+  = { eqLogIntervalMs :: Int
     }
 
 type IngestAggregatorAgentConfig
@@ -104,14 +110,14 @@ type TransPoPAgentConfig
     }
 
 type IntraPoPAgentApi
-  = { announceOtherPoPAggregatorIsAvailable :: StreamId -> Server -> Effect Unit
-    , announceOtherPoPAggregatorStopped :: StreamId -> Server -> Effect Unit
+  = { announceOtherPoPAggregatorIsAvailable :: AgentKey -> Server -> Effect Unit
+    , announceOtherPoPAggregatorStopped :: AgentKey -> Server -> Effect Unit
     , announceTransPoPLeader :: Effect Unit
     }
 
 type TransPoPAgentApi
-  = { announceAggregatorIsAvailable :: StreamId -> Server -> Effect Unit
-    , announceAggregatorStopped :: StreamId -> Server -> Effect Unit
+  = { announceAggregatorIsAvailable :: AgentKey -> Server -> Effect Unit
+    , announceAggregatorStopped :: AgentKey -> Server -> Effect Unit
     , handleRemoteLeaderAnnouncement :: Server -> Effect Unit
     }
 
@@ -185,6 +191,10 @@ ingestAggregatorAgentConfig = do
 ingestStatsConfig :: Effect IngestStatsConfig
 ingestStatsConfig = do
   getMandatoryRecord "ingestStatsConfig"
+
+ingestInstanceConfig :: Effect IngestInstanceConfig
+ingestInstanceConfig = do
+  getMandatoryRecord "ingestInstanceConfig"
 
 egestAgentConfig :: Effect EgestAgentConfig
 egestAgentConfig = do

@@ -19,14 +19,14 @@ import Logger (Logger, spy)
 import Logger as Logger
 import Rtsv2.Agents.EgestInstance as EgestInstance
 import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
-import Rtsv2.Agents.Locator.Types (FailureReason(..), LocalOrRemote(..))
 import Rtsv2.Agents.Locator.Egest (findEgestAndRegister)
+import Rtsv2.Agents.Locator.Types (FailureReason(..), LocalOrRemote(..))
 import Rtsv2.Audit as Audit
 import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Rtsv2.Web.Bindings as Bindings
-import Shared.Stream (StreamId)
+import Shared.Stream (EgestKey(..), StreamId)
 import Shared.Types (Server, extractAddress)
 import Stetson (HttpMethod(..), RestResult, StetsonHandler)
 import Stetson.Rest as Rest
@@ -98,8 +98,7 @@ clientStart =
 
 
 
-type ClientStopState = { streamId :: StreamId
-                       }
+type ClientStopState = { egestKey :: EgestKey }
 clientStop :: StetsonHandler ClientStopState
 clientStop =
 
@@ -114,25 +113,22 @@ clientStop =
       let
         streamId = Bindings.streamId req
       thisNode <- extractAddress <$> PoPDefinition.getThisServer
-      Rest.initResult req { streamId : spy "init" streamId
+      Rest.initResult req { egestKey: EgestKey streamId
                           }
-
-    acceptAny req state = Rest.result true req  $ spy "accept" state
 
     serviceAvailable req state = do
       isAgentAvailable <- EgestInstanceSup.isAvailable
-      Rest.result isAgentAvailable req  $ spy "savail" state
+      Rest.result isAgentAvailable req state
 
 
-    resourceExists req state@{streamId} = do
-      isActive <- EgestInstance.isActive $ spy "exists" streamId
+    resourceExists req state@{egestKey} = do
+      isActive <- EgestInstance.isActive egestKey
       Rest.result isActive req state
 
-    removeClient req state@{streamId} =
-      let _ = spy "remove" streamId
-      in do
-      _ <- Audit.clientStop streamId
-      _ <- EgestInstance.removeClient $ spy "remove" streamId
+    removeClient req state@{egestKey} =
+      do
+      _ <- Audit.clientStop egestKey
+      _ <- EgestInstance.removeClient egestKey
       Rest.result true req state
 
 --------------------------------------------------------------------------------

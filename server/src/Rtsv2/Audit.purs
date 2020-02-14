@@ -1,6 +1,7 @@
 module Rtsv2.Audit
        (
-         ingestStart
+         IngestEqLine
+       , ingestUpdate
        , ingestStop
        , clientStart
        , clientStop
@@ -8,32 +9,38 @@ module Rtsv2.Audit
 
 import Prelude
 
-import Data.Newtype (unwrap)
 import Effect (Effect)
 import Erl.Atom (atom)
 import Erl.Data.List (List, nil, (:))
 import Logger as Logger
-import Shared.Stream (StreamId(..), StreamAndVariant(..))
+import Shared.LlnwApiTypes (StreamIngestProtocol(..))
+import Shared.Stream (EgestKey(..), StreamId(..))
+import Shared.Types (Milliseconds)
 
 foreign import toList :: String -> List Char
 
-ingestStart :: StreamAndVariant -> Effect Unit
-ingestStart (StreamAndVariant streamId streamVariantId) = do
-  _ <- Logger.info "" { domain: (atom "audit") : (atom "ingest") : nil
-                      , event: toList "start"
-                      , customerId: toList "customerId" -- todo
-                      , streamId: toList $ unwrap streamId
-                      , streamVariantId: toList $ unwrap streamVariantId}
-  pure unit
+type IngestEqLine =
+  { ingestIp :: String
+  , ingestPort :: Int
+  , userIp :: String
+  , username :: String
+  , shortname :: String
+  , streamName :: String
+  , connectionType :: StreamIngestProtocol
+  , startMs :: Milliseconds
+  , endMs :: Milliseconds
+  , bytesWritten :: Int
+  , bytesRead :: Int
+  , lostPackets :: Int
+  }
 
-ingestStop :: StreamAndVariant -> Effect Unit
-ingestStop (StreamAndVariant streamId streamVariantId) = do
-  _ <- Logger.info "" { domain: (atom "audit") : (atom "ingest") : nil
-                      , event: toList "stop"
-                      , customerId: toList "customerId" -- todo
-                      , streamId: toList $ unwrap streamId
-                      , streamVariantId: toList $ unwrap streamVariantId}
-  pure unit
+ingestUpdate :: IngestEqLine -> Effect Unit
+ingestUpdate line =
+  writeIngestLine "update" line
+
+ingestStop :: IngestEqLine -> Effect Unit
+ingestStop line =
+  writeIngestLine "stop" line
 
 clientStart :: StreamId -> Effect Unit
 clientStart (StreamId streamId) = do
@@ -42,8 +49,8 @@ clientStart (StreamId streamId) = do
                       , streamId: toList streamId}
   pure unit
 
-clientStop :: StreamId -> Effect Unit
-clientStop (StreamId streamId) = do
+clientStop :: EgestKey -> Effect Unit
+clientStop (EgestKey (StreamId streamId)) = do
   _ <- Logger.info "" { domain: (atom "audit") : (atom "client") : nil
                       , event: toList "stop"
                       , streamId: toList streamId}
@@ -53,15 +60,34 @@ clientStop (StreamId streamId) = do
 --------------------------------------------------------------------------------
 -- Log helpers
 --------------------------------------------------------------------------------
--- TODO - agree structured log format
--- domains :: List Atom
--- domains = atom <$> (show Agent.StreamRelay :  "Instance" : nil)
-
--- logInfo :: forall a. Logger a
--- logInfo = domainLog Logger.info
-
--- --logWarning :: forall a. Logger a
--- --logWarning = domainLog Logger.warning
-
--- domainLog :: forall a. Logger {domain :: List Atom, misc :: a} -> Logger a
--- domainLog = Logger.doLog domains
+writeIngestLine :: String -> IngestEqLine -> Effect Unit
+writeIngestLine reason { ingestIp
+                       , ingestPort
+                       , userIp
+                       , username
+                       , shortname
+                       , streamName
+                       , connectionType
+                       , startMs
+                       , endMs
+                       , bytesWritten
+                       , bytesRead
+                       , lostPackets
+                       } =
+  Logger.info "" { domain: (atom "audit") : (atom "ingest") : nil
+                 , event: toList reason
+                 , ingestIp: toList ingestIp
+                 , ingestPort: ingestPort
+                 , userIp: toList userIp
+                 , username: toList username
+                 , shortname: toList shortname
+                 , streamName: toList streamName
+                 , connectionType: toList $ case connectionType of
+                                              Rtmp -> "RTMP"
+                                              WebRTC -> "WebRTC"
+                 , startMs
+                 , endMs
+                 , bytesWritten
+                 , bytesRead
+                 , lostPackets
+                 }

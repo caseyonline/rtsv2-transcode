@@ -8,10 +8,11 @@ import Prelude
 
 import Data.Either (Either(..), hush)
 import Data.Foldable (any)
-import Data.Function.Uncurried (Fn1, Fn2, Fn3, Fn5, mkFn2, mkFn3, mkFn5)
+import Data.Function.Uncurried (Fn1, Fn2, Fn3, Fn6, mkFn2, mkFn3, mkFn6)
 import Data.Maybe (Maybe)
 import Data.Newtype (wrap)
 import Effect (Effect)
+import Erl.Data.Tuple (Tuple2, tuple2)
 import Erl.Process.Raw (Pid)
 import Foreign (Foreign)
 import Logger (spy)
@@ -28,18 +29,18 @@ import Rtsv2.Names as Names
 import Rtsv2.Utils (crashIfLeft)
 import Serf (Ip)
 import Shared.LlnwApiTypes (AuthType, PublishCredentials, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamPublish, StreamAuth)
-import Shared.Stream (StreamAndVariant(..))
+import Shared.Stream (IngestKey(..), StreamAndVariant(..), StreamRole(..))
 import SpudGun (bodyToJSON)
 import SpudGun as SpudGun
 
 type Callbacks
-  = { ingestStarted :: Fn5 StreamDetails String String Int Pid (Effect (Either Unit StreamAndVariant))
+  = { ingestStarted :: Fn6 StreamPublish StreamDetails String String Int Pid (Effect (Either Unit IngestKey))
     , ingestStopped :: Fn2 StreamDetails String (Effect Unit)
     , streamAuthType :: Fn2 String String (Effect (Maybe AuthType))
     , streamAuth ::  Fn3 String String String (Effect (Maybe PublishCredentials))
-    , streamPublish :: Fn3 String String String (Fn1 String (Effect (Maybe StreamDetails)))
-    , clientMetadata :: Fn2 StreamAndVariant Foreign (Effect Unit)
-    , sourceInfo :: Fn2 StreamAndVariant Foreign (Effect Unit)
+    , streamPublish :: Fn3 String String String (Fn1 String (Effect (Maybe (Tuple2 StreamPublish StreamDetails))))
+    , clientMetadata :: Fn2 IngestKey Foreign (Effect Unit)
+    , sourceInfo :: Fn2 IngestKey Foreign (Effect Unit)
     }
 
 isAvailable :: Effect Boolean
@@ -63,7 +64,8 @@ init _ = do
   {port, nbAcceptors} <- Config.rtmpIngestConfig
   {streamAuthTypeUrl, streamAuthUrl, streamPublishUrl} <- Config.llnwApiConfig
   let
-    callbacks = { ingestStarted: mkFn5 ingestStarted
+    callbacks :: Callbacks
+    callbacks = { ingestStarted: mkFn6 ingestStarted
                 , ingestStopped: mkFn2 ingestStopped
                 , streamAuthType: mkFn2 (streamAuthType streamAuthTypeUrl)
                 , streamAuth: mkFn3 (streamAuth streamAuthUrl)
@@ -74,23 +76,23 @@ init _ = do
   crashIfLeft =<< startServerImpl Left (Right unit) interfaceIp port nbAcceptors callbacks
   pure $ {}
   where
-    ingestStarted :: StreamDetails -> String -> String -> Int -> Pid -> Effect (Either Unit StreamAndVariant)
-    ingestStarted streamDetails@{ role
-                                , slot : {name : streamId, profiles}
-                                } streamVariantId remoteAddress remotePort pid =
+    ingestStarted :: StreamPublish -> StreamDetails -> String -> String -> Int -> Pid -> Effect (Either Unit IngestKey)
+    ingestStarted streamPublishInfo streamDetails@{ role
+                                                  , slot : {name : streamId, profiles}
+                                                  } streamVariantId remoteAddress remotePort pid =
       case any (\{streamName: slotStreamName} -> slotStreamName == streamVariantId) profiles of
         true ->
           let
-            streamAndVariant = StreamAndVariant (wrap streamId) (wrap streamVariantId)
+            ingestKey = IngestKey (wrap streamId) role (wrap streamVariantId)
           in
-           IngestInstanceSup.startIngest streamDetails streamAndVariant remoteAddress remotePort pid
-          <#> const (Right streamAndVariant)
+           IngestInstanceSup.startIngest ingestKey streamPublishInfo streamDetails remoteAddress remotePort pid
+          <#> const (Right ingestKey)
         false ->
           pure $ Left unit
 
     ingestStopped :: StreamDetails -> String -> Effect Unit
     ingestStopped { role
-                   , slot : {name : streamId}} streamVariantId = IngestInstance.stopIngest (StreamAndVariant (wrap streamId) (wrap streamVariantId))
+                   , slot : {name : streamId}} streamVariantId = IngestInstance.stopIngest (IngestKey (wrap streamId) role (wrap streamVariantId))
 
     streamAuthType url host shortname = do
       restResult <- SpudGun.postJson (wrap (spy "authtype url" url)) (spy "authtype body" { host
@@ -107,18 +109,19 @@ init _ = do
       pure $ hush (bodyToJSON (spy "auth result" restResult))
 
     streamPublish url host shortname username streamName = do
-      restResult <- SpudGun.postJson (wrap (spy "publish url" url)) (spy "publish body" { host
-                                                                                        , protocol: Rtmp
-                                                                                        , shortname
-                                                                                        , streamName
-                                                                                        , username} :: StreamPublish
-                                                                    )
-      pure $ hush (spy "publish parse" (bodyToJSON (spy "publish result" restResult)))
+      let
+        streamPublishPayload :: StreamPublish
+        streamPublishPayload = { host
+                               , protocol: Rtmp
+                               , shortname
+                               , streamName
+                               , username}
+      restResult <- SpudGun.postJson (wrap (spy "publish url" url)) (spy "publish body" streamPublishPayload)
+      pure $ (tuple2 streamPublishPayload) <$> hush (spy "publish parse" (bodyToJSON (spy "publish result" restResult)))
 
-    clientMetadata streamAndVariant foreignMetadata = do
-      IngestInstance.setClientMetadata streamAndVariant (Rtmp.foreignToMetadata foreignMetadata)
-      pure unit
+    clientMetadata ingestKey foreignMetadata = do
+      IngestInstance.setClientMetadata ingestKey (Rtmp.foreignToMetadata foreignMetadata)
 
-    sourceInfo streamAndVariant foreignSourceInfo = do
-      IngestInstance.setSourceInfo streamAndVariant (SourceDetails.foreignToSourceInfo (spy "foreign" foreignSourceInfo))
-      pure unit
+    sourceInfo ingestKey foreignSourceInfo = do
+
+      IngestInstance.setSourceInfo ingestKey (SourceDetails.foreignToSourceInfo (spy "foreign" foreignSourceInfo))

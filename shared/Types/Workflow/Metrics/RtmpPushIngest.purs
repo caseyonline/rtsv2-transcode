@@ -5,5 +5,7 @@ module Shared.Types.Workflow.Metrics.RtmpPushIngest
 
 type Metrics = { remoteIp :: String
                , remotePort :: Int
-               , bytesRead :: Int
+               , totalBytesSent :: Int
+               , totalBytesReceived :: Int
+               , lastBytesReadReport :: Int
                }
