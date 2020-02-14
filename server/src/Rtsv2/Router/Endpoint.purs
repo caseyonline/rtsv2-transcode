@@ -3,6 +3,7 @@ module Rtsv2.Router.Endpoint ( Endpoint(..)
                              , endpoint
                              , makeUrl
                              , makeUrlAddr
+                             , parseStreamRole
                              ) where
 
 import Prelude hiding ((/))
@@ -17,7 +18,7 @@ import Routing.Duplex (RouteDuplex', as, path, root, segment)
 import Routing.Duplex.Generic (noArgs, sum)
 import Routing.Duplex.Generic.Syntax ((/))
 import Rtsv2.Router.Parser as Routing
-import Shared.Stream (ShortName, StreamAndVariant(..), StreamId, StreamVariant(..))
+import Shared.Stream (ShortName, StreamAndVariant(..), StreamId, StreamRole(..), StreamVariant(..))
 import Shared.Types (PoPName, ServerAddress, extractAddress)
 import SpudGun (Url)
 
@@ -40,8 +41,8 @@ data Endpoint
   | RelayEnsureStartedE
   | RelayRegisterEgestE
   | RelayRegisterRelayE
-  | RelayProxiedStatsE StreamId
-  | RelayStatsE StreamId
+  | RelayProxiedStatsE StreamId StreamRole
+  | RelayStatsE StreamId StreamRole
   | LoadE
   | WorkflowsE
   | WorkflowGraphE String
@@ -50,7 +51,7 @@ data Endpoint
   | IngestAggregatorE StreamId
   | IngestAggregatorPlayerE StreamId
   | IngestAggregatorPlayerJsE StreamId
-  | IngestAggregatorActiveIngestsE StreamId StreamVariant
+  | IngestAggregatorActiveIngestsE StreamId StreamRole StreamVariant
   | IngestAggregatorActiveIngestsPlayerE StreamId StreamVariant
   | IngestAggregatorActiveIngestsPlayerJsE StreamId StreamVariant
   | IngestAggregatorActiveIngestsPlayerSessionStartE StreamId StreamVariant
@@ -59,9 +60,9 @@ data Endpoint
   | IngestInstancesE
   | IngestInstancesMetricsE
   | IngestInstanceE StreamId StreamVariant
-  | IngestInstanceLlwpE StreamId StreamVariant
+  | IngestInstanceLlwpE StreamId StreamRole StreamVariant
   | IngestStartE Canary ShortName StreamAndVariant
-  | IngestStopE Canary ShortName StreamAndVariant
+  | IngestStopE Canary StreamId StreamRole StreamVariant
   | ClientAppAssetsE
   | ClientAppRouteHTMLE
   | ClientStartE Canary StreamId
@@ -90,8 +91,8 @@ endpoint = root $ sum
   , "RelayEnsureStartedE"                              : "" / "api" / "agents" / "relay" / path "ensureStarted"  noArgs
   , "RelayRegisterEgestE"                              : "" / "api" / "agents" / "relay" / "register" / path "egest" noArgs
   , "RelayRegisterRelayE"                              : "" / "api" / "agents" / "relay" / "register" / path "relay" noArgs
-  , "RelayStatsE"                                      : "" / "api" / "agents" / "relay" / streamId segment
-  , "RelayProxiedStatsE"                               : "" / "api" / "agents" / "proxied" / "relay" / streamId segment
+  , "RelayStatsE"                                      : "" / "api" / "agents" / "relay" / streamId segment / streamRole segment
+  , "RelayProxiedStatsE"                               : "" / "api" / "agents" / "proxied" / "relay" / streamId segment / streamRole segment
 
   , "LoadE"                                            : "" / "api" / path "load" noArgs
 
@@ -103,8 +104,8 @@ endpoint = root $ sum
   , "IngestAggregatorE"                                : "" / "api" / "agents" / "ingestAggregator" / streamId segment
   , "IngestAggregatorPlayerE"                          : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "player"
   , "IngestAggregatorPlayerJsE"                        : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "js" -- TODO - would like to add '/ "[...]"' bit it causes compiler error that I don't understand
-  , "IngestAggregatorActiveIngestsE"                   : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "activeIngests" / variant segment
-  , "IngestAggregatorActiveIngestsPlayerE"             : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "activeIngests" / variant segment / "player"
+  , "IngestAggregatorActiveIngestsE"                   : "" / "api" / "agents" / "ingestAggregator" / streamId segment / streamRole segment / "activeIngests" / variant segment
+  , "IngestAggregatorActiveIngestsPlayerE"             : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "activeIngests" / variant segment / "player" -- TODO - streamRole for these as well
   , "IngestAggregatorActiveIngestsPlayerJsE"           : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "activeIngests" / variant segment / "js" -- TODO - would like to add '/ "[...]"' bit it causes compiler error that I don't understand
   , "IngestAggregatorActiveIngestsPlayerSessionStartE" : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "activeIngests" / variant segment / "session"
   , "IngestAggregatorActiveIngestsPlayerSessionE"      : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "activeIngests" / variant segment / "session" / segment
@@ -114,10 +115,10 @@ endpoint = root $ sum
   , "IngestInstancesE"                                 : "" / "api" / "agents" / path "ingest" noArgs
   , "IngestInstancesMetricsE"                            : "" / "api" / "agents" / "ingest" / path "metrics" noArgs
   , "IngestInstanceE"                                  : "" / "api" / "agents" / "ingest" / streamId segment / variant segment
-  , "IngestInstanceLlwpE"                              : "" / "api" / "agents" / "ingest" / streamId segment / variant segment / "llwp"
+  , "IngestInstanceLlwpE"                              : "" / "api" / "agents" / "ingest" / streamId segment / streamRole segment / variant segment / "llwp"
 
   , "IngestStartE"                                     : "" / "api" / "public" / canary segment / "ingest" / shortName segment / streamAndVariant segment / "start"
-  , "IngestStopE"                                      : "" / "api" / "public" / canary segment / "ingest" / shortName segment / streamAndVariant segment / "stop"
+  , "IngestStopE"                                      : "" / "api" / "public" / canary segment / "ingest" / streamId segment / streamRole segment / variant  segment / "stop"
   , "ClientStartE"                                     : "" / "api" / "public" / canary segment / "client" / streamId segment / "start"
   , "ClientStopE"                                      : "" / "api" / "public" / canary segment / "client" / streamId segment / "stop"
 
@@ -144,7 +145,6 @@ makeUrlAddr serverAddr ep =
 
 
 -- | StreamId
-
 parseStreamId :: String -> Maybe StreamId
 parseStreamId = wrapParser
 
@@ -157,6 +157,16 @@ parseStreamVariant = wrapParser
 
 variantToString :: StreamVariant -> String
 variantToString = unwrap
+
+-- | StreamRole
+parseStreamRole :: String -> Maybe StreamRole
+parseStreamRole "primary" = Just Primary
+parseStreamRole "backup" = Just Backup
+parseStreamRole _ = Nothing
+
+streamRoleToString :: StreamRole -> String
+streamRoleToString Primary = "primary"
+streamRoleToString Backup = "backup"
 
 -- | ShortName
 parseShortName :: String -> Maybe ShortName
@@ -210,6 +220,10 @@ streamId = as streamIdToString (parseStreamId >>> note "Bad StreamId")
 -- | This combinator transforms a codec over `String` into one that operates on the `StreamVariant` type.
 variant :: RouteDuplex' String -> RouteDuplex' StreamVariant
 variant = as variantToString (parseStreamVariant >>> note "Bad StreamId")
+
+-- | This combinator transforms a codec over `String` into one that operates on the `StreamVariant` type.
+streamRole :: RouteDuplex' String -> RouteDuplex' StreamRole
+streamRole = as streamRoleToString (parseStreamRole >>> note "Bad StreamRole")
 
 -- | This combinator transforms a codec over `String` into one that operates on the `StreamAndVariant` type.
 streamAndVariant :: RouteDuplex' String -> RouteDuplex' StreamAndVariant

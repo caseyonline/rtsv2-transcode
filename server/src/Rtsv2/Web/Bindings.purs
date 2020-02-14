@@ -1,12 +1,14 @@
 module Rtsv2.Web.Bindings
        ( streamId
        , variant
+       , streamRole
        , streamAndVariant
        , popName
        , shortName
 
        , streamIdBindingLiteral
        , variantBindingLiteral
+       , streamRoleBindingLiteral
        , streamAndVariantBindingLiteral
        , popNameBindingLiteral
        , shortNameBindingLiteral
@@ -20,7 +22,8 @@ import Data.Newtype (wrap)
 import Data.String (Pattern(..), split)
 import Erl.Atom (atom)
 import Erl.Cowboy.Req (Req, binding)
-import Shared.Stream (ShortName, StreamAndVariant(..), StreamId, StreamVariant)
+import Rtsv2.Router.Endpoint (parseStreamRole)
+import Shared.Stream (ShortName, StreamAndVariant(..), StreamId, StreamRole(..), StreamVariant)
 import Shared.Types (PoPName)
 import Shared.Utils (lazyCrashIfMissing)
 
@@ -31,12 +34,19 @@ streamId = wrap <<< fromMaybe' (lazyCrashIfMissing $ streamIdBindingLiteral <> "
 variant :: Req -> StreamVariant
 variant = wrap <<< fromMaybe' (lazyCrashIfMissing $ variantBindingLiteral <> " binding missing") <<< binding (atom variantBindingLiteral)
 
+streamRole :: Req -> StreamRole
+streamRole req =
+  let
+    mStreamRole = parseStreamRole =<< binding (atom streamRoleBindingLiteral) req
+  in
+   fromMaybe' (lazyCrashIfMissing $ streamRoleBindingLiteral <> " binding missing or incorrect") mStreamRole
+
+
 popName :: Req -> PoPName
 popName = wrap <<< fromMaybe' (lazyCrashIfMissing $ popNameBindingLiteral <> " binding missing") <<< binding (atom popNameBindingLiteral)
 
 shortName :: Req -> ShortName
 shortName = wrap <<< fromMaybe' (lazyCrashIfMissing $ shortNameBindingLiteral <> " binding missing") <<< binding (atom shortNameBindingLiteral)
-
 
 streamAndVariant :: Req -> StreamAndVariant
 streamAndVariant req =
@@ -46,12 +56,14 @@ streamAndVariant req =
   in
    StreamAndVariant (wrap streamIdStr) (wrap variantIdStr)
 
-
 streamIdBindingLiteral :: String
 streamIdBindingLiteral = "stream_id"
 
 variantBindingLiteral :: String
-variantBindingLiteral = "variant_id"
+variantBindingLiteral = "variant"
+
+streamRoleBindingLiteral :: String
+streamRoleBindingLiteral = "stream_role"
 
 streamAndVariantBindingLiteral :: String
 streamAndVariantBindingLiteral = "stream_and_variant"

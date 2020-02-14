@@ -36,7 +36,7 @@ import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Rtsv2.Utils (crashIfLeft)
 import Shared.Agent as Agent
-import Shared.Stream (StreamId)
+import Shared.Stream (AggregatorKey(..), EgestKey(..), RelayKey(..), StreamId, StreamRole(..))
 import Shared.Types (Milliseconds, EgestServer, Load, PoPName, RelayServer, Server, ServerLoad(..))
 import Shared.Types.Agent.State as PublicState
 import SpudGun as SpudGun
@@ -47,7 +47,7 @@ type CreateEgestPayload
     }
 
 type State
-  = { streamId :: StreamId
+  = { egestKey :: EgestKey
     , aggregatorPoP :: PoPName
     , thisServer :: EgestServer
     , relay :: Maybe (LocalOrRemote RelayServer)
@@ -57,23 +57,26 @@ type State
     , stopRef :: Maybe Ref
     }
 
+payloadToEgestKey :: CreateEgestPayload -> EgestKey
+payloadToEgestKey payload = EgestKey payload.streamId
+
 data Msg = Tick
          | InitStreamRelays
          | MaybeStop Ref
          | IntraPoPBus IntraPoP.IntraPoPBusMessage
 
-serverName :: StreamId -> ServerName State Msg
-serverName streamId = Names.egestInstanceName streamId
+serverName :: EgestKey -> ServerName State Msg
+serverName egestKey = Names.egestInstanceName egestKey
 
-isActive :: StreamId -> Effect Boolean
-isActive streamId = Pinto.isRegistered (serverName streamId)
+isActive :: EgestKey -> Effect Boolean
+isActive egestKey = Pinto.isRegistered (serverName egestKey)
 
 startLink :: CreateEgestPayload -> Effect StartLinkResult
-startLink payload = Gen.startLink (serverName payload.streamId) (init payload) handleInfo
+startLink payload = Gen.startLink (serverName $ payloadToEgestKey payload) (init payload) handleInfo
 
-addClient :: StreamId -> Effect RegistrationResp
-addClient streamId = do
-  Gen.doCall (serverName streamId) doAddClient
+addClient :: EgestKey -> Effect RegistrationResp
+addClient egestKey = do
+  Gen.doCall (serverName egestKey) doAddClient
 
 doAddClient :: State -> Effect (CallResult RegistrationResp State)
 doAddClient state@{clientCount} = do
@@ -82,17 +85,17 @@ doAddClient state@{clientCount} = do
                                      , stopRef = Nothing
                                      }
 
-removeClient :: StreamId -> Effect Unit
-removeClient streamId = Gen.doCall (serverName streamId) doRemoveClient
+removeClient :: EgestKey -> Effect Unit
+removeClient egestKey = Gen.doCall (serverName egestKey) doRemoveClient
 
 doRemoveClient :: State -> Effect (CallResult Unit State)
 doRemoveClient state@{clientCount: 0} = do
   logInfo "Remove client - already zero" {}
   pure $ CallReply unit state
-doRemoveClient state@{clientCount: 1, lingerTime, streamId} = do
+doRemoveClient state@{clientCount: 1, lingerTime, egestKey} = do
   ref <- makeRef
   logInfo "Last client gone, start stop timer" {}
-  _ <- Timer.sendAfter (serverName streamId) (unwrap lingerTime) (MaybeStop ref)
+  _ <- Timer.sendAfter (serverName egestKey) (unwrap lingerTime) (MaybeStop ref)
   pure $ CallReply unit state{ clientCount = 0
                              , stopRef = Just ref
                              }
@@ -101,9 +104,9 @@ doRemoveClient state@{clientCount} = do
   logInfo "Remove client" { newCount: clientCount - 1 }
   pure $ CallReply unit state{ clientCount = clientCount - 1 }
 
-currentStats :: StreamId -> Effect PublicState.Egest
-currentStats streamId =
-  Gen.call (serverName streamId) \state@{clientCount} ->
+currentStats :: EgestKey -> Effect PublicState.Egest
+currentStats egestKey =
+  Gen.call (serverName egestKey) \state@{clientCount} ->
     CallReply {clientCount} state
 
 
@@ -112,17 +115,21 @@ toEgestServer = unwrap >>> wrap
 
 init :: CreateEgestPayload -> Effect State
 init payload@{streamId, aggregatorPoP} = do
+  let
+    egestKey = payloadToEgestKey payload
+    relayKey = RelayKey streamId Primary
   logInfo "Egest starting" {payload}
-  _ <- Bus.subscribe (serverName streamId) IntraPoP.bus IntraPoPBus
+  _ <- Bus.subscribe (serverName egestKey) IntraPoP.bus IntraPoPBus
   {egestAvailableAnnounceMs, lingerTimeMs, relayCreationRetryMs} <- Config.egestAgentConfig
 
   thisServer <- PoPDefinition.getThisServer
-  _ <- IntraPoP.announceLocalEgestIsAvailable streamId
-  _ <- Timer.sendEvery (serverName streamId) egestAvailableAnnounceMs Tick
-  _ <- Timer.sendAfter (serverName streamId) 0 InitStreamRelays
-  maybeRelay <- IntraPoP.whereIsStreamRelay streamId
+  _ <- IntraPoP.announceLocalEgestIsAvailable egestKey
+  _ <- Timer.sendEvery (serverName egestKey) egestAvailableAnnounceMs Tick
+  _ <- Timer.sendAfter (serverName egestKey) 0 InitStreamRelays
+
+  maybeRelay <- IntraPoP.whereIsStreamRelay relayKey
   let
-    state ={ streamId
+    state ={ egestKey
            , aggregatorPoP
            , thisServer : toEgestServer thisServer
            , relay : Nothing
@@ -136,11 +143,11 @@ init payload@{streamId, aggregatorPoP} = do
       pure state
     Nothing -> do
       -- Launch
-      _ <- StreamRelayInstanceSup.startRelay {streamId, aggregatorPoP}
+      _ <- StreamRelayInstanceSup.startRelay {streamId, streamRole: Primary, aggregatorPoP}
       pure state
 
 handleInfo :: Msg -> State -> Effect (CastResult State)
-handleInfo msg state@{streamId} =
+handleInfo msg state@{egestKey: EgestKey ourStreamId} =
   case msg of
     Tick -> CastNoReply <$> handleTick state
 
@@ -148,14 +155,15 @@ handleInfo msg state@{streamId} =
 
     MaybeStop ref -> maybeStop ref state
 
-    IntraPoPBus (IngestAggregatorExited stoppingStreamId serverAddress)
-      | stoppingStreamId == streamId -> doStop state
+    IntraPoPBus (IngestAggregatorExited (AggregatorKey streamId streamRole) serverAddress)
+     -- TODO - PRIMARY BACKUP
+      | streamId == ourStreamId -> doStop state
       | otherwise -> pure $ CastNoReply state
 
 
 handleTick :: State -> Effect State
-handleTick state@{streamId} = do
-  _ <- IntraPoP.announceLocalEgestIsAvailable streamId
+handleTick state@{egestKey} = do
+  _ <- IntraPoP.announceLocalEgestIsAvailable egestKey
   pure state
 
 maybeStop :: Ref -> State -> Effect (CastResult State)
@@ -166,18 +174,18 @@ maybeStop ref state@{ clientCount
   | otherwise = pure $ CastNoReply state
 
 doStop :: State -> Effect (CastResult State)
-doStop state@{streamId} = do
-  logInfo "Egest stopping" {streamId: streamId}
-  IntraPoP.announceLocalEgestStopped streamId
+doStop state@{egestKey} = do
+  logInfo "Egest stopping" {egestKey}
+  IntraPoP.announceLocalEgestStopped egestKey
   pure $ CastStop state
 
 
 initStreamRelay :: State -> Effect State
-initStreamRelay state@{relayCreationRetry, streamId, aggregatorPoP, thisServer} = do
+initStreamRelay state@{relayCreationRetry, egestKey: egestKey@(EgestKey streamId), aggregatorPoP, thisServer} = do
   relayResp <- findOrStartRelayForStream state
   case spy "initStreamRelay - relayResp" relayResp of
     Left _ ->  do
-      _ <- Timer.sendAfter (serverName streamId) (unwrap relayCreationRetry) InitStreamRelays
+      _ <- Timer.sendAfter (serverName egestKey) (unwrap relayCreationRetry) InitStreamRelays
       pure state
     Right local@(Local _) -> do
       let _ = spy "initStreamRelay - register" {}
@@ -192,7 +200,7 @@ initStreamRelay state@{relayCreationRetry, streamId, aggregatorPoP, thisServer} 
   where
     relayRegistrationPayload  :: RegisterEgestPayload
     relayRegistrationPayload =
-      {streamId, deliverTo: state.thisServer}
+      {streamId, streamRole: Primary, deliverTo: state.thisServer}
 
 
 
@@ -203,16 +211,16 @@ initStreamRelay state@{relayCreationRetry, streamId, aggregatorPoP, thisServer} 
 -- otherwise 404
 --------------------------------------------------------------------------------
 findOrStartRelayForStream :: State -> Effect (ResourceResp Server)
-findOrStartRelayForStream state@{streamId, thisServer} = do
-  mRelay <- IntraPoP.whereIsStreamRelay streamId
+findOrStartRelayForStream state@{egestKey: EgestKey streamId, thisServer} = do
+  mRelay <- IntraPoP.whereIsStreamRelay $ RelayKey streamId Primary
   maybe' (\_ -> launchLocalOrRemote state) (pure <<< Right) mRelay
 
 
 launchLocalOrRemote :: State -> Effect (ResourceResp Server)
-launchLocalOrRemote state@{streamId, aggregatorPoP, thisServer} =
+launchLocalOrRemote state@{egestKey: egestKey@(EgestKey streamId), aggregatorPoP, thisServer} =
   launchLocalOrRemoteGeneric filterForLoad launchLocal launchRemote
   where
-    payload = {streamId, aggregatorPoP} :: CreateRelayPayload
+    payload = {streamId, streamRole: Primary, aggregatorPoP} :: CreateRelayPayload
     launchLocal _ = do
       _ <- StreamRelayInstanceSup.startRelay payload
       pure unit
@@ -264,7 +272,7 @@ filterForLoad (ServerLoad sl) = sl.load < loadThresholdToCreateRelay
   -- same pop -> 1) If server with aggregator has cap
 
 
--- createRelayInThisPoP :: StreamId -> PoPName -> List ViaPoPs -> Server -> Effect (Either FailureReason Server)
+-- createRelayInThisPoP :: EgestKey -> PoPName -> List ViaPoPs -> Server -> Effect (Either FailureReason Server)
 -- createRelayInThisPoP streamId thisPoPName routes ingestAggregator = do
 --   maybeCandidateRelayServer <- IntraPoP.getIdleServer (const true)
 

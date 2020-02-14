@@ -6,12 +6,13 @@ module Rtsv2.Handler.Relay
        , stats
        , proxiedStats
        , StartState
+       , ProxyState
        ) where
 
 import Prelude
 
 import Data.Either (Either(..), hush, isRight)
-import Data.Maybe (Maybe, isNothing, maybe)
+import Data.Maybe (Maybe(..), isJust, isNothing, maybe)
 import Data.Newtype (unwrap)
 import Erl.Cowboy.Handlers.Rest (moved, notMoved)
 import Erl.Cowboy.Req (StatusCode(..), replyWithoutBody, setHeader)
@@ -19,23 +20,26 @@ import Erl.Data.List (List, singleton, (:))
 import Erl.Data.Map as Map
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.Locator.Relay (findOrStart)
-import Rtsv2.Agents.Locator.Types (LocalOrRemote(..), NoCapacity(..), ResourceResp)
+import Rtsv2.Agents.Locator.Types (LocalOrRemote(..), NoCapacity(..), ResourceResp, fromLocalOrRemote)
 import Rtsv2.Agents.StreamRelay.Instance as StreamRelayInstance
 import Rtsv2.Agents.StreamRelay.InstanceSup as StreamRelayInstanceSup
 import Rtsv2.Agents.StreamRelay.Types (CreateRelayPayload, RegisterEgestPayload, RegisterRelayPayload)
 import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
+import Rtsv2.Web.Bindings as Bindings
+import Shared.Stream (RelayKey(..))
 import Shared.Types (Server, extractAddress)
-import Shared.Types.Agent.State as PublicState
+import Shared.Types.Agent.State (StreamRelay)
 import Simple.JSON as JSON
 import Stetson (HttpMethod(..), StetsonHandler)
 import Stetson.Rest as Rest
-import StetsonHelper (GenericStetsonGetByStreamId, GenericStetsonHandler, GenericProxyState, allBody, binaryToString, genericGetByStreamId, genericPost, genericProxyByStreamId, preHookSpyState)
+import StetsonHelper (GenericStatusState, GenericStetsonHandler, allBody, binaryToString, genericGetByStreamIdAndRole, genericPost, preHookSpyState)
 
 
-stats :: GenericStetsonGetByStreamId (PublicState.StreamRelay List)
-stats = genericGetByStreamId StreamRelayInstance.status
+stats :: StetsonHandler (GenericStatusState (StreamRelay List))
+stats =  genericGetByStreamIdAndRole
+         \streamId streamRole -> StreamRelayInstance.status $ RelayKey streamId streamRole
 
 startResource :: GenericStetsonHandler CreateRelayPayload
 startResource =  genericPost  StreamRelayInstanceSup.startRelay
@@ -46,8 +50,50 @@ registerEgest = genericPost  StreamRelayInstance.registerEgest
 registerRelay :: GenericStetsonHandler RegisterRelayPayload
 registerRelay = genericPost  StreamRelayInstance.registerRelay
 
-proxiedStats :: StetsonHandler GenericProxyState
-proxiedStats = genericProxyByStreamId IntraPoP.whereIsStreamRelay RelayStatsE
+
+newtype ProxyState
+  = ProxyState { whereIsResp :: Maybe Server
+               , relayKey:: RelayKey
+               }
+
+proxiedStats :: StetsonHandler ProxyState
+proxiedStats =
+  Rest.handler init
+  # Rest.allowedMethods (Rest.result (GET : mempty))
+  # Rest.resourceExists resourceExists
+  # Rest.previouslyExisted previouslyExisted
+  # Rest.movedTemporarily movedTemporarily
+
+  # Rest.yeeha
+  where
+    init req =
+      let
+        streamId = Bindings.streamId req
+        streamRole = Bindings.streamRole req
+        relayKey = RelayKey streamId streamRole
+      in do
+        whereIsResp <- (map fromLocalOrRemote) <$> IntraPoP.whereIsStreamRelay relayKey
+        Rest.initResult req $
+            ProxyState { whereIsResp
+                              , relayKey
+                              }
+
+    resourceExists req state =
+      Rest.result false req state
+
+    previouslyExisted req state@(ProxyState {whereIsResp}) =
+      Rest.result (isJust whereIsResp) req state
+
+    movedTemporarily req state@(ProxyState {whereIsResp, relayKey: (RelayKey streamId streamRole)}) =
+      case whereIsResp of
+        Just server ->
+          let
+            url = makeUrl server (RelayStatsE streamId streamRole)
+          in
+            Rest.result (moved $ unwrap url) req state
+        _ ->
+          Rest.result notMoved req state
+
 
 
 newtype StartState = StartState { mPayload :: Maybe CreateRelayPayload

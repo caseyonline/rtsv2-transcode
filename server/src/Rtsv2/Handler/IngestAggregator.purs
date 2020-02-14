@@ -16,23 +16,25 @@ import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
 import Rtsv2.Agents.IngestAggregatorInstanceSup as IngestAggregatorInstanceSup
 import Rtsv2.Web.Bindings as Bindings
 import Shared.LlnwApiTypes (StreamDetails)
-import Shared.Stream (StreamAndVariant(StreamAndVariant), toStreamId)
+import Shared.Stream (AggregatorKey(..), IngestKey(..))
 import Shared.Types (ServerAddress)
 import Shared.Types.Agent.State as PublicState
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (readJSON)
 import Stetson (HttpMethod(..), StetsonHandler)
 import Stetson.Rest as Rest
-import StetsonHelper (GenericStetsonGetByStreamId, GenericStetsonHandler, allBody, binaryToString, genericGetByStreamId, genericPost)
+import StetsonHelper (GenericStatusState, GenericStetsonHandler, allBody, binaryToString, genericGetByStreamIdAndRole, genericPost)
 
-ingestAggregator :: GenericStetsonGetByStreamId (PublicState.IngestAggregator List)
-ingestAggregator = genericGetByStreamId IngestAggregatorInstance.getState
+ingestAggregator :: StetsonHandler (GenericStatusState (PublicState.IngestAggregator List))
+ingestAggregator = genericGetByStreamIdAndRole
+                   \streamId role -> IngestAggregatorInstance.getState $ AggregatorKey streamId role
 
 ingestAggregators :: GenericStetsonHandler StreamDetails
 ingestAggregators = genericPost IngestAggregatorInstanceSup.startAggregator
 
 
-type IngestAggregatorsActiveIngestState = { streamAndVariant :: StreamAndVariant
+type IngestAggregatorsActiveIngestState = { ingestKey :: IngestKey
+                                          , aggregatorKey :: AggregatorKey
                                           , serverAddress :: Maybe ServerAddress
                                           }
 ingestAggregatorsActiveIngest :: StetsonHandler IngestAggregatorsActiveIngestState
@@ -40,16 +42,18 @@ ingestAggregatorsActiveIngest =
   Rest.handler (\req ->
                  let
                    streamId = Bindings.streamId req
-                   variant = Bindings.variant req
+                   streamRole = Bindings.streamRole req
+                   variant = Bindings.variant req -- todo - variant is not looked at...
                  in
-                  Rest.initResult req {streamAndVariant: StreamAndVariant streamId variant
+                  Rest.initResult req { ingestKey: IngestKey streamId streamRole variant
+                                      , aggregatorKey: AggregatorKey streamId streamRole
                                       , serverAddress: Nothing})
   # Rest.serviceAvailable (\req state -> do
                               isAgentAvailable <- IngestAggregatorInstanceSup.isAvailable
                               Rest.result isAgentAvailable req state)
   # Rest.allowedMethods (Rest.result (DELETE : POST : nil))
-  # Rest.resourceExists (\req state@{streamAndVariant} -> do
-                          isAvailable <- IngestAggregatorInstance.isAvailable (toStreamId streamAndVariant)
+  # Rest.resourceExists (\req state@{aggregatorKey} -> do
+                          isAvailable <- IngestAggregatorInstance.isAvailable aggregatorKey
                           Rest.result isAvailable req state
                         )
   # Rest.malformedRequest (\req state ->
@@ -68,13 +72,13 @@ ingestAggregatorsActiveIngest =
 
                           )
   # Rest.contentTypesAccepted (\req state ->
-                                Rest.result ((tuple2 "application/json" (\req2 state2@{ streamAndVariant
+                                Rest.result ((tuple2 "application/json" (\req2 state2@{ ingestKey
                                                                                       , serverAddress: maybeServerAddress} ->
                                                                           let
                                                                             serverAddress = fromMaybe' (lazyCrashIfMissing "server_address is nothing") maybeServerAddress
                                                                           in
                                                                             do
-                                                                              IngestAggregatorInstance.addRemoteVariant streamAndVariant serverAddress
+                                                                              IngestAggregatorInstance.addRemoteVariant ingestKey serverAddress
                                                                               Rest.result true req2 state2
                                                                         )) : nil)
                                 req state
@@ -85,8 +89,8 @@ ingestAggregatorsActiveIngest =
 
   # Rest.allowMissingPost (Rest.result false)
 
-  # Rest.deleteResource (\req state@{streamAndVariant} -> do
-                            IngestAggregatorInstance.removeVariant streamAndVariant
+  # Rest.deleteResource (\req state@{ingestKey} -> do
+                            IngestAggregatorInstance.removeVariant ingestKey
                             Rest.result true req state
                         )
 

@@ -13,27 +13,29 @@ import Effect (Effect)
 import Erl.Atom (atom)
 import Erl.Data.List (List, nil, (:))
 import Logger as Logger
-import Shared.Stream (StreamId(..), StreamAndVariant(..))
+import Shared.Stream (EgestKey(..), IngestKey(..), StreamAndVariant(..), StreamId(..))
 
 foreign import toList :: String -> List Char
 
-ingestStart :: StreamAndVariant -> Effect Unit
-ingestStart (StreamAndVariant streamId streamVariantId) = do
-  _ <- Logger.info "" { domain: (atom "audit") : (atom "ingest") : nil
-                      , event: toList "start"
-                      , customerId: toList "customerId" -- todo
-                      , streamId: toList $ unwrap streamId
-                      , streamVariantId: toList $ unwrap streamVariantId}
-  pure unit
+ingestStart :: IngestKey -> Effect Unit
+ingestStart (IngestKey streamId streamRole streamVariant) = do
+  Logger.info "" { domain: (atom "audit") : (atom "ingest") : nil
+                 , event: toList "start"
+                 , customerId: toList "customerId" -- todo
+                 , streamId: toList $ unwrap streamId
+                 , streamVariantId: toList $ unwrap streamVariant
+                 , streamRole -- TODO - the rest are strings - not sure what the goal is...
+                 }
 
-ingestStop :: StreamAndVariant -> Effect Unit
-ingestStop (StreamAndVariant streamId streamVariantId) = do
-  _ <- Logger.info "" { domain: (atom "audit") : (atom "ingest") : nil
-                      , event: toList "stop"
-                      , customerId: toList "customerId" -- todo
-                      , streamId: toList $ unwrap streamId
-                      , streamVariantId: toList $ unwrap streamVariantId}
-  pure unit
+ingestStop :: IngestKey -> Effect Unit
+ingestStop (IngestKey streamId streamRole streamVariant) = do
+  Logger.info "" { domain: (atom "audit") : (atom "ingest") : nil
+                 , event: toList "stop"
+                 , customerId: toList "customerId" -- todo
+                 , streamId: toList $ unwrap streamId
+                 , streamVariantId: toList $ unwrap streamVariant
+                 , streamRole -- TODO - the rest are strings - not sure what the goal is...
+                 }
 
 clientStart :: StreamId -> Effect Unit
 clientStart (StreamId streamId) = do
@@ -42,8 +44,8 @@ clientStart (StreamId streamId) = do
                       , streamId: toList streamId}
   pure unit
 
-clientStop :: StreamId -> Effect Unit
-clientStop (StreamId streamId) = do
+clientStop :: EgestKey -> Effect Unit
+clientStop (EgestKey (StreamId streamId)) = do
   _ <- Logger.info "" { domain: (atom "audit") : (atom "client") : nil
                       , event: toList "stop"
                       , streamId: toList streamId}

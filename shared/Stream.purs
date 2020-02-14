@@ -1,9 +1,21 @@
 module Shared.Stream
   ( ShortName(..)
   , StreamId(..)
+  , StreamIdAndRole(..)
   , StreamRole(..)
   , StreamVariant(..)
   , StreamAndVariant(..)
+  , AgentKey(..)
+  , EgestKey(..)
+  , AggregatorKey(..)
+  , RelayKey(..)
+  , IngestKey(..)
+
+  , agentKeyToAggregatorKey
+  , aggregatorKeyToAgentKey
+  , ingestKeyToAggregatorKey
+  , ingestKeyToVariant
+
   , toStreamId
   , toVariant
   ) where
@@ -57,12 +69,43 @@ instance compareStreamId :: Ord StreamId where
 instance showStreamId :: Show StreamId where
   show = genericShow
 
+data StreamIdAndRole = StreamIdAndRole StreamId StreamRole
+derive instance eqStreamIdAndRole :: Eq StreamIdAndRole
+derive instance ordStreamIdAndRole :: Ord StreamIdAndRole
+
+newtype EgestKey = EgestKey StreamId
+data AggregatorKey = AggregatorKey StreamId StreamRole
+derive instance eqAggregatorKey :: Eq AggregatorKey
+derive instance ordAggregatorKey :: Ord AggregatorKey
+
+data RelayKey = RelayKey StreamId StreamRole
+data IngestKey = IngestKey StreamId StreamRole StreamVariant
+
+
+aggregatorKeyToAgentKey :: AggregatorKey -> AgentKey
+aggregatorKeyToAgentKey (AggregatorKey streamId streamRole) = AgentKey streamId streamRole
+
+data AgentKey = AgentKey StreamId StreamRole
+derive instance eqAgentKey :: Eq AgentKey
+derive instance ordAgentKey :: Ord AgentKey
+
 
 newtype StreamVariant = StreamVariant String
 derive instance genericStreamVariant :: Generic StreamVariant _
 derive instance newtypeStreamVariant :: Newtype StreamVariant _
 derive newtype instance readForeignStreamVariant :: ReadForeign StreamVariant
 derive newtype instance writeForeignStreamVariant :: WriteForeign StreamVariant
+
+
+ingestKeyToAggregatorKey :: IngestKey -> AggregatorKey
+ingestKeyToAggregatorKey (IngestKey streamId streamRole streamVariant) = (AggregatorKey streamId streamRole)
+
+
+agentKeyToAggregatorKey :: AgentKey -> AggregatorKey
+agentKeyToAggregatorKey (AgentKey streamId streamRole) = AggregatorKey streamId streamRole
+
+ingestKeyToVariant :: IngestKey -> StreamVariant
+ingestKeyToVariant (IngestKey streamId streamRole streamVariant) = streamVariant
 
 data StreamAndVariant = StreamAndVariant StreamId StreamVariant
 
@@ -103,6 +146,9 @@ instance writeForeignStreamAndVariant :: WriteForeign StreamAndVariant where
 
 data StreamRole = Primary
                 | Backup
+derive instance eqStreamRole :: Eq StreamRole
+derive instance ordStreamRole :: Ord StreamRole
+
 
 instance readForeignStreamRole :: ReadForeign StreamRole where
   readImpl =

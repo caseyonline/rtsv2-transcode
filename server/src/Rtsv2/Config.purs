@@ -45,7 +45,7 @@ import Logger as Logger
 import Partial.Unsafe (unsafeCrashWith)
 import Rtsv2.Node as Node
 import Shared.Agent (Agent, strToAgent)
-import Shared.Stream (StreamId)
+import Shared.Stream (AgentKey, AggregatorKey(..))
 import Shared.Types (Server)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (class ReadForeign, readImpl)
@@ -104,14 +104,14 @@ type TransPoPAgentConfig
     }
 
 type IntraPoPAgentApi
-  = { announceOtherPoPAggregatorIsAvailable :: StreamId -> Server -> Effect Unit
-    , announceOtherPoPAggregatorStopped :: StreamId -> Server -> Effect Unit
+  = { announceOtherPoPAggregatorIsAvailable :: AgentKey -> Server -> Effect Unit
+    , announceOtherPoPAggregatorStopped :: AgentKey -> Server -> Effect Unit
     , announceTransPoPLeader :: Effect Unit
     }
 
 type TransPoPAgentApi
-  = { announceAggregatorIsAvailable :: StreamId -> Server -> Effect Unit
-    , announceAggregatorStopped :: StreamId -> Server -> Effect Unit
+  = { announceAggregatorIsAvailable :: AgentKey -> Server -> Effect Unit
+    , announceAggregatorStopped :: AgentKey -> Server -> Effect Unit
     , handleRemoteLeaderAnnouncement :: Server -> Effect Unit
     }
 

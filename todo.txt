@@ -21,6 +21,8 @@
 [ ] - egest / client merging when load drops
 [ ] - relay merging when multiple instances start
 [ ] - what does /api/state return for aggregators when both primary and backup preset - suspect it needs role in there...
+[ ] - Egest needs to know model primary and backup
+
 
 [ ] - Shared objects
 

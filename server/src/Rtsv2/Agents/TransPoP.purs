@@ -27,7 +27,6 @@ import Ephemeral.Map (EMap)
 import Ephemeral.Map as EMap
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, head, index, length, nil, reverse, singleton, uncons, (:))
-import Erl.Data.List as List
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
 import Erl.Process (spawnLink)
@@ -53,10 +52,10 @@ import Rtsv2.Health as Health
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition (PoP)
 import Rtsv2.PoPDefinition as PoPDefinition
-import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl, makeUrlAddr)
+import Rtsv2.Router.Endpoint (Endpoint(..), makeUrlAddr)
 import Serf (IpAndPort, LamportClock, SerfCoordinate, calcRtt)
 import Serf as Serf
-import Shared.Stream (StreamId)
+import Shared.Stream (AgentKey)
 import Shared.Types (Milliseconds, PoPName, Server, ServerAddress(..), extractAddress, extractPoP, toServer)
 import Shared.Types.Agent.State as PublicState
 import Shared.Utils (distinctRandomNumbers)
@@ -95,7 +94,7 @@ data EventType
   = Available
   | Stopped
 
-data TransMessage = TMAggregatorState EventType StreamId ServerAddress
+data TransMessage = TMAggregatorState EventType AgentKey ServerAddress
 
 data Msg
   = LeaderTimeoutTick
@@ -167,7 +166,7 @@ health =
       allOtherPoPs <- PoPDefinition.getOtherPoPs
       pure $ Health.percentageToHealth healthConfig $ (Map.size members) * 100 / ((Map.size allOtherPoPs) + 1)
 
-announceAggregatorIsAvailable :: StreamId -> Server -> Effect Unit
+announceAggregatorIsAvailable :: AgentKey -> Server -> Effect Unit
 announceAggregatorIsAvailable streamId server =
   Gen.doCast serverName ((map CastNoReply) <<< doAnnounceStreamIsAvailable)
   where
@@ -181,7 +180,7 @@ announceAggregatorIsAvailable streamId server =
       maybeLogError "Trans-PoP serf event failed" result {}
       pure state
 
-announceAggregatorStopped :: StreamId -> Server -> Effect Unit
+announceAggregatorStopped :: AgentKey -> Server -> Effect Unit
 announceAggregatorStopped streamId server =
   Gen.doCast serverName ((map CastNoReply) <<< doAnnounceStreamStopped)
   where
@@ -331,22 +330,22 @@ handleInfo msg state =
 
 
 handleTransPoPMessage :: TransMessage -> State -> Effect State
-handleTransPoPMessage (TMAggregatorState Available streamId address) state@{intraPoPApi} = do
-  logInfo "Remote stream available" {streamId, address}
+handleTransPoPMessage (TMAggregatorState Available agentKey address) state@{intraPoPApi} = do
+  logInfo "Remote stream available" {agentKey, address}
   mServerLocation <- PoPDefinition.whereIsServer address
   case mServerLocation of
     Nothing -> pure state
     Just location -> do
-      intraPoPApi.announceOtherPoPAggregatorIsAvailable streamId (toServer address location)
+      intraPoPApi.announceOtherPoPAggregatorIsAvailable agentKey (toServer address location)
       pure state
 
-handleTransPoPMessage (TMAggregatorState Stopped streamId address) state@{intraPoPApi} = do
-  logInfo "Remote stream stopped" {streamId, address}
+handleTransPoPMessage (TMAggregatorState Stopped agentKey address) state@{intraPoPApi} = do
+  logInfo "Remote stream stopped" {agentKey, address}
   mServerLocation <- PoPDefinition.whereIsServer address
   case mServerLocation of
     Nothing -> pure state
     Just location -> do
-      intraPoPApi.announceOtherPoPAggregatorStopped streamId (toServer address location)
+      intraPoPApi.announceOtherPoPAggregatorStopped agentKey (toServer address location)
       pure state
 
 --------------------------------------------------------------------------------
@@ -371,7 +370,7 @@ getDefaultRtts {defaultRttMs} = do
     ) Map.empty neighbourMap
 
 
-shouldProcessStreamState :: StreamId -> LamportClock -> EMap StreamId LamportClock -> Boolean
+shouldProcessStreamState :: AgentKey -> LamportClock -> EMap AgentKey LamportClock -> Boolean
 shouldProcessStreamState streamId ltime streamStateClocks =
   case EMap.lookup streamId streamStateClocks of
     Just lastLTime
@@ -612,8 +611,8 @@ joinAllSerf state@{ config: config@{rejoinEveryMs}, serfRpcAddress, members } =
 
 
 
-handleAgentMessage :: LamportClock -> EventType -> StreamId -> ServerAddress -> State -> Effect State
-handleAgentMessage msgLTime eventType streamId msgServerAddress
+handleAgentMessage :: LamportClock -> EventType -> AgentKey -> ServerAddress -> State -> Effect State
+handleAgentMessage msgLTime eventType agentKey msgServerAddress
                    state@{thisServer} = do
   -- let _ = spy "agentMessage" {name: agentMessageHandler.name, eventType, streamId, msgServerAddress}
   -- Make sure the message is from a known origin and does not have an expired Lamport clock
@@ -621,7 +620,7 @@ handleAgentMessage msgLTime eventType streamId msgServerAddress
   then
     pure state
   else let agentClock = state.agentClocks.aggregatorClocks in
-    if Map.lookup (Tuple msgServerAddress streamId) agentClock # maybe false (_ >= msgLTime)
+    if Map.lookup (Tuple msgServerAddress agentKey) agentClock # maybe false (_ >= msgLTime)
     then
       pure state
     else do
@@ -638,13 +637,13 @@ handleAgentMessage msgLTime eventType streamId msgServerAddress
           | otherwise -> do
             let
               msgServer = toServer msgServerAddress msgLocation
-              newAgentClock = Map.insert (Tuple msgServerAddress streamId) msgLTime agentClock
+              newAgentClock = Map.insert (Tuple msgServerAddress agentKey) msgLTime agentClock
 
             case eventType of
               Available -> do
-                state.intraPoPApi.announceOtherPoPAggregatorIsAvailable streamId msgServer
+                state.intraPoPApi.announceOtherPoPAggregatorIsAvailable agentKey msgServer
               Stopped -> do
-                state.intraPoPApi.announceOtherPoPAggregatorStopped streamId msgServer
+                state.intraPoPApi.announceOtherPoPAggregatorStopped agentKey msgServer
             pure $ state { agentClocks = {aggregatorClocks : newAgentClock} }
 
 startScript :: String

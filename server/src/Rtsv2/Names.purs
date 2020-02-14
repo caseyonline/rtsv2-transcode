@@ -30,31 +30,25 @@ import Erl.ModuleName (NativeModuleName(..))
 import Foreign (unsafeToForeign)
 import Pinto (ServerName(..), SupervisorName)
 import Shared.Agent (Agent(..))
-import Shared.Stream (StreamId, StreamAndVariant)
+import Shared.Stream (AgentKey, AggregatorKey, EgestKey, IngestKey, RelayKey)
 import Shared.Types (PoPName)
 
 agentSupName :: SupervisorName
 agentSupName = Local (atom "AgentSup")
 
-egestInstanceName :: forall a b. StreamId -> ServerName a b
+egestInstanceName :: forall a b. EgestKey -> ServerName a b
 egestInstanceName = gprocName2 Egest
-
--- egestProxyName :: forall a b. StreamId -> Server -> ServerName a b
--- egestProxyName = gprocProxyName3 Egest
-
--- egestProxyMatch :: StreamId -> Tuple4 String String StreamId Atom
--- egestProxyMatch streamId = tuple4 (show Egest) "proxy" streamId (atom "$1")
 
 egestInstanceSupName :: SupervisorName
 egestInstanceSupName = instanceSup Egest
 
-ingestAggregatorInstanceName :: forall a b. StreamId -> ServerName a b
+ingestAggregatorInstanceName :: forall a b. AggregatorKey -> ServerName a b
 ingestAggregatorInstanceName = gprocName2 IngestAggregator
 
 ingestAggregatorInstanceSupName :: SupervisorName
 ingestAggregatorInstanceSupName = instanceSup IngestAggregator
 
-ingestInstanceName :: forall a b. StreamAndVariant -> ServerName a b
+ingestInstanceName :: forall a b. IngestKey -> ServerName a b
 ingestInstanceName = gprocName2 Ingest
 
 ingestInstanceSupName :: SupervisorName
@@ -81,10 +75,10 @@ popDefinitionName = Local (atom "PoPDefinition")
 streamRelayInstanceSupName :: SupervisorName
 streamRelayInstanceSupName = instanceSup StreamRelay
 
-streamRelayInstanceName :: forall a b. StreamId -> ServerName a b
+streamRelayInstanceName :: forall a b. RelayKey -> ServerName a b
 streamRelayInstanceName = gprocName2 StreamRelay
 
-streamRelayDownstreamProxyName :: forall a b. StreamId -> PoPName -> ServerName a b
+streamRelayDownstreamProxyName :: forall a b. RelayKey -> PoPName -> ServerName a b
 streamRelayDownstreamProxyName = gprocName4 StreamRelay "proxy"
 
 transPoPName :: forall a b. ServerName a b
