@@ -9,6 +9,8 @@ import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype)
 import Data.Symbol (SProxy(..))
 import Effect.Aff.Class (class MonadAff)
+import Effect.Class (liftEffect)
+import Foreign.FrontEnd as FF
 import Formless as F
 import Halogen as H
 import Halogen.HTML as HH
@@ -18,7 +20,7 @@ import Rtsv2App.Capability.Navigate (class Navigate, navigate)
 import Rtsv2App.Capability.Resource.User (class ManageUser, loginUser)
 import Rtsv2App.Component.HTML.Footer (footer)
 import Rtsv2App.Component.HTML.Header as HD
-import Rtsv2App.Component.HTML.MainMenu as MM
+import Rtsv2App.Component.HTML.MenuMain as MM
 import Rtsv2App.Component.HTML.Utils (css_, safeHref, whenElem)
 import Rtsv2App.Data.Email (Email)
 import Rtsv2App.Data.Route (Route(..))
@@ -30,7 +32,8 @@ import Rtsv2App.Form.Validation as V
 -- Types for Login Page
 -------------------------------------------------------------------------------
 data Action
-  = HandleLoginForm LoginFields
+  = Initialize
+  | HandleLoginForm LoginFields
 
 type State =
   { redirect :: Boolean }
@@ -53,11 +56,18 @@ component
 component = H.mkComponent
   { initialState: identity
   , render
-  , eval: H.mkEval $ H.defaultEval { handleAction = handleAction }
+  , eval: H.mkEval $ H.defaultEval
+      { handleAction = handleAction
+      , initialize = Just Initialize
+      }
   }
   where
   handleAction :: Action -> H.HalogenM State Action ChildSlots Void m Unit
   handleAction = case _ of
+    Initialize -> do
+      -- theme initialisation
+      liftEffect $ FF.init
+      
     HandleLoginForm fields -> do
       -- loginUser also handles broadcasting the user changes to subscribed components
       -- so they receive the up-to-date value (see AppM and the `authenticate` function.)

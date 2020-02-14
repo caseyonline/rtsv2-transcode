@@ -21,7 +21,7 @@ import Rtsv2App.Capability.Navigate (class Navigate, logout)
 import Rtsv2App.Capability.Resource.User (class ManageUser, UpdateProfileFields, getCurrentUser, updateUser)
 import Rtsv2App.Component.HTML.Footer (footer)
 import Rtsv2App.Component.HTML.Header as HD
-import Rtsv2App.Component.HTML.MainMenu as MM
+import Rtsv2App.Component.HTML.MenuMain as MM
 import Rtsv2App.Component.HTML.Utils (css_)
 import Rtsv2App.Data.Avatar (Avatar)
 import Rtsv2App.Data.Avatar as Avatar

@@ -67,7 +67,7 @@ component
   => ManageApi m
   => H.Component HH.HTML Query {} Void m
 component = Connect.component $ H.mkComponent
-  { initialState: \{ currentUser } -> { route: Nothing, currentUser } 
+  { initialState: \ { currentUser } -> { route: Nothing, currentUser }
   , render
   , eval: H.mkEval $ H.defaultEval 
       { handleQuery = handleQuery 
@@ -85,13 +85,13 @@ component = Connect.component $ H.mkComponent
       -- navigate to the new route (also setting the hash)
       navigate $ fromMaybe Dashboard initialRoute
     
-    Receive { currentUser } ->
+    Receive { currentUser } -> do
       H.modify_ _ { currentUser = currentUser }
 
   handleQuery :: forall a. Query a -> H.HalogenM State Action ChildSlots Void m (Maybe a)
   handleQuery = case _ of
     Navigate dest a -> do
-      { route, currentUser } <- H.get 
+      { route, currentUser } <- H.get
       -- don't re-render unnecessarily if the route is unchanged
       when (route /= Just dest) do
         -- don't change routes if there is a logged-in user trying to access
@@ -118,7 +118,7 @@ component = Connect.component $ H.mkComponent
         HH.slot (SProxy :: _ "dashboard") unit Dashboard.component {} absurd
           # authorize currentUser
       PoPHome popName  ->
-        HH.slot (SProxy :: _ "popHome") unit PoPHome.component {popName: popName} absurd
+        HH.slot (SProxy :: _ "popHome") unit PoPHome.component { popName: popName } absurd
           # authorize currentUser
       Login -> 
         HH.slot (SProxy :: _ "login") unit Login.component { redirect: true } absurd

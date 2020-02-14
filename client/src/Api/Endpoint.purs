@@ -7,7 +7,7 @@ import Data.Generic.Rep.Show (genericShow)
 import Routing.Duplex (RouteDuplex', prefix, root, segment)
 import Routing.Duplex.Generic (noArgs, sum)
 import Routing.Duplex.Generic.Syntax ((/))
-import Rtsv2App.Data.Route (uname, popLeaderName)
+import Rtsv2App.Data.Route (uname, popName)
 import Rtsv2App.Data.Username (Username)
 import Shared.Types (PoPName)
 
@@ -33,7 +33,7 @@ endpointCodec = root $ prefix "api" $ sum
   { "LoginE"         : "users" / "login" / noArgs
   , "UserE"          : "user" / noArgs
   , "UsersE"         : "users" / noArgs
-  , "TimedRoutesE"   : "timedRoutes" / popLeaderName segment
+  , "TimedRoutesE"   : "timedRoutes" / popName segment
   , "PopDefinitionE" : "popDefinition" / noArgs
   -- automatically create query parameters
   , "ProfilesE"      : "profiles" / uname segment

@@ -36,8 +36,9 @@ foreign import setOption_ :: forall option. option -> Instance -> Effect Unit
 
 foreign import setOptionPoP_ :: forall option. option -> Instance -> Effect Unit
 
-
 foreign import setClick_ :: forall option. option -> Instance -> Effect Unit
+
+foreign import ressizeObserver_ :: Instance -> Effect Unit
 
 -- main function
 makeChart
@@ -68,6 +69,9 @@ setClick
   -> Instance
   -> Effect Unit
 setClick = setClick_
+
+ressizeObserver :: Instance -> Effect Unit
+ressizeObserver = ressizeObserver_
 
 -- types
 type ClickOption =

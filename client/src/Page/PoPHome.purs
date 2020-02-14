@@ -11,13 +11,14 @@ import Data.Either (Either(..))
 import Data.Foldable (traverse_)
 import Data.Int (toNumber)
 import Data.Maybe (Maybe(..), fromMaybe)
-import Data.Newtype (unwrap)
+import Data.Newtype (un)
 import Data.Symbol (SProxy(..))
-import Debug.Trace (spy)
+import Debug.Trace (spy, traceM)
 import Effect.Aff.Class (class MonadAff)
 import Effect.Class (liftEffect)
 import Effect.Ref as Ref
 import Foreign.ECharts as EC
+import Foreign.FrontEnd as FF
 import Halogen as H
 import Halogen.HTML as HH
 import Halogen.HTML.CSS as CSS
@@ -25,11 +26,13 @@ import Halogen.HTML.Properties as HP
 import Rtsv2App.Capability.Navigate (class Navigate)
 import Rtsv2App.Capability.Resource.Api (class ManageApi, getPoPdefinition, getTimedRoutes)
 import Rtsv2App.Capability.Resource.User (class ManageUser)
+import Rtsv2App.Component.HTML.Breadcrumb as BG
 import Rtsv2App.Component.HTML.Dropdown as DP
 import Rtsv2App.Component.HTML.Footer (footer)
 import Rtsv2App.Component.HTML.Header as HD
-import Rtsv2App.Component.HTML.MainMenu as MM
-import Rtsv2App.Component.HTML.Utils (css_)
+import Rtsv2App.Component.HTML.MainSecondary as MS
+import Rtsv2App.Component.HTML.MenuMain as MM
+import Rtsv2App.Component.HTML.Utils (css_, safeHref)
 import Rtsv2App.Data.PoPDef (PoPDefEcharts, getPoPEcharts)
 import Rtsv2App.Data.Profile (Profile)
 import Rtsv2App.Data.Route (Route(..))
@@ -41,12 +44,12 @@ import Shared.Types.Agent.State (TimedPoPRoutes, PoPDefinition)
 -- Types for Dashboard Page
 -------------------------------------------------------------------------------
 type Input =
-  { popName :: String
+  { popName :: PoPName
   }
 
 data Action
   = Initialize
-  | Receive { popName :: String, currentUser :: Maybe Profile }
+  | Receive Input
 
 type State =
   { currentUser     :: Maybe Profile
@@ -57,13 +60,14 @@ type State =
   , isOpen          :: Boolean
   , selectedRoute   :: Maybe String
   , availableRoutes :: Array String
-  , popName         :: String
+  , popName         :: PoPName
   }
 
 type ChildSlots =
   ( mainMenu :: MM.Slot Unit
   , header :: HD.Slot Unit
   , dropDown :: DP.Slot Unit
+  , menuSecondary :: MS.Slot Unit
   )
 
 -------------------------------------------------------------------------------
@@ -77,7 +81,7 @@ component
   => ManageUser m
   => ManageApi m
   => H.Component HH.HTML (Const Void) Input Void m
-component = Connect.component $ H.mkComponent
+component = H.mkComponent
   { initialState
   , render
   , eval: H.mkEval $ H.defaultEval
@@ -87,8 +91,8 @@ component = Connect.component $ H.mkComponent
       }
   }
   where
-  initialState { popName, currentUser } =
-    { currentUser
+  initialState { popName } =
+    { currentUser: Nothing
     , timedRoutes: Nothing
     , popDefenition: Nothing
     , popDefEcharts: []
@@ -103,9 +107,15 @@ component = Connect.component $ H.mkComponent
   handleAction = case _ of
     Initialize -> do
       st ← H.get
+      { popDefEnv, urlEnv, userEnv } <- ask
 
-      { popDefEnv, urlEnv } <- ask
-      -- curHostUrl <- urlEnv.curHostUrl
+      currentUser <- H.liftEffect $ Ref.read userEnv.currentUser
+
+      H.modify_ _ { currentUser = currentUser }
+
+      -- theme initialisation
+      liftEffect $ FF.init
+
       popDef <- H.liftEffect $ Ref.read popDefEnv.popDefinition
 
       -- | is popDefinition already on Global
@@ -127,7 +137,6 @@ component = Connect.component $ H.mkComponent
                                , popDefEcharts = getPoPEcharts pd
                                }
 
-
       mbTimedRoutes <- getTimedRoutes $ PoPName $ fromMaybe "" st.selectedRoute
       case mbTimedRoutes of
         Left e -> H.modify_ _ { timedRoutes = Nothing }
@@ -137,11 +146,24 @@ component = Connect.component $ H.mkComponent
               chart <- H.liftEffect $ EC.makeChart element
               H.modify_ _ { chart = Just chart }
               liftEffect $ EC.setOptionPoP {} chart
-              -- liftEffect $ EC.setClick { curHost: (unwrap urlEnv.curHostUrl), url: "/app/?#/pop/" } chart
+              -- TODO: this needs fixing as it needs to be removed when changing page
+              -- liftEffect $ EC.ressizeObserver chart
 
+    Receive input -> do
+      st <- H.get
+      when (st.popName /= input.popName) do
+        traceM st
+        H.put $ initialState input
+        -- handleAction Initialize
 
-    Receive { popName, currentUser } ->
-      H.modify_ _ { currentUser = currentUser }
+      -- st <- H.get
+      -- when (st.popName /= popName) do
+      --   H.modify_ _ { currentUser = currentUser
+      --               , popName = popName
+      --               }
+      --   handleAction Initialize
+
+      -- H.modify_ _ { currentUser = currentUser }
 
   render :: State -> H.ComponentHTML Action ChildSlots m
   render state@{ popName, currentUser } =
@@ -149,51 +171,73 @@ component = Connect.component $ H.mkComponent
       [ css_ "main" ]
       [ HH.slot (SProxy :: _ "header") unit HD.component { currentUser, route: Login } absurd
       , HH.slot (SProxy :: _ "mainMenu") unit MM.component { currentUser, route: PoPHome popName } absurd
-      , HH.div
-        [ css_ "app-content content" ]
+      , HH.slot (SProxy :: _ "menuSecondary") unit MS.component { currentUser, route: Dashboard } absurd
+      , BG.component
+        [ HH.li_
+          [ HH.text "Admin" ]
+        , HH.li_
+          [ HH.text "PoP" ]
+        , HH.li_
+          [ HH.text $ un PoPName popName ]
+        ]
+      , HH.section
+        [ css_ "hero is-hero-bar is-main-hero" ]
         [ HH.div
-          [ css_ "content-wrapper" ]
+          [ css_ "hero-body" ]
           [ HH.div
-            [ css_ "content-header row" ]
+            [ css_ "level"]
             [ HH.div
-              [ css_ "content-header-left col-md-4 col-12 mb-2" ]
-              [ HH.h3
-                [ css_ "content-header-h3" ]
-                [ HH.text ("PoP - " <> popName) ]
+              [ css_ "level-left" ]
+              [ HH.div
+                [ css_ "level-item is-hero-content-item is-uppercase" ]
+                [ HH.div_
+                  [ HH.h1
+                    [ css_ "title is-spaced" ]
+                    [ HH.text $ un PoPName popName ]
+                  , HH.a
+                    [ css_ "subtitle"
+                    , safeHref $ PoPHome $ PoPName "dal" ]
+                    [ HH.span_
+                      [HH.text "Dal"]
+                    ]
+                  ]
+                ]
+              ]
+            ]
+          ]
+        ]
+      , HH.section
+        [ css_ "section is-main-section" ]
+        [ HH.div
+          [ css_ "content-body" ]
+          [ HH.div
+            [ css_ "row" ]
+            [ HH.div
+              [ css_ "col-12" ]
+              [ HH.div
+                [ css_ "card map" ]
+                mapDiv
+                --, HH.slot (SProxy :: _ "dropDown") unit DP.component { items: ["dal", "lax", "dia", "fran"]
+                --  , buttonLabel: "select pop"} \_ -> Nothing
               ]
             ]
           , HH.div
-            [ css_ "content-body" ]
+            [ css_ "row" ]
+            [ card "Slot aggregators:" tableAgg
+            , card "Stream Details:" tableStream
+            ]
+          , HH.div
+            [ css_ "row" ]
             [ HH.div
-              [ css_ "row" ]
+              [ css_ "col-lg-12 col-md-12" ]
               [ HH.div
-                [ css_ "col-12" ]
+                [ css_ "card" ]
                 [ HH.div
-                  [ css_ "card map" ]
-                  mapDiv
-                --, HH.slot (SProxy :: _ "dropDown") unit DP.component { items: ["dal", "lax", "dia", "fran"]
-                                                                   --  , buttonLabel: "select pop"} \_ -> Nothing
-                ]
-              ]
-              
-            , HH.div
-              [ css_ "row" ]
-              [ card "Slot aggregators:" tableAgg
-              , card "Stream Details:" tableStream
-              ]
-            , HH.div
-              [ css_ "row" ]
-              [ HH.div
-                [ css_ "col-lg-12 col-md-12" ]
-                [ HH.div
-                  [ css_ "card" ]
-                  [ HH.div
-                    [ css_ "card-body" ]
-                    [ HH.h5
-                      [ css_ "card-title" ]
-                      [ HH.text "Ingest Details" ]
-                    , tableIngest
-                    ]
+                  [ css_ "card-body" ]
+                  [ HH.h5
+                    [ css_ "card-title" ]
+                    [ HH.text "Ingest Details" ]
+                  , tableIngest
                   ]
                 ]
               ]
@@ -374,40 +418,3 @@ component = Connect.component $ H.mkComponent
             ]
           ]
         ]
-
-
-
-
-
--- <div class="table-responsive">
--- 						<table class="table">
--- 							<thead>
--- 								<tr>
--- 									<th>#</th>
--- 									<th>First Name</th>
--- 									<th>Last Name</th>
--- 									<th>Username</th>
--- 								</tr>
--- 							</thead>
--- 							<tbody>
--- 								<tr>
--- 									<th scope="row">1</th>
--- 									<td>Mark</td>
--- 									<td>Otto</td>
--- 									<td>@mdo</td>
--- 								</tr>
--- 								<tr>
--- 									<th scope="row">2</th>
--- 									<td>Jacob</td>
--- 									<td>Thornton</td>
--- 									<td>@fat</td>
--- 								</tr>
--- 								<tr>
--- 									<th scope="row">3</th>
--- 									<td>Larry</td>
--- 									<td>the Bird</td>
--- 									<td>@twitter</td>
--- 								</tr>
--- 							</tbody>
--- 						</table>
--- 					</div>

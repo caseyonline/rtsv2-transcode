@@ -10,7 +10,7 @@ import Routing.Duplex.Generic (noArgs, sum)
 import Routing.Duplex.Generic.Syntax ((/))
 import Rtsv2App.Data.Username (Username)
 import Rtsv2App.Data.Username as Username
-import Shared.Types (PoPName, parsePname, toStringPname)
+import Shared.Types (PoPName(..), parsePname, toStringPname)
 
 
 -------------------------------------------------------------------------------
@@ -18,7 +18,7 @@ import Shared.Types (PoPName, parsePname, toStringPname)
 -------------------------------------------------------------------------------
 data Route
   = Dashboard
-  | PoPHome String
+  | PoPHome PoPName
   | Login
   | Register
   | Settings
@@ -34,7 +34,7 @@ routeCodec :: RouteDuplex' Route
 routeCodec = root $ sum
   { "Dashboard": noArgs
   , "Login": "login" / noArgs
-  , "PoPHome": "pop" / string segment
+  , "PoPHome": "pop" / popName segment
   , "Register": "register" / noArgs
   , "Settings": "settings" / noArgs
   }
@@ -43,5 +43,5 @@ routeCodec = root $ sum
 uname :: RouteDuplex' String -> RouteDuplex' Username
 uname = as Username.toString (Username.parse >>> note "Bad username")
 
-popLeaderName :: RouteDuplex' String -> RouteDuplex' PoPName
-popLeaderName = as toStringPname (parsePname >>> note "Bad username")
+popName :: RouteDuplex' String -> RouteDuplex' PoPName
+popName = as toStringPname (parsePname >>> note "Bad PoP name")

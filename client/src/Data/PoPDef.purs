@@ -1,4 +1,10 @@
-module Rtsv2App.Data.PoPDef where
+module Rtsv2App.Data.PoPDef
+  ( PoPDefEcharts(..)
+  , getPoPEcharts
+  , getPoPInfo
+  , unGeoLoc
+  )
+       where
 
 import Prelude
 

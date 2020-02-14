@@ -18,6 +18,7 @@ import Effect.Aff.Class (class MonadAff)
 import Effect.Class (liftEffect)
 import Effect.Ref as Ref
 import Foreign.ECharts as EC
+import Foreign.FrontEnd as FF
 import Halogen as H
 import Halogen.HTML as HH
 import Halogen.HTML.CSS as CSS
@@ -25,10 +26,13 @@ import Halogen.HTML.Properties as HP
 import Rtsv2App.Capability.Navigate (class Navigate)
 import Rtsv2App.Capability.Resource.Api (class ManageApi, getPoPdefinition, getTimedRoutes)
 import Rtsv2App.Capability.Resource.User (class ManageUser)
+import Rtsv2App.Component.HTML.Breadcrumb as BG
 import Rtsv2App.Component.HTML.Dropdown as DP
 import Rtsv2App.Component.HTML.Footer (footer)
 import Rtsv2App.Component.HTML.Header as HD
-import Rtsv2App.Component.HTML.MainMenu as MM
+import Rtsv2App.Component.HTML.MainSecondary as MS
+import Rtsv2App.Component.HTML.MenuMain as MM
+import Rtsv2App.Component.HTML.Tile as TL
 import Rtsv2App.Component.HTML.Utils (css_)
 import Rtsv2App.Data.PoPDef (PoPDefEcharts, getPoPEcharts)
 import Rtsv2App.Data.Profile (Profile)
@@ -56,9 +60,9 @@ type State =
   }
 
 type ChildSlots =
-  ( mainMenu :: MM.Slot Unit
+  ( menuMain :: MM.Slot Unit
   , header :: HD.Slot Unit
-  , dropDown :: DP.Slot Unit
+  , menuSecondary :: MS.Slot Unit
   )
 
 -------------------------------------------------------------------------------
@@ -97,8 +101,11 @@ component = Connect.component $ H.mkComponent
   handleAction = case _ of
     Initialize -> do
       st ← H.get
-
       { popDefEnv, urlEnv } <- ask
+
+      -- theme initialisation
+      liftEffect $ FF.init
+
       -- curHostUrl <- urlEnv.curHostUrl
       popDef <- H.liftEffect $ Ref.read popDefEnv.popDefinition
 
@@ -121,7 +128,6 @@ component = Connect.component $ H.mkComponent
                                , popDefEcharts = getPoPEcharts pd
                                }
 
-
       mbTimedRoutes <- getTimedRoutes $ PoPName $ fromMaybe "" st.selectedRoute
       case mbTimedRoutes of
         Left e -> H.modify_ _ { timedRoutes = Nothing }
@@ -132,55 +138,90 @@ component = Connect.component $ H.mkComponent
               H.modify_ _ { chart = Just chart }
               liftEffect $ EC.setOption { scatterData: newSt.popDefEcharts } chart
               liftEffect $ EC.setClick { curHost: (unwrap urlEnv.curHostUrl), url: "/app/?#/pop/" } chart
-
+              liftEffect $ EC.ressizeObserver chart
+              
     Receive { currentUser } ->
       H.modify_ _ { currentUser = currentUser }
 
   render :: State -> H.ComponentHTML Action ChildSlots m
   render state@{ currentUser } =
     HH.div
-      [ css_ "main" ]
-      [ HH.slot (SProxy :: _ "header") unit HD.component { currentUser, route: Login } absurd
-      , HH.slot (SProxy :: _ "mainMenu") unit MM.component { currentUser, route: Dashboard } absurd
-      , HH.div
-        [ css_ "app-content content" ]
+      [ HP.id_ "app" ]
+      [ HH.slot (SProxy :: _ "header") unit HD.component { currentUser, route: Dashboard } absurd
+      , HH.slot (SProxy :: _ "menuMain") unit MM.component { currentUser, route: Dashboard } absurd
+      , HH.slot (SProxy :: _ "menuSecondary") unit MS.component { currentUser, route: Dashboard } absurd
+      , BG.component
+        [ HH.li_
+          [ HH.text "Admin" ]
+        , HH.li_
+          [ HH.text "Dashboard" ]
+        ]
+      , HH.section
+        [ css_ "hero is-hero-bar is-main-hero" ]
         [ HH.div
-          [ css_ "content-wrapper" ]
+          [ css_ "hero-body" ]
           [ HH.div
-            [ css_ "content-header row" ]
+            [ css_ "level"]
             [ HH.div
-              [ css_ "content-header-left col-md-4 col-12 mb-2" ]
-              [ HH.h3
-                [ css_ "content-header-h3" ]
-                [ HH.text "Dashboard" ]
-              ]
-            ]
-          , HH.div
-            [ css_ "content-body" ]
-            [ HH.div
-              [ css_ "row" ]
+              [ css_ "level-left" ]
               [ HH.div
-                [ css_ "col-12" ]
-                [ HH.div
-                  [ css_ "card map" ]
-                  html
-                -- , HH.slot (SProxy :: _ "dropDown") unit DP.component { items: ["dal", "lax", "dia", "fran"]
-                --                                                      , buttonLabel: "select pop"} \_ -> Nothing
+                [ css_ "level-item is-hero-content-item" ]
+                [ HH.div_
+                  [ HH.h1
+                    [ css_ "title is-spaced" ]
+                    [ HH.text "Network Overview" ]
+                  , HH.h3
+                    [ css_ "subtitle"]
+                    []
+                  ]
                 ]
               ]
             ]
           ]
         ]
+      , HH.section
+        [ css_ "section is-main-section" ]
+        [ HH.div
+          [ css_ "tile is-ancestor"]
+          [ TL.component tileStreams
+          , TL.component tilePoP
+          , TL.component tileWarning
+          ]
+        , HH.div
+          [ css_ "card map" ]
+          [ HH.div
+            [ css_ "card-body dashboard-map"
+            , HP.ref (H.RefLabel "mymap")
+            , CSS.style do
+              Geometry.height $ Size.px (toNumber 500)
+            ]
+            []
+          ]
+        ]
       , footer
       ]
-    where
-      html =
-        [ HH.div
-          [ css_ "card-body dashboard-map"
-          , HP.ref (H.RefLabel "mymap")
-          , CSS.style do
-              Geometry.height $ Size.px (toNumber 600)
-              -- Geometry.width $ Size.pct (toNumber 100)
-          ]
-          []
-        ]
+      where
+        tileWarning =
+          { headerIconType: "mdi-arrow-down-bold"
+          , headerText    : "25 errors on 15-02-2020"
+          , subTitleH3Text: "Warnings"
+          , subTitleH1Text: "5"
+          , widgetTextType: "has-text-danger"
+          , widgetIconType: "mdi-bell"
+          }
+        tileStreams =
+          { headerIconType: "mdi-arrow-up-bold"
+          , headerText    : "33 streams on 15-02-2020"
+          , subTitleH3Text: "Active Streams"
+          , subTitleH1Text: "37"
+          , widgetTextType: "has-text-success"
+          , widgetIconType: "mdi-video-wireless"
+          }
+        tilePoP =
+          { headerIconType: "mdi-arrow-up-bold"
+          , headerText    : "4 active PoPs on 15-02-2020"
+          , subTitleH3Text: "Active PoPs"
+          , subTitleH1Text: "4"
+          , widgetTextType: "has-text-success"
+          , widgetIconType: "mdi-server"
+          }
