@@ -179,7 +179,7 @@ handle(State = #?state{rtmp_pid = Rtmp,
           rtmp:close(Rtmp),
           ok;
 
-        {just, StreamDetails} ->
+        {just, {StreamPublish, StreamDetails}} ->
           ?SLOG_INFO("Inbound stream", #{stream_id => StreamId,
                                          client_id => ClientId,
                                          path => Path,
@@ -187,7 +187,7 @@ handle(State = #?state{rtmp_pid = Rtmp,
 
           {ok, {RemoteIp, RemotePort}} = rtmp:peername(Rtmp),
 
-          case (IngestStartedFn(StreamDetails, StreamName, list_to_binary(inet:ntoa(RemoteIp)), RemotePort, self()))() of
+          case (IngestStartedFn(StreamPublish, StreamDetails, StreamName, list_to_binary(inet:ntoa(RemoteIp)), RemotePort, self()))() of
             {right, IngestKey} ->
               {ok, WorkflowPid} = start_workflow(Rtmp, StreamId, ClientId, Path, IngestKey),
 
@@ -232,7 +232,7 @@ workflow_loop(StreamName, WorkflowPid, State = #?state{ingestStoppedFn = IngestS
       workflow_loop(StreamName, WorkflowPid, State)
   end.
 
-start_workflow(Rtmp, StreamId, ClientId, Path, Key = {ingestKey, SlotName, ProfileName, StreamRole}) ->
+start_workflow(Rtmp, StreamId, ClientId, Path, Key = {ingestKey, SlotName, StreamRole, ProfileName}) ->
 
   Workflow = #workflow{
                 name = {rtmp_ingest_handler, Key},

@@ -187,6 +187,7 @@ ingestInstance =
 
 type IngestStartState = { shortName :: ShortName
                         , streamDetails :: Maybe StreamDetails
+                        , streamPublish :: Maybe StreamPublish
                         , streamAndVariant :: StreamAndVariant
                         }
 
@@ -200,6 +201,7 @@ ingestStart =
                  Rest.initResult req { shortName
                                      , streamAndVariant
                                      , streamDetails: Nothing
+                                     , streamPublish: Nothing
                                      }
                )
   # Rest.serviceAvailable (\req state -> do
@@ -207,28 +209,36 @@ ingestStart =
                             Rest.result isAgentAvailable req state)
   # Rest.resourceExists (\req state@{shortName, streamAndVariant: (StreamAndVariant _ variant)} ->
                           let
-                            apiBody :: StreamPublish
-                            apiBody = { host: "172.16.171.5"
-                                      , protocol: Rtmp
-                                      , shortname: unwrap shortName
-                                      , streamName: unwrap variant
-                                      , username: "user"}
+                            streamPublishPayload :: StreamPublish
+                            streamPublishPayload = { host: "172.16.171.5"
+                                                   , protocol: Rtmp
+                                                   , shortname: unwrap shortName
+                                                   , streamName: unwrap variant
+                                                   , username: "user"}
                           in
                            do
                              {streamPublishUrl} <- Config.llnwApiConfig
-                             restResult <- bodyToJSON <$> SpudGun.postJson (wrap streamPublishUrl) apiBody
+                             restResult <- bodyToJSON <$> SpudGun.postJson (wrap streamPublishUrl) streamPublishPayload
                              let
                                streamDetails = hush $ restResult
-                             Rest.result true req state{streamDetails = streamDetails}
+                             Rest.result true req state{ streamDetails = streamDetails
+                                                       , streamPublish = Just streamPublishPayload}
                           )
   -- TODO - hideous spawn here, but ingestInstance needs to do a monitor... - ideally we sleep forever and kill it in ingestStop...
   # Rest.contentTypesProvided (\req state ->
-                                  Rest.result (tuple2 "text/plain" (\req2 state2@{streamDetails, streamAndVariant} -> do
+                                  Rest.result (tuple2 "text/plain" (\req2 state2@{ streamDetails: maybeStreamDetails
+                                                                                 , streamAndVariant: StreamAndVariant streamId variantId
+                                                                                 , streamPublish: maybeStreamPublish
+                                                                                 } -> do
                                                                        pid <- Raw.spawn ((\_ -> Timer.sleep (wrap 10000))
                                                                                          { receive: Raw.receive
                                                                                          , receiveWithTimeout: Raw.receiveWithTimeout
                                                                                          })
-                                                                       IngestInstanceSup.startIngest (fromMaybe' (lazyCrashIfMissing "stream_details missing") streamDetails) streamAndVariant "127.0.0.1" 0 pid
+                                                                       let
+                                                                         streamDetails = fromMaybe' (lazyCrashIfMissing "stream_details missing") maybeStreamDetails
+                                                                         streamPublish = fromMaybe' (lazyCrashIfMissing "stream_publish missing") maybeStreamPublish
+                                                                         ingestKey = IngestKey streamId streamDetails.role variantId
+                                                                       IngestInstanceSup.startIngest ingestKey streamPublish streamDetails "127.0.0.1" 0 pid
                                                                        Rest.result "ingestStarted" req2 state2
                                                                    ) : nil) req state)
   # Rest.yeeha

@@ -17,6 +17,19 @@ import Shared.Stream (EgestKey(..), IngestKey(..), StreamAndVariant(..), StreamI
 
 foreign import toList :: String -> List Char
 
+-- origin ip - StreamPublish
+-- origin port - ingestState
+-- user ip - RemoteIp
+-- username - StreamPublish
+-- shortname - StreamPublish
+-- streamname - StreamPublish
+-- connectiontype - StreamPublish
+-- start_ms - ingeststate
+-- end_ms - ingeststate
+-- bytes written - ingeststate
+-- bytes read - ingeststate
+-- lost packets - ingeststate
+
 ingestStart :: IngestKey -> Effect Unit
 ingestStart (IngestKey streamId streamRole streamVariant) = do
   Logger.info "" { domain: (atom "audit") : (atom "ingest") : nil

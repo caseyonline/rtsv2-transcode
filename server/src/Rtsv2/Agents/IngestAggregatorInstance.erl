@@ -48,9 +48,9 @@ removeVariantImpl(Handle, StreamAndVariant) ->
 startWorkflow(SlotName, StreamNames) ->
 
   %% TODO - need to close down the PIDS
-  Pids = lists:map(fun({StreamAndVariant, _StreamName}) ->
-                       {ok, Pid} = webrtc_stream_server:start_link(StreamAndVariant, #{stream_module => rtsv2_webrtc_stream_handler,
-                                                                                       stream_module_args => [StreamAndVariant]}),
+  Pids = lists:map(fun({IngestKey, _StreamName}) ->
+                       {ok, Pid} = webrtc_stream_server:start_link(IngestKey, #{stream_module => rtsv2_webrtc_stream_handler,
+                                                                                stream_module_args => [IngestKey]}),
                        Pid
                    end,
                    StreamNames),
@@ -107,7 +107,7 @@ startWorkflow(SlotName, StreamNames) ->
                                   name = binary_to_atom(StreamName, utf8),
                                   display_name = StreamName,
                                   spec = #processor_spec{consumes = ?frames},
-                                  subscribes_to = {aggregate, ?frames_with_source_id(StreamAndVariant)},
+                                  subscribes_to = {aggregate, ?frames_with_source_id(StreamName)},
                                   processors = [
                                                 #processor{name = audio_decode,
                                                            display_name = <<"Audio Decode">>,
@@ -128,7 +128,7 @@ startWorkflow(SlotName, StreamNames) ->
                                                            subscribes_to = ?previous,
                                                            module = send_to_bus_processor,
                                                            config = #send_to_bus_processor_config{consumes = true,
-                                                                                                  bus_name = {audio_levels, StreamAndVariant}}
+                                                                                                  bus_name = {audio_levels, IngestKey}}
                                                           },
 
                                                 #processor{name = audio_transcode,
@@ -171,7 +171,7 @@ startWorkflow(SlotName, StreamNames) ->
                                                    module = send_to_bus_processor,
                                                    config = #send_to_bus_processor_config{
                                                                consumes = true,
-                                                               bus_name = {webrtc_stream_output, StreamAndVariant}
+                                                               bus_name = {webrtc_stream_output, IngestKey}
                                                               }
                                                   }
 
@@ -193,7 +193,7 @@ startWorkflow(SlotName, StreamNames) ->
 
                                                ]
                                  }
-                               || {StreamAndVariant, StreamName} <- StreamNames
+                               || {IngestKey, StreamName} <- StreamNames
                               ],
 
                               %% TODO - remove once complete - shouldn't be getting stray output messages
@@ -203,7 +203,7 @@ startWorkflow(SlotName, StreamNames) ->
                                   subscribes_to = binary_to_atom(StreamName, utf8),
                                   module = dev_null_processor
                                  }
-                               || {_StreamAndVariant, StreamName} <- StreamNames
+                               || {_IngestKey, StreamName} <- StreamNames
                               ]
                              ]
                },

@@ -5,7 +5,7 @@ module Rtsv2.Agents.IngestInstance
   , setSourceInfo
   , getPublicState
   , stopIngest
-  , Args
+  , StartArgs
   ) where
 
 import Prelude
@@ -40,7 +40,7 @@ import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Rtsv2.Utils (crashIfLeft)
 import Shared.Agent as Agent
-import Shared.LlnwApiTypes (StreamDetails)
+import Shared.LlnwApiTypes (StreamDetails, StreamPublish)
 import Shared.Stream (AggregatorKey, IngestKey(..), ingestKeyToAggregatorKey)
 import Shared.Types (Load, Milliseconds, Server, ServerLoad(..), extractAddress)
 import Shared.Types.Agent.State as PublicState
@@ -65,20 +65,22 @@ type State
     , ingestStartedTime :: Milliseconds
     , remoteAddress :: String
     , remotePort :: Int
+    , localPort :: Int
     , aggregatorAddr :: Maybe (LocalOrRemote Server)
     , clientMetadata :: Maybe (RtmpClientMetadata List)
     , sourceInfo :: Maybe (SourceInfo List)
     }
 
-type Args
-  = { streamDetails :: StreamDetails
+type StartArgs
+  = { streamPublish :: StreamPublish
+    , streamDetails :: StreamDetails
     , ingestKey :: IngestKey
     , remoteAddress :: String
     , remotePort :: Int
     , handlerPid :: Pid
     }
 
-startLink :: Args -> Effect StartLinkResult
+startLink :: StartArgs -> Effect StartLinkResult
 startLink args@{ingestKey} = Gen.startLink (serverName ingestKey) (init args) handleInfo
 
 isActive :: IngestKey -> Effect Boolean
@@ -103,17 +105,17 @@ stopIngest ingestKey =
 getPublicState :: IngestKey -> Effect (PublicState.Ingest List)
 getPublicState ingestKey =
   Gen.call (serverName ingestKey) \state@{ clientMetadata
-                                                 , sourceInfo
-                                                 , remoteAddress
-                                                 , remotePort
-                                                 , ingestStartedTime} -> do
+                                         , sourceInfo
+                                         , remoteAddress
+                                         , remotePort
+                                         , ingestStartedTime} -> do
     CallReply { rtmpClientMetadata: clientMetadata
               , sourceInfo
               , remoteAddress
               , remotePort
               , ingestStartedTime } state
 
-init :: Args -> Effect State
+init :: StartArgs -> Effect State
 init { streamDetails
      , ingestKey
      , remoteAddress
@@ -124,6 +126,8 @@ init { streamDetails
   Gen.monitorPid ourServerName handlerPid (\_ -> HandlerDown)
   thisServer <- PoPDefinition.getThisServer
   now <- systemTimeMs
+  {port: localPort} <- Config.rtmpIngestConfig
+
   {intraPoPLatencyMs} <- Config.globalConfig
   void $ Bus.subscribe ourServerName IntraPoP.bus IntraPoPBus
   void $ Timer.sendAfter ourServerName 0 InformAggregator
@@ -138,6 +142,7 @@ init { streamDetails
        , sourceInfo: Nothing
        , remoteAddress
        , remotePort
+       , localPort
        , ingestStartedTime: now
        }
   where
