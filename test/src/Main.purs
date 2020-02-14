@@ -158,9 +158,9 @@ main =
     ingestStart node shortName variant = get (M.URL $ api node <> "public/canary/ingest/" <> shortName <> "/" <> variant <> "/start")
     ingestStop node streamId variant = get (M.URL $ api node <> "public/canary/ingest/" <> streamId <> "/primary/" <> variant <> "/stop")
 
-    relayStats node streamId           = get (M.URL $ api node <> "agents/relay/" <> streamId)
+    relayStats node streamId           = get (M.URL $ api node <> "agents/relay/" <> streamId <> "/primary")
 
-    proxiedRelayStats node streamId    = get (M.URL $ api node <> "agents/proxied/relay/" <> streamId)
+    proxiedRelayStats node streamId    = get (M.URL $ api node <> "agents/proxied/relay/" <> streamId <> "/primary")
 
     intraPoPState node                 = get (M.URL $ api node <> "state")
 
