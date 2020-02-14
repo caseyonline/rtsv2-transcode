@@ -1,5 +1,6 @@
 module Rtsv2.Config
   ( GlobalConfig
+  , IngestInstanceConfig
   , IngestAggregatorAgentConfig
   , IngestStatsConfig
   , WebConfig
@@ -20,6 +21,7 @@ module Rtsv2.Config
   , intraPoPAgentConfig
   , transPoPAgentConfig
   , ingestStatsConfig
+  , ingestInstanceConfig
   , ingestAggregatorAgentConfig
   , egestAgentConfig
   , rtmpIngestConfig
@@ -62,6 +64,10 @@ type PoPDefinitionConfig
   = { directory :: String
     , popDefinitionFile :: String
     , wanDefinitionFile :: String
+    }
+
+type IngestInstanceConfig
+  = { eqLogIntervalMs :: Int
     }
 
 type IngestAggregatorAgentConfig
@@ -185,6 +191,10 @@ ingestAggregatorAgentConfig = do
 ingestStatsConfig :: Effect IngestStatsConfig
 ingestStatsConfig = do
   getMandatoryRecord "ingestStatsConfig"
+
+ingestInstanceConfig :: Effect IngestInstanceConfig
+ingestInstanceConfig = do
+  getMandatoryRecord "ingestInstanceConfig"
 
 egestAgentConfig :: Effect EgestAgentConfig
 egestAgentConfig = do

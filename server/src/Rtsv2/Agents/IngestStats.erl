@@ -17,10 +17,10 @@ getStatsImpl() ->
 
       Refs = ets:select(id3as_workflows, WorkflowSpec),
 
-      lists:filtermap(fun({Ref, StreamAndVariant}) ->
+      lists:filtermap(fun({Ref, IngestKey}) ->
                           MetricsSpec = [{#workflow_node_status{id =
                                                                   #workflow_node_id{ref = Ref,
-                                                                                    path = ['$1', {rtmp_ingest_handler, {streamAndVariant,'_','_'}}]},
+                                                                                    path = ['$1', {rtmp_ingest_handler, {ingestKey,'_','_','_'}}]},
                                                                 status = '$2',
                                                                 _ = '_'},
                                           [{'orelse',
@@ -33,7 +33,7 @@ getStatsImpl() ->
                           Statuses = ets:select(id3as_workflow_node_metrics, MetricsSpec),
 
                           Initial = #{ timestamp => ?now_ms
-                                     , streamAndVariant => StreamAndVariant},
+                                     , ingestKey => IngestKey},
 
                           Output = lists:foldl(fun(#status{module = frame_flow_meter,
                                                            metrics = Metrics}, Acc) ->
@@ -62,8 +62,12 @@ rtmp_metrics_metrics_to_purs(Metrics) ->
                   Acc#{remoteIp => Value};
                  (#gauge_metric{name = remote_port, value = Value}, Acc) ->
                   Acc#{remotePort => Value};
-                 (#counter_metric{name = bytes_read, value = Value}, Acc) ->
-                  Acc#{bytesRead => Value};
+                 (#counter_metric{name = total_bytes_sent, value = Value}, Acc) ->
+                  Acc#{totalBytesSent => Value};
+                 (#counter_metric{name = total_bytes_received, value = Value}, Acc) ->
+                  Acc#{totalBytesReceived => Value};
+                 (#counter_metric{name = last_bytes_read_report, value = Value}, Acc) ->
+                  Acc#{lastBytesReadReport => Value};
                  (_, Acc) ->
                   Acc
               end,

@@ -2,6 +2,7 @@ module Rtsv2.Audit
        (
          ingestStart
        , ingestStop
+       , ingestUpdate
        , clientStart
        , clientStop
        ) where
@@ -13,6 +14,7 @@ import Effect (Effect)
 import Erl.Atom (atom)
 import Erl.Data.List (List, nil, (:))
 import Logger as Logger
+import Shared.LlnwApiTypes (StreamIngestProtocol(..))
 import Shared.Stream (EgestKey(..), IngestKey(..), StreamAndVariant(..), StreamId(..))
 
 foreign import toList :: String -> List Char
@@ -49,6 +51,31 @@ ingestStop (IngestKey streamId streamRole streamVariant) = do
                  , streamVariantId: toList $ unwrap streamVariant
                  , streamRole -- TODO - the rest are strings - not sure what the goal is...
                  }
+
+ingestUpdate { ingestIp
+             , ingestPort
+             , userIp
+             , username
+             , shortname
+             , streamName
+             , connectionType
+             , startMs
+             , endMs} =
+  Logger.info "" { domain: (atom "audit") : (atom "ingest") : nil
+                 , event: toList "update"
+                 , ingestIp: toList ingestIp
+                 , ingestPort: ingestPort
+                 , userIp: toList userIp
+                 , username: toList username
+                 , shortname: toList shortname
+                 , streamName: toList streamName
+                 , connectionType: toList $ case connectionType of
+                                              Rtmp -> "RTMP"
+                                              WebRTC -> "WebRTC"
+                 , startMs
+                 , endMs
+                 }
+
 
 clientStart :: StreamId -> Effect Unit
 clientStart (StreamId streamId) = do

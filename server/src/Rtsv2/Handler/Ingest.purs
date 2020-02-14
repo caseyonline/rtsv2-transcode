@@ -26,7 +26,7 @@ import Rtsv2.Config as Config
 import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.Web.Bindings as Bindings
 import Shared.LlnwApiTypes (StreamIngestProtocol(..), StreamPublish, StreamDetails)
-import Shared.Stream (IngestKey(..), ShortName, StreamAndVariant(..), StreamId, StreamRole(..), StreamVariant, toStreamId, toVariant)
+import Shared.Stream (IngestKey(..), ShortName, StreamAndVariant(..), StreamId, StreamRole(..), StreamVariant)
 import Shared.Types.Agent.State as PublicState
 import Shared.Types.Workflow.Metrics.Commmon (Stream)
 import Shared.Utils (lazyCrashIfMissing)
@@ -70,10 +70,6 @@ metrics = { name: "ingest_frame_count"
           , help: "The average size of frames in this stream"
           , metricType: Prometheus.Gauge
           } :
-          { name: "ingest_frame_count2"
-          , help: "The number of frames processed in this stream"
-          , metricType: Prometheus.Counter
-          } :
           { name: "ingest_byte_count"
           , help: "The number of bytes processed in this stream"
           , metricType: Prometheus.Counter
@@ -90,8 +86,16 @@ metrics = { name: "ingest_frame_count"
           , help: "The last Capture-MS value measured in this stream"
           , metricType: Prometheus.Counter
           } :
-          { name: "ingest_bytes_read"
-          , help: "The last bytes-read report sent to the client"
+          { name: "ingest_bytes_sent"
+          , help: "The total number of bytes to the client"
+          , metricType: Prometheus.Counter
+          } :
+          { name: "ingest_bytes_received"
+          , help: "The total number of bytes received from the client"
+          , metricType: Prometheus.Counter
+          } :
+          { name: "ingest_last_bytes_read_report"
+          , help: "The number of bytes in the last bytes-read report sent to the client"
           , metricType: Prometheus.Counter
           } :
           nil
@@ -101,26 +105,24 @@ metrics = { name: "ingest_frame_count"
 statsToPrometheus :: PublicState.IngestStats List -> String
 statsToPrometheus stats =
   foldl (\page { timestamp
-               , streamAndVariant
+               , ingestKey: IngestKey slotId streamRole profileId
                , streamBitrateMetrics
                , frameFlowMeterMetrics
                , rtmpIngestMetrics
                } ->
          let
-           slotId = toStreamId streamAndVariant
-           profileId = toVariant streamAndVariant
            prometheusTimestamp = Prometheus.toTimestamp timestamp
          in
           page
-          # streamBitrateMetricsToPrometheus prometheusTimestamp slotId profileId streamBitrateMetrics
-          # frameFlowMetricsToPrometheus prometheusTimestamp slotId profileId frameFlowMeterMetrics
-          # rtmpMetricsToPrometheus prometheusTimestamp slotId profileId rtmpIngestMetrics
+          # streamBitrateMetricsToPrometheus prometheusTimestamp slotId profileId streamRole streamBitrateMetrics
+          # frameFlowMetricsToPrometheus prometheusTimestamp slotId profileId streamRole frameFlowMeterMetrics
+          # rtmpMetricsToPrometheus prometheusTimestamp slotId profileId streamRole rtmpIngestMetrics
         )
   (Prometheus.newPage metrics)
   stats
   # Prometheus.pageToString
   where
-    streamBitrateMetricsToPrometheus timestamp slotId profileId streamBitrateMetrics page =
+    streamBitrateMetricsToPrometheus timestamp slotId profileId streamRole streamBitrateMetrics page =
           foldl
           (\innerPage
             perStream@{ metrics: { frameCount
@@ -128,7 +130,7 @@ statsToPrometheus stats =
                                  , bitrate
                                  , averagePacketSize }} ->
            let
-             labels = labelsForStream slotId profileId perStream
+             labels = labelsForStream slotId profileId streamRole perStream
            in
             innerPage
             # Prometheus.addMetric "ingest_frame_count" frameCount labels timestamp
@@ -139,20 +141,18 @@ statsToPrometheus stats =
           page
           streamBitrateMetrics.perStreamMetrics
 
-    frameFlowMetricsToPrometheus timestamp slotId profileId frameFlowMetrics page =
+    frameFlowMetricsToPrometheus timestamp slotId profileId streamRole frameFlowMetrics page =
           foldl
           (\innerPage
-            perStream@{ metrics: { frameCount
-                                 , byteCount
+            perStream@{ metrics: { byteCount
                                  , lastDts
                                  , lastPts
                                  , lastCaptureMs
                                  }} ->
            let
-             labels = labelsForStream slotId profileId perStream
+             labels = labelsForStream slotId profileId streamRole perStream
            in
             innerPage
-            # Prometheus.addMetric "ingest_frame_count2" frameCount labels timestamp
             # Prometheus.addMetric "ingest_byte_count" byteCount labels timestamp
             # Prometheus.addMetric "ingest_last_dts" lastDts labels timestamp
             # Prometheus.addMetric "ingest_last_pts" lastPts labels timestamp
@@ -161,18 +161,22 @@ statsToPrometheus stats =
           page
           frameFlowMetrics.perStreamMetrics
 
-    rtmpMetricsToPrometheus timestamp slotId profileId {bytesRead} page =
+    rtmpMetricsToPrometheus timestamp slotId profileId streamRole {totalBytesSent, totalBytesReceived, lastBytesReadReport} page =
       let
         labels = Prometheus.toLabels $ (Tuple "slot" (Prometheus.toLabelValue (unwrap slotId))) :
                                        (Tuple "profile" (Prometheus.toLabelValue (unwrap profileId))) :
+                                       (Tuple "role" (Prometheus.toLabelValue (show streamRole))) :
                                        nil
       in
-       Prometheus.addMetric "ingest_bytes_read" bytesRead labels timestamp page
+       Prometheus.addMetric "ingest_bytes_sent" totalBytesSent labels timestamp page
+       # Prometheus.addMetric "ingest_bytes_received" totalBytesReceived labels timestamp
+       # Prometheus.addMetric "ingest_last_bytes_read_report" lastBytesReadReport labels timestamp
 
-    labelsForStream :: forall a. StreamId -> StreamVariant -> Stream a -> Prometheus.IOLabels
-    labelsForStream slotId profileId { streamId, frameType, profileName} =
+    labelsForStream :: forall a. StreamId -> StreamVariant -> StreamRole -> Stream a -> Prometheus.IOLabels
+    labelsForStream slotId profileId role { streamId, frameType, profileName} =
       Prometheus.toLabels $ (Tuple "slot" (Prometheus.toLabelValue (unwrap slotId))) :
                             (Tuple "profile" (Prometheus.toLabelValue (unwrap profileId))) :
+                            (Tuple "role" (Prometheus.toLabelValue (show role))) :
                             (Tuple "stream_id" (Prometheus.toLabelValue streamId)) :
                             (Tuple "frame_type" (Prometheus.toLabelValue (show frameType))) :
                             (Tuple "profile_name" (Prometheus.toLabelValue profileName)) :

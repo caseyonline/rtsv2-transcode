@@ -53,7 +53,8 @@ serverName :: IngestKey -> ServerName State Msg
 serverName ingestKey = Names.ingestInstanceName ingestKey
 
 data Msg
-   = InformAggregator
+   = WriteEqLog
+   | InformAggregator
    | IntraPoPBus IntraPoP.IntraPoPBusMessage
    | HandlerDown
 
@@ -61,8 +62,10 @@ type State
   = { thisServer :: Server
     , aggregatorRetryTime :: Milliseconds
     , ingestKey :: IngestKey
+    , streamPublish :: StreamPublish
     , streamDetails :: StreamDetails
     , ingestStartedTime :: Milliseconds
+    , lastIngestAuditTime :: Milliseconds
     , remoteAddress :: String
     , remotePort :: Int
     , localPort :: Int
@@ -116,24 +119,29 @@ getPublicState ingestKey =
               , ingestStartedTime } state
 
 init :: StartArgs -> Effect State
-init { streamDetails
+init { streamPublish
+     , streamDetails
      , ingestKey
      , remoteAddress
      , remotePort
      , handlerPid} = do
 
   logInfo "Ingest starting" {ingestKey, handlerPid}
-  Gen.monitorPid ourServerName handlerPid (\_ -> HandlerDown)
+
   thisServer <- PoPDefinition.getThisServer
   now <- systemTimeMs
   {port: localPort} <- Config.rtmpIngestConfig
-
   {intraPoPLatencyMs} <- Config.globalConfig
+  {eqLogIntervalMs} <- Config.ingestInstanceConfig
+
+  Gen.monitorPid ourServerName handlerPid (\_ -> HandlerDown)
   void $ Bus.subscribe ourServerName IntraPoP.bus IntraPoPBus
   void $ Timer.sendAfter ourServerName 0 InformAggregator
+  void $ Timer.sendEvery ourServerName eqLogIntervalMs WriteEqLog
   Audit.ingestStart ingestKey
 
   pure { thisServer
+       , streamPublish
        , streamDetails
        , ingestKey
        , aggregatorRetryTime: wrap intraPoPLatencyMs
@@ -144,12 +152,17 @@ init { streamDetails
        , remotePort
        , localPort
        , ingestStartedTime: now
+       , lastIngestAuditTime: now
        }
   where
     ourServerName = (serverName ingestKey)
 
 handleInfo :: Msg -> State -> Effect (CastResult State)
 handleInfo msg state@{ingestKey} = case msg of
+  WriteEqLog -> do
+    state2 <- writeEqLog state
+    pure $ CastNoReply state2
+
   InformAggregator -> do
     state2 <- informAggregator state
     pure $ CastNoReply state2
@@ -163,6 +176,28 @@ handleInfo msg state@{ingestKey} = case msg of
     logInfo "RTMP Handler has exited" {ingestKey}
     doStopIngest state
     pure $ CastStop state
+
+writeEqLog :: State -> Effect State
+writeEqLog state@{ streamPublish: { host: ingestIp
+                                  , protocol: connectionType
+                                  , shortname
+                                  , streamName
+                                  , username }
+                 , localPort: ingestPort
+                 , remoteAddress: userIp
+                 , lastIngestAuditTime: startMs} = do
+  endMs <- systemTimeMs
+  Audit.ingestUpdate { ingestIp
+                     , ingestPort
+                     , userIp
+                     , username
+                     , shortname
+                     , streamName
+                     , connectionType
+                     , startMs
+                     , endMs
+                     }
+  pure state{lastIngestAuditTime = endMs}
 
 doStopIngest :: State -> Effect Unit
 doStopIngest state@{aggregatorAddr, ingestKey} = do
