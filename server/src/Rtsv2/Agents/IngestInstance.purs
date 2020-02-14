@@ -1,5 +1,5 @@
 module Rtsv2.Agents.IngestInstance
-  ( startLink
+   ( startLink
   , isActive
   , setClientMetadata
   , setSourceInfo
@@ -29,6 +29,7 @@ import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
 import Rtsv2.Agents.IngestAggregatorInstanceSup as IngestAggregatorInstanceSup
+import Rtsv2.Agents.IngestStats as IngestStats
 import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..), launchLocalOrRemoteGeneric)
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.Locator (extractServer)
@@ -138,7 +139,6 @@ init { streamPublish
   void $ Bus.subscribe ourServerName IntraPoP.bus IntraPoPBus
   void $ Timer.sendAfter ourServerName 0 InformAggregator
   void $ Timer.sendEvery ourServerName eqLogIntervalMs WriteEqLog
-  Audit.ingestStart ingestKey
 
   pure { thisServer
        , streamPublish
@@ -160,8 +160,9 @@ init { streamPublish
 handleInfo :: Msg -> State -> Effect (CastResult State)
 handleInfo msg state@{ingestKey} = case msg of
   WriteEqLog -> do
-    state2 <- writeEqLog state
-    pure $ CastNoReply state2
+    eqLine <- ingestEqLine state
+    Audit.ingestUpdate eqLine
+    pure $ CastNoReply state{lastIngestAuditTime = eqLine.endMs}
 
   InformAggregator -> do
     state2 <- informAggregator state
@@ -177,32 +178,43 @@ handleInfo msg state@{ingestKey} = case msg of
     doStopIngest state
     pure $ CastStop state
 
-writeEqLog :: State -> Effect State
-writeEqLog state@{ streamPublish: { host: ingestIp
-                                  , protocol: connectionType
-                                  , shortname
-                                  , streamName
-                                  , username }
-                 , localPort: ingestPort
-                 , remoteAddress: userIp
-                 , lastIngestAuditTime: startMs} = do
+ingestEqLine :: State -> Effect Audit.IngestEqLine
+ingestEqLine state@{ ingestKey
+                   , streamPublish: { host: ingestIp
+                                    , protocol: connectionType
+                                    , shortname
+                                    , streamName
+                                    , username }
+                   , streamDetails: { role }
+                   , localPort: ingestPort
+                   , remoteAddress: userIp
+                   , lastIngestAuditTime: startMs} = do
   endMs <- systemTimeMs
-  Audit.ingestUpdate { ingestIp
-                     , ingestPort
-                     , userIp
-                     , username
-                     , shortname
-                     , streamName
-                     , connectionType
-                     , startMs
-                     , endMs
-                     }
-  pure state{lastIngestAuditTime = endMs}
+  stats <- IngestStats.getStatsForIngest ingestKey
+  let
+    metrics = _.rtmpIngestMetrics <$> stats
+    totalBytesSent = fromMaybe 0 ((_.totalBytesSent) <$> metrics)
+    totalBytesReceived = fromMaybe 0 ((_.totalBytesReceived) <$> metrics)
+  pure { ingestIp
+       , ingestPort
+       , userIp
+       , username
+       , shortname
+       , streamName
+       , streamRole: role
+       , connectionType
+       , startMs
+       , endMs
+       , bytesWritten: totalBytesSent
+       , bytesRead: totalBytesReceived
+       , lostPackets: 0
+       }
 
 doStopIngest :: State -> Effect Unit
 doStopIngest state@{aggregatorAddr, ingestKey} = do
   removeVariant ingestKey aggregatorAddr
-  Audit.ingestStop ingestKey
+  eqLine <- ingestEqLine state
+  Audit.ingestStop eqLine
   pure unit
 
 informAggregator :: State -> Effect State

@@ -100,9 +100,9 @@ type PoPDefinition f
                         }
     }
 
-type IngestStats f = f { timestamp :: Milliseconds
-                       , ingestKey :: IngestKey
-                       , streamBitrateMetrics :: StreamBitrateMonitor.Metrics f
-                       , frameFlowMeterMetrics :: FrameFlow.Metrics f
-                       , rtmpIngestMetrics :: RtmpIngest.Metrics
-                       }
+type IngestStats f = { timestamp :: Milliseconds
+                     , ingestKey :: IngestKey
+                     , streamBitrateMetrics :: StreamBitrateMonitor.Metrics f
+                     , frameFlowMeterMetrics :: FrameFlow.Metrics f
+                     , rtmpIngestMetrics :: RtmpIngest.Metrics
+                     }

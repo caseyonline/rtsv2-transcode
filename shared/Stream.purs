@@ -81,6 +81,7 @@ derive instance ordAggregatorKey :: Ord AggregatorKey
 data RelayKey = RelayKey StreamId StreamRole
 
 data IngestKey = IngestKey StreamId StreamRole StreamVariant
+derive instance eqIngestKey :: Eq IngestKey
 
 type IngestKeyJson = { streamId :: StreamId
                      , role :: StreamRole
