@@ -17,7 +17,7 @@ import Foreign.Object (Object)
 import Halogen as H
 import Prim.Row as Row
 import Record as Record
-import Rtsv2App.Data.PoPDef (PoPDefEcharts)
+import Rtsv2App.Data.PoP (PoPDefEcharts)
 import Shared.Types (PoPName)
 import Simple.JSON as JSON
 import Unsafe.Coerce (unsafeCoerce)

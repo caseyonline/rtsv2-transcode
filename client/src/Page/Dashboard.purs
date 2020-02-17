@@ -34,7 +34,7 @@ import Rtsv2App.Component.HTML.MainSecondary as MS
 import Rtsv2App.Component.HTML.MenuMain as MM
 import Rtsv2App.Component.HTML.Tile as TL
 import Rtsv2App.Component.HTML.Utils (css_)
-import Rtsv2App.Data.PoPDef (PoPDefEcharts, getPoPEcharts)
+import Rtsv2App.Data.PoP (PoPDefEcharts, getPoPEcharts)
 import Rtsv2App.Data.Profile (Profile)
 import Rtsv2App.Data.Route (Route(..))
 import Rtsv2App.Env (UrlEnv, UserEnv, PoPDefEnv)
@@ -103,12 +103,10 @@ component = Connect.component $ H.mkComponent
       st ← H.get
       { popDefEnv, urlEnv } <- ask
 
-      -- theme initialisation
-      liftEffect $ FF.init
-
       -- curHostUrl <- urlEnv.curHostUrl
       popDef <- H.liftEffect $ Ref.read popDefEnv.popDefinition
-
+      -- init menu JS
+      liftEffect $ FF.init
       -- | is popDefinition already on Global
       case popDef of
         -- | no then go get it manually, update locally and globally

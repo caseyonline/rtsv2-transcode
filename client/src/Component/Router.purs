@@ -9,7 +9,9 @@ import Data.Either (hush)
 import Data.Foldable (elem)
 import Data.Maybe (Maybe(..), fromMaybe, isJust)
 import Data.Symbol (SProxy(..))
+import Debug.Trace (spy, traceM)
 import Effect.Aff.Class (class MonadAff)
+import Foreign.FrontEnd as FF
 import Halogen (liftEffect)
 import Halogen as H
 import Halogen.HTML as HH
@@ -34,7 +36,8 @@ import Rtsv2App.Page.Settings as Settings
 -- Types
 -------------------------------------------------------------------------------
 type State =
-  { route :: Maybe Route 
+  { prevRoute :: Maybe Route
+  , route :: Maybe Route
   , currentUser :: Maybe Profile
   }
 
@@ -67,7 +70,7 @@ component
   => ManageApi m
   => H.Component HH.HTML Query {} Void m
 component = Connect.component $ H.mkComponent
-  { initialState: \ { currentUser } -> { route: Nothing, currentUser }
+  { initialState: \ { currentUser } -> { prevRoute: Nothing, route: Nothing, currentUser }
   , render
   , eval: H.mkEval $ H.defaultEval 
       { handleQuery = handleQuery 
@@ -97,8 +100,9 @@ component = Connect.component $ H.mkComponent
         -- don't change routes if there is a logged-in user trying to access
         -- a route only meant to be accessible to a not-logged-in session
         case (isJust currentUser && dest `elem` [ Login, Register ]) of
-          false -> H.modify_ _ { route = Just dest }
+          false -> H.modify_ _ { route = Just dest, prevRoute = route }
           _ -> pure unit
+
       pure (Just a)
 
   -- Display the login page instead of the expected page if there is no current user; a simple 
@@ -112,13 +116,13 @@ component = Connect.component $ H.mkComponent
 
   -- connecting the routes to the components
   render :: State -> H.ComponentHTML Action ChildSlots m
-  render { route, currentUser } = case route of
+  render { route, currentUser, prevRoute } = case route of
     Just r -> case r of
       Dashboard ->
         HH.slot (SProxy :: _ "dashboard") unit Dashboard.component {} absurd
           # authorize currentUser
       PoPHome popName  ->
-        HH.slot (SProxy :: _ "popHome") unit PoPHome.component { popName: popName } absurd
+        HH.slot (SProxy :: _ "popHome") unit PoPHome.component { popName, prevRoute } absurd
           # authorize currentUser
       Login -> 
         HH.slot (SProxy :: _ "login") unit Login.component { redirect: true } absurd

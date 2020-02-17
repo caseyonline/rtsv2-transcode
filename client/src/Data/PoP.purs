@@ -1,10 +1,9 @@
-module Rtsv2App.Data.PoPDef
+module Rtsv2App.Data.PoP
   ( PoPDefEcharts(..)
   , getPoPEcharts
   , getPoPInfo
   , unGeoLoc
-  )
-       where
+  ) where
 
 import Prelude
 
@@ -29,3 +28,8 @@ getPoPInfo pa = (\p -> { name: p.name, value: unGeoLoc <$> p.geoLoc } ) <$> pa
 
 unGeoLoc :: GeoLoc -> Number
 unGeoLoc = readFloat <<< (un GeoLoc)
+
+-- need to take popDefinition
+-- grab a random ip from "servers" to get back currentTransPoPLeader
+-- then attach the two together to be able to make call to correct pop leaders given popname
+-- create { popName, currentTransPoPLeader  }

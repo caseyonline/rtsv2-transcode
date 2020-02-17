@@ -4,18 +4,17 @@ import Prelude
 
 import CSS.Geometry as Geometry
 import CSS.Size as Size
-import Component.HOC.Connect as Connect
 import Control.Monad.Reader (class MonadAsk, ask)
 import Data.Const (Const)
 import Data.Either (Either(..))
 import Data.Foldable (traverse_)
 import Data.Int (toNumber)
-import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Newtype (un)
 import Data.Symbol (SProxy(..))
 import Debug.Trace (spy, traceM)
 import Effect.Aff.Class (class MonadAff)
-import Effect.Class (liftEffect)
+import Effect.Class (class MonadEffect, liftEffect)
 import Effect.Ref as Ref
 import Foreign.ECharts as EC
 import Foreign.FrontEnd as FF
@@ -32,8 +31,9 @@ import Rtsv2App.Component.HTML.Footer (footer)
 import Rtsv2App.Component.HTML.Header as HD
 import Rtsv2App.Component.HTML.MainSecondary as MS
 import Rtsv2App.Component.HTML.MenuMain as MM
-import Rtsv2App.Component.HTML.Utils (css_, safeHref)
-import Rtsv2App.Data.PoPDef (PoPDefEcharts, getPoPEcharts)
+import Rtsv2App.Component.HTML.PoPAggregator as PA
+import Rtsv2App.Component.HTML.Utils (css_)
+import Rtsv2App.Data.PoP (PoPDefEcharts, getPoPEcharts)
 import Rtsv2App.Data.Profile (Profile)
 import Rtsv2App.Data.Route (Route(..))
 import Rtsv2App.Env (UrlEnv, UserEnv, PoPDefEnv)
@@ -44,30 +44,34 @@ import Shared.Types.Agent.State (TimedPoPRoutes, PoPDefinition)
 -- Types for Dashboard Page
 -------------------------------------------------------------------------------
 type Input =
-  { popName :: PoPName
+  { popName   :: PoPName
+  , prevRoute :: Maybe Route
   }
 
 data Action
   = Initialize
+  | HandlePoPSlotArgTable PA.Message
   | Receive Input
 
 type State =
-  { currentUser     :: Maybe Profile
-  , timedRoutes     :: Maybe (Array (TimedPoPRoutes Array))
-  , popDefenition   :: Maybe (PoPDefinition Array)
-  , popDefEcharts   :: Array PoPDefEcharts
+  { availableRoutes :: Array String
   , chart           :: Maybe EC.Instance
+  , currentUser     :: Maybe Profile
   , isOpen          :: Boolean
-  , selectedRoute   :: Maybe String
-  , availableRoutes :: Array String
+  , popDefEcharts   :: Array PoPDefEcharts
+  , popDefenition   :: Maybe (PoPDefinition Array)
   , popName         :: PoPName
+  , prevRoute       :: Maybe Route
+  , selectedRoute   :: Maybe String
+  , timedRoutes     :: Maybe (Array (TimedPoPRoutes Array))
   }
 
 type ChildSlots =
-  ( mainMenu :: MM.Slot Unit
-  , header :: HD.Slot Unit
-  , dropDown :: DP.Slot Unit
-  , menuSecondary :: MS.Slot Unit
+  ( mainMenu        :: MM.Slot Unit
+  , header          :: HD.Slot Unit
+  , dropDown        :: DP.Slot Unit
+  , menuSecondary   :: MS.Slot Unit
+  , popSlotArgTable :: PA.Slot Unit
   )
 
 -------------------------------------------------------------------------------
@@ -91,16 +95,17 @@ component = H.mkComponent
       }
   }
   where
-  initialState { popName } =
-    { currentUser: Nothing
-    , timedRoutes: Nothing
-    , popDefenition: Nothing
-    , popDefEcharts: []
-    , popName
-    , selectedRoute: Just "fra"
-    , isOpen: false
-    , availableRoutes: ["dia", "Dal", "lax", "fra"]
+  initialState { popName, prevRoute } =
+    { availableRoutes: ["dia", "Dal", "lax", "fra"]
     , chart: Nothing
+    , currentUser: Nothing
+    , isOpen: false
+    , popDefEcharts: []
+    , popDefenition: Nothing
+    , popName
+    , prevRoute
+    , selectedRoute: Just "fra"
+    , timedRoutes: Nothing
     }
 
   handleAction :: Action -> H.HalogenM State Action ChildSlots Void m Unit
@@ -108,13 +113,12 @@ component = H.mkComponent
     Initialize -> do
       st ← H.get
       { popDefEnv, urlEnv, userEnv } <- ask
+      traceM st
 
+      shouldLoadJS st.prevRoute
       currentUser <- H.liftEffect $ Ref.read userEnv.currentUser
 
       H.modify_ _ { currentUser = currentUser }
-
-      -- theme initialisation
-      liftEffect $ FF.init
 
       popDef <- H.liftEffect $ Ref.read popDefEnv.popDefinition
 
@@ -149,24 +153,17 @@ component = H.mkComponent
               -- TODO: this needs fixing as it needs to be removed when changing page
               -- liftEffect $ EC.ressizeObserver chart
 
-    Receive input -> do
+    Receive { popName, prevRoute } -> do
       st <- H.get
-      when (st.popName /= input.popName) do
-        traceM st
-        H.put $ initialState input
-        -- handleAction Initialize
+      when (st.popName /= popName) do
+        H.put $ initialState { popName, prevRoute }
+        handleAction Initialize
 
-      -- st <- H.get
-      -- when (st.popName /= popName) do
-      --   H.modify_ _ { currentUser = currentUser
-      --               , popName = popName
-      --               }
-      --   handleAction Initialize
-
-      -- H.modify_ _ { currentUser = currentUser }
+    HandlePoPSlotArgTable (PA.CheckedStreamId mStreamId) -> do
+      pure unit
 
   render :: State -> H.ComponentHTML Action ChildSlots m
-  render state@{ popName, currentUser } =
+  render state@{ popName, currentUser, popDefenition } =
     HH.div
       [ css_ "main" ]
       [ HH.slot (SProxy :: _ "header") unit HD.component { currentUser, route: Login } absurd
@@ -194,12 +191,6 @@ component = H.mkComponent
                   [ HH.h1
                     [ css_ "title is-spaced" ]
                     [ HH.text $ un PoPName popName ]
-                  , HH.a
-                    [ css_ "subtitle"
-                    , safeHref $ PoPHome $ PoPName "dal" ]
-                    [ HH.span_
-                      [HH.text "Dal"]
-                    ]
                   ]
                 ]
               ]
@@ -208,7 +199,8 @@ component = H.mkComponent
         ]
       , HH.section
         [ css_ "section is-main-section" ]
-        [ HH.div
+        [ HH.slot (SProxy :: _ "popSlotArgTable") unit PA.component { popDef: popDefenition} (Just <<< HandlePoPSlotArgTable)
+        , HH.div
           [ css_ "content-body" ]
           [ HH.div
             [ css_ "row" ]
@@ -220,11 +212,6 @@ component = H.mkComponent
                 --, HH.slot (SProxy :: _ "dropDown") unit DP.component { items: ["dal", "lax", "dia", "fran"]
                 --  , buttonLabel: "select pop"} \_ -> Nothing
               ]
-            ]
-          , HH.div
-            [ css_ "row" ]
-            [ card "Slot aggregators:" tableAgg
-            , card "Stream Details:" tableStream
             ]
           , HH.div
             [ css_ "row" ]
@@ -255,13 +242,7 @@ component = H.mkComponent
               Geometry.height $ Size.px (toNumber 600)
               -- Geometry.width $ Size.pct (toNumber 100)
           ]
-          [ HH.div
-            []
-            [ HH.h5
-              [ css_ "card-title text-center" ]
-              [ HH.text "Timed Routes" ]
-            ]
-          ]
+          []
         ]
 
       card title table =
@@ -275,9 +256,6 @@ component = H.mkComponent
                 [ css_ "card-title" ]
                 [ HH.text title ]
               , table
-              -- , HH.p
-              --   [ css_ "card-text"]
-              --   [ HH.text "Jelly beans sugar plum cheesecake cookie oat cake soufflé.Tootsie roll bonbon liquorice tiramisu pie powder.Donut sweet roll marzipan pastry cookie cake tootsie roll oat cake cookie. Sweet roll marzipan pastry halvah. Cake bear claw sweet. Tootsie roll pie marshmallow lollipop chupa chups donut fruitcake cake.Jelly beans sugar plum cheesecake cookie oat cake soufflé. Tart lollipop carrot cake sugar plum. Marshmallow wafer tiramisu jelly beans." ]
               ]
             ]
           ]
@@ -418,3 +396,11 @@ component = H.mkComponent
             ]
           ]
         ]
+
+
+shouldLoadJS :: forall m. MonadEffect m => Maybe Route -> m Unit
+shouldLoadJS =
+  maybe (liftEffect $ FF.init) \route ->
+    case route of
+      PoPHome _ -> pure unit
+      _ -> liftEffect $ FF.init

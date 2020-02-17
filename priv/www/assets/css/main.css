@@ -7684,7 +7684,7 @@ label.panel-block {
 /* Mixins */
 /* Theme components */
 nav.navbar {
-  box-shadow: 0 1px 0 rgba(24, 28, 33, 0.04); }
+  box-shadow: 0 1px 4px 0px rgba(0, 0, 0, 0.16); }
   nav.navbar .navbar-item.has-user-avatar .is-user-avatar {
     margin-right: 0.75rem;
     display: inline-flex;
@@ -8006,8 +8006,11 @@ section.hero.is-hero-bar {
   margin-bottom: 1.5rem; }
 
 .card {
-  border-radius: 6px;
+  box-shadow: 0px 1px 3px 0px rgba(0, 0, 0, 0.21);
+  border-radius: 3px;
   border: 1px solid rgba(24, 28, 33, 0.06); }
+  .card.map {
+    padding: 1.5rem; }
   .card.has-height-medium .card-content {
     height: 65vh;
     position: relative; }
