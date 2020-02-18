@@ -16,7 +16,7 @@ import Rtsv2App.Api.Request (OptionMethod, Token, fetchReq, printUrl, readToken,
 import Rtsv2App.Capability.LogMessages (class LogMessages, logError)
 import Rtsv2App.Capability.Now (class Now)
 import Rtsv2App.Data.Profile (Profile)
-import Rtsv2App.Env (UserEnv, UrlEnv)
+import Rtsv2App.Env (OriginUrl(..), UrlEnv, UserEnv)
 
 
 -------------------------------------------------------------------------------
@@ -36,6 +36,21 @@ mkRequest opts@{ endpoint, method } = do
     Right res -> do
       pure =<< liftAff $ M.text res
 
+mkOriginRequest
+  :: forall m r
+   . MonadAff m
+  => MonadAsk { urlEnv :: UrlEnv | r } m
+  => OriginUrl
+  -> OptionMethod
+  -> m String
+mkOriginRequest origin opts@{ endpoint, method } = do
+  { urlEnv } <- ask
+  response <- liftAff $ Aff.attempt $ fetchReq (M.URL $ printUrl origin endpoint) Nothing method
+  case response of
+    Left e    -> pure $ "Error making request: " <> show e
+    Right res -> do
+      pure =<< liftAff $ M.text res
+
 mkAuthRequest
   :: forall m r
    . MonadAff m
@@ -50,7 +65,6 @@ mkAuthRequest opts@{ endpoint, method } = do
     Left e    -> pure $ "Error making request: " <> show e
     Right res -> do
       pure =<< liftAff $ M.text res
-
 
 -------------------------------------------------------------------------------
 -- Token Authentication

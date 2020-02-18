@@ -42,6 +42,10 @@ newtype AuthUrl = AuthUrl String
 derive instance genericAuthUrl :: Generic AuthUrl _
 derive instance newtypeAuthUrl :: Newtype AuthUrl _
 
+newtype OriginUrl = OriginUrl String
+derive instance genericOriginUrl :: Generic OriginUrl _
+derive instance newtypeOriginUrl :: Newtype OriginUrl _
+
 type UrlEnv =
   { curHostUrl :: CurHostUrl
   , authUrl :: AuthUrl

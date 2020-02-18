@@ -21,6 +21,7 @@ data Endpoint
   | UsersE
   | TimedRoutesE PoPName
   | PopDefinitionE
+  | PublicState
   | ProfilesE Username
 
 derive instance genericEndpoint :: Generic Endpoint _
@@ -35,6 +36,7 @@ endpointCodec = root $ prefix "api" $ sum
   , "UsersE"         : "users" / noArgs
   , "TimedRoutesE"   : "timedRoutes" / popName segment
   , "PopDefinitionE" : "popDefinition" / noArgs
+  , "PublicState"    : "state" / noArgs
   -- automatically create query parameters
   , "ProfilesE"      : "profiles" / uname segment
   }

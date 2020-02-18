@@ -18,7 +18,7 @@ import Routing.Hash (setHash)
 import Rtsv2App.Api.Endpoint (Endpoint(..))
 import Rtsv2App.Api.Request (RequestMethod(..))
 import Rtsv2App.Api.Request as Request
-import Rtsv2App.Api.Utils (authenticate, mkAuthRequest, mkRequest)
+import Rtsv2App.Api.Utils (authenticate, mkAuthRequest, mkOriginRequest, mkRequest)
 import Rtsv2App.Capability.LogMessages (class LogMessages)
 import Rtsv2App.Capability.Navigate (class Navigate, navigate)
 import Rtsv2App.Capability.Now (class Now)
@@ -28,7 +28,7 @@ import Rtsv2App.Data.Log as Log
 import Rtsv2App.Data.Profile (ProfileEmailRes)
 import Rtsv2App.Data.Route as Route
 import Rtsv2App.Env (Env, LogLevel(..))
-import Shared.Types.Agent.State (TimedPoPRoutes, PoPDefinition)
+import Shared.Types.Agent.State (PoPDefinition, TimedPoPRoutes, IntraPoP)
 import Simple.JSON as JSON
 import Type.Equality (class TypeEquals, from)
 
@@ -119,4 +119,11 @@ instance manageAPIAppM :: ManageApi AppM where
     case JSON.readJSON response of
       Left e -> pure $ Left $ show e
       Right (res :: PoPDefinition Array) -> do
+        pure $ Right res
+
+  getPublicState originUrl = do
+    response <- mkOriginRequest originUrl { endpoint: PublicState, method: Get }
+    case JSON.readJSON response of
+      Left e -> pure $ Left $ show e
+      Right (res :: IntraPoP Array) -> do
         pure $ Right res

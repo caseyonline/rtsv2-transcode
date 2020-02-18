@@ -100,26 +100,14 @@ component = H.mkComponent
                   [ HH.text "Address" ]
                 ]
               ]
+            , HH.tbody_
+              []
             ]
           ]
         ]
     ]
 
--- <thead>
---             <tr>
---               <th class="checkbox-cell">
---                 <label class="b-checkbox checkbox">
---                   <input type="checkbox" value="false">
---                   <span class="check"></span>
---                   <span class="control-label"></span>
---                 </label>
---               </th>
---               <th></th>
---               <th>Name</th>
---               <th>Company</th>
---               <th>City</th>
---               <th>Progress</th>
---               <th>Created</th>
---               <th></th>
---             </tr>
---             </thead>
+
+tableBody =
+  HH.tr_
+  []
