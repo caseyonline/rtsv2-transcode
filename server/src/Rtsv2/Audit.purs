@@ -14,7 +14,7 @@ import Erl.Atom (atom)
 import Erl.Data.List (List, nil, (:))
 import Logger as Logger
 import Shared.LlnwApiTypes (StreamIngestProtocol(..))
-import Shared.Stream (EgestKey(..), StreamId(..))
+import Shared.Stream (EgestKey(..), StreamId(..), StreamRole)
 import Shared.Types (Milliseconds)
 
 foreign import toList :: String -> List Char
@@ -26,6 +26,7 @@ type IngestEqLine =
   , username :: String
   , shortname :: String
   , streamName :: String
+  , streamRole :: StreamRole
   , connectionType :: StreamIngestProtocol
   , startMs :: Milliseconds
   , endMs :: Milliseconds
@@ -67,6 +68,7 @@ writeIngestLine reason { ingestIp
                        , username
                        , shortname
                        , streamName
+                       , streamRole
                        , connectionType
                        , startMs
                        , endMs
@@ -82,6 +84,7 @@ writeIngestLine reason { ingestIp
                  , username: toList username
                  , shortname: toList shortname
                  , streamName: toList streamName
+                 , streamRole: toList $ show streamRole
                  , connectionType: toList $ case connectionType of
                                               Rtmp -> "RTMP"
                                               WebRTC -> "WebRTC"
