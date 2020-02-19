@@ -27,19 +27,16 @@ import Rtsv2.Agents.StreamRelay.Types (CreateRelayPayload, RegisterEgestPayload,
 import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
-import Rtsv2.Web.Bindings as Bindings
-import Shared.Stream (RelayKey(..))
+import Shared.Stream (RelayKey(..), StreamId, StreamRole)
 import Shared.Types (Server, extractAddress)
 import Shared.Types.Agent.State (StreamRelay)
 import Simple.JSON as JSON
 import Stetson (HttpMethod(..), StetsonHandler)
 import Stetson.Rest as Rest
-import StetsonHelper (GenericStatusState, GenericStetsonHandler, allBody, binaryToString, genericGetByStreamIdAndRole, genericPost, preHookSpyState)
+import StetsonHelper (GenericStatusState, GenericStetsonHandler, allBody, binaryToString, genericGet, genericPost, preHookSpyState)
 
-
-stats :: StetsonHandler (GenericStatusState (StreamRelay List))
-stats =  genericGetByStreamIdAndRole
-         \streamId streamRole -> StreamRelayInstance.status $ RelayKey streamId streamRole
+stats :: StreamId -> StreamRole -> StetsonHandler (GenericStatusState (StreamRelay List))
+stats streamId streamRole = genericGet $ StreamRelayInstance.status $ RelayKey streamId streamRole
 
 startResource :: GenericStetsonHandler CreateRelayPayload
 startResource =  genericPost  StreamRelayInstanceSup.startRelay
@@ -56,8 +53,8 @@ newtype ProxyState
                , relayKey:: RelayKey
                }
 
-proxiedStats :: StetsonHandler ProxyState
-proxiedStats =
+proxiedStats :: StreamId -> StreamRole -> StetsonHandler ProxyState
+proxiedStats streamId streamRole =
   Rest.handler init
   # Rest.allowedMethods (Rest.result (GET : mempty))
   # Rest.resourceExists resourceExists
@@ -66,17 +63,13 @@ proxiedStats =
 
   # Rest.yeeha
   where
-    init req =
-      let
-        streamId = Bindings.streamId req
-        streamRole = Bindings.streamRole req
-        relayKey = RelayKey streamId streamRole
-      in do
-        whereIsResp <- (map fromLocalOrRemote) <$> IntraPoP.whereIsStreamRelay relayKey
-        Rest.initResult req $
-            ProxyState { whereIsResp
-                              , relayKey
-                              }
+    init req = do
+      let relayKey = RelayKey streamId streamRole
+      whereIsResp <- (map fromLocalOrRemote) <$> IntraPoP.whereIsStreamRelay relayKey
+      Rest.initResult req $
+          ProxyState { whereIsResp
+                            , relayKey
+                            }
 
     resourceExists req state =
       Rest.result false req state

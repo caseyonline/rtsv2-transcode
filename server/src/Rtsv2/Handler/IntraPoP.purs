@@ -1,8 +1,8 @@
 module Rtsv2.Handler.IntraPoP
-       ( leader
-       , publicState
-       , testHelper
-       ) where
+  ( leader
+  , publicState
+  , testHelper
+  ) where
 
 import Prelude
 
@@ -15,19 +15,15 @@ import Shared.Types (extractAddress)
 import Shared.Types.Agent.State as PublicState
 import StetsonHelper (GenericStetsonGet, GenericStetsonHandler, genericGet, genericGetText, genericPost)
 
-
 --TODO - use genericGet
 --leader:: StetsonHandler String
 leader :: GenericStetsonGet String
-leader = genericGetText
-         (\_ -> do
-             mLeader <- IntraPoPAgent.getCurrentTransPoPLeader
-             pure $ fromMaybe "" (unwrap <<< extractAddress <$> mLeader)
-         )
-
+leader = genericGetText do
+  mLeader <- IntraPoPAgent.getCurrentTransPoPLeader
+  pure $ fromMaybe "" (unwrap <<< extractAddress <$> mLeader)
 
 testHelper :: GenericStetsonHandler IntraPoP.TestHelperPayload
 testHelper =  genericPost IntraPoP.testHelper
 
 publicState :: GenericStetsonGet (PublicState.IntraPoP List)
-publicState = genericGet (\_ -> IntraPoP.getPublicState)
+publicState = genericGet IntraPoP.getPublicState

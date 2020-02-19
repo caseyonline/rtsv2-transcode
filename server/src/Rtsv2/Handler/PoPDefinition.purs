@@ -8,4 +8,4 @@ import Shared.Types.Agent.State as PublicState
 import StetsonHelper (GenericStetsonGet, genericGet)
 
 popDefinition :: GenericStetsonGet (PublicState.PoPDefinition List)
-popDefinition = genericGet (\_ -> PoPDefinition.getPublicPoPDefinition)
+popDefinition = genericGet PoPDefinition.getPublicPoPDefinition

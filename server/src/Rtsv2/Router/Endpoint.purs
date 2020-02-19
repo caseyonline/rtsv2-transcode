@@ -48,7 +48,7 @@ data Endpoint
   | WorkflowGraphE String
   | WorkflowMetricsE String
   | WorkflowStructureE String
-  | IngestAggregatorE StreamId
+  | IngestAggregatorE StreamId StreamRole
   | IngestAggregatorPlayerE StreamId
   | IngestAggregatorPlayerJsE StreamId
   | IngestAggregatorActiveIngestsE StreamId StreamRole StreamVariant
@@ -101,7 +101,7 @@ endpoint = root $ sum
   , "WorkflowMetricsE"                                 : "" / "api" / "workflows" / segment / "metrics"
   , "WorkflowStructureE"                               : "" / "api" / "workflows" / segment / "structure"
 
-  , "IngestAggregatorE"                                : "" / "api" / "agents" / "ingestAggregator" / streamId segment
+  , "IngestAggregatorE"                                : "" / "api" / "agents" / "ingestAggregator" / streamId segment / streamRole segment
   , "IngestAggregatorPlayerE"                          : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "player"
   , "IngestAggregatorPlayerJsE"                        : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "js" -- TODO - would like to add '/ "[...]"' bit it causes compiler error that I don't understand
   , "IngestAggregatorActiveIngestsE"                   : "" / "api" / "agents" / "ingestAggregator" / streamId segment / streamRole segment / "activeIngests" / variant segment

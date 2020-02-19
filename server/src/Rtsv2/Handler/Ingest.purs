@@ -24,6 +24,8 @@ import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
 import Rtsv2.Agents.IngestStats as IngestStats
 import Rtsv2.Config as Config
 import Rtsv2.Handler.MimeType as MimeType
+import Rtsv2.Router.Endpoint (Canary)
+import Rtsv2.Web.Bindings (streamAndVariant)
 import Rtsv2.Web.Bindings as Bindings
 import Shared.LlnwApiTypes (StreamIngestProtocol(..), StreamPublish, StreamDetails)
 import Shared.Stream (IngestKey(..), ShortName, StreamAndVariant(..), StreamId, StreamRole(..), StreamVariant)
@@ -35,7 +37,7 @@ import SpudGun (bodyToJSON)
 import SpudGun as SpudGun
 import Stetson (StetsonHandler)
 import Stetson.Rest as Rest
-import StetsonHelper (GenericStetsonGet, GenericStetsonGet2, genericGet2, genericGetBy2)
+import StetsonHelper (GenericStetsonGet, GenericStetsonGet2, genericGet, genericGet2, genericGetBy2)
 
 ingestInstances :: StetsonHandler Unit
 ingestInstances =
@@ -182,12 +184,8 @@ statsToPrometheus stats =
                             (Tuple "profile_name" (Prometheus.toLabelValue profileName)) :
                             nil
 
-ingestInstance :: GenericStetsonGet (PublicState.Ingest List)
-ingestInstance =
-  genericGetBy2 Bindings.streamIdBindingLiteral Bindings.variantBindingLiteral getState
-  where
-    -- TODO - hardcoded Primary
-    getState streamId variant = IngestInstance.getPublicState (IngestKey streamId Primary variant)
+ingestInstance :: StreamId -> StreamVariant -> GenericStetsonGet (PublicState.Ingest List)
+ingestInstance streamId variant = genericGet $ IngestInstance.getPublicState $ IngestKey streamId Primary variant
 
 type IngestStartState = { shortName :: ShortName
                         , streamDetails :: Maybe StreamDetails
@@ -195,13 +193,9 @@ type IngestStartState = { shortName :: ShortName
                         , streamAndVariant :: StreamAndVariant
                         }
 
-ingestStart :: StetsonHandler IngestStartState
-ingestStart =
+ingestStart :: Canary -> ShortName -> StreamAndVariant -> StetsonHandler IngestStartState
+ingestStart canary shortName streamAndVariant =
   Rest.handler (\req ->
-                 let
-                   shortName = Bindings.shortName req
-                   streamAndVariant = Bindings.streamAndVariant req
-                 in
                  Rest.initResult req { shortName
                                      , streamAndVariant
                                      , streamDetails: Nothing
@@ -250,16 +244,9 @@ ingestStart =
 
 type IngestStopState = { ingestKey :: IngestKey }
 
-ingestStop :: StetsonHandler IngestStopState
-ingestStop =
-  Rest.handler (\req ->
-                 let
-                   streamId = Bindings.streamId req
-                   role = Bindings.streamRole req
-                   variant = Bindings.variant req
-                 in
-                 Rest.initResult req {ingestKey: IngestKey streamId role variant}
-               )
+ingestStop :: Canary -> StreamId -> StreamRole -> StreamVariant ->  StetsonHandler IngestStopState
+ingestStop canary streamId role variant =
+  Rest.handler (\req -> Rest.initResult req {ingestKey: IngestKey streamId role variant})
 
   # Rest.serviceAvailable (\req state -> do
                             isAgentAvailable <- IngestInstanceSup.isAvailable

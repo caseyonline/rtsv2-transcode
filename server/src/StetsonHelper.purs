@@ -8,6 +8,7 @@ module StetsonHelper
        , genericGetBy2
        , genericGet
        , genericGet2
+       , genericGet2'
        , genericGetText
        , genericProxyByStreamId
        , genericProvideJson
@@ -155,7 +156,7 @@ genericGetByStreamId = genericGetBy Bindings.streamIdBindingLiteral
 genericGetByPoPName :: forall a. WriteForeign a =>  (PoPName -> Effect a) -> GenericStetsonGetByStreamId a
 genericGetByPoPName = genericGetBy  Bindings.popNameBindingLiteral
 
-genericGet :: forall a. WriteForeign a => (Unit -> Effect a) -> GenericStetsonGet a
+genericGet :: forall a. WriteForeign a => Effect a -> GenericStetsonGet a
 genericGet getData =
   Rest.handler init
   # Rest.allowedMethods (Rest.result (GET : mempty))
@@ -163,10 +164,12 @@ genericGet getData =
   # Rest.yeeha
   where
     init req = do
-      mData <- noprocToMaybe $ getData unit
+      mData <- noprocToMaybe getData
       Rest.initResult req $ GenericStatusState { mData }
 
-genericGetText :: (Unit -> Effect String) -> GenericStetsonGet String
+
+
+genericGetText :: (Effect String) -> GenericStetsonGet String
 genericGetText getData =
   Rest.handler init
   # Rest.allowedMethods (Rest.result (GET : mempty))
@@ -174,9 +177,8 @@ genericGetText getData =
   # Rest.yeeha
   where
     init req = do
-      mData <- noprocToMaybe $ getData unit
+      mData <- noprocToMaybe getData
       Rest.initResult req $ GenericStatusState { mData }
-
 
 
 
@@ -207,6 +209,26 @@ genericGet2 bindings getDatas =
             Rest.stop newReq state
         Just theData ->
           Rest.result theData req state
+
+
+genericGet2' :: List (Tuple2 String (Effect String)) -> StetsonHandler Unit
+genericGet2' getDatas =
+  Rest.handler init
+  # Rest.allowedMethods (Rest.result (GET : mempty))
+  # Rest.contentTypesProvided (\req state -> Rest.result ((\tuple -> tuple2 (fst tuple) (provideContent (snd tuple))) <$> getDatas) req state)
+  # Rest.yeeha
+  where
+    init req = Rest.initResult req unit
+
+    provideContent getData req state = do
+      noprocToMaybe getData >>=
+        case _ of
+          Nothing ->
+            do
+              newReq <- replyWithoutBody (StatusCode 404) Map.empty req
+              Rest.stop newReq state
+          Just theData ->
+            Rest.result theData req state
 
 genericGetBy :: forall a b. Newtype a String => WriteForeign b =>  String -> (a -> Effect b) -> GenericStetsonGetByStreamId b
 genericGetBy bindElement getData =

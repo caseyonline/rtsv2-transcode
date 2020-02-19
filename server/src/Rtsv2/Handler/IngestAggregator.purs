@@ -14,20 +14,18 @@ import Erl.Data.List (List, nil, (:))
 import Erl.Data.Tuple (tuple2)
 import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
 import Rtsv2.Agents.IngestAggregatorInstanceSup as IngestAggregatorInstanceSup
-import Rtsv2.Web.Bindings as Bindings
 import Shared.LlnwApiTypes (StreamDetails)
-import Shared.Stream (AggregatorKey(..), IngestKey(..))
+import Shared.Stream (AggregatorKey(..), IngestKey(..), StreamId, StreamRole, StreamVariant)
 import Shared.Types (ServerAddress)
 import Shared.Types.Agent.State as PublicState
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (readJSON)
 import Stetson (HttpMethod(..), StetsonHandler)
 import Stetson.Rest as Rest
-import StetsonHelper (GenericStatusState, GenericStetsonHandler, allBody, binaryToString, genericGetByStreamIdAndRole, genericPost)
+import StetsonHelper (GenericStatusState, GenericStetsonHandler, allBody, binaryToString, genericGet, genericPost)
 
-ingestAggregator :: StetsonHandler (GenericStatusState (PublicState.IngestAggregator List))
-ingestAggregator = genericGetByStreamIdAndRole
-                   \streamId role -> IngestAggregatorInstance.getState $ AggregatorKey streamId role
+ingestAggregator :: StreamId -> StreamRole -> StetsonHandler (GenericStatusState (PublicState.IngestAggregator List))
+ingestAggregator streamId role = genericGet $ IngestAggregatorInstance.getState $ AggregatorKey streamId role
 
 ingestAggregators :: GenericStetsonHandler StreamDetails
 ingestAggregators = genericPost IngestAggregatorInstanceSup.startAggregator
@@ -37,14 +35,9 @@ type IngestAggregatorsActiveIngestState = { ingestKey :: IngestKey
                                           , aggregatorKey :: AggregatorKey
                                           , serverAddress :: Maybe ServerAddress
                                           }
-ingestAggregatorsActiveIngest :: StetsonHandler IngestAggregatorsActiveIngestState
-ingestAggregatorsActiveIngest =
+ingestAggregatorsActiveIngest :: StreamId -> StreamRole -> StreamVariant -> StetsonHandler IngestAggregatorsActiveIngestState
+ingestAggregatorsActiveIngest streamId streamRole variant =
   Rest.handler (\req ->
-                 let
-                   streamId = Bindings.streamId req
-                   streamRole = Bindings.streamRole req
-                   variant = Bindings.variant req -- todo - variant is not looked at...
-                 in
                   Rest.initResult req { ingestKey: IngestKey streamId streamRole variant
                                       , aggregatorKey: AggregatorKey streamId streamRole
                                       , serverAddress: Nothing})

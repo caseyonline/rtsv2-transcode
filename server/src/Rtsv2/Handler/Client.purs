@@ -24,7 +24,7 @@ import Rtsv2.Agents.Locator.Types (FailureReason(..), LocalOrRemote(..))
 import Rtsv2.Audit as Audit
 import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.PoPDefinition as PoPDefinition
-import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
+import Rtsv2.Router.Endpoint (Endpoint(..), Canary, makeUrl)
 import Rtsv2.Web.Bindings as Bindings
 import Shared.Stream (EgestKey(..), StreamId)
 import Shared.Types (Server, extractAddress)
@@ -36,8 +36,8 @@ newtype ClientStartState = ClientStartState { streamId :: StreamId
                                             , egestResp :: (Either FailureReason (LocalOrRemote Server))
                                             }
 
-clientStart :: StetsonHandler ClientStartState
-clientStart =
+clientStart :: Canary -> StreamId -> StetsonHandler ClientStartState
+clientStart canary streamId =
   Rest.handler init
   # Rest.allowedMethods (Rest.result (POST : mempty))
   # Rest.contentTypesAccepted (\req state -> Rest.result (singleton $ MimeType.json acceptAny) req state)
@@ -48,13 +48,10 @@ clientStart =
 
   where
     init req = do
-      let
-        streamId = Bindings.streamId req
       thisServer <- PoPDefinition.getThisServer
       egestResp <- findEgestAndRegister streamId thisServer
-      let
-        req2 = setHeader "x-servedby" (unwrap $ extractAddress thisServer) req
-        _ = spy "egestResp" egestResp
+      let req2 = setHeader "x-servedby" (unwrap $ extractAddress thisServer) req
+          _ = spy "egestResp" egestResp
       Rest.initResult req2 $ ClientStartState { streamId, egestResp }
 
     acceptAny req state = Rest.result true req state
@@ -99,9 +96,8 @@ clientStart =
 
 
 type ClientStopState = { egestKey :: EgestKey }
-clientStop :: StetsonHandler ClientStopState
-clientStop =
-
+clientStop :: Canary -> StreamId -> StetsonHandler ClientStopState
+clientStop canary streamId =
   Rest.handler init
   # Rest.allowedMethods (Rest.result (POST : mempty))
   # Rest.contentTypesAccepted (\req state -> Rest.result (singleton $ MimeType.json removeClient) req state)
@@ -110,8 +106,6 @@ clientStop =
 
   where
     init req = do
-      let
-        streamId = Bindings.streamId req
       thisNode <- extractAddress <$> PoPDefinition.getThisServer
       Rest.initResult req { egestKey: EgestKey streamId
                           }
@@ -125,8 +119,7 @@ clientStop =
       isActive <- EgestInstance.isActive egestKey
       Rest.result isActive req state
 
-    removeClient req state@{egestKey} =
-      do
+    removeClient req state@{egestKey} = do
       _ <- Audit.clientStop egestKey
       _ <- EgestInstance.removeClient egestKey
       Rest.result true req state
