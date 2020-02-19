@@ -1,4 +1,4 @@
-module Rtsv2App.Page.PoPHome where
+module Rtsv2App.Page.PoPDashboard where
 
 import Prelude
 
@@ -33,10 +33,11 @@ import Rtsv2App.Component.HTML.MainSecondary as MS
 import Rtsv2App.Component.HTML.MenuMain as MM
 import Rtsv2App.Component.HTML.PoPAggregator as PA
 import Rtsv2App.Component.HTML.Utils (css_)
-import Rtsv2App.Data.PoP (PoPDefEcharts, getPoPEcharts)
+import Rtsv2App.Data.PoP (PoPDefEcharts, getPoPEcharts, getPoPServers)
 import Rtsv2App.Data.Profile (Profile)
 import Rtsv2App.Data.Route (Route(..))
 import Rtsv2App.Env (UrlEnv, UserEnv, PoPDefEnv)
+import Shared.Stream (StreamId(..))
 import Shared.Types (PoPName(..))
 import Shared.Types.Agent.State (TimedPoPRoutes, PoPDefinition)
 
@@ -62,7 +63,7 @@ type State =
   , popDefenition   :: Maybe (PoPDefinition Array)
   , popName         :: PoPName
   , prevRoute       :: Maybe Route
-  , selectedRoute   :: Maybe String
+  , selectedRoute   :: Maybe PoPName
   , timedRoutes     :: Maybe (Array (TimedPoPRoutes Array))
   }
 
@@ -104,7 +105,7 @@ component = H.mkComponent
     , popDefenition: Nothing
     , popName
     , prevRoute
-    , selectedRoute: Just "fra"
+    , selectedRoute: Nothing
     , timedRoutes: Nothing
     }
 
@@ -113,15 +114,16 @@ component = H.mkComponent
     Initialize -> do
       st ← H.get
       { popDefEnv, urlEnv, userEnv } <- ask
-      traceM st
 
       shouldLoadJS st.prevRoute
+
       currentUser <- H.liftEffect $ Ref.read userEnv.currentUser
 
       H.modify_ _ { currentUser = currentUser }
 
       popDef <- H.liftEffect $ Ref.read popDefEnv.popDefinition
-
+      
+      --
       -- | is popDefinition already on Global
       case popDef of
         -- | no then go get it manually, update locally and globally
@@ -137,21 +139,11 @@ component = H.mkComponent
                             , popDefEcharts = getPoPEcharts pd
                             }
         -- | yes update local state
-        Just pd -> H.modify_ _ { popDefenition = (Just pd)
-                               , popDefEcharts = getPoPEcharts pd
-                               }
-
-      mbTimedRoutes <- getTimedRoutes $ PoPName $ fromMaybe "" st.selectedRoute
-      case mbTimedRoutes of
-        Left e -> H.modify_ _ { timedRoutes = Nothing }
-        Right timedRoutes -> do
-          newSt <- H.get
-          H.getHTMLElementRef (H.RefLabel "mymap") >>= traverse_ \element -> do
-              chart <- H.liftEffect $ EC.makeChart element
-              H.modify_ _ { chart = Just chart }
-              liftEffect $ EC.setOptionPoP {} chart
-              -- TODO: this needs fixing as it needs to be removed when changing page
-              -- liftEffect $ EC.ressizeObserver chart
+        Just pd -> do
+          popServers <- liftEffect $ getPoPServers pd
+          H.modify_ _ { popDefenition = (Just pd)
+                      , popDefEcharts = getPoPEcharts pd
+                      }
 
     Receive { popName, prevRoute } -> do
       st <- H.get
@@ -160,15 +152,18 @@ component = H.mkComponent
         handleAction Initialize
 
     HandlePoPSlotArgTable (PA.CheckedStreamId mStreamId) -> do
+      -- H.modify_ _ { selectedRoute = mStreamId }
+      -- st ← H.get
+      -- getRoutesPopulateMap st
       pure unit
 
   render :: State -> H.ComponentHTML Action ChildSlots m
   render state@{ popName, currentUser, popDefenition } =
     HH.div
       [ css_ "main" ]
-      [ HH.slot (SProxy :: _ "header") unit HD.component { currentUser, route: Login } absurd
-      , HH.slot (SProxy :: _ "mainMenu") unit MM.component { currentUser, route: PoPHome popName } absurd
-      , HH.slot (SProxy :: _ "menuSecondary") unit MS.component { currentUser, route: Dashboard } absurd
+      [ HH.slot (SProxy :: _ "header") unit HD.component { currentUser, route: LoginR } absurd
+      , HH.slot (SProxy :: _ "mainMenu") unit MM.component { currentUser, route: PoPDashboardR popName } absurd
+      , HH.slot (SProxy :: _ "menuSecondary") unit MS.component { currentUser, route: DashboardR } absurd
       , BG.component
         [ HH.li_
           [ HH.text "Admin" ]
@@ -402,5 +397,25 @@ shouldLoadJS :: forall m. MonadEffect m => Maybe Route -> m Unit
 shouldLoadJS =
   maybe (liftEffect $ FF.init) \route ->
     case route of
-      PoPHome _ -> pure unit
+      PoPDashboardR _ -> pure unit
       _ -> liftEffect $ FF.init
+
+
+-- getRoutesPopulateMap
+--   :: forall m
+--    . MonadAff m
+--   => ManageApi m
+--   => State
+--   -> H.HalogenM State Action ChildSlots Void m Unit
+-- getRoutesPopulateMap st = do
+--   mbTimedRoutes <- getTimedRoutes st.popName st.selectedRoute
+--   case mbTimedRoutes of
+--     Left e -> H.modify_ _ { timedRoutes = Nothing }
+--     Right timedRoutes -> do
+--       newSt <- H.get
+--       H.getHTMLElementRef (H.RefLabel "mymap") >>= traverse_ \element -> do
+--         chart <- H.liftEffect $ EC.makeChart element
+--         H.modify_ _ { chart = Just chart }
+--         liftEffect $ EC.setOptionPoP {} chart
+--         -- TODO: this needs fixing as it needs to be removed when changing page
+--         -- liftEffect $ EC.ressizeObserver chart

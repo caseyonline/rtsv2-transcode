@@ -6,17 +6,19 @@ import Control.Monad.Reader (class MonadAsk, ask)
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple(..))
+import Debug.Trace (spy)
 import Effect.Aff as Aff
 import Effect.Aff.Bus as Bus
 import Effect.Aff.Class (class MonadAff, liftAff)
 import Effect.Class (liftEffect)
 import Effect.Ref as Ref
 import Milkis as M
-import Rtsv2App.Api.Request (OptionMethod, Token, fetchReq, printUrl, readToken, writeToken)
+import Rtsv2App.Api.Request (OptionMethod, Token, fetchReq, printOriginUrl, printUrl, readToken, writeToken)
 import Rtsv2App.Capability.LogMessages (class LogMessages, logError)
 import Rtsv2App.Capability.Now (class Now)
 import Rtsv2App.Data.Profile (Profile)
-import Rtsv2App.Env (OriginUrl(..), UrlEnv, UserEnv)
+import Rtsv2App.Env (UrlEnv, UserEnv)
+import Shared.Types (ServerAddress)
 
 
 -------------------------------------------------------------------------------
@@ -40,12 +42,11 @@ mkOriginRequest
   :: forall m r
    . MonadAff m
   => MonadAsk { urlEnv :: UrlEnv | r } m
-  => OriginUrl
+  => ServerAddress
   -> OptionMethod
   -> m String
-mkOriginRequest origin opts@{ endpoint, method } = do
-  { urlEnv } <- ask
-  response <- liftAff $ Aff.attempt $ fetchReq (M.URL $ printUrl origin endpoint) Nothing method
+mkOriginRequest serverAdd opts@{ endpoint, method } = do
+  response <- liftAff $ Aff.attempt $ fetchReq (M.URL $ printOriginUrl serverAdd endpoint) Nothing method
   case response of
     Left e    -> pure $ "Error making request: " <> show e
     Right res -> do

@@ -6,14 +6,15 @@ import CSS.Geometry as Geometry
 import CSS.Size as Size
 import Component.HOC.Connect as Connect
 import Control.Monad.Reader (class MonadAsk, ask)
+import Data.Array (length)
 import Data.Const (Const)
 import Data.Either (Either(..))
 import Data.Foldable (traverse_)
 import Data.Int (toNumber)
-import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Maybe (Maybe(..))
 import Data.Newtype (unwrap)
 import Data.Symbol (SProxy(..))
-import Debug.Trace (spy)
+import Debug.Trace (spy, traceM)
 import Effect.Aff.Class (class MonadAff)
 import Effect.Class (liftEffect)
 import Effect.Ref as Ref
@@ -24,22 +25,21 @@ import Halogen.HTML as HH
 import Halogen.HTML.CSS as CSS
 import Halogen.HTML.Properties as HP
 import Rtsv2App.Capability.Navigate (class Navigate)
-import Rtsv2App.Capability.Resource.Api (class ManageApi, getPoPdefinition, getTimedRoutes)
+import Rtsv2App.Capability.Resource.Api (class ManageApi, getPoPdefinition)
 import Rtsv2App.Capability.Resource.User (class ManageUser)
 import Rtsv2App.Component.HTML.Breadcrumb as BG
-import Rtsv2App.Component.HTML.Dropdown as DP
 import Rtsv2App.Component.HTML.Footer (footer)
 import Rtsv2App.Component.HTML.Header as HD
 import Rtsv2App.Component.HTML.MainSecondary as MS
 import Rtsv2App.Component.HTML.MenuMain as MM
 import Rtsv2App.Component.HTML.Tile as TL
-import Rtsv2App.Component.HTML.Utils (css_)
-import Rtsv2App.Data.PoP (PoPDefEcharts, getPoPEcharts)
+import Rtsv2App.Component.HTML.Utils (css_, printHref)
+import Rtsv2App.Data.PoP (PoPDefEcharts, getPoPEcharts, getPoPServers, getPoPState, toAggregators, toPoPleaders)
 import Rtsv2App.Data.Profile (Profile)
 import Rtsv2App.Data.Route (Route(..))
 import Rtsv2App.Env (UrlEnv, UserEnv, PoPDefEnv)
-import Shared.Types (PoPName(..))
-import Shared.Types.Agent.State (TimedPoPRoutes, PoPDefinition)
+import Shared.Types (Server)
+import Shared.Types.Agent.State (PoPDefinition, TimedPoPRoutes, AggregatorLocation)
 
 -------------------------------------------------------------------------------
 -- Types for Dashboard Page
@@ -49,14 +49,12 @@ data Action
   | Receive { currentUser :: Maybe Profile }
 
 type State =
-  { currentUser     :: Maybe Profile
-  , timedRoutes     :: Maybe (Array (TimedPoPRoutes Array))
-  , popDefenition   :: Maybe (PoPDefinition Array)
-  , popDefEcharts   :: Array PoPDefEcharts
-  , chart           :: Maybe EC.Instance
-  , isOpen          :: Boolean
-  , selectedRoute   :: Maybe String
-  , availableRoutes :: Array String
+  { currentUser         :: Maybe Profile
+  , popDefenition       :: Maybe (PoPDefinition Array)
+  , popDefEcharts       :: Array PoPDefEcharts
+  , chart               :: Maybe EC.Instance
+  , popLeaders          :: Array Server
+  , aggregatorLocations :: AggregatorLocation Array
   }
 
 type ChildSlots =
@@ -88,13 +86,11 @@ component = Connect.component $ H.mkComponent
   where
   initialState { currentUser } =
     { currentUser
-    , timedRoutes: Nothing
     , popDefenition: Nothing
     , popDefEcharts: []
-    , selectedRoute: Just "fra"
-    , isOpen: false
-    , availableRoutes: ["dia", "Dal", "lax", "fra"]
     , chart: Nothing
+    , popLeaders: []
+    , aggregatorLocations: mempty
     }
 
   handleAction :: Action -> H.HalogenM State Action ChildSlots Void m Unit
@@ -104,15 +100,17 @@ component = Connect.component $ H.mkComponent
       { popDefEnv, urlEnv } <- ask
 
       -- curHostUrl <- urlEnv.curHostUrl
-      popDef <- H.liftEffect $ Ref.read popDefEnv.popDefinition
+      popDefinition <- H.liftEffect $ Ref.read popDefEnv.popDefinition
+
       -- init menu JS
       liftEffect $ FF.init
+
       -- | is popDefinition already on Global
-      case popDef of
+      case popDefinition of
         -- | no then go get it manually, update locally and globally
         Nothing -> do
-          popDefenition <- getPoPdefinition
-          case popDefenition of
+          popDef <- getPoPdefinition
+          case popDef of
             Left e ->  H.modify_ _ { popDefenition = Nothing }
             Right pd -> do
                 -- | update global popDef
@@ -121,33 +119,35 @@ component = Connect.component $ H.mkComponent
                 H.modify_ _ { popDefenition = (Just pd)
                             , popDefEcharts = getPoPEcharts pd
                             }
-        -- | yes update local state
-        Just pd -> H.modify_ _ { popDefenition = (Just pd)
-                               , popDefEcharts = getPoPEcharts pd
-                               }
+        -- | yes update local state                
+        Just pd -> do
+          
+          popServers <- liftEffect $ getPoPServers pd
+          popStates <- getPoPState popServers
+          H.modify_ _ { popDefenition = (Just pd)
+                      , popDefEcharts = getPoPEcharts pd
+                      , popLeaders = toPoPleaders popStates
+                      , aggregatorLocations = toAggregators popStates
+                      }
 
-      mbTimedRoutes <- getTimedRoutes $ PoPName $ fromMaybe "" st.selectedRoute
-      case mbTimedRoutes of
-        Left e -> H.modify_ _ { timedRoutes = Nothing }
-        Right timedRoutes -> do
-          newSt <- H.get
-          H.getHTMLElementRef (H.RefLabel "mymap") >>= traverse_ \element -> do
-              chart <- H.liftEffect $ EC.makeChart element
-              H.modify_ _ { chart = Just chart }
-              liftEffect $ EC.setOption { scatterData: newSt.popDefEcharts } chart
-              liftEffect $ EC.setClick { curHost: (unwrap urlEnv.curHostUrl), url: "/app/?#/pop/" } chart
-              liftEffect $ EC.ressizeObserver chart
+      H.getHTMLElementRef (H.RefLabel "mymap") >>= traverse_ \element -> do
+        newSt <- H.get
+        chart <- H.liftEffect $ EC.makeChart element
+        H.modify_ _ { chart = Just chart }
+        liftEffect $ EC.setOption { scatterData: newSt.popDefEcharts } chart
+        liftEffect $ EC.setClick { curHost: (unwrap urlEnv.curHostUrl), url: printHref PoPR } chart
+        liftEffect $ EC.ressizeObserver chart
               
     Receive { currentUser } ->
       H.modify_ _ { currentUser = currentUser }
 
   render :: State -> H.ComponentHTML Action ChildSlots m
-  render state@{ currentUser } =
+  render state@{ currentUser, popLeaders, aggregatorLocations } =
     HH.div
       [ HP.id_ "app" ]
-      [ HH.slot (SProxy :: _ "header") unit HD.component { currentUser, route: Dashboard } absurd
-      , HH.slot (SProxy :: _ "menuMain") unit MM.component { currentUser, route: Dashboard } absurd
-      , HH.slot (SProxy :: _ "menuSecondary") unit MS.component { currentUser, route: Dashboard } absurd
+      [ HH.slot (SProxy :: _ "header") unit HD.component { currentUser, route: DashboardR } absurd
+      , HH.slot (SProxy :: _ "menuMain") unit MM.component { currentUser, route: DashboardR } absurd
+      , HH.slot (SProxy :: _ "menuSecondary") unit MS.component { currentUser, route: DashboardR } absurd
       , BG.component
         [ HH.li_
           [ HH.text "Admin" ]
@@ -181,8 +181,8 @@ component = Connect.component $ H.mkComponent
         [ css_ "section is-main-section" ]
         [ HH.div
           [ css_ "tile is-ancestor"]
-          [ TL.component tileStreams
-          , TL.component tilePoP
+          [ TL.component (tileAggregator $ length $ spy "aggregatorLocations" aggregatorLocations)
+          , TL.component (tilePoP $ length popLeaders)
           , TL.component tileWarning
           ]
         , HH.div
@@ -201,25 +201,25 @@ component = Connect.component $ H.mkComponent
       where
         tileWarning =
           { headerIconType: "mdi-arrow-down-bold"
-          , headerText    : "25 errors on 15-02-2020"
-          , subTitleH3Text: "Warnings"
+          , headerText    : "Warnings"
+          , subTitleH3Text: "Faults"
           , subTitleH1Text: "5"
           , widgetTextType: "has-text-danger"
           , widgetIconType: "mdi-bell"
           }
-        tileStreams =
+        tileAggregator agrN =
           { headerIconType: "mdi-arrow-up-bold"
-          , headerText    : "33 streams on 15-02-2020"
-          , subTitleH3Text: "Active Streams"
-          , subTitleH1Text: "37"
+          , headerText    : "Aggregators"
+          , subTitleH3Text: "Active"
+          , subTitleH1Text: show agrN
           , widgetTextType: "has-text-success"
           , widgetIconType: "mdi-video-wireless"
           }
-        tilePoP =
+        tilePoP popsN =
           { headerIconType: "mdi-arrow-up-bold"
-          , headerText    : "4 active PoPs on 15-02-2020"
-          , subTitleH3Text: "Active PoPs"
-          , subTitleH1Text: "4"
+          , headerText    : "PoPs"
+          , subTitleH3Text: "Active"
+          , subTitleH1Text: show popsN
           , widgetTextType: "has-text-success"
           , widgetIconType: "mdi-server"
           }

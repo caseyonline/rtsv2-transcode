@@ -74,7 +74,10 @@ main = HA.runHalogenAff do
       userEnv = { currentUser, userBus }
 
       popDefEnv :: PoPDefEnv
-      popDefEnv = { popDefinition }
+      popDefEnv = { popDefinition
+                  , transPoPLeaders: []
+                  , aggregatorLocations: []
+                  }
   -- Produce a proper root component for Halogen to run. combining `hoist`, `runAppM`, our environment, and our router component
     rootComponent :: H.Component HH.HTML Router.Query {} Void Aff
     rootComponent = H.hoist (runAppM environment) Router.component

@@ -17,11 +17,12 @@ import Shared.Types (PoPName(..), parsePname, toStringPname)
 -- App Routes
 -------------------------------------------------------------------------------
 data Route
-  = Dashboard
-  | PoPHome PoPName
-  | Login
-  | Register
-  | Settings
+  = DashboardR
+  | PoPDashboardR PoPName
+  | PoPR
+  | LoginR
+  | RegisterR
+  | SettingsR
 
 derive instance genericRoute :: Generic Route _
 derive instance eqRoute :: Eq Route
@@ -32,11 +33,12 @@ instance showRoute :: Show Route where
 
 routeCodec :: RouteDuplex' Route
 routeCodec = root $ sum
-  { "Dashboard": noArgs
-  , "Login": "login" / noArgs
-  , "PoPHome": "pop" / popName segment
-  , "Register": "register" / noArgs
-  , "Settings": "settings" / noArgs
+  { "DashboardR": noArgs
+  , "LoginR": "login" / noArgs
+  , "PoPDashboardR": "pop" / popName segment
+  , "PoPR": "pop" / noArgs
+  , "RegisterR": "register" / noArgs
+  , "SettingsR": "settings" / noArgs
   }
 
 -- | This combinator transforms a codec over `String` into one that operatos on the `Username` type.

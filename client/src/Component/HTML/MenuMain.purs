@@ -101,7 +101,7 @@ topLogo =
     [ css_ "aside-tools-label" ]
     [ HH.span_
       [ HH.a
-        [ safeHref Dashboard ]
+        [ safeHref DashboardR ]
         [ HH.span
           [ css_ "icon is-medium is-aligned-center" ]
           [ HH.img
@@ -129,8 +129,8 @@ menuItems route =
     [ css_ "menu-list" ]
     [ HH.li_
       [ HH.a
-        [ css_ ("has-icon" <> guard (route == Dashboard) " is-active")
-        , safeHref Dashboard
+        [ css_ ("has-icon" <> guard (route == DashboardR) " is-active")
+        , safeHref DashboardR
         ]
         [ HH.span
           [ css_ "icon" ]
@@ -183,8 +183,8 @@ menuItems route =
       [ css_ "menu-list" ]
       [ HH.li_
         [ HH.a
-          [ css_ ("has-icon" <> guard (route == Settings ) " is-active")
-          , safeHref Settings
+          [ css_ ("has-icon" <> guard (route == SettingsR ) " is-active")
+          , safeHref SettingsR
           ]
           [ HH.span
             [ css_ "icon" ]

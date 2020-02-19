@@ -1,4 +1,12 @@
-module Rtsv2App.Component.HTML.Utils where
+module Rtsv2App.Component.HTML.Utils
+       ( css_
+       , css
+       , dataAttr
+       , safeHref
+       , printHref
+       , maybeElem
+       , whenElem
+       ) where
 
 import Prelude
 
@@ -12,8 +20,8 @@ import Rtsv2App.Data.Route (Route, routeCodec)
 -------------------------------------------------------------------------------
 -- Useful Halogen Utils
 -------------------------------------------------------------------------------
--- | I get annoyed writing `class_ $ ClassName "..."` over and over again. This small utility saves
--- | a few characters all over our HTML.
+
+-- | This small utility saves a few characters all over our HTML.
 css_ :: forall r i. String -> HH.IProp ( class :: String | r ) i
 css_ = HP.class_ <<< HH.ClassName
 
@@ -30,6 +38,9 @@ dataAttr atrName atrVal = HP.attr (AttrName $ "data-" <> atrName) atrVal
 -- | better `Route` type. This utility is a drop-in replacement for `href` that uses `Route`.
 safeHref :: forall r i. Route -> HH.IProp ( href :: String | r) i
 safeHref = HP.href <<< append "#" <<< print routeCodec
+
+printHref :: Route -> String
+printHref r = "/app/#" <> print routeCodec r <> "/"
 
 -- | Sometimes we need to deal with elements which may or may not exist. This function lets us
 -- | provide rendering for the element if it exists, and renders an empty node otherwise.

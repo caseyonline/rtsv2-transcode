@@ -77,14 +77,14 @@ component = H.mkComponent
         Just profile -> do
           void $ H.query F._formless unit $ F.injQuery $ SetLoginError false unit
           st <- H.get
-          when st.redirect (navigate Dashboard)
+          when st.redirect (navigate DashboardR)
 
   render :: State -> H.ComponentHTML Action ChildSlots m
   render _  =
      HH.div
       [ css_ "main" ]
-      [ HH.slot (SProxy :: _ "header") unit HD.component { currentUser: Nothing , route: Login } absurd
-      , HH.slot (SProxy :: _ "mainMenu") unit MM.component { currentUser: Nothing , route: Login } absurd
+      [ HH.slot (SProxy :: _ "header") unit HD.component { currentUser: Nothing , route: LoginR } absurd
+      , HH.slot (SProxy :: _ "mainMenu") unit MM.component { currentUser: Nothing , route: LoginR } absurd
       , HH.div
         [ css_ "app-content content" ]
         [ HH.div
@@ -124,7 +124,7 @@ component = H.mkComponent
             [ HH.div
               [ css_ "card-body" ]
               [ HH.a
-                [ safeHref Register ]
+                [ safeHref RegisterR ]
                 [ HH.text "Need an account?" ]
               , HH.slot F._formless unit formComponent unit (Just <<< HandleLoginForm)
               ]

@@ -134,7 +134,7 @@ getPoPLi pop =
     HH.li
     [ css_ "aside-secondary-li"]
     [ HH.a
-      [ safeHref $ PoPHome p.name ]
+      [ safeHref $ PoPDashboardR p.name ]
       [ HH.span
         [ css_ "icon" ]
         [ HH.i

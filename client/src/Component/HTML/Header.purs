@@ -112,7 +112,7 @@ component = H.mkComponent
             [ css_ "navbar-dropdown"]
             [ HH.a
               [ css_ "navbar-item"
-              , safeHref $ Settings
+              , safeHref $ SettingsR
               ]
               [ HH.span
                 [ css_ "icon" ]
