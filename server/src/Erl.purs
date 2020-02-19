@@ -1,5 +1,6 @@
 module Erl.Utils
        ( systemTimeMs
+       , vmTimeMs
        , sleep
        , makeRef
        , privDir
@@ -16,6 +17,7 @@ import Erl.Atom (Atom, atom)
 import Shared.Types (Milliseconds)
 
 foreign import systemTimeImpl :: Atom -> Effect Int
+foreign import vmTimeImpl :: Atom -> Effect Int
 foreign import sleepImpl :: Int -> Effect Unit
 foreign import makeRefImpl :: Effect Ref
 foreign import privDirImpl :: Atom -> String
@@ -35,6 +37,9 @@ derive newtype instance ordURL :: Ord Url
 
 systemTimeMs :: Effect Milliseconds
 systemTimeMs = wrap <$> systemTimeImpl (atom "millisecond")
+
+vmTimeMs :: Effect Milliseconds
+vmTimeMs = wrap <$> vmTimeImpl (atom "millisecond")
 
 instance eqRef :: Eq Ref where
   eq = eqRefImpl

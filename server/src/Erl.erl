@@ -1,6 +1,7 @@
 -module(erl_utils@foreign).
 
 -export([ systemTimeImpl/1
+        , vmTimeImpl/1
         , sleepImpl/1
         , makeRefImpl/0
         , privDirImpl/1
@@ -11,6 +12,11 @@
 systemTimeImpl(TimeUnit) ->
   fun() ->
       erlang:system_time(TimeUnit)
+  end.
+
+vmTimeImpl(TimeUnit) ->
+  fun() ->
+      erlang:monotonic_time(TimeUnit)
   end.
 
 sleepImpl(Ms) ->
