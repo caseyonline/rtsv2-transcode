@@ -1,12 +1,16 @@
-module Rtsv2.Agents.IngestRtmpCrytpo
+module Rtsv2.Agents.IngestRtmpCrypto
        ( startLink
-       , newContext
-       , getCryptoContexts
-       , consumeCryptoContext
-       , CryptoContext(..)
+       , newAdobeContext
+       , newLlnwContext
+       , checkCredentials
        , AdobeContextParams
        , LlnwContextParams
        , QueryContextParams
+       , Phase2Params(..)
+       , AdobePhase1Params
+       , AdobePhase2Params
+       , LlnwPhase1Params
+       , LlnwPhase2Params
        )
        where
 
@@ -16,28 +20,51 @@ import Data.FoldableWithIndex (foldlWithIndex)
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (wrap)
 import Effect (Effect)
-import Erl.Data.List (List, filter, nil, null, (:))
-import Erl.Data.Map (Map, alter, insert, lookup)
+import Erl.Data.List (List, filter, nil, null, uncons, (:))
+import Erl.Data.Map (Map, alter, delete, insert, lookup)
 import Erl.Data.Map as Map
 import Erl.Data.Tuple (Tuple2, fst, snd, tuple2)
 import Erl.Utils (vmTimeMs)
-import Partial.Unsafe (unsafeCrashWith)
 import Pinto (ServerName)
 import Pinto as Pinto
-import Pinto.Gen (CallResult(..), CastResult(..))
+import Pinto.Gen (CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Rtsv2.Config as Config
 import Rtsv2.Names as Names
-import Rtsv2.Utils (cryptoStrongToken, member)
-import Shared.LlnwApiTypes (SlotPublishAuthType(..))
+import Rtsv2.Utils (cryptoStrongToken)
+import Shared.LlnwApiTypes (PublishCredentials(..))
 import Shared.Types (Milliseconds)
 
-type Username = String
+foreign import compareAdobeChallengeImpl :: String -> String -> String -> String -> String -> String -> Boolean
+foreign import compareLlnwChallengeImpl :: String -> String -> String -> String -> String -> String -> String -> Boolean
 
-data CryptoContext = AdobeContext AdobeContextParams
-                   | LlnwContext LlnwContextParams
-                   | QueryContext QueryContextParams
+type AdobePhase1Params =
+  { username :: String
+  }
+
+type AdobePhase2Params =
+  { username :: String
+  , clientChallenge :: String
+  , clientResponse :: String
+  }
+
+type LlnwPhase1Params =
+  { username :: String
+  }
+
+type LlnwPhase2Params =
+  { username :: String
+  , shortname :: String
+  , clientNonce :: String
+  , clientNc :: String
+  , clientResponse :: String
+  }
+
+data Phase2Params = AdobePhase2P AdobePhase2Params
+                  | LlnwPhase2P LlnwPhase2Params
+
+type Username = String
 
 type AdobeContextParams =
   { salt :: String
@@ -78,48 +105,47 @@ serverName = Names.ingestRtmpCryptoName
 startLink :: forall a. a -> Effect Pinto.StartLinkResult
 startLink args = Gen.startLink serverName (init args) handleInfo
 
-newContext :: SlotPublishAuthType -> Username -> Effect CryptoContext
-newContext Adobe username =
+newAdobeContext :: Username -> Effect AdobeContextParams
+newAdobeContext username =
   Gen.doCall serverName \state -> do
     salt <- cryptoStrongToken 6
     challenge <- cryptoStrongToken 6
     let
       context = {salt, challenge}
     state2 <- addContextToStateAndReply username context adobeLens state
-    pure $ Gen.CallReply (AdobeContext context) state2
+    pure $ Gen.CallReply context state2
 
-newContext Llnw username =
+newLlnwContext :: Username -> Effect LlnwContextParams
+newLlnwContext username =
   Gen.doCall serverName \state -> do
     nonce <- cryptoStrongToken 6
     let
       context = {nonce}
     state2 <- addContextToStateAndReply username context llnwLens state
-    pure $ Gen.CallReply (LlnwContext context) state2
+    pure $ Gen.CallReply context state2
 
-newContext Query username =
-  unsafeCrashWith "query auth type not implemented"
+checkCredentials :: String -> String -> String -> PublishCredentials -> Phase2Params -> Effect Boolean
+checkCredentials host shortname username credentials (AdobePhase2P authParams) =
+  Gen.call serverName \state@{adobeContexts: contexts} ->
+    let
+      currentUserContexts = fromMaybe nil $ lookup username contexts
+      result = checkCredentials' compareAdobeChallenge authParams currentUserContexts credentials nil
+    in
+     case result of
+       Nothing -> Gen.CallReply false state
+       Just newUserContexts -> Gen.CallReply true if null newUserContexts then state{adobeContexts = delete username contexts}
+                                                  else state{adobeContexts = insert username newUserContexts contexts}
 
-getCryptoContexts :: SlotPublishAuthType -> Username -> Effect (List CryptoContext)
-getCryptoContexts Adobe username =
-  Gen.call serverName \state ->
-   Gen.CallReply (AdobeContext <$> (getContexts'' username adobeLens state)) state
-
-getCryptoContexts Llnw username =
-  Gen.call serverName \state ->
-   Gen.CallReply (LlnwContext <$> (getContexts'' username llnwLens state)) state
-
-getCryptoContexts Query username =
-  unsafeCrashWith "query auth type not implemented"
-
-consumeCryptoContext :: Username -> CryptoContext -> Effect Boolean
-consumeCryptoContext username (AdobeContext consumedContext) =
-  Gen.call serverName (consumeContext username consumedContext adobeLens)
-
-consumeCryptoContext username (LlnwContext consumedContext) =
-  Gen.call serverName (consumeContext username consumedContext llnwLens)
-
-consumeCryptoContext username (QueryContext consumedContext) =
-  unsafeCrashWith "query auth type not implemented"
+checkCredentials host shortname username credentials (LlnwPhase2P authParams) =
+  Gen.call serverName \state@{llnwContexts: contexts} ->
+    let
+      currentUserContexts = fromMaybe nil $ lookup username contexts
+      result = checkCredentials' compareLlnwChallenge authParams currentUserContexts credentials nil
+    in
+     case result of
+       Nothing -> Gen.CallReply false state
+       Just newUserContexts -> Gen.CallReply true if null newUserContexts then state{llnwContexts = delete username contexts}
+                                                  else state{llnwContexts = insert username newUserContexts contexts}
 
 ------------------------------------------------------------------------------
 -- Internals
@@ -168,47 +194,6 @@ addContextToStateAndReply username context {get, set} state@{cryptoContextExpiry
     addToUserContexts contextWithExpiry Nothing = Just (contextWithExpiry : nil)
     addToUserContexts contextWithExpiry (Just existing) = Just (contextWithExpiry : existing)
 
-getContexts'' :: forall a. Username -> ContextLens a -> State -> (List a)
-getContexts'' username {get} state =
-  get state # getContexts' username
-
-getContexts :: forall a. Username -> ContextLens a -> State -> CallResult (List a) State
-getContexts username {get} state =
-  let
-    result = get state
-             # getContexts' username
-  in
-   CallReply result state
-
-getContexts' :: forall a. Username -> Map Username (ContextsWithExpiry a) -> List a
-getContexts' username contexts =
-  lookup username contexts
-  # fromMaybe nil
-  <#> snd
-
-consumeContext :: forall a. Eq a => Username -> a -> ContextLens a -> State -> CallResult Boolean State
-consumeContext username consumedContext {get, set} state =
-  let
-    contexts = get state
-
-    currentUserContexts = getContexts' username contexts
-
-    removeContext Nothing = Nothing
-    removeContext (Just contextsWithExpiry) =
-      let
-        newContextsWithExpiry :: List (ContextWithExpiry a)
-        newContextsWithExpiry = filter (\contextWithExpiry -> (snd contextWithExpiry) /= consumedContext) contextsWithExpiry
-      in
-       if null newContextsWithExpiry then Nothing
-       else Just newContextsWithExpiry
-
-    newContexts = alter removeContext username contexts
-  in
-   if
-     (member consumedContext currentUserContexts) then CallReply true (set newContexts state)
-     else CallReply false state
-
-
 adobeLens :: ContextLens AdobeContextParams
 adobeLens =
   { get: _.adobeContexts
@@ -220,3 +205,20 @@ llnwLens =
   { get: _.llnwContexts
   , set: \newLlnwContexts state -> state{llnwContexts = newLlnwContexts}
   }
+
+checkCredentials' :: forall a params context credentials. (params -> context -> credentials -> Boolean) -> params -> List (Tuple2 a context) -> credentials -> List (Tuple2 a context) -> Maybe (List (Tuple2 a context))
+checkCredentials' compareFun params cryptoContexts credentials acc =
+  case uncons cryptoContexts of
+    Nothing -> Nothing
+    Just {head, tail} ->
+      case compareFun params (snd head) credentials of
+        true -> Just (tail <> acc)
+        false -> checkCredentials' compareFun params tail credentials (head : acc)
+
+compareAdobeChallenge :: AdobePhase2Params -> AdobeContextParams -> PublishCredentials -> Boolean
+compareAdobeChallenge {username, clientChallenge, clientResponse} {salt, challenge} (PublishCredentials {username: expectedUsername, password}) =
+  compareAdobeChallengeImpl expectedUsername salt password challenge clientChallenge clientResponse
+
+compareLlnwChallenge :: LlnwPhase2Params -> LlnwContextParams -> PublishCredentials -> Boolean
+compareLlnwChallenge {username, shortname, clientNonce, clientNc, clientResponse} {nonce} (PublishCredentials {username: expectedUsername, password}) =
+  compareLlnwChallengeImpl expectedUsername password shortname nonce clientNc clientNonce clientResponse

@@ -9,8 +9,6 @@
 
 -export([ startServerImpl/6
         , rtmpQueryToPurs/1
-        , compareAdobeChallengeImpl/6
-        , compareLlnwChallengeImpl/7
         , startWorkflowImpl/5
         ]).
 
@@ -73,27 +71,6 @@ rtmpQueryToPurs(#{<<"authmod">> := <<"llnw">>,
 
 rtmpQueryToPurs(#{}) ->
   {initial}.
-
-compareAdobeChallengeImpl(Username, Salt, Password, Challenge, ClientChallenge, ClientResponse) ->
-  rtmp:compare_adobe_challenge_response(Username, Salt, Password, Challenge, ClientChallenge, ClientResponse).
-
-compareLlnwChallengeImpl(Username, Password, ShortName, Nonce, ClientNc, ClientNonce, ClientResponse) ->
-
-  Realm = <<"live">>,
-  Method = <<"publish">>,
-  Nonce = <<"ODE3MDQ3NTYz">>,
-  Qop = <<"auth">>,
-
-  rtmp:compare_llnw_challenge_response(Username,
-                                       Realm,
-                                       Password,
-                                       Method,
-                                       ShortName,
-                                       Nonce,
-                                       ClientNc,
-                                       ClientNonce,
-                                       Qop,
-                                       ClientResponse).
 
 %%------------------------------------------------------------------------------
 %% Internals

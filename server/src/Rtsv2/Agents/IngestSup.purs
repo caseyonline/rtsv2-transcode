@@ -12,7 +12,7 @@ import Pinto as Pinto
 import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStart, childType)
 import Pinto.Sup as Sup
 import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
-import Rtsv2.Agents.IngestRtmpCrytpo as IngestRtmpCrypto
+import Rtsv2.Agents.IngestRtmpCrypto as IngestRtmpCrypto
 import Rtsv2.Agents.IngestRtmpServer as IngestRtmpServer
 import Rtsv2.Agents.IngestStats as IngestStats
 import Rtsv2.Names as Names

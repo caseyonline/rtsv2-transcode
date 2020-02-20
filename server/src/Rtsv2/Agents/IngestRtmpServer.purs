@@ -10,28 +10,25 @@ import Data.Either (Either(..), hush)
 import Data.Function.Uncurried (Fn3, Fn5, mkFn3, mkFn5)
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (wrap)
-import Data.Traversable (traverse)
 import Effect (Effect)
-import Erl.Data.List (uncons)
 import Erl.Process.Raw (Pid)
-import Foreign (Foreign, unsafeToForeign)
+import Foreign (Foreign)
 import Logger (spy)
 import Media.Rtmp as Rtmp
 import Media.SourceDetails as SourceDetails
-import Partial.Unsafe (unsafeCrashWith)
 import Pinto (ServerName)
 import Pinto as Pinto
 import Pinto.Gen as Gen
 import Rtsv2.Agents.IngestInstance as IngestInstance
 import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
-import Rtsv2.Agents.IngestRtmpCrytpo (AdobeContextParams, CryptoContext(..), LlnwContextParams)
-import Rtsv2.Agents.IngestRtmpCrytpo as IngestRtmpCrypto
+import Rtsv2.Agents.IngestRtmpCrypto (AdobeContextParams, AdobePhase1Params, AdobePhase2Params, LlnwContextParams, LlnwPhase1Params, LlnwPhase2Params, Phase2Params(..), checkCredentials)
+import Rtsv2.Agents.IngestRtmpCrypto as IngestRtmpCrypto
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
 import Rtsv2.Names as Names
 import Rtsv2.Utils (crashIfLeft)
 import Serf (Ip)
-import Shared.LlnwApiTypes (AuthType, PublishCredentials(..), SlotPublishAuthType(..), StreamAuth, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamPublish)
+import Shared.LlnwApiTypes (AuthType, PublishCredentials, SlotPublishAuthType(..), StreamAuth, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamPublish)
 import Shared.Stream (IngestKey(..))
 import SpudGun (bodyToJSON)
 import SpudGun as SpudGun
@@ -39,31 +36,7 @@ import Stetson.WebSocketHandler (self)
 
 foreign import startServerImpl :: (Foreign -> Either Foreign Unit) -> Either Foreign Unit -> Ip -> Int -> Int -> Callbacks -> Effect (Either Foreign Unit)
 foreign import rtmpQueryToPurs :: Foreign -> RtmpAuthRequest
-foreign import compareAdobeChallengeImpl :: String -> String -> String -> String -> String -> String -> Boolean
-foreign import compareLlnwChallengeImpl :: String -> String -> String -> String -> String -> String -> String -> Boolean
 foreign import startWorkflowImpl :: Pid -> Foreign -> IngestKey -> (Foreign -> (Effect Unit)) -> (Foreign -> (Effect Unit)) -> Effect Unit
-
-type AdobePhase1Params =
-  { username :: String
-  }
-
-type AdobePhase2Params =
-  { username :: String
-  , clientChallenge :: String
-  , clientResponse :: String
-  }
-
-type LlnwPhase1Params =
-  { username :: String
-  }
-
-type LlnwPhase2Params =
-  { username :: String
-  , shortname :: String
-  , clientNonce :: String
-  , clientNc :: String
-  , clientResponse :: String
-  }
 
 data RtmpAuthRequest = Initial
                      | AdobePhase1 AdobePhase1Params
@@ -77,9 +50,6 @@ data RtmpAuthResponse = InitialResponse AuthType
                       | RejectRequest
                       | AcceptRequest (Fn5 String Int String Pid Foreign (Effect Unit))
 
-data Phase2Params = AdobePhase2P AdobePhase2Params
-                  | LlnwPhase2P LlnwPhase2Params
-
 type Callbacks
   = { init :: Fn3 String String Foreign (Effect RtmpAuthResponse)
     }
@@ -89,7 +59,6 @@ serverName = Names.ingestRtmpServerName
 
 startLink :: forall a. a -> Effect Pinto.StartLinkResult
 startLink args = Gen.startLink serverName (init args) Gen.defaultHandleInfo
-
 
 type State =
   {
@@ -165,44 +134,14 @@ processAuthRequest' host shortname username authParams = do
     authType = case authParams of
                  AdobePhase2P _ -> Adobe
                  LlnwPhase2P _ -> Llnw
-  cryptoContexts <- IngestRtmpCrypto.getCryptoContexts authType username
   maybePublishCredentials <- getPublishCredentials host shortname username
-  let
-    -- mapmap :: forall f g a b. Functor f => Functor g => (a -> b) -> f (g a) -> f (g b)
-    -- mapmap = (<$>) <<< (<$>)
-    result :: Effect RtmpAuthResponse
-    result = maybePublishCredentials
-             >>= checkCredentials authParams cryptoContexts
-             # traverse consumeContext
-             <#> join
-             <#> (\a -> const (AcceptRequest (mkFn5 (handlerHandle host shortname username))) <$> a)
-             <#> fromMaybe RejectRequest
-  result
-
-  where
-    checkCredentials params cryptoContexts credentials =
-      case uncons cryptoContexts of
-        Nothing -> Nothing
-        Just {head, tail} ->
-          case compareChallenge params head credentials of
-            true -> Just head
-            false -> checkCredentials params tail credentials
-
-    compareChallenge (AdobePhase2P params) (AdobeContext context) credentials =
-      compareAdobeChallenge params context credentials
-
-    compareChallenge (LlnwPhase2P params) (LlnwContext context) credentials =
-      compareLlnwChallenge params context credentials
-
-    compareChallenge _ _ _ =
-      unsafeCrashWith "fail"
-
-    consumeContext :: CryptoContext -> Effect (Maybe CryptoContext)
-    consumeContext context = do
-      consumed <- IngestRtmpCrypto.consumeCryptoContext username context
-      pure $ if consumed then Just context
-             else Nothing
-
+  case maybePublishCredentials of
+    Nothing ->
+      pure RejectRequest
+    Just publishCredentials -> do
+      ok <- checkCredentials host shortname username publishCredentials authParams
+      if ok then pure $ AcceptRequest (mkFn5 (handlerHandle host shortname username))
+      else pure RejectRequest
 
 startWorkflowAndBlock :: Pid -> Foreign -> IngestKey -> Effect Unit
 startWorkflowAndBlock rtmpPid publishArgs ingestKey =
@@ -213,7 +152,6 @@ startWorkflowAndBlock rtmpPid publishArgs ingestKey =
 
     sourceInfo foreignSourceInfo = do
       IngestInstance.setSourceInfo ingestKey (SourceDetails.foreignToSourceInfo foreignSourceInfo)
-
 
 getStreamAuthType :: String -> String -> Effect (Maybe AuthType)
 getStreamAuthType host shortname = do
@@ -238,11 +176,3 @@ getStreamDetails streamPublish = do
   {streamPublishUrl: url} <- Config.llnwApiConfig
   restResult <- SpudGun.postJson (wrap (spy "publish url" url)) (spy "publish body" streamPublish)
   pure $ hush (spy "publish parse" (bodyToJSON (spy "publish result" restResult)))
-
-compareAdobeChallenge :: AdobePhase2Params -> AdobeContextParams -> PublishCredentials -> Boolean
-compareAdobeChallenge {username, clientChallenge, clientResponse} {salt, challenge} (PublishCredentials {username: expectedUsername, password}) =
-  compareAdobeChallengeImpl expectedUsername salt password challenge clientChallenge clientResponse
-
-compareLlnwChallenge :: LlnwPhase2Params -> LlnwContextParams -> PublishCredentials -> Boolean
-compareLlnwChallenge {username, shortname, clientNonce, clientNc, clientResponse} {nonce} (PublishCredentials {username: expectedUsername, password}) =
-  compareLlnwChallengeImpl expectedUsername password shortname nonce clientNc clientNonce clientResponse
