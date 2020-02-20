@@ -4,6 +4,7 @@ module Erl.Utils
        , sleep
        , makeRef
        , privDir
+       , self
        , Url
        , Ref
        )
@@ -14,6 +15,7 @@ import Prelude
 import Data.Newtype (class Newtype, unwrap, wrap)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
+import Erl.Process.Raw (Pid)
 import Shared.Types (Milliseconds)
 
 foreign import systemTimeImpl :: Atom -> Effect Int
@@ -23,6 +25,7 @@ foreign import makeRefImpl :: Effect Ref
 foreign import privDirImpl :: Atom -> String
 foreign import eqRefImpl :: Ref -> Ref -> Boolean
 foreign import data Ref :: Type
+foreign import selfImpl :: Effect Pid
 
 sleep :: Milliseconds -> Effect Unit
 sleep = sleepImpl <<< unwrap
@@ -49,3 +52,5 @@ makeRef = makeRefImpl
 
 privDir :: Atom -> String
 privDir = privDirImpl
+
+self = selfImpl

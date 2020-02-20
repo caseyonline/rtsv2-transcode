@@ -6,6 +6,7 @@
         , makeRefImpl/0
         , privDirImpl/1
         , eqRefImpl/2
+        , selfImpl/0
         ]).
 
 
@@ -31,3 +32,6 @@ privDirImpl(App) ->
 
 eqRefImpl(Ref1, Ref2) ->
   Ref1 == Ref2.
+
+selfImpl() ->
+  fun() -> self() end.

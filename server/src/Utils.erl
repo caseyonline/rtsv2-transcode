@@ -20,7 +20,7 @@ noprocToMaybeImpl(Nothing, Just, Eff) ->
 
 cryptoStrongBytes(Len) ->
   fun() ->
-      crypto:strong_rand_btyes(Len)
+      crypto:strong_rand_bytes(Len)
   end.
 
 binaryToBase64(Bin) ->
