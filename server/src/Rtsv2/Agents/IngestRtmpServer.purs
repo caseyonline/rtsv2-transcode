@@ -46,7 +46,7 @@ data RtmpAuthRequest = Initial
 
 data RtmpAuthResponse = InitialResponse AuthType
                       | AdobePhase1Response String AdobeContextParams
-                      | LlnwPhase1Response LlnwContextParams
+                      | LlnwPhase1Response String LlnwContextParams
                       | RejectRequest
                       | AcceptRequest (Fn5 String Int String Pid Foreign (Effect Unit))
 
@@ -94,7 +94,7 @@ processAuthRequest host shortname (AdobePhase1 {username}) = do
 
 processAuthRequest host shortname (LlnwPhase1 {username}) = do
   context <- IngestRtmpCrypto.newLlnwContext username
-  pure $ LlnwPhase1Response context
+  pure $ LlnwPhase1Response username context
 
 processAuthRequest host shortname (AdobePhase2 authParams@{username}) =
   processAuthRequest' host shortname username (AdobePhase2P authParams)

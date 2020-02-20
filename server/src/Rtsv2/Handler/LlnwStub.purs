@@ -31,7 +31,7 @@ streamAuthTypeDb =
                       , protocol: Rtmp
                       , shortname: "mmddev001"
                       }
-                        {authType : Adobe }
+                        {authType : Llnw }
                 : nil)
 
 streamAuthDb :: Map StreamAuth PublishCredentials

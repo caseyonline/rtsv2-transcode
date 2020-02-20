@@ -5,7 +5,6 @@ module Rtsv2.Agents.IngestRtmpCrypto
        , checkCredentials
        , AdobeContextParams
        , LlnwContextParams
-       , QueryContextParams
        , Phase2Params(..)
        , AdobePhase1Params
        , AdobePhase2Params
@@ -55,7 +54,7 @@ type LlnwPhase1Params =
 
 type LlnwPhase2Params =
   { username :: String
-  , shortname :: String
+  , clientOurNonce :: String
   , clientNonce :: String
   , clientNc :: String
   , clientResponse :: String
@@ -73,10 +72,6 @@ type AdobeContextParams =
 
 type LlnwContextParams =
   { nonce :: String
-  }
-
-type QueryContextParams =
-  {
   }
 
 type ContextWithExpiry a = Tuple2 Milliseconds a
@@ -140,7 +135,7 @@ checkCredentials host shortname username credentials (LlnwPhase2P authParams) =
   Gen.call serverName \state@{llnwContexts: contexts} ->
     let
       currentUserContexts = fromMaybe nil $ lookup username contexts
-      result = checkCredentials' compareLlnwChallenge authParams currentUserContexts credentials nil
+      result = checkCredentials' (compareLlnwChallenge shortname) authParams currentUserContexts credentials nil
     in
      case result of
        Nothing -> Gen.CallReply false state
@@ -219,6 +214,7 @@ compareAdobeChallenge :: AdobePhase2Params -> AdobeContextParams -> PublishCrede
 compareAdobeChallenge {username, clientChallenge, clientResponse} {salt, challenge} (PublishCredentials {username: expectedUsername, password}) =
   compareAdobeChallengeImpl expectedUsername salt password challenge clientChallenge clientResponse
 
-compareLlnwChallenge :: LlnwPhase2Params -> LlnwContextParams -> PublishCredentials -> Boolean
-compareLlnwChallenge {username, shortname, clientNonce, clientNc, clientResponse} {nonce} (PublishCredentials {username: expectedUsername, password}) =
-  compareLlnwChallengeImpl expectedUsername password shortname nonce clientNc clientNonce clientResponse
+compareLlnwChallenge :: String -> LlnwPhase2Params -> LlnwContextParams -> PublishCredentials -> Boolean
+compareLlnwChallenge shortname {username, clientOurNonce, clientNonce, clientNc, clientResponse} {nonce: ourNonce} (PublishCredentials {username: expectedUsername, password}) =
+  (clientOurNonce == ourNonce) &&
+  (compareLlnwChallengeImpl expectedUsername password shortname ourNonce clientNc clientNonce clientResponse)

@@ -43,122 +43,13 @@ init(Rtmp, ConnectArgs, [#{ init := Init  }]) ->
     {adobePhase1Response, Username, #{challenge := Challenge, salt := Salt}} ->
       {authenticate, adobe, Username, Salt, Challenge};
 
+    {llnwPhase1Response, Username, #{nonce := Nonce}} ->
+      {authenticate, llnw, Username, Nonce};
+
     {acceptRequest, Handle} ->
       {ok, #?state{rtmp_pid = Rtmp,
                    handle = Handle}}
   end.
-
-  %% State = #?state{rtmp_pid = Rtmp,
-  %%                 ingestStartedFn = IngestStartedFn,
-  %%                 ingestStoppedFn = IngestStoppedFn,
-  %%                 streamAuthTypeFn = StreamAuthTypeFn,
-  %%                 streamAuthFn = StreamAuthFn,
-  %%                 clientMetadataFn = ClientMetadataFn,
-  %%                 sourceInfoFn = SourceInfoFn
-  %%                },
-
-  %% case Query of
-  %%   #{<<"authmod">> := <<"adobe">>,
-  %%     <<"user">> := UserName,
-  %%     <<"challenge">> := ClientChallenge,
-  %%     <<"response">> := ClientResponse} ->
-  %%     %% We have a adobe completed digest
-
-  %%     Reply = (StreamAuthFn(Host, ShortName, UserName))(),
-
-  %%     case Reply of
-  %%       {nothing} ->
-  %%         ?SLOG_INFO("Abobe StreamAuth rejected", #{host => Host,
-  %%                                                   shortName => ShortName,
-  %%                                                   username => UserName}),
-  %%         {stop, rejected};
-
-  %%       {just, #{username := ExpectedUserName,
-  %%                password := ExpectedPassword}} ->
-
-  %%         case rtmp:compare_adobe_challenge_response(ExpectedUserName,
-  %%                                                    <<"NzEwNzk">>,
-  %%                                                    ExpectedPassword,
-  %%                                                    <<"ODE3MDQ3NTYz">>,
-  %%                                                    ClientChallenge,
-  %%                                                    ClientResponse) of
-  %%           true ->
-  %%             {ok, State#?state{streamPublishFn = StreamPublishFn(Host, ShortName, UserName)}};
-
-  %%           false ->
-  %%             ?SLOG_INFO("Challenge failed", #{client_challenge => ClientChallenge,
-  %%                                              client_response => ClientResponse}),
-  %%             {authenticate_fail, adobe, invalid_password}
-  %%         end
-  %%     end;
-
-  %%   #{<<"authmod">> := <<"adobe">>,
-  %%     <<"user">> := UserName} ->
-  %%     ?INFO("Username Matches - do next phase"),
-  %%     {authenticate, adobe, UserName, <<"NzEwNzk">>, <<"ODE3MDQ3NTYz">>};
-
-  %%   #{<<"authmod">> := <<"llnw">>,
-  %%     <<"user">> := UserName,
-  %%     <<"nonce">> := ClientOurNonce,
-  %%     <<"cnonce">> := ClientNonce,
-  %%     <<"nc">> := ClientNc,
-  %%     <<"response">> := ClientResponse} ->
-  %%     %% We have a llnw completed digest
-
-  %%     Reply = (StreamAuthFn(Host, ShortName, UserName))(),
-
-  %%     case Reply of
-  %%       {nothing} ->
-  %%         ?SLOG_INFO("LLNW StreamAuth rejected", #{host => Host,
-  %%                                                  shortName => ShortName,
-  %%                                                  username => UserName}),
-  %%         {stop, rejected};
-
-  %%       {just, #{username := ExpectedUserName,
-  %%                password := ExpectedPassword}} ->
-  %%         Realm = <<"live">>,
-  %%         Method = <<"publish">>,
-  %%         Nonce = <<"ODE3MDQ3NTYz">>,
-  %%         Qop = <<"auth">>,
-
-  %%         case rtmp:compare_llnw_challenge_response(ExpectedUserName,
-  %%                                                   Realm,
-  %%                                                   ExpectedPassword,
-  %%                                                   Method,
-  %%                                                   ShortName,
-  %%                                                   Nonce,
-  %%                                                   ClientNc,
-  %%                                                   ClientNonce,
-  %%                                                   Qop,
-  %%                                                   ClientResponse) of
-  %%           true ->
-  %%             {ok, State#?state{streamPublishFn = StreamPublishFn(Host, ShortName, UserName)}};
-
-  %%           false ->
-  %%             ?SLOG_INFO("Challenge failed", #{client_response => ClientResponse}),
-  %%             {authenticate_fail, adobe, invalid_password}
-  %%         end
-  %%     end;
-
-
-  %%   #{<<"authmod">> := <<"llnw">>,
-  %%     <<"user">> := UserName} ->
-  %%     ?INFO("Username Matches - do next phase"),
-  %%     {authenticate, llnw, UserName, <<"ODE3MDQ3NTYz">>};
-
-  %%   #{} ->
-  %%     ?SLOG_INFO("No authmod - start authentication", #{host => Host,
-  %%                                                       shortName => ShortName}),
-  %%     Reply = (StreamAuthTypeFn(Host, ShortName))(),
-
-  %%     case Reply of
-  %%       {nothing} ->
-  %%         {stop, rejected};
-
-  %%       {just, #{authType := {Protocol}}} ->
-  %%         {authenticate, Protocol}
-  %%     end
-  %% end.
 
 handle(#?state{rtmp_pid = Rtmp,
                handle = Handle}) ->

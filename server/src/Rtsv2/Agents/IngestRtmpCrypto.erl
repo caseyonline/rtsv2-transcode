@@ -5,13 +5,18 @@
         ]).
 
 compareAdobeChallengeImpl(Username, Salt, Password, Challenge, ClientChallenge, ClientResponse) ->
-  rtmp:compare_adobe_challenge_response(Username, Salt, Password, Challenge, ClientChallenge, ClientResponse).
+
+  rtmp:compare_adobe_challenge_response(Username,
+                                        Salt,
+                                        Password,
+                                        Challenge,
+                                        ClientChallenge,
+                                        ClientResponse).
 
 compareLlnwChallengeImpl(Username, Password, ShortName, Nonce, ClientNc, ClientNonce, ClientResponse) ->
 
   Realm = <<"live">>,
   Method = <<"publish">>,
-  Nonce = <<"ODE3MDQ3NTYz">>,
   Qop = <<"auth">>,
 
   rtmp:compare_llnw_challenge_response(Username,
