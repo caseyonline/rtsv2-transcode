@@ -33,6 +33,7 @@ import Data.Generic.Rep.Ord (genericCompare)
 import Data.Generic.Rep.Show (genericShow)
 import Data.List.NonEmpty (singleton)
 import Data.Maybe (Maybe(..))
+import Data.Newtype (class Newtype)
 import Foreign (ForeignError(..), readString, unsafeToForeign)
 import Shared.Stream (StreamRole)
 import Simple.JSON (class ReadForeign, class WriteForeign)
@@ -141,6 +142,7 @@ instance compareStreamIngestProtocol :: Ord StreamIngestProtocol where
 instance showStreamIngestProtocol :: Show StreamIngestProtocol where
   show = genericShow
 
+derive instance newtypePublicCredentials :: Newtype PublishCredentials _
 derive newtype instance readForeignPublishCredentials :: ReadForeign PublishCredentials
 derive newtype instance writeForeignPublishCredentials :: WriteForeign PublishCredentials
 

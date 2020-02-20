@@ -124,6 +124,7 @@ type TransPoPAgentApi
 type RtmpIngestConfig
   = { port :: Int
     , nbAcceptors :: Int
+    , cryptoContextExpiryMs :: Int
     }
 
 type LlnwApiConfig

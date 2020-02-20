@@ -8,6 +8,7 @@ module Rtsv2.Names
        , ingestInstanceName
        , ingestInstanceSupName
        , ingestRtmpServerName
+       , ingestRtmpCryptoName
        , ingestStatsName
        , ingestSupName
        , intraPoPName
@@ -56,6 +57,9 @@ ingestInstanceSupName = instanceSup Ingest
 
 ingestRtmpServerName :: forall a b. ServerName a b
 ingestRtmpServerName = withSuffix "RtmpServer" Ingest
+
+ingestRtmpCryptoName :: forall a b. ServerName a b
+ingestRtmpCryptoName = withSuffix "RtmpCrypto" Ingest
 
 ingestStatsName :: forall a b. ServerName a b
 ingestStatsName = withSuffix "Stats" Ingest
