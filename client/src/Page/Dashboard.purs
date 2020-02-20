@@ -14,7 +14,6 @@ import Data.Int (toNumber)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (unwrap)
 import Data.Symbol (SProxy(..))
-import Debug.Trace (spy, traceM)
 import Effect.Aff.Class (class MonadAff)
 import Effect.Class (liftEffect)
 import Effect.Ref as Ref
@@ -33,13 +32,13 @@ import Rtsv2App.Component.HTML.Header as HD
 import Rtsv2App.Component.HTML.MainSecondary as MS
 import Rtsv2App.Component.HTML.MenuMain as MM
 import Rtsv2App.Component.HTML.Tile as TL
-import Rtsv2App.Component.HTML.Utils (css_, printHref)
-import Rtsv2App.Data.PoP (PoPDefEcharts, getPoPEcharts, getPoPServers, getPoPState, toAggregators, toPoPleaders)
+import Rtsv2App.Component.HTML.Utils (css_, printHrefPoP)
+import Rtsv2App.Data.PoP (PoPDefEcharts, updatePoPDefEnv)
 import Rtsv2App.Data.Profile (Profile)
 import Rtsv2App.Data.Route (Route(..))
-import Rtsv2App.Env (UrlEnv, UserEnv, PoPDefEnv)
+import Rtsv2App.Env (PoPDefEnv, UrlEnv, UserEnv, changeHtmlClass)
 import Shared.Types (Server)
-import Shared.Types.Agent.State (PoPDefinition, TimedPoPRoutes, AggregatorLocation)
+import Shared.Types.Agent.State (PoPDefinition, AggregatorLocation)
 
 -------------------------------------------------------------------------------
 -- Types for Dashboard Page
@@ -87,9 +86,9 @@ component = Connect.component $ H.mkComponent
   initialState { currentUser } =
     { currentUser
     , popDefenition: Nothing
-    , popDefEcharts: []
+    , popDefEcharts: mempty
     , chart: Nothing
-    , popLeaders: []
+    , popLeaders: mempty
     , aggregatorLocations: mempty
     }
 
@@ -98,46 +97,41 @@ component = Connect.component $ H.mkComponent
     Initialize -> do
       st ← H.get
       { popDefEnv, urlEnv } <- ask
-
-      -- curHostUrl <- urlEnv.curHostUrl
+      _ <- liftEffect $ changeHtmlClass urlEnv.htmlClass
       popDefinition <- H.liftEffect $ Ref.read popDefEnv.popDefinition
-
       -- init menu JS
       liftEffect $ FF.init
-
-      -- | is popDefinition already on Global
+      -- | is popDefinition already in global state popDefEnv
       case popDefinition of
-        -- | no then go get it manually, update locally and globally
         Nothing -> do
           popDef <- getPoPdefinition
           case popDef of
             Left e ->  H.modify_ _ { popDefenition = Nothing }
             Right pd -> do
-                -- | update global popDef
-                liftEffect $ Ref.write (Just pd) popDefEnv.popDefinition
-                -- | update locat state
-                H.modify_ _ { popDefenition = (Just pd)
-                            , popDefEcharts = getPoPEcharts pd
-                            }
-        -- | yes update local state                
-        Just pd -> do
-          
-          popServers <- liftEffect $ getPoPServers pd
-          popStates <- getPoPState popServers
-          H.modify_ _ { popDefenition = (Just pd)
-                      , popDefEcharts = getPoPEcharts pd
-                      , popLeaders = toPoPleaders popStates
-                      , aggregatorLocations = toAggregators popStates
-                      }
+              { popDefenition, popDefEcharts, popLeaders, aggregatorLocations} <- updatePoPDefEnv pd
+              H.modify_ _ { popDefenition = popDefenition
+                          , popDefEcharts = popDefEcharts
+                          , popLeaders = popLeaders
+                          , aggregatorLocations = aggregatorLocations
+                          }
 
+        Just pd -> do
+          { popDefenition, popDefEcharts, popLeaders, aggregatorLocations} <- updatePoPDefEnv pd
+          H.modify_ _ { popDefenition = popDefenition
+                      , popDefEcharts = popDefEcharts
+                      , popLeaders = popLeaders
+                      , aggregatorLocations = aggregatorLocations
+                      }
+      -- | set up the map and populate it with all current pops
       H.getHTMLElementRef (H.RefLabel "mymap") >>= traverse_ \element -> do
         newSt <- H.get
         chart <- H.liftEffect $ EC.makeChart element
         H.modify_ _ { chart = Just chart }
         liftEffect $ EC.setOption { scatterData: newSt.popDefEcharts } chart
-        liftEffect $ EC.setClick { curHost: (unwrap urlEnv.curHostUrl), url: printHref PoPR } chart
+        liftEffect $ EC.setClick { curHost: (unwrap urlEnv.curHostUrl), url: printHrefPoP PoPR } chart
         liftEffect $ EC.ressizeObserver chart
-              
+
+
     Receive { currentUser } ->
       H.modify_ _ { currentUser = currentUser }
 
@@ -181,7 +175,7 @@ component = Connect.component $ H.mkComponent
         [ css_ "section is-main-section" ]
         [ HH.div
           [ css_ "tile is-ancestor"]
-          [ TL.component (tileAggregator $ length $ spy "aggregatorLocations" aggregatorLocations)
+          [ TL.component (tileAggregator $ length $ aggregatorLocations)
           , TL.component (tilePoP $ length popLeaders)
           , TL.component tileWarning
           ]
@@ -200,15 +194,15 @@ component = Connect.component $ H.mkComponent
       ]
       where
         tileWarning =
-          { headerIconType: "mdi-arrow-down-bold"
+          { headerIconType: "mdi-information"
           , headerText    : "Warnings"
           , subTitleH3Text: "Faults"
-          , subTitleH1Text: "5"
+          , subTitleH1Text: "0"
           , widgetTextType: "has-text-danger"
           , widgetIconType: "mdi-bell"
           }
         tileAggregator agrN =
-          { headerIconType: "mdi-arrow-up-bold"
+          { headerIconType: "mdi-information"
           , headerText    : "Aggregators"
           , subTitleH3Text: "Active"
           , subTitleH1Text: show agrN
@@ -216,7 +210,7 @@ component = Connect.component $ H.mkComponent
           , widgetIconType: "mdi-video-wireless"
           }
         tilePoP popsN =
-          { headerIconType: "mdi-arrow-up-bold"
+          { headerIconType: "mdi-information"
           , headerText    : "PoPs"
           , subTitleH3Text: "Active"
           , subTitleH1Text: show popsN

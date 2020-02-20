@@ -6,7 +6,6 @@ import Control.Monad.Reader (class MonadAsk, ask)
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple(..))
-import Debug.Trace (spy)
 import Effect.Aff as Aff
 import Effect.Aff.Bus as Bus
 import Effect.Aff.Class (class MonadAff, liftAff)

@@ -7,9 +7,8 @@ import CSS.Size as Size
 import Control.Monad.Reader (class MonadAsk, ask)
 import Data.Const (Const)
 import Data.Either (Either(..))
-import Data.Foldable (traverse_)
 import Data.Int (toNumber)
-import Data.Maybe (Maybe(..), fromMaybe, maybe)
+import Data.Maybe (Maybe(..), maybe)
 import Data.Newtype (un)
 import Data.Symbol (SProxy(..))
 import Debug.Trace (spy, traceM)
@@ -23,7 +22,7 @@ import Halogen.HTML as HH
 import Halogen.HTML.CSS as CSS
 import Halogen.HTML.Properties as HP
 import Rtsv2App.Capability.Navigate (class Navigate)
-import Rtsv2App.Capability.Resource.Api (class ManageApi, getPoPdefinition, getTimedRoutes)
+import Rtsv2App.Capability.Resource.Api (class ManageApi, getPoPdefinition)
 import Rtsv2App.Capability.Resource.User (class ManageUser)
 import Rtsv2App.Component.HTML.Breadcrumb as BG
 import Rtsv2App.Component.HTML.Dropdown as DP
@@ -36,7 +35,7 @@ import Rtsv2App.Component.HTML.Utils (css_)
 import Rtsv2App.Data.PoP (PoPDefEcharts, getPoPEcharts, getPoPServers)
 import Rtsv2App.Data.Profile (Profile)
 import Rtsv2App.Data.Route (Route(..))
-import Rtsv2App.Env (UrlEnv, UserEnv, PoPDefEnv)
+import Rtsv2App.Env (PoPDefEnv, UrlEnv, UserEnv, changeHtmlClass)
 import Shared.Stream (StreamId(..))
 import Shared.Types (PoPName(..))
 import Shared.Types.Agent.State (TimedPoPRoutes, PoPDefinition)
@@ -114,33 +113,35 @@ component = H.mkComponent
     Initialize -> do
       st ← H.get
       { popDefEnv, urlEnv, userEnv } <- ask
-
+      -- set the class of <html />
+      _ <- liftEffect $ changeHtmlClass urlEnv.htmlClass
+      -- don't load js again if previous route was a PoPDashboard
       shouldLoadJS st.prevRoute
-
       currentUser <- H.liftEffect $ Ref.read userEnv.currentUser
 
       H.modify_ _ { currentUser = currentUser }
 
       popDef <- H.liftEffect $ Ref.read popDefEnv.popDefinition
-      
-      --
+
       -- | is popDefinition already on Global
       case popDef of
-        -- | no then go get it manually, update locally and globally
+        -- | no then go get it manually, update states
         Nothing -> do
           popDefenition <- getPoPdefinition
           case popDefenition of
             Left e ->  H.modify_ _ { popDefenition = Nothing }
             Right pd -> do
-                -- | update global popDef
+                -- update global popDef
                 liftEffect $ Ref.write (Just pd) popDefEnv.popDefinition
-                -- | update locat state
+                -- update local state
                 H.modify_ _ { popDefenition = (Just pd)
                             , popDefEcharts = getPoPEcharts pd
                             }
-        -- | yes update local state
+        -- | yes update states
         Just pd -> do
+          -- update global popDef
           popServers <- liftEffect $ getPoPServers pd
+          -- update local state
           H.modify_ _ { popDefenition = (Just pd)
                       , popDefEcharts = getPoPEcharts pd
                       }

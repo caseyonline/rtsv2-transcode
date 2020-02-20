@@ -24,6 +24,7 @@ import Rtsv2App.Component.HTML.MenuMain as MM
 import Rtsv2App.Component.HTML.Utils (css_, safeHref, whenElem)
 import Rtsv2App.Data.Email (Email)
 import Rtsv2App.Data.Route (Route(..))
+import Rtsv2App.Env (changeHtmlClass)
 import Rtsv2App.Form.Field (submit)
 import Rtsv2App.Form.Field as Field
 import Rtsv2App.Form.Validation as V
@@ -65,6 +66,7 @@ component = H.mkComponent
   handleAction :: Action -> H.HalogenM State Action ChildSlots Void m Unit
   handleAction = case _ of
     Initialize -> do
+      _ <- liftEffect $ changeHtmlClass ""
       -- theme initialisation
       liftEffect $ FF.init
       
@@ -81,38 +83,38 @@ component = H.mkComponent
 
   render :: State -> H.ComponentHTML Action ChildSlots m
   render _  =
-     HH.div
-      [ css_ "main" ]
-      [ HH.slot (SProxy :: _ "header") unit HD.component { currentUser: Nothing , route: LoginR } absurd
-      , HH.slot (SProxy :: _ "mainMenu") unit MM.component { currentUser: Nothing , route: LoginR } absurd
-      , HH.div
-        [ css_ "app-content content" ]
+     HH.section
+      [ css_ "section hero is-fullheight is-error-section" ]
+      [ HH.div
+        [ css_ "hero-body" ]
         [ HH.div
-          [ css_ "content-wrapper" ]
+          [ css_ "container" ]
           [ HH.div
-            [ css_ "content-header row" ]
+            [ css_ "columns is-centered" ]
             [ HH.div
-              [ css_ "content-header-left col-md-4 col-12 mb-2" ]
-              [ HH.h3
-                [ css_ "content-header-h3" ]
-                [ HH.text "Login" ]
-              ]
-            ]
-          , HH.div
-            [ css_ "content-body" ]
-            [ HH.div
-              [ css_ "row" ]
+              [ css_ "column is-two-fifths" ]
               [ HH.div
-                [ css_ "col-12" ]
-                [ HH.div
-                  [ css_ "card" ]
+                [css_ "card has-card-header-background" ]
+                [ HH.header
+                  [ css_ "card-header" ]
+                  [ HH.p
+                    [ css_ "card-header-title" ]
+                    [ HH.span
+                      [ css_ "icon"]
+                      [ HH.i
+                        [ css_ "mdi mdi-lock default" ]
+                        []
+                      ]
+                    ]
+                  ]
+                , HH.div
+                  [ css_ "card-content" ]
                   html
                 ]
               ]
             ]
           ]
         ]
-      , footer
       ]
     where
       html =

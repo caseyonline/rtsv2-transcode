@@ -7908,7 +7908,8 @@ html.has-aside-right aside.aside.is-placed-right {
         flex-direction: column;
       }*/ }
     html.has-aside-left.has-aside-expanded nav.navbar, html.has-aside-left.has-aside-expanded body {
-      padding-left: 12rem; }
+      padding-left: 12rem;
+      transition: padding 0ms ease-in-out 0ms; }
     html.has-aside-left.has-aside-expanded aside.aside.is-secondary {
       left: 12rem; }
     html.has-aside-left nav.navbar, html.has-aside-left body {

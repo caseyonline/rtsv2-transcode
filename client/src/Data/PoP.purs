@@ -7,19 +7,27 @@ module Rtsv2App.Data.PoP
   , getPoPServers
   , getPoPState
   , unGeoLoc
+  , updatePoPDefEnv
   ) where
 
 import Prelude
 
+import Control.Monad.Reader (ask)
+import Control.Monad.Reader.Trans (class MonadAsk)
 import Data.Array (catMaybes, head, index, length)
 import Data.Either (hush)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (un)
 import Data.Traversable (traverse)
 import Effect (Effect)
+import Effect.Aff.Class (class MonadAff)
+import Effect.Class (liftEffect)
 import Effect.Random (randomInt)
+import Effect.Ref as Ref
 import Global (readFloat)
 import Rtsv2App.Capability.Resource.Api (class ManageApi, getPublicState)
+import Rtsv2App.Capability.Resource.User (class ManageUser)
+import Rtsv2App.Env (PoPDefEnv)
 import Shared.Types (GeoLoc(..), PoPName, Server, ServerAddress)
 import Shared.Types.Agent.State (IntraPoP, PoP, PoPDefinition, AggregatorLocation)
 
@@ -35,6 +43,14 @@ type PoPServer =
   { popName :: PoPName
   , server  :: Maybe ServerAddress
   }
+
+type PoPEnvNoRef =
+  { popDefenition       :: Maybe (PoPDefinition Array)
+  , popDefEcharts       :: Array PoPDefEcharts
+  , popLeaders          :: Array Server
+  , aggregatorLocations :: AggregatorLocation Array
+  }
+
 
 -- | Convert PoPDefinition to be used by Echarts to diplay locations of pops
 getPoPEcharts :: (PoPDefinition Array) -> Array PoPDefEcharts
@@ -83,3 +99,31 @@ toAggregators mIntraPoPs =
   case head $ catMaybes mIntraPoPs of
     Nothing -> []
     Just i  -> i.aggregatorLocations
+
+updatePoPDefEnv
+  :: forall m r
+   . MonadAff m
+  => MonadAsk { popDefEnv :: PoPDefEnv | r } m
+  => ManageApi m
+  => PoPDefinition Array
+  -> m PoPEnvNoRef
+updatePoPDefEnv pd = do
+  { popDefEnv } <- ask
+  popServers <- liftEffect $ getPoPServers pd
+  popStates <- getPoPState popServers
+
+  let popDefenition       = Just pd
+      popDefEcharts       = getPoPEcharts pd
+      popLeaders          = toPoPleaders popStates
+      aggregatorLocations = toAggregators popStates
+
+  liftEffect do
+    Ref.write popDefenition popDefEnv.popDefinition
+    Ref.write popLeaders popDefEnv.transPoPLeaders
+    Ref.write aggregatorLocations popDefEnv.aggregatorLocations
+
+  pure { popDefenition
+       , popDefEcharts
+       , popLeaders
+       , aggregatorLocations
+       }

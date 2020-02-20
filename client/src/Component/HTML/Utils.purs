@@ -3,7 +3,7 @@ module Rtsv2App.Component.HTML.Utils
        , css
        , dataAttr
        , safeHref
-       , printHref
+       , printHrefPoP
        , maybeElem
        , whenElem
        ) where
@@ -39,8 +39,9 @@ dataAttr atrName atrVal = HP.attr (AttrName $ "data-" <> atrName) atrVal
 safeHref :: forall r i. Route -> HH.IProp ( href :: String | r) i
 safeHref = HP.href <<< append "#" <<< print routeCodec
 
-printHref :: Route -> String
-printHref r = "/app/#" <> print routeCodec r <> "/"
+-- | this is used to turn PoPR into a string to be used as links in a map on Dashboard
+printHrefPoP :: Route -> String
+printHrefPoP r = "/app/#" <> print routeCodec r <> "/"
 
 -- | Sometimes we need to deal with elements which may or may not exist. This function lets us
 -- | provide rendering for the element if it exists, and renders an empty node otherwise.
