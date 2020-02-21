@@ -97,9 +97,9 @@ removeVariant ingestKey@(IngestKey _ _ streamVariant )  = Gen.doCall (serverName
   pure $ CallReply unit state{activeStreamVariants = newActiveStreamVariants}
 
 getState :: AggregatorKey -> Effect (PublicState.IngestAggregator List)
-getState aggregatorKey = Gen.call (serverName aggregatorKey)
+getState aggregatorKey@(AggregatorKey _streamId streamRole) = Gen.call (serverName aggregatorKey)
   \state@{streamDetails, activeStreamVariants} ->
-  CallReply {streamDetails, activeStreamVariants: (\(Tuple streamVariant serverAddress) -> {streamVariant, serverAddress}) <$> (toUnfoldable activeStreamVariants)} state
+  CallReply {role: streamRole, streamDetails, activeStreamVariants: (\(Tuple streamVariant serverAddress) -> {streamVariant, serverAddress}) <$> (toUnfoldable activeStreamVariants)} state
 
 startLink :: StreamDetails -> Effect StartLinkResult
 startLink streamDetails@{slot : {name}} = Gen.startLink (serverName $ streamDetailsToAggregatorKey streamDetails) (init streamDetails) handleInfo

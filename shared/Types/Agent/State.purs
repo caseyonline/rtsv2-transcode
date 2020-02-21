@@ -16,8 +16,8 @@ module Shared.Types.Agent.State
 
 import Data.Maybe (Maybe)
 import Shared.LlnwApiTypes (StreamDetails)
-import Shared.Stream (AgentKey, IngestKey(..), StreamAndVariant, StreamId, StreamRole, StreamVariant)
-import Shared.Types (GeoLoc, Milliseconds, PoPName, RegionName, Server, ServerAddress, ServerRec)
+import Shared.Stream (AgentKey, IngestKey, StreamId, StreamRole, StreamVariant)
+import Shared.Types (GeoLoc, Milliseconds, PoPName, RegionName, Server, ServerAddress)
 import Shared.Types.Media.Types.Rtmp (RtmpClientMetadata)
 import Shared.Types.Media.Types.SourceDetails (SourceInfo)
 import Shared.Types.Workflow.Metrics.FrameFlow as FrameFlow
@@ -48,7 +48,8 @@ type Ingest f
     }
 
 type IngestAggregator f
-   = { streamDetails :: StreamDetails
+   = { role :: StreamRole
+     , streamDetails :: StreamDetails
      , activeStreamVariants :: f { streamVariant :: StreamVariant
                                  , serverAddress :: ServerAddress
                                  }
