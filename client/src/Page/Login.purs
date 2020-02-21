@@ -25,7 +25,6 @@ import Rtsv2App.Component.HTML.Utils (css_, safeHref, whenElem)
 import Rtsv2App.Data.Email (Email)
 import Rtsv2App.Data.Route (Route(..))
 import Rtsv2App.Env (changeHtmlClass)
-import Rtsv2App.Form.Field (submit)
 import Rtsv2App.Form.Field as Field
 import Rtsv2App.Form.Validation as V
 
@@ -105,33 +104,23 @@ component = H.mkComponent
                         [ css_ "mdi mdi-lock default" ]
                         []
                       ]
+                    , HH.span_
+                      [ HH.text "Login" ]
                     ]
+                  , HH.a
+                    [ css_ "button is-small"
+                    , safeHref RegisterR ]
+                    [ HH.text "Need an account?" ]
                   ]
                 , HH.div
                   [ css_ "card-content" ]
-                  html
+                  [ HH.slot F._formless unit formComponent unit (Just <<< HandleLoginForm) ]
                 ]
               ]
             ]
           ]
         ]
       ]
-    where
-      html =
-        [ HH.div
-            [ css_ "card-header" ]
-            [ HH.text "Sign In" ]
-        , HH.div
-            [ css_ "card-content collapse show" ]
-            [ HH.div
-              [ css_ "card-body" ]
-              [ HH.a
-                [ safeHref RegisterR ]
-                [ HH.text "Need an account?" ]
-              , HH.slot F._formless unit formComponent unit (Just <<< HandleLoginForm)
-              ]
-            ]
-        ]
 
 
 newtype LoginForm r f = LoginForm (r
@@ -179,17 +168,39 @@ formComponent = F.component formInput $ F.defaultSpec
     HH.form_
       [ whenElem loginError \_ ->
           HH.div
-            [ css_ "error-messages" ]
+            [ css_ "error-message has-text-danger" ]
             [ HH.text "Email or password is invalid" ]
-      , HH.fieldset_
+      , HH.div
+        [ css_ "field"]
+        [ HH.label
+          [ css_ "label" ]
+          [ HH.text "E-mail Address"]
+        , HH.div
+          [ css_ "control"]
           [ Field.input proxies.email form
-              [ HP.placeholder "Email"
-              , HP.type_ HP.InputEmail
-              ]
-          , Field.input proxies.password form
-              [ HP.placeholder "Password"
-              , HP.type_ HP.InputPassword
-              ]
-          , submit "Log in"
+            [ HP.placeholder "Email"
+            , HP.type_ HP.InputEmail
+            ]
           ]
+        ]
+      , HH.div
+        [ css_ "field"]
+        [ HH.label
+          [ css_ "label" ]
+          [ HH.text "Password"]
+        , HH.div
+          [ css_ "control"]
+          [ Field.input proxies.password form
+            [ HP.placeholder "Password"
+            , HP.type_ HP.InputPassword
+            ]
+          ]
+        ]
+      , HH.hr_
+      , HH.div
+        [ css_ "field is-grouped"]
+        [ HH.div
+          [ css_ "control"]
+          [ Field.submit "Login" ]
+        ]
       ]
