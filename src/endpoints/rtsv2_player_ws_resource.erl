@@ -171,7 +171,7 @@ init_prime(Req, StreamDesc) ->
       %% TODO: PS: select wss/ws appropriately
       AlternateSocketPath = <<"ws://", Alternate/binary, (cowboy_req:path(Req))/binary>>,
 
-      ?LOG_INFO(#{ what => "session.redirect", reason => "server not enabled", context => #{ target_uri => AlternateSocketPath }}),
+      ?LOG_INFO(#{ what => "session.redirect", reason => "egest available elsewhere", context => #{ target_uri => AlternateSocketPath }}),
 
       { cowboy_websocket
       , NewReq
