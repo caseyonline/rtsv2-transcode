@@ -167,7 +167,9 @@ init_prime(Req, StreamDesc) ->
       };
 
     { available_elsewhere, [ Alternate | _ ] } ->
-      AlternateSocketPath = <<"wss://", Alternate/binary, (cowboy_req:path(Req))/binary>>,
+
+      %% TODO: PS: select wss/ws appropriately
+      AlternateSocketPath = <<"ws://", Alternate/binary, (cowboy_req:path(Req))/binary>>,
 
       ?LOG_INFO(#{ what => "session.redirect", reason => "server not enabled", context => #{ target_uri => AlternateSocketPath }}),
 
@@ -220,7 +222,9 @@ websocket_init(#?state_redirect{ alternative_location = AlternativeSocketPath } 
 
   ByeMessage =
     #{ type => bye
-     , alternatives => [ AlternativeSocketPath ]
+     , otherEdges =>
+         [ #{ socketURL => AlternativeSocketPath, iceServers => [] }
+         ]
      },
 
   { [ {text, jsx:encode(ByeMessage)}
@@ -391,6 +395,20 @@ determine_stream_availability(#?stream_desc_ingest{ ingest_key = IngestKey, stre
     false ->
       available_nowhere
   end;
+
+determine_stream_availability(#?stream_desc_egest{ start_stream_result = { left, {notFound} } }) ->
+  available_nowhere;
+
+determine_stream_availability(#?stream_desc_egest{ start_stream_result = { left, {noResource} } }) ->
+
+  %% TODO: PS: redirect to a different PoP?
+  available_nowhere;
+
+determine_stream_availability(#?stream_desc_egest{ start_stream_result = { right, { remote, #{ address := HostName } } } }) ->
+
+  %% TODO: PS: proper determination of port - config?
+  Authority = << HostName/binary, ":3000" >>,
+  {available_elsewhere, [ Authority ]};
 
 determine_stream_availability(#?stream_desc_egest{ egest_key = EgestKey, get_slot_configuration = GetSlotConfiguration }) ->
 
