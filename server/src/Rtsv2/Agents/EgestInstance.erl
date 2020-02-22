@@ -26,6 +26,7 @@
         { receive_socket :: gen_udp:socket()
         , egest_key :: term()
         , parse_info = rtsv2_rtp_util:build_parse_info()
+        , stream_server_pid :: undefined | pid()
         }).
 
 
@@ -64,12 +65,13 @@ getSlotConfigurationFFI(EgestKey) ->
 
 
 init(Parent, EgestKey) ->
+  process_flag(trap_exit, true),
   case init_core(EgestKey) of
     {ok, #?state{ receive_socket = ReceiveSocket } = State} ->
 
       {ok, PortNumber} = inet:port(ReceiveSocket),
 
-      {ok, _StreamServerPid} =
+      {ok, StreamServerPid} =
         webrtc_stream_server:start_link(EgestKey,
                                         #{ stream_module => rtsv2_webrtc_stream_handler
                                          , stream_module_args => [ EgestKey ]
@@ -85,7 +87,7 @@ init(Parent, EgestKey) ->
 
       loop(Parent,
            sys:debug_options([]),
-           State
+           State#?state{stream_server_pid = StreamServerPid}
           );
 
     {error, Reason} ->
@@ -107,7 +109,7 @@ init_core(EgestKey) ->
   end.
 
 
-loop(Parent, Debug, #?state{ parse_info = ParseInfo, egest_key = EgestKey } = State) ->
+loop(Parent, Debug, #?state{ parse_info = ParseInfo, egest_key = EgestKey, stream_server_pid = StreamServerPid } = State) ->
   receive
     {udp, _ReceiveSocket, _SenderIP, _SenderPort, Data} ->
 
@@ -129,6 +131,10 @@ loop(Parent, Debug, #?state{ parse_info = ParseInfo, egest_key = EgestKey } = St
                     ),
 
       loop(Parent, Debug, State);
+
+    {'EXIT', Parent, _Reason} ->
+      gen_server:stop(StreamServerPid),
+      ok;
 
     {system, From, Msg} ->
       sys:handle_system_msg(Msg, From, Parent, ?MODULE, Debug, State)

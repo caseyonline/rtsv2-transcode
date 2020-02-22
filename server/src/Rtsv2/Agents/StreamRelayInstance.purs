@@ -140,8 +140,10 @@ registerEgest payload@{streamId, streamRole} = Gen.doCall (serverName $ payloadT
       do
         logInfo "Register egest " {payload}
         addEgestSinkFFI (payload.deliverTo.server # unwrap # _.address # unwrap) payload.deliverTo.port workflowHandle
+        let
+          newState = state{ egestsServed = Set.insert payload.deliverTo egestsServed}
         -- newState <- maybeStartRelaysForEgest state{ egestsServed = Set.insert payload.deliverTo egestsServed}
-        pure $ CallReply unit $ spy "registerEgest" (State state) -- newState
+        pure $ CallReply unit $ spy "registerEgest" (State newState)
 
     registerWithIngestAggregator {aggregator, workflowHandle, thisServer, relayKey} =
       do
