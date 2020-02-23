@@ -1,3 +1,6 @@
+[ ] - why is egestInstance doing timed announcements
+[ ] - when streamrelay didn't exit, new egests would start but never get rtp
+
 [S] - ingest / ingest aggregator monitoring and recovery
 [S] - handle multiple ingest aggregators
 [ ] - test4 - IngestAggregator with a name clash - 2 things running, should be 1
