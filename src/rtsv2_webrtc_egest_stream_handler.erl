@@ -60,17 +60,19 @@ handle_info({udp, ActualSocket, _SenderIP, _SenderPort, Data},
 
   RTP = #rtp{ payload_type = #rtp_payload_type{ encoding_id = EncodingId } } = rtp:parse(avp, Data, ParseInfo),
 
+  %% TODO: PS: SSRC rewriting will ultimately be part of WebRTC when it
+  %% supports ABR
   Sequence =
     case EncodingId of
       ?OPUS_ENCODING_ID ->
         #rtp_sequence{ type = audio
                      , codec = opus
-                     , rtps = [ RTP ]
+                     , rtps = [ RTP#rtp{ ssrc = ?EGEST_AUDIO_SSRC } ]
                      };
       ?H264_ENCODING_ID ->
         #rtp_sequence{ type = video
                      , codec = h264
-                     , rtps = [ RTP ]
+                     , rtps = [ RTP#rtp{ ssrc = ?EGEST_VIDEO_SSRC } ]
                      }
     end,
 

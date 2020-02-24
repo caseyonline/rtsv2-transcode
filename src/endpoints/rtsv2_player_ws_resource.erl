@@ -6,6 +6,7 @@
 -include_lib("id3as_common/include/id3as_message_bus.hrl").
 -include_lib("id3as_rtc/include/webrtc.hrl").
 -include_lib("id3as_media/include/frame.hrl").
+-include("./rtsv2_rtp.hrl").
 
 
 -export([ init/2
@@ -596,11 +597,7 @@ construct_start_options(TraceId, IP, [ SlotProfile ], #?stream_desc_ingest{}) ->
        }
    };
 
-construct_start_options(TraceId, IP, [ SlotProfile | _IgnoreTheseForNow ], #?stream_desc_egest{}) ->
-
-  #{ firstAudioSSRC := AudioSSRC
-   , firstVideoSSRC := VideoSSRC
-   } = SlotProfile,
+construct_start_options(TraceId, IP, _SlotProfiles, #?stream_desc_egest{}) ->
 
   #{ session_id => TraceId
    , local_address => IP
@@ -614,8 +611,8 @@ construct_start_options(TraceId, IP, [ SlotProfile | _IgnoreTheseForNow ], #?str
 
    , rtp_egest_config =>
        { passthrough
-       , #{ audio_ssrc => AudioSSRC
-          , video_ssrc => VideoSSRC
+       , #{ audio_ssrc => ?EGEST_AUDIO_SSRC
+          , video_ssrc => ?EGEST_VIDEO_SSRC
           }
        }
    }.
