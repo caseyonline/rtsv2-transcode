@@ -277,7 +277,7 @@ main =
     waitForAsyncRelayStart         = delayMs  100.0
     waitForAsyncRelayStop          = delayMs  100.0
 
-    waitForAsyncVariantStart       = delayMs  100.0
+    waitForAsyncVariantStart       = delayMs  150.0
     waitForAsyncVariantStop        = delayMs  100.0
 
     waitForIntraPoPDisseminate     = delayMs  500.0
@@ -330,10 +330,11 @@ main =
                                                                          >>= as  "aggregator has low only"
 
           it "2nd ingest does not doesn't start new aggregator since one is running" do
-            ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as "create low ingest"
+            ingestStart    p1n1 shortName1 low   >>= assertStatusCode 200 >>= as "create low ingest"
+            waitForAsyncVariantStart                                      >>= as' "wait for async start of variant"
             setLoad         p1n1 60.0            >>= assertStatusCode 204 >>= as "set load on server"
-            ingestStart    p1n1 shortName1 high >>= assertStatusCode 200 >>= as "create high ingest"
-            waitForAsyncVariantStart                                      >>= as' "wait for async start of variants"
+            ingestStart    p1n1 shortName1 high  >>= assertStatusCode 200 >>= as "create high ingest"
+            waitForAsyncVariantStart                                      >>= as' "wait for async start of variant"
             aggregatorStats p1n1 slot1           >>= assertStatusCode 200
                                                      >>= assertAggregator [low, high]
                                                                           >>= as "aggregator has 2 variants"
@@ -447,6 +448,7 @@ main =
               ingestStart p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
               waitForAsyncVariantStart                                  >>= as' "wait for async start of variant"
               client start p1n1 slot1          >>= assertStatusCode 204 >>= as  "egest available"
+              waitForAsyncVariantStart                                  >>= as' "wait for async start of variant"
               relayStats   p1n1 slot1          >>= assertStatusCode 200
                                                    >>= assertRelayForEgest [p1n1]
                                                                         >>= as  "local relay exists"

@@ -22,7 +22,7 @@
 %% Generator API
 %%------------------------------------------------------------------------------
 init(#generator{}) ->
-  {ok, Socket} = gen_udp:open(0, [binary, {recbuf, 50 * 1500}]),
+  {ok, Socket} = gen_udp:open(0, [binary, {recbuf, 100 * 1500}]),
 
   { ok
   , #?state{ socket = Socket

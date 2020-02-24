@@ -15,6 +15,7 @@ module Rtsv2.Agents.IntraPoP
   , announceLocalEgestIsAvailable
   , announceLocalEgestStopped
   , announceLocalRelayIsAvailable
+  , announceLocalRelayStopped
 
   , announceLoad
   , announceTransPoPLeader
@@ -645,9 +646,9 @@ announceLocalRelayIsAvailable :: RelayKey -> Effect Unit
 announceLocalRelayIsAvailable (RelayKey streamId streamRole) = do
   announceAvailableLocal relayHandler (AgentKey streamId streamRole)
 
-announceLocalRelayStopped :: AgentKey -> Effect Unit
-announceLocalRelayStopped = announceStoppedLocal relayHandler
-
+announceLocalRelayStopped :: RelayKey -> Effect Unit
+announceLocalRelayStopped (RelayKey streamId streamRole) = do
+  announceStoppedLocal relayHandler (AgentKey streamId streamRole)
 
 -- Builds public API for events on this server
 announceAvailableLocal :: AgentHandler -> AgentKey -> Effect Unit

@@ -11,6 +11,7 @@ module Rtsv2.Agents.StreamRelayInstance
 
 import Prelude
 
+import Bus as Bus
 import Data.Either (fromRight)
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (unwrap)
@@ -26,18 +27,19 @@ import Logger (Logger, spy)
 import Logger as Logger
 import Partial.Unsafe (unsafePartial)
 import Pinto (ServerName, StartLinkResult, isRegistered)
-import Pinto.Gen (CallResult(..))
+import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import PintoHelper (exposeState)
+import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..))
 import Rtsv2.Agents.IntraPoP as IntraPoP
+import Rtsv2.Agents.SlotTypes (SlotConfiguration)
 import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload, RegisterEgestPayload, SourceRoute, RegisterRelayPayload, DeliverTo)
 import Rtsv2.Agents.TransPoP as TransPoP
-import Rtsv2.Agents.SlotTypes (SlotConfiguration)
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl, makeUrlWithPath)
 import Shared.Agent as Agent
-import Shared.Stream (RelayKey(..), StreamId(..), StreamRole(..))
+import Shared.Stream (AggregatorKey(..), RelayKey(..), StreamId(..), StreamRole(..))
 import Shared.Types (EgestServer, RelayServer(..), Server, extractPoP, extractAddress)
 import Shared.Types.Agent.State as PublicState
 import SpudGun as SpudGun
@@ -52,6 +54,7 @@ foreign import getSlotConfigurationFFI :: RelayKey -> Effect (Maybe SlotConfigur
 foreign import addIngestAggregatorSourceFFI :: Handle -> Effect Port
 foreign import addEgestSinkFFI :: Host -> Port -> Handle -> Effect Unit
 
+data Msg = IntraPoPBus IntraPoP.IntraPoPBusMessage
 
 data State =
   State
@@ -73,7 +76,7 @@ payloadToRelayKey :: forall r.
   -> RelayKey
 payloadToRelayKey payload = RelayKey payload.streamId payload.streamRole
 
-serverName :: RelayKey -> ServerName State Unit
+serverName :: RelayKey -> ServerName State Msg
 serverName = Names.streamRelayInstanceName
 
 startLink :: CreateRelayPayload -> Effect StartLinkResult
@@ -81,7 +84,7 @@ startLink payload =
   let
     relayKey = payloadToRelayKey payload
   in
-  Gen.startLink (serverName relayKey) (init payload) Gen.defaultHandleInfo
+  Gen.startLink (serverName relayKey) (init payload) handleInfo
 
 isAvailable :: RelayKey -> Effect Boolean
 isAvailable relayKey = isRegistered (serverName relayKey)
@@ -106,6 +109,7 @@ init payload@{streamId, streamRole} = do
   logInfo "StreamRelay starting" {payload}
   thisServer <- PoPDefinition.getThisServer
   workflowHandle <- startWorkflowFFI (unwrap streamId)
+  _ <- Bus.subscribe (serverName relayKey) IntraPoP.bus IntraPoPBus
 
   IntraPoP.announceLocalRelayIsAvailable relayKey
   -- TODO - linger timeout / exit if idle
@@ -117,6 +121,21 @@ init payload@{streamId, streamRole} = do
                , egestSourceRoutes : Nothing
                , workflowHandle
                }
+
+handleInfo :: Msg -> State -> Effect (CastResult State)
+handleInfo msg state@(State {relayKey: RelayKey ourStreamId _}) =
+  case msg of
+    IntraPoPBus (IngestAggregatorExited (AggregatorKey streamId streamRole) serverAddress)
+     -- TODO - PRIMARY BACKUP
+      | streamId == ourStreamId -> doStop state
+      | otherwise -> pure $ CastNoReply state
+
+doStop :: State -> Effect (CastResult State)
+doStop state@(State {relayKey}) = do
+  logInfo "Stream Relay stopping" {relayKey}
+  IntraPoP.announceLocalRelayStopped relayKey
+  pure $ CastStop state
+
 
 -- TODO: PS: change to use Nick's new routing when available
 registerEgest :: RegisterEgestPayload -> Effect Unit
@@ -140,8 +159,10 @@ registerEgest payload@{streamId, streamRole} = Gen.doCall (serverName $ payloadT
       do
         logInfo "Register egest " {payload}
         addEgestSinkFFI (payload.deliverTo.server # unwrap # _.address # unwrap) payload.deliverTo.port workflowHandle
+        let
+          newState = state{ egestsServed = Set.insert payload.deliverTo egestsServed}
         -- newState <- maybeStartRelaysForEgest state{ egestsServed = Set.insert payload.deliverTo egestsServed}
-        pure $ CallReply unit $ spy "registerEgest" (State state) -- newState
+        pure $ CallReply unit $ spy "registerEgest" (State newState)
 
     registerWithIngestAggregator {aggregator, workflowHandle, thisServer, relayKey} =
       do
