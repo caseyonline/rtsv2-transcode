@@ -3,7 +3,6 @@ module Rtsv2App.Component.HTML.Utils
        , css
        , dataAttr
        , safeHref
-       , printHrefPoP
        , maybeElem
        , whenElem
        ) where
@@ -25,7 +24,6 @@ import Rtsv2App.Data.Route (Route, routeCodec)
 css_ :: forall r i. String -> HH.IProp ( class :: String | r ) i
 css_ = HP.class_ <<< HH.ClassName
 
-
 css :: forall p i. Array String -> HH.IProp (class :: String | i) p
 css = HP.classes <<< map HH.ClassName
 
@@ -38,10 +36,6 @@ dataAttr atrName atrVal = HP.attr (AttrName $ "data-" <> atrName) atrVal
 -- | better `Route` type. This utility is a drop-in replacement for `href` that uses `Route`.
 safeHref :: forall r i. Route -> HH.IProp ( href :: String | r) i
 safeHref = HP.href <<< append "#" <<< print routeCodec
-
--- | this is used to turn PoPR into a string to be used as links in a map on Dashboard
-printHrefPoP :: Route -> String
-printHrefPoP r = "/app/#" <> print routeCodec r <> "/"
 
 -- | Sometimes we need to deal with elements which may or may not exist. This function lets us
 -- | provide rendering for the element if it exists, and renders an empty node otherwise.

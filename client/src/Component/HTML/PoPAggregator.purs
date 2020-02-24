@@ -2,23 +2,29 @@ module Rtsv2App.Component.HTML.PoPAggregator where
 
 import Prelude
 
-import Data.Maybe (Maybe(..))
+import Data.Array (head)
+import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Newtype (un)
+import Debug.Trace (spy)
 import Effect.Aff.Class (class MonadAff)
 import Halogen as H
 import Halogen.HTML as HH
 import Halogen.HTML.Events as HE
 import Halogen.HTML.Properties as HP
 import Rtsv2App.Capability.Navigate (class Navigate)
-import Rtsv2App.Component.HTML.Utils (css_)
-import Shared.Stream (StreamId)
-import Shared.Types.Agent.State (PoPDefinition)
+import Rtsv2App.Component.HTML.Utils (css_, dataAttr)
+import Shared.Stream (StreamId(..))
+import Shared.Types (PoPName(..), RegionName(..), Server(..), ServerAddress(..))
+import Shared.Types.Agent.State (PoPDefinition, AggregatorLocation)
 
 
 -------------------------------------------------------------------------------
 -- Types
 -------------------------------------------------------------------------------
 type Input =
-  { popDef :: Maybe (PoPDefinition Array) }
+  { popDef  :: Maybe (PoPDefinition Array)
+  , argLocs :: AggregatorLocation Array
+  }
 
 type Slot = H.Slot Query Message
 
@@ -26,9 +32,15 @@ data Query a = IsOn (Boolean -> a)
 
 data Message = CheckedStreamId (Maybe StreamId)
 
-data Action = Select StreamId
+data Action
+  = Select StreamId
+  | Receive Input
 
-type State = { checkedStreamId :: Maybe StreamId }
+type State =
+  { checkedStreamId :: Maybe StreamId
+  , argLocs         :: AggregatorLocation Array
+  , popDef          :: Maybe (PoPDefinition Array)
+  }
 
 
 -------------------------------------------------------------------------------
@@ -45,14 +57,25 @@ component = H.mkComponent
   , eval: H.mkEval $ H.defaultEval
       { handleAction = handleAction
       , handleQuery = handleQuery
+      , receive = Just <<< Receive
       }
   }
   where
   initialState :: Input -> State
-  initialState _ = { checkedStreamId: Nothing }
+  initialState { argLocs, popDef } =
+    { checkedStreamId: Nothing
+    , argLocs: (spy "poop" argLocs)
+    , popDef
+    }
 
   handleAction :: Action -> H.HalogenM State Action () Message m Unit
   handleAction = case _ of
+    Receive { argLocs, popDef } -> do
+      H.put { checkedStreamId: Nothing
+            , argLocs: spy "Recieve" argLocs
+            , popDef
+            }
+
     Select streamId -> do
       newState <- H.modify _ { checkedStreamId = Just streamId }
       H.raise (CheckedStreamId newState.checkedStreamId)
@@ -101,13 +124,79 @@ component = H.mkComponent
                 ]
               ]
             , HH.tbody_
-              []
+              (tableBody <$> state.argLocs)
             ]
           ]
         ]
     ]
 
-
-tableBody =
+tableBody
+  :: forall p i
+  .  { streamId :: StreamId , servers :: Array Server}
+  -> HH.HTML p i
+tableBody argLoc =
   HH.tr_
-  []
+  ( argLoc.servers >>= 
+    (\server -> do
+      let { address, pop, region } = un Server server
+      [ HH.td
+        [ css_ "checkbox-cell" ]
+        [ HH.label
+          [ css_ "b-checkbox checkbox"]
+          [ HH.input
+            [ HP.type_ HP.InputCheckbox
+            , -- HE.onValueInput (Just <<< Select argLoc.streamId)
+            ]
+          , HH.span
+            [ css_ "check"]
+            []
+          , HH.span
+            [ css_ "control-label"]
+            []
+          ]
+        ]
+      , HH.td
+        [ dataAttr "label" "Name" ]
+        [ HH.text $ un StreamId argLoc.streamId ]
+      , HH.td
+        [ dataAttr "label" "PoP" ]
+        [ HH.text $ un PoPName pop ]
+      , HH.td
+        [ dataAttr "label" "Region" ]
+        [ HH.text $ un RegionName region ]
+      , HH.td
+        [ dataAttr "label" "Region" ]
+        [ HH.text $ un ServerAddress address ]
+      ]
+    )
+  )
+
+
+
+  -- ( flip map argLoc.servers
+  --   (\server ->
+  --     [ HH.td
+  --       [ css_ "checkbox-cell" ]
+  --       [ HH.label
+  --         [ css_ "b-checkbox checkbox"]
+  --         [ HH.input
+  --           [ HP.type_ HP.InputCheckbox ]
+  --         , HH.span
+  --           [ css_ "check"]
+  --           []
+  --         , HH.span
+  --           [ css_ "control-label"]
+  --           []
+  --         ]
+  --       ]
+  --     , HH.td
+  --       [ dataAttr "label" "Name" ]
+  --       [ -- HH.text $ un StreamId argLoc.streamId
+  --       ]
+  --     , HH.td
+  --       [ dataAttr "label" "PoP" ]
+  --       [ -- HH.text $ un PoPName server.pop
+  --       ]
+  --     ]
+  --   )
+  -- -- )

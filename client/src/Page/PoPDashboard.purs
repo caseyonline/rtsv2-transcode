@@ -38,7 +38,7 @@ import Rtsv2App.Data.Route (Route(..))
 import Rtsv2App.Env (PoPDefEnv, UrlEnv, UserEnv, changeHtmlClass)
 import Shared.Stream (StreamId(..))
 import Shared.Types (PoPName(..))
-import Shared.Types.Agent.State (TimedPoPRoutes, PoPDefinition)
+import Shared.Types.Agent.State (PoPDefinition, TimedPoPRoutes, AggregatorLocation)
 
 -------------------------------------------------------------------------------
 -- Types for Dashboard Page
@@ -54,7 +54,8 @@ data Action
   | Receive Input
 
 type State =
-  { availableRoutes :: Array String
+  { argLocs         :: AggregatorLocation Array
+  , availableRoutes :: Array String
   , chart           :: Maybe EC.Instance
   , currentUser     :: Maybe Profile
   , isOpen          :: Boolean
@@ -96,7 +97,8 @@ component = H.mkComponent
   }
   where
   initialState { popName, prevRoute } =
-    { availableRoutes: ["dia", "Dal", "lax", "fra"]
+    { argLocs: []
+    , availableRoutes: ["dia", "Dal", "lax", "fra"]
     , chart: Nothing
     , currentUser: Nothing
     , isOpen: false
@@ -117,11 +119,14 @@ component = H.mkComponent
       _ <- liftEffect $ changeHtmlClass urlEnv.htmlClass
       -- don't load js again if previous route was a PoPDashboard
       shouldLoadJS st.prevRoute
+
       currentUser <- H.liftEffect $ Ref.read userEnv.currentUser
-
-      H.modify_ _ { currentUser = currentUser }
-
       popDef <- H.liftEffect $ Ref.read popDefEnv.popDefinition
+      aggregatorLocations <- H.liftEffect $ Ref.read popDefEnv.aggregatorLocations
+
+      H.modify_ _ { currentUser = currentUser
+                  , argLocs = spy "aggregatorLocations" aggregatorLocations
+                  }
 
       -- | is popDefinition already on Global
       case popDef of
@@ -159,7 +164,7 @@ component = H.mkComponent
       pure unit
 
   render :: State -> H.ComponentHTML Action ChildSlots m
-  render state@{ popName, currentUser, popDefenition } =
+  render state@{ popName, currentUser, popDefenition, argLocs } =
     HH.div
       [ css_ "main" ]
       [ HH.slot (SProxy :: _ "header") unit HD.component { currentUser, route: LoginR } absurd
@@ -195,7 +200,7 @@ component = H.mkComponent
         ]
       , HH.section
         [ css_ "section is-main-section" ]
-        [ HH.slot (SProxy :: _ "popSlotArgTable") unit PA.component { popDef: popDefenition} (Just <<< HandlePoPSlotArgTable)
+        [ HH.slot (SProxy :: _ "popSlotArgTable") unit PA.component {argLocs, popDef: popDefenition} (Just <<< HandlePoPSlotArgTable)
         , HH.div
           [ css_ "content-body" ]
           [ HH.div

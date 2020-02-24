@@ -26,6 +26,7 @@ import Rtsv2App.Data.Route (Route(..), routeCodec)
 import Rtsv2App.Env (UrlEnv, UserEnv, PoPDefEnv)
 import Rtsv2App.Page.Dashboard as Dashboard
 import Rtsv2App.Page.Login as Login
+import Rtsv2App.Page.NotFound as NotFound
 import Rtsv2App.Page.PoPDashboard as PoPDashboard
 import Rtsv2App.Page.Register as Register
 import Rtsv2App.Page.Settings as Settings
@@ -48,10 +49,11 @@ data Action
 
 type ChildSlots = 
   ( dashboard :: OpaqueSlot Unit
-  , popHome :: OpaqueSlot Unit
-  , login :: OpaqueSlot Unit
-  , register :: OpaqueSlot Unit
-  , settings :: OpaqueSlot Unit
+  , popHome   :: OpaqueSlot Unit
+  , login     :: OpaqueSlot Unit
+  , register  :: OpaqueSlot Unit
+  , settings  :: OpaqueSlot Unit
+  , notFound  :: OpaqueSlot Unit
   )
 
 -------------------------------------------------------------------------------
@@ -129,7 +131,6 @@ component = Connect.component $ H.mkComponent
       SettingsR ->
         HH.slot (SProxy :: _ "settings") unit Settings.component {} absurd
           # authorize currentUser
-      _ -> HH.div_ [ HH.text "Oh no! That page wasn't found." ]
 
     Nothing ->
       HH.div_ [ HH.text "Oh no! That page wasn't found." ]

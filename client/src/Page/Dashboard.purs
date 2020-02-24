@@ -32,7 +32,7 @@ import Rtsv2App.Component.HTML.Header as HD
 import Rtsv2App.Component.HTML.MainSecondary as MS
 import Rtsv2App.Component.HTML.MenuMain as MM
 import Rtsv2App.Component.HTML.Tile as TL
-import Rtsv2App.Component.HTML.Utils (css_, printHrefPoP)
+import Rtsv2App.Component.HTML.Utils (css_)
 import Rtsv2App.Data.PoP (PoPDefEcharts, updatePoPDefEnv)
 import Rtsv2App.Data.Profile (Profile)
 import Rtsv2App.Data.Route (Route(..))
@@ -128,9 +128,8 @@ component = Connect.component $ H.mkComponent
         chart <- H.liftEffect $ EC.makeChart element
         H.modify_ _ { chart = Just chart }
         liftEffect $ EC.setOption { scatterData: newSt.popDefEcharts } chart
-        liftEffect $ EC.setClick { curHost: (unwrap urlEnv.curHostUrl), url: printHrefPoP PoPR } chart
+        liftEffect $ EC.setClick { curHost: (unwrap urlEnv.curHostUrl), url: "/app/#/pop/" } chart
         liftEffect $ EC.ressizeObserver chart
-
 
     Receive { currentUser } ->
       H.modify_ _ { currentUser = currentUser }
