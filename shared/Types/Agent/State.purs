@@ -48,7 +48,7 @@ type Ingest f
     }
 
 type IngestAggregator f
-   = { role :: StreamRole
+   = { streamRole :: StreamRole
      , streamDetails :: StreamDetails
      , activeStreamVariants :: f { streamVariant :: StreamVariant
                                  , serverAddress :: ServerAddress
@@ -71,6 +71,7 @@ type AgentLocation f = { agentKey :: AgentKey
 
 type IntraPoP f
   = { aggregatorLocations :: f { streamId :: StreamId
+                               , streamRole :: StreamRole
                                , servers :: f Server
                                }
     , relayLocations      :: f { streamId :: StreamId

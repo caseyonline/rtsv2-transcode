@@ -124,7 +124,7 @@ registerRelay payload@{deliverTo} = Gen.doCast (serverName $ payloadToAggregator
 getState :: AggregatorKey -> Effect (PublicState.IngestAggregator List)
 getState aggregatorKey@(AggregatorKey _streamId streamRole) = Gen.call (serverName aggregatorKey)
   \state@{streamDetails, activeStreamVariants} ->
-  CallReply {role: streamRole, streamDetails, activeStreamVariants: (\(Tuple streamVariant serverAddress) -> {streamVariant, serverAddress}) <$> (toUnfoldable activeStreamVariants)} state
+  CallReply {streamRole, streamDetails, activeStreamVariants: (\(Tuple streamVariant serverAddress) -> {streamVariant, serverAddress}) <$> (toUnfoldable activeStreamVariants)} state
 
 slotConfiguration :: AggregatorKey -> Effect (Maybe SlotConfiguration)
 slotConfiguration (AggregatorKey (StreamId streamId) _streamRole) =

@@ -209,6 +209,7 @@ getPublicState = exposeState publicState serverName
       }
     toStreamId (Tuple (AgentKey streamId streamRole) v) =
       { streamId
+      , streamRole
       , servers:  Set.toUnfoldable v
       }
     toStreamAndVariant (Tuple (AgentKey streamId streamRole) v) =
