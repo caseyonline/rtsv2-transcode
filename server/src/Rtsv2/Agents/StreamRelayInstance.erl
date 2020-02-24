@@ -20,7 +20,8 @@
 
 %% Sources
 -export(
-   [ addIngestAggregatorSourceFFI/1
+   [ ensureIngestAggregatorSourceFFI/1
+   , ensureStreamRelaySourceFFI/2
    ]).
 
 
@@ -29,7 +30,6 @@
    [ addEgestSinkFFI/3
    ]).
 
-          %% , addStreamRelaySourceFFI/1
           %% , addStreamRelaySinkFFI/2
 
 -define(metadata, rtsv2_agents_streamRelayInstance_metadata).
@@ -45,9 +45,16 @@ startWorkflowFFI(SlotId) ->
   end.
 
 
-addIngestAggregatorSourceFFI(Handle) ->
+ensureIngestAggregatorSourceFFI(Handle) ->
   fun() ->
-      {ok, ReceivePort} = id3as_workflow:ioctl(sources, add_ingest_aggregator_source, Handle),
+      {ok, ReceivePort} = id3as_workflow:ioctl(sources, ensure_ingest_aggregator_source, Handle),
+      ReceivePort
+  end.
+
+
+ensureStreamRelaySourceFFI(SourceRoute, Handle) ->
+  fun() ->
+      {ok, ReceivePort} = id3as_workflow:ioctl(sources, {ensure_stream_relay_source, SourceRoute}, Handle),
       ReceivePort
   end.
 
