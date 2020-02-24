@@ -104,7 +104,7 @@ startWorkflow(SlotName, Profiles) ->
 
   %% TODO - need to close down the PIDS
   _Pids = lists:map(fun(IngestKey) ->
-                        {ok, Pid} = webrtc_stream_server:start_link(IngestKey, #{stream_module => rtsv2_webrtc_stream_handler,
+                        {ok, Pid} = webrtc_stream_server:start_link(IngestKey, #{stream_module => rtsv2_webrtc_ingest_preview_stream_handler,
                                                                                  stream_module_args => [IngestKey]}),
                         Pid
                     end,

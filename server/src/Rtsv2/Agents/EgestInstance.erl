@@ -14,20 +14,7 @@
         ]).
 
 
-%% proc_lib exports
--export([ init/2
-        ]).
-
-
 -define(state, ?MODULE).
-
-
--record(?state,
-        { receive_socket :: gen_udp:socket()
-        , egest_key :: term()
-        , parse_info = rtsv2_rtp_util:build_parse_info()
-        , stream_server_pid :: undefined | pid()
-        }).
 
 
 -define(metadata, rtsv2_agents_streamRelayInstance_metadata).
@@ -39,7 +26,16 @@
 
 startEgestReceiverFFI(EgestKey) ->
   fun() ->
-      {ok, _ChildProc, PortNumber} = proc_lib:start_link(?MODULE, init, [self(), EgestKey]),
+
+      {ok, _StreamServerPid} =
+        webrtc_stream_server:start_link(EgestKey,
+                                        #{ stream_module => rtsv2_webrtc_egest_stream_handler
+                                         , stream_module_args => [ self(), EgestKey ]
+                                         }
+                                       ),
+
+      {ok, PortNumber} = rtsv2_webrtc_egest_stream_handler:port_number(EgestKey),
+
       PortNumber
   end.
 
@@ -61,81 +57,4 @@ getSlotConfigurationFFI(EgestKey) ->
         [{_Pid, #?metadata{ slot_configuration = SlotConfiguration }}] ->
           {just, SlotConfiguration}
       end
-  end.
-
-
-init(Parent, EgestKey) ->
-  process_flag(trap_exit, true),
-  case init_core(EgestKey) of
-    {ok, #?state{ receive_socket = ReceiveSocket } = State} ->
-
-      {ok, PortNumber} = inet:port(ReceiveSocket),
-
-      {ok, StreamServerPid} =
-        webrtc_stream_server:start_link(EgestKey,
-                                        #{ stream_module => rtsv2_webrtc_stream_handler
-                                         , stream_module_args => [ EgestKey ]
-                                         }
-                                       ),
-      Ret =
-        { ok
-        , self()
-        , PortNumber
-        },
-
-      proc_lib:init_ack(Parent, Ret),
-
-      loop(Parent,
-           sys:debug_options([]),
-           State#?state{stream_server_pid = StreamServerPid}
-          );
-
-    {error, Reason} ->
-      exit(Reason)
-  end.
-
-
-init_core(EgestKey) ->
-  case gen_udp:open(0, [binary, {recbuf, 50 * 1500}]) of
-    {ok, ReceiveSocket} ->
-      { ok
-      , #?state{ receive_socket = ReceiveSocket
-               , egest_key = EgestKey
-               }
-      };
-
-    Err ->
-      Err
-  end.
-
-
-loop(Parent, Debug, #?state{ parse_info = ParseInfo, egest_key = EgestKey, stream_server_pid = StreamServerPid } = State) ->
-  receive
-    {udp, _ReceiveSocket, _SenderIP, _SenderPort, Data} ->
-
-      RTP = #rtp{ payload_type = #rtp_payload_type{ encoding_id = EncodingId } } = rtp:parse(avp, Data, ParseInfo),
-
-      pubsub:publish({webrtc_stream_output, EgestKey},
-                     case EncodingId of
-                       ?OPUS_ENCODING_ID ->
-                         #rtp_sequence{ type = audio
-                                      , codec = opus
-                                      , rtps = [ RTP ]
-                                      };
-                       ?H264_ENCODING_ID ->
-                         #rtp_sequence{ type = video
-                                      , codec = h264
-                                      , rtps = [ RTP ]
-                                      }
-                     end
-                    ),
-
-      loop(Parent, Debug, State);
-
-    {'EXIT', Parent, _Reason} ->
-      gen_server:stop(StreamServerPid),
-      ok;
-
-    {system, From, Msg} ->
-      sys:handle_system_msg(Msg, From, Parent, ?MODULE, Debug, State)
   end.

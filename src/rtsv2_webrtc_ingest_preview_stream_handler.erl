@@ -1,4 +1,4 @@
--module(rtsv2_webrtc_stream_handler).
+-module(rtsv2_webrtc_ingest_preview_stream_handler).
 
 -behavior(webrtc_stream_handler).
 
@@ -19,9 +19,8 @@
         }).
 
 -spec init([ Key ]) -> #?state{} when
-    Key :: IngestKey | EgestKey | StreamAndVariant,
+    Key :: IngestKey | StreamAndVariant,
     IngestKey :: term(),
-    EgestKey :: term(),
     StreamAndVariant :: term().
 
 init(_Args = [Key]) -> %% , StatsGatherer]) ->
