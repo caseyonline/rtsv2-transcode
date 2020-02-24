@@ -39,7 +39,7 @@ init(_Args = [ ParentPid, EgestKey ]) ->
 
   process_flag(trap_exit, true),
 
-  {ok, ReceiveSocket} = gen_udp:open(0, [binary, {recbuf, 50 * 1500}]),
+  {ok, ReceiveSocket} = gen_udp:open(0, [binary, {recbuf, 100 * 1500}]),
 
   #?state{ parent_pid = ParentPid
          , egest_key = EgestKey
