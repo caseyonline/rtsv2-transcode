@@ -30,7 +30,7 @@ streamAuthTypeDb :: Map StreamConnection AuthType
 streamAuthTypeDb =
   fromFoldable (Tuple (wrap { host: "172.16.171.5"
                             , protocol: Rtmp
-                            , rtmpShortName: "mmddev001"
+                            , rtmpShortName: wrap "mmddev001"
                             })
                         {authType : Llnw }
                 : nil)
@@ -38,7 +38,7 @@ streamAuthTypeDb =
 streamAuthDb :: Map StreamAuth PublishCredentials
 streamAuthDb =
   fromFoldable (Tuple (wrap { host: "172.16.171.5"
-                            , rtmpShortName: "mmddev001"
+                            , rtmpShortName: wrap "mmddev001"
                             , username: "user"
                             })
                 (PublishCredentials { username: "user"
@@ -49,18 +49,18 @@ streamPublishDb :: Map StreamPublish StreamDetails
 streamPublishDb =
   fromFoldable (Tuple (wrap { host: "172.16.171.5"
                             , protocol: Rtmp
-                            , rtmpShortName: "mmddev001"
-                            , rtmpStreamName: "slot1_1000"
+                            , rtmpShortName: wrap "mmddev001"
+                            , rtmpStreamName: wrap "slot1_1000"
                             , username: "user" })
                       { role: Primary
                       , slot : { id: wrap 1
                                , name: "slot1"
                                , subscribeValidation: false
                                , profiles: [ wrap { name: wrap "high",
-                                                    rtmpStreamName: "slot1_1000",
+                                                    rtmpStreamName: wrap "slot1_1000",
                                                     bitrate: 1000000}
                                            , wrap { name: wrap "low",
-                                                    rtmpStreamName: "slot1_500",
+                                                    rtmpStreamName: wrap "slot1_500",
                                                     bitrate: 500000}
                                            ]
                                , outputFormats : []
@@ -69,18 +69,18 @@ streamPublishDb =
                       }
                 : Tuple (wrap { host: "172.16.171.5"
                               , protocol: Rtmp
-                              , rtmpShortName: "mmddev001"
-                              , rtmpStreamName: "slot1_500"
+                              , rtmpShortName: wrap "mmddev001"
+                              , rtmpStreamName: wrap "slot1_500"
                               , username: "user" })
                         { role: Primary
                         , slot : { id: wrap 1
                                  , name: "slot1"
                                  , subscribeValidation: false
                                  , profiles: [ wrap { name: wrap "high",
-                                                      rtmpStreamName: "slot1_1000",
+                                                      rtmpStreamName: wrap "slot1_1000",
                                                       bitrate: 1000000}
                                              , wrap { name: wrap "low",
-                                                      rtmpStreamName: "slot1_500",
+                                                      rtmpStreamName: wrap "slot1_500",
                                                       bitrate: 500000}
                                              ]
                                  , outputFormats : []

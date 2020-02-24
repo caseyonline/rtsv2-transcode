@@ -36,7 +36,7 @@ import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype)
 import Foreign (ForeignError(..), F, readString, unsafeToForeign)
 import Record (rename)
-import Shared.Stream (ProfileName, SlotId, SlotRole)
+import Shared.Stream (ProfileName, RtmpShortName(..), RtmpStreamName(..), SlotId, SlotRole)
 import Simple.JSON (class ReadForeign, class WriteForeign, readJSON', writeJSON)
 import Type.Prelude (SProxy(..))
 
@@ -46,7 +46,7 @@ data StreamIngestProtocol = Rtmp
 newtype StreamConnection = StreamConnection
                            { host :: String
                            , protocol :: StreamIngestProtocol
-                           , rtmpShortName :: String
+                           , rtmpShortName :: RtmpShortName
                            }
 
 data SlotPublishAuthType = Adobe
@@ -59,7 +59,7 @@ type AuthType =
 
 newtype StreamAuth = StreamAuth
                      { host :: String
-                     , rtmpShortName :: String
+                     , rtmpShortName :: RtmpShortName
                      , username :: String
                      }
 
@@ -71,14 +71,14 @@ newtype PublishCredentials = PublishCredentials
 newtype StreamPublish = StreamPublish
                         { host :: String
                         , protocol :: StreamIngestProtocol
-                        , rtmpShortName :: String
-                        , rtmpStreamName :: String
+                        , rtmpShortName :: RtmpShortName
+                        , rtmpStreamName :: RtmpStreamName
                         , username :: String
                         }
 
 newtype SlotProfile = SlotProfile
                       { name :: ProfileName
-                      , rtmpStreamName :: String
+                      , rtmpStreamName :: RtmpStreamName
                       , bitrate :: Int
                       }
 

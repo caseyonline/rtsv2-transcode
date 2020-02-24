@@ -216,8 +216,8 @@ ingestStart =
                             streamPublishPayload :: StreamPublish
                             streamPublishPayload = wrap { host: "172.16.171.5"
                                                         , protocol: Rtmp
-                                                        , rtmpShortName: unwrap shortName
-                                                        , rtmpStreamName: unwrap profileName
+                                                        , rtmpShortName: shortName
+                                                        , rtmpStreamName: wrap $ unwrap profileName
                                                         , username: "user"}
                           in
                            do

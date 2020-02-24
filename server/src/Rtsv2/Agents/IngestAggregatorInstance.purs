@@ -144,7 +144,7 @@ init streamDetails = do
        , workflowHandle
        }
   where
-    mkKey (SlotProfile p) = tuple3 (IngestKey streamDetails.slot.id streamDetails.role p.name) p.rtmpStreamName (unwrap p.name)
+    mkKey (SlotProfile p) = tuple3 (IngestKey streamDetails.slot.id streamDetails.role p.name) (unwrap p.rtmpStreamName) (unwrap p.name)
     aggregatorKey = streamDetailsToAggregatorKey streamDetails
 
 streamDetailsToAggregatorKey :: StreamDetails -> AggregatorKey

@@ -104,8 +104,10 @@ processAuthRequest host rtmpShortName (LlnwPhase2 authParams@{username}) =
   processAuthRequest' host rtmpShortName username (LlnwPhase2P authParams)
 
 handlerHandle :: String -> String -> String -> String -> Int -> String -> Pid -> Foreign -> Effect Unit
-handlerHandle host rtmpShortName username remoteAddress remotePort rtmpStreamName rtmpPid publishArgs = do
+handlerHandle host rtmpShortNameStr username remoteAddress remotePort rtmpStreamNameStr rtmpPid publishArgs = do
   let
+    rtmpShortName = wrap rtmpShortNameStr
+    rtmpStreamName = wrap rtmpStreamNameStr
     streamPublish = wrap { host
                          , protocol: Rtmp
                          , rtmpShortName
@@ -167,7 +169,7 @@ getStreamAuthType host rtmpShortName = do
   {streamAuthTypeUrl: url} <- Config.llnwApiConfig
   restResult <- SpudGun.postJson (wrap url) (spy "authtype body" (wrap { host
                                                                        , protocol: Rtmp
-                                                                       , rtmpShortName}) :: StreamConnection
+                                                                       , rtmpShortName: wrap rtmpShortName}) :: StreamConnection
                                             )
   pure $ hush (bodyToJSON (spy "authtype result" restResult))
 
@@ -175,7 +177,7 @@ getPublishCredentials :: String -> String -> String -> Effect (Maybe PublishCred
 getPublishCredentials host rtmpShortName username = do
   {streamAuthUrl: url} <- Config.llnwApiConfig
   restResult <- SpudGun.postJson (wrap (spy "auth url" url)) (spy "auth body" (wrap { host
-                                                                                    , rtmpShortName
+                                                                                    , rtmpShortName: wrap rtmpShortName
                                                                                     , username}) :: StreamAuth
                                                              )
   pure $ hush $ bodyToJSON (spy "auth result" restResult)

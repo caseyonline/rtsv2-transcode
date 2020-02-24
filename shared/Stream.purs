@@ -1,5 +1,6 @@
 module Shared.Stream
   ( RtmpShortName(..)
+  , RtmpStreamName(..)
   , SlotId(..)
   , SlotIdAndRole(..)
   , SlotRole(..)
@@ -54,6 +55,8 @@ data SlotNameAndProfileName = SlotNameAndProfileName String ProfileName
 
 newtype RtmpShortName = RtmpShortName String
 
+newtype RtmpStreamName = RtmpStreamName String
+
 newtype EgestKey = EgestKey SlotId
 
 data AggregatorKey = AggregatorKey SlotId SlotRole
@@ -90,18 +93,21 @@ toProfileName (SlotIdAndProfileName _ v) = v
 -- RtmpShortName
 derive instance genericRtmpShortName :: Generic RtmpShortName _
 derive instance newtypeRtmpShortName :: Newtype RtmpShortName _
-
 derive newtype instance readForeignRtmpShortName :: ReadForeign RtmpShortName
 derive newtype instance writeForeignRtmpShortName :: WriteForeign RtmpShortName
+instance eqRtmpShortName :: Eq RtmpShortName where eq = genericEq
+instance compareRtmpShortName :: Ord RtmpShortName where compare = genericCompare
+instance showRtmpShortName :: Show RtmpShortName where show = genericShow
 
-instance eqRtmpShortName :: Eq RtmpShortName where
-  eq = genericEq
-
-instance compareRtmpShortName :: Ord RtmpShortName where
-  compare = genericCompare
-
-instance showRtmpShortName :: Show RtmpShortName where
-  show = genericShow
+------------------------------------------------------------------------------
+-- RtmpStreamName
+derive instance genericRtmpStreamName :: Generic RtmpStreamName _
+derive instance newtypeRtmpStreamName :: Newtype RtmpStreamName _
+derive newtype instance readForeignRtmpStreamName :: ReadForeign RtmpStreamName
+derive newtype instance writeForeignRtmpStreamName :: WriteForeign RtmpStreamName
+instance eqRtmpStreamName :: Eq RtmpStreamName where eq = genericEq
+instance compareRtmpStreamName :: Ord RtmpStreamName where compare = genericCompare
+instance showRtmpStreamName :: Show RtmpStreamName where show = genericShow
 
 ------------------------------------------------------------------------------
 -- SlotId

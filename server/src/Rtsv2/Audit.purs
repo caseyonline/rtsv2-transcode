@@ -9,12 +9,13 @@ module Rtsv2.Audit
 
 import Prelude
 
+import Data.Newtype (unwrap)
 import Effect (Effect)
 import Erl.Atom (atom)
 import Erl.Data.List (List, nil, (:))
 import Logger as Logger
 import Shared.LlnwApiTypes (StreamIngestProtocol(..))
-import Shared.Stream (EgestKey(..), SlotId(..), SlotRole)
+import Shared.Stream (EgestKey(..), SlotId(..), SlotRole, RtmpShortName, RtmpStreamName)
 import Shared.Types (Milliseconds)
 
 foreign import toList :: String -> List Char
@@ -24,8 +25,8 @@ type IngestEqLine =
   , ingestPort :: Int
   , userIp :: String
   , username :: String
-  , rtmpShortName :: String
-  , rtmpStreamName :: String
+  , rtmpShortName :: RtmpShortName
+  , rtmpStreamName :: RtmpStreamName
   , slotRole :: SlotRole
   , connectionType :: StreamIngestProtocol
   , startMs :: Milliseconds
@@ -82,8 +83,8 @@ writeIngestLine reason { ingestIp
                  , ingestPort: ingestPort
                  , userIp: toList userIp
                  , username: toList username
-                 , shortname: toList rtmpShortName
-                 , streamName: toList rtmpStreamName
+                 , shortname: toList $ unwrap rtmpShortName
+                 , streamName: toList $ unwrap rtmpStreamName
                  , streamRole: toList $ show slotRole
                  , connectionType: toList $ case connectionType of
                                               Rtmp -> "RTMP"
