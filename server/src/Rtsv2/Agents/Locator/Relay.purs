@@ -14,8 +14,8 @@ import Logger as Logger
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.Locator (findOrStart) as Locator
 import Rtsv2.Agents.Locator.Types (ResourceResp)
-import Rtsv2.Agents.StreamRelay.InstanceSup as StreamRelayInstanceSup
-import Rtsv2.Agents.StreamRelay.Types (CreateRelayPayload)
+import Rtsv2.Agents.StreamRelayInstanceSup as StreamRelayInstanceSup
+import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload)
 import Shared.Agent as Agent
 import Shared.Stream (RelayKey(..))
 import Shared.Types (Server, ServerLoad(..))
@@ -34,7 +34,7 @@ findOrStart =
     payloadToRelayKey payload = RelayKey payload.streamId payload.streamRole
     hasCapcityForRelay (ServerLoad sl) =  unwrap sl.load < 50.0
     startLocalRelay payload = do
-      _ <- StreamRelayInstanceSup.startRelay { streamId: payload.streamId, streamRole: payload.streamRole, aggregatorPoP : payload.aggregatorPoP}
+      _ <- StreamRelayInstanceSup.startRelay { streamId: payload.streamId, streamRole: payload.streamRole, aggregator: payload.aggregator}
       pure unit
 
 

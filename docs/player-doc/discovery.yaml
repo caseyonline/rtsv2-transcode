@@ -1,0 +1,60 @@
+swagger: '2.0'
+info:
+  version: 1.0.0
+  title: RTSv2 Player Discovery API
+  description: |
+    Describes the HTTP endpoint used to discover information
+    used to initiate a RTS connection.
+
+schemes:
+  - http
+  - https
+
+consumes:
+  - application/json
+
+produces:
+  - application/json
+
+paths:
+  /api/client/discovery/1/{account}/{streamName}:
+    get:
+      description: Get the discovery information required to connect to the specified stream.
+      parameters:
+        - in: path
+          name: account
+          description: The account publishing the stream.
+          required: true
+          type: string
+        - in: path
+          name: streamName
+          description: The name of the stream to which to connect.
+          required: true
+          type: string
+      responses:
+        503:
+          description: |
+            The server is presently offline.
+        404:
+          description: |
+            The stream isn't being published. Note the publishing of a stream is an eventually consistent operation.
+        200:
+          description: OK
+          schema:
+            $ref: "#/definitions/discoveryInformationV1"
+
+
+definitions:
+  discoveryInformationV1:
+    description: |
+      Describes the response given by version 1 of the discovery endpoint.
+    type: object
+    properties:
+      socketURLs:
+        description: |
+          A list of fully qualified WebSocket URLs to which the player can connect to obtain the stream.
+        type: array
+        items:
+          type: string
+    required:
+      - socketURLs

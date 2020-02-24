@@ -1,4 +1,4 @@
-module Rtsv2.Agents.StreamRelay.InstanceSup
+module Rtsv2.Agents.StreamRelayInstanceSup
        ( startLink
        , startRelay
        , isAvailable
@@ -17,8 +17,8 @@ import Pinto (SupervisorName)
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStartTemplate, childType)
 import Pinto.Sup as Sup
-import Rtsv2.Agents.StreamRelay.Types (CreateRelayPayload)
-import Rtsv2.Agents.StreamRelay.Instance as StreamRelayInstance
+import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload)
+import Rtsv2.Agents.StreamRelayInstance as StreamRelayInstance
 import Shared.Agent as Agent
 
 serverName :: SupervisorName

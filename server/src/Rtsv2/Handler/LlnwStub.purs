@@ -245,7 +245,7 @@ streamPublish =
   # Rest.allowMissingPost (Rest.result false)
 
   # Rest.contentTypesProvided (\req state -> Rest.result (tuple2 "application/json" (Rest.result ""): nil) req state)
-  # Rest.preHook (preHookSpyState "LLNW:streamPublish")
+  --# Rest.preHook (preHookSpyState "LLNW:streamPublish")
   # Rest.yeeha
 
 

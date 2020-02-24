@@ -7,6 +7,7 @@ module Rtsv2.Agents.IngestRtmpServer
 import Prelude
 
 import Data.Either (Either(..), hush)
+import Data.Foldable (find)
 import Data.Function.Uncurried (Fn3, Fn5, mkFn3, mkFn5)
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (wrap)
@@ -117,16 +118,24 @@ handlerHandle host shortname username remoteAddress remotePort streamName rtmpPi
       pure unit
 
     Just streamDetails -> do
-      let
-        ingestKey = makeIngestKey streamName streamDetails
-      self <- self
-      IngestInstanceSup.startIngest ingestKey streamPublish streamDetails remoteAddress remotePort self
-      startWorkflowAndBlock rtmpPid publishArgs ingestKey
-      IngestInstance.stopIngest ingestKey
-      pure unit
+      case findProfile streamName streamDetails of
+        Nothing ->
+          pure unit
+
+        Just { name: profileName } -> do
+          let
+            ingestKey = makeIngestKey profileName streamDetails
+          self <- self
+          IngestInstanceSup.startIngest ingestKey streamPublish streamDetails remoteAddress remotePort self
+          startWorkflowAndBlock rtmpPid publishArgs ingestKey
+          IngestInstance.stopIngest ingestKey
+          pure unit
   where
-    makeIngestKey streamVariantId {role, slot: {name: streamId}} =
-      IngestKey (wrap streamId) role (wrap streamVariantId)
+    findProfile ingestStreamName streamDetails@{ slot: { profiles } } =
+      find (\ { streamName: profileStreamName } -> profileStreamName == ingestStreamName) profiles
+
+    makeIngestKey profileName {role, slot: {name: streamId}} =
+      IngestKey (wrap streamId) role (wrap profileName)
 
 processAuthRequest' :: String -> String -> String -> Phase2Params -> Effect RtmpAuthResponse
 processAuthRequest' host shortname username authParams = do

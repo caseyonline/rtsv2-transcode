@@ -3,6 +3,7 @@ module Rtsv2.Handler.Relay
        , ensureStarted
        , registerEgest
        , registerRelay
+       , slotConfiguration
        , stats
        , proxiedStats
        , StartState
@@ -21,9 +22,10 @@ import Erl.Data.Map as Map
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.Locator.Relay (findOrStart)
 import Rtsv2.Agents.Locator.Types (LocalOrRemote(..), NoCapacity(..), ResourceResp, fromLocalOrRemote)
-import Rtsv2.Agents.StreamRelay.Instance as StreamRelayInstance
-import Rtsv2.Agents.StreamRelay.InstanceSup as StreamRelayInstanceSup
-import Rtsv2.Agents.StreamRelay.Types (CreateRelayPayload, RegisterEgestPayload, RegisterRelayPayload)
+import Rtsv2.Agents.SlotTypes (SlotConfiguration)
+import Rtsv2.Agents.StreamRelayInstance as StreamRelayInstance
+import Rtsv2.Agents.StreamRelayInstanceSup as StreamRelayInstanceSup
+import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload, RegisterEgestPayload, RegisterRelayPayload)
 import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
@@ -50,6 +52,13 @@ registerEgest = genericPost  StreamRelayInstance.registerEgest
 registerRelay :: GenericStetsonHandler RegisterRelayPayload
 registerRelay = genericPost  StreamRelayInstance.registerRelay
 
+slotConfiguration :: StetsonHandler (GenericStatusState (Maybe SlotConfiguration))
+slotConfiguration =
+  genericGetByStreamIdAndRole slotConfigurationByStreamIdAndRole
+
+  where
+    slotConfigurationByStreamIdAndRole streamId role =
+      StreamRelayInstance.slotConfiguration (RelayKey streamId role)
 
 newtype ProxyState
   = ProxyState { whereIsResp :: Maybe Server

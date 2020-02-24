@@ -2,7 +2,9 @@ module Rtsv2.Router.Endpoint ( Endpoint(..)
                              , Canary(..)
                              , endpoint
                              , makeUrl
+                             , makeUrlWithPath
                              , makeUrlAddr
+                             , makeUrlAddrWithPath
                              , parseStreamRole
                              ) where
 
@@ -19,7 +21,7 @@ import Routing.Duplex.Generic (noArgs, sum)
 import Routing.Duplex.Generic.Syntax ((/))
 import Rtsv2.Router.Parser as Routing
 import Shared.Stream (ShortName, StreamAndVariant(..), StreamId, StreamRole(..), StreamVariant(..))
-import Shared.Types (PoPName, ServerAddress, extractAddress)
+import Shared.Types (PoPName, ServerAddress(..), extractAddress)
 import SpudGun (Url)
 
 -- data Canary = Live
@@ -48,14 +50,14 @@ data Endpoint
   | WorkflowGraphE String
   | WorkflowMetricsE String
   | WorkflowStructureE String
-  | IngestAggregatorE StreamId
-  | IngestAggregatorPlayerE StreamId
-  | IngestAggregatorPlayerJsE StreamId
+  | IngestAggregatorE StreamId StreamRole
+  | IngestAggregatorPlayerE StreamId StreamRole
+  | IngestAggregatorPlayerJsE StreamId StreamRole
   | IngestAggregatorActiveIngestsE StreamId StreamRole StreamVariant
-  | IngestAggregatorActiveIngestsPlayerE StreamId StreamVariant
-  | IngestAggregatorActiveIngestsPlayerJsE StreamId StreamVariant
-  | IngestAggregatorActiveIngestsPlayerSessionStartE StreamId StreamVariant
-  | IngestAggregatorActiveIngestsPlayerSessionE StreamId StreamVariant String
+  | IngestAggregatorActiveIngestsPlayerE StreamId StreamRole StreamVariant
+  | IngestAggregatorActiveIngestsPlayerJsE StreamId StreamRole StreamVariant
+  | IngestAggregatorActiveIngestsPlayerControlE StreamId StreamRole StreamVariant
+  | IngestAggregatorRegisterRelayE
   | IngestAggregatorsE
   | IngestInstancesE
   | IngestInstancesMetricsE
@@ -101,15 +103,15 @@ endpoint = root $ sum
   , "WorkflowMetricsE"                                 : "" / "api" / "workflows" / segment / "metrics"
   , "WorkflowStructureE"                               : "" / "api" / "workflows" / segment / "structure"
 
-  , "IngestAggregatorE"                                : "" / "api" / "agents" / "ingestAggregator" / streamId segment
-  , "IngestAggregatorPlayerE"                          : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "player"
-  , "IngestAggregatorPlayerJsE"                        : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "js" -- TODO - would like to add '/ "[...]"' bit it causes compiler error that I don't understand
+  , "IngestAggregatorE"                                : "" / "api" / "agents" / "ingestAggregator" / streamId segment / streamRole segment
+  , "IngestAggregatorPlayerE"                          : "" / "api" / "agents" / "ingestAggregator" / streamId segment / streamRole segment / "player"
+  , "IngestAggregatorPlayerJsE"                        : "" / "api" / "agents" / "ingestAggregator" / streamId segment / streamRole segment / "js" -- TODO - would like to add '/ "[...]"' bit it causes compiler error that I don't understand
   , "IngestAggregatorActiveIngestsE"                   : "" / "api" / "agents" / "ingestAggregator" / streamId segment / streamRole segment / "activeIngests" / variant segment
-  , "IngestAggregatorActiveIngestsPlayerE"             : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "activeIngests" / variant segment / "player" -- TODO - streamRole for these as well
-  , "IngestAggregatorActiveIngestsPlayerJsE"           : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "activeIngests" / variant segment / "js" -- TODO - would like to add '/ "[...]"' bit it causes compiler error that I don't understand
-  , "IngestAggregatorActiveIngestsPlayerSessionStartE" : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "activeIngests" / variant segment / "session"
-  , "IngestAggregatorActiveIngestsPlayerSessionE"      : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "activeIngests" / variant segment / "session" / segment
+  , "IngestAggregatorActiveIngestsPlayerE"             : "" / "api" / "agents" / "ingestAggregator" / streamId segment / streamRole segment / "activeIngests" / variant segment / "player" -- TODO - streamRole for these as well
+  , "IngestAggregatorActiveIngestsPlayerJsE"           : "" / "api" / "agents" / "ingestAggregator" / streamId segment / streamRole segment / "activeIngests" / variant segment / "js" -- TODO - would like to add '/ "[...]"' bit it causes compiler error that I don't understand
+  , "IngestAggregatorActiveIngestsPlayerControlE"      : "" / "api" / "agents" / "ingestAggregator" / streamId segment / streamRole segment / "activeIngests" / variant segment / "control"
 
+  , "IngestAggregatorRegisterRelayE"                   : "" / "api" / "agents" / "ingestAggregator" / path "register" noArgs
   , "IngestAggregatorsE"                               : "" / "api" / "agents" / path "ingestAggregator" noArgs
 
   , "IngestInstancesE"                                 : "" / "api" / "agents" / path "ingest" noArgs
@@ -135,13 +137,20 @@ makeUrl :: forall r a. Newtype a { address :: ServerAddress | r }
         => a -> Endpoint -> Url
 makeUrl server ep = makeUrlAddr (extractAddress server) ep
 
+makeUrlWithPath :: forall r a. Newtype a { address :: ServerAddress | r }
+        => a -> String -> Url
+makeUrlWithPath server path = makeUrlAddrWithPath (extractAddress server) path
+
 makeUrlAddr :: ServerAddress -> Endpoint -> Url
 makeUrlAddr serverAddr ep =
   let
-    path = Routing.printUrl endpoint ep
-  in wrap $ "http://" <> toHost serverAddr <> ":3000" <> path
-  where
-    toHost = unwrap
+    url = Routing.printUrl endpoint ep
+  in
+    makeUrlAddrWithPath serverAddr url
+
+makeUrlAddrWithPath :: ServerAddress -> String -> Url
+makeUrlAddrWithPath (ServerAddress host) path =
+  wrap $ "http://" <> host <> ":3000" <> path
 
 
 -- | StreamId

@@ -1,4 +1,4 @@
-module Rtsv2.Agents.StreamRelay.DownstreamProxy
+module Rtsv2.Agents.StreamRelayDownstreamProxy
   ( startLink
   , addRelayRoute
   ) where
@@ -23,7 +23,7 @@ import Logger (Logger)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen as Gen
-import Rtsv2.Agents.StreamRelay.Types (CreateProxyPayload, CreateRelayPayload, SourceRoute)
+import Rtsv2.Agents.StreamRelayTypes (CreateProxyPayload, CreateRelayPayload, SourceRoute)
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Router.Endpoint (Endpoint(..), makeUrlAddr)
@@ -44,9 +44,8 @@ type State
     , proxyFor :: PoPName
     , thisServer :: Server
     , proxiedServer :: Maybe ServerAddress
-    , aggregatorPoP :: PoPName
+    , aggregator :: Server
     , routesThroughThisProxy :: Set ProxyRoute
-
     }
 
 
@@ -66,16 +65,16 @@ startLink :: CreateProxyPayload -> Effect StartLinkResult
 startLink payload = Gen.startLink (serverName (payloadToRelayKey payload) payload.proxyFor) (init payload) Gen.defaultHandleInfo
 
 init :: CreateProxyPayload -> Effect State
-init payload@{proxyFor, aggregatorPoP} = do
+init payload@{proxyFor, aggregator} = do
   let relayKey = payloadToRelayKey payload
   logInfo "streamRelayDownstreamProxy starting" {payload}
-  void $ spawnLink (\_ -> connect relayKey proxyFor aggregatorPoP)
+  void $ spawnLink (\_ -> connect relayKey proxyFor aggregator)
   -- TODO - monitor our parent
   thisServer <- PoPDefinition.getThisServer
   pure { relayKey
        , proxyFor
        , thisServer
-       , aggregatorPoP
+       , aggregator
        , routesThroughThisProxy: mempty
        , proxiedServer: Nothing
        }
@@ -117,18 +116,18 @@ addRelayRoute relayKey popName route = Gen.doCast (serverName relayKey popName)
         pure newState
 
 
-connect :: RelayKey -> PoPName -> PoPName -> Effect Unit
-connect relayKey@(RelayKey streamId streamRole) proxyFor aggregatorPoP = do
+connect :: RelayKey -> PoPName -> Server -> Effect Unit
+connect relayKey@(RelayKey streamId streamRole) proxyFor aggregator = do
         mRandomAddr <- PoPDefinition.getRandomServerInPoP proxyFor
         case mRandomAddr of
           Nothing -> do
             _ <- logWarning "No random server found in" {proxyFor}
             retrySleep
-            connect relayKey proxyFor aggregatorPoP
+            connect relayKey proxyFor aggregator
 
           Just randomAddr -> do
             let
-              payload = {streamId, streamRole, aggregatorPoP} :: CreateRelayPayload
+              payload = {streamId, streamRole, aggregator} :: CreateRelayPayload
               url = makeUrlAddr randomAddr RelayEnsureStartedE
             resp <- SpudGun.postJsonFollow url payload
             case resp of
@@ -140,14 +139,14 @@ connect relayKey@(RelayKey streamId streamRole) proxyFor aggregatorPoP = do
                     _ <- logError "x-servedby header missing in StreamRelayDownstreamProxy" {resp}
                     -- TODO - crash??
                     retrySleep
-                    connect relayKey proxyFor aggregatorPoP
+                    connect relayKey proxyFor aggregator
                   Just addr -> do
-                    logInfo "Located relay to proxy" {relayKey, proxyFor, aggregatorPoP, addr}
+                    logInfo "Located relay to proxy" {relayKey, proxyFor, aggregator, addr}
                     setProxyServer relayKey proxyFor $ wrap addr
               Left _ -> do
-                _ <- logWarning "Error returned from ensureStarted request" {resp, relayKey, proxyFor, aggregatorPoP}
+                _ <- logWarning "Error returned from ensureStarted request" {resp, relayKey, proxyFor, aggregator}
                 retrySleep
-                connect relayKey proxyFor aggregatorPoP
+                connect relayKey proxyFor aggregator
   where
     retrySleep :: Effect Unit
     retrySleep = Erl.sleep (wrap 500)

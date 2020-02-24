@@ -1,4 +1,4 @@
--module(rtsv2_webrtc_stream_handler).
+-module(rtsv2_webrtc_ingest_preview_stream_handler).
 
 -behavior(webrtc_stream_handler).
 
@@ -18,9 +18,14 @@
          stats_gatherer :: atom()
         }).
 
-init(_Args = [StreamAndVariant]) -> %% , StatsGatherer]) ->
+-spec init([ Key ]) -> #?state{} when
+    Key :: IngestKey | StreamAndVariant,
+    IngestKey :: term(),
+    StreamAndVariant :: term().
 
-  gproc:reg({p, l, {webrtc_stream_output, StreamAndVariant}}),
+init(_Args = [Key]) -> %% , StatsGatherer]) ->
+
+  gproc:reg({p, l, {webrtc_stream_output, Key}}),
 
   timer:send_interval(1000, stats),
 
