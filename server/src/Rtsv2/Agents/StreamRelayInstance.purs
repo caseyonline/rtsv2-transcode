@@ -69,12 +69,12 @@ data State =
 
 
 payloadToRelayKey :: forall r.
-  { streamId :: SlotId
+  { slotId :: SlotId
   , streamRole :: SlotRole
   | r
   }
   -> RelayKey
-payloadToRelayKey payload = RelayKey payload.streamId payload.streamRole
+payloadToRelayKey payload = RelayKey payload.slotId payload.streamRole
 
 serverName :: RelayKey -> ServerName State Msg
 serverName = Names.streamRelayInstanceName
@@ -103,12 +103,12 @@ slotConfiguration relayKey =
   getSlotConfigurationFFI relayKey
 
 init :: CreateRelayPayload -> Effect State
-init payload@{streamId, streamRole} = do
+init payload@{slotId, streamRole} = do
   let
-    relayKey = RelayKey streamId streamRole
+    relayKey = RelayKey slotId streamRole
   logInfo "StreamRelay starting" {payload}
   thisServer <- PoPDefinition.getThisServer
-  workflowHandle <- startWorkflowFFI (unwrap streamId)
+  workflowHandle <- startWorkflowFFI (unwrap slotId)
   _ <- Bus.subscribe (serverName relayKey) IntraPoP.bus IntraPoPBus
 
   IntraPoP.announceLocalRelayIsAvailable relayKey
@@ -125,9 +125,9 @@ init payload@{streamId, streamRole} = do
 handleInfo :: Msg -> State -> Effect (CastResult State)
 handleInfo msg state@(State {relayKey: RelayKey ourSlotId _}) =
   case msg of
-    IntraPoPBus (IngestAggregatorExited (AggregatorKey streamId streamRole) serverAddress)
+    IntraPoPBus (IngestAggregatorExited (AggregatorKey slotId streamRole) serverAddress)
      -- TODO - PRIMARY BACKUP
-      | streamId == ourSlotId -> doStop state
+      | slotId == ourSlotId -> doStop state
       | otherwise -> pure $ CastNoReply state
 
 doStop :: State -> Effect (CastResult State)
@@ -139,7 +139,7 @@ doStop state@(State {relayKey}) = do
 
 -- TODO: PS: change to use Nick's new routing when available
 registerEgest :: RegisterEgestPayload -> Effect Unit
-registerEgest payload@{streamId, streamRole} = Gen.doCall (serverName $ payloadToRelayKey payload) doRegisterEgest
+registerEgest payload@{slotId, streamRole} = Gen.doCall (serverName $ payloadToRelayKey payload) doRegisterEgest
   where
     doRegisterEgest :: State -> Effect (CallResult Unit State)
 
@@ -167,7 +167,7 @@ registerEgest payload@{streamId, streamRole} = Gen.doCall (serverName $ payloadT
     registerWithIngestAggregator {aggregator, workflowHandle, thisServer, relayKey} =
       do
 
-        slotConfigurationFromIA <- fetchIngestAggregatorSlotConfiguration aggregator streamId streamRole
+        slotConfigurationFromIA <- fetchIngestAggregatorSlotConfiguration aggregator slotId streamRole
         setSlotConfigurationFFI relayKey (spy "Config Response" slotConfigurationFromIA)
 
         -- register a new source with the ingest aggregator
@@ -183,7 +183,7 @@ registerEgest payload@{streamId, streamRole} = Gen.doCall (serverName $ payloadT
 
           -- TODO: sourceRoute shouldn't be needed?
           registerPayload :: RegisterRelayPayload
-          registerPayload = {streamId, streamRole, deliverTo, sourceRoute: nil}
+          registerPayload = {slotId, streamRole, deliverTo, sourceRoute: nil}
 
         logInfo "Registering with aggregator" {registerPayload}
         void $ SpudGun.postJson registerURL registerPayload
@@ -241,11 +241,11 @@ registerRelay payload = Gen.doCast (serverName $ payloadToRelayKey payload)
 
 
 registerWithRelayProxy :: RelayKey -> Server -> SourceRoute -> Effect Unit
-registerWithRelayProxy relayKey@(RelayKey streamId streamRole) aggregator sourceRoute = do
+registerWithRelayProxy relayKey@(RelayKey slotId streamRole) aggregator sourceRoute = do
   case uncons sourceRoute of
     Just {head: nextPoP, tail: remainingRoute} -> do
       -- -- TODO okAlreadyStarted
-      -- _ <- DownstreamProxy.startLink {streamId, streamRole, proxyFor: nextPoP, aggregator}
+      -- _ <- DownstreamProxy.startLink {slotId, streamRole, proxyFor: nextPoP, aggregator}
       -- -- TODO ok
       -- DownstreamProxy.addRelayRoute relayKey  nextPoP remainingRoute
       pure unit

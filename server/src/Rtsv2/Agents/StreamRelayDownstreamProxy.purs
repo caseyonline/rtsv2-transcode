@@ -54,12 +54,12 @@ serverName = Names.streamRelayDownstreamProxyName
 
 
 payloadToRelayKey :: forall r.
-  { streamId :: SlotId
+  { slotId :: SlotId
   , streamRole :: SlotRole
   | r
   }
   -> RelayKey
-payloadToRelayKey payload = RelayKey payload.streamId payload.streamRole
+payloadToRelayKey payload = RelayKey payload.slotId payload.streamRole
 
 startLink :: CreateProxyPayload -> Effect StartLinkResult
 startLink payload = Gen.startLink (serverName (payloadToRelayKey payload) payload.proxyFor) (init payload) Gen.defaultHandleInfo
@@ -90,9 +90,9 @@ setProxyServer relayKey popName serverAddr = Gen.doCast (serverName relayKey pop
 
 maybeCallProxyWithRoute :: State -> SourceRoute -> Effect Unit
 maybeCallProxyWithRoute {proxiedServer: Nothing} _ = pure unit
-maybeCallProxyWithRoute {relayKey: RelayKey streamId streamRole, thisServer, proxiedServer: Just remoteRelay} sourceRoute = do
+maybeCallProxyWithRoute {relayKey: RelayKey slotId streamRole, thisServer, proxiedServer: Just remoteRelay} sourceRoute = do
   let
-    payload = {streamId, streamRole, deliverTo: thisServer, sourceRoute}
+    payload = {slotId, streamRole, deliverTo: thisServer, sourceRoute}
     url = makeUrlAddr remoteRelay RelayRegisterRelayE
   void $ spawnLink (\_ -> do
                      -- TODO - send message to parent saying the register worked?
@@ -117,7 +117,7 @@ addRelayRoute relayKey popName route = Gen.doCast (serverName relayKey popName)
 
 
 connect :: RelayKey -> PoPName -> Server -> Effect Unit
-connect relayKey@(RelayKey streamId streamRole) proxyFor aggregator = do
+connect relayKey@(RelayKey slotId streamRole) proxyFor aggregator = do
         mRandomAddr <- PoPDefinition.getRandomServerInPoP proxyFor
         case mRandomAddr of
           Nothing -> do
@@ -127,7 +127,7 @@ connect relayKey@(RelayKey streamId streamRole) proxyFor aggregator = do
 
           Just randomAddr -> do
             let
-              payload = {streamId, streamRole, aggregator} :: CreateRelayPayload
+              payload = {slotId, streamRole, aggregator} :: CreateRelayPayload
               url = makeUrlAddr randomAddr RelayEnsureStartedE
             resp <- SpudGun.postJsonFollow url payload
             case resp of

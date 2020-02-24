@@ -27,15 +27,15 @@ import Shared.Types (Server, ServerLoad(..), serverLoadToServer)
 import SpudGun as SpudGun
 
 
-type StartArgs = { streamId :: SlotId
+type StartArgs = { slotId :: SlotId
                  , forServer :: Server
                  , aggregator :: Server
                  }
 
 findEgestAndRegister :: SlotId -> Server -> Effect LocationResp
-findEgestAndRegister streamId thisServer = do
+findEgestAndRegister slotId thisServer = do
   let
-    egestKey = (EgestKey streamId)
+    egestKey = (EgestKey slotId)
   apiResp <- noprocToMaybe $ EgestInstance.addClient egestKey
   case spy "findEgestAndRegister apiResp" apiResp of
     Just _ ->
@@ -43,7 +43,7 @@ findEgestAndRegister streamId thisServer = do
     Nothing -> do
       -- does the stream even exists
       -- TODO - Primary and Backup
-      mAggregator <- IntraPoP.whereIsIngestAggregator (AggregatorKey streamId Primary)
+      mAggregator <- IntraPoP.whereIsIngestAggregator (AggregatorKey slotId Primary)
       case spy "mAggregator" mAggregator of
         Nothing ->
           pure $ Left NotFound
@@ -64,18 +64,18 @@ findEgestAndRegister streamId thisServer = do
                   pure $ Left NoResource
                 Right localOrRemote -> do
                   startLocalOrRemote localOrRemote aggregator
-                  findEgestAndRegister streamId thisServer
+                  findEgestAndRegister slotId thisServer
   where
    pickCandidate = head
    capacityForClient (ServerLoad sl) =  unwrap sl.load < 90.0
    capacityForEgest (ServerLoad sl) =  unwrap sl.load < 50.0
    startLocalOrRemote :: (LocalOrRemote ServerLoad) -> Server -> Effect Unit
    startLocalOrRemote  (Local _) aggregator = do
-     void <$> okAlreadyStarted =<<  EgestInstanceSup.startEgest {streamId, aggregator}
+     void <$> okAlreadyStarted =<<  EgestInstanceSup.startEgest {slotId, aggregator}
    startLocalOrRemote  (Remote remote) aggregator = do
      let
        url = makeUrl remote EgestE
-     void <$> crashIfLeft =<< SpudGun.postJson url ({streamId, aggregator} :: CreateEgestPayload)
+     void <$> crashIfLeft =<< SpudGun.postJson url ({slotId, aggregator} :: CreateEgestPayload)
 
 
 --------------------------------------------------------------------------------

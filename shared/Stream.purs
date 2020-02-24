@@ -65,16 +65,16 @@ data IngestKey = IngestKey SlotId SlotRole ProfileName
 data AgentKey = AgentKey SlotId SlotRole
 
 aggregatorKeyToAgentKey :: AggregatorKey -> AgentKey
-aggregatorKeyToAgentKey (AggregatorKey streamId streamRole) = AgentKey streamId streamRole
+aggregatorKeyToAgentKey (AggregatorKey slotId streamRole) = AgentKey slotId streamRole
 
 ingestKeyToAggregatorKey :: IngestKey -> AggregatorKey
-ingestKeyToAggregatorKey (IngestKey streamId streamRole streamProfileName) = (AggregatorKey streamId streamRole)
+ingestKeyToAggregatorKey (IngestKey slotId streamRole streamProfileName) = (AggregatorKey slotId streamRole)
 
 agentKeyToAggregatorKey :: AgentKey -> AggregatorKey
-agentKeyToAggregatorKey (AgentKey streamId streamRole) = AggregatorKey streamId streamRole
+agentKeyToAggregatorKey (AgentKey slotId streamRole) = AggregatorKey slotId streamRole
 
 ingestKeyToProfileName :: IngestKey -> ProfileName
-ingestKeyToProfileName (IngestKey streamId streamRole streamProfileName) = streamProfileName
+ingestKeyToProfileName (IngestKey slotId streamRole streamProfileName) = streamProfileName
 
 toSlotId :: SlotIdAndProfileName -> SlotId
 toSlotId (SlotIdAndProfileName s _) = s
@@ -231,7 +231,7 @@ derive instance ordAggregatorKey :: Ord AggregatorKey
 -- IngestKey
 derive instance eqIngestKey :: Eq IngestKey
 
-type IngestKeyJson = { streamId :: SlotId
+type IngestKeyJson = { slotId :: SlotId
                      , role :: SlotRole
                        , profile :: ProfileName
                      }
@@ -241,10 +241,10 @@ instance readForeignIngestKey :: ReadForeign IngestKey where
     mapper <$> readImpl f
     where
       mapper :: IngestKeyJson -> IngestKey
-      mapper {streamId, role: streamRole, profile: streamProfileName} = IngestKey streamId streamRole streamProfileName
+      mapper {slotId, role: streamRole, profile: streamProfileName} = IngestKey slotId streamRole streamProfileName
 
 instance writeForeignIngestKey :: WriteForeign IngestKey where
-  writeImpl (IngestKey streamId streamRole streamProfileName) = writeImpl { streamId: streamId
+  writeImpl (IngestKey slotId streamRole streamProfileName) = writeImpl { slotId: slotId
                                                                       , role: streamRole
                                                                       , profile: streamProfileName}
 ------------------------------------------------------------------------------

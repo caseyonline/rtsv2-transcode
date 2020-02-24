@@ -54,7 +54,7 @@ clientStop :: EgestKey -> Effect Unit
 clientStop (EgestKey (SlotId slotId)) = do
   _ <- Logger.info "" { domain: (atom "audit") : (atom "client") : nil
                       , event: toList "stop"
-                      , streamId: toList $ show slotId}
+                      , slotId: toList $ show slotId}
   pure unit
 
 

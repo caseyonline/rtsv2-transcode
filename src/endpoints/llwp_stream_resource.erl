@@ -23,15 +23,15 @@
           program_details :: program_details()
          }).
 
-init(Req, MakeStreamAndVariant) ->
+init(Req, MakeSlotIdAndProfileName) ->
 
-  StreamId = cowboy_req:binding(stream_id, Req),
-  VariantId = cowboy_req:binding(variant_id, Req),
+  SlotId = binary_to_integer(cowboy_req:binding(slot_id, Req)),
+  ProfileName = cowboy_req:binding(profile_name, Req),
 
-  ?SLOG_INFO("LLWP Stream opening", #{stream_id => StreamId,
-                                      variant_id => VariantId}),
+  ?SLOG_INFO("LLWP Stream opening", #{slot_id => SlotId,
+                                      profile_name => ProfileName}),
 
-  { cowboy_rest, Req, #state { bus_name = {ingest, (MakeStreamAndVariant(StreamId))(VariantId) }}}.
+  { cowboy_rest, Req, #state { bus_name = {ingest, (MakeSlotIdAndProfileName(SlotId))(ProfileName) }}}.
 
 service_available(Req, State = #state{bus_name = BusName}) ->
 

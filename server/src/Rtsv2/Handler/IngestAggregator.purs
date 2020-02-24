@@ -35,16 +35,16 @@ import Foreign (Foreign)
 
 ingestAggregator :: StetsonHandler (GenericStatusState (PublicState.IngestAggregator List))
 ingestAggregator = genericGetBySlotIdAndRole
-                   \streamId role -> IngestAggregatorInstance.getState $ AggregatorKey streamId role
+                   \slotId role -> IngestAggregatorInstance.getState $ AggregatorKey slotId role
 
 slotConfiguration :: StetsonHandler (GenericStatusState (Maybe SlotConfiguration))
 slotConfiguration =
   genericGetBySlotIdAndRole slotConfigurationBySlotIdAndRole
 
   where
-    slotConfigurationBySlotIdAndRole streamId role =
+    slotConfigurationBySlotIdAndRole slotId role =
       do
-        result <- IngestAggregatorInstance.slotConfiguration (AggregatorKey streamId role)
+        result <- IngestAggregatorInstance.slotConfiguration (AggregatorKey slotId role)
         let _ = spy "Ingest Aggregator Slot Config" result
         pure result
 
@@ -60,12 +60,12 @@ ingestAggregatorsActiveIngest :: StetsonHandler IngestAggregatorsActiveIngestSta
 ingestAggregatorsActiveIngest =
   Rest.handler (\req ->
                  let
-                   streamId = Bindings.streamId req
+                   slotId = Bindings.slotId req
                    streamRole = Bindings.streamRole req
-                   variant = Bindings.variant req -- todo - variant is not looked at...
+                   profileName = Bindings.profileName req
                  in
-                  Rest.initResult req { ingestKey: IngestKey streamId streamRole variant
-                                      , aggregatorKey: AggregatorKey streamId streamRole
+                  Rest.initResult req { ingestKey: IngestKey slotId streamRole profileName
+                                      , aggregatorKey: AggregatorKey slotId streamRole
                                       , serverAddress: Nothing})
   # Rest.serviceAvailable (\req state -> do
                               isAgentAvailable <- IngestAggregatorInstanceSup.isAvailable
@@ -97,7 +97,7 @@ ingestAggregatorsActiveIngest =
                                                                             serverAddress = fromMaybe' (lazyCrashIfMissing "server_address is nothing") maybeServerAddress
                                                                           in
                                                                             do
-                                                                              IngestAggregatorInstance.addRemoteVariant ingestKey serverAddress
+                                                                              IngestAggregatorInstance.addRemoteIngest ingestKey serverAddress
                                                                               Rest.result true req2 state2
                                                                         )) : nil)
                                 req state
@@ -109,7 +109,7 @@ ingestAggregatorsActiveIngest =
   # Rest.allowMissingPost (Rest.result false)
 
   # Rest.deleteResource (\req state@{ingestKey} -> do
-                            IngestAggregatorInstance.removeVariant ingestKey
+                            IngestAggregatorInstance.removeIngest ingestKey
                             Rest.result true req state
                         )
 

@@ -48,7 +48,7 @@ foreign import setSlotConfigurationFFI :: EgestKey -> SlotConfiguration -> Effec
 foreign import getSlotConfigurationFFI :: EgestKey -> Effect (Maybe SlotConfiguration)
 
 type CreateEgestPayload
-  = { streamId :: SlotId
+  = { slotId :: SlotId
     , aggregator :: Server
     }
 
@@ -65,7 +65,7 @@ type State
     }
 
 payloadToEgestKey :: CreateEgestPayload -> EgestKey
-payloadToEgestKey payload = EgestKey payload.streamId
+payloadToEgestKey payload = EgestKey payload.slotId
 
 data Msg = Tick
          | InitStreamRelays
@@ -125,10 +125,10 @@ toEgestServer :: Server -> EgestServer
 toEgestServer = unwrap >>> wrap
 
 init :: CreateEgestPayload -> Effect State
-init payload@{streamId, aggregator} = do
+init payload@{slotId, aggregator} = do
   let
     egestKey = payloadToEgestKey payload
-    relayKey = RelayKey streamId Primary
+    relayKey = RelayKey slotId Primary
   receivePortNumber <- startEgestReceiverFFI egestKey
   _ <- Bus.subscribe (serverName egestKey) IntraPoP.bus IntraPoPBus
   logInfo "Egest starting" {payload, receivePortNumber}
@@ -156,7 +156,7 @@ init payload@{streamId, aggregator} = do
       pure state
     Nothing -> do
       -- Launch
-      _ <- StreamRelayInstanceSup.startRelay {streamId, streamRole: Primary, aggregator}
+      _ <- StreamRelayInstanceSup.startRelay {slotId, streamRole: Primary, aggregator}
       pure state
 
 handleInfo :: Msg -> State -> Effect (CastResult State)
@@ -168,9 +168,9 @@ handleInfo msg state@{egestKey: EgestKey ourSlotId} =
 
     MaybeStop ref -> maybeStop ref state
 
-    IntraPoPBus (IngestAggregatorExited (AggregatorKey streamId streamRole) serverAddress)
+    IntraPoPBus (IngestAggregatorExited (AggregatorKey slotId streamRole) serverAddress)
      -- TODO - PRIMARY BACKUP
-      | streamId == ourSlotId -> doStop state
+      | slotId == ourSlotId -> doStop state
       | otherwise -> pure $ CastNoReply state
 
 
@@ -194,7 +194,7 @@ doStop state@{egestKey} = do
 
 
 initStreamRelay :: State -> Effect State
-initStreamRelay state@{relayCreationRetry, egestKey: egestKey@(EgestKey streamId), aggregator, thisServer} = do
+initStreamRelay state@{relayCreationRetry, egestKey: egestKey@(EgestKey slotId), aggregator, thisServer} = do
   relayResp <- findOrStartRelayForStream state
 
   case spy "initStreamRelay - relayResp" relayResp of
@@ -213,7 +213,7 @@ initStreamRelay state@{relayCreationRetry, egestKey: egestKey@(EgestKey streamId
       do
         registerWithRelay localOrRemote registrationPayload
 
-        maybeConfiguration <- getRelaySlotConfiguration localOrRemote streamId
+        maybeConfiguration <- getRelaySlotConfiguration localOrRemote slotId
 
         case maybeConfiguration of
           Just configuration ->
@@ -229,7 +229,7 @@ initStreamRelay state@{relayCreationRetry, egestKey: egestKey@(EgestKey streamId
 
     registrationPayload  :: RegisterEgestPayload
     registrationPayload =
-      { streamId
+      { slotId
       , streamRole: Primary
       , deliverTo: { server: state.thisServer, port: state.receivePortNumber }
       }
@@ -249,8 +249,8 @@ registerWithRelay (Remote remoteServer) payload =
 
 
 getRelaySlotConfiguration :: (LocalOrRemote Server) -> SlotId -> Effect (Maybe SlotConfiguration)
-getRelaySlotConfiguration (Local _) streamId =
-  log <$> StreamRelayInstance.slotConfiguration (RelayKey streamId Primary)
+getRelaySlotConfiguration (Local _) slotId =
+  log <$> StreamRelayInstance.slotConfiguration (RelayKey slotId Primary)
 
   where
     log = spy "Egest Instance Slot Config from Local Relay"
@@ -277,16 +277,16 @@ getRelaySlotConfiguration (Remote remoteServer) (SlotId slotId) =
 -- otherwise 404
 --------------------------------------------------------------------------------
 findOrStartRelayForStream :: State -> Effect (ResourceResp Server)
-findOrStartRelayForStream state@{egestKey: EgestKey streamId, thisServer} = do
-  mRelay <- IntraPoP.whereIsStreamRelay $ RelayKey streamId Primary
+findOrStartRelayForStream state@{egestKey: EgestKey slotId, thisServer} = do
+  mRelay <- IntraPoP.whereIsStreamRelay $ RelayKey slotId Primary
   maybe' (\_ -> launchLocalOrRemote state) (pure <<< Right) mRelay
 
 
 launchLocalOrRemote :: State -> Effect (ResourceResp Server)
-launchLocalOrRemote state@{egestKey: egestKey@(EgestKey streamId), aggregator, thisServer} =
+launchLocalOrRemote state@{egestKey: egestKey@(EgestKey slotId), aggregator, thisServer} =
   launchLocalOrRemoteGeneric filterForLoad launchLocal launchRemote
   where
-    payload = {streamId, streamRole: Primary, aggregator} :: CreateRelayPayload
+    payload = {slotId, streamRole: Primary, aggregator} :: CreateRelayPayload
     launchLocal _ = do
       _ <- StreamRelayInstanceSup.startRelay payload
       pure unit
@@ -339,7 +339,7 @@ filterForLoad (ServerLoad sl) = sl.load < loadThresholdToCreateRelay
 
 
 -- createRelayInThisPoP :: EgestKey -> PoPName -> List ViaPoPs -> Server -> Effect (Either FailureReason Server)
--- createRelayInThisPoP streamId thisPoPName routes ingestAggregator = do
+-- createRelayInThisPoP slotId thisPoPName routes ingestAggregator = do
 --   maybeCandidateRelayServer <- IntraPoP.getIdleServer (const true)
 
 --   case (spy "maybeCandidateRelayServer" maybeCandidateRelayServer) of
@@ -348,7 +348,7 @@ filterForLoad (ServerLoad sl) = sl.load < loadThresholdToCreateRelay
 --         url = makeUrl candidateRelayServer RelayE
 
 --         request =
---           { streamId,
+--           { slotId,
 --             aggregator: ingestAggregator
 --           , routes: List.toUnfoldable <$> List.toUnfoldable routes
 --           } :: CreateRelayPayload

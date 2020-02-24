@@ -41,7 +41,7 @@ import StetsonHelper (GenericStatusState, GenericStetsonHandler, allBody, binary
 
 stats :: StetsonHandler (GenericStatusState (StreamRelay List))
 stats =  genericGetBySlotIdAndRole
-         \streamId streamRole -> StreamRelayInstance.status $ RelayKey streamId streamRole
+         \slotId streamRole -> StreamRelayInstance.status $ RelayKey slotId streamRole
 
 startResource :: GenericStetsonHandler CreateRelayPayload
 startResource =  genericPost  StreamRelayInstanceSup.startRelay
@@ -57,8 +57,8 @@ slotConfiguration =
   genericGetBySlotIdAndRole slotConfigurationBySlotIdAndRole
 
   where
-    slotConfigurationBySlotIdAndRole streamId role =
-      StreamRelayInstance.slotConfiguration (RelayKey streamId role)
+    slotConfigurationBySlotIdAndRole slotId role =
+      StreamRelayInstance.slotConfiguration (RelayKey slotId role)
 
 newtype ProxyState
   = ProxyState { whereIsResp :: Maybe Server
@@ -77,9 +77,9 @@ proxiedStats =
   where
     init req =
       let
-        streamId = Bindings.streamId req
+        slotId = Bindings.slotId req
         streamRole = Bindings.streamRole req
-        relayKey = RelayKey streamId streamRole
+        relayKey = RelayKey slotId streamRole
       in do
         whereIsResp <- (map fromLocalOrRemote) <$> IntraPoP.whereIsStreamRelay relayKey
         Rest.initResult req $
@@ -93,11 +93,11 @@ proxiedStats =
     previouslyExisted req state@(ProxyState {whereIsResp}) =
       Rest.result (isJust whereIsResp) req state
 
-    movedTemporarily req state@(ProxyState {whereIsResp, relayKey: (RelayKey streamId streamRole)}) =
+    movedTemporarily req state@(ProxyState {whereIsResp, relayKey: (RelayKey slotId streamRole)}) =
       case whereIsResp of
         Just server ->
           let
-            url = makeUrl server (RelayStatsE streamId streamRole)
+            url = makeUrl server (RelayStatsE slotId streamRole)
           in
             Rest.result (moved $ unwrap url) req state
         _ ->

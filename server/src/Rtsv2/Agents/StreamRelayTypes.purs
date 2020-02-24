@@ -12,13 +12,13 @@ import Shared.Stream (SlotId, SlotRole)
 import Shared.Types (Server, EgestServer, PoPName, RelayServer)
 
 type CreateRelayPayload
-  = { streamId :: SlotId
+  = { slotId :: SlotId
     , streamRole :: SlotRole
     , aggregator :: Server
     }
 
 type CreateProxyPayload
-  = { streamId :: SlotId
+  = { slotId :: SlotId
     , streamRole :: SlotRole
     , proxyFor :: PoPName
     , aggregator:: Server
@@ -30,14 +30,14 @@ type DeliverTo serverType
     }
 
 type RegisterRelayPayload
-  = { streamId :: SlotId
+  = { slotId :: SlotId
     , streamRole :: SlotRole
     , deliverTo :: DeliverTo RelayServer
     , sourceRoute :: SourceRoute
     }
 
 type RegisterEgestPayload
-  = { streamId :: SlotId
+  = { slotId :: SlotId
     , streamRole :: SlotRole
     , deliverTo :: DeliverTo EgestServer
     }

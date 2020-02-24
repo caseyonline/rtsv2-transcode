@@ -32,7 +32,7 @@ import Stetson (HttpMethod(..), RestResult, StetsonHandler)
 import Stetson.Rest as Rest
 
 
-newtype ClientStartState = ClientStartState { streamId :: SlotId
+newtype ClientStartState = ClientStartState { slotId :: SlotId
                                             , egestResp :: (Either FailureReason (LocalOrRemote Server))
                                             }
 
@@ -49,13 +49,13 @@ clientStart =
   where
     init req = do
       let
-        streamId = Bindings.streamId req
+        slotId = Bindings.slotId req
       thisServer <- PoPDefinition.getThisServer
-      egestResp <- findEgestAndRegister (spy "streamId" streamId) thisServer
+      egestResp <- findEgestAndRegister (spy "slotId" slotId) thisServer
       let
         req2 = setHeader "x-servedby" (unwrap $ extractAddress thisServer) req
         _ = spy "egestResp" egestResp
-      Rest.initResult req2 $ ClientStartState { streamId, egestResp }
+      Rest.initResult req2 $ ClientStartState { slotId, egestResp }
 
     acceptAny req state = Rest.result true req state
 
@@ -82,11 +82,11 @@ clientStart =
        Rest.result resp req state
 
     movedTemporarily :: Req -> ClientStartState -> Effect (RestResult MovedResult ClientStartState)
-    movedTemporarily req state@(ClientStartState {streamId, egestResp}) =
+    movedTemporarily req state@(ClientStartState {slotId, egestResp}) =
       case spy "moved" egestResp of
         Right (Remote server) ->
           let
-            url = makeUrl server (ClientStartE "canary" streamId)
+            url = makeUrl server (ClientStartE "canary" slotId)
             -- path = Routing.printUrl RoutingEndpoint.endpoint
             -- url = spy "url" $ "http://" <> unwrap addr <> ":3000" <> path
           in
@@ -111,9 +111,9 @@ clientStop =
   where
     init req = do
       let
-        streamId = Bindings.streamId req
+        slotId = Bindings.slotId req
       thisNode <- extractAddress <$> PoPDefinition.getThisServer
-      Rest.initResult req { egestKey: EgestKey streamId
+      Rest.initResult req { egestKey: EgestKey slotId
                           }
 
     serviceAvailable req state = do
@@ -163,7 +163,7 @@ domainLog = Logger.doLog domains
 
 
 
-  -- existingEgests <- IntraPoP.whereIsEgest streamId
+  -- existingEgests <- IntraPoP.whereIsEgest slotId
 
   -- let
   --   thisAddress = extractAddress thisServer
@@ -174,7 +174,7 @@ domainLog = Logger.doLog domains
   -- if any (\server ->  (extractAddress server) == thisAddress) egestsWithCapacity
   -- then
   --   do
-  --     _ <- EgestInstance.addClient streamId
+  --     _ <- EgestInstance.addClient slotId
   --     pure $ Right Local
   -- else
   --  case pickInstance egestsWithCapacity of
@@ -183,7 +183,7 @@ domainLog = Logger.doLog domains
 
   --    Nothing -> do
   --       -- does the stream even exists
-  --       mAggregator <- IntraPoP.whereIsIngestAggregator streamId
+  --       mAggregator <- IntraPoP.whereIsIngestAggregator slotId
   --       case spy "mAggregator" mAggregator of
   --         Nothing ->
   --           pure $ Left NotFound
@@ -194,7 +194,7 @@ domainLog = Logger.doLog domains
   --             Nothing ->
   --               pure $ Left NoResource
   --             Just idleServer ->
-  --               let payload = { streamId
+  --               let payload = { slotId
   --                             , aggregator} :: CreateEgestPayload
   --               in
   --                 if extractAddress idleServer == thisAddress

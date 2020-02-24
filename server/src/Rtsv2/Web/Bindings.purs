@@ -1,15 +1,15 @@
 module Rtsv2.Web.Bindings
-       ( streamId
-       , variant
+       ( slotId
+       , profileName
        , streamRole
-       , streamAndVariant
+       , slotNameAndProfileName
        , popName
        , shortName
 
-       , streamIdBindingLiteral
-       , variantBindingLiteral
+       , slotIdBindingLiteral
+       , profileNameBindingLiteral
        , streamRoleBindingLiteral
-       , streamAndVariantBindingLiteral
+       , slotNameAndProfileNameBindingLiteral
        , popNameBindingLiteral
        , shortNameBindingLiteral
        ) where
@@ -24,16 +24,16 @@ import Data.String (Pattern(..), split)
 import Erl.Atom (atom)
 import Erl.Cowboy.Req (Req, binding)
 import Rtsv2.Router.Endpoint (parseSlotRole)
-import Shared.Stream (ProfileName, RtmpShortName, SlotId, SlotIdAndProfileName(..), SlotNameAndProfileName(..), SlotRole(..))
+import Shared.Stream (ProfileName, RtmpShortName, SlotId, SlotNameAndProfileName(..), SlotRole)
 import Shared.Types (PoPName)
 import Shared.Utils (lazyCrashIfMissing)
 
 
-streamId :: Req -> SlotId
-streamId = wrap <<< fromMaybe' (lazyCrashIfMissing $ streamIdBindingLiteral <> " binding missing") <<< ((=<<) fromString) <<< binding (atom streamIdBindingLiteral)
+slotId :: Req -> SlotId
+slotId = wrap <<< fromMaybe' (lazyCrashIfMissing $ slotIdBindingLiteral <> " binding missing") <<< ((=<<) fromString) <<< binding (atom slotIdBindingLiteral)
 
-variant :: Req -> ProfileName
-variant = wrap <<< fromMaybe' (lazyCrashIfMissing $ variantBindingLiteral <> " binding missing") <<< binding (atom variantBindingLiteral)
+profileName :: Req -> ProfileName
+profileName = wrap <<< fromMaybe' (lazyCrashIfMissing $ profileNameBindingLiteral <> " binding missing") <<< binding (atom profileNameBindingLiteral)
 
 streamRole :: Req -> SlotRole
 streamRole req =
@@ -49,25 +49,25 @@ popName = wrap <<< fromMaybe' (lazyCrashIfMissing $ popNameBindingLiteral <> " b
 shortName :: Req -> RtmpShortName
 shortName = wrap <<< fromMaybe' (lazyCrashIfMissing $ shortNameBindingLiteral <> " binding missing") <<< binding (atom shortNameBindingLiteral)
 
-streamAndVariant :: Req -> SlotNameAndProfileName
-streamAndVariant req =
+slotNameAndProfileName :: Req -> SlotNameAndProfileName
+slotNameAndProfileName req =
   let
-    variantIdStr = fromMaybe' (lazyCrashIfMissing $ streamAndVariantBindingLiteral <> " binding missing") $ binding (atom streamAndVariantBindingLiteral) req
-    streamIdStr = fromMaybe' (lazyCrashIfMissing $ streamAndVariantBindingLiteral <> " badly formed") $ (split (Pattern "_") variantIdStr) !! 0
+    profileNameStr = fromMaybe' (lazyCrashIfMissing $ slotNameAndProfileNameBindingLiteral <> " binding missing") $ binding (atom slotNameAndProfileNameBindingLiteral) req
+    slotIdStr = fromMaybe' (lazyCrashIfMissing $ slotNameAndProfileNameBindingLiteral <> " badly formed") $ (split (Pattern "_") profileNameStr) !! 0
   in
-   SlotNameAndProfileName streamIdStr (wrap variantIdStr)
+   SlotNameAndProfileName slotIdStr (wrap profileNameStr)
 
-streamIdBindingLiteral :: String
-streamIdBindingLiteral = "stream_id"
+slotIdBindingLiteral :: String
+slotIdBindingLiteral = "slot_id"
 
-variantBindingLiteral :: String
-variantBindingLiteral = "variant"
+profileNameBindingLiteral :: String
+profileNameBindingLiteral = "profile_name"
 
 streamRoleBindingLiteral :: String
 streamRoleBindingLiteral = "stream_role"
 
-streamAndVariantBindingLiteral :: String
-streamAndVariantBindingLiteral = "stream_and_variant"
+slotNameAndProfileNameBindingLiteral :: String
+slotNameAndProfileNameBindingLiteral = "slotname_and_profilename"
 
 popNameBindingLiteral :: String
 popNameBindingLiteral = "pop_name"

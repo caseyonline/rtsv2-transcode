@@ -31,10 +31,10 @@ findOrStart =
                       , logWarning
                       }
   where
-    payloadToRelayKey payload = RelayKey payload.streamId payload.streamRole
+    payloadToRelayKey payload = RelayKey payload.slotId payload.streamRole
     hasCapcityForRelay (ServerLoad sl) =  unwrap sl.load < 50.0
     startLocalRelay payload = do
-      _ <- StreamRelayInstanceSup.startRelay { streamId: payload.streamId, streamRole: payload.streamRole, aggregator: payload.aggregator}
+      _ <- StreamRelayInstanceSup.startRelay { slotId: payload.slotId, streamRole: payload.streamRole, aggregator: payload.aggregator}
       pure unit
 
 
@@ -44,7 +44,7 @@ findOrStart =
 -- findRelayAndRegisterForChain :: RegisterRelayChainPayload -> Effect LocationResp
 -- findRelayAndRegisterForChain =
 --   findAndRegister { registerFun : registerRelayChain
---                   , findFun : IntraPoP.whereIsStreamRelay <<< _.streamId
+--                   , findFun : IntraPoP.whereIsStreamRelay <<< _.slotId
 --                   , handlerCreationPredicate : hasCapcityForRelay
 --                   , startLocalFun : startLocalRelay
 --                   , startRemoteFun : startRemoteRelay
@@ -53,7 +53,7 @@ findOrStart =
 --   where
 --    hasCapcityForRelay (ServerLoad sl) =  unwrap sl.load < 50.0
 --    startLocalRelay payload = do
---      _ <- StreamRelayInstanceSup.startRelay { streamId: payload.streamId, aggregatorPoP : payload.aggregatorPoP}
+--      _ <- StreamRelayInstanceSup.startRelay { slotId: payload.slotId, aggregatorPoP : payload.aggregatorPoP}
 --      pure unit
 --    startRemoteRelay sl payload = do
 --      let
@@ -66,12 +66,12 @@ findOrStart =
 -- Internal
 --------------------------------------------------------------------------------
 -- startLocalOrRemote :: (LocalOrRemote ServerLoad) -> SlotId -> Server -> Effect Unit
--- startLocalOrRemote  (Local _) streamId aggregator = do
---   void <$> crashIfLeft =<< startChildToStartLink <$> EgestInstanceSup.startEgest {streamId, aggregator}
--- startLocalOrRemote  (Remote remote) streamId aggregator = do
+-- startLocalOrRemote  (Local _) slotId aggregator = do
+--   void <$> crashIfLeft =<< startChildToStartLink <$> EgestInstanceSup.startEgest {slotId, aggregator}
+-- startLocalOrRemote  (Remote remote) slotId aggregator = do
 --   let
 --     url = makeUrl remote EgestE
---   void <$> crashIfLeft =<< SpudGun.postJson url ({streamId, aggregator} :: CreateEgestPayload)
+--   void <$> crashIfLeft =<< SpudGun.postJson url ({slotId, aggregator} :: CreateEgestPayload)
 
 --------------------------------------------------------------------------------
 -- Log helpers

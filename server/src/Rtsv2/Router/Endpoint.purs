@@ -87,15 +87,15 @@ endpoint = root $ sum
   , "HealthCheckE"                                     : "" / "api" / path "healthCheck" noArgs
   , "ServerStateE"                                     : "" / "api" / path "state" noArgs
   , "PoPDefinitionE"                                   : "" / "api" / path "popDefinition" noArgs
-  , "EgestStatsE"                                      : "" / "api" / "agents" / "egest" / streamId segment
+  , "EgestStatsE"                                      : "" / "api" / "agents" / "egest" / slotId segment
   , "EgestE"                                           : "" / "api" / "agents" / path "egest" noArgs
 
   , "RelayE"                                           : "" / "api" / "agents" / "relay" / path "egest"  noArgs
   , "RelayEnsureStartedE"                              : "" / "api" / "agents" / "relay" / path "ensureStarted"  noArgs
   , "RelayRegisterEgestE"                              : "" / "api" / "agents" / "relay" / "register" / path "egest" noArgs
   , "RelayRegisterRelayE"                              : "" / "api" / "agents" / "relay" / "register" / path "relay" noArgs
-  , "RelayStatsE"                                      : "" / "api" / "agents" / "relay" / streamId segment / streamRole segment
-  , "RelayProxiedStatsE"                               : "" / "api" / "agents" / "proxied" / "relay" / streamId segment / streamRole segment
+  , "RelayStatsE"                                      : "" / "api" / "agents" / "relay" / slotId segment / streamRole segment
+  , "RelayProxiedStatsE"                               : "" / "api" / "agents" / "proxied" / "relay" / slotId segment / streamRole segment
 
   , "LoadE"                                            : "" / "api" / path "load" noArgs
 
@@ -104,26 +104,26 @@ endpoint = root $ sum
   , "WorkflowMetricsE"                                 : "" / "api" / "workflows" / segment / "metrics"
   , "WorkflowStructureE"                               : "" / "api" / "workflows" / segment / "structure"
 
-  , "IngestAggregatorE"                                : "" / "api" / "agents" / "ingestAggregator" / streamId segment / streamRole segment
-  , "IngestAggregatorPlayerE"                          : "" / "api" / "agents" / "ingestAggregator" / streamId segment / streamRole segment / "player"
-  , "IngestAggregatorPlayerJsE"                        : "" / "api" / "agents" / "ingestAggregator" / streamId segment / streamRole segment / "js" -- TODO - would like to add '/ "[...]"' bit it causes compiler error that I don't understand
-  , "IngestAggregatorActiveIngestsE"                   : "" / "api" / "agents" / "ingestAggregator" / streamId segment / streamRole segment / "activeIngests" / variant segment
-  , "IngestAggregatorActiveIngestsPlayerE"             : "" / "api" / "agents" / "ingestAggregator" / streamId segment / streamRole segment / "activeIngests" / variant segment / "player" -- TODO - streamRole for these as well
-  , "IngestAggregatorActiveIngestsPlayerJsE"           : "" / "api" / "agents" / "ingestAggregator" / streamId segment / streamRole segment / "activeIngests" / variant segment / "js" -- TODO - would like to add '/ "[...]"' bit it causes compiler error that I don't understand
-  , "IngestAggregatorActiveIngestsPlayerControlE"      : "" / "api" / "agents" / "ingestAggregator" / streamId segment / streamRole segment / "activeIngests" / variant segment / "control"
+  , "IngestAggregatorE"                                : "" / "api" / "agents" / "ingestAggregator" / slotId segment / streamRole segment
+  , "IngestAggregatorPlayerE"                          : "" / "api" / "agents" / "ingestAggregator" / slotId segment / streamRole segment / "player"
+  , "IngestAggregatorPlayerJsE"                        : "" / "api" / "agents" / "ingestAggregator" / slotId segment / streamRole segment / "js" -- TODO - would like to add '/ "[...]"' bit it causes compiler error that I don't understand
+  , "IngestAggregatorActiveIngestsE"                   : "" / "api" / "agents" / "ingestAggregator" / slotId segment / streamRole segment / "activeIngests" / profileName segment
+  , "IngestAggregatorActiveIngestsPlayerE"             : "" / "api" / "agents" / "ingestAggregator" / slotId segment / streamRole segment / "activeIngests" / profileName segment / "player" -- TODO - streamRole for these as well
+  , "IngestAggregatorActiveIngestsPlayerJsE"           : "" / "api" / "agents" / "ingestAggregator" / slotId segment / streamRole segment / "activeIngests" / profileName segment / "js" -- TODO - would like to add '/ "[...]"' bit it causes compiler error that I don't understand
+  , "IngestAggregatorActiveIngestsPlayerControlE"      : "" / "api" / "agents" / "ingestAggregator" / slotId segment / streamRole segment / "activeIngests" / profileName segment / "control"
 
   , "IngestAggregatorRegisterRelayE"                   : "" / "api" / "agents" / "ingestAggregator" / path "register" noArgs
   , "IngestAggregatorsE"                               : "" / "api" / "agents" / path "ingestAggregator" noArgs
 
   , "IngestInstancesE"                                 : "" / "api" / "agents" / path "ingest" noArgs
   , "IngestInstancesMetricsE"                          : "" / "api" / "agents" / "ingest" / path "metrics" noArgs
-  , "IngestInstanceE"                                  : "" / "api" / "agents" / "ingest" / streamId segment / variant segment
-  , "IngestInstanceLlwpE"                              : "" / "api" / "agents" / "ingest" / streamId segment / streamRole segment / variant segment / "llwp"
+  , "IngestInstanceE"                                  : "" / "api" / "agents" / "ingest" / slotId segment / profileName segment
+  , "IngestInstanceLlwpE"                              : "" / "api" / "agents" / "ingest" / slotId segment / streamRole segment / profileName segment / "llwp"
 
   , "IngestStartE"                                     : "" / "api" / "public" / canary segment / "ingest" / shortName segment / slotNameAndProfile segment / "start"
-  , "IngestStopE"                                      : "" / "api" / "public" / canary segment / "ingest" / streamId segment / streamRole segment / variant  segment / "stop"
-  , "ClientStartE"                                     : "" / "api" / "public" / canary segment / "client" / streamId segment / "start"
-  , "ClientStopE"                                      : "" / "api" / "public" / canary segment / "client" / streamId segment / "stop"
+  , "IngestStopE"                                      : "" / "api" / "public" / canary segment / "ingest" / slotId segment / streamRole segment / profileName  segment / "stop"
+  , "ClientStartE"                                     : "" / "api" / "public" / canary segment / "client" / slotId segment / "start"
+  , "ClientStopE"                                      : "" / "api" / "public" / canary segment / "client" / slotId segment / "stop"
 
   , "ClientAppAssetsE"                                 : "" / "app" / path "assets" noArgs
   , "ClientAppRouteHTMLE"                              : "" / "app" / noArgs
@@ -158,15 +158,15 @@ makeUrlAddrWithPath (ServerAddress host) path =
 parseSlotId :: String -> Maybe SlotId
 parseSlotId = ((<$>) wrap) <<< fromString
 
-streamIdToString :: SlotId -> String
-streamIdToString = show <<< unwrap
+slotIdToString :: SlotId -> String
+slotIdToString = show <<< unwrap
 
 -- | ProfileName
 parseProfileName :: String -> Maybe ProfileName
 parseProfileName = wrapParser
 
-variantToString :: ProfileName -> String
-variantToString = unwrap
+profileNameToString :: ProfileName -> String
+profileNameToString = unwrap
 
 -- | SlotRole
 parseSlotRole :: String -> Maybe SlotRole
@@ -205,8 +205,8 @@ parseSlotIdAndProfileName :: String -> Maybe SlotIdAndProfileName
 parseSlotIdAndProfileName  ""  = Nothing
 parseSlotIdAndProfileName  str =
   case split (Pattern "_") str !! 0 of
-    Just streamIdStr ->
-      case fromString streamIdStr of
+    Just slotIdStr ->
+      case fromString slotIdStr of
         Nothing -> Nothing
         Just slotId -> Just (SlotIdAndProfileName (wrap slotId) (wrap str))
     _ -> Nothing
@@ -233,12 +233,12 @@ slotNameAndProfileToString (SlotNameAndProfileName _ (ProfileName str)) = str
 -- canaryToString Canary = "canary"
 
 -- | This combinator transforms a codec over `String` into one that operates on the `SlotId` type.
-streamId :: RouteDuplex' String -> RouteDuplex' SlotId
-streamId = as streamIdToString (parseSlotId >>> note "Bad SlotId")
+slotId :: RouteDuplex' String -> RouteDuplex' SlotId
+slotId = as slotIdToString (parseSlotId >>> note "Bad SlotId")
 
 -- | This combinator transforms a codec over `String` into one that operates on the `ProfileName` type.
-variant :: RouteDuplex' String -> RouteDuplex' ProfileName
-variant = as variantToString (parseProfileName >>> note "Bad SlotId")
+profileName :: RouteDuplex' String -> RouteDuplex' ProfileName
+profileName = as profileNameToString (parseProfileName >>> note "Bad ProfileName")
 
 -- | This combinator transforms a codec over `String` into one that operates on the `ProfileName` type.
 streamRole :: RouteDuplex' String -> RouteDuplex' SlotRole

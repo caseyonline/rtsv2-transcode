@@ -37,7 +37,7 @@ startEgest payload =
 
 maybeStartAndAddClient :: CreateEgestPayload -> Effect Unit
 maybeStartAndAddClient payload = do
-  let egestKey = (EgestKey payload.streamId)
+  let egestKey = (EgestKey payload.slotId)
   isActive <- EgestInstance.isActive egestKey
   case isActive of
     false -> do
@@ -48,7 +48,7 @@ maybeStartAndAddClient payload = do
         _ <- EgestInstance.addClient egestKey
         pure unit
 
-  -- result <- Sup.startSimpleChild childTemplate serverName streamId
+  -- result <- Sup.startSimpleChild childTemplate serverName slotId
   -- case result of
   --   Pinto.AlreadyStarted pid -> pure unit
   --   Pinto.Started pid -> pure unit

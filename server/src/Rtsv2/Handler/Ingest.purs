@@ -184,15 +184,15 @@ statsToPrometheus stats =
 
 ingestInstance :: GenericStetsonGet (PublicState.Ingest List)
 ingestInstance =
-  genericGetByInt2 Bindings.streamIdBindingLiteral Bindings.variantBindingLiteral getState
+  genericGetByInt2 Bindings.slotIdBindingLiteral Bindings.profileNameBindingLiteral getState
   where
     -- TODO - hardcoded Primary
-    getState streamId variant = IngestInstance.getPublicState (IngestKey streamId Primary variant)
+    getState slotId profileName = IngestInstance.getPublicState (IngestKey slotId Primary profileName)
 
 type IngestStartState = { shortName :: RtmpShortName
                         , streamDetails :: Maybe StreamDetails
                         , streamPublish :: Maybe StreamPublish
-                        , streamAndVariant :: SlotNameAndProfileName
+                        , slotNameAndProfileName :: SlotNameAndProfileName
                         }
 
 ingestStart :: StetsonHandler IngestStartState
@@ -200,10 +200,10 @@ ingestStart =
   Rest.handler (\req ->
                  let
                    shortName = Bindings.shortName req
-                   streamAndVariant = Bindings.streamAndVariant req
+                   slotNameAndProfileName = Bindings.slotNameAndProfileName req
                  in
                  Rest.initResult req { shortName
-                                     , streamAndVariant
+                                     , slotNameAndProfileName
                                      , streamDetails: Nothing
                                      , streamPublish: Nothing
                                      }
@@ -211,13 +211,13 @@ ingestStart =
   # Rest.serviceAvailable (\req state -> do
                             isAgentAvailable <- IngestInstanceSup.isAvailable
                             Rest.result isAgentAvailable req state)
-  # Rest.resourceExists (\req state@{shortName, streamAndVariant: (SlotNameAndProfileName _ variant)} ->
+  # Rest.resourceExists (\req state@{shortName, slotNameAndProfileName: (SlotNameAndProfileName _ profileName)} ->
                           let
                             streamPublishPayload :: StreamPublish
                             streamPublishPayload = wrap { host: "172.16.171.5"
                                                         , protocol: Rtmp
                                                         , rtmpShortName: unwrap shortName
-                                                        , rtmpStreamName: unwrap variant
+                                                        , rtmpStreamName: unwrap profileName
                                                         , username: "user"}
                           in
                            do
@@ -231,7 +231,7 @@ ingestStart =
   -- TODO - hideous spawn here, but ingestInstance needs to do a monitor... - ideally we sleep forever and kill it in ingestStop...
   # Rest.contentTypesProvided (\req state ->
                                   Rest.result (tuple2 "text/plain" (\req2 state2@{ streamDetails: maybeStreamDetails
-                                                                                 , streamAndVariant: SlotNameAndProfileName streamId variantId
+                                                                                 , slotNameAndProfileName: SlotNameAndProfileName slotId profileName
                                                                                  , streamPublish: maybeStreamPublish
                                                                                  } -> do
                                                                        pid <- Raw.spawn ((\_ -> Timer.sleep (wrap 10000))
@@ -241,7 +241,7 @@ ingestStart =
                                                                        let
                                                                          streamDetails = fromMaybe' (lazyCrashIfMissing "stream_details missing") maybeStreamDetails
                                                                          streamPublish = fromMaybe' (lazyCrashIfMissing "stream_publish missing") maybeStreamPublish
-                                                                         ingestKey = IngestKey streamDetails.slot.id streamDetails.role variantId
+                                                                         ingestKey = IngestKey streamDetails.slot.id streamDetails.role profileName
                                                                        IngestInstanceSup.startIngest ingestKey streamPublish streamDetails "127.0.0.1" 0 pid
                                                                        Rest.result "ingestStarted" req2 state2
                                                                    ) : nil) req state)
@@ -254,11 +254,11 @@ ingestStop :: StetsonHandler IngestStopState
 ingestStop =
   Rest.handler (\req ->
                  let
-                   streamId = Bindings.streamId req
+                   slotId = Bindings.slotId req
                    role = Bindings.streamRole req
-                   variant = Bindings.variant req
+                   profileName = Bindings.profileName req
                  in
-                 Rest.initResult req {ingestKey: IngestKey streamId role variant}
+                 Rest.initResult req {ingestKey: IngestKey slotId role profileName}
                )
 
   # Rest.serviceAvailable (\req state -> do

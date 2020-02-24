@@ -143,7 +143,7 @@ genericGetBySlotIdAndRole getFun =  Rest.handler init
   where
     init req =
       let
-        slotId = Bindings.streamId req
+        slotId = Bindings.slotId req
         streamRole = Bindings.streamRole req
       in do
         mData <- noprocToMaybe $ getFun slotId streamRole
@@ -153,7 +153,7 @@ genericGetBySlotIdAndRole getFun =  Rest.handler init
 
 
 genericGetBySlotId :: forall a. WriteForeign a =>  (SlotId -> Effect a) -> GenericStetsonGetBySlotId a
-genericGetBySlotId = genericGetByInt Bindings.streamIdBindingLiteral
+genericGetBySlotId = genericGetByInt Bindings.slotIdBindingLiteral
 
 genericGetByPoPName :: forall a. WriteForeign a =>  (PoPName -> Effect a) -> GenericStetsonGetBySlotId a
 genericGetByPoPName = genericGetBy  Bindings.popNameBindingLiteral
@@ -302,7 +302,7 @@ genericProvideJson req state@(GenericStatusState {mData}) =
 
 newtype GenericProxyState
   = GenericProxyState { whereIsResp :: Maybe Server
-                      , streamId :: SlotId
+                      , slotId :: SlotId
                       }
 
 
@@ -321,14 +321,14 @@ genericProxyBySlotId whereIsFun endpointFun =
   where
     init req =
       let
-        bindElement = Bindings.streamIdBindingLiteral
+        bindElement = Bindings.slotIdBindingLiteral
         bindValue :: SlotId
         bindValue = wrap $ fromMaybe' (lazyCrashIfMissing (bindElement <> " binding missing")) $ binding (atom bindElement) req
       in do
         whereIsResp <- (map fromLocalOrRemote) <$> whereIsFun bindValue
         Rest.initResult req $
             GenericProxyState { whereIsResp
-                              , streamId : bindValue
+                              , slotId : bindValue
                               }
 
     resourceExists req state =
@@ -337,11 +337,11 @@ genericProxyBySlotId whereIsFun endpointFun =
     previouslyExisted req state@(GenericProxyState {whereIsResp}) =
       Rest.result (isJust whereIsResp) req state
 
-    movedTemporarily req state@(GenericProxyState {whereIsResp, streamId}) =
+    movedTemporarily req state@(GenericProxyState {whereIsResp, slotId}) =
       case whereIsResp of
         Just server ->
           let
-            url = makeUrl server (endpointFun streamId)
+            url = makeUrl server (endpointFun slotId)
           in
             Rest.result (moved $ unwrap url) req state
         _ ->

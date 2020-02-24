@@ -1,9 +1,9 @@
 module Rtsv2.Agents.IngestAggregatorInstance
   ( startLink
   , isAvailable
-  , addVariant
-  , addRemoteVariant
-  , removeVariant
+  , addIngest
+  , addRemoteIngest
+  , removeIngest
   , registerRelay
   , getState
   , slotConfiguration
@@ -11,7 +11,7 @@ module Rtsv2.Agents.IngestAggregatorInstance
 
 import Prelude
 
-import Data.Newtype (unwrap, wrap)
+import Data.Newtype (unwrap)
 import Data.Maybe (Maybe)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
@@ -45,9 +45,9 @@ import Shared.Types.Agent.State as PublicState
 -- TODO: proper type for handle, as done in other places
 type WorkflowHandle = Foreign
 foreign import startWorkflowImpl :: Int -> Array (Tuple3 IngestKey String String) -> Effect WorkflowHandle
-foreign import addLocalVariantImpl :: WorkflowHandle -> IngestKey -> Effect Unit
-foreign import addRemoteVariantImpl :: WorkflowHandle -> IngestKey -> String -> Effect Unit
-foreign import removeVariantImpl :: WorkflowHandle -> IngestKey -> Effect Unit
+foreign import addLocalIngestImpl :: WorkflowHandle -> IngestKey -> Effect Unit
+foreign import addRemoteIngestImpl :: WorkflowHandle -> IngestKey -> String -> Effect Unit
+foreign import removeIngestImpl :: WorkflowHandle -> IngestKey -> Effect Unit
 foreign import registerStreamRelayImpl :: WorkflowHandle -> String -> Int -> Effect Unit
 foreign import slotConfigurationImpl :: Int -> Effect (Maybe SlotConfiguration)
 
@@ -68,13 +68,8 @@ isAvailable aggregatorKey = do
   bool <- isRegistered (serverName aggregatorKey)
   pure bool
 
-payloadToAggregatorKey :: forall r.
-  { streamId :: SlotId
-  , streamRole :: SlotRole
-  | r
-  }
-  -> AggregatorKey
-payloadToAggregatorKey payload = AggregatorKey payload.streamId payload.streamRole
+payloadToAggregatorKey :: forall r. { slotId :: SlotId, streamRole :: SlotRole | r } -> AggregatorKey
+payloadToAggregatorKey payload = AggregatorKey payload.slotId payload.streamRole
 
 serverName :: AggregatorKey -> ServerName State Msg
 serverName = Names.ingestAggregatorInstanceName
@@ -82,29 +77,29 @@ serverName = Names.ingestAggregatorInstanceName
 serverNameFromIngestKey :: IngestKey -> ServerName State Msg
 serverNameFromIngestKey = serverName <<< ingestKeyToAggregatorKey
 
-addVariant :: IngestKey -> Effect Unit
-addVariant ingestKey = Gen.doCall (serverNameFromIngestKey ingestKey)
+addIngest :: IngestKey -> Effect Unit
+addIngest ingestKey = Gen.doCall (serverNameFromIngestKey ingestKey)
   \state@{thisAddress, activeProfileNames, workflowHandle} -> do
-    logInfo "Ingest variant added" {ingestKey}
-    addLocalVariantImpl workflowHandle ingestKey
+    logInfo "Ingest added" {ingestKey}
+    addLocalIngestImpl workflowHandle ingestKey
     pure $ CallReply unit state{activeProfileNames = insert (ingestKeyToProfileName ingestKey) thisAddress activeProfileNames}
 
-addRemoteVariant :: IngestKey -> ServerAddress -> Effect Unit
-addRemoteVariant ingestKey@(IngestKey streamId streamRole streamVariant)  remoteServer = Gen.doCall (serverNameFromIngestKey ingestKey)
+addRemoteIngest :: IngestKey -> ServerAddress -> Effect Unit
+addRemoteIngest ingestKey@(IngestKey streamId streamRole profileName)  remoteServer = Gen.doCall (serverNameFromIngestKey ingestKey)
   \state@{activeProfileNames, workflowHandle} -> do
-    logInfo "Remote ingest variant added" {ingestKey, source: remoteServer}
+    logInfo "Remote ingest added" {ingestKey, source: remoteServer}
     let
-      path = Routing.printUrl RoutingEndpoint.endpoint (IngestInstanceLlwpE streamId streamRole streamVariant)
+      path = Routing.printUrl RoutingEndpoint.endpoint (IngestInstanceLlwpE streamId streamRole profileName)
       url = "http://" <> (unwrap remoteServer) <> ":3000" <> path
-    addRemoteVariantImpl workflowHandle ingestKey url
+    addRemoteIngestImpl workflowHandle ingestKey url
     pure $ CallReply unit state{activeProfileNames = insert (ingestKeyToProfileName ingestKey) remoteServer activeProfileNames}
 
-removeVariant :: IngestKey -> Effect Unit
-removeVariant ingestKey@(IngestKey _ _ streamVariant )  = Gen.doCall (serverName (ingestKeyToAggregatorKey ingestKey))
+removeIngest :: IngestKey -> Effect Unit
+removeIngest ingestKey@(IngestKey _ _ profileName )  = Gen.doCall (serverName (ingestKeyToAggregatorKey ingestKey))
   \state@{activeProfileNames, aggregatorKey, workflowHandle, config:{shutdownLingerTimeMs}} -> do
   let
-    newActiveProfileNames = delete streamVariant activeProfileNames
-  removeVariantImpl workflowHandle ingestKey
+    newActiveProfileNames = delete profileName activeProfileNames
+  removeIngestImpl workflowHandle ingestKey
   if (size newActiveProfileNames) == 0 then do
     void $ Timer.sendAfter (serverName aggregatorKey) shutdownLingerTimeMs MaybeStop
     pure unit

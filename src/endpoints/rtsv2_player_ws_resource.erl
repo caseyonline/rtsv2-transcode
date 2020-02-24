@@ -53,8 +53,8 @@
 
 
 -record(?stream_desc_ingest,
-        { stream_id :: binary_string()
-        , variant_id :: binary_string()
+        { slot_id :: non_neg_integer()
+        , profile_name :: binary_string()
         , stream_role :: binary_string()
         , ingest_key :: term()
         }).
@@ -62,7 +62,7 @@
 
 
 -record(?stream_desc_egest,
-        { stream_id  :: binary_string()
+        { slot_id  :: binary_string()
         , egest_key :: term()
         , start_stream_result :: term()
         , get_slot_configuration :: fun()
@@ -92,7 +92,7 @@ init(Req,
     ) ->
 
   %% Ensure the relay is set-up and get the relay key
-  SlotId = binary_to_integer(cowboy_req:binding(stream_id, Req)),
+  SlotId = binary_to_integer(cowboy_req:binding(slot_id, Req)),
 
   %% NOTE: StartStream returns an effect, hence the extra invocation
   StartStreamResult =
@@ -101,7 +101,7 @@ init(Req,
   io:format(user, "START STREAM RESULT: ~p -> ~p~n~n", [SlotId, StartStreamResult]),
 
   StreamDesc =
-    #?stream_desc_egest{ stream_id =  SlotId
+    #?stream_desc_egest{ slot_id =  SlotId
                        , egest_key = MakeEgestKey(SlotId)
                        , start_stream_result = StartStreamResult
                        , get_slot_configuration = GetSlotConfiguration
@@ -115,15 +115,15 @@ init(Req,
       }
     ) ->
 
-  SlotId = binary_to_integer(cowboy_req:binding(stream_id, Req)),
+  SlotId = binary_to_integer(cowboy_req:binding(slot_id, Req)),
   StreamRole = cowboy_req:binding(stream_role, Req),
-  VariantId = cowboy_req:binding(variant_id, Req),
-io:format(user, "HERE ~p~n", [{SlotId, StreamRole, VariantId}]),
+  ProfileName = cowboy_req:binding(profile_name, Req),
+
   StreamDesc =
-    #?stream_desc_ingest{ stream_id = SlotId
+    #?stream_desc_ingest{ slot_id = SlotId
                         , stream_role = StreamRole
-                        , variant_id = VariantId
-                        , ingest_key = ((MakeIngestKey(SlotId))(StreamRole))(VariantId)
+                        , profile_name = ProfileName
+                        , ingest_key = ((MakeIngestKey(SlotId))(StreamRole))(ProfileName)
                         },
 
   init_prime(Req, StreamDesc).
@@ -363,7 +363,7 @@ websocket_info(not_implemented, State) ->
 %%% ----------------------------------------------------------------------------
 %%% Private Functions
 %%% ----------------------------------------------------------------------------
-determine_stream_availability(#?stream_desc_ingest{ ingest_key = IngestKey, stream_id = StreamId, variant_id = VariantId }) ->
+determine_stream_availability(#?stream_desc_ingest{ ingest_key = IngestKey, slot_id = SlotId, profile_name = ProfileName }) ->
 
   BusName = {webrtc_stream_output, IngestKey},
 
@@ -373,10 +373,10 @@ determine_stream_availability(#?stream_desc_ingest{ ingest_key = IngestKey, stre
       case pubsub:read_bus_metadata(BusName) of
         { ok, #live_stream_metadata{ program_details = _Frame = #frame{} } } ->
 
-          case rtsv2_slot_media_source_publish_processor:maybe_slot_configuration(StreamId) of
+          case rtsv2_slot_media_source_publish_processor:maybe_slot_configuration(SlotId) of
             #{ profiles := Profiles } ->
 
-              case [ Profile || Profile = #{ name := ProfileName } <- Profiles, ProfileName =:= VariantId ] of
+              case [ Profile || Profile = #{ name := ProfileName } <- Profiles, ProfileName =:= ProfileName ] of
                 [ MatchingProfile | _ ] ->
                   { available_here, [ MatchingProfile ] };
 

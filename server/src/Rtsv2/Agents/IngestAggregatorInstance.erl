@@ -16,9 +16,9 @@
 
 -export([
          startWorkflowImpl/2,
-         addLocalVariantImpl/2,
-         addRemoteVariantImpl/3,
-         removeVariantImpl/2,
+         addLocalIngestImpl/2,
+         addRemoteIngestImpl/3,
+         removeIngestImpl/2,
          registerStreamRelayImpl/3,
          slotConfigurationImpl/1
         ]).
@@ -64,19 +64,19 @@ startWorkflowImpl(SlotId, ProfileArray) ->
         startWorkflow(SlotId, EnrichedProfiles)
   end.
 
-addLocalVariantImpl(Handle, StreamAndVariant) ->
+addLocalIngestImpl(Handle, IngestKey) ->
   fun() ->
-      ok = id3as_workflow:ioctl(ingests, {add_local_ingest, StreamAndVariant}, Handle)
+      ok = id3as_workflow:ioctl(ingests, {add_local_ingest, IngestKey}, Handle)
   end.
 
-addRemoteVariantImpl(Handle, StreamAndVariant, Url) ->
+addRemoteIngestImpl(Handle, IngestKey, Url) ->
   fun() ->
-      ok = id3as_workflow:ioctl(ingests, {add_remote_ingest, StreamAndVariant, Url}, Handle)
+      ok = id3as_workflow:ioctl(ingests, {add_remote_ingest, IngestKey, Url}, Handle)
   end.
 
-removeVariantImpl(Handle, StreamAndVariant) ->
+removeIngestImpl(Handle, IngestKey) ->
   fun() ->
-      ok = id3as_workflow:ioctl(ingests, {remove_ingest, StreamAndVariant}, Handle)
+      ok = id3as_workflow:ioctl(ingests, {remove_ingest, IngestKey}, Handle)
   end.
 
 registerStreamRelayImpl(Handle, Host, Port) ->

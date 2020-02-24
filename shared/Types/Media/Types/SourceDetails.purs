@@ -68,7 +68,7 @@ data ChannelLayout = Mono
 
 
 type VideoStreamInfo =
-  { streamId :: SlotId
+  { slotId :: SlotId
   , codec :: Maybe VideoCodec
   , width :: Maybe Width
   , height :: Maybe Height
@@ -81,7 +81,7 @@ type VideoStreamInfo =
   }
 
 type AudioStreamInfo =
-  { streamId :: SlotId
+  { slotId :: SlotId
   , codec :: Maybe AudioCodec
   , sampleRate :: Maybe SampleRate
   , channelLayout :: Maybe ChannelLayout
