@@ -34,10 +34,10 @@ import Data.Generic.Rep.Show (genericShow)
 import Data.List.NonEmpty (singleton)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype)
-import Foreign (ForeignError(..), F, readString, unsafeToForeign)
+import Foreign (ForeignError(..), readString, unsafeToForeign)
 import Record (rename)
-import Shared.Stream (ProfileName, RtmpShortName(..), RtmpStreamName(..), SlotId, SlotRole)
-import Simple.JSON (class ReadForeign, class WriteForeign, readJSON', writeJSON)
+import Shared.Stream (ProfileName, RtmpShortName, RtmpStreamName, SlotId, SlotRole)
+import Simple.JSON (class ReadForeign, class WriteForeign, readImpl, writeImpl)
 import Type.Prelude (SProxy(..))
 
 data StreamIngestProtocol = Rtmp
@@ -223,11 +223,10 @@ instance eqStreamAuth :: Eq StreamAuth where eq = genericEq
 instance compareStreamAuth :: Ord StreamAuth where compare = genericCompare
 
 instance readForeignStreamAuth :: ReadForeign StreamAuth where
-  readImpl o = decode =<< readString o
+  readImpl o = decode o
     where
-    decode :: String -> F StreamAuth
     decode s = do
-      parsed <- readJSON' s
+      parsed <- readImpl s
       pure
         $ StreamAuth
         $ rename (SProxy :: SProxy "shortname") (SProxy :: SProxy "rtmpShortName") parsed
@@ -235,9 +234,8 @@ instance readForeignStreamAuth :: ReadForeign StreamAuth where
 instance writeForeignStreamAuth :: WriteForeign StreamAuth where
   writeImpl = (unsafeToForeign <<< encode)
     where
-      encode :: StreamAuth -> String
       encode (StreamAuth r) = do
-        writeJSON
+        writeImpl
           $ rename (SProxy :: SProxy "rtmpShortName") (SProxy :: SProxy "shortname") r
 
 
@@ -247,11 +245,10 @@ instance eqStreamConnection :: Eq StreamConnection where eq = genericEq
 instance compareStreamConnection :: Ord StreamConnection where compare = genericCompare
 
 instance readForeignStreamConnection :: ReadForeign StreamConnection where
-  readImpl o = decode =<< readString o
+  readImpl o = decode o
     where
-    decode :: String -> F StreamConnection
     decode s = do
-      parsed <- readJSON' s
+      parsed <- readImpl o
       pure
         $ StreamConnection
         $ rename (SProxy :: SProxy "shortname") (SProxy :: SProxy "rtmpShortName") parsed
@@ -259,9 +256,8 @@ instance readForeignStreamConnection :: ReadForeign StreamConnection where
 instance writeForeignStreamConnection :: WriteForeign StreamConnection where
   writeImpl = (unsafeToForeign <<< encode)
     where
-      encode :: StreamConnection -> String
       encode (StreamConnection r) = do
-        writeJSON
+        writeImpl
           $ rename (SProxy :: SProxy "rtmpShortName") (SProxy :: SProxy "shortname") r
 
 
@@ -271,11 +267,10 @@ instance eqSlotProfile :: Eq SlotProfile where eq = genericEq
 instance compareSlotProfile :: Ord SlotProfile where compare = genericCompare
 
 instance readForeignSlotProfile :: ReadForeign SlotProfile where
-  readImpl o = decode =<< readString o
+  readImpl o = decode o
     where
-    decode :: String -> F SlotProfile
     decode s = do
-      parsed <- readJSON' s
+      parsed <- readImpl s
       pure
         $ SlotProfile
         $ rename (SProxy :: SProxy "streamName") (SProxy :: SProxy "rtmpStreamName") parsed
@@ -283,10 +278,9 @@ instance readForeignSlotProfile :: ReadForeign SlotProfile where
 instance writeForeignSlotProfile :: WriteForeign SlotProfile where
   writeImpl = (unsafeToForeign <<< encode)
     where
-      encode :: SlotProfile -> String
       encode (SlotProfile r) = do
-        writeJSON
-          $ rename (SProxy :: SProxy "rtmpStreamName") (SProxy :: SProxy "streamName") r
+        writeImpl $
+          rename (SProxy :: SProxy "rtmpStreamName") (SProxy :: SProxy "streamName") r
 
 derive instance newtypeStreamPublish :: Newtype StreamPublish _
 derive instance genericStreamPublish :: Generic StreamPublish _
@@ -294,11 +288,10 @@ instance eqStreamPublish :: Eq StreamPublish where eq = genericEq
 instance compareStreamPublish :: Ord StreamPublish where compare = genericCompare
 
 instance readForeignStreamPublish :: ReadForeign StreamPublish where
-  readImpl o = decode =<< readString o
+  readImpl o = decode o
     where
-    decode :: String -> F StreamPublish
     decode s = do
-      parsed <- readJSON' s
+      parsed <- readImpl s
       pure
         $ StreamPublish
         $ rename (SProxy :: SProxy "shortname") (SProxy :: SProxy "rtmpShortName")
@@ -307,8 +300,7 @@ instance readForeignStreamPublish :: ReadForeign StreamPublish where
 instance writeForeignStreamPublish :: WriteForeign StreamPublish where
   writeImpl = (unsafeToForeign <<< encode)
     where
-      encode :: StreamPublish -> String
       encode (StreamPublish r) = do
-        writeJSON
+        writeImpl
           $ rename (SProxy :: SProxy "rtmpShortName") (SProxy :: SProxy "shortname")
           $ rename (SProxy :: SProxy "rtmpStreamName") (SProxy :: SProxy "streamName") r
