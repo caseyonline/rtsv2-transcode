@@ -42,10 +42,10 @@ import Data.Newtype (class Newtype, unwrap, wrap)
 import Effect (Effect)
 import Erl.Atom (atom)
 import Erl.Cowboy.Handlers.Rest (moved, notMoved)
-import Erl.Cowboy.Req (ReadBodyResult(..), Req, StatusCode(..), binding, readBody, replyWithoutBody)
+import Erl.Cowboy.Req (ReadBodyResult(..), Req, StatusCode(..), binding, readBody, replyWithoutBody, setHeader)
 import Erl.Data.Binary (Binary)
 import Erl.Data.Binary.IOData (IOData, fromBinary, toBinary)
-import Erl.Data.List (List, singleton, (:))
+import Erl.Data.List (List, nil, singleton, (:))
 import Erl.Data.Map as Map
 import Erl.Data.Tuple (Tuple2, fst, snd, tuple2)
 import Logger (spy)
@@ -161,13 +161,14 @@ genericGetByPoPName = genericGetBy  Bindings.popNameBindingLiteral
 genericGet :: forall a. WriteForeign a => (Unit -> Effect a) -> GenericStetsonGet a
 genericGet getData =
   Rest.handler init
-  # Rest.allowedMethods (Rest.result (GET : mempty))
+  # Rest.allowedMethods (Rest.result (GET : OPTIONS : nil))
   # Rest.contentTypesProvided (\req state -> Rest.result (singleton $ MimeType.json genericProvideJson) req state)
   # Rest.yeeha
   where
     init req = do
+      let reqWithAllowOrigin = setHeader "access-control-allow-origin" "*" req
       mData <- noprocToMaybe $ getData unit
-      Rest.initResult req $ GenericStatusState { mData }
+      Rest.initResult reqWithAllowOrigin $ GenericStatusState { mData }
 
 genericGetText :: (Unit -> Effect String) -> GenericStetsonGet String
 genericGetText getData =

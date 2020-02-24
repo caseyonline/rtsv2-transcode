@@ -202,13 +202,14 @@ getPublicState :: Effect (PublicState.IntraPoP List)
 getPublicState = exposeState publicState serverName
   where
     publicState state@{agentLocations, currentTransPoPLeader} =
-      { aggregatorLocations: toSlotId <$>  Map.toUnfoldable agentLocations.aggregators.byAgentKey
+      { aggregatorLocations: toAggregatorLocation <$>  Map.toUnfoldable agentLocations.aggregators.byAgentKey
       , relayLocations: toSlotIdAndProfileName <$>  Map.toUnfoldable agentLocations.relays.byAgentKey
       , egestLocations: toSlotIdAndProfileName <$>  Map.toUnfoldable agentLocations.egests.byAgentKey
       , currentTransPoPLeader
       }
-    toSlotId (Tuple (AgentKey slotId streamRole) v) =
+    toAggregatorLocation (Tuple (AgentKey slotId role) v) =
       { slotId
+      , role
       , servers:  Set.toUnfoldable v
       }
     toSlotIdAndProfileName (Tuple (AgentKey slotId role) v) =

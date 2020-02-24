@@ -12,11 +12,12 @@ import Effect.Aff.Class (class MonadAff, liftAff)
 import Effect.Class (liftEffect)
 import Effect.Ref as Ref
 import Milkis as M
-import Rtsv2App.Api.Request (OptionMethod, Token, fetchReq, printUrl, readToken, writeToken)
+import Rtsv2App.Api.Request (OptionMethod, Token, fetchReq, printOriginUrl, printUrl, readToken, writeToken)
 import Rtsv2App.Capability.LogMessages (class LogMessages, logError)
 import Rtsv2App.Capability.Now (class Now)
 import Rtsv2App.Data.Profile (Profile)
-import Rtsv2App.Env (UserEnv, UrlEnv)
+import Rtsv2App.Env (UrlEnv, UserEnv)
+import Shared.Types (ServerAddress)
 
 
 -------------------------------------------------------------------------------
@@ -36,6 +37,20 @@ mkRequest opts@{ endpoint, method } = do
     Right res -> do
       pure =<< liftAff $ M.text res
 
+mkOriginRequest
+  :: forall m r
+   . MonadAff m
+  => MonadAsk { urlEnv :: UrlEnv | r } m
+  => ServerAddress
+  -> OptionMethod
+  -> m String
+mkOriginRequest serverAdd opts@{ endpoint, method } = do
+  response <- liftAff $ Aff.attempt $ fetchReq (M.URL $ printOriginUrl serverAdd endpoint) Nothing method
+  case response of
+    Left e    -> pure $ "Error making request: " <> show e
+    Right res -> do
+      pure =<< liftAff $ M.text res
+
 mkAuthRequest
   :: forall m r
    . MonadAff m
@@ -50,7 +65,6 @@ mkAuthRequest opts@{ endpoint, method } = do
     Left e    -> pure $ "Error making request: " <> show e
     Right res -> do
       pure =<< liftAff $ M.text res
-
 
 -------------------------------------------------------------------------------
 -- Token Authentication

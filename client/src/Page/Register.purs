@@ -21,7 +21,7 @@ import Rtsv2App.Capability.Navigate (class Navigate, navigate)
 import Rtsv2App.Capability.Resource.User (class ManageUser, registerUser)
 import Rtsv2App.Component.HTML.Footer (footer)
 import Rtsv2App.Component.HTML.Header as HD
-import Rtsv2App.Component.HTML.MainMenu as MM
+import Rtsv2App.Component.HTML.MenuMain as MM
 import Rtsv2App.Component.HTML.Utils (css_, safeHref)
 import Rtsv2App.Data.Email (Email)
 import Rtsv2App.Data.Profile (Profile)
@@ -79,7 +79,7 @@ component = Connect.component $ H.mkComponent
     
   handleAction = case _ of
     HandleRegisterForm fields ->
-      registerUser fields >>= traverse_ (\_ -> navigate Dashboard)
+      registerUser fields >>= traverse_ (\_ -> navigate DashboardR)
     Receive { currentUser } ->
       H.modify_ _ { currentUser = currentUser }
 
@@ -87,8 +87,8 @@ component = Connect.component $ H.mkComponent
   render state@{ currentUser } =
     HH.div
       [ css_ "main" ]
-      [ HH.slot (SProxy :: _ "header") unit HD.component { currentUser, route: Register } absurd
-      , HH.slot (SProxy :: _ "mainMenu") unit MM.component { currentUser , route: Register } absurd
+      [ HH.slot (SProxy :: _ "header") unit HD.component { currentUser, route: RegisterR } absurd
+      , HH.slot (SProxy :: _ "mainMenu") unit MM.component { currentUser , route: RegisterR } absurd
       , HH.div
         [ css_ "app-content content" ]
         [ HH.div
@@ -126,7 +126,7 @@ component = Connect.component $ H.mkComponent
         , HH.p
             [ css_ "text-xs-center" ]
             [ HH.a
-                [ safeHref Login ]
+                [ safeHref LoginR ]
                 [ HH.text "Already have an account?" ]
           ]
         , HH.slot F._formless unit formComponent unit (Just <<< HandleRegisterForm)

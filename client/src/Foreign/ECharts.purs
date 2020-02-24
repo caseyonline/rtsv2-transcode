@@ -17,7 +17,7 @@ import Foreign.Object (Object)
 import Halogen as H
 import Prim.Row as Row
 import Record as Record
-import Rtsv2App.Data.PoPDef (PoPDefEcharts)
+import Rtsv2App.Data.PoP (PoPDefEcharts)
 import Shared.Types (PoPName)
 import Simple.JSON as JSON
 import Unsafe.Coerce (unsafeCoerce)
@@ -36,8 +36,9 @@ foreign import setOption_ :: forall option. option -> Instance -> Effect Unit
 
 foreign import setOptionPoP_ :: forall option. option -> Instance -> Effect Unit
 
-
 foreign import setClick_ :: forall option. option -> Instance -> Effect Unit
+
+foreign import ressizeObserver_ :: Instance -> Effect Unit
 
 -- main function
 makeChart
@@ -68,6 +69,9 @@ setClick
   -> Instance
   -> Effect Unit
 setClick = setClick_
+
+ressizeObserver :: Instance -> Effect Unit
+ressizeObserver = ressizeObserver_
 
 -- types
 type ClickOption =

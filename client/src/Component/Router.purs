@@ -26,7 +26,8 @@ import Rtsv2App.Data.Route (Route(..), routeCodec)
 import Rtsv2App.Env (UrlEnv, UserEnv, PoPDefEnv)
 import Rtsv2App.Page.Dashboard as Dashboard
 import Rtsv2App.Page.Login as Login
-import Rtsv2App.Page.PoPHome as PoPHome
+import Rtsv2App.Page.NotFound as NotFound
+import Rtsv2App.Page.PoPDashboard as PoPDashboard
 import Rtsv2App.Page.Register as Register
 import Rtsv2App.Page.Settings as Settings
 
@@ -34,7 +35,8 @@ import Rtsv2App.Page.Settings as Settings
 -- Types
 -------------------------------------------------------------------------------
 type State =
-  { route :: Maybe Route 
+  { prevRoute :: Maybe Route
+  , route :: Maybe Route
   , currentUser :: Maybe Profile
   }
 
@@ -47,10 +49,11 @@ data Action
 
 type ChildSlots = 
   ( dashboard :: OpaqueSlot Unit
-  , popHome :: OpaqueSlot Unit
-  , login :: OpaqueSlot Unit
-  , register :: OpaqueSlot Unit
-  , settings :: OpaqueSlot Unit
+  , popHome   :: OpaqueSlot Unit
+  , login     :: OpaqueSlot Unit
+  , register  :: OpaqueSlot Unit
+  , settings  :: OpaqueSlot Unit
+  , notFound  :: OpaqueSlot Unit
   )
 
 -------------------------------------------------------------------------------
@@ -67,7 +70,7 @@ component
   => ManageApi m
   => H.Component HH.HTML Query {} Void m
 component = Connect.component $ H.mkComponent
-  { initialState: \{ currentUser } -> { route: Nothing, currentUser } 
+  { initialState: \ { currentUser } -> { prevRoute: Nothing, route: Nothing, currentUser }
   , render
   , eval: H.mkEval $ H.defaultEval 
       { handleQuery = handleQuery 
@@ -83,22 +86,23 @@ component = Connect.component $ H.mkComponent
       -- get the route the user landed on
       initialRoute <- hush <<< (RD.parse routeCodec) <$> liftEffect getHash
       -- navigate to the new route (also setting the hash)
-      navigate $ fromMaybe Dashboard initialRoute
+      navigate $ fromMaybe DashboardR initialRoute
     
-    Receive { currentUser } ->
+    Receive { currentUser } -> do
       H.modify_ _ { currentUser = currentUser }
 
   handleQuery :: forall a. Query a -> H.HalogenM State Action ChildSlots Void m (Maybe a)
   handleQuery = case _ of
     Navigate dest a -> do
-      { route, currentUser } <- H.get 
+      { route, currentUser } <- H.get
       -- don't re-render unnecessarily if the route is unchanged
       when (route /= Just dest) do
         -- don't change routes if there is a logged-in user trying to access
         -- a route only meant to be accessible to a not-logged-in session
-        case (isJust currentUser && dest `elem` [ Login, Register ]) of
-          false -> H.modify_ _ { route = Just dest }
+        case (isJust currentUser && dest `elem` [ LoginR, RegisterR ]) of
+          false -> H.modify_ _ { route = Just dest, prevRoute = route }
           _ -> pure unit
+
       pure (Just a)
 
   -- Display the login page instead of the expected page if there is no current user; a simple 
@@ -112,20 +116,21 @@ component = Connect.component $ H.mkComponent
 
   -- connecting the routes to the components
   render :: State -> H.ComponentHTML Action ChildSlots m
-  render { route, currentUser } = case route of
+  render { route, currentUser, prevRoute } = case route of
     Just r -> case r of
-      Dashboard ->
+      DashboardR ->
         HH.slot (SProxy :: _ "dashboard") unit Dashboard.component {} absurd
           # authorize currentUser
-      PoPHome popName  ->
-        HH.slot (SProxy :: _ "popHome") unit PoPHome.component {popName: popName} absurd
+      PoPDashboardR popName  ->
+        HH.slot (SProxy :: _ "popHome") unit PoPDashboard.component { popName, prevRoute } absurd
           # authorize currentUser
-      Login -> 
+      LoginR ->
         HH.slot (SProxy :: _ "login") unit Login.component { redirect: true } absurd
-      Register ->
+      RegisterR ->
         HH.slot (SProxy :: _ "register") unit Register.component {} absurd
-      Settings -> 
+      SettingsR ->
         HH.slot (SProxy :: _ "settings") unit Settings.component {} absurd
           # authorize currentUser
+
     Nothing ->
       HH.div_ [ HH.text "Oh no! That page wasn't found." ]
