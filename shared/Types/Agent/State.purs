@@ -8,6 +8,7 @@ module Shared.Types.Agent.State
        , Region
        , PoP
        , AgentLocation
+       , AggregatorLocation
        , StreamRelay
        , TimedPoPStep
        , TimedPoPRoute
@@ -68,12 +69,8 @@ type AgentLocation f = { agentKey :: AgentKey
                        , servers :: f Server
                        }
 
-
 type IntraPoP f
-  = { aggregatorLocations :: f { streamId :: StreamId
-                               , streamRole :: StreamRole
-                               , servers :: f Server
-                               }
+  = { aggregatorLocations :: AggregatorLocation f
     , relayLocations      :: f { streamId :: StreamId
                                , streamRole :: StreamRole
                                , servers :: f Server
@@ -84,6 +81,11 @@ type IntraPoP f
                                }
     , currentTransPoPLeader :: Maybe Server
     }
+
+type AggregatorLocation f = f { streamId :: StreamId
+                              , streamRole :: StreamRole
+                              , servers :: f Server
+                              }
 
 type Region f = { name :: RegionName
                 , pops :: f (PoP f)

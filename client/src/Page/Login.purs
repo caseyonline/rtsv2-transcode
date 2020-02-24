@@ -9,6 +9,8 @@ import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype)
 import Data.Symbol (SProxy(..))
 import Effect.Aff.Class (class MonadAff)
+import Effect.Class (liftEffect)
+import Foreign.FrontEnd as FF
 import Formless as F
 import Halogen as H
 import Halogen.HTML as HH
@@ -18,11 +20,11 @@ import Rtsv2App.Capability.Navigate (class Navigate, navigate)
 import Rtsv2App.Capability.Resource.User (class ManageUser, loginUser)
 import Rtsv2App.Component.HTML.Footer (footer)
 import Rtsv2App.Component.HTML.Header as HD
-import Rtsv2App.Component.HTML.MainMenu as MM
+import Rtsv2App.Component.HTML.MenuMain as MM
 import Rtsv2App.Component.HTML.Utils (css_, safeHref, whenElem)
 import Rtsv2App.Data.Email (Email)
 import Rtsv2App.Data.Route (Route(..))
-import Rtsv2App.Form.Field (submit)
+import Rtsv2App.Env (changeHtmlClass)
 import Rtsv2App.Form.Field as Field
 import Rtsv2App.Form.Validation as V
 
@@ -30,7 +32,8 @@ import Rtsv2App.Form.Validation as V
 -- Types for Login Page
 -------------------------------------------------------------------------------
 data Action
-  = HandleLoginForm LoginFields
+  = Initialize
+  | HandleLoginForm LoginFields
 
 type State =
   { redirect :: Boolean }
@@ -53,11 +56,19 @@ component
 component = H.mkComponent
   { initialState: identity
   , render
-  , eval: H.mkEval $ H.defaultEval { handleAction = handleAction }
+  , eval: H.mkEval $ H.defaultEval
+      { handleAction = handleAction
+      , initialize = Just Initialize
+      }
   }
   where
   handleAction :: Action -> H.HalogenM State Action ChildSlots Void m Unit
   handleAction = case _ of
+    Initialize -> do
+      _ <- liftEffect $ changeHtmlClass ""
+      -- theme initialisation
+      liftEffect $ FF.init
+      
     HandleLoginForm fields -> do
       -- loginUser also handles broadcasting the user changes to subscribed components
       -- so they receive the up-to-date value (see AppM and the `authenticate` function.)
@@ -67,59 +78,49 @@ component = H.mkComponent
         Just profile -> do
           void $ H.query F._formless unit $ F.injQuery $ SetLoginError false unit
           st <- H.get
-          when st.redirect (navigate Dashboard)
+          when st.redirect (navigate DashboardR)
 
   render :: State -> H.ComponentHTML Action ChildSlots m
   render _  =
-     HH.div
-      [ css_ "main" ]
-      [ HH.slot (SProxy :: _ "header") unit HD.component { currentUser: Nothing , route: Login } absurd
-      , HH.slot (SProxy :: _ "mainMenu") unit MM.component { currentUser: Nothing , route: Login } absurd
-      , HH.div
-        [ css_ "app-content content" ]
+     HH.section
+      [ css_ "section hero is-fullheight is-error-section" ]
+      [ HH.div
+        [ css_ "hero-body" ]
         [ HH.div
-          [ css_ "content-wrapper" ]
+          [ css_ "container" ]
           [ HH.div
-            [ css_ "content-header row" ]
+            [ css_ "columns is-centered" ]
             [ HH.div
-              [ css_ "content-header-left col-md-4 col-12 mb-2" ]
-              [ HH.h3
-                [ css_ "content-header-h3" ]
-                [ HH.text "Login" ]
-              ]
-            ]
-          , HH.div
-            [ css_ "content-body" ]
-            [ HH.div
-              [ css_ "row" ]
+              [ css_ "column is-two-fifths" ]
               [ HH.div
-                [ css_ "col-12" ]
-                [ HH.div
-                  [ css_ "card" ]
-                  html
+                [css_ "card has-card-header-background" ]
+                [ HH.header
+                  [ css_ "card-header" ]
+                  [ HH.p
+                    [ css_ "card-header-title" ]
+                    [ HH.span
+                      [ css_ "icon"]
+                      [ HH.i
+                        [ css_ "mdi mdi-lock default" ]
+                        []
+                      ]
+                    , HH.span_
+                      [ HH.text "Login" ]
+                    ]
+                  , HH.a
+                    [ css_ "button is-small"
+                    , safeHref RegisterR ]
+                    [ HH.text "Need an account?" ]
+                  ]
+                , HH.div
+                  [ css_ "card-content" ]
+                  [ HH.slot F._formless unit formComponent unit (Just <<< HandleLoginForm) ]
                 ]
               ]
             ]
           ]
         ]
-      , footer
       ]
-    where
-      html =
-        [ HH.div
-            [ css_ "card-header" ]
-            [ HH.text "Sign In" ]
-        , HH.div
-            [ css_ "card-content collapse show" ]
-            [ HH.div
-              [ css_ "card-body" ]
-              [ HH.a
-                [ safeHref Register ]
-                [ HH.text "Need an account?" ]
-              , HH.slot F._formless unit formComponent unit (Just <<< HandleLoginForm)
-              ]
-            ]
-        ]
 
 
 newtype LoginForm r f = LoginForm (r
@@ -167,17 +168,39 @@ formComponent = F.component formInput $ F.defaultSpec
     HH.form_
       [ whenElem loginError \_ ->
           HH.div
-            [ css_ "error-messages" ]
+            [ css_ "error-message has-text-danger" ]
             [ HH.text "Email or password is invalid" ]
-      , HH.fieldset_
+      , HH.div
+        [ css_ "field"]
+        [ HH.label
+          [ css_ "label" ]
+          [ HH.text "E-mail Address"]
+        , HH.div
+          [ css_ "control"]
           [ Field.input proxies.email form
-              [ HP.placeholder "Email"
-              , HP.type_ HP.InputEmail
-              ]
-          , Field.input proxies.password form
-              [ HP.placeholder "Password"
-              , HP.type_ HP.InputPassword
-              ]
-          , submit "Log in"
+            [ HP.placeholder "Email"
+            , HP.type_ HP.InputEmail
+            ]
           ]
+        ]
+      , HH.div
+        [ css_ "field"]
+        [ HH.label
+          [ css_ "label" ]
+          [ HH.text "Password"]
+        , HH.div
+          [ css_ "control"]
+          [ Field.input proxies.password form
+            [ HP.placeholder "Password"
+            , HP.type_ HP.InputPassword
+            ]
+          ]
+        ]
+      , HH.hr_
+      , HH.div
+        [ css_ "field is-grouped"]
+        [ HH.div
+          [ css_ "control"]
+          [ Field.submit "Login" ]
+        ]
       ]

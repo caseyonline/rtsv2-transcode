@@ -24,7 +24,6 @@ exports.makeChart_ = function(node) {
 exports.setOption_ = function(option) {
   return function(chart) {
     return function() {
-        console.log(JSON.stringify(option.scatterData))
         return chart.setOption(dashboardChart(option.scatterData))
     };
   };
@@ -46,6 +45,18 @@ exports.setClick_ = function(option) {
         });
     };
   };
+};
+
+
+exports.ressizeObserver_ = function(chart) {
+    var ro = new ResizeObserver(function() {
+        chart.resize()
+    });
+
+    // Observe `.section` for a resize
+    return function(){
+      return ro.observe(document.querySelector('.section'));
+    }
 };
 
 
@@ -131,104 +142,6 @@ var geoCoordMap = {
     "DIA": [-77.0363700, 38.8951100],
     "Zurich": [8.541694,47.376887],
 }
-
-var data_good = [ {"name": "Amsterdam", "value": 4}
-    , {"name": "Athens", "value": 83}
-    , {"name": "Auckland", "value": 74}
-    , {"name": "Bangkok", "value": 100}
-    , {"name": "Barcelona", "value": 2}
-    //, {"name": "Beijing", "value": 90}
-    , {"name": "Berlin", "value": 12}
-    , {"name": "Bogotá", "value": 74}
-    , {"name": "Bratislava", "value": 17}
-    , {"name": "Brussels", "value": 4}
-    , {"name": "Budapest", "value": 19}
-    , {"name": "Buenos Aires", "value": 8}
-    , {"name": "Bucharest", "value": 26}
-    , {"name": "Caracas", "value": 66}
-    , {"name": "Chicago", "value": 87}
-    , {"name": "Dalas", "value": 77}
-    , {"name": "Delhi", "value": 77}
-    , {"name": "Doha", "value": 51}
-    , {"name": "Dubai", "value": 55}
-    , {"name": "Dublin", "value": 6}
-    , {"name": "Frankfurt", "value": 8}
-    //, {"name": "Geneva", "value": 6}
-    , {"name": "Helsinki", "value": 24}
-    , {"name": "Hong Kong", "value": 100}
-    , {"name": "Istanbul", "value": 28}
-    , {"name": "Jakarta", "value": 6}
-    , {"name": "Johannesburg", "value": 8}
-    , {"name": "Cairo", "value": 31}
-    , {"name": "Kiev", "value": 30}
-    , {"name": "Copenhagen", "value": 12}
-    , {"name": "Kuala Lumpur", "value": 101}
-    , {"name": "Lima", "value": 7.,}
-    , {"name": "Lisbon", "value": 9}
-    , {"name": "Ljubljana", "value": 14}
-    , {"name": "London", "value": 0}
-    , {"name": "Los Angeles", "value": 118}
-    , {"name": "Luxembourg", "value": 6}
-    , {"name": "Lyon", "value": 4}
-    , {"name": "Madrid", "value": 3}
-    , {"name": "Milan", "value": 9}
-    , {"name": "Manama", "value": 50}
-    , {"name": "Manila", "value": 120}
-    , {"name": "Mexico City", "value": 99}
-    , {"name": "Miami", "value": 80}
-    , {"name": "Montreal", "value": 73}
-    , {"name": "Moscow", "value": 37}
-    , {"name": "Mumbai", "value": 72}
-    , {"name": "Munich", "value": 11}
-    , {"name": "Nairobi", "value": 6}
-    , {"name": "New York", "value": 74}
-    , {"name": "Nicosia", "value": 33}
-    , {"name": "Oslo", "value": 10}
-    , {"name": "Paris", "value": 2}
-    , {"name": "Prague", "value": 14}
-    , {"name": "Riga", "value": 24}
-    //, {"name": "Rio de Janeiro", "value": 3}
-    , {"name": "Rome", "value": 12}
-    , {"name": "Santiago de Chile", "value": 0}
-    , {"name": "São Paulo", "value": 6}
-    , {"name": "Seoul", "value": 126}
-    , {"name": "Shanghai", "value": 121}
-    , {"name": "Singapore", "value": 103}
-    , {"name": "Sofia", "value": 23}
-    , {"name": "Stockholm", "value": 18}
-    , {"name": "Sydney", "value": 51}
-    , {"name": "Taipei", "value": 121}
-    , {"name": "Tallinn", "value": 24}
-    , {"name": "Tel Aviv", "value": 34}
-    , {"name": "Tokyo", "value": 139}
-    , {"name": "Toronto", "value": 79}
-    , {"name": "Vilnius", "value": 25}
-    , {"name": "Warsaw", "value": 21}
-    , {"name": "DIA", "value": 21}
-    , {"name": "Vienna", "value": 16}
-    , {"name": "Zurich", "value": 8}
-
-]
-
-var data_bad = [
-    , {"name": "Rio de Janeiro", "value": 3}
-    , {"name": "Geneva", "value": 6}
-    , {"name": "Beijing", "value": 90}
-]
-
-function convertData(data, geoCoordMap) {
-   var res = [];
-   for (var i = 0; i < data.length; i++) {
-       var geoCoord = geoCoordMap[data[i].name];
-       if (geoCoord) {
-           res.push({
-               name: data[i].name,
-               value: geoCoord.concat(data[i].value)
-           });
-       }
-   }
-   return res;
-};
 
 function dashboardChart(scatterData) {
     var schema = [
@@ -424,11 +337,11 @@ function popChart(scatterData) {
           zlevel: 10,
 
           data:  [
-              [ {name:'Lax', coord: [-118.243685,34.052234], data: [30, 120]}
-              , {name:'Dal', coord: [-96.796989,32.776665]}
-              ]
-            , [ {name:'Dal', coord: [-96.796989,32.776665], data: [30, 120]}
-              , {name:"Fra", coord:[8.682127,50.110922]}
+              [ {name:'Fra', coord: [8.682127,50.110922]},
+                {name:'Iad', coord: [-77.039851, 38.877270], data:[60, 120]},
+              ],
+              [ {name:'Iad', coord: [-77.039851, 38.877270]},
+                {name:'Lax', coord: [-118.243685,34.052234], data: [60, 120]},
               ]
           ],
         },
@@ -457,11 +370,11 @@ function popChart(scatterData) {
 
 
           data:  [
-              [ {name:'Lax', coord: [-118.243685,34.052234], data: [30, 120]}
-                , {name:'Iad', coord: [-77.039851, 38.877270]}
-              ]
-              , [ {name:'Iad', coord: [-77.039851, 38.877270], data:[60, 120]}
-                , {name:'Fra', coord: [8.682127,50.110922]}
+              [ {name:'Fra', coord: [8.682127,50.110922]},
+                {name:'Iad', coord: [-77.039851, 38.877270], data:[60, 120]},
+              ],
+              [ {name:'Iad', coord: [-77.039851, 38.877270]},
+                {name:'Lax', coord: [-118.243685,34.052234], data: [60, 120]},
               ]
           ],
         },
@@ -489,21 +402,20 @@ function popChart(scatterData) {
           zlevel: 10,
 
           data:  [
-              [ {name:'Lax', coord: [-118.243685,34.052234], data: [30, 120]}
-              , {name:'Dal', coord: [-96.796989,32.776665]}
+              [ {name:"Fra", coord:[8.682127,50.110922], data: [60, 120]},
+                {name:'Dal', coord: [-96.796989,32.776665]}
+              ],
+              [ {name:'Dal', coord: [-96.796989,32.776665], data: [60, 120]},
+                {name:'Lax', coord: [-118.243685,34.052234]}
+              ],
+              [ {name:'Fra', coord: [8.682127,50.110922]},
+                {name:'Iad', coord: [-77.039851, 38.877270], data:[60, 120]},
+              ],
+              [ {name:'Iad', coord: [-77.039851, 38.877270]},
+                {name:'Lax', coord: [-118.243685,34.052234], data: [60, 120]},
               ]
-            , [ {name:'Dal', coord: [-96.796989,32.776665], data: [30, 120]}
-              , {name:"Fra", coord:[8.682127,50.110922]}
-              ]
-              ,   [ {name:'Lax', coord: [-118.243685,34.052234], data: [30, 120]}
-                , {name:'Iad', coord: [-77.039851, 38.877270]}
-              ]
-              , [ {name:'Iad', coord: [-77.039851, 38.877270], data:[60, 120]}
-                , {name:'Fra', coord: [8.682127,50.110922]}
-              ]
-          ],
+          ]
         },
-
     ]
     };
 }

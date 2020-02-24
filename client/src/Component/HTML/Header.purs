@@ -66,62 +66,99 @@ component = H.mkComponent
 
   render state@{ currentUser, route } =
     HH.nav
-        [ css_ "header-navbar navbar-expand-md navbar navbar-with-menu navbar-without-dd-arrow fixed-top navbar-semi-light" ]
+    [ css_ "navbar is-fixed-top"
+    , HP.id_ "navbar-main"
+    ]
+    [
+    -- [ HH.div
+    --   [ css_ "navbar-brand" ]
+    --   [ HH.a
+    --     [ css_ "navbar-item is-desktop-icon-only is-hidden-touch jb-aside-toggle"
+    --     , dataAttr "target" "aside-main" ]
+    --     [ HH.span
+    --       [ css_ "icon" ]
+    --       [ HH.i
+    --         [ css_ "mdi mdi-24px mdi-forwardburger" ]
+    --         []
+    --       ]
+    --     ]
+    --   ]
+      HH.div
+      [ css_ "navbar-menu fadeIn animated faster"
+      , HP.id_ "navbar-menu"
+      ]
+      [ HH.div
+        [ css_ "navbar-end" ]
         [ HH.div
-        [ css_ "navbar-wrapper" ]
-        [ HH.div
-            [ css_ "navbar-container content" ]
+          [ css_ "navbar-item has-dropdown has-dropdown-with-icons has-divider has-user-avatar is-hoverable" ]
+          [ HH.a
+            [ css_ "navbar-link is-arrowless" ]
             [ HH.div
-            [ css_ "collapse navbar-collapse show"
-            , HP.id_ "navbar-mobile"]
-            [ HH.ul
-                [ css_ "nav navbar-nav mr-auto float-left" ]
-                [ HH.li
-                [ css_ "nav-item d-block d-md-none" ]
-                [ HH.a
-                    [ css_ "nav-link nav-menu-main menu-toggle hidden-xs" ]
-                    [ HH.i
-                    [ css_ "ft-menu" ]
-                    []
-                    ]
+              [ css_ "is-user-avatar" ]
+              [ HH.img
+                [ HP.src "assets/images/avatar-s.png" ]
+              ]
+            , HH.div
+              [ css_ "is-user-name" ]
+              [ HH.span
+                [ css_ "icon" ]
+                [ HH.i
+                  [ css_ "mdi mdi-chevron-down" ]
+                  []
                 ]
-                ]
-            , HH.ul
-                [ css_ "nav navbar-nav float-right" ]
-                [ HH.li
-                [ css_ "dropdown dropdown-user nav-item" ]
-                [ HH.a
-                    [ css_ "dropdown-toggle nav-link dropdown-user-link"
-                    , dataAttr "toggle" "dropdown"
-                    ]
-                    [ HH.span
-                    [ css_ "avatar" ]
-                    [ HH.img
-                        [  HP.src "assets/images/avatar-s.png" ]
-                    , HH.i
-                        [ css_ "" ]
-                        []
-                    ]
-                    ]
-                , maybeElem currentUser \cu ->
-                    HH.div
-                    [ css_ "dropdown-menu dropdown-menu-right" ]
-                    [ HH.div
-                        [ css_ "arrow_box_right" ]
-                        [ HH.a
-                        [ css_ "dropdown-item"
-                        , safeHref $ Settings
-                        ]
-                        [ HH.i
-                            [ css_ "ft-user" ]
-                            []
-                        , HH.text "Settings"
-                        ]
-                        ]
-                    ]
-                ]
-                ]
+              ]
             ]
+          , HH.div
+            [ css_ "navbar-dropdown"]
+            [ HH.a
+              [ css_ "navbar-item"
+              , safeHref $ SettingsR
+              ]
+              [ HH.span
+                [ css_ "icon" ]
+                [ HH.i
+                  [ css_ "mdi mdi-settings" ]
+                  []
+                ]
+              , HH.span_
+                [ HH.text "Settings" ]
+              ]
+            , HH.hr
+              [ css_ "navbar-divider"]
+            , HH.a
+              [ css_ "navbar-item" ]
+              [ HH.span
+                [ css_ "icon" ]
+                [ HH.i
+                  [ css_ "mdi mdi-logout" ]
+                  []
+                ]
+              , HH.span_
+                [ HH.text "Log Out" ]
+              ]
             ]
+          ]
+        , HH.a
+          [ css_ "navbar-item is-desktop-icon-only" ]
+          [ HH.span
+            [ css_ "icon" ]
+            [ HH.i
+              [css_ "mdi mdi-logout"]
+              []
+            ]
+          , HH.span_
+            [ HH.text "Log Out" ]
+          ]
+        --   <a title="Log out" class="navbar-item is-desktop-icon-only">
+        --   <span class="icon"><i class="mdi mdi-logout"></i></span>
+        --   <span>Log out</span>
+        -- </a>
         ]
-        ]
+      ]
+    ]
+
+-- <div class="aside-tools">
+--       <div class="aside-tools-label">
+--         <span><b>JB</b>O</span>
+--       </div>
+--     </div>

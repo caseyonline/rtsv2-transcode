@@ -12,12 +12,13 @@ module Rtsv2App.Api.Request
   , fetchReq
   , login
   , printUrl
+  , printOriginUrl
   , readToken
   , register
   , removeToken
   , requestUser
   , writeToken
-    , withResponse
+  , withResponse
   ) where
 
 import Prelude
@@ -99,18 +100,18 @@ fetchReq url token method = case method of
 
   Post b -> f url
             { method: M.postMethod
-            , headers: getHeader token
+            , headers: setHeader token
             , body: fromMaybe "" b
             }
 
   Put b  -> f url
             { method: M.postMethod
-            , headers: getHeader token
+            , headers: setHeader token
             , body: fromMaybe "" b
             }
 
   Delete -> f url { method: M.deleteMethod
-            , headers: getHeader token
+            , headers: setHeader token
             }
   where
     f :: M.Fetch
@@ -118,6 +119,11 @@ fetchReq url token method = case method of
 
 getHeader :: Maybe Token -> M.Headers
 getHeader = case _ of
+  Nothing -> M.makeHeaders {}
+  Just (Token t) ->  M.makeHeaders { "Authorization": "Token " <> t }
+
+setHeader :: Maybe Token -> M.Headers
+setHeader = case _ of
   Nothing -> M.makeHeaders { "Content-Type": "application/json" }
   Just (Token t) ->  M.makeHeaders { "Authorization": "Token " <> t }
 
@@ -168,6 +174,9 @@ withDecoded json action = case JSON.readJSON json of
 -------------------------------------------------------------------------------
 printUrl :: forall a. Newtype a String => a -> Endpoint -> String
 printUrl url endpoint = (unwrap url) <> (print endpointCodec endpoint)
+
+printOriginUrl :: forall a. Newtype a String => a -> Endpoint -> String
+printOriginUrl url endpoint = "http://" <> (unwrap url) <> ":3000" <> (print endpointCodec endpoint)
 
 -------------------------------------------------------------------------------
 -- LocalStorage Token actions
