@@ -2,10 +2,8 @@ module Rtsv2App.Component.HTML.PoPAggregator where
 
 import Prelude
 
-import Data.Array (head)
-import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Maybe (Maybe(..))
 import Data.Newtype (un)
-import Debug.Trace (spy)
 import Effect.Aff.Class (class MonadAff)
 import Halogen as H
 import Halogen.HTML as HH
@@ -13,7 +11,7 @@ import Halogen.HTML.Events as HE
 import Halogen.HTML.Properties as HP
 import Rtsv2App.Capability.Navigate (class Navigate)
 import Rtsv2App.Component.HTML.Utils (css_, dataAttr)
-import Shared.Stream (StreamId(..))
+import Shared.Stream (SlotId(..), SlotRole)
 import Shared.Types (PoPName(..), RegionName(..), Server(..), ServerAddress(..))
 import Shared.Types.Agent.State (PoPDefinition, AggregatorLocation)
 
@@ -30,14 +28,14 @@ type Slot = H.Slot Query Message
 
 data Query a = IsOn (Boolean -> a)
 
-data Message = CheckedStreamId (Maybe StreamId)
+data Message = CheckedSlotId (Maybe SlotId)
 
 data Action
-  = Select StreamId
+  = Select SlotId
   | Receive Input
 
 type State =
-  { checkedStreamId :: Maybe StreamId
+  { checkedSlotId :: Maybe SlotId
   , argLocs         :: AggregatorLocation Array
   , popDef          :: Maybe (PoPDefinition Array)
   }
@@ -63,22 +61,22 @@ component = H.mkComponent
   where
   initialState :: Input -> State
   initialState { argLocs, popDef } =
-    { checkedStreamId: Nothing
-    , argLocs: (spy "poop" argLocs)
+    { checkedSlotId: Nothing
+    , argLocs
     , popDef
     }
 
   handleAction :: Action -> H.HalogenM State Action () Message m Unit
   handleAction = case _ of
     Receive { argLocs, popDef } -> do
-      H.put { checkedStreamId: Nothing
-            , argLocs: spy "Recieve" argLocs
+      H.put { checkedSlotId: Nothing
+            , argLocs: argLocs
             , popDef
             }
 
-    Select streamId -> do
-      newState <- H.modify _ { checkedStreamId = Just streamId }
-      H.raise (CheckedStreamId newState.checkedStreamId)
+    Select slotId -> do
+      newState <- H.modify _ { checkedSlotId = Just slotId }
+      H.raise (CheckedSlotId newState.checkedSlotId)
 
   handleQuery :: forall a. Query a -> H.HalogenM State Action () Message m (Maybe a)
   handleQuery = case _ of
@@ -132,7 +130,7 @@ component = H.mkComponent
 
 tableBody
   :: forall p i
-  .  { streamId :: StreamId , servers :: Array Server}
+  .  { slotId :: SlotId , servers :: Array Server, role :: SlotRole }
   -> HH.HTML p i
 tableBody argLoc =
   HH.tr_
@@ -145,7 +143,7 @@ tableBody argLoc =
           [ css_ "b-checkbox checkbox"]
           [ HH.input
             [ HP.type_ HP.InputCheckbox
-            , -- HE.onValueInput (Just <<< Select argLoc.streamId)
+           -- , HE.onValueInput (Just <<< Select argLoc.slotId)
             ]
           , HH.span
             [ css_ "check"]
@@ -157,7 +155,7 @@ tableBody argLoc =
         ]
       , HH.td
         [ dataAttr "label" "Name" ]
-        [ HH.text $ un StreamId argLoc.streamId ]
+        [ HH.text $ show $ un SlotId argLoc.slotId ]
       , HH.td
         [ dataAttr "label" "PoP" ]
         [ HH.text $ un PoPName pop ]
@@ -191,7 +189,7 @@ tableBody argLoc =
   --       ]
   --     , HH.td
   --       [ dataAttr "label" "Name" ]
-  --       [ -- HH.text $ un StreamId argLoc.streamId
+  --       [ -- HH.text $ un SlotId argLoc.slotId
   --       ]
   --     , HH.td
   --       [ dataAttr "label" "PoP" ]

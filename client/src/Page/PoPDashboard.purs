@@ -36,7 +36,6 @@ import Rtsv2App.Data.PoP (PoPDefEcharts, getPoPEcharts, getPoPServers)
 import Rtsv2App.Data.Profile (Profile)
 import Rtsv2App.Data.Route (Route(..))
 import Rtsv2App.Env (PoPDefEnv, UrlEnv, UserEnv, changeHtmlClass)
-import Shared.Stream (StreamId(..))
 import Shared.Types (PoPName(..))
 import Shared.Types.Agent.State (PoPDefinition, TimedPoPRoutes, AggregatorLocation)
 
@@ -157,8 +156,8 @@ component = H.mkComponent
         H.put $ initialState { popName, prevRoute }
         handleAction Initialize
 
-    HandlePoPSlotArgTable (PA.CheckedStreamId mStreamId) -> do
-      -- H.modify_ _ { selectedRoute = mStreamId }
+    HandlePoPSlotArgTable (PA.CheckedSlotId mSlotId) -> do
+      -- H.modify_ _ { selectedRoute = mSlotId }
       -- st ← H.get
       -- getRoutesPopulateMap st
       pure unit
