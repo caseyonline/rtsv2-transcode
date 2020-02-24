@@ -164,9 +164,9 @@ init args = do
     makeSlotIdAndProfileName :: String -> String -> SlotIdAndProfileName
     makeSlotIdAndProfileName slotId variantId = SlotIdAndProfileName (slotIdStringToSlotId slotId) (wrap variantId)
 
-    makeIngestKey :: String -> String -> String -> IngestKey
+    makeIngestKey :: Int -> String -> String -> IngestKey
     makeIngestKey slotId streamRole variantId =
-      IngestKey (slotIdStringToSlotId slotId) (parseSlotRole streamRole) (wrap variantId)
+      IngestKey (wrap slotId) (parseSlotRole streamRole) (wrap variantId)
       where
         parseSlotRole "primary" = Primary
         parseSlotRole "backup" = Backup

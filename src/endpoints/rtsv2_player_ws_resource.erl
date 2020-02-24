@@ -92,17 +92,17 @@ init(Req,
     ) ->
 
   %% Ensure the relay is set-up and get the relay key
-  StreamId = cowboy_req:binding(stream_id, Req),
+  SlotId = binary_to_integer(cowboy_req:binding(stream_id, Req)),
 
   %% NOTE: StartStream returns an effect, hence the extra invocation
   StartStreamResult =
-    (StartStream(StreamId))(),
+    (StartStream(SlotId))(),
 
-  io:format(user, "START STREAM RESULT: ~p~n~n", [StartStreamResult]),
+  io:format(user, "START STREAM RESULT: ~p -> ~p~n~n", [SlotId, StartStreamResult]),
 
   StreamDesc =
-    #?stream_desc_egest{ stream_id =  StreamId
-                       , egest_key = MakeEgestKey(StreamId)
+    #?stream_desc_egest{ stream_id =  SlotId
+                       , egest_key = MakeEgestKey(SlotId)
                        , start_stream_result = StartStreamResult
                        , get_slot_configuration = GetSlotConfiguration
                        },
@@ -115,15 +115,15 @@ init(Req,
       }
     ) ->
 
-  StreamId = cowboy_req:binding(stream_id, Req),
+  SlotId = binary_to_integer(cowboy_req:binding(stream_id, Req)),
   StreamRole = cowboy_req:binding(stream_role, Req),
   VariantId = cowboy_req:binding(variant_id, Req),
-
+io:format(user, "HERE ~p~n", [{SlotId, StreamRole, VariantId}]),
   StreamDesc =
-    #?stream_desc_ingest{ stream_id = StreamId
+    #?stream_desc_ingest{ stream_id = SlotId
                         , stream_role = StreamRole
                         , variant_id = VariantId
-                        , ingest_key = ((MakeIngestKey(StreamId))(StreamRole))(VariantId)
+                        , ingest_key = ((MakeIngestKey(SlotId))(StreamRole))(VariantId)
                         },
 
   init_prime(Req, StreamDesc).
