@@ -78,47 +78,47 @@ init _ = do
   pure $ {}
 
 handlerInit :: String -> String -> Foreign -> (Effect RtmpAuthResponse)
-handlerInit host shortname foreignQuery =
+handlerInit host rtmpShortName foreignQuery =
   let
     authRequest = rtmpQueryToPurs foreignQuery
   in
-    processAuthRequest host shortname authRequest
+    processAuthRequest host rtmpShortName authRequest
 
 processAuthRequest :: String -> String -> RtmpAuthRequest -> Effect RtmpAuthResponse
-processAuthRequest host shortname Initial = do
-  authType <- getStreamAuthType host shortname
+processAuthRequest host rtmpShortName Initial = do
+  authType <- getStreamAuthType host rtmpShortName
   pure $ fromMaybe RejectRequest $ InitialResponse <$> authType
 
-processAuthRequest host shortname (AdobePhase1 {username}) = do
+processAuthRequest host rtmpShortName (AdobePhase1 {username}) = do
   context <- IngestRtmpCrypto.newAdobeContext username
   pure $ AdobePhase1Response username context
 
-processAuthRequest host shortname (LlnwPhase1 {username}) = do
+processAuthRequest host rtmpShortName (LlnwPhase1 {username}) = do
   context <- IngestRtmpCrypto.newLlnwContext username
   pure $ LlnwPhase1Response username context
 
-processAuthRequest host shortname (AdobePhase2 authParams@{username}) =
-  processAuthRequest' host shortname username (AdobePhase2P authParams)
+processAuthRequest host rtmpShortName (AdobePhase2 authParams@{username}) =
+  processAuthRequest' host rtmpShortName username (AdobePhase2P authParams)
 
-processAuthRequest host shortname (LlnwPhase2 authParams@{username}) =
-  processAuthRequest' host shortname username (LlnwPhase2P authParams)
+processAuthRequest host rtmpShortName (LlnwPhase2 authParams@{username}) =
+  processAuthRequest' host rtmpShortName username (LlnwPhase2P authParams)
 
 handlerHandle :: String -> String -> String -> String -> Int -> String -> Pid -> Foreign -> Effect Unit
-handlerHandle host shortname username remoteAddress remotePort streamName rtmpPid publishArgs = do
+handlerHandle host rtmpShortName username remoteAddress remotePort rtmpStreamName rtmpPid publishArgs = do
   let
-    streamPublish = { host
-                    , protocol: Rtmp
-                    , shortname
-                    , streamName
-                    , username
-                    }
+    streamPublish = wrap { host
+                         , protocol: Rtmp
+                         , rtmpShortName
+                         , rtmpStreamName
+                         , username
+                         }
   maybeStreamDetails <- getStreamDetails streamPublish
   case maybeStreamDetails of
     Nothing ->
       pure unit
 
     Just streamDetails -> do
-      case findProfile streamName streamDetails of
+      case findProfile rtmpStreamName streamDetails of
         Nothing ->
           pure unit
 
@@ -132,24 +132,24 @@ handlerHandle host shortname username remoteAddress remotePort streamName rtmpPi
           pure unit
   where
     findProfile ingestStreamName streamDetails@{ slot: { profiles } } =
-      find (\ { streamName: profileStreamName } -> profileStreamName == ingestStreamName) profiles
+      find (\ { rtmpStreamName: profileStreamName } -> profileStreamName == ingestStreamName) profiles
 
-    makeIngestKey profileName {role, slot: {name: streamId}} =
-      IngestKey (wrap streamId) role (wrap profileName)
+    makeIngestKey profileName {role, slot: {id: slotId}} =
+      IngestKey slotId role profileName
 
 processAuthRequest' :: String -> String -> String -> Phase2Params -> Effect RtmpAuthResponse
-processAuthRequest' host shortname username authParams = do
+processAuthRequest' host rtmpShortName username authParams = do
   let
     authType = case authParams of
                  AdobePhase2P _ -> Adobe
                  LlnwPhase2P _ -> Llnw
-  maybePublishCredentials <- getPublishCredentials host shortname username
+  maybePublishCredentials <- getPublishCredentials host rtmpShortName username
   case maybePublishCredentials of
     Nothing ->
       pure RejectRequest
     Just publishCredentials -> do
-      ok <- checkCredentials host shortname username publishCredentials authParams
-      if ok then pure $ AcceptRequest (mkFn5 (handlerHandle host shortname username))
+      ok <- checkCredentials host rtmpShortName username publishCredentials authParams
+      if ok then pure $ AcceptRequest (mkFn5 (handlerHandle host rtmpShortName username))
       else pure RejectRequest
 
 startWorkflowAndBlock :: Pid -> Foreign -> IngestKey -> Effect Unit
@@ -163,20 +163,20 @@ startWorkflowAndBlock rtmpPid publishArgs ingestKey =
       IngestInstance.setSourceInfo ingestKey (SourceDetails.foreignToSourceInfo foreignSourceInfo)
 
 getStreamAuthType :: String -> String -> Effect (Maybe AuthType)
-getStreamAuthType host shortname = do
+getStreamAuthType host rtmpShortName = do
   {streamAuthTypeUrl: url} <- Config.llnwApiConfig
-  restResult <- SpudGun.postJson (wrap url) (spy "authtype body" { host
-                                                                 , protocol: Rtmp
-                                                                 , shortname} :: StreamConnection
-                                                          )
+  restResult <- SpudGun.postJson (wrap url) (spy "authtype body" (wrap { host
+                                                                       , protocol: Rtmp
+                                                                       , rtmpShortName}) :: StreamConnection
+                                            )
   pure $ hush (bodyToJSON (spy "authtype result" restResult))
 
 getPublishCredentials :: String -> String -> String -> Effect (Maybe PublishCredentials)
-getPublishCredentials host shortname username = do
+getPublishCredentials host rtmpShortName username = do
   {streamAuthUrl: url} <- Config.llnwApiConfig
-  restResult <- SpudGun.postJson (wrap (spy "auth url" url)) (spy "auth body" { host
-                                                                              , shortname
-                                                                              , username} :: StreamAuth
+  restResult <- SpudGun.postJson (wrap (spy "auth url" url)) (spy "auth body" (wrap { host
+                                                                                    , rtmpShortName
+                                                                                    , username}) :: StreamAuth
                                                              )
   pure $ hush $ bodyToJSON (spy "auth result" restResult)
 

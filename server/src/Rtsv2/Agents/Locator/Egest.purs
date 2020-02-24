@@ -22,17 +22,17 @@ import Rtsv2.Agents.Locator.Types (FailureReason(..), LocalOrRemote(..), Locatio
 import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Rtsv2.Utils (crashIfLeft, noprocToMaybe)
 import Shared.Agent as Agent
-import Shared.Stream (AggregatorKey(..), EgestKey(..), StreamId, StreamRole(..))
+import Shared.Stream (AggregatorKey(..), EgestKey(..), SlotId, SlotRole(..))
 import Shared.Types (Server, ServerLoad(..), serverLoadToServer)
 import SpudGun as SpudGun
 
 
-type StartArgs = { streamId :: StreamId
+type StartArgs = { streamId :: SlotId
                  , forServer :: Server
                  , aggregator :: Server
                  }
 
-findEgestAndRegister :: StreamId -> Server -> Effect LocationResp
+findEgestAndRegister :: SlotId -> Server -> Effect LocationResp
 findEgestAndRegister streamId thisServer = do
   let
     egestKey = (EgestKey streamId)

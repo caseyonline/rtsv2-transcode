@@ -8,6 +8,7 @@ import Prelude
 
 import Data.Either (hush)
 import Data.Maybe (Maybe(..), isNothing)
+import Data.Newtype (wrap)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Erl.Cowboy.Req (ReadBodyResult(..), Req, readBody, setBody)
@@ -18,66 +19,67 @@ import Erl.Data.Map (Map, fromFoldable, lookup)
 import Erl.Data.Tuple (tuple2)
 import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
 import Shared.LlnwApiTypes (AuthType, PublishCredentials(..), SlotPublishAuthType(..), StreamAuth, StreamDetails, StreamIngestProtocol(..), StreamPublish, StreamConnection)
-import Shared.Stream (StreamRole(..))
+import Shared.Stream (SlotRole(..))
 import Simple.JSON (readJSON, writeJSON)
 import Stetson (Authorized(..), HttpMethod(..), StetsonHandler)
 import Stetson.Rest as Rest
-import StetsonHelper (preHookSpyState)
 import Unsafe.Coerce (unsafeCoerce)
 
 streamAuthTypeDb :: Map StreamConnection AuthType
 streamAuthTypeDb =
-  fromFoldable (Tuple { host: "172.16.171.5"
-                      , protocol: Rtmp
-                      , shortname: "mmddev001"
-                      }
+  fromFoldable (Tuple (wrap { host: "172.16.171.5"
+                            , protocol: Rtmp
+                            , rtmpShortName: "mmddev001"
+                            })
                         {authType : Llnw }
                 : nil)
 
 streamAuthDb :: Map StreamAuth PublishCredentials
 streamAuthDb =
-  fromFoldable (Tuple { host: "172.16.171.5"
-                      , shortname: "mmddev001"
-                      , username: "user"
-                      }
-                      (PublishCredentials { username: "user"
-                                          , password: "password"})
+  fromFoldable (Tuple (wrap { host: "172.16.171.5"
+                            , rtmpShortName: "mmddev001"
+                            , username: "user"
+                            })
+                (PublishCredentials { username: "user"
+                                    , password: "password"})
                 : nil)
 
 streamPublishDb :: Map StreamPublish StreamDetails
 streamPublishDb =
-  fromFoldable (Tuple { host: "172.16.171.5"
-                      , protocol: Rtmp
-                      , shortname: "mmddev001"
-                      , streamName: "slot1_1000"
-                      , username: "user" }
+  fromFoldable (Tuple (wrap { host: "172.16.171.5"
+                            , protocol: Rtmp
+                            , rtmpShortName: "mmddev001"
+                            , rtmpStreamName: "slot1_1000"
+                            , username: "user" })
                       { role: Primary
-                      , slot : { name: "slot1"
+                      , slot : { id: wrap 1
+                               , slotName: "slot1"
                                , subscribeValidation: false
-                               , profiles: [{ name: "high",
-                                              streamName: "slot1_1000",
+                               , profiles: [{ name: wrap "high",
+                                              rtmpStreamName: "slot1_1000",
                                               bitrate: 1000000}
-                                           , { name: "low",
-                                               streamName: "slot1_500",
+                                           , { name: wrap "low",
+                                               rtmpStreamName: "slot1_500",
                                                bitrate: 500000}
                                            ]
                                , outputFormats : []
                               }
                       , push : []
                       }
-                : Tuple { host: "172.16.171.5"
-                        , protocol: Rtmp
-                        , shortname: "mmddev001"
-                        , streamName: "slot1_500"
-                        , username: "user" }
+                : Tuple (wrap { host: "172.16.171.5"
+                              , protocol: Rtmp
+                              , rtmpShortName: "mmddev001"
+                              , rtmpStreamName: "slot1_500"
+                              , username: "user" })
                         { role: Primary
-                        , slot : { name: "slot1"
+                        , slot : { id: wrap 1
+                                 , slotName: "slot1"
                                  , subscribeValidation: false
-                                 , profiles: [{ name: "high",
-                                                streamName: "slot1_1000",
+                                 , profiles: [{ name: wrap "high",
+                                                rtmpStreamName: "slot1_1000",
                                                 bitrate: 1000000}
-                                             , { name: "low",
-                                                 streamName: "slot1_500",
+                                             , { name: wrap "low",
+                                                 rtmpStreamName: "slot1_500",
                                                  bitrate: 500000}
                                              ]
                                  , outputFormats : []

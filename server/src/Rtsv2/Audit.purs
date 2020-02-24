@@ -14,7 +14,7 @@ import Erl.Atom (atom)
 import Erl.Data.List (List, nil, (:))
 import Logger as Logger
 import Shared.LlnwApiTypes (StreamIngestProtocol(..))
-import Shared.Stream (EgestKey(..), StreamId(..), StreamRole)
+import Shared.Stream (EgestKey(..), SlotId(..), SlotRole)
 import Shared.Types (Milliseconds)
 
 foreign import toList :: String -> List Char
@@ -24,9 +24,9 @@ type IngestEqLine =
   , ingestPort :: Int
   , userIp :: String
   , username :: String
-  , shortname :: String
-  , streamName :: String
-  , streamRole :: StreamRole
+  , rtmpShortName :: String
+  , rtmpStreamName :: String
+  , slotRole :: SlotRole
   , connectionType :: StreamIngestProtocol
   , startMs :: Milliseconds
   , endMs :: Milliseconds
@@ -43,18 +43,18 @@ ingestStop :: IngestEqLine -> Effect Unit
 ingestStop line =
   writeIngestLine "stop" line
 
-clientStart :: StreamId -> Effect Unit
-clientStart (StreamId streamId) = do
+clientStart :: SlotId -> Effect Unit
+clientStart (SlotId slotId) = do
   _ <- Logger.info "" { domain: (atom "audit") : (atom "client") : nil
                       , event: toList "start"
-                      , streamId: toList streamId}
+                      , slotId: toList $ show slotId}
   pure unit
 
 clientStop :: EgestKey -> Effect Unit
-clientStop (EgestKey (StreamId streamId)) = do
+clientStop (EgestKey (SlotId slotId)) = do
   _ <- Logger.info "" { domain: (atom "audit") : (atom "client") : nil
                       , event: toList "stop"
-                      , streamId: toList streamId}
+                      , streamId: toList $ show slotId}
   pure unit
 
 
@@ -66,9 +66,9 @@ writeIngestLine reason { ingestIp
                        , ingestPort
                        , userIp
                        , username
-                       , shortname
-                       , streamName
-                       , streamRole
+                       , rtmpShortName
+                       , rtmpStreamName
+                       , slotRole
                        , connectionType
                        , startMs
                        , endMs
@@ -82,9 +82,9 @@ writeIngestLine reason { ingestIp
                  , ingestPort: ingestPort
                  , userIp: toList userIp
                  , username: toList username
-                 , shortname: toList shortname
-                 , streamName: toList streamName
-                 , streamRole: toList $ show streamRole
+                 , shortname: toList rtmpShortName
+                 , streamName: toList rtmpStreamName
+                 , streamRole: toList $ show slotRole
                  , connectionType: toList $ case connectionType of
                                               Rtmp -> "RTMP"
                                               WebRTC -> "WebRTC"

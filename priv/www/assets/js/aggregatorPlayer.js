@@ -8,7 +8,7 @@ function update_state(allProfiles) {
         setActiveContent(aggregatorPublicState);
       }
 
-     var activeProfiles = $.map(aggregatorPublicState.activeStreamVariants, function(variant, index) { return variant.streamVariant; });
+     var activeProfiles = $.map(aggregatorPublicState.activeProfiles, function(variant, index) { return variant.profileName; });
 
      $.each(aggregatorPublicState.streamDetails.slot.profiles, function(index, profile) {
        var id = '#' + profile.name;
@@ -52,17 +52,17 @@ function setActiveContent(aggregatorPublicState) {
     $("#players").append("<div id='" + profile.name + "' class='rtcVideo'><h3 class='ingestTitle'>" + profile.name + "<h3>" + noIngestTemplate() + "</div>")
   });
 
-  $.each(aggregatorPublicState.activeStreamVariants, function(index, variant) {
-    const id = videoElementId(variant.streamVariant);
-    $('#' + variant.streamVariant).children().last().replaceWith(videoTemplate(id));
+  $.each(aggregatorPublicState.activeProfiles, function(index, variant) {
+    const id = videoElementId(variant.profileName);
+    $('#' + variant.profileName).children().last().replaceWith(videoTemplate(id));
   });
 
   const pathname = window.location.pathname;
   const parent = pathname.substring(1, pathname.lastIndexOf("/"));
   const activeIngests = parent + "/activeIngests";
 
-  $.each(aggregatorPublicState.activeStreamVariants, function(index, variant) {
-    const id = videoElementId(variant.streamVariant);
+  $.each(aggregatorPublicState.activeProfiles, function(index, variant) {
+    const id = videoElementId(variant.profileName);
 
     var config = {
       account: "",
@@ -71,7 +71,7 @@ function setActiveContent(aggregatorPublicState) {
       overrides: {
         socketAuthority: window.location.host,
         socketSecure: window.location.protocol === "https:",
-        socketPath: `${activeIngests}/${variant.streamVariant}/session`,
+        socketPath: `${activeIngests}/${variant.profileName}/session`,
       }
     };
 

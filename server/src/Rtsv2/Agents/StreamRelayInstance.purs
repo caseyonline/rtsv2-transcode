@@ -39,7 +39,7 @@ import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl, makeUrlWithPath)
 import Shared.Agent as Agent
-import Shared.Stream (AggregatorKey(..), RelayKey(..), StreamId(..), StreamRole(..))
+import Shared.Stream (AggregatorKey(..), RelayKey(..), SlotId(..), SlotRole(..))
 import Shared.Types (EgestServer, RelayServer(..), Server, extractPoP, extractAddress)
 import Shared.Types.Agent.State as PublicState
 import SpudGun as SpudGun
@@ -48,7 +48,7 @@ type Port = Int
 type Host = String
 
 foreign import data Handle :: Type
-foreign import startWorkflowFFI :: String -> Effect Handle
+foreign import startWorkflowFFI :: Int -> Effect Handle
 foreign import setSlotConfigurationFFI :: RelayKey -> SlotConfiguration -> Effect Unit
 foreign import getSlotConfigurationFFI :: RelayKey -> Effect (Maybe SlotConfiguration)
 foreign import addIngestAggregatorSourceFFI :: Handle -> Effect Port
@@ -69,8 +69,8 @@ data State =
 
 
 payloadToRelayKey :: forall r.
-  { streamId :: StreamId
-  , streamRole :: StreamRole
+  { streamId :: SlotId
+  , streamRole :: SlotRole
   | r
   }
   -> RelayKey
@@ -123,11 +123,11 @@ init payload@{streamId, streamRole} = do
                }
 
 handleInfo :: Msg -> State -> Effect (CastResult State)
-handleInfo msg state@(State {relayKey: RelayKey ourStreamId _}) =
+handleInfo msg state@(State {relayKey: RelayKey ourSlotId _}) =
   case msg of
     IntraPoPBus (IngestAggregatorExited (AggregatorKey streamId streamRole) serverAddress)
      -- TODO - PRIMARY BACKUP
-      | streamId == ourStreamId -> doStop state
+      | streamId == ourSlotId -> doStop state
       | otherwise -> pure $ CastNoReply state
 
 doStop :: State -> Effect (CastResult State)
@@ -190,8 +190,8 @@ registerEgest payload@{streamId, streamRole} = Gen.doCall (serverName $ payloadT
 
         pure unit
 
-fetchIngestAggregatorSlotConfiguration :: Server -> StreamId -> StreamRole -> Effect SlotConfiguration
-fetchIngestAggregatorSlotConfiguration aggregator (StreamId streamId) streamRole =
+fetchIngestAggregatorSlotConfiguration :: Server -> SlotId -> SlotRole -> Effect SlotConfiguration
+fetchIngestAggregatorSlotConfiguration aggregator (SlotId slotId) streamRole =
   fetchSlotConfiguration configURL
 
   where
@@ -202,7 +202,7 @@ fetchIngestAggregatorSlotConfiguration aggregator (StreamId streamId) streamRole
         Backup ->
           "backup"
 
-    configURL = makeUrlWithPath aggregator $ "/api/agents/ingestAggregator/" <> streamId <> "/" <> streamRoleString <> "/slot"
+    configURL = makeUrlWithPath aggregator $ "/api/agents/ingestAggregator/" <> (show slotId) <> "/" <> streamRoleString <> "/slot"
 
 fetchSlotConfiguration :: Url -> Effect SlotConfiguration
 fetchSlotConfiguration url =

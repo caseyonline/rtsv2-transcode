@@ -88,7 +88,7 @@ import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Serf (IpAndPort, LamportClock)
 import Serf as Serf
-import Shared.Stream (AgentKey(..), AggregatorKey, EgestKey(..), RelayKey(..), StreamRole(..), agentKeyToAggregatorKey, aggregatorKeyToAgentKey)
+import Shared.Stream (AgentKey(..), AggregatorKey, EgestKey(..), RelayKey(..), SlotRole(..), agentKeyToAggregatorKey, aggregatorKeyToAgentKey)
 import Shared.Types (Load, Milliseconds, Server(..), ServerAddress(..), ServerLoad(..), extractAddress, extractPoP, serverLoadToServer, toServer, toServerLoad)
 import Shared.Types.Agent.State as PublicState
 
@@ -202,22 +202,20 @@ getPublicState :: Effect (PublicState.IntraPoP List)
 getPublicState = exposeState publicState serverName
   where
     publicState state@{agentLocations, currentTransPoPLeader} =
-      { aggregatorLocations: toStreamId <$>  Map.toUnfoldable agentLocations.aggregators.byAgentKey
-      , relayLocations: toStreamAndVariant <$>  Map.toUnfoldable agentLocations.relays.byAgentKey
-      , egestLocations: toStreamAndVariant <$>  Map.toUnfoldable agentLocations.egests.byAgentKey
+      { aggregatorLocations: toSlotId <$>  Map.toUnfoldable agentLocations.aggregators.byAgentKey
+      , relayLocations: toSlotIdAndProfileName <$>  Map.toUnfoldable agentLocations.relays.byAgentKey
+      , egestLocations: toSlotIdAndProfileName <$>  Map.toUnfoldable agentLocations.egests.byAgentKey
       , currentTransPoPLeader
       }
-    toStreamId (Tuple (AgentKey streamId streamRole) v) =
-      { streamId
+    toSlotId (Tuple (AgentKey slotId streamRole) v) =
+      { slotId
       , servers:  Set.toUnfoldable v
       }
-    toStreamAndVariant (Tuple (AgentKey streamId streamRole) v) =
-      { streamId
-      , streamRole
+    toSlotIdAndProfileName (Tuple (AgentKey slotId role) v) =
+      { slotId
+      , role
       , servers:  Set.toUnfoldable v
       }
-
-
 
 
 -- TODO - we should be calling the prime' versions and handling that there might, in fact be more than

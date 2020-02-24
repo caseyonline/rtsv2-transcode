@@ -65,7 +65,7 @@ findOrStart =
 --------------------------------------------------------------------------------
 -- Internal
 --------------------------------------------------------------------------------
--- startLocalOrRemote :: (LocalOrRemote ServerLoad) -> StreamId -> Server -> Effect Unit
+-- startLocalOrRemote :: (LocalOrRemote ServerLoad) -> SlotId -> Server -> Effect Unit
 -- startLocalOrRemote  (Local _) streamId aggregator = do
 --   void <$> crashIfLeft =<< startChildToStartLink <$> EgestInstanceSup.startEgest {streamId, aggregator}
 -- startLocalOrRemote  (Remote remote) streamId aggregator = do

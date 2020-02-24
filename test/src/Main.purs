@@ -26,7 +26,7 @@ import Node.FS.Aff (writeTextFile)
 import OsCmd (runProc)
 import Partial.Unsafe (unsafePartial)
 import Prim.Row (class Union)
-import Shared.Stream (StreamVariant(..))
+import Shared.Stream (ProfileName(..))
 import Shared.Types (ServerAddress(..), extractAddress)
 import Shared.Types.Agent.State as PublicState
 import Simple.JSON (class ReadForeign)
@@ -141,7 +141,7 @@ main =
     p4n1 = Node 4 1
     p4n2 = Node 4 2
 
-    slot1      = "slot1"
+    slot1      = 1
     shortName1 = "mmddev001"
     low        = "slot1_500"
     high       = "slot1_1000"
@@ -151,20 +151,20 @@ main =
 
     api node = "http://" <> toAddr node <> ":3000/api/"
 
-    egestStats node streamId           = get (M.URL $ api node <> "agents/egest/" <> streamId)
+    egestStats node slotId           = get (M.URL $ api node <> "agents/egest/" <> (show slotId))
 
-    aggregatorStats node streamId      = get (M.URL $ api node <> "agents/ingestAggregator/" <> streamId <> "/primary")
+    aggregatorStats node slotId      = get (M.URL $ api node <> "agents/ingestAggregator/" <> (show slotId) <> "/primary")
 
     ingestStart node shortName variant = get (M.URL $ api node <> "public/canary/ingest/" <> shortName <> "/" <> variant <> "/start")
-    ingestStop node streamId variant = get (M.URL $ api node <> "public/canary/ingest/" <> streamId <> "/primary/" <> variant <> "/stop")
+    ingestStop node slotId variant     = get (M.URL $ api node <> "public/canary/ingest/" <> (show slotId) <> "/primary/" <> variant <> "/stop")
 
-    relayStats node streamId           = get (M.URL $ api node <> "agents/relay/" <> streamId <> "/primary")
+    relayStats node slotId           = get (M.URL $ api node <> "agents/relay/" <> (show slotId) <> "/primary")
 
-    proxiedRelayStats node streamId    = get (M.URL $ api node <> "agents/proxied/relay/" <> streamId <> "/primary")
+    proxiedRelayStats node slotId    = get (M.URL $ api node <> "agents/proxied/relay/" <> (show slotId) <> "/primary")
 
-    intraPoPState node                 = get (M.URL $ api node <> "state")
+    intraPoPState node               = get (M.URL $ api node <> "state")
 
-    client verb node streamId           = fetch (M.URL $ api node <> "public/canary/client/" <> streamId <> "/" <> verb)
+    client verb node slotId        = fetch (M.URL $ api node <> "public/canary/client/" <> (show slotId) <> "/" <> verb)
                                          { method: M.postMethod
                                          , body: "{}"
                                          , headers: M.makeHeaders { "Content-Type": "application/json" }
@@ -226,35 +226,35 @@ main =
     assertAggregator = assertBodyFun <<< predicate
       where
         predicate :: Array String -> PublicState.IngestAggregator Array -> Boolean
-        predicate vars {activeStreamVariants} = sort (StreamVariant <$> vars) == (sort $ _.streamVariant <$> activeStreamVariants)
+        predicate vars {activeProfiles} = sort (ProfileName <$> vars) == (sort $ _.profileName <$> activeProfiles)
 
-    assertAggregatorOn nodes slotName  = assertBodyFun $ predicate
+    assertAggregatorOn nodes requiredSlotId  = assertBodyFun $ predicate
       where
         predicate :: PublicState.IntraPoP Array -> Boolean
         predicate popState =
           let
             nodeAddresses = toAddr
-            serverAddressesForStreamId = foldl (\acc {streamId, servers} ->
-                                                 if streamId == wrap slotName
+            serverAddressesForSlotId = foldl (\acc {slotId, servers} ->
+                                                 if slotId == wrap requiredSlotId
                                                  then acc <> (extractAddress <$> servers)
                                                  else acc
                                                ) []  popState.aggregatorLocations
           in
-          (sort $ (ServerAddress <<< toAddr) <$> nodes) == sort serverAddressesForStreamId
+          (sort $ (ServerAddress <<< toAddr) <$> nodes) == sort serverAddressesForSlotId
 
-    assertRelayCount slotName count = assertBodyFun $ predicate
+    assertRelayCount requiredSlotId count = assertBodyFun $ predicate
       where
         predicate :: (PublicState.IntraPoP Array) -> Boolean
         predicate popState =
           let
             nodeAddresses = toAddr
-            serverAddressesForStreamId = foldl (\acc {streamId, servers} ->
-                                                 if streamId == wrap slotName
+            serverAddressesForSlotId = foldl (\acc {slotId, servers} ->
+                                                 if slotId == wrap requiredSlotId
                                                  then acc <> (extractAddress <$> servers)
                                                  else acc
                                                ) []  popState.relayLocations
           in
-          length (sort serverAddressesForStreamId) == count
+          length (sort serverAddressesForSlotId) == count
 
     forceGetState node = forceRight <$> intraPoPState node
 
@@ -329,7 +329,7 @@ main =
                                                     >>= assertAggregator [low]
                                                                          >>= as  "aggregator has low only"
 
-          it "2nd ingest does not doesn't start new aggregator since one is running" do
+          it "2nd ingest doesn't start new aggregator since one is running" do
             ingestStart    p1n1 shortName1 low   >>= assertStatusCode 200 >>= as "create low ingest"
             waitForAsyncVariantStart                                      >>= as' "wait for async start of variant"
             setLoad         p1n1 60.0            >>= assertStatusCode 204 >>= as "set load on server"

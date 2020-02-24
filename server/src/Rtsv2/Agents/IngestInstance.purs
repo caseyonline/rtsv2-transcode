@@ -41,7 +41,7 @@ import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Rtsv2.Utils (crashIfLeft)
 import Shared.Agent as Agent
-import Shared.LlnwApiTypes (StreamDetails, StreamPublish)
+import Shared.LlnwApiTypes (StreamDetails, StreamPublish(..))
 import Shared.Stream (AggregatorKey, IngestKey(..), ingestKeyToAggregatorKey)
 import Shared.Types (Load, Milliseconds, Server, ServerLoad(..), extractAddress)
 import Shared.Types.Agent.State as PublicState
@@ -180,11 +180,11 @@ handleInfo msg state@{ingestKey} = case msg of
 
 ingestEqLine :: State -> Effect Audit.IngestEqLine
 ingestEqLine state@{ ingestKey
-                   , streamPublish: { host: ingestIp
-                                    , protocol: connectionType
-                                    , shortname
-                                    , streamName
-                                    , username }
+                   , streamPublish: StreamPublish { host: ingestIp
+                                                  , protocol: connectionType
+                                                  , rtmpShortName
+                                                  , rtmpStreamName
+                                                  , username }
                    , streamDetails: { role }
                    , localPort: ingestPort
                    , remoteAddress: userIp
@@ -199,9 +199,9 @@ ingestEqLine state@{ ingestKey
        , ingestPort
        , userIp
        , username
-       , shortname
-       , streamName
-       , streamRole: role
+       , rtmpShortName
+       , rtmpStreamName
+       , slotRole: role
        , connectionType
        , startMs
        , endMs

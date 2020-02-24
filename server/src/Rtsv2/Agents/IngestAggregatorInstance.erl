@@ -36,7 +36,7 @@
         }).
 
 
-startWorkflowImpl(SlotName, ProfileArray) ->
+startWorkflowImpl(SlotId, ProfileArray) ->
   fun() ->
       Profiles = array:to_list(ProfileArray),
 
@@ -61,7 +61,7 @@ startWorkflowImpl(SlotName, ProfileArray) ->
                        Profiles
                       ),
 
-        startWorkflow(SlotName, EnrichedProfiles)
+        startWorkflow(SlotId, EnrichedProfiles)
   end.
 
 addLocalVariantImpl(Handle, StreamAndVariant) ->
@@ -86,9 +86,9 @@ registerStreamRelayImpl(Handle, Host, Port) ->
       ok
   end.
 
-slotConfigurationImpl(SlotName) ->
+slotConfigurationImpl(SlotId) ->
   fun() ->
-      case rtsv2_slot_media_source_publish_processor:maybe_slot_configuration(SlotName) of
+      case rtsv2_slot_media_source_publish_processor:maybe_slot_configuration(SlotId) of
         undefined ->
           {nothing};
 
@@ -100,7 +100,7 @@ slotConfigurationImpl(SlotName) ->
 %%------------------------------------------------------------------------------
 %% Internal functions
 %%------------------------------------------------------------------------------
-startWorkflow(SlotName, Profiles) ->
+startWorkflow(SlotId, Profiles) ->
 
   %% TODO - need to close down the PIDS
   _Pids = lists:map(fun(IngestKey) ->
@@ -133,10 +133,10 @@ startWorkflow(SlotName, Profiles) ->
                   },
 
   Workflow = #workflow{
-                name = {ingest_aggregator_instance, SlotName},
+                name = {ingest_aggregator_instance, SlotId},
                 display_name = <<"RTMP Ingest Aggregator">>,
                 tags = #{type => ingest_aggregator,
-                         slot => SlotName},
+                         slot => SlotId},
                 generators = [
                               #generator{name = ingests,
                                          display_name = <<"Ingests">>,
@@ -272,8 +272,8 @@ startWorkflow(SlotName, Profiles) ->
                                         , subscribes_to = [ binary_to_atom(ProfileName, utf8) || #enriched_slot_profile{ profile_name = ProfileName } <- Profiles ]
                                         , module = rtsv2_slot_media_source_publish_processor
                                         , config =
-                                            #rtsv2_slot_media_source_publish_processor_config{ slot_name = SlotName
-                                                                                             , slot_configuration = slot_configuration(SlotName, Profiles)
+                                            #rtsv2_slot_media_source_publish_processor_config{ slot_name = SlotId
+                                                                                             , slot_configuration = slot_configuration(SlotId, Profiles)
                                                                                              }
                                         },
 
@@ -409,9 +409,9 @@ make_fec(_MediaRtps, _LastSeqNumber, FecAcc) ->
 
 
 -spec slot_configuration(binary_string(), list(#enriched_slot_profile{})) -> rtsv2_slot_configuration:configuration().
-slot_configuration(SlotName, Profiles) ->
+slot_configuration(SlotId, Profiles) ->
   #{ profiles => [ profile(Profile) || Profile <- Profiles ]
-   , name => SlotName
+   , name => SlotId
    }.
 
 

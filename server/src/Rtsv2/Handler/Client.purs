@@ -26,13 +26,13 @@ import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Rtsv2.Web.Bindings as Bindings
-import Shared.Stream (EgestKey(..), StreamId)
+import Shared.Stream (EgestKey(..), SlotId)
 import Shared.Types (Server, extractAddress)
 import Stetson (HttpMethod(..), RestResult, StetsonHandler)
 import Stetson.Rest as Rest
 
 
-newtype ClientStartState = ClientStartState { streamId :: StreamId
+newtype ClientStartState = ClientStartState { streamId :: SlotId
                                             , egestResp :: (Either FailureReason (LocalOrRemote Server))
                                             }
 
@@ -51,7 +51,7 @@ clientStart =
       let
         streamId = Bindings.streamId req
       thisServer <- PoPDefinition.getThisServer
-      egestResp <- findEgestAndRegister streamId thisServer
+      egestResp <- findEgestAndRegister (spy "streamId" streamId) thisServer
       let
         req2 = setHeader "x-servedby" (unwrap $ extractAddress thisServer) req
         _ = spy "egestResp" egestResp

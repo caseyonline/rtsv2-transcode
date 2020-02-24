@@ -25,7 +25,7 @@
 -define(state, ?MODULE).
 
 -record(?state,
-        { slot_name :: binary_string()
+        { slot_id :: non_neg_integer()
         , name :: term()                        %
         , publication_count = 0 :: non_neg_integer()
         , stream_relays = #{} :: maps:map({inet:ip_address(), inet:port_number()}, gen_udp:socket())
@@ -40,8 +40,8 @@
 %%------------------------------------------------------------------------------
 %% API
 %%------------------------------------------------------------------------------
-maybe_slot_configuration(SlotName) ->
-  case gproc:lookup_local_properties({metadata, name(SlotName)}) of
+maybe_slot_configuration(SlotId) ->
+  case gproc:lookup_local_properties({metadata, name(SlotId)}) of
     [] ->
       undefined;
 
@@ -58,18 +58,18 @@ spec(_Processor) ->
                  }.
 
 initialise(#processor{config =
-                        #rtsv2_slot_media_source_publish_processor_config{ slot_name = SlotName
+                        #rtsv2_slot_media_source_publish_processor_config{ slot_name = SlotId
                                                                          , slot_configuration = SlotConfiguration
                                                                          }
                      }) ->
 
-  Name = name(SlotName),
+  Name = name(SlotId),
 
   _ = gproc:add_local_property({metadata, Name},
                                #?metadata{ slot_configuration = SlotConfiguration }
                               ),
   { ok
-  , #?state{ slot_name = SlotName
+  , #?state{ slot_id = SlotId
            , name = Name
            }
   }.
@@ -115,9 +115,9 @@ process_input(#rtp{} = RTP, State = #?state{ stream_relays = StreamRelays, publi
 
   {ok, State #?state{ publication_count = PublicationCount + 1 }}.
 
-ioctl(read_meter, State = #?state{slot_name = SlotName, publication_count = PublicationCount}) ->
+ioctl(read_meter, State = #?state{slot_id = SlotId, publication_count = PublicationCount}) ->
 
-  Metrics = [ #text_metric{name = slot_name, value = SlotName, display_name = <<"Slot Name">>, update_frequency = low}
+  Metrics = [ #text_metric{name = slot_name, value = SlotId, display_name = <<"Slot Name">>, update_frequency = low}
             , #counter_metric{name = publication_count, value = PublicationCount, display_name = <<"Publication Count">>}
             ],
 
@@ -158,5 +158,5 @@ flush(State) ->
 %%------------------------------------------------------------------------------
 %% Private Functions
 %%------------------------------------------------------------------------------
-name(SlotName) ->
-  { slot_media_source, SlotName }.
+name(SlotId) ->
+  { slot_media_source, SlotId }.

@@ -5,7 +5,7 @@ module Rtsv2.Router.Endpoint ( Endpoint(..)
                              , makeUrlWithPath
                              , makeUrlAddr
                              , makeUrlAddrWithPath
-                             , parseStreamRole
+                             , parseSlotRole
                              ) where
 
 import Prelude hiding ((/))
@@ -13,6 +13,7 @@ import Prelude hiding ((/))
 import Data.Array ((!!))
 import Data.Either (note)
 import Data.Generic.Rep (class Generic)
+import Data.Int (fromString)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype, unwrap, wrap)
 import Data.String (Pattern(..), split)
@@ -20,7 +21,7 @@ import Routing.Duplex (RouteDuplex', as, path, root, segment)
 import Routing.Duplex.Generic (noArgs, sum)
 import Routing.Duplex.Generic.Syntax ((/))
 import Rtsv2.Router.Parser as Routing
-import Shared.Stream (ShortName, StreamAndVariant(..), StreamId, StreamRole(..), StreamVariant(..))
+import Shared.Stream (ProfileName(..), RtmpShortName, SlotId, SlotIdAndProfileName(..), SlotNameAndProfileName(..), SlotRole(..))
 import Shared.Types (PoPName, ServerAddress(..), extractAddress)
 import SpudGun (Url)
 
@@ -37,38 +38,38 @@ data Endpoint
   | HealthCheckE
   | ServerStateE
   | PoPDefinitionE
-  | EgestStatsE StreamId
+  | EgestStatsE SlotId
   | EgestE
   | RelayE
   | RelayEnsureStartedE
   | RelayRegisterEgestE
   | RelayRegisterRelayE
-  | RelayProxiedStatsE StreamId StreamRole
-  | RelayStatsE StreamId StreamRole
+  | RelayProxiedStatsE SlotId SlotRole
+  | RelayStatsE SlotId SlotRole
   | LoadE
   | WorkflowsE
   | WorkflowGraphE String
   | WorkflowMetricsE String
   | WorkflowStructureE String
-  | IngestAggregatorE StreamId StreamRole
-  | IngestAggregatorPlayerE StreamId StreamRole
-  | IngestAggregatorPlayerJsE StreamId StreamRole
-  | IngestAggregatorActiveIngestsE StreamId StreamRole StreamVariant
-  | IngestAggregatorActiveIngestsPlayerE StreamId StreamRole StreamVariant
-  | IngestAggregatorActiveIngestsPlayerJsE StreamId StreamRole StreamVariant
-  | IngestAggregatorActiveIngestsPlayerControlE StreamId StreamRole StreamVariant
+  | IngestAggregatorE SlotId SlotRole
+  | IngestAggregatorPlayerE SlotId SlotRole
+  | IngestAggregatorPlayerJsE SlotId SlotRole
+  | IngestAggregatorActiveIngestsE SlotId SlotRole ProfileName
+  | IngestAggregatorActiveIngestsPlayerE SlotId SlotRole ProfileName
+  | IngestAggregatorActiveIngestsPlayerJsE SlotId SlotRole ProfileName
+  | IngestAggregatorActiveIngestsPlayerControlE SlotId SlotRole ProfileName
   | IngestAggregatorRegisterRelayE
   | IngestAggregatorsE
   | IngestInstancesE
   | IngestInstancesMetricsE
-  | IngestInstanceE StreamId StreamVariant
-  | IngestInstanceLlwpE StreamId StreamRole StreamVariant
-  | IngestStartE Canary ShortName StreamAndVariant
-  | IngestStopE Canary StreamId StreamRole StreamVariant
+  | IngestInstanceE SlotId ProfileName
+  | IngestInstanceLlwpE SlotId SlotRole ProfileName
+  | IngestStartE Canary RtmpShortName SlotNameAndProfileName
+  | IngestStopE Canary SlotId SlotRole ProfileName
   | ClientAppAssetsE
   | ClientAppRouteHTMLE
-  | ClientStartE Canary StreamId
-  | ClientStopE Canary StreamId
+  | ClientStartE Canary SlotId
+  | ClientStopE Canary SlotId
   | StreamAuthE
   | StreamAuthTypeE
   | StreamPublishE
@@ -115,11 +116,11 @@ endpoint = root $ sum
   , "IngestAggregatorsE"                               : "" / "api" / "agents" / path "ingestAggregator" noArgs
 
   , "IngestInstancesE"                                 : "" / "api" / "agents" / path "ingest" noArgs
-  , "IngestInstancesMetricsE"                            : "" / "api" / "agents" / "ingest" / path "metrics" noArgs
+  , "IngestInstancesMetricsE"                          : "" / "api" / "agents" / "ingest" / path "metrics" noArgs
   , "IngestInstanceE"                                  : "" / "api" / "agents" / "ingest" / streamId segment / variant segment
   , "IngestInstanceLlwpE"                              : "" / "api" / "agents" / "ingest" / streamId segment / streamRole segment / variant segment / "llwp"
 
-  , "IngestStartE"                                     : "" / "api" / "public" / canary segment / "ingest" / shortName segment / streamAndVariant segment / "start"
+  , "IngestStartE"                                     : "" / "api" / "public" / canary segment / "ingest" / shortName segment / slotNameAndProfile segment / "start"
   , "IngestStopE"                                      : "" / "api" / "public" / canary segment / "ingest" / streamId segment / streamRole segment / variant  segment / "stop"
   , "ClientStartE"                                     : "" / "api" / "public" / canary segment / "client" / streamId segment / "start"
   , "ClientStopE"                                      : "" / "api" / "public" / canary segment / "client" / streamId segment / "stop"
@@ -153,35 +154,35 @@ makeUrlAddrWithPath (ServerAddress host) path =
   wrap $ "http://" <> host <> ":3000" <> path
 
 
--- | StreamId
-parseStreamId :: String -> Maybe StreamId
-parseStreamId = wrapParser
+-- | SlotId
+parseSlotId :: String -> Maybe SlotId
+parseSlotId = ((<$>) wrap) <<< fromString
 
-streamIdToString :: StreamId -> String
-streamIdToString = unwrap
+streamIdToString :: SlotId -> String
+streamIdToString = show <<< unwrap
 
--- | StreamVariant
-parseStreamVariant :: String -> Maybe StreamVariant
-parseStreamVariant = wrapParser
+-- | ProfileName
+parseProfileName :: String -> Maybe ProfileName
+parseProfileName = wrapParser
 
-variantToString :: StreamVariant -> String
+variantToString :: ProfileName -> String
 variantToString = unwrap
 
--- | StreamRole
-parseStreamRole :: String -> Maybe StreamRole
-parseStreamRole "primary" = Just Primary
-parseStreamRole "backup" = Just Backup
-parseStreamRole _ = Nothing
+-- | SlotRole
+parseSlotRole :: String -> Maybe SlotRole
+parseSlotRole "primary" = Just Primary
+parseSlotRole "backup" = Just Backup
+parseSlotRole _ = Nothing
 
-streamRoleToString :: StreamRole -> String
+streamRoleToString :: SlotRole -> String
 streamRoleToString Primary = "primary"
 streamRoleToString Backup = "backup"
 
--- | ShortName
-parseShortName :: String -> Maybe ShortName
-parseShortName = wrapParser
+-- | RtmpShortName
+parseRtmpShortName :: String -> Maybe RtmpShortName
+parseRtmpShortName = wrapParser
 
-shortNameToString :: ShortName -> String
+shortNameToString :: RtmpShortName -> String
 shortNameToString = unwrap
 
 
@@ -199,17 +200,26 @@ poPNameToString :: PoPName -> String
 poPNameToString = unwrap
 
 
--- | StreamAndVariant
-parseStreamAndVariant :: String -> Maybe StreamAndVariant
-parseStreamAndVariant  ""  = Nothing
-parseStreamAndVariant  str =
+-- | SlotIdAndProfileName
+parseSlotIdAndProfileName :: String -> Maybe SlotIdAndProfileName
+parseSlotIdAndProfileName  ""  = Nothing
+parseSlotIdAndProfileName  str =
   case split (Pattern "_") str !! 0 of
-    Just streamIdStr -> Just (StreamAndVariant (wrap streamIdStr) (wrap str))
+    Just streamIdStr ->
+      case fromString streamIdStr of
+        Nothing -> Nothing
+        Just slotId -> Just (SlotIdAndProfileName (wrap slotId) (wrap str))
     _ -> Nothing
 
-streamAndVariantToString :: StreamAndVariant -> String
-streamAndVariantToString (StreamAndVariant _ (StreamVariant str)) = str
+parseSlotNameAndProfileName :: String -> Maybe SlotNameAndProfileName
+parseSlotNameAndProfileName  ""  = Nothing
+parseSlotNameAndProfileName  str =
+  case split (Pattern "_") str !! 0 of
+    Just streamNameStr -> Just (SlotNameAndProfileName streamNameStr (wrap str))
+    _ -> Nothing
 
+slotNameAndProfileToString :: SlotNameAndProfileName -> String
+slotNameAndProfileToString (SlotNameAndProfileName _ (ProfileName str)) = str
 
 
 -- | Canary
@@ -222,29 +232,29 @@ streamAndVariantToString (StreamAndVariant _ (StreamVariant str)) = str
 -- canaryToString Live = "live"
 -- canaryToString Canary = "canary"
 
--- | This combinator transforms a codec over `String` into one that operates on the `StreamId` type.
-streamId :: RouteDuplex' String -> RouteDuplex' StreamId
-streamId = as streamIdToString (parseStreamId >>> note "Bad StreamId")
+-- | This combinator transforms a codec over `String` into one that operates on the `SlotId` type.
+streamId :: RouteDuplex' String -> RouteDuplex' SlotId
+streamId = as streamIdToString (parseSlotId >>> note "Bad SlotId")
 
--- | This combinator transforms a codec over `String` into one that operates on the `StreamVariant` type.
-variant :: RouteDuplex' String -> RouteDuplex' StreamVariant
-variant = as variantToString (parseStreamVariant >>> note "Bad StreamId")
+-- | This combinator transforms a codec over `String` into one that operates on the `ProfileName` type.
+variant :: RouteDuplex' String -> RouteDuplex' ProfileName
+variant = as variantToString (parseProfileName >>> note "Bad SlotId")
 
--- | This combinator transforms a codec over `String` into one that operates on the `StreamVariant` type.
-streamRole :: RouteDuplex' String -> RouteDuplex' StreamRole
-streamRole = as streamRoleToString (parseStreamRole >>> note "Bad StreamRole")
+-- | This combinator transforms a codec over `String` into one that operates on the `ProfileName` type.
+streamRole :: RouteDuplex' String -> RouteDuplex' SlotRole
+streamRole = as streamRoleToString (parseSlotRole >>> note "Bad SlotRole")
 
--- | This combinator transforms a codec over `String` into one that operates on the `StreamAndVariant` type.
-streamAndVariant :: RouteDuplex' String -> RouteDuplex' StreamAndVariant
-streamAndVariant = as streamAndVariantToString (parseStreamAndVariant >>> note "Bad StreamAndVariant")
+-- | This combinator transforms a codec over `String` into one that operates on the `SlotNameAndProfileName` type.
+slotNameAndProfile :: RouteDuplex' String -> RouteDuplex' SlotNameAndProfileName
+slotNameAndProfile = as slotNameAndProfileToString (parseSlotNameAndProfileName >>> note "Bad SlotNameAndProfileName")
 
 -- | This combinator transforms a codec over `String` into one that operates on the `PoPName` type.
 popName :: RouteDuplex' String -> RouteDuplex' PoPName
 popName = as poPNameToString (parsePoPName >>> note "Bad PoPName")
 
--- | This combinator transforms a codec over `String` into one that operates on the `ShortName` type.
-shortName :: RouteDuplex' String -> RouteDuplex' ShortName
-shortName = as shortNameToString (parseShortName >>> note "Bad ShortName")
+-- | This combinator transforms a codec over `String` into one that operates on the `RtmpShortName` type.
+shortName :: RouteDuplex' String -> RouteDuplex' RtmpShortName
+shortName = as shortNameToString (parseRtmpShortName >>> note "Bad RtmpShortName")
 
 -- | This combinator transforms a codec over `String` into one that operates on the `Canary` type.
 canary :: RouteDuplex' String -> RouteDuplex' Canary

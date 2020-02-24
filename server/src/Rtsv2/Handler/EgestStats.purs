@@ -8,7 +8,7 @@ import Prelude
 import Rtsv2.Agents.EgestInstance as EgestInstance
 import Shared.Stream (EgestKey(..))
 import Shared.Types.Agent.State as PublicState
-import StetsonHelper (GenericStetsonGetByStreamId, genericGetByStreamId)
+import StetsonHelper (GenericStetsonGetBySlotId, genericGetBySlotId)
 
-stats :: GenericStetsonGetByStreamId PublicState.Egest
-stats = genericGetByStreamId $ EgestInstance.currentStats <<< EgestKey
+stats :: GenericStetsonGetBySlotId PublicState.Egest
+stats = genericGetBySlotId $ EgestInstance.currentStats <<< EgestKey

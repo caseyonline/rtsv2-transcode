@@ -27,22 +27,22 @@ import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (readJSON)
 import Stetson (HttpMethod(..), StetsonHandler)
 import Stetson.Rest as Rest
-import StetsonHelper (GenericStatusState, GenericStetsonHandler, allBody, binaryToString, genericGetByStreamIdAndRole, genericPost)
+import StetsonHelper (GenericStatusState, GenericStetsonHandler, allBody, binaryToString, genericGetBySlotIdAndRole, genericPost)
 import Logger (spy)
 
 -- TODO: PS: Should we model this in PS?
 import Foreign (Foreign)
 
 ingestAggregator :: StetsonHandler (GenericStatusState (PublicState.IngestAggregator List))
-ingestAggregator = genericGetByStreamIdAndRole
+ingestAggregator = genericGetBySlotIdAndRole
                    \streamId role -> IngestAggregatorInstance.getState $ AggregatorKey streamId role
 
 slotConfiguration :: StetsonHandler (GenericStatusState (Maybe SlotConfiguration))
 slotConfiguration =
-  genericGetByStreamIdAndRole slotConfigurationByStreamIdAndRole
+  genericGetBySlotIdAndRole slotConfigurationBySlotIdAndRole
 
   where
-    slotConfigurationByStreamIdAndRole streamId role =
+    slotConfigurationBySlotIdAndRole streamId role =
       do
         result <- IngestAggregatorInstance.slotConfiguration (AggregatorKey streamId role)
         let _ = spy "Ingest Aggregator Slot Config" result

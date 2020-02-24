@@ -38,7 +38,7 @@ import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl, makeUrlAddrWithPath)
 import Rtsv2.Utils (crashIfLeft)
 import Shared.Agent as Agent
-import Shared.Stream (AggregatorKey(..), EgestKey(..), RelayKey(..), StreamId(..), StreamRole(..))
+import Shared.Stream (AggregatorKey(..), EgestKey(..), RelayKey(..), SlotId(..), SlotRole(..))
 import Shared.Types (Milliseconds, EgestServer, Load, RelayServer, Server, ServerLoad(..), extractAddress)
 import Shared.Types.Agent.State as PublicState
 import SpudGun as SpudGun
@@ -48,7 +48,7 @@ foreign import setSlotConfigurationFFI :: EgestKey -> SlotConfiguration -> Effec
 foreign import getSlotConfigurationFFI :: EgestKey -> Effect (Maybe SlotConfiguration)
 
 type CreateEgestPayload
-  = { streamId :: StreamId
+  = { streamId :: SlotId
     , aggregator :: Server
     }
 
@@ -160,7 +160,7 @@ init payload@{streamId, aggregator} = do
       pure state
 
 handleInfo :: Msg -> State -> Effect (CastResult State)
-handleInfo msg state@{egestKey: EgestKey ourStreamId} =
+handleInfo msg state@{egestKey: EgestKey ourSlotId} =
   case msg of
     Tick -> CastNoReply <$> handleTick state
 
@@ -170,7 +170,7 @@ handleInfo msg state@{egestKey: EgestKey ourStreamId} =
 
     IntraPoPBus (IngestAggregatorExited (AggregatorKey streamId streamRole) serverAddress)
      -- TODO - PRIMARY BACKUP
-      | streamId == ourStreamId -> doStop state
+      | streamId == ourSlotId -> doStop state
       | otherwise -> pure $ CastNoReply state
 
 
@@ -248,14 +248,14 @@ registerWithRelay (Remote remoteServer) payload =
     pure unit
 
 
-getRelaySlotConfiguration :: (LocalOrRemote Server) -> StreamId -> Effect (Maybe SlotConfiguration)
+getRelaySlotConfiguration :: (LocalOrRemote Server) -> SlotId -> Effect (Maybe SlotConfiguration)
 getRelaySlotConfiguration (Local _) streamId =
   log <$> StreamRelayInstance.slotConfiguration (RelayKey streamId Primary)
 
   where
     log = spy "Egest Instance Slot Config from Local Relay"
 
-getRelaySlotConfiguration (Remote remoteServer) (StreamId streamId) =
+getRelaySlotConfiguration (Remote remoteServer) (SlotId slotId) =
   do
     slotConfiguration' <- SpudGun.getJson configURL
 
@@ -264,7 +264,7 @@ getRelaySlotConfiguration (Remote remoteServer) (StreamId streamId) =
   where
     -- TODO: PS: change to use Nick's new routing when available
     -- TODOL PS: should we be trying to get slot info from both slots and unifying?
-    configURL = makeUrlAddrWithPath address $ "/api/agents/streamRelay/" <> streamId <> "/primary/slot"
+    configURL = makeUrlAddrWithPath address $ "/api/agents/streamRelay/" <> (show slotId) <> "/primary/slot"
 
     address = extractAddress remoteServer
 

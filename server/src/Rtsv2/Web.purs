@@ -5,6 +5,8 @@ module Rtsv2.Web
 
 import Prelude
 
+import Data.Int (fromString)
+import Data.Maybe (fromMaybe, fromMaybe')
 import Data.Newtype (wrap)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
@@ -19,6 +21,8 @@ import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen as Gen
 import Rtsv2.Agents.EgestInstance as EgestInstance
+import Rtsv2.Agents.Locator.Egest (findEgestAndRegister)
+import Rtsv2.Agents.Locator.Types (FailureReason(..), LocalOrRemote(..), LocationResp)
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
 import Rtsv2.Handler.Client as ClientHandler
@@ -33,20 +37,17 @@ import Rtsv2.Handler.PoPDefinition as PoPDefinitionHandler
 import Rtsv2.Handler.Relay as RelayHandler
 import Rtsv2.Handler.TransPoP as TransPoPHandler
 import Rtsv2.Names as Names
+import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Router.Endpoint (Endpoint(..), endpoint)
 import Rtsv2.Router.Parser (printUrl)
 import Rtsv2.Web.Bindings as Bindings
 import Serf (Ip(..))
-import Shared.Stream (ShortName(..), StreamAndVariant(..), StreamId(..), StreamVariant(..), EgestKey(..), IngestKey(..), StreamRole(..))
+import Shared.Stream (EgestKey(..), IngestKey(..), ProfileName(..), RtmpShortName(..), SlotId(..), SlotIdAndProfileName(..), SlotNameAndProfileName(..), SlotRole(..))
 import Shared.Types (PoPName)
+import Shared.Utils (lazyCrashIfMissing)
 import Stetson (InnerStetsonHandler, RestResult, StaticAssetLocation(..), StetsonConfig)
 import Stetson as Stetson
 import Stetson.Rest as Rest
-
-  -- TODO: This code doesn't belong here
-import Rtsv2.PoPDefinition as PoPDefinition
-import Rtsv2.Agents.Locator.Egest (findEgestAndRegister)
-import Rtsv2.Agents.Locator.Types (FailureReason(..), LocalOrRemote(..), LocationResp)
 
 newtype State = State {}
 
@@ -73,7 +74,9 @@ init args = do
     # mkRoute  HealthCheckE                                                     HealthHandler.healthCheck
     # mkRoute  PoPDefinitionE                                                   PoPDefinitionHandler.popDefinition
 
-    # mkRoute (EgestStatsE streamIdBinding)                                     EgestStatsHandler.stats
+    -- # mkRoute (EgestStatsE streamIdBinding)                                     EgestStatsHandler.stats
+    # mkHack "/api/agents/egest/:stream_id"                                     EgestStatsHandler.stats
+
 
     # mkRoute  RelayE                                                           RelayHandler.startResource
     # mkRoute  RelayEnsureStartedE                                              RelayHandler.ensureStarted
@@ -95,14 +98,17 @@ init args = do
 
     # mkRoute (IngestInstancesE)                                                IngestHandler.ingestInstances
     # mkRoute (IngestInstancesMetricsE)                                         IngestHandler.ingestInstancesMetrics
-    # mkRoute (IngestInstanceE streamIdBinding variantBinding)                  IngestHandler.ingestInstance
+    -- # mkRoute (IngestInstanceE streamIdBinding variantBinding)                  IngestHandler.ingestInstance
+    # mkHack "/api/agents/ingest/:stream_id/:variant"                           IngestHandler.ingestInstance
 
-    # mkRoute (IngestStartE ":canary" shortNameBinding streamAndVariantBinding) IngestHandler.ingestStart
- -- # mkRoute (IngestStopE ":canary" shortNameBinding streamAndVariantBinding)  IngestHandler.ingestStop
+    # mkRoute (IngestStartE ":canary" shortNameBinding slotNameAndProfileName) IngestHandler.ingestStart
+ -- # mkRoute (IngestStopE ":canary" shortNameBinding slotNameAndProfileName)  IngestHandler.ingestStop
     # mkHack  "/api/public/:canary/ingest/:stream_id/:stream_role/:variant/stop" IngestHandler.ingestStop
 
-    # mkRoute (ClientStartE ":canary" streamIdBinding)                          ClientHandler.clientStart
-    # mkRoute (ClientStopE ":canary" streamIdBinding)                           ClientHandler.clientStop
+    -- # mkRoute (ClientStartE ":canary" streamIdBinding)                          ClientHandler.clientStart
+    # mkHack  "/api/public/:canary/client/:stream_id/start"                     ClientHandler.clientStart
+    -- # mkRoute (ClientStopE ":canary" streamIdBinding)                           ClientHandler.clientStop
+    # mkHack  "/api/public/:canary/client/:stream_id/stop"                     ClientHandler.clientStop
 
     # mkRoute  StreamAuthE                                                      LlnwStubHandler.streamAuthType
     # mkRoute  StreamAuthTypeE                                                  LlnwStubHandler.streamAuth
@@ -139,10 +145,10 @@ init args = do
   where
     cowboyRoutes :: List Path
     cowboyRoutes =
-   -- cowboyRoute   (IngestInstanceLlwpE streamIdBinding streamRoleBinding variantBinding)                                       "llwp_stream_resource" ((unsafeToForeign) makeStreamAndVariant)
-      cowboyHack   "/api/agents/ingest/:stream_id/:stream_role/:variant/llwp"                                  "llwp_stream_resource" ((unsafeToForeign) makeStreamAndVariant)
+   -- cowboyRoute   (IngestInstanceLlwpE streamIdBinding streamRoleBinding variantBinding)                                       "llwp_stream_resource" ((unsafeToForeign) makeSlotIdAndProfileName)
+      cowboyHack   "/api/agents/ingest/:stream_id/:stream_role/:variant/llwp"                                  "llwp_stream_resource" ((unsafeToForeign) makeSlotIdAndProfileName)
 
-      -- : cowboyRoute (IngestAggregatorActiveIngestsPlayerControlE streamIdBinding variantBinding)               "rtsv2_player_ws_resource" ((unsafeToForeign) makeStreamAndVariant)
+      -- : cowboyRoute (IngestAggregatorActiveIngestsPlayerControlE streamIdBinding variantBinding)               "rtsv2_player_ws_resource" ((unsafeToForeign) makeSlotIdAndProfileName)
       : cowboyHack "/api/agents/ingestAggregator/:stream_id/:stream_role/activeIngests/:variant_id/session"    "rtsv2_player_ws_resource" (unsafeToForeign { mode: (atom "ingest"), make_ingest_key: makeIngestKey })
 
       : cowboyHack "/api/public/:canary/client/:stream_id/session"                                             "rtsv2_player_ws_resource" (unsafeToForeign { mode: (atom "egest"), make_egest_key: EgestKey, start_stream: startStream, get_slot_configuration: EgestInstance.slotConfiguration })
@@ -155,24 +161,28 @@ init args = do
 
       : nil
 
-    makeStreamAndVariant :: String -> String -> StreamAndVariant
-    makeStreamAndVariant streamId variantId = StreamAndVariant (wrap streamId) (wrap variantId)
+    makeSlotIdAndProfileName :: String -> String -> SlotIdAndProfileName
+    makeSlotIdAndProfileName slotId variantId = SlotIdAndProfileName (slotIdStringToSlotId slotId) (wrap variantId)
 
     makeIngestKey :: String -> String -> String -> IngestKey
-    makeIngestKey streamId streamRole variantId =
-      IngestKey (wrap streamId) (parseStreamRole streamRole) (wrap variantId)
+    makeIngestKey slotId streamRole variantId =
+      IngestKey (slotIdStringToSlotId slotId) (parseSlotRole streamRole) (wrap variantId)
       where
-        parseStreamRole "primary" = Primary
-        parseStreamRole "backup" = Backup
-        parseStreamRole _ = Primary
+        parseSlotRole "primary" = Primary
+        parseSlotRole "backup" = Backup
+        parseSlotRole _ = Primary
+
+    slotIdStringToSlotId :: String -> SlotId
+    slotIdStringToSlotId slotIdStr =
+      wrap $ fromMaybe 0 (fromString slotIdStr)
 
     -- TODO: This code doesn't belong here
-    startStream :: String -> Effect LocationResp
-    startStream streamId =
+    startStream :: Int -> Effect LocationResp
+    startStream slotId =
       do
         thisServer <- PoPDefinition.getThisServer
 
-        findEgestAndRegister (wrap streamId) thisServer
+        findEgestAndRegister (wrap slotId) thisServer
 
     mkRoute :: forall state msg.  Endpoint -> InnerStetsonHandler msg state -> StetsonConfig -> StetsonConfig
     mkRoute rType handler = Stetson.route (spy "route" (printUrl endpoint rType)) handler
@@ -189,10 +199,11 @@ init args = do
     staticHack :: String -> StaticAssetLocation -> StetsonConfig -> StetsonConfig
     staticHack path config = Stetson.static  (spy "route" path) config
 
-    streamIdBinding = StreamId (":" <> Bindings.streamIdBindingLiteral)
-    variantBinding = StreamVariant (":" <> Bindings.variantBindingLiteral)
-    streamAndVariantBinding = StreamAndVariant (StreamId "ignored") (StreamVariant $ ":" <> Bindings.streamAndVariantBindingLiteral)
-    shortNameBinding = ShortName (":" <> Bindings.shortNameBindingLiteral)
+    variantBinding = ProfileName (":" <> Bindings.variantBindingLiteral)
+
+    slotNameAndProfileName = SlotNameAndProfileName "ignored" (ProfileName $ ":" <> Bindings.streamAndVariantBindingLiteral)
+
+    shortNameBinding = RtmpShortName (":" <> Bindings.shortNameBindingLiteral)
 
     popNameBinding :: PoPName
     popNameBinding = wrap (":" <> Bindings.popNameBindingLiteral)

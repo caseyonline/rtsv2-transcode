@@ -16,7 +16,7 @@ module Shared.Types.Agent.State
 
 import Data.Maybe (Maybe)
 import Shared.LlnwApiTypes (StreamDetails)
-import Shared.Stream (AgentKey, IngestKey, StreamId, StreamRole, StreamVariant)
+import Shared.Stream (AgentKey, IngestKey, SlotId, SlotRole, ProfileName)
 import Shared.Types (GeoLoc, Milliseconds, PoPName, RegionName, Server, ServerAddress)
 import Shared.Types.Media.Types.Rtmp (RtmpClientMetadata)
 import Shared.Types.Media.Types.SourceDetails (SourceInfo)
@@ -48,11 +48,11 @@ type Ingest f
     }
 
 type IngestAggregator f
-   = { role :: StreamRole
+   = { role :: SlotRole
      , streamDetails :: StreamDetails
-     , activeStreamVariants :: f { streamVariant :: StreamVariant
-                                 , serverAddress :: ServerAddress
-                                 }
+     , activeProfiles :: f { profileName :: ProfileName
+                           , serverAddress :: ServerAddress
+                           }
      }
 
 type StreamRelay f
@@ -70,15 +70,15 @@ type AgentLocation f = { agentKey :: AgentKey
 
 
 type IntraPoP f
-  = { aggregatorLocations :: f { streamId :: StreamId
+  = { aggregatorLocations :: f { slotId :: SlotId
                                , servers :: f Server
                                }
-    , relayLocations      :: f { streamId :: StreamId
-                               , streamRole :: StreamRole
+    , relayLocations      :: f { slotId :: SlotId
+                               , role :: SlotRole
                                , servers :: f Server
                                }
-    , egestLocations      :: f { streamId :: StreamId
-                               , streamRole :: StreamRole
+    , egestLocations      :: f { slotId :: SlotId
+                               , role :: SlotRole
                                , servers :: f Server
                                }
     , currentTransPoPLeader :: Maybe Server

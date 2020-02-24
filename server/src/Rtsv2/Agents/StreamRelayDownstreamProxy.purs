@@ -28,7 +28,7 @@ import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Router.Endpoint (Endpoint(..), makeUrlAddr)
 import Shared.Agent as Agent
-import Shared.Stream (RelayKey(..), StreamId, StreamRole)
+import Shared.Stream (RelayKey(..), SlotId, SlotRole)
 import Shared.Types (PoPName, Server, ServerAddress)
 import SpudGun as SpudGun
 
@@ -54,8 +54,8 @@ serverName = Names.streamRelayDownstreamProxyName
 
 
 payloadToRelayKey :: forall r.
-  { streamId :: StreamId
-  , streamRole :: StreamRole
+  { streamId :: SlotId
+  , streamRole :: SlotRole
   | r
   }
   -> RelayKey

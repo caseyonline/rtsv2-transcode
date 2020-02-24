@@ -8,18 +8,18 @@ module Rtsv2.Agents.StreamRelayTypes
   ) where
 
 import Erl.Data.List (List)
-import Shared.Stream (StreamId, StreamRole)
+import Shared.Stream (SlotId, SlotRole)
 import Shared.Types (Server, EgestServer, PoPName, RelayServer)
 
 type CreateRelayPayload
-  = { streamId :: StreamId
-    , streamRole :: StreamRole
+  = { streamId :: SlotId
+    , streamRole :: SlotRole
     , aggregator :: Server
     }
 
 type CreateProxyPayload
-  = { streamId :: StreamId
-    , streamRole :: StreamRole
+  = { streamId :: SlotId
+    , streamRole :: SlotRole
     , proxyFor :: PoPName
     , aggregator:: Server
     }
@@ -30,15 +30,15 @@ type DeliverTo serverType
     }
 
 type RegisterRelayPayload
-  = { streamId :: StreamId
-    , streamRole :: StreamRole
+  = { streamId :: SlotId
+    , streamRole :: SlotRole
     , deliverTo :: DeliverTo RelayServer
     , sourceRoute :: SourceRoute
     }
 
 type RegisterEgestPayload
-  = { streamId :: StreamId
-    , streamRole :: StreamRole
+  = { streamId :: SlotId
+    , streamRole :: SlotRole
     , deliverTo :: DeliverTo EgestServer
     }
 

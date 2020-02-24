@@ -39,9 +39,9 @@
         }).
 
 
-startWorkflowFFI(SlotName) ->
+startWorkflowFFI(SlotId) ->
   fun() ->
-      start_workflow(SlotName)
+      start_workflow(SlotId)
   end.
 
 
@@ -81,16 +81,16 @@ getSlotConfigurationFFI(RelayKey) ->
 %%------------------------------------------------------------------------------
 %% Internal functions
 %%------------------------------------------------------------------------------
-start_workflow(SlotName) ->
+start_workflow(SlotId) ->
 
   %% TODO: the actual switchboard logic that dictates what goes where
 
   Workflow =
     #workflow{
-       name = {stream_relay_instance, SlotName},
-       display_name = <<"Stream Relay Workflow for ", SlotName/binary>>,
+       name = {stream_relay_instance, SlotId},
+       display_name = <<"Stream Relay Workflow for ", (integer_to_binary(SlotId))/binary>>,
        tags = #{ type => stream_relay
-               , slot => SlotName
+               , slot => SlotId
                },
        generators =
          [ #generator{ name = sources

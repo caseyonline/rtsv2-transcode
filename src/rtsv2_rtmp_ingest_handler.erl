@@ -58,7 +58,7 @@ handle(#?state{rtmp_pid = Rtmp,
   RemoteIpStr = list_to_binary(inet:ntoa(RemoteIp)),
 
   receive
-    {Rtmp, {request, publish, PublishArgs = {_StreamId, _ClientId, Path}}} ->
+    {Rtmp, {request, publish, PublishArgs = {_RtmpStreamId, _ClientId, Path}}} ->
 
       [StreamNameStr | _] = string:tokens(Path, "&"),
       StreamName = list_to_binary(StreamNameStr),
