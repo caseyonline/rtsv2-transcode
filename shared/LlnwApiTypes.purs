@@ -17,7 +17,7 @@ module Shared.LlnwApiTypes
        , SlotDetails
        , StreamOutputFormat
        , HlsPushSpec
-       , SlotProfile
+       , SlotProfile(..)
        , HlsPushSpecFormat
        , HlsPushAuth
        )
@@ -36,7 +36,7 @@ import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype)
 import Foreign (ForeignError(..), F, readString, unsafeToForeign)
 import Record (rename)
-import Shared.Stream (ProfileName(..), SlotId(..), SlotRole)
+import Shared.Stream (ProfileName, SlotId, SlotRole)
 import Simple.JSON (class ReadForeign, class WriteForeign, readJSON', writeJSON)
 import Type.Prelude (SProxy(..))
 
@@ -76,15 +76,15 @@ newtype StreamPublish = StreamPublish
                         , username :: String
                         }
 
-type SlotProfile =
-  { name :: ProfileName
-  , rtmpStreamName :: String
-  , bitrate :: Int
-  }
+newtype SlotProfile = SlotProfile
+                      { name :: ProfileName
+                      , rtmpStreamName :: String
+                      , bitrate :: Int
+                      }
 
 type SlotDetails =
   { id :: SlotId
-  , slotName :: String
+  , name :: String
   , subscribeValidation :: Boolean
   , outputFormats :: Array StreamOutputFormat
   , profiles :: Array SlotProfile
@@ -264,6 +264,29 @@ instance writeForeignStreamConnection :: WriteForeign StreamConnection where
         writeJSON
           $ rename (SProxy :: SProxy "rtmpShortName") (SProxy :: SProxy "shortname") r
 
+
+derive instance newtypeSlotProfile :: Newtype SlotProfile _
+derive instance genericSlotProfile :: Generic SlotProfile _
+instance eqSlotProfile :: Eq SlotProfile where eq = genericEq
+instance compareSlotProfile :: Ord SlotProfile where compare = genericCompare
+
+instance readForeignSlotProfile :: ReadForeign SlotProfile where
+  readImpl o = decode =<< readString o
+    where
+    decode :: String -> F SlotProfile
+    decode s = do
+      parsed <- readJSON' s
+      pure
+        $ SlotProfile
+        $ rename (SProxy :: SProxy "streamName") (SProxy :: SProxy "rtmpStreamName") parsed
+
+instance writeForeignSlotProfile :: WriteForeign SlotProfile where
+  writeImpl = (unsafeToForeign <<< encode)
+    where
+      encode :: SlotProfile -> String
+      encode (SlotProfile r) = do
+        writeJSON
+          $ rename (SProxy :: SProxy "rtmpStreamName") (SProxy :: SProxy "streamName") r
 
 derive instance newtypeStreamPublish :: Newtype StreamPublish _
 derive instance genericStreamPublish :: Generic StreamPublish _

@@ -29,7 +29,7 @@ import Rtsv2.Env as Env
 import Rtsv2.Names as Names
 import Rtsv2.Utils (crashIfLeft)
 import Serf (Ip)
-import Shared.LlnwApiTypes (AuthType, PublishCredentials, SlotPublishAuthType(..), StreamAuth, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamPublish)
+import Shared.LlnwApiTypes (AuthType, PublishCredentials, SlotProfile(..), SlotPublishAuthType(..), StreamAuth, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamPublish)
 import Shared.Stream (IngestKey(..))
 import SpudGun (bodyToJSON)
 import SpudGun as SpudGun
@@ -122,7 +122,7 @@ handlerHandle host rtmpShortName username remoteAddress remotePort rtmpStreamNam
         Nothing ->
           pure unit
 
-        Just { name: profileName } -> do
+        Just (SlotProfile { name: profileName }) -> do
           let
             ingestKey = makeIngestKey profileName streamDetails
           self <- self
@@ -132,7 +132,7 @@ handlerHandle host rtmpShortName username remoteAddress remotePort rtmpStreamNam
           pure unit
   where
     findProfile ingestStreamName streamDetails@{ slot: { profiles } } =
-      find (\ { rtmpStreamName: profileStreamName } -> profileStreamName == ingestStreamName) profiles
+      find (\ (SlotProfile { rtmpStreamName: profileStreamName }) -> profileStreamName == ingestStreamName) profiles
 
     makeIngestKey profileName {role, slot: {id: slotId}} =
       IngestKey slotId role profileName

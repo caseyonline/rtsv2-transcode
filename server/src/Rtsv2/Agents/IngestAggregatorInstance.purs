@@ -11,8 +11,8 @@ module Rtsv2.Agents.IngestAggregatorInstance
 
 import Prelude
 
-import Data.Newtype (unwrap)
 import Data.Maybe (Maybe)
+import Data.Newtype (unwrap)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
@@ -28,8 +28,8 @@ import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Rtsv2.Agents.IntraPoP (announceLocalAggregatorIsAvailable, announceLocalAggregatorStopped)
-import Rtsv2.Agents.StreamRelayTypes (RegisterRelayPayload)
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
+import Rtsv2.Agents.StreamRelayTypes (RegisterRelayPayload)
 import Rtsv2.Config as Config
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
@@ -37,7 +37,7 @@ import Rtsv2.Router.Endpoint (Endpoint(..))
 import Rtsv2.Router.Endpoint as RoutingEndpoint
 import Rtsv2.Router.Parser as Routing
 import Shared.Agent as Agent
-import Shared.LlnwApiTypes (StreamDetails)
+import Shared.LlnwApiTypes (SlotProfile(..), StreamDetails)
 import Shared.Stream (AggregatorKey(..), IngestKey(..), SlotId(..), SlotRole, ProfileName, ingestKeyToAggregatorKey, ingestKeyToProfileName)
 import Shared.Types (ServerAddress, extractAddress)
 import Shared.Types.Agent.State as PublicState
@@ -144,7 +144,7 @@ init streamDetails = do
        , workflowHandle
        }
   where
-    mkKey p = tuple3 (IngestKey streamDetails.slot.id streamDetails.role p.name) p.rtmpStreamName (unwrap p.name)
+    mkKey (SlotProfile p) = tuple3 (IngestKey streamDetails.slot.id streamDetails.role p.name) p.rtmpStreamName (unwrap p.name)
     aggregatorKey = streamDetailsToAggregatorKey streamDetails
 
 streamDetailsToAggregatorKey :: StreamDetails -> AggregatorKey

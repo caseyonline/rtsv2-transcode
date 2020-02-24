@@ -17,6 +17,7 @@ import Erl.Data.Binary.IOData (IOData, fromBinary, toBinary)
 import Erl.Data.List (nil, (:))
 import Erl.Data.Map (Map, fromFoldable, lookup)
 import Erl.Data.Tuple (tuple2)
+import Logger (spy)
 import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
 import Shared.LlnwApiTypes (AuthType, PublishCredentials(..), SlotPublishAuthType(..), StreamAuth, StreamDetails, StreamIngestProtocol(..), StreamPublish, StreamConnection)
 import Shared.Stream (SlotRole(..))
@@ -53,14 +54,14 @@ streamPublishDb =
                             , username: "user" })
                       { role: Primary
                       , slot : { id: wrap 1
-                               , slotName: "slot1"
+                               , name: "slot1"
                                , subscribeValidation: false
-                               , profiles: [{ name: wrap "high",
-                                              rtmpStreamName: "slot1_1000",
-                                              bitrate: 1000000}
-                                           , { name: wrap "low",
-                                               rtmpStreamName: "slot1_500",
-                                               bitrate: 500000}
+                               , profiles: [ wrap { name: wrap "high",
+                                                    rtmpStreamName: "slot1_1000",
+                                                    bitrate: 1000000}
+                                           , wrap { name: wrap "low",
+                                                    rtmpStreamName: "slot1_500",
+                                                    bitrate: 500000}
                                            ]
                                , outputFormats : []
                               }
@@ -73,14 +74,14 @@ streamPublishDb =
                               , username: "user" })
                         { role: Primary
                         , slot : { id: wrap 1
-                                 , slotName: "slot1"
+                                 , name: "slot1"
                                  , subscribeValidation: false
-                                 , profiles: [{ name: wrap "high",
-                                                rtmpStreamName: "slot1_1000",
-                                                bitrate: 1000000}
-                                             , { name: wrap "low",
-                                                 rtmpStreamName: "slot1_500",
-                                                 bitrate: 500000}
+                                 , profiles: [ wrap { name: wrap "high",
+                                                      rtmpStreamName: "slot1_1000",
+                                                      bitrate: 1000000}
+                                             , wrap { name: wrap "low",
+                                                      rtmpStreamName: "slot1_500",
+                                                      bitrate: 500000}
                                              ]
                                  , outputFormats : []
                                  }
@@ -223,7 +224,7 @@ streamPublish =
                                                                             output = case maybeStreamDetails of
                                                                               Nothing -> ""
                                                                               Just streamDetails -> writeJSON streamDetails
-                                                                            req3 = setBody output req2
+                                                                            req3 = setBody (spy "output" output) req2
                                                                           in
                                                                           (Rest.result true req3 state2))) : nil)
                                 req state)
