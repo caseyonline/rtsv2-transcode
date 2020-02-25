@@ -79,7 +79,7 @@ type IngestStatsConfig
     }
 
 type EgestAgentConfig
-  = { egestAvailableAnnounceMs :: Int
+  = { eqLogIntervalMs :: Int
     , lingerTimeMs :: Int
     , relayCreationRetryMs :: Int
     }
