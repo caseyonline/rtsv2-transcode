@@ -14,7 +14,7 @@ import Prelude
 
 import Control.Monad.Reader (ask)
 import Control.Monad.Reader.Trans (class MonadAsk)
-import Data.Array (catMaybes, head, index, length)
+import Data.Array (catMaybes, head, index, length, mapMaybe, nub)
 import Data.Either (hush)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (un)
@@ -87,18 +87,10 @@ getPoPState :: forall m. ManageApi m => Array PoPServer -> m (Array (Maybe (Intr
 getPoPState = traverse (\popServer -> hush <$> getPublicState popServer.server)
 
 toPoPleaders :: (Array (Maybe (IntraPoP Array))) -> (Array Server)
-toPoPleaders =
-  catMaybes <<< map (\intraP ->
-                      case intraP of
-                        Nothing -> Nothing
-                        Just i  -> i.currentTransPoPLeader
-                    )
+toPoPleaders = mapMaybe (_ >>= _.currentTransPoPLeader)
 
 toAggregators :: (Array (Maybe (IntraPoP Array))) -> (AggregatorLocation Array)
-toAggregators mIntraPoPs =
-  case head $ catMaybes mIntraPoPs of
-    Nothing -> []
-    Just i  -> i.aggregatorLocations
+toAggregators mIntraPoPs = nub $ catMaybes mIntraPoPs >>= _.aggregatorLocations
 
 updatePoPDefEnv
   :: forall m r

@@ -19,6 +19,7 @@ import Prim.Row as Row
 import Record as Record
 import Rtsv2App.Data.PoP (PoPDefEcharts)
 import Shared.Types (PoPName)
+import Shared.Types.Agent.State (TimedPoPRoutes)
 import Simple.JSON as JSON
 import Unsafe.Coerce (unsafeCoerce)
 import Web.DOM.ParentNode (QuerySelector(..), querySelector)
@@ -34,7 +35,7 @@ foreign import makeChart_ :: HTMLElement -> Effect Instance
 
 foreign import setOption_ :: forall option. option -> Instance -> Effect Unit
 
-foreign import setOptionPoP_ :: forall option. option -> Instance -> Effect Unit
+foreign import setOptionPoP_ :: TimedPoPRoutes Array -> Instance -> Effect Unit
 
 foreign import setClick_ :: forall option. option -> Instance -> Effect Unit
 
@@ -55,9 +56,7 @@ setOption
 setOption = setOption_
 
 setOptionPoP
-  :: forall option option'
-   . Row.Union option option' Option
-  => Record option
+  :: TimedPoPRoutes Array
   -> Instance
   -> Effect Unit
 setOptionPoP = setOptionPoP_

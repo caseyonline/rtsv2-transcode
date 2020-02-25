@@ -4,6 +4,7 @@ import Prelude
 
 import Data.Maybe (Maybe(..))
 import Data.Newtype (un)
+import Debug.Trace (spy)
 import Effect.Aff.Class (class MonadAff)
 import Halogen as H
 import Halogen.HTML as HH
@@ -11,7 +12,7 @@ import Halogen.HTML.Events as HE
 import Halogen.HTML.Properties as HP
 import Rtsv2App.Capability.Navigate (class Navigate)
 import Rtsv2App.Component.HTML.Utils (css_, dataAttr)
-import Shared.Stream (SlotId(..), SlotRole)
+import Shared.Stream (SlotId(..))
 import Shared.Types (PoPName(..), RegionName(..), Server(..), ServerAddress(..))
 import Shared.Types.Agent.State (PoPDefinition, AggregatorLocation)
 
@@ -36,8 +37,8 @@ data Action
 
 type State =
   { checkedSlotId :: Maybe SlotId
-  , argLocs         :: AggregatorLocation Array
-  , popDef          :: Maybe (PoPDefinition Array)
+  , argLocs       :: AggregatorLocation Array
+  , popDef        :: Maybe (PoPDefinition Array)
   }
 
 
@@ -75,8 +76,9 @@ component = H.mkComponent
             }
 
     Select slotId -> do
-      newState <- H.modify _ { checkedSlotId = Just slotId }
+      newState <- H.modify _ { checkedSlotId = Just $ spy "Select" slotId }
       H.raise (CheckedSlotId newState.checkedSlotId)
+      pure unit
 
   handleQuery :: forall a. Query a -> H.HalogenM State Action () Message m (Maybe a)
   handleQuery = case _ of
@@ -122,79 +124,47 @@ component = H.mkComponent
                 ]
               ]
             , HH.tbody_
-              (tableBody <$> state.argLocs)
+              (flip map state.argLocs
+               (\argLoc ->
+                 HH.tr_
+                 ( argLoc.servers >>=
+                   (\server -> do
+                       let { address, pop, region } = un Server server
+                       [ HH.td
+                         [ css_ "checkbox-cell" ]
+                         [ HH.label
+                           [ css_ "b-checkbox checkbox"]
+                           [ HH.input
+                             [ HP.type_ HP.InputCheckbox
+                             , HP.name $ show $ un SlotId argLoc.slotId
+                             , HE.onChange $ const $ Just (Select argLoc.slotId)
+                             ]
+                           , HH.span
+                             [ css_ "check"]
+                             []
+                           , HH.span
+                             [ css_ "control-label"]
+                             []
+                           ]
+                         ]
+                         , HH.td
+                           [ dataAttr "label" "Name" ]
+                           [ HH.text $ show $ un SlotId argLoc.slotId ]
+                         , HH.td
+                           [ dataAttr "label" "PoP" ]
+                           [ HH.text $ un PoPName pop ]
+                         , HH.td
+                           [ dataAttr "label" "Region" ]
+                           [ HH.text $ un RegionName region ]
+                         , HH.td
+                           [ dataAttr "label" "Region" ]
+                           [ HH.text $ un ServerAddress address ]
+                         ]
+                   )
+                 )
+               )
+              )
             ]
           ]
         ]
     ]
-
-tableBody
-  :: forall p i
-  .  { slotId :: SlotId , servers :: Array Server, role :: SlotRole }
-  -> HH.HTML p i
-tableBody argLoc =
-  HH.tr_
-  ( argLoc.servers >>= 
-    (\server -> do
-      let { address, pop, region } = un Server server
-      [ HH.td
-        [ css_ "checkbox-cell" ]
-        [ HH.label
-          [ css_ "b-checkbox checkbox"]
-          [ HH.input
-            [ HP.type_ HP.InputCheckbox
-           -- , HE.onValueInput (Just <<< Select argLoc.slotId)
-            ]
-          , HH.span
-            [ css_ "check"]
-            []
-          , HH.span
-            [ css_ "control-label"]
-            []
-          ]
-        ]
-      , HH.td
-        [ dataAttr "label" "Name" ]
-        [ HH.text $ show $ un SlotId argLoc.slotId ]
-      , HH.td
-        [ dataAttr "label" "PoP" ]
-        [ HH.text $ un PoPName pop ]
-      , HH.td
-        [ dataAttr "label" "Region" ]
-        [ HH.text $ un RegionName region ]
-      , HH.td
-        [ dataAttr "label" "Region" ]
-        [ HH.text $ un ServerAddress address ]
-      ]
-    )
-  )
-
-
-
-  -- ( flip map argLoc.servers
-  --   (\server ->
-  --     [ HH.td
-  --       [ css_ "checkbox-cell" ]
-  --       [ HH.label
-  --         [ css_ "b-checkbox checkbox"]
-  --         [ HH.input
-  --           [ HP.type_ HP.InputCheckbox ]
-  --         , HH.span
-  --           [ css_ "check"]
-  --           []
-  --         , HH.span
-  --           [ css_ "control-label"]
-  --           []
-  --         ]
-  --       ]
-  --     , HH.td
-  --       [ dataAttr "label" "Name" ]
-  --       [ -- HH.text $ un SlotId argLoc.slotId
-  --       ]
-  --     , HH.td
-  --       [ dataAttr "label" "PoP" ]
-  --       [ -- HH.text $ un PoPName server.pop
-  --       ]
-  --     ]
-  --   )
-  -- -- )

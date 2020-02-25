@@ -122,6 +122,7 @@ component = Connect.component $ H.mkComponent
                       , popLeaders = popLeaders
                       , aggregatorLocations = aggregatorLocations
                       }
+
       -- | set up the map and populate it with all current pops
       H.getHTMLElementRef (H.RefLabel "mymap") >>= traverse_ \element -> do
         newSt <- H.get

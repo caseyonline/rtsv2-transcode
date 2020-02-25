@@ -3,8 +3,11 @@ module Rtsv2App.AppM where
 import Prelude
 
 import Control.Monad.Reader.Trans (class MonadAsk, ReaderT, ask, asks, runReaderT)
+import Data.Array ((!!))
 import Data.Either (Either(..))
+import Data.Foldable (findMap)
 import Data.Maybe (Maybe(..))
+import Data.Newtype (un)
 import Debug.Trace (spy, traceM)
 import Effect.Aff (Aff)
 import Effect.Aff.Bus as Bus
@@ -28,6 +31,7 @@ import Rtsv2App.Data.Log as Log
 import Rtsv2App.Data.Profile (ProfileEmailRes)
 import Rtsv2App.Data.Route as Route
 import Rtsv2App.Env (Env, LogLevel(..))
+import Shared.Types (Server(..))
 import Shared.Types.Agent.State (PoPDefinition, TimedPoPRoutes, IntraPoP)
 import Simple.JSON as JSON
 import Type.Equality (class TypeEquals, from)
@@ -106,13 +110,35 @@ instance manageUserAppM :: ManageUser AppM where
 
 -- | all api stats related requests
 instance manageAPIAppM :: ManageApi AppM where
-  --  
-  getTimedRoutes originUrl toPopName = do
-    response <- mkOriginRequest originUrl { endpoint: TimedRoutesE toPopName, method: Get }
-    case JSON.readJSON response of
-      Left e -> pure $ Left $ show e
-      Right (res :: (TimedPoPRoutes Array)) -> do
-        pure $ Right res
+  --
+  getTimedRoutes arggLocs popLeaders curPoPName = do
+    let server            = (arggLocs >>= _.servers) !! 0
+        pred leaderServer = do
+          let ls = un Server leaderServer
+          if ls.pop == curPoPName then Just ls else Nothing
+
+
+    case findMap pred popLeaders of
+      Nothing        -> pure $ Left "No PoPLeaders"
+      Just popLeader ->
+        case server of
+          Nothing   -> pure $ Left "No server in arggLoc for getTimedRoutes"
+          Just ser  -> do
+            let s  = un Server ser
+            response <- mkOriginRequest popLeader.address { endpoint: TimedRoutesE s.pop, method: Get }
+            case JSON.readJSON response of
+              Left e -> pure $ Left $ show e
+              Right (res :: (TimedPoPRoutes Array)) -> do
+                pure $ Right res
+
+
+        -- do
+        -- let { address, pop, region } = un Server s
+        -- response <- mkOriginRequest address { endpoint: TimedRoutesE pop, method: Get }
+        -- case JSON.readJSON response of
+        --   Left e -> pure $ Left $ show e
+        --   Right (res :: (TimedPoPRoutes Array)) -> do
+        --     pure $ Right res
 
   getPoPdefinition = do
     response <- mkRequest { endpoint: PopDefinitionE, method: Get }

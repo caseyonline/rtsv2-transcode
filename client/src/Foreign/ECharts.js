@@ -32,7 +32,7 @@ exports.setOption_ = function(option) {
 exports.setOptionPoP_ = function(option) {
   return function(chart) {
     return function() {
-        return chart.setOption(popChart())
+        return chart.setOption(popChart(option))
     };
   };
 };
@@ -232,6 +232,7 @@ function dashboardChart(scatterData) {
 }
 
 function popChart(scatterData) {
+    console.log(scatterData)
     return {
     legend: {
         orient: 'vertical',
