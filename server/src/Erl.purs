@@ -5,6 +5,7 @@ module Erl.Utils
        , makeRef
        , privDir
        , self
+       , trapExit
        , Url
        , Ref
        )
@@ -26,6 +27,7 @@ foreign import privDirImpl :: Atom -> String
 foreign import eqRefImpl :: Ref -> Ref -> Boolean
 foreign import data Ref :: Type
 foreign import selfImpl :: Effect Pid
+foreign import trapExitImpl :: Boolean -> Effect Boolean
 
 sleep :: Milliseconds -> Effect Unit
 sleep = sleepImpl <<< unwrap
@@ -53,4 +55,8 @@ makeRef = makeRefImpl
 privDir :: Atom -> String
 privDir = privDirImpl
 
+trapExit :: Boolean -> Effect Boolean
+trapExit = trapExitImpl
+
+self :: Effect Pid
 self = selfImpl

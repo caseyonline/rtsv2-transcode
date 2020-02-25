@@ -7,19 +7,28 @@ module Rtsv2.Handler.Client
 import Prelude
 
 import Data.Either (Either(..))
-import Data.Newtype (unwrap)
+import Data.Maybe (fromMaybe')
+import Data.Newtype (unwrap, wrap)
+import Data.Traversable (sequence, traverse)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Cowboy.Handlers.Rest (MovedResult, moved, notMoved)
-import Erl.Cowboy.Req (Req, StatusCode(..), replyWithoutBody, setHeader)
+import Erl.Cowboy.Req (Req, StatusCode(..), binding, replyWithoutBody, setHeader)
 import Erl.Data.List (List, singleton, (:))
 import Erl.Data.List as List
 import Erl.Data.Map as Map
+import Erl.Data.Tuple (tuple2)
+import Erl.Process.Raw (Pid)
+import Erl.Process.Raw as Raw
+import Erl.Utils as Erl
+import Erl.Utils as Timer
+import Gproc as GProc
+import Gproc as Gproc
 import Logger (Logger, spy)
 import Logger as Logger
 import Rtsv2.Agents.EgestInstance as EgestInstance
 import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
-import Rtsv2.Agents.Locator.Egest (findEgestAndRegister)
+import Rtsv2.Agents.Locator.Egest (findEgest)
 import Rtsv2.Agents.Locator.Types (FailureReason(..), LocalOrRemote(..))
 import Rtsv2.Audit as Audit
 import Rtsv2.Handler.MimeType as MimeType
@@ -28,11 +37,13 @@ import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Rtsv2.Web.Bindings as Bindings
 import Shared.Stream (EgestKey(..), SlotId)
 import Shared.Types (Server, extractAddress)
+import Shared.Utils (lazyCrashIfMissing)
 import Stetson (HttpMethod(..), RestResult, StetsonHandler)
 import Stetson.Rest as Rest
 
 
 newtype ClientStartState = ClientStartState { slotId :: SlotId
+                                            , clientId :: String
                                             , egestResp :: (Either FailureReason (LocalOrRemote Server))
                                             }
 
@@ -50,16 +61,17 @@ clientStart =
     init req = do
       let
         slotId = Bindings.slotId req
+        clientId = fromMaybe' (lazyCrashIfMissing $ "client_id binding missing") $ binding (atom "client_id") req
       thisServer <- PoPDefinition.getThisServer
-      egestResp <- findEgestAndRegister (spy "slotId" slotId) thisServer
+      egestResp <- findEgest slotId thisServer
       let
         req2 = setHeader "x-servedby" (unwrap $ extractAddress thisServer) req
         _ = spy "egestResp" egestResp
-      Rest.initResult req2 $ ClientStartState { slotId, egestResp }
+      Rest.initResult req2 $ ClientStartState { slotId, clientId, egestResp }
 
     acceptAny req state = Rest.result true req state
 
-    resourceExists req state@(ClientStartState {egestResp}) =
+    resourceExists req state@(ClientStartState {slotId, egestResp, clientId}) =
       case egestResp of
         Left NotFound ->
           do
@@ -69,9 +81,11 @@ clientStart =
           --TODO - don't think this should be a 502
           newReq <- replyWithoutBody (StatusCode 502) Map.empty req
           Rest.stop newReq state
-        Right (Local _)  ->
+        Right (Local _)  -> do
+          handlerPid <- startHandler clientId
+          _ <- EgestInstance.addClient handlerPid (EgestKey slotId)
           Rest.result true req state
-        Right (Remote _) ->
+        Right (Remote _) -> do
           Rest.result false req state
 
     previouslyExisted req state@(ClientStartState {egestResp}) =
@@ -98,7 +112,9 @@ clientStart =
 
 
 
-type ClientStopState = { egestKey :: EgestKey }
+type ClientStopState = { egestKey :: EgestKey
+                       , clientId :: String
+                       }
 clientStop :: StetsonHandler ClientStopState
 clientStop =
 
@@ -112,8 +128,10 @@ clientStop =
     init req = do
       let
         slotId = Bindings.slotId req
+        clientId = fromMaybe' (lazyCrashIfMissing $ "client_id binding missing") $ binding (atom "client_id") req
       thisNode <- extractAddress <$> PoPDefinition.getThisServer
       Rest.initResult req { egestKey: EgestKey slotId
+                          , clientId
                           }
 
     serviceAvailable req state = do
@@ -125,11 +143,28 @@ clientStop =
       isActive <- EgestInstance.isActive egestKey
       Rest.result isActive req state
 
-    removeClient req state@{egestKey} =
+    removeClient req state@{egestKey, clientId} =
       do
       _ <- Audit.clientStop egestKey
-      _ <- EgestInstance.removeClient egestKey
+      _ <- stopHandler clientId
+      -- _ <- EgestInstance.removeClient egestKey
       Rest.result true req state
+
+startHandler :: String -> Effect Pid
+startHandler clientId =
+  let
+    proc = do
+      GProc.register (tuple2 (atom "test_egest_client") clientId)
+      _ <- Raw.receive
+      pure unit
+  in
+    Raw.spawn proc
+
+stopHandler :: String -> Effect Unit
+stopHandler clientId = do
+  pid <- Gproc.whereIs (tuple2 (atom "test_egest_client") clientId)
+  _ <- traverse ((flip Raw.send) (atom "stop")) pid
+  pure unit
 
 --------------------------------------------------------------------------------
 -- Log helpers

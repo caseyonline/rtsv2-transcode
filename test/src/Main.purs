@@ -164,7 +164,7 @@ main =
 
     intraPoPState node               = get (M.URL $ api node <> "state")
 
-    client verb node slotId        = fetch (M.URL $ api node <> "public/canary/client/" <> (show slotId) <> "/" <> verb)
+    client verb node slotId        = fetch (M.URL $ api node <> "public/canary/client/" <> (show slotId) <> "/" <> verb <> "/1") -- "1" is the client id...
                                          { method: M.postMethod
                                          , body: "{}"
                                          , headers: M.makeHeaders { "Content-Type": "application/json" }

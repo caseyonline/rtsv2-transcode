@@ -5,6 +5,7 @@ module Rtsv2.Web
 
 import Prelude
 
+import Data.Function.Uncurried (mkFn2)
 import Data.Int (fromString)
 import Data.Maybe (fromMaybe)
 import Data.Newtype (wrap)
@@ -15,14 +16,15 @@ import Erl.Cowboy.Routes (InitialState(..), Path(..), matchSpec)
 import Erl.Data.List (List, nil, singleton, (:))
 import Erl.Data.Tuple (Tuple2, Tuple4, tuple2, tuple3, tuple4, uncurry4)
 import Erl.ModuleName (NativeModuleName(..))
+import Erl.Process.Raw (Pid)
 import Foreign (unsafeToForeign)
 import Logger (Logger, spy)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen as Gen
 import Rtsv2.Agents.EgestInstance as EgestInstance
-import Rtsv2.Agents.Locator.Egest (findEgestAndRegister)
-import Rtsv2.Agents.Locator.Types (LocationResp)
+import Rtsv2.Agents.Locator.Egest (findEgest)
+import Rtsv2.Agents.Locator.Types (LocationResp, RegistrationResp)
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
 import Rtsv2.Handler.Client as ClientHandler
@@ -105,9 +107,9 @@ init args = do
     # mkHack  "/api/public/:canary/ingest/:slot_id/:stream_role/:profile_name/stop" IngestHandler.ingestStop
 
     -- # mkRoute (ClientStartE ":canary" slotIdBinding)                          ClientHandler.clientStart
-    # mkHack  "/api/public/:canary/client/:slot_id/start"                     ClientHandler.clientStart
+    # mkHack  "/api/public/:canary/client/:slot_id/start/:client_id"             ClientHandler.clientStart
     -- # mkRoute (ClientStopE ":canary" slotIdBinding)                           ClientHandler.clientStop
-    # mkHack  "/api/public/:canary/client/:slot_id/stop"                     ClientHandler.clientStop
+    # mkHack  "/api/public/:canary/client/:slot_id/stop/:client_id"              ClientHandler.clientStop
 
     # mkRoute  StreamAuthE                                                      LlnwStubHandler.streamAuthType
     # mkRoute  StreamAuthTypeE                                                  LlnwStubHandler.streamAuth
@@ -150,7 +152,7 @@ init args = do
       -- : cowboyRoute (IngestAggregatorActiveIngestsPlayerControlE slotIdBinding profileNameBinding)               "rtsv2_player_ws_resource" ((unsafeToForeign) makeSlotIdAndProfileName)
       : cowboyHack "/api/agents/ingestAggregator/:slot_id/:stream_role/activeIngests/:profile_name/session"    "rtsv2_player_ws_resource" (unsafeToForeign { mode: (atom "ingest"), make_ingest_key: makeIngestKey })
 
-      : cowboyHack "/api/public/:canary/client/:slot_id/session"                                             "rtsv2_player_ws_resource" (unsafeToForeign { mode: (atom "egest"), make_egest_key: EgestKey, start_stream: startStream, get_slot_configuration: EgestInstance.slotConfiguration })
+      : cowboyHack "/api/public/:canary/client/:slot_id/session"                                             "rtsv2_player_ws_resource" (unsafeToForeign { mode: (atom "egest"), make_egest_key: EgestKey, start_stream: startStream, add_client: mkFn2 addClient, get_slot_configuration: EgestInstance.slotConfiguration })
 
       : cowboyRoute WorkflowsE "id3as_workflows_resource" (unsafeToForeign unit)
 
@@ -180,8 +182,11 @@ init args = do
     startStream slotId =
       do
         thisServer <- PoPDefinition.getThisServer
+        findEgest (wrap slotId) thisServer
 
-        findEgestAndRegister (wrap slotId) thisServer
+    addClient :: Pid -> Int -> Effect RegistrationResp
+    addClient pid slotId =
+      EgestInstance.addClient pid (EgestKey (wrap slotId))
 
     mkRoute :: forall state msg.  Endpoint -> InnerStetsonHandler msg state -> StetsonConfig -> StetsonConfig
     mkRoute rType handler = Stetson.route (spy "route" (printUrl endpoint rType)) handler

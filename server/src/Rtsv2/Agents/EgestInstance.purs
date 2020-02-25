@@ -1,8 +1,8 @@
 module Rtsv2.Agents.EgestInstance
   ( startLink
   , isActive
+  , pendingClient
   , addClient
-  , removeClient
   , currentStats
   , slotConfiguration
   , CreateEgestPayload
@@ -21,6 +21,7 @@ import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, singleton)
 import Erl.Data.Map (values)
+import Erl.Process.Raw (Pid)
 import Erl.Utils (Ref, makeRef, systemTimeMs)
 import Logger (Logger, spy)
 import Logger as Logger
@@ -77,6 +78,7 @@ payloadToEgestKey :: CreateEgestPayload -> EgestKey
 payloadToEgestKey payload = EgestKey payload.slotId
 
 data Msg = WriteEqLog
+         | HandlerDown
          | InitStreamRelays
          | MaybeStop Ref
          | IntraPoPBus IntraPoP.IntraPoPBusMessage
@@ -90,35 +92,33 @@ isActive egestKey = Pinto.isRegistered (serverName egestKey)
 startLink :: CreateEgestPayload -> Effect StartLinkResult
 startLink payload = Gen.startLink (serverName $ payloadToEgestKey payload) (init payload) handleInfo
 
-addClient :: EgestKey -> Effect RegistrationResp
-addClient egestKey = do
-  Gen.doCall (serverName egestKey) doAddClient
+pendingClient :: EgestKey -> Effect RegistrationResp
+pendingClient egestKey =
+  let
+    ourServerName = serverName egestKey
+    maybeResetStopTimer state@{clientCount: 0, lingerTime} = do
+      ref <- makeRef
+      _ <- Timer.sendAfter ourServerName (unwrap lingerTime) (MaybeStop ref)
+      pure $ state{ stopRef = Just ref
+                  }
+    maybeResetStopTimer state =
+      pure state
+  in
+   Gen.doCall ourServerName \state -> do
+                                state2 <- maybeResetStopTimer state
+                                pure $ CallReply (Right unit) state2
 
-doAddClient :: State -> Effect (CallResult RegistrationResp State)
-doAddClient state@{clientCount} = do
-  logInfo "Add client" {newCount: clientCount + 1}
-  pure $ CallReply (Right unit) state{ clientCount = clientCount + 1
-                                     , stopRef = Nothing
-                                     }
-
-removeClient :: EgestKey -> Effect Unit
-removeClient egestKey = Gen.doCall (serverName egestKey) doRemoveClient
-
-doRemoveClient :: State -> Effect (CallResult Unit State)
-doRemoveClient state@{clientCount: 0} = do
-  logInfo "Remove client - already zero" {}
-  pure $ CallReply unit state
-doRemoveClient state@{clientCount: 1, lingerTime, egestKey} = do
-  ref <- makeRef
-  logInfo "Last client gone, start stop timer" {}
-  _ <- Timer.sendAfter (serverName egestKey) (unwrap lingerTime) (MaybeStop ref)
-  pure $ CallReply unit state{ clientCount = 0
-                             , stopRef = Just ref
-                             }
-
-doRemoveClient state@{clientCount} = do
-  logInfo "Remove client" { newCount: clientCount - 1 }
-  pure $ CallReply unit state{ clientCount = clientCount - 1 }
+addClient :: Pid -> EgestKey -> Effect RegistrationResp
+addClient handlerPid egestKey =
+  let
+    ourServerName = serverName egestKey
+  in
+   Gen.doCall ourServerName \state@{clientCount} -> do
+     logInfo "Add client" {newCount: clientCount + 1}
+     Gen.monitorPid ourServerName handlerPid (\_ -> HandlerDown)
+     pure $ CallReply (Right unit) state{ clientCount = clientCount + 1
+                                        , stopRef = Nothing
+                                        }
 
 slotConfiguration :: EgestKey -> Effect (Maybe SlotConfiguration)
 slotConfiguration egestKey =
@@ -177,6 +177,11 @@ handleInfo msg state@{egestKey: egestKey@(EgestKey ourSlotId)} =
       _ <- traverse Audit.egestUpdate eqLines
       pure $ CastNoReply state{lastEgestAuditTime = endMs}
 
+    HandlerDown -> do
+      _ <- logInfo "client down!" {}
+      state2 <- removeClient state
+      pure $ CastNoReply state2
+
     InitStreamRelays -> CastNoReply <$> initStreamRelay state
 
     MaybeStop ref -> maybeStop ref state
@@ -185,6 +190,23 @@ handleInfo msg state@{egestKey: egestKey@(EgestKey ourSlotId)} =
      -- TODO - PRIMARY BACKUP
       | slotId == ourSlotId -> doStop state
       | otherwise -> pure $ CastNoReply state
+
+removeClient :: State -> Effect State
+removeClient state@{clientCount: 0} = do
+  logInfo "Remove client - already zero" {}
+  pure $ state
+
+removeClient state@{clientCount: 1, lingerTime, egestKey} = do
+  ref <- makeRef
+  logInfo "Last client gone, start stop timer" {}
+  _ <- Timer.sendAfter (serverName egestKey) (unwrap lingerTime) (MaybeStop ref)
+  pure $ state{ clientCount = 0
+              , stopRef = Just ref
+              }
+
+removeClient state@{clientCount} = do
+  logInfo "Remove client" { newCount: clientCount - 1 }
+  pure $ state{ clientCount = clientCount - 1 }
 
 egestEqLines :: State -> Effect (Tuple Milliseconds (List Audit.EgestEqLine))
 egestEqLines state@{ egestKey: egestKey@(EgestKey slotId)

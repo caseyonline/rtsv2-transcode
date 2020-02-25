@@ -66,6 +66,7 @@
         , egest_key :: term()
         , start_stream_result :: term()
         , get_slot_configuration :: fun()
+        , add_client :: fun()
         }).
 -type stream_desc_egest() :: #?stream_desc_egest{}.
 
@@ -87,6 +88,7 @@ init(Req,
      #{ mode := egest
       , make_egest_key := MakeEgestKey
       , start_stream := StartStream
+      , add_client := AddClient
       , get_slot_configuration := GetSlotConfiguration
       }
     ) ->
@@ -105,6 +107,7 @@ init(Req,
                        , egest_key = MakeEgestKey(SlotId)
                        , start_stream_result = StartStreamResult
                        , get_slot_configuration = GetSlotConfiguration
+                       , add_client = AddClient
                        },
 
   init_prime(Req, StreamDesc);
@@ -217,7 +220,6 @@ terminate(_Reason, _PartialReq, #?state_running{ server_id = ServerId, trace_id 
   webrtc_stream_server:cast_session(ServerId, TraceId, notify_socket_disconnect),
   ok.
 
-
 websocket_init(#?state_redirect{ alternative_location = AlternativeSocketPath } = State) ->
 
   ByeMessage =
@@ -266,9 +268,18 @@ websocket_init(#?state_running{ trace_id = TraceId
                               , socket_url = SocketURL
                               , ice_servers = ICEServers
                               , profiles = [ #{ name := ActiveProfileName } | _OtherProfiles ] = Profiles
+                              , stream_desc = StreamDesc
                               } = State) ->
 
   logger:set_process_metadata(#{ correlation_id => TraceId }),
+
+  case StreamDesc of
+    #?stream_desc_egest{ slot_id = SlotId
+                       , add_client = AddClient } ->
+      {right, unit} = (AddClient(self(), SlotId))();
+    _ ->
+      ok
+  end,
 
   FinalStartOptions =
     InitialStartOptions#{ event_handler =>
@@ -422,6 +433,7 @@ determine_stream_availability(#?stream_desc_egest{ egest_key = EgestKey, get_slo
     {nothing} ->
 
       %% TODO: PS: available elsewhere detection
+io:format(user, "XXX HERE~n", []),
       available_nowhere
   end.
 

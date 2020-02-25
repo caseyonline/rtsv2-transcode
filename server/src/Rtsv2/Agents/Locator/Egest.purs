@@ -1,16 +1,17 @@
 module Rtsv2.Agents.Locator.Egest
-       ( findEgestAndRegister
+       ( findEgest
        )
        where
 
 import Prelude
 
 import Data.Either (Either(..))
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (unwrap)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, filter, head, nil, (:))
+import Erl.Process.Raw (Pid)
 import Logger (Logger, spy)
 import Logger as Logger
 import Pinto (okAlreadyStarted)
@@ -32,12 +33,12 @@ type StartArgs = { slotId :: SlotId
                  , aggregator :: Server
                  }
 
-findEgestAndRegister :: SlotId -> Server -> Effect LocationResp
-findEgestAndRegister slotId thisServer = do
+findEgest :: SlotId -> Server -> Effect LocationResp
+findEgest slotId thisServer = do
   let
     egestKey = (EgestKey slotId)
-  apiResp <- noprocToMaybe $ EgestInstance.addClient egestKey
-  case spy "findEgestAndRegister apiResp" apiResp of
+  apiResp <- noprocToMaybe $ EgestInstance.pendingClient egestKey
+  case apiResp of
     Just _ ->
       pure $ Right $ Local thisServer
     Nothing -> do
@@ -64,7 +65,7 @@ findEgestAndRegister slotId thisServer = do
                   pure $ Left NoResource
                 Right localOrRemote -> do
                   startLocalOrRemote localOrRemote aggregator
-                  findEgestAndRegister slotId thisServer
+                  findEgest slotId thisServer
   where
    pickCandidate = head
    capacityForClient (ServerLoad sl) =  unwrap sl.load < 90.0
