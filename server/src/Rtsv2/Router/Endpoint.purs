@@ -14,7 +14,7 @@ import Data.Generic.Rep (class Generic)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype, unwrap, wrap)
 import Data.String (Pattern(..), split)
-import Routing.Duplex (RouteDuplex', as, path, root, segment)
+import Routing.Duplex (RouteDuplex', as, path, rest, root, segment)
 import Routing.Duplex.Generic (noArgs, sum)
 import Routing.Duplex.Generic.Syntax ((/))
 import Rtsv2.Router.Parser as Routing
@@ -50,7 +50,7 @@ data Endpoint
   | WorkflowStructureE String
   | IngestAggregatorE StreamId StreamRole
   | IngestAggregatorPlayerE StreamId
-  | IngestAggregatorPlayerJsE StreamId
+  | IngestAggregatorPlayerJsE StreamId (Array String)
   | IngestAggregatorActiveIngestsE StreamId StreamRole StreamVariant
   | IngestAggregatorActiveIngestsPlayerE StreamId StreamVariant
   | IngestAggregatorActiveIngestsPlayerJsE StreamId StreamVariant
@@ -63,7 +63,7 @@ data Endpoint
   | IngestInstanceLlwpE StreamId StreamRole StreamVariant
   | IngestStartE Canary ShortName StreamAndVariant
   | IngestStopE Canary StreamId StreamRole StreamVariant
-  | ClientAppAssetsE
+  | ClientAppAssetsE (Array String)
   | ClientAppRouteHTMLE
   | ClientStartE Canary StreamId
   | ClientStopE Canary StreamId
@@ -103,7 +103,7 @@ endpoint = root $ sum
 
   , "IngestAggregatorE"                                : "" / "api" / "agents" / "ingestAggregator" / streamId segment / streamRole segment
   , "IngestAggregatorPlayerE"                          : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "player"
-  , "IngestAggregatorPlayerJsE"                        : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "js" -- TODO - would like to add '/ "[...]"' bit it causes compiler error that I don't understand
+  , "IngestAggregatorPlayerJsE"                        : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "js" / rest
   , "IngestAggregatorActiveIngestsE"                   : "" / "api" / "agents" / "ingestAggregator" / streamId segment / streamRole segment / "activeIngests" / variant segment
   , "IngestAggregatorActiveIngestsPlayerE"             : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "activeIngests" / variant segment / "player" -- TODO - streamRole for these as well
   , "IngestAggregatorActiveIngestsPlayerJsE"           : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "activeIngests" / variant segment / "js" -- TODO - would like to add '/ "[...]"' bit it causes compiler error that I don't understand
@@ -122,7 +122,7 @@ endpoint = root $ sum
   , "ClientStartE"                                     : "" / "api" / "public" / canary segment / "client" / streamId segment / "start"
   , "ClientStopE"                                      : "" / "api" / "public" / canary segment / "client" / streamId segment / "stop"
 
-  , "ClientAppAssetsE"                                 : "" / "app" / path "assets" noArgs
+  , "ClientAppAssetsE"                                 : "" / "app" / "assets" / rest
   , "ClientAppRouteHTMLE"                              : "" / "app" / noArgs
 
   , "StreamAuthE"                                      : "" / "llnwstub" / "rts" / "v1" / path "streamauthtype" noArgs

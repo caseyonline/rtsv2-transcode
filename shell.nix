@@ -49,6 +49,8 @@ mkShell {
     # Bash on macOS is ancient
     bash
 
+    tmux
+
     nixerl.erlang-22-1-8.erlang
     nixerl.erlang-22-1-8.rebar3
 

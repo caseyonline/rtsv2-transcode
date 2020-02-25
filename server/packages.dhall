@@ -77,7 +77,7 @@ let overrides =
     --       , version =
     --           "dfe1aa594822708e2593000523d29881d25d4ef5"
     --       }
-    , erl-stetson = upstream.erl-stetson // { version = "duplex-routing", dependencies = [ "erl-cowboy", "erl-lager", "routing-duplex" ] },
+    , erl-stetson = upstream.erl-stetson // { version = "duplex-routing", dependencies = [ "erl-cowboy",     "routing-duplex" ] },
       erl-cowboy = upstream.erl-cowboy // { version = "03eaeab111dd1b2cf499ca977fe4cc61df8fd254" },
       strings = upstream.strings // { version = "v4.0.1-erl1" }
       }

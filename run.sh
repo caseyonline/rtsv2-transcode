@@ -67,7 +67,7 @@ for i in "${array[@]}"; do
     ifaceIndex=$(((regionPopIndex * 100) + popIndex))
 
     if (( popIndex > 1 )); then
-        tmux -L "$SESSION" split-window -v -p 50 
+        tmux -L "$SESSION" split-window -v -p 50 -f
     fi
     start_node "$SESSION" "$addr" "$ifaceIndex" "$addr" "$SYSCONFIG"
     popIndex=$((popIndex + 1))

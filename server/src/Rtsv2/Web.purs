@@ -80,18 +80,18 @@ init args = do
         , "RelayProxiedStatsE": RelayHandler.proxiedStats
         , "RelayStatsE": RelayHandler.stats
         , "LoadE": LoadHandler.load
-        , "WorkflowsE": CowboyRoutePlaceholder
-        , "WorkflowGraphE": CowboyRoutePlaceholder
-        , "WorkflowMetricsE": CowboyRoutePlaceholder
-        , "WorkflowStructureE": CowboyRoutePlaceholder
+        , "WorkflowsE": CowboyRoutePlaceholder -- id3as_workflows_resource
+        , "WorkflowGraphE": CowboyRoutePlaceholder -- id3as_workflow_graph_resource
+        , "WorkflowMetricsE": CowboyRoutePlaceholder --id3as_workflow_graph_resource
+        , "WorkflowStructureE": CowboyRoutePlaceholder -- id3as_workflow_graph_resource
         , "IngestAggregatorE": IngestAggregatorHandler.ingestAggregator
-        , "IngestAggregatorPlayerE": CowboyRoutePlaceholder
-        , "IngestAggregatorPlayerJsE": CowboyRoutePlaceholder
+        , "IngestAggregatorPlayerE": \(_ :: StreamId) -> PrivFile "rtsv2" "www/aggregatorPlayer.html"
+        , "IngestAggregatorPlayerJsE": \(_ :: StreamId) -> PrivDir "rtsv2" "www/assets/js"
         , "IngestAggregatorActiveIngestsE": IngestAggregatorHandler.ingestAggregatorsActiveIngest
-        , "IngestAggregatorActiveIngestsPlayerE": CowboyRoutePlaceholder
-        , "IngestAggregatorActiveIngestsPlayerJsE": CowboyRoutePlaceholder
-        , "IngestAggregatorActiveIngestsPlayerSessionStartE": CowboyRoutePlaceholder
-        , "IngestAggregatorActiveIngestsPlayerSessionE": CowboyRoutePlaceholder
+        , "IngestAggregatorActiveIngestsPlayerE": \(_ :: StreamId) (_ :: StreamVariant) -> PrivFile "rtsv2" "www/play.html"
+        , "IngestAggregatorActiveIngestsPlayerJsE": \(_ :: StreamId) (_ :: StreamVariant) -> PrivDir "rtsv2" "www/assets/js"
+        , "IngestAggregatorActiveIngestsPlayerSessionStartE": CowboyRoutePlaceholder -- rtsv2_webrtc_session_start_resource
+        , "IngestAggregatorActiveIngestsPlayerSessionE": CowboyRoutePlaceholder -- rtsv2_webrtc_session_resource
         , "IngestAggregatorsE": IngestAggregatorHandler.ingestAggregators
         , "IngestInstancesE": IngestHandler.ingestInstances
         , "IngestInstancesMetricsE": IngestHandler.ingestInstancesMetrics
@@ -99,8 +99,13 @@ init args = do
         , "IngestInstanceLlwpE": CowboyRoutePlaceholder
         , "IngestStartE": IngestHandler.ingestStart
         , "IngestStopE": IngestHandler.ingestStop
-        , "ClientAppAssetsE": CowboyRoutePlaceholder
-        , "ClientAppRouteHTMLE": CowboyRoutePlaceholder
+        , "ClientAppAssetsE": PrivDir Config.appName "www/assets"
+        , "ClientAppRouteHTMLE": PrivFile Config.appName "www/index.html"
+
+--     # static' (ClientAppAssetsE) "/[...]"    (PrivDir Config.appName "www/assets")
+--     # static  (ClientAppRouteHTMLE)          (PrivFile Config.appName "www/index.html")
+-- # static' (ClientAppRouteHTMLE) "/[...]" (PrivFile Config.appName "www/index.html")
+
         , "ClientStartE": ClientHandler.clientStart
         , "ClientStopE": ClientHandler.clientStop
         , "StreamAuthE": LlnwStubHandler.streamAuth
