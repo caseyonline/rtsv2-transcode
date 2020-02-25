@@ -12,12 +12,16 @@ import Prelude
 
 import Bus as Bus
 import Data.Either (Either(..), hush)
+import Data.Foldable (foldl)
 import Data.Maybe (Maybe(..), maybe')
 import Data.Newtype (class Newtype, unwrap, wrap)
+import Data.Traversable (traverse)
+import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, singleton)
-import Erl.Utils (Ref, makeRef)
+import Erl.Data.Map (values)
+import Erl.Utils (Ref, makeRef, systemTimeMs)
 import Logger (Logger, spy)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
@@ -25,6 +29,7 @@ import Pinto as Pinto
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
+import Rtsv2.Agents.EgestInstance.WebRTCTypes (WebRTCStreamServerStats, WebRTCSessionManagerStats)
 import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..), launchLocalOrRemoteGeneric)
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.Locator.Types (LocalOrRemote(..), RegistrationResp, ResourceResp)
@@ -32,18 +37,21 @@ import Rtsv2.Agents.SlotTypes (SlotConfiguration)
 import Rtsv2.Agents.StreamRelayInstance as StreamRelayInstance
 import Rtsv2.Agents.StreamRelayInstanceSup (startRelay) as StreamRelayInstanceSup
 import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload, RegisterEgestPayload)
+import Rtsv2.Audit as Audit
 import Rtsv2.Config as Config
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl, makeUrlAddrWithPath)
 import Rtsv2.Utils (crashIfLeft)
 import Shared.Agent as Agent
+import Shared.LlnwApiTypes (StreamIngestProtocol(..))
 import Shared.Stream (AggregatorKey(..), EgestKey(..), RelayKey(..), SlotId(..), SlotRole(..))
-import Shared.Types (Milliseconds, EgestServer, Load, RelayServer, Server, ServerLoad(..), extractAddress)
+import Shared.Types (EgestServer(..), Load, Milliseconds, RelayServer, Server, ServerLoad(..), extractAddress)
 import Shared.Types.Agent.State as PublicState
 import SpudGun as SpudGun
 
 foreign import startEgestReceiverFFI :: EgestKey -> Effect Int
+foreign import getStatsFFI :: EgestKey -> Effect (WebRTCStreamServerStats EgestKey)
 foreign import setSlotConfigurationFFI :: EgestKey -> SlotConfiguration -> Effect Unit
 foreign import getSlotConfigurationFFI :: EgestKey -> Effect (Maybe SlotConfiguration)
 
@@ -62,12 +70,14 @@ type State
     , relayCreationRetry :: Milliseconds
     , stopRef :: Maybe Ref
     , receivePortNumber :: Int
+    , lastEgestAuditTime :: Milliseconds
     }
 
 payloadToEgestKey :: CreateEgestPayload -> EgestKey
 payloadToEgestKey payload = EgestKey payload.slotId
 
-data Msg = InitStreamRelays
+data Msg = WriteEqLog
+         | InitStreamRelays
          | MaybeStop Ref
          | IntraPoPBus IntraPoP.IntraPoPBusMessage
 
@@ -131,11 +141,12 @@ init payload@{slotId, aggregator} = do
   receivePortNumber <- startEgestReceiverFFI egestKey
   _ <- Bus.subscribe (serverName egestKey) IntraPoP.bus IntraPoPBus
   logInfo "Egest starting" {payload, receivePortNumber}
-  {lingerTimeMs, relayCreationRetryMs} <- Config.egestAgentConfig
-
+  {eqLogIntervalMs, lingerTimeMs, relayCreationRetryMs} <- Config.egestAgentConfig
+  now <- systemTimeMs
   thisServer <- PoPDefinition.getThisServer
   _ <- IntraPoP.announceLocalEgestIsAvailable egestKey
   _ <- Timer.sendAfter (serverName egestKey) 0 InitStreamRelays
+  _ <- Timer.sendEvery (serverName egestKey) eqLogIntervalMs WriteEqLog
 
   maybeRelay <- IntraPoP.whereIsStreamRelay relayKey
   let
@@ -148,6 +159,7 @@ init payload@{slotId, aggregator} = do
            , relayCreationRetry : wrap relayCreationRetryMs
            , stopRef: Nothing
            , receivePortNumber
+           , lastEgestAuditTime: now
            }
   case maybeRelay of
     Just relay ->
@@ -158,8 +170,13 @@ init payload@{slotId, aggregator} = do
       pure state
 
 handleInfo :: Msg -> State -> Effect (CastResult State)
-handleInfo msg state@{egestKey: EgestKey ourSlotId} =
+handleInfo msg state@{egestKey: egestKey@(EgestKey ourSlotId)} =
   case msg of
+    WriteEqLog -> do
+      Tuple endMs eqLines <- egestEqLines state
+      _ <- traverse Audit.egestUpdate eqLines
+      pure $ CastNoReply state{lastEgestAuditTime = endMs}
+
     InitStreamRelays -> CastNoReply <$> initStreamRelay state
 
     MaybeStop ref -> maybeStop ref state
@@ -168,6 +185,38 @@ handleInfo msg state@{egestKey: EgestKey ourSlotId} =
      -- TODO - PRIMARY BACKUP
       | slotId == ourSlotId -> doStop state
       | otherwise -> pure $ CastNoReply state
+
+egestEqLines :: State -> Effect (Tuple Milliseconds (List Audit.EgestEqLine))
+egestEqLines state@{ egestKey
+                   , thisServer: (Egest {address: thisServerAddr})
+                   , lastEgestAuditTime: startMs} = do
+  endMs <- systemTimeMs
+  {sessionInfo} <- getStatsFFI egestKey
+  pure $ Tuple endMs ((egestEqLine (unwrap thisServerAddr) startMs endMs) <$> values sessionInfo)
+
+egestEqLine :: String -> Milliseconds -> Milliseconds -> WebRTCSessionManagerStats -> Audit.EgestEqLine
+egestEqLine thisServerAddr startMs endMs {channels} =
+  let
+    {writtenAcc, readAcc, lostAcc, remoteAddress} = foldl
+                              (\{writtenAcc, readAcc, lostAcc} {octetsSent, remoteAddress} ->
+                                 {writtenAcc: writtenAcc + octetsSent, readAcc, lostAcc, remoteAddress})
+                              {writtenAcc: 0, readAcc: 0, lostAcc: 0, remoteAddress: ""}
+                              (values channels)
+  in
+
+  { egestIp: thisServerAddr
+  , egestPort: -1
+  , subscriberIp: remoteAddress
+  , username: "n/a" -- TODO
+  , rtmpShortName: wrap "" -- TODO :: RtmpShortName
+  , rtmpStreamName: wrap "" -- TODO :: RtmpStreamName
+  , connectionType: WebRTC
+  , startMs
+  , endMs
+  , bytesWritten: writtenAcc
+  , bytesRead: readAcc
+  , lostPackets: lostAcc
+  }
 
 maybeStop :: Ref -> State -> Effect (CastResult State)
 maybeStop ref state@{ clientCount
