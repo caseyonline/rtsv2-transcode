@@ -32,6 +32,7 @@ type WebRTCMediaChannelStats = { framesDroppedNoReturn :: Int
                                , localPort :: Port
                                , remotePort :: Port
                                , remoteAddress :: String
+                               , octetsReceived :: Int
                                , octetsSent :: Int
                                , packetsSent :: Int
                                , incomingSsrc :: SSRC

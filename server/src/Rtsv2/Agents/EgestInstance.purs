@@ -197,11 +197,18 @@ egestEqLines state@{ egestKey: egestKey@(EgestKey slotId)
 egestEqLine :: SlotId -> String -> Milliseconds -> Milliseconds -> WebRTCSessionManagerStats -> Audit.EgestEqLine
 egestEqLine slotId thisServerAddr startMs endMs {channels} =
   let
-    {writtenAcc, readAcc, lostAcc, remoteAddress} = foldl
-                              (\{writtenAcc, readAcc, lostAcc} {octetsSent, remoteAddress} ->
-                                 {writtenAcc: writtenAcc + octetsSent, readAcc, lostAcc, remoteAddress})
-                              {writtenAcc: 0, readAcc: 0, lostAcc: 0, remoteAddress: ""}
-                              (values channels)
+    receiverAccumulate acc {lostTotal} = acc + lostTotal
+
+    channelInitial = {writtenAcc: 0, readAcc: 0, lostAcc: 0, remoteAddress: ""}
+
+    channelAccumulate {writtenAcc, readAcc, lostAcc} {octetsSent, octetsReceived, remoteAddress, receiverInfo} =
+      { writtenAcc: writtenAcc + octetsSent
+      , readAcc: readAcc + octetsReceived
+      , lostAcc: foldl receiverAccumulate lostAcc (values receiverInfo)
+      , remoteAddress
+      }
+
+    {writtenAcc, readAcc, lostAcc, remoteAddress} = foldl channelAccumulate channelInitial (values channels)
   in
 
   { egestIp: thisServerAddr
