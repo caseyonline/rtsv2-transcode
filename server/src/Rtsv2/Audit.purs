@@ -44,8 +44,7 @@ type EgestEqLine =
   , egestPort :: Int
   , subscriberIp :: String
   , username :: String
-  , rtmpShortName :: RtmpShortName
-  , rtmpStreamName :: RtmpStreamName
+  , slotId :: SlotId
   , connectionType :: StreamIngestProtocol
   , startMs :: Milliseconds
   , endMs :: Milliseconds
@@ -127,8 +126,7 @@ writeEgestLine reason { egestIp
                       , egestPort
                       , subscriberIp
                       , username
-                      , rtmpShortName
-                      , rtmpStreamName
+                      , slotId
                       , connectionType
                       , startMs
                       , endMs
@@ -142,8 +140,7 @@ writeEgestLine reason { egestIp
                  , egestPort: egestPort
                  , subscriberIp: toList subscriberIp
                  , username: toList username
-                 , shortname: toList $ unwrap rtmpShortName
-                 , streamName: toList $ unwrap rtmpStreamName
+                 , slotId: toList $ show $ unwrap slotId
                  , connectionType: toList $ case connectionType of
                                               Rtmp -> "RTMP"
                                               WebRTC -> "WebRTC"

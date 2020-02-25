@@ -187,15 +187,15 @@ handleInfo msg state@{egestKey: egestKey@(EgestKey ourSlotId)} =
       | otherwise -> pure $ CastNoReply state
 
 egestEqLines :: State -> Effect (Tuple Milliseconds (List Audit.EgestEqLine))
-egestEqLines state@{ egestKey
+egestEqLines state@{ egestKey: egestKey@(EgestKey slotId)
                    , thisServer: (Egest {address: thisServerAddr})
                    , lastEgestAuditTime: startMs} = do
   endMs <- systemTimeMs
   {sessionInfo} <- getStatsFFI egestKey
-  pure $ Tuple endMs ((egestEqLine (unwrap thisServerAddr) startMs endMs) <$> values sessionInfo)
+  pure $ Tuple endMs ((egestEqLine slotId (unwrap thisServerAddr) startMs endMs) <$> values sessionInfo)
 
-egestEqLine :: String -> Milliseconds -> Milliseconds -> WebRTCSessionManagerStats -> Audit.EgestEqLine
-egestEqLine thisServerAddr startMs endMs {channels} =
+egestEqLine :: SlotId -> String -> Milliseconds -> Milliseconds -> WebRTCSessionManagerStats -> Audit.EgestEqLine
+egestEqLine slotId thisServerAddr startMs endMs {channels} =
   let
     {writtenAcc, readAcc, lostAcc, remoteAddress} = foldl
                               (\{writtenAcc, readAcc, lostAcc} {octetsSent, remoteAddress} ->
@@ -208,8 +208,7 @@ egestEqLine thisServerAddr startMs endMs {channels} =
   , egestPort: -1
   , subscriberIp: remoteAddress
   , username: "n/a" -- TODO
-  , rtmpShortName: wrap "" -- TODO :: RtmpShortName
-  , rtmpStreamName: wrap "" -- TODO :: RtmpStreamName
+  , slotId
   , connectionType: WebRTC
   , startMs
   , endMs
