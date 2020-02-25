@@ -67,8 +67,7 @@ type State
 payloadToEgestKey :: CreateEgestPayload -> EgestKey
 payloadToEgestKey payload = EgestKey payload.slotId
 
-data Msg = Tick
-         | InitStreamRelays
+data Msg = InitStreamRelays
          | MaybeStop Ref
          | IntraPoPBus IntraPoP.IntraPoPBusMessage
 
@@ -132,11 +131,10 @@ init payload@{slotId, aggregator} = do
   receivePortNumber <- startEgestReceiverFFI egestKey
   _ <- Bus.subscribe (serverName egestKey) IntraPoP.bus IntraPoPBus
   logInfo "Egest starting" {payload, receivePortNumber}
-  {egestAvailableAnnounceMs, lingerTimeMs, relayCreationRetryMs} <- Config.egestAgentConfig
+  {lingerTimeMs, relayCreationRetryMs} <- Config.egestAgentConfig
 
   thisServer <- PoPDefinition.getThisServer
   _ <- IntraPoP.announceLocalEgestIsAvailable egestKey
-  _ <- Timer.sendEvery (serverName egestKey) egestAvailableAnnounceMs Tick
   _ <- Timer.sendAfter (serverName egestKey) 0 InitStreamRelays
 
   maybeRelay <- IntraPoP.whereIsStreamRelay relayKey
@@ -162,8 +160,6 @@ init payload@{slotId, aggregator} = do
 handleInfo :: Msg -> State -> Effect (CastResult State)
 handleInfo msg state@{egestKey: EgestKey ourSlotId} =
   case msg of
-    Tick -> CastNoReply <$> handleTick state
-
     InitStreamRelays -> CastNoReply <$> initStreamRelay state
 
     MaybeStop ref -> maybeStop ref state
@@ -172,12 +168,6 @@ handleInfo msg state@{egestKey: EgestKey ourSlotId} =
      -- TODO - PRIMARY BACKUP
       | slotId == ourSlotId -> doStop state
       | otherwise -> pure $ CastNoReply state
-
-
-handleTick :: State -> Effect State
-handleTick state@{egestKey} = do
-  _ <- IntraPoP.announceLocalEgestIsAvailable egestKey
-  pure state
 
 maybeStop :: Ref -> State -> Effect (CastResult State)
 maybeStop ref state@{ clientCount
