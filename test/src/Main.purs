@@ -681,6 +681,7 @@ storeHeader header key either@(Right {headers}) = do
   _ <- modify (Map.insert key value)
   pure either
 
+getStateValue :: forall v m k. MonadState (Map.Map k v) m => Ord k => k -> v -> m v
 getStateValue key defaultValue = gets (fromMaybe defaultValue <<< Map.lookup key)
 
 assertStatusCode :: Int -> Either String ResponseWithBody -> Aff (Either String ResponseWithBody)

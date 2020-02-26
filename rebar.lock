@@ -28,7 +28,7 @@
   0},
  {<<"id3as_common">>,
   {git,"git@github.com:id3as/id3as.common.git",
-       {ref,"c036f8ea8087b27a2586359ac0a77105a7ec2617"}},
+       {ref,"66a4a8476b32fe99fb31557e71cf538ea9f93ee7"}},
   0},
  {<<"id3as_media">>,
   {git,"git@github.com:id3as/id3as.media.git",
