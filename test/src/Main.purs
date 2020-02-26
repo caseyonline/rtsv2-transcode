@@ -171,7 +171,7 @@ main =
                                          , headers: M.makeHeaders { "Content-Type": "application/json" }
                                          }
 
-    clientStop clientId node slotId  = fetch (M.URL $ api node <> "public/canary/client/" <> (show slotId) <> "/stop/" <> spy "clientId" clientId)
+    clientStop clientId node slotId  = fetch (M.URL $ api node <> "public/canary/client/" <> (show slotId) <> "/stop/" <> clientId)
                                          { method: M.postMethod
                                          , body: "{}"
                                          , headers: M.makeHeaders { "Content-Type": "application/json" }

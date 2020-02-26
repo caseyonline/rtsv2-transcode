@@ -13,11 +13,17 @@ import Data.Either (hush)
 import Data.Foldable (foldl)
 import Data.Maybe (Maybe(..), fromMaybe')
 import Data.Newtype (unwrap, wrap)
+import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..))
+import Effect (Effect)
+import Erl.Atom (atom)
 import Erl.Data.List (List, nil, (:))
 import Erl.Data.Tuple (tuple2)
+import Erl.Process.Raw (Pid)
 import Erl.Process.Raw as Raw
 import Erl.Utils as Timer
+import Gproc as GProc
+import Gproc as Gproc
 import Prometheus as Prometheus
 import Rtsv2.Agents.IngestInstance as IngestInstance
 import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
@@ -234,14 +240,11 @@ ingestStart =
                                                                                  , slotNameAndProfileName: SlotNameAndProfileName slotId profileName
                                                                                  , streamPublish: maybeStreamPublish
                                                                                  } -> do
-                                                                       pid <- Raw.spawn ((\_ -> Timer.sleep (wrap 10000))
-                                                                                         { receive: Raw.receive
-                                                                                         , receiveWithTimeout: Raw.receiveWithTimeout
-                                                                                         })
                                                                        let
                                                                          streamDetails = fromMaybe' (lazyCrashIfMissing "stream_details missing") maybeStreamDetails
                                                                          streamPublish = fromMaybe' (lazyCrashIfMissing "stream_publish missing") maybeStreamPublish
                                                                          ingestKey = IngestKey streamDetails.slot.id streamDetails.role profileName
+                                                                       pid <- startFakeIngest ingestKey
                                                                        IngestInstanceSup.startIngest ingestKey streamPublish streamDetails "127.0.0.1" 0 pid
                                                                        Rest.result "ingestStarted" req2 state2
                                                                    ) : nil) req state)
@@ -271,7 +274,24 @@ ingestStop =
                         )
   # Rest.contentTypesProvided (\req state ->
                                 Rest.result (tuple2 "text/plain" (\req2 state2 -> do
-                                                                     IngestInstance.stopIngest state.ingestKey
+                                                                     stopFakeIngest state.ingestKey
+                                                                     --IngestInstance.stopIngest state.ingestKey
                                                                      Rest.result "ingestStopped" req2 state2
                                                                  ) : nil) req state)
   # Rest.yeeha
+
+startFakeIngest :: IngestKey -> Effect Pid
+startFakeIngest ingestKey =
+  let
+    proc = do
+      _ <- GProc.register (tuple2 (atom "test_ingest_client") ingestKey)
+      _ <- Raw.receive
+      pure unit
+  in
+    Raw.spawn proc
+
+stopFakeIngest :: IngestKey -> Effect Unit
+stopFakeIngest ingestKey = do
+  pid <- Gproc.whereIs (tuple2 (atom "test_ingest_client") ingestKey)
+  _ <- traverse ((flip Raw.send) (atom "stop")) pid
+  pure unit
