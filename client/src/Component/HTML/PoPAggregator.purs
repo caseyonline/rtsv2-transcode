@@ -2,9 +2,10 @@ module Rtsv2App.Component.HTML.PoPAggregator where
 
 import Prelude
 
+import Data.Array (find)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (un)
-import Debug.Trace (spy)
+import Debug.Trace (spy, traceM)
 import Effect.Aff.Class (class MonadAff)
 import Halogen as H
 import Halogen.HTML as HH
@@ -21,26 +22,30 @@ import Shared.Types.Agent.State (PoPDefinition, AggregatorLocation)
 -- Types
 -------------------------------------------------------------------------------
 type Input =
-  { popDef  :: Maybe (PoPDefinition Array)
-  , argLocs :: AggregatorLocation Array
+  { popDef       :: Maybe (PoPDefinition Array)
+  , argLocs      :: AggregatorLocation Array
   }
 
 type Slot = H.Slot Query Message
 
 data Query a = IsOn (Boolean -> a)
 
-data Message = CheckedSlotId (Maybe SlotId)
+data Message = SelectedSlot (Maybe SlotId)
 
 data Action
-  = Select SlotId
+  = Select (Maybe SlotId)
   | Receive Input
 
-type State =
-  { checkedSlotId :: Maybe SlotId
-  , argLocs       :: AggregatorLocation Array
-  , popDef        :: Maybe (PoPDefinition Array)
+type CheckBoxState =
+  { slotId     :: Maybe SlotId
+  , isSelected :: Boolean
   }
 
+type State =
+  { argLocs      :: AggregatorLocation Array
+  , popDef       :: Maybe (PoPDefinition Array)
+  , checkedBoxes :: Array CheckBoxState
+  }
 
 -------------------------------------------------------------------------------
 -- Components
@@ -62,7 +67,7 @@ component = H.mkComponent
   where
   initialState :: Input -> State
   initialState { argLocs, popDef } =
-    { checkedSlotId: Nothing
+    { checkedBoxes: initCheckBoxes argLocs
     , argLocs
     , popDef
     }
@@ -70,15 +75,17 @@ component = H.mkComponent
   handleAction :: Action -> H.HalogenM State Action () Message m Unit
   handleAction = case _ of
     Receive { argLocs, popDef } -> do
-      H.put { checkedSlotId: Nothing
+      H.put { checkedBoxes: initCheckBoxes argLocs
             , argLocs: argLocs
             , popDef
             }
 
-    Select slotId -> do
-      newState <- H.modify _ { checkedSlotId = Just $ spy "Select" slotId }
-      H.raise (CheckedSlotId newState.checkedSlotId)
-      pure unit
+    Select mSlotId -> do
+      st <- H.get
+      let updatedCheckboxes = updateSelected st.checkedBoxes mSlotId
+      newState <- H.modify _ { checkedBoxes = updatedCheckboxes }
+
+      H.raise (SelectedSlot $ whichSlotSelected newState.checkedBoxes)
 
   handleQuery :: forall a. Query a -> H.HalogenM State Action () Message m (Maybe a)
   handleQuery = case _ of
@@ -137,7 +144,8 @@ component = H.mkComponent
                            [ HH.input
                              [ HP.type_ HP.InputCheckbox
                              , HP.name $ show $ un SlotId argLoc.slotId
-                             , HE.onChange $ const $ Just (Select argLoc.slotId)
+                             , HP.checked $ isChecked (Just argLoc.slotId) state.checkedBoxes
+                             , HE.onChange $ const $ Just (Select $ Just argLoc.slotId)
                              ]
                            , HH.span
                              [ css_ "check"]
@@ -168,3 +176,34 @@ component = H.mkComponent
           ]
         ]
     ]
+
+-- | create a blank array of checkedBoxes using argLocs
+initCheckBoxes :: AggregatorLocation Array -> Array CheckBoxState
+initCheckBoxes argLocs = do
+  join $ map f argLocs
+  where
+    f argLoc = (\_ -> { slotId: (Just argLoc.slotId), isSelected: false }) <$> argLoc.servers
+
+-- | is the current checkbox already checked or not
+isChecked :: Maybe SlotId -> Array CheckBoxState -> Boolean
+isChecked slotId checkedBoxes = do
+  let curCheckBox = find (\checkBox -> checkBox.slotId == slotId ) checkedBoxes
+  case curCheckBox of
+    Nothing -> false
+    Just cc -> cc.isSelected
+
+-- | make sure only one option is selected at a time
+updateSelected :: Array CheckBoxState -> Maybe SlotId -> Array CheckBoxState
+updateSelected checkedBoxes mSlotId =
+  (\cb -> if mSlotId == cb.slotId
+          then { slotId: cb.slotId , isSelected: not cb.isSelected }
+          else cb
+  ) <$> checkedBoxes
+
+-- | find which slot is selected
+whichSlotSelected :: Array CheckBoxState -> Maybe SlotId
+whichSlotSelected checkedBoxes = do
+  let curSelected = find (\checkBox -> checkBox.isSelected == true ) checkedBoxes
+  case curSelected of
+    Nothing -> Nothing
+    Just c  -> c.slotId

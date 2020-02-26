@@ -5,14 +5,14 @@ import Prelude
 import CSS.Geometry as Geometry
 import CSS.Size as Size
 import Control.Monad.Reader (class MonadAsk, ask)
-import Data.Array (catMaybes, findIndex, mapMaybe)
+import Data.Array (mapMaybe)
 import Data.Const (Const)
 import Data.Either (Either(..))
 import Data.Int (toNumber)
-import Data.Maybe (Maybe(..), fromMaybe, maybe)
+import Data.Maybe (Maybe(..), maybe)
 import Data.Newtype (un)
 import Data.Symbol (SProxy(..))
-import Data.Traversable (find, traverse, traverse_)
+import Data.Traversable (traverse_)
 import Debug.Trace (spy, traceM)
 import Effect.Aff.Class (class MonadAff)
 import Effect.Class (class MonadEffect, liftEffect)
@@ -34,11 +34,11 @@ import Rtsv2App.Component.HTML.MainSecondary as MS
 import Rtsv2App.Component.HTML.MenuMain as MM
 import Rtsv2App.Component.HTML.PoPAggregator as PA
 import Rtsv2App.Component.HTML.Utils (css_)
-import Rtsv2App.Data.PoP (PoPDefEcharts, getPoPEcharts, getPoPServers, updatePoPDefEnv)
+import Rtsv2App.Data.PoP (PoPDefEcharts, updatePoPDefEnv)
 import Rtsv2App.Data.Profile (Profile)
 import Rtsv2App.Data.Route (Route(..))
 import Rtsv2App.Env (PoPDefEnv, UrlEnv, UserEnv, changeHtmlClass)
-import Shared.Types (PoPName(..), Server(..))
+import Shared.Types (PoPName(..), Server)
 import Shared.Types.Agent.State (PoPDefinition, TimedPoPRoutes, AggregatorLocation)
 
 -------------------------------------------------------------------------------
@@ -55,15 +55,13 @@ data Action
   | Receive Input
 
 type State =
-  { aggregatorLocations :: AggregatorLocation Array
-  , availableRoutes     :: Array String
+  { argLocs :: AggregatorLocation Array
   , chart               :: Maybe EC.Instance
   , currentUser         :: Maybe Profile
-  , isOpen              :: Boolean
   , popDefEcharts       :: Array PoPDefEcharts
   , popDefenition       :: Maybe (PoPDefinition Array)
-  , popName             :: PoPName
   , popLeaders          :: Array Server
+  , popName             :: PoPName
   , prevRoute           :: Maybe Route
   , selectedArggLoc     :: AggregatorLocation Array
   , timedRoutes         :: Maybe (Array (TimedPoPRoutes Array))
@@ -99,15 +97,13 @@ component = H.mkComponent
   }
   where
   initialState { popName, prevRoute } =
-    { aggregatorLocations: []
-    , availableRoutes: ["dia", "Dal", "lax", "fra"]
+    { argLocs: []
     , chart: Nothing
     , currentUser: Nothing
-    , isOpen: false
     , popDefEcharts: []
     , popDefenition: Nothing
-    , popName
     , popLeaders: []
+    , popName
     , prevRoute
     , selectedArggLoc: []
     , timedRoutes: Nothing
@@ -125,6 +121,11 @@ component = H.mkComponent
 
       mPopDef <- H.liftEffect $ Ref.read popDefEnv.popDefinition
 
+      H.getHTMLElementRef (H.RefLabel "mymap") >>= traverse_ \element -> do
+        chart <- H.liftEffect $ EC.makeChart element
+        liftEffect $ EC.makeBlankMap chart
+        H.modify_ _ { chart = Just chart }
+
       -- | is popDefinition already on Global
       case mPopDef of
         -- | no then go get it manually, update states
@@ -133,21 +134,21 @@ component = H.mkComponent
           case popDef of
             Left e ->  H.modify_ _ { popDefenition = Nothing }
             Right pd -> do
-              { popDefenition, popDefEcharts, popLeaders, aggregatorLocations} <- updatePoPDefEnv pd
+              { popDefenition, popDefEcharts, popLeaders, argLocs } <- updatePoPDefEnv pd
               H.modify_ _ { popDefenition = popDefenition
                           , popDefEcharts = popDefEcharts
                           , popLeaders = popLeaders
-                          , aggregatorLocations = aggregatorLocations
+                          , argLocs = argLocs
                           }
 
         -- | yes update states
         -- TODO: could check if arggr already exists on global
         Just pd -> do
-          { popDefenition, popDefEcharts, popLeaders, aggregatorLocations} <- updatePoPDefEnv pd
+          { popDefenition, popDefEcharts, popLeaders, argLocs } <- updatePoPDefEnv pd
           H.modify_ _ { popDefenition = popDefenition
                       , popDefEcharts = popDefEcharts
                       , popLeaders = popLeaders
-                      , aggregatorLocations = aggregatorLocations
+                      , argLocs = argLocs
                       }
 
     Receive { popName, prevRoute } -> do
@@ -156,20 +157,22 @@ component = H.mkComponent
         H.put $ initialState { popName, prevRoute }
         handleAction Initialize
 
-    HandlePoPSlotArgTable (PA.CheckedSlotId mSlotId) -> do
-      st ← H.get
-      let selected =
-            mapMaybe (\argg -> do
-                         case mSlotId of
-                           Nothing -> Nothing
-                           Just sid -> if sid == argg.slotId then Just argg else Nothing
-                     ) st.aggregatorLocations
-
-      H.modify_ _ { selectedArggLoc = selected }
-      getRoutesPopulateMap
+    HandlePoPSlotArgTable (PA.SelectedSlot selectedSlot) -> do
+      traceM selectedSlot
+      pure unit
+      -- st ← H.get
+      -- case st.chart of
+      --   Nothing    -> pure unit
+      --   Just chart ->
+      --     case mSlotId of
+      --       Nothing     -> liftEffect $ EC.makeBlankMap chart
+      --       Just slotId -> do
+      --         let selected = mapMaybe (\argg -> if checkedPop == argg.slotId then Just argg else Nothing) st.aggregatorLocations
+      --         H.modify_ _ { selectedArggLoc = selected }
+      --         getRoutesPopulateMap $ Just chart
 
   render :: State -> H.ComponentHTML Action ChildSlots m
-  render state@{ popName, currentUser, popDefenition, aggregatorLocations } =
+  render state@{ popName, currentUser, popDefenition, argLocs } =
     HH.div
       [ css_ "main" ]
       [ HH.slot (SProxy :: _ "header") unit HD.component { currentUser, route: LoginR } absurd
@@ -206,7 +209,9 @@ component = H.mkComponent
       , HH.section
         [ css_ "section is-main-section" ]
         [ HH.slot 
-            (SProxy :: _ "popSlotArgTable") unit PA.component { argLocs: aggregatorLocations , popDef: popDefenition} (Just <<< HandlePoPSlotArgTable)
+            (SProxy :: _ "popSlotArgTable")
+            unit PA.component { argLocs: argLocs, popDef: popDefenition }
+            (Just <<< HandlePoPSlotArgTable)
         , HH.div
           [ css_ "content-body" ]
           [ HH.div
@@ -417,17 +422,17 @@ getRoutesPopulateMap
   :: forall m
    . MonadAff m
   => ManageApi m
-  => H.HalogenM State Action ChildSlots Void m Unit
-getRoutesPopulateMap = do
+  => Maybe EC.Instance
+  -> H.HalogenM State Action ChildSlots Void m Unit
+getRoutesPopulateMap chart = do
   { selectedArggLoc, popLeaders, popName } <- H.get
   mbTimedRoutes <- getTimedRoutes selectedArggLoc popLeaders popName
   case mbTimedRoutes of
     Left e -> H.modify_ _ { timedRoutes = Nothing }
-    Right timedRoutes -> do
-      newSt <- H.get
-      H.getHTMLElementRef (H.RefLabel "mymap") >>= traverse_ \element -> do
-        chart <- H.liftEffect $ EC.makeChart element
-        H.modify_ _ { chart = Just chart }
-        liftEffect $ EC.setOptionPoP timedRoutes chart
+    Right timedRoutes ->
+        case chart of
+          Nothing -> pure unit
+          Just c  -> liftEffect $ EC.setOptionPoP timedRoutes c
+        
         -- TODO: this needs fixing as it needs to be removed when changing page
         -- liftEffect $ EC.ressizeObserver chart

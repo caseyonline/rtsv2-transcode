@@ -21,6 +21,14 @@ exports.makeChart_ = function(node) {
   };
 };
 
+
+exports.makeBlankMap_ = function(chart) {
+  return function() {
+      return chart.setOption(blankMap())
+  };
+};
+
+
 exports.setOption_ = function(option) {
   return function(chart) {
     return function() {
@@ -142,6 +150,34 @@ var geoCoordMap = {
     "DIA": [-77.0363700, 38.8951100],
     "Zurich": [8.541694,47.376887],
 }
+
+
+function blankMap() {
+  return {
+      geo: {
+          map: 'world',
+          silent: true,
+          roam: true,
+          scaleLimit: {min: 1.25},
+          zoom: 1.25,
+          label: {
+              show: false,
+              color: 'rgba(0,0,0,0.4)'
+          },
+          itemStyle: {
+              borderColor:'#9ea1ae',
+              borderWidth:1,
+              areaStyle:{
+                  color: '#1b1b1b'
+              }
+          },
+      },
+  }
+}
+
+
+
+
 
 function dashboardChart(scatterData) {
     var schema = [

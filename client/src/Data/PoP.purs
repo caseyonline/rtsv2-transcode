@@ -45,10 +45,10 @@ type PoPServer =
   }
 
 type PoPEnvNoRef =
-  { popDefenition       :: Maybe (PoPDefinition Array)
-  , popDefEcharts       :: Array PoPDefEcharts
-  , popLeaders          :: Array Server
-  , aggregatorLocations :: AggregatorLocation Array
+  { popDefenition :: Maybe (PoPDefinition Array)
+  , popDefEcharts :: Array PoPDefEcharts
+  , popLeaders    :: Array Server
+  , argLocs       :: AggregatorLocation Array
   }
 
 
@@ -104,18 +104,18 @@ updatePoPDefEnv pd = do
   popServers <- liftEffect $ getPoPServers pd
   popStates <- getPoPState popServers
 
-  let popDefenition       = Just pd
-      popDefEcharts       = getPoPEcharts pd
-      popLeaders          = toPoPleaders popStates
-      aggregatorLocations = toAggregators popStates
+  let popDefenition = Just pd
+      popDefEcharts = getPoPEcharts pd
+      popLeaders    = toPoPleaders popStates
+      argLocs       = toAggregators popStates
 
   liftEffect do
     Ref.write popDefenition popDefEnv.popDefinition
     Ref.write popLeaders popDefEnv.transPoPLeaders
-    Ref.write aggregatorLocations popDefEnv.aggregatorLocations
+    Ref.write argLocs popDefEnv.aggregatorLocations
 
   pure { popDefenition
        , popDefEcharts
        , popLeaders
-       , aggregatorLocations
+       , argLocs
        }

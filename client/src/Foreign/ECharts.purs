@@ -33,6 +33,8 @@ foreign import data Instance :: Type
 
 foreign import makeChart_ :: HTMLElement -> Effect Instance
 
+foreign import makeBlankMap_ :: Instance -> Effect Unit
+
 foreign import setOption_ :: forall option. option -> Instance -> Effect Unit
 
 foreign import setOptionPoP_ :: TimedPoPRoutes Array -> Instance -> Effect Unit
@@ -46,6 +48,9 @@ makeChart
   :: HTMLElement
   -> Effect Instance
 makeChart = makeChart_
+
+makeBlankMap :: Instance -> Effect Unit
+makeBlankMap = makeBlankMap_
 
 setOption
   :: forall option option'

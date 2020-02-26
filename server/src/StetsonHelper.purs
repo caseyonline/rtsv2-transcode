@@ -215,7 +215,7 @@ genericGet2 bindings getDatas =
 genericGetBy :: forall a b. Newtype a String => WriteForeign b =>  String -> (a -> Effect b) -> GenericStetsonGetBySlotId b
 genericGetBy bindElement getData =
   Rest.handler init
-  # Rest.allowedMethods (Rest.result (GET : mempty))
+  # Rest.allowedMethods (Rest.result (GET : OPTIONS : nil))
   # Rest.contentTypesProvided (\req state -> Rest.result (singleton $ MimeType.json genericProvideJson) req state)
   # Rest.yeeha
   where
@@ -223,9 +223,11 @@ genericGetBy bindElement getData =
       let
         bindValue :: a
         bindValue = wrap $ fromMaybe' (lazyCrashIfMissing (bindElement <> " binding missing")) $ binding (atom bindElement) req
+
+        reqWithAllowOrigin = setHeader "access-control-allow-origin" "*" req
       in do
         mData <- noprocToMaybe $ getData bindValue
-        Rest.initResult req $ GenericStatusState { mData }
+        Rest.initResult reqWithAllowOrigin $ GenericStatusState { mData }
 
 genericGetByInt :: forall a b. Newtype a Int => WriteForeign b =>  String -> (a -> Effect b) -> GenericStetsonGetBySlotId b
 genericGetByInt bindElement getData =
