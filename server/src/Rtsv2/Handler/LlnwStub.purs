@@ -10,7 +10,7 @@ import Data.Array as Array
 import Data.Either (hush)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Eq (genericEq)
-import Data.Maybe (Maybe(..), isNothing)
+import Data.Maybe (Maybe(..), fromMaybe, isNothing)
 import Data.Newtype (unwrap, wrap)
 import Effect (Effect)
 import Erl.Cowboy.Req (ReadBodyResult(..), Req, readBody, setBody)
@@ -18,7 +18,6 @@ import Erl.Data.Binary (Binary)
 import Erl.Data.Binary.IOData (IOData, fromBinary, toBinary)
 import Erl.Data.List (List, filter, head, nil, (:))
 import Erl.Data.Tuple (tuple2)
-import Logger (spy)
 import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
 import Shared.LlnwApiTypes (AuthType, PublishCredentials, SlotPublishAuthType(..), StreamAuth, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamPublish)
 import Shared.Stream (RtmpShortName, SlotRole(..))
@@ -71,70 +70,64 @@ streamAuthType :: PostHelper StreamConnection AuthType
 streamAuthType =
   postHelper lookup
   where
-    lookup :: Maybe StreamConnection -> Maybe AuthType
-    lookup Nothing = Nothing
-    lookup (Just streamConnectionPayload) =
-      let
-        {host, protocol, rtmpShortName} = unwrap streamConnectionPayload
-      in
-        filter (\{auth: { host: candidateHost
-                        , protocol: candidateProtocol
-                        , rtmpShortName: candidateShortName }} ->
-                ((candidateHost == Any) || (candidateHost == SpecificHost host))
-                && (candidateProtocol == protocol)
-                && (candidateShortName == rtmpShortName))
-                db
-        # head
-        <#> (\x -> {authType: x.auth.authType})
+    lookup = lookup' <<< (map unwrap)
+
+    lookup' Nothing = Nothing
+    lookup' (Just {host, protocol, rtmpShortName}) =
+      filter (\{auth: { host: candidateHost
+                      , protocol: candidateProtocol
+                      , rtmpShortName: candidateShortName }} ->
+              ((candidateHost == Any) || (candidateHost == SpecificHost host))
+              && (candidateProtocol == protocol)
+              && (candidateShortName == rtmpShortName))
+      db
+      # head
+      <#> (\x -> {authType: x.auth.authType})
 
 streamAuth :: PostHelper StreamAuth PublishCredentials
 streamAuth =
   postHelper lookup
   where
-    lookup :: Maybe StreamAuth -> Maybe PublishCredentials
-    lookup Nothing = Nothing
-    lookup (Just streamAuthPayload) =
-      let
-        {host, rtmpShortName, username} = unwrap streamAuthPayload
-      in
-        filter (\{auth: { host: candidateHost
-                        , rtmpShortName: candidateShortName
-                        , username: candidateUsername }} ->
-                ((candidateHost == Any) || (candidateHost == SpecificHost host))
-                && (candidateShortName == rtmpShortName)
-                && (candidateUsername == username))
-                db
-        # head
-        <#> (\x -> wrap { username: x.auth.username
-                        , password: x.auth.password})
+    lookup = lookup' <<< (map unwrap)
+
+    lookup' Nothing = Nothing
+    lookup' (Just {host, rtmpShortName, username}) =
+      filter (\{auth: { host: candidateHost
+                      , rtmpShortName: candidateShortName
+                      , username: candidateUsername }} ->
+              ((candidateHost == Any) || (candidateHost == SpecificHost host))
+              && (candidateShortName == rtmpShortName)
+              && (candidateUsername == username))
+              db
+              # head
+              <#> (\x -> wrap { username: x.auth.username
+                              , password: x.auth.password})
 
 streamPublish :: PostHelper StreamPublish StreamDetails
 streamPublish =
   postHelper lookup
   where
-    lookup :: Maybe StreamPublish -> Maybe StreamDetails
-    lookup Nothing = Nothing
-    lookup (Just streamPublishPayload) =
-      let
-        {host, protocol, rtmpShortName, rtmpStreamName, username} = unwrap streamPublishPayload
-      in
-        filter (\{ auth: { host: candidateHost
-                         , protocol: candidateProtocol
-                         , rtmpShortName: candidateShortName
-                         , username: candidateUsername }
-                 , details: { slot: {profiles: candidateProfiles} }} ->
-                ((candidateHost == Any) || (candidateHost == SpecificHost host))
-                && (candidateProtocol == protocol)
-                && (candidateShortName == rtmpShortName)
-                && not (Array.null (Array.filter (\candidateProfile ->
-                                                    let
-                                                       {rtmpStreamName: candidateRtmpStreamName} = unwrap candidateProfile
-                                                    in
-                                                      candidateRtmpStreamName == rtmpStreamName) candidateProfiles))
-                && (candidateUsername == username))
-                db
-        # head
-        <#> _.details
+    lookup = lookup' <<< (map unwrap)
+
+    lookup' Nothing = Nothing
+    lookup' (Just {host, protocol, rtmpShortName, rtmpStreamName, username}) =
+      filter (\{ auth: { host: candidateHost
+                       , protocol: candidateProtocol
+                       , rtmpShortName: candidateShortName
+                       , username: candidateUsername }
+               , details: { slot: {profiles: candidateProfiles} }} ->
+              ((candidateHost == Any) || (candidateHost == SpecificHost host))
+              && (candidateProtocol == protocol)
+              && (candidateShortName == rtmpShortName)
+              && not (Array.null (Array.filter (\candidateProfile ->
+                                                  let
+                                                     {rtmpStreamName: candidateRtmpStreamName} = unwrap candidateProfile
+                                                  in
+                                                    candidateRtmpStreamName == rtmpStreamName) candidateProfiles))
+              && (candidateUsername == username))
+              db
+      # head
+      <#> _.details
 
 type PostHelper a b = StetsonHandler { payload :: Maybe a
                                      , output :: Maybe b
@@ -159,9 +152,7 @@ postHelper lookupFun =
   # Rest.contentTypesAccepted (\req state ->
                                 Rest.result ((tuple2 "application/json" (\req2 state2@{output: maybeOutput} ->
                                                                           let
-                                                                            json = case maybeOutput of
-                                                                                     Nothing -> ""
-                                                                                     Just output -> writeJSON output
+                                                                            json = fromMaybe "" $ writeJSON <$> maybeOutput
                                                                             req3 = setBody json req2
                                                                           in
                                                                           (Rest.result true req3 state2))) : nil)
@@ -185,7 +176,7 @@ postHelper lookupFun =
   # Rest.allowMissingPost (Rest.result false)
 
   # Rest.contentTypesProvided (\req state -> Rest.result (tuple2 "application/json" (Rest.result ""): nil) req state)
-  --# Rest.preHook (preHookSpyState "LLNW:streamPublish")
+  --# Rest.preHook (preHookSpyState "LLNW:postHelper")
   # Rest.yeeha
 
 
