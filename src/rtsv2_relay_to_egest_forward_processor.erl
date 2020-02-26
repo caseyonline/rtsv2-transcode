@@ -13,6 +13,7 @@
 -export([ spec/1
         , initialise/1
         , process_input/2
+        , handle_info/2
         , flush/1
         , is_meter/0
         , ioctl/2
@@ -20,9 +21,13 @@
 
 -define(state, ?MODULE).
 
+-type egest_key() :: {inet:ip_address(), inet:port_number()}.
+
 -record(?state,
-        { publication_count = 0 :: non_neg_integer()
-        , egests = #{} :: maps:map({inet:ip_address(), inet:port_number()}, gen_udp:socket())
+        { slot_id :: term()
+        , publication_count = 0 :: non_neg_integer()
+        , egests = #{} :: maps:map(egest_key(), gen_udp:socket())
+        , egests_by_socket = #{} :: maps:map(gen_udp:socket(), egest_key())
         }).
 
 %%------------------------------------------------------------------------------
@@ -33,8 +38,8 @@ spec(_Processor) ->
                  , is_pure = true
                  }.
 
-initialise(#processor{}) ->
-  { ok, #?state{} }.
+initialise(#processor{config = SlotId}) ->
+  { ok, #?state{slot_id = SlotId} }.
 
 process_input(#rtp_sequence{ rtps = RTPs }, State = #?state{ egests = Egests, publication_count = PublicationCount }) ->
   Packets = [ rtp:unparse(avp, RTP) || RTP <- RTPs ],
@@ -77,6 +82,20 @@ process_input(#rtp{} = RTP, State = #?state{ egests = Egests, publication_count 
 
   {ok, State #?state{ publication_count = PublicationCount + 1 }}.
 
+handle_info({udp_error, Socket, econnrefused}, State = #?state{ slot_id = SlotId
+                                                              , egests = Egests
+                                                              , egests_by_socket = EgestsBySocket }) ->
+
+  {RelayKey, NewEgestsBySocket} = maps:take(Socket, EgestsBySocket),
+  NewEgests = maps:remove(RelayKey, Egests),
+
+  ?SLOG_INFO("UDP error sending to Egest", #{ slot_id => SlotId
+                                            , stream_relay => RelayKey
+                                            , reason => econnrefused}),
+
+  {noreply, State#?state{ egests = NewEgests
+                        , egests_by_socket = NewEgestsBySocket}}.
+
 ioctl(read_meter, State = #?state{ publication_count = PublicationCount }) ->
 
   Metrics =
@@ -85,7 +104,8 @@ ioctl(read_meter, State = #?state{ publication_count = PublicationCount }) ->
 
   {ok, #status{metrics = Metrics}, State};
 
-ioctl({register_egest, Host, Port}, State = #?state{ egests = Egests }) ->
+ioctl({register_egest, Host, Port}, State = #?state{ egests = Egests
+                                                   , egests_by_socket = EgestsBySocket }) ->
   case inet:gethostbyname(?to_list(Host)) of
     {ok, #hostent{ h_addr_list = [ Addr | _ ] }} ->
 
@@ -102,8 +122,10 @@ ioctl({register_egest, Host, Port}, State = #?state{ egests = Egests }) ->
           gen_udp:connect(Socket, Addr, Port),
 
           NewEgests = maps:put(MapKey, Socket, Egests),
+          NewEgestsBySocket = maps:put(Socket, MapKey, EgestsBySocket),
 
-          {ok, State#?state{ egests = NewEgests}}
+          {ok, State#?state{ egests = NewEgests
+                           , egests_by_socket = NewEgestsBySocket }}
       end;
 
     Other ->

@@ -104,6 +104,7 @@ start_workflow(SlotId) ->
                      , display_name = <<"Egests">>
                      , module = rtsv2_relay_to_egest_forward_processor
                      , subscribes_to = sources
+                     , config = SlotId
                      }
          %% , #processor{ name = relays
          %%             , display_name = <<"Relays">>
