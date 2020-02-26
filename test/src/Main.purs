@@ -456,21 +456,6 @@ main =
                    launch nodes
                 ) do
           after_ stopSession do
-            it "runs in state" do
-              let
-                foo :: StateT (Map.Map String String) Aff Unit
-                foo = do
-                  lift $ ingestStart p1n1 shortName1 low >>= assertStatusCode 200  >>= as  "create ingest"
-                  lift $ waitForAsyncProfileStart                                  >>= as' "wait for async start of profile"
-                  (lift $ clientStart p1n1 slot1         >>= assertStatusCode 204)
-                                                         >>= storeHeader "x-client-id" "clientId"
-                                                                                   >>= as'' "step done"
-                  clientId <- gets (Map.lookup "clientId")
-                  let
-                    _ = spy "x" clientId
-                  pure unit
-              evalStateT foo mempty
-
             it "client requests stream on ingest node" do
                 clientStart p1n1 slot1           >>= assertStatusCode 404 >>= as  "no egest prior to ingest"
                 relayStats   p1n1 slot1          >>= assertStatusCode 404 >>= as  "no relay prior to ingest"
