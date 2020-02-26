@@ -107,7 +107,7 @@ init args = do
     # mkHack  "/api/public/:canary/ingest/:slot_id/:stream_role/:profile_name/stop" IngestHandler.ingestStop
 
     -- # mkRoute (ClientStartE ":canary" slotIdBinding)                          ClientHandler.clientStart
-    # mkHack  "/api/public/:canary/client/:slot_id/start/:client_id"             ClientHandler.clientStart
+    # mkHack  "/api/public/:canary/client/:slot_id/start"                        ClientHandler.clientStart
     -- # mkRoute (ClientStopE ":canary" slotIdBinding)                           ClientHandler.clientStop
     # mkHack  "/api/public/:canary/client/:slot_id/stop/:client_id"              ClientHandler.clientStop
 

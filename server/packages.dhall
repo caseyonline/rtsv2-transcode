@@ -69,6 +69,14 @@ let overrides =
           , version =
               "d923dab0d94af6872483bb5952b2652afdc3e95a"
           }
+      , strings =
+          { dependencies =
+              [ "prelude" ]
+          , repo =
+              "ssh://git@github.com/purerl/purescript-strings.git"
+          , version =
+              "1ef7b4969f202dedcc3e1089d950a9ce270d4fdc"
+          }
       , erl-stetson =
           { dependencies =
               [ "erl-cowboy" ]

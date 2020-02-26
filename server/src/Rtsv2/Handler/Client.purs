@@ -8,8 +8,9 @@ import Prelude
 
 import Data.Either (Either(..))
 import Data.Maybe (fromMaybe')
-import Data.Newtype (unwrap, wrap)
-import Data.Traversable (sequence, traverse)
+import Data.Newtype (unwrap)
+import Data.String (Pattern(..), Replacement(..), replaceAll)
+import Data.Traversable (traverse)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Cowboy.Handlers.Rest (MovedResult, moved, notMoved)
@@ -20,8 +21,6 @@ import Erl.Data.Map as Map
 import Erl.Data.Tuple (tuple2)
 import Erl.Process.Raw (Pid)
 import Erl.Process.Raw as Raw
-import Erl.Utils as Erl
-import Erl.Utils as Timer
 import Gproc as GProc
 import Gproc as Gproc
 import Logger (Logger, spy)
@@ -34,6 +33,7 @@ import Rtsv2.Audit as Audit
 import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
+import Rtsv2.Utils (cryptoStrongToken)
 import Rtsv2.Web.Bindings as Bindings
 import Shared.Stream (EgestKey(..), SlotId)
 import Shared.Types (Server, extractAddress)
@@ -59,13 +59,14 @@ clientStart =
 
   where
     init req = do
+      clientId <- replaceAll (Pattern "/") (Replacement "_") <$> cryptoStrongToken 4
       let
         slotId = Bindings.slotId req
-        clientId = fromMaybe' (lazyCrashIfMissing $ "client_id binding missing") $ binding (atom "client_id") req
       thisServer <- PoPDefinition.getThisServer
       egestResp <- findEgest slotId thisServer
       let
         req2 = setHeader "x-servedby" (unwrap $ extractAddress thisServer) req
+               # setHeader "x-client-id" clientId
         _ = spy "egestResp" egestResp
       Rest.initResult req2 $ ClientStartState { slotId, clientId, egestResp }
 
@@ -107,9 +108,6 @@ clientStart =
             Rest.result (moved $ unwrap url) req state
         _ ->
           Rest.result notMoved req state
-
-
-
 
 
 type ClientStopState = { egestKey :: EgestKey
@@ -154,7 +152,7 @@ startHandler :: String -> Effect Pid
 startHandler clientId =
   let
     proc = do
-      GProc.register (tuple2 (atom "test_egest_client") clientId)
+      _ <- GProc.register (tuple2 (atom "test_egest_client") clientId)
       _ <- Raw.receive
       pure unit
   in

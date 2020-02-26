@@ -2,7 +2,9 @@ module Rtsv2.Router.Parser (printUrl) where
 
 import Prelude
 
+import Data.Array (cons, uncons)
 import Data.Function (applyFlipped)
+import Data.Maybe (Maybe(..))
 import Data.Newtype (unwrap)
 import Data.String (joinWith)
 import Data.String.CodeUnits (contains)
@@ -26,9 +28,13 @@ printPath { segments, params, hash: hash' } =
   where
   printSegments = case _ of
     [""] -> "/"
-    xs -> joinWith "/" $ map (\a -> if contains (Pattern ":") a
-                                      then a
-                                      else unsafeEncodeURIComponent a) xs
+    xs ->
+      case uncons xs of
+        Just {head: "", tail} -> printSegments tail
+        _ ->
+          joinWith "/" $ map (\a -> if contains (Pattern ":") a
+                                    then a
+                                    else unsafeEncodeURIComponent a) (cons "" xs)
 
   printParams [] = ""
   printParams ps = "?" <> joinWith "&" (uncurry printParam <$> ps)

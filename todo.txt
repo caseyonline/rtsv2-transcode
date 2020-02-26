@@ -1,4 +1,5 @@
-[ ] - why is egestInstance doing timed announcements
+[ ] - Ingest handler to do nicer spawn stuff ala Client
+[ ] - When egest shuts down, stream relay crashes with udp error
 [ ] - when streamrelay didn't exit, new egests would start but never get rtp
 
 [S] - ingest / ingest aggregator monitoring and recovery
@@ -31,6 +32,7 @@
 [.] - Erl.Cowboy.Req.binding - returns Maybe a - it doesn't know what a is.  Should be Maybe Foreign
 [.] - Clean up / rewrite gproc.purs - is it a direct mapping, or do we want our own API
 
+[x] - why is egestInstance doing timed announcements
 [x] - rtsv2_rtmp_ingest_handler currently has hardcoded salt / challenge - to be held in gen_server once LLNW API is finalised
 [x] - derive regularity of liveness checks from re-broadcast interval
 [x] - TransPoP clock by streamId and server
