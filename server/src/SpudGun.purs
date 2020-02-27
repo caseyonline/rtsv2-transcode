@@ -16,7 +16,7 @@ module SpudGun
        , SpudResult
        , SpudResponse(..)
        , SpudError(..)
-       , StatusCode
+       , StatusCode(..)
        , Headers
        , Body
        , module Erl

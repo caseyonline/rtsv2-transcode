@@ -57,9 +57,9 @@ let overrides =
               , "unfoldable"
               ]
           , repo =
-              "ssh://git@github.com/adrianroe/purescript-erl-maps.git"
+              "https://github.com/purerl/purescript-erl-maps"
           , version =
-              "88995fa67be79f7dd77734f20b13bb54fec10f88"
+              "d8153fdd97acca910b86bd44f55b6fce2f775264"
           }
       , erl-tuples =
           { dependencies =
