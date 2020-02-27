@@ -57,20 +57,14 @@ import SpudGun as SpudGun
 -- -----------------------------------------------------------------------------
 -- FFI
 -- -----------------------------------------------------------------------------
--- foreign import data Handle :: Type
-type WorkflowHandle = {}
-
-startWorkflowFFI :: Effect WorkflowHandle
-startWorkflowFFI = pure {}
+foreign import data WorkflowHandle :: Type
+foreign import startWorkflowFFI :: Int -> Effect WorkflowHandle
 
 applyPlanFFI :: WorkflowHandle -> StreamRelayPlan -> Effect StreamRelayApplyResult
 applyPlanFFI _handle _plan = pure { ingestAggregatorReceivePort: Nothing, upstreamRelayReceivePorts: Map.empty }
 
-setSlotConfigurationFFI :: RelayKey -> SlotConfiguration -> Effect Unit
-setSlotConfigurationFFI _key _slotConfig = pure unit
-
-getSlotConfigurationFFI :: RelayKey -> Effect (Maybe SlotConfiguration)
-getSlotConfigurationFFI _key = pure Nothing
+foreign import setSlotConfigurationFFI :: RelayKey -> SlotConfiguration -> Effect Unit
+foreign import getSlotConfigurationFFI :: RelayKey -> Effect (Maybe SlotConfiguration)
 
 -- -----------------------------------------------------------------------------
 -- Gen Server State
@@ -479,7 +473,7 @@ init payload@{slotId, streamRole, aggregator} =
   do
     thisServer <- PoPDefinition.getThisServer
     egestSourceRoutes <- TransPoP.routesTo (extractPoP aggregator)
-    workflowHandle <- startWorkflowFFI
+    workflowHandle <- startWorkflowFFI (un SlotId slotId)
 
     pure
       $ State { relayKey: RelayKey slotId streamRole
