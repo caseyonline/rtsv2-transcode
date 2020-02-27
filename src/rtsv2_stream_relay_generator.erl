@@ -54,9 +54,9 @@ ioctl(ensure_ingest_aggregator_source, State = #?state{ workflows = Workflows, w
   {ok, Port} = id3as_workflow:ioctl(source, get_port_number, Handle),
   {ok, Port, FinalState};
 
-ioctl({ensure_stream_relay_source, SourceRoute}, State = #?state{ workflows = Workflows, workflow_context = Context }) ->
+ioctl({ensure_upstream_relay_source, UpstreamRelay}, State = #?state{ workflows = Workflows, workflow_context = Context }) ->
 
-  SourceKey = {stream_relay, SourceRoute},
+  SourceKey = {stream_relay, UpstreamRelay},
 
   {Handle, FinalState} =
     case maps:find(SourceKey, Workflows) of
@@ -64,7 +64,7 @@ ioctl({ensure_stream_relay_source, SourceRoute}, State = #?state{ workflows = Wo
         {ExistingHandle, State};
 
       error ->
-        {ok, NewHandle} = start_workflow_for_stream_relay_source(SourceRoute, Context),
+        {ok, NewHandle} = start_workflow_for_stream_relay_source(UpstreamRelay, Context),
         NewState = State#?state{workflows = maps:put(SourceKey, NewHandle, Workflows)},
         {NewHandle, NewState}
     end,
@@ -95,15 +95,14 @@ start_workflow_for_ingest_aggregator_source(Context) ->
   {ok, Handle}.
 
 
-start_workflow_for_stream_relay_source(_SourceRoute, Context) ->
+start_workflow_for_stream_relay_source(_UpstreamRelay, Context) ->
   Workflow =
-    #workflow{ name = stream_relay_source
+    #workflow{ name = upstream_relay_source
              , display_name = <<>>
              , generators =
                  [ #generator{ name = source
                              , display_name = <<"Receive from Stream Relay">>
                              , module = rtsv2_rtp_trunk_receiver_generator
-                             , trace_outputs = console
                              }
                  ]
              },

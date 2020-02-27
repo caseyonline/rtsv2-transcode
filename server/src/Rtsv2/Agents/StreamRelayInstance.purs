@@ -316,6 +316,8 @@ applyRunResult { relayKey: relayKey@(RelayKey slotId slotRole), thisServer, inge
       do
         maybeRelayAddress <- ensureRelayInPoP next
 
+        _ <- (logInfo "Ensured relay running in pop" { pop: next, maybeRelayAddress })
+
         case maybeRelayAddress of
           Nothing ->
             pure $ UpstreamRelayStatePendingRegistration portNumber
@@ -323,6 +325,8 @@ applyRunResult { relayKey: relayKey@(RelayKey slotId slotRole), thisServer, inge
           Just relayAddress ->
             do
               registerResult <- registerWithSpecificRelay portNumber relayAddress rest
+
+              _ <- (logInfo "Attempted registration with relay" { registerResult, relayAddress })
 
               if registerResult then
                 pure $ UpstreamRelayStateRegistered portNumber relayAddress
@@ -370,8 +374,6 @@ applyRunResult { relayKey: relayKey@(RelayKey slotId slotRole), thisServer, inge
         url = makeUrlAddr chosenRelay RelayRegisterRelayE
       in
         do
-
-        _ <- (logInfo "Registering Route" payload)
 
         -- Don't use follow here as we should be talking to the correct server directly
         eitherResponse <- SpudGun.postJson url payload
@@ -522,22 +524,31 @@ configToPlan { ingestAggregator } { egests, egestSource, downstreamRelays } =
     upstreamRelaySources =
       List.fromFoldable $ Set.union egestResult.sources downstreamRelaysResult.sources
 
-    egestResult =
-      case egestSource of
-        EgestSourceIngestAggregator ->
-          { needsIngestAggregator: true
-          , sources: Set.empty
-          , source: EgestSinkSourceIngestAggregator
-          }
-
-        EgestSourceUpstreamRelays upstreamRelays ->
-          { needsIngestAggregator: false
-          , sources: Set.fromFoldable upstreamRelays
-          , source: EgestSinkSourceUpstreamRelays upstreamRelays
-          }
-
     egestDestinations =
       map deliverToAddressFromDeliverToEgestServer $ Map.values egests
+
+    egestResult =
+      -- If there are no egests currently, don't bother with egest sources,
+      -- it can cause us to deadlock if we're being triggered by another relay
+      -- to whom we've got a reverse connection
+      if (Map.size egests) == 0 then
+        { needsIngestAggregator: false
+        , sources: Set.empty
+        , source: EgestSinkSourceIngestAggregator
+        }
+      else
+        case egestSource of
+          EgestSourceIngestAggregator ->
+            { needsIngestAggregator: true
+            , sources: Set.empty
+            , source: EgestSinkSourceIngestAggregator
+            }
+
+          EgestSourceUpstreamRelays upstreamRelays ->
+            { needsIngestAggregator: false
+            , sources: Set.fromFoldable upstreamRelays
+            , source: EgestSinkSourceUpstreamRelays upstreamRelays
+            }
 
     deliverToAddressFromDeliverToEgestServer { server, port } =
       { server: extractAddress server, port }
