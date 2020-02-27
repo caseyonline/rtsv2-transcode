@@ -59,10 +59,7 @@ import SpudGun as SpudGun
 -- -----------------------------------------------------------------------------
 foreign import data WorkflowHandle :: Type
 foreign import startWorkflowFFI :: Int -> Effect WorkflowHandle
-
-applyPlanFFI :: WorkflowHandle -> StreamRelayPlan -> Effect StreamRelayApplyResult
-applyPlanFFI _handle _plan = pure { ingestAggregatorReceivePort: Nothing, upstreamRelayReceivePorts: Map.empty }
-
+foreign import applyPlanFFI :: WorkflowHandle -> StreamRelayPlan -> Effect StreamRelayApplyResult
 foreign import setSlotConfigurationFFI :: RelayKey -> SlotConfiguration -> Effect Unit
 foreign import getSlotConfigurationFFI :: RelayKey -> Effect (Maybe SlotConfiguration)
 
@@ -262,7 +259,7 @@ applyPlan stateData@{ workflowHandle, plan: Just plan, run: runState } =
     pure $ CallReply unit $ State newStateData
 
 applyRunResult :: StateData -> StreamRelayApplyResult -> StreamRelayRunState -> Effect StreamRelayRunState
-applyRunResult { relayKey: (RelayKey slotId slotRole), thisServer, ingestAggregator } applyResult runState =
+applyRunResult { relayKey: relayKey@(RelayKey slotId slotRole), thisServer, ingestAggregator } applyResult runState =
   (pure runState)
     <#> mergeApplyResult applyResult
     >>= maybeTryRegisterIngestAggregator
@@ -395,7 +392,9 @@ applyRunResult { relayKey: (RelayKey slotId slotRole), thisServer, ingestAggrega
 
         case hush response of
           Just receivedSlotConfiguration ->
-            pure $ runStateIn{ slotConfiguration = Just receivedSlotConfiguration }
+            do
+              setSlotConfigurationFFI relayKey receivedSlotConfiguration
+              pure $ runStateIn{ slotConfiguration = Just receivedSlotConfiguration }
 
           _ ->
             tryEnsureSlotConfigurationFromRelays runStateIn
@@ -409,7 +408,9 @@ applyRunResult { relayKey: (RelayKey slotId slotRole), thisServer, ingestAggrega
 
         case result of
           Just receivedSlotConfiguration ->
-            pure runStateIn{ slotConfiguration = Just receivedSlotConfiguration }
+            do
+              setSlotConfigurationFFI relayKey receivedSlotConfiguration
+              pure runStateIn{ slotConfiguration = Just receivedSlotConfiguration }
           _ ->
             pure runStateIn
 

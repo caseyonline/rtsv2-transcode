@@ -13,24 +13,11 @@
 
 -export(
    [ startWorkflowFFI/1
+   , applyPlanFFI/2
    , getSlotConfigurationFFI/1
    , setSlotConfigurationFFI/2
    ]).
 
-
-%% Sources
--export(
-   [ ensureIngestAggregatorSourceFFI/1
-   , ensureStreamRelaySourceFFI/2
-   ]).
-
-
-%% Sinks
--export(
-   [ addEgestSinkFFI/3
-   ]).
-
-          %% , addStreamRelaySinkFFI/2
 
 -define(metadata, rtsv2_agents_streamRelayInstance_metadata).
 
@@ -44,25 +31,55 @@ startWorkflowFFI(SlotId) ->
       start_workflow(SlotId)
   end.
 
+%% Example Plan
+%%
+%% #{downstreamRelaySinks => [],
+%%                               egestSink =>
+%%                                   #{destinations =>
+%%                                         [#{port => 50319,
+%%                                            server => <<"172.16.171.1">>}],
+%%                                     source =>
+%%                                         {egestSinkSourceIngestAggregator}},
+%%                               ingestAggregatorSource =>
+%%                                   {ingestAggregatorSourceEnabled,
+%%                                       <<"172.16.171.5">>},
+%%                               upstreamRelaySources => []}
 
-ensureIngestAggregatorSourceFFI(Handle) ->
+
+applyPlanFFI(WorkflowHandle,
+             #{ ingestAggregatorSource := IngestAggregatorSource
+              , upstreamRelaySources := _UpstreamRelaySourceList
+              , egestSink := #{ destinations := EgestDestinationList
+                              , source := _EgestSource
+                              }
+              , downstreamRelaySinks := _DownstreamRelaySinks
+              } = StreamRelayPlan) ->
   fun() ->
-      {ok, ReceivePort} = id3as_workflow:ioctl(sources, ensure_ingest_aggregator_source, Handle),
-      ReceivePort
-  end.
+      io:format(user, "Received a StreamRelayPlan: ~p~n~n", [StreamRelayPlan]),
 
+      IngestAggregatorReceivePort =
+        case IngestAggregatorSource of
+          {ingestAggregatorSourceEnabled, _IngestAggregatorHost} ->
+            {ok,   ReceivePort} = id3as_workflow:ioctl(sources, ensure_ingest_aggregator_source, WorkflowHandle),
+            {just, ReceivePort};
+          {ingestAggregatorSourceDisabled} ->
+            {nothing}
+        end,
 
-ensureStreamRelaySourceFFI(SourceRoute, Handle) ->
-  fun() ->
-      {ok, ReceivePort} = id3as_workflow:ioctl(sources, {ensure_stream_relay_source, SourceRoute}, Handle),
-      ReceivePort
-  end.
+      lists:foreach(fun(#{ port := EgestPort, server := EgestHost } = _EgestDestination) ->
+                        case id3as_workflow:ioctl(egests, {register_egest, EgestHost, EgestPort}, WorkflowHandle) of
+                          ok ->
+                            ok;
+                          {ok, {error, already_registered}} ->
+                            ok
+                        end
+                    end,
+                    EgestDestinationList
+                   ),
 
-
-addEgestSinkFFI(EgestHost, EgestPort, Handle) ->
-  fun() ->
-      ok = id3as_workflow:ioctl(egests, {register_egest, EgestHost, EgestPort}, Handle),
-      ok
+      #{ ingestAggregatorReceivePort => IngestAggregatorReceivePort
+       , upstreamRelayReceivePorts => #{}
+       }
   end.
 
 
