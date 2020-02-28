@@ -6,7 +6,7 @@ module Rtsv2.Handler.Health
 
 import Prelude
 
-import Data.Maybe (maybe)
+import Data.Maybe (Maybe(..), maybe)
 import Data.Newtype (wrap)
 import Effect (Effect)
 import Erl.Data.List (nil, (:))
@@ -17,7 +17,7 @@ import Shared.Types (extractAddress)
 import Simple.JSON as JSON
 import Stetson (StetsonHandler)
 import Stetson.Rest as Rest
-import StetsonHelper (GenericStetsonGet, multiMimeResponse)
+import StetsonHelper (GetResponse, multiMimeResponse)
 
 healthCheck :: StetsonHandler Unit
 healthCheck =
@@ -37,6 +37,5 @@ healthCheck =
 
 foreign import vmMetricsImpl :: Effect String
 
-vmMetrics  :: GenericStetsonGet Unit
-vmMetrics =
-  multiMimeResponse (MimeType.openmetrics vmMetricsImpl : nil)
+vmMetrics  :: GetResponse String
+vmMetrics = multiMimeResponse (MimeType.openmetrics identity : nil) (Just <$> vmMetricsImpl)

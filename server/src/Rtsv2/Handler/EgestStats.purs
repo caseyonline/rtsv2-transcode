@@ -5,10 +5,11 @@ module Rtsv2.Handler.EgestStats
 
 import Prelude
 
+import Data.Maybe (Maybe(..))
 import Rtsv2.Agents.EgestInstance as EgestInstance
 import Shared.Stream (EgestKey(..), SlotId)
 import Shared.Types.Agent.State as PublicState
-import StetsonHelper (GenericStetsonGet, jsonResponse)
+import StetsonHelper (GetResponse, jsonResponse)
 
-stats :: SlotId -> GenericStetsonGet PublicState.Egest
-stats = jsonResponse <<< EgestInstance.currentStats <<< EgestKey
+stats :: SlotId -> GetResponse PublicState.Egest
+stats = jsonResponse <<< (map Just) <<< EgestInstance.currentStats <<< EgestKey

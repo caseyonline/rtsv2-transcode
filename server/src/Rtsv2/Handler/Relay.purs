@@ -35,10 +35,10 @@ import Shared.Types.Agent.State (StreamRelay)
 import Simple.JSON as JSON
 import Stetson (HttpMethod(..), StetsonHandler)
 import Stetson.Rest as Rest
-import StetsonHelper (GenericStatusState, GenericStetsonHandler, GenericStetsonGet, allBody, binaryToString, genericPost, jsonResponse, preHookSpyState)
+import StetsonHelper (GenericStatusState, GenericStetsonHandler, GetResponse, allBody, binaryToString, genericPost, jsonResponse, preHookSpyState)
 
-stats :: SlotId -> SlotRole -> GenericStetsonGet (StreamRelay List)
-stats slotId slotRole = jsonResponse $ StreamRelayInstance.status $ RelayKey slotId slotRole
+stats :: SlotId -> SlotRole -> GetResponse (StreamRelay List)
+stats slotId slotRole = jsonResponse $ Just <$> (StreamRelayInstance.status $ RelayKey slotId slotRole)
 
 startResource :: GenericStetsonHandler CreateRelayPayload
 startResource =  genericPost  StreamRelayInstanceSup.startRelay
@@ -49,9 +49,9 @@ registerEgest = genericPost  StreamRelayInstance.registerEgest
 registerRelay :: GenericStetsonHandler RegisterRelayPayload
 registerRelay = genericPost  StreamRelayInstance.registerRelay
 
-slotConfiguration :: SlotId -> SlotRole -> GenericStetsonGet (Maybe SlotConfiguration)
+slotConfiguration :: SlotId -> SlotRole -> GetResponse (Maybe SlotConfiguration)
 slotConfiguration slotId role =
-  jsonResponse $ StreamRelayInstance.slotConfiguration (RelayKey slotId role)
+  jsonResponse $ Just <$> (StreamRelayInstance.slotConfiguration (RelayKey slotId role))
 
 newtype ProxyState
   = ProxyState { whereIsResp :: Maybe Server

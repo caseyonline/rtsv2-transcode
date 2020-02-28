@@ -1,9 +1,9 @@
 module StetsonHelper
        (
-         GenericStetsonGet
+         GetResponse
        , jsonResponse
-       , multiMimeResponse
        , textResponse
+       , multiMimeResponse
 
        , genericPost
        , genericPostWithResponse
@@ -26,7 +26,7 @@ module StetsonHelper
 import Prelude
 
 import Data.Either (hush)
-import Data.Maybe (Maybe(..), fromMaybe, fromMaybe', isNothing)
+import Data.Maybe (Maybe(..), fromMaybe, fromMaybe', isJust, isNothing)
 import Effect (Effect)
 import Erl.Cowboy.Req (ReadBodyResult(..), Req, StatusCode(..), readBody, replyWithoutBody, setHeader)
 import Erl.Data.Binary (Binary)
@@ -47,33 +47,34 @@ import Unsafe.Coerce as Unsafe.Coerce
 ------------------------------------------------------------------------------
 -- GET helpers
 ------------------------------------------------------------------------------
-type GenericStetsonGet a = StetsonHandler (Maybe a)
+type GetResponse a = StetsonHandler (Maybe a)
 
-jsonResponse :: forall a. WriteForeign a => Effect a -> StetsonHandler (Maybe a)
-jsonResponse getData =
-  multiMimeResponse $ singleton $ MimeType.json (writeJSON <$> getData)
+jsonResponse :: forall a. WriteForeign a => Effect (Maybe a) -> StetsonHandler (Maybe a)
+jsonResponse =
+  multiMimeResponse (singleton $ MimeType.json writeJSON)
 
-textResponse :: Effect String -> StetsonHandler (Maybe String)
-textResponse getData =
-  multiMimeResponse $ singleton $ MimeType.text getData
+textResponse :: Effect (Maybe String) -> StetsonHandler (Maybe String)
+textResponse =
+  multiMimeResponse (singleton $ MimeType.text identity)
 
-multiMimeResponse :: forall a. List (Tuple2 String (Effect String)) -> StetsonHandler (Maybe a)
-multiMimeResponse getDatas =
+multiMimeResponse :: forall a. List (Tuple2 String (a -> String)) -> Effect (Maybe a) -> StetsonHandler (Maybe a)
+multiMimeResponse mimeFormatters getData =
   Rest.handler init
   # Rest.allowedMethods (Rest.result (GET : mempty))
-  # Rest.contentTypesProvided (\req state -> Rest.result ((\tuple -> tuple2 (fst tuple) (provideContent (snd tuple))) <$> getDatas) req state)
+  # Rest.resourceExists (\req state -> do
+                          mData <- join <$> noprocToMaybe getData
+                          Rest.result (isJust mData) req mData)
+  # Rest.contentTypesProvided (\req state ->
+                                let
+                                  mimeMappings = ((\tuple -> tuple2 (fst tuple) (provideContent (snd tuple))) <$> mimeFormatters)
+                                in
+                                Rest.result mimeMappings req state)
   # Rest.yeeha
   where
     init req = Rest.initResult (setHeader "access-control-allow-origin" "*" req) Nothing
-    provideContent getData req state = do
-      noprocToMaybe getData >>=
-        case _ of
-          Nothing ->
-            do
-              newReq <- replyWithoutBody (StatusCode 404) Map.empty req
-              Rest.stop newReq state
-          Just theData ->
-            Rest.result theData req state
+    provideContent :: (a -> String) -> Req -> Maybe a -> Effect (RestResult String (Maybe a))
+    provideContent mimeFormatter req Nothing = Rest.result "" req Nothing
+    provideContent mimeFormatter req state@(Just theData) = Rest.result (mimeFormatter theData) req state
 
 type GenericStetsonHandler a = StetsonHandler (GenericHandlerState a)
 newtype GenericHandlerState a = GenericHandlerState { mPayload :: Maybe a }

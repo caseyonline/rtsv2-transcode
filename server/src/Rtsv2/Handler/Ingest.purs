@@ -32,6 +32,7 @@ import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.Router.Endpoint (Canary)
 import Shared.LlnwApiTypes (StreamIngestProtocol(..), StreamPublish, StreamDetails)
 import Shared.Stream (IngestKey(..), ProfileName, RtmpShortName, SlotId, SlotNameAndProfileName(..), SlotRole(..))
+import Shared.Types.Agent.State (IngestStats)
 import Shared.Types.Agent.State as PublicState
 import Shared.Types.Workflow.Metrics.Commmon (Stream)
 import Shared.Utils (lazyCrashIfMissing)
@@ -40,23 +41,16 @@ import SpudGun (bodyToJSON)
 import SpudGun as SpudGun
 import Stetson (StetsonHandler)
 import Stetson.Rest as Rest
-import StetsonHelper (GenericStetsonGet, jsonResponse, multiMimeResponse)
+import StetsonHelper (GetResponse, jsonResponse, multiMimeResponse)
 
 ingestInstances :: StetsonHandler Unit
 ingestInstances =
   Rest.handler (\req -> Rest.initResult req unit)
   # Rest.yeeha
 
-ingestInstancesMetrics :: GenericStetsonGet Unit
+ingestInstancesMetrics :: GetResponse (List (IngestStats List))
 ingestInstancesMetrics =
-  multiMimeResponse ((MimeType.openmetrics getText) : (MimeType.json getJson) : nil)
-  where
-    getJson = do
-      stats <- IngestStats.getStats
-      pure $ writeJSON stats
-    getText = do
-      stats <- IngestStats.getStats
-      pure $ statsToPrometheus stats
+  multiMimeResponse ((MimeType.openmetrics statsToPrometheus) : (MimeType.json writeJSON) : nil) (Just <$> IngestStats.getStats)
 
 metrics :: List Prometheus.PrometheusMetric
 metrics = { name: "ingest_frame_count"
@@ -187,10 +181,10 @@ statsToPrometheus stats =
                             (Tuple "profile_name" (Prometheus.toLabelValue profileName)) :
                             nil
 
-ingestInstance :: SlotId -> ProfileName -> GenericStetsonGet (PublicState.Ingest List)
+ingestInstance :: SlotId -> ProfileName -> GetResponse (PublicState.Ingest List)
 ingestInstance slotId profileName =
   -- TODO - hardcoded Primary
-  jsonResponse (IngestInstance.getPublicState (IngestKey slotId Primary profileName))
+  jsonResponse $ Just <$> (IngestInstance.getPublicState (IngestKey slotId Primary profileName))
 
 
 type IngestStartState = { shortName :: RtmpShortName

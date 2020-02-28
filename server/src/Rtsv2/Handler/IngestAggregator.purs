@@ -27,12 +27,12 @@ import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (readJSON)
 import Stetson (HttpMethod(..), StetsonHandler)
 import Stetson.Rest as Rest
-import StetsonHelper (GenericStatusState, GenericStetsonHandler, GenericStetsonGet, allBody, binaryToString, genericPost, jsonResponse)
+import StetsonHelper (GenericStetsonHandler, GetResponse, allBody, binaryToString, genericPost, jsonResponse)
 
-ingestAggregator :: SlotId -> SlotRole -> GenericStetsonGet (PublicState.IngestAggregator List)
-ingestAggregator slotId role = jsonResponse $ IngestAggregatorInstance.getState $ AggregatorKey slotId role
+ingestAggregator :: SlotId -> SlotRole -> GetResponse (PublicState.IngestAggregator List)
+ingestAggregator slotId role = jsonResponse $ Just <$> (IngestAggregatorInstance.getState $ AggregatorKey slotId role)
 
-slotConfiguration :: SlotId -> SlotRole -> GenericStetsonGet (Maybe SlotConfiguration)
+slotConfiguration :: SlotId -> SlotRole -> GetResponse SlotConfiguration
 slotConfiguration slotId role =
   jsonResponse $ IngestAggregatorInstance.slotConfiguration (AggregatorKey slotId role)
 
