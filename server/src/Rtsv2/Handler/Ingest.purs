@@ -11,7 +11,7 @@ import Prelude
 
 import Data.Either (hush)
 import Data.Foldable (foldl)
-import Data.Maybe (Maybe(..), fromMaybe')
+import Data.Maybe (Maybe(..), fromMaybe', isJust)
 import Data.Newtype (unwrap, wrap)
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..))
@@ -30,8 +30,8 @@ import Rtsv2.Agents.IngestStats as IngestStats
 import Rtsv2.Config as Config
 import Rtsv2.Handler.MimeType as MimeType
 import Shared.LlnwApiTypes (StreamIngestProtocol(..), StreamPublish, StreamDetails)
-import Shared.Stream (IngestKey(..), ProfileName, RtmpShortName, SlotId, SlotNameAndProfileName(..), SlotRole(..))
 import Shared.Router.Endpoint (Canary)
+import Shared.Stream (IngestKey(..), ProfileName, RtmpShortName, SlotId, SlotNameAndProfileName(..), SlotRole(..))
 import Shared.Types.Agent.State (IngestStats)
 import Shared.Types.Agent.State as PublicState
 import Shared.Types.Workflow.Metrics.Commmon (Stream)
@@ -187,31 +187,27 @@ ingestInstance slotId profileName =
   jsonResponse $ Just <$> (IngestInstance.getPublicState (IngestKey slotId Primary profileName))
 
 
-type IngestStartState = { shortName :: RtmpShortName
-                        , streamDetails :: Maybe StreamDetails
+type IngestStartState = { streamDetails :: Maybe StreamDetails
                         , streamPublish :: Maybe StreamPublish
-                        , slotNameAndProfileName :: SlotNameAndProfileName
                         }
 
 ingestStart :: Canary -> RtmpShortName -> SlotNameAndProfileName -> StetsonHandler IngestStartState
-ingestStart canary shortName slotNameAndProfileName =
+ingestStart canary shortName slotNameAndProfileName@(SlotNameAndProfileName slotName profileName) =
   Rest.handler (\req ->
-                 Rest.initResult req { shortName
-                                     , slotNameAndProfileName
-                                     , streamDetails: Nothing
+                 Rest.initResult req { streamDetails: Nothing
                                      , streamPublish: Nothing
                                      }
                )
   # Rest.serviceAvailable (\req state -> do
                             isAgentAvailable <- IngestInstanceSup.isAvailable
                             Rest.result isAgentAvailable req state)
-  # Rest.resourceExists (\req state@{shortName, slotNameAndProfileName: (SlotNameAndProfileName _ profileName)} ->
+  # Rest.resourceExists (\req state ->
                           let
                             streamPublishPayload :: StreamPublish
                             streamPublishPayload = wrap { host: "172.16.171.5"
                                                         , protocol: Rtmp
                                                         , rtmpShortName: shortName
-                                                        , rtmpStreamName: wrap $ unwrap profileName
+                                                        , rtmpStreamName: wrap $ slotName <> "_" <> (unwrap profileName)
                                                         , username: "user"}
                           in
                            do
@@ -219,13 +215,12 @@ ingestStart canary shortName slotNameAndProfileName =
                              restResult <- bodyToJSON <$> SpudGun.postJson (wrap streamPublishUrl) streamPublishPayload
                              let
                                streamDetails = hush $ restResult
-                             Rest.result true req state{ streamDetails = streamDetails
-                                                       , streamPublish = Just streamPublishPayload}
+                             Rest.result (isJust streamDetails) req state{ streamDetails = streamDetails
+                                                                         , streamPublish = Just streamPublishPayload}
                           )
   -- TODO - hideous spawn here, but ingestInstance needs to do a monitor... - ideally we sleep forever and kill it in ingestStop...
   # Rest.contentTypesProvided (\req state ->
                                   Rest.result (tuple2 "text/plain" (\req2 state2@{ streamDetails: maybeStreamDetails
-                                                                                 , slotNameAndProfileName: SlotNameAndProfileName slotId profileName
                                                                                  , streamPublish: maybeStreamPublish
                                                                                  } -> do
                                                                        let

@@ -217,8 +217,8 @@ poPNameToString = unwrap
 
 -- | SlotIdAndProfileName
 parseSlotIdAndProfileName :: String -> Maybe SlotIdAndProfileName
-parseSlotIdAndProfileName  ""  = Nothing
-parseSlotIdAndProfileName  str =
+parseSlotIdAndProfileName ""  = Nothing
+parseSlotIdAndProfileName str =
   case split (Pattern "_") str !! 0 of
     Just slotIdStr ->
       case fromString slotIdStr of
@@ -227,14 +227,14 @@ parseSlotIdAndProfileName  str =
     _ -> Nothing
 
 parseSlotNameAndProfileName :: String -> Maybe SlotNameAndProfileName
-parseSlotNameAndProfileName  ""  = Nothing
-parseSlotNameAndProfileName  str =
-  case split (Pattern "_") str !! 0 of
-    Just streamNameStr -> Just (SlotNameAndProfileName streamNameStr (wrap str))
+parseSlotNameAndProfileName ""  = Nothing
+parseSlotNameAndProfileName str =
+  case split (Pattern "_") str of
+    [slotNameStr, profileNameStr] -> Just (SlotNameAndProfileName slotNameStr (wrap profileNameStr))
     _ -> Nothing
 
 slotNameAndProfileToString :: SlotNameAndProfileName -> String
-slotNameAndProfileToString (SlotNameAndProfileName _ (ProfileName str)) = str
+slotNameAndProfileToString (SlotNameAndProfileName slotName (ProfileName str)) = slotName <> "_" <> str
 
 
 -- | Canary

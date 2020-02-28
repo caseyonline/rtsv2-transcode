@@ -10,7 +10,7 @@ import Data.Identity (Identity(..))
 import Data.List (List(..), (:))
 import Data.Map as Map
 import Data.Maybe (Maybe(..), isNothing, fromMaybe)
-import Data.Newtype (un, wrap)
+import Data.Newtype (class Newtype, un, wrap, unwrap)
 import Data.Time.Duration (Milliseconds(..))
 import Data.Traversable (traverse, traverse_)
 import Data.Tuple (Tuple(..))
@@ -26,7 +26,8 @@ import Node.FS.Aff (writeTextFile)
 import OsCmd (runProc)
 import Partial.Unsafe (unsafePartial)
 import Prim.Row (class Union)
-import Shared.Stream (ProfileName(..))
+import Shared.Stream (ProfileName(..), SlotRole(..), SlotNameAndProfileName(..))
+import Shared.Router.Endpoint (Endpoint(..), makeUrl, Canary(..))
 import Shared.Types (ServerAddress(..), extractAddress)
 import Shared.Types.Agent.State as PublicState
 import Simple.JSON (class ReadForeign)
@@ -127,7 +128,8 @@ forceRight :: forall a b. Either a b -> b
 forceRight e = unsafePartial $ case e of
   Right b -> b
 
-
+newtype NodeAddress = NodeAddress {address :: ServerAddress}
+derive instance newtypeNodeAddress :: Newtype NodeAddress _
 
 main :: Effect Unit
 main =
@@ -143,47 +145,50 @@ main =
     p4n1 = Node 4 1
     p4n2 = Node 4 2
 
-    slot1      = 1
-    shortName1 = "mmddev001"
-    low        = "slot1_500"
-    high       = "slot1_1000"
+    slot1      = wrap 1
+    shortName1 = wrap "mmddev001"
+    low        = SlotNameAndProfileName "slot1" (wrap "500")
+    high       = SlotNameAndProfileName "slot1" (wrap "1000")
 
     stop  = "stop"
 
-    api node = "http://" <> toAddr node <> ":3000/api/"
+    serverAddress node = NodeAddress {address: ServerAddress $ toAddr node}
 
-    egestStats node slotId           = get (M.URL $ api node <> "agents/egest/" <> (show slotId))
+    makeUrl' node path = unwrap $ makeUrl (serverAddress node) path
 
-    aggregatorStats node slotId      = get (M.URL $ api node <> "agents/ingestAggregator/" <> (show slotId) <> "/primary")
+    egestStats node slotId           = get (M.URL $ makeUrl' node (EgestStatsE slotId))
 
-    ingestStart node shortName profileName = get (M.URL $ api node <> "public/canary/ingest/" <> shortName <> "/" <> profileName <> "/start")
-    ingestStop node slotId profileName     = get (M.URL $ api node <> "public/canary/ingest/" <> (show slotId) <> "/primary/" <> profileName <> "/stop")
+    aggregatorStats node slotId      = get (M.URL $ makeUrl' node (IngestAggregatorE slotId Primary))
 
-    relayStats node slotId           = get (M.URL $ api node <> "agents/relay/" <> (show slotId) <> "/primary")
+    ingestStart node shortName profileName = get (M.URL $ makeUrl' node (IngestStartE Live shortName profileName))
 
-    proxiedRelayStats node slotId    = get (M.URL $ api node <> "agents/proxied/relay/" <> (show slotId) <> "/primary")
+    ingestStop node slotId (SlotNameAndProfileName _ profileName)     = get (M.URL $ makeUrl' node (IngestStopE Live slotId Primary profileName))
 
-    intraPoPState node               = get (M.URL $ api node <> "state")
+    relayStats node slotId           = get (M.URL $ makeUrl' node (RelayStatsE slotId Primary))
 
-    clientStart node slotId          = fetch (M.URL $ api node <> "public/canary/client/" <> (show slotId) <> "/start")
+    proxiedRelayStats node slotId    = get (M.URL $ makeUrl' node (RelayProxiedStatsE slotId Primary))
+
+    intraPoPState node               = get (M.URL $ makeUrl' node ServerStateE)
+
+    clientStart node slotId          = fetch (M.URL $ makeUrl' node (ClientStartE Live slotId))
                                          { method: M.postMethod
                                          , body: "{}"
                                          , headers: M.makeHeaders { "Content-Type": "application/json" }
                                          }
 
-    clientStop clientId node slotId  = fetch (M.URL $ api node <> "public/canary/client/" <> (show slotId) <> "/stop/" <> clientId)
+    clientStop clientId node slotId  = fetch (M.URL $ makeUrl' node (ClientStopE Live slotId clientId))
                                          { method: M.postMethod
                                          , body: "{}"
                                          , headers: M.makeHeaders { "Content-Type": "application/json" }
                                          }
 
-    setLoad node load                 = fetch (M.URL $ api node <> "load")
+    setLoad node load                 = fetch (M.URL $ makeUrl' node LoadE)
                                           { method: M.postMethod
                                           , body: "{\"load\": " <> show load <> "}"
                                           , headers: M.makeHeaders { "Content-Type": "application/json" }
                                           }
 
-    dropAgentMessages node flag       = fetch (M.URL $ api node <> "test/intraPoP")
+    dropAgentMessages node flag       = fetch (M.URL $ makeUrl' node IntraPoPTestHelperE)
                                           { method: M.postMethod
                                           , body: "{\"dropAgentMessages\": " <> show flag <> "}"
                                           , headers: M.makeHeaders { "Content-Type": "application/json" }
@@ -239,8 +244,8 @@ main =
 
     assertAggregator = assertBodyFun <<< predicate
       where
-        predicate :: Array String -> PublicState.IngestAggregator Array -> Boolean
-        predicate vars {activeProfiles} = sort (ProfileName <$> vars) == (sort $ _.profileName <$> activeProfiles)
+        predicate :: Array SlotNameAndProfileName -> PublicState.IngestAggregator Array -> Boolean
+        predicate vars {activeProfiles} = sort ((\(SlotNameAndProfileName _ profileName) -> profileName) <$> vars) == (sort $ _.profileName <$> activeProfiles)
 
     assertAggregatorOn nodes requiredSlotId  = assertBodyFun $ predicate
       where
@@ -249,7 +254,7 @@ main =
           let
             nodeAddresses = toAddr
             serverAddressesForSlotId = foldl (\acc {slotId, servers} ->
-                                                 if slotId == wrap requiredSlotId
+                                                 if slotId == requiredSlotId
                                                  then acc <> (extractAddress <$> servers)
                                                  else acc
                                                ) []  popState.aggregatorLocations
@@ -263,7 +268,7 @@ main =
           let
             nodeAddresses = toAddr
             serverAddressesForSlotId = foldl (\acc {slotId, servers} ->
-                                                 if slotId == wrap requiredSlotId
+                                                 if slotId == requiredSlotId
                                                  then acc <> (extractAddress <$> servers)
                                                  else acc
                                                ) []  popState.relayLocations
