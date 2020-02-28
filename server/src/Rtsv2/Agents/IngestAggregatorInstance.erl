@@ -52,12 +52,12 @@ startWorkflowImpl(SlotId, ProfileArray) ->
                                                      %% next 8 bits to provide a type, and leave the lower
                                                      %% 8 bits incase we ever need multiple related SSRCs
                                                      %% for a single RTP flow
-                                                   , audio_ssrc_start = (ProfileIndex bsl 16) bor (1 bsl 8)
-                                                   , video_ssrc_start = (ProfileIndex bsl 16) bor (2 bsl 8)
+                                                   , audio_ssrc_start = ?make_audio_ssrc(ProfileIndex, 0)
+                                                   , video_ssrc_start = ?make_video_ssrc(ProfileIndex, 0)
                                                    },
                            { ProfileInfo, ProfileIndex + 1 }
                        end,
-                       0,
+                       ?PROFILE_INDEX_STANDARD_OFFSET,
                        Profiles
                       ),
 

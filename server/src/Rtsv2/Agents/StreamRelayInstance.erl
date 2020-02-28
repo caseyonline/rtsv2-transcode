@@ -13,24 +13,11 @@
 
 -export(
    [ startWorkflowFFI/1
+   , applyPlanFFI/2
    , getSlotConfigurationFFI/1
    , setSlotConfigurationFFI/2
    ]).
 
-
-%% Sources
--export(
-   [ addIngestAggregatorSourceFFI/1
-   ]).
-
-
-%% Sinks
--export(
-   [ addEgestSinkFFI/3
-   ]).
-
-          %% , addStreamRelaySourceFFI/1
-          %% , addStreamRelaySinkFFI/2
 
 -define(metadata, rtsv2_agents_streamRelayInstance_metadata).
 
@@ -44,18 +31,74 @@ startWorkflowFFI(SlotId) ->
       start_workflow(SlotId)
   end.
 
+%% Example Plan
+%%
+%% #{downstreamRelaySinks => [],
+%%                               egestSink =>
+%%                                   #{destinations =>
+%%                                         [#{port => 50319,
+%%                                            server => <<"172.16.171.1">>}],
+%%                                     source =>
+%%                                         {egestSinkSourceIngestAggregator}},
+%%                               ingestAggregatorSource =>
+%%                                   {ingestAggregatorSourceEnabled,
+%%                                       <<"172.16.171.5">>},
+%%                               upstreamRelaySources => []}
 
-addIngestAggregatorSourceFFI(Handle) ->
+
+applyPlanFFI(WorkflowHandle,
+             #{ ingestAggregatorSource := IngestAggregatorSource
+              , upstreamRelaySources := UpstreamRelaySourceList
+              , egestSink := #{ destinations := EgestDestinationList
+                              , source := _EgestSource
+                              }
+              , downstreamRelaySinks := DownstreamRelaySinks
+              } = StreamRelayPlan) ->
   fun() ->
-      {ok, ReceivePort} = id3as_workflow:ioctl(sources, add_ingest_aggregator_source, Handle),
-      ReceivePort
-  end.
+      io:format(user, "Received a StreamRelayPlan: ~p~n~n", [StreamRelayPlan]),
 
+      IngestAggregatorReceivePort =
+        case IngestAggregatorSource of
+          {ingestAggregatorSourceEnabled, _IngestAggregatorHost} ->
+            {ok,   ReceivePort} = id3as_workflow:ioctl(sources, ensure_ingest_aggregator_source, WorkflowHandle),
+            {just, ReceivePort};
+          {ingestAggregatorSourceDisabled} ->
+            {nothing}
+        end,
 
-addEgestSinkFFI(EgestHost, EgestPort, Handle) ->
-  fun() ->
-      ok = id3as_workflow:ioctl(egests, {register_egest, EgestHost, EgestPort}, Handle),
-      ok
+      UpstreamRelayReceivePorts =
+        maps:from_list(lists:map(fun(#{ next := _NextPoP, rest := _RemainingPoPs } = UpstreamRelay) ->
+                                     {ok, UpstreamRelayReceivePort} = id3as_workflow:ioctl(sources, {ensure_upstream_relay_source, UpstreamRelay}, WorkflowHandle),
+                                     {UpstreamRelay, UpstreamRelayReceivePort}
+                                 end,
+                                 UpstreamRelaySourceList
+                                )),
+
+      lists:foreach(fun(#{ port := EgestPort, server := EgestHost } = _EgestDestination) ->
+                        case id3as_workflow:ioctl(egests, {register_egest, EgestHost, EgestPort}, WorkflowHandle) of
+                          ok ->
+                            ok;
+                          {ok, {error, already_registered}} ->
+                            ok
+                        end
+                    end,
+                    EgestDestinationList
+                   ),
+
+      lists:foreach(fun(#{ source := _Source, deliverTo := #{ port := SinkPort, server := SinkHost } } = _DownstreamRelaySink) ->
+                        case id3as_workflow:ioctl(relays, {register_relay, SinkHost, SinkPort}, WorkflowHandle) of
+                          ok ->
+                            ok;
+                          {ok, {error, already_registered}} ->
+                            ok
+                        end
+                    end,
+                    DownstreamRelaySinks
+                   ),
+
+      #{ ingestAggregatorReceivePort => IngestAggregatorReceivePort
+       , upstreamRelayReceivePorts => UpstreamRelayReceivePorts
+       }
   end.
 
 
@@ -106,11 +149,11 @@ start_workflow(SlotId) ->
                      , subscribes_to = sources
                      , config = SlotId
                      }
-         %% , #processor{ name = relays
-         %%             , display_name = <<"Relays">>
-         %%             , module = rtsv2_relay_to_relay_forward_processor
-         %%             , subscribes_to = sources
-         %%             }
+         , #processor{ name = relays
+                     , display_name = <<"Relays">>
+                     , module = rtsv2_relay_to_relay_forward_processor
+                     , subscribes_to = sources
+                     }
          ]
       },
 

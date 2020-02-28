@@ -33,18 +33,45 @@ init(#generator{workflow_context = Context}) ->
 handle_info(#workflow_output{message = Msg}, State) ->
   {output, Msg, State}.
 
-ioctl(add_ingest_aggregator_source, State = #?state{ workflows = Workflows, workflow_context = Context }
-     ) ->
 
-  {NewHandle, PortNumber} = start_workflow_for_ingest_aggregator_source(Context),
+ioctl(ensure_ingest_aggregator_source, State = #?state{ workflows = Workflows, workflow_context = Context }) ->
 
   %% There can only ever be one ingest aggregator for a stream, so that's sufficiently
   %% unique to use as a key
   SourceKey = ingest_aggregator,
 
-  NewState = State#?state{workflows = maps:put(SourceKey, NewHandle, Workflows)},
+  {Handle, FinalState} =
+    case maps:find(SourceKey, Workflows) of
+      {ok, ExistingHandle} ->
+        {ExistingHandle, State};
 
-  {ok, PortNumber, NewState}.
+      error ->
+        {ok, NewHandle} = start_workflow_for_ingest_aggregator_source(Context),
+        NewState = State#?state{workflows = maps:put(SourceKey, NewHandle, Workflows)},
+        {NewHandle, NewState}
+    end,
+
+  {ok, Port} = id3as_workflow:ioctl(source, get_port_number, Handle),
+  {ok, Port, FinalState};
+
+ioctl({ensure_upstream_relay_source, UpstreamRelay}, State = #?state{ workflows = Workflows, workflow_context = Context }) ->
+
+  SourceKey = {stream_relay, UpstreamRelay},
+
+  {Handle, FinalState} =
+    case maps:find(SourceKey, Workflows) of
+      {ok, ExistingHandle} ->
+        {ExistingHandle, State};
+
+      error ->
+        {ok, NewHandle} = start_workflow_for_stream_relay_source(UpstreamRelay, Context),
+        NewState = State#?state{workflows = maps:put(SourceKey, NewHandle, Workflows)},
+        {NewHandle, NewState}
+    end,
+
+  {ok, Port} = id3as_workflow:ioctl(source, get_port_number, Handle),
+  {ok, Port, FinalState}.
+
 
 %%------------------------------------------------------------------------------
 %% Private Functions
@@ -54,7 +81,7 @@ start_workflow_for_ingest_aggregator_source(Context) ->
     #workflow{ name = ingest_aggregator_source
              , display_name = <<>>
              , generators =
-                 [ #generator{name = source
+                 [ #generator{ name = source
                              , display_name = <<"Receive from Ingest Aggregator">>
                              , module = rtsv2_rtp_trunk_receiver_generator
                              }
@@ -65,6 +92,23 @@ start_workflow_for_ingest_aggregator_source(Context) ->
 
   {ok, Handle} = id3as_workflow:workflow_handle(Pid),
 
-  {ok, Port} = id3as_workflow:ioctl(source, get_port_number, Handle),
+  {ok, Handle}.
 
-  {Handle, Port}.
+
+start_workflow_for_stream_relay_source(_UpstreamRelay, Context) ->
+  Workflow =
+    #workflow{ name = upstream_relay_source
+             , display_name = <<>>
+             , generators =
+                 [ #generator{ name = source
+                             , display_name = <<"Receive from Stream Relay">>
+                             , module = rtsv2_rtp_trunk_receiver_generator
+                             }
+                 ]
+             },
+
+  {ok, Pid} = id3as_workflow:start_link(Workflow, self(), Context),
+
+  {ok, Handle} = id3as_workflow:workflow_handle(Pid),
+
+  {ok, Handle}.
