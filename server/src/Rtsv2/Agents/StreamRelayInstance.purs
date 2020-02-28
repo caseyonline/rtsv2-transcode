@@ -46,7 +46,7 @@ import Rtsv2.Agents.TransPoP (PoPRoutes)
 import Rtsv2.Agents.TransPoP as TransPoP
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
-import Rtsv2.Router.Endpoint (Endpoint(..), makeUrlAddr, makeUrlAddrWithPath, makeUrl, makeUrlWithPath)
+import Rtsv2.Router.Endpoint (Endpoint(..), makeUrlAddr, makeUrl)
 import Shared.Agent as Agent
 import Shared.Stream (AggregatorKey(..), RelayKey(..), SlotId(..), SlotRole(..))
 import Shared.Types (PoPName, EgestServer, RelayServer(..), Server(..), ServerAddress(..), extractPoP, extractAddress)
@@ -678,32 +678,12 @@ mkUpstreamRelay route =
     { next, rest }
 
 fetchIngestAggregatorSlotConfiguration :: Server -> SlotId -> SlotRole -> Effect (Either JsonResponseError SlotConfiguration)
-fetchIngestAggregatorSlotConfiguration aggregator (SlotId slotId) streamRole =
-  fetchSlotConfiguration configURL
-
-  where
-    streamRoleString =
-      case streamRole of
-        Primary ->
-          "primary"
-        Backup ->
-          "backup"
-
-    configURL = makeUrlWithPath aggregator $ "/api/agents/ingestAggregator/" <> (show slotId) <> "/" <> streamRoleString <> "/slot"
+fetchIngestAggregatorSlotConfiguration aggregator slotId streamRole =
+  fetchSlotConfiguration $ makeUrl aggregator $ IngestAggregatorSlotConfigurationE slotId streamRole
 
 fetchStreamRelaySlotConfiguration :: Server -> SlotId -> SlotRole -> Effect (Either JsonResponseError SlotConfiguration)
-fetchStreamRelaySlotConfiguration relay (SlotId slotId) streamRole =
-  fetchSlotConfiguration configURL
-
-  where
-    streamRoleString =
-      case streamRole of
-        Primary ->
-          "primary"
-        Backup ->
-          "backup"
-
-    configURL = makeUrlWithPath relay $ "/api/agents/relay/" <> (show slotId) <> "/" <> streamRoleString <> "/slot"
+fetchStreamRelaySlotConfiguration relay slotId streamRole =
+  fetchSlotConfiguration $ makeUrl relay $ RelaySlotConfigurationE slotId streamRole
 
 fetchSlotConfiguration :: Url -> Effect (Either JsonResponseError SlotConfiguration)
 fetchSlotConfiguration url =
