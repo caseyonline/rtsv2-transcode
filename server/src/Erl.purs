@@ -6,7 +6,6 @@ module Erl.Utils
        , privDir
        , self
        , trapExit
-       , Url
        , Ref
        )
        where
@@ -33,12 +32,6 @@ sleep :: Milliseconds -> Effect Unit
 sleep = sleepImpl <<< unwrap
 
 -- TODO - find a place for these utility types to live (a la id3as_common?)
-
--- | Url type
-newtype Url = Url String
-derive instance newtypeURL :: Newtype Url _
-derive newtype instance eqURL :: Eq Url
-derive newtype instance ordURL :: Ord Url
 
 systemTimeMs :: Effect Milliseconds
 systemTimeMs = wrap <$> systemTimeImpl (atom "millisecond")

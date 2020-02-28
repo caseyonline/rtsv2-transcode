@@ -1,13 +1,13 @@
-module Rtsv2.Router.Endpoint ( Endpoint(..)
-                             , Canary(..)
-                             , endpoint
-                             , makePath
-                             , makeUrl
-                             , makeUrlWithPath
-                             , makeUrlAddr
-                             , makeUrlAddrWithPath
-                             , parseSlotRole
-                             ) where
+module Shared.Router.Endpoint ( Endpoint(..)
+                              , Canary(..)
+                              , endpoint
+                              , makePath
+                              , makeUrl
+                              , makeUrlWithPath
+                              , makeUrlAddr
+                              , makeUrlAddrWithPath
+                              , parseSlotRole
+                              ) where
 
 import Prelude hiding ((/))
 
@@ -21,10 +21,8 @@ import Data.String (Pattern(..), split)
 import Routing.Duplex (RouteDuplex', as, path, print, rest, root, segment)
 import Routing.Duplex.Generic (noArgs, sum)
 import Routing.Duplex.Generic.Syntax ((/))
-import Rtsv2.Router.Parser as Routing
 import Shared.Stream (ProfileName(..), RtmpShortName, SlotId, SlotIdAndProfileName(..), SlotNameAndProfileName(..), SlotRole(..))
-import Shared.Types (PoPName, ServerAddress(..), extractAddress)
-import SpudGun (Url)
+import Shared.Types (PoPName, ServerAddress(..), Url, extractAddress)
 
 data Canary = Live
             | Canary

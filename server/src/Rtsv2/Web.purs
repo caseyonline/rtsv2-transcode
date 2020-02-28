@@ -40,8 +40,8 @@ import Rtsv2.Handler.Relay as RelayHandler
 import Rtsv2.Handler.TransPoP as TransPoPHandler
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
-import Rtsv2.Router.Endpoint (Canary)
-import Rtsv2.Router.Endpoint as Router
+import Shared.Router.Endpoint (Canary)
+import Shared.Router.Endpoint as Router
 import Serf (Ip(..))
 import Shared.Stream (EgestKey(..), IngestKey(..), ProfileName, SlotId, SlotIdAndProfileName(..), SlotRole(..))
 import Stetson (RestResult, StaticAssetLocation(..))

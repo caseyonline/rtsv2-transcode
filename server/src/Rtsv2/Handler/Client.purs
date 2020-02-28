@@ -31,7 +31,7 @@ import Rtsv2.Agents.Locator.Types (FailureReason(..), LocalOrRemote(..))
 import Rtsv2.Audit as Audit
 import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.PoPDefinition as PoPDefinition
-import Rtsv2.Router.Endpoint (Endpoint(..), Canary, makeUrl)
+import Shared.Router.Endpoint (Endpoint(..), Canary, makeUrl)
 import Rtsv2.Utils (cryptoStrongToken)
 import Shared.Stream (EgestKey(..), SlotId)
 import Shared.Types (Server, extractAddress)

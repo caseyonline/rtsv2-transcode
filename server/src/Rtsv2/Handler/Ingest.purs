@@ -29,9 +29,9 @@ import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
 import Rtsv2.Agents.IngestStats as IngestStats
 import Rtsv2.Config as Config
 import Rtsv2.Handler.MimeType as MimeType
-import Rtsv2.Router.Endpoint (Canary)
 import Shared.LlnwApiTypes (StreamIngestProtocol(..), StreamPublish, StreamDetails)
 import Shared.Stream (IngestKey(..), ProfileName, RtmpShortName, SlotId, SlotNameAndProfileName(..), SlotRole(..))
+import Shared.Router.Endpoint (Canary)
 import Shared.Types.Agent.State (IngestStats)
 import Shared.Types.Agent.State as PublicState
 import Shared.Types.Workflow.Metrics.Commmon (Stream)

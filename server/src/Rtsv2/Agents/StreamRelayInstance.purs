@@ -11,18 +11,14 @@ module Rtsv2.Agents.StreamRelayInstance
 
 import Prelude
 
-import Data.Either (Either(..), fromRight, note, either, hush)
-import Data.Foldable (fold, foldl, find)
-import Data.FoldableWithIndex (foldlWithIndex, foldMapWithIndex)
+import Data.Either (Either(..), hush)
+import Data.Foldable (find, foldl)
+import Data.FoldableWithIndex (foldlWithIndex)
 import Data.Maybe (Maybe(..))
 import Data.Maybe as Maybe
 import Data.Newtype (un)
-import Data.Set (Set)
 import Data.Set as Set
-import Data.Tuple (Tuple(..))
-import Data.Traversable (traverse)
 import Data.TraversableWithIndex (traverseWithIndex)
-import Data.Unfoldable1 (singleton)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, (:))
@@ -30,8 +26,7 @@ import Erl.Data.List as List
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
 import Erl.Data.Tuple as ErlTuple
-import Erl.Utils (Url)
-import Logger (Logger, spy)
+import Logger (Logger)
 import Logger as Logger
 import Partial.Unsafe as Unsafe
 import Pinto (ServerName, StartLinkResult, isRegistered)
@@ -46,10 +41,10 @@ import Rtsv2.Agents.TransPoP (PoPRoutes)
 import Rtsv2.Agents.TransPoP as TransPoP
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
-import Rtsv2.Router.Endpoint (Endpoint(..), makeUrlAddr, makeUrl)
 import Shared.Agent as Agent
-import Shared.Stream (AggregatorKey(..), RelayKey(..), SlotId(..), SlotRole(..))
-import Shared.Types (PoPName, EgestServer, RelayServer(..), Server(..), ServerAddress(..), extractPoP, extractAddress)
+import Shared.Stream (AggregatorKey(..), RelayKey(..), SlotId(..), SlotRole)
+import Shared.Router.Endpoint (Endpoint(..), makeUrlAddr, makeUrl)
+import Shared.Types (PoPName, EgestServer, RelayServer(..), Server(..), ServerAddress(..), Url, extractPoP, extractAddress)
 import Shared.Types.Agent.State as PublicState
 import SpudGun (SpudResponse(..), JsonResponseError, StatusCode(..))
 import SpudGun as SpudGun

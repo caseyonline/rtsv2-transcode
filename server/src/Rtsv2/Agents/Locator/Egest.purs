@@ -6,12 +6,11 @@ module Rtsv2.Agents.Locator.Egest
 import Prelude
 
 import Data.Either (Either(..))
-import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Maybe (Maybe(..))
 import Data.Newtype (unwrap)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, filter, head, nil, (:))
-import Erl.Process.Raw (Pid)
 import Logger (Logger, spy)
 import Logger as Logger
 import Pinto (okAlreadyStarted)
@@ -20,10 +19,10 @@ import Rtsv2.Agents.EgestInstance as EgestInstance
 import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.Locator.Types (FailureReason(..), LocalOrRemote(..), LocationResp)
-import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Rtsv2.Utils (crashIfLeft, noprocToMaybe)
 import Shared.Agent as Agent
 import Shared.Stream (AggregatorKey(..), EgestKey(..), SlotId, SlotRole(..))
+import Shared.Router.Endpoint (Endpoint(..), makeUrl)
 import Shared.Types (Server, ServerLoad(..), serverLoadToServer)
 import SpudGun as SpudGun
 

@@ -14,21 +14,18 @@ import Prelude
 import Bus as Bus
 import Control.Bind (bindFlipped)
 import Data.Either (Either(..), fromRight, note, either)
-import Data.Filterable (filterMap)
-import Data.Foldable (traverse_, find)
-import Data.Traversable (sequence, traverse)
-import Data.Maybe (Maybe(..), fromMaybe, fromJust)
+import Data.Foldable (find)
+import Data.Traversable (traverse)
+import Data.Maybe (Maybe(..), fromJust)
 import Data.Newtype (unwrap)
 import Data.Set (Set)
 import Data.Set as Set
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, uncons, (:))
-import Erl.Data.List as List
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
 import Erl.Data.Tuple (fst, snd)
-import Erl.Utils (Url)
 import Logger (Logger, spy)
 import Logger as Logger
 import Partial.Unsafe (unsafePartial)
@@ -44,10 +41,10 @@ import Rtsv2.Agents.TransPoP (PoPRoutes)
 import Rtsv2.Agents.TransPoP as TransPoP
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
-import Rtsv2.Router.Endpoint (Endpoint(..), makeUrlAddr, makeUrlAddrWithPath, makeUrl, makeUrlWithPath)
 import Shared.Agent as Agent
 import Shared.Stream (AggregatorKey(..), RelayKey(..), SlotId(..), SlotRole(..))
-import Shared.Types (PoPName, EgestServer, RelayServer(..), Server, ServerAddress(..), extractPoP, extractAddress)
+import Shared.Router.Endpoint (Endpoint(..), makeUrlAddr, makeUrlAddrWithPath, makeUrl, makeUrlWithPath)
+import Shared.Types (PoPName, EgestServer, RelayServer(..), Server, ServerAddress(..), Url, extractPoP, extractAddress)
 import Shared.Types.Agent.State as PublicState
 import SpudGun (SpudResponse(..), SpudError, JsonResponseError)
 import SpudGun as SpudGun

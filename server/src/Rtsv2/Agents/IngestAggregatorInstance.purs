@@ -33,12 +33,10 @@ import Rtsv2.Agents.StreamRelayTypes (RegisterRelayPayload)
 import Rtsv2.Config as Config
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
-import Rtsv2.Router.Endpoint (Endpoint(..), makePath)
-import Rtsv2.Router.Endpoint as RoutingEndpoint
-import Rtsv2.Router.Parser as Routing
 import Shared.Agent as Agent
 import Shared.LlnwApiTypes (SlotProfile(..), StreamDetails)
 import Shared.Stream (AggregatorKey(..), IngestKey(..), SlotId(..), SlotRole, ProfileName, ingestKeyToAggregatorKey, ingestKeyToProfileName)
+import Shared.Router.Endpoint (Endpoint(..), makePath)
 import Shared.Types (ServerAddress, extractAddress)
 import Shared.Types.Agent.State as PublicState
 
