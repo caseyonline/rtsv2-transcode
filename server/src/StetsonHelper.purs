@@ -1,12 +1,13 @@
 module StetsonHelper
-       ( genericPost
+       (
+         GenericStetsonGet
+       , jsonResponse
+       , multiMimeResponse
+       , textResponse
+
+       , genericPost
        , genericPostWithResponse
-       , genericGet
-       , genericGet2
-       , genericGetText
        , genericProvideJson
-       , GenericStetsonGet
-       , GenericStetsonGetBySlotId
        , GenericStetsonHandler
        , GenericStetsonHandlerWithResponse
 
@@ -30,7 +31,7 @@ import Effect (Effect)
 import Erl.Cowboy.Req (ReadBodyResult(..), Req, StatusCode(..), readBody, replyWithoutBody, setHeader)
 import Erl.Data.Binary (Binary)
 import Erl.Data.Binary.IOData (IOData, fromBinary, toBinary)
-import Erl.Data.List (List, nil, singleton, (:))
+import Erl.Data.List (List, singleton, (:))
 import Erl.Data.Map as Map
 import Erl.Data.Tuple (Tuple2, fst, snd, tuple2)
 import Logger (spy)
@@ -42,6 +43,37 @@ import Simple.JSON as JSON
 import Stetson (HttpMethod(..), RestResult, StetsonHandler)
 import Stetson.Rest as Rest
 import Unsafe.Coerce as Unsafe.Coerce
+
+------------------------------------------------------------------------------
+-- GET helpers
+------------------------------------------------------------------------------
+type GenericStetsonGet a = StetsonHandler (Maybe a)
+
+jsonResponse :: forall a. WriteForeign a => Effect a -> StetsonHandler (Maybe a)
+jsonResponse getData =
+  multiMimeResponse $ singleton $ MimeType.json (writeJSON <$> getData)
+
+textResponse :: Effect String -> StetsonHandler (Maybe String)
+textResponse getData =
+  multiMimeResponse $ singleton $ MimeType.text getData
+
+multiMimeResponse :: forall a. List (Tuple2 String (Effect String)) -> StetsonHandler (Maybe a)
+multiMimeResponse getDatas =
+  Rest.handler init
+  # Rest.allowedMethods (Rest.result (GET : mempty))
+  # Rest.contentTypesProvided (\req state -> Rest.result ((\tuple -> tuple2 (fst tuple) (provideContent (snd tuple))) <$> getDatas) req state)
+  # Rest.yeeha
+  where
+    init req = Rest.initResult (setHeader "access-control-allow-origin" "*" req) Nothing
+    provideContent getData req state = do
+      noprocToMaybe getData >>=
+        case _ of
+          Nothing ->
+            do
+              newReq <- replyWithoutBody (StatusCode 404) Map.empty req
+              Rest.stop newReq state
+          Just theData ->
+            Rest.result theData req state
 
 type GenericStetsonHandler a = StetsonHandler (GenericHandlerState a)
 newtype GenericHandlerState a = GenericHandlerState { mPayload :: Maybe a }
@@ -67,8 +99,6 @@ genericPost proxiedFun =
 
     malformedRequest req state@(GenericHandlerState {mPayload}) =
       Rest.result (isNothing mPayload) req state
-
-
 
 type GenericStetsonHandlerWithResponse a b = StetsonHandler (GenericHandlerWithResponseState a b)
 type GenericHandlerWithResponseState a b
@@ -107,52 +137,8 @@ genericPostWithResponse proxiedFun =
       Rest.result response req state
 
 
-
-type GenericStetsonGet a = StetsonHandler (GenericStatusState a)
-type GenericStetsonGetBySlotId a = StetsonHandler (GenericStatusState a)
-
 newtype GenericStatusState a = GenericStatusState { mData :: Maybe a }
 
-genericGet :: forall a. WriteForeign a => Effect a -> GenericStetsonGet a
-genericGet getData =
-  Rest.handler init
-  # Rest.allowedMethods (Rest.result (GET : OPTIONS : nil))
-  # Rest.contentTypesProvided (\req state -> Rest.result (singleton $ MimeType.json genericProvideJson) req state)
-  # Rest.yeeha
-  where
-    init req = do
-      let reqWithAllowOrigin = setHeader "access-control-allow-origin" "*" req
-      mData <- noprocToMaybe getData
-      Rest.initResult reqWithAllowOrigin $ GenericStatusState { mData }
-
-genericGetText :: (Effect String) -> GenericStetsonGet String
-genericGetText getData =
-  Rest.handler init
-  # Rest.allowedMethods (Rest.result (GET : mempty))
-  # Rest.contentTypesProvided (\req state -> Rest.result (singleton $ MimeType.text genericProvideText) req state)
-  # Rest.yeeha
-  where
-    init req = do
-      mData <- noprocToMaybe getData
-      Rest.initResult req $ GenericStatusState { mData }
-
-genericGet2 :: List (Tuple2 String (Effect String)) -> StetsonHandler Unit
-genericGet2 getDatas =
-  Rest.handler init
-  # Rest.allowedMethods (Rest.result (GET : mempty))
-  # Rest.contentTypesProvided (\req state -> Rest.result ((\tuple -> tuple2 (fst tuple) (provideContent (snd tuple))) <$> getDatas) req state)
-  # Rest.yeeha
-  where
-    init req = Rest.initResult req unit
-    provideContent getData req state = do
-      noprocToMaybe getData >>=
-        case _ of
-          Nothing ->
-            do
-              newReq <- replyWithoutBody (StatusCode 404) Map.empty req
-              Rest.stop newReq state
-          Just theData ->
-            Rest.result theData req state
 
 genericProvideText :: Req -> GenericStatusState String -> Effect (RestResult String (GenericStatusState String))
 genericProvideText req state@(GenericStatusState {mData}) =

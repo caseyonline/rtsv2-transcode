@@ -27,21 +27,14 @@ import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (readJSON)
 import Stetson (HttpMethod(..), StetsonHandler)
 import Stetson.Rest as Rest
-import StetsonHelper (GenericStatusState, GenericStetsonHandler, allBody, binaryToString, genericGet, genericPost)
+import StetsonHelper (GenericStatusState, GenericStetsonHandler, GenericStetsonGet, allBody, binaryToString, genericPost, jsonResponse)
 
-ingestAggregator :: SlotId -> SlotRole -> StetsonHandler (GenericStatusState (PublicState.IngestAggregator List))
-ingestAggregator slotId role = genericGet $ IngestAggregatorInstance.getState $ AggregatorKey slotId role
+ingestAggregator :: SlotId -> SlotRole -> GenericStetsonGet (PublicState.IngestAggregator List)
+ingestAggregator slotId role = jsonResponse $ IngestAggregatorInstance.getState $ AggregatorKey slotId role
 
-slotConfiguration :: SlotId -> SlotRole -> StetsonHandler (GenericStatusState (Maybe SlotConfiguration))
+slotConfiguration :: SlotId -> SlotRole -> GenericStetsonGet (Maybe SlotConfiguration)
 slotConfiguration slotId role =
-  genericGet slotConfigurationBySlotIdAndRole
-
-  where
-    slotConfigurationBySlotIdAndRole =
-      do
-        result <- IngestAggregatorInstance.slotConfiguration (AggregatorKey slotId role)
-        let _ = spy "Ingest Aggregator Slot Config" result
-        pure result
+  jsonResponse $ IngestAggregatorInstance.slotConfiguration (AggregatorKey slotId role)
 
 ingestAggregators :: GenericStetsonHandler StreamDetails
 ingestAggregators = genericPost IngestAggregatorInstanceSup.startAggregator

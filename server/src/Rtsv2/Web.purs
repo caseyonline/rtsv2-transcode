@@ -43,7 +43,6 @@ import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Router.Endpoint (Endpoint(..), Canary, endpoint)
 import Rtsv2.Router.Endpoint as Router
 import Rtsv2.Router.Parser (printUrl)
-import Rtsv2.Web.Bindings (profileNameBindingLiteral, slotIdBindingLiteral, streamRoleBindingLiteral)
 import Serf (Ip(..))
 import Shared.Stream (EgestKey(..), IngestKey(..), ProfileName, SlotId, SlotIdAndProfileName(..), SlotRole(..))
 import Stetson (RestResult, StaticAssetLocation(..))
@@ -134,7 +133,7 @@ init args = do
     cowboyRoutes =
 
        -- IngestAggregatorActiveIngestsPlayerControlE String String String -- SlotId SlotRole ProfileName
-      cowboyRoute (IngestAggregatorActiveIngestsPlayerControlE slotIdBinding streamRoleBinding profileNameBinding) "rtsv2_player_ws_resource" (unsafeToForeign { mode: (atom "ingest"), make_ingest_key: makeIngestKey })
+      cowboyRoute (IngestAggregatorActiveIngestsPlayerControlE slotIdBinding slotRoleBinding profileNameBinding) "rtsv2_player_ws_resource" (unsafeToForeign { mode: (atom "ingest"), make_ingest_key: makeIngestKey })
 
       : cowboyRoute (ClientPlayerControlE canaryBinding slotIdBinding) "rtsv2_player_ws_resource" (unsafeToForeign { mode: (atom "egest"), make_egest_key: EgestKey, start_stream: startStream, add_client: mkFn2 addClient, get_slot_configuration: EgestInstance.slotConfiguration })
 
@@ -149,11 +148,9 @@ init args = do
 
       : nil
 
-    -- TODO - should Bindings.purs exist anymore? presumably not...
-    -- TODO - streamRole
-    slotIdBinding = ":" <> slotIdBindingLiteral
-    streamRoleBinding = ":" <> streamRoleBindingLiteral
-    profileNameBinding = ":" <> profileNameBindingLiteral
+    slotIdBinding = ":slot_id"
+    slotRoleBinding = ":slot"
+    profileNameBinding = ":profile_name"
     canaryBinding = ":canary"
 
     makeSlotIdAndProfileName :: String -> String -> SlotIdAndProfileName

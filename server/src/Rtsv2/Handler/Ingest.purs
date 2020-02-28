@@ -40,16 +40,16 @@ import SpudGun (bodyToJSON)
 import SpudGun as SpudGun
 import Stetson (StetsonHandler)
 import Stetson.Rest as Rest
-import StetsonHelper (GenericStetsonGet, genericGet, genericGet2)
+import StetsonHelper (GenericStetsonGet, jsonResponse, multiMimeResponse)
 
 ingestInstances :: StetsonHandler Unit
 ingestInstances =
   Rest.handler (\req -> Rest.initResult req unit)
   # Rest.yeeha
 
-ingestInstancesMetrics :: StetsonHandler Unit
+ingestInstancesMetrics :: GenericStetsonGet Unit
 ingestInstancesMetrics =
-  genericGet2 ((MimeType.openmetrics getText) : (MimeType.json getJson) : nil)
+  multiMimeResponse ((MimeType.openmetrics getText) : (MimeType.json getJson) : nil)
   where
     getJson = do
       stats <- IngestStats.getStats
@@ -190,7 +190,7 @@ statsToPrometheus stats =
 ingestInstance :: SlotId -> ProfileName -> GenericStetsonGet (PublicState.Ingest List)
 ingestInstance slotId profileName =
   -- TODO - hardcoded Primary
-  genericGet (IngestInstance.getPublicState (IngestKey slotId Primary profileName))
+  jsonResponse (IngestInstance.getPublicState (IngestKey slotId Primary profileName))
 
 
 type IngestStartState = { shortName :: RtmpShortName
