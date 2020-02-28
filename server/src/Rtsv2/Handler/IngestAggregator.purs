@@ -27,17 +27,17 @@ import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (readJSON)
 import Stetson (HttpMethod(..), StetsonHandler)
 import Stetson.Rest as Rest
-import StetsonHelper (GenericStetsonHandler, GetResponse, allBody, binaryToString, genericPost, jsonResponse)
+import StetsonHelper (GetHandler, PostHandler, allBody, binaryToString, jsonResponse, processPostPayload)
 
-ingestAggregator :: SlotId -> SlotRole -> GetResponse (PublicState.IngestAggregator List)
+ingestAggregator :: SlotId -> SlotRole -> GetHandler (PublicState.IngestAggregator List)
 ingestAggregator slotId role = jsonResponse $ Just <$> (IngestAggregatorInstance.getState $ AggregatorKey slotId role)
 
-slotConfiguration :: SlotId -> SlotRole -> GetResponse SlotConfiguration
+slotConfiguration :: SlotId -> SlotRole -> GetHandler SlotConfiguration
 slotConfiguration slotId role =
   jsonResponse $ IngestAggregatorInstance.slotConfiguration (AggregatorKey slotId role)
 
-ingestAggregators :: GenericStetsonHandler StreamDetails
-ingestAggregators = genericPost IngestAggregatorInstanceSup.startAggregator
+ingestAggregators :: PostHandler StreamDetails
+ingestAggregators = processPostPayload IngestAggregatorInstanceSup.startAggregator
 
 
 type IngestAggregatorsActiveIngestState = { ingestKey :: IngestKey
@@ -101,5 +101,5 @@ ingestAggregatorsActiveIngest slotId streamRole profileName =
   # Rest.yeeha
 
 
-registerRelay :: GenericStetsonHandler RegisterRelayPayload
-registerRelay = genericPost IngestAggregatorInstance.registerRelay
+registerRelay :: PostHandler RegisterRelayPayload
+registerRelay = processPostPayload IngestAggregatorInstance.registerRelay

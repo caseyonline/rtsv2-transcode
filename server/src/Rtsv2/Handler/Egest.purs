@@ -6,10 +6,10 @@ module Rtsv2.Handler.Egest
 
 import Rtsv2.Agents.EgestInstance (CreateEgestPayload)
 import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
-import StetsonHelper (GenericStetsonHandler, genericPost)
+import StetsonHelper (PostHandler, processPostPayload)
 
-resource :: GenericStetsonHandler CreateEgestPayload
-resource = genericPost EgestInstanceSup.startEgest
+resource :: PostHandler CreateEgestPayload
+resource = processPostPayload EgestInstanceSup.startEgest
 
-relayResource :: GenericStetsonHandler CreateEgestPayload
-relayResource = genericPost EgestInstanceSup.startEgest
+relayResource :: PostHandler CreateEgestPayload
+relayResource = processPostPayload EgestInstanceSup.startEgest

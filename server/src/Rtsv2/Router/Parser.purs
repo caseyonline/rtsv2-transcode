@@ -11,13 +11,16 @@ import Data.String.CodeUnits (contains)
 import Data.String.Pattern (Pattern(..))
 import Data.Tuple (uncurry)
 import Global.Unsafe (unsafeEncodeURIComponent)
-import Routing.Duplex (RouteDuplex(..))
+import Routing.Duplex (RouteDuplex(..), print)
 import Routing.Duplex.Printer (RoutePrinter)
 import Routing.Duplex.Types (RouteState, emptyRouteState)
 
--- | custome route printer to handle the ability to pass `:` to Stretson.route
 printUrl :: forall i o. RouteDuplex i o -> i -> String
-printUrl (RouteDuplex enc _) = run <<< enc
+printUrl = print
+
+-- | custom route printer to handle the ability to pass `:` to Stetson.route
+-- printUrl :: forall i o. RouteDuplex i o -> i -> String
+-- printUrl (RouteDuplex enc _) = run <<< enc
 
 run :: RoutePrinter -> String
 run = printPath <<< applyFlipped emptyRouteState <<< unwrap

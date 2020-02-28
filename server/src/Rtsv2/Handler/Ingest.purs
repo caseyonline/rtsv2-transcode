@@ -41,14 +41,14 @@ import SpudGun (bodyToJSON)
 import SpudGun as SpudGun
 import Stetson (StetsonHandler)
 import Stetson.Rest as Rest
-import StetsonHelper (GetResponse, jsonResponse, multiMimeResponse)
+import StetsonHelper (GetHandler, jsonResponse, multiMimeResponse)
 
 ingestInstances :: StetsonHandler Unit
 ingestInstances =
   Rest.handler (\req -> Rest.initResult req unit)
   # Rest.yeeha
 
-ingestInstancesMetrics :: GetResponse (List (IngestStats List))
+ingestInstancesMetrics :: GetHandler (List (IngestStats List))
 ingestInstancesMetrics =
   multiMimeResponse ((MimeType.openmetrics statsToPrometheus) : (MimeType.json writeJSON) : nil) (Just <$> IngestStats.getStats)
 
@@ -181,7 +181,7 @@ statsToPrometheus stats =
                             (Tuple "profile_name" (Prometheus.toLabelValue profileName)) :
                             nil
 
-ingestInstance :: SlotId -> ProfileName -> GetResponse (PublicState.Ingest List)
+ingestInstance :: SlotId -> ProfileName -> GetHandler (PublicState.Ingest List)
 ingestInstance slotId profileName =
   -- TODO - hardcoded Primary
   jsonResponse $ Just <$> (IngestInstance.getPublicState (IngestKey slotId Primary profileName))

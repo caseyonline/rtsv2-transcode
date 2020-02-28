@@ -95,9 +95,7 @@ clientStart canary slotId =
       case spy "moved" egestResp of
         Right (Remote server) ->
           let
-            url = makeUrl server (ClientStartE "canary" slotId)
-            -- path = Routing.printUrl RoutingEndpoint.endpoint
-            -- url = spy "url" $ "http://" <> unwrap addr <> ":3000" <> path
+            url = makeUrl server (ClientStartE canary slotId)
           in
             Rest.result (moved $ unwrap url) req state
         _ ->

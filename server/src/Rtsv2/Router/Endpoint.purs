@@ -1,6 +1,7 @@
 module Rtsv2.Router.Endpoint ( Endpoint(..)
                              , Canary(..)
                              , endpoint
+                             , makePath
                              , makeUrl
                              , makeUrlWithPath
                              , makeUrlAddr
@@ -17,7 +18,7 @@ import Data.Int (fromString)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype, unwrap, wrap)
 import Data.String (Pattern(..), split)
-import Routing.Duplex (RouteDuplex', as, path, rest, root, segment)
+import Routing.Duplex (RouteDuplex', as, path, print, rest, root, segment)
 import Routing.Duplex.Generic (noArgs, sum)
 import Routing.Duplex.Generic.Syntax ((/))
 import Rtsv2.Router.Parser as Routing
@@ -25,10 +26,8 @@ import Shared.Stream (ProfileName(..), RtmpShortName, SlotId, SlotIdAndProfileNa
 import Shared.Types (PoPName, ServerAddress(..), extractAddress)
 import SpudGun (Url)
 
--- data Canary = Live
---             | Canary
-
-type Canary = String
+data Canary = Live
+            | Canary
 
 data Endpoint
   = VMMetricsE
@@ -58,7 +57,7 @@ data Endpoint
   | IngestAggregatorActiveIngestsPlayerE SlotId SlotRole ProfileName
   | IngestAggregatorActiveIngestsPlayerJsE SlotId SlotRole ProfileName (Array String)
 
-  | IngestAggregatorActiveIngestsPlayerControlE String String String -- SlotId SlotRole ProfileName
+  | IngestAggregatorActiveIngestsPlayerControlE SlotId SlotRole ProfileName
 
   | IngestAggregatorSlotConfigurationE SlotId SlotRole
   | IngestAggregatorRegisterRelayE
@@ -77,7 +76,7 @@ data Endpoint
   | ClientStopE Canary SlotId String
   | ClientPlayerE Canary SlotId
   | ClientPlayerJsE Canary SlotId (Array String)
-  | ClientPlayerControlE String String
+  | ClientPlayerControlE Canary SlotId
 
   | StreamAuthE
   | StreamAuthTypeE
@@ -120,7 +119,7 @@ endpoint = root $ sum
   , "IngestAggregatorActiveIngestsE"                   : "api" / "agents" / "ingestAggregator" / slotId segment / slotRole segment / "activeIngests" / profileName segment
   , "IngestAggregatorActiveIngestsPlayerE"             : "api" / "agents" / "ingestAggregator" / slotId segment / slotRole segment / "activeIngests" / profileName segment / "player"
   , "IngestAggregatorActiveIngestsPlayerJsE"           : "api" / "agents" / "ingestAggregator" / slotId segment / slotRole segment / "activeIngests" / profileName segment / "js" / rest
-  , "IngestAggregatorActiveIngestsPlayerControlE"      : "api" / "agents" / "ingestAggregator" / segment / segment / "activeIngests" / segment / "control"
+  , "IngestAggregatorActiveIngestsPlayerControlE"      : "api" / "agents" / "ingestAggregator" / slotId segment / slotRole segment / "activeIngests" / profileName segment / "control" -- URL duplicated in Web.purs
   , "IngestAggregatorSlotConfigurationE"               : "api" / "agents" / "ingestAggregator" / slotId segment / slotRole segment / "slot"
   , "IngestAggregatorRegisterRelayE"                   : "api" / "agents" / "ingestAggregator" / path "register" noArgs
 
@@ -129,7 +128,7 @@ endpoint = root $ sum
   , "IngestInstancesE"                                 : "api" / "agents" / path "ingest" noArgs
   , "IngestInstancesMetricsE"                          : "api" / "agents" / "ingest" / path "metrics" noArgs
   , "IngestInstanceE"                                  : "api" / "agents" / "ingest" / slotId segment / profileName segment
-  , "IngestInstanceLlwpE"                              : "api" / "agents" / "ingest" / slotId segment / slotRole segment / profileName segment / "llwp"
+  , "IngestInstanceLlwpE"                              : "api" / "agents" / "ingest" / slotId segment / slotRole segment / profileName segment / "llwp" -- URL duplicated in Web.purs
   , "IngestStartE"                                     : "api" / "public" / canary segment / "ingest" / shortName segment / slotNameAndProfile segment / "start"
   , "IngestStopE"                                      : "api" / "public" / canary segment / "ingest" / slotId segment / slotRole segment / profileName segment / "stop"
 
@@ -140,19 +139,21 @@ endpoint = root $ sum
   , "ClientStopE"                                      : "api" / "public" / canary segment / "client" / slotId segment / "stop" / segment
   , "ClientPlayerE"                                    : "api" / "public" / canary segment / "client" / slotId segment / "player"
   , "ClientPlayerJsE"                                  : "api" / "public" / canary segment / "client" / slotId segment / "js" / rest
-  , "ClientPlayerControlE"                             : "api" / "public" / segment / "client" / segment / "session"
+  , "ClientPlayerControlE"                             : "api" / "public" / canary segment / "client" / slotId segment / "session" -- URL duplicated in Web.purs
 
   , "StreamAuthTypeE"                                  : "llnwstub" / "rts" / "v1" / path "streamauthtype" noArgs
   , "StreamAuthE"                                      : "llnwstub" / "rts" / "v1" / path "streamauth" noArgs
   , "StreamPublishE"                                   : "llnwstub" / "rts" / "v1" / path "streampublish" noArgs
 
-  , "WorkflowsE"                                       : "api" / path "workflows" noArgs
-  , "WorkflowGraphE"                                   : "api" / "workflows" / segment / "graph"
-  , "WorkflowMetricsE"                                 : "api" / "workflows" / segment / "metrics"
-  , "WorkflowStructureE"                               : "api" / "workflows" / segment / "structure"
+  , "WorkflowsE"                                       : "api" / path "workflows" noArgs -- URL duplicated in Web.purs
+  , "WorkflowGraphE"                                   : "api" / "workflows" / segment / "graph" -- URL duplicated in Web.purs
+  , "WorkflowMetricsE"                                 : "api" / "workflows" / segment / "metrics" -- URL duplicated in Web.purs
+  , "WorkflowStructureE"                               : "api" / "workflows" / segment / "structure" -- URL duplicated in Web.purs
 
 }
 
+makePath :: Endpoint -> String
+makePath ep = print endpoint ep
 
 makeUrl :: forall r a. Newtype a { address :: ServerAddress | r }
         => a -> Endpoint -> Url
@@ -164,15 +165,11 @@ makeUrlWithPath server path = makeUrlAddrWithPath (extractAddress server) path
 
 makeUrlAddr :: ServerAddress -> Endpoint -> Url
 makeUrlAddr serverAddr ep =
-  let
-    url = Routing.printUrl endpoint ep
-  in
-    makeUrlAddrWithPath serverAddr url
+  makeUrlAddrWithPath serverAddr (makePath ep)
 
 makeUrlAddrWithPath :: ServerAddress -> String -> Url
 makeUrlAddrWithPath (ServerAddress host) path =
   wrap $ "http://" <> host <> ":3000" <> path
-
 
 -- | SlotId
 parseSlotId :: String -> Maybe SlotId
@@ -228,7 +225,7 @@ parseSlotIdAndProfileName  str =
     Just slotIdStr ->
       case fromString slotIdStr of
         Nothing -> Nothing
-        Just slotId -> Just (SlotIdAndProfileName (wrap slotId) (wrap str))
+        Just slotIdVal -> Just (SlotIdAndProfileName (wrap slotIdVal) (wrap str))
     _ -> Nothing
 
 parseSlotNameAndProfileName :: String -> Maybe SlotNameAndProfileName
@@ -243,14 +240,14 @@ slotNameAndProfileToString (SlotNameAndProfileName _ (ProfileName str)) = str
 
 
 -- | Canary
--- parseCanary :: String -> Maybe Canary
--- parseCanary "live"  = Just Live
--- parseCanary "canary"  = Just Canary
--- parseCanary _ = Nothing
+parseCanary :: String -> Maybe Canary
+parseCanary "live"  = Just Live
+parseCanary "canary"  = Just Canary
+parseCanary _ = Nothing
 
--- canaryToString :: Canary -> String
--- canaryToString Live = "live"
--- canaryToString Canary = "canary"
+canaryToString :: Canary -> String
+canaryToString Live = "live"
+canaryToString Canary = "canary"
 
 -- | This combinator transforms a codec over `String` into one that operates on the `SlotId` type.
 slotId :: RouteDuplex' String -> RouteDuplex' SlotId
@@ -278,5 +275,4 @@ shortName = as shortNameToString (parseRtmpShortName >>> note "Bad RtmpShortName
 
 -- | This combinator transforms a codec over `String` into one that operates on the `Canary` type.
 canary :: RouteDuplex' String -> RouteDuplex' Canary
---canary = as canaryToString (parseCanary >>> note "Bad CanaryId")
-canary = as identity (Just >>> note "Bad CanaryId")
+canary = as canaryToString (parseCanary >>> note "Bad CanaryId")

@@ -11,7 +11,7 @@ import Erl.Data.List (List)
 import Rtsv2.Agents.TransPoP as TransPoP
 import Shared.Types (PoPName)
 import Shared.Types.Agent.State as PublicState
-import StetsonHelper (GetResponse, jsonResponse)
+import StetsonHelper (GetHandler, jsonResponse)
 
-timedRoutes :: PoPName -> GetResponse (PublicState.TimedPoPRoutes List)
+timedRoutes :: PoPName -> GetHandler (PublicState.TimedPoPRoutes List)
 timedRoutes = jsonResponse <<< (map Just) <<< TransPoP.getTimedRoutesTo

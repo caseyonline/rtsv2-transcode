@@ -35,21 +35,21 @@ import Shared.Types.Agent.State (StreamRelay)
 import Simple.JSON as JSON
 import Stetson (HttpMethod(..), StetsonHandler)
 import Stetson.Rest as Rest
-import StetsonHelper (GenericStatusState, GenericStetsonHandler, GetResponse, allBody, binaryToString, genericPost, jsonResponse, preHookSpyState)
+import StetsonHelper (GetHandler, PostHandler, allBody, binaryToString, jsonResponse, preHookSpyState, processPostPayload)
 
-stats :: SlotId -> SlotRole -> GetResponse (StreamRelay List)
+stats :: SlotId -> SlotRole -> GetHandler (StreamRelay List)
 stats slotId slotRole = jsonResponse $ Just <$> (StreamRelayInstance.status $ RelayKey slotId slotRole)
 
-startResource :: GenericStetsonHandler CreateRelayPayload
-startResource =  genericPost  StreamRelayInstanceSup.startRelay
+startResource :: PostHandler CreateRelayPayload
+startResource =  processPostPayload StreamRelayInstanceSup.startRelay
 
-registerEgest :: GenericStetsonHandler RegisterEgestPayload
-registerEgest = genericPost  StreamRelayInstance.registerEgest
+registerEgest :: PostHandler RegisterEgestPayload
+registerEgest = processPostPayload StreamRelayInstance.registerEgest
 
-registerRelay :: GenericStetsonHandler RegisterRelayPayload
-registerRelay = genericPost  StreamRelayInstance.registerRelay
+registerRelay :: PostHandler RegisterRelayPayload
+registerRelay = processPostPayload StreamRelayInstance.registerRelay
 
-slotConfiguration :: SlotId -> SlotRole -> GetResponse (Maybe SlotConfiguration)
+slotConfiguration :: SlotId -> SlotRole -> GetHandler (Maybe SlotConfiguration)
 slotConfiguration slotId role =
   jsonResponse $ Just <$> (StreamRelayInstance.slotConfiguration (RelayKey slotId role))
 

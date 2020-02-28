@@ -13,15 +13,15 @@ import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.IntraPoP as IntraPoPAgent
 import Shared.Types (extractAddress)
 import Shared.Types.Agent.State as PublicState
-import StetsonHelper (GetResponse, GenericStetsonHandler, jsonResponse, textResponse, genericPost)
+import StetsonHelper (GetHandler, PostHandler, jsonResponse, processPostPayload, textResponse)
 
-leader :: GetResponse String
+leader :: GetHandler String
 leader = textResponse do
   mLeader <- IntraPoPAgent.getCurrentTransPoPLeader
   pure $ (unwrap <<< extractAddress <$> mLeader)
 
-testHelper :: GenericStetsonHandler IntraPoP.TestHelperPayload
-testHelper =  genericPost IntraPoP.testHelper
+testHelper :: PostHandler IntraPoP.TestHelperPayload
+testHelper =  processPostPayload IntraPoP.testHelper
 
-publicState :: GetResponse (PublicState.IntraPoP List)
+publicState :: GetHandler (PublicState.IntraPoP List)
 publicState = jsonResponse $ Just <$> IntraPoP.getPublicState

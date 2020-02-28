@@ -1,15 +1,15 @@
 module StetsonHelper
        (
-         GetResponse
+         GetHandler
        , jsonResponse
        , textResponse
        , multiMimeResponse
 
-       , genericPost
-       , genericPostWithResponse
-       , genericProvideJson
-       , GenericStetsonHandler
-       , GenericStetsonHandlerWithResponse
+       , processPostPayload
+       , processPostPayloadWithResponse
+       , PostHandler
+       , PostHandlerWithResponse
+       , PostHandlerState
 
        , allBody
        , binaryToString
@@ -17,10 +17,6 @@ module StetsonHelper
        , preHookSpyReq
        , preHookSpyReqState
        , preHookSpyState
-
-       , GenericHandlerState
-       , GenericStatusState(..)
-       , GenericHandlerWithResponseState
        ) where
 
 import Prelude
@@ -28,11 +24,10 @@ import Prelude
 import Data.Either (hush)
 import Data.Maybe (Maybe(..), fromMaybe, fromMaybe', isJust, isNothing)
 import Effect (Effect)
-import Erl.Cowboy.Req (ReadBodyResult(..), Req, StatusCode(..), readBody, replyWithoutBody, setHeader)
+import Erl.Cowboy.Req (ReadBodyResult(..), Req, readBody, setHeader)
 import Erl.Data.Binary (Binary)
 import Erl.Data.Binary.IOData (IOData, fromBinary, toBinary)
 import Erl.Data.List (List, singleton, (:))
-import Erl.Data.Map as Map
 import Erl.Data.Tuple (Tuple2, fst, snd, tuple2)
 import Logger (spy)
 import Rtsv2.Handler.MimeType as MimeType
@@ -47,17 +42,17 @@ import Unsafe.Coerce as Unsafe.Coerce
 ------------------------------------------------------------------------------
 -- GET helpers
 ------------------------------------------------------------------------------
-type GetResponse a = StetsonHandler (Maybe a)
+type GetHandler a = StetsonHandler (Maybe a)
 
-jsonResponse :: forall a. WriteForeign a => Effect (Maybe a) -> StetsonHandler (Maybe a)
+jsonResponse :: forall a. WriteForeign a => Effect (Maybe a) -> GetHandler a
 jsonResponse =
   multiMimeResponse (singleton $ MimeType.json writeJSON)
 
-textResponse :: Effect (Maybe String) -> StetsonHandler (Maybe String)
+textResponse :: Effect (Maybe String) -> GetHandler String
 textResponse =
   multiMimeResponse (singleton $ MimeType.text identity)
 
-multiMimeResponse :: forall a. List (Tuple2 String (a -> String)) -> Effect (Maybe a) -> StetsonHandler (Maybe a)
+multiMimeResponse :: forall a. List (Tuple2 String (a -> String)) -> Effect (Maybe a) -> GetHandler a
 multiMimeResponse mimeFormatters getData =
   Rest.handler init
   # Rest.allowedMethods (Rest.result (GET : mempty))
@@ -76,39 +71,21 @@ multiMimeResponse mimeFormatters getData =
     provideContent mimeFormatter req Nothing = Rest.result "" req Nothing
     provideContent mimeFormatter req state@(Just theData) = Rest.result (mimeFormatter theData) req state
 
-type GenericStetsonHandler a = StetsonHandler (GenericHandlerState a)
-newtype GenericHandlerState a = GenericHandlerState { mPayload :: Maybe a }
+------------------------------------------------------------------------------
+-- POST helpers
+------------------------------------------------------------------------------
+type PostHandlerState a b = { mPayload :: Maybe a
+                            , mResponse :: Maybe b}
 
-genericPost :: forall a b. ReadForeign a => (a -> Effect b) -> GenericStetsonHandler a
-genericPost proxiedFun =
-  Rest.handler init
-  # Rest.allowedMethods (Rest.result (POST : mempty))
-  # Rest.contentTypesAccepted (\req state -> Rest.result (singleton $ MimeType.json acceptJson) req state)
-  # Rest.malformedRequest malformedRequest
-  # Rest.yeeha
-  where
-    init req =
-      do
-        (mPayload :: Maybe a) <- (hush <$> JSON.readJSON <$> binaryToString <$> allBody req mempty)
-        Rest.initResult req $ GenericHandlerState{ mPayload }
+type PostHandler a = StetsonHandler (PostHandlerState a String)
+type PostHandlerWithResponse a b = StetsonHandler (PostHandlerState a b)
 
-    acceptJson req state@(GenericHandlerState {mPayload}) = do
-      let
-        payload = fromMaybe' (lazyCrashIfMissing "impossible noEgestPayload") mPayload
-      _ <- proxiedFun payload
-      Rest.result true req state
+processPostPayload :: forall a b. ReadForeign a => (a -> Effect b) -> PostHandler a
+processPostPayload proxiedFun =
+  processPostPayloadWithResponse $ (map (const (Just ""))) <<< proxiedFun
 
-    malformedRequest req state@(GenericHandlerState {mPayload}) =
-      Rest.result (isNothing mPayload) req state
-
-type GenericStetsonHandlerWithResponse a b = StetsonHandler (GenericHandlerWithResponseState a b)
-type GenericHandlerWithResponseState a b
-  = { mPayload :: Maybe a
-    , mResponse :: Maybe b
-    }
-
-genericPostWithResponse :: forall a b. ReadForeign a => WriteForeign b => (a -> Effect (Maybe b)) -> GenericStetsonHandlerWithResponse a b
-genericPostWithResponse proxiedFun =
+processPostPayloadWithResponse :: forall a b. ReadForeign a => WriteForeign b => (a -> Effect (Maybe b)) -> PostHandlerWithResponse a b
+processPostPayloadWithResponse proxiedFun =
   Rest.handler init
   # Rest.allowedMethods (Rest.result (POST : mempty))
   # Rest.contentTypesAccepted (\req state -> Rest.result (singleton $ MimeType.json acceptJson) req state)
@@ -136,31 +113,6 @@ genericPostWithResponse proxiedFun =
       let
         response = fromMaybe "" $ JSON.writeJSON <$> mResponse
       Rest.result response req state
-
-
-newtype GenericStatusState a = GenericStatusState { mData :: Maybe a }
-
-
-genericProvideText :: Req -> GenericStatusState String -> Effect (RestResult String (GenericStatusState String))
-genericProvideText req state@(GenericStatusState {mData}) =
-  case mData of
-    Nothing ->
-      do
-        newReq <- replyWithoutBody (StatusCode 404) Map.empty req
-        Rest.stop newReq state
-    Just theData ->
-      Rest.result theData req state
-
-
-genericProvideJson :: forall a. WriteForeign a => Req -> GenericStatusState a -> Effect (RestResult String (GenericStatusState a))
-genericProvideJson req state@(GenericStatusState {mData}) =
-  case mData of
-    Nothing ->
-      do
-        newReq <- replyWithoutBody (StatusCode 404) Map.empty req
-        Rest.stop newReq state
-    Just theData ->
-      Rest.result (writeJSON theData) req state
 
 --------------------------------------------------------------------------------
 -- Body helpers
