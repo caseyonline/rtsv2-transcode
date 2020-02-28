@@ -18,7 +18,7 @@ import Erl.Data.Tuple (Tuple2, Tuple4, tuple2, tuple3, tuple4, uncurry4)
 import Erl.ModuleName (NativeModuleName(..))
 import Erl.Process.Raw (Pid)
 import Foreign (unsafeToForeign)
-import Logger (Logger, spy)
+import Logger (Logger)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen as Gen
@@ -43,19 +43,16 @@ import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Router.Endpoint (Endpoint(..), Canary, endpoint)
 import Rtsv2.Router.Endpoint as Router
 import Rtsv2.Router.Parser (printUrl)
-import Rtsv2.Web.Bindings as Bindings
+import Rtsv2.Web.Bindings (profileNameBindingLiteral, slotIdBindingLiteral, streamRoleBindingLiteral)
 import Serf (Ip(..))
-import Shared.Stream (EgestKey(..), IngestKey(..), ProfileName(..), RtmpShortName(..), SlotId, SlotIdAndProfileName(..), SlotNameAndProfileName(..), SlotRole(..))
-import Shared.Types (PoPName)
-import Stetson (InnerStetsonHandler, RestResult, StaticAssetLocation(..), StetsonConfig)
+import Shared.Stream (EgestKey(..), IngestKey(..), ProfileName, SlotId, SlotIdAndProfileName(..), SlotRole(..))
+import Stetson (RestResult, StaticAssetLocation(..))
 import Stetson as Stetson
 import Stetson.Rest as Rest
 import Stetson.Routing (dummyHandler)
 import Stetson.Types (CowboyRoutePlaceholder(..))
-import Unsafe.Coerce (unsafeCoerce)
 
 newtype State = State {}
-
 
 serverName :: ServerName State Unit
 serverName = Names.webServerName
@@ -63,8 +60,6 @@ serverName = Names.webServerName
 startLink :: Config.WebConfig -> Effect StartLinkResult
 startLink args =
   Gen.startLink serverName (init args) Gen.defaultHandleInfo
-
-
 
 init :: Config.WebConfig -> Effect State
 init args = do
@@ -115,7 +110,8 @@ init args = do
         , "ClientStartE": ClientHandler.clientStart
         , "ClientStopE": ClientHandler.clientStop
         , "ClientPlayerE":  \(_ :: Canary) (_ :: SlotId) -> PrivFile "rtsv2" "www/egestReferencePlayer.html"
-        , "ClientPlayerJsE": \(_ :: Canary) (_ :: SlotId) (_ :: Array String) -> PrivDir "rtsv2" "www/assets/js"
+        , "ClientPlayerJsE": \(_ :: Canary) (_ :: SlotId) -> PrivDir "rtsv2" "www/assets/js"
+        , "ClientPlayerControlE": CowboyRoutePlaceholder
 
         , "StreamAuthE": LlnwStubHandler.streamAuth
         , "StreamAuthTypeE": LlnwStubHandler.streamAuthType
@@ -136,13 +132,15 @@ init args = do
   where
     cowboyRoutes :: List Path
     cowboyRoutes =
-   -- cowboyRoute   (IngestInstanceLlwpE slotIdBinding streamRoleBinding profileNameBinding)                                       "llwp_stream_resource" ((unsafeToForeign) makeSlotIdAndProfileName)
-      cowboyHack   "/api/agents/ingest/:slot_id/:stream_role/:profile_name/llwp"                                  "llwp_stream_resource" ((unsafeToForeign) makeSlotIdAndProfileName)
 
-      -- : cowboyRoute (IngestAggregatorActiveIngestsPlayerControlE slotIdBinding profileNameBinding)               "rtsv2_player_ws_resource" ((unsafeToForeign) makeSlotIdAndProfileName)
-      : cowboyHack "/api/agents/ingestAggregator/:slot_id/:stream_role/activeIngests/:profile_name/session"    "rtsv2_player_ws_resource" (unsafeToForeign { mode: (atom "ingest"), make_ingest_key: makeIngestKey })
+       -- IngestAggregatorActiveIngestsPlayerControlE String String String -- SlotId SlotRole ProfileName
+      cowboyRoute (IngestAggregatorActiveIngestsPlayerControlE slotIdBinding streamRoleBinding profileNameBinding) "rtsv2_player_ws_resource" (unsafeToForeign { mode: (atom "ingest"), make_ingest_key: makeIngestKey })
 
-      : cowboyHack "/api/public/:canary/client/:slot_id/session"                                             "rtsv2_player_ws_resource" (unsafeToForeign { mode: (atom "egest"), make_egest_key: EgestKey, start_stream: startStream, add_client: mkFn2 addClient, get_slot_configuration: EgestInstance.slotConfiguration })
+      : cowboyRoute (ClientPlayerControlE canaryBinding slotIdBinding) "rtsv2_player_ws_resource" (unsafeToForeign { mode: (atom "egest"), make_egest_key: EgestKey, start_stream: startStream, add_client: mkFn2 addClient, get_slot_configuration: EgestInstance.slotConfiguration })
+
+      -- todo binding names
+      -- IngestInstanceLlwpE SlotId SlotRole ProfileName
+      : cowboyRoute' "/api/agents/ingest/:slot_id/:slot_role/:profile_name/llwp" "llwp_stream_resource" ((unsafeToForeign) makeSlotIdAndProfileName)
 
       : cowboyRoute WorkflowsE "id3as_workflows_resource" (unsafeToForeign unit)
       : cowboyRoute (WorkflowGraphE ":reference") "id3as_workflow_graph_resource" (unsafeToForeign (atom "graph"))
@@ -150,6 +148,13 @@ init args = do
       : cowboyRoute (WorkflowStructureE ":reference") "id3as_workflow_graph_resource" (unsafeToForeign (atom "structure"))
 
       : nil
+
+    -- TODO - should Bindings.purs exist anymore? presumably not...
+    -- TODO - streamRole
+    slotIdBinding = ":" <> slotIdBindingLiteral
+    streamRoleBinding = ":" <> streamRoleBindingLiteral
+    profileNameBinding = ":" <> profileNameBindingLiteral
+    canaryBinding = ":canary"
 
     makeSlotIdAndProfileName :: String -> String -> SlotIdAndProfileName
     makeSlotIdAndProfileName slotId profileName = SlotIdAndProfileName (slotIdStringToSlotId slotId) (wrap profileName)
@@ -177,46 +182,15 @@ init args = do
     addClient pid slotId =
       EgestInstance.addClient pid (EgestKey (wrap slotId))
 
+    cowboyRoute rType =
+      cowboyRoute' (printUrl endpoint rType)
 
--- =======
---     mkRoute :: forall state msg.  Endpoint -> InnerStetsonHandler msg state -> StetsonConfig -> StetsonConfig
---     mkRoute rType handler = Stetson.route (spy "route" (printUrl endpoint rType)) handler
-
---     mkHack :: forall state msg. String -> InnerStetsonHandler msg state -> StetsonConfig -> StetsonConfig
---     mkHack path  = Stetson.route (spy "route" path)
-
---     static :: Endpoint -> StaticAssetLocation -> StetsonConfig -> StetsonConfig
---     static rType config = Stetson.static  (printUrl endpoint rType) config
-
---     static' :: Endpoint -> String -> StaticAssetLocation -> StetsonConfig -> StetsonConfig
---     static' rType hack config = Stetson.static ((printUrl endpoint rType) <> hack) config
-
---     staticHack :: String -> StaticAssetLocation -> StetsonConfig -> StetsonConfig
---     staticHack path config = Stetson.static  (spy "route" path) config
-
---     profileNameBinding = ProfileName (":" <> Bindings.profileNameBindingLiteral)
-
---     slotNameAndProfileName = SlotNameAndProfileName "ignored" (ProfileName $ ":" <> Bindings.slotNameAndProfileNameBindingLiteral)
-
---     shortNameBinding = RtmpShortName (":" <> Bindings.shortNameBindingLiteral)
--- >>>>>>> master
-
-    popNameBinding :: PoPName
-    popNameBinding = wrap (":" <> Bindings.popNameBindingLiteral)
-
-    cowboyRoute rType moduleName initialState =
-      Path (tuple3
-            (matchSpec $ printUrl endpoint rType)
-            (NativeModuleName $ atom moduleName)
-            (InitialState $ initialState)
-           )
-    cowboyHack path moduleName initialState =
+    cowboyRoute' path moduleName initialState =
       Path (tuple3
             (matchSpec path)
             (NativeModuleName $ atom moduleName)
             (InitialState $ initialState)
            )
-
 
 ipToTuple :: Ip -> Tuple4 Int Int Int Int
 ipToTuple (Ipv4 a b c d) = tuple4 a b c d

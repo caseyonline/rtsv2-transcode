@@ -21,7 +21,6 @@ import Erl.Data.List (List, nil, (:))
 import Erl.Data.Tuple (tuple2)
 import Erl.Process.Raw (Pid)
 import Erl.Process.Raw as Raw
-import Erl.Utils as Timer
 import Gproc as GProc
 import Gproc as Gproc
 import Prometheus as Prometheus
@@ -32,7 +31,7 @@ import Rtsv2.Config as Config
 import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.Router.Endpoint (Canary)
 import Shared.LlnwApiTypes (StreamIngestProtocol(..), StreamPublish, StreamDetails)
-import Shared.Stream (IngestKey(..), ProfileName, RtmpShortName, SlotId, SlotIdAndProfileName(..), SlotNameAndProfileName(..), SlotRole(..))
+import Shared.Stream (IngestKey(..), ProfileName, RtmpShortName, SlotId, SlotNameAndProfileName(..), SlotRole(..))
 import Shared.Types.Agent.State as PublicState
 import Shared.Types.Workflow.Metrics.Commmon (Stream)
 import Shared.Utils (lazyCrashIfMissing)
@@ -41,21 +40,21 @@ import SpudGun (bodyToJSON)
 import SpudGun as SpudGun
 import Stetson (StetsonHandler)
 import Stetson.Rest as Rest
-import StetsonHelper (GenericStetsonGet, GenericStetsonGet2, genericGet, genericGet2, genericGetBy2)
+import StetsonHelper (GenericStetsonGet, genericGet, genericGet2)
 
 ingestInstances :: StetsonHandler Unit
 ingestInstances =
   Rest.handler (\req -> Rest.initResult req unit)
   # Rest.yeeha
 
-ingestInstancesMetrics :: GenericStetsonGet2
+ingestInstancesMetrics :: StetsonHandler Unit
 ingestInstancesMetrics =
-  genericGet2 nil ((MimeType.openmetrics getText) : (MimeType.json getJson) : nil)
+  genericGet2 ((MimeType.openmetrics getText) : (MimeType.json getJson) : nil)
   where
-    getJson _ = do
+    getJson = do
       stats <- IngestStats.getStats
       pure $ writeJSON stats
-    getText _ = do
+    getText = do
       stats <- IngestStats.getStats
       pure $ statsToPrometheus stats
 

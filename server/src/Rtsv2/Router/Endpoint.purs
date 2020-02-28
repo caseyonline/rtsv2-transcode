@@ -57,7 +57,9 @@ data Endpoint
   | IngestAggregatorActiveIngestsE SlotId SlotRole ProfileName
   | IngestAggregatorActiveIngestsPlayerE SlotId SlotRole ProfileName
   | IngestAggregatorActiveIngestsPlayerJsE SlotId SlotRole ProfileName (Array String)
-  | IngestAggregatorActiveIngestsPlayerControlE SlotId SlotRole ProfileName
+
+  | IngestAggregatorActiveIngestsPlayerControlE String String String -- SlotId SlotRole ProfileName
+
   | IngestAggregatorSlotConfigurationE SlotId SlotRole
   | IngestAggregatorRegisterRelayE
   | IngestAggregatorsE
@@ -75,6 +77,7 @@ data Endpoint
   | ClientStopE Canary SlotId String
   | ClientPlayerE Canary SlotId
   | ClientPlayerJsE Canary SlotId (Array String)
+  | ClientPlayerControlE String String
 
   | StreamAuthE
   | StreamAuthTypeE
@@ -117,7 +120,7 @@ endpoint = root $ sum
   , "IngestAggregatorActiveIngestsE"                   : "api" / "agents" / "ingestAggregator" / slotId segment / slotRole segment / "activeIngests" / profileName segment
   , "IngestAggregatorActiveIngestsPlayerE"             : "api" / "agents" / "ingestAggregator" / slotId segment / slotRole segment / "activeIngests" / profileName segment / "player"
   , "IngestAggregatorActiveIngestsPlayerJsE"           : "api" / "agents" / "ingestAggregator" / slotId segment / slotRole segment / "activeIngests" / profileName segment / "js" / rest
-  , "IngestAggregatorActiveIngestsPlayerControlE"      : "api" / "agents" / "ingestAggregator" / slotId segment / slotRole segment / "activeIngests" / profileName segment / "control"
+  , "IngestAggregatorActiveIngestsPlayerControlE"      : "api" / "agents" / "ingestAggregator" / segment / segment / "activeIngests" / segment / "control"
   , "IngestAggregatorSlotConfigurationE"               : "api" / "agents" / "ingestAggregator" / slotId segment / slotRole segment / "slot"
   , "IngestAggregatorRegisterRelayE"                   : "api" / "agents" / "ingestAggregator" / path "register" noArgs
 
@@ -137,9 +140,10 @@ endpoint = root $ sum
   , "ClientStopE"                                      : "api" / "public" / canary segment / "client" / slotId segment / "stop" / segment
   , "ClientPlayerE"                                    : "api" / "public" / canary segment / "client" / slotId segment / "player"
   , "ClientPlayerJsE"                                  : "api" / "public" / canary segment / "client" / slotId segment / "js" / rest
+  , "ClientPlayerControlE"                             : "api" / "public" / segment / "client" / segment / "session"
 
-  , "StreamAuthE"                                      : "llnwstub" / "rts" / "v1" / path "streamauthtype" noArgs
-  , "StreamAuthTypeE"                                  : "llnwstub" / "rts" / "v1" / path "streamauth" noArgs
+  , "StreamAuthTypeE"                                  : "llnwstub" / "rts" / "v1" / path "streamauthtype" noArgs
+  , "StreamAuthE"                                      : "llnwstub" / "rts" / "v1" / path "streamauth" noArgs
   , "StreamPublishE"                                   : "llnwstub" / "rts" / "v1" / path "streampublish" noArgs
 
   , "WorkflowsE"                                       : "api" / path "workflows" noArgs

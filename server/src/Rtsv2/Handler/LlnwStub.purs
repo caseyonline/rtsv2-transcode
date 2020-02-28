@@ -18,6 +18,7 @@ import Erl.Data.Binary (Binary)
 import Erl.Data.Binary.IOData (IOData, fromBinary, toBinary)
 import Erl.Data.List (List, filter, head, nil, (:))
 import Erl.Data.Tuple (tuple2)
+import Logger (spy)
 import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
 import Shared.LlnwApiTypes (AuthType, PublishCredentials, SlotPublishAuthType(..), StreamAuth, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamPublish)
 import Shared.Stream (RtmpShortName, SlotRole(..))
@@ -146,7 +147,11 @@ postHelper lookupFun =
   # Rest.malformedRequest (\req state -> do
                               body <- allBody req mempty
                               let
-                                maybePayload = hush $ readJSON $ binaryToString body
+                                eJSON = readJSON $ binaryToString body
+                                maybePayload = hush $ eJSON
+                                _ = spy "body" $ binaryToString body
+                                _ = spy "json" $ eJSON
+                                _ = spy "maybePayload" maybePayload
                               Rest.result (isNothing maybePayload) req state{payload = maybePayload})
 
   # Rest.contentTypesAccepted (\req state ->

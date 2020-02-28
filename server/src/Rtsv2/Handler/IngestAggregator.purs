@@ -14,13 +14,11 @@ import Data.Maybe (Maybe(..), fromMaybe', isNothing)
 import Erl.Cowboy.Req (method)
 import Erl.Data.List (List, nil, (:))
 import Erl.Data.Tuple (tuple2)
-import Foreign (Foreign)
 import Logger (spy)
 import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
 import Rtsv2.Agents.IngestAggregatorInstanceSup as IngestAggregatorInstanceSup
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
 import Rtsv2.Agents.StreamRelayTypes (RegisterRelayPayload)
-import Rtsv2.Web.Bindings as Bindings
 import Shared.LlnwApiTypes (StreamDetails)
 import Shared.Stream (AggregatorKey(..), IngestKey(..), SlotId, SlotRole, ProfileName)
 import Shared.Types (ServerAddress)

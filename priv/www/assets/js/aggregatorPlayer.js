@@ -1,6 +1,6 @@
 function update_state(allProfiles) {
 
-  $.getJSON(".")
+  $.getJSON(aggregatorStatePath())
    .done(function(aggregatorPublicState) {
       if ($("#players").hasClass("inactive")) {
         $("#players").empty();
@@ -71,7 +71,7 @@ function setActiveContent(aggregatorPublicState) {
       overrides: {
         socketAuthority: window.location.host,
         socketSecure: window.location.protocol === "https:",
-        socketPath: `${activeIngests}/${variant.profileName}/session`,
+        socketPath: `${activeIngests}/${variant.profileName}/control`,
       }
     };
 
@@ -79,9 +79,13 @@ function setActiveContent(aggregatorPublicState) {
   });
 }
 
+function aggregatorStatePath() {
+  return window.location.pathname.split('/').slice(0, -1).join("/");
+}
+
 $(document).ready(function() {
 
-  $.getJSON(".", function(aggregatorPublicState) {
+  $.getJSON(aggregatorStatePath(), function(aggregatorPublicState) {
     setActiveContent(aggregatorPublicState);
 
     var allProfiles = $.map(aggregatorPublicState.streamDetails.slot.profiles, function(profile, index) { return profile.name; });

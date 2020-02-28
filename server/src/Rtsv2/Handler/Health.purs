@@ -17,7 +17,7 @@ import Shared.Types (extractAddress)
 import Simple.JSON as JSON
 import Stetson (StetsonHandler)
 import Stetson.Rest as Rest
-import StetsonHelper (GenericStetsonGet2, genericGet2')
+import StetsonHelper (genericGet2)
 
 healthCheck :: StetsonHandler Unit
 healthCheck =
@@ -39,4 +39,4 @@ foreign import vmMetricsImpl :: Effect String
 
 vmMetrics  :: StetsonHandler Unit
 vmMetrics =
-  genericGet2' (MimeType.openmetrics vmMetricsImpl : nil)
+  genericGet2 (MimeType.openmetrics vmMetricsImpl : nil)
