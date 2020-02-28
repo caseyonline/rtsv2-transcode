@@ -2,6 +2,8 @@ module Rtsv2.Handler.IngestAggregator
        ( ingestAggregator
        , ingestAggregators
        , ingestAggregatorsActiveIngest
+       , registerRelay
+       , slotConfiguration
        )
        where
 
@@ -12,10 +14,15 @@ import Data.Maybe (Maybe(..), fromMaybe', isNothing)
 import Erl.Cowboy.Req (method)
 import Erl.Data.List (List, nil, (:))
 import Erl.Data.Tuple (tuple2)
+import Foreign (Foreign)
+import Logger (spy)
 import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
 import Rtsv2.Agents.IngestAggregatorInstanceSup as IngestAggregatorInstanceSup
+import Rtsv2.Agents.SlotTypes (SlotConfiguration)
+import Rtsv2.Agents.StreamRelayTypes (RegisterRelayPayload)
+import Rtsv2.Web.Bindings as Bindings
 import Shared.LlnwApiTypes (StreamDetails)
-import Shared.Stream (AggregatorKey(..), IngestKey(..), StreamId, StreamRole, StreamVariant)
+import Shared.Stream (AggregatorKey(..), IngestKey(..), SlotId, SlotRole, ProfileName)
 import Shared.Types (ServerAddress)
 import Shared.Types.Agent.State as PublicState
 import Shared.Utils (lazyCrashIfMissing)
@@ -24,8 +31,19 @@ import Stetson (HttpMethod(..), StetsonHandler)
 import Stetson.Rest as Rest
 import StetsonHelper (GenericStatusState, GenericStetsonHandler, allBody, binaryToString, genericGet, genericPost)
 
-ingestAggregator :: StreamId -> StreamRole -> StetsonHandler (GenericStatusState (PublicState.IngestAggregator List))
-ingestAggregator streamId role = genericGet $ IngestAggregatorInstance.getState $ AggregatorKey streamId role
+ingestAggregator :: SlotId -> SlotRole -> StetsonHandler (GenericStatusState (PublicState.IngestAggregator List))
+ingestAggregator slotId role = genericGet $ IngestAggregatorInstance.getState $ AggregatorKey slotId role
+
+slotConfiguration :: SlotId -> SlotRole -> StetsonHandler (GenericStatusState (Maybe SlotConfiguration))
+slotConfiguration slotId role =
+  genericGet slotConfigurationBySlotIdAndRole
+
+  where
+    slotConfigurationBySlotIdAndRole =
+      do
+        result <- IngestAggregatorInstance.slotConfiguration (AggregatorKey slotId role)
+        let _ = spy "Ingest Aggregator Slot Config" result
+        pure result
 
 ingestAggregators :: GenericStetsonHandler StreamDetails
 ingestAggregators = genericPost IngestAggregatorInstanceSup.startAggregator
@@ -35,12 +53,12 @@ type IngestAggregatorsActiveIngestState = { ingestKey :: IngestKey
                                           , aggregatorKey :: AggregatorKey
                                           , serverAddress :: Maybe ServerAddress
                                           }
-ingestAggregatorsActiveIngest :: StreamId -> StreamRole -> StreamVariant -> StetsonHandler IngestAggregatorsActiveIngestState
-ingestAggregatorsActiveIngest streamId streamRole variant =
+ingestAggregatorsActiveIngest :: SlotId -> SlotRole -> ProfileName -> StetsonHandler IngestAggregatorsActiveIngestState
+ingestAggregatorsActiveIngest slotId streamRole profileName =
   Rest.handler (\req ->
-                  Rest.initResult req { ingestKey: IngestKey streamId streamRole variant
-                                      , aggregatorKey: AggregatorKey streamId streamRole
-                                      , serverAddress: Nothing})
+                 Rest.initResult req { ingestKey: IngestKey slotId streamRole profileName
+                                     , aggregatorKey: AggregatorKey slotId streamRole
+                                     , serverAddress: Nothing})
   # Rest.serviceAvailable (\req state -> do
                               isAgentAvailable <- IngestAggregatorInstanceSup.isAvailable
                               Rest.result isAgentAvailable req state)
@@ -71,7 +89,7 @@ ingestAggregatorsActiveIngest streamId streamRole variant =
                                                                             serverAddress = fromMaybe' (lazyCrashIfMissing "server_address is nothing") maybeServerAddress
                                                                           in
                                                                             do
-                                                                              IngestAggregatorInstance.addRemoteVariant ingestKey serverAddress
+                                                                              IngestAggregatorInstance.addRemoteIngest ingestKey serverAddress
                                                                               Rest.result true req2 state2
                                                                         )) : nil)
                                 req state
@@ -83,10 +101,14 @@ ingestAggregatorsActiveIngest streamId streamRole variant =
   # Rest.allowMissingPost (Rest.result false)
 
   # Rest.deleteResource (\req state@{ingestKey} -> do
-                            IngestAggregatorInstance.removeVariant ingestKey
+                            IngestAggregatorInstance.removeIngest ingestKey
                             Rest.result true req state
                         )
 
   # Rest.contentTypesProvided (\req state -> Rest.result (tuple2 "application/json" (Rest.result ""): nil) req state)
 
   # Rest.yeeha
+
+
+registerRelay :: GenericStetsonHandler RegisterRelayPayload
+registerRelay = genericPost IngestAggregatorInstance.registerRelay

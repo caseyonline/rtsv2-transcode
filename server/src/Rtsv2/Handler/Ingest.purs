@@ -13,11 +13,17 @@ import Data.Either (hush)
 import Data.Foldable (foldl)
 import Data.Maybe (Maybe(..), fromMaybe')
 import Data.Newtype (unwrap, wrap)
+import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..))
+import Effect (Effect)
+import Erl.Atom (atom)
 import Erl.Data.List (List, nil, (:))
 import Erl.Data.Tuple (tuple2)
+import Erl.Process.Raw (Pid)
 import Erl.Process.Raw as Raw
 import Erl.Utils as Timer
+import Gproc as GProc
+import Gproc as Gproc
 import Prometheus as Prometheus
 import Rtsv2.Agents.IngestInstance as IngestInstance
 import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
@@ -25,10 +31,8 @@ import Rtsv2.Agents.IngestStats as IngestStats
 import Rtsv2.Config as Config
 import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.Router.Endpoint (Canary)
-import Rtsv2.Web.Bindings (streamAndVariant)
-import Rtsv2.Web.Bindings as Bindings
 import Shared.LlnwApiTypes (StreamIngestProtocol(..), StreamPublish, StreamDetails)
-import Shared.Stream (IngestKey(..), ShortName, StreamAndVariant(..), StreamId, StreamRole(..), StreamVariant)
+import Shared.Stream (IngestKey(..), ProfileName, RtmpShortName, SlotId, SlotIdAndProfileName(..), SlotNameAndProfileName(..), SlotRole(..))
 import Shared.Types.Agent.State as PublicState
 import Shared.Types.Workflow.Metrics.Commmon (Stream)
 import Shared.Utils (lazyCrashIfMissing)
@@ -174,7 +178,7 @@ statsToPrometheus stats =
        # Prometheus.addMetric "ingest_bytes_received" totalBytesReceived labels timestamp
        # Prometheus.addMetric "ingest_last_bytes_read_report" lastBytesReadReport labels timestamp
 
-    labelsForStream :: forall a. StreamId -> StreamVariant -> StreamRole -> Stream a -> Prometheus.IOLabels
+    labelsForStream :: forall a. SlotId -> ProfileName -> SlotRole -> Stream a -> Prometheus.IOLabels
     labelsForStream slotId profileId role { streamId, frameType, profileName} =
       Prometheus.toLabels $ (Tuple "slot" (Prometheus.toLabelValue (unwrap slotId))) :
                             (Tuple "profile" (Prometheus.toLabelValue (unwrap profileId))) :
@@ -184,20 +188,23 @@ statsToPrometheus stats =
                             (Tuple "profile_name" (Prometheus.toLabelValue profileName)) :
                             nil
 
-ingestInstance :: StreamId -> StreamVariant -> GenericStetsonGet (PublicState.Ingest List)
-ingestInstance streamId variant = genericGet $ IngestInstance.getPublicState $ IngestKey streamId Primary variant
+ingestInstance :: SlotId -> ProfileName -> GenericStetsonGet (PublicState.Ingest List)
+ingestInstance slotId profileName =
+  -- TODO - hardcoded Primary
+  genericGet (IngestInstance.getPublicState (IngestKey slotId Primary profileName))
 
-type IngestStartState = { shortName :: ShortName
+
+type IngestStartState = { shortName :: RtmpShortName
                         , streamDetails :: Maybe StreamDetails
                         , streamPublish :: Maybe StreamPublish
-                        , streamAndVariant :: StreamAndVariant
+                        , slotNameAndProfileName :: SlotNameAndProfileName
                         }
 
-ingestStart :: Canary -> ShortName -> StreamAndVariant -> StetsonHandler IngestStartState
-ingestStart canary shortName streamAndVariant =
+ingestStart :: Canary -> RtmpShortName -> SlotNameAndProfileName -> StetsonHandler IngestStartState
+ingestStart canary shortName slotNameAndProfileName =
   Rest.handler (\req ->
                  Rest.initResult req { shortName
-                                     , streamAndVariant
+                                     , slotNameAndProfileName
                                      , streamDetails: Nothing
                                      , streamPublish: Nothing
                                      }
@@ -205,14 +212,14 @@ ingestStart canary shortName streamAndVariant =
   # Rest.serviceAvailable (\req state -> do
                             isAgentAvailable <- IngestInstanceSup.isAvailable
                             Rest.result isAgentAvailable req state)
-  # Rest.resourceExists (\req state@{shortName, streamAndVariant: (StreamAndVariant _ variant)} ->
+  # Rest.resourceExists (\req state@{shortName, slotNameAndProfileName: (SlotNameAndProfileName _ profileName)} ->
                           let
                             streamPublishPayload :: StreamPublish
-                            streamPublishPayload = { host: "172.16.171.5"
-                                                   , protocol: Rtmp
-                                                   , shortname: unwrap shortName
-                                                   , streamName: unwrap variant
-                                                   , username: "user"}
+                            streamPublishPayload = wrap { host: "172.16.171.5"
+                                                        , protocol: Rtmp
+                                                        , rtmpShortName: shortName
+                                                        , rtmpStreamName: wrap $ unwrap profileName
+                                                        , username: "user"}
                           in
                            do
                              {streamPublishUrl} <- Config.llnwApiConfig
@@ -225,17 +232,14 @@ ingestStart canary shortName streamAndVariant =
   -- TODO - hideous spawn here, but ingestInstance needs to do a monitor... - ideally we sleep forever and kill it in ingestStop...
   # Rest.contentTypesProvided (\req state ->
                                   Rest.result (tuple2 "text/plain" (\req2 state2@{ streamDetails: maybeStreamDetails
-                                                                                 , streamAndVariant: StreamAndVariant streamId variantId
+                                                                                 , slotNameAndProfileName: SlotNameAndProfileName slotId profileName
                                                                                  , streamPublish: maybeStreamPublish
                                                                                  } -> do
-                                                                       pid <- Raw.spawn ((\_ -> Timer.sleep (wrap 10000))
-                                                                                         { receive: Raw.receive
-                                                                                         , receiveWithTimeout: Raw.receiveWithTimeout
-                                                                                         })
                                                                        let
                                                                          streamDetails = fromMaybe' (lazyCrashIfMissing "stream_details missing") maybeStreamDetails
                                                                          streamPublish = fromMaybe' (lazyCrashIfMissing "stream_publish missing") maybeStreamPublish
-                                                                         ingestKey = IngestKey streamId streamDetails.role variantId
+                                                                         ingestKey = IngestKey streamDetails.slot.id streamDetails.role profileName
+                                                                       pid <- startFakeIngest ingestKey
                                                                        IngestInstanceSup.startIngest ingestKey streamPublish streamDetails "127.0.0.1" 0 pid
                                                                        Rest.result "ingestStarted" req2 state2
                                                                    ) : nil) req state)
@@ -244,9 +248,9 @@ ingestStart canary shortName streamAndVariant =
 
 type IngestStopState = { ingestKey :: IngestKey }
 
-ingestStop :: Canary -> StreamId -> StreamRole -> StreamVariant ->  StetsonHandler IngestStopState
-ingestStop canary streamId role variant =
-  Rest.handler (\req -> Rest.initResult req {ingestKey: IngestKey streamId role variant})
+ingestStop :: Canary -> SlotId -> SlotRole -> ProfileName -> StetsonHandler IngestStopState
+ingestStop canary slotId role profileName =
+  Rest.handler (\req -> Rest.initResult req {ingestKey: IngestKey slotId role profileName})
 
   # Rest.serviceAvailable (\req state -> do
                             isAgentAvailable <- IngestInstanceSup.isAvailable
@@ -258,7 +262,24 @@ ingestStop canary streamId role variant =
                         )
   # Rest.contentTypesProvided (\req state ->
                                 Rest.result (tuple2 "text/plain" (\req2 state2 -> do
-                                                                     IngestInstance.stopIngest state.ingestKey
+                                                                     stopFakeIngest state.ingestKey
+                                                                     --IngestInstance.stopIngest state.ingestKey
                                                                      Rest.result "ingestStopped" req2 state2
                                                                  ) : nil) req state)
   # Rest.yeeha
+
+startFakeIngest :: IngestKey -> Effect Pid
+startFakeIngest ingestKey =
+  let
+    proc = do
+      _ <- GProc.register (tuple2 (atom "test_ingest_client") ingestKey)
+      _ <- Raw.receive
+      pure unit
+  in
+    Raw.spawn proc
+
+stopFakeIngest :: IngestKey -> Effect Unit
+stopFakeIngest ingestKey = do
+  pid <- Gproc.whereIs (tuple2 (atom "test_ingest_client") ingestKey)
+  _ <- traverse ((flip Raw.send) (atom "stop")) pid
+  pure unit

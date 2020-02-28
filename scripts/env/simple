@@ -1,0 +1,2 @@
+export POP_DEFINITION=scripts/env/simple.data/popDefinition.json
+export SYSCONFIG=scripts/env/simple.data/sys.config

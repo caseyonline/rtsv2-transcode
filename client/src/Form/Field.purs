@@ -23,7 +23,7 @@ import Type.Row as Row
 submit :: forall form act slots m. String -> F.ComponentHTML form act slots m
 submit buttonText =
   HH.button
-    [ css_ "btn btn-lg btn-primary pull-xs-right"
+    [ css_ "button is-black"
     , HE.onClick \_ -> Just F.submit 
     ]
     [ HH.text buttonText ]
@@ -44,14 +44,15 @@ input sym form props =
     [ css_ "form-group" ]
     [ HH.input 
       ( append
-          [ css_ "form-control form-control-lg"
+          [ css_ "input"
           , HP.value $ F.getInput sym form
+          , HP.autocomplete true
           , HE.onValueInput $ Just <<< F.setValidate sym
           ]
           props
       )
     , maybeElem (F.getError sym form) \err ->
         HH.div
-          [ css_ "error-messages" ]
+          [ css_ "error-messages has-text-danger" ]
           [ HH.text $ errorToString err ]
     ] 

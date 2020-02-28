@@ -1,4 +1,5 @@
 -module(serf@foreign).
+
 -include_lib("id3as_common/include/serf_api.hrl").
 -include_lib("id3as_common/include/common.hrl").
 
@@ -25,24 +26,21 @@ eventImpl(Left, Right, RpcAddr, Name, Msg, Coalesce) ->
                                              , msg => Msg
                                              , coalesce => Coalesce
                                              }),
-          Left(networkError)
+          map_error(Error, Left)
       end
   end.
 
 membersImpl(Left, Right, RpcAddr) ->
   fun() ->
       case serf_api:members(mapAddr(RpcAddr)) of
+        {ok, #serf_members_response{members = Members}} ->
+          Right([mapMemberToPurs(Member) || Member <- Members]);
+
         {error, Error} ->
           ?SLOG_WARNING("serf members error", #{ error => Error
                                                , client_rpc => RpcAddr
                                                }),
-          Left(networkError);
-        {ok, #serf_members_response{status = serf_error,
-                                    serf_error = ErrorBin}} ->
-          Left(ErrorBin);
-        {ok, #serf_members_response{status = ok,
-                                    members = Members}} ->
-          Right([mapMemberToPurs(Member) || Member <- Members])
+          map_error(Error, Left)
       end
   end.
 
@@ -50,7 +48,7 @@ streamImpl(Left, Right, RpcAddr) ->
   fun() ->
       case serf_api:stream(mapAddr(RpcAddr)) of
         ok -> Right;
-        Error -> Left(Error)
+        {error, Error} -> map_error(Error, Left)
       end
   end.
 
@@ -58,7 +56,7 @@ getCoordinateImpl(Left, Right, RpcAddr, NodeName) ->
   fun() ->
       case serf_api:get_coordinate(mapAddr(RpcAddr), NodeName) of
         {ok, Coords} -> Right(mapCoordsToPurs(Coords));
-        Error -> Left(Error)
+        {error, Error} -> map_error(Error, Left)
       end
   end.
 
@@ -67,19 +65,16 @@ joinImpl(Left, Right, RpcAddr, SeedAgents, Replay) ->
       case serf_api:join(mapAddr(RpcAddr),
                          [mapAddr(Seed) || Seed <- SeedAgents],
                          Replay) of
-        {error, Error} ->
+        {ok, #serf_join_response{no_peers_joined = Peers}} ->
+          Right(Peers);
+
+       {error, Error} ->
           ?SLOG_WARNING("serf join error", #{ error => Error
                                             , client_rpc => RpcAddr
                                             , seeds => SeedAgents
                                             , replay_events => Replay
                                             }),
-          Left(networkError);
-        {ok, #serf_join_response{status = serf_error,
-                                 serf_error = ErrorBin}} ->
-          Left(ErrorBin);
-        {ok, #serf_join_response{status = ok,
-                                 no_peers_joined = Peers}} ->
-          Right(Peers)
+          map_error(Error, Left)
       end
   end.
 
@@ -93,7 +88,7 @@ leaveImpl(Left, Right, RpcAddr) ->
           ?SLOG_WARNING("serf leave error", #{ error => Error
                                              , client_rpc => RpcAddr
                                              }),
-          Left(networkError)
+          map_error(Error, Left)
       end
   end.
 
@@ -179,3 +174,9 @@ mapAddr(#{ ip := Addr
          , port := Port
          }) when is_binary(Addr) ->
   {binary_to_list(Addr), Port}.
+
+map_error({serfError, Error}, Left) ->
+  Left({serfError, Error});
+
+map_error(Error, Left) ->
+  Left({networkError, Error}).

@@ -167,7 +167,7 @@ health =
       pure $ Health.percentageToHealth healthConfig $ (Map.size members) * 100 / ((Map.size allOtherPoPs) + 1)
 
 announceAggregatorIsAvailable :: AgentKey -> Server -> Effect Unit
-announceAggregatorIsAvailable streamId server =
+announceAggregatorIsAvailable slotId server =
   Gen.doCast serverName ((map CastNoReply) <<< doAnnounceStreamIsAvailable)
   where
     doAnnounceStreamIsAvailable :: State -> Effect State
@@ -176,12 +176,12 @@ announceAggregatorIsAvailable streamId server =
     doAnnounceStreamIsAvailable state@{ thisServer
                                       , serfRpcAddress
                                       } = do
-      result <- Serf.event state.serfRpcAddress "streamAvailable" (TMAggregatorState Available streamId (extractAddress server)) false
+      result <- Serf.event state.serfRpcAddress "streamAvailable" (TMAggregatorState Available slotId (extractAddress server)) false
       maybeLogError "Trans-PoP serf event failed" result {}
       pure state
 
 announceAggregatorStopped :: AgentKey -> Server -> Effect Unit
-announceAggregatorStopped streamId server =
+announceAggregatorStopped slotId server =
   Gen.doCast serverName ((map CastNoReply) <<< doAnnounceStreamStopped)
   where
     doAnnounceStreamStopped :: State -> Effect State
@@ -194,8 +194,8 @@ announceAggregatorStopped streamId server =
       if extractPoP server == extractPoP thisServer
       then do
             -- Message from our pop - distribute over trans-pop
-            --logInfo "Local stream stopped being delivered to trans-pop" { streamId: streamId }
-            result <- Serf.event state.serfRpcAddress "streamStopped" (TMAggregatorState Stopped streamId (extractAddress server)) false
+            --logInfo "Local stream stopped being delivered to trans-pop" { slotId: slotId }
+            result <- Serf.event state.serfRpcAddress "streamStopped" (TMAggregatorState Stopped slotId (extractAddress server)) false
             maybeLogError "Trans-PoP serf event failed" result {}
             pure state
       else pure state
@@ -324,8 +324,8 @@ handleInfo msg state =
             unsafeCrashWith ("lost_serf_connection")
           Serf.UserEvent name ltime coalesce transMessage ->
             case transMessage of
-              TMAggregatorState eventType streamId msgOrigin -> do
-                handleAgentMessage ltime eventType streamId msgOrigin state
+              TMAggregatorState eventType slotId msgOrigin -> do
+                handleAgentMessage ltime eventType slotId msgOrigin state
 
 
 
@@ -371,8 +371,8 @@ getDefaultRtts {defaultRttMs} = do
 
 
 shouldProcessStreamState :: AgentKey -> LamportClock -> EMap AgentKey LamportClock -> Boolean
-shouldProcessStreamState streamId ltime streamStateClocks =
-  case EMap.lookup streamId streamStateClocks of
+shouldProcessStreamState slotId ltime streamStateClocks =
+  case EMap.lookup slotId streamStateClocks of
     Just lastLTime
       | lastLTime > ltime -> false
     _ ->
@@ -614,7 +614,7 @@ joinAllSerf state@{ config: config@{rejoinEveryMs}, serfRpcAddress, members } =
 handleAgentMessage :: LamportClock -> EventType -> AgentKey -> ServerAddress -> State -> Effect State
 handleAgentMessage msgLTime eventType agentKey msgServerAddress
                    state@{thisServer} = do
-  -- let _ = spy "agentMessage" {name: agentMessageHandler.name, eventType, streamId, msgServerAddress}
+  -- let _ = spy "agentMessage" {name: agentMessageHandler.name, eventType, slotId, msgServerAddress}
   -- Make sure the message is from a known origin and does not have an expired Lamport clock
   if msgServerAddress == extractAddress thisServer
   then

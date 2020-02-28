@@ -1,10 +1,12 @@
 module Shared.Stream
-  ( ShortName(..)
-  , StreamId(..)
-  , StreamIdAndRole(..)
-  , StreamRole(..)
-  , StreamVariant(..)
-  , StreamAndVariant(..)
+  ( RtmpShortName(..)
+  , RtmpStreamName(..)
+  , SlotId(..)
+  , SlotIdAndRole(..)
+  , SlotRole(..)
+  , ProfileName(..)
+  , SlotIdAndProfileName(..)
+  , SlotNameAndProfileName(..)
   , AgentKey(..)
   , EgestKey(..)
   , AggregatorKey(..)
@@ -14,10 +16,10 @@ module Shared.Stream
   , agentKeyToAggregatorKey
   , aggregatorKeyToAgentKey
   , ingestKeyToAggregatorKey
-  , ingestKeyToVariant
+  , ingestKeyToProfileName
 
-  , toStreamId
-  , toVariant
+  , toSlotId
+  , toProfileName
   ) where
 
 import Prelude
@@ -30,6 +32,7 @@ import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Eq (genericEq)
 import Data.Generic.Rep.Ord (genericCompare)
 import Data.Generic.Rep.Show (genericShow)
+import Data.Int (fromString)
 import Data.List.NonEmpty (singleton)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype, unwrap)
@@ -37,138 +40,171 @@ import Data.String (Pattern(..), split)
 import Foreign (ForeignError(..), readString, unsafeToForeign)
 import Simple.JSON (class ReadForeign, class WriteForeign, readImpl, writeImpl)
 
-newtype ShortName = ShortName String
-derive instance genericShortName :: Generic ShortName _
-derive instance newtypeShortName :: Newtype ShortName _
+newtype SlotId = SlotId Int
 
-derive newtype instance readForeignShortName :: ReadForeign ShortName
-derive newtype instance writeForeignShortName :: WriteForeign ShortName
+data SlotRole = Primary
+                | Backup
 
-instance eqShortName :: Eq ShortName where
-  eq = genericEq
+data SlotIdAndRole = SlotIdAndRole SlotId SlotRole
 
-instance compareShortName :: Ord ShortName where
-  compare = genericCompare
+newtype ProfileName = ProfileName String
 
-instance showShortName :: Show ShortName where
-  show = genericShow
+data SlotIdAndProfileName = SlotIdAndProfileName SlotId ProfileName
 
+data SlotNameAndProfileName = SlotNameAndProfileName String ProfileName
 
-newtype StreamId = StreamId String
-derive instance genericStreamId :: Generic StreamId _
-derive instance newtypeStreamId :: Newtype StreamId _
-derive newtype instance readForeignStreamId :: ReadForeign StreamId
-derive newtype instance writeForeignStreamId :: WriteForeign StreamId
+newtype RtmpShortName = RtmpShortName String
 
-instance eqStreamId :: Eq StreamId where
-  eq = genericEq
+newtype RtmpStreamName = RtmpStreamName String
 
-instance compareStreamId :: Ord StreamId where
-  compare = genericCompare
+newtype EgestKey = EgestKey SlotId
 
-instance showStreamId :: Show StreamId where
-  show = genericShow
+data AggregatorKey = AggregatorKey SlotId SlotRole
 
-data StreamIdAndRole = StreamIdAndRole StreamId StreamRole
-derive instance eqStreamIdAndRole :: Eq StreamIdAndRole
-derive instance ordStreamIdAndRole :: Ord StreamIdAndRole
+data RelayKey = RelayKey SlotId SlotRole
 
-newtype EgestKey = EgestKey StreamId
-data AggregatorKey = AggregatorKey StreamId StreamRole
-derive instance eqAggregatorKey :: Eq AggregatorKey
-derive instance ordAggregatorKey :: Ord AggregatorKey
+data IngestKey = IngestKey SlotId SlotRole ProfileName
 
-data RelayKey = RelayKey StreamId StreamRole
-
-data IngestKey = IngestKey StreamId StreamRole StreamVariant
-derive instance eqIngestKey :: Eq IngestKey
-
-type IngestKeyJson = { streamId :: StreamId
-                     , role :: StreamRole
-                       , profile :: StreamVariant
-                     }
-instance readForeignIngestKey :: ReadForeign IngestKey where
-  readImpl f =
-    mapper <$> readImpl f
-    where
-      mapper :: IngestKeyJson -> IngestKey
-      mapper {streamId, role: streamRole, profile: streamVariant} = IngestKey streamId streamRole streamVariant
-
-instance writeForeignIngestKey :: WriteForeign IngestKey where
-  writeImpl (IngestKey streamId streamRole streamVariant) = writeImpl { streamId: streamId
-                                                                      , role: streamRole
-                                                                      , profile: streamVariant}
+data AgentKey = AgentKey SlotId SlotRole
 
 aggregatorKeyToAgentKey :: AggregatorKey -> AgentKey
-aggregatorKeyToAgentKey (AggregatorKey streamId streamRole) = AgentKey streamId streamRole
-
-data AgentKey = AgentKey StreamId StreamRole
-derive instance eqAgentKey :: Eq AgentKey
-derive instance ordAgentKey :: Ord AgentKey
-
-
-newtype StreamVariant = StreamVariant String
-derive instance genericStreamVariant :: Generic StreamVariant _
-derive instance newtypeStreamVariant :: Newtype StreamVariant _
-derive newtype instance readForeignStreamVariant :: ReadForeign StreamVariant
-derive newtype instance writeForeignStreamVariant :: WriteForeign StreamVariant
-
+aggregatorKeyToAgentKey (AggregatorKey slotId streamRole) = AgentKey slotId streamRole
 
 ingestKeyToAggregatorKey :: IngestKey -> AggregatorKey
-ingestKeyToAggregatorKey (IngestKey streamId streamRole streamVariant) = (AggregatorKey streamId streamRole)
-
+ingestKeyToAggregatorKey (IngestKey slotId streamRole streamProfileName) = (AggregatorKey slotId streamRole)
 
 agentKeyToAggregatorKey :: AgentKey -> AggregatorKey
-agentKeyToAggregatorKey (AgentKey streamId streamRole) = AggregatorKey streamId streamRole
+agentKeyToAggregatorKey (AgentKey slotId streamRole) = AggregatorKey slotId streamRole
 
-ingestKeyToVariant :: IngestKey -> StreamVariant
-ingestKeyToVariant (IngestKey streamId streamRole streamVariant) = streamVariant
+ingestKeyToProfileName :: IngestKey -> ProfileName
+ingestKeyToProfileName (IngestKey slotId streamRole streamProfileName) = streamProfileName
 
-data StreamAndVariant = StreamAndVariant StreamId StreamVariant
+toSlotId :: SlotIdAndProfileName -> SlotId
+toSlotId (SlotIdAndProfileName s _) = s
 
-instance eqStreamVariant :: Eq StreamVariant where
+toProfileName :: SlotIdAndProfileName -> ProfileName
+toProfileName (SlotIdAndProfileName _ v) = v
+
+------------------------------------------------------------------------------
+-- Type class derivations
+------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------
+-- RtmpShortName
+derive instance genericRtmpShortName :: Generic RtmpShortName _
+derive instance newtypeRtmpShortName :: Newtype RtmpShortName _
+derive newtype instance readForeignRtmpShortName :: ReadForeign RtmpShortName
+derive newtype instance writeForeignRtmpShortName :: WriteForeign RtmpShortName
+instance eqRtmpShortName :: Eq RtmpShortName where eq = genericEq
+instance compareRtmpShortName :: Ord RtmpShortName where compare = genericCompare
+instance showRtmpShortName :: Show RtmpShortName where show = genericShow
+
+------------------------------------------------------------------------------
+-- RtmpStreamName
+derive instance genericRtmpStreamName :: Generic RtmpStreamName _
+derive instance newtypeRtmpStreamName :: Newtype RtmpStreamName _
+derive newtype instance readForeignRtmpStreamName :: ReadForeign RtmpStreamName
+derive newtype instance writeForeignRtmpStreamName :: WriteForeign RtmpStreamName
+instance eqRtmpStreamName :: Eq RtmpStreamName where eq = genericEq
+instance compareRtmpStreamName :: Ord RtmpStreamName where compare = genericCompare
+instance showRtmpStreamName :: Show RtmpStreamName where show = genericShow
+
+------------------------------------------------------------------------------
+-- SlotId
+derive instance genericSlotId :: Generic SlotId _
+derive instance newtypeSlotId :: Newtype SlotId _
+derive newtype instance readForeignSlotId :: ReadForeign SlotId
+derive newtype instance writeForeignSlotId :: WriteForeign SlotId
+
+instance eqSlotId :: Eq SlotId where
   eq = genericEq
 
-instance compareStreamVariant :: Ord StreamVariant where
+instance compareSlotId :: Ord SlotId where
   compare = genericCompare
 
-instance showStreamVariant :: Show StreamVariant where
+instance showSlotId :: Show SlotId where
   show = genericShow
 
+------------------------------------------------------------------------------
+-- SlotIdAndRole
+derive instance eqSlotIdAndRole :: Eq SlotIdAndRole
+derive instance ordSlotIdAndRole :: Ord SlotIdAndRole
 
-derive instance genericStreamAndVariant :: Generic StreamAndVariant _
-
-instance eqStreamAndVariant :: Eq StreamAndVariant where
+------------------------------------------------------------------------------
+-- ProfileName
+derive instance genericProfileName :: Generic ProfileName _
+derive instance newtypeProfileName :: Newtype ProfileName _
+derive newtype instance readForeignProfileName :: ReadForeign ProfileName
+derive newtype instance writeForeignProfileName :: WriteForeign ProfileName
+instance eqProfileName :: Eq ProfileName where
   eq = genericEq
 
-instance compareStreamAndVariant :: Ord StreamAndVariant where
+instance compareProfileName :: Ord ProfileName where
   compare = genericCompare
 
-instance showStreamAndVariant :: Show StreamAndVariant where
+instance showProfileName :: Show ProfileName where
   show = genericShow
 
-instance readForeignStreamAndVariant :: ReadForeign StreamAndVariant where
+------------------------------------------------------------------------------
+-- SlotIdAndProfileName
+derive instance genericSlotIdAndProfileName :: Generic SlotIdAndProfileName _
+
+instance eqSlotIdAndProfileName :: Eq SlotIdAndProfileName where
+  eq = genericEq
+
+instance compareSlotIdAndProfileName :: Ord SlotIdAndProfileName where
+  compare = genericCompare
+
+instance showSlotIdAndProfileName :: Show SlotIdAndProfileName where
+  show = genericShow
+
+instance readForeignSlotIdAndProfileName :: ReadForeign SlotIdAndProfileName where
   readImpl fgn = do
                  x <- readString fgn
                  let
                    y = split (Pattern ":") x
-                   f = y !! 0 <#> StreamId
-                   s = y !! 1 <#> StreamVariant
-                   result = lift2 StreamAndVariant f s
+                   f = y !! 0 >>= fromString <#> SlotId
+                   s = y !! 1 <#> ProfileName
+                   result = lift2 SlotIdAndProfileName f s
                  except $ note (singleton (ForeignError "Failed to parse")) result
 
-instance writeForeignStreamAndVariant :: WriteForeign StreamAndVariant where
-  writeImpl (StreamAndVariant streamId streamVariant) = unsafeToForeign $ (unwrap streamId) <> ":" <> (unwrap streamVariant)
+instance writeForeignSlotIdAndProfileName :: WriteForeign SlotIdAndProfileName where
+  writeImpl (SlotIdAndProfileName slotId profileName) = unsafeToForeign $ (show (unwrap slotId)) <> ":" <> (unwrap profileName)
 
+------------------------------------------------------------------------------
+-- SlotNameAndProfileName
+derive instance genericSlotNameAndProfileName :: Generic SlotNameAndProfileName _
 
-data StreamRole = Primary
-                | Backup
-derive instance eqStreamRole :: Eq StreamRole
-derive instance ordStreamRole :: Ord StreamRole
-instance showStreamRole :: Show StreamRole where
+instance eqSlotNameAndProfileName :: Eq SlotNameAndProfileName where
+  eq = genericEq
+
+instance compareSlotNameAndProfileName :: Ord SlotNameAndProfileName where
+  compare = genericCompare
+
+instance showSlotNameAndProfileName :: Show SlotNameAndProfileName where
+  show = genericShow
+
+instance readForeignSlotNameAndProfileName :: ReadForeign SlotNameAndProfileName where
+  readImpl fgn = do
+                 x <- readString fgn
+                 let
+                   y = split (Pattern ":") x
+                   f = y !! 0
+                   s = y !! 1 <#> ProfileName
+                   result = lift2 SlotNameAndProfileName f s
+                 except $ note (singleton (ForeignError "Failed to parse")) result
+
+instance writeForeignSlotNameAndProfileName :: WriteForeign SlotNameAndProfileName where
+  writeImpl (SlotNameAndProfileName slotName profileName) = unsafeToForeign $ slotName <> ":" <> (unwrap profileName)
+
+------------------------------------------------------------------------------
+-- SlotRole
+derive instance eqSlotRole :: Eq SlotRole
+derive instance ordSlotRole :: Ord SlotRole
+instance showSlotRole :: Show SlotRole where
   show Primary = "primary"
   show Backup = "backup"
-instance readForeignStreamRole :: ReadForeign StreamRole where
+instance readForeignSlotRole :: ReadForeign SlotRole where
   readImpl =
     readString >=> parseAgent
     where
@@ -177,16 +213,47 @@ instance readForeignStreamRole :: ReadForeign StreamRole where
       toType "primary" = pure Primary
       toType "backup" = pure Backup
       toType unknown = Nothing
-      errorString s = "Unknown StreamRole: " <> s
-instance writeForeignStreamRole :: WriteForeign StreamRole where
+      errorString s = "Unknown SlotRole: " <> s
+instance writeForeignSlotRole :: WriteForeign SlotRole where
   writeImpl =
     toString >>> unsafeToForeign
     where
       toString Primary = "primary"
       toString Backup = "backup"
 
-toStreamId :: StreamAndVariant -> StreamId
-toStreamId (StreamAndVariant s _) = s
 
-toVariant :: StreamAndVariant -> StreamVariant
-toVariant (StreamAndVariant _ v) = v
+------------------------------------------------------------------------------
+-- EgestKey
+
+------------------------------------------------------------------------------
+-- AggregatorKey
+derive instance eqAggregatorKey :: Eq AggregatorKey
+derive instance ordAggregatorKey :: Ord AggregatorKey
+
+------------------------------------------------------------------------------
+-- RelayKey
+
+------------------------------------------------------------------------------
+-- IngestKey
+derive instance eqIngestKey :: Eq IngestKey
+
+type IngestKeyJson = { slotId :: SlotId
+                     , role :: SlotRole
+                       , profile :: ProfileName
+                     }
+
+instance readForeignIngestKey :: ReadForeign IngestKey where
+  readImpl f =
+    mapper <$> readImpl f
+    where
+      mapper :: IngestKeyJson -> IngestKey
+      mapper {slotId, role: streamRole, profile: streamProfileName} = IngestKey slotId streamRole streamProfileName
+
+instance writeForeignIngestKey :: WriteForeign IngestKey where
+  writeImpl (IngestKey slotId streamRole streamProfileName) = writeImpl { slotId: slotId
+                                                                      , role: streamRole
+                                                                      , profile: streamProfileName}
+------------------------------------------------------------------------------
+-- AgentKey
+derive instance eqAgentKey :: Eq AgentKey
+derive instance ordAgentKey :: Ord AgentKey

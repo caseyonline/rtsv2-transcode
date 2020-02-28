@@ -41,7 +41,7 @@ import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Rtsv2.Utils (crashIfLeft)
 import Shared.Agent as Agent
-import Shared.LlnwApiTypes (StreamDetails, StreamPublish)
+import Shared.LlnwApiTypes (StreamDetails, StreamPublish(..))
 import Shared.Stream (AggregatorKey, IngestKey(..), ingestKeyToAggregatorKey)
 import Shared.Types (Load, Milliseconds, Server, ServerLoad(..), extractAddress)
 import Shared.Types.Agent.State as PublicState
@@ -180,11 +180,11 @@ handleInfo msg state@{ingestKey} = case msg of
 
 ingestEqLine :: State -> Effect Audit.IngestEqLine
 ingestEqLine state@{ ingestKey
-                   , streamPublish: { host: ingestIp
-                                    , protocol: connectionType
-                                    , shortname
-                                    , streamName
-                                    , username }
+                   , streamPublish: StreamPublish { host: ingestIp
+                                                  , protocol: connectionType
+                                                  , rtmpShortName
+                                                  , rtmpStreamName
+                                                  , username }
                    , streamDetails: { role }
                    , localPort: ingestPort
                    , remoteAddress: userIp
@@ -199,9 +199,9 @@ ingestEqLine state@{ ingestKey
        , ingestPort
        , userIp
        , username
-       , shortname
-       , streamName
-       , streamRole: role
+       , rtmpShortName
+       , rtmpStreamName
+       , slotRole: role
        , connectionType
        , startMs
        , endMs
@@ -212,7 +212,7 @@ ingestEqLine state@{ ingestKey
 
 doStopIngest :: State -> Effect Unit
 doStopIngest state@{aggregatorAddr, ingestKey} = do
-  removeVariant ingestKey aggregatorAddr
+  removeIngest ingestKey aggregatorAddr
   eqLine <- ingestEqLine state
   Audit.ingestStop eqLine
   pure unit
@@ -220,8 +220,8 @@ doStopIngest state@{aggregatorAddr, ingestKey} = do
 informAggregator :: State -> Effect State
 informAggregator state@{streamDetails, ingestKey, thisServer, aggregatorRetryTime} = do
   maybeAggregator <- hush <$> getAggregator streamDetails ingestKey
-  maybeVariantAdded <- sequence ((addVariant thisServer ingestKey) <$> (extractServer <$>  maybeAggregator))
-  case fromMaybe false maybeVariantAdded of
+  maybeIngestAdded <- sequence ((addIngest thisServer ingestKey) <$> (extractServer <$>  maybeAggregator))
+  case fromMaybe false maybeIngestAdded of
     true -> pure state{aggregatorAddr = maybeAggregator}
     false -> do
       void $ Timer.sendAfter (serverName ingestKey) (unwrap aggregatorRetryTime) InformAggregator
@@ -235,10 +235,10 @@ handleAggregatorExit exitedAggregatorKey exitedAggregatorAddr state@{ingestKey, 
   | otherwise =
       pure state
 
-addVariant :: Server -> IngestKey -> Server -> Effect Boolean
-addVariant thisServer ingestKey aggregatorAddress
+addIngest :: Server -> IngestKey -> Server -> Effect Boolean
+addIngest thisServer ingestKey aggregatorAddress
   | aggregatorAddress == thisServer = do
-    IngestAggregatorInstance.addVariant ingestKey
+    IngestAggregatorInstance.addIngest ingestKey
     pure true
   | otherwise = do
     let
@@ -250,15 +250,15 @@ addVariant thisServer ingestKey aggregatorAddress
       Right _ -> pure $ true
 
 makeActiveIngestUrl :: Server -> IngestKey -> Url
-makeActiveIngestUrl server (IngestKey streamId streamRole streamVariant) =
-  makeUrl server $ IngestAggregatorActiveIngestsE streamId streamRole streamVariant
+makeActiveIngestUrl server (IngestKey slotId streamRole profileName) =
+  makeUrl server $ IngestAggregatorActiveIngestsE slotId streamRole profileName
 
-removeVariant :: IngestKey -> Maybe (LocalOrRemote Server)-> Effect Unit
-removeVariant ingestKey Nothing = pure unit
-removeVariant ingestKey (Just (Local aggregator)) = do
-    IngestAggregatorInstance.removeVariant ingestKey
+removeIngest :: IngestKey -> Maybe (LocalOrRemote Server)-> Effect Unit
+removeIngest ingestKey Nothing = pure unit
+removeIngest ingestKey (Just (Local aggregator)) = do
+    IngestAggregatorInstance.removeIngest ingestKey
     pure unit
-removeVariant ingestKey (Just (Remote aggregator)) = do
+removeIngest ingestKey (Just (Remote aggregator)) = do
   let
     url = makeActiveIngestUrl aggregator ingestKey
   void $ crashIfLeft =<< SpudGun.delete url {}

@@ -36,12 +36,15 @@ main = HA.runHalogenAff do
     logLevel = Dev
     -- TODO: this will need changing to our Auth
     authUrl = AuthUrl "https://conduit.productionready.io"
+    -- html class for all pages
+    htmlClass = "has-aside-left has-aside-mobile-transition has-navbar-fixed-top has-aside-expanded"
 
-  curHostUrl <- liftEffect getCurOrigin
-  -- default currentUser Ref to Nothing when starting app
-  currentUser <- liftEffect $ Ref.new Nothing
-
-  popDefinition <- liftEffect $ Ref.new Nothing
+  -- | initialising all of the Global Ref states
+  curHostUrl          <- liftEffect getCurOrigin
+  currentUser         <- liftEffect $ Ref.new Nothing
+  popDefinition       <- liftEffect $ Ref.new Nothing
+  transPoPLeaders     <- liftEffect $ Ref.new mempty
+  aggregatorLocations <- liftEffect $ Ref.new mempty
 
   -- new bus to broadcast updates when the value of the current user changes;
   userBus <- liftEffect Bus.make
@@ -68,13 +71,16 @@ main = HA.runHalogenAff do
     environment = { urlEnv, logLevel, userEnv, popDefEnv }
       where
       urlEnv :: UrlEnv
-      urlEnv = { curHostUrl: (CurHostUrl curHostUrl), authUrl }
+      urlEnv = { curHostUrl: (CurHostUrl curHostUrl), authUrl, htmlClass }
 
       userEnv :: UserEnv
       userEnv = { currentUser, userBus }
 
       popDefEnv :: PoPDefEnv
-      popDefEnv = { popDefinition }
+      popDefEnv = { popDefinition
+                  , transPoPLeaders
+                  , aggregatorLocations
+                  }
   -- Produce a proper root component for Halogen to run. combining `hoist`, `runAppM`, our environment, and our router component
     rootComponent :: H.Component HH.HTML Router.Query {} Void Aff
     rootComponent = H.hoist (runAppM environment) Router.component

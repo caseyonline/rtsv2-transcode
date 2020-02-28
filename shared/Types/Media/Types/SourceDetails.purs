@@ -1,5 +1,5 @@
 module Shared.Types.Media.Types.SourceDetails
-       ( StreamId
+       ( SlotId
        , AudioCodec(..)
        , VideoCodec(..)
        , Width
@@ -29,7 +29,7 @@ import Data.Tuple (Tuple(..))
 import Foreign (F, Foreign, ForeignError(..), MultipleErrors, readArray, readInt, readString, unsafeToForeign)
 import Simple.JSON (class ReadForeign, class WriteForeign, writeImpl)
 
-newtype StreamId = StreamId Int
+newtype SlotId = SlotId Int
 
 data AudioCodec = RawAudio
                 | ADPCM
@@ -68,7 +68,7 @@ data ChannelLayout = Mono
 
 
 type VideoStreamInfo =
-  { streamId :: StreamId
+  { slotId :: SlotId
   , codec :: Maybe VideoCodec
   , width :: Maybe Width
   , height :: Maybe Height
@@ -81,13 +81,13 @@ type VideoStreamInfo =
   }
 
 type AudioStreamInfo =
-  { streamId :: StreamId
+  { slotId :: SlotId
   , codec :: Maybe AudioCodec
   , sampleRate :: Maybe SampleRate
   , channelLayout :: Maybe ChannelLayout
   , language :: Maybe String
   , inFillinMode :: Boolean
-  , dvbStreamId :: Maybe Int
+  , dvbSlotId :: Maybe Int
   }
 
 type SourceInfo f =
@@ -202,10 +202,10 @@ instance writeForeignVideoCodec :: WriteForeign VideoCodec where
       toString JPEG2000 = "jpeg2000"
 
 ------------------------------------------------------------------------------
--- StreamId
-derive instance newtypeStreamId :: Newtype StreamId _
-derive newtype instance readForeignStreamId :: ReadForeign StreamId
-derive newtype instance writeForeignStreamId :: WriteForeign StreamId
+-- SlotId
+derive instance newtypeSlotId :: Newtype SlotId _
+derive newtype instance readForeignSlotId :: ReadForeign SlotId
+derive newtype instance writeForeignSlotId :: WriteForeign SlotId
 
 ------------------------------------------------------------------------------
 -- SampleRate

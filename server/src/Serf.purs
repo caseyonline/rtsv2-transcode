@@ -77,7 +77,7 @@ instance showAgent :: Show Ip where
   show (Ipv4 a b c d) = (show a) <> "." <> (show b) <> "." <> (show c) <> "." <> (show d)
 
 data ApiError = SerfError String
-              | NetworkError
+              | NetworkError Foreign
 
 type IpAndPort = { ip :: String
                  , port :: Int

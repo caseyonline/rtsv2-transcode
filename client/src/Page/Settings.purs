@@ -21,7 +21,7 @@ import Rtsv2App.Capability.Navigate (class Navigate, logout)
 import Rtsv2App.Capability.Resource.User (class ManageUser, UpdateProfileFields, getCurrentUser, updateUser)
 import Rtsv2App.Component.HTML.Footer (footer)
 import Rtsv2App.Component.HTML.Header as HD
-import Rtsv2App.Component.HTML.MainMenu as MM
+import Rtsv2App.Component.HTML.MenuMain as MM
 import Rtsv2App.Component.HTML.Utils (css_)
 import Rtsv2App.Data.Avatar (Avatar)
 import Rtsv2App.Data.Avatar as Avatar
@@ -123,8 +123,8 @@ component = Connect.component $ H.mkComponent
   render state@{ profile, currentUser } =
     HH.div
       [ css_ "main" ]
-      [ HH.slot (SProxy :: _ "header") unit HD.component { currentUser, route: Settings } absurd
-      , HH.slot (SProxy :: _ "mainMenu") unit MM.component { currentUser, route: Settings } absurd
+      [ HH.slot (SProxy :: _ "header") unit HD.component { currentUser, route: SettingsR } absurd
+      , HH.slot (SProxy :: _ "mainMenu") unit MM.component { currentUser, route: SettingsR } absurd
       , HH.div
         [ css_ "app-content content" ]
         [ HH.div

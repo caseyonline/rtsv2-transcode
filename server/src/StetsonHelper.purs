@@ -1,20 +1,22 @@
 module StetsonHelper
        ( genericPost
        , genericPostWithResponse
-       , genericGetByStreamId
-       , genericGetByStreamIdAndRole
+       , genericGetBySlotId
+       , genericGetBySlotIdAndRole
        , genericGetByPoPName
        , genericGetBy
        , genericGetBy2
+       , genericGetByInt
+       , genericGetByInt2
        , genericGet
        , genericGet2
        , genericGet2'
        , genericGetText
-       , genericProxyByStreamId
+       , genericProxyBySlotId
        , genericProvideJson
        , GenericStetsonGet
        , GenericStetsonGet2
-       , GenericStetsonGetByStreamId
+       , GenericStetsonGetBySlotId
        , GenericStetsonHandler
        , GenericStetsonHandlerWithResponse
 
@@ -35,15 +37,16 @@ module StetsonHelper
 import Prelude
 
 import Data.Either (hush)
+import Data.Int (fromString)
 import Data.Maybe (Maybe(..), fromMaybe, fromMaybe', isJust, isNothing)
 import Data.Newtype (class Newtype, unwrap, wrap)
 import Effect (Effect)
 import Erl.Atom (atom)
 import Erl.Cowboy.Handlers.Rest (moved, notMoved)
-import Erl.Cowboy.Req (ReadBodyResult(..), Req, StatusCode(..), binding, readBody, replyWithoutBody)
+import Erl.Cowboy.Req (ReadBodyResult(..), Req, StatusCode(..), binding, readBody, replyWithoutBody, setHeader)
 import Erl.Data.Binary (Binary)
 import Erl.Data.Binary.IOData (IOData, fromBinary, toBinary)
-import Erl.Data.List (List, singleton, (:))
+import Erl.Data.List (List, nil, singleton, (:))
 import Erl.Data.Map as Map
 import Erl.Data.Tuple (Tuple2, fst, snd, tuple2)
 import Logger (spy)
@@ -52,7 +55,7 @@ import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.Router.Endpoint (Endpoint, makeUrl)
 import Rtsv2.Utils (noprocToMaybe)
 import Rtsv2.Web.Bindings as Bindings
-import Shared.Stream (StreamId, StreamRole)
+import Shared.Stream (SlotId, SlotRole)
 import Shared.Types (PoPName, Server)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (class ReadForeign, class WriteForeign, writeJSON)
@@ -127,47 +130,46 @@ genericPostWithResponse proxiedFun =
 
 
 type GenericStetsonGet a = StetsonHandler (GenericStatusState a)
-type GenericStetsonGetByStreamId a = StetsonHandler (GenericStatusState a)
+type GenericStetsonGetBySlotId a = StetsonHandler (GenericStatusState a)
 
 newtype GenericStatusState a = GenericStatusState { mData :: Maybe a }
 
 
 
-genericGetByStreamIdAndRole :: forall a. WriteForeign a =>  (StreamId -> StreamRole -> Effect a) -> GenericStetsonGet a
-genericGetByStreamIdAndRole getFun =  Rest.handler init
+genericGetBySlotIdAndRole :: forall a. WriteForeign a =>  (SlotId -> SlotRole -> Effect a) -> GenericStetsonGet a
+genericGetBySlotIdAndRole getFun =  Rest.handler init
   # Rest.allowedMethods (Rest.result (GET : mempty))
   # Rest.contentTypesProvided (\req state -> Rest.result (singleton $ MimeType.json genericProvideJson) req state)
   # Rest.yeeha
   where
     init req =
       let
-        streamId = Bindings.streamId req
+        slotId = Bindings.slotId req
         streamRole = Bindings.streamRole req
       in do
-        mData <- noprocToMaybe $ getFun streamId streamRole
+        mData <- noprocToMaybe $ getFun slotId streamRole
         Rest.initResult req $ GenericStatusState { mData }
 
 
 
 
-genericGetByStreamId :: forall a. WriteForeign a =>  (StreamId -> Effect a) -> GenericStetsonGetByStreamId a
-genericGetByStreamId = genericGetBy Bindings.streamIdBindingLiteral
+genericGetBySlotId :: forall a. WriteForeign a =>  (SlotId -> Effect a) -> GenericStetsonGetBySlotId a
+genericGetBySlotId = genericGetByInt Bindings.slotIdBindingLiteral
 
-genericGetByPoPName :: forall a. WriteForeign a =>  (PoPName -> Effect a) -> GenericStetsonGetByStreamId a
+genericGetByPoPName :: forall a. WriteForeign a =>  (PoPName -> Effect a) -> GenericStetsonGetBySlotId a
 genericGetByPoPName = genericGetBy  Bindings.popNameBindingLiteral
 
 genericGet :: forall a. WriteForeign a => Effect a -> GenericStetsonGet a
 genericGet getData =
   Rest.handler init
-  # Rest.allowedMethods (Rest.result (GET : mempty))
+  # Rest.allowedMethods (Rest.result (GET : OPTIONS : nil))
   # Rest.contentTypesProvided (\req state -> Rest.result (singleton $ MimeType.json genericProvideJson) req state)
   # Rest.yeeha
   where
     init req = do
+      let reqWithAllowOrigin = setHeader "access-control-allow-origin" "*" req
       mData <- noprocToMaybe getData
-      Rest.initResult req $ GenericStatusState { mData }
-
-
+      Rest.initResult reqWithAllowOrigin $ GenericStatusState { mData }
 
 genericGetText :: (Effect String) -> GenericStetsonGet String
 genericGetText getData =
@@ -230,7 +232,7 @@ genericGet2' getDatas =
           Just theData ->
             Rest.result theData req state
 
-genericGetBy :: forall a b. Newtype a String => WriteForeign b =>  String -> (a -> Effect b) -> GenericStetsonGetByStreamId b
+genericGetBy :: forall a b. Newtype a String => WriteForeign b =>  String -> (a -> Effect b) -> GenericStetsonGetBySlotId b
 genericGetBy bindElement getData =
   Rest.handler init
   # Rest.allowedMethods (Rest.result (GET : mempty))
@@ -241,6 +243,21 @@ genericGetBy bindElement getData =
       let
         bindValue :: a
         bindValue = wrap $ fromMaybe' (lazyCrashIfMissing (bindElement <> " binding missing")) $ binding (atom bindElement) req
+      in do
+        mData <- noprocToMaybe $ getData bindValue
+        Rest.initResult req $ GenericStatusState { mData }
+
+genericGetByInt :: forall a b. Newtype a Int => WriteForeign b =>  String -> (a -> Effect b) -> GenericStetsonGetBySlotId b
+genericGetByInt bindElement getData =
+  Rest.handler init
+  # Rest.allowedMethods (Rest.result (GET : mempty))
+  # Rest.contentTypesProvided (\req state -> Rest.result (singleton $ MimeType.json genericProvideJson) req state)
+  # Rest.yeeha
+  where
+    init req =
+      let
+        bindValue :: a
+        bindValue = wrap $ fromMaybe' (lazyCrashIfMissing (bindElement <> " binding missing")) $ (fromString =<< binding (atom bindElement) req)
       in do
         mData <- noprocToMaybe $ getData bindValue
         Rest.initResult req $ GenericStatusState { mData }
@@ -257,6 +274,23 @@ genericGetBy2 bindElement1 bindElement2 getData =
       let
         bindValue1 :: a
         bindValue1 = wrap $ fromMaybe' (lazyCrashIfMissing (bindElement1 <> " binding missing")) $ binding (atom bindElement1) req
+        bindValue2 :: b
+        bindValue2 = wrap $ fromMaybe' (lazyCrashIfMissing (bindElement2 <> " binding missing")) $ binding (atom bindElement2) req
+      in do
+        mData <- noprocToMaybe $ getData bindValue1 bindValue2
+        Rest.initResult req $ GenericStatusState { mData }
+
+genericGetByInt2 :: forall a b c. Newtype a Int => Newtype b String => WriteForeign c =>  String -> String -> (a -> b -> Effect c) -> GenericStetsonGet c
+genericGetByInt2 bindElement1 bindElement2 getData =
+  Rest.handler init
+  # Rest.allowedMethods (Rest.result (GET : mempty))
+  # Rest.contentTypesProvided (\req state -> Rest.result (singleton $ MimeType.json genericProvideJson) req state)
+  # Rest.yeeha
+  where
+    init req =
+      let
+        bindValue1 :: a
+        bindValue1 = wrap $ fromMaybe' (lazyCrashIfMissing (bindElement1 <> " binding missing")) $ (fromString =<< binding (atom bindElement1) req)
         bindValue2 :: b
         bindValue2 = wrap $ fromMaybe' (lazyCrashIfMissing (bindElement2 <> " binding missing")) $ binding (atom bindElement2) req
       in do
@@ -289,15 +323,15 @@ genericProvideJson req state@(GenericStatusState {mData}) =
 
 newtype GenericProxyState
   = GenericProxyState { whereIsResp :: Maybe Server
-                      , streamId :: StreamId
+                      , slotId :: SlotId
                       }
 
 
 
 
 
-genericProxyByStreamId :: (StreamId -> Effect (Maybe (LocalOrRemote Server))) -> (StreamId -> Endpoint) -> StetsonHandler GenericProxyState
-genericProxyByStreamId whereIsFun endpointFun =
+genericProxyBySlotId :: (SlotId -> Effect (Maybe (LocalOrRemote Server))) -> (SlotId -> Endpoint) -> StetsonHandler GenericProxyState
+genericProxyBySlotId whereIsFun endpointFun =
   Rest.handler init
   # Rest.allowedMethods (Rest.result (GET : mempty))
   # Rest.resourceExists resourceExists
@@ -308,14 +342,14 @@ genericProxyByStreamId whereIsFun endpointFun =
   where
     init req =
       let
-        bindElement = Bindings.streamIdBindingLiteral
-        bindValue :: StreamId
+        bindElement = Bindings.slotIdBindingLiteral
+        bindValue :: SlotId
         bindValue = wrap $ fromMaybe' (lazyCrashIfMissing (bindElement <> " binding missing")) $ binding (atom bindElement) req
       in do
         whereIsResp <- (map fromLocalOrRemote) <$> whereIsFun bindValue
         Rest.initResult req $
             GenericProxyState { whereIsResp
-                              , streamId : bindValue
+                              , slotId : bindValue
                               }
 
     resourceExists req state =
@@ -324,11 +358,11 @@ genericProxyByStreamId whereIsFun endpointFun =
     previouslyExisted req state@(GenericProxyState {whereIsResp}) =
       Rest.result (isJust whereIsResp) req state
 
-    movedTemporarily req state@(GenericProxyState {whereIsResp, streamId}) =
+    movedTemporarily req state@(GenericProxyState {whereIsResp, slotId}) =
       case whereIsResp of
         Just server ->
           let
-            url = makeUrl server (endpointFun streamId)
+            url = makeUrl server (endpointFun slotId)
           in
             Rest.result (moved $ unwrap url) req state
         _ ->

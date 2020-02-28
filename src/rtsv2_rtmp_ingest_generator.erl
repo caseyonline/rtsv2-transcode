@@ -7,6 +7,8 @@
 -include_lib("id3as_media/include/llwp.hrl").
 -include_lib("id3as_media/include/receive_from_bus_generator.hrl").
 
+-include("./rtsv2_types.hrl").
+
 -export([
          init/1,
          handle_info/2,
@@ -15,10 +17,8 @@
 
 -define(state, ?MODULE).
 
--type stream_and_variant() :: term().
-
 -record(?state, { workflow_context :: workflow_context(),
-                  workflows :: maps:map(stream_and_variant(), id3as_workflow:workflow_handle())
+                  workflows :: maps:map(ingest_key(), id3as_workflow:workflow_handle())
                 }).
 
 %%------------------------------------------------------------------------------
@@ -39,31 +39,31 @@ handle_info(#workflow_output{message = Msg}, State) ->
 handle_info(Msg = {ingest_stopped, _}, State) ->
   {output, Msg, State}.
 
-ioctl({add_local_ingest, StreamAndVariant}, State = #?state{workflows = Workflows,
+ioctl({add_local_ingest, IngestKey}, State = #?state{workflows = Workflows,
                                                             workflow_context = Context}) ->
 
-  NewHandle = start_workflow_for_local_variant(StreamAndVariant, Context),
+  NewHandle = start_workflow_for_local_ingest(IngestKey, Context),
 
-  {ok, State#?state{workflows = maps:put(StreamAndVariant, NewHandle, Workflows)}};
+  {ok, State#?state{workflows = maps:put(IngestKey, NewHandle, Workflows)}};
 
-ioctl({add_remote_ingest, StreamAndVariant, Url}, State = #?state{workflows = Workflows,
+ioctl({add_remote_ingest, IngestKey, Url}, State = #?state{workflows = Workflows,
                                                                   workflow_context = Context}) ->
 
-  NewHandle = start_workflow_for_remote_variant(Url, Context),
+  NewHandle = start_workflow_for_remote_ingest(Url, Context),
 
-  {ok, State#?state{workflows = maps:put(StreamAndVariant, NewHandle, Workflows)}};
+  {ok, State#?state{workflows = maps:put(IngestKey, NewHandle, Workflows)}};
 
-ioctl({remove_ingest, StreamAndVariant}, State = #?state{workflows = Workflows}) ->
+ioctl({remove_ingest, IngestKey}, State = #?state{workflows = Workflows}) ->
 
-  Handle = maps:get(StreamAndVariant, Workflows),
+  Handle = maps:get(IngestKey, Workflows),
 
   ok = id3as_workflow:stop(Handle),
 
-  self() ! {ingest_stopped, StreamAndVariant},
+  self() ! {ingest_stopped, IngestKey},
 
-  {ok, State#?state{workflows = maps:remove(StreamAndVariant, Workflows)}}.
+  {ok, State#?state{workflows = maps:remove(IngestKey, Workflows)}}.
 
-start_workflow_for_local_variant(StreamAndVariant, Context) ->
+start_workflow_for_local_ingest(IngestKey, Context) ->
   Workflow = #workflow{
                 name = ingest_instance,
                 display_name = <<>>,
@@ -71,7 +71,7 @@ start_workflow_for_local_variant(StreamAndVariant, Context) ->
                               #generator{name = bus,
                                          display_name = <<"Receive from Bus">>,
                                          module = receive_from_bus_generator,
-                                         config = #receive_from_bus_generator_config{bus_name = {ingest, StreamAndVariant}}
+                                         config = #receive_from_bus_generator_config{bus_name = {ingest, IngestKey}}
                                         }
                              ],
                 processors = [
@@ -84,7 +84,7 @@ start_workflow_for_local_variant(StreamAndVariant, Context) ->
 
   Handle.
 
-start_workflow_for_remote_variant(Url, Context) ->
+start_workflow_for_remote_ingest(Url, Context) ->
   Workflow = #workflow{
                 name = ingest_instance,
                 display_name = <<>>,

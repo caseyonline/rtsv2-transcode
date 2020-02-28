@@ -79,7 +79,7 @@ type IngestStatsConfig
     }
 
 type EgestAgentConfig
-  = { egestAvailableAnnounceMs :: Int
+  = { eqLogIntervalMs :: Int
     , lingerTimeMs :: Int
     , relayCreationRetryMs :: Int
     }
@@ -124,6 +124,7 @@ type TransPoPAgentApi
 type RtmpIngestConfig
   = { port :: Int
     , nbAcceptors :: Int
+    , cryptoContextExpiryMs :: Int
     }
 
 type LlnwApiConfig

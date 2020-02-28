@@ -12,12 +12,12 @@ module Shared.LlnwApiTypes
        , SlotPublishAuthType(..)
        , StreamAuth
        , PublishCredentials(..)
-       , StreamPublish
+       , StreamPublish(..)
        , StreamDetails
        , SlotDetails
        , StreamOutputFormat
        , HlsPushSpec
-       , SlotProfile
+       , SlotProfile(..)
        , HlsPushSpecFormat
        , HlsPushAuth
        )
@@ -33,18 +33,21 @@ import Data.Generic.Rep.Ord (genericCompare)
 import Data.Generic.Rep.Show (genericShow)
 import Data.List.NonEmpty (singleton)
 import Data.Maybe (Maybe(..))
+import Data.Newtype (class Newtype)
 import Foreign (ForeignError(..), readString, unsafeToForeign)
-import Shared.Stream (StreamRole)
-import Simple.JSON (class ReadForeign, class WriteForeign)
+import Record (rename)
+import Shared.Stream (ProfileName, RtmpShortName, RtmpStreamName, SlotId, SlotRole)
+import Simple.JSON (class ReadForeign, class WriteForeign, readImpl, writeImpl)
+import Type.Prelude (SProxy(..))
 
 data StreamIngestProtocol = Rtmp
                           | WebRTC
 
-type StreamConnection =
-  { host :: String
-  , protocol :: StreamIngestProtocol
-  , shortname :: String
-  }
+newtype StreamConnection = StreamConnection
+                           { host :: String
+                           , protocol :: StreamIngestProtocol
+                           , rtmpShortName :: RtmpShortName
+                           }
 
 data SlotPublishAuthType = Adobe
                          | Llnw
@@ -54,33 +57,34 @@ type AuthType =
   { authType :: SlotPublishAuthType
   }
 
-type StreamAuth =
-  { host :: String
-  , shortname :: String
-  , username :: String
-  }
+newtype StreamAuth = StreamAuth
+                     { host :: String
+                     , rtmpShortName :: RtmpShortName
+                     , username :: String
+                     }
 
 newtype PublishCredentials = PublishCredentials
                              { username :: String
                              , password :: String
                              }
 
-type StreamPublish =
-  { host :: String
-  , protocol :: StreamIngestProtocol
-  , shortname :: String
-  , streamName :: String
-  , username :: String
-  }
+newtype StreamPublish = StreamPublish
+                        { host :: String
+                        , protocol :: StreamIngestProtocol
+                        , rtmpShortName :: RtmpShortName
+                        , rtmpStreamName :: RtmpStreamName
+                        , username :: String
+                        }
 
-type SlotProfile =
-  { name :: String
-  , streamName :: String
-  , bitrate :: Int
-  }
+newtype SlotProfile = SlotProfile
+                      { name :: ProfileName
+                      , rtmpStreamName :: RtmpStreamName
+                      , bitrate :: Int
+                      }
 
 type SlotDetails =
-  { name :: String
+  { id :: SlotId
+  , name :: String
   , subscribeValidation :: Boolean
   , outputFormats :: Array StreamOutputFormat
   , profiles :: Array SlotProfile
@@ -104,7 +108,7 @@ data StreamOutputFormat = WebRTCOutput
                         | HlsOutput
 
 type StreamDetails =
-  { role :: StreamRole
+  { role :: SlotRole
   , slot :: SlotDetails
   , push :: Array HlsPushSpec
   }
@@ -141,6 +145,7 @@ instance compareStreamIngestProtocol :: Ord StreamIngestProtocol where
 instance showStreamIngestProtocol :: Show StreamIngestProtocol where
   show = genericShow
 
+derive instance newtypePublicCredentials :: Newtype PublishCredentials _
 derive newtype instance readForeignPublishCredentials :: ReadForeign PublishCredentials
 derive newtype instance writeForeignPublishCredentials :: WriteForeign PublishCredentials
 
@@ -210,3 +215,92 @@ instance writeForeignStreamOutputFormat :: WriteForeign StreamOutputFormat where
       toString WebRTCOutput = "webrtc"
       toString RtmpOutput = "rtmp"
       toString HlsOutput = "hls"
+
+
+derive instance newtypeStreamAuth :: Newtype StreamAuth _
+derive instance genericStreamAuth :: Generic StreamAuth _
+instance eqStreamAuth :: Eq StreamAuth where eq = genericEq
+instance compareStreamAuth :: Ord StreamAuth where compare = genericCompare
+
+instance readForeignStreamAuth :: ReadForeign StreamAuth where
+  readImpl o = decode o
+    where
+    decode s = do
+      parsed <- readImpl s
+      pure
+        $ StreamAuth
+        $ rename (SProxy :: SProxy "shortname") (SProxy :: SProxy "rtmpShortName") parsed
+
+instance writeForeignStreamAuth :: WriteForeign StreamAuth where
+  writeImpl = (unsafeToForeign <<< encode)
+    where
+      encode (StreamAuth r) = do
+        writeImpl
+          $ rename (SProxy :: SProxy "rtmpShortName") (SProxy :: SProxy "shortname") r
+
+
+derive instance newtypeStreamConnection :: Newtype StreamConnection _
+derive instance genericStreamConnection :: Generic StreamConnection _
+instance eqStreamConnection :: Eq StreamConnection where eq = genericEq
+instance compareStreamConnection :: Ord StreamConnection where compare = genericCompare
+
+instance readForeignStreamConnection :: ReadForeign StreamConnection where
+  readImpl o = decode o
+    where
+    decode s = do
+      parsed <- readImpl o
+      pure
+        $ StreamConnection
+        $ rename (SProxy :: SProxy "shortname") (SProxy :: SProxy "rtmpShortName") parsed
+
+instance writeForeignStreamConnection :: WriteForeign StreamConnection where
+  writeImpl = (unsafeToForeign <<< encode)
+    where
+      encode (StreamConnection r) = do
+        writeImpl
+          $ rename (SProxy :: SProxy "rtmpShortName") (SProxy :: SProxy "shortname") r
+
+
+derive instance newtypeSlotProfile :: Newtype SlotProfile _
+derive instance genericSlotProfile :: Generic SlotProfile _
+instance eqSlotProfile :: Eq SlotProfile where eq = genericEq
+instance compareSlotProfile :: Ord SlotProfile where compare = genericCompare
+
+instance readForeignSlotProfile :: ReadForeign SlotProfile where
+  readImpl o = decode o
+    where
+    decode s = do
+      parsed <- readImpl s
+      pure
+        $ SlotProfile
+        $ rename (SProxy :: SProxy "streamName") (SProxy :: SProxy "rtmpStreamName") parsed
+
+instance writeForeignSlotProfile :: WriteForeign SlotProfile where
+  writeImpl = (unsafeToForeign <<< encode)
+    where
+      encode (SlotProfile r) = do
+        writeImpl $
+          rename (SProxy :: SProxy "rtmpStreamName") (SProxy :: SProxy "streamName") r
+
+derive instance newtypeStreamPublish :: Newtype StreamPublish _
+derive instance genericStreamPublish :: Generic StreamPublish _
+instance eqStreamPublish :: Eq StreamPublish where eq = genericEq
+instance compareStreamPublish :: Ord StreamPublish where compare = genericCompare
+
+instance readForeignStreamPublish :: ReadForeign StreamPublish where
+  readImpl o = decode o
+    where
+    decode s = do
+      parsed <- readImpl s
+      pure
+        $ StreamPublish
+        $ rename (SProxy :: SProxy "shortname") (SProxy :: SProxy "rtmpShortName")
+        $ rename (SProxy :: SProxy "streamName") (SProxy :: SProxy "rtmpStreamName") parsed
+
+instance writeForeignStreamPublish :: WriteForeign StreamPublish where
+  writeImpl = (unsafeToForeign <<< encode)
+    where
+      encode (StreamPublish r) = do
+        writeImpl
+          $ rename (SProxy :: SProxy "rtmpShortName") (SProxy :: SProxy "shortname")
+          $ rename (SProxy :: SProxy "rtmpStreamName") (SProxy :: SProxy "streamName") r

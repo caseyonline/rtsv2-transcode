@@ -1,4 +1,11 @@
-module Rtsv2App.Component.HTML.Utils where
+module Rtsv2App.Component.HTML.Utils
+       ( css_
+       , css
+       , dataAttr
+       , safeHref
+       , maybeElem
+       , whenElem
+       ) where
 
 import Prelude
 
@@ -12,11 +19,10 @@ import Rtsv2App.Data.Route (Route, routeCodec)
 -------------------------------------------------------------------------------
 -- Useful Halogen Utils
 -------------------------------------------------------------------------------
--- | I get annoyed writing `class_ $ ClassName "..."` over and over again. This small utility saves
--- | a few characters all over our HTML.
+
+-- | This small utility saves a few characters all over our HTML.
 css_ :: forall r i. String -> HH.IProp ( class :: String | r ) i
 css_ = HP.class_ <<< HH.ClassName
-
 
 css :: forall p i. Array String -> HH.IProp (class :: String | i) p
 css = HP.classes <<< map HH.ClassName

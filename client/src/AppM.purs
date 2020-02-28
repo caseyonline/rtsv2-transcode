@@ -5,7 +5,7 @@ import Prelude
 import Control.Monad.Reader.Trans (class MonadAsk, ReaderT, ask, asks, runReaderT)
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
-import Debug.Trace (spy)
+import Debug.Trace (spy, traceM)
 import Effect.Aff (Aff)
 import Effect.Aff.Bus as Bus
 import Effect.Aff.Class (class MonadAff, liftAff)
@@ -18,7 +18,7 @@ import Routing.Hash (setHash)
 import Rtsv2App.Api.Endpoint (Endpoint(..))
 import Rtsv2App.Api.Request (RequestMethod(..))
 import Rtsv2App.Api.Request as Request
-import Rtsv2App.Api.Utils (authenticate, mkAuthRequest, mkRequest)
+import Rtsv2App.Api.Utils (authenticate, mkAuthRequest, mkOriginRequest, mkRequest)
 import Rtsv2App.Capability.LogMessages (class LogMessages)
 import Rtsv2App.Capability.Navigate (class Navigate, navigate)
 import Rtsv2App.Capability.Now (class Now)
@@ -28,7 +28,7 @@ import Rtsv2App.Data.Log as Log
 import Rtsv2App.Data.Profile (ProfileEmailRes)
 import Rtsv2App.Data.Route as Route
 import Rtsv2App.Env (Env, LogLevel(..))
-import Shared.Types.Agent.State (TimedPoPRoutes, PoPDefinition)
+import Shared.Types.Agent.State (PoPDefinition, TimedPoPRoutes, IntraPoP)
 import Simple.JSON as JSON
 import Type.Equality (class TypeEquals, from)
 
@@ -84,7 +84,7 @@ instance navigateAppM :: Navigate AppM where
       Request.removeToken
     liftAff do
       Bus.write Nothing userBus
-    navigate Route.Dashboard
+    navigate Route.DashboardR
 
 -- | all of the available user requests
 instance manageUserAppM :: ManageUser AppM where
@@ -107,8 +107,8 @@ instance manageUserAppM :: ManageUser AppM where
 -- | all api stats related requests
 instance manageAPIAppM :: ManageApi AppM where
   --  
-  getTimedRoutes toPopName = do
-    response <- mkRequest { endpoint: TimedRoutesE toPopName, method: Get }
+  getTimedRoutes originUrl toPopName = do
+    response <- mkOriginRequest originUrl { endpoint: TimedRoutesE toPopName, method: Get }
     case JSON.readJSON response of
       Left e -> pure $ Left $ show e
       Right (res :: (TimedPoPRoutes Array)) -> do
@@ -120,3 +120,14 @@ instance manageAPIAppM :: ManageApi AppM where
       Left e -> pure $ Left $ show e
       Right (res :: PoPDefinition Array) -> do
         pure $ Right res
+
+  getPublicState serverAddress = do
+    case serverAddress of
+      Nothing -> pure $ Left "No server address given"
+      Just sa -> do
+        response <- mkOriginRequest sa { endpoint: PublicState, method: Get }
+        
+        case JSON.readJSON response of
+          Left e -> pure $ Left $ show e
+          Right (res :: IntraPoP Array) -> do
+            pure $ Right res

@@ -1,16 +1,17 @@
 module Rtsv2.Agents.Locator.Egest
-       ( findEgestAndRegister
+       ( findEgest
        )
        where
 
 import Prelude
 
 import Data.Either (Either(..))
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (unwrap)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, filter, head, nil, (:))
+import Erl.Process.Raw (Pid)
 import Logger (Logger, spy)
 import Logger as Logger
 import Pinto (okAlreadyStarted)
@@ -22,28 +23,28 @@ import Rtsv2.Agents.Locator.Types (FailureReason(..), LocalOrRemote(..), Locatio
 import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Rtsv2.Utils (crashIfLeft, noprocToMaybe)
 import Shared.Agent as Agent
-import Shared.Stream (AggregatorKey(..), EgestKey(..), StreamId, StreamRole(..))
-import Shared.Types (PoPName, Server, ServerLoad(..), extractPoP, serverLoadToServer)
+import Shared.Stream (AggregatorKey(..), EgestKey(..), SlotId, SlotRole(..))
+import Shared.Types (Server, ServerLoad(..), serverLoadToServer)
 import SpudGun as SpudGun
 
 
-type StartArgs = { streamId :: StreamId
+type StartArgs = { slotId :: SlotId
                  , forServer :: Server
                  , aggregator :: Server
                  }
 
-findEgestAndRegister :: StreamId -> Server -> Effect LocationResp
-findEgestAndRegister streamId thisServer = do
+findEgest :: SlotId -> Server -> Effect LocationResp
+findEgest slotId thisServer = do
   let
-    egestKey = (EgestKey streamId)
-  apiResp <- noprocToMaybe $ EgestInstance.addClient egestKey
-  case spy "apiResp" apiResp of
+    egestKey = (EgestKey slotId)
+  apiResp <- noprocToMaybe $ EgestInstance.pendingClient egestKey
+  case apiResp of
     Just _ ->
       pure $ Right $ Local thisServer
     Nothing -> do
       -- does the stream even exists
       -- TODO - Primary and Backup
-      mAggregator <- IntraPoP.whereIsIngestAggregator (AggregatorKey streamId Primary)
+      mAggregator <- IntraPoP.whereIsIngestAggregator (AggregatorKey slotId Primary)
       case spy "mAggregator" mAggregator of
         Nothing ->
           pure $ Left NotFound
@@ -51,31 +52,31 @@ findEgestAndRegister streamId thisServer = do
           allEgest <- IntraPoP.whereIsEgest egestKey
           let
             _ = spy "allEgest" allEgest
-            mEgest =  pickCandidate $ filter capcityForClient allEgest
+            mEgest =  pickCandidate $ filter capacityForClient allEgest
             _ = spy "mEgest" mEgest
           case mEgest of
             Just egest -> do
               pure $ Right $ Remote $ serverLoadToServer egest
             Nothing -> do
               -- TODO use launchLocalOrRemoteGeneric
-              resourceResp <- IntraPoP.getIdleServer capcityForEgest
+              resourceResp <- IntraPoP.getIdleServer capacityForEgest
               case resourceResp of
                 Left _ ->
                   pure $ Left NoResource
                 Right localOrRemote -> do
-                  startLocalOrRemote localOrRemote (extractPoP aggregator)
-                  findEgestAndRegister streamId thisServer
+                  startLocalOrRemote localOrRemote aggregator
+                  findEgest slotId thisServer
   where
    pickCandidate = head
-   capcityForClient (ServerLoad sl) =  unwrap sl.load < 90.0
-   capcityForEgest (ServerLoad sl) =  unwrap sl.load < 50.0
-   startLocalOrRemote :: (LocalOrRemote ServerLoad) -> PoPName -> Effect Unit
-   startLocalOrRemote  (Local _) aggregatorPoP = do
-     void <$> okAlreadyStarted =<<  EgestInstanceSup.startEgest {streamId, aggregatorPoP}
-   startLocalOrRemote  (Remote remote) aggregatorPoP = do
+   capacityForClient (ServerLoad sl) =  unwrap sl.load < 90.0
+   capacityForEgest (ServerLoad sl) =  unwrap sl.load < 50.0
+   startLocalOrRemote :: (LocalOrRemote ServerLoad) -> Server -> Effect Unit
+   startLocalOrRemote  (Local _) aggregator = do
+     void <$> okAlreadyStarted =<<  EgestInstanceSup.startEgest {slotId, aggregator}
+   startLocalOrRemote  (Remote remote) aggregator = do
      let
        url = makeUrl remote EgestE
-     void <$> crashIfLeft =<< SpudGun.postJson url ({streamId, aggregatorPoP} :: CreateEgestPayload)
+     void <$> crashIfLeft =<< SpudGun.postJson url ({slotId, aggregator} :: CreateEgestPayload)
 
 
 --------------------------------------------------------------------------------

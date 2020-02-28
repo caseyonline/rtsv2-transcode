@@ -6,9 +6,9 @@ module Rtsv2.Handler.EgestStats
 import Prelude
 
 import Rtsv2.Agents.EgestInstance as EgestInstance
-import Shared.Stream (EgestKey(..), StreamId)
+import Shared.Stream (EgestKey(..), SlotId)
 import Shared.Types.Agent.State as PublicState
 import StetsonHelper (GenericStetsonGet, genericGet)
 
-stats :: StreamId -> GenericStetsonGet PublicState.Egest
+stats :: SlotId -> GenericStetsonGet PublicState.Egest
 stats = genericGet <<< EgestInstance.currentStats <<< EgestKey

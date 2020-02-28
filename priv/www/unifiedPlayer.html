@@ -1,0 +1,29 @@
+<head>
+  <title>LLNW Ingest Player</title>
+  <link href=data:, rel=icon">
+</head>
+<body>
+  <video id="llnw-rts-subscriber" autoplay controls muted style="max-width: 100%">
+  </video>
+  <script src="js/llnwrtssdk-2.0.0.js"></script>
+  <script>
+    (function() {
+      const pathname = window.location.pathname;
+      const parent = pathname.substring(1, pathname.lastIndexOf("/"));
+
+      var config = {
+        account: "id3as-test-account",
+        streamName: "id3as-test-stream",
+        overrides: {
+          socketAuthority: window.location.host,
+          socketSecure: window.location.protocol === "https:",
+          socketPath: parent + "/session",
+        }
+      };
+
+      var player = LimelightSDK.createPlayer(config);
+
+      window.player = player;
+    })();
+  </script>
+</body>

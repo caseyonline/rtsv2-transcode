@@ -10,8 +10,7 @@ import Erl.Data.List (List)
 import Rtsv2.Agents.TransPoP as TransPoP
 import Shared.Types (PoPName)
 import Shared.Types.Agent.State as PublicState
-import StetsonHelper (GenericStetsonGetByStreamId, genericGet)
+import StetsonHelper (GenericStetsonGet, genericGet)
 
-
-timedRoutes :: PoPName -> GenericStetsonGetByStreamId (PublicState.TimedPoPRoutes List)
+timedRoutes :: PoPName -> GenericStetsonGet (PublicState.TimedPoPRoutes List)
 timedRoutes = genericGet <<< TransPoP.getTimedRoutesTo

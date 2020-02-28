@@ -2,8 +2,10 @@ module Rtsv2.Router.Endpoint ( Endpoint(..)
                              , Canary(..)
                              , endpoint
                              , makeUrl
+                             , makeUrlWithPath
                              , makeUrlAddr
-                             , parseStreamRole
+                             , makeUrlAddrWithPath
+                             , parseSlotRole
                              ) where
 
 import Prelude hiding ((/))
@@ -11,6 +13,7 @@ import Prelude hiding ((/))
 import Data.Array ((!!))
 import Data.Either (note)
 import Data.Generic.Rep (class Generic)
+import Data.Int (fromString)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype, unwrap, wrap)
 import Data.String (Pattern(..), split)
@@ -18,8 +21,8 @@ import Routing.Duplex (RouteDuplex', as, path, rest, root, segment)
 import Routing.Duplex.Generic (noArgs, sum)
 import Routing.Duplex.Generic.Syntax ((/))
 import Rtsv2.Router.Parser as Routing
-import Shared.Stream (ShortName, StreamAndVariant(..), StreamId, StreamRole(..), StreamVariant(..))
-import Shared.Types (PoPName, ServerAddress, extractAddress)
+import Shared.Stream (ProfileName(..), RtmpShortName, SlotId, SlotIdAndProfileName(..), SlotNameAndProfileName(..), SlotRole(..))
+import Shared.Types (PoPName, ServerAddress(..), extractAddress)
 import SpudGun (Url)
 
 -- data Canary = Live
@@ -35,41 +38,52 @@ data Endpoint
   | HealthCheckE
   | ServerStateE
   | PoPDefinitionE
-  | EgestStatsE StreamId
+  | LoadE
+
+  | EgestStatsE SlotId
   | EgestE
+
   | RelayE
   | RelayEnsureStartedE
   | RelayRegisterEgestE
   | RelayRegisterRelayE
-  | RelayProxiedStatsE StreamId StreamRole
-  | RelayStatsE StreamId StreamRole
-  | LoadE
+  | RelayProxiedStatsE SlotId SlotRole
+  | RelayStatsE SlotId SlotRole
+  | RelaySlotConfigurationE SlotId SlotRole
+
+  | IngestAggregatorE SlotId SlotRole
+  | IngestAggregatorPlayerE SlotId SlotRole
+  | IngestAggregatorPlayerJsE SlotId SlotRole (Array String)
+  | IngestAggregatorActiveIngestsE SlotId SlotRole ProfileName
+  | IngestAggregatorActiveIngestsPlayerE SlotId SlotRole ProfileName
+  | IngestAggregatorActiveIngestsPlayerJsE SlotId SlotRole ProfileName (Array String)
+  | IngestAggregatorActiveIngestsPlayerControlE SlotId SlotRole ProfileName
+  | IngestAggregatorSlotConfigurationE SlotId SlotRole
+  | IngestAggregatorRegisterRelayE
+  | IngestAggregatorsE
+  | IngestInstancesE
+  | IngestInstancesMetricsE
+  | IngestInstanceE SlotId ProfileName
+  | IngestInstanceLlwpE SlotId SlotRole ProfileName
+  | IngestStartE Canary RtmpShortName SlotNameAndProfileName
+  | IngestStopE Canary SlotId SlotRole ProfileName
+
+  | ClientAppAssetsE (Array String)
+  | ClientAppRouteHTMLE
+
+  | ClientStartE Canary SlotId
+  | ClientStopE Canary SlotId String
+  | ClientPlayerE Canary SlotId
+  | ClientPlayerJsE Canary SlotId (Array String)
+
+  | StreamAuthE
+  | StreamAuthTypeE
+  | StreamPublishE
+
   | WorkflowsE
   | WorkflowGraphE String
   | WorkflowMetricsE String
   | WorkflowStructureE String
-  | IngestAggregatorE StreamId StreamRole
-  | IngestAggregatorPlayerE StreamId
-  | IngestAggregatorPlayerJsE StreamId (Array String)
-  | IngestAggregatorActiveIngestsE StreamId StreamRole StreamVariant
-  | IngestAggregatorActiveIngestsPlayerE StreamId StreamVariant
-  | IngestAggregatorActiveIngestsPlayerJsE StreamId StreamVariant
-  | IngestAggregatorActiveIngestsPlayerSessionStartE StreamId StreamVariant
-  | IngestAggregatorActiveIngestsPlayerSessionE StreamId StreamVariant String
-  | IngestAggregatorsE
-  | IngestInstancesE
-  | IngestInstancesMetricsE
-  | IngestInstanceE StreamId StreamVariant
-  | IngestInstanceLlwpE StreamId StreamRole StreamVariant
-  | IngestStartE Canary ShortName StreamAndVariant
-  | IngestStopE Canary StreamId StreamRole StreamVariant
-  | ClientAppAssetsE (Array String)
-  | ClientAppRouteHTMLE
-  | ClientStartE Canary StreamId
-  | ClientStopE Canary StreamId
-  | StreamAuthE
-  | StreamAuthTypeE
-  | StreamPublishE
 
 derive instance genericEndpoint :: Generic Endpoint _
 
@@ -77,102 +91,114 @@ derive instance genericEndpoint :: Generic Endpoint _
 endpoint :: RouteDuplex' Endpoint
 endpoint = root $ sum
   {
-    "VMMetricsE"                                       : "" / "api" / "vm" / path "metrics" noArgs
-  , "TransPoPLeaderE"                                  : "" / "api" / path "transPoPLeader" noArgs
-  , "IntraPoPTestHelperE"                              : "" / "api" / "test" / path "intraPoP" noArgs
-  , "TimedRoutesE"                                     : "" / "api" / "timedRoutes" / popName segment
-  , "HealthCheckE"                                     : "" / "api" / path "healthCheck" noArgs
-  , "ServerStateE"                                     : "" / "api" / path "state" noArgs
-  , "PoPDefinitionE"                                   : "" / "api" / path "popDefinition" noArgs
-  , "EgestStatsE"                                      : "" / "api" / "agents" / "egest" / streamId segment
-  , "EgestE"                                           : "" / "api" / "agents" / path "egest" noArgs
+    "VMMetricsE"                                       : "api" / "vm" / path "metrics" noArgs
+  , "TransPoPLeaderE"                                  : "api" / path "transPoPLeader" noArgs
+  , "IntraPoPTestHelperE"                              : "api" / "test" / path "intraPoP" noArgs
+  , "TimedRoutesE"                                     : "api" / "timedRoutes" / popName segment
+  , "HealthCheckE"                                     : "api" / path "healthCheck" noArgs
+  , "ServerStateE"                                     : "api" / path "state" noArgs
+  , "PoPDefinitionE"                                   : "api" / path "popDefinition" noArgs
+  , "LoadE"                                            : "api" / path "load" noArgs
 
-  , "RelayE"                                           : "" / "api" / "agents" / "relay" / path "egest"  noArgs
-  , "RelayEnsureStartedE"                              : "" / "api" / "agents" / "relay" / path "ensureStarted"  noArgs
-  , "RelayRegisterEgestE"                              : "" / "api" / "agents" / "relay" / "register" / path "egest" noArgs
-  , "RelayRegisterRelayE"                              : "" / "api" / "agents" / "relay" / "register" / path "relay" noArgs
-  , "RelayStatsE"                                      : "" / "api" / "agents" / "relay" / streamId segment / streamRole segment
-  , "RelayProxiedStatsE"                               : "" / "api" / "agents" / "proxied" / "relay" / streamId segment / streamRole segment
+  , "EgestStatsE"                                      : "api" / "agents" / "egest" / slotId segment
+  , "EgestE"                                           : "api" / "agents" / path "egest" noArgs
 
-  , "LoadE"                                            : "" / "api" / path "load" noArgs
+  , "RelayE"                                           : "api" / "agents" / "relay" / path "egest"  noArgs
+  , "RelayEnsureStartedE"                              : "api" / "agents" / "relay" / path "ensureStarted"  noArgs
+  , "RelayRegisterEgestE"                              : "api" / "agents" / "relay" / "register" / path "egest" noArgs
+  , "RelayRegisterRelayE"                              : "api" / "agents" / "relay" / "register" / path "relay" noArgs
+  , "RelayProxiedStatsE"                               : "api" / "agents" / "proxied" / "relay" / slotId segment / slotRole segment
+  , "RelayStatsE"                                      : "api" / "agents" / "relay" / slotId segment / slotRole segment
+  , "RelaySlotConfigurationE"                          : "api" / "agents" / "relay" / slotId segment / slotRole segment
 
-  , "WorkflowsE"                                       : "" / "api" / path "workflows" noArgs
-  , "WorkflowGraphE"                                   : "" / "api" / "workflows" / segment / "graph"
-  , "WorkflowMetricsE"                                 : "" / "api" / "workflows" / segment / "metrics"
-  , "WorkflowStructureE"                               : "" / "api" / "workflows" / segment / "structure"
+  , "IngestAggregatorE"                                : "api" / "agents" / "ingestAggregator" / slotId segment / slotRole segment
+  , "IngestAggregatorPlayerE"                          : "api" / "agents" / "ingestAggregator" / slotId segment / slotRole segment / "player"
+  , "IngestAggregatorPlayerJsE"                        : "api" / "agents" / "ingestAggregator" / slotId segment / slotRole segment / "js" / rest
+  , "IngestAggregatorActiveIngestsE"                   : "api" / "agents" / "ingestAggregator" / slotId segment / slotRole segment / "activeIngests" / profileName segment
+  , "IngestAggregatorActiveIngestsPlayerE"             : "api" / "agents" / "ingestAggregator" / slotId segment / slotRole segment / "activeIngests" / profileName segment / "player"
+  , "IngestAggregatorActiveIngestsPlayerJsE"           : "api" / "agents" / "ingestAggregator" / slotId segment / slotRole segment / "activeIngests" / profileName segment / "js" / rest
+  , "IngestAggregatorActiveIngestsPlayerControlE"      : "api" / "agents" / "ingestAggregator" / slotId segment / slotRole segment / "activeIngests" / profileName segment / "control"
+  , "IngestAggregatorSlotConfigurationE"               : "api" / "agents" / "ingestAggregator" / slotId segment / slotRole segment / "slot"
+  , "IngestAggregatorRegisterRelayE"                   : "api" / "agents" / "ingestAggregator" / path "register" noArgs
 
-  , "IngestAggregatorE"                                : "" / "api" / "agents" / "ingestAggregator" / streamId segment / streamRole segment
-  , "IngestAggregatorPlayerE"                          : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "player"
-  , "IngestAggregatorPlayerJsE"                        : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "js" / rest
-  , "IngestAggregatorActiveIngestsE"                   : "" / "api" / "agents" / "ingestAggregator" / streamId segment / streamRole segment / "activeIngests" / variant segment
-  , "IngestAggregatorActiveIngestsPlayerE"             : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "activeIngests" / variant segment / "player" -- TODO - streamRole for these as well
-  , "IngestAggregatorActiveIngestsPlayerJsE"           : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "activeIngests" / variant segment / "js" -- TODO - would like to add '/ "[...]"' bit it causes compiler error that I don't understand
-  , "IngestAggregatorActiveIngestsPlayerSessionStartE" : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "activeIngests" / variant segment / "session"
-  , "IngestAggregatorActiveIngestsPlayerSessionE"      : "" / "api" / "agents" / "ingestAggregator" / streamId segment / "activeIngests" / variant segment / "session" / segment
+  , "IngestAggregatorsE"                               : "api" / "agents" / path "ingestAggregator" noArgs
 
-  , "IngestAggregatorsE"                               : "" / "api" / "agents" / path "ingestAggregator" noArgs
+  , "IngestInstancesE"                                 : "api" / "agents" / path "ingest" noArgs
+  , "IngestInstancesMetricsE"                          : "api" / "agents" / "ingest" / path "metrics" noArgs
+  , "IngestInstanceE"                                  : "api" / "agents" / "ingest" / slotId segment / profileName segment
+  , "IngestInstanceLlwpE"                              : "api" / "agents" / "ingest" / slotId segment / slotRole segment / profileName segment / "llwp"
+  , "IngestStartE"                                     : "api" / "public" / canary segment / "ingest" / shortName segment / slotNameAndProfile segment / "start"
+  , "IngestStopE"                                      : "api" / "public" / canary segment / "ingest" / slotId segment / slotRole segment / profileName segment / "stop"
 
-  , "IngestInstancesE"                                 : "" / "api" / "agents" / path "ingest" noArgs
-  , "IngestInstancesMetricsE"                            : "" / "api" / "agents" / "ingest" / path "metrics" noArgs
-  , "IngestInstanceE"                                  : "" / "api" / "agents" / "ingest" / streamId segment / variant segment
-  , "IngestInstanceLlwpE"                              : "" / "api" / "agents" / "ingest" / streamId segment / streamRole segment / variant segment / "llwp"
+  , "ClientAppAssetsE"                                 : "app" / "assets" / rest
+  , "ClientAppRouteHTMLE"                              : "app" / noArgs
 
-  , "IngestStartE"                                     : "" / "api" / "public" / canary segment / "ingest" / shortName segment / streamAndVariant segment / "start"
-  , "IngestStopE"                                      : "" / "api" / "public" / canary segment / "ingest" / streamId segment / streamRole segment / variant  segment / "stop"
-  , "ClientStartE"                                     : "" / "api" / "public" / canary segment / "client" / streamId segment / "start"
-  , "ClientStopE"                                      : "" / "api" / "public" / canary segment / "client" / streamId segment / "stop"
+  , "ClientStartE"                                     : "api" / "public" / canary segment / "client" / slotId segment / "start"
+  , "ClientStopE"                                      : "api" / "public" / canary segment / "client" / slotId segment / "stop" / segment
+  , "ClientPlayerE"                                    : "api" / "public" / canary segment / "client" / slotId segment / "player"
+  , "ClientPlayerJsE"                                  : "api" / "public" / canary segment / "client" / slotId segment / "js" / rest
 
-  , "ClientAppAssetsE"                                 : "" / "app" / "assets" / rest
-  , "ClientAppRouteHTMLE"                              : "" / "app" / noArgs
+  , "StreamAuthE"                                      : "llnwstub" / "rts" / "v1" / path "streamauthtype" noArgs
+  , "StreamAuthTypeE"                                  : "llnwstub" / "rts" / "v1" / path "streamauth" noArgs
+  , "StreamPublishE"                                   : "llnwstub" / "rts" / "v1" / path "streampublish" noArgs
 
-  , "StreamAuthE"                                      : "" / "llnwstub" / "rts" / "v1" / path "streamauthtype" noArgs
-  , "StreamAuthTypeE"                                  : "" / "llnwstub" / "rts" / "v1" / path "streamauth" noArgs
-  , "StreamPublishE"                                   : "" / "llnwstub" / "rts" / "v1" / path "streampublish" noArgs
-  }
+  , "WorkflowsE"                                       : "api" / path "workflows" noArgs
+  , "WorkflowGraphE"                                   : "api" / "workflows" / segment / "graph"
+  , "WorkflowMetricsE"                                 : "api" / "workflows" / segment / "metrics"
+  , "WorkflowStructureE"                               : "api" / "workflows" / segment / "structure"
+
+}
 
 
 makeUrl :: forall r a. Newtype a { address :: ServerAddress | r }
         => a -> Endpoint -> Url
 makeUrl server ep = makeUrlAddr (extractAddress server) ep
 
+makeUrlWithPath :: forall r a. Newtype a { address :: ServerAddress | r }
+        => a -> String -> Url
+makeUrlWithPath server path = makeUrlAddrWithPath (extractAddress server) path
+
 makeUrlAddr :: ServerAddress -> Endpoint -> Url
 makeUrlAddr serverAddr ep =
   let
-    path = Routing.printUrl endpoint ep
-  in wrap $ "http://" <> toHost serverAddr <> ":3000" <> path
-  where
-    toHost = unwrap
+    url = Routing.printUrl endpoint ep
+  in
+    makeUrlAddrWithPath serverAddr url
+
+makeUrlAddrWithPath :: ServerAddress -> String -> Url
+makeUrlAddrWithPath (ServerAddress host) path =
+  wrap $ "http://" <> host <> ":3000" <> path
 
 
--- | StreamId
-parseStreamId :: String -> Maybe StreamId
-parseStreamId = wrapParser
+-- | SlotId
+parseSlotId :: String -> Maybe SlotId
+parseSlotId = ((<$>) wrap) <<< fromString
 
-streamIdToString :: StreamId -> String
-streamIdToString = unwrap
+slotIdToString :: SlotId -> String
+slotIdToString = show <<< unwrap
 
--- | StreamVariant
-parseStreamVariant :: String -> Maybe StreamVariant
-parseStreamVariant = wrapParser
+-- | ProfileName
+parseProfileName :: String -> Maybe ProfileName
+parseProfileName = wrapParser
 
-variantToString :: StreamVariant -> String
-variantToString = unwrap
+profileNameToString :: ProfileName -> String
+profileNameToString = unwrap
 
--- | StreamRole
-parseStreamRole :: String -> Maybe StreamRole
-parseStreamRole "primary" = Just Primary
-parseStreamRole "backup" = Just Backup
-parseStreamRole _ = Nothing
+-- | SlotRole
+parseSlotRole :: String -> Maybe SlotRole
+parseSlotRole "primary" = Just Primary
+parseSlotRole "backup" = Just Backup
+parseSlotRole _ = Nothing
 
-streamRoleToString :: StreamRole -> String
-streamRoleToString Primary = "primary"
-streamRoleToString Backup = "backup"
+slotRoleToString :: SlotRole -> String
+slotRoleToString Primary = "primary"
+slotRoleToString Backup = "backup"
 
--- | ShortName
-parseShortName :: String -> Maybe ShortName
-parseShortName = wrapParser
+-- | RtmpShortName
+parseRtmpShortName :: String -> Maybe RtmpShortName
+parseRtmpShortName = wrapParser
 
-shortNameToString :: ShortName -> String
+shortNameToString :: RtmpShortName -> String
 shortNameToString = unwrap
 
 
@@ -190,17 +216,26 @@ poPNameToString :: PoPName -> String
 poPNameToString = unwrap
 
 
--- | StreamAndVariant
-parseStreamAndVariant :: String -> Maybe StreamAndVariant
-parseStreamAndVariant  ""  = Nothing
-parseStreamAndVariant  str =
+-- | SlotIdAndProfileName
+parseSlotIdAndProfileName :: String -> Maybe SlotIdAndProfileName
+parseSlotIdAndProfileName  ""  = Nothing
+parseSlotIdAndProfileName  str =
   case split (Pattern "_") str !! 0 of
-    Just streamIdStr -> Just (StreamAndVariant (wrap streamIdStr) (wrap str))
+    Just slotIdStr ->
+      case fromString slotIdStr of
+        Nothing -> Nothing
+        Just slotId -> Just (SlotIdAndProfileName (wrap slotId) (wrap str))
     _ -> Nothing
 
-streamAndVariantToString :: StreamAndVariant -> String
-streamAndVariantToString (StreamAndVariant _ (StreamVariant str)) = str
+parseSlotNameAndProfileName :: String -> Maybe SlotNameAndProfileName
+parseSlotNameAndProfileName  ""  = Nothing
+parseSlotNameAndProfileName  str =
+  case split (Pattern "_") str !! 0 of
+    Just streamNameStr -> Just (SlotNameAndProfileName streamNameStr (wrap str))
+    _ -> Nothing
 
+slotNameAndProfileToString :: SlotNameAndProfileName -> String
+slotNameAndProfileToString (SlotNameAndProfileName _ (ProfileName str)) = str
 
 
 -- | Canary
@@ -213,29 +248,29 @@ streamAndVariantToString (StreamAndVariant _ (StreamVariant str)) = str
 -- canaryToString Live = "live"
 -- canaryToString Canary = "canary"
 
--- | This combinator transforms a codec over `String` into one that operates on the `StreamId` type.
-streamId :: RouteDuplex' String -> RouteDuplex' StreamId
-streamId = as streamIdToString (parseStreamId >>> note "Bad StreamId")
+-- | This combinator transforms a codec over `String` into one that operates on the `SlotId` type.
+slotId :: RouteDuplex' String -> RouteDuplex' SlotId
+slotId = as slotIdToString (parseSlotId >>> note "Bad SlotId")
 
--- | This combinator transforms a codec over `String` into one that operates on the `StreamVariant` type.
-variant :: RouteDuplex' String -> RouteDuplex' StreamVariant
-variant = as variantToString (parseStreamVariant >>> note "Bad StreamId")
+-- | This combinator transforms a codec over `String` into one that operates on the `ProfileName` type.
+profileName :: RouteDuplex' String -> RouteDuplex' ProfileName
+profileName = as profileNameToString (parseProfileName >>> note "Bad ProfileName")
 
--- | This combinator transforms a codec over `String` into one that operates on the `StreamVariant` type.
-streamRole :: RouteDuplex' String -> RouteDuplex' StreamRole
-streamRole = as streamRoleToString (parseStreamRole >>> note "Bad StreamRole")
+-- | This combinator transforms a codec over `String` into one that operates on the `ProfileName` type.
+slotRole :: RouteDuplex' String -> RouteDuplex' SlotRole
+slotRole = as slotRoleToString (parseSlotRole >>> note "Bad SlotRole")
 
--- | This combinator transforms a codec over `String` into one that operates on the `StreamAndVariant` type.
-streamAndVariant :: RouteDuplex' String -> RouteDuplex' StreamAndVariant
-streamAndVariant = as streamAndVariantToString (parseStreamAndVariant >>> note "Bad StreamAndVariant")
+-- | This combinator transforms a codec over `String` into one that operates on the `SlotNameAndProfileName` type.
+slotNameAndProfile :: RouteDuplex' String -> RouteDuplex' SlotNameAndProfileName
+slotNameAndProfile = as slotNameAndProfileToString (parseSlotNameAndProfileName >>> note "Bad SlotNameAndProfileName")
 
 -- | This combinator transforms a codec over `String` into one that operates on the `PoPName` type.
 popName :: RouteDuplex' String -> RouteDuplex' PoPName
 popName = as poPNameToString (parsePoPName >>> note "Bad PoPName")
 
--- | This combinator transforms a codec over `String` into one that operates on the `ShortName` type.
-shortName :: RouteDuplex' String -> RouteDuplex' ShortName
-shortName = as shortNameToString (parseShortName >>> note "Bad ShortName")
+-- | This combinator transforms a codec over `String` into one that operates on the `RtmpShortName` type.
+shortName :: RouteDuplex' String -> RouteDuplex' RtmpShortName
+shortName = as shortNameToString (parseRtmpShortName >>> note "Bad RtmpShortName")
 
 -- | This combinator transforms a codec over `String` into one that operates on the `Canary` type.
 canary :: RouteDuplex' String -> RouteDuplex' Canary

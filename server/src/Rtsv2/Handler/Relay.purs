@@ -3,6 +3,7 @@ module Rtsv2.Handler.Relay
        , ensureStarted
        , registerEgest
        , registerRelay
+       , slotConfiguration
        , stats
        , proxiedStats
        , StartState
@@ -21,22 +22,24 @@ import Erl.Data.Map as Map
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.Locator.Relay (findOrStart)
 import Rtsv2.Agents.Locator.Types (LocalOrRemote(..), NoCapacity(..), ResourceResp, fromLocalOrRemote)
-import Rtsv2.Agents.StreamRelay.Instance as StreamRelayInstance
-import Rtsv2.Agents.StreamRelay.InstanceSup as StreamRelayInstanceSup
-import Rtsv2.Agents.StreamRelay.Types (CreateRelayPayload, RegisterEgestPayload, RegisterRelayPayload)
+import Rtsv2.Agents.SlotTypes (SlotConfiguration)
+import Rtsv2.Agents.StreamRelayInstance as StreamRelayInstance
+import Rtsv2.Agents.StreamRelayInstanceSup as StreamRelayInstanceSup
+import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload, RegisterEgestPayload, RegisterRelayPayload)
 import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
-import Shared.Stream (RelayKey(..), StreamId, StreamRole)
+import Shared.Stream (RelayKey(..), SlotId, SlotRole)
 import Shared.Types (Server, extractAddress)
 import Shared.Types.Agent.State (StreamRelay)
 import Simple.JSON as JSON
 import Stetson (HttpMethod(..), StetsonHandler)
 import Stetson.Rest as Rest
+
 import StetsonHelper (GenericStatusState, GenericStetsonHandler, allBody, binaryToString, genericGet, genericPost, preHookSpyState)
 
-stats :: StreamId -> StreamRole -> StetsonHandler (GenericStatusState (StreamRelay List))
-stats streamId streamRole = genericGet $ StreamRelayInstance.status $ RelayKey streamId streamRole
+stats :: SlotId -> SlotRole -> StetsonHandler (GenericStatusState (StreamRelay List))
+stats slotId slotRole = genericGet $ StreamRelayInstance.status $ RelayKey slotId slotRole
 
 startResource :: GenericStetsonHandler CreateRelayPayload
 startResource =  genericPost  StreamRelayInstanceSup.startRelay
@@ -47,14 +50,17 @@ registerEgest = genericPost  StreamRelayInstance.registerEgest
 registerRelay :: GenericStetsonHandler RegisterRelayPayload
 registerRelay = genericPost  StreamRelayInstance.registerRelay
 
+slotConfiguration :: SlotId -> SlotRole -> StetsonHandler (GenericStatusState (Maybe SlotConfiguration))
+slotConfiguration slotId role =
+  genericGet $ StreamRelayInstance.slotConfiguration (RelayKey slotId role)
 
 newtype ProxyState
   = ProxyState { whereIsResp :: Maybe Server
                , relayKey:: RelayKey
                }
 
-proxiedStats :: StreamId -> StreamRole -> StetsonHandler ProxyState
-proxiedStats streamId streamRole =
+proxiedStats :: SlotId -> SlotRole -> StetsonHandler ProxyState
+proxiedStats slotId slotRole =
   Rest.handler init
   # Rest.allowedMethods (Rest.result (GET : mempty))
   # Rest.resourceExists resourceExists
@@ -64,7 +70,7 @@ proxiedStats streamId streamRole =
   # Rest.yeeha
   where
     init req = do
-      let relayKey = RelayKey streamId streamRole
+      let relayKey = RelayKey slotId slotRole
       whereIsResp <- (map fromLocalOrRemote) <$> IntraPoP.whereIsStreamRelay relayKey
       Rest.initResult req $
           ProxyState { whereIsResp
@@ -77,11 +83,11 @@ proxiedStats streamId streamRole =
     previouslyExisted req state@(ProxyState {whereIsResp}) =
       Rest.result (isJust whereIsResp) req state
 
-    movedTemporarily req state@(ProxyState {whereIsResp, relayKey: (RelayKey streamId streamRole)}) =
+    movedTemporarily req state@(ProxyState {whereIsResp, relayKey: (RelayKey slotId streamRole)}) =
       case whereIsResp of
         Just server ->
           let
-            url = makeUrl server (RelayStatsE streamId streamRole)
+            url = makeUrl server (RelayStatsE slotId streamRole)
           in
             Rest.result (moved $ unwrap url) req state
         _ ->

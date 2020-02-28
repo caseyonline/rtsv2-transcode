@@ -2,9 +2,10 @@
 
 
 -export([ noprocToMaybeImpl/3
+        , cryptoStrongBytes/1
+        , binaryToBase64/1
+        , binaryToHexStr/1
         ]).
-
-
 
 %% catchNotThereImpl :: forall a. Maybe a -> (a -> Maybe a) -> Effect a -> Effect (Maybe a)
 noprocToMaybeImpl(Nothing, Just, Eff) ->
@@ -16,3 +17,14 @@ noprocToMaybeImpl(Nothing, Just, Eff) ->
           Nothing
       end
   end.
+
+cryptoStrongBytes(Len) ->
+  fun() ->
+      crypto:strong_rand_bytes(Len)
+  end.
+
+binaryToBase64(Bin) ->
+  base64:encode(Bin).
+
+binaryToHexStr(Bin) ->
+  i_convert:convert(Bin, hexbin).

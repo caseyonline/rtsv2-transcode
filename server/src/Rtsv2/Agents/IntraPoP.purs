@@ -1,3 +1,6 @@
+-- TODO: I (Stears) have commented out various logging in this module because it's very verbose due to
+--       announcements being periodically resent. We should only log if the announcements disagree with
+--       our current view of the world
 module Rtsv2.Agents.IntraPoP
   ( startLink
 
@@ -12,6 +15,7 @@ module Rtsv2.Agents.IntraPoP
   , announceLocalEgestIsAvailable
   , announceLocalEgestStopped
   , announceLocalRelayIsAvailable
+  , announceLocalRelayStopped
 
   , announceLoad
   , announceTransPoPLeader
@@ -84,7 +88,7 @@ import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Serf (IpAndPort, LamportClock)
 import Serf as Serf
-import Shared.Stream (AgentKey(..), AggregatorKey, EgestKey(..), RelayKey(..), StreamRole(..), agentKeyToAggregatorKey, aggregatorKeyToAgentKey)
+import Shared.Stream (AgentKey(..), AggregatorKey, EgestKey(..), RelayKey(..), SlotRole(..), agentKeyToAggregatorKey, aggregatorKeyToAgentKey)
 import Shared.Types (Load, Milliseconds, Server(..), ServerAddress(..), ServerLoad(..), extractAddress, extractPoP, serverLoadToServer, toServer, toServerLoad)
 import Shared.Types.Agent.State as PublicState
 
@@ -198,22 +202,21 @@ getPublicState :: Effect (PublicState.IntraPoP List)
 getPublicState = exposeState publicState serverName
   where
     publicState state@{agentLocations, currentTransPoPLeader} =
-      { aggregatorLocations: toStreamId <$>  Map.toUnfoldable agentLocations.aggregators.byAgentKey
-      , relayLocations: toStreamAndVariant <$>  Map.toUnfoldable agentLocations.relays.byAgentKey
-      , egestLocations: toStreamAndVariant <$>  Map.toUnfoldable agentLocations.egests.byAgentKey
+      { aggregatorLocations: toAggregatorLocation <$>  Map.toUnfoldable agentLocations.aggregators.byAgentKey
+      , relayLocations: toSlotIdAndProfileName <$>  Map.toUnfoldable agentLocations.relays.byAgentKey
+      , egestLocations: toSlotIdAndProfileName <$>  Map.toUnfoldable agentLocations.egests.byAgentKey
       , currentTransPoPLeader
       }
-    toStreamId (Tuple (AgentKey streamId streamRole) v) =
-      { streamId
+    toAggregatorLocation (Tuple (AgentKey slotId role) v) =
+      { slotId
+      , role
       , servers:  Set.toUnfoldable v
       }
-    toStreamAndVariant (Tuple (AgentKey streamId streamRole) v) =
-      { streamId
-      , streamRole
+    toSlotIdAndProfileName (Tuple (AgentKey slotId role) v) =
+      { slotId
+      , role
       , servers:  Set.toUnfoldable v
       }
-
-
 
 
 -- TODO - we should be calling the prime' versions and handling that there might, in fact be more than
@@ -222,7 +225,7 @@ whereIsIngestAggregator :: AggregatorKey -> Effect (Maybe Server)
 whereIsIngestAggregator aggregatorKey = head <$> whereIs (_.aggregators) (aggregatorKeyToAgentKey aggregatorKey)
 
 whereIsStreamRelay :: RelayKey -> Effect (Maybe (LocalOrRemote Server))
-whereIsStreamRelay (RelayKey streamId streamRole)  = head <$> (map $ map serverLoadToServer) <$> whereIsStreamRelay' (AgentKey streamId streamRole)
+whereIsStreamRelay (RelayKey slotId streamRole)  = head <$> (map $ map serverLoadToServer) <$> whereIsStreamRelay' (AgentKey slotId streamRole)
 
 whereIsEgest :: EgestKey -> Effect (List ServerLoad)
 whereIsEgest egestKey = (map fromLocalOrRemote) <$> (whereIsEgest' $ egestKeyToAgentKey egestKey)
@@ -537,11 +540,12 @@ egestHandler
       sendToIntraSerfNetwork state "egestAvailable" (IMEgestState Available agentKey $ extractAddress server)
 
     availableThisPoP state agentKey server = do
-      logInfo "New egest is avaiable in this PoP" {agentKey, server}
+      -- logInfo "New egest is avaiable in this PoP" {agentKey, server}
+      pure unit
 
     availableOtherPoP state agentKey server = do
       -- Not expecting any of these
-      logWarning "New egest is avaiable in another PoP" {agentKey, server}
+      logWarning "New egest is available in another PoP" {agentKey, server}
 
     stoppedLocal state agentKey server = do
       logInfo "Local egest stopped" {agentKey}
@@ -572,14 +576,11 @@ egestHandler
 
 -- Egests do not have different instances for Primary and Backup, so model them all as Primary
 egestKeyToAgentKey :: EgestKey -> AgentKey
-egestKeyToAgentKey (EgestKey streamId) = AgentKey streamId Primary
+egestKeyToAgentKey (EgestKey slotId) = AgentKey slotId Primary
 
 -- Called by EgestAgent to indicate egest on this node
 announceLocalEgestIsAvailable :: EgestKey -> Effect Unit
-announceLocalEgestIsAvailable egestKey = do
-  let agentKey = egestKeyToAgentKey egestKey
-  logInfo "New egest is available on this node" {egestKey}
-  announceAvailableLocal egestHandler agentKey
+announceLocalEgestIsAvailable = announceAvailableLocal egestHandler <<< egestKeyToAgentKey
 
 announceLocalEgestStopped :: EgestKey -> Effect Unit
 announceLocalEgestStopped = announceStoppedLocal egestHandler <<< egestKeyToAgentKey
@@ -641,19 +642,19 @@ relayHandler
 
 -- Called by RelayAgent to indicate relay on this node
 announceLocalRelayIsAvailable :: RelayKey -> Effect Unit
-announceLocalRelayIsAvailable (RelayKey streamId streamRole) = do
-  announceAvailableLocal relayHandler (AgentKey streamId streamRole)
+announceLocalRelayIsAvailable (RelayKey slotId streamRole) = do
+  announceAvailableLocal relayHandler (AgentKey slotId streamRole)
 
-announceLocalRelayStopped :: AgentKey -> Effect Unit
-announceLocalRelayStopped = announceStoppedLocal relayHandler
-
+announceLocalRelayStopped :: RelayKey -> Effect Unit
+announceLocalRelayStopped (RelayKey slotId streamRole) = do
+  announceStoppedLocal relayHandler (AgentKey slotId streamRole)
 
 -- Builds public API for events on this server
 announceAvailableLocal :: AgentHandler -> AgentKey -> Effect Unit
 announceAvailableLocal handler@{locationLens} agentKey =
   Gen.doCast serverName
     \state@{thisServer} -> do
-      logInfo ("New " <> unwrap handler.name <> " is available on this node") {agentKey}
+      --logInfo ("New " <> unwrap handler.name <> " is available on this node") {agentKey}
       doAnnounceAvailableLocal handler agentKey state
       pure $ Gen.CastNoReply $ updateAgentLocation recordLocalAgent locationLens agentKey thisServer state
 
