@@ -38,7 +38,7 @@ import Rtsv2App.Data.PoP (PoPDefEcharts, updatePoPDefEnv)
 import Rtsv2App.Data.Profile (Profile)
 import Rtsv2App.Data.Route (Route(..))
 import Rtsv2App.Env (PoPDefEnv, UrlEnv, UserEnv, changeHtmlClass)
-import Shared.Types (Server)
+import Shared.Types ( Server)
 import Shared.Types.Agent.State (PoPDefinition, AggregatorLocation)
 
 -------------------------------------------------------------------------------
@@ -54,7 +54,7 @@ type State =
   , popDefEcharts :: Array PoPDefEcharts
   , chart         :: Maybe EC.Instance
   , popLeaders    :: Array Server
-  , argLocs       :: AggregatorLocation Array
+  , aggrLocs      :: AggregatorLocation Array
   }
 
 type ChildSlots =
@@ -90,7 +90,7 @@ component = Connect.component $ H.mkComponent
     , popDefEcharts: mempty
     , chart: Nothing
     , popLeaders: mempty
-    , argLocs: mempty
+    , aggrLocs: mempty
     }
 
   handleAction :: Action -> H.HalogenM State Action ChildSlots Void m Unit
@@ -109,19 +109,19 @@ component = Connect.component $ H.mkComponent
           case popDef of
             Left e ->  H.modify_ _ { popDefenition = Nothing }
             Right pd -> do
-              { popDefenition, popDefEcharts, popLeaders, argLocs } <- updatePoPDefEnv pd
+              { popDefenition, popDefEcharts, popLeaders, aggrLocs } <- updatePoPDefEnv pd
               H.modify_ _ { popDefenition = popDefenition
                           , popDefEcharts = popDefEcharts
                           , popLeaders = popLeaders
-                          , argLocs = argLocs
+                          , aggrLocs = aggrLocs
                           }
 
         Just pd -> do
-          { popDefenition, popDefEcharts, popLeaders, argLocs } <- updatePoPDefEnv pd
+          { popDefenition, popDefEcharts, popLeaders, aggrLocs } <- updatePoPDefEnv pd
           H.modify_ _ { popDefenition = popDefenition
                       , popDefEcharts = popDefEcharts
                       , popLeaders = popLeaders
-                      , argLocs = argLocs
+                      , aggrLocs = aggrLocs
                       }
 
       -- | set up the map and populate it with all current pops
@@ -129,7 +129,7 @@ component = Connect.component $ H.mkComponent
         newSt <- H.get
         chart <- H.liftEffect $ EC.makeChart element
         H.modify_ _ { chart = Just chart }
-        liftEffect $ EC.setOption { scatterData: spy "chart data" newSt.popDefEcharts } chart
+        liftEffect $ EC.setOption { scatterData: newSt.popDefEcharts } chart
         liftEffect $ EC.setClick { curHost: (unwrap urlEnv.curHostUrl), url: "/app/#/pop/" } chart
         liftEffect $ EC.ressizeObserver chart
 
@@ -137,7 +137,7 @@ component = Connect.component $ H.mkComponent
       H.modify_ _ { currentUser = currentUser }
 
   render :: State -> H.ComponentHTML Action ChildSlots m
-  render state@{ currentUser, popLeaders, argLocs } =
+  render state@{ currentUser, popLeaders, aggrLocs } =
     HH.div
       [ HP.id_ "app" ]
       [ HH.slot (SProxy :: _ "header") unit HD.component { currentUser, route: DashboardR } absurd
@@ -176,7 +176,7 @@ component = Connect.component $ H.mkComponent
         [ css_ "section is-main-section" ]
         [ HH.div
           [ css_ "tile is-ancestor"]
-          [ TL.component (tileAggregator $ length $ argLocs)
+          [ TL.component (tileAggregator $ length $ aggrLocs)
           , TL.component (tilePoP $ length popLeaders)
           , TL.component tileWarning
           ]

@@ -1,11 +1,12 @@
 module Rtsv2App.Data.PoP
   ( PoPDefEcharts(..)
-  , getPoPEcharts
-  , getPoPInfo
-  , toPoPleaders
-  , toAggregators
+  , getPoPDefEchart
   , getPoPServers
   , getPoPState
+  , getPoPLeaderAddress
+  , toPoPEcharts
+  , toAggregators
+  , toPoPleaders
   , unGeoLoc
   , updatePoPDefEnv
   ) where
@@ -14,10 +15,11 @@ import Prelude
 
 import Control.Monad.Reader (ask)
 import Control.Monad.Reader.Trans (class MonadAsk)
-import Data.Array (catMaybes, head, index, length, mapMaybe, nub)
+import Data.Array (catMaybes, find, findMap, index, length, mapMaybe, nub)
 import Data.Either (hush)
-import Data.Maybe (Maybe(..))
-import Data.Newtype (un)
+import Data.Maybe (Maybe(..), maybe)
+import Data.Monoid (guard)
+import Data.Newtype (over, un, wrap)
 import Data.Traversable (traverse)
 import Effect (Effect)
 import Effect.Aff.Class (class MonadAff)
@@ -26,9 +28,8 @@ import Effect.Random (randomInt)
 import Effect.Ref as Ref
 import Global (readFloat)
 import Rtsv2App.Capability.Resource.Api (class ManageApi, getPublicState)
-import Rtsv2App.Capability.Resource.User (class ManageUser)
 import Rtsv2App.Env (PoPDefEnv)
-import Shared.Types (GeoLoc(..), PoPName, Server, ServerAddress)
+import Shared.Types (GeoLoc(..), PoPName(..), Server(..), ServerAddress, LeaderGeoLoc)
 import Shared.Types.Agent.State (IntraPoP, PoP, PoPDefinition, AggregatorLocation)
 
 
@@ -37,35 +38,43 @@ type PoPDefEcharts =
   , value :: Array Number
   }
 
-type PoPLeaders = Array Server
+type Servers = Array Server
 
 type PoPServer =
   { popName :: PoPName
   , server  :: Maybe ServerAddress
   }
 
-type PoPEnvNoRef =
+type PoPEnvWithoutRef =
   { popDefenition :: Maybe (PoPDefinition Array)
   , popDefEcharts :: Array PoPDefEcharts
   , popLeaders    :: Array Server
-  , argLocs       :: AggregatorLocation Array
+  , aggrLocs      :: AggregatorLocation Array
   }
 
 
 -- | Convert PoPDefinition to be used by Echarts to diplay locations of pops
-getPoPEcharts :: (PoPDefinition Array) -> Array PoPDefEcharts
-getPoPEcharts = getPoPInfo <<< getPoPFromRegion
+toPoPEcharts :: (PoPDefinition Array) -> Array PoPDefEcharts
+toPoPEcharts = getPoPDefEchart <<< getPoPFromRegion
+
+getPoPDefEchart :: Array (PoP Array) -> Array PoPDefEcharts
+getPoPDefEchart pa = (\p -> { name: p.name, value: unGeoLoc <$> p.geoLoc } ) <$> pa
+
+
+-- | Convert PoPDefinition to be used by Echarts to diplay locations of pops
+toLeaderGeoLoc :: (PoPDefinition Array) -> Array LeaderGeoLoc
+toLeaderGeoLoc = getLeaderGeoLoc <<< getPoPFromRegion
+
+getLeaderGeoLoc :: Array (PoP Array) -> Array LeaderGeoLoc
+getLeaderGeoLoc pa = (\p -> { name: p.name, coords: unGeoLoc <$> p.geoLoc } ) <$> pa
+
 
 -- | grab ut all the PoPs from each region
 getPoPFromRegion :: (PoPDefinition Array) -> Array (PoP Array)
 getPoPFromRegion pd = (\r -> r.pops) =<< pd.regions
 
-getPoPInfo :: Array (PoP Array) -> Array PoPDefEcharts
-getPoPInfo pa = (\p -> { name: p.name, value: unGeoLoc <$> p.geoLoc } ) <$> pa
-
 unGeoLoc :: GeoLoc -> Number
 unGeoLoc = readFloat <<< (un GeoLoc)
-
 
 -- | make an array of all popNames and one random server for each
 getPoPServers :: (PoPDefinition Array) -> Effect (Array PoPServer)
@@ -86,11 +95,39 @@ getRandomPoPServer servers = do
 getPoPState :: forall m. ManageApi m => Array PoPServer -> m (Array (Maybe (IntraPoP Array)))
 getPoPState = traverse (\popServer -> hush <$> getPublicState popServer.server)
 
-toPoPleaders :: (Array (Maybe (IntraPoP Array))) -> (Array Server)
+getPoPLeaderAddress :: Array Server -> Maybe PoPName -> Maybe ServerAddress
+getPoPLeaderAddress popLeaders popName =
+  case popName of
+    Nothing    -> Nothing
+    Just pName -> findMap (\popLeader -> do
+                              let pl = un Server popLeader
+                              if (pl.pop == pName) then Just pl.address else Nothing) popLeaders
+
+toPoPleaders :: Array (Maybe (IntraPoP Array)) -> Array Server
 toPoPleaders = mapMaybe (_ >>= _.currentTransPoPLeader)
 
 toAggregators :: (Array (Maybe (IntraPoP Array))) -> (AggregatorLocation Array)
 toAggregators mIntraPoPs = nub $ catMaybes mIntraPoPs >>= _.aggregatorLocations
+
+
+-- routes: [
+--     [
+--       { from: "fra", rtt: 0, to: "iad" }
+--     ],
+--     [
+--       { from: "fra", rtt: 0, to: "dal" },
+--       { from: "dal", rtt: 0, to: "iad" }
+--     ]
+--   ]
+
+-- [
+--   [ {name:'Fra', coord: [8.682127,50.110922]},
+--     {name:'Iad', coord: [-77.039851, 38.877270], data:[60, 120]},
+--   ],
+--   [ {name:'Iad', coord: [-77.039851, 38.877270]},
+--     {name:'Lax', coord: [-118.243685,34.052234], data: [60, 120]},
+--   ]
+-- ]
 
 updatePoPDefEnv
   :: forall m r
@@ -98,24 +135,26 @@ updatePoPDefEnv
   => MonadAsk { popDefEnv :: PoPDefEnv | r } m
   => ManageApi m
   => PoPDefinition Array
-  -> m PoPEnvNoRef
+  -> m PoPEnvWithoutRef
 updatePoPDefEnv pd = do
   { popDefEnv } <- ask
   popServers <- liftEffect $ getPoPServers pd
   popStates <- getPoPState popServers
 
   let popDefenition = Just pd
-      popDefEcharts = getPoPEcharts pd
+      popDefEcharts = toPoPEcharts pd
       popLeaders    = toPoPleaders popStates
-      argLocs       = toAggregators popStates
+      aggrLocs      = toAggregators popStates
+      geoLocs       = toLeaderGeoLoc pd
 
   liftEffect do
     Ref.write popDefenition popDefEnv.popDefinition
     Ref.write popLeaders popDefEnv.transPoPLeaders
-    Ref.write argLocs popDefEnv.aggregatorLocations
+    Ref.write aggrLocs popDefEnv.aggregatorLocations
+    Ref.write geoLocs popDefEnv.geoLocations
 
   pure { popDefenition
        , popDefEcharts
        , popLeaders
-       , argLocs
+       , aggrLocs
        }

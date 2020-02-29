@@ -1,9 +1,6 @@
-{ sources =
-    [ "src/**/*.purs", "test/**/*.purs" ]
-, name =
-    "rsvt2-app"
-, packages =
-    ./packages.dhall
+{ sources = [ "src/**/*.purs", "test/**/*.purs" ]
+, name = "rsvt2-app"
+, packages = ./packages.dhall
 , dependencies =
     [ "aff"
     , "aff-bus"
@@ -25,6 +22,7 @@
     , "precise-datetime"
     , "prelude"
     , "random"
+    , "record-extra"
     , "remotedata"
     , "routing"
     , "routing-duplex"

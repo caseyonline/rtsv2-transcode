@@ -16,6 +16,7 @@ import Effect.Class (class MonadEffect, liftEffect)
 import Effect.Console as Console
 import Effect.Now as Now
 import Effect.Ref as Ref
+import Record.Extra (sequenceRecord)
 import Routing.Duplex (print)
 import Routing.Hash (setHash)
 import Rtsv2App.Api.Endpoint (Endpoint(..))
@@ -110,35 +111,16 @@ instance manageUserAppM :: ManageUser AppM where
 
 -- | all api stats related requests
 instance manageAPIAppM :: ManageApi AppM where
-  --
-  getTimedRoutes arggLocs popLeaders curPoPName = do
-    let server            = (arggLocs >>= _.servers) !! 0
-        pred leaderServer = do
-          let ls = un Server leaderServer
-          if ls.pop == curPoPName then Just ls else Nothing
-
-
-    case findMap pred popLeaders of
-      Nothing        -> pure $ Left "No PoPLeaders"
-      Just popLeader ->
-        case server of
-          Nothing   -> pure $ Left "No server in arggLoc for getTimedRoutes"
-          Just ser  -> do
-            let s  = un Server ser
-            response <- mkOriginRequest popLeader.address { endpoint: TimedRoutesE s.pop, method: Get }
-            case JSON.readJSON response of
-              Left e -> pure $ Left $ show e
-              Right (res :: (TimedPoPRoutes Array)) -> do
-                pure $ Right res
-
-
-        -- do
-        -- let { address, pop, region } = un Server s
-        -- response <- mkOriginRequest address { endpoint: TimedRoutesE pop, method: Get }
-        -- case JSON.readJSON response of
-        --   Left e -> pure $ Left $ show e
-        --   Right (res :: (TimedPoPRoutes Array)) -> do
-        --     pure $ Right res
+  -- | get round trip routes taken given from popname to serverId
+  getTimedRoutes sInfo curPopName = do
+    case sequenceRecord sInfo of
+      Nothing -> pure $ Left "SPoPInfo not present"
+      Just s@{ selectedSlotId, selectedAddress } -> do
+        response <- mkOriginRequest selectedAddress { endpoint: TimedRoutesE curPopName, method: Get }
+        case JSON.readJSON response of
+          Left e -> pure $ Left $ show e
+          Right (res :: (TimedPoPRoutes Array)) -> do
+            pure $ Right res
 
   getPoPdefinition = do
     response <- mkRequest { endpoint: PopDefinitionE, method: Get }

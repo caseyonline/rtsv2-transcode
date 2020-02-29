@@ -2,19 +2,25 @@ module Rtsv2App.Component.HTML.PoPAggregator where
 
 import Prelude
 
-import Data.Array (find)
+import Control.Monad.Reader.Trans (class MonadAsk, ask)
+import Data.Array (catMaybes, find, (!!))
+import Data.Foldable (findMap)
 import Data.Maybe (Maybe(..))
+import Data.Monoid (guard)
 import Data.Newtype (un)
 import Debug.Trace (spy, traceM)
 import Effect.Aff.Class (class MonadAff)
+import Effect.Ref as Ref
 import Halogen as H
 import Halogen.HTML as HH
 import Halogen.HTML.Events as HE
 import Halogen.HTML.Properties as HP
 import Rtsv2App.Capability.Navigate (class Navigate)
 import Rtsv2App.Component.HTML.Utils (css_, dataAttr)
+import Rtsv2App.Data.PoP (getPoPLeaderAddress)
+import Rtsv2App.Env (PoPDefEnv)
 import Shared.Stream (SlotId(..))
-import Shared.Types (PoPName(..), RegionName(..), Server(..), ServerAddress(..))
+import Shared.Types (PoPName(..), RegionName(..), Server(..), ServerAddress(..), PoPSelectedInfo(..))
 import Shared.Types.Agent.State (PoPDefinition, AggregatorLocation)
 
 
@@ -22,15 +28,15 @@ import Shared.Types.Agent.State (PoPDefinition, AggregatorLocation)
 -- Types
 -------------------------------------------------------------------------------
 type Input =
-  { popDef       :: Maybe (PoPDefinition Array)
-  , argLocs      :: AggregatorLocation Array
+  { popDef   :: Maybe (PoPDefinition Array)
+  , aggrLocs :: AggregatorLocation Array
   }
 
 type Slot = H.Slot Query Message
 
 data Query a = IsOn (Boolean -> a)
 
-data Message = SelectedSlot (Maybe SlotId)
+data Message = SPoPInfo PoPSelectedInfo
 
 data Action
   = Select (Maybe SlotId)
@@ -42,7 +48,7 @@ type CheckBoxState =
   }
 
 type State =
-  { argLocs      :: AggregatorLocation Array
+  { aggrLocs      :: AggregatorLocation Array
   , popDef       :: Maybe (PoPDefinition Array)
   , checkedBoxes :: Array CheckBoxState
   }
@@ -51,8 +57,9 @@ type State =
 -- Components
 -------------------------------------------------------------------------------
 component
-  :: forall m
+  :: forall m r
    . MonadAff m
+  => MonadAsk { popDefEnv :: PoPDefEnv | r } m
   => Navigate m
   =>  H.Component HH.HTML Query Input Message m
 component = H.mkComponent
@@ -66,26 +73,38 @@ component = H.mkComponent
   }
   where
   initialState :: Input -> State
-  initialState { argLocs, popDef } =
-    { checkedBoxes: initCheckBoxes argLocs
-    , argLocs
+  initialState { aggrLocs, popDef } =
+    { checkedBoxes: initCheckBoxes aggrLocs
+    , aggrLocs
     , popDef
     }
 
   handleAction :: Action -> H.HalogenM State Action () Message m Unit
   handleAction = case _ of
-    Receive { argLocs, popDef } -> do
-      H.put { checkedBoxes: initCheckBoxes argLocs
-            , argLocs: argLocs
+    Receive { aggrLocs, popDef } -> do
+      H.put { checkedBoxes: initCheckBoxes aggrLocs
+            , aggrLocs: aggrLocs
             , popDef
             }
 
     Select mSlotId -> do
       st <- H.get
-      let updatedCheckboxes = updateSelected st.checkedBoxes mSlotId
-      newState <- H.modify _ { checkedBoxes = updatedCheckboxes }
+      { popDefEnv } <- ask
 
-      H.raise (SelectedSlot $ whichSlotSelected newState.checkedBoxes)
+      transPoPLeaders <- H.liftEffect $ Ref.read popDefEnv.transPoPLeaders
+
+      nSt <- H.modify _ { checkedBoxes = updateSelected st.checkedBoxes mSlotId }
+
+      let selectedSlot = whichSlotSelected nSt.checkedBoxes
+          selectedPname = slotToPoP selectedSlot nSt.aggrLocs
+      H.raise
+        (SPoPInfo
+           { selectedSlotId: selectedSlot
+           , selectedPoPName: selectedPname
+           , selectedAddress: getPoPLeaderAddress transPoPLeaders selectedPname
+           }
+        )
+      pure unit
 
   handleQuery :: forall a. Query a -> H.HalogenM State Action () Message m (Maybe a)
   handleQuery = case _ of
@@ -131,7 +150,7 @@ component = H.mkComponent
                 ]
               ]
             , HH.tbody_
-              (flip map state.argLocs
+              (flip map state.aggrLocs
                (\argLoc ->
                  HH.tr_
                  ( argLoc.servers >>=
@@ -177,10 +196,10 @@ component = H.mkComponent
         ]
     ]
 
--- | create a blank array of checkedBoxes using argLocs
+-- | create a blank array of checkedBoxes using aggrLocs
 initCheckBoxes :: AggregatorLocation Array -> Array CheckBoxState
-initCheckBoxes argLocs = do
-  join $ map f argLocs
+initCheckBoxes aggrLocs = do
+  join $ map f aggrLocs
   where
     f argLoc = (\_ -> { slotId: (Just argLoc.slotId), isSelected: false }) <$> argLoc.servers
 
@@ -207,3 +226,21 @@ whichSlotSelected checkedBoxes = do
   case curSelected of
     Nothing -> Nothing
     Just c  -> c.slotId
+
+-- | find the popName given selected slot
+slotToPoP :: Maybe SlotId -> AggregatorLocation Array -> Maybe PoPName
+slotToPoP mSlotId arggLocs =
+  case mSlotId of
+    Nothing -> Nothing
+    Just slotId -> do
+      let matchedPoP = findMap (\argLoc -> matchServer argLoc) arggLocs
+      case matchedPoP of
+        Nothing -> Nothing
+        Just x -> Just x
+      where
+        matchServer argLoc =
+          findMap (\server -> do
+                  let { pop, region, address } = un Server server
+                  if argLoc.slotId == slotId
+                    then Just pop
+                    else Nothing ) argLoc.servers

@@ -11,7 +11,7 @@ import Effect.Aff.Bus (BusRW)
 import Effect.Class (liftEffect)
 import Effect.Ref (Ref)
 import Rtsv2App.Data.Profile (Profile)
-import Shared.Types (Server)
+import Shared.Types (Server, LeaderGeoLoc)
 import Shared.Types.Agent.State (PoPDefinition, AggregatorLocation)
 import Web.DOM.Document (documentElement)
 import Web.DOM.Element (setClassName)
@@ -42,6 +42,7 @@ type PoPDefEnv =
   { popDefinition       :: Ref (Maybe (PoPDefinition Array))
   , transPoPLeaders     :: Ref (Array Server)
   , aggregatorLocations :: Ref (AggregatorLocation Array)
+  , geoLocations        :: Ref (Array LeaderGeoLoc)
   }
 
 newtype CurHostUrl = CurHostUrl String

@@ -1,16 +1,18 @@
 module Shared.Types
-       ( Load
-       , ServerAddress(..)
-       , RegionName(..)
-       , PoPName(..)
+       ( EgestServer(..)
        , GeoLoc(..)
+       , LeaderGeoLoc(..)
+       , Load
        , Milliseconds(..)
+       , PoPName(..)
+       , PoPSelectedInfo(..)
+       , RegionName(..)
+       , RelayServer(..)
+       , Server(..)
+       , ServerAddress(..)
        , ServerLoad(..)
        , ServerLocation(..)
-       , Server(..)
        , ServerRec
-       , RelayServer(..)
-       , EgestServer(..)
        , toServer
        , toServerLoad
        , serverLoadToServer
@@ -27,6 +29,7 @@ import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype, unwrap)
 import Data.Symbol (SProxy(..))
 import Record as Record
+import Shared.Stream (SlotId)
 import Simple.JSON (class ReadForeign, class WriteForeign)
 
 -- TODO - find a place for these utility types to live (a la id3as_common?)
@@ -143,6 +146,17 @@ derive newtype instance ordEgestServer :: Ord EgestServer
 derive newtype instance showEgestServer :: Show EgestServer
 derive newtype instance readForeignEgestServer :: ReadForeign EgestServer
 derive newtype instance writeForeignEgestServer :: WriteForeign EgestServer
+
+type LeaderGeoLoc =
+  { name   :: PoPName
+  , coords :: Array Number
+  }
+
+type PoPSelectedInfo =
+    { selectedPoPName :: Maybe PoPName
+    , selectedSlotId  :: Maybe SlotId
+    , selectedAddress :: Maybe ServerAddress
+    }
 
 newtype ServerLoad = ServerLoad { address :: ServerAddress
                                 , pop :: PoPName
