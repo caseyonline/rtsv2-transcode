@@ -43,6 +43,8 @@ type ServerSelectionPredicate = ServerLoad -> Boolean
 data FailureReason
   = NotFound
   | NoResource
+instance semigroupFailureReason :: Semigroup FailureReason where
+  append lhs rhs = rhs
 
 data LocalOrRemote a
   = Local a

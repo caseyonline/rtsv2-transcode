@@ -14,59 +14,42 @@ import Data.Maybe (Maybe(..), fromMaybe', isNothing)
 import Erl.Cowboy.Req (method)
 import Erl.Data.List (List, nil, (:))
 import Erl.Data.Tuple (tuple2)
+import Logger (spy)
 import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
 import Rtsv2.Agents.IngestAggregatorInstanceSup as IngestAggregatorInstanceSup
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
 import Rtsv2.Agents.StreamRelayTypes (RegisterRelayPayload)
-import Rtsv2.Web.Bindings as Bindings
 import Shared.LlnwApiTypes (StreamDetails)
-import Shared.Stream (AggregatorKey(..), IngestKey(..))
+import Shared.Stream (AggregatorKey(..), IngestKey(..), SlotId, SlotRole, ProfileName)
 import Shared.Types (ServerAddress)
 import Shared.Types.Agent.State as PublicState
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (readJSON)
 import Stetson (HttpMethod(..), StetsonHandler)
 import Stetson.Rest as Rest
-import StetsonHelper (GenericStatusState, GenericStetsonHandler, allBody, binaryToString, genericGetBySlotIdAndRole, genericPost)
-import Logger (spy)
+import StetsonHelper (GetHandler, PostHandler, allBody, binaryToString, jsonResponse, processPostPayload)
 
--- TODO: PS: Should we model this in PS?
-import Foreign (Foreign)
+ingestAggregator :: SlotId -> SlotRole -> GetHandler (PublicState.IngestAggregator List)
+ingestAggregator slotId role = jsonResponse $ Just <$> (IngestAggregatorInstance.getState $ AggregatorKey slotId role)
 
-ingestAggregator :: StetsonHandler (GenericStatusState (PublicState.IngestAggregator List))
-ingestAggregator = genericGetBySlotIdAndRole
-                   \slotId role -> IngestAggregatorInstance.getState $ AggregatorKey slotId role
+slotConfiguration :: SlotId -> SlotRole -> GetHandler SlotConfiguration
+slotConfiguration slotId role =
+  jsonResponse $ IngestAggregatorInstance.slotConfiguration (AggregatorKey slotId role)
 
-slotConfiguration :: StetsonHandler (GenericStatusState (Maybe SlotConfiguration))
-slotConfiguration =
-  genericGetBySlotIdAndRole slotConfigurationBySlotIdAndRole
-
-  where
-    slotConfigurationBySlotIdAndRole slotId role =
-      do
-        result <- IngestAggregatorInstance.slotConfiguration (AggregatorKey slotId role)
-        let _ = spy "Ingest Aggregator Slot Config" result
-        pure result
-
-ingestAggregators :: GenericStetsonHandler StreamDetails
-ingestAggregators = genericPost IngestAggregatorInstanceSup.startAggregator
+ingestAggregators :: PostHandler StreamDetails
+ingestAggregators = processPostPayload IngestAggregatorInstanceSup.startAggregator
 
 
 type IngestAggregatorsActiveIngestState = { ingestKey :: IngestKey
                                           , aggregatorKey :: AggregatorKey
                                           , serverAddress :: Maybe ServerAddress
                                           }
-ingestAggregatorsActiveIngest :: StetsonHandler IngestAggregatorsActiveIngestState
-ingestAggregatorsActiveIngest =
+ingestAggregatorsActiveIngest :: SlotId -> SlotRole -> ProfileName -> StetsonHandler IngestAggregatorsActiveIngestState
+ingestAggregatorsActiveIngest slotId streamRole profileName =
   Rest.handler (\req ->
-                 let
-                   slotId = Bindings.slotId req
-                   streamRole = Bindings.streamRole req
-                   profileName = Bindings.profileName req
-                 in
-                  Rest.initResult req { ingestKey: IngestKey slotId streamRole profileName
-                                      , aggregatorKey: AggregatorKey slotId streamRole
-                                      , serverAddress: Nothing})
+                 Rest.initResult req { ingestKey: IngestKey slotId streamRole profileName
+                                     , aggregatorKey: AggregatorKey slotId streamRole
+                                     , serverAddress: Nothing})
   # Rest.serviceAvailable (\req state -> do
                               isAgentAvailable <- IngestAggregatorInstanceSup.isAvailable
                               Rest.result isAgentAvailable req state)
@@ -118,5 +101,5 @@ ingestAggregatorsActiveIngest =
   # Rest.yeeha
 
 
-registerRelay :: GenericStetsonHandler RegisterRelayPayload
-registerRelay = genericPost  IngestAggregatorInstance.registerRelay
+registerRelay :: PostHandler RegisterRelayPayload
+registerRelay = processPostPayload IngestAggregatorInstance.registerRelay

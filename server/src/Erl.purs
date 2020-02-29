@@ -5,7 +5,7 @@ module Erl.Utils
        , makeRef
        , privDir
        , self
-       , Url
+       , trapExit
        , Ref
        )
        where
@@ -26,17 +26,12 @@ foreign import privDirImpl :: Atom -> String
 foreign import eqRefImpl :: Ref -> Ref -> Boolean
 foreign import data Ref :: Type
 foreign import selfImpl :: Effect Pid
+foreign import trapExitImpl :: Boolean -> Effect Boolean
 
 sleep :: Milliseconds -> Effect Unit
 sleep = sleepImpl <<< unwrap
 
 -- TODO - find a place for these utility types to live (a la id3as_common?)
-
--- | Url type
-newtype Url = Url String
-derive instance newtypeURL :: Newtype Url _
-derive newtype instance eqURL :: Eq Url
-derive newtype instance ordURL :: Ord Url
 
 systemTimeMs :: Effect Milliseconds
 systemTimeMs = wrap <$> systemTimeImpl (atom "millisecond")
@@ -53,4 +48,8 @@ makeRef = makeRefImpl
 privDir :: Atom -> String
 privDir = privDirImpl
 
+trapExit :: Boolean -> Effect Boolean
+trapExit = trapExitImpl
+
+self :: Effect Pid
 self = selfImpl

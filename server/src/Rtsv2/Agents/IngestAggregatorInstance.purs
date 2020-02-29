@@ -33,12 +33,10 @@ import Rtsv2.Agents.StreamRelayTypes (RegisterRelayPayload)
 import Rtsv2.Config as Config
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
-import Rtsv2.Router.Endpoint (Endpoint(..))
-import Rtsv2.Router.Endpoint as RoutingEndpoint
-import Rtsv2.Router.Parser as Routing
 import Shared.Agent as Agent
 import Shared.LlnwApiTypes (SlotProfile(..), StreamDetails)
 import Shared.Stream (AggregatorKey(..), IngestKey(..), SlotId(..), SlotRole, ProfileName, ingestKeyToAggregatorKey, ingestKeyToProfileName)
+import Shared.Router.Endpoint (Endpoint(..), makePath)
 import Shared.Types (ServerAddress, extractAddress)
 import Shared.Types.Agent.State as PublicState
 
@@ -89,7 +87,7 @@ addRemoteIngest ingestKey@(IngestKey streamId streamRole profileName)  remoteSer
   \state@{activeProfileNames, workflowHandle} -> do
     logInfo "Remote ingest added" {ingestKey, source: remoteServer}
     let
-      path = Routing.printUrl RoutingEndpoint.endpoint (IngestInstanceLlwpE streamId streamRole profileName)
+      path = makePath (IngestInstanceLlwpE streamId streamRole profileName)
       url = "http://" <> (unwrap remoteServer) <> ":3000" <> path
     addRemoteIngestImpl workflowHandle ingestKey url
     pure $ CallReply unit state{activeProfileNames = insert (ingestKeyToProfileName ingestKey) remoteServer activeProfileNames}

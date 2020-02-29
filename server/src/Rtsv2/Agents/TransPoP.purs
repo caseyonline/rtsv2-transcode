@@ -52,10 +52,10 @@ import Rtsv2.Health as Health
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition (PoP)
 import Rtsv2.PoPDefinition as PoPDefinition
-import Rtsv2.Router.Endpoint (Endpoint(..), makeUrlAddr)
 import Serf (IpAndPort, LamportClock, SerfCoordinate, calcRtt)
 import Serf as Serf
 import Shared.Stream (AgentKey)
+import Shared.Router.Endpoint (Endpoint(..), makeUrlAddr)
 import Shared.Types (Milliseconds, PoPName, Server, ServerAddress(..), extractAddress, extractPoP, toServer)
 import Shared.Types.Agent.State as PublicState
 import Shared.Utils (distinctRandomNumbers)

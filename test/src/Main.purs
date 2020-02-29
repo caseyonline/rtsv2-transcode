@@ -7,10 +7,10 @@ import Data.Array as Array
 import Data.Either (Either(..))
 import Data.Foldable (foldl)
 import Data.Identity (Identity(..))
-import Data.List (List(..))
+import Data.List (List(..), (:))
 import Data.Map as Map
-import Data.Maybe (Maybe(..), isNothing)
-import Data.Newtype (un, wrap)
+import Data.Maybe (Maybe(..), isNothing, fromMaybe)
+import Data.Newtype (class Newtype, un, wrap, unwrap)
 import Data.Time.Duration (Milliseconds(..))
 import Data.Traversable (traverse, traverse_)
 import Data.Tuple (Tuple(..))
@@ -26,7 +26,8 @@ import Node.FS.Aff (writeTextFile)
 import OsCmd (runProc)
 import Partial.Unsafe (unsafePartial)
 import Prim.Row (class Union)
-import Shared.Stream (ProfileName(..))
+import Shared.Stream (ProfileName(..), SlotRole(..), SlotNameAndProfileName(..))
+import Shared.Router.Endpoint (Endpoint(..), makeUrl, Canary(..))
 import Shared.Types (ServerAddress(..), extractAddress)
 import Shared.Types.Agent.State as PublicState
 import Simple.JSON (class ReadForeign)
@@ -35,6 +36,8 @@ import Test.Spec (after_, before_, describe, describeOnly, it, itOnly)
 import Test.Spec.Reporter.Console (consoleReporter)
 import Test.Spec.Runner (runSpecT)
 
+import Control.Monad.State
+import Control.Monad.State.Class
 
 type ResponseWithBody =
   { headers :: M.Headers
@@ -125,7 +128,8 @@ forceRight :: forall a b. Either a b -> b
 forceRight e = unsafePartial $ case e of
   Right b -> b
 
-
+newtype NodeAddress = NodeAddress {address :: ServerAddress}
+derive instance newtypeNodeAddress :: Newtype NodeAddress _
 
 main :: Effect Unit
 main =
@@ -141,46 +145,54 @@ main =
     p4n1 = Node 4 1
     p4n2 = Node 4 2
 
-    slot1      = 1
-    shortName1 = "mmddev001"
-    low        = "slot1_500"
-    high       = "slot1_1000"
+    slot1      = wrap 1
+    shortName1 = wrap "mmddev001"
+    low        = SlotNameAndProfileName "slot1" (wrap "500")
+    high       = SlotNameAndProfileName "slot1" (wrap "1000")
 
-    start = "start"
     stop  = "stop"
 
-    api node = "http://" <> toAddr node <> ":3000/api/"
+    serverAddress node = NodeAddress {address: ServerAddress $ toAddr node}
 
-    egestStats node slotId           = get (M.URL $ api node <> "agents/egest/" <> (show slotId))
+    makeUrl' node path = unwrap $ makeUrl (serverAddress node) path
 
-    aggregatorStats node slotId      = get (M.URL $ api node <> "agents/ingestAggregator/" <> (show slotId) <> "/primary")
+    egestStats node slotId           = get (M.URL $ makeUrl' node (EgestStatsE slotId))
 
-    ingestStart node shortName profileName = get (M.URL $ api node <> "public/canary/ingest/" <> shortName <> "/" <> profileName <> "/start")
-    ingestStop node slotId profileName     = get (M.URL $ api node <> "public/canary/ingest/" <> (show slotId) <> "/primary/" <> profileName <> "/stop")
+    aggregatorStats node slotId      = get (M.URL $ makeUrl' node (IngestAggregatorE slotId Primary))
 
-    relayStats node slotId           = get (M.URL $ api node <> "agents/relay/" <> (show slotId) <> "/primary")
+    ingestStart node shortName profileName = get (M.URL $ makeUrl' node (IngestStartE Live shortName profileName))
 
-    proxiedRelayStats node slotId    = get (M.URL $ api node <> "agents/proxied/relay/" <> (show slotId) <> "/primary")
+    ingestStop node slotId (SlotNameAndProfileName _ profileName)     = get (M.URL $ makeUrl' node (IngestStopE Live slotId Primary profileName))
 
-    intraPoPState node               = get (M.URL $ api node <> "state")
+    relayStats node slotId           = get (M.URL $ makeUrl' node (RelayStatsE slotId Primary))
 
-    client verb node slotId        = fetch (M.URL $ api node <> "public/canary/client/" <> (show slotId) <> "/" <> verb)
+    proxiedRelayStats node slotId    = get (M.URL $ makeUrl' node (RelayProxiedStatsE slotId Primary))
+
+    intraPoPState node               = get (M.URL $ makeUrl' node ServerStateE)
+
+    clientStart node slotId          = fetch (M.URL $ makeUrl' node (ClientStartE Live slotId))
                                          { method: M.postMethod
                                          , body: "{}"
                                          , headers: M.makeHeaders { "Content-Type": "application/json" }
                                          }
 
-    setLoad node load                  = fetch (M.URL $ api node <> "load")
+    clientStop clientId node slotId  = fetch (M.URL $ makeUrl' node (ClientStopE Live slotId clientId))
                                          { method: M.postMethod
-                                         , body: "{\"load\": " <> show load <> "}"
+                                         , body: "{}"
                                          , headers: M.makeHeaders { "Content-Type": "application/json" }
                                          }
 
-    dropAgentMessages node flag        = fetch (M.URL $ api node <> "test/intraPoP")
-                                         { method: M.postMethod
-                                         , body: "{\"dropAgentMessages\": " <> show flag <> "}"
-                                         , headers: M.makeHeaders { "Content-Type": "application/json" }
-                                         }
+    setLoad node load                 = fetch (M.URL $ makeUrl' node LoadE)
+                                          { method: M.postMethod
+                                          , body: "{\"load\": " <> show load <> "}"
+                                          , headers: M.makeHeaders { "Content-Type": "application/json" }
+                                          }
+
+    dropAgentMessages node flag       = fetch (M.URL $ makeUrl' node IntraPoPTestHelperE)
+                                          { method: M.postMethod
+                                          , body: "{\"dropAgentMessages\": " <> show flag <> "}"
+                                          , headers: M.makeHeaders { "Content-Type": "application/json" }
+                                          }
 
     maybeLogStep s a =
       let _ = spy s a in
@@ -196,6 +208,13 @@ main =
     as' desc _ =
       let _ = maybeLogStep "step" desc in
       pure $ unit
+
+    as'' :: forall r s. String -> Either String r -> StateT s Aff Unit
+    as'' desc (Right r) =
+      let _ = maybeLogStep "step" desc in
+      pure $ unit
+    as'' desc (Left err) = lift $ throwSlowError $ "Step: \"" <> desc <> "\" failed with reason: " <> err
+
 
     debug either = let _ = spy "debug" either in either
 
@@ -225,8 +244,8 @@ main =
 
     assertAggregator = assertBodyFun <<< predicate
       where
-        predicate :: Array String -> PublicState.IngestAggregator Array -> Boolean
-        predicate vars {activeProfiles} = sort (ProfileName <$> vars) == (sort $ _.profileName <$> activeProfiles)
+        predicate :: Array SlotNameAndProfileName -> PublicState.IngestAggregator Array -> Boolean
+        predicate vars {activeProfiles} = sort ((\(SlotNameAndProfileName _ profileName) -> profileName) <$> vars) == (sort $ _.profileName <$> activeProfiles)
 
     assertAggregatorOn nodes requiredSlotId  = assertBodyFun $ predicate
       where
@@ -235,7 +254,7 @@ main =
           let
             nodeAddresses = toAddr
             serverAddressesForSlotId = foldl (\acc {slotId, servers} ->
-                                                 if slotId == wrap requiredSlotId
+                                                 if slotId == requiredSlotId
                                                  then acc <> (extractAddress <$> servers)
                                                  else acc
                                                ) []  popState.aggregatorLocations
@@ -249,7 +268,7 @@ main =
           let
             nodeAddresses = toAddr
             serverAddressesForSlotId = foldl (\acc {slotId, servers} ->
-                                                 if slotId == wrap requiredSlotId
+                                                 if slotId == requiredSlotId
                                                  then acc <> (extractAddress <$> servers)
                                                  else acc
                                                ) []  popState.relayLocations
@@ -443,70 +462,78 @@ main =
                 ) do
           after_ stopSession do
             it "client requests stream on ingest node" do
-              client start p1n1 slot1          >>= assertStatusCode 404 >>= as  "no egest prior to ingest"
-              relayStats   p1n1 slot1          >>= assertStatusCode 404 >>= as  "no relay prior to ingest"
-              ingestStart p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
-              waitForAsyncProfileStart                                  >>= as' "wait for async start of profile"
-              client start p1n1 slot1          >>= assertStatusCode 204 >>= as  "egest available"
-              waitForAsyncProfileStart                                  >>= as' "wait for async start of profile"
-              relayStats   p1n1 slot1          >>= assertStatusCode 200
-                                                   >>= assertRelayForEgest [p1n1]
-                                                                        >>= as  "local relay exists"
-              egestStats   p1n1 slot1          >>= assertStatusCode 200
-                                                   >>= assertEgestClients 1
-                                                                        >>= as "agent should have 1 client"
-
+                clientStart p1n1 slot1           >>= assertStatusCode 404 >>= as  "no egest prior to ingest"
+                relayStats   p1n1 slot1          >>= assertStatusCode 404 >>= as  "no relay prior to ingest"
+                ingestStart p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
+                waitForAsyncProfileStart                                  >>= as' "wait for async start of profile"
+                clientStart p1n1 slot1           >>= assertStatusCode 204 >>= as  "egest available"
+                waitForAsyncProfileStart                                  >>= as' "wait for async start of profile"
+                relayStats   p1n1 slot1          >>= assertStatusCode 200
+                                                     >>= assertRelayForEgest [p1n1]
+                                                                          >>= as  "local relay exists"
+                egestStats   p1n1 slot1          >>= assertStatusCode 200
+                                                     >>= assertEgestClients 1
+                                                                          >>= as "agent should have 1 client"
             it "client requests stream on non-ingest node" do
-              client start p1n2 slot1          >>= assertStatusCode 404 >>= as  "no egest prior to ingest"
+              clientStart p1n2 slot1           >>= assertStatusCode 404 >>= as  "no egest prior to ingest"
               relayStats   p1n2 slot1          >>= assertStatusCode 404 >>= as  "no remote relay prior to ingest"
               ingestStart p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
               waitForIntraPoPDisseminate                                >>= as' "allow intraPoP source avaialable to disseminate"
-              client start p1n2 slot1          >>= assertStatusCode 204 >>= as  "egest available"
+              clientStart p1n2 slot1           >>= assertStatusCode 204 >>= as  "egest available"
               relayStats   p1n2 slot1          >>= assertStatusCode 200 >>= as  "remote relay exists"
               egestStats   p1n2 slot1          >>= assertStatusCode 200
                                                    >>= assertEgestClients 1
                                                                         >>= as "agent should have 1 client"
 
             it "client requests stream on 2nd node on ingest pop" do
-              client start p1n2 slot1          >>= assertStatusCode 404 >>= as "no egest p1n2 prior to ingest"
-              client start p1n3 slot1          >>= assertStatusCode 404 >>= as "no egest p1n3 prior to ingest"
-              ingestStart p1n1 shortName1 low >>= assertStatusCode 200 >>= as "create ingest"
-              waitForIntraPoPDisseminate                                >>= as' "allow intraPoP source avaialable to disseminate"
-              client start p1n2 slot1          >>= assertStatusCode 204
-                                                   >>= assertHeader (Tuple "x-servedby" "172.16.169.2")
-                                                                        >>= as "first egest is same node"
-              waitForIntraPoPDisseminate                                >>= as' "allow intraPoP egest avaialable to disseminate"
-              client start p1n3 slot1          >>= assertStatusCode 204
-                                                   >>= assertHeader (Tuple "x-servedby" "172.16.169.2")
-                                                                        >>= as "p1n3 egest redirects to p1n2"
-              egestStats   p1n2 slot1          >>= assertStatusCode 200
-                                                   >>= assertEgestClients 2
-                                                                        >>= as "agent should have 2 clients"
-              egestStats   p1n3 slot1          >>= assertStatusCode 404 >>= as "no egest on node3"
-              client start p1n2 slot1          >>= assertStatusCode 204
-                                                   >>= assertHeader (Tuple "x-servedby" "172.16.169.2")
-                                                                        >>= as "p1n2 stays on node2"
-              client start p1n3 slot1          >>= assertStatusCode 204
-                                                   >>= assertHeader (Tuple "x-servedby" "172.16.169.2")
-                                                                        >>= as "p1n3 egest still redirects to p1n2"
-              egestStats   p1n2 slot1          >>= assertStatusCode 200
-                                                   >>= assertEgestClients 4
-                                                                        >>= as "agent now has 4 clients"
-              egestStats   p1n3 slot1          >>= assertStatusCode 404 >>= as "still no egest on node3"
-              client stop  p1n2 slot1          >>= assertStatusCode 204 >>= as "stop client 1 on node2"
-              client stop  p1n2 slot1          >>= assertStatusCode 204 >>= as "stop client 2 on node2"
-              client stop  p1n2 slot1          >>= assertStatusCode 204 >>= as "stop client 3 on node2"
-              client stop  p1n2 slot1          >>= assertStatusCode 204 >>= as "stop client 4 on node2"
+              (flip evalStateT) Map.empty $ do
+                lift $ clientStart p1n2 slot1           >>= assertStatusCode 404 >>= as "no egest p1n2 prior to ingest"
+                lift $ clientStart p1n3 slot1           >>= assertStatusCode 404 >>= as "no egest p1n3 prior to ingest"
+                lift $ ingestStart p1n1 shortName1 low  >>= assertStatusCode 200 >>= as "create ingest"
+                lift $ waitForIntraPoPDisseminate                                >>= as' "allow intraPoP source avaialable to disseminate"
+                (lift $ clientStart p1n2 slot1          >>= assertStatusCode 204
+                                                        >>= assertHeader (Tuple "x-servedby" "172.16.169.2"))
+                                                        >>= storeHeader "x-client-id" "clientId1"
+                                                                                 >>= as'' "first egest is same node"
+                lift $ waitForIntraPoPDisseminate                                >>= as' "allow intraPoP egest avaialable to disseminate"
+                (lift $ clientStart p1n3 slot1          >>= assertStatusCode 204
+                                                        >>= assertHeader (Tuple "x-servedby" "172.16.169.2"))
+                                                        >>= storeHeader "x-client-id" "clientId2"
+                                                                                 >>= as'' "p1n3 egest redirects to p1n2"
+                lift $ egestStats   p1n2 slot1          >>= assertStatusCode 200
+                                                        >>= assertEgestClients 2
+                                                                                 >>= as "agent should have 2 clients"
+                lift $ egestStats   p1n3 slot1          >>= assertStatusCode 404 >>= as "no egest on node3"
+                (lift $ clientStart p1n2 slot1          >>= assertStatusCode 204
+                                                        >>= assertHeader (Tuple "x-servedby" "172.16.169.2"))
+                                                        >>= storeHeader "x-client-id" "clientId3"
+                                                                                 >>= as'' "p1n2 stays on node2"
+                (lift $ clientStart p1n3 slot1          >>= assertStatusCode 204
+                                                        >>= assertHeader (Tuple "x-servedby" "172.16.169.2"))
+                                                        >>= storeHeader "x-client-id" "clientId4"
+                                                                                 >>= as'' "p1n3 egest still redirects to p1n2"
+                lift $ egestStats   p1n2 slot1          >>= assertStatusCode 200
+                                                        >>= assertEgestClients 4
+                                                                                 >>= as "agent now has 4 clients"
+                lift $ egestStats   p1n3 slot1          >>= assertStatusCode 404 >>= as "still no egest on node3"
+                clientId1 <- getStateValue "clientId1" "unknown"
+                lift $ clientStop clientId1  p1n2 slot1 >>= assertStatusCode 204 >>= as "stop client 1 on node2"
+                clientId2 <- getStateValue "clientId2" "unknown"
+                lift $ clientStop clientId2  p1n2 slot1 >>= assertStatusCode 204 >>= as "stop client 2 on node2"
+                clientId3 <- getStateValue "clientId3" "unknown"
+                lift $ clientStop clientId3  p1n2 slot1 >>= assertStatusCode 204 >>= as "stop client 3 on node2"
+                clientId4 <- getStateValue "clientId4" "unknown"
+                lift $ clientStop clientId4  p1n2 slot1 >>= assertStatusCode 204 >>= as "stop client 4 on node2"
 
-              waitForMoreThanEgestLinger                                >>= as' "allow the egest linger timer to expire"
-              egestStats   p1n2 slot1          >>= assertStatusCode 404 >>= as "now no egest on node2"
-              egestStats   p1n3 slot1          >>= assertStatusCode 404 >>= as "still no egest on node3"
-              client start p1n3 slot1          >>= assertStatusCode 204
-                                                   >>= assertHeader (Tuple "x-servedby" "172.16.169.3")
-                                                                        >>= as "Final egest starts on node3"
-              egestStats   p1n3 slot1          >>= assertStatusCode 200
-                                                   >>= assertEgestClients 1
-                                                                        >>= as "node 3 agent should have 1 client"
+                lift $ waitForMoreThanEgestLinger                                >>= as' "allow the egest linger timer to expire"
+                lift $ egestStats   p1n2 slot1          >>= assertStatusCode 404 >>= as "now no egest on node2"
+                lift $ egestStats   p1n3 slot1          >>= assertStatusCode 404 >>= as "still no egest on node3"
+                lift $ clientStart p1n3 slot1           >>= assertStatusCode 204
+                                                        >>= assertHeader (Tuple "x-servedby" "172.16.169.3")
+                                                                                 >>= as "Final egest starts on node3"
+                lift $ egestStats   p1n3 slot1          >>= assertStatusCode 200
+                                                        >>= assertEgestClients 1
+                                                                                 >>= as "node 3 agent should have 1 client"
 
       describe "two pop setup" do
         let
@@ -529,12 +556,12 @@ main =
               assertBodiesSame states2                                      >>= as "All pop 2 nodes agree on leader and aggregator presence"
 
             it "client requests stream on other pop" do
-              client start p2n1 slot1          >>= assertStatusCode 404 >>= as  "no egest prior to ingest"
+              clientStart p2n1 slot1           >>= assertStatusCode 404 >>= as  "no egest prior to ingest"
               relayStats   p1n1 slot1          >>= assertStatusCode 404 >>= as  "no remote relay prior to ingest"
               relayStats   p2n1 slot1          >>= assertStatusCode 404 >>= as  "no local relay prior to ingest"
               ingestStart p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
               waitForTransPoPDisseminate                                >>= as' "wait for transPop disseminate"
-              client start p2n1 slot1          >>= assertStatusCode 204 >>= as  "egest available"
+              clientStart p2n1 slot1           >>= assertStatusCode 204 >>= as  "egest available"
               relayStats   p2n1 slot1          >>= assertStatusCode 200 >>= as  "local relay exists"
               waitForAsyncRelayStart                                    >>= as' "wait for the relay chain to start"
               waitForIntraPoPDisseminate                                >>= as' "allow intraPoP to spread location of relay"
@@ -546,16 +573,16 @@ main =
                                                                         >>= as  "remote relay is serving local relay"
 
             it "client ingest starts and stops" do
-              client start p1n2 slot1          >>= assertStatusCode 404 >>= as  "no local egest prior to ingest"
-              client start p2n1 slot1          >>= assertStatusCode 404 >>= as  "no remote egest prior to ingest"
+              clientStart p1n2 slot1           >>= assertStatusCode 404 >>= as  "no local egest prior to ingest"
+              clientStart p2n1 slot1           >>= assertStatusCode 404 >>= as  "no remote egest prior to ingest"
               ingestStart p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
               waitForTransPoPDisseminate                                >>= as' "wait for transPop disseminate"
-              client start p1n2 slot1          >>= assertStatusCode 204 >>= as  "local egest post ingest"
-              client start p2n1 slot1          >>= assertStatusCode 204 >>= as  "remote egest post ingest"
+              clientStart p1n2 slot1           >>= assertStatusCode 204 >>= as  "local egest post ingest"
+              clientStart p2n1 slot1           >>= assertStatusCode 204 >>= as  "remote egest post ingest"
               ingestStop  p1n1 slot1 low >>= assertStatusCode 200 >>= as  "stop the ingest"
               waitForTransPoPStopDisseminate                            >>= as' "wait for transPop disseminate"
-              client start p1n2 slot1          >>= assertStatusCode 404 >>= as  "no same pop egest post stop"
-              client start p2n1 slot1          >>= assertStatusCode 404 >>= as  "no remote pop egest post stop"
+              clientStart p1n2 slot1           >>= assertStatusCode 404 >>= as  "no same pop egest post stop"
+              clientStart p2n1 slot1           >>= assertStatusCode 404 >>= as  "no remote pop egest post stop"
               -- TODO - assert the relays stop as well - might be slow with timeouts chaining...
 
 
@@ -575,7 +602,7 @@ main =
               waitForIntraPoPDisseminate                                >>= as' "let ingest presence disseminate"
               launch' phase2Nodes sysconfig                             >>= as' "start new node after ingest already running"
               waitForNodeStartDisseminate                               >>= as' "let ingest presence disseminate"
-              client start p1n3 slot1          >>= assertStatusCode 204 >>= as  "local egest post ingest"
+              clientStart p1n3 slot1           >>= assertStatusCode 204 >>= as  "local egest post ingest"
 
             -- TODO - egest - test stream we think is not present when it is
 
@@ -591,18 +618,18 @@ main =
             it "aggregator expired after extended packet loss" do
               ingestStart p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
               waitForIntraPoPDisseminate                                >>= as' "let ingest presence disseminate"
-              client start p1n2 slot1          >>= assertStatusCode 204 >>= as  "local egest post ingest"
+              clientStart p1n2 slot1           >>= assertStatusCode 204 >>= as  "local egest post ingest"
               dropAgentMessages p1n2 true                               >>= as  "Drop all agent messages"
               waitForIntraPoPDisseminate                                >>= as' "Wait for less than message expiry"
-              client start p1n2 slot1          >>= assertStatusCode 204 >>= as  "Initially clients can still join"
+              clientStart p1n2 slot1           >>= assertStatusCode 204 >>= as  "Initially clients can still join"
               waitForMessageTimeout                                     >>= as' "Wait for less than message expiry"
-              client start p1n2 slot1          >>= assertStatusCode 404 >>= as  "Clients can no longer join"
+              clientStart p1n2 slot1           >>= assertStatusCode 404 >>= as  "Clients can no longer join"
               dropAgentMessages p1n2 false                              >>= as  "Alow messages to flow once more"
 
               waitForNodeStartDisseminate                               >>= as' "let ingest presence disseminate"
               waitForNodeStartDisseminate                               >>= as' "let ingest presence disseminate"
 
-              client start p1n2 slot1          >>= assertStatusCode 204 >>= as  "Client can join once more"
+              clientStart p1n2 slot1           >>= assertStatusCode 204 >>= as  "Client can join once more"
 
 
       describe "four pop setup" do
@@ -624,7 +651,7 @@ main =
               waitForIntraPoPDisseminate                                >>= as' "allow intraPoP to spread location of relay"
               ingestStart p3n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
               waitForTransPoPDisseminate                                >>= as' "wait for transPop disseminate"
-              client start p4n1 slot1          >>= assertStatusCode 204 >>= as  "egest available in lax"
+              clientStart p4n1 slot1           >>= assertStatusCode 204 >>= as  "egest available in lax"
               relayStats   p4n1 slot1          >>= assertStatusCode 200 >>= as  "local relay exists"
               waitForAsyncRelayStart                                    >>= as' "wait for the relay chain to start"
               waitForIntraPoPDisseminate                                >>= as' "allow intraPoP to spread location of relay"
@@ -650,6 +677,17 @@ main =
 
   where
     testConfig = { slow: Milliseconds 5000.0, timeout: Just (Milliseconds 25000.0), exit: false }
+
+storeHeader :: String -> String -> Either String ResponseWithBody -> StateT (Map.Map String String) Aff (Either String ResponseWithBody)
+storeHeader header key either@(Left _) = pure either
+storeHeader header key either@(Right {headers}) = do
+  let
+    value = fromMaybe "unknown" $ Object.lookup header headers
+  _ <- modify (Map.insert key value)
+  pure either
+
+getStateValue :: forall v m k. MonadState (Map.Map k v) m => Ord k => k -> v -> m v
+getStateValue key defaultValue = gets (fromMaybe defaultValue <<< Map.lookup key)
 
 assertStatusCode :: Int -> Either String ResponseWithBody -> Aff (Either String ResponseWithBody)
 assertStatusCode expectedCode either =

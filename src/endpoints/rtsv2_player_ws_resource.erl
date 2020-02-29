@@ -6,6 +6,7 @@
 -include_lib("id3as_common/include/id3as_message_bus.hrl").
 -include_lib("id3as_rtc/include/webrtc.hrl").
 -include_lib("id3as_media/include/frame.hrl").
+-include("./rtsv2_rtp.hrl").
 
 
 -export([ init/2
@@ -19,14 +20,20 @@
         ]).
 
 
+-define(state_initializing, rtsv2_player_ws_resource_state_initializing).
 -define(state_running,      rtsv2_player_ws_resource_state_running).
--define(state_redirect,     rtsv2_player_ws_resource_state_redirect).
--define(state_not_found,    rtsv2_player_ws_resource_state_not_found).
--define(state_retry,        rtsv2_player_ws_resource_state_retry).
+-define(state_failed,       rtsv2_player_ws_resource_state_failed).
 
--define(stream_desc_ingest, rtsv2_player_ws_resource_ingest_stream_descriptor).
--define(stream_desc_egest,  rtsv2_player_ws_resource_egest_stream_descriptor).
 
+-record(?state_initializing,
+        { trace_id :: binary_string()
+        , public_ip_string :: binary_string()
+        , socket_url :: binary_string()
+        , stream_desc :: stream_desc_ingest() | stream_desc_egest()
+        , server_id :: term()
+
+        , ice_servers :: list(map())
+        }).
 
 
 -record(?state_running,
@@ -34,40 +41,52 @@
         , public_ip_string :: binary_string()
         , socket_url :: binary_string()
         , stream_desc :: stream_desc_ingest() | stream_desc_egest()
-        , start_options :: webrtc_stream_server:start_options()
         , server_id :: term()
-        , ice_servers :: list(map())
+
+        , start_options :: webrtc_stream_server:start_options()
         , profiles :: list(rtsv2_slot_configuration:slot_profile())
         }).
 
 
--record(?state_redirect,
-        { alternative_location :: binary_string()
+-record(?state_failed,
+        { detail :: failure_detail()
         }).
 
 
--record(?state_not_found, {}).
+-type failure_detail() :: failure_detail_redirect() | failure_detail_not_found() | failure_detail_retry().
 
 
--record(?state_retry, { reason :: stream_initializing }).
+-record(failure_detail_redirect,
+        { alternative_location :: binary_string()
+        }).
+-type failure_detail_redirect() :: #failure_detail_redirect{}.
 
 
--record(?stream_desc_ingest,
+-record(failure_detail_not_found, {}).
+-type failure_detail_not_found() :: #failure_detail_not_found{}.
+
+
+-record(failure_detail_retry, { reason :: stream_initializing }).
+-type failure_detail_retry() :: #failure_detail_retry{}.
+
+
+-record(stream_desc_ingest,
         { slot_id :: non_neg_integer()
         , profile_name :: binary_string()
         , stream_role :: binary_string()
         , ingest_key :: term()
         }).
--type stream_desc_ingest() :: #?stream_desc_ingest{}.
+-type stream_desc_ingest() :: #stream_desc_ingest{}.
 
 
--record(?stream_desc_egest,
+-record(stream_desc_egest,
         { slot_id  :: binary_string()
         , egest_key :: term()
         , start_stream_result :: term()
         , get_slot_configuration :: fun()
+        , add_client :: fun()
         }).
--type stream_desc_egest() :: #?stream_desc_egest{}.
+-type stream_desc_egest() :: #stream_desc_egest{}.
 
 
 -define(MAX_PAYLOAD_SIZE, 16384).
@@ -83,50 +102,20 @@
 -define(WebSocketStatusCode_StreamNotReadyRetryLater, 4004).
 
 
-init(Req,
-     #{ mode := egest
-      , make_egest_key := MakeEgestKey
-      , start_stream := StartStream
-      , get_slot_configuration := GetSlotConfiguration
-      }
-    ) ->
+init(Req, Params) ->
+  case try_build_stream_desc(Req, Params) of
+    undefined ->
+      { cowboy_websocket
+      , Req
+      , #?state_failed{ detail = #failure_detail_not_found{} }
+      , #{ max_frame_size => 1024
+         , idle_timeout => 500
+         }
+      };
 
-  %% Ensure the relay is set-up and get the relay key
-  SlotId = binary_to_integer(cowboy_req:binding(slot_id, Req)),
-
-  %% NOTE: StartStream returns an effect, hence the extra invocation
-  StartStreamResult =
-    (StartStream(SlotId))(),
-
-  io:format(user, "START STREAM RESULT: ~p -> ~p~n~n", [SlotId, StartStreamResult]),
-
-  StreamDesc =
-    #?stream_desc_egest{ slot_id =  SlotId
-                       , egest_key = MakeEgestKey(SlotId)
-                       , start_stream_result = StartStreamResult
-                       , get_slot_configuration = GetSlotConfiguration
-                       },
-
-  init_prime(Req, StreamDesc);
-
-init(Req,
-     #{ mode := ingest
-      , make_ingest_key := MakeIngestKey
-      }
-    ) ->
-
-  SlotId = binary_to_integer(cowboy_req:binding(slot_id, Req)),
-  StreamRole = cowboy_req:binding(stream_role, Req),
-  ProfileName = cowboy_req:binding(profile_name, Req),
-
-  StreamDesc =
-    #?stream_desc_ingest{ slot_id = SlotId
-                        , stream_role = StreamRole
-                        , profile_name = ProfileName
-                        , ingest_key = ((MakeIngestKey(SlotId))(StreamRole))(ProfileName)
-                        },
-
-  init_prime(Req, StreamDesc).
+    StreamDesc ->
+      init_prime(Req, StreamDesc)
+  end.
 
 init_prime(Req, StreamDesc) ->
 
@@ -149,7 +138,7 @@ init_prime(Req, StreamDesc) ->
 
       { cowboy_websocket
       , NewReq
-      , #?state_not_found{}
+      , #?state_failed{ detail = #failure_detail_not_found{} }
       , #{ max_frame_size => 1024
          , idle_timeout => 500
          }
@@ -160,7 +149,7 @@ init_prime(Req, StreamDesc) ->
 
       { cowboy_websocket
       , NewReq
-      , #?state_retry{ reason = stream_initializing }
+      , #?state_failed{ detail = #failure_detail_retry{ reason = stream_initializing} }
       , #{ max_frame_size => 1024
          , idle_timeout => 500
          }
@@ -175,27 +164,25 @@ init_prime(Req, StreamDesc) ->
 
       { cowboy_websocket
       , NewReq
-      , #?state_redirect{ alternative_location = AlternateSocketPath }
+      , #?state_failed{ detail = #failure_detail_redirect{ alternative_location = AlternateSocketPath} }
       , #{ max_frame_size => 1024
          , idle_timeout => 1000
          }
       };
 
-    { available_here, Profiles } ->
+    available_here ->
       PublicIPString = i_convert:convert(PublicIP, binary_string),
       SocketURL = <<"wss://", PublicIPString/binary, (cowboy_req:path(Req))/binary>>,
 
       { cowboy_websocket
       , NewReq
-      , #?state_running{ trace_id = TraceId
-                       , public_ip_string = PublicIPString
-                       , socket_url = SocketURL
-                       , stream_desc = StreamDesc
-                       , start_options = construct_start_options(TraceId, PublicIPString, Profiles, StreamDesc)
-                       , server_id = construct_server_id(StreamDesc)
-                       , ice_servers = stun_turn_config(none, TurnIP, TurnPort, TurnUsername, TurnPassword)
-                       , profiles = Profiles
-                       }
+      , #?state_initializing{ trace_id = TraceId
+                            , public_ip_string = PublicIPString
+                            , socket_url = SocketURL
+                            , stream_desc = StreamDesc
+                            , server_id = construct_server_id(StreamDesc)
+                            , ice_servers = stun_turn_config(none, TurnIP, TurnPort, TurnUsername, TurnPassword)
+                            }
       , #{ max_frame_size => ?MAX_PAYLOAD_SIZE
          , idle_timeout => ?IDLE_TIMEOUT_MS
          }
@@ -203,22 +190,39 @@ init_prime(Req, StreamDesc) ->
   end.
 
 
-terminate(stop, _PartialReq, #?state_redirect{}) ->
-  ok;
-
-terminate(stop, _PartialReq, #?state_not_found{}) ->
-  ok;
-
-terminate(stop, _PartialReq, #?state_retry{}) ->
-  ok;
-
 terminate(_Reason, _PartialReq, #?state_running{ server_id = ServerId, trace_id = TraceId }) ->
   %% ?LOG_DEBUG(#{ what => "close", reason => Reason }),
   webrtc_stream_server:cast_session(ServerId, TraceId, notify_socket_disconnect),
+  ok;
+
+terminate(stop, _PartialReq, #?state_failed{}) ->
+  ok;
+
+terminate(Reason, _PartialReq, State) when is_tuple(State) ->
+
+  %% TODO: PS: logging fails in terminate for some reason...
+  io:format(user,
+            "~p~n",
+            [ #{ what => "close"
+              , reason => Reason
+              , context => #{ state_type => element(1, State) }
+              }
+            ]),
+  ok;
+
+terminate(Reason, _PartialReq, _State) ->
+
+  %% TODO: PS: logging fails in terminate for some reason...
+  io:format(user,
+            "~p~n",
+            [ #{ what => "close"
+              , reason => Reason
+              , context => #{ state_type => init }
+              }
+            ]),
   ok.
 
-
-websocket_init(#?state_redirect{ alternative_location = AlternativeSocketPath } = State) ->
+websocket_init(#?state_failed{ detail = #failure_detail_redirect{ alternative_location = AlternativeSocketPath } } = State) ->
 
   ByeMessage =
     #{ type => bye
@@ -233,7 +237,7 @@ websocket_init(#?state_redirect{ alternative_location = AlternativeSocketPath } 
   , State
   };
 
-websocket_init(#?state_not_found{} = State) ->
+websocket_init(#?state_failed{ detail = #failure_detail_not_found{} } = State) ->
 
   ByeMessage =
     #{ type => bye
@@ -246,7 +250,7 @@ websocket_init(#?state_not_found{} = State) ->
   , State
   };
 
-websocket_init(#?state_retry{ reason = _Reason } = State) ->
+websocket_init(#?state_failed{ detail = #failure_detail_retry{ reason = _Reason } } = State) ->
 
   ByeMessage =
     #{ type => bye
@@ -259,48 +263,32 @@ websocket_init(#?state_retry{ reason = _Reason } = State) ->
   , State
   };
 
-websocket_init(#?state_running{ trace_id = TraceId
-                              , public_ip_string = _PublicIPString
-                              , server_id = ServerId
-                              , start_options = InitialStartOptions
-                              , socket_url = SocketURL
-                              , ice_servers = ICEServers
-                              , profiles = [ #{ name := ActiveProfileName } | _OtherProfiles ] = Profiles
-                              } = State) ->
-
+websocket_init(#?state_initializing{ trace_id = TraceId } = State) ->
   logger:set_process_metadata(#{ correlation_id => TraceId }),
+  try_initialize(State).
 
-  FinalStartOptions =
-    InitialStartOptions#{ event_handler =>
-                            begin
-                              Self = self(),
 
-                              fun(Event) ->
-                                  Self ! { session_event, Event }
-                              end
-                            end
-                        },
+websocket_info(try_initialize, State) ->
+  try_initialize(State);
 
-  NewState = State#?state_running{ start_options = FinalStartOptions },
+websocket_info({ session_event
+               , #{ type := server_ice_candidate
+                  , media_line_index := LineIndex
+                  , candidate := Candidate
+                  }
+               },
+               State
+              ) ->
+  { [ json_frame( <<"ice.candidate">>,
+                  #{ <<"index">> => LineIndex
+                   , <<"candidate">> => Candidate
+                   }
+                ) ]
+  , State
+  };
 
-  webrtc_stream_server:ensure_session(ServerId, TraceId, FinalStartOptions),
-
-  webrtc_stream_server:subscribe_for_msgs(TraceId, #subscription_options{}),
-
-  InitialMessage =
-    #{ type => init
-     , traceId => TraceId
-     , thisEdge =>
-         #{ socketURL => SocketURL
-          , iceServers => ICEServers
-          }
-     , activeVariant => ActiveProfileName
-     , variants => [ ProfileName || #{ name := ProfileName } <- Profiles ]
-     },
-
-  { [ {text, jsx:encode(InitialMessage)} ]
-  , NewState
-  }.
+websocket_info(not_implemented, State) ->
+  {ok, State}.
 
 
 websocket_handle({ text, JSON }, State) ->
@@ -340,30 +328,69 @@ websocket_handle({ text, JSON }, State) ->
       }
   end.
 
-websocket_info({ session_event
-               , #{ type := server_ice_candidate
-                  , media_line_index := LineIndex
-                  , candidate := Candidate
-                  }
-               },
-               State
-              ) ->
-  { [ json_frame( <<"ice.candidate">>,
-                  #{ <<"index">> => LineIndex
-                   , <<"candidate">> => Candidate
-                   }
-                ) ]
-  , State
-  };
-
-websocket_info(not_implemented, State) ->
-  {ok, State}.
-
 
 %%% ----------------------------------------------------------------------------
 %%% Private Functions
 %%% ----------------------------------------------------------------------------
-determine_stream_availability(#?stream_desc_ingest{ ingest_key = IngestKey, slot_id = SlotId, profile_name = ProfileName }) ->
+try_build_stream_desc(Req,
+                      #{ mode := egest
+                       , make_egest_key := MakeEgestKey
+                       , start_stream := StartStream
+                       , get_slot_configuration := GetSlotConfiguration
+                       , add_client := AddClient
+                       }
+                     ) ->
+
+  try
+    binary_to_integer(cowboy_req:binding(slot_id, Req))
+  of
+    SlotId ->
+
+      %% NOTE: StartStream returns an effect, hence the extra invocation
+      StartStreamResult =
+        (StartStream(SlotId))(),
+
+      io:format(user, "START STREAM RESULT: ~p -> ~p~n~n", [SlotId, StartStreamResult]),
+
+      StreamDesc =
+        #stream_desc_egest{ slot_id =  SlotId
+                          , egest_key = MakeEgestKey(SlotId)
+                          , start_stream_result = StartStreamResult
+                          , get_slot_configuration = GetSlotConfiguration
+                          , add_client = AddClient
+                          },
+
+      StreamDesc
+  catch
+    error:badarg ->
+      undefined
+  end;
+
+try_build_stream_desc(Req,
+                      #{ mode := ingest
+                       , make_ingest_key := MakeIngestKey
+                       }
+                     ) ->
+
+  try
+    { binary_to_integer(cowboy_req:binding(slot_id, Req))
+    , cowboy_req:binding(stream_role, Req)
+    , cowboy_req:binding(profile_name, Req)
+    }
+  of
+    {SlotId, StreamRole, ProfileName} ->
+      #stream_desc_ingest{ slot_id = SlotId
+                        , stream_role = StreamRole
+                        , profile_name = ProfileName
+                        , ingest_key = ((MakeIngestKey(SlotId))(StreamRole))(ProfileName)
+                        }
+  catch
+    error:badarg ->
+      undefined
+  end.
+
+
+determine_stream_availability(#stream_desc_ingest{ ingest_key = IngestKey }) ->
 
   BusName = {webrtc_stream_output, IngestKey},
 
@@ -372,58 +399,118 @@ determine_stream_availability(#?stream_desc_ingest{ ingest_key = IngestKey, slot
 
       case pubsub:read_bus_metadata(BusName) of
         { ok, #live_stream_metadata{ program_details = _Frame = #frame{} } } ->
-
-          case rtsv2_slot_media_source_publish_processor:maybe_slot_configuration(SlotId) of
-            #{ profiles := Profiles } ->
-
-              case [ Profile || Profile = #{ name := ProfileName } <- Profiles, ProfileName =:= ProfileName ] of
-                [ MatchingProfile | _ ] ->
-                  { available_here, [ MatchingProfile ] };
-
-                _NoMatchingProfile ->
-                  available_nowhere
-              end;
-
-            _NoSlotConfigAvailable ->
-              initializing_here
-          end;
+          available_here;
 
         _NotReceivingMediaYet ->
-          initializing_here
+          available_nowhere
       end;
 
     false ->
       available_nowhere
   end;
 
-determine_stream_availability(#?stream_desc_egest{ start_stream_result = { left, {notFound} } }) ->
+determine_stream_availability(#stream_desc_egest{ start_stream_result = { left, {notFound} } }) ->
   available_nowhere;
 
-determine_stream_availability(#?stream_desc_egest{ start_stream_result = { left, {noResource} } }) ->
+determine_stream_availability(#stream_desc_egest{ start_stream_result = { left, {noResource} } }) ->
 
   %% TODO: PS: redirect to a different PoP?
   available_nowhere;
 
-determine_stream_availability(#?stream_desc_egest{ start_stream_result = { right, { remote, #{ address := HostName } } } }) ->
+determine_stream_availability(#stream_desc_egest{ start_stream_result = { right, { remote, #{ address := HostName } } } }) ->
 
   %% TODO: PS: proper determination of port - config?
   Authority = << HostName/binary, ":3000" >>,
   {available_elsewhere, [ Authority ]};
 
-determine_stream_availability(#?stream_desc_egest{ egest_key = EgestKey, get_slot_configuration = GetSlotConfiguration }) ->
+determine_stream_availability(#stream_desc_egest{}) ->
+  available_here.
 
-  %% TODO: PS: liveness information?
-  %% TODO: PS: getting slot config should be part of the stream detection
-  %% NOTE: GetSlotConfiguration returns an effect
+
+try_initialize(#?state_initializing{ stream_desc = StreamDesc } = State) ->
+  case get_slot_profiles(StreamDesc) of
+    undefined ->
+      {ok, _TimerRef} = timer:send_after(30, try_initialize),
+      {ok, State};
+
+    SlotProfiles ->
+      transition_to_running(SlotProfiles, State)
+  end.
+
+
+get_slot_profiles(#stream_desc_ingest{ slot_id = SlotId, profile_name = IngestProfileName }) ->
+  case rtsv2_slot_media_source_publish_processor:maybe_slot_configuration(SlotId) of
+    #{ profiles := Profiles } ->
+
+      case [ Profile || Profile = #{ name := ConfigProfileName } <- Profiles, ConfigProfileName =:= IngestProfileName ] of
+        [ MatchingProfile | _ ] ->
+          [ MatchingProfile ];
+
+        _NoMatchingProfile ->
+          undefined
+      end;
+
+    _ ->
+      undefined
+  end;
+
+get_slot_profiles(#stream_desc_egest{ egest_key = EgestKey, get_slot_configuration = GetSlotConfiguration }) ->
   case (GetSlotConfiguration(EgestKey))() of
     {just, #{ profiles := Profiles }} ->
-      { available_here, Profiles };
+      Profiles;
 
     {nothing} ->
-
-      %% TODO: PS: available elsewhere detection
-      available_nowhere
+      undefined
   end.
+
+
+transition_to_running([ #{ name := ActiveProfileName } | _OtherProfiles ] = Profiles,
+                      #?state_initializing{ trace_id = TraceId
+                                          , public_ip_string = PublicIPString
+                                          , socket_url = SocketURL
+                                          , stream_desc = StreamDesc
+                                          , server_id = ServerId
+                                          , ice_servers = ICEServers
+                                          }
+                     ) ->
+
+  StartOptions = construct_start_options(TraceId, PublicIPString, Profiles, StreamDesc),
+  webrtc_stream_server:ensure_session(ServerId, TraceId, StartOptions),
+  webrtc_stream_server:subscribe_for_msgs(TraceId, #subscription_options{}),
+
+  case StreamDesc of
+    #stream_desc_egest{ slot_id = SlotId
+                      , add_client = AddClient
+                      } ->
+      {right, unit} = (AddClient(self(), SlotId))();
+    _ ->
+      ok
+  end,
+
+  NewState =
+    #?state_running{ trace_id = TraceId
+                   , public_ip_string = PublicIPString
+                   , socket_url = SocketURL
+                   , stream_desc = StreamDesc
+                   , server_id = ServerId
+                   , start_options = StartOptions
+                   , profiles = Profiles
+                   },
+
+  InitialMessage =
+    #{ type => init
+     , traceId => TraceId
+     , thisEdge =>
+         #{ socketURL => SocketURL
+          , iceServers => ICEServers
+          }
+     , activeVariant => ActiveProfileName
+     , variants => [ ProfileName || #{ name := ProfileName } <- Profiles ]
+     },
+
+  { [ {text, jsx:encode(InitialMessage)} ]
+  , NewState
+  }.
 
 
 handle_ping(State) ->
@@ -560,7 +647,7 @@ this_server_ip(Req) ->
   IP.
 
 
-construct_start_options(TraceId, IP, [ SlotProfile ], #?stream_desc_ingest{}) ->
+construct_start_options(TraceId, IP, [ SlotProfile ], #stream_desc_ingest{}) ->
 
   #{ firstAudioSSRC := AudioSSRC
    , firstVideoSSRC := VideoSSRC
@@ -582,13 +669,18 @@ construct_start_options(TraceId, IP, [ SlotProfile ], #?stream_desc_ingest{}) ->
           , video_ssrc => VideoSSRC
           }
        }
+
+   , event_handler =>
+       begin
+         Self = self(),
+
+         fun(Event) ->
+             Self ! { session_event, Event }
+         end
+       end
    };
 
-construct_start_options(TraceId, IP, [ SlotProfile | _IgnoreTheseForNow ], #?stream_desc_egest{}) ->
-
-  #{ firstAudioSSRC := AudioSSRC
-   , firstVideoSSRC := VideoSSRC
-   } = SlotProfile,
+construct_start_options(TraceId, IP, _SlotProfiles, #stream_desc_egest{}) ->
 
   #{ session_id => TraceId
    , local_address => IP
@@ -602,15 +694,24 @@ construct_start_options(TraceId, IP, [ SlotProfile | _IgnoreTheseForNow ], #?str
 
    , rtp_egest_config =>
        { passthrough
-       , #{ audio_ssrc => AudioSSRC
-          , video_ssrc => VideoSSRC
+       , #{ audio_ssrc => ?EGEST_AUDIO_SSRC
+          , video_ssrc => ?EGEST_VIDEO_SSRC
           }
        }
+
+   , event_handler =>
+       begin
+         Self = self(),
+
+         fun(Event) ->
+             Self ! { session_event, Event }
+         end
+       end
    }.
 
 
-construct_server_id(#?stream_desc_ingest{ ingest_key = IngestKey }) ->
+construct_server_id(#stream_desc_ingest{ ingest_key = IngestKey }) ->
   IngestKey;
 
-construct_server_id(#?stream_desc_egest{ egest_key = EgestKey }) ->
+construct_server_id(#stream_desc_egest{ egest_key = EgestKey }) ->
   EgestKey.

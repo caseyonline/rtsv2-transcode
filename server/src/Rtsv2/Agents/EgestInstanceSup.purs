@@ -11,6 +11,7 @@ import Prelude
 import Effect (Effect)
 import Erl.Atom (Atom)
 import Erl.Data.List (List, nil, singleton, (:))
+import Erl.Process.Raw (Pid)
 import Logger (Logger)
 import Logger as Logger
 import Pinto (SupervisorName)
@@ -35,17 +36,17 @@ startEgest :: CreateEgestPayload -> Effect Pinto.StartLinkResult
 startEgest payload =
   Sup.startSimpleChild childTemplate serverName payload
 
-maybeStartAndAddClient :: CreateEgestPayload -> Effect Unit
-maybeStartAndAddClient payload = do
+maybeStartAndAddClient :: Pid -> CreateEgestPayload -> Effect Unit
+maybeStartAndAddClient pid payload = do
   let egestKey = (EgestKey payload.slotId)
   isActive <- EgestInstance.isActive egestKey
   case isActive of
     false -> do
              _ <- Sup.startSimpleChild childTemplate serverName payload
-             maybeStartAndAddClient payload
+             maybeStartAndAddClient pid payload
     true ->
       do
-        _ <- EgestInstance.addClient egestKey
+        _ <- EgestInstance.addClient pid egestKey
         pure unit
 
   -- result <- Sup.startSimpleChild childTemplate serverName slotId

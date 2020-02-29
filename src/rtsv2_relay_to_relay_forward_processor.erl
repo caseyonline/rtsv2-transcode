@@ -1,4 +1,4 @@
--module(rtsv2_relay_to_egest_forward_processor).
+-module(rtsv2_relay_to_relay_forward_processor).
 
 -behaviour(workflow_processor).
 
@@ -13,7 +13,6 @@
 -export([ spec/1
         , initialise/1
         , process_input/2
-        , handle_info/2
         , flush/1
         , is_meter/0
         , ioctl/2
@@ -21,13 +20,9 @@
 
 -define(state, ?MODULE).
 
--type egest_key() :: {inet:ip_address(), inet:port_number()}.
-
 -record(?state,
-        { slot_id :: term()
-        , publication_count = 0 :: non_neg_integer()
-        , egests = #{} :: maps:map(egest_key(), gen_udp:socket())
-        , egests_by_socket = #{} :: maps:map(gen_udp:socket(), egest_key())
+        { publication_count = 0 :: non_neg_integer()
+        , relays = #{} :: maps:map({inet:ip_address(), inet:port_number()}, gen_udp:socket())
         }).
 
 %%------------------------------------------------------------------------------
@@ -38,10 +33,10 @@ spec(_Processor) ->
                  , is_pure = true
                  }.
 
-initialise(#processor{config = SlotId}) ->
-  { ok, #?state{slot_id = SlotId} }.
+initialise(#processor{}) ->
+  { ok, #?state{} }.
 
-process_input(#rtp_sequence{ rtps = RTPs }, State = #?state{ egests = Egests, publication_count = PublicationCount }) ->
+process_input(#rtp_sequence{ rtps = RTPs }, State = #?state{ relays = Relays, publication_count = PublicationCount }) ->
   Packets = [ rtp:unparse(avp, RTP) || RTP <- RTPs ],
 
   _ =
@@ -59,12 +54,12 @@ process_input(#rtp_sequence{ rtps = RTPs }, State = #?state{ egests = Egests, pu
                              )
               end,
               {0, 0},
-              Egests
+              Relays
              ),
 
   {ok, State #?state{ publication_count = PublicationCount + 1 }};
 
-process_input(#rtp{} = RTP, State = #?state{ egests = Egests, publication_count = PublicationCount }) ->
+process_input(#rtp{} = RTP, State = #?state{ relays = Relays, publication_count = PublicationCount }) ->
   Packet = rtp:unparse(avp, RTP),
 
   _ =
@@ -77,24 +72,10 @@ process_input(#rtp{} = RTP, State = #?state{ egests = Egests, publication_count 
                   end
               end,
               {0, 0},
-              Egests
+              Relays
              ),
 
   {ok, State #?state{ publication_count = PublicationCount + 1 }}.
-
-handle_info({udp_error, Socket, econnrefused}, State = #?state{ slot_id = SlotId
-                                                              , egests = Egests
-                                                              , egests_by_socket = EgestsBySocket }) ->
-
-  {RelayKey, NewEgestsBySocket} = maps:take(Socket, EgestsBySocket),
-  NewEgests = maps:remove(RelayKey, Egests),
-
-  ?SLOG_INFO("UDP error sending to Egest", #{ slot_id => SlotId
-                                            , stream_relay => RelayKey
-                                            , reason => econnrefused}),
-
-  {noreply, State#?state{ egests = NewEgests
-                        , egests_by_socket = NewEgestsBySocket}}.
 
 ioctl(read_meter, State = #?state{ publication_count = PublicationCount }) ->
 
@@ -104,14 +85,13 @@ ioctl(read_meter, State = #?state{ publication_count = PublicationCount }) ->
 
   {ok, #status{metrics = Metrics}, State};
 
-ioctl({register_egest, Host, Port}, State = #?state{ egests = Egests
-                                                   , egests_by_socket = EgestsBySocket }) ->
+ioctl({register_relay, Host, Port}, State = #?state{ relays = Relays }) ->
   case inet:gethostbyname(?to_list(Host)) of
     {ok, #hostent{ h_addr_list = [ Addr | _ ] }} ->
 
       MapKey = {Addr, Port},
 
-      case maps:find(MapKey, Egests) of
+      case maps:find(MapKey, Relays) of
         {ok, _Socket} ->
           {ok, {error, already_registered}, State};
 
@@ -121,11 +101,9 @@ ioctl({register_egest, Host, Port}, State = #?state{ egests = Egests
           %% Errors are asynchronous
           gen_udp:connect(Socket, Addr, Port),
 
-          NewEgests = maps:put(MapKey, Socket, Egests),
-          NewEgestsBySocket = maps:put(Socket, MapKey, EgestsBySocket),
+          NewRelays = maps:put(MapKey, Socket, Relays),
 
-          {ok, State#?state{ egests = NewEgests
-                           , egests_by_socket = NewEgestsBySocket }}
+          {ok, State#?state{ relays = NewRelays}}
       end;
 
     Other ->

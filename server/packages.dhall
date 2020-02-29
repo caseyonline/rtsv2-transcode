@@ -57,9 +57,9 @@ let overrides =
               , "unfoldable"
               ]
           , repo =
-              "ssh://git@github.com/adrianroe/purescript-erl-maps.git"
+              "https://github.com/purerl/purescript-erl-maps"
           , version =
-              "88995fa67be79f7dd77734f20b13bb54fec10f88"
+              "d8153fdd97acca910b86bd44f55b6fce2f775264"
           }
       , erl-tuples =
           { dependencies =
@@ -70,13 +70,17 @@ let overrides =
               "d923dab0d94af6872483bb5952b2652afdc3e95a"
           }
       , erl-stetson =
-          { dependencies =
-              [ "erl-cowboy" ]
-          , repo =
-              "ssh://git@github.com/id3as/purescript-erl-stetson.git"
-          , version =
-              "dfe1aa594822708e2593000523d29881d25d4ef5"
-          }
+            upstream.erl-stetson
+          ⫽ { version =
+                "d3cb6abba94d3e8cfa5ba1374eac98719a15d770"
+            , dependencies =
+                [ "erl-cowboy", "routing-duplex" ]
+            }
+      , erl-cowboy =
+            upstream.erl-cowboy
+          ⫽ { version = "03eaeab111dd1b2cf499ca977fe4cc61df8fd254" }
+      , strings =
+          upstream.strings ⫽ { version = "v4.0.1-erl1" }
       }
 
 let additions =

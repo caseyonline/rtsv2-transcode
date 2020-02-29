@@ -1,5 +1,5 @@
 declare MEDIA_FILE=
-declare INGEST_NODE=172.16.171.5
+declare INGEST_NODE=${INGEST_NODE:-172.16.171.5}
 
 case "${USER}" in
   stears)

@@ -130,7 +130,7 @@ component = Connect.component $ H.mkComponent
         chart <- H.liftEffect $ EC.makeChart element
         H.modify_ _ { chart = Just chart }
         liftEffect $ EC.setOption { scatterData: newSt.popDefEcharts } chart
-        liftEffect $ EC.setClick { curHost: (unwrap urlEnv.curHostUrl), url: "/app/#/pop/" } chart
+        liftEffect $ EC.setClick { curHost: (unwrap urlEnv.curHostUrl), url: "/app#/pop/" } chart
         liftEffect $ EC.ressizeObserver chart
 
     Receive { currentUser } ->

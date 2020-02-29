@@ -17,6 +17,7 @@
 -export([ spec/1
         , initialise/1
         , process_input/2
+        , handle_info/2
         , flush/1
         , is_meter/0
         , ioctl/2
@@ -24,11 +25,14 @@
 
 -define(state, ?MODULE).
 
+-type stream_relay_key() :: {inet:ip_address(), inet:port_number()}.
+
 -record(?state,
         { slot_id :: non_neg_integer()
         , name :: term()                        %
         , publication_count = 0 :: non_neg_integer()
-        , stream_relays = #{} :: maps:map({inet:ip_address(), inet:port_number()}, gen_udp:socket())
+        , stream_relays = #{} :: maps:map(stream_relay_key(), gen_udp:socket())
+        , stream_relays_by_socket = #{} :: maps:map(gen_udp:socket(), stream_relay_key())
         }).
 
 -define(metadata, rtsv2_slot_media_source_publish_processor_metadata).
@@ -115,6 +119,20 @@ process_input(#rtp{} = RTP, State = #?state{ stream_relays = StreamRelays, publi
 
   {ok, State #?state{ publication_count = PublicationCount + 1 }}.
 
+handle_info({udp_error, Socket, econnrefused}, State = #?state{ slot_id = SlotId
+                                                              , stream_relays = StreamRelays
+                                                              , stream_relays_by_socket = StreamRelaysBySocket }) ->
+
+  {RelayKey, NewStreamRelaysBySocket} = maps:take(Socket, StreamRelaysBySocket),
+  NewStreamRelays = maps:remove(RelayKey, StreamRelays),
+
+  ?SLOG_INFO("UDP error sending to StreamRelay", #{ slot_id => SlotId
+                                                  , stream_relay => RelayKey
+                                                  , reason => econnrefused}),
+
+  {noreply, State#?state{ stream_relays = NewStreamRelays
+                        , stream_relays_by_socket = NewStreamRelaysBySocket}}.
+
 ioctl(read_meter, State = #?state{slot_id = SlotId, publication_count = PublicationCount}) ->
 
   Metrics = [ #text_metric{name = slot_name, value = SlotId, display_name = <<"Slot Name">>, update_frequency = low}
@@ -123,7 +141,8 @@ ioctl(read_meter, State = #?state{slot_id = SlotId, publication_count = Publicat
 
   {ok, #status{metrics = Metrics}, State};
 
-ioctl({register_stream_relay, Host, Port}, State = #?state{ stream_relays = StreamRelays }) ->
+ioctl({register_stream_relay, Host, Port}, State = #?state{ stream_relays = StreamRelays
+                                                          , stream_relays_by_socket = StreamRelaysBySocket }) ->
   case inet:gethostbyname(?to_list(Host)) of
     {ok, #hostent{ h_addr_list = [ Addr | _ ] }} ->
 
@@ -140,8 +159,10 @@ ioctl({register_stream_relay, Host, Port}, State = #?state{ stream_relays = Stre
           gen_udp:connect(Socket, Addr, Port),
 
           NewStreamRelays = maps:put(MapKey, Socket, StreamRelays),
+          NewStreamRelaysBySocket = maps:put(Socket, MapKey, StreamRelaysBySocket),
 
-          {ok, State#?state{ stream_relays = NewStreamRelays}}
+          {ok, State#?state{ stream_relays = NewStreamRelays
+                           , stream_relays_by_socket = NewStreamRelaysBySocket}}
       end;
 
     Other ->

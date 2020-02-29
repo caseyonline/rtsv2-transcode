@@ -7,6 +7,7 @@
         , privDirImpl/1
         , eqRefImpl/2
         , selfImpl/0
+        , trapExitImpl/1
         ]).
 
 
@@ -29,9 +30,13 @@ makeRefImpl() ->
 privDirImpl(App) ->
   list_to_binary(code:priv_dir(App)).
 
-
 eqRefImpl(Ref1, Ref2) ->
   Ref1 == Ref2.
 
 selfImpl() ->
   fun() -> self() end.
+
+trapExitImpl(Value) ->
+  fun() ->
+      process_flag(trap_exit, Value)
+  end.

@@ -13,6 +13,7 @@ module Shared.Types
        , ServerLoad(..)
        , ServerLocation(..)
        , ServerRec
+       , Url
        , toServer
        , toServerLoad
        , serverLoadToServer
@@ -58,6 +59,12 @@ instance monoidMilliseconds :: Monoid Milliseconds where
 
 instance showMilliseconds :: Show Milliseconds where
   show (Milliseconds n) = "(Milliseconds " <> show n <> ")"
+
+-- | Url type
+newtype Url = Url String
+derive instance newtypeURL :: Newtype Url _
+derive newtype instance eqURL :: Eq Url
+derive newtype instance ordURL :: Ord Url
 
 newtype ServerAddress = ServerAddress String
 derive instance newtypeServerAddress :: Newtype ServerAddress _

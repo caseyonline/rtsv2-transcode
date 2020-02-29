@@ -6,205 +6,137 @@ module Rtsv2.Handler.LlnwStub
 
 import Prelude
 
+import Data.Array as Array
 import Data.Either (hush)
-import Data.Maybe (Maybe(..), isNothing)
-import Data.Newtype (wrap)
-import Data.Tuple (Tuple(..))
+import Data.Generic.Rep (class Generic)
+import Data.Generic.Rep.Eq (genericEq)
+import Data.Maybe (Maybe(..), fromMaybe, isNothing)
+import Data.Newtype (unwrap, wrap)
 import Effect (Effect)
 import Erl.Cowboy.Req (ReadBodyResult(..), Req, readBody, setBody)
 import Erl.Data.Binary (Binary)
 import Erl.Data.Binary.IOData (IOData, fromBinary, toBinary)
-import Erl.Data.List (nil, (:))
-import Erl.Data.Map (Map, fromFoldable, lookup)
+import Erl.Data.List (List, filter, head, nil, (:))
 import Erl.Data.Tuple (tuple2)
 import Logger (spy)
 import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
-import Shared.LlnwApiTypes (AuthType, PublishCredentials(..), SlotPublishAuthType(..), StreamAuth, StreamDetails, StreamIngestProtocol(..), StreamPublish, StreamConnection)
-import Shared.Stream (SlotRole(..))
-import Simple.JSON (readJSON, writeJSON)
-import Stetson (Authorized(..), HttpMethod(..), StetsonHandler)
+import Shared.LlnwApiTypes (AuthType, PublishCredentials, SlotPublishAuthType(..), StreamAuth, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamPublish)
+import Shared.Stream (RtmpShortName, SlotRole(..))
+import Simple.JSON (class ReadForeign, class WriteForeign, readJSON, writeJSON)
+import Stetson (HttpMethod(..), StetsonHandler)
 import Stetson.Rest as Rest
 import Unsafe.Coerce (unsafeCoerce)
 
-streamAuthTypeDb :: Map StreamConnection AuthType
-streamAuthTypeDb =
-  fromFoldable (Tuple (wrap { host: "172.16.171.5"
-                            , protocol: Rtmp
-                            , rtmpShortName: wrap "mmddev001"
-                            })
-                        {authType : Llnw }
-                : nil)
+data StubHost = Any
+              | SpecificHost String
 
-streamAuthDb :: Map StreamAuth PublishCredentials
-streamAuthDb =
-  fromFoldable (Tuple (wrap { host: "172.16.171.5"
-                            , rtmpShortName: wrap "mmddev001"
-                            , username: "user"
-                            })
-                (PublishCredentials { username: "user"
-                                    , password: "password"})
-                : nil)
+derive instance genericStubHost :: Generic StubHost _
+instance eqStubHost :: Eq StubHost where eq = genericEq
 
-streamPublishDb :: Map StreamPublish StreamDetails
-streamPublishDb =
-  fromFoldable (Tuple (wrap { host: "172.16.171.5"
-                            , protocol: Rtmp
-                            , rtmpShortName: wrap "mmddev001"
-                            , rtmpStreamName: wrap "slot1_1000"
-                            , username: "user" })
-                      { role: Primary
-                      , slot : { id: wrap 1
-                               , name: "slot1"
-                               , subscribeValidation: false
-                               , profiles: [ wrap { name: wrap "high",
-                                                    rtmpStreamName: wrap "slot1_1000",
-                                                    bitrate: 1000000}
-                                           , wrap { name: wrap "low",
-                                                    rtmpStreamName: wrap "slot1_500",
-                                                    bitrate: 500000}
-                                           ]
-                               , outputFormats : []
-                              }
-                      , push : []
+db :: List { auth :: { host :: StubHost
+                     , protocol :: StreamIngestProtocol
+                     , rtmpShortName :: RtmpShortName
+                     , authType :: SlotPublishAuthType
+                     , username :: String
+                     , password :: String
+                     }
+           , details :: StreamDetails
+           }
+db =
+  { auth: { host: Any --"172.16.171.5"
+          , protocol: Rtmp
+          , rtmpShortName: wrap "mmddev001"
+          , authType: Llnw
+          , username: "user"
+          , password: "password" }
+  , details: { role: Primary
+             , slot : { id: wrap 1
+                      , name: "slot1"
+                      , subscribeValidation: false
+                      , profiles: [ wrap { name: wrap "high",
+                                           rtmpStreamName: wrap "slot1_1000",
+                                           bitrate: 1000000}
+                                  , wrap { name: wrap "low",
+                                           rtmpStreamName: wrap "slot1_500",
+                                           bitrate: 500000}
+                                  ]
+                      , outputFormats : []
                       }
-                : Tuple (wrap { host: "172.16.171.5"
-                              , protocol: Rtmp
-                              , rtmpShortName: wrap "mmddev001"
-                              , rtmpStreamName: wrap "slot1_500"
-                              , username: "user" })
-                        { role: Primary
-                        , slot : { id: wrap 1
-                                 , name: "slot1"
-                                 , subscribeValidation: false
-                                 , profiles: [ wrap { name: wrap "high",
-                                                      rtmpStreamName: wrap "slot1_1000",
-                                                      bitrate: 1000000}
-                                             , wrap { name: wrap "low",
-                                                      rtmpStreamName: wrap "slot1_500",
-                                                      bitrate: 500000}
-                                             ]
-                                 , outputFormats : []
-                                 }
-                        , push : []
-                        }
-                : nil )
+             , push : []
+             }
+  }
+  : nil
 
-type StreamAuthTypeState = { streamConnection :: Maybe StreamConnection
-                           , authType :: Maybe AuthType
-                           , isAuthorized :: Boolean}
-streamAuthType :: StetsonHandler StreamAuthTypeState
+streamAuthType :: PostHelper StreamConnection AuthType
 streamAuthType =
-  Rest.handler (\req -> Rest.initResult req { streamConnection:  Nothing
-                                            , authType: Nothing
-                                            , isAuthorized: true})
+  postHelper lookup
+  where
+    lookup = lookup' <<< (map unwrap)
 
-  # Rest.serviceAvailable (\req state -> do
-                              isAgentAvailable <- IngestInstanceSup.isAvailable
-                              Rest.result isAgentAvailable req state)
+    lookup' Nothing = Nothing
+    lookup' (Just {host, protocol, rtmpShortName}) =
+      filter (\{auth: { host: candidateHost
+                      , protocol: candidateProtocol
+                      , rtmpShortName: candidateShortName }} ->
+              ((candidateHost == Any) || (candidateHost == SpecificHost host))
+              && (candidateProtocol == protocol)
+              && (candidateShortName == rtmpShortName))
+      db
+      # head
+      <#> (\x -> {authType: x.auth.authType})
 
-  # Rest.allowedMethods (Rest.result (POST : nil))
-
-  # Rest.malformedRequest (\req state -> do
-                              body <- allBody req mempty
-                              let
-                                maybeStreamConnection = hush $ readJSON $ binaryToString body
-                              Rest.result (isNothing maybeStreamConnection) req state{streamConnection = maybeStreamConnection})
-
-  # Rest.contentTypesAccepted (\req state ->
-                                Rest.result ((tuple2 "application/json" (\req2 state2@{authType: maybeAuthType} ->
-                                                                          let
-                                                                            output = case maybeAuthType of
-                                                                              Nothing -> ""
-                                                                              Just authType -> writeJSON authType
-                                                                            req3 = setBody output req2
-                                                                          in
-                                                                          (Rest.result true req3 state2))) : nil)
-                                req state)
-
-  # Rest.isAuthorized (\req state@{isAuthorized} ->
-                        Rest.result (Authorized) req state)
-
-  # Rest.resourceExists (\req state@{streamConnection: maybeKey} ->
-                          let
-                            lookupAuthType :: StreamConnection -> Maybe AuthType
-                            lookupAuthType key = lookup key streamAuthTypeDb
-                          in
-                            case lookupAuthType =<< maybeKey of
-                              Nothing ->
-                                Rest.result false req state
-                              Just authType ->
-                                Rest.result true req state{authType = Just authType}
-                        )
-  # Rest.previouslyExisted (Rest.result false)
-
-  # Rest.allowMissingPost (Rest.result false)
-
-  # Rest.contentTypesProvided (\req state -> Rest.result (tuple2 "application/json" (Rest.result ""): nil) req state)
-
-  # Rest.yeeha
-
-type StreamAuthState = { streamAuth :: Maybe StreamAuth
-                       , publishCredentials :: Maybe PublishCredentials
-                       , isAuthorized :: Boolean}
-streamAuth :: StetsonHandler StreamAuthState
+streamAuth :: PostHelper StreamAuth PublishCredentials
 streamAuth =
-  Rest.handler (\req -> Rest.initResult req { streamAuth:  Nothing
-                                            , publishCredentials: Nothing
-                                            , isAuthorized: true})
+  postHelper lookup
+  where
+    lookup = lookup' <<< (map unwrap)
 
-  # Rest.serviceAvailable (\req state -> do
-                              isAgentAvailable <- IngestInstanceSup.isAvailable
-                              Rest.result isAgentAvailable req state)
+    lookup' Nothing = Nothing
+    lookup' (Just {host, rtmpShortName, username}) =
+      filter (\{auth: { host: candidateHost
+                      , rtmpShortName: candidateShortName
+                      , username: candidateUsername }} ->
+              ((candidateHost == Any) || (candidateHost == SpecificHost host))
+              && (candidateShortName == rtmpShortName)
+              && (candidateUsername == username))
+              db
+              # head
+              <#> (\x -> wrap { username: x.auth.username
+                              , password: x.auth.password})
 
-  # Rest.allowedMethods (Rest.result (POST : nil))
-
-  # Rest.malformedRequest (\req state -> do
-                              body <- allBody req mempty
-                              let
-                                maybeStreamAuth = hush $ readJSON $ binaryToString body
-                              Rest.result (isNothing maybeStreamAuth) req state{streamAuth = maybeStreamAuth})
-
-  # Rest.contentTypesAccepted (\req state ->
-                                Rest.result ((tuple2 "application/json" (\req2 state2@{publishCredentials: maybePublishCredentials} ->
-                                                                          let
-                                                                            output = case maybePublishCredentials of
-                                                                              Nothing -> ""
-                                                                              Just publishCredentials -> writeJSON publishCredentials
-                                                                            req3 = setBody output req2
-                                                                          in
-                                                                          (Rest.result true req3 state2))) : nil)
-                                req state)
-
-  # Rest.isAuthorized (\req state@{isAuthorized} ->
-                        Rest.result (Authorized) req state)
-
-  # Rest.resourceExists (\req state@{streamAuth: maybeKey} ->
-                          let
-                            lookupPublishCredentials :: StreamAuth -> Maybe PublishCredentials
-                            lookupPublishCredentials key = lookup key streamAuthDb
-                          in
-                            case lookupPublishCredentials =<< maybeKey of
-                              Nothing ->
-                                Rest.result false req state
-                              Just publishCredentials ->
-                                Rest.result true req state{publishCredentials = Just publishCredentials}
-                        )
-  # Rest.previouslyExisted (Rest.result false)
-
-  # Rest.allowMissingPost (Rest.result false)
-
-  # Rest.contentTypesProvided (\req state -> Rest.result (tuple2 "application/json" (Rest.result ""): nil) req state)
-
-  # Rest.yeeha
-
-type StreamPublishState = { streamPublish :: Maybe StreamPublish
-                          , streamDetails :: Maybe StreamDetails
-                          , isAuthorized :: Boolean}
-streamPublish :: StetsonHandler StreamPublishState
+streamPublish :: PostHelper StreamPublish StreamDetails
 streamPublish =
-  Rest.handler (\req -> Rest.initResult req { streamPublish:  Nothing
-                                            , streamDetails: Nothing
-                                            , isAuthorized: true})
+  postHelper lookup
+  where
+    lookup = lookup' <<< (map unwrap)
+
+    lookup' Nothing = Nothing
+    lookup' (Just {host, protocol, rtmpShortName, rtmpStreamName, username}) =
+      filter (\{ auth: { host: candidateHost
+                       , protocol: candidateProtocol
+                       , rtmpShortName: candidateShortName
+                       , username: candidateUsername }
+               , details: { slot: {profiles: candidateProfiles} }} ->
+              ((candidateHost == Any) || (candidateHost == SpecificHost host))
+              && (candidateProtocol == protocol)
+              && (candidateShortName == rtmpShortName)
+              && not (Array.null (Array.filter (\candidateProfile ->
+                                                  let
+                                                     {rtmpStreamName: candidateRtmpStreamName} = unwrap candidateProfile
+                                                  in
+                                                    candidateRtmpStreamName == rtmpStreamName) candidateProfiles))
+              && (candidateUsername == username))
+              db
+      # head
+      <#> _.details
+
+type PostHelper a b = StetsonHandler { payload :: Maybe a
+                                     , output :: Maybe b
+                                     }
+postHelper :: forall a b. ReadForeign a => WriteForeign b =>  (Maybe a -> Maybe b) -> PostHelper a b
+postHelper lookupFun =
+  Rest.handler (\req -> Rest.initResult req { payload: Nothing
+                                            , output: Nothing })
 
   # Rest.serviceAvailable (\req state -> do
                               isAgentAvailable <- IngestInstanceSup.isAvailable
@@ -215,40 +147,41 @@ streamPublish =
   # Rest.malformedRequest (\req state -> do
                               body <- allBody req mempty
                               let
-                                maybeStreamPublish = hush $ readJSON $ binaryToString body
-                              Rest.result (isNothing maybeStreamPublish) req state{streamPublish = maybeStreamPublish})
+                                eJSON = readJSON $ binaryToString body
+                                maybePayload = hush $ eJSON
+                                _ = spy "body" $ binaryToString body
+                                _ = spy "json" $ eJSON
+                                _ = spy "maybePayload" maybePayload
+                              Rest.result (isNothing maybePayload) req state{payload = maybePayload})
 
   # Rest.contentTypesAccepted (\req state ->
-                                Rest.result ((tuple2 "application/json" (\req2 state2@{streamDetails: maybeStreamDetails} ->
+                                Rest.result ((tuple2 "application/json" (\req2 state2@{output: maybeOutput} ->
                                                                           let
-                                                                            output = case maybeStreamDetails of
-                                                                              Nothing -> ""
-                                                                              Just streamDetails -> writeJSON streamDetails
-                                                                            req3 = setBody (spy "output" output) req2
+                                                                            json = fromMaybe "" $ writeJSON <$> maybeOutput
+                                                                            req3 = setBody json req2
                                                                           in
                                                                           (Rest.result true req3 state2))) : nil)
                                 req state)
 
-  # Rest.isAuthorized (\req state@{isAuthorized} ->
-                        Rest.result (Authorized) req state)
+  -- # Rest.isAuthorized (\req state@{isAuthorized} ->
+  --                       Rest.result (Authorized) req state)
 
-  # Rest.resourceExists (\req state@{streamPublish: maybeKey} ->
+  # Rest.resourceExists (\req state@{payload: maybePayload} ->
                           let
-                            lookupStreamDetails :: StreamPublish -> Maybe StreamDetails
-                            lookupStreamDetails key = lookup key streamPublishDb
+                            output = lookupFun maybePayload
                           in
-                            case lookupStreamDetails =<< maybeKey of
+                            case output of
                               Nothing ->
                                 Rest.result false req state
-                              Just streamDetails ->
-                                Rest.result true req state{streamDetails = Just streamDetails}
+                              Just _ ->
+                                Rest.result true req state{output = output}
                         )
   # Rest.previouslyExisted (Rest.result false)
 
   # Rest.allowMissingPost (Rest.result false)
 
   # Rest.contentTypesProvided (\req state -> Rest.result (tuple2 "application/json" (Rest.result ""): nil) req state)
-  --# Rest.preHook (preHookSpyState "LLNW:streamPublish")
+  --# Rest.preHook (preHookSpyState "LLNW:postHelper")
   # Rest.yeeha
 
 

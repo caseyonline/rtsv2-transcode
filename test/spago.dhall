@@ -20,6 +20,7 @@ You can edit this file as you like.
     , "node-readline"
     , "psci-support"
     , "quickcheck"
+    , "routing-duplex"
     , "simple-json"
     , "simple-json-generics"
     , "spec"

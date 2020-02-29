@@ -8,6 +8,8 @@ import Prelude
 
 import Data.Either (Either(..))
 import Data.Newtype (unwrap)
+import Data.String (Pattern(..), Replacement(..), replaceAll)
+import Data.Traversable (traverse)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Cowboy.Handlers.Rest (MovedResult, moved, notMoved)
@@ -15,29 +17,34 @@ import Erl.Cowboy.Req (Req, StatusCode(..), replyWithoutBody, setHeader)
 import Erl.Data.List (List, singleton, (:))
 import Erl.Data.List as List
 import Erl.Data.Map as Map
+import Erl.Data.Tuple (tuple2)
+import Erl.Process.Raw (Pid)
+import Erl.Process.Raw as Raw
+import Gproc as GProc
+import Gproc as Gproc
 import Logger (Logger, spy)
 import Logger as Logger
 import Rtsv2.Agents.EgestInstance as EgestInstance
 import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
-import Rtsv2.Agents.Locator.Egest (findEgestAndRegister)
+import Rtsv2.Agents.Locator.Egest (findEgest)
 import Rtsv2.Agents.Locator.Types (FailureReason(..), LocalOrRemote(..))
 import Rtsv2.Audit as Audit
 import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.PoPDefinition as PoPDefinition
-import Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
-import Rtsv2.Web.Bindings as Bindings
+import Shared.Router.Endpoint (Endpoint(..), Canary, makeUrl)
+import Rtsv2.Utils (cryptoStrongToken)
 import Shared.Stream (EgestKey(..), SlotId)
 import Shared.Types (Server, extractAddress)
 import Stetson (HttpMethod(..), RestResult, StetsonHandler)
 import Stetson.Rest as Rest
 
 
-newtype ClientStartState = ClientStartState { slotId :: SlotId
+newtype ClientStartState = ClientStartState { clientId :: String
                                             , egestResp :: (Either FailureReason (LocalOrRemote Server))
                                             }
 
-clientStart :: StetsonHandler ClientStartState
-clientStart =
+clientStart :: Canary -> SlotId -> StetsonHandler ClientStartState
+clientStart canary slotId =
   Rest.handler init
   # Rest.allowedMethods (Rest.result (POST : mempty))
   # Rest.contentTypesAccepted (\req state -> Rest.result (singleton $ MimeType.json acceptAny) req state)
@@ -48,18 +55,18 @@ clientStart =
 
   where
     init req = do
-      let
-        slotId = Bindings.slotId req
+      clientId <- replaceAll (Pattern "/") (Replacement "_") <$> cryptoStrongToken 4
       thisServer <- PoPDefinition.getThisServer
-      egestResp <- findEgestAndRegister (spy "slotId" slotId) thisServer
+      egestResp <- findEgest slotId thisServer
       let
         req2 = setHeader "x-servedby" (unwrap $ extractAddress thisServer) req
+               # setHeader "x-client-id" clientId
         _ = spy "egestResp" egestResp
-      Rest.initResult req2 $ ClientStartState { slotId, egestResp }
+      Rest.initResult req2 $ ClientStartState { clientId, egestResp }
 
     acceptAny req state = Rest.result true req state
 
-    resourceExists req state@(ClientStartState {egestResp}) =
+    resourceExists req state@(ClientStartState { egestResp, clientId}) =
       case egestResp of
         Left NotFound ->
           do
@@ -69,9 +76,11 @@ clientStart =
           --TODO - don't think this should be a 502
           newReq <- replyWithoutBody (StatusCode 502) Map.empty req
           Rest.stop newReq state
-        Right (Local _)  ->
+        Right (Local _)  -> do
+          handlerPid <- startHandler clientId
+          _ <- EgestInstance.addClient handlerPid (EgestKey slotId)
           Rest.result true req state
-        Right (Remote _) ->
+        Right (Remote _) -> do
           Rest.result false req state
 
     previouslyExisted req state@(ClientStartState {egestResp}) =
@@ -82,26 +91,20 @@ clientStart =
        Rest.result resp req state
 
     movedTemporarily :: Req -> ClientStartState -> Effect (RestResult MovedResult ClientStartState)
-    movedTemporarily req state@(ClientStartState {slotId, egestResp}) =
+    movedTemporarily req state@(ClientStartState { egestResp}) =
       case spy "moved" egestResp of
         Right (Remote server) ->
           let
-            url = makeUrl server (ClientStartE "canary" slotId)
-            -- path = Routing.printUrl RoutingEndpoint.endpoint
-            -- url = spy "url" $ "http://" <> unwrap addr <> ":3000" <> path
+            url = makeUrl server (ClientStartE canary slotId)
           in
             Rest.result (moved $ unwrap url) req state
         _ ->
           Rest.result notMoved req state
 
-
-
-
-
-type ClientStopState = { egestKey :: EgestKey }
-clientStop :: StetsonHandler ClientStopState
-clientStop =
-
+type ClientStopState = { egestKey :: EgestKey
+                       }
+clientStop :: Canary -> SlotId -> String -> StetsonHandler ClientStopState
+clientStop canary slotId clientId  =
   Rest.handler init
   # Rest.allowedMethods (Rest.result (POST : mempty))
   # Rest.contentTypesAccepted (\req state -> Rest.result (singleton $ MimeType.json removeClient) req state)
@@ -110,8 +113,6 @@ clientStop =
 
   where
     init req = do
-      let
-        slotId = Bindings.slotId req
       thisNode <- extractAddress <$> PoPDefinition.getThisServer
       Rest.initResult req { egestKey: EgestKey slotId
                           }
@@ -128,8 +129,25 @@ clientStop =
     removeClient req state@{egestKey} =
       do
       _ <- Audit.clientStop egestKey
-      _ <- EgestInstance.removeClient egestKey
+      _ <- stopHandler clientId
+      -- _ <- EgestInstance.removeClient egestKey
       Rest.result true req state
+
+startHandler :: String -> Effect Pid
+startHandler clientId =
+  let
+    proc = do
+      _ <- GProc.register (tuple2 (atom "test_egest_client") clientId)
+      _ <- Raw.receive
+      pure unit
+  in
+    Raw.spawn proc
+
+stopHandler :: String -> Effect Unit
+stopHandler clientId = do
+  pid <- Gproc.whereIs (tuple2 (atom "test_egest_client") clientId)
+  _ <- traverse ((flip Raw.send) (atom "stop")) pid
+  pure unit
 
 --------------------------------------------------------------------------------
 -- Log helpers
