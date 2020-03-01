@@ -30,7 +30,7 @@ isAvailable = Pinto.isRegistered serverName
 startLink :: forall a. a -> Effect Pinto.StartLinkResult
 startLink _ = Sup.startLink serverName init
 
-startRelay :: CreateRelayPayload -> Effect Pinto.StartLinkResult
+startRelay :: CreateRelayPayload -> Effect Pinto.StartChildResult
 startRelay createPayload = do
   Sup.startSimpleChild childTemplate serverName createPayload
 
