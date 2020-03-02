@@ -31,74 +31,11 @@ startWorkflowFFI(SlotId) ->
       start_workflow(SlotId)
   end.
 
-%% Example Plan
-%%
-%% #{downstreamRelaySinks => [],
-%%                               egestSink =>
-%%                                   #{destinations =>
-%%                                         [#{port => 50319,
-%%                                            server => <<"172.16.171.1">>}],
-%%                                     source =>
-%%                                         {egestSinkSourceIngestAggregator}},
-%%                               ingestAggregatorSource =>
-%%                                   {ingestAggregatorSourceEnabled,
-%%                                       <<"172.16.171.5">>},
-%%                               upstreamRelaySources => []}
 
-
-applyPlanFFI(WorkflowHandle,
-             #{ ingestAggregatorSource := IngestAggregatorSource
-              , upstreamRelaySources := UpstreamRelaySourceList
-              , egestSink := #{ destinations := EgestDestinationList
-                              , source := _EgestSource
-                              }
-              , downstreamRelaySinks := DownstreamRelaySinks
-              } = StreamRelayPlan) ->
+applyPlanFFI(WorkflowHandle, StreamRelayPlan) ->
   fun() ->
-      io:format(user, "Received a StreamRelayPlan: ~p~n~n", [StreamRelayPlan]),
-
-      IngestAggregatorReceivePort =
-        case IngestAggregatorSource of
-          {ingestAggregatorSourceEnabled, _IngestAggregatorHost} ->
-            {ok,   ReceivePort} = id3as_workflow:ioctl(sources, ensure_ingest_aggregator_source, WorkflowHandle),
-            {just, ReceivePort};
-          {ingestAggregatorSourceDisabled} ->
-            {nothing}
-        end,
-
-      UpstreamRelayReceivePorts =
-        maps:from_list(lists:map(fun(#{ next := _NextPoP, rest := _RemainingPoPs } = UpstreamRelay) ->
-                                     {ok, UpstreamRelayReceivePort} = id3as_workflow:ioctl(sources, {ensure_upstream_relay_source, UpstreamRelay}, WorkflowHandle),
-                                     {UpstreamRelay, UpstreamRelayReceivePort}
-                                 end,
-                                 UpstreamRelaySourceList
-                                )),
-
-      lists:foreach(fun(#{ port := EgestPort, server := EgestHost } = _EgestDestination) ->
-                        case id3as_workflow:ioctl(egests, {register_egest, EgestHost, EgestPort}, WorkflowHandle) of
-                          ok ->
-                            ok;
-                          {ok, {error, already_registered}} ->
-                            ok
-                        end
-                    end,
-                    EgestDestinationList
-                   ),
-
-      lists:foreach(fun(#{ source := _Source, deliverTo := #{ port := SinkPort, server := SinkHost } } = _DownstreamRelaySink) ->
-                        case id3as_workflow:ioctl(relays, {register_relay, SinkHost, SinkPort}, WorkflowHandle) of
-                          ok ->
-                            ok;
-                          {ok, {error, already_registered}} ->
-                            ok
-                        end
-                    end,
-                    DownstreamRelaySinks
-                   ),
-
-      #{ ingestAggregatorReceivePort => IngestAggregatorReceivePort
-       , upstreamRelayReceivePorts => UpstreamRelayReceivePorts
-       }
+      {ok, Result} = id3as_workflow:ioctl(relays, {apply_plan, StreamRelayPlan}, WorkflowHandle),
+      Result
   end.
 
 
@@ -126,8 +63,8 @@ getSlotConfigurationFFI(RelayKey) ->
 %%------------------------------------------------------------------------------
 start_workflow(SlotId) ->
 
-  %% TODO: the actual switchboard logic that dictates what goes where
-
+  %% NOTE: the stream relay generator does all of its forwarding internally, nothing
+  %% comes out of it.
   Workflow =
     #workflow{
        name = {stream_relay_instance, SlotId},
@@ -136,23 +73,9 @@ start_workflow(SlotId) ->
                , slot => SlotId
                },
        generators =
-         [ #generator{ name = sources
-                     , display_name = <<"Ingests">>
-                     , module = rtsv2_stream_relay_generator
-                     }
-         ],
-
-       processors =
-         [ #processor{ name = egests
-                     , display_name = <<"Egests">>
-                     , module = rtsv2_relay_to_egest_forward_processor
-                     , subscribes_to = sources
-                     , config = SlotId
-                     }
-         , #processor{ name = relays
+         [ #generator{ name = relays
                      , display_name = <<"Relays">>
-                     , module = rtsv2_relay_to_relay_forward_processor
-                     , subscribes_to = sources
+                     , module = rtsv2_stream_relay_generator
                      }
          ]
       },
