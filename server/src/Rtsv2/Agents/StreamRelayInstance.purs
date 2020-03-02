@@ -36,7 +36,7 @@ import PintoHelper (exposeState)
 import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..))
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
-import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload, RegisterEgestPayload, SourceRoute, RegisterRelayPayload, DeliverTo)
+import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload, RegisterEgestPayload, SourceRoute, RegisterRelayPayload)
 import Rtsv2.Agents.TransPoP (PoPRoutes)
 import Rtsv2.Agents.TransPoP as TransPoP
 import Rtsv2.Names as Names
@@ -44,7 +44,7 @@ import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Agent as Agent
 import Shared.Stream (AggregatorKey(..), RelayKey(..), SlotId(..), SlotRole)
 import Shared.Router.Endpoint (Endpoint(..), makeUrlAddr, makeUrl)
-import Shared.Types (PoPName, EgestServer, RelayServer(..), Server(..), ServerAddress(..), Url, extractPoP, extractAddress)
+import Shared.Types (PoPName, DeliverTo, EgestServer, RelayServer(..), Server(..), ServerAddress(..), Url, extractPoP, extractAddress)
 import Shared.Types.Agent.State as PublicState
 import SpudGun (SpudResponse(..), JsonResponseError, StatusCode(..))
 import SpudGun as SpudGun

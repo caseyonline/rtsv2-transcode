@@ -18,7 +18,7 @@ module Shared.Types.Agent.State
 import Data.Maybe (Maybe)
 import Shared.LlnwApiTypes (StreamDetails)
 import Shared.Stream (AgentKey, IngestKey, SlotId, SlotRole, ProfileName)
-import Shared.Types (GeoLoc, Milliseconds, PoPName, RegionName, Server, ServerAddress)
+import Shared.Types (DeliverTo, GeoLoc, Milliseconds, PoPName, RegionName, RelayServer, Server, ServerAddress)
 import Shared.Types.Media.Types.Rtmp (RtmpClientMetadata)
 import Shared.Types.Media.Types.SourceDetails (SourceInfo)
 import Shared.Types.Workflow.Metrics.FrameFlow as FrameFlow
@@ -54,6 +54,7 @@ type IngestAggregator f
      , activeProfiles :: f { profileName :: ProfileName
                            , serverAddress :: ServerAddress
                            }
+     , downstreamRelays :: f (DeliverTo RelayServer)
      }
 
 type StreamRelay f

@@ -1,5 +1,6 @@
 module Shared.Types
        ( Load
+       , DeliverTo
        , ServerAddress(..)
        , RegionName(..)
        , PoPName(..)
@@ -129,6 +130,11 @@ type ServerRec = { address :: ServerAddress
 newtype Server = Server ServerRec
 newtype RelayServer = Relay ServerRec
 newtype EgestServer = Egest ServerRec
+
+type DeliverTo serverType
+  = { server :: serverType
+    , port :: Int
+    }
 
 derive instance newtypeServer :: Newtype Server _
 derive newtype instance eqServer :: Eq Server
