@@ -118,11 +118,11 @@ registerRelay payload@{deliverTo} = Gen.doCast (serverName $ payloadToAggregator
 getState :: AggregatorKey -> Effect (PublicState.IngestAggregator List)
 getState aggregatorKey@(AggregatorKey _streamId streamRole) = Gen.call (serverName aggregatorKey) getState'
   where
-    getState' state@{streamDetails, activeProfileNames} =
+    getState' state@{streamDetails, activeProfileNames, downstreamRelays} =
       CallReply { role: streamRole
                 , streamDetails
                 , activeProfiles: (\(Tuple profileName serverAddress) -> {profileName, serverAddress}) <$> (toUnfoldable activeProfileNames)
-                , downstreamRelays : nil
+                , downstreamRelays
                 }
       state
 
