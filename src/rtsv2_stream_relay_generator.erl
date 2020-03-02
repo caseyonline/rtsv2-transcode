@@ -13,11 +13,12 @@
 -define(state, ?MODULE).
 
 -type pop_name() :: binary_string().
--type source_key() :: list(pop_name()).
+-type relay_key() :: #{ next := pop_name(), rest := list(pop_name()) }.
 
 -record(?state,
         { workflow_context :: workflow_context()
-        , workflows :: maps:map(source_key(), id3as_workflow:workflow_handle())
+        , upstream_relay_workflows :: maps:map(relay_key(), id3as_workflow:workflow_handle())
+        , ingest_aggregator_workflow :: undefined | id3as_workflow:workflow_handle()
         }).
 
 %%------------------------------------------------------------------------------
@@ -26,7 +27,7 @@
 init(#generator{workflow_context = Context}) ->
   { ok
   , #?state{ workflow_context = Context
-           , workflows = #{}
+           , upstream_relay_workflows = #{}
            }
   }.
 
@@ -34,81 +35,157 @@ handle_info(#workflow_output{message = Msg}, State) ->
   {output, Msg, State}.
 
 
-ioctl(ensure_ingest_aggregator_source, State = #?state{ workflows = Workflows, workflow_context = Context }) ->
+%% Look in StreamRelayInstance.purs for StreamRelayPlan for the structure of a plan
+ioctl({ apply_plan
+      , #{ ingestAggregatorSource := MaybeIngestAggregatorSource
+         , upstreamRelaySources := UpstreamRelaySourceList
+         } = _StreamRelayPlan
+      },
+      State
+     ) ->
 
-  %% There can only ever be one ingest aggregator for a stream, so that's sufficiently
-  %% unique to use as a key
-  SourceKey = ingest_aggregator,
+  io:format(user, "STREAM PLAN: ~p~n~n", [_StreamRelayPlan]),
 
-  {Handle, FinalState} =
-    case maps:find(SourceKey, Workflows) of
-      {ok, ExistingHandle} ->
-        {ExistingHandle, State};
+  {IngestAggregatorResult, NewState1} =
+    case MaybeIngestAggregatorSource of
+      {just, IngestAggregatorSource} ->
+        {ok,    IngestReceivePort, StateWithAggregatorSource} = ensure_ingest_aggregator_source(IngestAggregatorSource, State),
+        {{just, IngestReceivePort}, StateWithAggregatorSource};
 
-      error ->
-        {ok, NewHandle} = start_workflow_for_ingest_aggregator_source(Context),
-        NewState = State#?state{workflows = maps:put(SourceKey, NewHandle, Workflows)},
-        {NewHandle, NewState}
+      {nothing} ->
+        {{nothing}, State}
     end,
 
-  {ok, Port} = id3as_workflow:ioctl(source, get_port_number, Handle),
-  {ok, Port, FinalState};
+  %% Ensure current upstream relays exist and are properly configured
+  {NewState2, UpstreamRelayReceivePorts} =
+    lists:foldl(fun(#{ relay := UpstreamRelay } = UpstreamRelaySource, {StateIn, RelayReceivePortsIn}) ->
+                    {ok, RelayReceivePort, StateOut} = ensure_upstream_relay_source(UpstreamRelaySource, StateIn),
+                    {StateOut, [{UpstreamRelay, RelayReceivePort} | RelayReceivePortsIn]}
+                end,
+                {NewState1, []},
+                UpstreamRelaySourceList
+               ),
 
-ioctl({ensure_upstream_relay_source, UpstreamRelay}, State = #?state{ workflows = Workflows, workflow_context = Context }) ->
+  %% Remove any relays that are no longer relevant
+  ValidUpstreamRelays = maps:from_list([ {RelayKey, true} || #{ relay := RelayKey } <- UpstreamRelaySourceList ]),
 
-  SourceKey = {stream_relay, UpstreamRelay},
+  NewUpstreamRelayWorkflows =
+    maps:fold(fun(ExistingRelayKey, ExistingRelayWorkflowHandle, UpstreamRelayWorkflowsIn) ->
+                  case maps:is_key(ExistingRelayKey, ValidUpstreamRelays) of
+                    true ->
+                      UpstreamRelayWorkflowsIn;
+                    false ->
+                      io:format(user, "Removing obsolete stream relay ~p~n", [ExistingRelayKey]),
+                      _ = id3as_workflow:stop(ExistingRelayWorkflowHandle),
+                      maps:remove(ExistingRelayKey, UpstreamRelayWorkflowsIn)
+                  end
+              end,
+              NewState2#?state.upstream_relay_workflows,
+              NewState2#?state.upstream_relay_workflows
+             ),
 
-  {Handle, FinalState} =
-    case maps:find(SourceKey, Workflows) of
-      {ok, ExistingHandle} ->
-        {ExistingHandle, State};
+  NewState3 = NewState2#?state{ upstream_relay_workflows = NewUpstreamRelayWorkflows },
 
-      error ->
-        {ok, NewHandle} = start_workflow_for_stream_relay_source(UpstreamRelay, Context),
-        NewState = State#?state{workflows = maps:put(SourceKey, NewHandle, Workflows)},
-        {NewHandle, NewState}
-    end,
+  Result =
+    #{ ingestAggregatorReceivePort => IngestAggregatorResult
+     , upstreamRelayReceivePorts => maps:from_list(UpstreamRelayReceivePorts)
+     },
 
-  {ok, Port} = id3as_workflow:ioctl(source, get_port_number, Handle),
-  {ok, Port, FinalState}.
+  {ok, Result, NewState3}.
 
 
 %%------------------------------------------------------------------------------
 %% Private Functions
-%%------------------------------------------------------------------------------
+%,%------------------------------------------------------------------------------
+ensure_ingest_aggregator_source(#{ egests := EgestList, downstreamRelays := DownstreamRelayList } = _IngestAggregatorSource, #?state{ ingest_aggregator_workflow = WorkflowHandle } = State) when WorkflowHandle =/= undefined ->
+  {ok, ReceivePort} = id3as_workflow:ioctl(source, get_port_number, WorkflowHandle),
+  {ok, _EgestsWhichFailedResolution} = id3as_workflow:ioctl(forward_to_egests, {set_destinations, EgestList}, WorkflowHandle),
+  {ok, _RelaysWhichFailedResolution} = id3as_workflow:ioctl(forward_to_relays, {set_destinations, DownstreamRelayList}, WorkflowHandle),
+  {ok, ReceivePort, State};
+
+ensure_ingest_aggregator_source(IngestAggregatorSource, #?state{ workflow_context = WorkflowContext } = State) ->
+  {ok, WorkflowHandle} = start_workflow_for_ingest_aggregator_source(WorkflowContext),
+  NewState = State#?state{ ingest_aggregator_workflow = WorkflowHandle },
+  ensure_ingest_aggregator_source(IngestAggregatorSource, NewState).
+
+
 start_workflow_for_ingest_aggregator_source(Context) ->
   Workflow =
     #workflow{ name = ingest_aggregator_source
-             , display_name = <<>>
+             , display_name = <<"Ingest Aggregator Source">>
              , generators =
                  [ #generator{ name = source
                              , display_name = <<"Receive from Ingest Aggregator">>
                              , module = rtsv2_rtp_trunk_receiver_generator
                              }
                  ]
-             },
-
-  {ok, Pid} = id3as_workflow:start_link(Workflow, self(), Context),
-
-  {ok, Handle} = id3as_workflow:workflow_handle(Pid),
-
-  {ok, Handle}.
-
-
-start_workflow_for_stream_relay_source(_UpstreamRelay, Context) ->
-  Workflow =
-    #workflow{ name = upstream_relay_source
-             , display_name = <<>>
-             , generators =
-                 [ #generator{ name = source
-                             , display_name = <<"Receive from Stream Relay">>
-                             , module = rtsv2_rtp_trunk_receiver_generator
+             , processors =
+                 [ #processor{ name = forward_to_egests
+                             , display_name = <<"Forward to Egests">>
+                             , module = rtsv2_stream_relay_forward_processor
+                             , subscribes_to = source
+                             }
+                 , #processor{ name = forward_to_relays
+                             , display_name = <<"Forward to Downstream Relays">>
+                             , module = rtsv2_stream_relay_forward_processor
+                             , subscribes_to = source
                              }
                  ]
              },
-
   {ok, Pid} = id3as_workflow:start_link(Workflow, self(), Context),
-
   {ok, Handle} = id3as_workflow:workflow_handle(Pid),
+  {ok, Handle}.
 
+
+ensure_upstream_relay_source(#{ relay := RelayKey
+                              , egests := EgestList
+                              , downstreamRelays := DownstreamRelayList
+                              } = _UpstreamRelaySource,
+                             #?state{ upstream_relay_workflows = Workflows
+                                    , workflow_context = Context
+                                    } = State
+                            ) ->
+
+  {WorkflowHandle, FinalState} =
+    case maps:find(RelayKey, Workflows) of
+      {ok, ExistingHandle} ->
+        {ExistingHandle, State};
+
+      error ->
+        {ok, NewHandle} = start_workflow_for_stream_relay_source(RelayKey, Context),
+        NewState = State#?state{ upstream_relay_workflows = maps:put(RelayKey, NewHandle, Workflows) },
+        {NewHandle, NewState}
+    end,
+
+  {ok, Port} = id3as_workflow:ioctl(source, get_port_number, WorkflowHandle),
+  {ok, _EgestsWhichFailedResolution} = id3as_workflow:ioctl(forward_to_egests, {set_destinations, EgestList}, WorkflowHandle),
+  {ok, _RelaysWhichFailedResolution} = id3as_workflow:ioctl(forward_to_relays, {set_destinations, DownstreamRelayList}, WorkflowHandle),
+  {ok, Port, FinalState}.
+
+
+start_workflow_for_stream_relay_source(RelayKey, Context) ->
+  Workflow =
+    #workflow{ name = {upstream_relay_source, RelayKey}
+             , display_name = <<"Upstream Relay Source">>
+             , generators =
+                 [ #generator{ name = source
+                             , display_name = <<"Receive from Upstream Relay">>
+                             , module = rtsv2_rtp_trunk_receiver_generator
+                             }
+                 ]
+             , processors =
+                 [ #processor{ name = forward_to_egests
+                             , display_name = <<"Forward to Egests">>
+                             , module = rtsv2_stream_relay_forward_processor
+                             , subscribes_to = source
+                             }
+                 , #processor{ name = forward_to_relays
+                             , display_name = <<"Forward to Downstream Relays">>
+                             , module = rtsv2_stream_relay_forward_processor
+                             , subscribes_to = source
+                             }
+                 ]
+             },
+  {ok, Pid} = id3as_workflow:start_link(Workflow, self(), Context),
+  {ok, Handle} = id3as_workflow:workflow_handle(Pid),
   {ok, Handle}.
