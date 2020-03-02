@@ -29,7 +29,7 @@ startLink _ = Sup.startLink serverName init
 
 startIngest :: IngestKey -> StreamPublish -> StreamDetails -> String -> Int -> Pid -> Effect Unit
 startIngest ingestKey streamPublish streamDetails remoteAddress remotePort handlerPid = do
-  void <$> okAlreadyStarted =<< Sup.startSimpleChild childTemplate serverName { streamPublish
+  okAlreadyStarted =<< Sup.startSimpleChild childTemplate serverName { streamPublish
                                                                               , streamDetails
                                                                               , ingestKey
                                                                               , remoteAddress
