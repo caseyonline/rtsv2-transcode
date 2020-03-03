@@ -46,16 +46,14 @@ handle_info(#workflow_output{message = Msg}, State) ->
 
 %% Look in StreamRelayInstance.purs for StreamRelayPlan for the structure of a plan
 ioctl({ apply_plan
-      , { originStreamRelayPlan
-        , #{ downstreamRelays := DownstreamRelays }
-        }
+      , { originStreamRelayPlan, #{} }
       },
       #?origin_state{} = State
      ) ->
 
   {IngestAggregatorResult, NewState} =
     begin
-        {ok,    IngestReceivePort, StateWithAggregatorSource} = ensure_ingest_aggregator_source(DownstreamRelays, State),
+        {ok,    IngestReceivePort, StateWithAggregatorSource} = ensure_ingest_aggregator_source(State),
         {{just, IngestReceivePort}, StateWithAggregatorSource}
     end,
 
@@ -76,16 +74,16 @@ ioctl({ apply_plan
 
   %% Ensure current upstream relays exist and are properly configured
   {NewState1, UpstreamRelayReceivePorts} =
-    lists:foldl(fun(#{ relay := UpstreamRelay } = UpstreamRelaySource, {StateIn, RelayReceivePortsIn}) ->
-                    {ok, RelayReceivePort, StateOut} = ensure_upstream_relay_source(UpstreamRelaySource, StateIn),
-                    {StateOut, [{UpstreamRelay, RelayReceivePort} | RelayReceivePortsIn]}
+    lists:foldl(fun(RelayKey, {StateIn, RelayReceivePortsIn}) ->
+                    {ok, RelayReceivePort, StateOut} = ensure_upstream_relay_source(RelayKey, StateIn),
+                    {StateOut, [{RelayKey, RelayReceivePort} | RelayReceivePortsIn]}
                 end,
                 {State, []},
                 UpstreamRelaySourceList
                ),
 
   %% Remove any relays that are no longer relevant
-  ValidUpstreamRelays = maps:from_list([ {RelayKey, true} || #{ relay := RelayKey } <- UpstreamRelaySourceList ]),
+  ValidUpstreamRelays = maps:from_list([ {RelayKey, true} || RelayKey <- UpstreamRelaySourceList ]),
 
   NewUpstreamRelayWorkflows =
     maps:fold(fun(ExistingRelayKey, ExistingRelayWorkflowHandle, UpstreamRelayWorkflowsIn) ->
@@ -113,15 +111,14 @@ ioctl({ apply_plan
 %%------------------------------------------------------------------------------
 %% Private Functions
 %,%------------------------------------------------------------------------------
-ensure_ingest_aggregator_source(DownstreamRelayList, #?origin_state{ ingest_aggregator_workflow = WorkflowHandle } = State) when WorkflowHandle =/= undefined ->
+ensure_ingest_aggregator_source(#?origin_state{ ingest_aggregator_workflow = WorkflowHandle } = State) when WorkflowHandle =/= undefined ->
   {ok, ReceivePort} = id3as_workflow:ioctl(source, get_port_number, WorkflowHandle),
-  {ok, _RelaysWhichFailedResolution} = id3as_workflow:ioctl(forward_to_relays, {set_destinations, DownstreamRelayList}, WorkflowHandle),
   {ok, ReceivePort, State};
 
-ensure_ingest_aggregator_source(DownstreamRelayList, #?origin_state{ workflow_context = WorkflowContext } = State) ->
+ensure_ingest_aggregator_source(#?origin_state{ workflow_context = WorkflowContext } = State) ->
   {ok, WorkflowHandle} = start_workflow_for_ingest_aggregator_source(WorkflowContext),
   NewState = State#?origin_state{ ingest_aggregator_workflow = WorkflowHandle },
-  ensure_ingest_aggregator_source(DownstreamRelayList, NewState).
+  ensure_ingest_aggregator_source(NewState).
 
 
 start_workflow_for_ingest_aggregator_source(Context) ->
@@ -135,13 +132,8 @@ start_workflow_for_ingest_aggregator_source(Context) ->
                              }
                  ]
              , processors =
-                 [ #processor{ name = forward_to_relays
-                             , display_name = <<"Forward to Downstream Relays">>
-                             , module = rtsv2_stream_relay_forward_processor
-                             , subscribes_to = source
-                             }
-                 , #processor{ name = tap_for_egests
-                             , display_name = <<"Tap for Egests">>
+                 [ #processor{ name = tap_for_forwards
+                             , display_name = <<"Tap for Forwarded Egests and Downstream Relays">>
                              , module = passthrough_processor
                              , subscribes_to = source
                              }
@@ -152,9 +144,7 @@ start_workflow_for_ingest_aggregator_source(Context) ->
   {ok, Handle}.
 
 
-ensure_upstream_relay_source(#{ relay := RelayKey
-                              , downstreamRelays := DownstreamRelayList
-                              } = _UpstreamRelaySource,
+ensure_upstream_relay_source(RelayKey,
                              #?downstream_state{ upstream_relay_workflows = Workflows
                                                , workflow_context = Context
                                                } = State
@@ -172,7 +162,6 @@ ensure_upstream_relay_source(#{ relay := RelayKey
     end,
 
   {ok, Port} = id3as_workflow:ioctl(source, get_port_number, WorkflowHandle),
-  {ok, _RelaysWhichFailedResolution} = id3as_workflow:ioctl(forward_to_relays, {set_destinations, DownstreamRelayList}, WorkflowHandle),
   {ok, Port, FinalState}.
 
 
@@ -187,13 +176,8 @@ start_workflow_for_stream_relay_source(RelayKey, Context) ->
                              }
                  ]
              , processors =
-                 [ #processor{ name = forward_to_relays
-                             , display_name = <<"Forward to Downstream Relays">>
-                             , module = rtsv2_stream_relay_forward_processor
-                             , subscribes_to = source
-                             }
-                 , #processor{ name = tap_for_egests
-                             , display_name = <<"Tap for Egests">>
+                 [ #processor{ name = tap_for_forwards
+                             , display_name = <<"Tap for Forwarded Egests and Downstream Relays">>
                              , module = passthrough_processor
                              , subscribes_to = source
                              }

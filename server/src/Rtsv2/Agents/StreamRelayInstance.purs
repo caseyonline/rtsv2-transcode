@@ -149,12 +149,8 @@ type OriginStreamRelayPlanData =
   }
 
 type DownstreamStreamRelayPlanData =
-  { upstreamRelaySources :: List UpstreamRelaySource
+  { upstreamRelaySources :: List UpstreamRelay
   , egests :: List (DeliverTo ServerAddress)
-  }
-
-type UpstreamRelaySource =
-  { relay :: UpstreamRelay
   , downstreamRelays :: List (DeliverTo ServerAddress)
   }
 
@@ -559,12 +555,25 @@ configToPlan { ingestAggregator } config@{ egestSource: (EgestSourceUpstreamRela
   where
     planData =
       { egests: plannedEgests
+      , downstreamRelays: plannedDownstreamRelays
       , upstreamRelaySources
       }
 
     egestList = config.egests # Map.values
 
     plannedEgests = egestList <#> deliverToAddressFromDeliverToEgestServer
+
+    plannedDownstreamRelays =
+      downstreamRelayList
+        # filterMap
+          (\relay ->
+            case relay.source of
+              DownstreamRelaySourceIngestAggregator ->
+                Nothing
+
+              DownstreamRelaySourceUpstreamRelay _upstreamRelay ->
+                Just $ deliverToAddressFromDeliverToRelayServer relay.deliverTo
+          )
 
     downstreamRelayList = config.downstreamRelays # Map.values
 
@@ -578,7 +587,7 @@ configToPlan { ingestAggregator } config@{ egestSource: (EgestSourceUpstreamRela
       if egests == List.nil then
         upstreamRelaySources
       else
-        foldl (\z relay -> ensureRelaySource relay List.nil z) upstreamRelaySources egestUpstreamRelays
+        foldl (\z relay -> ensureRelaySource relay z) upstreamRelaySources egestUpstreamRelays
 
     ensureRelaySourcesForDownstreamRelays downstreamRelays upstreamRelaySources =
       downstreamRelays
@@ -593,19 +602,16 @@ configToPlan { ingestAggregator } config@{ egestSource: (EgestSourceUpstreamRela
                      , downstream: deliverToAddressFromDeliverToRelayServer relay.deliverTo
                      }
           )
-        # foldl (\z relay -> ensureRelaySource relay.upstream (relay.downstream : List.nil) z) upstreamRelaySources
+        # foldl (\z relay -> ensureRelaySource relay.upstream z) upstreamRelaySources
 
-    ensureRelaySource upstreamRelay downstreamRelays upstreamRelaySources =
-      Map.alter (alterRelaySource upstreamRelay downstreamRelays) upstreamRelay upstreamRelaySources
+    ensureRelaySource upstreamRelay upstreamRelaySources =
+      Map.alter (alterRelaySource upstreamRelay) upstreamRelay upstreamRelaySources
 
-    alterRelaySource relay downstreamRelays Nothing =
-      Just { relay, downstreamRelays }
+    alterRelaySource relay Nothing =
+      Just relay
 
-    alterRelaySource relay downstreamRelays (Just existingRelaySource) =
-      let
-        newDownstreamRelays = List.concat (downstreamRelays : existingRelaySource.downstreamRelays : List.nil)
-      in
-        Just existingRelaySource{ downstreamRelays = newDownstreamRelays }
+    alterRelaySource relay (Just existingRelaySource) =
+      Just existingRelaySource
 
 -- -----------------------------------------------------------------------------
 -- Apply Result -> Run State Transformation

@@ -37,20 +37,21 @@ startDownstreamWorkflowFFI(SlotId) ->
       start_workflow(downstream, SlotId)
   end.
 
-applyPlanFFI({originStreamRelayPlan, #{ egests := EgestList }} = StreamRelayPlan, WorkflowHandle) ->
+applyPlanFFI({originStreamRelayPlan, #{ egests := EgestList, downstreamRelays := RelayList }} = StreamRelayPlan, WorkflowHandle) ->
   fun() ->
       io:format(user, "ORIGIN STREAM PLAN: ~p~n~n", [StreamRelayPlan]),
 
       %% Set up all sources and downstream relay fowarding
       {ok, Result} = id3as_workflow:ioctl(source, {apply_plan, StreamRelayPlan}, WorkflowHandle),
 
-      %% Set up all egest forwarding
+      %% Set up all forwarding
       {ok, _FailedResolution} = id3as_workflow:ioctl(forward_to_egests, {set_destinations, EgestList}, WorkflowHandle),
+      {ok, _FailedResolution} = id3as_workflow:ioctl(forward_to_relays, {set_destinations, RelayList}, WorkflowHandle),
 
       Result
   end;
 
-applyPlanFFI({downstreamStreamRelayPlan, #{ egests := EgestList }} = StreamRelayPlan, WorkflowHandle) ->
+applyPlanFFI({downstreamStreamRelayPlan, #{ egests := EgestList, downstreamRelays := RelayList }} = StreamRelayPlan, WorkflowHandle) ->
   fun() ->
       io:format(user, "DOWNSTREAM STREAM PLAN: ~p~n~n", [StreamRelayPlan]),
 
@@ -59,6 +60,7 @@ applyPlanFFI({downstreamStreamRelayPlan, #{ egests := EgestList }} = StreamRelay
 
       %% Set up all egest forwarding
       {ok, _FailedResolution} = id3as_workflow:ioctl(forward_to_egests, {set_destinations, EgestList}, WorkflowHandle),
+      {ok, _FailedResolution} = id3as_workflow:ioctl(forward_to_relays, {set_destinations, RelayList}, WorkflowHandle),
 
       Result
   end.
@@ -108,6 +110,11 @@ start_workflow(OriginOrDownstream, SlotId) ->
                              }
                  , #processor{ name = forward_to_egests
                              , display_name = <<"Forward Merged Stream to Egest Instances">>
+                             , module = rtsv2_stream_relay_forward_processor
+                             , subscribes_to = merge_redundant_streams_for_egest
+                             }
+                 , #processor{ name = forward_to_relays
+                             , display_name = <<"Forward Merged Stream to Downstream Relays">>
                              , module = rtsv2_stream_relay_forward_processor
                              , subscribes_to = merge_redundant_streams_for_egest
                              }
