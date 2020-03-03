@@ -45,11 +45,7 @@ handle_info(#workflow_output{message = Msg}, State) ->
 
 
 %% Look in StreamRelayInstance.purs for StreamRelayPlan for the structure of a plan
-ioctl({ apply_plan
-      , { originStreamRelayPlan, #{} }
-      },
-      #?origin_state{} = State
-     ) ->
+ioctl({apply_origin_plan, #{}}, #?origin_state{} = State) ->
 
   {IngestAggregatorResult, NewState} =
     begin
@@ -57,20 +53,11 @@ ioctl({ apply_plan
         {{just, IngestReceivePort}, StateWithAggregatorSource}
     end,
 
-  Result =
-    #{ ingestAggregatorReceivePort => IngestAggregatorResult
-     , upstreamRelayReceivePorts => #{}
-     },
+  Result = #{ ingestAggregatorReceivePort => IngestAggregatorResult },
 
   {ok, Result, NewState};
 
-ioctl({ apply_plan
-      , { downstreamStreamRelayPlan
-        , #{ upstreamRelaySources := UpstreamRelaySourceList }
-        }
-      },
-      State
-     ) ->
+ioctl({apply_downstream_plan, #{ upstreamRelaySources := UpstreamRelaySourceList } }, State) ->
 
   %% Ensure current upstream relays exist and are properly configured
   {NewState1, UpstreamRelayReceivePorts} =
@@ -101,10 +88,7 @@ ioctl({ apply_plan
 
   NewState2 = NewState1#?downstream_state{ upstream_relay_workflows = NewUpstreamRelayWorkflows },
 
-  Result =
-    #{ ingestAggregatorReceivePort => {nothing}
-     , upstreamRelayReceivePorts => maps:from_list(UpstreamRelayReceivePorts)
-     },
+  Result = #{ upstreamRelayReceivePorts => maps:from_list(UpstreamRelayReceivePorts) },
 
   {ok, Result, NewState2}.
 

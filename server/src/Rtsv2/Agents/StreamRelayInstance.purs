@@ -68,9 +68,13 @@ import SpudGun as SpudGun
 -- FFI
 -- -----------------------------------------------------------------------------
 foreign import data WorkflowHandle :: Type
+
 foreign import startOriginWorkflowFFI :: Int -> Effect WorkflowHandle
+foreign import applyOriginPlanFFI :: OriginStreamRelayPlanData -> WorkflowHandle -> Effect OriginStreamRelayApplyResult
+
 foreign import startDownstreamWorkflowFFI :: Int -> Effect WorkflowHandle
-foreign import applyPlanFFI :: StreamRelayPlan -> WorkflowHandle -> Effect StreamRelayApplyResult
+foreign import applyDownstreamPlanFFI :: DownstreamStreamRelayPlanData -> WorkflowHandle -> Effect DownstreamStreamRelayApplyResult
+
 foreign import setSlotConfigurationFFI :: RelayKey -> SlotConfiguration -> Effect Unit
 foreign import getSlotConfigurationFFI :: RelayKey -> Effect (Maybe SlotConfiguration)
 
@@ -157,10 +161,12 @@ type DownstreamStreamRelayPlanData =
 -- -----------------------------------------------------------------------------
 -- Plan Application Result
 -- -----------------------------------------------------------------------------
-type StreamRelayApplyResult =
+type OriginStreamRelayApplyResult =
   { ingestAggregatorReceivePort :: Maybe PortNumber
-  , upstreamRelayReceivePorts :: Map UpstreamRelay PortNumber
-  , egests :: List (DeliverTo ServerAddress)
+  }
+
+type DownstreamStreamRelayApplyResult =
+  { upstreamRelayReceivePorts :: Map UpstreamRelay PortNumber
   }
 
 -- -----------------------------------------------------------------------------
@@ -253,25 +259,36 @@ registerRelay payload@{slotId, streamRole, sourceRoute, deliverTo } =
         applyPlan newStateData
 
 applyPlan :: StateData -> Effect (CallResult Unit State)
+
 applyPlan stateData@{ plan: Nothing } =
   pure $ CallReply unit $ State stateData
-applyPlan stateData@{ workflowHandle, plan: Just plan, run: runState } =
+
+applyPlan stateData@{ workflowHandle, plan: Just (OriginStreamRelayPlan planData), run: runState } =
   do
-    applyResult <- applyPlanFFI plan workflowHandle
-    newRunState <- applyRunResult stateData applyResult runState
+    applyResult <- applyOriginPlanFFI planData workflowHandle
+    newRunState <- applyOriginRunResult stateData applyResult runState
 
     let
       newStateData = stateData{ run = newRunState }
 
     pure $ CallReply unit $ State newStateData
 
-applyRunResult :: StateData -> StreamRelayApplyResult -> StreamRelayRunState -> Effect StreamRelayRunState
-applyRunResult { relayKey: relayKey@(RelayKey slotId slotRole), thisServer, ingestAggregator } applyResult runState =
+applyPlan stateData@{ workflowHandle, plan: Just (DownstreamStreamRelayPlan planData), run: runState } =
+  do
+    applyResult <- applyDownstreamPlanFFI planData workflowHandle
+    newRunState <- applyDownstreamRunResult stateData applyResult runState
+
+    let
+      newStateData = stateData{ run = newRunState }
+
+    pure $ CallReply unit $ State newStateData
+
+applyOriginRunResult :: StateData -> OriginStreamRelayApplyResult -> StreamRelayRunState -> Effect StreamRelayRunState
+applyOriginRunResult stateData@{ relayKey: relayKey@(RelayKey slotId slotRole), thisServer, ingestAggregator } applyResult runState =
   (pure runState)
-    <#> mergeApplyResult applyResult
+    <#> mergeOriginApplyResult applyResult
     >>= maybeTryRegisterIngestAggregator
-    >>= maybeTryRegisterUpstreamRelays
-    >>= tryEnsureSlotConfiguration
+    >>= tryEnsureSlotConfiguration stateData
 
   where
     maybeTryRegisterIngestAggregator runStateIn@{ ingestAggregatorState: IngestAggregatorStateDisabled } = pure runStateIn
@@ -301,6 +318,14 @@ applyRunResult { relayKey: relayKey@(RelayKey slotId slotRole), thisServer, inge
              _other ->
                pure runStateIn
 
+applyDownstreamRunResult :: StateData -> DownstreamStreamRelayApplyResult -> StreamRelayRunState -> Effect StreamRelayRunState
+applyDownstreamRunResult stateData@{ relayKey: relayKey@(RelayKey slotId slotRole), thisServer, ingestAggregator } applyResult runState =
+  (pure runState)
+    <#> mergeDownstreamApplyResult applyResult
+    >>= maybeTryRegisterUpstreamRelays
+    >>= tryEnsureSlotConfiguration stateData
+
+  where
     maybeTryRegisterUpstreamRelays runStateIn@{ upstreamRelayStates } =
       do
         newUpstreamRelayStates <- traverseWithIndex maybeTryRegisterUpstreamRelay upstreamRelayStates
@@ -339,7 +364,6 @@ applyRunResult { relayKey: relayKey@(RelayKey slotId slotRole), thisServer, inge
                 pure $ UpstreamRelayStateRegistered portNumber relayAddress
               else
                 pure $ UpstreamRelayStatePendingRegistration portNumber
-
 
     ensureRelayInPoP pop =
       do
@@ -392,25 +416,28 @@ applyRunResult { relayKey: relayKey@(RelayKey slotId slotRole), thisServer, inge
           _other ->
             pure false
 
-    tryEnsureSlotConfiguration runStateIn@{ slotConfiguration: Just _slotConfiguration } =
-      pure runStateIn
+tryEnsureSlotConfiguration :: StateData -> StreamRelayRunState -> Effect StreamRelayRunState
 
-    tryEnsureSlotConfiguration runStateIn@{ ingestAggregatorState: IngestAggregatorStateRegistered _ } =
-      do
-        response <- fetchIngestAggregatorSlotConfiguration ingestAggregator slotId slotRole
+tryEnsureSlotConfiguration _stateData runStateIn@{ slotConfiguration: Just _slotConfiguration } =
+  pure runStateIn
 
-        case hush response of
-          Just receivedSlotConfiguration ->
-            do
-              setSlotConfigurationFFI relayKey receivedSlotConfiguration
-              pure $ runStateIn{ slotConfiguration = Just receivedSlotConfiguration }
+tryEnsureSlotConfiguration { relayKey: relayKey@(RelayKey slotId slotRole), ingestAggregator } runStateIn@{ ingestAggregatorState: IngestAggregatorStateRegistered _ } =
+  do
+    response <- fetchIngestAggregatorSlotConfiguration ingestAggregator slotId slotRole
 
-          _ ->
-            tryEnsureSlotConfigurationFromRelays runStateIn
+    case hush response of
+      Just receivedSlotConfiguration ->
+        do
+          setSlotConfigurationFFI relayKey receivedSlotConfiguration
+          pure $ runStateIn{ slotConfiguration = Just receivedSlotConfiguration }
 
-    tryEnsureSlotConfiguration runStateIn =
-      tryEnsureSlotConfigurationFromRelays runStateIn
+      _ ->
+        pure runStateIn
 
+tryEnsureSlotConfiguration { relayKey: relayKey@(RelayKey slotId slotRole) } runStateIn =
+  tryEnsureSlotConfigurationFromRelays runStateIn
+
+  where
     tryEnsureSlotConfigurationFromRelays runStateIn@{ upstreamRelayStates } =
       do
         result <- tryEnsureSlotConfigurationFromRelays' (Map.values upstreamRelayStates)
@@ -429,7 +456,7 @@ applyRunResult { relayKey: relayKey@(RelayKey slotId slotRole), thisServer, inge
           case head of
             UpstreamRelayStateRegistered portNumber serverAddress ->
               do
-                response <- fetchIngestAggregatorSlotConfiguration ingestAggregator slotId slotRole
+                response <- fetchStreamRelaySlotConfiguration serverAddress slotId slotRole
 
                 case hush response of
                   Just receivedSlotConfiguration ->
@@ -438,7 +465,7 @@ applyRunResult { relayKey: relayKey@(RelayKey slotId slotRole), thisServer, inge
                   _ ->
                     tryEnsureSlotConfigurationFromRelays' tail
 
-            _ ->
+            relayInOtherState ->
               tryEnsureSlotConfigurationFromRelays' tail
 
         Nothing ->
@@ -616,11 +643,33 @@ configToPlan { ingestAggregator } config@{ egestSource: (EgestSourceUpstreamRela
 -- -----------------------------------------------------------------------------
 -- Apply Result -> Run State Transformation
 -- -----------------------------------------------------------------------------
-mergeApplyResult :: StreamRelayApplyResult -> StreamRelayRunState -> StreamRelayRunState
-mergeApplyResult { ingestAggregatorReceivePort, upstreamRelayReceivePorts } runState@{ upstreamRelayStates, ingestAggregatorState } =
-  runState{ upstreamRelayStates = withTombstonedAndUpsertedEntries
-          , ingestAggregatorState = updatedIngestAggregatorState
-          }
+mergeOriginApplyResult :: OriginStreamRelayApplyResult -> StreamRelayRunState -> StreamRelayRunState
+mergeOriginApplyResult { ingestAggregatorReceivePort } runState@{ ingestAggregatorState } =
+  runState{ ingestAggregatorState = updatedIngestAggregatorState }
+
+  where
+    updatedIngestAggregatorState =
+      case ingestAggregatorReceivePort of
+        Nothing ->
+          -- TODO: PS: deregistration?
+          ingestAggregatorState
+
+        Just receivePort ->
+          case ingestAggregatorState of
+            IngestAggregatorStateDisabled ->
+              IngestAggregatorStatePendingRegistration receivePort
+
+            IngestAggregatorStatePendingRegistration _portNumber ->
+              -- TODO: PS: validate the port number matches?
+              ingestAggregatorState
+
+            IngestAggregatorStateRegistered _portNumber ->
+              -- TODO: PS: validate the port number matches?
+              ingestAggregatorState
+
+mergeDownstreamApplyResult :: DownstreamStreamRelayApplyResult -> StreamRelayRunState -> StreamRelayRunState
+mergeDownstreamApplyResult { upstreamRelayReceivePorts } runState@{ upstreamRelayStates } =
+  runState{ upstreamRelayStates = withTombstonedAndUpsertedEntries }
 
   where
     withTombstonedEntries =
@@ -676,26 +725,6 @@ mergeApplyResult { ingestAggregatorReceivePort, upstreamRelayReceivePorts } runS
               -- pruned yet
               Map.insert relay (UpstreamRelayStatePendingRegistration portNumber) relayStatesIn
 
-    updatedIngestAggregatorState =
-      case ingestAggregatorReceivePort of
-        Nothing ->
-          -- TODO: PS: deregistration?
-          ingestAggregatorState
-
-        Just receivePort ->
-          case ingestAggregatorState of
-            IngestAggregatorStateDisabled ->
-              IngestAggregatorStatePendingRegistration receivePort
-
-            IngestAggregatorStatePendingRegistration _portNumber ->
-              -- TODO: PS: validate the port number matches?
-              ingestAggregatorState
-
-            IngestAggregatorStateRegistered _portNumber ->
-              -- TODO: PS: validate the port number matches?
-              ingestAggregatorState
-
-
 --------------------------------------------------------------------------------
 -- Utilities
 --------------------------------------------------------------------------------
@@ -717,9 +746,9 @@ fetchIngestAggregatorSlotConfiguration :: Server -> SlotId -> SlotRole -> Effect
 fetchIngestAggregatorSlotConfiguration aggregator slotId streamRole =
   fetchSlotConfiguration $ makeUrl aggregator $ IngestAggregatorSlotConfigurationE slotId streamRole
 
-fetchStreamRelaySlotConfiguration :: Server -> SlotId -> SlotRole -> Effect (Either JsonResponseError SlotConfiguration)
+fetchStreamRelaySlotConfiguration :: ServerAddress -> SlotId -> SlotRole -> Effect (Either JsonResponseError SlotConfiguration)
 fetchStreamRelaySlotConfiguration relay slotId streamRole =
-  fetchSlotConfiguration $ makeUrl relay $ RelaySlotConfigurationE slotId streamRole
+  fetchSlotConfiguration $ makeUrlAddr relay $ RelaySlotConfigurationE slotId streamRole
 
 fetchSlotConfiguration :: Url -> Effect (Either JsonResponseError SlotConfiguration)
 fetchSlotConfiguration url =
