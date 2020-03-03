@@ -12,7 +12,7 @@ module Rtsv2.Agents.IngestAggregatorInstance
 import Prelude
 
 import Data.Maybe (Maybe)
-import Data.Newtype (unwrap)
+import Data.Newtype (unwrap, wrap)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
@@ -34,8 +34,9 @@ import Rtsv2.Config as Config
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Agent as Agent
+import Shared.LinkedResource (LinkedResource)
 import Shared.LlnwApiTypes (SlotProfile(..), StreamDetails)
-import Shared.Router.Endpoint (Endpoint(..), makePath)
+import Shared.Router.Endpoint (Endpoint(..), makePath, makeUrl)
 import Shared.Stream (AggregatorKey(..), IngestKey(..), SlotId(..), SlotRole, ProfileName, ingestKeyToAggregatorKey, ingestKeyToProfileName)
 import Shared.Types (DeliverTo, RelayServer, ServerAddress, extractAddress)
 import Shared.Types.Agent.State as PublicState
@@ -116,15 +117,20 @@ registerRelay payload@{deliverTo} = Gen.doCast (serverName $ payloadToAggregator
         pure $ Gen.CastNoReply state{downstreamRelays = deliverTo : downstreamRelays}
 
 getState :: AggregatorKey -> Effect (PublicState.IngestAggregator List)
-getState aggregatorKey@(AggregatorKey _streamId streamRole) = Gen.call (serverName aggregatorKey) getState'
+getState aggregatorKey@(AggregatorKey slotId slotRole) = Gen.call (serverName aggregatorKey) getState'
   where
     getState' state@{streamDetails, activeProfileNames, downstreamRelays} =
-      CallReply { role: streamRole
+      CallReply { role: slotRole
                 , streamDetails
                 , activeProfiles: (\(Tuple profileName serverAddress) -> {profileName, serverAddress}) <$> (toUnfoldable activeProfileNames)
-                , downstreamRelays
+                , downstreamRelays: downstreamRelay <$> downstreamRelays
                 }
       state
+    downstreamRelay :: DeliverTo RelayServer -> LinkedResource (DeliverTo RelayServer)
+    downstreamRelay relay@{server} =
+      wrap { resource: relay
+           , id: makeUrl server (RelayStatsE slotId slotRole)
+           }
 
 slotConfiguration :: AggregatorKey -> Effect (Maybe SlotConfiguration)
 slotConfiguration (AggregatorKey (SlotId slotId) _streamRole) =
