@@ -4,17 +4,18 @@ module Shared.LinkedResource
        , PrefixProps(..)
        ) where
 
-import Data.Newtype (class Newtype)
+import Data.Newtype (class Newtype, wrap)
 import Data.Symbol (class IsSymbol, SProxy(..))
+import Foreign (F)
 import Heterogeneous.Folding (class FoldingWithIndex, class HFoldlWithIndex, hfoldlWithIndex)
-import Prelude (flip, identity, ($), (<<<), (>>>))
+import Prelude (flip, identity, ($), (<$>), (<<<), (>>>))
 import Prim.Row as Row
 import Prim.Symbol (class Append)
 import Record (delete, merge)
 import Record.Builder (Builder)
 import Record.Builder as Builder
 import Shared.Types (Url)
-import Simple.JSON (class WriteForeign, writeImpl)
+import Simple.JSON (class ReadForeign, class WriteForeign, readImpl, writeImpl)
 
 type LinkMetadata'' a = ( id :: Url | a )
 
@@ -41,7 +42,6 @@ add pre = flip Builder.build {} <<< hfoldlWithIndex (PrefixProps pre) (identity 
 
 instance writeForeignLinkedResource :: ( HFoldlWithIndex (PrefixProps "@") (Builder {} {}) (LinkMetadata'()) (Builder {} (Record lm'))
                                        , Row.Union r1 lm' r2
-                                       --  Row.Union r1 (LinkMetadata''()) r2
                                        , Row.Nub r2 r3
                                        , WriteForeign (Record r3)
                                        )
@@ -58,3 +58,13 @@ instance writeForeignLinkedResource :: ( HFoldlWithIndex (PrefixProps "@") (Buil
       merged = merge resource added
     in
       writeImpl merged
+
+instance readForeignLinkedResource :: ReadForeign a => ReadForeign (LinkedResource a) where
+  readImpl o =
+    let
+      resource :: F a
+      resource = readImpl o
+    in
+     (\r -> LinkedResource { id : wrap "url here"
+                           , resource: r
+                           }) <$> resource
