@@ -130,7 +130,7 @@ endpoint = root $ sum
   , "IngestStartE"                                     : "api" / "public" / canary segment / "ingest" / shortName segment / slotNameAndProfile segment / "start"
   , "IngestStopE"                                      : "api" / "public" / canary segment / "ingest" / slotId segment / slotRole segment / profileName segment / "stop"
 
-  , "ClientAppAssetsE"                                 : "assets" / rest
+  , "ClientAppAssetsE"                                 : "app" / "assets" / rest
   , "ClientAppRouteHTMLE"                              : "app" / noArgs
 
   , "ClientStartE"                                     : "api" / "public" / canary segment / "client" / slotId segment / "start"

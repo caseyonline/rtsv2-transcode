@@ -277,7 +277,8 @@ function dashboardChart(scatterData) {
 }
 
 function popChart(scatterData) {
-    console.log(scatterData)
+    console.log(scatterData[0])
+    console.log(scatterData[1])
     return {
     legend: {
         orient: 'vertical',
@@ -368,7 +369,7 @@ function popChart(scatterData) {
           },
 
           lineStyle: {
-              color: '#CD7840',
+              color: '#6DBBBF',
               width: 2,
               type: "solid",
               shadowColor: "#717171",
@@ -378,19 +379,20 @@ function popChart(scatterData) {
               show: true,
               scaleSize: 3,
               period: 4,
-              color: '#e8c675',
+              color: '#1C3C54',
               shadowBlur: 6
           },
           zlevel: 10,
 
-          data:  [
-              [ {name:'Fra', coord: [8.682127,50.110922]},
-                {name:'Iad', coord: [-77.039851, 38.877270], data:[60, 120]},
-              ],
-              [ {name:'Iad', coord: [-77.039851, 38.877270]},
-                {name:'Lax', coord: [-118.243685,34.052234], data: [60, 120]},
-              ]
-          ],
+          data:scatterData[0],
+          // [
+          //     [ {name:'Fra', coord: [8.682127,50.110922]},
+          //       {name:'Iad', coord: [-77.039851, 38.877270], data:[60, 120]},
+          //     ],
+          //     [ {name:'Iad', coord: [-77.039851, 38.877270]},
+          //       {name:'Lax', coord: [-118.243685,34.052234], data: [60, 120]},
+          //     ]
+          // ],
         },
         { name: "B",
           type: "lines",
@@ -400,7 +402,7 @@ function popChart(scatterData) {
           },
 
           lineStyle: {
-              color: '#CD7840',
+              color: '#6DBBBF',
               width: 2,
               type: "solid",
               shadowColor: "#717171",
@@ -410,20 +412,13 @@ function popChart(scatterData) {
               show: true,
               scaleSize: 3,
               period: 4,
-              color: '#e8c675',
+              color: '#1C3C54',
               shadowBlur: 6
           },
            zlevel: 10,
 
 
-          data:  [
-              [ {name:'Fra', coord: [8.682127,50.110922]},
-                {name:'Iad', coord: [-77.039851, 38.877270], data:[60, 120]},
-              ],
-              [ {name:'Iad', coord: [-77.039851, 38.877270]},
-                {name:'Lax', coord: [-118.243685,34.052234], data: [60, 120]},
-              ]
-          ],
+          data: scatterData[1],
         },
         { name: "Both",
           type: "lines",
@@ -433,7 +428,7 @@ function popChart(scatterData) {
           },
 
           lineStyle: {
-              color: '#CD7840',
+              color: '#6DBBBF',
               width: 2,
               type: "solid",
               shadowColor: "#717171",
@@ -443,25 +438,26 @@ function popChart(scatterData) {
               show: true,
               scaleSize: 3,
               period: 4,
-              color: '#e8c675',
+              color: '#1C3C54',
               shadowBlur: 6
           },
           zlevel: 10,
 
-          data:  [
-              [ {name:"Fra", coord:[8.682127,50.110922], data: [60, 120]},
-                {name:'Dal', coord: [-96.796989,32.776665]}
-              ],
-              [ {name:'Dal', coord: [-96.796989,32.776665], data: [60, 120]},
-                {name:'Lax', coord: [-118.243685,34.052234]}
-              ],
-              [ {name:'Fra', coord: [8.682127,50.110922]},
-                {name:'Iad', coord: [-77.039851, 38.877270], data:[60, 120]},
-              ],
-              [ {name:'Iad', coord: [-77.039851, 38.877270]},
-                {name:'Lax', coord: [-118.243685,34.052234], data: [60, 120]},
-              ]
-          ]
+          data: scatterData[0].concat(scatterData[1])
+          // [
+          //     [ {name:"Fra", coord:[8.682127,50.110922], data: [60, 120]},
+          //       {name:'Dal', coord: [-96.796989,32.776665]}
+          //     ],
+          //     [ {name:'Dal', coord: [-96.796989,32.776665], data: [60, 120]},
+          //       {name:'Lax', coord: [-118.243685,34.052234]}
+          //     ],
+          //     [ {name:'Fra', coord: [8.682127,50.110922]},
+          //       {name:'Iad', coord: [-77.039851, 38.877270], data:[60, 120]},
+          //     ],
+          //     [ {name:'Iad', coord: [-77.039851, 38.877270]},
+          //       {name:'Lax', coord: [-118.243685,34.052234], data: [60, 120]},
+          //     ]
+          // ]
         },
     ]
     };

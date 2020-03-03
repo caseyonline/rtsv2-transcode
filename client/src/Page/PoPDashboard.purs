@@ -37,7 +37,7 @@ import Rtsv2App.Component.HTML.MainSecondary as MS
 import Rtsv2App.Component.HTML.MenuMain as MM
 import Rtsv2App.Component.HTML.PoPAggregator as PA
 import Rtsv2App.Component.HTML.Utils (css_)
-import Rtsv2App.Data.PoP (PoPDefEcharts, updatePoPDefEnv)
+import Rtsv2App.Data.PoP (PoPDefEcharts, timedRoutedToChartOps, updatePoPDefEnv)
 import Rtsv2App.Data.Profile (Profile)
 import Rtsv2App.Data.Route (Route(..))
 import Rtsv2App.Env (PoPDefEnv, UrlEnv, UserEnv, changeHtmlClass)
@@ -160,6 +160,8 @@ component = H.mkComponent
 
     HandlePoPSlotArgTable (PA.SPoPInfo selectedInfo) -> do
       st ← H.get
+      { popDefEnv } <- ask
+      geoLocations <- H.liftEffect $ Ref.read popDefEnv.geoLocations
       -- | does a chart exist
       case st.chart of
         Nothing    -> pure unit -- TODO: make a new chart? though there should always be one
@@ -169,10 +171,12 @@ component = H.mkComponent
             Nothing -> liftEffect $ EC.makeBlankMap chart
             Just _  -> do
               -- | go fetch timedroute and populate the chart/map with options
-              mbTimedRoutes <- getTimedRoutes selectedInfo st.curPopName
-              case mbTimedRoutes of
+              maybeTimedRoutes <- getTimedRoutes selectedInfo st.curPopName
+              case maybeTimedRoutes of
                 Left e            -> pure unit -- TODO: display error
-                Right timedRoutes -> liftEffect $ EC.setOptionPoP timedRoutes chart
+                Right timedRoutes -> do
+                  let convertedRoutes = timedRoutedToChartOps timedRoutes geoLocations
+                  liftEffect $ EC.setOptionPoP convertedRoutes chart
 
 
   render :: State -> H.ComponentHTML Action ChildSlots m
@@ -227,22 +231,22 @@ component = H.mkComponent
                 mapDiv
               ]
             ]
-          , HH.div
-            [ css_ "row" ]
-            [ HH.div
-              [ css_ "col-lg-12 col-md-12" ]
-              [ HH.div
-                [ css_ "card" ]
-                [ HH.div
-                  [ css_ "card-body" ]
-                  [ HH.h5
-                    [ css_ "card-title" ]
-                    [ HH.text "Ingest Details" ]
-                 -- , tableIngest
-                  ]
-                ]
-              ]
-            ]
+          -- , HH.div
+          --   [ css_ "row" ]
+          --   [ HH.div
+          --     [ css_ "col-lg-12 col-md-12" ]
+          --     [ HH.div
+          --       [ css_ "card" ]
+          --       [ HH.div
+          --         [ css_ "card-body" ]
+          --         [ HH.h5
+          --           [ css_ "card-title" ]
+          --           [ HH.text "Ingest Details" ]
+          --        -- , tableIngest
+          --         ]
+          --       ]
+          --     ]
+          --   ]
           ]
         ]
       , footer

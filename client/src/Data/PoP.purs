@@ -7,6 +7,7 @@ module Rtsv2App.Data.PoP
   , toPoPEcharts
   , toAggregators
   , toPoPleaders
+  , timedRoutedToChartOps
   , unGeoLoc
   , updatePoPDefEnv
   ) where
@@ -15,9 +16,9 @@ import Prelude
 
 import Control.Monad.Reader (ask)
 import Control.Monad.Reader.Trans (class MonadAsk)
-import Data.Array (catMaybes, find, findMap, index, length, mapMaybe, nub)
+import Data.Array (catMaybes, concat, find, findMap, index, length, mapMaybe, nub)
 import Data.Either (hush)
-import Data.Maybe (Maybe(..), maybe)
+import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Monoid (guard)
 import Data.Newtype (over, un, wrap)
 import Data.Traversable (traverse)
@@ -30,7 +31,7 @@ import Global (readFloat)
 import Rtsv2App.Capability.Resource.Api (class ManageApi, getPublicState)
 import Rtsv2App.Env (PoPDefEnv)
 import Shared.Types (GeoLoc(..), PoPName(..), Server(..), ServerAddress, LeaderGeoLoc)
-import Shared.Types.Agent.State (IntraPoP, PoP, PoPDefinition, AggregatorLocation)
+import Shared.Types.Agent.State (AggregatorLocation, IntraPoP, PoP, PoPDefinition, TimedPoPRoutes)
 
 
 type PoPDefEcharts =
@@ -66,7 +67,7 @@ toLeaderGeoLoc :: (PoPDefinition Array) -> Array LeaderGeoLoc
 toLeaderGeoLoc = getLeaderGeoLoc <<< getPoPFromRegion
 
 getLeaderGeoLoc :: Array (PoP Array) -> Array LeaderGeoLoc
-getLeaderGeoLoc pa = (\p -> { name: p.name, coords: unGeoLoc <$> p.geoLoc } ) <$> pa
+getLeaderGeoLoc pa = (\p -> { name: p.name, coord: unGeoLoc <$> p.geoLoc } ) <$> pa
 
 
 -- | grab ut all the PoPs from each region
@@ -109,25 +110,28 @@ toPoPleaders = mapMaybe (_ >>= _.currentTransPoPLeader)
 toAggregators :: (Array (Maybe (IntraPoP Array))) -> (AggregatorLocation Array)
 toAggregators mIntraPoPs = nub $ catMaybes mIntraPoPs >>= _.aggregatorLocations
 
+timedRoutedToChartOps :: TimedPoPRoutes Array -> (Array LeaderGeoLoc) -> Array (Array (Array LeaderGeoLoc))
+timedRoutedToChartOps timedRoutes leaderGeolocs =
+  convertToLeaderGeoLoc <$> timedRoutes.routes
+  where
+    convertToLeaderGeoLoc routes = do
 
--- routes: [
---     [
---       { from: "fra", rtt: 0, to: "iad" }
---     ],
---     [
---       { from: "fra", rtt: 0, to: "dal" },
---       { from: "dal", rtt: 0, to: "iad" }
---     ]
---   ]
+      map (\route -> do
+        [
+          { coord: getCoords route.from
+          , name: route.from
+          }
+        , { coord: getCoords route.to
+          , name: route.to
+          }
+        ]
+      ) routes
 
--- [
---   [ {name:'Fra', coord: [8.682127,50.110922]},
---     {name:'Iad', coord: [-77.039851, 38.877270], data:[60, 120]},
---   ],
---   [ {name:'Iad', coord: [-77.039851, 38.877270]},
---     {name:'Lax', coord: [-118.243685,34.052234], data: [60, 120]},
---   ]
--- ]
+    getCoords :: PoPName -> Array Number
+    getCoords name =
+      fromMaybe [0.00, 0.00] $ findMap (\leader -> if name == leader.name
+                                                   then Just leader.coord
+                                                   else Nothing) leaderGeolocs
 
 updatePoPDefEnv
   :: forall m r

@@ -156,7 +156,7 @@ derive newtype instance writeForeignEgestServer :: WriteForeign EgestServer
 
 type LeaderGeoLoc =
   { name   :: PoPName
-  , coords :: Array Number
+  , coord  :: Array Number
   }
 
 type PoPSelectedInfo =
