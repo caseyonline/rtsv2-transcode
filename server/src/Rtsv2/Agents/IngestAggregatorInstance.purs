@@ -35,9 +35,9 @@ import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Agent as Agent
 import Shared.LlnwApiTypes (SlotProfile(..), StreamDetails)
-import Shared.Stream (AggregatorKey(..), IngestKey(..), SlotId(..), SlotRole, ProfileName, ingestKeyToAggregatorKey, ingestKeyToProfileName)
 import Shared.Router.Endpoint (Endpoint(..), makePath)
-import Shared.Types (ServerAddress, extractAddress)
+import Shared.Stream (AggregatorKey(..), IngestKey(..), SlotId(..), SlotRole, ProfileName, ingestKeyToAggregatorKey, ingestKeyToProfileName)
+import Shared.Types (DeliverTo, RelayServer, ServerAddress, extractAddress)
 import Shared.Types.Agent.State as PublicState
 
 -- TODO: proper type for handle, as done in other places
@@ -55,6 +55,7 @@ type State
     , aggregatorKey :: AggregatorKey
     , streamDetails :: StreamDetails
     , activeProfileNames :: Map ProfileName ServerAddress
+    , downstreamRelays :: List (DeliverTo RelayServer)
     , workflowHandle :: WorkflowHandle
     }
 
@@ -83,7 +84,7 @@ addIngest ingestKey = Gen.doCall (serverNameFromIngestKey ingestKey)
     pure $ CallReply unit state{activeProfileNames = insert (ingestKeyToProfileName ingestKey) thisAddress activeProfileNames}
 
 addRemoteIngest :: IngestKey -> ServerAddress -> Effect Unit
-addRemoteIngest ingestKey@(IngestKey streamId streamRole profileName)  remoteServer = Gen.doCall (serverNameFromIngestKey ingestKey)
+addRemoteIngest ingestKey@(IngestKey streamId streamRole profileName) remoteServer = Gen.doCall (serverNameFromIngestKey ingestKey)
   \state@{activeProfileNames, workflowHandle} -> do
     logInfo "Remote ingest added" {ingestKey, source: remoteServer}
     let
@@ -108,16 +109,22 @@ removeIngest ingestKey@(IngestKey _ _ profileName )  = Gen.doCall (serverName (i
 registerRelay :: RegisterRelayPayload -> Effect Unit
 registerRelay payload@{deliverTo} = Gen.doCast (serverName $ payloadToAggregatorKey payload) doRegisterRelay
   where
-    doRegisterRelay state =
+    doRegisterRelay state@{downstreamRelays} =
       do
         let _ = spy "Registering with ingest aggregator instance" payload
         registerStreamRelayImpl state.workflowHandle (deliverTo.server # unwrap # _.address # unwrap) (deliverTo.port)
-        pure $ Gen.CastNoReply state
+        pure $ Gen.CastNoReply state{downstreamRelays = deliverTo : downstreamRelays}
 
 getState :: AggregatorKey -> Effect (PublicState.IngestAggregator List)
-getState aggregatorKey@(AggregatorKey _streamId streamRole) = Gen.call (serverName aggregatorKey)
-  \state@{streamDetails, activeProfileNames} ->
-  CallReply {role: streamRole, streamDetails, activeProfiles: (\(Tuple profileName serverAddress) -> {profileName, serverAddress}) <$> (toUnfoldable activeProfileNames)} state
+getState aggregatorKey@(AggregatorKey _streamId streamRole) = Gen.call (serverName aggregatorKey) getState'
+  where
+    getState' state@{streamDetails, activeProfileNames, downstreamRelays} =
+      CallReply { role: streamRole
+                , streamDetails
+                , activeProfiles: (\(Tuple profileName serverAddress) -> {profileName, serverAddress}) <$> (toUnfoldable activeProfileNames)
+                , downstreamRelays
+                }
+      state
 
 slotConfiguration :: AggregatorKey -> Effect (Maybe SlotConfiguration)
 slotConfiguration (AggregatorKey (SlotId slotId) _streamRole) =
@@ -139,6 +146,7 @@ init streamDetails = do
        , aggregatorKey
        , streamDetails
        , activeProfileNames : Map.empty
+       , downstreamRelays : nil
        , workflowHandle
        }
   where
@@ -163,7 +171,7 @@ handleInfo msg state@{activeProfileNames, aggregatorKey} =
 -- Log helpers
 --------------------------------------------------------------------------------
 domains :: List Atom
-domains = atom <$> (show Agent.IngestAggregator :  "Instance" : nil)
+domains = atom <$> (show Agent.IngestAggregator : "Instance" : nil)
 
 logInfo :: forall a. Logger a
 logInfo = domainLog Logger.info

@@ -171,7 +171,7 @@ startWorkflow(SlotId, Profiles) ->
                                                                         module = fdk_aac_decoder
                                                                        },
 
-                                                             #processor{name = audio_levels_gain,
+                                                             #processor{name = audio_levels,
                                                                         display_name = <<"dB Levels">>,
                                                                         subscribes_to = ?previous,
                                                                         module = audio_levels,

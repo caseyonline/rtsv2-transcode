@@ -12,7 +12,8 @@
 
 
 -export(
-   [ startWorkflowFFI/1
+   [ startOriginWorkflowFFI/1
+   , startDownstreamWorkflowFFI/1
    , applyPlanFFI/2
    , getSlotConfigurationFFI/1
    , setSlotConfigurationFFI/2
@@ -26,79 +27,40 @@
         }).
 
 
-startWorkflowFFI(SlotId) ->
+startOriginWorkflowFFI(SlotId) ->
   fun() ->
-      start_workflow(SlotId)
+      start_workflow(origin, SlotId)
   end.
 
-%% Example Plan
-%%
-%% #{downstreamRelaySinks => [],
-%%                               egestSink =>
-%%                                   #{destinations =>
-%%                                         [#{port => 50319,
-%%                                            server => <<"172.16.171.1">>}],
-%%                                     source =>
-%%                                         {egestSinkSourceIngestAggregator}},
-%%                               ingestAggregatorSource =>
-%%                                   {ingestAggregatorSourceEnabled,
-%%                                       <<"172.16.171.5">>},
-%%                               upstreamRelaySources => []}
-
-
-applyPlanFFI(WorkflowHandle,
-             #{ ingestAggregatorSource := IngestAggregatorSource
-              , upstreamRelaySources := UpstreamRelaySourceList
-              , egestSink := #{ destinations := EgestDestinationList
-                              , source := _EgestSource
-                              }
-              , downstreamRelaySinks := DownstreamRelaySinks
-              } = StreamRelayPlan) ->
+startDownstreamWorkflowFFI(SlotId) ->
   fun() ->
-      io:format(user, "Received a StreamRelayPlan: ~p~n~n", [StreamRelayPlan]),
+      start_workflow(downstream, SlotId)
+  end.
 
-      IngestAggregatorReceivePort =
-        case IngestAggregatorSource of
-          {ingestAggregatorSourceEnabled, _IngestAggregatorHost} ->
-            {ok,   ReceivePort} = id3as_workflow:ioctl(sources, ensure_ingest_aggregator_source, WorkflowHandle),
-            {just, ReceivePort};
-          {ingestAggregatorSourceDisabled} ->
-            {nothing}
-        end,
+applyPlanFFI({originStreamRelayPlan, #{ egests := EgestList }} = StreamRelayPlan, WorkflowHandle) ->
+  fun() ->
+      io:format(user, "ORIGIN STREAM PLAN: ~p~n~n", [StreamRelayPlan]),
 
-      UpstreamRelayReceivePorts =
-        maps:from_list(lists:map(fun(#{ next := _NextPoP, rest := _RemainingPoPs } = UpstreamRelay) ->
-                                     {ok, UpstreamRelayReceivePort} = id3as_workflow:ioctl(sources, {ensure_upstream_relay_source, UpstreamRelay}, WorkflowHandle),
-                                     {UpstreamRelay, UpstreamRelayReceivePort}
-                                 end,
-                                 UpstreamRelaySourceList
-                                )),
+      %% Set up all sources and downstream relay fowarding
+      {ok, Result} = id3as_workflow:ioctl(source, {apply_plan, StreamRelayPlan}, WorkflowHandle),
 
-      lists:foreach(fun(#{ port := EgestPort, server := EgestHost } = _EgestDestination) ->
-                        case id3as_workflow:ioctl(egests, {register_egest, EgestHost, EgestPort}, WorkflowHandle) of
-                          ok ->
-                            ok;
-                          {ok, {error, already_registered}} ->
-                            ok
-                        end
-                    end,
-                    EgestDestinationList
-                   ),
+      %% Set up all egest forwarding
+      {ok, _FailedResolution} = id3as_workflow:ioctl(forward_to_egests, {set_destinations, EgestList}, WorkflowHandle),
 
-      lists:foreach(fun(#{ source := _Source, deliverTo := #{ port := SinkPort, server := SinkHost } } = _DownstreamRelaySink) ->
-                        case id3as_workflow:ioctl(relays, {register_relay, SinkHost, SinkPort}, WorkflowHandle) of
-                          ok ->
-                            ok;
-                          {ok, {error, already_registered}} ->
-                            ok
-                        end
-                    end,
-                    DownstreamRelaySinks
-                   ),
+      Result
+  end;
 
-      #{ ingestAggregatorReceivePort => IngestAggregatorReceivePort
-       , upstreamRelayReceivePorts => UpstreamRelayReceivePorts
-       }
+applyPlanFFI({downstreamStreamRelayPlan, #{ egests := EgestList }} = StreamRelayPlan, WorkflowHandle) ->
+  fun() ->
+      io:format(user, "DOWNSTREAM STREAM PLAN: ~p~n~n", [StreamRelayPlan]),
+
+      %% Set up all sources and downstream relay fowarding
+      {ok, Result} = id3as_workflow:ioctl(source, {apply_plan, StreamRelayPlan}, WorkflowHandle),
+
+      %% Set up all egest forwarding
+      {ok, _FailedResolution} = id3as_workflow:ioctl(forward_to_egests, {set_destinations, EgestList}, WorkflowHandle),
+
+      Result
   end.
 
 
@@ -124,38 +86,33 @@ getSlotConfigurationFFI(RelayKey) ->
 %%------------------------------------------------------------------------------
 %% Internal functions
 %%------------------------------------------------------------------------------
-start_workflow(SlotId) ->
-
-  %% TODO: the actual switchboard logic that dictates what goes where
-
+start_workflow(OriginOrDownstream, SlotId) ->
   Workflow =
-    #workflow{
-       name = {stream_relay_instance, SlotId},
-       display_name = <<"Stream Relay Workflow for ", (integer_to_binary(SlotId))/binary>>,
-       tags = #{ type => stream_relay
-               , slot => SlotId
-               },
-       generators =
-         [ #generator{ name = sources
-                     , display_name = <<"Ingests">>
-                     , module = rtsv2_stream_relay_generator
-                     }
-         ],
-
-       processors =
-         [ #processor{ name = egests
-                     , display_name = <<"Egests">>
-                     , module = rtsv2_relay_to_egest_forward_processor
-                     , subscribes_to = sources
-                     , config = SlotId
-                     }
-         , #processor{ name = relays
-                     , display_name = <<"Relays">>
-                     , module = rtsv2_relay_to_relay_forward_processor
-                     , subscribes_to = sources
-                     }
-         ]
-      },
+    #workflow{ name = {stream_relay_instance, SlotId}
+             , display_name = <<"Stream Relay Workflow for ", (integer_to_binary(SlotId))/binary>>
+             , tags = #{ type => stream_relay
+                       , slot => SlotId
+                       }
+             , generators =
+                 [ #generator{ name = source
+                             , display_name = <<"Relays">>
+                             , module = rtsv2_stream_relay_generator
+                             , config = #{ origin_or_downstream => OriginOrDownstream }
+                             }
+                 ]
+             , processors =
+                 [ #processor{ name = merge_redundant_streams_for_egest
+                             , display_name = <<"Merge Redundant Streams">>
+                             , module = rtsv2_stream_relay_merge_redundant_streams_processor
+                             , subscribes_to = source
+                             }
+                 , #processor{ name = forward_to_egests
+                             , display_name = <<"Forward Merged Stream to Egest Instances">>
+                             , module = rtsv2_stream_relay_forward_processor
+                             , subscribes_to = merge_redundant_streams_for_egest
+                             }
+                 ]
+             },
 
   {ok, Pid} = id3as_workflow:start_link(Workflow, self()),
 

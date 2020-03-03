@@ -61,7 +61,7 @@ findEgest slotId thisServer = runExceptT
     getIdle = (lmap (const NoResource)) <$> IntraPoP.getIdleServer capacityForEgest
 
     startLocalOrRemote aggregator (Local _) =
-      void <$> okAlreadyStarted =<<  EgestInstanceSup.startEgest {slotId, aggregator}
+      okAlreadyStarted =<<  EgestInstanceSup.startEgest {slotId, aggregator}
     startLocalOrRemote aggregator (Remote remote) =
       void <$> crashIfLeft =<< SpudGun.postJson (makeUrl remote EgestE) ({slotId, aggregator} :: CreateEgestPayload)
 
@@ -107,7 +107,7 @@ findEgest' slotId thisServer = do
    capacityForEgest (ServerLoad sl) =  unwrap sl.load < 50.0
    startLocalOrRemote :: (LocalOrRemote ServerLoad) -> Server -> Effect Unit
    startLocalOrRemote  (Local _) aggregator = do
-     void <$> okAlreadyStarted =<<  EgestInstanceSup.startEgest {slotId, aggregator}
+     okAlreadyStarted =<<  EgestInstanceSup.startEgest {slotId, aggregator}
    startLocalOrRemote  (Remote remote) aggregator = do
      let
        url = makeUrl remote EgestE

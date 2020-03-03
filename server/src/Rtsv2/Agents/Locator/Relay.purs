@@ -26,13 +26,13 @@ import Shared.Types (Server, ServerLoad(..))
 findOrStart :: CreateRelayPayload -> Effect (ResourceResp Server)
 findOrStart =
   Locator.findOrStart { findFun : IntraPoP.whereIsStreamRelay <<< payloadToRelayKey
-                      , handlerCreationPredicate : hasCapcityForRelay
+                      , handlerCreationPredicate : hasCapacityForRelay
                       , startLocalFun : startLocalRelay
                       , logWarning
                       }
   where
     payloadToRelayKey payload = RelayKey payload.slotId payload.streamRole
-    hasCapcityForRelay (ServerLoad sl) =  unwrap sl.load < 50.0
+    hasCapacityForRelay (ServerLoad sl) =  unwrap sl.load < 50.0
     startLocalRelay payload = do
       _ <- StreamRelayInstanceSup.startRelay { slotId: payload.slotId, streamRole: payload.streamRole, aggregator: payload.aggregator}
       pure unit
@@ -45,13 +45,13 @@ findOrStart =
 -- findRelayAndRegisterForChain =
 --   findAndRegister { registerFun : registerRelayChain
 --                   , findFun : IntraPoP.whereIsStreamRelay <<< _.slotId
---                   , handlerCreationPredicate : hasCapcityForRelay
+--                   , handlerCreationPredicate : hasCapacityForRelay
 --                   , startLocalFun : startLocalRelay
 --                   , startRemoteFun : startRemoteRelay
 --                   , logWarning
 --                   }
 --   where
---    hasCapcityForRelay (ServerLoad sl) =  unwrap sl.load < 50.0
+--    hasCapacityForRelay (ServerLoad sl) =  unwrap sl.load < 50.0
 --    startLocalRelay payload = do
 --      _ <- StreamRelayInstanceSup.startRelay { slotId: payload.slotId, aggregatorPoP : payload.aggregatorPoP}
 --      pure unit

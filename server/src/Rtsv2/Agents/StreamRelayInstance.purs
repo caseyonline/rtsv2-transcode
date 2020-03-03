@@ -11,10 +11,12 @@ module Rtsv2.Agents.StreamRelayInstance
 
 import Prelude
 
+import Bus as Bus
 import Data.Either (Either(..), hush)
+import Data.Filterable (filterMap)
 import Data.Foldable (find, foldl)
 import Data.FoldableWithIndex (foldlWithIndex)
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Maybe as Maybe
 import Data.Newtype (un)
 import Data.Set as Set
@@ -36,7 +38,7 @@ import PintoHelper (exposeState)
 import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..))
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
-import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload, RegisterEgestPayload, SourceRoute, RegisterRelayPayload, DeliverTo)
+import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload, RegisterEgestPayload, SourceRoute, RegisterRelayPayload)
 import Rtsv2.Agents.TransPoP (PoPRoutes)
 import Rtsv2.Agents.TransPoP as TransPoP
 import Rtsv2.Names as Names
@@ -44,7 +46,7 @@ import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Agent as Agent
 import Shared.Stream (AggregatorKey(..), RelayKey(..), SlotId(..), SlotRole)
 import Shared.Router.Endpoint (Endpoint(..), makeUrlAddr, makeUrl)
-import Shared.Types (PoPName, EgestServer, RelayServer(..), Server(..), ServerAddress(..), Url, extractPoP, extractAddress)
+import Shared.Types (PoPName, DeliverTo, EgestServer, RelayServer(..), Server(..), ServerAddress(..), Url, extractPoP, extractAddress)
 import Shared.Types.Agent.State as PublicState
 import SpudGun (SpudResponse(..), JsonResponseError, StatusCode(..))
 import SpudGun as SpudGun
@@ -53,8 +55,9 @@ import SpudGun as SpudGun
 -- FFI
 -- -----------------------------------------------------------------------------
 foreign import data WorkflowHandle :: Type
-foreign import startWorkflowFFI :: Int -> Effect WorkflowHandle
-foreign import applyPlanFFI :: WorkflowHandle -> StreamRelayPlan -> Effect StreamRelayApplyResult
+foreign import startOriginWorkflowFFI :: Int -> Effect WorkflowHandle
+foreign import startDownstreamWorkflowFFI :: Int -> Effect WorkflowHandle
+foreign import applyPlanFFI :: StreamRelayPlan -> WorkflowHandle -> Effect StreamRelayApplyResult
 foreign import setSlotConfigurationFFI :: RelayKey -> SlotConfiguration -> Effect Unit
 foreign import getSlotConfigurationFFI :: RelayKey -> Effect (Maybe SlotConfiguration)
 
@@ -118,29 +121,23 @@ emptyStreamRelayConfig egestSource =
 -- Lists here are really sets, but we use lists to be readily readable from
 -- Erlang
 -- -----------------------------------------------------------------------------
-type StreamRelayPlan =
-  { ingestAggregatorSource :: IngestAggregatorSource
-  , upstreamRelaySources :: List UpstreamRelay
-  , egestSink :: EgestSink
-  , downstreamRelaySinks :: List DownstreamRelaySink
+data StreamRelayPlan
+  = OriginStreamRelayPlan OriginStreamRelayPlanData
+  | DownstreamStreamRelayPlan DownstreamStreamRelayPlanData
+
+type OriginStreamRelayPlanData =
+  { egests :: List (DeliverTo ServerAddress)
+  , downstreamRelays :: List (DeliverTo ServerAddress)
   }
 
-data IngestAggregatorSource
-  = IngestAggregatorSourceDisabled
-  | IngestAggregatorSourceEnabled ServerAddress
-
-type EgestSink =
-  { source :: EgestSinkSource
-  , destinations :: List (DeliverTo ServerAddress)
+type DownstreamStreamRelayPlanData =
+  { upstreamRelaySources :: List UpstreamRelaySource
+  , egests :: List (DeliverTo ServerAddress)
   }
 
-data EgestSinkSource
-  = EgestSinkSourceIngestAggregator
-  | EgestSinkSourceUpstreamRelays (List UpstreamRelay)
-
-type DownstreamRelaySink =
-  { deliverTo :: DeliverTo ServerAddress
-  , source :: DownstreamRelaySource
+type UpstreamRelaySource =
+  { relay :: UpstreamRelay
+  , downstreamRelays :: List (DeliverTo ServerAddress)
   }
 
 -- -----------------------------------------------------------------------------
@@ -149,6 +146,7 @@ type DownstreamRelaySink =
 type StreamRelayApplyResult =
   { ingestAggregatorReceivePort :: Maybe PortNumber
   , upstreamRelayReceivePorts :: Map UpstreamRelay PortNumber
+  , egests :: List (DeliverTo ServerAddress)
   }
 
 -- -----------------------------------------------------------------------------
@@ -245,7 +243,7 @@ applyPlan stateData@{ plan: Nothing } =
   pure $ CallReply unit $ State stateData
 applyPlan stateData@{ workflowHandle, plan: Just plan, run: runState } =
   do
-    applyResult <- applyPlanFFI workflowHandle plan
+    applyResult <- applyPlanFFI plan workflowHandle
     newRunState <- applyRunResult stateData applyResult runState
 
     let
@@ -321,7 +319,7 @@ applyRunResult { relayKey: relayKey@(RelayKey slotId slotRole), thisServer, inge
             do
               registerResult <- registerWithSpecificRelay portNumber relayAddress rest
 
-              _ <- (logInfo "Attempted registration with relay" { registerResult, relayAddress })
+              _ <- (logInfo "Attempted registration with relay" { registerResult, relayAddress, portNumber })
 
               if registerResult then
                 pure $ UpstreamRelayStateRegistered portNumber relayAddress
@@ -471,10 +469,18 @@ init payload@{slotId, streamRole, aggregator} =
   do
     thisServer <- PoPDefinition.getThisServer
     egestSourceRoutes <- TransPoP.routesTo (extractPoP aggregator)
-    workflowHandle <- startWorkflowFFI (un SlotId slotId)
+
+    workflowHandle <-
+      if egestSourceRoutes == List.nil then
+         startOriginWorkflowFFI (un SlotId slotId)
+      else
+         startDownstreamWorkflowFFI (un SlotId slotId)
+
+    IntraPoP.announceLocalRelayIsAvailable relayKey
+    _ <- Bus.subscribe (serverName relayKey) IntraPoP.bus IntraPoPBus
 
     pure
-      $ State { relayKey: RelayKey slotId streamRole
+      $ State { relayKey
               , workflowHandle
               , thisServer
               , ingestAggregator: aggregator
@@ -483,6 +489,8 @@ init payload@{slotId, streamRole, aggregator} =
               , plan: Nothing
               , run: emptyRunState
               }
+  where
+    relayKey = RelayKey slotId streamRole
 
 handleInfo :: Msg -> State -> Effect (CastResult State)
 handleInfo msg state@(State {relayKey: RelayKey ourSlotId _}) =
@@ -502,75 +510,73 @@ doStop state@(State {relayKey}) = do
 -- Config -> Plan Transformation
 -- -----------------------------------------------------------------------------
 configToPlan :: StateData -> StreamRelayConfig -> StreamRelayPlan
-configToPlan { ingestAggregator } { egests, egestSource, downstreamRelays } =
-  { ingestAggregatorSource
-  , upstreamRelaySources
-  , egestSink: { source: egestResult.source, destinations: egestDestinations }
-  , downstreamRelaySinks
-  }
+
+configToPlan { ingestAggregator } { egestSource: EgestSourceIngestAggregator, egests, downstreamRelays } =
+  OriginStreamRelayPlan $ planData
 
   where
-    ingestAggregatorSource =
-      if egestResult.needsIngestAggregator || downstreamRelaysResult.needsIngestAggregator then
-        IngestAggregatorSourceEnabled (extractAddress ingestAggregator)
-      else
-        IngestAggregatorSourceDisabled
+    planData =
+      { egests: plannedEgests
+      , downstreamRelays: plannedDownstreamRelays
+      }
+
+    plannedEgests = egests # Map.values <#> deliverToAddressFromDeliverToEgestServer
+
+    plannedDownstreamRelays = downstreamRelays # Map.values <#> _.deliverTo <#> deliverToAddressFromDeliverToRelayServer
+
+configToPlan { ingestAggregator } config@{ egestSource: (EgestSourceUpstreamRelays egestUpstreamRelays) } =
+  DownstreamStreamRelayPlan $ planData
+
+  where
+    planData =
+      { egests: plannedEgests
+      , upstreamRelaySources
+      }
+
+    egestList = config.egests # Map.values
+
+    plannedEgests = egestList <#> deliverToAddressFromDeliverToEgestServer
+
+    downstreamRelayList = config.downstreamRelays # Map.values
 
     upstreamRelaySources =
-      List.fromFoldable $ Set.union egestResult.sources downstreamRelaysResult.sources
+      Map.empty
+        # ensureRelaySourcesForEgests egestList egestUpstreamRelays
+        # ensureRelaySourcesForDownstreamRelays downstreamRelayList
+        # Map.values
 
-    egestDestinations =
-      map deliverToAddressFromDeliverToEgestServer $ Map.values egests
-
-    egestResult =
-      -- If there are no egests currently, don't bother with egest sources,
-      -- it can cause us to deadlock if we're being triggered by another relay
-      -- to whom we've got a reverse connection
-      if (Map.size egests) == 0 then
-        { needsIngestAggregator: false
-        , sources: Set.empty
-        , source: EgestSinkSourceIngestAggregator
-        }
+    ensureRelaySourcesForEgests egests egestUpstreamRelays upstreamRelaySources =
+      if egests == List.nil then
+        upstreamRelaySources
       else
-        case egestSource of
-          EgestSourceIngestAggregator ->
-            { needsIngestAggregator: true
-            , sources: Set.empty
-            , source: EgestSinkSourceIngestAggregator
-            }
+        foldl (\z relay -> ensureRelaySource relay List.nil z) upstreamRelaySources egestUpstreamRelays
 
-          EgestSourceUpstreamRelays upstreamRelays ->
-            { needsIngestAggregator: false
-            , sources: Set.fromFoldable upstreamRelays
-            , source: EgestSinkSourceUpstreamRelays upstreamRelays
-            }
+    ensureRelaySourcesForDownstreamRelays downstreamRelays upstreamRelaySources =
+      downstreamRelays
+        # filterMap
+          (\relay ->
+            case relay.source of
+              DownstreamRelaySourceIngestAggregator ->
+                Nothing
 
-    deliverToAddressFromDeliverToEgestServer { server, port } =
-      { server: extractAddress server, port }
+              DownstreamRelaySourceUpstreamRelay upstreamRelay ->
+                Just { upstream: upstreamRelay
+                     , downstream: deliverToAddressFromDeliverToRelayServer relay.deliverTo
+                     }
+          )
+        # foldl (\z relay -> ensureRelaySource relay.upstream (relay.downstream : List.nil) z) upstreamRelaySources
 
-    downstreamRelaysResult =
-      foldl processDownstreamRelay initialState downstreamRelays
+    ensureRelaySource upstreamRelay downstreamRelays upstreamRelaySources =
+      Map.alter (alterRelaySource upstreamRelay downstreamRelays) upstreamRelay upstreamRelaySources
 
-      where
-        processDownstreamRelay { sources, needsIngestAggregator } { source } =
-          case source of
-            DownstreamRelaySourceIngestAggregator ->
-              { sources
-              , needsIngestAggregator: true
-              }
+    alterRelaySource relay downstreamRelays Nothing =
+      Just { relay, downstreamRelays }
 
-            DownstreamRelaySourceUpstreamRelay upstreamRelay ->
-              { sources: Set.insert upstreamRelay sources
-              , needsIngestAggregator
-              }
-
-        initialState = { sources: Set.empty, needsIngestAggregator: false }
-
-    downstreamRelaySinks =
-      map (\ { deliverTo, source } -> { deliverTo: deliverToAddressFromDeliverToRelayServer deliverTo, source }) $ Map.values $ downstreamRelays
-
-    deliverToAddressFromDeliverToRelayServer { server, port } =
-      { server: extractAddress server, port }
+    alterRelaySource relay downstreamRelays (Just existingRelaySource) =
+      let
+        newDownstreamRelays = List.concat (downstreamRelays : existingRelaySource.downstreamRelays : List.nil)
+      in
+        Just existingRelaySource{ downstreamRelays = newDownstreamRelays }
 
 -- -----------------------------------------------------------------------------
 -- Apply Result -> Run State Transformation
@@ -689,6 +695,12 @@ extractServedByHeader (SpudResponse _statusCode headers _body) =
   headers
     # find (\tuple -> ErlTuple.fst tuple == "x-servedby")
     # map  (\tuple -> ServerAddress (ErlTuple.snd tuple))
+
+deliverToAddressFromDeliverToEgestServer { server, port } =
+  { server: extractAddress server, port }
+
+deliverToAddressFromDeliverToRelayServer { server, port } =
+  { server: extractAddress server, port }
 
 --------------------------------------------------------------------------------
 -- Log Utilities

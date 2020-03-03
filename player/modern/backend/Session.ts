@@ -179,7 +179,10 @@ export default class Session extends EventEmitter implements ISession {
           this.traceId = message.traceId;
           this.serverConfig = {
             iceTransportPolicy: "all",
-            iceServers: thisEdge.iceServers
+            iceServers: thisEdge.iceServers,
+
+            // We know we need two candidates - one for audio, one for video
+            iceCandidatePoolSize: 2
           };
 
           console.log(`Initialized Session with identifier ${message.traceId}, moved to state ${SessionState[this.state]} (${this.state}). Final endpoint: ${thisEdge.socketURL}`, thisEdge);
