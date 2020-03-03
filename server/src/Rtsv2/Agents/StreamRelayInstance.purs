@@ -4,12 +4,12 @@
 --   Upstream Relay
 --     A relay that is nearer to the Ingest Aggregator relative to another relay
 --
---    Downstream Relay
---      A relay that is further away from the Ingest Aggregator relative to another relay.
---      NOTE: this also implies that the relay is NOT an origin relay
+--   Downstream Relay
+--     A relay that is further away from the Ingest Aggregator relative to another relay.
+--     NOTE: this also implies that the relay is NOT an origin relay
 --
---    Origin Relay
---      A relay that is in the same PoP as the Ingest Aggregator.
+--   Origin Relay
+--     A relay that is in the same PoP as the Ingest Aggregator.
 --
 module Rtsv2.Agents.StreamRelayInstance
        ( startLink
