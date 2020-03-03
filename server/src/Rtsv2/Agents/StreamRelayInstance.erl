@@ -12,7 +12,8 @@
 
 
 -export(
-   [ startWorkflowFFI/1
+   [ startOriginWorkflowFFI/1
+   , startDownstreamWorkflowFFI/1
    , applyPlanFFI/2
    , getSlotConfigurationFFI/1
    , setSlotConfigurationFFI/2
@@ -26,15 +27,32 @@
         }).
 
 
-startWorkflowFFI(SlotId) ->
+startOriginWorkflowFFI(SlotId) ->
   fun() ->
-      start_workflow(SlotId)
+      start_workflow(origin, SlotId)
   end.
 
-
-applyPlanFFI(WorkflowHandle, #{ egests := EgestList } = StreamRelayPlan) ->
+startDownstreamWorkflowFFI(SlotId) ->
   fun() ->
-      io:format(user, "STREAM PLAN: ~p~n~n", [StreamRelayPlan]),
+      start_workflow(downstream, SlotId)
+  end.
+
+applyPlanFFI({originStreamRelayPlan, #{ egests := EgestList }} = StreamRelayPlan, WorkflowHandle) ->
+  fun() ->
+      io:format(user, "ORIGIN STREAM PLAN: ~p~n~n", [StreamRelayPlan]),
+
+      %% Set up all sources and downstream relay fowarding
+      {ok, Result} = id3as_workflow:ioctl(source, {apply_plan, StreamRelayPlan}, WorkflowHandle),
+
+      %% Set up all egest forwarding
+      {ok, _FailedResolution} = id3as_workflow:ioctl(forward_to_egests, {set_destinations, EgestList}, WorkflowHandle),
+
+      Result
+  end;
+
+applyPlanFFI({downstreamStreamRelayPlan, #{ egests := EgestList }} = StreamRelayPlan, WorkflowHandle) ->
+  fun() ->
+      io:format(user, "DOWNSTREAM STREAM PLAN: ~p~n~n", [StreamRelayPlan]),
 
       %% Set up all sources and downstream relay fowarding
       {ok, Result} = id3as_workflow:ioctl(source, {apply_plan, StreamRelayPlan}, WorkflowHandle),
@@ -68,7 +86,7 @@ getSlotConfigurationFFI(RelayKey) ->
 %%------------------------------------------------------------------------------
 %% Internal functions
 %%------------------------------------------------------------------------------
-start_workflow(SlotId) ->
+start_workflow(OriginOrDownstream, SlotId) ->
   Workflow =
     #workflow{ name = {stream_relay_instance, SlotId}
              , display_name = <<"Stream Relay Workflow for ", (integer_to_binary(SlotId))/binary>>
@@ -79,6 +97,7 @@ start_workflow(SlotId) ->
                  [ #generator{ name = source
                              , display_name = <<"Relays">>
                              , module = rtsv2_stream_relay_generator
+                             , config = #{ origin_or_downstream => OriginOrDownstream }
                              }
                  ]
              , processors =
