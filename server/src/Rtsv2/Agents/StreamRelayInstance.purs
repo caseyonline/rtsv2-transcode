@@ -123,17 +123,16 @@ emptyStreamRelayConfig egestSource =
 type StreamRelayPlan =
   { upstreamRelaySources :: List UpstreamRelaySource
   , ingestAggregatorSource :: Maybe IngestAggregatorSource
+  , egests :: List (DeliverTo ServerAddress)
   }
 
 type UpstreamRelaySource =
   { relay :: UpstreamRelay
-  , egests :: List (DeliverTo ServerAddress)
   , downstreamRelays :: List (DeliverTo ServerAddress)
   }
 
 type IngestAggregatorSource =
-  { egests :: List (DeliverTo ServerAddress)
-  , downstreamRelays :: List (DeliverTo ServerAddress)
+  { downstreamRelays :: List (DeliverTo ServerAddress)
   }
 
 -- -----------------------------------------------------------------------------
@@ -142,6 +141,7 @@ type IngestAggregatorSource =
 type StreamRelayApplyResult =
   { ingestAggregatorReceivePort :: Maybe PortNumber
   , upstreamRelayReceivePorts :: Map UpstreamRelay PortNumber
+  , egests :: List (DeliverTo ServerAddress)
   }
 
 -- -----------------------------------------------------------------------------
@@ -505,19 +505,21 @@ configToPlan { ingestAggregator } { egests, egestSource, downstreamRelays } =
   -- TODO: PS: this is an either/or, either we're an origin relay or not
   { ingestAggregatorSource
   , upstreamRelaySources
+  , egests: plannedEgests
   }
 
   where
+    plannedEgests = egests # Map.values <#> deliverToAddressFromDeliverToEgestServer
+
     ingestAggregatorSource =
-      if (List.nil == source.egests) && (List.nil == source.downstreamRelays) then
+      if (List.nil == plannedEgests) && (List.nil == source.downstreamRelays) then
         Nothing
       else
         Just source
 
       where
         source =
-          { egests: egestsForIngestAggregatorSource
-          , downstreamRelays: downstreamRelaysForIngestAggregatorSource
+          { downstreamRelays: downstreamRelaysForIngestAggregatorSource
           }
 
     egestsForIngestAggregatorSource =
@@ -548,7 +550,6 @@ configToPlan { ingestAggregator } { egests, egestSource, downstreamRelays } =
 
         mkRelaySource upstreamRelay downstreamRelays =
           { relay: upstreamRelay
-          , egests: List.nil
           , downstreamRelays
           }
 
@@ -569,17 +570,10 @@ configToPlan { ingestAggregator } { egests, egestSource, downstreamRelays } =
           Map.alter (addEgestsToRelay relayToAdd) relayToAdd upstreamRelays
 
         addEgestsToRelay relayToAdd Nothing =
-          let
-            emptyRelay =
-              { relay: relayToAdd
-              , egests: List.nil
-              , downstreamRelays: List.nil
-              }
-          in
-            addEgestsToRelay relayToAdd (Just emptyRelay)
+            Just { relay: relayToAdd, downstreamRelays: List.nil }
 
-        addEgestsToRelay _relayToAdd (Just relay) =
-          Just $ relay{ egests = deliverToAddressFromDeliverToEgestServer <$> Map.values egests }
+        addEgestsToRelay _relayToAdd existingRelay =
+          existingRelay
 
         result = relaySourcesWithEgests
 

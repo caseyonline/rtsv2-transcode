@@ -32,9 +32,16 @@ startWorkflowFFI(SlotId) ->
   end.
 
 
-applyPlanFFI(WorkflowHandle, StreamRelayPlan) ->
+applyPlanFFI(WorkflowHandle, #{ egests := EgestList } = StreamRelayPlan) ->
   fun() ->
-      {ok, Result} = id3as_workflow:ioctl(relays, {apply_plan, StreamRelayPlan}, WorkflowHandle),
+      io:format(user, "STREAM PLAN: ~p~n~n", [StreamRelayPlan]),
+
+      %% Set up all sources and downstream relay fowarding
+      {ok, Result} = id3as_workflow:ioctl(source, {apply_plan, StreamRelayPlan}, WorkflowHandle),
+
+      %% Set up all egest forwarding
+      {ok, _FailedResolution} = id3as_workflow:ioctl(forward_to_egests, {set_destinations, EgestList}, WorkflowHandle),
+
       Result
   end.
 
@@ -62,23 +69,31 @@ getSlotConfigurationFFI(RelayKey) ->
 %% Internal functions
 %%------------------------------------------------------------------------------
 start_workflow(SlotId) ->
-
-  %% NOTE: the stream relay generator does all of its forwarding internally, nothing
-  %% comes out of it.
   Workflow =
-    #workflow{
-       name = {stream_relay_instance, SlotId},
-       display_name = <<"Stream Relay Workflow for ", (integer_to_binary(SlotId))/binary>>,
-       tags = #{ type => stream_relay
-               , slot => SlotId
-               },
-       generators =
-         [ #generator{ name = relays
-                     , display_name = <<"Relays">>
-                     , module = rtsv2_stream_relay_generator
-                     }
-         ]
-      },
+    #workflow{ name = {stream_relay_instance, SlotId}
+             , display_name = <<"Stream Relay Workflow for ", (integer_to_binary(SlotId))/binary>>
+             , tags = #{ type => stream_relay
+                       , slot => SlotId
+                       }
+             , generators =
+                 [ #generator{ name = source
+                             , display_name = <<"Relays">>
+                             , module = rtsv2_stream_relay_generator
+                             }
+                 ]
+             , processors =
+                 [ #processor{ name = merge_redundant_streams_for_egest
+                             , display_name = <<"Merge Redundant Streams">>
+                             , module = rtsv2_stream_relay_merge_redundant_streams_processor
+                             , subscribes_to = source
+                             }
+                 , #processor{ name = forward_to_egests
+                             , display_name = <<"Forward Merged Stream to Egest Instances">>
+                             , module = rtsv2_stream_relay_forward_processor
+                             , subscribes_to = merge_redundant_streams_for_egest
+                             }
+                 ]
+             },
 
   {ok, Pid} = id3as_workflow:start_link(Workflow, self()),
 
