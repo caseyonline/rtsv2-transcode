@@ -81,6 +81,7 @@ data State = State StateData
 
 type StateData =
   { relayKey :: RelayKey
+  , relayType :: RelayType
   , workflowHandle :: WorkflowHandle
   , thisServer :: Server
   , ingestAggregator :: Server
@@ -89,6 +90,10 @@ type StateData =
   , plan :: Maybe StreamRelayPlan
   , run :: StreamRelayRunState
   }
+
+data RelayType
+  = RelayTypeOrigin
+  | RelayTypeDownstream
 
 -- -----------------------------------------------------------------------------
 -- Config Data Model
@@ -480,20 +485,31 @@ startLink payload =
 init :: CreateRelayPayload -> Effect State
 init payload@{slotId, streamRole, aggregator} =
   do
+
     thisServer <- PoPDefinition.getThisServer
+
     egestSourceRoutes <- TransPoP.routesTo (extractPoP aggregator)
 
+    let
+      relayType =
+        if egestSourceRoutes == List.nil then
+          RelayTypeOrigin
+        else
+          RelayTypeDownstream
+
     workflowHandle <-
-      if egestSourceRoutes == List.nil then
-         startOriginWorkflowFFI (un SlotId slotId)
-      else
-         startDownstreamWorkflowFFI (un SlotId slotId)
+      case relayType of
+        RelayTypeOrigin ->
+          startOriginWorkflowFFI (un SlotId slotId)
+        RelayTypeDownstream ->
+          startDownstreamWorkflowFFI (un SlotId slotId)
 
     IntraPoP.announceLocalRelayIsAvailable relayKey
     _ <- Bus.subscribe (serverName relayKey) IntraPoP.bus IntraPoPBus
 
     pure
       $ State { relayKey
+              , relayType
               , workflowHandle
               , thisServer
               , ingestAggregator: aggregator
