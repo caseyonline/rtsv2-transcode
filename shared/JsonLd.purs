@@ -6,21 +6,18 @@ module Shared.JsonLd
        , Node
        ) where
 
+import Prelude
+
 import Control.Alt ((<|>))
 import Control.Apply (lift2)
 import Data.Maybe (Maybe)
 import Data.Newtype (class Newtype)
 import Data.Symbol (SProxy(..))
 import Foreign (F, Foreign)
-import Heterogeneous.Folding (class HFoldlWithIndex)
-import Prelude (($), (<$>))
 import Prim.Row as Row
 import Record as Record
-import Record.Builder (Builder)
-import Record.Prefix (PrefixProps, UnPrefixProps, add, remove)
 import Shared.Common (Url)
 import Simple.JSON (class ReadForeign, class WriteForeign, readImpl, writeImpl)
-import Unsafe.Coerce (unsafeCoerce)
 
 -- TODO - filter 'undefined' out of json in Json.erl - matches javascript implementation
 -- TODO - should be able to do magic rename stuff on ContextFields - will need typeclass similar to record-diff
@@ -77,6 +74,7 @@ type NodeMetadata resource contextFields = NodeMetadata' (resource :: resource) 
 newtype Node resource contextFields = Node (NodeMetadata resource contextFields)
 
 derive instance newtypeNode :: Newtype (Node a b) _
+
 
 instance writeForeignNode :: ( Row.Union r1 (NodeMetadata''() contextFields) r2
                              , Row.Nub r2 r3

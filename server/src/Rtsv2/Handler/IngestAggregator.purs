@@ -14,32 +14,23 @@ import Data.Maybe (Maybe(..), fromMaybe', isNothing)
 import Erl.Cowboy.Req (method)
 import Erl.Data.List (List, nil, (:))
 import Erl.Data.Tuple (tuple2)
-import Foreign (Foreign, F)
 import Logger (spy)
 import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
 import Rtsv2.Agents.IngestAggregatorInstanceSup as IngestAggregatorInstanceSup
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
 import Rtsv2.Agents.StreamRelayTypes (RegisterRelayPayload)
-import Shared.JsonLd as JsonLd
 import Shared.LlnwApiTypes (StreamDetails)
 import Shared.Stream (AggregatorKey(..), IngestKey(..), ProfileName, SlotId, SlotRole)
 import Shared.Types (ServerAddress)
-import Shared.Types.Agent.State (DownstreamRelayContextFields)
 import Shared.Types.Agent.State as PublicState
 import Shared.Utils (lazyCrashIfMissing)
-import Simple.JSON (readJSON, readJSON')
+import Simple.JSON (readJSON)
 import Stetson (HttpMethod(..), StetsonHandler)
 import Stetson.Rest as Rest
 import StetsonHelper (GetHandler, PostHandler, allBody, binaryToString, jsonResponse, processPostPayload)
 
 ingestAggregator :: SlotId -> SlotRole -> GetHandler (PublicState.IngestAggregator List)
 ingestAggregator slotId role = jsonResponse $ Just <$> (IngestAggregatorInstance.getState $ AggregatorKey slotId role)
-
---foo :: F (JsonLd.Context DownstreamRelayContextFields) --PublicState.IngestAggregator List)
-foo :: F (PublicState.IngestAggregator List)
-foo =
-  readJSON' ""
-
 
 slotConfiguration :: SlotId -> SlotRole -> GetHandler SlotConfiguration
 slotConfiguration slotId role =

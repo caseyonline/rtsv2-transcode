@@ -63,7 +63,7 @@ data Endpoint
   | IngestAggregatorsE
   | IngestInstancesE
   | IngestInstancesMetricsE
-  | IngestInstanceE SlotId ProfileName
+  | IngestInstanceE SlotId SlotRole ProfileName
   | IngestInstanceLlwpE SlotId SlotRole ProfileName
   | IngestStartE Canary RtmpShortName SlotNameAndProfileName
   | IngestStopE Canary SlotId SlotRole ProfileName
@@ -126,7 +126,7 @@ endpoint = root $ sum
 
   , "IngestInstancesE"                                 : "api" / "agents" / path "ingest" noArgs
   , "IngestInstancesMetricsE"                          : "api" / "agents" / "ingest" / path "metrics" noArgs
-  , "IngestInstanceE"                                  : "api" / "agents" / "ingest" / slotId segment / profileName segment
+  , "IngestInstanceE"                                  : "api" / "agents" / "ingest" / slotId segment / slotRole segment / profileName segment
   , "IngestInstanceLlwpE"                              : "api" / "agents" / "ingest" / slotId segment / slotRole segment / profileName segment / "llwp" -- URL duplicated in Web.purs
   , "IngestStartE"                                     : "api" / "public" / canary segment / "ingest" / shortName segment / slotNameAndProfile segment / "start"
   , "IngestStopE"                                      : "api" / "public" / canary segment / "ingest" / slotId segment / slotRole segment / profileName segment / "stop"
