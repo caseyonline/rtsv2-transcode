@@ -67,7 +67,3 @@ changeHtmlClass :: String -> Effect Unit
 changeHtmlClass className = do
   html' <- liftEffect $ window >>= document >>= documentElement <<< toDocument
   for_ html' $ setClassName className
-
-  -- case body of
-  --   Just b  -> setClassName classname b
-  --   Nothing -> pure unit

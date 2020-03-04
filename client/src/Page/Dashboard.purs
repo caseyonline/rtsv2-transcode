@@ -14,7 +14,6 @@ import Data.Int (toNumber)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (unwrap)
 import Data.Symbol (SProxy(..))
-import Debug.Trace (spy)
 import Effect.Aff.Class (class MonadAff)
 import Effect.Class (liftEffect)
 import Effect.Ref as Ref
@@ -38,7 +37,7 @@ import Rtsv2App.Data.PoP (PoPDefEcharts, updatePoPDefEnv)
 import Rtsv2App.Data.Profile (Profile)
 import Rtsv2App.Data.Route (Route(..))
 import Rtsv2App.Env (PoPDefEnv, UrlEnv, UserEnv, changeHtmlClass)
-import Shared.Types ( Server)
+import Shared.Types (Server)
 import Shared.Types.Agent.State (PoPDefinition, AggregatorLocation)
 
 -------------------------------------------------------------------------------
@@ -128,6 +127,7 @@ component = Connect.component $ H.mkComponent
       H.getHTMLElementRef (H.RefLabel "mymap") >>= traverse_ \element -> do
         newSt <- H.get
         chart <- H.liftEffect $ EC.makeChart element
+        liftEffect $ EC.makeBlankMap chart
         H.modify_ _ { chart = Just chart }
         liftEffect $ EC.setOption { scatterData: newSt.popDefEcharts } chart
         liftEffect $ EC.setClick { curHost: (unwrap urlEnv.curHostUrl), url: "/app#/pop/" } chart

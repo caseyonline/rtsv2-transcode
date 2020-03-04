@@ -19,7 +19,7 @@ import Rtsv2App.Capability.Navigate (class Navigate)
 import Rtsv2App.Component.HTML.Utils (css_, dataAttr)
 import Rtsv2App.Data.PoP (getPoPLeaderAddress)
 import Rtsv2App.Env (PoPDefEnv)
-import Shared.Stream (SlotId(..))
+import Shared.Stream (SlotId(..), SlotRole(..))
 import Shared.Types (PoPName(..), RegionName(..), Server(..), ServerAddress(..), PoPSelectedInfo(..))
 import Shared.Types.Agent.State (PoPDefinition, AggregatorLocation)
 
@@ -48,7 +48,7 @@ type CheckBoxState =
   }
 
 type State =
-  { aggrLocs      :: AggregatorLocation Array
+  { aggrLocs     :: AggregatorLocation Array
   , popDef       :: Maybe (PoPDefinition Array)
   , checkedBoxes :: Array CheckBoxState
   }
@@ -74,7 +74,7 @@ component = H.mkComponent
   where
   initialState :: Input -> State
   initialState { aggrLocs, popDef } =
-    { checkedBoxes: initCheckBoxes aggrLocs
+    { checkedBoxes: initCheckBoxes aggrLocs --  myTestArgLocs
     , aggrLocs
     , popDef
     }
@@ -82,7 +82,7 @@ component = H.mkComponent
   handleAction :: Action -> H.HalogenM State Action () Message m Unit
   handleAction = case _ of
     Receive { aggrLocs, popDef } -> do
-      H.put { checkedBoxes: initCheckBoxes aggrLocs
+      H.put { checkedBoxes: initCheckBoxes aggrLocs --  myTestArgLocs
             , aggrLocs: aggrLocs
             , popDef
             }
@@ -90,13 +90,11 @@ component = H.mkComponent
     Select mSlotId -> do
       st <- H.get
       { popDefEnv } <- ask
-
       transPoPLeaders <- H.liftEffect $ Ref.read popDefEnv.transPoPLeaders
 
-      nSt <- H.modify _ { checkedBoxes = updateSelected st.checkedBoxes mSlotId }
-
-      let selectedSlot = whichSlotSelected nSt.checkedBoxes
-          selectedPname = slotToPoP selectedSlot nSt.aggrLocs
+      newSt <- H.modify _ { checkedBoxes = updateSelected st.checkedBoxes mSlotId }
+      let selectedSlot = whichSlotSelected newSt.checkedBoxes
+          selectedPname = slotToPoP selectedSlot newSt.aggrLocs
       H.raise
         (SPoPInfo
            { selectedSlotId: selectedSlot
@@ -151,6 +149,7 @@ component = H.mkComponent
               ]
             , HH.tbody_
               (flip map state.aggrLocs
+              -- (flip map myTestArgLocs
                (\argLoc ->
                  HH.tr_
                  ( argLoc.servers >>=
@@ -199,9 +198,9 @@ component = H.mkComponent
 -- | create a blank array of checkedBoxes using aggrLocs
 initCheckBoxes :: AggregatorLocation Array -> Array CheckBoxState
 initCheckBoxes aggrLocs = do
-  join $ map f aggrLocs
+  map f aggrLocs
   where
-    f argLoc = (\_ -> { slotId: (Just argLoc.slotId), isSelected: false }) <$> argLoc.servers
+    f = (\argLoc -> { slotId: (Just argLoc.slotId), isSelected: false })
 
 -- | is the current checkbox already checked or not
 isChecked :: Maybe SlotId -> Array CheckBoxState -> Boolean
@@ -213,10 +212,10 @@ isChecked slotId checkedBoxes = do
 
 -- | make sure only one option is selected at a time
 updateSelected :: Array CheckBoxState -> Maybe SlotId -> Array CheckBoxState
-updateSelected checkedBoxes mSlotId =
-  (\cb -> if mSlotId == cb.slotId
+updateSelected checkedBoxes maybeSlotId =
+  (\cb -> if maybeSlotId == cb.slotId
           then { slotId: cb.slotId , isSelected: not cb.isSelected }
-          else cb
+          else { slotId: cb.slotId , isSelected: false }
   ) <$> checkedBoxes
 
 -- | find which slot is selected
@@ -244,3 +243,26 @@ slotToPoP mSlotId arggLocs =
                   if argLoc.slotId == slotId
                     then Just pop
                     else Nothing ) argLoc.servers
+
+myTestArgLocs :: AggregatorLocation Array
+myTestArgLocs =
+  [ { slotId: SlotId 1
+    , role: Primary
+    , servers: [ Server
+                   { address: ServerAddress "172.16.171.1"
+                   , pop: PoPName "fra"
+                   , region: RegionName "europe"
+                   }
+               ]
+    }
+  , { slotId: SlotId 2
+    , role: Primary
+    , servers: [ Server
+                   { address: ServerAddress "172.16.170.1"
+                   , pop: PoPName "dal"
+                   , region: RegionName "america"
+                   }
+               ]
+    }
+
+  ]

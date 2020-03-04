@@ -277,8 +277,6 @@ function dashboardChart(scatterData) {
 }
 
 function popChart(scatterData) {
-    console.log(scatterData[0])
-    console.log(scatterData[1])
     return {
     legend: {
         orient: 'vertical',
@@ -444,20 +442,6 @@ function popChart(scatterData) {
           zlevel: 10,
 
           data: scatterData[0].concat(scatterData[1])
-          // [
-          //     [ {name:"Fra", coord:[8.682127,50.110922], data: [60, 120]},
-          //       {name:'Dal', coord: [-96.796989,32.776665]}
-          //     ],
-          //     [ {name:'Dal', coord: [-96.796989,32.776665], data: [60, 120]},
-          //       {name:'Lax', coord: [-118.243685,34.052234]}
-          //     ],
-          //     [ {name:'Fra', coord: [8.682127,50.110922]},
-          //       {name:'Iad', coord: [-77.039851, 38.877270], data:[60, 120]},
-          //     ],
-          //     [ {name:'Iad', coord: [-77.039851, 38.877270]},
-          //       {name:'Lax', coord: [-118.243685,34.052234], data: [60, 120]},
-          //     ]
-          // ]
         },
     ]
     };
