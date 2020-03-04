@@ -36,6 +36,14 @@ let additions =
           , version =
               "v7.4.0"
           }
+      , record-prefix =
+          { dependencies =
+              [ "prelude", "heterogeneous", "console", "typelevel-prelude" ]
+          , repo =
+              "ssh://git@github.com/dariooddenino/purescript-record-prefix.git"
+          , version =
+              "v1.0.0"
+          }
       }
 
 in  upstream ⫽ overrides ⫽ additions
