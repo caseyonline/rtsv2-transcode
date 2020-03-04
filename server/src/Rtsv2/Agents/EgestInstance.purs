@@ -47,7 +47,8 @@ import Shared.Agent as Agent
 import Shared.LlnwApiTypes (StreamIngestProtocol(..))
 import Shared.Stream (AggregatorKey(..), EgestKey(..), RelayKey(..), SlotId(..), SlotRole(..))
 import Shared.Router.Endpoint (Endpoint(..), makeUrl, makeUrlAddrWithPath)
-import Shared.Types (EgestServer(..), Load, Milliseconds, RelayServer, Server, ServerLoad(..), extractAddress)
+import Shared.Common (Milliseconds)
+import Shared.Types (EgestServer(..), Load, RelayServer, Server, ServerLoad(..), extractAddress)
 import Shared.Types.Agent.State as PublicState
 import SpudGun as SpudGun
 

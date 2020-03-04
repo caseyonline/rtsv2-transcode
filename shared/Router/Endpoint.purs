@@ -22,7 +22,8 @@ import Routing.Duplex (RouteDuplex', as, path, print, rest, root, segment)
 import Routing.Duplex.Generic (noArgs, sum)
 import Routing.Duplex.Generic.Syntax ((/))
 import Shared.Stream (ProfileName(..), RtmpShortName, SlotId, SlotIdAndProfileName(..), SlotNameAndProfileName(..), SlotRole(..))
-import Shared.Types (PoPName, ServerAddress(..), Url, extractAddress)
+import Shared.Common (Url)
+import Shared.Types (PoPName, ServerAddress(..), extractAddress)
 
 data Canary = Live
             | Canary

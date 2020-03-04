@@ -25,7 +25,7 @@ import Erl.Data.Binary (Binary)
 import Erl.Data.Binary.IOData (IOData, concat, fromBinary, toBinary)
 import Erl.Data.List (List, nil, (:))
 import Erl.Data.Map (Map, fromFoldable, lookup, update)
-import Shared.Types (Milliseconds)
+import Shared.Common (Milliseconds)
 import Unsafe.Coerce (unsafeCoerce)
 
 class PrometheusValue a where

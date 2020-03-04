@@ -43,7 +43,8 @@ import Shared.Agent as Agent
 import Shared.LlnwApiTypes (StreamDetails, StreamPublish(..))
 import Shared.Stream (AggregatorKey, IngestKey(..), ingestKeyToAggregatorKey)
 import Shared.Router.Endpoint (Endpoint(..), makeUrl)
-import Shared.Types (Load, Milliseconds, Server, ServerLoad(..), Url, extractAddress)
+import Shared.Common (Milliseconds, Url)
+import Shared.Types (Load, Server, ServerLoad(..), extractAddress)
 import Shared.Types.Agent.State as PublicState
 import Shared.Types.Media.Types.Rtmp (RtmpClientMetadata)
 import Shared.Types.Media.Types.SourceDetails (SourceInfo)

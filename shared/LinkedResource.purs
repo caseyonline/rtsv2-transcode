@@ -2,6 +2,7 @@ module Shared.LinkedResource
        (
          LinkedResource
        , PrefixProps(..)
+
        ) where
 
 import Data.Newtype (class Newtype, wrap)
@@ -14,7 +15,7 @@ import Prim.Symbol (class Append)
 import Record (delete, merge)
 import Record.Builder (Builder)
 import Record.Builder as Builder
-import Shared.Types (Url)
+import Shared.Common (Url)
 import Simple.JSON (class ReadForeign, class WriteForeign, readImpl, writeImpl)
 
 type LinkMetadata'' a = ( id :: Url | a )

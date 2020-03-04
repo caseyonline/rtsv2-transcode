@@ -26,7 +26,7 @@ import Ephemeral.List as EList
 import Erl.Data.List (List, nil)
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
-import Shared.Types (Milliseconds)
+import Shared.Common (Milliseconds)
 import Erl.Utils as Erl
 
 --TODO - this should really be EMultiMap (Map k (ENonEmptyList v))

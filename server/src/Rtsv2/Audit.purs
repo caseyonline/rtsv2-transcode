@@ -19,7 +19,7 @@ import Erl.Data.List (List, nil, (:))
 import Logger as Logger
 import Shared.LlnwApiTypes (StreamIngestProtocol(..))
 import Shared.Stream (EgestKey(..), SlotId(..), SlotRole, RtmpShortName, RtmpStreamName)
-import Shared.Types (Milliseconds)
+import Shared.Common (Milliseconds)
 
 foreign import toList :: String -> List Char
 

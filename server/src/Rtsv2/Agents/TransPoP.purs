@@ -56,7 +56,8 @@ import Serf (IpAndPort, LamportClock, SerfCoordinate, calcRtt)
 import Serf as Serf
 import Shared.Stream (AgentKey)
 import Shared.Router.Endpoint (Endpoint(..), makeUrlAddr)
-import Shared.Types (Milliseconds, PoPName, Server, ServerAddress(..), extractAddress, extractPoP, toServer)
+import Shared.Common (Milliseconds)
+import Shared.Types (PoPName, Server, ServerAddress(..), extractAddress, extractPoP, toServer)
 import Shared.Types.Agent.State as PublicState
 import Shared.Utils (distinctRandomNumbers)
 import SpudGun (bodyToString)

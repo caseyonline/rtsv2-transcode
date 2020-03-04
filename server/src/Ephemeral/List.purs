@@ -19,7 +19,7 @@ import Ephemeral (EData)
 import Ephemeral as EData
 import Erl.Data.List (List, nil, uncons, (:))
 import Erl.Data.List as List
-import Shared.Types (Milliseconds)
+import Shared.Common (Milliseconds)
 import Erl.Utils as Erl
 
 newtype EList a = EList (List (EData a))

@@ -34,7 +34,7 @@ import Erl.Data.Tuple (Tuple2, tuple2)
 import Erl.Utils (Ref, makeRef, privDir, self, sleep, systemTimeMs, trapExit, vmTimeMs) as Erl
 import Foreign (Foreign, MultipleErrors)
 import Prim.Row (class Union)
-import Shared.Types (Milliseconds,  Url)
+import Shared.Common (Milliseconds,  Url)
 import Simple.JSON (class ReadForeign, class WriteForeign, writeJSON)
 import Simple.JSON as JSON
 

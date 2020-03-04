@@ -27,7 +27,7 @@ import Ephemeral as EData
 import Erl.Data.List (List, nil, (:))
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
-import Shared.Types (Milliseconds)
+import Shared.Common (Milliseconds)
 import Erl.Utils as Erl
 
 

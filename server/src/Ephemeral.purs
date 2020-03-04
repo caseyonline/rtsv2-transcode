@@ -13,7 +13,7 @@ import Prelude
 import Data.Function (on)
 import Data.Maybe (Maybe(..))
 import Effect (Effect)
-import Shared.Types (Milliseconds)
+import Shared.Common (Milliseconds)
 import Erl.Utils as Erl
 
 data EData a = EData Milliseconds a

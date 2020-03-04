@@ -4,7 +4,7 @@ default: all
 
 PS_SRC = src
 OUTPUT = output
-PS_SOURCEFILES = $(shell find ${PS_SRC} -type f -name \*.purs)
+PS_SOURCEFILES = $(shell find -L ${PS_SRC} -type f -name \*.purs)
 PS_ERL_FFI = $(shell find ${PS_SRC} -type f -name \*.erl)
 COMPILED_PS = ../src/compiled_ps
 ERL_MODULES_VERSION = $(shell dhall-to-json < packages.dhall | jq '."erl-modules".version')

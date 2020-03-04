@@ -12,11 +12,11 @@ module Erl.Utils
 
 import Prelude
 
-import Data.Newtype (class Newtype, unwrap, wrap)
+import Data.Newtype (unwrap, wrap)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Process.Raw (Pid)
-import Shared.Types (Milliseconds)
+import Shared.Common (Milliseconds)
 
 foreign import systemTimeImpl :: Atom -> Effect Int
 foreign import vmTimeImpl :: Atom -> Effect Int

@@ -26,7 +26,7 @@ import Effect (Effect)
 import Erl.Atom (Atom)
 import Erl.Data.List (List, zip)
 import Erl.Data.Map (Map)
-import Shared.Types (Milliseconds)
+import Shared.Common (Milliseconds)
 import Foreign (Foreign)
 import Math (sqrt)
 

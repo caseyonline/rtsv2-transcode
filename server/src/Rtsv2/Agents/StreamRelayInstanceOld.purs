@@ -44,7 +44,8 @@ import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Agent as Agent
 import Shared.Stream (AggregatorKey(..), RelayKey(..), SlotId(..), SlotRole(..))
 import Shared.Router.Endpoint (Endpoint(..), makeUrlAddr, makeUrlAddrWithPath, makeUrl, makeUrlWithPath)
-import Shared.Types (PoPName, DeliverTo, EgestServer, RelayServer(..), Server, ServerAddress(..), Url, extractPoP, extractAddress)
+import Shared.Common (Url)
+import Shared.Types (PoPName, DeliverTo, EgestServer, RelayServer(..), Server, ServerAddress(..), extractPoP, extractAddress)
 import Shared.Types.Agent.State as PublicState
 import SpudGun (SpudResponse(..), SpudError, JsonResponseError)
 import SpudGun as SpudGun
