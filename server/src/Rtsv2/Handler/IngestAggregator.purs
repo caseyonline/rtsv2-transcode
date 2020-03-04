@@ -20,7 +20,7 @@ import Rtsv2.Agents.IngestAggregatorInstanceSup as IngestAggregatorInstanceSup
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
 import Rtsv2.Agents.StreamRelayTypes (RegisterRelayPayload)
 import Shared.LlnwApiTypes (StreamDetails)
-import Shared.Stream (AggregatorKey(..), IngestKey(..), SlotId, SlotRole, ProfileName)
+import Shared.Stream (AggregatorKey(..), IngestKey(..), ProfileName, SlotId, SlotRole)
 import Shared.Types (ServerAddress)
 import Shared.Types.Agent.State as PublicState
 import Shared.Utils (lazyCrashIfMissing)

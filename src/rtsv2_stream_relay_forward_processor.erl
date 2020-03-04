@@ -82,19 +82,42 @@ process_input(#rtp{} = RTP, State = #?state{ destinations = Destinations, public
 
   {ok, State #?state{ publication_count = PublicationCount + 1 }}.
 
-handle_info({udp_error, Socket, econnrefused}, State = #?state{ slot_id = SlotId
-                                                              , destinations = Destinations
-                                                              , destinations_by_socket = DestinationsBySocket }) ->
+handle_info({udp_error, Socket, econnrefused},
+            State = #?state{ slot_id = SlotId
+                           , destinations = Destinations
+                           , destinations_by_socket = DestinationsBySocket
+                           }
+           ) ->
 
-  {RelayKey, NewDestinationsBySocket} = maps:take(Socket, DestinationsBySocket),
-  NewDestinations = maps:remove(RelayKey, Destinations),
+  case maps:take(Socket, DestinationsBySocket) of
+    {RelayKey, NewDestinationsBySocket} ->
+      NewDestinations = maps:remove(RelayKey, Destinations),
 
-  ?SLOG_INFO("UDP error sending to Destination", #{ slot_id => SlotId
-                                            , stream_relay => RelayKey
-                                            , reason => econnrefused}),
+      ?SLOG_INFO("UDP error sending to Destination",
+                 #{ slot_id => SlotId
+                  , stream_relay => RelayKey
+                  , reason => econnrefused
+                  , socket => Socket
+                  }
+                ),
 
-  {noreply, State#?state{ destinations = NewDestinations
-                        , destinations_by_socket = NewDestinationsBySocket}}.
+      { noreply
+      , State#?state{ destinations = NewDestinations
+                    , destinations_by_socket = NewDestinationsBySocket
+                    }
+      };
+
+    error ->
+      ?SLOG_INFO("UDP econnrefused for unknown socket",
+                 #{ slot_id => SlotId
+                  , reason => econnfused
+                  , socket => Socket
+                  }
+                ),
+
+      {noreply, State}
+  end.
+
 
 ioctl(read_meter, State = #?state{ publication_count = PublicationCount }) ->
 

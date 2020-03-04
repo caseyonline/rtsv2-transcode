@@ -13,6 +13,7 @@ You can edit this file as you like.
     , "effect"
     , "foreign-generic"
     , "generics-rep"
+    , "heterogeneous"
     , "milkis"
     , "node-child-process"
     , "node-fs"
