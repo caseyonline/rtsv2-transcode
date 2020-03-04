@@ -5,8 +5,8 @@ import Prelude
 import Data.Either (Either)
 import Data.Maybe (Maybe)
 import Halogen (HalogenM, lift)
-import Shared.Types (PoPName(..), Server, ServerAddress, PoPSelectedInfo)
-import Shared.Types.Agent.State (IntraPoP, PoPDefinition, TimedPoPRoutes, AggregatorLocation)
+import Shared.Types (PoPName, PoPSelectedInfo, ServerAddress)
+import Shared.Types.Agent.State (IntraPoP, PoPDefinition, TimedPoPRoutes)
 
 class Monad m <= ManageApi m where
   getTimedRoutes   :: PoPSelectedInfo -> PoPName -> m (Either String (TimedPoPRoutes Array))

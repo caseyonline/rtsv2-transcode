@@ -16,11 +16,10 @@ import Prelude
 
 import Control.Monad.Reader (ask)
 import Control.Monad.Reader.Trans (class MonadAsk)
-import Data.Array (catMaybes, concat, find, findMap, index, length, mapMaybe, nub)
+import Data.Array (catMaybes, findMap, index, length, mapMaybe, nub)
 import Data.Either (hush)
-import Data.Maybe (Maybe(..), fromMaybe, maybe)
-import Data.Monoid (guard)
-import Data.Newtype (over, un, wrap)
+import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Newtype (un)
 import Data.Traversable (traverse)
 import Effect (Effect)
 import Effect.Aff.Class (class MonadAff)
@@ -30,7 +29,7 @@ import Effect.Ref as Ref
 import Global (readFloat)
 import Rtsv2App.Capability.Resource.Api (class ManageApi, getPublicState)
 import Rtsv2App.Env (PoPDefEnv)
-import Shared.Types (GeoLoc(..), PoPName(..), Server(..), ServerAddress, LeaderGeoLoc)
+import Shared.Types (GeoLoc(..), LeaderGeoLoc, PoPName, Server(..), ServerAddress)
 import Shared.Types.Agent.State (AggregatorLocation, IntraPoP, PoP, PoPDefinition, TimedPoPRoutes)
 
 

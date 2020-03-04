@@ -7,7 +7,6 @@ import Prelude
 import Data.Const (Const)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype)
-import Data.Symbol (SProxy(..))
 import Effect.Aff.Class (class MonadAff)
 import Effect.Class (liftEffect)
 import Foreign.FrontEnd as FF
@@ -18,7 +17,6 @@ import Halogen.HTML.Properties as HP
 import Rtsv2App.Api.Request (LoginFields)
 import Rtsv2App.Capability.Navigate (class Navigate, navigate)
 import Rtsv2App.Capability.Resource.User (class ManageUser, loginUser)
-import Rtsv2App.Component.HTML.Footer (footer)
 import Rtsv2App.Component.HTML.Header as HD
 import Rtsv2App.Component.HTML.MenuMain as MM
 import Rtsv2App.Component.HTML.Utils (css_, safeHref, whenElem)

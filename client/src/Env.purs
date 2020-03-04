@@ -3,7 +3,7 @@ module Rtsv2App.Env where
 import Prelude
 
 import Data.Generic.Rep (class Generic)
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe)
 import Data.Newtype (class Newtype)
 import Data.Traversable (for_)
 import Effect (Effect)

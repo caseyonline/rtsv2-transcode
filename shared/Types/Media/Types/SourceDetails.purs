@@ -17,16 +17,14 @@ import Prelude
 import Control.Apply (lift2)
 import Control.Monad.Except (except)
 import Data.Array ((!!))
-import Data.Either (Either, note)
+import Data.Either (note)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show (genericShow)
-import Data.Int (fromString)
 import Data.List.NonEmpty (singleton)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype, unwrap, wrap)
-import Data.String (Pattern(..), split)
 import Data.Tuple (Tuple(..))
-import Foreign (F, Foreign, ForeignError(..), MultipleErrors, readArray, readInt, readString, unsafeToForeign)
+import Foreign (F, Foreign, ForeignError(..), readArray, readInt, readString, unsafeToForeign)
 import Simple.JSON (class ReadForeign, class WriteForeign, writeImpl)
 
 newtype SlotId = SlotId Int

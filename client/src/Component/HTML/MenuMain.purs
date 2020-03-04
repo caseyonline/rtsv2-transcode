@@ -5,7 +5,6 @@ import Prelude
 import Data.Const (Const)
 import Data.Maybe (Maybe(..))
 import Data.Monoid (guard)
-import Debug.Trace (traceM)
 import Effect.Aff.Class (class MonadAff)
 import Halogen as H
 import Halogen.HTML as HH
