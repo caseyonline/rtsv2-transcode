@@ -111,7 +111,7 @@ type EgestLocationContextFields = ( )
 
 type AggregatorLocation f = f { slotId :: SlotId
                               , role :: SlotRole
-                              , servers :: f (JsonLd.Node ServerRec AggregatorLocationContextFields)
+                              , servers :: f Server
                               }
 
 type Region f = { name :: RegionName
