@@ -13,8 +13,11 @@
 
 -export(
    [ startOriginWorkflowFFI/1
+   , applyOriginPlanFFI/2
+
    , startDownstreamWorkflowFFI/1
-   , applyPlanFFI/2
+   , applyDownstreamPlanFFI/2
+
    , getSlotConfigurationFFI/1
    , setSlotConfigurationFFI/2
    ]).
@@ -37,26 +40,26 @@ startDownstreamWorkflowFFI(SlotId) ->
       start_workflow(downstream, SlotId)
   end.
 
-applyPlanFFI({originStreamRelayPlan, #{ egests := EgestList, downstreamRelays := RelayList }} = StreamRelayPlan, WorkflowHandle) ->
+applyOriginPlanFFI(#{ egests := EgestList, downstreamRelays := RelayList } = StreamRelayPlan, WorkflowHandle) ->
   fun() ->
       io:format(user, "ORIGIN STREAM PLAN: ~p~n~n", [StreamRelayPlan]),
 
       %% Set up all sources and downstream relay fowarding
-      {ok, Result} = id3as_workflow:ioctl(source, {apply_plan, StreamRelayPlan}, WorkflowHandle),
+      {ok, Result} = id3as_workflow:ioctl(source, {apply_origin_plan, StreamRelayPlan}, WorkflowHandle),
 
       %% Set up all forwarding
       {ok, _FailedResolution} = id3as_workflow:ioctl(forward_to_egests, {set_destinations, EgestList}, WorkflowHandle),
       {ok, _FailedResolution} = id3as_workflow:ioctl(forward_to_relays, {set_destinations, RelayList}, WorkflowHandle),
 
       Result
-  end;
+  end.
 
-applyPlanFFI({downstreamStreamRelayPlan, #{ egests := EgestList, downstreamRelays := RelayList }} = StreamRelayPlan, WorkflowHandle) ->
+applyDownstreamPlanFFI(#{ egests := EgestList, downstreamRelays := RelayList } = StreamRelayPlan, WorkflowHandle) ->
   fun() ->
       io:format(user, "DOWNSTREAM STREAM PLAN: ~p~n~n", [StreamRelayPlan]),
 
       %% Set up all sources and downstream relay fowarding
-      {ok, Result} = id3as_workflow:ioctl(source, {apply_plan, StreamRelayPlan}, WorkflowHandle),
+      {ok, Result} = id3as_workflow:ioctl(source, {apply_downstream_plan, StreamRelayPlan}, WorkflowHandle),
 
       %% Set up all egest forwarding
       {ok, _FailedResolution} = id3as_workflow:ioctl(forward_to_egests, {set_destinations, EgestList}, WorkflowHandle),

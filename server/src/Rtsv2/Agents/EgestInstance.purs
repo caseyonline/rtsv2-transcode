@@ -45,10 +45,10 @@ import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Utils (crashIfLeft)
 import Shared.Agent as Agent
 import Shared.LlnwApiTypes (StreamIngestProtocol(..))
-import Shared.Stream (AggregatorKey(..), EgestKey(..), RelayKey(..), SlotId(..), SlotRole(..))
-import Shared.Router.Endpoint (Endpoint(..), makeUrl, makeUrlAddrWithPath)
+import Shared.Stream (AggregatorKey(..), EgestKey(..), RelayKey(..), SlotId, SlotRole(..))
+import Shared.Router.Endpoint (Endpoint(..), makeUrl)
 import Shared.Common (Milliseconds)
-import Shared.Types (EgestServer(..), Load, RelayServer, Server, ServerLoad(..), extractAddress)
+import Shared.Types (EgestServer(..), Load, RelayServer, Server, ServerLoad(..))
 import Shared.Types.Agent.State as PublicState
 import SpudGun as SpudGun
 
@@ -323,20 +323,17 @@ getRelaySlotConfiguration (Local _) slotId =
   where
     log = spy "Egest Instance Slot Config from Local Relay"
 
-getRelaySlotConfiguration (Remote remoteServer) (SlotId slotId) =
+getRelaySlotConfiguration (Remote remoteServer) slotId =
   do
     slotConfiguration' <- SpudGun.getJson configURL
 
     pure $ log $ hush $ (SpudGun.bodyToJSON slotConfiguration')
 
   where
-    -- TODO: PS: change to use Nick's new routing when available
-    -- TODOL PS: should we be trying to get slot info from both slots and unifying?
-    configURL = makeUrlAddrWithPath address $ "/api/agents/streamRelay/" <> (show slotId) <> "/primary/slot"
+    -- TODO: PS: should we be trying to get slot info from both slots and unifying?
+    configURL = makeUrl remoteServer $ RelaySlotConfigurationE slotId Primary
 
-    address = extractAddress remoteServer
-
-    log = spy "Egest Instance Slot Config from Remote Relay"
+    log = spy $ "Egest Instance Slot Config from Remote Relay"
 
 
 --------------------------------------------------------------------------------

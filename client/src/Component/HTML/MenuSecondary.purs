@@ -6,10 +6,16 @@ import Control.Monad.Reader (class MonadAsk, ask)
 import Data.Const (Const)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (un)
+import Data.String (replace)
+import Data.String.Pattern (Pattern(..), Replacement(..))
+import Data.Traversable (for_)
+import Effect (Effect)
 import Effect.Aff.Class (class MonadAff)
+import Effect.Class (liftEffect)
 import Effect.Ref as Ref
 import Halogen as H
 import Halogen.HTML as HH
+import Halogen.HTML.Events as HE
 import Halogen.HTML.Properties as HP
 import Rtsv2App.Capability.Navigate (class Navigate, logout)
 import Rtsv2App.Component.HTML.Utils (css_, safeHref)
@@ -18,10 +24,16 @@ import Rtsv2App.Data.Route (Route(..))
 import Rtsv2App.Env (PoPDefEnv)
 import Shared.Types (PoPName(..), RegionName(..))
 import Shared.Types.Agent.State (PoPDefinition, PoP)
+import Web.DOM.Element (className, setClassName) as DOM
+import Web.DOM.NonElementParentNode (getElementById) as DOM
+import Web.HTML (window) as HTML
+import Web.HTML.HTMLDocument (toNonElementParentNode) as HTML
+import Web.HTML.Window (document) as HTML
 
 data Action
   = LogUserOut
   | Receive Input
+  | CloseSecondaryMenu
 
 type State =
   { currentUser :: Maybe Profile
@@ -71,6 +83,11 @@ component = H.mkComponent
 
     LogUserOut -> logout
 
+    CloseSecondaryMenu -> do
+      _ <- liftEffect $ closeSecondaryMenu
+      pure unit
+
+
   render state@{ currentUser, route, popDef } =
     HH.aside
     [ css_ "aside is-placed-left is-expanded is-secondary is-hidden"
@@ -110,7 +127,7 @@ topTitle =
     ]
   ]
 
-getPoPMenu :: forall p i. Route -> Maybe (PoPDefinition Array) -> HH.HTML p i
+getPoPMenu :: forall p. Route -> Maybe (PoPDefinition Array) -> HH.HTML p Action
 getPoPMenu route popDef =
    HH.div
    [ css_ "menu is-menu-main" ]
@@ -128,13 +145,15 @@ getPoPMenu route popDef =
                 ) <$> pf.regions
 
 
-getPoPLi :: forall p i.  Array (PoP Array) -> Array (HH.HTML p i)
+getPoPLi :: forall p.  Array (PoP Array) -> Array (HH.HTML p Action)
 getPoPLi pop =
   (\p ->
     HH.li
     [ css_ "aside-secondary-li"]
     [ HH.a
-      [ safeHref $ PoPDashboardR p.name ]
+      [ safeHref $ PoPDashboardR p.name
+      , HE.onClick \_ -> Just CloseSecondaryMenu
+      ]
       [ HH.span
         [ css_ "icon" ]
         [ HH.i
@@ -147,3 +166,29 @@ getPoPLi pop =
       ]
     ]
   ) <$> pop
+
+
+
+closeSecondaryMenu :: Effect Unit
+closeSecondaryMenu = do
+  -- | setup parent container
+  document <- HTML.window >>= HTML.document
+  let parent = HTML.toNonElementParentNode document
+
+  -- | get the elements by id
+  mainContainer <- DOM.getElementById "aside-main" parent
+  secondaryContainer <- DOM.getElementById "aside-secondary" parent
+
+  -- | remove or add classes to specific elements
+  for_ mainContainer $ (\cont -> removeClass "has-secondary" cont)
+  for_ secondaryContainer (\cont -> addClass " is-hidden" cont)
+
+  where
+    addClass css cont = do
+      mainClass <- DOM.className cont
+      DOM.setClassName ( mainClass <> css ) cont
+
+    removeClass css cont = do
+      mainClass <- DOM.className cont
+      let newClass = replace (Pattern css) (Replacement "") mainClass
+      DOM.setClassName newClass cont

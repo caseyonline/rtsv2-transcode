@@ -110,7 +110,7 @@ endpoint = root $ sum
   , "RelayRegisterRelayE"                              : "api" / "agents" / "relay" / "register" / path "relay" noArgs
   , "RelayProxiedStatsE"                               : "api" / "agents" / "proxied" / "relay" / slotId segment / slotRole segment
   , "RelayStatsE"                                      : "api" / "agents" / "relay" / slotId segment / slotRole segment
-  , "RelaySlotConfigurationE"                          : "api" / "agents" / "relay" / slotId segment / slotRole segment
+  , "RelaySlotConfigurationE"                          : "api" / "agents" / "relay" / slotId segment / slotRole segment / "slot"
 
   , "IngestAggregatorE"                                : "api" / "agents" / "ingestAggregator" / slotId segment / slotRole segment
   , "IngestAggregatorPlayerE"                          : "api" / "agents" / "ingestAggregator" / slotId segment / slotRole segment / "player"

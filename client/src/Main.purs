@@ -45,6 +45,7 @@ main = HA.runHalogenAff do
   popDefinition       <- liftEffect $ Ref.new Nothing
   transPoPLeaders     <- liftEffect $ Ref.new mempty
   aggregatorLocations <- liftEffect $ Ref.new mempty
+  geoLocations        <- liftEffect $ Ref.new mempty
 
   -- new bus to broadcast updates when the value of the current user changes;
   userBus <- liftEffect Bus.make
@@ -80,6 +81,7 @@ main = HA.runHalogenAff do
       popDefEnv = { popDefinition
                   , transPoPLeaders
                   , aggregatorLocations
+                  , geoLocations
                   }
   -- Produce a proper root component for Halogen to run. combining `hoist`, `runAppM`, our environment, and our router component
     rootComponent :: H.Component HH.HTML Router.Query {} Void Aff
