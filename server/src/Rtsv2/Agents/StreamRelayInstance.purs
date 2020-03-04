@@ -764,6 +764,7 @@ deliverToAddressFromDeliverToRelayServer { server, port } =
 relayKeyFromState :: State -> RelayKey
 relayKeyFromState (StateOrigin { relayKey } _) = relayKey
 relayKeyFromState (StateDownstream { relayKey } _) = relayKey
+
 --------------------------------------------------------------------------------
 -- Log Utilities
 --------------------------------------------------------------------------------

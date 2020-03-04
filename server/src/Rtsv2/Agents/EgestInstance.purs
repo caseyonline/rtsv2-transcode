@@ -329,7 +329,6 @@ getRelaySlotConfiguration (Remote remoteServer) slotId =
     pure $ log $ hush $ (SpudGun.bodyToJSON slotConfiguration')
 
   where
-    -- TODO: PS: change to use Nick's new routing when available
     -- TODO: PS: should we be trying to get slot info from both slots and unifying?
     configURL = makeUrl remoteServer $ RelaySlotConfigurationE slotId Primary
 
