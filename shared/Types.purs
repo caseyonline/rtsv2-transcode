@@ -1,17 +1,19 @@
 module Shared.Types
-       ( Load
-       , DeliverTo
-       , ServerAddress(..)
-       , RegionName(..)
-       , PoPName(..)
+       ( DeliverTo
+       , EgestServer(..)
        , GeoLoc(..)
+       , LeaderGeoLoc(..)
+       , Load
        , Milliseconds(..)
+       , PoPName(..)
+       , PoPSelectedInfo(..)
+       , RegionName(..)
+       , RelayServer(..)
+       , Server(..)
+       , ServerAddress(..)
        , ServerLoad(..)
        , ServerLocation(..)
-       , Server(..)
        , ServerRec
-       , RelayServer(..)
-       , EgestServer(..)
        , Url
        , toServer
        , toServerLoad
@@ -29,6 +31,7 @@ import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype, unwrap)
 import Data.Symbol (SProxy(..))
 import Record as Record
+import Shared.Stream (SlotId)
 import Simple.JSON (class ReadForeign, class WriteForeign)
 
 -- TODO - find a place for these utility types to live (a la id3as_common?)
@@ -225,7 +228,18 @@ derive newtype instance showServerLoad :: Show ServerLoad
 derive newtype instance readForeignServerLoad :: ReadForeign ServerLoad
 derive newtype instance writeForeignServerLoad :: WriteForeign ServerLoad
 
+------------------------------------------------------------------------------
+-- FrontEnd Specific Types
+type LeaderGeoLoc =
+  { name  :: PoPName
+  , coord :: Array Number
+  }
 
+type PoPSelectedInfo =
+    { selectedPoPName :: Maybe PoPName
+    , selectedSlotId  :: Maybe SlotId
+    , selectedAddress :: Maybe ServerAddress
+    }
 
 ------------------------------------------------------------------------------
 -- RTMP Client Metadata - currently there's erlang code in rtsv2_rtmp_ingest_handler that

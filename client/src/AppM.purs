@@ -5,7 +5,6 @@ import Prelude
 import Control.Monad.Reader.Trans (class MonadAsk, ReaderT, ask, asks, runReaderT)
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
-import Debug.Trace (spy, traceM)
 import Effect.Aff (Aff)
 import Effect.Aff.Bus as Bus
 import Effect.Aff.Class (class MonadAff, liftAff)
@@ -13,6 +12,7 @@ import Effect.Class (class MonadEffect, liftEffect)
 import Effect.Console as Console
 import Effect.Now as Now
 import Effect.Ref as Ref
+import Record.Extra (sequenceRecord)
 import Routing.Duplex (print)
 import Routing.Hash (setHash)
 import Rtsv2App.Api.Endpoint (Endpoint(..))
@@ -106,13 +106,16 @@ instance manageUserAppM :: ManageUser AppM where
 
 -- | all api stats related requests
 instance manageAPIAppM :: ManageApi AppM where
-  --  
-  getTimedRoutes originUrl toPopName = do
-    response <- mkOriginRequest originUrl { endpoint: TimedRoutesE toPopName, method: Get }
-    case JSON.readJSON response of
-      Left e -> pure $ Left $ show e
-      Right (res :: (TimedPoPRoutes Array)) -> do
-        pure $ Right res
+  -- | get round trip routes taken given from popname to serverId
+  getTimedRoutes sInfo curPopName = do
+    case sequenceRecord sInfo of
+      Nothing -> pure $ Left "SPoPInfo not present"
+      Just s@{ selectedSlotId, selectedAddress } -> do
+        response <- mkOriginRequest selectedAddress { endpoint: TimedRoutesE curPopName, method: Get }
+        case JSON.readJSON response of
+          Left e -> pure $ Left $ show e
+          Right (res :: (TimedPoPRoutes Array)) -> do
+            pure $ Right res
 
   getPoPdefinition = do
     response <- mkRequest { endpoint: PopDefinitionE, method: Get }

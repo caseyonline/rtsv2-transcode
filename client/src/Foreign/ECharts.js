@@ -21,6 +21,14 @@ exports.makeChart_ = function(node) {
   };
 };
 
+
+exports.makeBlankMap_ = function(chart) {
+  return function() {
+      return chart.setOption(blankMap())
+  };
+};
+
+
 exports.setOption_ = function(option) {
   return function(chart) {
     return function() {
@@ -32,7 +40,7 @@ exports.setOption_ = function(option) {
 exports.setOptionPoP_ = function(option) {
   return function(chart) {
     return function() {
-        return chart.setOption(popChart())
+        return chart.setOption(popChart(option))
     };
   };
 };
@@ -143,7 +151,44 @@ var geoCoordMap = {
     "Zurich": [8.541694,47.376887],
 }
 
+function blankMap() {
+    return {
+        legend: {
+            orient: 'vertical',
+            x:'left',
+            y:'bottom',
+            data:[],
+            selectedMode: 'single',
+            selected: {},
+        textStyle : { color: '#fff' },
+        },
+        tooltip: {},
+        geo: {
+            map: 'world',
+            silent: true,
+            roam: true,
+            scaleLimit: {min: 1.25},
+            zoom: 1.25,
+            label: {
+                show: false,
+                color: 'rgba(0,0,0,0.4)'
+            },
+            itemStyle: {
+                borderColor:'#9ea1ae',
+                borderWidth:1,
+                areaStyle:{
+                    color: '#1b1b1b'
+                }
+            },
+        },
+        series : []
+    };
+}
+
+
+
 function dashboardChart(scatterData) {
+    console.log(scatterData)
     var schema = [
         {name: 'location', index: 0, text: 'location'},
         {name: 'health', index: 1, text: 'Health'},
@@ -244,7 +289,7 @@ function popChart(scatterData) {
             
         },
         textStyle : {
-            color: '#fff'
+            color: '#9ea1ae'
         },
     },
     tooltip: {
@@ -294,12 +339,13 @@ function popChart(scatterData) {
          { type: 'scatter',
           name: "locations",
           coordinateSystem: 'geo',
-          data: [
-              {"name":"dal","value":[-96.796989,32.776665]},
-              {"name":"iad","value":[-77.039851, 38.877270]},
-              {"name":"lax","value":[-118.243685,34.052234]},
-              {"name":"fra","value":[8.682127,50.110922]}
-          ],
+          data: [],
+          //  [
+          //     {"name":"dal","value":[-96.796989,32.776665]},
+          //     {"name":"iad","value":[-77.039851, 38.877270]},
+          //     {"name":"lax","value":[-118.243685,34.052234]},
+          //     {"name":"fra","value":[8.682127,50.110922]}
+          // ],
           symbolSize: 15,
           animation: true,
           itemStyle: {
@@ -321,7 +367,7 @@ function popChart(scatterData) {
           },
 
           lineStyle: {
-              color: '#CD7840',
+              color: '#6DBBBF',
               width: 2,
               type: "solid",
               shadowColor: "#717171",
@@ -331,19 +377,20 @@ function popChart(scatterData) {
               show: true,
               scaleSize: 3,
               period: 4,
-              color: '#e8c675',
+              color: '#1C3C54',
               shadowBlur: 6
           },
           zlevel: 10,
 
-          data:  [
-              [ {name:'Fra', coord: [8.682127,50.110922]},
-                {name:'Iad', coord: [-77.039851, 38.877270], data:[60, 120]},
-              ],
-              [ {name:'Iad', coord: [-77.039851, 38.877270]},
-                {name:'Lax', coord: [-118.243685,34.052234], data: [60, 120]},
-              ]
-          ],
+          data:scatterData[0],
+          // [
+          //     [ {name:'Fra', coord: [8.682127,50.110922]},
+          //       {name:'Iad', coord: [-77.039851, 38.877270], data:[60, 120]},
+          //     ],
+          //     [ {name:'Iad', coord: [-77.039851, 38.877270]},
+          //       {name:'Lax', coord: [-118.243685,34.052234], data: [60, 120]},
+          //     ]
+          // ],
         },
         { name: "B",
           type: "lines",
@@ -353,7 +400,7 @@ function popChart(scatterData) {
           },
 
           lineStyle: {
-              color: '#CD7840',
+              color: '#6DBBBF',
               width: 2,
               type: "solid",
               shadowColor: "#717171",
@@ -363,20 +410,13 @@ function popChart(scatterData) {
               show: true,
               scaleSize: 3,
               period: 4,
-              color: '#e8c675',
+              color: '#1C3C54',
               shadowBlur: 6
           },
            zlevel: 10,
 
 
-          data:  [
-              [ {name:'Fra', coord: [8.682127,50.110922]},
-                {name:'Iad', coord: [-77.039851, 38.877270], data:[60, 120]},
-              ],
-              [ {name:'Iad', coord: [-77.039851, 38.877270]},
-                {name:'Lax', coord: [-118.243685,34.052234], data: [60, 120]},
-              ]
-          ],
+          data: scatterData[1],
         },
         { name: "Both",
           type: "lines",
@@ -386,7 +426,7 @@ function popChart(scatterData) {
           },
 
           lineStyle: {
-              color: '#CD7840',
+              color: '#6DBBBF',
               width: 2,
               type: "solid",
               shadowColor: "#717171",
@@ -396,25 +436,12 @@ function popChart(scatterData) {
               show: true,
               scaleSize: 3,
               period: 4,
-              color: '#e8c675',
+              color: '#1C3C54',
               shadowBlur: 6
           },
           zlevel: 10,
 
-          data:  [
-              [ {name:"Fra", coord:[8.682127,50.110922], data: [60, 120]},
-                {name:'Dal', coord: [-96.796989,32.776665]}
-              ],
-              [ {name:'Dal', coord: [-96.796989,32.776665], data: [60, 120]},
-                {name:'Lax', coord: [-118.243685,34.052234]}
-              ],
-              [ {name:'Fra', coord: [8.682127,50.110922]},
-                {name:'Iad', coord: [-77.039851, 38.877270], data:[60, 120]},
-              ],
-              [ {name:'Iad', coord: [-77.039851, 38.877270]},
-                {name:'Lax', coord: [-118.243685,34.052234], data: [60, 120]},
-              ]
-          ]
+          data: scatterData[0].concat(scatterData[1])
         },
     ]
     };

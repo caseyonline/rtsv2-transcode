@@ -18,7 +18,8 @@ import Halogen as H
 import Prim.Row as Row
 import Record as Record
 import Rtsv2App.Data.PoP (PoPDefEcharts)
-import Shared.Types (PoPName)
+import Shared.Types (PoPName, LeaderGeoLoc)
+import Shared.Types.Agent.State (TimedPoPRoutes)
 import Simple.JSON as JSON
 import Unsafe.Coerce (unsafeCoerce)
 import Web.DOM.ParentNode (QuerySelector(..), querySelector)
@@ -32,9 +33,11 @@ foreign import data Instance :: Type
 
 foreign import makeChart_ :: HTMLElement -> Effect Instance
 
+foreign import makeBlankMap_ :: Instance -> Effect Unit
+
 foreign import setOption_ :: forall option. option -> Instance -> Effect Unit
 
-foreign import setOptionPoP_ :: forall option. option -> Instance -> Effect Unit
+foreign import setOptionPoP_ :: Array (Array (Array LeaderGeoLoc)) -> Instance -> Effect Unit
 
 foreign import setClick_ :: forall option. option -> Instance -> Effect Unit
 
@@ -46,6 +49,9 @@ makeChart
   -> Effect Instance
 makeChart = makeChart_
 
+makeBlankMap :: Instance -> Effect Unit
+makeBlankMap = makeBlankMap_
+
 setOption
   :: forall option option'
    . Row.Union option option' Option
@@ -55,9 +61,7 @@ setOption
 setOption = setOption_
 
 setOptionPoP
-  :: forall option option'
-   . Row.Union option option' Option
-  => Record option
+  :: Array (Array (Array LeaderGeoLoc))
   -> Instance
   -> Effect Unit
 setOptionPoP = setOptionPoP_

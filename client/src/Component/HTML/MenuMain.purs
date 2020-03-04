@@ -3,17 +3,16 @@ module Rtsv2App.Component.HTML.MenuMain where
 import Prelude
 
 import Data.Const (Const)
-import Data.Maybe (Maybe(..), isJust)
+import Data.Maybe (Maybe(..))
 import Data.Monoid (guard)
-import Data.Newtype (unwrap)
+import Debug.Trace (traceM)
 import Effect.Aff.Class (class MonadAff)
 import Halogen as H
 import Halogen.HTML as HH
-import Halogen.HTML.Elements as HL
 import Halogen.HTML.Events as HE
 import Halogen.HTML.Properties as HP
 import Rtsv2App.Capability.Navigate (class Navigate, logout)
-import Rtsv2App.Component.HTML.Utils (css_, dataAttr, safeHref, whenElem)
+import Rtsv2App.Component.HTML.Utils (css_, safeHref)
 import Rtsv2App.Data.Profile (Profile)
 import Rtsv2App.Data.Route (Route(..))
 
@@ -106,7 +105,7 @@ topLogo =
           [ css_ "icon is-medium is-aligned-center" ]
           [ HH.img
             [ css_ "menu-logo"
-            , HP.src "assets/images/logo/logo.svg"
+            , HP.src "app/assets/images/logo/logo.svg"
             ]
           ]
         ]

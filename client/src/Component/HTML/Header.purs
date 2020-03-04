@@ -69,20 +69,17 @@ component = H.mkComponent
     [ css_ "navbar is-fixed-top"
     , HP.id_ "navbar-main"
     ]
-    [
-    -- [ HH.div
-    --   [ css_ "navbar-brand" ]
-    --   [ HH.a
-    --     [ css_ "navbar-item is-desktop-icon-only is-hidden-touch jb-aside-toggle"
-    --     , dataAttr "target" "aside-main" ]
-    --     [ HH.span
-    --       [ css_ "icon" ]
-    --       [ HH.i
-    --         [ css_ "mdi mdi-24px mdi-forwardburger" ]
-    --         []
-    --       ]
-    --     ]
-    --   ]
+    [ -- TODO: this can work but need global state to know if it's open or closed
+      -- HH.a
+      --   [ css_ "navbar-item is-desktop-icon-only is-hidden-touch jb-aside-toggle"
+      --   , dataAttr "target" "aside-main" ]
+      --   [ HH.span
+      --     [ css_ "icon" ]
+      --     [ HH.i
+      --       [ css_ "mdi mdi-24px mdi-backburger" ]
+      --       []
+      --     ]
+      --   ]
       HH.div
       [ css_ "navbar-menu fadeIn animated faster"
       , HP.id_ "navbar-menu"
@@ -96,7 +93,7 @@ component = H.mkComponent
             [ HH.div
               [ css_ "is-user-avatar" ]
               [ HH.img
-                [ HP.src "assets/images/avatar-s.png" ]
+                [ HP.src "app/assets/images/avatar-s.png" ]
               ]
             , HH.div
               [ css_ "is-user-name" ]
