@@ -3,12 +3,8 @@ module Rtsv2App.AppM where
 import Prelude
 
 import Control.Monad.Reader.Trans (class MonadAsk, ReaderT, ask, asks, runReaderT)
-import Data.Array ((!!))
 import Data.Either (Either(..))
-import Data.Foldable (findMap)
 import Data.Maybe (Maybe(..))
-import Data.Newtype (un)
-import Debug.Trace (spy, traceM)
 import Effect.Aff (Aff)
 import Effect.Aff.Bus as Bus
 import Effect.Aff.Class (class MonadAff, liftAff)
@@ -32,7 +28,6 @@ import Rtsv2App.Data.Log as Log
 import Rtsv2App.Data.Profile (ProfileEmailRes)
 import Rtsv2App.Data.Route as Route
 import Rtsv2App.Env (Env, LogLevel(..))
-import Shared.Types (Server(..))
 import Shared.Types.Agent.State (PoPDefinition, TimedPoPRoutes, IntraPoP)
 import Simple.JSON as JSON
 import Type.Equality (class TypeEquals, from)
