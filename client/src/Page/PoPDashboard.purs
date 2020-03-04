@@ -172,7 +172,7 @@ component = H.mkComponent
                 Left e            -> pure unit -- TODO: display error
                 Right timedRoutes -> do
                   let convertedRoutes = timedRoutedToChartOps timedRoutes geoLocations
-                  liftEffect $ EC.setOptionPoP convertedRoutes chart
+                  liftEffect $ EC.setOptionPoP { rttData: convertedRoutes } chart
 
 
   render :: State -> H.ComponentHTML Action ChildSlots m

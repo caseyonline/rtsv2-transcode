@@ -19,7 +19,7 @@ import Web.HTML.HTMLDocument (toParentNode)
 import Web.HTML.HTMLElement (fromElement)
 import Web.HTML.Window (document)
 
-
+-- | FFI's
 foreign import data Instance :: Type
 
 foreign import makeChart_ :: HTMLElement -> Effect Instance
@@ -28,13 +28,13 @@ foreign import makeBlankMap_ :: Instance -> Effect Unit
 
 foreign import setOption_ :: forall option. option -> Instance -> Effect Unit
 
-foreign import setOptionPoP_ :: Array (Array (Array LeaderGeoLoc)) -> Instance -> Effect Unit
+foreign import setOptionPoP_ :: forall option. option -> Instance -> Effect Unit
 
 foreign import setClick_ :: forall option. option -> Instance -> Effect Unit
 
 foreign import ressizeObserver_ :: Instance -> Effect Unit
 
--- main function
+-- | Functions
 makeChart
   :: HTMLElement
   -> Effect Instance
@@ -52,7 +52,9 @@ setOption
 setOption = setOption_
 
 setOptionPoP
-  :: Array (Array (Array LeaderGeoLoc))
+  :: forall option option'
+   . Row.Union option option' Option
+  => Record option
   -> Instance
   -> Effect Unit
 setOptionPoP = setOptionPoP_
@@ -68,7 +70,7 @@ setClick = setClick_
 ressizeObserver :: Instance -> Effect Unit
 ressizeObserver = ressizeObserver_
 
--- types
+-- | Types
 type ClickOption =
   ( curHost :: String
   , url :: String
@@ -77,6 +79,7 @@ type ClickOption =
 type Option =
   ( title :: TitleOption
   , scatterData :: Array PoPDefEcharts
+  , rttData :: Array (Array (Array LeaderGeoLoc))
   , curHost :: String
   , url :: String
   , tooltip :: TooltipOption

@@ -2,15 +2,13 @@ module Rtsv2App.Data.Route where
 
 import Prelude hiding ((/))
 
-import Data.Either (note)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show (genericShow)
-import Routing.Duplex (RouteDuplex', as, root, segment)
+import Routing.Duplex (RouteDuplex', root, segment)
 import Routing.Duplex.Generic (noArgs, sum)
 import Routing.Duplex.Generic.Syntax ((/))
-import Rtsv2App.Data.Username (Username)
-import Rtsv2App.Data.Username as Username
-import Shared.Types (PoPName, parsePname, toStringPname)
+import Shared.Router.Endpoint (popName)
+import Shared.Types (PoPName)
 
 
 -------------------------------------------------------------------------------
@@ -38,10 +36,3 @@ routeCodec = root $ sum
   , "RegisterR": "register" / noArgs
   , "SettingsR": "settings" / noArgs
   }
-
--- | This combinator transforms a codec over `String` into one that operatos on the `Username` type.
-uname :: RouteDuplex' String -> RouteDuplex' Username
-uname = as Username.toString (Username.parse >>> note "Bad username")
-
-popName :: RouteDuplex' String -> RouteDuplex' PoPName
-popName = as toStringPname (parsePname >>> note "Bad PoP name")

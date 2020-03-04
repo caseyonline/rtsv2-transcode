@@ -27,7 +27,7 @@ import Effect.Class (liftEffect)
 import Effect.Random (randomInt)
 import Effect.Ref as Ref
 import Global (readFloat)
-import Rtsv2App.Capability.Resource.Api (class ManageApi, getPublicState)
+import Rtsv2App.Capability.Resource.Api (class ManageApi, getServerState)
 import Rtsv2App.Env (PoPDefEnv)
 import Shared.Types (GeoLoc(..), LeaderGeoLoc, PoPName, Server(..), ServerAddress)
 import Shared.Types.Agent.State (AggregatorLocation, IntraPoP, PoP, PoPDefinition, TimedPoPRoutes)
@@ -93,7 +93,7 @@ getRandomPoPServer servers = do
   pure $ index servers r
 
 getPoPState :: forall m. ManageApi m => Array PoPServer -> m (Array (Maybe (IntraPoP Array)))
-getPoPState = traverse (\popServer -> hush <$> getPublicState popServer.server)
+getPoPState = traverse (\popServer -> hush <$> getServerState popServer.server)
 
 getPoPLeaderAddress :: Array Server -> Maybe PoPName -> Maybe ServerAddress
 getPoPLeaderAddress popLeaders popName =

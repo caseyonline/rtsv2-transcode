@@ -7,6 +7,8 @@ module Shared.Router.Endpoint ( Endpoint(..)
                               , makeUrlAddr
                               , makeUrlAddrWithPath
                               , parseSlotRole
+                              , uName
+                              , popName
                               ) where
 
 import Prelude hiding ((/))
@@ -14,6 +16,7 @@ import Prelude hiding ((/))
 import Data.Array ((!!))
 import Data.Either (note)
 import Data.Generic.Rep (class Generic)
+import Data.Generic.Rep.Show (genericShow)
 import Data.Int (fromString)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype, unwrap, wrap)
@@ -21,12 +24,16 @@ import Data.String (Pattern(..), split)
 import Routing.Duplex (RouteDuplex', as, path, print, rest, root, segment)
 import Routing.Duplex.Generic (noArgs, sum)
 import Routing.Duplex.Generic.Syntax ((/))
-import Shared.Stream (ProfileName(..), RtmpShortName, SlotId, SlotIdAndProfileName(..), SlotNameAndProfileName(..), SlotRole(..))
 import Shared.Common (Url)
-import Shared.Types (PoPName, ServerAddress(..), extractAddress)
+import Shared.Stream (ProfileName(..), RtmpShortName, SlotId, SlotIdAndProfileName(..), SlotNameAndProfileName(..), SlotRole(..))
+import Shared.Types (PoPName, ServerAddress(..), Username(..), extractAddress)
 
 data Canary = Live
             | Canary
+
+instance showCanary :: Show Canary where
+  show Live   = "live"
+  show Canary = "canary"
 
 data Endpoint
   = VMMetricsE
@@ -86,7 +93,16 @@ data Endpoint
   | WorkflowMetricsE String
   | WorkflowStructureE String
 
+  -- | FrontEnd specific
+  | LoginE
+  | UserE
+  | UsersE
+  | ProfilesE Username
+
 derive instance genericEndpoint :: Generic Endpoint _
+
+instance showEndpoint :: Show Endpoint where
+  show = genericShow
 
 -- | Our codec will cause a compile-time error if we fail to handle any of our route cases.
 endpoint :: RouteDuplex' Endpoint
@@ -149,6 +165,11 @@ endpoint = root $ sum
   , "WorkflowMetricsE"                                 : "api" / "workflows" / segment / "metrics" -- URL duplicated in Web.purs
   , "WorkflowStructureE"                               : "api" / "workflows" / segment / "structure" -- URL duplicated in Web.purs
 
+  -- | FrontEnd URLs
+  , "LoginE"                                           : "api" / "users" / "login" / noArgs
+  , "UserE"                                            : "api" / "user" / noArgs
+  , "UsersE"                                           : "api" / "users" / noArgs
+  , "ProfilesE"                                        : "api" / "profile" / uName segment
 }
 
 makePath :: Endpoint -> String
@@ -248,6 +269,16 @@ canaryToString :: Canary -> String
 canaryToString Live = "live"
 canaryToString Canary = "canary"
 
+
+-- | Username
+parseUsername :: String -> Maybe Username
+parseUsername "" = Nothing
+parseUsername str = Just (Username str)
+
+userNametoString :: Username -> String
+userNametoString (Username str) = str
+
+
 -- | This combinator transforms a codec over `String` into one that operates on the `SlotId` type.
 slotId :: RouteDuplex' String -> RouteDuplex' SlotId
 slotId = as slotIdToString (parseSlotId >>> note "Bad SlotId")
@@ -275,3 +306,6 @@ shortName = as shortNameToString (parseRtmpShortName >>> note "Bad RtmpShortName
 -- | This combinator transforms a codec over `String` into one that operates on the `Canary` type.
 canary :: RouteDuplex' String -> RouteDuplex' Canary
 canary = as canaryToString (parseCanary >>> note "Bad CanaryId")
+
+uName :: RouteDuplex' String -> RouteDuplex' Username
+uName = as userNametoString (parseUsername >>> note "Bad username")

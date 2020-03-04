@@ -15,7 +15,6 @@ import Effect.Ref as Ref
 import Record.Extra (sequenceRecord)
 import Routing.Duplex (print)
 import Routing.Hash (setHash)
-import Rtsv2App.Api.Endpoint (Endpoint(..))
 import Rtsv2App.Api.Request (RequestMethod(..))
 import Rtsv2App.Api.Request as Request
 import Rtsv2App.Api.Utils (authenticate, mkAuthRequest, mkOriginRequest, mkRequest)
@@ -28,6 +27,7 @@ import Rtsv2App.Data.Log as Log
 import Rtsv2App.Data.Profile (ProfileEmailRes)
 import Rtsv2App.Data.Route as Route
 import Rtsv2App.Env (Env, LogLevel(..))
+import Shared.Router.Endpoint (Endpoint(..))
 import Shared.Types.Agent.State (PoPDefinition, TimedPoPRoutes, IntraPoP)
 import Simple.JSON as JSON
 import Type.Equality (class TypeEquals, from)
@@ -118,17 +118,17 @@ instance manageAPIAppM :: ManageApi AppM where
             pure $ Right res
 
   getPoPdefinition = do
-    response <- mkRequest { endpoint: PopDefinitionE, method: Get }
+    response <- mkRequest { endpoint: PoPDefinitionE, method: Get }
     case JSON.readJSON response of
       Left e -> pure $ Left $ show e
       Right (res :: PoPDefinition Array) -> do
         pure $ Right res
 
-  getPublicState serverAddress = do
+  getServerState serverAddress = do
     case serverAddress of
       Nothing -> pure $ Left "No server address given"
       Just sa -> do
-        response <- mkOriginRequest sa { endpoint: PublicState, method: Get }
+        response <- mkOriginRequest sa { endpoint: ServerStateE, method: Get }
         
         case JSON.readJSON response of
           Left e -> pure $ Left $ show e

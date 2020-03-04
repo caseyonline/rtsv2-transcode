@@ -242,6 +242,8 @@ slotToPoP mSlotId arggLocs =
                     then Just pop
                     else Nothing ) argLoc.servers
 
+
+-- | this is for testing purposes only when displaying multiple aggregators
 myTestArgLocs :: AggregatorLocation Array
 myTestArgLocs =
   [ { slotId: SlotId 1

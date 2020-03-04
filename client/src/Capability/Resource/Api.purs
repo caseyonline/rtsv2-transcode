@@ -11,9 +11,9 @@ import Shared.Types.Agent.State (IntraPoP, PoPDefinition, TimedPoPRoutes)
 class Monad m <= ManageApi m where
   getTimedRoutes   :: PoPSelectedInfo -> PoPName -> m (Either String (TimedPoPRoutes Array))
   getPoPdefinition :: m (Either String (PoPDefinition Array))
-  getPublicState   :: Maybe ServerAddress -> m (Either String (IntraPoP Array))
+  getServerState   :: Maybe ServerAddress -> m (Either String (IntraPoP Array))
 
 instance manageApiHalogenM :: ManageApi m => ManageApi (HalogenM st act slots msg m) where
   getTimedRoutes   a b = lift $ getTimedRoutes a b
   getPoPdefinition     = lift getPoPdefinition
-  getPublicState       = lift <<< getPublicState
+  getServerState       = lift <<< getServerState
