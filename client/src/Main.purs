@@ -19,12 +19,12 @@ import Halogen.VDom.Driver (runUI)
 import Milkis as M
 import Routing.Duplex (parse)
 import Routing.Hash (matchesWith)
-import Rtsv2App.Api.Endpoint (Endpoint(..))
 import Rtsv2App.Api.Request (ProfileJson, RequestMethod(..), fetchReq, printUrl, readToken, withResponse)
 import Rtsv2App.AppM (runAppM)
 import Rtsv2App.Component.Router as Router
 import Rtsv2App.Data.Route (routeCodec)
 import Rtsv2App.Env (AuthUrl(..), CurHostUrl(..), Env, LogLevel(..), UrlEnv, UserEnv, PoPDefEnv, getCurOrigin)
+import Shared.Router.Endpoint (Endpoint(..))
 import Shared.Types.Agent.State (PoPDefinition)
 
 
@@ -51,7 +51,7 @@ main = HA.runHalogenAff do
   userBus <- liftEffect Bus.make
 
   liftEffect readToken >>= traverse_ \token -> do
-    response <- liftAff $ Aff.attempt $ fetchReq (M.URL $ printUrl (CurHostUrl curHostUrl) PopDefinitionE) Nothing Get
+    response <- liftAff $ Aff.attempt $ fetchReq (M.URL $ printUrl (CurHostUrl curHostUrl) PoPDefinitionE) Nothing Get
     popDef <- withResponse response \(result :: PoPDefinition Array) -> result
     case popDef of
       Left err -> traceM err -- need to do some proper error handling here

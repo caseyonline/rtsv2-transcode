@@ -26,7 +26,6 @@ import Rtsv2App.Data.Route (Route(..), routeCodec)
 import Rtsv2App.Env (UrlEnv, UserEnv, PoPDefEnv)
 import Rtsv2App.Page.Dashboard as Dashboard
 import Rtsv2App.Page.Login as Login
-import Rtsv2App.Page.NotFound as NotFound
 import Rtsv2App.Page.PoPDashboard as PoPDashboard
 import Rtsv2App.Page.Register as Register
 import Rtsv2App.Page.Settings as Settings

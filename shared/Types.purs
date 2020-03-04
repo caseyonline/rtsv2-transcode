@@ -13,6 +13,7 @@ module Shared.Types
        , ServerRec
        , RelayServer(..)
        , EgestServer(..)
+       , Username(..)
        , toServer
        , toServerLoad
        , serverLoadToServer
@@ -25,6 +26,7 @@ module Shared.Types
 import Prelude
 
 import Data.Generic.Rep (class Generic)
+import Data.Generic.Rep.Show (genericShow)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype, unwrap)
 import Data.Symbol (SProxy(..))
@@ -108,7 +110,7 @@ derive newtype instance writeForeignRegionName :: WriteForeign RegionName
 
 ------------------------------------------------------------------------------
 -- PoPName
-derive instance genericUsername :: Generic PoPName _
+derive instance genericPoPName :: Generic PoPName _
 derive instance newtypePoPName :: Newtype PoPName _
 derive newtype instance eqPoPName :: Eq PoPName
 derive newtype instance ordPoPName :: Ord PoPName
@@ -198,6 +200,19 @@ type PoPSelectedInfo =
     , selectedSlotId  :: Maybe SlotId
     , selectedAddress :: Maybe ServerAddress
     }
+
+newtype Username = Username String
+
+derive instance genericUsername :: Generic Username _
+derive instance eqUsername :: Eq Username
+derive instance ordUsername :: Ord Username
+
+derive newtype instance readForeignUsername  :: ReadForeign Username
+derive newtype instance writeForeignUsername :: WriteForeign Username
+
+instance showUsername :: Show Username where
+  show = genericShow
+
 
 ------------------------------------------------------------------------------
 -- RTMP Client Metadata - currently there's erlang code in rtsv2_rtmp_ingest_handler that

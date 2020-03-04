@@ -120,6 +120,10 @@ init args = do
         , "WorkflowMetricsE"                            : CowboyRoutePlaceholder --id3as_workflow_graph_resource
         , "WorkflowStructureE"                          : CowboyRoutePlaceholder -- id3as_workflow_graph_resource
 
+        , "LoginE"                                      : CowboyRoutePlaceholder
+        , "UserE"                                       : CowboyRoutePlaceholder
+        , "UsersE"                                      : CowboyRoutePlaceholder
+        , "ProfilesE"                                   : CowboyRoutePlaceholder
         }
     # Stetson.cowboyRoutes cowboyRoutes
     # Stetson.port args.port

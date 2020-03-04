@@ -188,7 +188,6 @@ function blankMap() {
 
 
 function dashboardChart(scatterData) {
-    console.log(scatterData)
     var schema = [
         {name: 'location', index: 0, text: 'location'},
         {name: 'health', index: 1, text: 'Health'},
@@ -276,7 +275,7 @@ function dashboardChart(scatterData) {
     };
 }
 
-function popChart(scatterData) {
+function popChart(options) {
     return {
     legend: {
         orient: 'vertical',
@@ -382,7 +381,7 @@ function popChart(scatterData) {
           },
           zlevel: 10,
 
-          data:scatterData[0],
+          data:options.rttData[0],
           // [
           //     [ {name:'Fra', coord: [8.682127,50.110922]},
           //       {name:'Iad', coord: [-77.039851, 38.877270], data:[60, 120]},
@@ -416,7 +415,7 @@ function popChart(scatterData) {
            zlevel: 10,
 
 
-          data: scatterData[1],
+          data: options.rttData[1],
         },
         { name: "Both",
           type: "lines",
@@ -441,7 +440,7 @@ function popChart(scatterData) {
           },
           zlevel: 10,
 
-          data: scatterData[0].concat(scatterData[1])
+          data: options.rttData[0].concat(options.rttData[1])
         },
     ]
     };

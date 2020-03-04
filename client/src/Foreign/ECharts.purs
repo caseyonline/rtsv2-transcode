@@ -2,25 +2,16 @@ module Foreign.ECharts where
 
 import Prelude
 
-import Control.Monad.Except (throwError)
 import Data.Either (Either)
-import Data.Generic.Rep (class Generic, Constructor(..), NoArguments(..), Sum(..), to)
-import Data.Generic.Rep.Eq (genericEq)
-import Data.Generic.Rep.Ord (genericCompare)
-import Data.Generic.Rep.Show (genericShow)
 import Data.Maybe (Maybe)
-import Data.Symbol (class IsSymbol, SProxy(..), reflectSymbol)
+import Data.Symbol (SProxy(..))
 import Effect (Effect)
 import Effect.Aff (Aff)
-import Foreign as Foreign
-import Foreign.Object (Object)
 import Halogen as H
 import Prim.Row as Row
 import Record as Record
 import Rtsv2App.Data.PoP (PoPDefEcharts)
 import Shared.Types (PoPName, LeaderGeoLoc)
-import Shared.Types.Agent.State (TimedPoPRoutes)
-import Simple.JSON as JSON
 import Unsafe.Coerce (unsafeCoerce)
 import Web.DOM.ParentNode (QuerySelector(..), querySelector)
 import Web.HTML (HTMLElement, window)
@@ -28,7 +19,7 @@ import Web.HTML.HTMLDocument (toParentNode)
 import Web.HTML.HTMLElement (fromElement)
 import Web.HTML.Window (document)
 
-
+-- | FFI's
 foreign import data Instance :: Type
 
 foreign import makeChart_ :: HTMLElement -> Effect Instance
@@ -37,13 +28,13 @@ foreign import makeBlankMap_ :: Instance -> Effect Unit
 
 foreign import setOption_ :: forall option. option -> Instance -> Effect Unit
 
-foreign import setOptionPoP_ :: Array (Array (Array LeaderGeoLoc)) -> Instance -> Effect Unit
+foreign import setOptionPoP_ :: forall option. option -> Instance -> Effect Unit
 
 foreign import setClick_ :: forall option. option -> Instance -> Effect Unit
 
 foreign import ressizeObserver_ :: Instance -> Effect Unit
 
--- main function
+-- | Functions
 makeChart
   :: HTMLElement
   -> Effect Instance
@@ -61,7 +52,9 @@ setOption
 setOption = setOption_
 
 setOptionPoP
-  :: Array (Array (Array LeaderGeoLoc))
+  :: forall option option'
+   . Row.Union option option' Option
+  => Record option
   -> Instance
   -> Effect Unit
 setOptionPoP = setOptionPoP_
@@ -77,7 +70,7 @@ setClick = setClick_
 ressizeObserver :: Instance -> Effect Unit
 ressizeObserver = ressizeObserver_
 
--- types
+-- | Types
 type ClickOption =
   ( curHost :: String
   , url :: String
@@ -86,6 +79,7 @@ type ClickOption =
 type Option =
   ( title :: TitleOption
   , scatterData :: Array PoPDefEcharts
+  , rttData :: Array (Array (Array LeaderGeoLoc))
   , curHost :: String
   , url :: String
   , tooltip :: TooltipOption

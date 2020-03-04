@@ -34,11 +34,11 @@ import Effect.Aff.Class (class MonadAff, liftAff)
 import Milkis as M
 import Milkis.Impl.Window as MW
 import Routing.Duplex (print)
-import Rtsv2App.Api.Endpoint (Endpoint(..), endpointCodec)
 import Rtsv2App.Data.Email (Email)
 import Rtsv2App.Data.Profile (ProfileRep, Profile)
 import Rtsv2App.Data.Username (Username)
 import Rtsv2App.Env (UrlEnv)
+import Shared.Router.Endpoint (Endpoint(..), endpoint)
 import Simple.JSON (class ReadForeign, class WriteForeign)
 import Simple.JSON as JSON
 import Web.HTML (window)
@@ -173,10 +173,10 @@ withDecoded json action = case JSON.readJSON json of
 -- Print URL helper
 -------------------------------------------------------------------------------
 printUrl :: forall a. Newtype a String => a -> Endpoint -> String
-printUrl url endpoint = (unwrap url) <> (print endpointCodec endpoint)
+printUrl url endP = (unwrap url) <> (print endpoint endP)
 
 printOriginUrl :: forall a. Newtype a String => a -> Endpoint -> String
-printOriginUrl url endpoint = "http://" <> (unwrap url) <> ":3000" <> (print endpointCodec endpoint)
+printOriginUrl url endP = "http://" <> (unwrap url) <> ":3000" <> (print endpoint endP)
 
 -------------------------------------------------------------------------------
 -- LocalStorage Token actions

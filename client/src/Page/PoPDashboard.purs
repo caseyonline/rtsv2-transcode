@@ -4,10 +4,7 @@ import Prelude
 
 import CSS.Geometry as Geometry
 import CSS.Size as Size
-import Control.Alternative ((<|>))
-import Control.Monad.Maybe.Trans (MaybeT(..), runMaybeT)
 import Control.Monad.Reader (class MonadAsk, ask)
-import Data.Array (mapMaybe)
 import Data.Const (Const)
 import Data.Either (Either(..))
 import Data.Int (toNumber)
@@ -15,7 +12,6 @@ import Data.Maybe (Maybe(..), maybe)
 import Data.Newtype (un)
 import Data.Symbol (SProxy(..))
 import Data.Traversable (traverse_)
-import Debug.Trace (spy, traceM)
 import Effect.Aff.Class (class MonadAff)
 import Effect.Class (class MonadEffect, liftEffect)
 import Effect.Ref as Ref
@@ -41,7 +37,7 @@ import Rtsv2App.Data.PoP (PoPDefEcharts, timedRoutedToChartOps, updatePoPDefEnv)
 import Rtsv2App.Data.Profile (Profile)
 import Rtsv2App.Data.Route (Route(..))
 import Rtsv2App.Env (PoPDefEnv, UrlEnv, UserEnv, changeHtmlClass)
-import Shared.Types (PoPName(..), Server, PoPSelectedInfo)
+import Shared.Types (PoPName(..), Server)
 import Shared.Types.Agent.State (PoPDefinition, TimedPoPRoutes, AggregatorLocation)
 
 -------------------------------------------------------------------------------
@@ -176,7 +172,7 @@ component = H.mkComponent
                 Left e            -> pure unit -- TODO: display error
                 Right timedRoutes -> do
                   let convertedRoutes = timedRoutedToChartOps timedRoutes geoLocations
-                  liftEffect $ EC.setOptionPoP convertedRoutes chart
+                  liftEffect $ EC.setOptionPoP { rttData: convertedRoutes } chart
 
 
   render :: State -> H.ComponentHTML Action ChildSlots m

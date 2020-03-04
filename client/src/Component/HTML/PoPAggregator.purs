@@ -3,12 +3,10 @@ module Rtsv2App.Component.HTML.PoPAggregator where
 import Prelude
 
 import Control.Monad.Reader.Trans (class MonadAsk, ask)
-import Data.Array (catMaybes, find, (!!))
+import Data.Array (find)
 import Data.Foldable (findMap)
 import Data.Maybe (Maybe(..))
-import Data.Monoid (guard)
 import Data.Newtype (un)
-import Debug.Trace (spy, traceM)
 import Effect.Aff.Class (class MonadAff)
 import Effect.Ref as Ref
 import Halogen as H
@@ -20,7 +18,7 @@ import Rtsv2App.Component.HTML.Utils (css_, dataAttr)
 import Rtsv2App.Data.PoP (getPoPLeaderAddress)
 import Rtsv2App.Env (PoPDefEnv)
 import Shared.Stream (SlotId(..), SlotRole(..))
-import Shared.Types (PoPName(..), RegionName(..), Server(..), ServerAddress(..), PoPSelectedInfo(..))
+import Shared.Types (PoPName(..), PoPSelectedInfo, RegionName(..), Server(..), ServerAddress(..))
 import Shared.Types.Agent.State (PoPDefinition, AggregatorLocation)
 
 
@@ -244,6 +242,8 @@ slotToPoP mSlotId arggLocs =
                     then Just pop
                     else Nothing ) argLoc.servers
 
+
+-- | this is for testing purposes only when displaying multiple aggregators
 myTestArgLocs :: AggregatorLocation Array
 myTestArgLocs =
   [ { slotId: SlotId 1

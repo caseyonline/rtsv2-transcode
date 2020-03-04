@@ -2,7 +2,6 @@
 exports.init_ = function() {
      /* Aside: dropdown toggle */
 
-  console.log("------ External JS -------")
   Array.from(document.getElementsByClassName('jb-dropdown')).forEach(
     function(el) {
       el.addEventListener('click', function(e) {
