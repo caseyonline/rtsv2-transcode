@@ -33,7 +33,7 @@ import Rtsv2App.Component.HTML.MainSecondary as MS
 import Rtsv2App.Component.HTML.MenuMain as MM
 import Rtsv2App.Component.HTML.PoPAggregator as PA
 import Rtsv2App.Component.HTML.Utils (css_)
-import Rtsv2App.Data.PoP (PoPDefEcharts, timedRoutedToChartOps, updatePoPDefEnv)
+import Rtsv2App.Data.PoP (PoPDefEcharts, timedRoutedToChartOps, timedRoutedToChartScatter, updatePoPDefEnv)
 import Rtsv2App.Data.Profile (Profile)
 import Rtsv2App.Data.Route (Route(..))
 import Rtsv2App.Env (PoPDefEnv, UrlEnv, UserEnv, changeHtmlClass)
@@ -120,7 +120,7 @@ component = H.mkComponent
 
       H.getHTMLElementRef (H.RefLabel "mymap") >>= traverse_ \element -> do
         chart <- H.liftEffect $ EC.makeChart element
-        liftEffect $ EC.makeBlankMap chart
+        liftEffect $ EC.setOptionPoP { rttData: [], scatterData: [] } chart
         H.modify_ _ { chart = Just chart }
 
       -- | is popDefinition already on Global
@@ -164,7 +164,7 @@ component = H.mkComponent
         Just chart ->
           -- | check all records are Justs
           case sequenceRecord selectedInfo of
-            Nothing -> liftEffect $ EC.makeBlankMap chart
+            Nothing -> liftEffect $ EC.setOptionPoP { rttData: [], scatterData: [] } chart
             Just _  -> do
               -- | go fetch timedroute and populate the chart/map with options
               maybeTimedRoutes <- getTimedRoutes selectedInfo st.curPopName
@@ -172,7 +172,9 @@ component = H.mkComponent
                 Left e            -> pure unit -- TODO: display error
                 Right timedRoutes -> do
                   let convertedRoutes = timedRoutedToChartOps timedRoutes geoLocations
-                  liftEffect $ EC.setOptionPoP { rttData: convertedRoutes } chart
+                  let convertedScatterRoutes = timedRoutedToChartScatter timedRoutes geoLocations
+
+                  liftEffect $ EC.setOptionPoP { rttData: convertedRoutes, scatterData: convertedScatterRoutes } chart
 
 
   render :: State -> H.ComponentHTML Action ChildSlots m

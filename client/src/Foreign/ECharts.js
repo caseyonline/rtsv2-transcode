@@ -338,13 +338,7 @@ function popChart(options) {
          { type: 'scatter',
           name: "locations",
           coordinateSystem: 'geo',
-          data: [],
-          //  [
-          //     {"name":"dal","value":[-96.796989,32.776665]},
-          //     {"name":"iad","value":[-77.039851, 38.877270]},
-          //     {"name":"lax","value":[-118.243685,34.052234]},
-          //     {"name":"fra","value":[8.682127,50.110922]}
-          // ],
+          data: options.scatterData,
           symbolSize: 15,
           animation: true,
           itemStyle: {
@@ -440,7 +434,9 @@ function popChart(options) {
           },
           zlevel: 10,
 
-          data: options.rttData[0].concat(options.rttData[1])
+          data: function () { if (options.rttData[0] && options.rttData[0].length) {
+              return options.rttData[0].concat(options.rttData[1])
+          } else { return [] }}()
         },
     ]
     };
