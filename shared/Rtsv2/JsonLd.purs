@@ -3,7 +3,10 @@ module Shared.Rtsv2.JsonLd
          LocationBySlotIdAndSlotRole
        , LocationBySlotId
        , ServerNode
+       , ServerAddressNode
        , DeliverToNode
+       , EgestServedLocationNode
+       , RelayServedLocationNode
        , ActiveIngestLocationNode
        , ActiveIngestLocation
        , AggregatorLocationNode
@@ -11,6 +14,7 @@ module Shared.Rtsv2.JsonLd
        , RelayLocationNode
        , EgestLocationNode
        , ServerContextFields
+       , ServerAddressContextFields
        , ActiveIngestContextFields
        , DeliverToContextFields
        , TransPoPLeaderLocationNode
@@ -21,6 +25,8 @@ module Shared.Rtsv2.JsonLd
        , relayLocationNode
        , egestLocationNode
        , transPoPLeaderLocationNode
+       , egestServedLocationNode
+       , relayServedLocationNode
        , module JsonLd
        ) where
 
@@ -42,6 +48,12 @@ type ServerContextFields = ( address :: JsonLd.ContextValue
                            )
 
 type ServerNode = JsonLd.Node Server ServerContextFields
+
+------------------------------------------------------------------------------
+-- ServerAddress
+type ServerAddressContextFields = ( address :: JsonLd.ContextValue )
+
+type ServerAddressNode = JsonLd.Node { address :: ServerAddress } ServerAddressContextFields
 
 ------------------------------------------------------------------------------
 -- DeliverTo
@@ -80,6 +92,14 @@ type ActiveIngestLocationNode = JsonLd.Node ActiveIngestLocation ActiveIngestCon
 type TransPoPLeaderLocationNode = ServerNode
 
 ------------------------------------------------------------------------------
+-- EgestServedLocation
+type EgestServedLocationNode = ServerAddressNode
+
+------------------------------------------------------------------------------
+-- RelayServedLocation
+type RelayServedLocationNode = ServerAddressNode
+
+------------------------------------------------------------------------------
 -- DownstreamRelay
 type DownstreamRelayLocationNode = DeliverToNode RelayServer
 
@@ -104,6 +124,13 @@ serverContext = wrap { "@language": Nothing
                      , region: JsonLd.Other "http://schema.rtsv2.llnw.com/Infrastructure/Region"
                      }
 
+serverAddressContext :: JsonLd.Context ServerAddressContextFields
+serverAddressContext = wrap { "@language": Nothing
+                            , "@base": Nothing
+                            , "@vocab": Nothing
+                            , address: JsonLd.Other "http://schema.rtsv2.llwn.com/Infrastructure/Address"
+                            }
+
 deliverToContext :: JsonLd.Context DeliverToContextFields
 deliverToContext = wrap { "@language": Nothing
                         , "@base": Nothing
@@ -111,6 +138,22 @@ deliverToContext = wrap { "@language": Nothing
                         , port: JsonLd.Other "http://schema.rtsv2.llwn.com/Network/Port"
                         , server: JsonLd.Other "http://schema.rtsv2.llnw.com/Infrastructure/Server"
                         }
+
+egestServedLocationNode :: SlotId -> ServerAddress -> EgestServedLocationNode
+egestServedLocationNode slotId serverAddress =
+  wrap { resource: {address: serverAddress}
+       , "@id": Just $ makeUrlAddr serverAddress (EgestStatsE slotId)
+       , "@nodeType": Just "http://schema.rtsv2.llnw.com/EgestServedLocation"
+       , "@context": Just $ serverAddressContext
+       }
+
+relayServedLocationNode :: SlotId -> SlotRole -> ServerAddress -> RelayServedLocationNode
+relayServedLocationNode slotId slotRole serverAddress =
+  wrap { resource: {address: serverAddress}
+       , "@id": Just $ makeUrlAddr serverAddress (RelayStatsE slotId slotRole)
+       , "@nodeType": Just "http://schema.rtsv2.llnw.com/RelayServedLocation"
+       , "@context": Just $ serverAddressContext
+       }
 
 transPoPLeaderLocationNode :: Server -> TransPoPLeaderLocationNode
 transPoPLeaderLocationNode server =

@@ -61,8 +61,8 @@ type IngestAggregator f
      }
 
 type StreamRelay f
-  = { egestsServed :: f ServerAddress
-    , relaysServed :: f ServerAddress
+  = { egestsServed :: f JsonLd.EgestServedLocationNode
+    , relaysServed :: f JsonLd.RelayServedLocationNode
     }
 
 type Egest
@@ -80,7 +80,6 @@ type IntraPoP f
     , currentTransPoPLeader :: Maybe (JsonLd.TransPoPLeaderLocationNode)
     }
 
--- todo
 type AggregatorLocation f = { slotId :: SlotId
                             , role :: SlotRole
                             , servers :: f Server

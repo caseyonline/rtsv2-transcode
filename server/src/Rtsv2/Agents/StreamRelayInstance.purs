@@ -57,9 +57,10 @@ import Rtsv2.Agents.TransPoP as TransPoP
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Agent as Agent
-import Shared.Stream (AggregatorKey(..), RelayKey(..), SlotId(..), SlotRole)
-import Shared.Router.Endpoint (Endpoint(..), makeUrlAddr, makeUrl)
 import Shared.Common (Url)
+import Shared.Router.Endpoint (Endpoint(..), makeUrlAddr, makeUrl)
+import Shared.Rtsv2.JsonLd as JsonLd
+import Shared.Stream (AggregatorKey(..), RelayKey(..), SlotId(..), SlotRole)
 import Shared.Types (PoPName, DeliverTo, EgestServer, RelayServer(..), Server(..), ServerAddress(..), extractPoP, extractAddress)
 import Shared.Types.Agent.State as PublicState
 import SpudGun (SpudResponse(..), JsonResponseError, StatusCode(..))
@@ -490,13 +491,13 @@ status :: RelayKey -> Effect (PublicState.StreamRelay List)
 status =
   exposeState mkStatus <<< serverName
   where
-    mkStatus (StateOrigin _commonStateData originStateData) =
-       { egestsServed : Map.keys originStateData.config.egests
-       , relaysServed : Map.keys originStateData.config.downstreamRelays
+    mkStatus (StateOrigin {relayKey: RelayKey slotId slotRole} originStateData) =
+       { egestsServed : JsonLd.egestServedLocationNode slotId <$> Map.keys originStateData.config.egests
+       , relaysServed : JsonLd.relayServedLocationNode slotId slotRole <$> Map.keys originStateData.config.downstreamRelays
        }
-    mkStatus (StateDownstream _commonStateData downstreamStateData) =
-       { egestsServed : Map.keys downstreamStateData.config.egests
-       , relaysServed : Map.keys downstreamStateData.config.downstreamRelays
+    mkStatus (StateDownstream {relayKey: RelayKey slotId slotRole} downstreamStateData) =
+       { egestsServed : JsonLd.egestServedLocationNode slotId <$> Map.keys downstreamStateData.config.egests
+       , relaysServed : JsonLd.relayServedLocationNode slotId slotRole <$> Map.keys downstreamStateData.config.downstreamRelays
        }
 
 slotConfiguration :: RelayKey -> Effect (Maybe SlotConfiguration)
