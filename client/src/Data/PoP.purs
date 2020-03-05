@@ -50,7 +50,7 @@ type PoPEnvWithoutRef =
   { popDefenition :: Maybe (PoPDefinition Array)
   , popDefEcharts :: Array PoPDefEcharts
   , popLeaders    :: Array Server
-  , aggrLocs      :: AggregatorLocation Array
+  , aggrLocs      :: Array (AggregatorLocation Array)
   }
 
 
@@ -105,9 +105,10 @@ getPoPLeaderAddress popLeaders popName =
                               if (pl.pop == pName) then Just pl.address else Nothing) popLeaders
 
 toPoPleaders :: Array (Maybe (IntraPoP Array)) -> Array Server
-toPoPleaders = mapMaybe (_ >>= _.currentTransPoPLeader)
+--toPoPleaders = mapMaybe (_ >>= (JsonLd.unwrapNode <$> _.currentTransPoPLeader))
+toPoPleaders = mapMaybe (_ >>= (\{currentTransPoPLeader} -> JsonLd.unwrapNode <$> currentTransPoPLeader))
 
-toAggregators :: (Array (Maybe (IntraPoP Array))) -> (AggregatorLocation Array)
+toAggregators :: (Array (Maybe (IntraPoP Array))) -> Array (AggregatorLocation Array)
 toAggregators mIntraPoPs =
   let
     toAggregatorLocation {slotId, role, servers} = {slotId, role, servers: (JsonLd.unwrapNode <$> servers)}

@@ -89,6 +89,7 @@ import Rtsv2.PoPDefinition as PoPDefinition
 import Serf (IpAndPort, LamportClock)
 import Serf as Serf
 import Shared.Common (Milliseconds)
+import Shared.Rtsv2.JsonLd (transPoPLeaderLocationNode)
 import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Stream (AgentKey(..), AggregatorKey, EgestKey(..), RelayKey(..), SlotRole(..), agentKeyToAggregatorKey, aggregatorKeyToAgentKey)
 import Shared.Types (Load, Server(..), ServerAddress(..), ServerLoad(..), extractAddress, extractPoP, serverLoadToServer, toServer, toServerLoad)
@@ -207,7 +208,7 @@ getPublicState = exposeState publicState serverName
       { aggregatorLocations: toAggregatorLocation <$>  Map.toUnfoldable agentLocations.aggregators.byAgentKey
       , relayLocations: toRelayLocation <$>  Map.toUnfoldable agentLocations.relays.byAgentKey
       , egestLocations: toEgestLocation <$>  Map.toUnfoldable agentLocations.egests.byAgentKey
-      , currentTransPoPLeader
+      , currentTransPoPLeader: transPoPLeaderLocationNode <$> currentTransPoPLeader
       }
     toAggregatorLocation (Tuple (AgentKey slotId role) v) =
       { slotId

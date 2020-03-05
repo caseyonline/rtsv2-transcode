@@ -41,7 +41,7 @@ type UserEnv =
 type PoPDefEnv =
   { popDefinition       :: Ref (Maybe (PoPDefinition Array))
   , transPoPLeaders     :: Ref (Array Server)
-  , aggregatorLocations :: Ref (AggregatorLocation Array)
+  , aggregatorLocations :: Ref (Array (AggregatorLocation Array))
   , geoLocations        :: Ref (Array LeaderGeoLoc)
   }
 

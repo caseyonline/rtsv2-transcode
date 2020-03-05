@@ -53,7 +53,7 @@ type State =
   , popDefEcharts :: Array PoPDefEcharts
   , chart         :: Maybe EC.Instance
   , popLeaders    :: Array Server
-  , aggrLocs      :: AggregatorLocation Array
+  , aggrLocs      :: Array (AggregatorLocation Array)
   }
 
 type ChildSlots =

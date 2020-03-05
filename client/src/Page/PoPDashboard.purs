@@ -54,7 +54,7 @@ data Action
   | Receive Input
 
 type State =
-  { aggrLocs        :: AggregatorLocation Array
+  { aggrLocs        :: Array (AggregatorLocation Array)
   , chart           :: Maybe EC.Instance
   , currentUser     :: Maybe Profile
   , popDefEcharts   :: Array PoPDefEcharts
@@ -212,7 +212,7 @@ component = H.mkComponent
         ]
       , HH.section
         [ css_ "section is-main-section" ]
-        [ HH.slot 
+        [ HH.slot
             (SProxy :: _ "popSlotArgTable")
             unit PA.component { aggrLocs: aggrLocs, popDef: popDefenition }
             (Just <<< HandlePoPSlotArgTable)
@@ -418,4 +418,3 @@ shouldLoadJS =
     case route of
       PoPDashboardR _ -> pure unit
       _ -> liftEffect $ FF.init
-

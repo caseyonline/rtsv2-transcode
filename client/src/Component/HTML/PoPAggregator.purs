@@ -27,7 +27,7 @@ import Shared.Types.Agent.State (PoPDefinition, AggregatorLocation)
 -------------------------------------------------------------------------------
 type Input =
   { popDef   :: Maybe (PoPDefinition Array)
-  , aggrLocs :: AggregatorLocation Array
+  , aggrLocs :: Array (AggregatorLocation Array)
   }
 
 type Slot = H.Slot Query Message
@@ -46,7 +46,7 @@ type CheckBoxState =
   }
 
 type State =
-  { aggrLocs     :: AggregatorLocation Array
+  { aggrLocs     :: Array (AggregatorLocation Array)
   , popDef       :: Maybe (PoPDefinition Array)
   , checkedBoxes :: Array CheckBoxState
   }
@@ -194,7 +194,7 @@ component = H.mkComponent
     ]
 
 -- | create a blank array of checkedBoxes using aggrLocs
-initCheckBoxes :: AggregatorLocation Array -> Array CheckBoxState
+initCheckBoxes :: Array (AggregatorLocation Array) -> Array CheckBoxState
 initCheckBoxes aggrLocs = do
   map f aggrLocs
   where
@@ -225,7 +225,7 @@ whichSlotSelected checkedBoxes = do
     Just c  -> c.slotId
 
 -- | find the popName given selected slot
-slotToPoP :: Maybe SlotId -> AggregatorLocation Array -> Maybe PoPName
+slotToPoP :: Maybe SlotId -> Array (AggregatorLocation Array) -> Maybe PoPName
 slotToPoP mSlotId arggLocs =
   case mSlotId of
     Nothing -> Nothing
@@ -244,7 +244,7 @@ slotToPoP mSlotId arggLocs =
 
 
 -- | this is for testing purposes only when displaying multiple aggregators
-myTestArgLocs :: AggregatorLocation Array
+myTestArgLocs :: Array (AggregatorLocation Array)
 myTestArgLocs =
   [ { slotId: SlotId 1
     , role: Primary

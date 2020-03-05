@@ -1,94 +1,178 @@
 module Shared.Rtsv2.JsonLd
        (
-         activeIngestNode
-       , downstreamRelayNode
+         LocationBySlotIdAndSlotRole
+       , LocationBySlotId
+       , ServerNode
+       , DeliverToNode
+       , ActiveIngestLocationNode
+       , ActiveIngestLocation
+       , AggregatorLocationNode
+       , DownstreamRelayLocationNode
+       , RelayLocationNode
+       , EgestLocationNode
+       , ServerContextFields
+       , ActiveIngestContextFields
+       , DeliverToContextFields
+       , TransPoPLeaderLocationNode
+
+       , activeIngestLocationNode
+       , downstreamRelayLocationNode
        , aggregatorLocationNode
        , relayLocationNode
        , egestLocationNode
+       , transPoPLeaderLocationNode
+       , module JsonLd
        ) where
 
 import Prelude
 
 import Data.Maybe (Maybe(..))
-import Data.Newtype (class Newtype, unwrap, wrap)
-import Foreign (Foreign, F)
-import Shared.JsonLd as JsonLd
+import Data.Newtype (wrap)
+import Shared.JsonLd (Context, ContextValue(..), ExpandedTermDefinition, Node, unwrapNode) as JsonLd
 import Shared.Router.Endpoint (Endpoint(..), makeUrl, makeUrlAddr)
 import Shared.Stream (ProfileName, SlotId, SlotRole)
-import Shared.Types (DeliverTo, RelayServer, Server, ServerAddress, Server)
-import Shared.Types.Agent.State (AggregatorLocationContextFields, DownstreamRelayContextFields, EgestLocationContextFields, RelayLocationContextFields, ActiveIngestContextFields)
-import Simple.JSON (E, readJSON, writeJSON)
+import Shared.Types (DeliverTo, RelayServer, Server, ServerAddress, extractPoP)
 
-activeIngestNode :: SlotId -> SlotRole -> ProfileName -> ServerAddress -> (JsonLd.Node { profileName :: ProfileName
-                                                                                       , serverAddress :: ServerAddress
-                                                                                       } ActiveIngestContextFields)
-activeIngestNode slotId slotRole profileName serverAddress =
+
+------------------------------------------------------------------------------
+-- Server
+type ServerContextFields = ( address :: JsonLd.ContextValue
+                           , pop :: JsonLd.ContextValue
+                           , region :: JsonLd.ContextValue
+                           )
+
+type ServerNode = JsonLd.Node Server ServerContextFields
+
+------------------------------------------------------------------------------
+-- DeliverTo
+type DeliverToContextFields = ( port :: JsonLd.ContextValue
+                              , server :: JsonLd.ContextValue
+                              )
+
+type DeliverToNode a = JsonLd.Node (DeliverTo a) DeliverToContextFields
+
+
+------------------------------------------------------------------------------
+-- LocationByXXX
+type LocationBySlotIdAndSlotRole collectionType = { slotId :: SlotId
+                                                  , role :: SlotRole
+                                                  , servers :: collectionType ServerNode
+                                                  }
+
+type LocationBySlotId collectionType = { slotId :: SlotId
+                                       , servers :: collectionType ServerNode
+                                       }
+
+------------------------------------------------------------------------------
+-- ActiveIngest
+type ActiveIngestContextFields = ( profileName :: JsonLd.ContextValue
+                                 , serverAddress :: JsonLd.ContextValue
+                                 )
+
+type ActiveIngestLocation = { profileName :: ProfileName
+                            , serverAddress :: ServerAddress
+                            }
+
+type ActiveIngestLocationNode = JsonLd.Node ActiveIngestLocation ActiveIngestContextFields
+
+------------------------------------------------------------------------------
+-- TransPoPLeaderLocation
+type TransPoPLeaderLocationNode = ServerNode
+
+------------------------------------------------------------------------------
+-- DownstreamRelay
+type DownstreamRelayLocationNode = DeliverToNode RelayServer
+
+------------------------------------------------------------------------------
+-- AggregatorLocation
+type AggregatorLocationNode f =  LocationBySlotIdAndSlotRole f
+
+------------------------------------------------------------------------------
+-- RelayLocation
+type RelayLocationNode f =  LocationBySlotIdAndSlotRole f
+
+------------------------------------------------------------------------------
+-- EgestLocation
+type EgestLocationNode f =  LocationBySlotId f
+
+serverContext :: JsonLd.Context ServerContextFields
+serverContext = wrap { "@language": Nothing
+                     , "@base": Nothing
+                     , "@vocab": Nothing
+                     , address: JsonLd.Other "http://schema.rtsv2.llwn.com/Infrastructure/Address"
+                     , pop: JsonLd.Other "http://schema.rtsv2.llnw.com/Infrastructure/PoP"
+                     , region: JsonLd.Other "http://schema.rtsv2.llnw.com/Infrastructure/Region"
+                     }
+
+deliverToContext :: JsonLd.Context DeliverToContextFields
+deliverToContext = wrap { "@language": Nothing
+                        , "@base": Nothing
+                        , "@vocab": Nothing
+                        , port: JsonLd.Other "http://schema.rtsv2.llwn.com/Network/Port"
+                        , server: JsonLd.Other "http://schema.rtsv2.llnw.com/Infrastructure/Server"
+                        }
+
+transPoPLeaderLocationNode :: Server -> TransPoPLeaderLocationNode
+transPoPLeaderLocationNode server =
+  wrap { resource: server
+       , "@id": Just $ makeUrl server (TimedRoutesE (extractPoP server))
+       , "@nodeType": Just "http://schema.rtsv2.llnw.com/TransPoPLocation"
+       , "@context": Just $ serverContext
+       }
+
+activeIngestLocationNode :: SlotId -> SlotRole -> ProfileName -> ServerAddress -> ActiveIngestLocationNode
+activeIngestLocationNode slotId slotRole profileName serverAddress =
   wrap { resource: { profileName
                    , serverAddress}
        , "@id": Just $ makeUrlAddr serverAddress (IngestInstanceE slotId slotRole profileName)
-       , "@nodeType": Just "http://schema.rtsv2.llnw.com/ActiveIngest"
+       , "@nodeType": Just "http://schema.rtsv2.llnw.com/ActiveIngestLocation"
        , "@context": Just $ wrap { "@language": Nothing
                                  , "@base": Nothing
                                  , "@vocab": Nothing
-                                 , profileName: JsonLd.Other "http://schema.rtsv2.llwn.com/Media/ProfileNam"
-                                 , serverAddress: JsonLd.Other "http://schema.rtsv2.llnw.com/ServerAddress"
+                                 , profileName: JsonLd.Other "http://schema.rtsv2.llwn.com/Media/ProfileName"
+                                 , serverAddress: JsonLd.Other "http://schema.rtsv2.llnw.com/Infrastructure/ServerAddress"
                                  }
        }
 
-
-downstreamRelayNode :: SlotId -> SlotRole -> DeliverTo RelayServer -> JsonLd.Node (DeliverTo RelayServer) DownstreamRelayContextFields
-downstreamRelayNode slotId slotRole relay@{server} =
+downstreamRelayLocationNode :: SlotId -> SlotRole -> DeliverTo RelayServer -> DownstreamRelayLocationNode
+downstreamRelayLocationNode slotId slotRole relay@{server} =
   wrap { resource: relay
        , "@id": Just $ makeUrl server (RelayStatsE slotId slotRole)
-       , "@nodeType": Just "http://schema.rtsv2.llnw.com/DownstreamRelay"
-       , "@context": Just $ wrap { "@language": Nothing
-                                 , "@base": Nothing
-                                 , "@vocab": Nothing
-                                 , port: JsonLd.Other "http://schema.rtsv2.llwn.com/Network/Port"
-                                 , server: JsonLd.Other "http://schema.rtsv2.llnw.com/Server"
-                                 }
+       , "@nodeType": Just "http://types.rtsv2.llnw.com/DownstreamRelayLocation"
+       , "@context": Just deliverToContext
        }
 
-aggregatorLocationNode :: SlotId -> SlotRole -> Server -> JsonLd.Node Server AggregatorLocationContextFields
+aggregatorLocationNode :: SlotId -> SlotRole -> Server -> ServerNode
 aggregatorLocationNode slotId slotRole server =
   wrap { resource: server
        , "@id": Just $ makeUrl server (IngestAggregatorE slotId slotRole)
-       , "@nodeType": Just "http://schema.rtsv2.llnw.com/AggregatorLocation"
-       , "@context": Just $ wrap { "@language": Nothing
-                                 , "@base": Nothing
-                                 , "@vocab": Nothing
-                                 }
+       , "@nodeType": Just "http://types.rtsv2.llnw.com/AggregatorLocation"
+       , "@context": Just $ serverContext
        }
 
-relayLocationNode :: SlotId -> SlotRole -> Server -> JsonLd.Node Server RelayLocationContextFields
+relayLocationNode :: SlotId -> SlotRole -> Server -> ServerNode
 relayLocationNode slotId slotRole server =
   wrap { resource: server
        , "@id": Just $ makeUrl server (RelayStatsE slotId slotRole)
-       , "@nodeType": Just "http://schema.rtsv2.llnw.com/RelayLocation"
-       , "@context": Just $ wrap { "@language": Nothing
-                                 , "@base": Nothing
-                                 , "@vocab": Nothing
-                                 }
+       , "@nodeType": Just "http://types.rtsv2.llnw.com/RelayLocation"
+       , "@context": Just serverContext
        }
 
-egestLocationNode :: SlotId -> Server -> JsonLd.Node Server EgestLocationContextFields
+egestLocationNode :: SlotId -> Server -> ServerNode
 egestLocationNode slotId server =
   wrap { resource: server
        , "@id": Just $ makeUrl server (EgestStatsE slotId)
-       , "@nodeType": Just "http://schema.rtsv2.llnw.com/EgestLocation"
-       , "@context": Just $ wrap { "@language": Nothing
-                                 , "@base": Nothing
-                                 , "@vocab": Nothing
-                                 }
+       , "@nodeType": Just "http://types.rtsv2.llnw.com/EgestLocation"
+       , "@context": Just $ serverContext
        }
 
-foo :: forall resourceType otherFields newtypeType. Newtype newtypeType { resource :: resourceType | otherFields } => newtypeType -> resourceType
-foo = _.resource <<< unwrap
+-- foo :: forall resourceType otherFields newtypeType. Newtype newtypeType { resource :: resourceType | otherFields } => newtypeType -> resourceType
+-- foo = _.resource <<< unwrap
 
-bar :: JsonLd.Node Server () -> String
-bar server =
-  writeJSON server
+-- bar :: JsonLd.Node Server () -> String
+-- bar server =
+--   writeJSON server
 
-baz :: String -> E (JsonLd.Node Server ())
-baz s =
-  readJSON s
+-- baz :: String -> E (JsonLd.Node Server ())
+-- baz s =
+--   readJSON s
