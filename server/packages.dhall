@@ -81,6 +81,14 @@ let overrides =
           ⫽ { version = "03eaeab111dd1b2cf499ca977fe4cc61df8fd254" }
       , strings =
           upstream.strings ⫽ { version = "v4.0.1-erl1" }
+      , record-prefix =
+          { dependencies =
+              [ "prelude", "heterogeneous", "console", "typelevel-prelude" ]
+          , repo =
+              "ssh://git@github.com/dariooddenino/purescript-record-prefix.git"
+          , version =
+              "v1.0.0"
+          }
       }
 
 let additions =

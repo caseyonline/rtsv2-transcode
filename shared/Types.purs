@@ -59,8 +59,8 @@ newtype EgestServer = Egest ServerRec
 
 type DeliverTo serverType
   = { server :: serverType
-              , port :: Int
-              }
+    , port :: Int
+    }
 
 newtype ServerLoad = ServerLoad { address :: ServerAddress
                                 , pop :: PoPName

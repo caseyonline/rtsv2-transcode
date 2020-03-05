@@ -6,7 +6,7 @@ module Rtsv2.Handler.IntraPoP
 
 import Prelude
 
-import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Maybe (Maybe(..))
 import Data.Newtype (unwrap)
 import Erl.Data.List (List)
 import Rtsv2.Agents.IntraPoP as IntraPoP

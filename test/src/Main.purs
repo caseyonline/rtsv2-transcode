@@ -245,7 +245,7 @@ main =
     assertAggregator = assertBodyFun <<< predicate
       where
         predicate :: Array SlotNameAndProfileName -> PublicState.IngestAggregator Array -> Boolean
-        predicate vars {activeProfiles} = sort ((\(SlotNameAndProfileName _ profileName) -> profileName) <$> vars) == (sort $ _.profileName <$> activeProfiles)
+        predicate vars {activeProfiles} = sort ((\(SlotNameAndProfileName _ profileName) -> profileName) <$> vars) == (sort $ _.profileName <$> _.resource <$> unwrap <$> activeProfiles)
 
     assertAggregatorOn nodes requiredSlotId  = assertBodyFun $ predicate
       where
@@ -255,7 +255,7 @@ main =
             nodeAddresses = toAddr
             serverAddressesForSlotId = foldl (\acc {slotId, servers} ->
                                                  if slotId == requiredSlotId
-                                                 then acc <> (extractAddress <$> servers)
+                                                 then acc <> (_.address <$> _.resource <$> unwrap <$> servers)
                                                  else acc
                                                ) []  popState.aggregatorLocations
           in
@@ -269,7 +269,7 @@ main =
             nodeAddresses = toAddr
             serverAddressesForSlotId = foldl (\acc {slotId, servers} ->
                                                  if slotId == requiredSlotId
-                                                 then acc <> (extractAddress <$> servers)
+                                                 then acc <> (_.address <$> _.resource <$> unwrap <$> servers)
                                                  else acc
                                                ) []  popState.relayLocations
           in

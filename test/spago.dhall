@@ -22,6 +22,7 @@ You can edit this file as you like.
     , "psci-support"
     , "quickcheck"
     , "routing-duplex"
+    , "record-prefix"
     , "simple-json"
     , "simple-json-generics"
     , "spec"

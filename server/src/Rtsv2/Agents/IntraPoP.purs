@@ -88,8 +88,9 @@ import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Serf (IpAndPort, LamportClock)
 import Serf as Serf
-import Shared.Stream (AgentKey(..), AggregatorKey, EgestKey(..), RelayKey(..), SlotRole(..), agentKeyToAggregatorKey, aggregatorKeyToAgentKey)
 import Shared.Common (Milliseconds)
+import Shared.Rtsv2.JsonLd as JsonLd
+import Shared.Stream (AgentKey(..), AggregatorKey, EgestKey(..), RelayKey(..), SlotRole(..), agentKeyToAggregatorKey, aggregatorKeyToAgentKey)
 import Shared.Types (Load, Server(..), ServerAddress(..), ServerLoad(..), extractAddress, extractPoP, serverLoadToServer, toServer, toServerLoad)
 import Shared.Types.Agent.State as PublicState
 
@@ -204,19 +205,23 @@ getPublicState = exposeState publicState serverName
   where
     publicState state@{agentLocations, currentTransPoPLeader} =
       { aggregatorLocations: toAggregatorLocation <$>  Map.toUnfoldable agentLocations.aggregators.byAgentKey
-      , relayLocations: toSlotIdAndProfileName <$>  Map.toUnfoldable agentLocations.relays.byAgentKey
-      , egestLocations: toSlotIdAndProfileName <$>  Map.toUnfoldable agentLocations.egests.byAgentKey
+      , relayLocations: toRelayLocation <$>  Map.toUnfoldable agentLocations.relays.byAgentKey
+      , egestLocations: toEgestLocation <$>  Map.toUnfoldable agentLocations.egests.byAgentKey
       , currentTransPoPLeader
       }
     toAggregatorLocation (Tuple (AgentKey slotId role) v) =
       { slotId
       , role
-      , servers:  Set.toUnfoldable v
+      , servers: JsonLd.aggregatorLocationNode slotId role <$> Set.toUnfoldable v
       }
-    toSlotIdAndProfileName (Tuple (AgentKey slotId role) v) =
+    toRelayLocation (Tuple (AgentKey slotId role) v) =
       { slotId
       , role
-      , servers:  Set.toUnfoldable v
+      , servers: JsonLd.relayLocationNode slotId role <$> Set.toUnfoldable v
+      }
+    toEgestLocation (Tuple (AgentKey slotId _role) v) =
+      { slotId
+      , servers: JsonLd.egestLocationNode slotId <$> Set.toUnfoldable v
       }
 
 

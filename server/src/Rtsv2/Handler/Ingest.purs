@@ -181,10 +181,9 @@ statsToPrometheus stats =
                             (Tuple "profile_name" (Prometheus.toLabelValue profileName)) :
                             nil
 
-ingestInstance :: SlotId -> ProfileName -> GetHandler (PublicState.Ingest List)
-ingestInstance slotId profileName =
-  -- TODO - hardcoded Primary
-  jsonResponse $ Just <$> (IngestInstance.getPublicState (IngestKey slotId Primary profileName))
+ingestInstance :: SlotId -> SlotRole -> ProfileName -> GetHandler (PublicState.Ingest List)
+ingestInstance slotId slotRole profileName =
+  jsonResponse $ Just <$> (IngestInstance.getPublicState (IngestKey slotId slotRole profileName))
 
 
 type IngestStartState = { streamDetails :: Maybe StreamDetails
