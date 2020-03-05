@@ -26,7 +26,7 @@ import Routing.Duplex.Generic (noArgs, sum)
 import Routing.Duplex.Generic.Syntax ((/))
 import Shared.Common (Url)
 import Shared.Stream (ProfileName(..), RtmpShortName, SlotId, SlotIdAndProfileName(..), SlotNameAndProfileName(..), SlotRole(..))
-import Shared.Types (PoPName, ServerAddress(..), Username(..), extractAddress)
+import Shared.Types (JsonLdContextType(..), PoPName, ServerAddress(..), Username(..), extractAddress)
 
 data Canary = Live
             | Canary
@@ -45,6 +45,7 @@ data Endpoint
   | ServerStateE
   | PoPDefinitionE
   | LoadE
+  | JsonLdContext JsonLdContextType
 
   | EgestStatsE SlotId
   | EgestE
@@ -118,6 +119,8 @@ endpoint = root $ sum
   , "ServerStateE"                                     : "api" / path "state" noArgs
   , "PoPDefinitionE"                                   : "api" / path "popDefinition" noArgs
   , "LoadE"                                            : "api" / path "load" noArgs
+
+  , "JsonLdContext"                                    : "api" / "jsonld" / contextType segment
 
   , "EgestStatsE"                                      : "api" / "agents" / "egest" / slotId segment
   , "EgestE"                                           : "api" / "agents" / path "egest" noArgs
@@ -193,6 +196,20 @@ makeUrlAddrWithPath :: ServerAddress -> String -> Url
 makeUrlAddrWithPath (ServerAddress host) path =
   wrap $ "http://" <> host <> ":3000" <> path
 
+-- | JsonLd Context Type
+contextTypeToString :: JsonLdContextType -> String
+contextTypeToString ServerContext = "server"
+contextTypeToString ServerAddressContext = "serverAddress"
+contextTypeToString DeliverToContext = "deliverTo"
+contextTypeToString TimedRouteNeighbourContext = "timedRouteNeighbour"
+
+parseContextType :: String -> Maybe JsonLdContextType
+parseContextType "server" = Just ServerContext
+parseContextType "serverAddress" = Just ServerAddressContext
+parseContextType "deliverTo" = Just DeliverToContext
+parseContextType "timedRouteNeighbour" = Just TimedRouteNeighbourContext
+parseContextType _ = Nothing
+
 -- | SlotId
 parseSlotId :: String -> Maybe SlotId
 parseSlotId = ((<$>) wrap) <<< fromString
@@ -224,12 +241,10 @@ parseRtmpShortName = wrapParser
 shortNameToString :: RtmpShortName -> String
 shortNameToString = unwrap
 
-
 -- | Generic parser for newtypes
 wrapParser :: forall a. Newtype a String => String -> Maybe a
 wrapParser "" = Nothing
 wrapParser str = Just $ wrap str
-
 
 -- | PoPName
 parsePoPName :: String -> Maybe PoPName
@@ -280,6 +295,9 @@ parseUsername str = Just (Username str)
 userNametoString :: Username -> String
 userNametoString (Username str) = str
 
+-- | This combinator transforms a codec over `String` into one that operates on the `ContextType` type.
+contextType :: RouteDuplex' String -> RouteDuplex' JsonLdContextType
+contextType = as contextTypeToString (parseContextType >>> note "Bad ContextType")
 
 -- | This combinator transforms a codec over `String` into one that operates on the `SlotId` type.
 slotId :: RouteDuplex' String -> RouteDuplex' SlotId
@@ -310,4 +328,5 @@ canary :: RouteDuplex' String -> RouteDuplex' Canary
 canary = as canaryToString (parseCanary >>> note "Bad CanaryId")
 
 uName :: RouteDuplex' String -> RouteDuplex' Username
-uName = as userNametoString (parseUsername >>> note "Bad username")
+uName = as userNametoString (parseUsername >>> note "Bad username"
+)

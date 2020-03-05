@@ -33,6 +33,7 @@ import Rtsv2.Handler.Health as HealthHandler
 import Rtsv2.Handler.Ingest as IngestHandler
 import Rtsv2.Handler.IngestAggregator as IngestAggregatorHandler
 import Rtsv2.Handler.IntraPoP as IntraPoPHandler
+import Rtsv2.Handler.JsonLd as JsonLd
 import Rtsv2.Handler.LlnwStub as LlnwStubHandler
 import Rtsv2.Handler.Load as LoadHandler
 import Rtsv2.Handler.PoPDefinition as PoPDefinitionHandler
@@ -40,9 +41,9 @@ import Rtsv2.Handler.Relay as RelayHandler
 import Rtsv2.Handler.TransPoP as TransPoPHandler
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
+import Serf (Ip(..))
 import Shared.Router.Endpoint (Canary)
 import Shared.Router.Endpoint as Router
-import Serf (Ip(..))
 import Shared.Stream (EgestKey(..), IngestKey(..), ProfileName, SlotId, SlotIdAndProfileName(..), SlotRole(..))
 import Stetson (RestResult, StaticAssetLocation(..))
 import Stetson as Stetson
@@ -74,6 +75,7 @@ init args = do
         , "ServerStateE"                                : IntraPoPHandler.publicState
         , "PoPDefinitionE"                              : PoPDefinitionHandler.popDefinition
         , "LoadE"                                       : LoadHandler.load
+        , "JsonLdContext"                               : JsonLd.getContextJson
 
         , "EgestStatsE"                                 : EgestStatsHandler.stats
         , "EgestE"                                      : dummyHandler -- TODO missing?

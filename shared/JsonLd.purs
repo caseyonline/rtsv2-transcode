@@ -1,6 +1,7 @@
 module Shared.JsonLd
        (
          Context
+       , ContextDefinition(..)
        , ContextValue(..)
        , ExpandedTermDefinition
        , Node
@@ -63,9 +64,25 @@ type ExpandedTermDefinition = { "@id" :: Maybe String
                               , "@container" :: Maybe String
                               }
 
+data ContextDefinition contextFields = ContextRecord (Context contextFields)
+                                     | ContextUrl String
+
+instance writeForeignContextDefinition :: (WriteForeign (ContextFields contextFields)) => WriteForeign (ContextDefinition contextFields) where
+  writeImpl (ContextRecord r) = writeImpl r
+  writeImpl (ContextUrl url) = writeImpl url
+
+instance readForeignContextDefinition :: (ReadForeign (ContextFields contextFields)) => ReadForeign (ContextDefinition contextFields) where
+  readImpl o =
+    let
+      readRecord = readImpl :: Foreign -> F (ContextFields contextFields)
+      readUrl = readImpl :: Foreign -> F String
+    in
+     (ContextRecord <<< Context <$> readRecord o)
+     <|> (ContextUrl <$> readUrl o)
+
 type NodeMetadata'' resource contextFields = ( "@id" :: Maybe Url
                                              , "@nodeType":: Maybe String
-                                             , "@context" :: Maybe (Context contextFields)
+                                             , "@context" :: Maybe (ContextDefinition contextFields)
                                                | resource )
 
 type NodeMetadata' resource contextFields = Record (NodeMetadata'' resource contextFields)
