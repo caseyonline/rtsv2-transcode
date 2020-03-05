@@ -10,6 +10,7 @@ module Shared.Types.Agent.State
        , AgentLocation
        , AggregatorLocation
        , StreamRelay
+       , TimedPoPNeighbour
        , TimedPoPStep
        , TimedPoPRoute
        , TimedPoPRoutes
@@ -29,6 +30,8 @@ import Shared.Types.Media.Types.SourceDetails (SourceInfo)
 import Shared.Types.Workflow.Metrics.FrameFlow as FrameFlow
 import Shared.Types.Workflow.Metrics.RtmpPushIngest as RtmpIngest
 import Shared.Types.Workflow.Metrics.StreamBitrateMonitor as StreamBitrateMonitor
+
+type TimedPoPNeighbour f = JsonLd.TimedRouteNeighbourNode f
 
 type TimedPoPRoutes f
   = { from :: PoPName

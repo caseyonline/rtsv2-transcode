@@ -39,7 +39,8 @@ data Endpoint
   = VMMetricsE
   | TransPoPLeaderE
   | IntraPoPTestHelperE
-  | TimedRoutesE PoPName
+  | TimedRoutesE
+  | TimedRoutesForPoPE PoPName
   | HealthCheckE
   | ServerStateE
   | PoPDefinitionE
@@ -111,7 +112,8 @@ endpoint = root $ sum
     "VMMetricsE"                                       : "api" / "vm" / path "metrics" noArgs
   , "TransPoPLeaderE"                                  : "api" / path "transPoPLeader" noArgs
   , "IntraPoPTestHelperE"                              : "api" / "test" / path "intraPoP" noArgs
-  , "TimedRoutesE"                                     : "api" / "timedRoutes" / popName segment
+  , "TimedRoutesE"                                     : "api" / path "timedRoutes" noArgs
+  , "TimedRoutesForPoPE"                               : "api" / "timedRoutes" / popName segment
   , "HealthCheckE"                                     : "api" / path "healthCheck" noArgs
   , "ServerStateE"                                     : "api" / path "state" noArgs
   , "PoPDefinitionE"                                   : "api" / path "popDefinition" noArgs

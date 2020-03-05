@@ -230,13 +230,13 @@ main =
       where
         predicate :: Array Node -> PublicState.StreamRelay Array -> Boolean
         predicate servers {egestsServed} =
-          (sort $ (ServerAddress <<< toAddr) <$> servers) == sort egestsServed
+          (sort $ (ServerAddress <<< toAddr) <$> servers) == sort (_.address <<< JsonLd.unwrapNode <$> egestsServed)
 
     assertRelayForRelay = assertBodyFun <<< predicate
       where
         predicate :: Array Node -> PublicState.StreamRelay Array -> Boolean
         predicate servers {relaysServed} =
-          (sort $ (ServerAddress <<< toAddr) <$> servers) == sort relaysServed
+          (sort $ (ServerAddress <<< toAddr) <$> servers) == sort (_.address <<< JsonLd.unwrapNode <$> relaysServed)
 
     assertEgestClients = assertBodyFun <<< predicate
       where

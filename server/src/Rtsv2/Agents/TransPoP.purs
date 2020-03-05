@@ -7,6 +7,7 @@ module Rtsv2.Agents.TransPoP
        , getRtts
        , getLeaderFor -- TODO - not sure this is the way forward for remote API server selection
        , routesTo
+       , getNeighbours
        , getTimedRoutesTo
        , PoPRoutes
        ) where
@@ -18,7 +19,7 @@ import Data.Foldable (foldM, foldl)
 import Data.FoldableWithIndex (foldlWithIndex)
 import Data.Maybe (Maybe(..), fromMaybe, fromMaybe', maybe)
 import Data.Newtype (unwrap, wrap)
-import Data.Set (Set)
+import Data.Set (Set, toUnfoldable)
 import Data.Set as Set
 import Data.Traversable (traverse, traverse_)
 import Data.Tuple (Tuple(..))
@@ -43,7 +44,7 @@ import Pinto.Timer as Timer
 import PintoHelper (exposeState)
 import Prim.Row (class Nub, class Union)
 import Record as Record
-import Rtsv2.Agents.IntraPoP (AgentClock)
+import Rtsv2.Agents.IntraPoP (AgentClock, whereIsIngestAggregator)
 import Rtsv2.Config (IntraPoPAgentApi, TransPoPAgentConfig)
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
@@ -54,9 +55,10 @@ import Rtsv2.PoPDefinition (PoP)
 import Rtsv2.PoPDefinition as PoPDefinition
 import Serf (IpAndPort, LamportClock, SerfCoordinate, calcRtt)
 import Serf as Serf
-import Shared.Stream (AgentKey)
-import Shared.Router.Endpoint (Endpoint(..), makeUrlAddr)
 import Shared.Common (Milliseconds)
+import Shared.Router.Endpoint (Endpoint(..), makeUrlAddr)
+import Shared.Rtsv2.JsonLd as JsonLd
+import Shared.Stream (AgentKey)
 import Shared.Types (PoPName, Server, ServerAddress(..), extractAddress, extractPoP, toServer)
 import Shared.Types.Agent.State as PublicState
 import Shared.Utils (distinctRandomNumbers)
@@ -104,6 +106,12 @@ data Msg
   | ConnectStream
   | TransPoPSerfMsg (Serf.SerfMessage TransMessage)
 
+
+getNeighbours :: Effect (Tuple Server (List (JsonLd.TimedRouteNeighbour List)))
+getNeighbours = exposeState doGetNeighbours serverName
+  where
+    doGetNeighbours {thisServer, members} =
+      Tuple thisServer $ (\(Tuple pop servers) -> {pop, servers: toUnfoldable servers}) <$> Map.toUnfoldable members
 
 getTimedRoutesTo :: PoPName -> Effect (PublicState.TimedPoPRoutes List)
 getTimedRoutesTo pop = exposeState doGetTimedRoutes serverName

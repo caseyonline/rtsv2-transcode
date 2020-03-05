@@ -69,6 +69,7 @@ init args = do
         , "TransPoPLeaderE"                             : IntraPoPHandler.leader
         , "IntraPoPTestHelperE"                         : IntraPoPHandler.testHelper
         , "TimedRoutesE"                                : TransPoPHandler.timedRoutes
+        , "TimedRoutesForPoPE"                          : TransPoPHandler.timedRoutesForPoP
         , "HealthCheckE"                                : HealthHandler.healthCheck
         , "ServerStateE"                                : IntraPoPHandler.publicState
         , "PoPDefinitionE"                              : PoPDefinitionHandler.popDefinition

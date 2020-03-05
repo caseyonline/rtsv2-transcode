@@ -111,7 +111,7 @@ instance manageAPIAppM :: ManageApi AppM where
     case sequenceRecord sInfo of
       Nothing -> pure $ Left "SPoPInfo not present"
       Just s@{ selectedSlotId, selectedAddress } -> do
-        response <- mkOriginRequest selectedAddress { endpoint: TimedRoutesE curPopName, method: Get }
+        response <- mkOriginRequest selectedAddress { endpoint: TimedRoutesForPoPE curPopName, method: Get }
         case JSON.readJSON response of
           Left e -> pure $ Left $ show e
           Right (res :: (TimedPoPRoutes Array)) -> do
@@ -129,7 +129,7 @@ instance manageAPIAppM :: ManageApi AppM where
       Nothing -> pure $ Left "No server address given"
       Just sa -> do
         response <- mkOriginRequest sa { endpoint: ServerStateE, method: Get }
-        
+
         case JSON.readJSON response of
           Left e -> pure $ Left $ show e
           Right (res :: IntraPoP Array) -> do

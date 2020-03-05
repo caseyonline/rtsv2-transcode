@@ -6,6 +6,9 @@ module Shared.Rtsv2.JsonLd
        , ServerAddressNode
        , DeliverToNode
        , EgestServedLocationNode
+       , TimedRouteNeighbourNode
+       , TimedRouteNeighbour
+       , TimedRouteNeighbourContextFields
        , RelayServedLocationNode
        , ActiveIngestLocationNode
        , ActiveIngestLocation
@@ -19,6 +22,7 @@ module Shared.Rtsv2.JsonLd
        , DeliverToContextFields
        , TransPoPLeaderLocationNode
 
+       , timedRouteNeighbourNode
        , activeIngestLocationNode
        , downstreamRelayLocationNode
        , aggregatorLocationNode
@@ -37,7 +41,7 @@ import Data.Newtype (wrap)
 import Shared.JsonLd (Context, ContextValue(..), ExpandedTermDefinition, Node, unwrapNode) as JsonLd
 import Shared.Router.Endpoint (Endpoint(..), makeUrl, makeUrlAddr)
 import Shared.Stream (ProfileName, SlotId, SlotRole)
-import Shared.Types (DeliverTo, RelayServer, Server, ServerAddress, extractPoP)
+import Shared.Types (DeliverTo, PoPName, RelayServer, Server, ServerAddress, extractPoP)
 
 
 ------------------------------------------------------------------------------
@@ -92,6 +96,15 @@ type ActiveIngestLocationNode = JsonLd.Node ActiveIngestLocation ActiveIngestCon
 type TransPoPLeaderLocationNode = ServerNode
 
 ------------------------------------------------------------------------------
+-- TimedRouteNode
+type TimedRouteNeighbourContextFields = ( pop :: JsonLd.ContextValue )
+
+type TimedRouteNeighbour f = { pop :: PoPName
+                             , servers :: f ServerAddress }
+
+type TimedRouteNeighbourNode f = JsonLd.Node (TimedRouteNeighbour f) TimedRouteNeighbourContextFields
+
+------------------------------------------------------------------------------
 -- EgestServedLocation
 type EgestServedLocationNode = ServerAddressNode
 
@@ -139,6 +152,21 @@ deliverToContext = wrap { "@language": Nothing
                         , server: JsonLd.Other "http://schema.rtsv2.llnw.com/Infrastructure/Server"
                         }
 
+timedRouteNeighbourContext :: JsonLd.Context TimedRouteNeighbourContextFields
+timedRouteNeighbourContext = wrap { "@language": Nothing
+                                  , "@base": Nothing
+                                  , "@vocab": Nothing
+                                  , pop: JsonLd.Other "http://schema.rtsv2.llnw.com/Infrastructure/PoP"
+                                  }
+
+timedRouteNeighbourNode :: forall f. Server -> TimedRouteNeighbour f -> TimedRouteNeighbourNode f
+timedRouteNeighbourNode server neighbour@{pop} =
+  wrap { resource: neighbour
+       , "@id": Just $ makeUrl server (TimedRoutesForPoPE pop)
+       , "@nodeType": Just "http://schema.rtsv2.llnw.com/TimedRouteNeighbour"
+       , "@context": Just $ timedRouteNeighbourContext
+       }
+
 egestServedLocationNode :: SlotId -> ServerAddress -> EgestServedLocationNode
 egestServedLocationNode slotId serverAddress =
   wrap { resource: {address: serverAddress}
@@ -158,7 +186,7 @@ relayServedLocationNode slotId slotRole serverAddress =
 transPoPLeaderLocationNode :: Server -> TransPoPLeaderLocationNode
 transPoPLeaderLocationNode server =
   wrap { resource: server
-       , "@id": Just $ makeUrl server (TimedRoutesE (extractPoP server))
+       , "@id": Just $ makeUrl server (TimedRoutesE)
        , "@nodeType": Just "http://schema.rtsv2.llnw.com/TransPoPLocation"
        , "@context": Just $ serverContext
        }
