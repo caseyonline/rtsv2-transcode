@@ -11,7 +11,7 @@ spago: $(PS_SOURCEFILE)
 
 parcel: $(JS_ASSET_FOLDER)$(BUNDLE_NAME)
 
-$(PS_SOURCEFILE): $(shell find src -type f)
+$(PS_SOURCEFILE): $(shell find -L src -type f)
 	spago bundle-app --main Main --to $(PS_SOURCEFILE)
 
 $(JS_ASSET_FOLDER)$(BUNDLE_NAME): $(PS_SOURCEFILE) node_modules

@@ -30,6 +30,7 @@ import Shared.Stream (ProfileName(..), SlotRole(..), SlotNameAndProfileName(..))
 import Shared.Router.Endpoint (Endpoint(..), makeUrl, Canary(..))
 import Shared.Types (ServerAddress(..), extractAddress)
 import Shared.Types.Agent.State as PublicState
+import Shared.JsonLd as JsonLd
 import Simple.JSON (class ReadForeign)
 import Simple.JSON as SimpleJSON
 import Test.Spec (after_, before_, describe, describeOnly, it, itOnly)
@@ -245,7 +246,7 @@ main =
     assertAggregator = assertBodyFun <<< predicate
       where
         predicate :: Array SlotNameAndProfileName -> PublicState.IngestAggregator Array -> Boolean
-        predicate vars {activeProfiles} = sort ((\(SlotNameAndProfileName _ profileName) -> profileName) <$> vars) == (sort $ _.profileName <$> _.resource <$> unwrap <$> activeProfiles)
+        predicate vars {activeProfiles} = sort ((\(SlotNameAndProfileName _ profileName) -> profileName) <$> vars) == (sort $ (_.profileName <<< JsonLd.unwrapNode) <$> activeProfiles)
 
     assertAggregatorOn nodes requiredSlotId  = assertBodyFun $ predicate
       where
@@ -255,7 +256,7 @@ main =
             nodeAddresses = toAddr
             serverAddressesForSlotId = foldl (\acc {slotId, servers} ->
                                                  if slotId == requiredSlotId
-                                                 then acc <> (_.address <$> _.resource <$> unwrap <$> servers)
+                                                 then acc <> (extractAddress <<< JsonLd.unwrapNode <$> servers)
                                                  else acc
                                                ) []  popState.aggregatorLocations
           in
@@ -269,7 +270,7 @@ main =
             nodeAddresses = toAddr
             serverAddressesForSlotId = foldl (\acc {slotId, servers} ->
                                                  if slotId == requiredSlotId
-                                                 then acc <> (_.address <$> _.resource <$> unwrap <$> servers)
+                                                 then acc <> (extractAddress <<< JsonLd.unwrapNode <$> servers)
                                                  else acc
                                                ) []  popState.relayLocations
           in

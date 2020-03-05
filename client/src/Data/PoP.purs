@@ -29,6 +29,7 @@ import Effect.Ref as Ref
 import Global (readFloat)
 import Rtsv2App.Capability.Resource.Api (class ManageApi, getServerState)
 import Rtsv2App.Env (PoPDefEnv)
+import Shared.JsonLd as JsonLd
 import Shared.Types (GeoLoc(..), LeaderGeoLoc, PoPName, Server(..), ServerAddress)
 import Shared.Types.Agent.State (AggregatorLocation, IntraPoP, PoP, PoPDefinition, TimedPoPRoutes)
 
@@ -107,8 +108,11 @@ toPoPleaders :: Array (Maybe (IntraPoP Array)) -> Array Server
 toPoPleaders = mapMaybe (_ >>= _.currentTransPoPLeader)
 
 toAggregators :: (Array (Maybe (IntraPoP Array))) -> (AggregatorLocation Array)
-toAggregators mIntraPoPs = nub $ catMaybes mIntraPoPs >>= (\{aggregatorLocations} ->
-                                                            (\{slotId, role, servers} -> {slotId, role, servers: (wrap <$> _.resource <$> unwrap <$> servers)}) <$> aggregatorLocations) --  _.aggregatorLocations)
+toAggregators mIntraPoPs =
+  let
+    toAggregatorLocation {slotId, role, servers} = {slotId, role, servers: (JsonLd.unwrapNode <$> servers)}
+  in
+   nub $ catMaybes mIntraPoPs >>= (\{aggregatorLocations} -> toAggregatorLocation <$> aggregatorLocations)
 
 timedRoutedToChartOps :: TimedPoPRoutes Array -> (Array LeaderGeoLoc) -> Array (Array (Array LeaderGeoLoc))
 timedRoutedToChartOps timedRoutes leaderGeolocs =

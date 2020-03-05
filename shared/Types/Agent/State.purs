@@ -91,14 +91,14 @@ type AgentLocation f = { agentKey :: AgentKey
 type IntraPoP f
   = { aggregatorLocations :: f { slotId :: SlotId
                                , role :: SlotRole
-                               , servers :: f (JsonLd.Node ServerRec AggregatorLocationContextFields)
+                               , servers :: f (JsonLd.Node Server AggregatorLocationContextFields)
                                }
     , relayLocations      :: f { slotId :: SlotId
                                , role :: SlotRole
-                               , servers :: f (JsonLd.Node ServerRec RelayLocationContextFields)
+                               , servers :: f (JsonLd.Node Server RelayLocationContextFields)
                                }
     , egestLocations      :: f { slotId :: SlotId
-                               , servers :: f (JsonLd.Node ServerRec EgestLocationContextFields)
+                               , servers :: f (JsonLd.Node Server EgestLocationContextFields)
                                }
     , currentTransPoPLeader :: Maybe Server
     }
