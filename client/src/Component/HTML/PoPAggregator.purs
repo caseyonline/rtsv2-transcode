@@ -3,10 +3,10 @@ module Rtsv2App.Component.HTML.PoPAggregator where
 import Prelude
 
 import Control.Monad.Reader.Trans (class MonadAsk, ask)
-import Data.Array (find)
+import Data.Array (find, mapWithIndex, (!!))
 import Data.Foldable (findMap)
 import Data.Maybe (Maybe(..), fromMaybe)
-import Data.Newtype (un)
+import Data.Newtype (un, unwrap)
 import Effect.Aff.Class (class MonadAff)
 import Effect.Ref as Ref
 import Halogen as H
@@ -28,7 +28,7 @@ import Shared.Types.Agent.State (AggregatorLocation, PoPDefinition)
 type Input =
   { popDef       :: Maybe (PoPDefinition Array)
   , aggrLocs     :: Array (AggregatorLocation Array)
-  , checkedBoxes :: Maybe (Array CheckBoxState)
+  , selectedAggrIndex  :: Maybe Int
   }
 
 type Slot = H.Slot Query Message
@@ -38,13 +38,14 @@ data Query a = IsOn (Boolean -> a)
 data Message = SPoPInfo SelectedInfo
 
 data Action
-  = Select (Maybe SlotId)
+  = Select Int
   | Receive Input
 
+
 type State =
-  { aggrLocs     :: Array (AggregatorLocation Array)
-  , popDef       :: Maybe (PoPDefinition Array)
-  , checkedBoxes :: Array CheckBoxState
+  { aggrLocs          :: Array (AggregatorLocation Array)
+  , popDef            :: Maybe (PoPDefinition Array)
+  , selectedAggrIndex :: Maybe Int
   }
 
 -------------------------------------------------------------------------------
@@ -68,38 +69,49 @@ component = H.mkComponent
   where
   initialState :: Input -> State
   initialState { aggrLocs, popDef } =
-    { checkedBoxes: initCheckBoxes aggrLocs --  myTestArgLocs
-    , aggrLocs
+    { aggrLocs: aggrLocs
+    , selectedAggrIndex: Nothing
     , popDef
     }
 
   handleAction :: Action -> H.HalogenM State Action () Message m Unit
   handleAction = case _ of
-    Receive input@{ aggrLocs, popDef, checkedBoxes } -> do
+    Receive input@{ aggrLocs, popDef, selectedAggrIndex } ->
+      H.modify_ _ { selectedAggrIndex = selectedAggrIndex
+                  , aggrLocs = aggrLocs
+                  , popDef = popDef
+                  }
 
-      H.put { checkedBoxes: fromMaybe (initCheckBoxes aggrLocs) checkedBoxes  --  myTestArgLocs
-            , aggrLocs: aggrLocs
-            , popDef
-            }
-
-    Select mSlotId -> do
+    Select index -> do
       st <- H.get
+      let newSelected = if st.selectedAggrIndex == Just index
+                then Nothing
+                else Just index
       { popDefEnv } <- ask
       transPoPLeaders <- H.liftEffect $ Ref.read popDefEnv.transPoPLeaders
 
-      newSt <- H.modify _ { checkedBoxes = updateSelected st.checkedBoxes mSlotId }
-      let selectedSlot = whichSlotSelected newSt.checkedBoxes
-          selectedPname = slotToPoP selectedSlot newSt.aggrLocs
+      newSt <- H.modify _ { selectedAggrIndex = newSelected }
+      let
+        maybeAgg :: Maybe (AggregatorLocation Array)
+        maybeAgg = const (newSt.aggrLocs !! index) =<< newSelected
+        selectedSlot = _.slotId <$> maybeAgg
+        selectedPname :: Maybe PoPName
+        selectedPname = findPoPForAggregator =<< maybeAgg
       H.raise
         (SPoPInfo
            { selectedSlotId: selectedSlot
            , selectedPoPName: selectedPname
            , selectedAddress: getPoPLeaderAddress transPoPLeaders selectedPname
-           , selectedSlotRole: slotToSlotRole selectedSlot newSt.aggrLocs
-           , checkedBoxes: Just newSt.checkedBoxes
+           , selectedAggrIndex: newSelected
            }
         )
       pure unit
+
+    where
+      findPoPForAggregator :: AggregatorLocation Array -> Maybe PoPName
+      findPoPForAggregator aggr =
+            (_.pop <<< un Server) <$>  aggr.servers !! 0
+
 
   handleQuery :: forall a. Query a -> H.HalogenM State Action () Message m (Maybe a)
   handleQuery = case _ of
@@ -147,11 +159,11 @@ component = H.mkComponent
                 ]
               ]
             , HH.tbody_
-              (flip map state.aggrLocs
+              (flip mapWithIndex state.aggrLocs
               -- (flip map myTestArgLocs
-               (\argLoc ->
+               (\index aggrLoc ->
                  HH.tr_
-                 ( argLoc.servers >>=
+                 ( aggrLoc.servers >>=
                    (\server -> do
                        let { address, pop, region } = un Server server
                        [ HH.td
@@ -160,9 +172,9 @@ component = H.mkComponent
                            [ css_ "b-checkbox checkbox"]
                            [ HH.input
                              [ HP.type_ HP.InputCheckbox
-                             , HP.name $ show $ un SlotId argLoc.slotId
-                             , HP.checked $ isChecked (Just argLoc.slotId) state.checkedBoxes
-                             , HE.onChange $ const $ Just (Select $ Just argLoc.slotId)
+                             , HP.name $ show $ un SlotId aggrLoc.slotId
+                             , HP.checked $ state.selectedAggrIndex == Just index
+                             , HE.onChange $ const $ Just (Select index)
                              ]
                            , HH.span
                              [ css_ "check"]
@@ -174,10 +186,10 @@ component = H.mkComponent
                          ]
                          , HH.td
                            [ dataAttr "label" "Name" ]
-                           [ HH.text $ show $ un SlotId argLoc.slotId ]
+                           [ HH.text $ show $ un SlotId aggrLoc.slotId ]
                          , HH.td
                            [ dataAttr "label" "Name" ]
-                           [ HH.text $ show $ argLoc.role ]
+                           [ HH.text $ show $ aggrLoc.role ]
                          , HH.td
                            [ dataAttr "label" "PoP" ]
                            [ HH.text $ un PoPName pop ]
@@ -197,73 +209,23 @@ component = H.mkComponent
         ]
     ]
 
--- | create a blank array of checkedBoxes using aggrLocs
-initCheckBoxes :: Array (AggregatorLocation Array) -> Array CheckBoxState
-initCheckBoxes aggrLocs = do
-  map f aggrLocs
-  where
-    f = (\argLoc -> { slotId: (Just argLoc.slotId), isSelected: false })
-
--- | is the current checkbox already checked or not
-isChecked :: Maybe SlotId -> Array CheckBoxState -> Boolean
-isChecked slotId checkedBoxes = do
-  let curCheckBox = find (\checkBox -> checkBox.slotId == slotId ) checkedBoxes
-  case curCheckBox of
-    Nothing -> false
-    Just cc -> cc.isSelected
-
--- | make sure only one option is selected at a time
-updateSelected :: Array CheckBoxState -> Maybe SlotId -> Array CheckBoxState
-updateSelected checkedBoxes maybeSlotId =
-  (\cb -> if maybeSlotId == cb.slotId
-          then { slotId: cb.slotId , isSelected: not cb.isSelected }
-          else { slotId: cb.slotId , isSelected: false }
-  ) <$> checkedBoxes
-
--- | find which slot is selected
-whichSlotSelected :: Array CheckBoxState -> Maybe SlotId
-whichSlotSelected checkedBoxes = do
-  let curSelected = find (\checkBox -> checkBox.isSelected == true ) checkedBoxes
-  case curSelected of
-    Nothing -> Nothing
-    Just c  -> c.slotId
-
--- | find the popName given selected slot
-slotToSlotRole :: Maybe SlotId -> Array (AggregatorLocation Array) -> Maybe SlotRole
-slotToSlotRole mSlotId arggLocs =
-  case mSlotId of
-    Nothing -> Nothing
-    Just slotId -> do
-      let matchedPoP = findMap (\argLoc -> matchServer argLoc) arggLocs
-      case matchedPoP of
-        Nothing -> Nothing
-        Just x -> Just ?y
-      where
-        matchServer argLoc =
-          findMap (\server -> do
-                  let { pop, region, address } = un Server server
-                  if argLoc.slotId == slotId
-                    then Just pop
-                    else Nothing ) argLoc.servers
-
-
 -- | find the popName given selected slot
 slotToPoP :: Maybe SlotId -> Array (AggregatorLocation Array) -> Maybe PoPName
-slotToPoP mSlotId arggLocs =
+slotToPoP mSlotId aggrLocs =
   case mSlotId of
     Nothing -> Nothing
     Just slotId -> do
-      let matchedPoP = findMap (\argLoc -> matchServer argLoc) arggLocs
+      let matchedPoP = findMap (\aggrLoc -> matchServer aggrLoc) aggrLocs
       case matchedPoP of
         Nothing -> Nothing
         Just x -> Just x
       where
-        matchServer argLoc =
+        matchServer aggrLoc =
           findMap (\server -> do
                   let { pop, region, address } = un Server server
-                  if argLoc.slotId == slotId
+                  if aggrLoc.slotId == slotId
                     then Just pop
-                    else Nothing ) argLoc.servers
+                    else Nothing ) aggrLoc.servers
 
 
 -- | this is for testing purposes only when displaying multiple aggregators

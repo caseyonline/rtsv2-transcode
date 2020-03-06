@@ -6,7 +6,7 @@ module Rtsv2App.Capability.Resource.Types
 
 import Data.Maybe (Maybe)
 import Shared.Stream (SlotId, SlotRole)
-import Shared.Types (PoPName, ServerAddress, CheckBoxState)
+import Shared.Types (PoPName, ServerAddress)
 
 
 type SlotDetailsArgs =
@@ -17,8 +17,8 @@ type SlotDetailsArgs =
 
 
 type SelectedInfo =
-    { selectedPoPName :: Maybe PoPName
-    , selectedSlotId  :: Maybe SlotId
-    , selectedAddress :: Maybe ServerAddress
-    , checkedBoxes    :: Maybe (Array CheckBoxState)
+    { selectedPoPName   :: Maybe PoPName
+    , selectedSlotId    :: Maybe SlotId
+    , selectedAddress   :: Maybe ServerAddress
+    , selectedAggrIndex :: Maybe Int
     }
