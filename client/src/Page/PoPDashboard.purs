@@ -24,7 +24,7 @@ import Halogen.HTML.CSS as CSS
 import Halogen.HTML.Properties as HP
 import Record.Extra (sequenceRecord)
 import Rtsv2App.Capability.Navigate (class Navigate)
-import Rtsv2App.Capability.Resource.Api (class ManageApi, getPoPdefinition, getTimedRoutes)
+import Rtsv2App.Capability.Resource.Api (class ManageApi, getPoPdefinition, getSlotDetails, getTimedRoutes)
 import Rtsv2App.Capability.Resource.User (class ManageUser)
 import Rtsv2App.Component.HTML.Breadcrumb as BG
 import Rtsv2App.Component.HTML.Dropdown as DP
@@ -145,11 +145,11 @@ component = H.mkComponent
 
         where
           updateState pd = do
-            { popDefenition, popDefEcharts, popLeaders, aggrLocs } <- updatePoPDefEnv pd
-            H.modify_ _ { popDefenition = popDefenition
-                        , popDefEcharts = popDefEcharts
-                        , popLeaders = popLeaders
-                        , aggrLocs = aggrLocs
+            env <- updatePoPDefEnv pd
+            H.modify_ _ { popDefenition = env.popDefenition
+                        , popDefEcharts = env.popDefEcharts
+                        , popLeaders = env.popLeaders
+                        , aggrLocs = env.aggrLocs
                         }
 
     Receive { popName, prevRoute } -> do
@@ -174,7 +174,8 @@ component = H.mkComponent
           case sequenceRecord selectedInfo of
             Nothing -> do
                liftEffect $ EC.setOptionPoP { rttData: [], scatterData: [] } chart
-            Just _  -> do
+            Just { selectedSlotId, selectedAddress }  -> do
+              eSlotDetails <- getSlotDetails { slotId: selectedSlotId , slotRole: ?b , serverAddress: selectedAddress }
               -- | go fetch timedroute and populate the chart/map with options
               maybeTimedRoutes <- getTimedRoutes selectedInfo st.curPopName
               case maybeTimedRoutes of
@@ -239,6 +240,10 @@ component = H.mkComponent
               [ css_ "card map is-card-widget tile is-child" ]
               (mapDiv state)
             ]
+          , HH.div
+            [ css_ "tile is-parent" ]
+            []
+
           ]
           -- , HH.div
           --   [ css_ "row" ]

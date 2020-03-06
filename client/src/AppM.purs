@@ -28,7 +28,7 @@ import Rtsv2App.Data.Profile (ProfileEmailRes)
 import Rtsv2App.Data.Route as Route
 import Rtsv2App.Env (Env, LogLevel(..))
 import Shared.Router.Endpoint (Endpoint(..))
-import Shared.Types.Agent.State (PoPDefinition, TimedPoPRoutes, IntraPoP)
+import Shared.Types.Agent.State (IntraPoP, PoPDefinition, TimedPoPRoutes, IngestAggregator)
 import Simple.JSON as JSON
 import Type.Equality (class TypeEquals, from)
 
@@ -116,6 +116,13 @@ instance manageAPIAppM :: ManageApi AppM where
           Left e -> pure $ Left $ show e
           Right (res :: (TimedPoPRoutes Array)) -> do
             pure $ Right res
+
+  getSlotDetails { slotId, slotRole, serverAddress } = do
+    response <- mkOriginRequest serverAddress { endpoint: IngestAggregatorE slotId slotRole, method: Get }
+    case JSON.readJSON response of
+      Left e -> pure $ Left $ show e
+      Right (res :: (IngestAggregator Array)) -> do
+        pure $ Right res
 
   getPoPdefinition = do
     response <- mkRequest { endpoint: PoPDefinitionE, method: Get }

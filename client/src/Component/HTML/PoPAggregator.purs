@@ -7,7 +7,6 @@ import Data.Array (find)
 import Data.Foldable (findMap)
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (un)
-import Debug.Trace (traceM)
 import Effect.Aff.Class (class MonadAff)
 import Effect.Ref as Ref
 import Halogen as H
@@ -15,13 +14,13 @@ import Halogen.HTML as HH
 import Halogen.HTML.Events as HE
 import Halogen.HTML.Properties as HP
 import Rtsv2App.Capability.Navigate (class Navigate)
+import Rtsv2App.Capability.Resource.Types (SelectedInfo)
 import Rtsv2App.Component.HTML.Utils (css_, dataAttr)
 import Rtsv2App.Data.PoP (getPoPLeaderAddress)
 import Rtsv2App.Env (PoPDefEnv)
 import Shared.Stream (SlotId(..), SlotRole(..))
-import Shared.Types (PoPName(..), PoPSelectedInfo, RegionName(..), Server(..), ServerAddress(..), CheckBoxState(..))
-import Shared.Types.Agent.State (PoPDefinition, AggregatorLocation)
-
+import Shared.Types (CheckBoxState, PoPName(..), RegionName(..), Server(..), ServerAddress(..))
+import Shared.Types.Agent.State (AggregatorLocation, PoPDefinition)
 
 -------------------------------------------------------------------------------
 -- Types
@@ -36,7 +35,7 @@ type Slot = H.Slot Query Message
 
 data Query a = IsOn (Boolean -> a)
 
-data Message = SPoPInfo PoPSelectedInfo
+data Message = SPoPInfo SelectedInfo
 
 data Action
   = Select (Maybe SlotId)
@@ -96,6 +95,7 @@ component = H.mkComponent
            { selectedSlotId: selectedSlot
            , selectedPoPName: selectedPname
            , selectedAddress: getPoPLeaderAddress transPoPLeaders selectedPname
+           , selectedSlotRole: slotToSlotRole selectedSlot newSt.aggrLocs
            , checkedBoxes: Just newSt.checkedBoxes
            }
         )
@@ -135,7 +135,9 @@ component = H.mkComponent
                 [ HH.th_
                   []
                 , HH.th_
-                  [ HH.text "Slot Name" ]
+                  [ HH.text "Slot name" ]
+                , HH.th_
+                  [ HH.text "Slot role" ]
                 , HH.th_
                   [ HH.text "PoP" ]
                 , HH.th_
@@ -173,6 +175,9 @@ component = H.mkComponent
                          , HH.td
                            [ dataAttr "label" "Name" ]
                            [ HH.text $ show $ un SlotId argLoc.slotId ]
+                         , HH.td
+                           [ dataAttr "label" "Name" ]
+                           [ HH.text $ show $ argLoc.role ]
                          , HH.td
                            [ dataAttr "label" "PoP" ]
                            [ HH.text $ un PoPName pop ]
@@ -222,6 +227,25 @@ whichSlotSelected checkedBoxes = do
   case curSelected of
     Nothing -> Nothing
     Just c  -> c.slotId
+
+-- | find the popName given selected slot
+slotToSlotRole :: Maybe SlotId -> Array (AggregatorLocation Array) -> Maybe SlotRole
+slotToSlotRole mSlotId arggLocs =
+  case mSlotId of
+    Nothing -> Nothing
+    Just slotId -> do
+      let matchedPoP = findMap (\argLoc -> matchServer argLoc) arggLocs
+      case matchedPoP of
+        Nothing -> Nothing
+        Just x -> Just ?y
+      where
+        matchServer argLoc =
+          findMap (\server -> do
+                  let { pop, region, address } = un Server server
+                  if argLoc.slotId == slotId
+                    then Just pop
+                    else Nothing ) argLoc.servers
+
 
 -- | find the popName given selected slot
 slotToPoP :: Maybe SlotId -> Array (AggregatorLocation Array) -> Maybe PoPName
