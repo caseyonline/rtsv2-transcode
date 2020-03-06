@@ -8,6 +8,7 @@ module Rtsv2App.Data.PoP
   , toAggregators
   , toPoPleaders
   , timedRoutedToChartOps
+  , timedRoutedToChartScatter
   , unGeoLoc
   , updatePoPDefEnv
   ) where
@@ -16,10 +17,10 @@ import Prelude
 
 import Control.Monad.Reader (ask)
 import Control.Monad.Reader.Trans (class MonadAsk)
-import Data.Array (catMaybes, findMap, index, length, mapMaybe, nub)
+import Data.Array (catMaybes, concat, findMap, index, length, mapMaybe, nub, nubBy)
 import Data.Either (hush)
 import Data.Maybe (Maybe(..), fromMaybe)
-import Data.Newtype (un, wrap, unwrap)
+import Data.Newtype (overF, un, wrap)
 import Data.Traversable (traverse)
 import Effect (Effect)
 import Effect.Aff.Class (class MonadAff)
@@ -105,38 +106,50 @@ getPoPLeaderAddress popLeaders popName =
                               if (pl.pop == pName) then Just pl.address else Nothing) popLeaders
 
 toPoPleaders :: Array (Maybe (IntraPoP Array)) -> Array Server
---toPoPleaders = mapMaybe (_ >>= (JsonLd.unwrapNode <$> _.currentTransPoPLeader))
 toPoPleaders = mapMaybe (_ >>= (\{currentTransPoPLeader} -> JsonLd.unwrapNode <$> currentTransPoPLeader))
 
 toAggregators :: (Array (Maybe (IntraPoP Array))) -> Array (AggregatorLocation Array)
 toAggregators mIntraPoPs =
-  let
-    toAggregatorLocation {slotId, role, servers} = {slotId, role, servers: (JsonLd.unwrapNode <$> servers)}
-  in
-   nub $ catMaybes mIntraPoPs >>= (\{aggregatorLocations} -> toAggregatorLocation <$> aggregatorLocations)
+  nub $ catMaybes mIntraPoPs
+  >>= map toAggr <<< _.aggregatorLocations
+  where
+    toAggr = \{slotId, role, servers} ->
+      { slotId
+      , role
+      , servers: (JsonLd.unwrapNode <$> servers)
+      }
 
 timedRoutedToChartOps :: TimedPoPRoutes Array -> (Array LeaderGeoLoc) -> Array (Array (Array LeaderGeoLoc))
 timedRoutedToChartOps timedRoutes leaderGeolocs =
   convertToLeaderGeoLoc <$> timedRoutes.routes
   where
-    convertToLeaderGeoLoc routes = do
-
+    convertToLeaderGeoLoc =
       map (\route -> do
         [
-          { coord: getCoords route.from
+          { coord: getCoords route.from leaderGeolocs
           , name: route.from
           }
-        , { coord: getCoords route.to
+        , { coord: getCoords route.to leaderGeolocs
           , name: route.to
           }
         ]
-      ) routes
+      )
 
-    getCoords :: PoPName -> Array Number
-    getCoords name =
-      fromMaybe [0.00, 0.00] $ findMap (\leader -> if name == leader.name
-                                                   then Just leader.coord
-                                                   else Nothing) leaderGeolocs
+timedRoutedToChartScatter :: TimedPoPRoutes Array -> (Array LeaderGeoLoc) -> Array PoPDefEcharts
+timedRoutedToChartScatter timedRoutes leaderGeolocs =
+  nubBy (comparing _.name) <<< concat $ convertToLeaderGeoLoc <$> timedRoutes.routes
+  where
+    convertToLeaderGeoLoc routes = do
+      let to = map (\route -> { value: getCoords route.to leaderGeolocs , name: route.to}) routes
+          from = map (\route -> { value: getCoords route.from leaderGeolocs , name: route.from}) routes
+      to <> from
+
+
+getCoords :: PoPName -> Array LeaderGeoLoc -> Array Number
+getCoords name leaderGeolocs =
+  fromMaybe [0.00, 0.00] $ findMap (\leader -> if name == leader.name
+                                                then Just leader.coord
+                                                else Nothing) leaderGeolocs
 
 updatePoPDefEnv
   :: forall m r

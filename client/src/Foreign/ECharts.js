@@ -303,17 +303,10 @@ function popChart(options) {
                 return '<div style="border-bottom: 1px solid rgba(255,255,255,.3); font-size: 18px;padding-bottom: 7px;margin-bottom: 7px">'
                 + data.fromName + " > " + data.toName
                 + '</div>'
-                    + 'Time' + '：' + data.data[0] + 'ms' + '<br>'
-                    + 'Total' + '：' + data.data[1] + 'ms' + '<br>'
-            } else {
+                    // + 'Time' + '：' + data.data[0] + 'ms' + '<br>'
+                   // + 'Total' + '：' + data.data[1] + 'ms' + '<br>'
+            } else { }
 
-            return '<div style="border-bottom: 1px solid rgba(255,255,255,.3); font-size: 18px;padding-bottom: 7px;margin-bottom: 7px">'
-                + obj.name
-                + '</div>'
-                + schema[1].text + '：' + value[1] + '%' + '<br>'
-                + schema[2].text + '：' + value[0] + '<br>'
-                + schema[3].text + '：' + value[0] + '<br>'
-            }
         }
     },
     geo: {
@@ -338,13 +331,7 @@ function popChart(options) {
          { type: 'scatter',
           name: "locations",
           coordinateSystem: 'geo',
-          data: [],
-          //  [
-          //     {"name":"dal","value":[-96.796989,32.776665]},
-          //     {"name":"iad","value":[-77.039851, 38.877270]},
-          //     {"name":"lax","value":[-118.243685,34.052234]},
-          //     {"name":"fra","value":[8.682127,50.110922]}
-          // ],
+          data: options.scatterData,
           symbolSize: 15,
           animation: true,
           itemStyle: {
@@ -414,7 +401,6 @@ function popChart(options) {
           },
            zlevel: 10,
 
-
           data: options.rttData[1],
         },
         { name: "Both",
@@ -440,7 +426,9 @@ function popChart(options) {
           },
           zlevel: 10,
 
-          data: options.rttData[0].concat(options.rttData[1])
+          data: function () { if (options.rttData[0] && options.rttData[0].length) {
+              return options.rttData[0].concat(options.rttData[1])
+          } else { return [] }}()
         },
     ]
     };

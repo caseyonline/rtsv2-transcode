@@ -14,6 +14,7 @@ module Shared.Types
        , RelayServer(..)
        , EgestServer(..)
        , Username(..)
+       , CheckBoxState(..)
        , JsonLdContextType(..)
        , toServer
        , toServerLoad
@@ -214,7 +215,13 @@ type PoPSelectedInfo =
     { selectedPoPName :: Maybe PoPName
     , selectedSlotId  :: Maybe SlotId
     , selectedAddress :: Maybe ServerAddress
+    , checkedBoxes    :: Maybe (Array CheckBoxState)
     }
+
+type CheckBoxState =
+  { slotId     :: Maybe SlotId
+  , isSelected :: Boolean
+  }
 
 newtype Username = Username String
 
