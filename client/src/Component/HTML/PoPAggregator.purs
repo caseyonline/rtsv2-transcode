@@ -5,8 +5,9 @@ import Prelude
 import Control.Monad.Reader.Trans (class MonadAsk, ask)
 import Data.Array (find)
 import Data.Foldable (findMap)
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (un)
+import Debug.Trace (traceM)
 import Effect.Aff.Class (class MonadAff)
 import Effect.Ref as Ref
 import Halogen as H
@@ -18,7 +19,7 @@ import Rtsv2App.Component.HTML.Utils (css_, dataAttr)
 import Rtsv2App.Data.PoP (getPoPLeaderAddress)
 import Rtsv2App.Env (PoPDefEnv)
 import Shared.Stream (SlotId(..), SlotRole(..))
-import Shared.Types (PoPName(..), PoPSelectedInfo, RegionName(..), Server(..), ServerAddress(..))
+import Shared.Types (PoPName(..), PoPSelectedInfo, RegionName(..), Server(..), ServerAddress(..), CheckBoxState(..))
 import Shared.Types.Agent.State (PoPDefinition, AggregatorLocation)
 
 
@@ -26,8 +27,9 @@ import Shared.Types.Agent.State (PoPDefinition, AggregatorLocation)
 -- Types
 -------------------------------------------------------------------------------
 type Input =
-  { popDef   :: Maybe (PoPDefinition Array)
-  , aggrLocs :: AggregatorLocation Array
+  { popDef       :: Maybe (PoPDefinition Array)
+  , aggrLocs     :: AggregatorLocation Array
+  , checkedBoxes :: Maybe (Array CheckBoxState)
   }
 
 type Slot = H.Slot Query Message
@@ -39,11 +41,6 @@ data Message = SPoPInfo PoPSelectedInfo
 data Action
   = Select (Maybe SlotId)
   | Receive Input
-
-type CheckBoxState =
-  { slotId     :: Maybe SlotId
-  , isSelected :: Boolean
-  }
 
 type State =
   { aggrLocs     :: AggregatorLocation Array
@@ -79,8 +76,9 @@ component = H.mkComponent
 
   handleAction :: Action -> H.HalogenM State Action () Message m Unit
   handleAction = case _ of
-    Receive { aggrLocs, popDef } -> do
-      H.put { checkedBoxes: initCheckBoxes aggrLocs --  myTestArgLocs
+    Receive input@{ aggrLocs, popDef, checkedBoxes } -> do
+
+      H.put { checkedBoxes: fromMaybe (initCheckBoxes aggrLocs) checkedBoxes  --  myTestArgLocs
             , aggrLocs: aggrLocs
             , popDef
             }
@@ -98,6 +96,7 @@ component = H.mkComponent
            { selectedSlotId: selectedSlot
            , selectedPoPName: selectedPname
            , selectedAddress: getPoPLeaderAddress transPoPLeaders selectedPname
+           , checkedBoxes: Just newSt.checkedBoxes
            }
         )
       pure unit
@@ -111,7 +110,7 @@ component = H.mkComponent
   render :: State -> H.ComponentHTML Action () m
   render state =
     HH.div
-    [ css_ "card has-table" ]
+    [ css_ "has-table" ]
     [ HH.header
       [ css_ "card-header" ]
       [ HH.p
@@ -122,7 +121,7 @@ component = H.mkComponent
             [ css_ "mdi mdi-video-wireless" ]
             []
           ]
-        , HH.text "Aggregators"
+        , HH.text "Active Aggregators"
         ]
       ]
     , HH.div

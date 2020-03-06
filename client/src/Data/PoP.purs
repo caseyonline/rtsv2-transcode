@@ -20,7 +20,7 @@ import Control.Monad.Reader.Trans (class MonadAsk)
 import Data.Array (catMaybes, concat, findMap, index, length, mapMaybe, nub, nubBy)
 import Data.Either (hush)
 import Data.Maybe (Maybe(..), fromMaybe)
-import Data.Newtype (un, wrap, unwrap)
+import Data.Newtype (overF, un, wrap)
 import Data.Traversable (traverse)
 import Effect (Effect)
 import Effect.Aff.Class (class MonadAff)
@@ -108,8 +108,16 @@ toPoPleaders :: Array (Maybe (IntraPoP Array)) -> Array Server
 toPoPleaders = mapMaybe (_ >>= _.currentTransPoPLeader)
 
 toAggregators :: (Array (Maybe (IntraPoP Array))) -> (AggregatorLocation Array)
-toAggregators mIntraPoPs = nub $ catMaybes mIntraPoPs >>= (\{aggregatorLocations} ->
-                                                            (\{slotId, role, servers} -> {slotId, role, servers: (wrap <$> _.resource <$> unwrap <$> servers)}) <$> aggregatorLocations) --  _.aggregatorLocations)
+toAggregators mIntraPoPs =
+  nub $ catMaybes mIntraPoPs
+  >>= map toAggr <<< _.aggregatorLocations
+  where
+    toAggr = \{slotId, role, servers} ->
+      { slotId
+      , role
+      , servers: overF wrap (map _.resource) servers
+      }
+          
 
 timedRoutedToChartOps :: TimedPoPRoutes Array -> Array LeaderGeoLoc -> Array (Array (Array LeaderGeoLoc))
 timedRoutedToChartOps timedRoutes leaderGeolocs =

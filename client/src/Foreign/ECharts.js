@@ -303,17 +303,10 @@ function popChart(options) {
                 return '<div style="border-bottom: 1px solid rgba(255,255,255,.3); font-size: 18px;padding-bottom: 7px;margin-bottom: 7px">'
                 + data.fromName + " > " + data.toName
                 + '</div>'
-                    + 'Time' + '：' + data.data[0] + 'ms' + '<br>'
-                    + 'Total' + '：' + data.data[1] + 'ms' + '<br>'
-            } else {
+                    // + 'Time' + '：' + data.data[0] + 'ms' + '<br>'
+                   // + 'Total' + '：' + data.data[1] + 'ms' + '<br>'
+            } else { }
 
-            return '<div style="border-bottom: 1px solid rgba(255,255,255,.3); font-size: 18px;padding-bottom: 7px;margin-bottom: 7px">'
-                + obj.name
-                + '</div>'
-                + schema[1].text + '：' + value[1] + '%' + '<br>'
-                + schema[2].text + '：' + value[0] + '<br>'
-                + schema[3].text + '：' + value[0] + '<br>'
-            }
         }
     },
     geo: {
@@ -407,7 +400,6 @@ function popChart(options) {
               shadowBlur: 6
           },
            zlevel: 10,
-
 
           data: options.rttData[1],
         },
