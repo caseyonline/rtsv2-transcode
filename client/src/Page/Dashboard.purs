@@ -130,7 +130,7 @@ component = Connect.component $ H.mkComponent
         liftEffect $ EC.makeBlankMap chart
         H.modify_ _ { chart = Just chart }
         liftEffect $ EC.setOption { scatterData: newSt.popDefEcharts } chart
-        liftEffect $ EC.setClick { curHost: (unwrap urlEnv.curHostUrl), url: "/app#/pop/" } chart
+        liftEffect $ EC.setClick { curHost: (unwrap urlEnv.curHostUrl), url: "/support#/pop/" } chart
         liftEffect $ EC.ressizeObserver chart
 
     Receive { currentUser } ->
