@@ -138,14 +138,14 @@ init args = do
     cowboyRoutes =
       -- Some duplication of URLs here from those in Endpoint.purs due to current inability to build cowboy-style bindings from stongly-typed parameters
       -- IngestAggregatorActiveIngestsPlayerControlE SlotId SlotRole ProfileName
-      cowboyRoute ("/api/agents/ingestAggregator/" <> slotIdBinding <> "/" <> slotRoleBinding <> "/activeIngests/" <> profileNameBinding <> "/control")
+      cowboyRoute ("/support/ingestAggregator/" <> slotIdBinding <> "/" <> slotRoleBinding <> "/activeIngests/" <> profileNameBinding <> "/control")
                   "rtsv2_player_ws_resource"
                   (unsafeToForeign { mode: (atom "ingest")
                                    , make_ingest_key: makeIngestKey
                                    })
 
       -- ClientPlayerControlE Canary SlotId
-      : cowboyRoute ("/api/public/" <> canaryBinding <> "/client/" <> slotIdBinding <> "/session")
+      : cowboyRoute ("/public/" <> canaryBinding <> "/client/" <> slotIdBinding <> "/session")
                     "rtsv2_player_ws_resource"
                     (unsafeToForeign { mode: (atom "egest")
                                      , make_egest_key: EgestKey
@@ -155,18 +155,18 @@ init args = do
                                      })
 
       -- IngestInstanceLlwpE SlotId SlotRole ProfileName
-      : cowboyRoute ("/api/agents/ingest/" <> slotIdBinding <> "/" <> slotRoleBinding <> "/" <> profileNameBinding <> "/llwp")
+      : cowboyRoute ("/support/ingest/" <> slotIdBinding <> "/" <> slotRoleBinding <> "/" <> profileNameBinding <> "/llwp")
                    "llwp_stream_resource"
                    ((unsafeToForeign) makeSlotIdAndProfileName)
 
       --WorkflowsE
-      : cowboyRoute ("/api/workflows") "id3as_workflows_resource" (unsafeToForeign unit)
+      : cowboyRoute ("/system/workflows") "id3as_workflows_resource" (unsafeToForeign unit)
       -- WorkflowGraphE String
-      : cowboyRoute ("/api/workflows" <> referenceBinding <> "/graph") "id3as_workflow_graph_resource" (unsafeToForeign (atom "graph"))
+      : cowboyRoute ("/system/workflows" <> referenceBinding <> "/graph") "id3as_workflow_graph_resource" (unsafeToForeign (atom "graph"))
       -- WorkflowMetricsE String
-      : cowboyRoute ("/api/workflows" <> referenceBinding <> "/metrics") "id3as_workflow_graph_resource" (unsafeToForeign (atom "metrics"))
+      : cowboyRoute ("/system/workflows" <> referenceBinding <> "/metrics") "id3as_workflow_graph_resource" (unsafeToForeign (atom "metrics"))
       -- WorkflowStructureE String
-      : cowboyRoute ("/api/workflows" <> referenceBinding <> "/structure") "id3as_workflow_graph_resource" (unsafeToForeign (atom "structure"))
+      : cowboyRoute ("/system/workflows" <> referenceBinding <> "/structure") "id3as_workflow_graph_resource" (unsafeToForeign (atom "structure"))
 
       : nil
 
