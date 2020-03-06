@@ -12,6 +12,7 @@ import Data.Maybe (Maybe(..), maybe)
 import Data.Newtype (un)
 import Data.Symbol (SProxy(..))
 import Data.Traversable (traverse_)
+import Debug.Trace (traceM)
 import Effect.Aff.Class (class MonadAff)
 import Effect.Class (class MonadEffect, liftEffect)
 import Effect.Ref as Ref
@@ -33,11 +34,11 @@ import Rtsv2App.Component.HTML.MainSecondary as MS
 import Rtsv2App.Component.HTML.MenuMain as MM
 import Rtsv2App.Component.HTML.PoPAggregator as PA
 import Rtsv2App.Component.HTML.Utils (css_)
-import Rtsv2App.Data.PoP (PoPDefEcharts, timedRoutedToChartOps, updatePoPDefEnv)
+import Rtsv2App.Data.PoP (PoPDefEcharts, timedRoutedToChartOps, timedRoutedToChartScatter, updatePoPDefEnv)
 import Rtsv2App.Data.Profile (Profile)
 import Rtsv2App.Data.Route (Route(..))
 import Rtsv2App.Env (PoPDefEnv, UrlEnv, UserEnv, changeHtmlClass)
-import Shared.Types (PoPName(..), Server)
+import Shared.Types (CheckBoxState, PoPName(..), Server)
 import Shared.Types.Agent.State (PoPDefinition, TimedPoPRoutes, AggregatorLocation)
 
 -------------------------------------------------------------------------------
@@ -53,6 +54,8 @@ data Action
   | HandlePoPSlotArgTable PA.Message
   | Receive Input
 
+
+
 type State =
   { aggrLocs        :: Array (AggregatorLocation Array)
   , chart           :: Maybe EC.Instance
@@ -61,6 +64,8 @@ type State =
   , popDefenition   :: Maybe (PoPDefinition Array)
   , popLeaders      :: Array Server
   , curPopName      :: PoPName
+  , checkedBoxes    :: Maybe (Array CheckBoxState)
+  , selectedPoPName :: Maybe PoPName
   , prevRoute       :: Maybe Route
   , timedRoutes     :: Maybe (Array (TimedPoPRoutes Array))
   }
@@ -102,6 +107,8 @@ component = H.mkComponent
     , popDefenition: Nothing
     , popLeaders: []
     , curPopName: popName
+    , checkedBoxes: Nothing
+    , selectedPoPName: Nothing
     , prevRoute
     , timedRoutes: Nothing
     }
@@ -120,7 +127,7 @@ component = H.mkComponent
 
       H.getHTMLElementRef (H.RefLabel "mymap") >>= traverse_ \element -> do
         chart <- H.liftEffect $ EC.makeChart element
-        liftEffect $ EC.makeBlankMap chart
+        liftEffect $ EC.setOptionPoP { rttData: [], scatterData: [] } chart
         H.modify_ _ { chart = Just chart }
 
       -- | is popDefinition already on Global
@@ -130,23 +137,20 @@ component = H.mkComponent
           popDef <- getPoPdefinition
           case popDef of
             Left e ->  H.modify_ _ { popDefenition = Nothing }
-            Right pd -> do
-              { popDefenition, popDefEcharts, popLeaders, aggrLocs } <- updatePoPDefEnv pd
-              H.modify_ _ { popDefenition = popDefenition
-                          , popDefEcharts = popDefEcharts
-                          , popLeaders = popLeaders
-                          , aggrLocs = aggrLocs
-                          }
+            Right pd -> updateState pd
 
         -- | yes update states
         -- TODO: could check if arggr already exists on global
-        Just pd -> do
-          { popDefenition, popDefEcharts, popLeaders, aggrLocs } <- updatePoPDefEnv pd
-          H.modify_ _ { popDefenition = popDefenition
-                      , popDefEcharts = popDefEcharts
-                      , popLeaders = popLeaders
-                      , aggrLocs = aggrLocs
-                      }
+        Just pd -> updateState pd
+
+        where
+          updateState pd = do
+            { popDefenition, popDefEcharts, popLeaders, aggrLocs } <- updatePoPDefEnv pd
+            H.modify_ _ { popDefenition = popDefenition
+                        , popDefEcharts = popDefEcharts
+                        , popLeaders = popLeaders
+                        , aggrLocs = aggrLocs
+                        }
 
     Receive { popName, prevRoute } -> do
       st <- H.get
@@ -155,16 +159,21 @@ component = H.mkComponent
         handleAction Initialize
 
     HandlePoPSlotArgTable (PA.SPoPInfo selectedInfo) -> do
-      st ← H.get
+      _ <- H.modify_ _ { checkedBoxes = selectedInfo.checkedBoxes
+                       , selectedPoPName =selectedInfo.selectedPoPName
+                       }
+      st <- H.get
       { popDefEnv } <- ask
       geoLocations <- H.liftEffect $ Ref.read popDefEnv.geoLocations
+
       -- | does a chart exist
       case st.chart of
         Nothing    -> pure unit -- TODO: make a new chart? though there should always be one
         Just chart ->
           -- | check all records are Justs
           case sequenceRecord selectedInfo of
-            Nothing -> liftEffect $ EC.makeBlankMap chart
+            Nothing -> do
+               liftEffect $ EC.setOptionPoP { rttData: [], scatterData: [] } chart
             Just _  -> do
               -- | go fetch timedroute and populate the chart/map with options
               maybeTimedRoutes <- getTimedRoutes selectedInfo st.curPopName
@@ -172,11 +181,11 @@ component = H.mkComponent
                 Left e            -> pure unit -- TODO: display error
                 Right timedRoutes -> do
                   let convertedRoutes = timedRoutedToChartOps timedRoutes geoLocations
-                  liftEffect $ EC.setOptionPoP { rttData: convertedRoutes } chart
-
+                  let convertedScatterRoutes = timedRoutedToChartScatter timedRoutes geoLocations
+                  liftEffect $ EC.setOptionPoP { rttData: convertedRoutes, scatterData: convertedScatterRoutes } chart
 
   render :: State -> H.ComponentHTML Action ChildSlots m
-  render state@{ curPopName, currentUser, popDefenition, aggrLocs } =
+  render state@{ curPopName, currentUser, popDefenition, aggrLocs, checkedBoxes } =
     HH.div
       [ css_ "main" ]
       [ HH.slot (SProxy :: _ "header") unit HD.component { currentUser, route: LoginR } absurd
@@ -212,21 +221,25 @@ component = H.mkComponent
         ]
       , HH.section
         [ css_ "section is-main-section" ]
-        [ HH.slot
-            (SProxy :: _ "popSlotArgTable")
-            unit PA.component { aggrLocs: aggrLocs, popDef: popDefenition }
-            (Just <<< HandlePoPSlotArgTable)
-        , HH.div
-          [ css_ "content-body" ]
+         [ HH.div
+          [ css_ "tile is-ancestor"]
           [ HH.div
-            [ css_ "row" ]
+            [ css_ "tile is-parent" ]
             [ HH.div
-              [ css_ "col-12" ]
-              [ HH.div
-                [ css_ "card map" ]
-                mapDiv
+              [ css_ "card is-card-widget tile is-child" ]
+              [ HH.slot
+                  (SProxy :: _ "popSlotArgTable")
+                  unit PA.component { aggrLocs: aggrLocs, popDef: popDefenition, checkedBoxes: checkedBoxes }
+                  (Just <<< HandlePoPSlotArgTable)
               ]
             ]
+          ,  HH.div
+            [ css_ "tile is-parent" ]
+            [ HH.div
+              [ css_ "card map is-card-widget tile is-child" ]
+              (mapDiv state)
+            ]
+          ]
           -- , HH.div
           --   [ css_ "row" ]
           --   [ HH.div
@@ -243,14 +256,36 @@ component = H.mkComponent
           --       ]
           --     ]
           --   ]
-          ]
         ]
       , footer
       ]
     where
-      mapDiv =
-        [ HH.div
-          [ css_ "card-body dashboard-map"
+      mapDiv st =
+        [ HH.header
+           [ css_ "card-header" ]
+           [ HH.p
+             [ css_ "card-header-title" ]
+             [ HH.span
+               [css_ "icon"]
+               [ HH.i
+                 [ css_ "mdi mdi-routes-clock" ]
+                 []
+               ]
+             , HH.span_
+               [ HH.text "Routes  " ]
+             ]
+           , HH.p
+             [ css_ "card-header-title is-left" ]
+             [ HH.span
+               [ css_ "is-uppercase"]
+               [ case st.selectedPoPName of
+                   Nothing -> HH.text ""
+                   Just from -> HH.text $ (un PoPName from) <> " > " <> (un PoPName st.curPopName)
+               ]
+             ]
+           ]
+        , HH.div
+          [ css_ "card-content dashboard-map"
           , HP.ref (H.RefLabel "mymap")
           , CSS.style do
               Geometry.height $ Size.px (toNumber 400)
