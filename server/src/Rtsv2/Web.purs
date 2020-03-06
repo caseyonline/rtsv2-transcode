@@ -78,7 +78,7 @@ init args = do
         , "JsonLdContext"                               : JsonLd.getContextJson
 
         , "EgestStatsE"                                 : EgestStatsHandler.stats
-        , "EgestE"                                      : dummyHandler -- TODO missing?
+        , "EgestE"                                      : dummyHandler -- TODO write this - needed for a client to create a remote egest
 
         , "RelayE"                                      : RelayHandler.startResource
         , "RelayEnsureStartedE"                         : RelayHandler.ensureStarted
@@ -98,7 +98,6 @@ init args = do
         , "IngestAggregatorSlotConfigurationE"          : IngestAggregatorHandler.slotConfiguration
         , "IngestAggregatorRegisterRelayE"              : IngestAggregatorHandler.registerRelay
         , "IngestAggregatorsE"                          : IngestAggregatorHandler.ingestAggregators
-        , "IngestInstancesE"                            : IngestHandler.ingestInstances
         , "IngestInstancesMetricsE"                     : IngestHandler.ingestInstancesMetrics
         , "IngestInstanceE"                             : IngestHandler.ingestInstance
         , "IngestInstanceLlwpE"                         : CowboyRoutePlaceholder

@@ -1,7 +1,5 @@
 module Rtsv2.Handler.Ingest
-       (
-         ingestInstances
-       , ingestInstance
+       ( ingestInstance
        , ingestStart
        , ingestStop
        , ingestInstancesMetrics
@@ -42,11 +40,6 @@ import SpudGun as SpudGun
 import Stetson (StetsonHandler)
 import Stetson.Rest as Rest
 import StetsonHelper (GetHandler, jsonResponse, multiMimeResponse)
-
-ingestInstances :: StetsonHandler Unit
-ingestInstances =
-  Rest.handler (\req -> Rest.initResult req unit)
-  # Rest.yeeha
 
 ingestInstancesMetrics :: GetHandler (List (IngestStats List))
 ingestInstancesMetrics =
