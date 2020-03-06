@@ -3,6 +3,8 @@ module Rtsv2.Names
          agentSupName
        , egestInstanceName
        , egestInstanceSupName
+       , ingestAggregatorSupName
+       , ingestAggregatorInstanceStateName
        , ingestAggregatorInstanceName
        , ingestAggregatorInstanceSupName
        , ingestInstanceName
@@ -31,7 +33,7 @@ import Erl.ModuleName (NativeModuleName(..))
 import Foreign (unsafeToForeign)
 import Pinto (ServerName(..), SupervisorName)
 import Shared.Agent (Agent(..))
-import Shared.Stream (AgentKey, AggregatorKey, EgestKey, IngestKey, RelayKey)
+import Shared.Stream (AggregatorKey, EgestKey, IngestKey, RelayKey)
 import Shared.Types (PoPName)
 
 agentSupName :: SupervisorName
@@ -42,6 +44,12 @@ egestInstanceName = gprocName2 Egest
 
 egestInstanceSupName :: SupervisorName
 egestInstanceSupName = instanceSup Egest
+
+ingestAggregatorSupName :: SupervisorName
+ingestAggregatorSupName = sup IngestAggregator
+
+ingestAggregatorInstanceStateName :: forall a b. ServerName a b
+ingestAggregatorInstanceStateName = withSuffix "State" IngestAggregator
 
 ingestAggregatorInstanceName :: forall a b. AggregatorKey -> ServerName a b
 ingestAggregatorInstanceName = gprocName2 IngestAggregator

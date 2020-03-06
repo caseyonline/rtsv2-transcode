@@ -89,6 +89,14 @@ let overrides =
           , version =
               "v1.0.0"
           }
+      , profunctor-lenses =
+          { dependencies =
+              [ "prelude" ]
+          , repo =
+              "ssh://git@github.com/purerl/purescript-profunctor-lenses.git"
+          , version =
+              "1edb1d375c49486c41b46371deed09e6512c2724"
+          }
       }
 
 let additions =

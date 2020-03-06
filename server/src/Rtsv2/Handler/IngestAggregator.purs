@@ -92,7 +92,7 @@ ingestAggregatorsActiveIngest slotId streamRole profileName =
   # Rest.allowMissingPost (Rest.result false)
 
   # Rest.deleteResource (\req state@{ingestKey} -> do
-                            IngestAggregatorInstance.removeIngest ingestKey
+                            IngestAggregatorInstance.removeRemoteIngest ingestKey
                             Rest.result true req state
                         )
 

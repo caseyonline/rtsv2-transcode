@@ -25,6 +25,7 @@ You can edit this file as you like.
     , "record-prefix"
     , "partial"
     , "psci-support"
+    , "profunctor-lenses"
     , "random"
     , "routing-duplex"
     , "simple-json"

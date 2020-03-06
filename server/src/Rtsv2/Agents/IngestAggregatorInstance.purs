@@ -1,18 +1,32 @@
 module Rtsv2.Agents.IngestAggregatorInstance
   ( startLink
   , isAvailable
-  , addIngest
+  , addLocalIngest
   , addRemoteIngest
-  , removeIngest
+  , removeLocalIngest
+  , removeRemoteIngest
   , registerRelay
   , getState
   , slotConfiguration
+
+  , stateServerName
+  , PersistentState
+  , PersistentStateKey
+
   ) where
 
 import Prelude
 
-import Data.Maybe (Maybe)
+import Data.Foldable (foldM)
+import Data.FoldableWithIndex (foldWithIndexM)
+import Data.Lens (Lens', set)
+import Data.Lens.At (at)
+import Data.Lens.Record (prop)
+import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (unwrap)
+import Data.Set (Set)
+import Data.Set as Set
+import Data.Symbol (SProxy(..))
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
@@ -27,6 +41,7 @@ import Pinto (ServerName, StartLinkResult, isRegistered)
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
+import Rtsv2.Agents.IngestAggregatorInstanceState as IngestAggregatorInstanceState
 import Rtsv2.Agents.IntraPoP (announceLocalAggregatorIsAvailable, announceLocalAggregatorStopped)
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
 import Rtsv2.Agents.StreamRelayTypes (RegisterRelayPayload)
@@ -37,7 +52,7 @@ import Shared.Agent as Agent
 import Shared.LlnwApiTypes (SlotProfile(..), StreamDetails)
 import Shared.Router.Endpoint (Endpoint(..), makePath)
 import Shared.Rtsv2.JsonLd as JsonLd
-import Shared.Stream (AggregatorKey(..), IngestKey(..), SlotId(..), SlotRole, ProfileName, ingestKeyToAggregatorKey, ingestKeyToProfileName)
+import Shared.Stream (AggregatorKey(..), IngestKey(..), ProfileName, SlotId(..), SlotRole, ingestKeyToAggregatorKey, ingestKeyToProfileName)
 import Shared.Types (DeliverTo, RelayServer, ServerAddress, extractAddress)
 import Shared.Types.Agent.State as PublicState
 
@@ -50,8 +65,18 @@ foreign import removeIngestImpl :: WorkflowHandle -> IngestKey -> Effect Unit
 foreign import registerStreamRelayImpl :: WorkflowHandle -> String -> Int -> Effect Unit
 foreign import slotConfigurationImpl :: Int -> Effect (Maybe SlotConfiguration)
 
+type PersistentState = { localIngests :: Set IngestKey
+                       , remoteIngests :: Map IngestKey ServerAddress
+                       , relays :: Set RegisterRelayPayload
+                       }
+type PersistentStateKey = Tuple SlotId SlotRole
+
+stateServerName :: IngestAggregatorInstanceState.StateServerName PersistentStateKey PersistentState
+stateServerName = IngestAggregatorInstanceState.serverName
+
 type State
   = { config :: Config.IngestAggregatorAgentConfig
+    , persistentState :: PersistentState
     , thisAddress :: ServerAddress
     , aggregatorKey :: AggregatorKey
     , streamDetails :: StreamDetails
@@ -77,44 +102,55 @@ serverName = Names.ingestAggregatorInstanceName
 serverNameFromIngestKey :: IngestKey -> ServerName State Msg
 serverNameFromIngestKey = serverName <<< ingestKeyToAggregatorKey
 
-addIngest :: IngestKey -> Effect Unit
-addIngest ingestKey = Gen.doCall (serverNameFromIngestKey ingestKey)
-  \state@{thisAddress, activeProfileNames, workflowHandle} -> do
-    logInfo "Ingest added" {ingestKey}
-    addLocalIngestImpl workflowHandle ingestKey
-    pure $ CallReply unit state{activeProfileNames = insert (ingestKeyToProfileName ingestKey) thisAddress activeProfileNames}
+addLocalIngest :: IngestKey -> Effect Unit
+addLocalIngest ingestKey =
+  Gen.doCall (serverNameFromIngestKey ingestKey)
+  (
+    addLocalIngestToPersistentState ingestKey
+      <#> (updatePersistentState
+           >=> doAddLocalIngest ingestKey
+           >>> map (CallReply unit))
+  )
 
 addRemoteIngest :: IngestKey -> ServerAddress -> Effect Unit
-addRemoteIngest ingestKey@(IngestKey streamId streamRole profileName) remoteServer = Gen.doCall (serverNameFromIngestKey ingestKey)
-  \state@{activeProfileNames, workflowHandle} -> do
-    logInfo "Remote ingest added" {ingestKey, source: remoteServer}
-    let
-      path = makePath (IngestInstanceLlwpE streamId streamRole profileName)
-      url = "http://" <> (unwrap remoteServer) <> ":3000" <> path
-    addRemoteIngestImpl workflowHandle ingestKey url
-    pure $ CallReply unit state{activeProfileNames = insert (ingestKeyToProfileName ingestKey) remoteServer activeProfileNames}
+addRemoteIngest ingestKey remoteServer =
+  Gen.doCall (serverNameFromIngestKey ingestKey)
+  (
+    addRemoteIngestToPersistentState ingestKey remoteServer
+    <#> (updatePersistentState
+         >=> doAddRemoteIngest ingestKey remoteServer
+         >>> map (CallReply unit))
+  )
 
-removeIngest :: IngestKey -> Effect Unit
-removeIngest ingestKey@(IngestKey _ _ profileName )  = Gen.doCall (serverName (ingestKeyToAggregatorKey ingestKey))
-  \state@{activeProfileNames, aggregatorKey, workflowHandle, config:{shutdownLingerTimeMs}} -> do
-  let
-    newActiveProfileNames = delete profileName activeProfileNames
-  removeIngestImpl workflowHandle ingestKey
-  if (size newActiveProfileNames) == 0 then do
-    void $ Timer.sendAfter (serverName aggregatorKey) shutdownLingerTimeMs MaybeStop
-    pure unit
-  else
-    pure unit
-  pure $ CallReply unit state{activeProfileNames = newActiveProfileNames}
+removeLocalIngest :: IngestKey -> Effect Unit
+removeLocalIngest ingestKey =
+  Gen.doCall (serverName (ingestKeyToAggregatorKey ingestKey))
+  (
+    removeLocalIngestFromPersistentState ingestKey
+    <#> (updatePersistentState
+         >=> doRemoveIngest ingestKey
+         >>> map (CallReply unit))
+  )
+
+removeRemoteIngest :: IngestKey -> Effect Unit
+removeRemoteIngest ingestKey =
+  Gen.doCall (serverName (ingestKeyToAggregatorKey ingestKey))
+  (
+    removeRemoteIngestFromPersistentState ingestKey
+    <#> (updatePersistentState
+         >=> doRemoveIngest ingestKey
+         >>> map (CallReply unit))
+  )
 
 registerRelay :: RegisterRelayPayload -> Effect Unit
-registerRelay payload@{deliverTo} = Gen.doCast (serverName $ payloadToAggregatorKey payload) doRegisterRelay
-  where
-    doRegisterRelay state@{downstreamRelays} =
-      do
-        let _ = spy "Registering with ingest aggregator instance" payload
-        registerStreamRelayImpl state.workflowHandle (deliverTo.server # unwrap # _.address # unwrap) (deliverTo.port)
-        pure $ Gen.CastNoReply state{downstreamRelays = deliverTo : downstreamRelays}
+registerRelay payload@{deliverTo} =
+  Gen.doCast (serverName $ payloadToAggregatorKey payload)
+  (
+    addRelayToPersistentState payload
+    <#> (updatePersistentState
+         >=> doRegisterRelay payload
+         >>> map Gen.CastNoReply)
+  )
 
 getState :: AggregatorKey -> Effect (PublicState.IngestAggregator List)
 getState aggregatorKey@(AggregatorKey slotId slotRole) = Gen.call (serverName aggregatorKey) getState'
@@ -136,23 +172,35 @@ startLink :: StreamDetails -> Effect StartLinkResult
 startLink streamDetails = Gen.startLink (serverName $ streamDetailsToAggregatorKey streamDetails) (init streamDetails) handleInfo
 
 init :: StreamDetails -> Effect State
-init streamDetails = do
+init streamDetails@{role: slotRole, slot: {id: slotId}} = do
   logInfo "Ingest Aggregator starting" {aggregatorKey, streamDetails}
   config <- Config.ingestAggregatorAgentConfig
   thisServer <- PoPDefinition.getThisServer
   announceLocalAggregatorIsAvailable aggregatorKey
   workflowHandle <- startWorkflowImpl (unwrap streamDetails.slot.id) $ mkKey <$> streamDetails.slot.profiles
-  pure { config : config
-       , thisAddress : extractAddress thisServer
-       , aggregatorKey
-       , streamDetails
-       , activeProfileNames : Map.empty
-       , downstreamRelays : nil
-       , workflowHandle
-       }
+  persistentState <- fromMaybe emptyPersistentState <$> IngestAggregatorInstanceState.registerStartup (Tuple slotId slotRole)
+  let
+    initialState = { config : config
+                   , thisAddress : extractAddress thisServer
+                   , aggregatorKey
+                   , streamDetails
+                   , activeProfileNames : Map.empty
+                   , downstreamRelays : nil
+                   , workflowHandle
+                   , persistentState
+                   }
+  state <- applyPersistentState initialState persistentState
+  pure state
   where
     mkKey (SlotProfile p) = tuple3 (IngestKey streamDetails.slot.id streamDetails.role p.name) (unwrap p.rtmpStreamName) (unwrap p.name)
+
     aggregatorKey = streamDetailsToAggregatorKey streamDetails
+
+    emptyPersistentState = { localIngests: Set.empty
+                           , remoteIngests: Map.empty
+                           , relays: Set.empty
+                           }
+
 
 streamDetailsToAggregatorKey :: StreamDetails -> AggregatorKey
 streamDetailsToAggregatorKey streamDetails =
@@ -167,6 +215,93 @@ handleInfo msg state@{activeProfileNames, aggregatorKey} =
         announceLocalAggregatorStopped aggregatorKey
         pure $ CastStop state
       | otherwise -> pure $ CastNoReply state
+
+applyPersistentState :: State -> PersistentState -> Effect State
+applyPersistentState state {localIngests, remoteIngests, relays} =
+  foldM (flip doAddLocalIngest) state localIngests
+  >>= (\innerState -> foldWithIndexM (\ingestKey innerState2 remoteUrl -> doAddRemoteIngest ingestKey remoteUrl innerState2) innerState remoteIngests)
+  >>= (\ innerState -> foldM (flip doRegisterRelay) innerState relays)
+
+addLocalIngestToPersistentState :: IngestKey -> State -> State
+addLocalIngestToPersistentState ingestKey = set (_localIngests <<< (at ingestKey)) (Just unit)
+
+addRemoteIngestToPersistentState :: IngestKey -> ServerAddress -> State -> State
+addRemoteIngestToPersistentState ingestKey remoteServer = set (_remoteIngests <<< (at ingestKey)) (Just remoteServer)
+
+addRelayToPersistentState :: RegisterRelayPayload -> State -> State
+addRelayToPersistentState payload = set (_relays <<< (at payload)) (Just unit)
+
+removeLocalIngestFromPersistentState :: IngestKey -> State -> State
+removeLocalIngestFromPersistentState ingestKey = set (_localIngests <<< (at ingestKey)) Nothing
+
+removeRemoteIngestFromPersistentState :: IngestKey -> State -> State
+removeRemoteIngestFromPersistentState ingestKey = set (_remoteIngests <<< (at ingestKey)) Nothing
+
+removeRelayFromPersistentState :: RegisterRelayPayload -> State -> State
+removeRelayFromPersistentState payload = set (_relays <<< (at payload)) Nothing
+
+updatePersistentState :: State -> Effect State
+updatePersistentState state@{ streamDetails: {role: slotRole, slot: {id: slotId}}
+                            , persistentState} = do
+  IngestAggregatorInstanceState.recordInstanceData (Tuple slotId slotRole) persistentState
+  pure $ state
+
+doAddLocalIngest :: IngestKey -> State -> Effect State
+doAddLocalIngest ingestKey state@{thisAddress, activeProfileNames, workflowHandle} = do
+  logInfo "Ingest added" {ingestKey}
+  addLocalIngestImpl workflowHandle ingestKey
+  pure state{activeProfileNames = insert (ingestKeyToProfileName ingestKey) thisAddress activeProfileNames}
+
+doAddRemoteIngest :: IngestKey -> ServerAddress -> State -> Effect State
+doAddRemoteIngest ingestKey@(IngestKey streamId streamRole profileName) remoteServer state@{activeProfileNames, workflowHandle} = do
+  logInfo "Remote ingest added" {ingestKey, source: remoteServer}
+  let
+    path = makePath (IngestInstanceLlwpE streamId streamRole profileName)
+    url = "http://" <> (unwrap remoteServer) <> ":3000" <> path
+  addRemoteIngestImpl workflowHandle ingestKey url
+  pure $ state{activeProfileNames = insert (ingestKeyToProfileName ingestKey) remoteServer activeProfileNames}
+
+doRegisterRelay :: RegisterRelayPayload -> State -> Effect State
+doRegisterRelay payload@{deliverTo} state@{downstreamRelays} = do
+  let _ = spy "Registering with ingest aggregator instance" payload
+  registerStreamRelayImpl state.workflowHandle (deliverTo.server # unwrap # _.address # unwrap) (deliverTo.port)
+  pure $ state{downstreamRelays = deliverTo : downstreamRelays}
+
+doRemoveIngest :: IngestKey -> State -> Effect State
+doRemoveIngest ingestKey@(IngestKey _ _ profileName ) state@{activeProfileNames, aggregatorKey, workflowHandle, config:{shutdownLingerTimeMs}} = do
+  let
+    newActiveProfileNames = delete profileName activeProfileNames
+  removeIngestImpl workflowHandle ingestKey
+  if (size newActiveProfileNames) == 0 then do
+    void $ Timer.sendAfter (serverName aggregatorKey) shutdownLingerTimeMs MaybeStop
+    pure unit
+  else
+    pure unit
+  pure $ state{activeProfileNames = newActiveProfileNames}
+
+--------------------------------------------------------------------------------
+-- Lenses
+--------------------------------------------------------------------------------
+__persistentState :: forall a r. Lens' { persistentState :: a | r } a
+__persistentState = prop (SProxy :: SProxy "persistentState")
+
+__localIngests :: forall a r. Lens' { localIngests :: a | r } a
+__localIngests = prop (SProxy :: SProxy "localIngests")
+
+__remoteIngests :: forall a r. Lens' { remoteIngests :: a | r } a
+__remoteIngests = prop (SProxy :: SProxy "remoteIngests")
+
+__relays :: forall a r. Lens' { relays :: a | r } a
+__relays = prop (SProxy :: SProxy "relays")
+
+_localIngests :: Lens' State (Set IngestKey)
+_localIngests = __persistentState <<< __localIngests
+
+_remoteIngests :: Lens' State (Map IngestKey ServerAddress)
+_remoteIngests = __persistentState <<< __remoteIngests
+
+_relays :: Lens' State (Set RegisterRelayPayload)
+_relays = __persistentState <<< __relays
 
 --------------------------------------------------------------------------------
 -- Log helpers

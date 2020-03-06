@@ -10,6 +10,7 @@ import Pinto.Sup (SupervisorChildSpec, SupervisorChildType(..), SupervisorSpec, 
 import Pinto.Sup as Sup
 import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
 import Rtsv2.Agents.IngestAggregatorInstanceSup as IngestAggregatorInstanceSup
+import Rtsv2.Agents.IngestAggregatorSup as IngestAggregatorSup
 import Rtsv2.Agents.IngestSup as IngestSup
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.StreamRelayInstanceSup as StreamRelayInstanceSup
@@ -49,7 +50,7 @@ init = do
       Sup.buildChild
         # Sup.childType Supervisor
         # Sup.childId "ingestAggregatorAgent"
-        # Sup.childStart IngestAggregatorInstanceSup.startLink unit
+        # Sup.childStart IngestAggregatorSup.startLink unit
         # pure
 
     makeSpec StreamRelay =

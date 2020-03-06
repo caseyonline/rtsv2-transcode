@@ -1,12 +1,12 @@
 module Rtsv2.Agents.IngestInstance
    ( startLink
-  , isActive
-  , setClientMetadata
-  , setSourceInfo
-  , getPublicState
-  , stopIngest
-  , StartArgs
-  ) where
+   , isActive
+   , setClientMetadata
+   , setSourceInfo
+   , getPublicState
+   , stopIngest
+   , StartArgs
+   ) where
 
 import Prelude
 
@@ -238,7 +238,7 @@ handleAggregatorExit exitedAggregatorKey exitedAggregatorAddr state@{ingestKey, 
 addIngest :: Server -> IngestKey -> Server -> Effect Boolean
 addIngest thisServer ingestKey aggregatorAddress
   | aggregatorAddress == thisServer = do
-    IngestAggregatorInstance.addIngest ingestKey
+    IngestAggregatorInstance.addLocalIngest ingestKey
     pure true
   | otherwise = do
     let
@@ -256,7 +256,7 @@ makeActiveIngestUrl server (IngestKey slotId streamRole profileName) =
 removeIngest :: IngestKey -> Maybe (LocalOrRemote Server)-> Effect Unit
 removeIngest ingestKey Nothing = pure unit
 removeIngest ingestKey (Just (Local aggregator)) = do
-    IngestAggregatorInstance.removeIngest ingestKey
+    IngestAggregatorInstance.removeLocalIngest ingestKey
     pure unit
 removeIngest ingestKey (Just (Remote aggregator)) = do
   let

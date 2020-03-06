@@ -236,10 +236,11 @@ derive instance ordAggregatorKey :: Ord AggregatorKey
 ------------------------------------------------------------------------------
 -- IngestKey
 derive instance eqIngestKey :: Eq IngestKey
+derive instance ordIngestKey :: Ord IngestKey
 
 type IngestKeyJson = { slotId :: SlotId
                      , role :: SlotRole
-                       , profile :: ProfileName
+                     , profile :: ProfileName
                      }
 
 instance readForeignIngestKey :: ReadForeign IngestKey where
