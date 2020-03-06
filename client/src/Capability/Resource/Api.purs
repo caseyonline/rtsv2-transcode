@@ -10,13 +10,13 @@ import Shared.Types (PoPName, ServerAddress)
 import Shared.Types.Agent.State (IntraPoP, PoPDefinition, TimedPoPRoutes, IngestAggregator)
 
 class Monad m <= ManageApi m where
-  getSlotDetails   :: SlotDetailsArgs -> m (Either String (IngestAggregator Array))
-  getTimedRoutes   :: SelectedInfo -> PoPName -> m (Either String (TimedPoPRoutes Array))
-  getPoPdefinition :: m (Either String (PoPDefinition Array))
-  getServerState   :: Maybe ServerAddress -> m (Either String (IntraPoP Array))
+  getAggregatorDetails :: SlotDetailsArgs -> m (Either String (IngestAggregator Array))
+  getTimedRoutes       :: SelectedInfo -> PoPName -> m (Either String (TimedPoPRoutes Array))
+  getPoPdefinition     :: m (Either String (PoPDefinition Array))
+  getServerState       :: Maybe ServerAddress -> m (Either String (IntraPoP Array))
 
 instance manageApiHalogenM :: ManageApi m => ManageApi (HalogenM st act slots msg m) where
-  getSlotDetails       = lift <<< getSlotDetails
+  getAggregatorDetails = lift <<< getAggregatorDetails
   getTimedRoutes   a b = lift $ getTimedRoutes a b
   getPoPdefinition     = lift getPoPdefinition
   getServerState       = lift <<< getServerState

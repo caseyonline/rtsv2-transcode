@@ -95,22 +95,18 @@ component = H.mkComponent
         maybeAgg :: Maybe (AggregatorLocation Array)
         maybeAgg = const (newSt.aggrLocs !! index) =<< newSelected
         selectedSlot = _.slotId <$> maybeAgg
-        selectedPname :: Maybe PoPName
-        selectedPname = findPoPForAggregator =<< maybeAgg
+        firstAggregator = (\aggr -> un Server <$> aggr.servers !! 0) =<< maybeAgg
+        selectedPname = _.pop <$> firstAggregator
+        selectedServer = _.address <$> firstAggregator
       H.raise
         (SPoPInfo
            { selectedSlotId: selectedSlot
            , selectedPoPName: selectedPname
-           , selectedAddress: getPoPLeaderAddress transPoPLeaders selectedPname
+           , selectedAddress: selectedServer
            , selectedAggrIndex: newSelected
            }
         )
       pure unit
-
-    where
-      findPoPForAggregator :: AggregatorLocation Array -> Maybe PoPName
-      findPoPForAggregator aggr =
-            (_.pop <<< un Server) <$>  aggr.servers !! 0
 
 
   handleQuery :: forall a. Query a -> H.HalogenM State Action () Message m (Maybe a)

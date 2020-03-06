@@ -117,7 +117,7 @@ instance manageAPIAppM :: ManageApi AppM where
           Right (res :: (TimedPoPRoutes Array)) -> do
             pure $ Right res
 
-  getSlotDetails { slotId, slotRole, serverAddress } = do
+  getAggregatorDetails { slotId, slotRole, serverAddress } = do
     response <- mkOriginRequest serverAddress { endpoint: IngestAggregatorE slotId slotRole, method: Get }
     case JSON.readJSON response of
       Left e -> pure $ Left $ show e
