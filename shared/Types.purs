@@ -15,6 +15,7 @@ module Shared.Types
        , EgestServer(..)
        , Username(..)
        , CheckBoxState(..)
+       , JsonLdContextType(..)
        , toServer
        , toServerLoad
        , serverLoadToServer
@@ -34,6 +35,12 @@ import Data.Symbol (SProxy(..))
 import Record as Record
 import Shared.Stream (SlotId)
 import Simple.JSON (class ReadForeign, class WriteForeign)
+
+data JsonLdContextType = ServerContext
+                       | ServerAddressContext
+                       | DeliverToContext
+                       | TimedRouteNeighbourContext
+                       | ActiveIngestContext
 
 newtype ServerAddress = ServerAddress String
 
@@ -90,6 +97,14 @@ extractAddress = unwrap >>> _.address
 ------------------------------------------------------------------------------
 -- Type class derivations
 ------------------------------------------------------------------------------
+------------------------------------------------------------------------------
+-- JsonLdContextType
+derive instance genericJsonLdContextType :: Generic JsonLdContextType _
+--derive instance eqUsername :: Eq Username
+--derive instance ordUsername :: Ord Username
+--derive newtype instance readForeignUsername  :: ReadForeign Username
+--derive newtype instance writeForeignUsername :: WriteForeign Username
+instance showJsonLdContextType :: Show JsonLdContextType where show = genericShow
 
 ------------------------------------------------------------------------------
 -- ServerAddress

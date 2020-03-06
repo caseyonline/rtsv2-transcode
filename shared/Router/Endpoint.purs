@@ -26,7 +26,7 @@ import Routing.Duplex.Generic (noArgs, sum)
 import Routing.Duplex.Generic.Syntax ((/))
 import Shared.Common (Url)
 import Shared.Stream (ProfileName(..), RtmpShortName, SlotId, SlotIdAndProfileName(..), SlotNameAndProfileName(..), SlotRole(..))
-import Shared.Types (PoPName, ServerAddress(..), Username(..), extractAddress)
+import Shared.Types (JsonLdContextType(..), PoPName, ServerAddress(..), Username(..), extractAddress)
 
 data Canary = Live
             | Canary
@@ -39,14 +39,16 @@ data Endpoint
   = VMMetricsE
   | TransPoPLeaderE
   | IntraPoPTestHelperE
-  | TimedRoutesE PoPName
+  | TimedRoutesE
+  | TimedRoutesForPoPE PoPName
   | HealthCheckE
   | ServerStateE
   | PoPDefinitionE
   | LoadE
+  | JsonLdContext JsonLdContextType
 
-  | EgestStatsE SlotId
   | EgestE
+  | EgestStatsE SlotId
 
   | RelayE
   | RelayEnsureStartedE
@@ -68,7 +70,6 @@ data Endpoint
   | IngestAggregatorSlotConfigurationE SlotId SlotRole
   | IngestAggregatorRegisterRelayE
   | IngestAggregatorsE
-  | IngestInstancesE
   | IngestInstancesMetricsE
   | IngestInstanceE SlotId SlotRole ProfileName
   | IngestInstanceLlwpE SlotId SlotRole ProfileName
@@ -108,68 +109,76 @@ instance showEndpoint :: Show Endpoint where
 endpoint :: RouteDuplex' Endpoint
 endpoint = root $ sum
   {
-    "VMMetricsE"                                       : "api" / "vm" / path "metrics" noArgs
-  , "TransPoPLeaderE"                                  : "api" / path "transPoPLeader" noArgs
-  , "IntraPoPTestHelperE"                              : "api" / "test" / path "intraPoP" noArgs
-  , "TimedRoutesE"                                     : "api" / "timedRoutes" / popName segment
-  , "HealthCheckE"                                     : "api" / path "healthCheck" noArgs
-  , "ServerStateE"                                     : "api" / path "state" noArgs
-  , "PoPDefinitionE"                                   : "api" / path "popDefinition" noArgs
-  , "LoadE"                                            : "api" / path "load" noArgs
+    -- Public
+    "ClientPlayerE"                                    : "public" / canary segment / "client" / slotId segment / "player"
+  , "ClientPlayerJsE"                                  : "public" / canary segment / "client" / slotId segment / "js" / rest
+  , "ClientPlayerControlE"                             : "public" / canary segment / "client" / slotId segment / "session" -- URL duplicated in Web.purs
 
-  , "EgestStatsE"                                      : "api" / "agents" / "egest" / slotId segment
-  , "EgestE"                                           : "api" / "agents" / path "egest" noArgs
+    -- support
+  , "VMMetricsE"                                       : "support" / "vm" / path "metrics" noArgs
+  , "TimedRoutesE"                                     : "support" / path "timedRoutes" noArgs
+  , "TimedRoutesForPoPE"                               : "support" / "timedRoutes" / popName segment
+  , "HealthCheckE"                                     : "support" / path "healthCheck" noArgs
+  , "ServerStateE"                                     : "support" / path "state" noArgs
+  , "PoPDefinitionE"                                   : "support" / path "popDefinition" noArgs
+  , "JsonLdContext"                                    : "support" / "jsonld" / contextType segment
+  , "EgestStatsE"                                      : "support" / "egest" / slotId segment
+  , "RelayStatsE"                                      : "support" / "relay" / slotId segment / slotRole segment  -- TODO - stats vs status
+  , "IngestAggregatorE"                                : "support" / "ingestAggregator" / slotId segment / slotRole segment
 
-  , "RelayE"                                           : "api" / "agents" / "relay" / path "egest"  noArgs
-  , "RelayEnsureStartedE"                              : "api" / "agents" / "relay" / path "ensureStarted"  noArgs
-  , "RelayRegisterEgestE"                              : "api" / "agents" / "relay" / "register" / path "egest" noArgs
-  , "RelayRegisterRelayE"                              : "api" / "agents" / "relay" / "register" / path "relay" noArgs
-  , "RelayProxiedStatsE"                               : "api" / "agents" / "proxied" / "relay" / slotId segment / slotRole segment
-  , "RelayStatsE"                                      : "api" / "agents" / "relay" / slotId segment / slotRole segment
-  , "RelaySlotConfigurationE"                          : "api" / "agents" / "relay" / slotId segment / slotRole segment / "slot"
+  , "IngestAggregatorPlayerE"                          : "support" / "ingestAggregator" / slotId segment / slotRole segment / "player"
+  , "IngestAggregatorPlayerJsE"                        : "support" / "ingestAggregator" / slotId segment / slotRole segment / "js" / rest
+  , "IngestAggregatorActiveIngestsPlayerE"             : "support" / "ingestAggregator" / slotId segment / slotRole segment / "activeIngests" / profileName segment / "player"
+  , "IngestAggregatorActiveIngestsPlayerJsE"           : "support" / "ingestAggregator" / slotId segment / slotRole segment / "activeIngests" / profileName segment / "js" / rest
+  , "IngestAggregatorActiveIngestsPlayerControlE"      : "support" / "ingestAggregator" / slotId segment / slotRole segment / "activeIngests" / profileName segment / "control" -- URL duplicated in Web.purs
+  , "IngestAggregatorsE"                               : "support" / path "ingestAggregator" noArgs
+  , "IngestInstancesMetricsE"                          : "support" / "ingest" / path "metrics" noArgs
+  , "IngestInstanceE"                                  : "support" / "ingest" / slotId segment / slotRole segment / profileName segment
 
-  , "IngestAggregatorE"                                : "api" / "agents" / "ingestAggregator" / slotId segment / slotRole segment
-  , "IngestAggregatorPlayerE"                          : "api" / "agents" / "ingestAggregator" / slotId segment / slotRole segment / "player"
-  , "IngestAggregatorPlayerJsE"                        : "api" / "agents" / "ingestAggregator" / slotId segment / slotRole segment / "js" / rest
-  , "IngestAggregatorActiveIngestsE"                   : "api" / "agents" / "ingestAggregator" / slotId segment / slotRole segment / "activeIngests" / profileName segment
-  , "IngestAggregatorActiveIngestsPlayerE"             : "api" / "agents" / "ingestAggregator" / slotId segment / slotRole segment / "activeIngests" / profileName segment / "player"
-  , "IngestAggregatorActiveIngestsPlayerJsE"           : "api" / "agents" / "ingestAggregator" / slotId segment / slotRole segment / "activeIngests" / profileName segment / "js" / rest
-  , "IngestAggregatorActiveIngestsPlayerControlE"      : "api" / "agents" / "ingestAggregator" / slotId segment / slotRole segment / "activeIngests" / profileName segment / "control" -- URL duplicated in Web.purs
-  , "IngestAggregatorSlotConfigurationE"               : "api" / "agents" / "ingestAggregator" / slotId segment / slotRole segment / "slot"
-  , "IngestAggregatorRegisterRelayE"                   : "api" / "agents" / "ingestAggregator" / path "register" noArgs
+  , "ClientAppAssetsE"                                 : "support" / "assets" / rest
+  , "ClientAppRouteHTMLE"                              : "support" / noArgs
 
-  , "IngestAggregatorsE"                               : "api" / "agents" / path "ingestAggregator" noArgs
+    -- system
+  , "TransPoPLeaderE"                                  : "system" / path "transPoPLeader" noArgs
 
-  , "IngestInstancesE"                                 : "api" / "agents" / path "ingest" noArgs
-  , "IngestInstancesMetricsE"                          : "api" / "agents" / "ingest" / path "metrics" noArgs
-  , "IngestInstanceE"                                  : "api" / "agents" / "ingest" / slotId segment / slotRole segment / profileName segment
-  , "IngestInstanceLlwpE"                              : "api" / "agents" / "ingest" / slotId segment / slotRole segment / profileName segment / "llwp" -- URL duplicated in Web.purs
-  , "IngestStartE"                                     : "api" / "public" / canary segment / "ingest" / shortName segment / slotNameAndProfile segment / "start"
-  , "IngestStopE"                                      : "api" / "public" / canary segment / "ingest" / slotId segment / slotRole segment / profileName segment / "stop"
+  , "EgestE"                                           : "system" / path "egest"  noArgs
 
-  , "ClientAppAssetsE"                                 : "app" / "assets" / rest
-  , "ClientAppRouteHTMLE"                              : "app" / noArgs
+  , "RelayE"                                           : "system" / "relay" / path "egest"  noArgs
+  , "RelayEnsureStartedE"                              : "system" / "relay" / path "ensureStarted"  noArgs
+  , "RelayRegisterEgestE"                              : "system" / "relay" / "register" / path "egest" noArgs
+  , "RelayRegisterRelayE"                              : "system" / "relay" / "register" / path "relay" noArgs
+  , "RelaySlotConfigurationE"                          : "system" / "relay" / slotId segment / slotRole segment / "slot"
 
-  , "ClientStartE"                                     : "api" / "public" / canary segment / "client" / slotId segment / "start"
-  , "ClientStopE"                                      : "api" / "public" / canary segment / "client" / slotId segment / "stop" / segment
-  , "ClientPlayerE"                                    : "api" / "public" / canary segment / "client" / slotId segment / "player"
-  , "ClientPlayerJsE"                                  : "api" / "public" / canary segment / "client" / slotId segment / "js" / rest
-  , "ClientPlayerControlE"                             : "api" / "public" / canary segment / "client" / slotId segment / "session" -- URL duplicated in Web.purs
+  , "IngestAggregatorActiveIngestsE"                   : "system" / "ingestAggregator" / slotId segment / slotRole segment / "activeIngests" / profileName segment
+  , "IngestAggregatorSlotConfigurationE"               : "system" / "ingestAggregator" / slotId segment / slotRole segment / "slot"
+  , "IngestAggregatorRegisterRelayE"                   : "system" / "ingestAggregator" / path "register" noArgs
 
-  , "StreamAuthTypeE"                                  : "llnwstub" / "rts" / "v1" / path "streamauthtype" noArgs
-  , "StreamAuthE"                                      : "llnwstub" / "rts" / "v1" / path "streamauth" noArgs
-  , "StreamPublishE"                                   : "llnwstub" / "rts" / "v1" / path "streampublish" noArgs
+  , "IngestInstanceLlwpE"                              : "system" / "ingest" / slotId segment / slotRole segment / profileName segment / "llwp" -- URL duplicated in Web.purs
 
-  , "WorkflowsE"                                       : "api" / path "workflows" noArgs -- URL duplicated in Web.purs
-  , "WorkflowGraphE"                                   : "api" / "workflows" / segment / "graph" -- URL duplicated in Web.purs
-  , "WorkflowMetricsE"                                 : "api" / "workflows" / segment / "metrics" -- URL duplicated in Web.purs
-  , "WorkflowStructureE"                               : "api" / "workflows" / segment / "structure" -- URL duplicated in Web.purs
+  , "IntraPoPTestHelperE"                              : "system" / "test" / path "intraPoP" noArgs
+  , "LoadE"                                            : "system" / "test" / path "load" noArgs
+  , "RelayProxiedStatsE"                               : "system" / "test" / "proxied" / "relay" / slotId segment / slotRole segment
 
-  -- | FrontEnd URLs
+  , "IngestStartE"                                     : "system" / "test" / canary segment / "ingest" / shortName segment / slotNameAndProfile segment / "start"
+  , "IngestStopE"                                      : "system" / "test" / canary segment / "ingest" / slotId segment / slotRole segment / profileName segment / "stop"
+  , "ClientStartE"                                     : "system" / "test" / canary segment / "client" / slotId segment / "start"
+  , "ClientStopE"                                      : "system" / "test" / canary segment / "client" / slotId segment / "stop" / segment
+
+  , "StreamAuthTypeE"                                  : "system" / "llnwstub" / "rts" / "v1" / path "streamauthtype" noArgs
+  , "StreamAuthE"                                      : "system" / "llnwstub" / "rts" / "v1" / path "streamauth" noArgs
+  , "StreamPublishE"                                   : "system" / "llnwstub" / "rts" / "v1" / path "streampublish" noArgs
+
+  , "WorkflowsE"                                       : "system" / path "workflows" noArgs -- URL duplicated in Web.purs
+  , "WorkflowGraphE"                                   : "system" / "workflows" / segment / "graph" -- URL duplicated in Web.purs
+  , "WorkflowMetricsE"                                 : "system" / "workflows" / segment / "metrics" -- URL duplicated in Web.purs
+  , "WorkflowStructureE"                               : "system" / "workflows" / segment / "structure" -- URL duplicated in Web.purs
+
+  -- Support UI URLs - TODO - to be deleted and moved to client
   , "LoginE"                                           : "api" / "users" / "login" / noArgs
   , "UserE"                                            : "api" / "user" / noArgs
   , "UsersE"                                           : "api" / "users" / noArgs
   , "ProfilesE"                                        : "api" / "profile" / uName segment
+
 }
 
 makePath :: Endpoint -> String
@@ -190,6 +199,23 @@ makeUrlAddr serverAddr ep =
 makeUrlAddrWithPath :: ServerAddress -> String -> Url
 makeUrlAddrWithPath (ServerAddress host) path =
   wrap $ "http://" <> host <> ":3000" <> path
+
+-- | JsonLd Context Type
+contextTypeToString :: JsonLdContextType -> String
+contextTypeToString ServerContext = "server"
+contextTypeToString ServerAddressContext = "serverAddress"
+contextTypeToString DeliverToContext = "deliverTo"
+contextTypeToString TimedRouteNeighbourContext = "timedRouteNeighbour"
+contextTypeToString ActiveIngestContext = "activeIngest"
+
+
+parseContextType :: String -> Maybe JsonLdContextType
+parseContextType "server" = Just ServerContext
+parseContextType "serverAddress" = Just ServerAddressContext
+parseContextType "deliverTo" = Just DeliverToContext
+parseContextType "timedRouteNeighbour" = Just TimedRouteNeighbourContext
+parseContextType "activeIngest" = Just ActiveIngestContext
+parseContextType _ = Nothing
 
 -- | SlotId
 parseSlotId :: String -> Maybe SlotId
@@ -222,12 +248,10 @@ parseRtmpShortName = wrapParser
 shortNameToString :: RtmpShortName -> String
 shortNameToString = unwrap
 
-
 -- | Generic parser for newtypes
 wrapParser :: forall a. Newtype a String => String -> Maybe a
 wrapParser "" = Nothing
 wrapParser str = Just $ wrap str
-
 
 -- | PoPName
 parsePoPName :: String -> Maybe PoPName
@@ -278,6 +302,9 @@ parseUsername str = Just (Username str)
 userNametoString :: Username -> String
 userNametoString (Username str) = str
 
+-- | This combinator transforms a codec over `String` into one that operates on the `ContextType` type.
+contextType :: RouteDuplex' String -> RouteDuplex' JsonLdContextType
+contextType = as contextTypeToString (parseContextType >>> note "Bad ContextType")
 
 -- | This combinator transforms a codec over `String` into one that operates on the `SlotId` type.
 slotId :: RouteDuplex' String -> RouteDuplex' SlotId
@@ -308,4 +335,5 @@ canary :: RouteDuplex' String -> RouteDuplex' Canary
 canary = as canaryToString (parseCanary >>> note "Bad CanaryId")
 
 uName :: RouteDuplex' String -> RouteDuplex' Username
-uName = as userNametoString (parseUsername >>> note "Bad username")
+uName = as userNametoString (parseUsername >>> note "Bad username"
+)

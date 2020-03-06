@@ -93,7 +93,7 @@ component = H.mkComponent
             [ HH.div
               [ css_ "is-user-avatar" ]
               [ HH.img
-                [ HP.src "app/assets/images/avatar-s.png" ]
+                [ HP.src "support/assets/images/avatar-s.png" ]
               ]
             , HH.div
               [ css_ "is-user-name" ]

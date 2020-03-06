@@ -1,9 +1,11 @@
 module Shared.JsonLd
        (
          Context
+       , ContextDefinition(..)
        , ContextValue(..)
        , ExpandedTermDefinition
        , Node
+       , unwrapNode
        ) where
 
 import Prelude
@@ -11,7 +13,7 @@ import Prelude
 import Control.Alt ((<|>))
 import Control.Apply (lift2)
 import Data.Maybe (Maybe)
-import Data.Newtype (class Newtype)
+import Data.Newtype (class Newtype, unwrap)
 import Data.Symbol (SProxy(..))
 import Foreign (F, Foreign)
 import Prim.Row as Row
@@ -62,9 +64,25 @@ type ExpandedTermDefinition = { "@id" :: Maybe String
                               , "@container" :: Maybe String
                               }
 
+data ContextDefinition contextFields = ContextRecord (Context contextFields)
+                                     | ContextUrl String
+
+instance writeForeignContextDefinition :: (WriteForeign (ContextFields contextFields)) => WriteForeign (ContextDefinition contextFields) where
+  writeImpl (ContextRecord r) = writeImpl r
+  writeImpl (ContextUrl url) = writeImpl url
+
+instance readForeignContextDefinition :: (ReadForeign (ContextFields contextFields)) => ReadForeign (ContextDefinition contextFields) where
+  readImpl o =
+    let
+      readRecord = readImpl :: Foreign -> F (ContextFields contextFields)
+      readUrl = readImpl :: Foreign -> F String
+    in
+     (ContextRecord <<< Context <$> readRecord o)
+     <|> (ContextUrl <$> readUrl o)
+
 type NodeMetadata'' resource contextFields = ( "@id" :: Maybe Url
                                              , "@nodeType":: Maybe String
-                                             , "@context" :: Maybe (Context contextFields)
+                                             , "@context" :: Maybe (ContextDefinition contextFields)
                                                | resource )
 
 type NodeMetadata' resource contextFields = Record (NodeMetadata'' resource contextFields)
@@ -75,21 +93,19 @@ newtype Node resource contextFields = Node (NodeMetadata resource contextFields)
 
 derive instance newtypeNode :: Newtype (Node a b) _
 
-
 instance writeForeignNode :: ( Row.Union r1 (NodeMetadata''() contextFields) r2
                              , Row.Nub r2 r3
                              , WriteForeign (Record r3)
                              )
                              => WriteForeign (Node (Record r1) contextFields) where
-  writeImpl (Node metadata@{resource}) =
-    let
-      metadataWithoutResource :: NodeMetadata' () contextFields
-      metadataWithoutResource = Record.delete (SProxy :: SProxy "resource") metadata
-
-      merged :: Record r3
-      merged = Record.merge resource metadataWithoutResource
-    in
-      writeImpl merged
+  writeImpl (Node metadata@{resource}) = writeImpl $ ((mergeResourceAndMetadata metadata resource) :: Record r3)
+else instance writeForeignNode1 :: ( Newtype newtypeType (Record r1)
+                                   , Row.Union r1 (NodeMetadata''() contextFields) r2
+                                   , Row.Nub r2 r3
+                                   , WriteForeign (Record r3)
+                                   )
+                                   => WriteForeign (Node newtypeType contextFields) where
+  writeImpl (Node metadata@{resource: newTypeResource}) = writeImpl $ ((mergeResourceAndMetadata metadata (unwrap newTypeResource)) :: Record r3)
 
 instance readForeignNode :: (ReadForeign a
                             , ReadForeign (NodeMetadata'() contextFields)
@@ -100,7 +116,7 @@ instance readForeignNode :: (ReadForeign a
       resource :: F a
       resource = readImpl o
 
-      metadataWithPrefix :: F (NodeMetadata'() contextFields) -- todo - should have contextfields or it won't recurse deep enough
+      metadataWithPrefix :: F (NodeMetadata'() contextFields)
       metadataWithPrefix = readImpl o
 
       metadataWithResource :: F (NodeMetadata a contextFields)
@@ -108,3 +124,14 @@ instance readForeignNode :: (ReadForeign a
 
     in
      Node <$> metadataWithResource
+
+mergeResourceAndMetadata :: forall a b r r2 r3. Row.Lacks "resource" r => Row.Union a r r2 => Row.Nub r2 r3 => {resource :: b | r} -> Record a -> Record r3
+mergeResourceAndMetadata metadata resource =
+    let
+      metadataWithoutResource = Record.delete (SProxy :: SProxy "resource") metadata
+      merged = Record.merge resource metadataWithoutResource
+    in
+     merged
+
+unwrapNode :: forall a b. Node a b -> a
+unwrapNode (Node {resource}) = resource

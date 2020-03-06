@@ -10,15 +10,10 @@ module Shared.Types.Agent.State
        , AgentLocation
        , AggregatorLocation
        , StreamRelay
+       , TimedPoPNeighbour
        , TimedPoPStep
        , TimedPoPRoute
        , TimedPoPRoutes
-
-       , ActiveIngestContextFields
-       , DownstreamRelayContextFields
-       , AggregatorLocationContextFields
-       , RelayLocationContextFields
-       , EgestLocationContextFields
 
        ) where
 
@@ -26,15 +21,17 @@ import Prelude
 
 import Data.Maybe (Maybe)
 import Shared.Common (Milliseconds)
-import Shared.JsonLd as JsonLd
 import Shared.LlnwApiTypes (StreamDetails)
-import Shared.Stream (AgentKey, IngestKey, ProfileName, SlotId, SlotRole)
-import Shared.Types (DeliverTo, GeoLoc, PoPName, RegionName, RelayServer, Server, ServerAddress, ServerRec)
+import Shared.Rtsv2.JsonLd as JsonLd
+import Shared.Stream (AgentKey, IngestKey, SlotId, SlotRole)
+import Shared.Types (GeoLoc, PoPName, RegionName, Server, ServerAddress)
 import Shared.Types.Media.Types.Rtmp (RtmpClientMetadata)
 import Shared.Types.Media.Types.SourceDetails (SourceInfo)
 import Shared.Types.Workflow.Metrics.FrameFlow as FrameFlow
 import Shared.Types.Workflow.Metrics.RtmpPushIngest as RtmpIngest
 import Shared.Types.Workflow.Metrics.StreamBitrateMonitor as StreamBitrateMonitor
+
+type TimedPoPNeighbour f = JsonLd.TimedRouteNeighbourNode f
 
 type TimedPoPRoutes f
   = { from :: PoPName
@@ -59,25 +56,16 @@ type Ingest f
     , sourceInfo :: Maybe (SourceInfo f)
     }
 
-type ActiveIngestContextFields = ( profileName :: JsonLd.ContextValue
-                                 , serverAddress :: JsonLd.ContextValue
-                                 )
-
-type DownstreamRelayContextFields = ( port :: JsonLd.ContextValue
-                                    , server :: JsonLd.ContextValue)
-
 type IngestAggregator f
    = { role :: SlotRole
      , streamDetails :: StreamDetails
-     , activeProfiles :: f (JsonLd.Node { profileName :: ProfileName
-                                        , serverAddress :: ServerAddress
-                                        } ActiveIngestContextFields)
-     , downstreamRelays :: f (JsonLd.Node (DeliverTo RelayServer) DownstreamRelayContextFields)
+     , activeProfiles :: f JsonLd.ActiveIngestLocationNode
+     , downstreamRelays :: f JsonLd.DownstreamRelayLocationNode
      }
 
 type StreamRelay f
-  = { egestsServed :: f ServerAddress
-    , relaysServed :: f ServerAddress
+  = { egestsServed :: f JsonLd.EgestServedLocationNode
+    , relaysServed :: f JsonLd.RelayServedLocationNode
     }
 
 type Egest
@@ -89,30 +77,16 @@ type AgentLocation f = { agentKey :: AgentKey
                        }
 
 type IntraPoP f
-  = { aggregatorLocations :: f { slotId :: SlotId
-                               , role :: SlotRole
-                               , servers :: f (JsonLd.Node ServerRec AggregatorLocationContextFields)
-                               }
-    , relayLocations      :: f { slotId :: SlotId
-                               , role :: SlotRole
-                               , servers :: f (JsonLd.Node ServerRec RelayLocationContextFields)
-                               }
-    , egestLocations      :: f { slotId :: SlotId
-                               , servers :: f (JsonLd.Node ServerRec EgestLocationContextFields)
-                               }
-    , currentTransPoPLeader :: Maybe Server
+  = { aggregatorLocations :: f (JsonLd.AggregatorLocationNode f)
+    , relayLocations      :: f (JsonLd.RelayLocationNode f)
+    , egestLocations      :: f (JsonLd.EgestLocationNode f)
+    , currentTransPoPLeader :: Maybe (JsonLd.TransPoPLeaderLocationNode)
     }
 
-type AggregatorLocationContextFields = ( )
-
-type RelayLocationContextFields = ( )
-
-type EgestLocationContextFields = ( )
-
-type AggregatorLocation f = f { slotId :: SlotId
-                              , role :: SlotRole
-                              , servers :: f Server
-                              }
+type AggregatorLocation f = { slotId :: SlotId
+                            , role :: SlotRole
+                            , servers :: f Server
+                            }
 
 type Region f = { name :: RegionName
                 , pops :: f (PoP f)

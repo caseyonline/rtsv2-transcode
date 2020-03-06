@@ -30,6 +30,7 @@ import Effect.Ref as Ref
 import Global (readFloat)
 import Rtsv2App.Capability.Resource.Api (class ManageApi, getServerState)
 import Rtsv2App.Env (PoPDefEnv)
+import Shared.JsonLd as JsonLd
 import Shared.Types (GeoLoc(..), LeaderGeoLoc, PoPName, Server(..), ServerAddress)
 import Shared.Types.Agent.State (AggregatorLocation, IntraPoP, PoP, PoPDefinition, TimedPoPRoutes)
 
@@ -50,7 +51,7 @@ type PoPEnvWithoutRef =
   { popDefenition :: Maybe (PoPDefinition Array)
   , popDefEcharts :: Array PoPDefEcharts
   , popLeaders    :: Array Server
-  , aggrLocs      :: AggregatorLocation Array
+  , aggrLocs      :: Array (AggregatorLocation Array)
   }
 
 
@@ -105,9 +106,9 @@ getPoPLeaderAddress popLeaders popName =
                               if (pl.pop == pName) then Just pl.address else Nothing) popLeaders
 
 toPoPleaders :: Array (Maybe (IntraPoP Array)) -> Array Server
-toPoPleaders = mapMaybe (_ >>= _.currentTransPoPLeader)
+toPoPleaders = mapMaybe (_ >>= (\{currentTransPoPLeader} -> JsonLd.unwrapNode <$> currentTransPoPLeader))
 
-toAggregators :: (Array (Maybe (IntraPoP Array))) -> (AggregatorLocation Array)
+toAggregators :: (Array (Maybe (IntraPoP Array))) -> Array (AggregatorLocation Array)
 toAggregators mIntraPoPs =
   nub $ catMaybes mIntraPoPs
   >>= map toAggr <<< _.aggregatorLocations
@@ -115,11 +116,10 @@ toAggregators mIntraPoPs =
     toAggr = \{slotId, role, servers} ->
       { slotId
       , role
-      , servers: overF wrap (map _.resource) servers
+      , servers: (JsonLd.unwrapNode <$> servers)
       }
-          
 
-timedRoutedToChartOps :: TimedPoPRoutes Array -> Array LeaderGeoLoc -> Array (Array (Array LeaderGeoLoc))
+timedRoutedToChartOps :: TimedPoPRoutes Array -> (Array LeaderGeoLoc) -> Array (Array (Array LeaderGeoLoc))
 timedRoutedToChartOps timedRoutes leaderGeolocs =
   convertToLeaderGeoLoc <$> timedRoutes.routes
   where

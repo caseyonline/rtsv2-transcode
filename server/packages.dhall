@@ -35,9 +35,9 @@ let overrides =
               , "variant"
               ]
           , repo =
-              "ssh://git@github.com/adrianroe/purescript-simple-json.git"
+              "ssh://git@github.com/srstrong/purescript-simple-json.git"
           , version =
-              "c1c7e23a60b22c4813d56abb6600ce7a5eb66c55"
+              "35a225860f49c4451dc87f0e9b941f319044079f"
           }
       , simple-json-generics =
           { dependencies =

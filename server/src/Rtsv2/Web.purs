@@ -33,6 +33,7 @@ import Rtsv2.Handler.Health as HealthHandler
 import Rtsv2.Handler.Ingest as IngestHandler
 import Rtsv2.Handler.IngestAggregator as IngestAggregatorHandler
 import Rtsv2.Handler.IntraPoP as IntraPoPHandler
+import Rtsv2.Handler.JsonLd as JsonLd
 import Rtsv2.Handler.LlnwStub as LlnwStubHandler
 import Rtsv2.Handler.Load as LoadHandler
 import Rtsv2.Handler.PoPDefinition as PoPDefinitionHandler
@@ -40,9 +41,9 @@ import Rtsv2.Handler.Relay as RelayHandler
 import Rtsv2.Handler.TransPoP as TransPoPHandler
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
+import Serf (Ip(..))
 import Shared.Router.Endpoint (Canary)
 import Shared.Router.Endpoint as Router
-import Serf (Ip(..))
 import Shared.Stream (EgestKey(..), IngestKey(..), ProfileName, SlotId, SlotIdAndProfileName(..), SlotRole(..))
 import Stetson (RestResult, StaticAssetLocation(..))
 import Stetson as Stetson
@@ -69,13 +70,15 @@ init args = do
         , "TransPoPLeaderE"                             : IntraPoPHandler.leader
         , "IntraPoPTestHelperE"                         : IntraPoPHandler.testHelper
         , "TimedRoutesE"                                : TransPoPHandler.timedRoutes
+        , "TimedRoutesForPoPE"                          : TransPoPHandler.timedRoutesForPoP
         , "HealthCheckE"                                : HealthHandler.healthCheck
         , "ServerStateE"                                : IntraPoPHandler.publicState
         , "PoPDefinitionE"                              : PoPDefinitionHandler.popDefinition
         , "LoadE"                                       : LoadHandler.load
+        , "JsonLdContext"                               : JsonLd.getContextJson
 
         , "EgestStatsE"                                 : EgestStatsHandler.stats
-        , "EgestE"                                      : dummyHandler -- TODO missing?
+        , "EgestE"                                      : dummyHandler -- TODO write this - needed for a client to create a remote egest
 
         , "RelayE"                                      : RelayHandler.startResource
         , "RelayEnsureStartedE"                         : RelayHandler.ensureStarted
@@ -95,7 +98,6 @@ init args = do
         , "IngestAggregatorSlotConfigurationE"          : IngestAggregatorHandler.slotConfiguration
         , "IngestAggregatorRegisterRelayE"              : IngestAggregatorHandler.registerRelay
         , "IngestAggregatorsE"                          : IngestAggregatorHandler.ingestAggregators
-        , "IngestInstancesE"                            : IngestHandler.ingestInstances
         , "IngestInstancesMetricsE"                     : IngestHandler.ingestInstancesMetrics
         , "IngestInstanceE"                             : IngestHandler.ingestInstance
         , "IngestInstanceLlwpE"                         : CowboyRoutePlaceholder
@@ -136,14 +138,14 @@ init args = do
     cowboyRoutes =
       -- Some duplication of URLs here from those in Endpoint.purs due to current inability to build cowboy-style bindings from stongly-typed parameters
       -- IngestAggregatorActiveIngestsPlayerControlE SlotId SlotRole ProfileName
-      cowboyRoute ("/api/agents/ingestAggregator/" <> slotIdBinding <> "/" <> slotRoleBinding <> "/activeIngests/" <> profileNameBinding <> "/control")
+      cowboyRoute ("/support/ingestAggregator/" <> slotIdBinding <> "/" <> slotRoleBinding <> "/activeIngests/" <> profileNameBinding <> "/control")
                   "rtsv2_player_ws_resource"
                   (unsafeToForeign { mode: (atom "ingest")
                                    , make_ingest_key: makeIngestKey
                                    })
 
       -- ClientPlayerControlE Canary SlotId
-      : cowboyRoute ("/api/public/" <> canaryBinding <> "/client/" <> slotIdBinding <> "/session")
+      : cowboyRoute ("/public/" <> canaryBinding <> "/client/" <> slotIdBinding <> "/session")
                     "rtsv2_player_ws_resource"
                     (unsafeToForeign { mode: (atom "egest")
                                      , make_egest_key: EgestKey
@@ -153,18 +155,18 @@ init args = do
                                      })
 
       -- IngestInstanceLlwpE SlotId SlotRole ProfileName
-      : cowboyRoute ("/api/agents/ingest/" <> slotIdBinding <> "/" <> slotRoleBinding <> "/" <> profileNameBinding <> "/llwp")
+      : cowboyRoute ("/support/ingest/" <> slotIdBinding <> "/" <> slotRoleBinding <> "/" <> profileNameBinding <> "/llwp")
                    "llwp_stream_resource"
                    ((unsafeToForeign) makeSlotIdAndProfileName)
 
       --WorkflowsE
-      : cowboyRoute ("/api/workflows") "id3as_workflows_resource" (unsafeToForeign unit)
+      : cowboyRoute ("/system/workflows") "id3as_workflows_resource" (unsafeToForeign unit)
       -- WorkflowGraphE String
-      : cowboyRoute ("/api/workflows" <> referenceBinding <> "/graph") "id3as_workflow_graph_resource" (unsafeToForeign (atom "graph"))
+      : cowboyRoute ("/system/workflows" <> referenceBinding <> "/graph") "id3as_workflow_graph_resource" (unsafeToForeign (atom "graph"))
       -- WorkflowMetricsE String
-      : cowboyRoute ("/api/workflows" <> referenceBinding <> "/metrics") "id3as_workflow_graph_resource" (unsafeToForeign (atom "metrics"))
+      : cowboyRoute ("/system/workflows" <> referenceBinding <> "/metrics") "id3as_workflow_graph_resource" (unsafeToForeign (atom "metrics"))
       -- WorkflowStructureE String
-      : cowboyRoute ("/api/workflows" <> referenceBinding <> "/structure") "id3as_workflow_graph_resource" (unsafeToForeign (atom "structure"))
+      : cowboyRoute ("/system/workflows" <> referenceBinding <> "/structure") "id3as_workflow_graph_resource" (unsafeToForeign (atom "structure"))
 
       : nil
 

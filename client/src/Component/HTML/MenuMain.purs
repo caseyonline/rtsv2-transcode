@@ -104,7 +104,7 @@ topLogo =
           [ css_ "icon is-medium is-aligned-center" ]
           [ HH.img
             [ css_ "menu-logo"
-            , HP.src "app/assets/images/logo/logo.svg"
+            , HP.src "support/assets/images/logo/logo.svg"
             ]
           ]
         ]

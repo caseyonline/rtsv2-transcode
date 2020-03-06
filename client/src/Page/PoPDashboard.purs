@@ -57,7 +57,7 @@ data Action
 
 
 type State =
-  { aggrLocs        :: AggregatorLocation Array
+  { aggrLocs        :: Array (AggregatorLocation Array)
   , chart           :: Maybe EC.Instance
   , currentUser     :: Maybe Profile
   , popDefEcharts   :: Array PoPDefEcharts
@@ -453,4 +453,3 @@ shouldLoadJS =
     case route of
       PoPDashboardR _ -> pure unit
       _ -> liftEffect $ FF.init
-

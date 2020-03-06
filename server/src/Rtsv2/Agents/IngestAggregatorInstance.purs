@@ -122,8 +122,8 @@ getState aggregatorKey@(AggregatorKey slotId slotRole) = Gen.call (serverName ag
     getState' state@{streamDetails, activeProfileNames, downstreamRelays} =
       CallReply { role: slotRole
                 , streamDetails
-                , activeProfiles: (\(Tuple profileName serverAddress) -> JsonLd.activeIngestNode slotId slotRole profileName serverAddress) <$> (toUnfoldable activeProfileNames)
-                , downstreamRelays: (JsonLd.downstreamRelayNode slotId slotRole) <$> downstreamRelays
+                , activeProfiles: (\(Tuple profileName serverAddress) -> JsonLd.activeIngestLocationNode slotId slotRole profileName serverAddress) <$> (toUnfoldable activeProfileNames)
+                , downstreamRelays: (JsonLd.downstreamRelayLocationNode slotId slotRole) <$> downstreamRelays
                 }
       state
 
