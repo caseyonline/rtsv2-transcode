@@ -8,6 +8,7 @@
         , eqRefImpl/2
         , selfImpl/0
         , trapExitImpl/1
+        , mapExitReasonImpl/1
         ]).
 
 
@@ -40,3 +41,7 @@ trapExitImpl(Value) ->
   fun() ->
       process_flag(trap_exit, Value)
   end.
+
+mapExitReasonImpl(normal) -> {normal};
+mapExitReasonImpl({shutdown, Term}) -> {shutdown, Term};
+mapExitReasonImpl(Other) -> {other, Other}.

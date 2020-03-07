@@ -6,7 +6,9 @@ module Erl.Utils
        , privDir
        , self
        , trapExit
+       , mapExitReason
        , Ref
+       , ExitReason(..)
        )
        where
 
@@ -16,6 +18,7 @@ import Data.Newtype (unwrap, wrap)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Process.Raw (Pid)
+import Foreign (Foreign)
 import Shared.Common (Milliseconds)
 
 foreign import systemTimeImpl :: Atom -> Effect Int
@@ -27,6 +30,11 @@ foreign import eqRefImpl :: Ref -> Ref -> Boolean
 foreign import data Ref :: Type
 foreign import selfImpl :: Effect Pid
 foreign import trapExitImpl :: Boolean -> Effect Boolean
+foreign import mapExitReasonImpl :: Foreign -> ExitReason
+
+data ExitReason = Normal
+                | Shutdown Foreign
+                | Other Foreign
 
 sleep :: Milliseconds -> Effect Unit
 sleep = sleepImpl <<< unwrap
@@ -53,3 +61,5 @@ trapExit = trapExitImpl
 
 self :: Effect Pid
 self = selfImpl
+
+mapExitReason = mapExitReasonImpl

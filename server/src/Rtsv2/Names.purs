@@ -48,14 +48,14 @@ egestInstanceSupName = instanceSup Egest
 ingestAggregatorSupName :: SupervisorName
 ingestAggregatorSupName = sup IngestAggregator
 
-ingestAggregatorInstanceStateName :: forall a b. ServerName a b
-ingestAggregatorInstanceStateName = withSuffix "State" IngestAggregator
+ingestAggregatorInstanceStateName :: forall a b. AggregatorKey -> ServerName a b
+ingestAggregatorInstanceStateName = gprocName2WithSuffix "State" IngestAggregator
 
 ingestAggregatorInstanceName :: forall a b. AggregatorKey -> ServerName a b
 ingestAggregatorInstanceName = gprocName2 IngestAggregator
 
-ingestAggregatorInstanceSupName :: SupervisorName
-ingestAggregatorInstanceSupName = instanceSup IngestAggregator
+ingestAggregatorInstanceSupName :: AggregatorKey -> SupervisorName
+ingestAggregatorInstanceSupName = gprocInstanceSup IngestAggregator
 
 ingestInstanceName :: forall a b. IngestKey -> ServerName a b
 ingestInstanceName = gprocName2 Ingest
@@ -116,6 +116,9 @@ localName = Local <<< atom <<< show
 instanceSup :: forall a. Show a => a -> SupervisorName
 instanceSup = withSuffix "InstanceSup"
 
+gprocInstanceSup :: forall t x. Show t => t -> x -> SupervisorName
+gprocInstanceSup t = gprocName <<< tuple2 ((show t) <> "InstanceSup")
+
 sup :: forall a. Show a => a -> SupervisorName
 sup = withSuffix "Sup"
 
@@ -125,6 +128,9 @@ gprocName term =
 
 gprocName2 :: forall a b t x. Show t => t -> x -> ServerName a b
 gprocName2 t = gprocName <<< tuple2 (show t)
+
+gprocName2WithSuffix :: forall a b t x. Show t => String -> t -> x -> ServerName a b
+gprocName2WithSuffix suffix t = gprocName <<< tuple2 ((show t) <> suffix)
 
 gprocName3 :: forall a b t x y. Show t => t -> x -> y -> ServerName a b
 gprocName3 t x y = gprocName $ tuple3 (show t) x y

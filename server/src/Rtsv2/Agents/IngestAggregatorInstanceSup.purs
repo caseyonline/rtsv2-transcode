@@ -1,49 +1,36 @@
 module Rtsv2.Agents.IngestAggregatorInstanceSup
-       ( isAvailable
-       , startLink
-       , startAggregator
+       ( startLink
        )
        where
+
 
 import Prelude
 
 import Effect (Effect)
 import Erl.Data.List (nil, (:))
-import Pinto (StartChildResult, SupervisorName, isRegistered)
+import Logger (spy)
 import Pinto as Pinto
-import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStartTemplate, childType)
+import Pinto.Sup (SupervisorChildType(..), SupervisorSpec, SupervisorStrategy(..))
 import Pinto.Sup as Sup
 import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
 import Rtsv2.Names as Names
 import Shared.LlnwApiTypes (StreamDetails)
 
+startLink :: StreamDetails -> IngestAggregatorInstance.StateServerName -> Effect Pinto.StartLinkResult
+startLink streamDetails stateServerName = Sup.startLink (spy "XXX IngestAggregatorInstanceSup" (Names.ingestAggregatorInstanceSupName (IngestAggregatorInstance.streamDetailsToAggregatorKey streamDetails))) (init streamDetails stateServerName)
 
-isAvailable :: Effect Boolean
-isAvailable = isRegistered serverName
-
-serverName :: SupervisorName
-serverName = Names.ingestAggregatorInstanceSupName
-
-startLink :: forall a. a -> Effect Pinto.StartLinkResult
-startLink _ = Sup.startLink serverName init
-
-startAggregator :: StreamDetails -> Effect StartChildResult
-startAggregator streamDetails =
-  Sup.startSimpleChild childTemplate serverName streamDetails
-
-init :: Effect Sup.SupervisorSpec
-init = do
+init :: StreamDetails -> IngestAggregatorInstance.StateServerName -> Effect SupervisorSpec
+init streamDetails stateServerName = do
   pure $ Sup.buildSupervisor
-    # Sup.supervisorStrategy Sup.SimpleOneForOne
-    # Sup.supervisorChildren
-        ( ( buildChild
-              # childType Worker
-              # childId "ingestAggregatorAgent"
-              # childStartTemplate childTemplate
-              # childRestart Transient
-          )
-          : nil
-        )
+    # Sup.supervisorIntensity 50
+    # Sup.supervisorStrategy OneForAll
+    # Sup.supervisorChildren childSpecs
 
-childTemplate :: Pinto.ChildTemplate StreamDetails
-childTemplate = Pinto.ChildTemplate (IngestAggregatorInstance.startLink)
+  where
+    childSpecs =
+      ( Sup.buildChild
+        # Sup.childType Worker
+        # Sup.childId "ingestAggregatorInstance"
+        # Sup.childStart (IngestAggregatorInstance.startLink streamDetails) stateServerName
+      )
+      : nil

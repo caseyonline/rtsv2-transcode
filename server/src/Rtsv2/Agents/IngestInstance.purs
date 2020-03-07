@@ -28,7 +28,7 @@ import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
-import Rtsv2.Agents.IngestAggregatorInstanceSup as IngestAggregatorInstanceSup
+import Rtsv2.Agents.IngestAggregatorSup as IngestAggregatorSup
 import Rtsv2.Agents.IngestStats as IngestStats
 import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..), launchLocalOrRemoteGeneric)
 import Rtsv2.Agents.IntraPoP as IntraPoP
@@ -40,10 +40,10 @@ import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Utils (crashIfLeft)
 import Shared.Agent as Agent
-import Shared.LlnwApiTypes (StreamDetails, StreamPublish(..))
-import Shared.Stream (AggregatorKey, IngestKey(..), ingestKeyToAggregatorKey)
-import Shared.Router.Endpoint (Endpoint(..), makeUrl)
 import Shared.Common (Milliseconds, Url)
+import Shared.LlnwApiTypes (StreamDetails, StreamPublish(..))
+import Shared.Router.Endpoint (Endpoint(..), makeUrl)
+import Shared.Stream (AggregatorKey, IngestKey(..), ingestKeyToAggregatorKey)
 import Shared.Types (Load, Server, ServerLoad(..), extractAddress)
 import Shared.Types.Agent.State as PublicState
 import Shared.Types.Media.Types.Rtmp (RtmpClientMetadata)
@@ -278,7 +278,7 @@ launchLocalOrRemote streamDetails ingestKey = do
   where
     launchLocal :: ServerLoad -> Effect Unit
     launchLocal _ = do
-      void $ IngestAggregatorInstanceSup.startAggregator streamDetails
+      void $ IngestAggregatorSup.startAggregator streamDetails
       pure unit
     launchRemote idleServer = do
       let

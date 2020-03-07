@@ -9,10 +9,9 @@ module Rtsv2.Agents.IngestAggregatorInstance
   , getState
   , slotConfiguration
 
-  , stateServerName
   , PersistentState
-  , PersistentStateKey
-
+  , StateServerName
+  , streamDetailsToAggregatorKey
   ) where
 
 import Prelude
@@ -41,7 +40,7 @@ import Pinto (ServerName, StartLinkResult, isRegistered)
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
-import Rtsv2.Agents.IngestAggregatorInstanceState as IngestAggregatorInstanceState
+import Rtsv2.Agents.PersistentInstanceState as PersistentInstanceState
 import Rtsv2.Agents.IntraPoP (announceLocalAggregatorIsAvailable, announceLocalAggregatorStopped)
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
 import Rtsv2.Agents.StreamRelayTypes (RegisterRelayPayload)
@@ -69,10 +68,8 @@ type PersistentState = { localIngests :: Set IngestKey
                        , remoteIngests :: Map IngestKey ServerAddress
                        , relays :: Set RegisterRelayPayload
                        }
-type PersistentStateKey = Tuple SlotId SlotRole
 
-stateServerName :: IngestAggregatorInstanceState.StateServerName PersistentStateKey PersistentState
-stateServerName = IngestAggregatorInstanceState.serverName
+type StateServerName = PersistentInstanceState.StateServerName PersistentState
 
 type State
   = { config :: Config.IngestAggregatorAgentConfig
@@ -83,10 +80,12 @@ type State
     , activeProfileNames :: Map ProfileName ServerAddress
     , downstreamRelays :: List (DeliverTo RelayServer)
     , workflowHandle :: WorkflowHandle
+    , stateServerName :: StateServerName
     }
 
 data Msg
-  = MaybeStop
+  = Init
+  | MaybeStop
 
 isAvailable :: AggregatorKey -> Effect Boolean
 isAvailable aggregatorKey = do
@@ -168,47 +167,50 @@ slotConfiguration (AggregatorKey (SlotId slotId) _streamRole) =
   -- TODO: the key is what the slot config should be keyed on...
   slotConfigurationImpl slotId
 
-startLink :: StreamDetails -> Effect StartLinkResult
-startLink streamDetails = Gen.startLink (serverName $ streamDetailsToAggregatorKey streamDetails) (init streamDetails) handleInfo
+startLink :: StreamDetails -> StateServerName -> Effect StartLinkResult
+startLink streamDetails stateServerName = Gen.startLink (serverName $ streamDetailsToAggregatorKey streamDetails) (init streamDetails stateServerName) handleInfo
 
-init :: StreamDetails -> Effect State
-init streamDetails@{role: slotRole, slot: {id: slotId}} = do
+init :: StreamDetails -> StateServerName -> Effect State
+init streamDetails@{role: slotRole, slot: {id: slotId}} stateServerName = do
   logInfo "Ingest Aggregator starting" {aggregatorKey, streamDetails}
   config <- Config.ingestAggregatorAgentConfig
   thisServer <- PoPDefinition.getThisServer
   announceLocalAggregatorIsAvailable aggregatorKey
   workflowHandle <- startWorkflowImpl (unwrap streamDetails.slot.id) $ mkKey <$> streamDetails.slot.profiles
-  persistentState <- fromMaybe emptyPersistentState <$> IngestAggregatorInstanceState.registerStartup (Tuple slotId slotRole)
-  let
-    initialState = { config : config
-                   , thisAddress : extractAddress thisServer
-                   , aggregatorKey
-                   , streamDetails
-                   , activeProfileNames : Map.empty
-                   , downstreamRelays : nil
-                   , workflowHandle
-                   , persistentState
-                   }
-  state <- applyPersistentState initialState persistentState
-  pure state
+  _ <- Timer.sendAfter (serverName (streamDetailsToAggregatorKey streamDetails)) 0 Init
+  pure { config : config
+       , thisAddress : extractAddress thisServer
+       , aggregatorKey
+       , streamDetails
+       , activeProfileNames : Map.empty
+       , downstreamRelays : nil
+       , workflowHandle
+       , persistentState: emptyPersistentState
+       , stateServerName
+       }
   where
     mkKey (SlotProfile p) = tuple3 (IngestKey streamDetails.slot.id streamDetails.role p.name) (unwrap p.rtmpStreamName) (unwrap p.name)
 
     aggregatorKey = streamDetailsToAggregatorKey streamDetails
 
-    emptyPersistentState = { localIngests: Set.empty
-                           , remoteIngests: Map.empty
-                           , relays: Set.empty
-                           }
-
+emptyPersistentState :: PersistentState
+emptyPersistentState = { localIngests: Set.empty
+                       , remoteIngests: Map.empty
+                       , relays: Set.empty
+                       }
 
 streamDetailsToAggregatorKey :: StreamDetails -> AggregatorKey
 streamDetailsToAggregatorKey streamDetails =
   AggregatorKey streamDetails.slot.id streamDetails.role
 
 handleInfo :: Msg -> State -> Effect (CastResult State)
-handleInfo msg state@{activeProfileNames, aggregatorKey} =
+handleInfo msg state@{activeProfileNames, aggregatorKey, stateServerName} =
   case msg of
+    Init -> do
+      persistentState <- fromMaybe emptyPersistentState <$> PersistentInstanceState.getInstanceData stateServerName
+      state2 <- applyPersistentState state persistentState
+      pure $ CastNoReply state2
+
     MaybeStop
       | size activeProfileNames == 0 -> do
         logInfo "Ingest Aggregator stopping" {aggregatorKey}
@@ -241,9 +243,9 @@ removeRelayFromPersistentState :: RegisterRelayPayload -> State -> State
 removeRelayFromPersistentState payload = set (_relays <<< (at payload)) Nothing
 
 updatePersistentState :: State -> Effect State
-updatePersistentState state@{ streamDetails: {role: slotRole, slot: {id: slotId}}
+updatePersistentState state@{ stateServerName
                             , persistentState} = do
-  IngestAggregatorInstanceState.recordInstanceData (Tuple slotId slotRole) persistentState
+  PersistentInstanceState.recordInstanceData stateServerName persistentState
   pure $ state
 
 doAddLocalIngest :: IngestKey -> State -> Effect State

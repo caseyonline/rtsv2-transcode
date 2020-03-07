@@ -16,7 +16,7 @@ import Erl.Data.List (List, nil, (:))
 import Erl.Data.Tuple (tuple2)
 import Logger (spy)
 import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
-import Rtsv2.Agents.IngestAggregatorInstanceSup as IngestAggregatorInstanceSup
+import Rtsv2.Agents.IngestAggregatorSup as IngestAggregatorSup
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
 import Rtsv2.Agents.StreamRelayTypes (RegisterRelayPayload)
 import Shared.LlnwApiTypes (StreamDetails)
@@ -37,7 +37,7 @@ slotConfiguration slotId role =
   jsonResponse $ IngestAggregatorInstance.slotConfiguration (AggregatorKey slotId role)
 
 ingestAggregators :: PostHandler StreamDetails
-ingestAggregators = processPostPayload IngestAggregatorInstanceSup.startAggregator
+ingestAggregators = processPostPayload IngestAggregatorSup.startAggregator
 
 
 type IngestAggregatorsActiveIngestState = { ingestKey :: IngestKey
@@ -51,7 +51,7 @@ ingestAggregatorsActiveIngest slotId streamRole profileName =
                                      , aggregatorKey: AggregatorKey slotId streamRole
                                      , serverAddress: Nothing})
   # Rest.serviceAvailable (\req state -> do
-                              isAgentAvailable <- IngestAggregatorInstanceSup.isAvailable
+                              isAgentAvailable <- IngestAggregatorSup.isAvailable
                               Rest.result isAgentAvailable req state)
   # Rest.allowedMethods (Rest.result (DELETE : POST : nil))
   # Rest.resourceExists (\req state@{aggregatorKey} -> do

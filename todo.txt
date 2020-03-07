@@ -1,3 +1,4 @@
+[ ] - Pinto stuff - terminate, async init, return stop from init
 [S] - ingest / ingest aggregator monitoring and recovery
 [S] - handle multiple ingest aggregators
 [ ] - test4 - IngestAggregator with a name clash - 2 things running, should be 1
