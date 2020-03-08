@@ -30,6 +30,7 @@ type IngestEqLine =
   , username :: String
   , rtmpShortName :: RtmpShortName
   , rtmpStreamName :: RtmpStreamName
+  , slotId :: SlotId
   , slotRole :: SlotRole
   , connectionType :: StreamIngestProtocol
   , startMs :: Milliseconds
@@ -94,6 +95,7 @@ writeIngestLine reason { ingestIp
                        , username
                        , rtmpShortName
                        , rtmpStreamName
+                       , slotId
                        , slotRole
                        , connectionType
                        , startMs
@@ -110,6 +112,7 @@ writeIngestLine reason { ingestIp
                  , username: toList username
                  , shortname: toList $ unwrap rtmpShortName
                  , streamName: toList $ unwrap rtmpStreamName
+                 , slotId: toList $ show $ unwrap slotId
                  , streamRole: toList $ show slotRole
                  , connectionType: toList $ case connectionType of
                                               Rtmp -> "RTMP"

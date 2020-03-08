@@ -179,13 +179,12 @@ handleInfo msg state@{ingestKey} = case msg of
     pure $ CastStop state
 
 ingestEqLine :: State -> Effect Audit.IngestEqLine
-ingestEqLine state@{ ingestKey
+ingestEqLine state@{ ingestKey: ingestKey@(IngestKey slotId slotRole _profileeName)
                    , streamPublish: StreamPublish { host: ingestIp
                                                   , protocol: connectionType
                                                   , rtmpShortName
                                                   , rtmpStreamName
                                                   , username }
-                   , streamDetails: { role }
                    , localPort: ingestPort
                    , remoteAddress: userIp
                    , lastIngestAuditTime: startMs} = do
@@ -201,7 +200,8 @@ ingestEqLine state@{ ingestKey
        , username
        , rtmpShortName
        , rtmpStreamName
-       , slotRole: role
+       , slotId
+       , slotRole
        , connectionType
        , startMs
        , endMs
