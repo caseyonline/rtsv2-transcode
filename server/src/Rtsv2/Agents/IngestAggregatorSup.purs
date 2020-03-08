@@ -15,8 +15,9 @@ import Pinto as Pinto
 import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStartTemplate, childType)
 import Pinto.Sup as Sup
 import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
-import Rtsv2.Agents.PersistentInstanceState as PersistentInstanceState
 import Rtsv2.Agents.IngestAggregatorInstanceSup as IngestAggregatorInstanceSup
+import Rtsv2.Agents.IntraPoP as IntraPoP
+import Rtsv2.Agents.PersistentInstanceState as PersistentInstanceState
 import Rtsv2.Names as Names
 import Shared.Agent as Agent
 import Shared.LlnwApiTypes (StreamDetails)
@@ -32,10 +33,14 @@ startLink _ = Sup.startLink serverName init
 
 startAggregator :: StreamDetails -> Effect StartChildResult
 startAggregator streamDetails =
-  Sup.startSimpleChild childTemplate serverName {childStartLink: IngestAggregatorInstanceSup.startLink streamDetails
-                                                , serverName: Names.ingestAggregatorInstanceStateName (IngestAggregatorInstance.streamDetailsToAggregatorKey streamDetails)
-                                                , domain: domain
-                                                }
+  let
+    aggregatorKey = IngestAggregatorInstance.streamDetailsToAggregatorKey streamDetails
+  in
+   Sup.startSimpleChild childTemplate serverName { childStartLink: IngestAggregatorInstanceSup.startLink aggregatorKey streamDetails
+                                                 , childStopAction: IntraPoP.announceLocalAggregatorStopped aggregatorKey
+                                                 , serverName: Names.ingestAggregatorInstanceStateName aggregatorKey
+                                                 , domain: domain
+                                                 }
 
 init :: Effect Sup.SupervisorSpec
 init = do

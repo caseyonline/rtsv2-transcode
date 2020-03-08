@@ -15,12 +15,13 @@ import Pinto.Sup as Sup
 import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
 import Rtsv2.Names as Names
 import Shared.LlnwApiTypes (StreamDetails)
+import Shared.Stream (AggregatorKey)
 
-startLink :: StreamDetails -> IngestAggregatorInstance.StateServerName -> Effect Pinto.StartLinkResult
-startLink streamDetails stateServerName = Sup.startLink (spy "XXX IngestAggregatorInstanceSup" (Names.ingestAggregatorInstanceSupName (IngestAggregatorInstance.streamDetailsToAggregatorKey streamDetails))) (init streamDetails stateServerName)
+startLink :: AggregatorKey -> StreamDetails -> IngestAggregatorInstance.StateServerName -> Effect Pinto.StartLinkResult
+startLink aggregatorKey streamDetails stateServerName = Sup.startLink (Names.ingestAggregatorInstanceSupName aggregatorKey) (init aggregatorKey streamDetails stateServerName)
 
-init :: StreamDetails -> IngestAggregatorInstance.StateServerName -> Effect SupervisorSpec
-init streamDetails stateServerName = do
+init :: AggregatorKey -> StreamDetails -> IngestAggregatorInstance.StateServerName -> Effect SupervisorSpec
+init aggregatorKey streamDetails stateServerName = do
   pure $ Sup.buildSupervisor
     # Sup.supervisorIntensity 50
     # Sup.supervisorStrategy OneForAll
@@ -31,6 +32,6 @@ init streamDetails stateServerName = do
       ( Sup.buildChild
         # Sup.childType Worker
         # Sup.childId "ingestAggregatorInstance"
-        # Sup.childStart (IngestAggregatorInstance.startLink streamDetails) stateServerName
+        # Sup.childStart (IngestAggregatorInstance.startLink aggregatorKey streamDetails) stateServerName
       )
       : nil

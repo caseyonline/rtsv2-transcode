@@ -41,7 +41,7 @@ import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Rtsv2.Agents.PersistentInstanceState as PersistentInstanceState
-import Rtsv2.Agents.IntraPoP (announceLocalAggregatorIsAvailable, announceLocalAggregatorStopped)
+import Rtsv2.Agents.IntraPoP (announceLocalAggregatorIsAvailable)
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
 import Rtsv2.Agents.StreamRelayTypes (RegisterRelayPayload)
 import Rtsv2.Config as Config
@@ -167,8 +167,8 @@ slotConfiguration (AggregatorKey (SlotId slotId) _streamRole) =
   -- TODO: the key is what the slot config should be keyed on...
   slotConfigurationImpl slotId
 
-startLink :: StreamDetails -> StateServerName -> Effect StartLinkResult
-startLink streamDetails stateServerName = Gen.startLink (serverName $ streamDetailsToAggregatorKey streamDetails) (init streamDetails stateServerName) handleInfo
+startLink :: AggregatorKey -> StreamDetails -> StateServerName -> Effect StartLinkResult
+startLink aggregatorKey streamDetails stateServerName = Gen.startLink (serverName aggregatorKey) (init streamDetails stateServerName) handleInfo
 
 init :: StreamDetails -> StateServerName -> Effect State
 init streamDetails@{role: slotRole, slot: {id: slotId}} stateServerName = do
@@ -214,7 +214,6 @@ handleInfo msg state@{activeProfileNames, aggregatorKey, stateServerName} =
     MaybeStop
       | size activeProfileNames == 0 -> do
         logInfo "Ingest Aggregator stopping" {aggregatorKey}
-        announceLocalAggregatorStopped aggregatorKey
         pure $ CastStop state
       | otherwise -> pure $ CastNoReply state
 

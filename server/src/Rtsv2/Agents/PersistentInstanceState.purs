@@ -28,6 +28,7 @@ type StateServerName instanceData = ServerName (State instanceData) Msg
 
 type StartArgs instanceData =
   { childStartLink :: StateServerName instanceData -> Effect StartLinkResult
+  , childStopAction :: Effect Unit
   , serverName :: StateServerName instanceData
   , domain :: List Atom
   }
@@ -39,6 +40,7 @@ data Msg = InstanceDown Pid Foreign
 type State instanceData =
   { instanceData :: Maybe instanceData
   , instancePid :: Maybe Pid
+  , childStopAction :: Effect Unit
   , domain :: List Atom
   }
 
@@ -62,7 +64,7 @@ recordInstanceData serverName instanceData = do
       CallReply unit state{instanceData = Just instanceData}
 
 init :: forall instanceData. StartArgs instanceData -> Effect (State instanceData)
-init {serverName, childStartLink, domain} = do
+init {serverName, childStartLink, childStopAction, domain} = do
   childResult <- childStartLink serverName
   case childResult of
     Ok pid -> do
@@ -85,22 +87,33 @@ init {serverName, childStartLink, domain} = do
       pure unit
   pure { instanceData: Nothing
        , instancePid: Nothing
+       , childStopAction
        , domain
        }
 
 handleInfo :: forall instanceData. Msg -> State instanceData -> Effect (CastResult (State instanceData))
-handleInfo msg state@{domain} = case msg of
+handleInfo msg state@{childStopAction, domain} = case msg of
   Stop ->
+    -- This clause only exists because we can't return a stop from init
     pure $ CastStop state
   ChildDown pid reason -> do
     logInfo domain "State exiting due to child exit" { pid
                                                      , reason}
+    childStopAction
     pure $ CastStop state
+
   InstanceDown pid reason ->
     case Erl.mapExitReason reason of
-      Normal -> pure $ CastStop state
-      Shutdown _ -> pure $ CastStop state
-      Other _ -> pure $ CastNoReply state
+      Normal -> do
+        childStopAction
+        pure $ CastStop state
+
+      Shutdown _ -> do
+        childStopAction
+        pure $ CastStop state
+
+      Other _ ->
+        pure $ CastNoReply state
 
 --------------------------------------------------------------------------------
 -- Log helpers
