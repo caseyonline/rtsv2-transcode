@@ -39,6 +39,7 @@ import Rtsv2.Handler.Load as LoadHandler
 import Rtsv2.Handler.PoPDefinition as PoPDefinitionHandler
 import Rtsv2.Handler.Relay as RelayHandler
 import Rtsv2.Handler.TransPoP as TransPoPHandler
+import Rtsv2.Handler.Chaos as ChaosHandler
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Serf (Ip(..))
@@ -113,6 +114,7 @@ init args = do
         , "IngestStopE"                                 : IngestHandler.ingestStop
         , "ClientStartE"                                : ClientHandler.clientStart
         , "ClientStopE"                                 : ClientHandler.clientStop
+        , "Chaos"                                       : ChaosHandler.chaos
 
         , "StreamAuthTypeE"                             : LlnwStubHandler.streamAuthType
         , "StreamAuthE"                                 : LlnwStubHandler.streamAuth

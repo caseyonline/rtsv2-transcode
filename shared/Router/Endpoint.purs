@@ -79,6 +79,8 @@ data Endpoint
   | IntraPoPTestHelperE
   | LoadE
   | RelayProxiedStatsE SlotId SlotRole
+  | Chaos
+
 
   | IngestStartE Canary RtmpShortName SlotNameAndProfileName
   | IngestStopE Canary SlotId SlotRole ProfileName
@@ -158,6 +160,7 @@ endpoint = root $ sum
   , "IntraPoPTestHelperE"                              : "system" / "test" / path "intraPoP" noArgs
   , "LoadE"                                            : "system" / "test" / path "load" noArgs
   , "RelayProxiedStatsE"                               : "system" / "test" / "proxied" / "relay" / slotId segment / slotRole segment
+  , "Chaos"                                            : "system" / "test" / path "chaos" noArgs
 
   , "IngestStartE"                                     : "system" / "test" / canary segment / "ingest" / shortName segment / slotNameAndProfile segment / "start"
   , "IngestStopE"                                      : "system" / "test" / canary segment / "ingest" / slotId segment / slotRole segment / profileName segment / "stop"
