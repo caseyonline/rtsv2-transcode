@@ -36,57 +36,57 @@ instance showCanary :: Show Canary where
   show Canary = "canary"
 
 data Endpoint
-  = VMMetricsE
-  | TransPoPLeaderE
-  | IntraPoPTestHelperE
+  =
+  -- Public
+    ClientPlayerE Canary SlotId
+  | ClientPlayerJsE Canary SlotId (Array String)
+  | ClientPlayerControlE Canary SlotId
+
+  -- Support
+  | VMMetricsE
   | TimedRoutesE
   | TimedRoutesForPoPE PoPName
   | HealthCheckE
   | ServerStateE
   | PoPDefinitionE
-  | LoadE
   | JsonLdContext JsonLdContextType
-
-  | EgestE
   | EgestStatsE SlotId
+  | RelayStatsE SlotId SlotRole
+  | IngestAggregatorE SlotId SlotRole
+  | IngestAggregatorPlayerE SlotId SlotRole
+  | IngestAggregatorPlayerJsE SlotId SlotRole (Array String)
+  | IngestAggregatorActiveIngestsPlayerE SlotId SlotRole ProfileName
+  | IngestAggregatorActiveIngestsPlayerJsE SlotId SlotRole ProfileName (Array String)
+  | IngestAggregatorActiveIngestsPlayerControlE SlotId SlotRole ProfileName
+  | IngestAggregatorsE
+  | IngestInstancesMetricsE
+  | IngestInstanceE SlotId SlotRole ProfileName
+  | ClientAppAssetsE (Array String)
+  | ClientAppRouteHTMLE
 
+  -- System
+  | TransPoPLeaderE
+  | EgestE
   | RelayE
   | RelayEnsureStartedE
   | RelayRegisterEgestE
   | RelayRegisterRelayE
-  | RelayProxiedStatsE SlotId SlotRole
-  | RelayStatsE SlotId SlotRole
   | RelaySlotConfigurationE SlotId SlotRole
-
-  | IngestAggregatorE SlotId SlotRole
-  | IngestAggregatorPlayerE SlotId SlotRole
-  | IngestAggregatorPlayerJsE SlotId SlotRole (Array String)
   | IngestAggregatorActiveIngestsE SlotId SlotRole ProfileName
-  | IngestAggregatorActiveIngestsPlayerE SlotId SlotRole ProfileName
-  | IngestAggregatorActiveIngestsPlayerJsE SlotId SlotRole ProfileName (Array String)
-
-  | IngestAggregatorActiveIngestsPlayerControlE SlotId SlotRole ProfileName
-
   | IngestAggregatorSlotConfigurationE SlotId SlotRole
   | IngestAggregatorRegisterRelayE
-  | IngestAggregatorsE
-  | IngestInstancesMetricsE
-  | IngestInstanceE SlotId SlotRole ProfileName
   | IngestInstanceLlwpE SlotId SlotRole ProfileName
+  | IntraPoPTestHelperE
+  | LoadE
+  | RelayProxiedStatsE SlotId SlotRole
+
   | IngestStartE Canary RtmpShortName SlotNameAndProfileName
   | IngestStopE Canary SlotId SlotRole ProfileName
-
-  | ClientAppAssetsE (Array String)
-  | ClientAppRouteHTMLE
-
   | ClientStartE Canary SlotId
   | ClientStopE Canary SlotId String
-  | ClientPlayerE Canary SlotId
-  | ClientPlayerJsE Canary SlotId (Array String)
-  | ClientPlayerControlE Canary SlotId
 
-  | StreamAuthE
   | StreamAuthTypeE
+  | StreamAuthE
   | StreamPublishE
 
   | WorkflowsE
@@ -109,12 +109,12 @@ instance showEndpoint :: Show Endpoint where
 endpoint :: RouteDuplex' Endpoint
 endpoint = root $ sum
   {
-    -- Public
+  -- Public
     "ClientPlayerE"                                    : "public" / canary segment / "client" / slotId segment / "player"
   , "ClientPlayerJsE"                                  : "public" / canary segment / "client" / slotId segment / "js" / rest
   , "ClientPlayerControlE"                             : "public" / canary segment / "client" / slotId segment / "session" -- URL duplicated in Web.purs
 
-    -- support
+  -- Support
   , "VMMetricsE"                                       : "support" / "vm" / path "metrics" noArgs
   , "TimedRoutesE"                                     : "support" / path "timedRoutes" noArgs
   , "TimedRoutesForPoPE"                               : "support" / "timedRoutes" / popName segment
@@ -138,7 +138,7 @@ endpoint = root $ sum
   , "ClientAppAssetsE"                                 : "support" / "assets" / rest
   , "ClientAppRouteHTMLE"                              : "support" / noArgs
 
-    -- system
+  -- System
   , "TransPoPLeaderE"                                  : "system" / path "transPoPLeader" noArgs
 
   , "EgestE"                                           : "system" / path "egest"  noArgs

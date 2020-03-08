@@ -66,55 +66,56 @@ init args = do
   Stetson.configure
     # Stetson.routes
         Router.endpoint
-        { "VMMetricsE"                                  : HealthHandler.vmMetrics
-        , "TransPoPLeaderE"                             : IntraPoPHandler.leader
-        , "IntraPoPTestHelperE"                         : IntraPoPHandler.testHelper
+        {
+        -- Public
+          "ClientPlayerE"                               :  \(_ :: Canary) (_ :: SlotId) -> PrivFile "rtsv2" "www/egestReferencePlayer.html"
+        , "ClientPlayerJsE"                             : \(_ :: Canary) (_ :: SlotId) -> PrivDir "rtsv2" "www/assets/js"
+        , "ClientPlayerControlE"                        : CowboyRoutePlaceholder
+
+        -- Support
+        , "VMMetricsE"                                  : HealthHandler.vmMetrics
         , "TimedRoutesE"                                : TransPoPHandler.timedRoutes
         , "TimedRoutesForPoPE"                          : TransPoPHandler.timedRoutesForPoP
         , "HealthCheckE"                                : HealthHandler.healthCheck
         , "ServerStateE"                                : IntraPoPHandler.publicState
         , "PoPDefinitionE"                              : PoPDefinitionHandler.popDefinition
-        , "LoadE"                                       : LoadHandler.load
         , "JsonLdContext"                               : JsonLd.getContextJson
-
         , "EgestStatsE"                                 : EgestStatsHandler.stats
-        , "EgestE"                                      : dummyHandler -- TODO write this - needed for a client to create a remote egest
+        , "RelayStatsE"                                 : RelayHandler.stats
+        , "IngestAggregatorE"                           : IngestAggregatorHandler.ingestAggregator
+        , "IngestAggregatorPlayerE"                     : \(_ :: SlotId) (_ :: SlotRole) -> PrivFile "rtsv2" "www/aggregatorPlayer.html"
+        , "IngestAggregatorPlayerJsE"                   : \(_ :: SlotId) (_ :: SlotRole) -> PrivDir "rtsv2" "www/assets/js"
+        , "IngestAggregatorActiveIngestsPlayerE"        : \(_ :: SlotId) (_ :: SlotRole) (_ :: ProfileName) -> PrivFile "rtsv2" "www/play.html"
+        , "IngestAggregatorActiveIngestsPlayerJsE"      : \(_ :: SlotId) (_ :: SlotRole) (_ :: ProfileName) -> PrivDir "rtsv2" "www/assets/js"
+        , "IngestAggregatorActiveIngestsPlayerControlE" : CowboyRoutePlaceholder
+        , "IngestAggregatorsE"                          : IngestAggregatorHandler.ingestAggregators
+        , "IngestInstancesMetricsE"                     : IngestHandler.ingestInstancesMetrics            , "IngestInstanceE"                             : IngestHandler.ingestInstance
+        , "ClientAppAssetsE"                            : PrivDir Config.appName "www/assets"
+        , "ClientAppRouteHTMLE"                         : PrivFile Config.appName "www/index.html"
 
+        -- System
+        , "TransPoPLeaderE"                             : IntraPoPHandler.leader
+        , "EgestE"                                      : dummyHandler -- TODO write this - needed for a client to create a remote egest
         , "RelayE"                                      : RelayHandler.startResource
         , "RelayEnsureStartedE"                         : RelayHandler.ensureStarted
         , "RelayRegisterEgestE"                         : RelayHandler.registerEgest
         , "RelayRegisterRelayE"                         : RelayHandler.registerRelay
-        , "RelayProxiedStatsE"                          : RelayHandler.proxiedStats
-        , "RelayStatsE"                                 : RelayHandler.stats
         , "RelaySlotConfigurationE"                     : RelayHandler.slotConfiguration
-
-        , "IngestAggregatorE"                           : IngestAggregatorHandler.ingestAggregator
-        , "IngestAggregatorPlayerE"                     : \(_ :: SlotId) (_ :: SlotRole) -> PrivFile "rtsv2" "www/aggregatorPlayer.html"
-        , "IngestAggregatorPlayerJsE"                   : \(_ :: SlotId) (_ :: SlotRole) -> PrivDir "rtsv2" "www/assets/js"
         , "IngestAggregatorActiveIngestsE"              : IngestAggregatorHandler.ingestAggregatorsActiveIngest
-        , "IngestAggregatorActiveIngestsPlayerE"        : \(_ :: SlotId) (_ :: SlotRole) (_ :: ProfileName) -> PrivFile "rtsv2" "www/play.html"
-        , "IngestAggregatorActiveIngestsPlayerJsE"      : \(_ :: SlotId) (_ :: SlotRole) (_ :: ProfileName) -> PrivDir "rtsv2" "www/assets/js"
-        , "IngestAggregatorActiveIngestsPlayerControlE" : CowboyRoutePlaceholder
         , "IngestAggregatorSlotConfigurationE"          : IngestAggregatorHandler.slotConfiguration
         , "IngestAggregatorRegisterRelayE"              : IngestAggregatorHandler.registerRelay
-        , "IngestAggregatorsE"                          : IngestAggregatorHandler.ingestAggregators
-        , "IngestInstancesMetricsE"                     : IngestHandler.ingestInstancesMetrics
-        , "IngestInstanceE"                             : IngestHandler.ingestInstance
         , "IngestInstanceLlwpE"                         : CowboyRoutePlaceholder
+        , "IntraPoPTestHelperE"                         : IntraPoPHandler.testHelper
+        , "LoadE"                                       : LoadHandler.load
+        , "RelayProxiedStatsE"                          : RelayHandler.proxiedStats
+
         , "IngestStartE"                                : IngestHandler.ingestStart
         , "IngestStopE"                                 : IngestHandler.ingestStop
-
-        , "ClientAppAssetsE"                            : PrivDir Config.appName "www/assets"
-        , "ClientAppRouteHTMLE"                         : PrivFile Config.appName "www/index.html"
-
         , "ClientStartE"                                : ClientHandler.clientStart
         , "ClientStopE"                                 : ClientHandler.clientStop
-        , "ClientPlayerE"                               :  \(_ :: Canary) (_ :: SlotId) -> PrivFile "rtsv2" "www/egestReferencePlayer.html"
-        , "ClientPlayerJsE"                             : \(_ :: Canary) (_ :: SlotId) -> PrivDir "rtsv2" "www/assets/js"
-        , "ClientPlayerControlE"                        : CowboyRoutePlaceholder
 
-        , "StreamAuthE"                                 : LlnwStubHandler.streamAuth
         , "StreamAuthTypeE"                             : LlnwStubHandler.streamAuthType
+        , "StreamAuthE"                                 : LlnwStubHandler.streamAuth
         , "StreamPublishE"                              : LlnwStubHandler.streamPublish
 
         , "WorkflowsE"                                  : CowboyRoutePlaceholder -- id3as_workflows_resource
