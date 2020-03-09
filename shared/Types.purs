@@ -16,6 +16,7 @@ module Shared.Types
        , Username(..)
        , CheckBoxState(..)
        , JsonLdContextType(..)
+       , ChaosPayload
        , toServer
        , toServerLoad
        , serverLoadToServer
@@ -41,6 +42,12 @@ data JsonLdContextType = ServerContext
                        | DeliverToContext
                        | TimedRouteNeighbourContext
                        | ActiveIngestContext
+
+type ChaosPayload =
+  { name :: String
+  , num_hits :: Maybe Int
+  , delay_between_hits_ms :: Maybe Int
+  }
 
 newtype ServerAddress = ServerAddress String
 

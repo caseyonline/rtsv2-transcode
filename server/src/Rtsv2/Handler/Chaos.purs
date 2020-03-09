@@ -5,15 +5,10 @@ module Rtsv2.Handler.Chaos
 import Prelude
 
 import Effect (Effect)
+import Shared.Types (ChaosPayload)
 import StetsonHelper (PostHandler, processPostPayload)
 
 foreign import chaosImpl :: ChaosPayload -> Effect Unit
-
-type ChaosPayload =
-  { name :: String
-  , num_hits :: Int
-  , delay_between_hits_ms :: Int
-  }
 
 chaos :: PostHandler ChaosPayload
 chaos = processPostPayload chaosImpl

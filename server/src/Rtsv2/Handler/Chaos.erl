@@ -5,12 +5,16 @@
         ]).
 
 chaosImpl(#{ name := NameStr
-           , num_hits := NumHits
-           , delay_between_hits_ms := DelayMs }) ->
+           , num_hits := MNumHits
+           , delay_between_hits_ms := MDelayMs }) ->
   fun() ->
       {ok, Tokens, _} = erl_scan:string(binary_to_list(NameStr)),
       {ok, AbsForm} = erl_parse:parse_exprs(Tokens),
       {value, Name, _} = erl_eval:exprs(AbsForm, erl_eval:new_bindings()),
+
+      NumHits = fromMaybe(1, MNumHits),
+
+      DelayMs = fromMaybe(1, MDelayMs),
 
       Pid = case Name of
               {n, l, _} -> gproc:where(Name);
@@ -33,3 +37,8 @@ do_kill(Pid, NumHits, DelayMs) ->
   exit(Pid, kill),
   timer:sleep(DelayMs),
   do_kill(Pid, NumHits - 1, DelayMs).
+
+fromMaybe(Default, {nothing}) ->
+  Default;
+fromMaybe(_Default, {just, Value}) ->
+  Value.

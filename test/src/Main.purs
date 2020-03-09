@@ -28,7 +28,7 @@ import Partial.Unsafe (unsafePartial)
 import Prim.Row (class Union)
 import Shared.Stream (ProfileName(..), SlotRole(..), SlotNameAndProfileName(..))
 import Shared.Router.Endpoint (Endpoint(..), makeUrl, Canary(..))
-import Shared.Types (ServerAddress(..), extractAddress)
+import Shared.Types (ServerAddress(..), ChaosPayload, extractAddress)
 import Shared.Types.Agent.State as PublicState
 import Shared.JsonLd as JsonLd
 import Simple.JSON (class ReadForeign)
@@ -171,6 +171,12 @@ main =
 
     intraPoPState node               = get (M.URL $ makeUrl' node ServerStateE)
 
+    killProcess node chaos           = fetch (M.URL $ makeUrl' node (Chaos))
+                                         { method: M.postMethod
+                                         , body: SimpleJSON.writeJSON (chaos :: ChaosPayload)
+                                         , headers: M.makeHeaders { "Content-Type": "application/json" }
+                                         }
+
     clientStart node slotId          = fetch (M.URL $ makeUrl' node (ClientStartE Live slotId))
                                          { method: M.postMethod
                                          , body: "{}"
@@ -293,6 +299,8 @@ main =
     delayMs = delay <<< Milliseconds
 
     waitForMessageTimeout          = delayMs 2000.0
+
+    waitForSupervisorRecovery      = delayMs  50.0
 
     waitForAsyncRelayStart         = delayMs  100.0
     waitForAsyncRelayStop          = delayMs  100.0
@@ -632,7 +640,6 @@ main =
 
               clientStart p1n2 slot1           >>= assertStatusCode 204 >>= as  "Client can join once more"
 
-
       describe "four pop setup" do
         let
           p1Nodes = [p1n1]  -- iad
@@ -669,6 +676,31 @@ main =
                                                    >>= assertRelayForRelay [p1n1, p2n1]
                                                        >>= assertRelayForEgest []
                                                                         >>= as  "fra relays for both iad and dal with no egests of its own"
+
+      describe "resilience" do
+        let
+          p1Nodes = [p1n1, p1n2, p1n3]
+          p2Nodes = [p2n1, p2n2]
+          nodes = p1Nodes <> p2Nodes
+        before_ (do
+                   startSession nodes
+                   launch nodes
+                ) do
+          after_ stopSession do
+            it "Launch ingest, terminate ingest aggregator, new ingest aggregator continues to pull from ingest" do
+              ingestStart    p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
+              waitForAsyncProfileStart                                     >>= as' "wait for async start of profile"
+              aggregatorStats p1n1 slot1          >>= assertStatusCode 200
+                                                      >>= assertAggregator [low]
+                                                                           >>= as  "aggregator has low only"
+              killProcess p1n1 {name: "{n, l, {<<\"IngestAggregator\">>,{aggregatorKey,1,{primary}}}}.",
+                                num_hits: Nothing,
+                                delay_between_hits_ms: Nothing} >>=  assertStatusCode 204 >>= as "kill process"
+              waitForSupervisorRecovery  >>= as' "wait for supervisor"
+              aggregatorStats p1n1 slot1          >>= assertStatusCode 200
+                                                      >>= assertAggregator [low]
+                                                                           >>= as  "aggregator still has low"
+
 
     describe "Cleanup" do
       after_ stopSession do
