@@ -63,6 +63,7 @@ import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Stream (AggregatorKey(..), RelayKey(..), SlotId(..), SlotRole)
 import Shared.Types (PoPName, DeliverTo, EgestServer, RelayServer(..), Server(..), ServerAddress(..), extractPoP, extractAddress)
 import Shared.Types.Agent.State as PublicState
+import Shared.UUID (UUID)
 import SpudGun (SpudResponse(..), JsonResponseError, StatusCode(..))
 import SpudGun as SpudGun
 
@@ -71,10 +72,10 @@ import SpudGun as SpudGun
 -- -----------------------------------------------------------------------------
 foreign import data WorkflowHandle :: Type
 
-foreign import startOriginWorkflowFFI :: Int -> Effect WorkflowHandle
+foreign import startOriginWorkflowFFI :: UUID -> Effect WorkflowHandle
 foreign import applyOriginPlanFFI :: OriginStreamRelayPlan -> WorkflowHandle -> Effect OriginStreamRelayApplyResult
 
-foreign import startDownstreamWorkflowFFI :: Int -> Effect WorkflowHandle
+foreign import startDownstreamWorkflowFFI :: UUID -> Effect WorkflowHandle
 foreign import applyDownstreamPlanFFI :: DownstreamStreamRelayPlan -> WorkflowHandle -> Effect DownstreamStreamRelayApplyResult
 
 foreign import setSlotConfigurationFFI :: RelayKey -> SlotConfiguration -> Effect Unit

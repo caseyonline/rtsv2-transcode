@@ -155,7 +155,7 @@ statsToPrometheus stats =
 
     rtmpMetricsToPrometheus timestamp slotId profileId streamRole {totalBytesSent, totalBytesReceived, lastBytesReadReport} page =
       let
-        labels = Prometheus.toLabels $ (Tuple "slot" (Prometheus.toLabelValue (unwrap slotId))) :
+        labels = Prometheus.toLabels $ (Tuple "slot" (Prometheus.toLabelValue (show (unwrap slotId)))) :
                                        (Tuple "profile" (Prometheus.toLabelValue (unwrap profileId))) :
                                        (Tuple "role" (Prometheus.toLabelValue (show streamRole))) :
                                        nil
@@ -166,7 +166,7 @@ statsToPrometheus stats =
 
     labelsForStream :: forall a. SlotId -> ProfileName -> SlotRole -> Stream a -> Prometheus.IOLabels
     labelsForStream slotId profileId role { streamId, frameType, profileName} =
-      Prometheus.toLabels $ (Tuple "slot" (Prometheus.toLabelValue (unwrap slotId))) :
+      Prometheus.toLabels $ (Tuple "slot" (Prometheus.toLabelValue (show (unwrap slotId)))) :
                             (Tuple "profile" (Prometheus.toLabelValue (unwrap profileId))) :
                             (Tuple "role" (Prometheus.toLabelValue (show role))) :
                             (Tuple "stream_id" (Prometheus.toLabelValue streamId)) :

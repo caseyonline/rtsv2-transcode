@@ -32,15 +32,15 @@ import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Eq (genericEq)
 import Data.Generic.Rep.Ord (genericCompare)
 import Data.Generic.Rep.Show (genericShow)
-import Data.Int (fromString)
 import Data.List.NonEmpty (singleton)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype, unwrap)
 import Data.String (Pattern(..), split)
 import Foreign (ForeignError(..), readString, unsafeToForeign)
 import Simple.JSON (class ReadForeign, class WriteForeign, readImpl, writeImpl)
+import Shared.UUID (UUID, fromString)
 
-newtype SlotId = SlotId Int
+newtype SlotId = SlotId UUID
 
 data SlotRole = Primary
                 | Backup

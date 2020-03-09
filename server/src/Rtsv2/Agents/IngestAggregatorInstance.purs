@@ -64,16 +64,17 @@ import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Stream (AggregatorKey(..), IngestKey(..), ProfileName, SlotId(..), SlotRole, ingestKeyToAggregatorKey)
 import Shared.Types (DeliverTo, RelayServer, Server, extractAddress)
 import Shared.Types.Agent.State as PublicState
+import Shared.UUID (UUID)
 
 -- TODO: proper type for handle, as done in other places
 type WorkflowHandle = Foreign
-foreign import startWorkflowImpl :: Int -> Array (Tuple3 IngestKey String String) -> Effect (Tuple2 WorkflowHandle (List Pid))
+foreign import startWorkflowImpl :: UUID -> Array (Tuple3 IngestKey String String) -> Effect (Tuple2 WorkflowHandle (List Pid))
 foreign import stopWorkflowImpl :: WorkflowHandle -> Effect Unit
 foreign import addLocalIngestImpl :: WorkflowHandle -> IngestKey -> Effect Unit
 foreign import addRemoteIngestImpl :: WorkflowHandle -> IngestKey -> String -> Effect Unit
 foreign import removeIngestImpl :: WorkflowHandle -> IngestKey -> Effect Unit
 foreign import registerStreamRelayImpl :: WorkflowHandle -> String -> Int -> Effect Unit
-foreign import slotConfigurationImpl :: Int -> Effect (Maybe SlotConfiguration)
+foreign import slotConfigurationImpl :: UUID -> Effect (Maybe SlotConfiguration)
 
 type PersistentState = { localIngests :: Set ProfileName
                        , remoteIngests :: Map ProfileName (Tuple Server Ref)

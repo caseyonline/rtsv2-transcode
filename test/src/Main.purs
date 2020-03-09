@@ -346,7 +346,7 @@ main =
             states <- traverse forceGetState (Array.toUnfoldable p1Nodes)
             assertBodiesSame states                                      >>= as "All nodes agree on leader and other intial state"
 
-    describe "Ingest tests"
+    describeOnly "Ingest tests"
       let
         p1Nodes = [p1n1, p1n2, p1n3]
         nodes = p1Nodes

@@ -17,7 +17,6 @@ import Data.Array ((!!))
 import Data.Either (note)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show (genericShow)
-import Data.Int (fromString)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype, unwrap, wrap)
 import Data.String (Pattern(..), split)
@@ -27,6 +26,7 @@ import Routing.Duplex.Generic.Syntax ((/))
 import Shared.Common (Url)
 import Shared.Stream (ProfileName(..), RtmpShortName, SlotId, SlotIdAndProfileName(..), SlotNameAndProfileName(..), SlotRole(..))
 import Shared.Types (JsonLdContextType(..), PoPName, ServerAddress(..), Username(..), extractAddress)
+import Shared.UUID (fromString)
 
 data Canary = Live
             | Canary
