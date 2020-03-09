@@ -16,6 +16,7 @@
 
 -export([
          startWorkflowImpl/2,
+         stopWorkflowImpl/1,
          addLocalIngestImpl/2,
          addRemoteIngestImpl/3,
          removeIngestImpl/2,
@@ -64,6 +65,11 @@ startWorkflowImpl(SlotId, ProfileArray) ->
         startWorkflow(SlotId, EnrichedProfiles)
   end.
 
+stopWorkflowImpl(Handle) ->
+  fun() ->
+      ok = id3as_workflow:stop(Handle)
+  end.
+
 addLocalIngestImpl(Handle, IngestKey) ->
   fun() ->
       ok = id3as_workflow:ioctl(ingests, {add_local_ingest, IngestKey}, Handle)
@@ -102,13 +108,12 @@ slotConfigurationImpl(SlotId) ->
 %%------------------------------------------------------------------------------
 startWorkflow(SlotId, Profiles) ->
 
-  %% TODO - need to close down the PIDS
-  _Pids = lists:map(fun(IngestKey) ->
-                        {ok, Pid} = webrtc_stream_server:start_link(IngestKey, #{stream_module => rtsv2_webrtc_ingest_preview_stream_handler,
-                                                                                 stream_module_args => [IngestKey]}),
-                        Pid
-                    end,
-                    [ IngestKey || #enriched_slot_profile{ ingest_key = IngestKey } <- Profiles ]),
+  Pids = lists:map(fun(IngestKey) ->
+                       {ok, Pid} = webrtc_stream_server:start_link(IngestKey, #{stream_module => rtsv2_webrtc_ingest_preview_stream_handler,
+                                                                                stream_module_args => [IngestKey]}),
+                       Pid
+                   end,
+                   [ IngestKey || #enriched_slot_profile{ ingest_key = IngestKey } <- Profiles ]),
 
   AudioConfig = #audio_transcode_config{
                    input = #frame_spec{
@@ -302,7 +307,7 @@ startWorkflow(SlotId, Profiles) ->
 
   {ok, Handle} = id3as_workflow:workflow_handle(Pid),
 
-  Handle.
+  {Handle, Pids}.
 
 mux_to_rtp(#frame{ profile = #audio_profile{ codec = Codec } } = Frame, { AudioEgest, VideoEgest }) ->
   { NewAudioEgest, RTPs } = rtp_opus_egest:step(AudioEgest, Frame),

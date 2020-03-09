@@ -5,6 +5,7 @@ module Erl.Utils
        , makeRef
        , privDir
        , self
+       , shutdown
        , trapExit
        , mapExitReason
        , Ref
@@ -31,6 +32,7 @@ foreign import data Ref :: Type
 foreign import selfImpl :: Effect Pid
 foreign import trapExitImpl :: Boolean -> Effect Boolean
 foreign import mapExitReasonImpl :: Foreign -> ExitReason
+foreign import shutdownImpl :: Pid -> Effect Unit
 
 data ExitReason = Normal
                 | Shutdown Foreign
@@ -62,4 +64,8 @@ trapExit = trapExitImpl
 self :: Effect Pid
 self = selfImpl
 
+shutdown :: Pid -> Effect Unit
+shutdown = shutdownImpl
+
+mapExitReason :: Foreign -> ExitReason
 mapExitReason = mapExitReasonImpl

@@ -26,13 +26,17 @@ import Data.Newtype (unwrap)
 import Data.Set (Set)
 import Data.Set as Set
 import Data.Symbol (SProxy(..))
+import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
 import Erl.Data.Map (Map, delete, insert, size, toUnfoldable)
 import Erl.Data.Map as Map
-import Erl.Data.Tuple (Tuple3, tuple3)
+import Erl.Data.Tuple (Tuple2, Tuple3, fst, snd, tuple3)
+import Erl.Process.Raw (Pid)
+import Erl.Utils (shutdown)
+import Erl.Utils as Erl
 import Foreign (Foreign)
 import Logger (Logger, spy)
 import Logger as Logger
@@ -40,8 +44,8 @@ import Pinto (ServerName, StartLinkResult, isRegistered)
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
-import Rtsv2.Agents.PersistentInstanceState as PersistentInstanceState
 import Rtsv2.Agents.IntraPoP (announceLocalAggregatorIsAvailable)
+import Rtsv2.Agents.PersistentInstanceState as PersistentInstanceState
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
 import Rtsv2.Agents.StreamRelayTypes (RegisterRelayPayload)
 import Rtsv2.Config as Config
@@ -57,7 +61,8 @@ import Shared.Types.Agent.State as PublicState
 
 -- TODO: proper type for handle, as done in other places
 type WorkflowHandle = Foreign
-foreign import startWorkflowImpl :: Int -> Array (Tuple3 IngestKey String String) -> Effect WorkflowHandle
+foreign import startWorkflowImpl :: Int -> Array (Tuple3 IngestKey String String) -> Effect (Tuple2 WorkflowHandle (List Pid))
+foreign import stopWorkflowImpl :: WorkflowHandle -> Effect Unit
 foreign import addLocalIngestImpl :: WorkflowHandle -> IngestKey -> Effect Unit
 foreign import addRemoteIngestImpl :: WorkflowHandle -> IngestKey -> String -> Effect Unit
 foreign import removeIngestImpl :: WorkflowHandle -> IngestKey -> Effect Unit
@@ -80,6 +85,7 @@ type State
     , activeProfileNames :: Map ProfileName ServerAddress
     , downstreamRelays :: List (DeliverTo RelayServer)
     , workflowHandle :: WorkflowHandle
+    , webRtcStreamServers :: List Pid
     , stateServerName :: StateServerName
     }
 
@@ -172,19 +178,24 @@ startLink aggregatorKey streamDetails stateServerName = Gen.startLink (serverNam
 
 init :: StreamDetails -> StateServerName -> Effect State
 init streamDetails@{role: slotRole, slot: {id: slotId}} stateServerName = do
+  let
+    thisServerName = (serverName (streamDetailsToAggregatorKey streamDetails))
+  _ <- Erl.trapExit true
   logInfo "Ingest Aggregator starting" {aggregatorKey, streamDetails}
   config <- Config.ingestAggregatorAgentConfig
   thisServer <- PoPDefinition.getThisServer
   announceLocalAggregatorIsAvailable aggregatorKey
-  workflowHandle <- startWorkflowImpl (unwrap streamDetails.slot.id) $ mkKey <$> streamDetails.slot.profiles
-  _ <- Timer.sendAfter (serverName (streamDetailsToAggregatorKey streamDetails)) 0 Init
+  workflowHandleAndPids <- startWorkflowImpl (unwrap streamDetails.slot.id) $ mkKey <$> streamDetails.slot.profiles
+  Gen.registerTerminate thisServerName terminate
+  _ <- Timer.sendAfter thisServerName 0 Init
   pure { config : config
        , thisAddress : extractAddress thisServer
        , aggregatorKey
        , streamDetails
        , activeProfileNames : Map.empty
        , downstreamRelays : nil
-       , workflowHandle
+       , workflowHandle: fst workflowHandleAndPids
+       , webRtcStreamServers: snd workflowHandleAndPids
        , persistentState: emptyPersistentState
        , stateServerName
        }
@@ -192,6 +203,13 @@ init streamDetails@{role: slotRole, slot: {id: slotId}} stateServerName = do
     mkKey (SlotProfile p) = tuple3 (IngestKey streamDetails.slot.id streamDetails.role p.name) (unwrap p.rtmpStreamName) (unwrap p.name)
 
     aggregatorKey = streamDetailsToAggregatorKey streamDetails
+
+terminate :: Foreign -> State -> Effect Unit
+terminate reason state@{workflowHandle, webRtcStreamServers} = do
+  logInfo "Ingest aggregator terminating" {reason}
+  stopWorkflowImpl workflowHandle
+  _ <- traverse shutdown webRtcStreamServers
+  pure unit
 
 emptyPersistentState :: PersistentState
 emptyPersistentState = { localIngests: Set.empty

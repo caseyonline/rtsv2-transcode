@@ -9,6 +9,7 @@
         , selfImpl/0
         , trapExitImpl/1
         , mapExitReasonImpl/1
+        , shutdownImpl/1
         ]).
 
 
@@ -45,3 +46,8 @@ trapExitImpl(Value) ->
 mapExitReasonImpl(normal) -> {normal};
 mapExitReasonImpl({shutdown, Term}) -> {shutdown, Term};
 mapExitReasonImpl(Other) -> {other, Other}.
+
+shutdownImpl(Pid) ->
+  fun() ->
+      i_utils:shutdown(Pid)
+  end.
