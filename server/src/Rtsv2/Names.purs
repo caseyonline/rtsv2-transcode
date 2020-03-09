@@ -8,6 +8,7 @@ module Rtsv2.Names
        , ingestAggregatorInstanceName
        , ingestAggregatorInstanceSupName
        , ingestInstanceName
+       , ingestInstanceStateName
        , ingestInstanceSupName
        , ingestRtmpServerName
        , ingestRtmpCryptoName
@@ -59,6 +60,9 @@ ingestAggregatorInstanceSupName = gprocInstanceSup IngestAggregator
 
 ingestInstanceName :: forall a b. IngestKey -> ServerName a b
 ingestInstanceName = gprocName2 Ingest
+
+ingestInstanceStateName :: forall a b. IngestKey -> ServerName a b
+ingestInstanceStateName = gprocName2WithSuffix "State" Ingest
 
 ingestInstanceSupName :: SupervisorName
 ingestInstanceSupName = instanceSup Ingest

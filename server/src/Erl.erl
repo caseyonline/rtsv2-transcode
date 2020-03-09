@@ -9,6 +9,7 @@
         , selfImpl/0
         , trapExitImpl/1
         , mapExitReasonImpl/1
+        , exitMessageMapperImpl/1
         , shutdownImpl/1
         ]).
 
@@ -46,6 +47,9 @@ trapExitImpl(Value) ->
 mapExitReasonImpl(normal) -> {normal};
 mapExitReasonImpl({shutdown, Term}) -> {shutdown, Term};
 mapExitReasonImpl(Other) -> {other, Other}.
+
+exitMessageMapperImpl({'EXIT', Pid, Reason}) -> {just, {exit, Pid, Reason}};
+exitMessageMapperImpl(_) -> {nothing}.
 
 shutdownImpl(Pid) ->
   fun() ->

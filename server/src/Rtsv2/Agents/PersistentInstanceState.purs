@@ -15,7 +15,7 @@ import Effect (Effect)
 import Erl.Atom (Atom)
 import Erl.Data.List (List)
 import Erl.Process.Raw (Pid)
-import Erl.Utils (ExitReason(..))
+import Erl.Utils (ExitMessage(..), ExitReason(..))
 import Erl.Utils as Erl
 import Foreign (Foreign)
 import Logger as Logger
@@ -28,19 +28,19 @@ type StateServerName instanceData = ServerName (State instanceData) Msg
 
 type StartArgs instanceData =
   { childStartLink :: StateServerName instanceData -> Effect StartLinkResult
-  , childStopAction :: Effect Unit
+  , childStopAction :: Maybe instanceData -> Effect Unit
   , serverName :: StateServerName instanceData
   , domain :: List Atom
   }
 
 data Msg = InstanceDown Pid Foreign
-         | ChildDown Pid Foreign
+         | ChildDown ExitMessage
          | Stop
 
 type State instanceData =
   { instanceData :: Maybe instanceData
   , instancePid :: Maybe Pid
-  , childStopAction :: Effect Unit
+  , childStopAction :: Maybe instanceData -> Effect Unit
   , domain :: List Atom
   }
 
@@ -65,10 +65,12 @@ recordInstanceData serverName instanceData = do
 
 init :: forall instanceData. StartArgs instanceData -> Effect (State instanceData)
 init {serverName, childStartLink, childStopAction, domain} = do
+  _ <- Erl.trapExit true
+  logInfo domain "Persistent state starting child" {serverName}
+  Gen.registerExternalMapping serverName ((map ChildDown) <<< Erl.exitMessageMapper)
   childResult <- childStartLink serverName
   case childResult of
     Ok pid -> do
-      Gen.monitorPid serverName pid (\reason -> ChildDown pid reason)
       pure unit
     Ignore -> do
       logError domain "Child failed to start" { serverName
@@ -92,28 +94,31 @@ init {serverName, childStartLink, childStopAction, domain} = do
        }
 
 handleInfo :: forall instanceData. Msg -> State instanceData -> Effect (CastResult (State instanceData))
-handleInfo msg state@{childStopAction, domain} = case msg of
+handleInfo msg state@{instanceData, childStopAction, domain} = case msg of
   Stop ->
     -- This clause only exists because we can't return a stop from init
     pure $ CastStop state
-  ChildDown pid reason -> do
-    logInfo domain "State exiting due to child exit" { pid
-                                                     , reason}
-    childStopAction
-    pure $ CastStop state
+
+  ChildDown (Exit pid reason) ->
+    shutdown pid reason
 
   InstanceDown pid reason ->
     case Erl.mapExitReason reason of
-      Normal -> do
-        childStopAction
-        pure $ CastStop state
+      Normal ->
+        shutdown pid reason
 
-      Shutdown _ -> do
-        childStopAction
-        pure $ CastStop state
+      Shutdown _ ->
+        shutdown pid reason
 
       Other _ ->
         pure $ CastNoReply state
+  where
+    shutdown pid reason = do
+      logInfo domain "State exiting due to child exit" { pid
+                                                       , reason
+                                                       , instanceData }
+      childStopAction instanceData
+      pure $ CastStop state
 
 --------------------------------------------------------------------------------
 -- Log helpers

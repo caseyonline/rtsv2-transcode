@@ -1,5 +1,6 @@
 module Rtsv2.Agents.IngestAggregatorInstance
   ( startLink
+  , stopAction
   , isAvailable
   , addLocalIngest
   , addRemoteIngest
@@ -8,6 +9,7 @@ module Rtsv2.Agents.IngestAggregatorInstance
   , registerRelay
   , getState
   , slotConfiguration
+  , domain
 
   , PersistentState
   , StateServerName
@@ -44,7 +46,7 @@ import Pinto (ServerName, StartLinkResult, isRegistered)
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
-import Rtsv2.Agents.IntraPoP (announceLocalAggregatorIsAvailable)
+import Rtsv2.Agents.IntraPoP (announceLocalAggregatorIsAvailable, announceLocalAggregatorStopped)
 import Rtsv2.Agents.PersistentInstanceState as PersistentInstanceState
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
 import Rtsv2.Agents.StreamRelayTypes (RegisterRelayPayload)
@@ -175,6 +177,10 @@ slotConfiguration (AggregatorKey (SlotId slotId) _streamRole) =
 
 startLink :: AggregatorKey -> StreamDetails -> StateServerName -> Effect StartLinkResult
 startLink aggregatorKey streamDetails stateServerName = Gen.startLink (serverName aggregatorKey) (init streamDetails stateServerName) handleInfo
+
+stopAction :: AggregatorKey -> Maybe PersistentState -> Effect Unit
+stopAction aggregatorKey _persistentState =
+  announceLocalAggregatorStopped aggregatorKey
 
 init :: StreamDetails -> StateServerName -> Effect State
 init streamDetails@{role: slotRole, slot: {id: slotId}} stateServerName = do
@@ -325,8 +331,8 @@ _relays = __persistentState <<< __relays
 --------------------------------------------------------------------------------
 -- Log helpers
 --------------------------------------------------------------------------------
-domains :: List Atom
-domains = atom <$> (show Agent.IngestAggregator : "Instance" : nil)
+domain :: List Atom
+domain = atom <$> (show Agent.IngestAggregator : "Instance" : nil)
 
 logInfo :: forall a. Logger a
 logInfo = domainLog Logger.info
@@ -335,4 +341,4 @@ logWarning :: forall a. Logger a
 logWarning = domainLog Logger.warning
 
 domainLog :: forall a. Logger {domain :: List Atom, misc :: a} -> Logger a
-domainLog = Logger.doLog domains
+domainLog = Logger.doLog domain

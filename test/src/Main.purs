@@ -171,6 +171,15 @@ main =
 
     intraPoPState node               = get (M.URL $ makeUrl' node ServerStateE)
 
+    ingestAggregatorName slotId role = "{n, l, {<<\"IngestAggregator\">>," <>
+                                       "{aggregatorKey," <> (show (unwrap slotId)) <>
+                                       ",{" <> (show role) <> "}}}}."
+
+    ingestName slotId role streamName = "{n, l, {<<\"Ingest\">>," <>
+                                       "{ingestKey," <> (show (unwrap slotId)) <>
+                                       ",{" <> (show role) <> "}" <>
+                                       ",<<\"" <> streamName <> "\">>}}}."
+
     killProcess node chaos           = fetch (M.URL $ makeUrl' node (Chaos))
                                          { method: M.postMethod
                                          , body: SimpleJSON.writeJSON (chaos :: ChaosPayload)
@@ -419,10 +428,12 @@ main =
                                                                           >>= as  "aggregator has both profiles"
 
             ingestStop     p1n1 slot1 low  >>= assertStatusCode 200 >>= as  "stop low ingest"
+            waitForAsyncProfileStop
             aggregatorStats p1n1 slot1           >>= assertStatusCode 200
                                                      >>= assertAggregator [high]
                                                                           >>= as  "aggregator only has high"
             ingestStop     p1n1 slot1 high >>= assertStatusCode 200 >>= as  "stop high ingest"
+            waitForAsyncProfileStop
             aggregatorStats p1n1 slot1           >>= assertStatusCode 200
                                                      >>= assertAggregator []
                                                                           >>= as  "aggregator has no profiles"
@@ -436,6 +447,7 @@ main =
                                                      >>= assertAggregator [low]
                                                                           >>= as  "aggregator created"
             ingestStop     p1n1 slot1 low >>= assertStatusCode 200  >>= as  "stop low ingest"
+            waitForAsyncProfileStop
             aggregatorStats p1n1 slot1          >>= assertStatusCode 200
                                                     >>= assertAggregator []
                                                                           >>= as  "aggregator has no profiles"
@@ -693,13 +705,25 @@ main =
               aggregatorStats p1n1 slot1          >>= assertStatusCode 200
                                                       >>= assertAggregator [low]
                                                                            >>= as  "aggregator has low only"
-              killProcess p1n1 (defaultKill "{n, l, {<<\"IngestAggregator\">>,{aggregatorKey,1,{primary}}}}.")
+              killProcess p1n1 (defaultKill $ ingestAggregatorName slot1 Primary)
                                                   >>=  assertStatusCode 204 >>= as "kill process"
               waitForSupervisorRecovery  >>= as' "wait for supervisor"
               aggregatorStats p1n1 slot1          >>= assertStatusCode 200
                                                       >>= assertAggregator [low]
                                                                            >>= as  "aggregator still has low"
 
+            it "Locally, launch ingest, terminate ingest, ingest aggregator remove ingest from list of actives" do
+              ingestStart    p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
+              waitForAsyncProfileStart                                     >>= as' "wait for async start of profile"
+              aggregatorStats p1n1 slot1          >>= assertStatusCode 200
+                                                      >>= assertAggregator [low]
+                                                                           >>= as  "aggregator has low only"
+              killProcess p1n1 (defaultKill $ ingestName slot1 Primary "500")
+                                                  >>=  assertStatusCode 204 >>= as "kill process"
+              waitForSupervisorRecovery  >>= as' "wait for supervisor"
+              aggregatorStats p1n1 slot1          >>= assertStatusCode 200
+                                                      >>= assertAggregator []
+                                                                           >>= as  "aggregator has no ingests"
 
     describe "Cleanup" do
       after_ stopSession do

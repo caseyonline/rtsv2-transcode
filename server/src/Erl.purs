@@ -8,13 +8,16 @@ module Erl.Utils
        , shutdown
        , trapExit
        , mapExitReason
+       , exitMessageMapper
        , Ref
        , ExitReason(..)
+       , ExitMessage(..)
        )
        where
 
 import Prelude
 
+import Data.Maybe (Maybe)
 import Data.Newtype (unwrap, wrap)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
@@ -33,10 +36,13 @@ foreign import selfImpl :: Effect Pid
 foreign import trapExitImpl :: Boolean -> Effect Boolean
 foreign import mapExitReasonImpl :: Foreign -> ExitReason
 foreign import shutdownImpl :: Pid -> Effect Unit
+foreign import exitMessageMapperImpl :: Foreign -> Maybe ExitMessage
 
 data ExitReason = Normal
                 | Shutdown Foreign
                 | Other Foreign
+
+data ExitMessage = Exit Pid Foreign
 
 sleep :: Milliseconds -> Effect Unit
 sleep = sleepImpl <<< unwrap
@@ -69,3 +75,6 @@ shutdown = shutdownImpl
 
 mapExitReason :: Foreign -> ExitReason
 mapExitReason = mapExitReasonImpl
+
+exitMessageMapper :: Foreign -> Maybe ExitMessage
+exitMessageMapper = exitMessageMapperImpl
