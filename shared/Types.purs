@@ -4,7 +4,6 @@ module Shared.Types
        , LeaderGeoLoc(..)
        , Load
        , PoPName(..)
-       , PoPSelectedInfo(..)
        , RegionName(..)
        , Server(..)
        , ServerAddress(..)
@@ -217,13 +216,6 @@ type LeaderGeoLoc =
   { name  :: PoPName
   , coord :: Array Number
   }
-
-type PoPSelectedInfo =
-    { selectedPoPName :: Maybe PoPName
-    , selectedSlotId  :: Maybe SlotId
-    , selectedAddress :: Maybe ServerAddress
-    , checkedBoxes    :: Maybe (Array CheckBoxState)
-    }
 
 type CheckBoxState =
   { slotId     :: Maybe SlotId
