@@ -16,6 +16,7 @@ module Shared.Types
        , CheckBoxState(..)
        , JsonLdContextType(..)
        , ChaosPayload
+       , defaultKill
        , toServer
        , toServerLoad
        , serverLoadToServer
@@ -44,9 +45,17 @@ data JsonLdContextType = ServerContext
 
 type ChaosPayload =
   { name :: String
+  , exit_reason :: Maybe String
   , num_hits :: Maybe Int
   , delay_between_hits_ms :: Maybe Int
   }
+
+defaultKill :: String -> ChaosPayload
+defaultKill name = { name
+                   , exit_reason: Nothing
+                   ,num_hits: Nothing
+                   , delay_between_hits_ms: Nothing
+                   }
 
 newtype ServerAddress = ServerAddress String
 
@@ -106,10 +115,6 @@ extractAddress = unwrap >>> _.address
 ------------------------------------------------------------------------------
 -- JsonLdContextType
 derive instance genericJsonLdContextType :: Generic JsonLdContextType _
---derive instance eqUsername :: Eq Username
---derive instance ordUsername :: Ord Username
---derive newtype instance readForeignUsername  :: ReadForeign Username
---derive newtype instance writeForeignUsername :: WriteForeign Username
 instance showJsonLdContextType :: Show JsonLdContextType where show = genericShow
 
 ------------------------------------------------------------------------------

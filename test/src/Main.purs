@@ -28,7 +28,7 @@ import Partial.Unsafe (unsafePartial)
 import Prim.Row (class Union)
 import Shared.Stream (ProfileName(..), SlotRole(..), SlotNameAndProfileName(..))
 import Shared.Router.Endpoint (Endpoint(..), makeUrl, Canary(..))
-import Shared.Types (ServerAddress(..), ChaosPayload, extractAddress)
+import Shared.Types (ServerAddress(..), ChaosPayload, extractAddress, defaultKill)
 import Shared.Types.Agent.State as PublicState
 import Shared.JsonLd as JsonLd
 import Simple.JSON (class ReadForeign)
@@ -693,9 +693,8 @@ main =
               aggregatorStats p1n1 slot1          >>= assertStatusCode 200
                                                       >>= assertAggregator [low]
                                                                            >>= as  "aggregator has low only"
-              killProcess p1n1 {name: "{n, l, {<<\"IngestAggregator\">>,{aggregatorKey,1,{primary}}}}.",
-                                num_hits: Nothing,
-                                delay_between_hits_ms: Nothing} >>=  assertStatusCode 204 >>= as "kill process"
+              killProcess p1n1 (defaultKill "{n, l, {<<\"IngestAggregator\">>,{aggregatorKey,1,{primary}}}}.")
+                                                  >>=  assertStatusCode 204 >>= as "kill process"
               waitForSupervisorRecovery  >>= as' "wait for supervisor"
               aggregatorStats p1n1 slot1          >>= assertStatusCode 200
                                                       >>= assertAggregator [low]
