@@ -25,6 +25,9 @@ module Rtsv2.Agents.IntraPoP
 
   , getPublicState
 
+  , currentLocalRef
+  , currentRemoteRef
+
   , whereIsIngestAggregator
   , whereIsStreamRelay
   , whereIsEgest
@@ -174,9 +177,9 @@ data Msg
   | VMLiveness
   | ReAnnounce AgentKey HandlerName
 
-data IntraPoPBusMessage =
-  IngestAggregatorExited AggregatorKey Server
-
+data IntraPoPBusMessage
+  = IngestAggregatorExited AggregatorKey Server
+  | VmReset Server Ref (Maybe Ref)
 
 
 --------------------------------------------------------------------------------
@@ -225,6 +228,11 @@ getPublicState = exposeState publicState serverName
       , servers: JsonLd.egestLocationNode slotId <$> Set.toUnfoldable v
       }
 
+currentLocalRef :: Effect Ref
+currentLocalRef = exposeState _.thisServerRef serverName
+
+currentRemoteRef :: Server -> Effect (Maybe Ref)
+currentRemoteRef remoteServer = exposeState ((EMap.lookup remoteServer) <<<  _.serverRefs) serverName
 
 -- TODO - we should be calling the prime' versions and handling that there might, in fact be more than
 -- one instance of things we'd like to be singletons
@@ -398,7 +406,7 @@ vmLivenessHandler ref =
           | ref == curRef ->
             pure state
           | otherwise ->
-            garbageCollectServer state server
+            garbageCollectServer state server curRef (Just ref)
       newServerRefs <- EMap.insert' server ref state.serverRefs
       pure newState { serverRefs = newServerRefs }
 
@@ -1070,9 +1078,9 @@ garbageCollectVM state@{ config
     let
       expireThreshold = wrap $ config.missCountBeforeExpiry * config.vmLivenessIntervalMs
       threshold = now - expireThreshold
-      Tuple newServerRefs garbageRefs = EMap.garbageCollect2 threshold serverRefs
-      garbageServers = fst <$> garbageRefs
-    foldM garbageCollectServer state{serverRefs = newServerRefs} garbageServers
+      Tuple newServerRefs garbage = EMap.garbageCollect2 threshold serverRefs
+      garbageCollectServer' s (Tuple server ref) = garbageCollectServer s server ref Nothing
+    foldM garbageCollectServer' state{serverRefs = newServerRefs} garbage
 
 
 garbageCollectAgents :: State -> Effect State
@@ -1102,10 +1110,13 @@ foldHandlers :: forall acc. (AgentHandler -> acc -> Effect acc) -> acc -> Effect
 foldHandlers perHandlerFun =
   perHandlerFun relayHandler >=> perHandlerFun aggregatorHandler >=> perHandlerFun egestHandler
 
-garbageCollectServer :: State -> Server -> Effect State
-garbageCollectServer state deadServer = do
+garbageCollectServer :: State -> Server -> Ref -> Maybe Ref -> Effect State
+garbageCollectServer state deadServer oldRef newRef = do
   -- TODO - add a server decomissioning message to do this cleanly
-  logWarning "server liveness timeout" {server: deadServer}
+  logWarning "server liveness timeout" { server: deadServer
+                                       , oldRef
+                                       , newRef}
+  Bus.raise bus (VmReset deadServer oldRef newRef)
   foldHandlers (gcServer deadServer) state
 
 gcServer :: Server -> AgentHandler -> State -> Effect State

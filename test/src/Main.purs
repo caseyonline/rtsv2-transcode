@@ -696,9 +696,10 @@ main =
           nodes = p1Nodes <> p2Nodes
           allNodesBar node = delete node nodes
           maxOut server = setLoad server 60.0 >>= assertStatusCode 204 >>= as ("set load on " <> toAddr server)
+          sysconfig = "test/config/partial_nodes/sys.config"
         before_ (do
                    startSession nodes
-                   launch nodes
+                   launch' nodes sysconfig
                 ) do
           after_ stopSession do
             it "Launch ingest, terminate ingest aggregator process, new ingest aggregator continues to pull from ingest" do
@@ -751,7 +752,7 @@ main =
                                                       >>= assertAggregator [low]
                                                                            >>= as  "aggregator has low only"
               stopNode p1n1                                                >>= as' "stop ingest node"
-              waitForSupervisorRecovery                                    >>= as' "wait for supervisor"
+              waitForIntraPoPDisseminate                                   >>= as' "allow failure to disseminate"
               aggregatorStats p1n2 slot1          >>= assertStatusCode 200
                                                       >>= assertAggregator []
                                                                            >>= as  "aggregator has no ingests"

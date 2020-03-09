@@ -32,6 +32,7 @@ import Pinto as Pinto
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
+import Rtsv2.Agents.IngestAggregatorInstance (RemoteIngestPayload)
 import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
 import Rtsv2.Agents.IngestAggregatorSup as IngestAggregatorSup
 import Rtsv2.Agents.IngestStats as IngestStats
@@ -196,6 +197,9 @@ handleInfo msg state@{ingestKey} = case msg of
     state2 <- informAggregator state
     pure $ CastNoReply state2
 
+  IntraPoPBus (VmReset _ _ _) ->
+    pure $ CastNoReply state
+
   IntraPoPBus (IngestAggregatorExited aggregatorKey serverAddress) -> do
     logInfo "exit" {aggregatorKey, serverAddress, ingestKey: state.ingestKey}
     state2 <- handleAggregatorExit aggregatorKey serverAddress state
@@ -267,7 +271,9 @@ informAggregator state@{streamDetails, ingestKey, thisServer, aggregatorRetryTim
         let
           -- TODO - functions to make URLs from Server
           url = makeActiveIngestUrl aggregatorAddress ingestKey
-        restResult <- SpudGun.postJson url $ extractAddress thisServer
+        vmRef <- IntraPoP.currentLocalRef
+        restResult <- SpudGun.postJson url $ ({ ingestAddress: thisServer
+                                              , vmRef: vmRef} :: RemoteIngestPayload)
         case restResult of
           Left _ -> pure $ false
           Right _ -> pure $ true

@@ -11,6 +11,8 @@
         , mapExitReasonImpl/1
         , exitMessageMapperImpl/1
         , shutdownImpl/1
+        , refToStringImpl/1
+        , stringToRefImpl/1
         ]).
 
 
@@ -54,4 +56,18 @@ exitMessageMapperImpl(_) -> {nothing}.
 shutdownImpl(Pid) ->
   fun() ->
       i_utils:shutdown(Pid)
+  end.
+
+refToStringImpl(Ref) ->
+  RefStr = erlang:ref_to_list(Ref),
+  RefNum = list_to_binary(string:sub_string(RefStr, 6, length(RefStr) - 1)),
+  RefNum.
+
+stringToRefImpl(RefNum) ->
+  try
+    Ref = list_to_ref("#Ref<" ++ binary_to_list(RefNum) ++ ">"),
+    {just, Ref}
+  catch
+    error:badarg ->
+      {nothing}
   end.

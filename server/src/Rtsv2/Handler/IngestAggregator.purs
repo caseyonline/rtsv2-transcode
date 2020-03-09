@@ -15,6 +15,7 @@ import Erl.Cowboy.Req (method)
 import Erl.Data.List (List, nil, (:))
 import Erl.Data.Tuple (tuple2)
 import Logger (spy)
+import Rtsv2.Agents.IngestAggregatorInstance (RemoteIngestPayload)
 import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
 import Rtsv2.Agents.IngestAggregatorSup as IngestAggregatorSup
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
@@ -42,14 +43,14 @@ ingestAggregators = processPostPayload IngestAggregatorSup.startAggregator
 
 type IngestAggregatorsActiveIngestState = { ingestKey :: IngestKey
                                           , aggregatorKey :: AggregatorKey
-                                          , serverAddress :: Maybe ServerAddress
+                                          , payload :: Maybe RemoteIngestPayload
                                           }
 ingestAggregatorsActiveIngest :: SlotId -> SlotRole -> ProfileName -> StetsonHandler IngestAggregatorsActiveIngestState
 ingestAggregatorsActiveIngest slotId streamRole profileName =
   Rest.handler (\req ->
                  Rest.initResult req { ingestKey: IngestKey slotId streamRole profileName
                                      , aggregatorKey: AggregatorKey slotId streamRole
-                                     , serverAddress: Nothing})
+                                     , payload: Nothing})
   # Rest.serviceAvailable (\req state -> do
                               isAgentAvailable <- IngestAggregatorSup.isAvailable
                               Rest.result isAgentAvailable req state)
@@ -66,22 +67,22 @@ ingestAggregatorsActiveIngest slotId streamRole profileName =
                                 do
                                   body <- allBody req mempty
                                   let
-                                    maybeServerAddress :: Maybe ServerAddress
-                                    maybeServerAddress = hush $ readJSON $ binaryToString body
-                                  Rest.result (isNothing maybeServerAddress) req state{serverAddress = maybeServerAddress}
+                                    maybePayload :: Maybe RemoteIngestPayload
+                                    maybePayload = hush $ readJSON $ binaryToString body
+                                  Rest.result (isNothing maybePayload) req state{payload = maybePayload}
                               _ ->
                                 Rest.result false req state
 
                           )
   # Rest.contentTypesAccepted (\req state ->
                                 Rest.result ((tuple2 "application/json" (\req2 state2@{ ingestKey
-                                                                                      , serverAddress: maybeServerAddress} ->
+                                                                                      , payload: maybePayload} ->
                                                                           let
-                                                                            serverAddress = fromMaybe' (lazyCrashIfMissing "server_address is nothing") maybeServerAddress
+                                                                            payload = fromMaybe' (lazyCrashIfMissing "payload is nothing") maybePayload
                                                                           in
                                                                             do
-                                                                              IngestAggregatorInstance.addRemoteIngest ingestKey serverAddress
-                                                                              Rest.result true req2 state2
+                                                                              result <- IngestAggregatorInstance.addRemoteIngest ingestKey payload
+                                                                              Rest.result result req2 state2
                                                                         )) : nil)
                                 req state
                               )

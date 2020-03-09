@@ -577,6 +577,9 @@ handleInfo msg state =
      -- TODO - PRIMARY BACKUP
       | slotId == ourSlotId -> doStop state
       | otherwise -> pure $ CastNoReply state
+
+    IntraPoPBus (VmReset _ _ _) ->
+      pure $ CastNoReply state
   where
     (RelayKey ourSlotId _) = relayKeyFromState state
 

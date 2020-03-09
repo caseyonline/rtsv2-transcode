@@ -17,13 +17,17 @@ module Erl.Utils
 
 import Prelude
 
-import Data.Maybe (Maybe)
+import Control.Monad.Except (except, mapExcept)
+import Data.Either (Either(..), either)
+import Data.List.NonEmpty as NEL
+import Data.Maybe (Maybe, maybe)
 import Data.Newtype (unwrap, wrap)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Process.Raw (Pid)
-import Foreign (Foreign)
+import Foreign (F, Foreign, ForeignError(..), tagOf)
 import Shared.Common (Milliseconds)
+import Simple.JSON (class ReadForeign, class WriteForeign)
 
 foreign import systemTimeImpl :: Atom -> Effect Int
 foreign import vmTimeImpl :: Atom -> Effect Int
@@ -37,6 +41,8 @@ foreign import trapExitImpl :: Boolean -> Effect Boolean
 foreign import mapExitReasonImpl :: Foreign -> ExitReason
 foreign import shutdownImpl :: Pid -> Effect Unit
 foreign import exitMessageMapperImpl :: Foreign -> Maybe ExitMessage
+foreign import refToStringImpl :: Ref -> Foreign
+foreign import stringToRefImpl :: Foreign -> Maybe Ref
 
 data ExitReason = Normal
                 | Shutdown Foreign
@@ -55,8 +61,15 @@ systemTimeMs = wrap <$> systemTimeImpl (atom "millisecond")
 vmTimeMs :: Effect Milliseconds
 vmTimeMs = wrap <$> vmTimeImpl (atom "millisecond")
 
-instance eqRef :: Eq Ref where
-  eq = eqRefImpl
+instance eqRef :: Eq Ref where eq = eqRefImpl
+instance writeForeignRef :: WriteForeign Ref where writeImpl = refToStringImpl
+instance readForeignRef :: ReadForeign Ref where
+  readImpl f =
+    let
+      fromRef = maybe error pure <<< stringToRefImpl
+      error = Left $ NEL.singleton $ TypeMismatch "Ref" (tagOf f)
+    in
+     except (fromRef f)
 
 makeRef :: Effect Ref
 makeRef = makeRefImpl
