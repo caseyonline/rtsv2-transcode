@@ -1,12 +1,17 @@
 module Rtsv2.Agents.IngestInstance
    ( startLink
+   , stopAction
    , isActive
    , setClientMetadata
    , setSourceInfo
    , getPublicState
    , stopIngest
    , StartArgs
-   ) where
+
+   , PersistentState
+   , StateServerName
+   , domain
+) where
 
 import Prelude
 
@@ -27,6 +32,7 @@ import Pinto as Pinto
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
+import Rtsv2.Agents.IngestAggregatorInstance (RemoteIngestPayload)
 import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
 import Rtsv2.Agents.IngestAggregatorSup as IngestAggregatorSup
 import Rtsv2.Agents.IngestStats as IngestStats
@@ -34,6 +40,7 @@ import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..), launchLocalOrRemoteGeneric
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.Locator (extractServer)
 import Rtsv2.Agents.Locator.Types (LocalOrRemote(..), ResourceResp)
+import Rtsv2.Agents.PersistentInstanceState as PersistentInstanceState
 import Rtsv2.Audit as Audit
 import Rtsv2.Config as Config
 import Rtsv2.Names as Names
@@ -59,6 +66,12 @@ data Msg
    | IntraPoPBus IntraPoP.IntraPoPBusMessage
    | HandlerDown
 
+type PersistentState =
+  { aggregatorAddr :: Maybe (LocalOrRemote Server)
+  }
+
+type StateServerName = PersistentInstanceState.StateServerName PersistentState
+
 type State
   = { thisServer :: Server
     , aggregatorRetryTime :: Milliseconds
@@ -73,6 +86,7 @@ type State
     , aggregatorAddr :: Maybe (LocalOrRemote Server)
     , clientMetadata :: Maybe (RtmpClientMetadata List)
     , sourceInfo :: Maybe (SourceInfo List)
+    , stateServerName :: StateServerName
     }
 
 type StartArgs
@@ -84,8 +98,22 @@ type StartArgs
     , handlerPid :: Pid
     }
 
-startLink :: StartArgs -> Effect StartLinkResult
-startLink args@{ingestKey} = Gen.startLink (serverName ingestKey) (init args) handleInfo
+startLink :: StartArgs -> StateServerName -> Effect StartLinkResult
+startLink args@{ingestKey} stateServerName = Gen.startLink (serverName ingestKey) (init args stateServerName) handleInfo
+
+stopAction :: IngestKey -> Maybe PersistentState -> Effect Unit
+stopAction ingestKey Nothing = pure unit
+stopAction ingestKey (Just {aggregatorAddr: Nothing}) = pure unit
+stopAction ingestKey (Just {aggregatorAddr: Just addr}) =
+  removeIngest addr
+  where
+    removeIngest (Local aggregator) = do
+      IngestAggregatorInstance.removeLocalIngest ingestKey
+      pure unit
+    removeIngest (Remote aggregator) = do
+      let
+        url = makeActiveIngestUrl aggregator ingestKey
+      void $ crashIfLeft =<< SpudGun.delete url {}
 
 isActive :: IngestKey -> Effect Boolean
 isActive ingestKey = Pinto.isRegistered (serverName ingestKey)
@@ -119,13 +147,13 @@ getPublicState ingestKey =
               , remotePort
               , ingestStartedTime } state
 
-init :: StartArgs -> Effect State
+init :: StartArgs -> StateServerName -> Effect State
 init { streamPublish
      , streamDetails
      , ingestKey
      , remoteAddress
      , remotePort
-     , handlerPid} = do
+     , handlerPid} stateServerName = do
 
   logInfo "Ingest starting" {ingestKey, handlerPid}
 
@@ -153,6 +181,7 @@ init { streamPublish
        , localPort
        , ingestStartedTime: now
        , lastIngestAuditTime: now
+       , stateServerName
        }
   where
     ourServerName = (serverName ingestKey)
@@ -167,6 +196,9 @@ handleInfo msg state@{ingestKey} = case msg of
   InformAggregator -> do
     state2 <- informAggregator state
     pure $ CastNoReply state2
+
+  IntraPoPBus (VmReset _ _ _) ->
+    pure $ CastNoReply state
 
   IntraPoPBus (IngestAggregatorExited aggregatorKey serverAddress) -> do
     logInfo "exit" {aggregatorKey, serverAddress, ingestKey: state.ingestKey}
@@ -212,20 +244,61 @@ ingestEqLine state@{ ingestKey: ingestKey@(IngestKey slotId slotRole _profileeNa
 
 doStopIngest :: State -> Effect Unit
 doStopIngest state@{aggregatorAddr, ingestKey} = do
-  removeIngest ingestKey aggregatorAddr
+  -- Happy state exit - we also need to remove ourselves from the ingest aggregator, but that is
+  -- done in the stopAction, which will also get called in the unhappy case
   eqLine <- ingestEqLine state
   Audit.ingestStop eqLine
   pure unit
 
 informAggregator :: State -> Effect State
-informAggregator state@{streamDetails, ingestKey, thisServer, aggregatorRetryTime} = do
-  maybeAggregator <- hush <$> getAggregator streamDetails ingestKey
-  maybeIngestAdded <- sequence ((addIngest thisServer ingestKey) <$> (extractServer <$>  maybeAggregator))
+informAggregator state@{streamDetails, ingestKey, thisServer, aggregatorRetryTime, stateServerName} = do
+  maybeAggregator <- hush <$> getAggregator
+  maybeIngestAdded <- sequence (addIngest <$> (extractServer <$>  maybeAggregator))
   case fromMaybe false maybeIngestAdded of
-    true -> pure state{aggregatorAddr = maybeAggregator}
+    true -> do
+      PersistentInstanceState.recordInstanceData stateServerName {aggregatorAddr: maybeAggregator}
+      pure state{aggregatorAddr = maybeAggregator}
     false -> do
       void $ Timer.sendAfter (serverName ingestKey) (unwrap aggregatorRetryTime) InformAggregator
       pure state
+  where
+    addIngest :: Server -> Effect Boolean
+    addIngest aggregatorAddress
+      | aggregatorAddress == thisServer = do
+        IngestAggregatorInstance.addLocalIngest ingestKey
+        pure true
+      | otherwise = do
+        let
+          -- TODO - functions to make URLs from Server
+          url = makeActiveIngestUrl aggregatorAddress ingestKey
+        vmRef <- IntraPoP.currentLocalRef
+        restResult <- SpudGun.postJson url $ ({ ingestAddress: thisServer
+                                              , vmRef: vmRef} :: RemoteIngestPayload)
+        case restResult of
+          Left _ -> pure $ false
+          Right _ -> pure $ true
+
+    getAggregator :: Effect (ResourceResp Server)
+    getAggregator = do
+      maybeAggregator <- IntraPoP.whereIsIngestAggregator (ingestKeyToAggregatorKey ingestKey)
+      case maybeAggregator of
+        Just server ->
+          pure $ Right $ Local server
+        Nothing ->
+          launchLocalOrRemote
+
+    launchLocalOrRemote :: Effect (ResourceResp Server)
+    launchLocalOrRemote = do
+      launchLocalOrRemoteGeneric filterForAggregatorLoad launchLocal launchRemote
+      where
+        launchLocal :: ServerLoad -> Effect Unit
+        launchLocal _ = do
+          void $ IngestAggregatorSup.startAggregator streamDetails
+          pure unit
+        launchRemote idleServer = do
+          let
+            url = makeUrl idleServer IngestAggregatorsE
+          void $ crashIfLeft =<< SpudGun.postJson url streamDetails
 
 handleAggregatorExit :: AggregatorKey -> Server -> State -> Effect State
 handleAggregatorExit exitedAggregatorKey exitedAggregatorAddr state@{ingestKey, aggregatorRetryTime, aggregatorAddr}
@@ -235,56 +308,9 @@ handleAggregatorExit exitedAggregatorKey exitedAggregatorAddr state@{ingestKey, 
   | otherwise =
       pure state
 
-addIngest :: Server -> IngestKey -> Server -> Effect Boolean
-addIngest thisServer ingestKey aggregatorAddress
-  | aggregatorAddress == thisServer = do
-    IngestAggregatorInstance.addLocalIngest ingestKey
-    pure true
-  | otherwise = do
-    let
-      -- TODO - functions to make URLs from Server
-      url = makeActiveIngestUrl aggregatorAddress ingestKey
-    restResult <- SpudGun.postJson url $ extractAddress thisServer
-    case restResult of
-      Left _ -> pure $ false
-      Right _ -> pure $ true
-
 makeActiveIngestUrl :: Server -> IngestKey -> Url
 makeActiveIngestUrl server (IngestKey slotId streamRole profileName) =
   makeUrl server $ IngestAggregatorActiveIngestsE slotId streamRole profileName
-
-removeIngest :: IngestKey -> Maybe (LocalOrRemote Server)-> Effect Unit
-removeIngest ingestKey Nothing = pure unit
-removeIngest ingestKey (Just (Local aggregator)) = do
-    IngestAggregatorInstance.removeLocalIngest ingestKey
-    pure unit
-removeIngest ingestKey (Just (Remote aggregator)) = do
-  let
-    url = makeActiveIngestUrl aggregator ingestKey
-  void $ crashIfLeft =<< SpudGun.delete url {}
-
-getAggregator :: StreamDetails -> IngestKey -> Effect (ResourceResp Server)
-getAggregator streamDetails ingestKey = do
-  maybeAggregator <- IntraPoP.whereIsIngestAggregator (ingestKeyToAggregatorKey ingestKey)
-  case maybeAggregator of
-    Just server ->
-      pure $ Right $ Local server
-    Nothing ->
-      launchLocalOrRemote streamDetails ingestKey
-
-launchLocalOrRemote :: StreamDetails -> IngestKey -> Effect (ResourceResp Server)
-launchLocalOrRemote streamDetails ingestKey = do
-  launchLocalOrRemoteGeneric filterForAggregatorLoad launchLocal launchRemote
-  where
-    launchLocal :: ServerLoad -> Effect Unit
-    launchLocal _ = do
-      void $ IngestAggregatorSup.startAggregator streamDetails
-      pure unit
-    launchRemote idleServer = do
-      let
-        url = makeUrl idleServer IngestAggregatorsE
-      void $ crashIfLeft =<< SpudGun.postJson url streamDetails
-
 
 loadThresholdToCreateAggregator :: Load
 loadThresholdToCreateAggregator = wrap 50.0
@@ -295,8 +321,8 @@ filterForAggregatorLoad (ServerLoad sl) = sl.load < loadThresholdToCreateAggrega
 --------------------------------------------------------------------------------
 -- Log helpers
 --------------------------------------------------------------------------------
-domains :: List Atom
-domains = atom <$> (show Agent.Ingest :  "Instance" : nil)
+domain :: List Atom
+domain = atom <$> (show Agent.Ingest :  "Instance" : nil)
 
 logInfo :: forall a. Logger a
 logInfo = domainLog Logger.info
@@ -305,4 +331,4 @@ logInfo = domainLog Logger.info
 --logWarning = domainLog Logger.warning
 
 domainLog :: forall a. Logger {domain :: List Atom, misc :: a} -> Logger a
-domainLog = Logger.doLog domains
+domainLog = Logger.doLog domain

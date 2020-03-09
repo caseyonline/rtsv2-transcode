@@ -28,7 +28,7 @@ import Partial.Unsafe (unsafePartial)
 import Prim.Row (class Union)
 import Shared.Stream (ProfileName(..), SlotRole(..), SlotNameAndProfileName(..))
 import Shared.Router.Endpoint (Endpoint(..), makeUrl, Canary(..))
-import Shared.Types (ServerAddress(..), ChaosPayload, extractAddress)
+import Shared.Types (ServerAddress(..), ChaosPayload, extractAddress, defaultKill)
 import Shared.Types.Agent.State as PublicState
 import Shared.JsonLd as JsonLd
 import Simple.JSON (class ReadForeign)
@@ -170,6 +170,15 @@ main =
     proxiedRelayStats node slotId    = get (M.URL $ makeUrl' node (RelayProxiedStatsE slotId Primary))
 
     intraPoPState node               = get (M.URL $ makeUrl' node ServerStateE)
+
+    ingestAggregatorName slotId role = "{n, l, {<<\"IngestAggregator\">>," <>
+                                       "{aggregatorKey," <> (show (unwrap slotId)) <>
+                                       ",{" <> (show role) <> "}}}}."
+
+    ingestName slotId role streamName = "{n, l, {<<\"Ingest\">>," <>
+                                       "{ingestKey," <> (show (unwrap slotId)) <>
+                                       ",{" <> (show role) <> "}" <>
+                                       ",<<\"" <> streamName <> "\">>}}}."
 
     killProcess node chaos           = fetch (M.URL $ makeUrl' node (Chaos))
                                          { method: M.postMethod
@@ -419,10 +428,12 @@ main =
                                                                           >>= as  "aggregator has both profiles"
 
             ingestStop     p1n1 slot1 low  >>= assertStatusCode 200 >>= as  "stop low ingest"
+            waitForAsyncProfileStop
             aggregatorStats p1n1 slot1           >>= assertStatusCode 200
                                                      >>= assertAggregator [high]
                                                                           >>= as  "aggregator only has high"
             ingestStop     p1n1 slot1 high >>= assertStatusCode 200 >>= as  "stop high ingest"
+            waitForAsyncProfileStop
             aggregatorStats p1n1 slot1           >>= assertStatusCode 200
                                                      >>= assertAggregator []
                                                                           >>= as  "aggregator has no profiles"
@@ -436,6 +447,7 @@ main =
                                                      >>= assertAggregator [low]
                                                                           >>= as  "aggregator created"
             ingestStop     p1n1 slot1 low >>= assertStatusCode 200  >>= as  "stop low ingest"
+            waitForAsyncProfileStop
             aggregatorStats p1n1 slot1          >>= assertStatusCode 200
                                                     >>= assertAggregator []
                                                                           >>= as  "aggregator has no profiles"
@@ -682,25 +694,68 @@ main =
           p1Nodes = [p1n1, p1n2, p1n3]
           p2Nodes = [p2n1, p2n2]
           nodes = p1Nodes <> p2Nodes
+          allNodesBar node = delete node nodes
+          maxOut server = setLoad server 60.0 >>= assertStatusCode 204 >>= as ("set load on " <> toAddr server)
+          sysconfig = "test/config/partial_nodes/sys.config"
         before_ (do
                    startSession nodes
-                   launch nodes
+                   launch' nodes sysconfig
                 ) do
           after_ stopSession do
-            it "Launch ingest, terminate ingest aggregator, new ingest aggregator continues to pull from ingest" do
-              ingestStart    p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
+            it "Launch ingest, terminate ingest aggregator process, new ingest aggregator continues to pull from ingest" do
+              ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as  "create ingest"
               waitForAsyncProfileStart                                     >>= as' "wait for async start of profile"
               aggregatorStats p1n1 slot1          >>= assertStatusCode 200
                                                       >>= assertAggregator [low]
                                                                            >>= as  "aggregator has low only"
-              killProcess p1n1 {name: "{n, l, {<<\"IngestAggregator\">>,{aggregatorKey,1,{primary}}}}.",
-                                num_hits: Nothing,
-                                delay_between_hits_ms: Nothing} >>=  assertStatusCode 204 >>= as "kill process"
-              waitForSupervisorRecovery  >>= as' "wait for supervisor"
+              killProcess p1n1 (defaultKill $ ingestAggregatorName slot1 Primary)
+                                                  >>=  assertStatusCode 204 >>= as "kill process"
+              waitForSupervisorRecovery                                     >>= as' "wait for supervisor"
               aggregatorStats p1n1 slot1          >>= assertStatusCode 200
                                                       >>= assertAggregator [low]
                                                                            >>= as  "aggregator still has low"
 
+            it "Launch ingest with local aggregator, terminate ingest process, ingest aggregator removes ingest from list of active ingests" do
+              ingestStart    p1n1 shortName1 low >>= assertStatusCode 200   >>= as  "create ingest"
+              waitForAsyncProfileStart                                      >>= as' "wait for async start of profile"
+              aggregatorStats p1n1 slot1         >>= assertStatusCode 200
+                                                     >>= assertAggregator [low]
+                                                                            >>= as  "aggregator has low only"
+              killProcess p1n1 (defaultKill $ ingestName slot1 Primary "500")
+                                                 >>=  assertStatusCode 204 >>= as "kill process"
+              waitForSupervisorRecovery                                    >>= as' "wait for supervisor"
+              aggregatorStats p1n1 slot1         >>= assertStatusCode 200
+                                                     >>= assertAggregator []
+                                                                           >>= as  "aggregator has no ingests"
+
+            it "Launch ingest with remote aggregator, terminate ingest process, ingest aggregator removes ingest from list of active ingests" do
+              traverse_ maxOut (allNodesBar p1n2)                           >>= as' "load up all servers bar one"
+              waitForIntraPoPDisseminate                                    >>= as' "allow load to disseminate"
+              ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200  >>= as  "create ingest"
+              waitForAsyncProfileStart                                      >>= as' "wait for async start of profile"
+              aggregatorStats p1n2 slot1          >>= assertStatusCode 200
+                                                      >>= assertAggregator [low]
+                                                                            >>= as  "aggregator has low only"
+              killProcess p1n1 (defaultKill $ ingestName slot1 Primary "500")
+                                                  >>=  assertStatusCode 204 >>= as "kill process"
+              waitForSupervisorRecovery                                     >>= as' "wait for supervisor"
+              aggregatorStats p1n2 slot1          >>= assertStatusCode 200
+                                                      >>= assertAggregator []
+                                                                            >>= as  "aggregator has no ingests"
+
+            it "Launch ingest with remote aggregator, terminate ingest node, ingest aggregator removes ingest from list of active ingests" do
+              traverse_ maxOut (allNodesBar p1n2)                           >>= as' "load up all servers bar one"
+              waitForIntraPoPDisseminate                                    >>= as' "allow load to disseminate"
+              ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200  >>= as  "create ingest"
+              waitForAsyncProfileStart                                      >>= as' "wait for async start of profile"
+              aggregatorStats p1n2 slot1          >>= assertStatusCode 200
+                                                      >>= assertAggregator [low]
+                                                                           >>= as  "aggregator has low only"
+              stopNode p1n1                                                >>= as' "stop ingest node"
+              waitForIntraPoPDisseminate                                   >>= as' "allow failure to disseminate"
+              aggregatorStats p1n2 slot1          >>= assertStatusCode 200
+                                                      >>= assertAggregator []
+                                                                           >>= as  "aggregator has no ingests"
 
     describe "Cleanup" do
       after_ stopSession do

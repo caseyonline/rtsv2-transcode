@@ -14,6 +14,7 @@ import Pinto as Pinto
 import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStartTemplate, childType)
 import Pinto.Sup as Sup
 import Rtsv2.Agents.IngestInstance as IngestInstance
+import Rtsv2.Agents.PersistentInstanceState as PersistentInstanceState
 import Rtsv2.Names as Names
 import Shared.LlnwApiTypes (StreamDetails, StreamPublish)
 import Shared.Stream (IngestKey)
@@ -29,13 +30,19 @@ startLink _ = Sup.startLink serverName init
 
 startIngest :: IngestKey -> StreamPublish -> StreamDetails -> String -> Int -> Pid -> Effect Unit
 startIngest ingestKey streamPublish streamDetails remoteAddress remotePort handlerPid = do
-  okAlreadyStarted =<< Sup.startSimpleChild childTemplate serverName { streamPublish
-                                                                              , streamDetails
-                                                                              , ingestKey
-                                                                              , remoteAddress
-                                                                              , remotePort
-                                                                              , handlerPid
-                                                                              }
+  let
+    startArgs = { streamPublish
+                , streamDetails
+                , ingestKey
+                , remoteAddress
+                , remotePort
+                , handlerPid
+                }
+  okAlreadyStarted =<< Sup.startSimpleChild childTemplate serverName { childStartLink: IngestInstance.startLink startArgs
+                                                                     , childStopAction: IngestInstance.stopAction ingestKey
+                                                                     , serverName: Names.ingestInstanceStateName ingestKey
+                                                                     , domain: IngestInstance.domain
+                                                                     }
 
 init :: Effect Sup.SupervisorSpec
 init = do
@@ -48,8 +55,8 @@ init = do
               # childStartTemplate childTemplate
               # childRestart Transient
           )
-            : nil
+          : nil
         )
 
-childTemplate :: Pinto.ChildTemplate IngestInstance.StartArgs
-childTemplate = Pinto.ChildTemplate (IngestInstance.startLink)
+childTemplate :: Pinto.ChildTemplate (PersistentInstanceState.StartArgs IngestInstance.PersistentState)
+childTemplate = Pinto.ChildTemplate (PersistentInstanceState.startLink)

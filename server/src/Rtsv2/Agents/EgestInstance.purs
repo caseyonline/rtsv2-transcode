@@ -192,6 +192,9 @@ handleInfo msg state@{egestKey: egestKey@(EgestKey ourSlotId)} =
       | slotId == ourSlotId -> doStop state
       | otherwise -> pure $ CastNoReply state
 
+    IntraPoPBus (VmReset _ _ _) ->
+      pure $ CastNoReply state
+
 removeClient :: State -> Effect State
 removeClient state@{clientCount: 0} = do
   logInfo "Remove client - already zero" {}
