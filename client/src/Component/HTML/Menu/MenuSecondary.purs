@@ -1,4 +1,4 @@
-module Rtsv2App.Component.HTML.MainSecondary where
+module Rtsv2App.Component.HTML.Menu.MainSecondary where
 
 import Prelude
 

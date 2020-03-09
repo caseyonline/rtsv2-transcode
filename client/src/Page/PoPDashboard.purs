@@ -13,7 +13,6 @@ import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Newtype (un)
 import Data.Symbol (SProxy(..))
 import Data.Traversable (traverse_)
-import Debug.Trace (traceM)
 import Effect.Aff.Class (class MonadAff)
 import Effect.Class (class MonadEffect, liftEffect)
 import Effect.Ref as Ref
@@ -31,9 +30,10 @@ import Rtsv2App.Component.HTML.Breadcrumb as BG
 import Rtsv2App.Component.HTML.Dropdown as DP
 import Rtsv2App.Component.HTML.Footer (footer)
 import Rtsv2App.Component.HTML.Header as HD
-import Rtsv2App.Component.HTML.MainSecondary as MS
-import Rtsv2App.Component.HTML.MenuMain as MM
-import Rtsv2App.Component.HTML.PoPAggregator as PA
+import Rtsv2App.Component.HTML.Menu.MainSecondary as MS
+import Rtsv2App.Component.HTML.Menu.MenuMain as MM
+import Rtsv2App.Component.HTML.Tables.PoPAggr as PA
+import Rtsv2App.Component.HTML.Tables.PoPAggrDetails as PAD
 import Rtsv2App.Component.HTML.Utils (css_)
 import Rtsv2App.Data.PoP (PoPDefEcharts, timedRoutedToChartOps, timedRoutedToChartScatter, updatePoPDefEnv)
 import Rtsv2App.Data.Profile (Profile)
@@ -54,31 +54,31 @@ type Input =
 data Action
   = Initialize
   | HandlePoPSlotAggrTable PA.Message
+  | HandlePoPAggrDetails PAD.Message
   | Receive Input
 
-
-
 type State =
-  { aggrLocs        :: Array (AggregatorLocation Array)
-  , chart           :: Maybe EC.Instance
-  , currentUser     :: Maybe Profile
-  , popDefEcharts   :: Array PoPDefEcharts
-  , popDefenition   :: Maybe (PoPDefinition Array)
-  , popLeaders      :: Array Server
-  , curPopName      :: PoPName
-  , selectedAggrIndex    :: Maybe Int
-  , selectedPoPName :: Maybe PoPName
-  , prevRoute       :: Maybe Route
-  , timedRoutes     :: Maybe (Array (TimedPoPRoutes Array))
-  , slotDetails     :: Maybe (IngestAggregator Array)
+  { aggrLocs          :: Array (AggregatorLocation Array)
+  , chart             :: Maybe EC.Instance
+  , currentUser       :: Maybe Profile
+  , popDefEcharts     :: Array PoPDefEcharts
+  , popDefenition     :: Maybe (PoPDefinition Array)
+  , popLeaders        :: Array Server
+  , curPopName        :: PoPName
+  , selectedAggrIndex :: Maybe Int
+  , selectedPoPName   :: Maybe PoPName
+  , prevRoute         :: Maybe Route
+  , timedRoutes       :: Maybe (Array (TimedPoPRoutes Array))
+  , slotDetails       :: Maybe (IngestAggregator Array)
   }
 
 type ChildSlots =
-  ( mainMenu        :: MM.Slot Unit
-  , header          :: HD.Slot Unit
-  , dropDown        :: DP.Slot Unit
-  , menuSecondary   :: MS.Slot Unit
-  , popSlotAggrTable :: PA.Slot Unit
+  ( mainMenu            :: MM.Slot Unit
+  , header              :: HD.Slot Unit
+  , dropDown            :: DP.Slot Unit
+  , menuSecondary       :: MS.Slot Unit
+  , popAggrTable        :: PA.Slot Unit
+  , popAggrDetailsTable :: PAD.Slot Unit
   )
 
 -------------------------------------------------------------------------------
@@ -123,7 +123,7 @@ component = H.mkComponent
       st ← H.get
       { popDefEnv, urlEnv, userEnv } <- ask
       -- set the class of <html />
-      _ <- liftEffect $ changeHtmlClass urlEnv.htmlClass
+      liftEffect $ changeHtmlClass urlEnv.htmlClass
       -- don't load js again if previous route was a PoPDashboard
       shouldLoadJS st.prevRoute
 
@@ -162,7 +162,7 @@ component = H.mkComponent
         H.put $ initialState { popName, prevRoute }
         handleAction Initialize
 
-    HandlePoPSlotAggrTable (PA.SPoPInfo selectedInfo) -> do
+    HandlePoPSlotAggrTable (PA.SPoPAggrInfo selectedInfo) -> do
       H.modify_ _ { selectedAggrIndex = selectedInfo.selectedAggrIndex
                   , selectedPoPName = selectedInfo.selectedPoPName
                   }
@@ -182,7 +182,6 @@ component = H.mkComponent
               let slotRole = fromMaybe Primary (_.role <$> st.aggrLocs !! selectedAggrIndex)
               mSlotDetails <- hush <$> getAggregatorDetails { slotId: selectedSlotId , slotRole, serverAddress: selectedAddress }
               H.modify_ _ {slotDetails = mSlotDetails}
-              traceM selectedInfo
               -- | go fetch timedroute and populate the chart/map with options
               maybeTimedRoutes <- getTimedRoutes selectedInfo st.curPopName
               case maybeTimedRoutes of
@@ -191,6 +190,9 @@ component = H.mkComponent
                   let convertedRoutes = timedRoutedToChartOps timedRoutes geoLocations
                   let convertedScatterRoutes = timedRoutedToChartScatter timedRoutes geoLocations
                   liftEffect $ EC.setOptionPoP { rttData: convertedRoutes, scatterData: convertedScatterRoutes } chart
+
+    HandlePoPAggrDetails _ ->
+      pure unit
 
   render :: State -> H.ComponentHTML Action ChildSlots m
   render state@{ curPopName, currentUser, popDefenition, aggrLocs, selectedAggrIndex , slotDetails} =
@@ -236,7 +238,7 @@ component = H.mkComponent
             [ HH.div
               [ css_ "card is-card-widget tile is-child" ]
               [ HH.slot
-                  (SProxy :: _ "popSlotAggrTable")
+                  (SProxy :: _ "popAggrTable")
                   unit PA.component { aggrLocs, popDef: popDefenition, selectedAggrIndex }
                   (Just <<< HandlePoPSlotAggrTable)
               ]
@@ -249,9 +251,18 @@ component = H.mkComponent
             ]
           ]
          , HH.div
-           [ css_ "tile is-parent" ]
-           (renderSlotDetails slotDetails)
-
+           [ css_ "tile is-ancestor" ]
+           [ HH.div
+             [ css_ "tile is-parent" ]
+             [ HH.div
+               [ css_ "card map is-card-widget tile is-child" ]
+               [ HH.slot
+                  (SProxy :: _ "popAggrDetailsTable")
+                  unit PAD.component { slotDetails, selectedAggrDetailsIndex: Nothing, selectedAggrIndex }
+                  (Just <<< HandlePoPAggrDetails)
+              ]
+             ]
+           ]
 
 
           -- , HH.div
@@ -303,15 +314,14 @@ component = H.mkComponent
           , HP.ref (H.RefLabel "mymap")
           , CSS.style do
               Geometry.height $ Size.px (toNumber 400)
-              -- Geometry.width $ Size.pct (toNumber 100)
           ]
           []
         ]
 
-      renderSlotDetails =
-        maybe [HH.text "Nothing"]
-        \details ->
-           [HH.text "Hoooray!!"]
+
+
+
+
 
       card title table =
          HH.div
@@ -328,35 +338,6 @@ component = H.mkComponent
             ]
           ]
 
-      tableAgg =
-        HH.div
-        [ css_ "table-responsive"]
-        [ HH.table
-          [ css_ "table" ]
-          [ HH.thead_
-            [HH.tr_
-             [ HH.th_
-               [ HH.text "Slot Name"]
-             , HH.th_
-               [ HH.text "PoP"]
-             , HH.th_
-               [ HH.text "Region"]
-             , HH.th_
-               [ HH.text "Address"]
-             ]
-            ]
-          , HH.tbody_
-            [ HH.td_
-               [ HH.text "slot1"]
-             , HH.td_
-               [ HH.text "fra"]
-             , HH.td_
-               [ HH.text "europe"]
-             , HH.td_
-               [ HH.text "172.16.171.5"]
-             ]
-          ]
-        ]
 
       tableStream =
         HH.div

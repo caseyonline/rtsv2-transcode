@@ -1,6 +1,6 @@
 module Rtsv2App.Capability.Resource.Types
        ( SlotDetailsArgs
-       , SelectedInfo
+       , PoPAggrSelectedInfo
        )
        where
 
@@ -16,7 +16,7 @@ type SlotDetailsArgs =
   }
 
 
-type SelectedInfo =
+type PoPAggrSelectedInfo =
     { selectedPoPName   :: Maybe PoPName
     , selectedSlotId    :: Maybe SlotId
     , selectedAddress   :: Maybe ServerAddress

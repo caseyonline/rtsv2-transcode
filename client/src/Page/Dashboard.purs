@@ -29,8 +29,8 @@ import Rtsv2App.Capability.Resource.User (class ManageUser)
 import Rtsv2App.Component.HTML.Breadcrumb as BG
 import Rtsv2App.Component.HTML.Footer (footer)
 import Rtsv2App.Component.HTML.Header as HD
-import Rtsv2App.Component.HTML.MainSecondary as MS
-import Rtsv2App.Component.HTML.MenuMain as MM
+import Rtsv2App.Component.HTML.Menu.MainSecondary as MS
+import Rtsv2App.Component.HTML.Menu.MenuMain as MM
 import Rtsv2App.Component.HTML.Tile as TL
 import Rtsv2App.Component.HTML.Utils (css_)
 import Rtsv2App.Data.PoP (PoPDefEcharts, updatePoPDefEnv)

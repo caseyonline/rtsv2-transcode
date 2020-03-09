@@ -21,7 +21,7 @@ import Rtsv2App.Capability.Navigate (class Navigate, navigate)
 import Rtsv2App.Capability.Resource.User (class ManageUser, registerUser)
 import Rtsv2App.Component.HTML.Footer (footer)
 import Rtsv2App.Component.HTML.Header as HD
-import Rtsv2App.Component.HTML.MenuMain as MM
+import Rtsv2App.Component.HTML.Menu.MenuMain as MM
 import Rtsv2App.Component.HTML.Utils (css_, safeHref)
 import Rtsv2App.Data.Email (Email)
 import Rtsv2App.Data.Profile (Profile)
