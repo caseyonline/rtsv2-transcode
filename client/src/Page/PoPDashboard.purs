@@ -5,10 +5,11 @@ import Prelude
 import CSS.Geometry as Geometry
 import CSS.Size as Size
 import Control.Monad.Reader (class MonadAsk, ask)
+import Data.Array ((!!))
 import Data.Const (Const)
-import Data.Either (Either(..))
+import Data.Either (Either(..), hush)
 import Data.Int (toNumber)
-import Data.Maybe (Maybe(..), maybe)
+import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Newtype (un)
 import Data.Symbol (SProxy(..))
 import Data.Traversable (traverse_)
@@ -24,7 +25,7 @@ import Halogen.HTML.CSS as CSS
 import Halogen.HTML.Properties as HP
 import Record.Extra (sequenceRecord)
 import Rtsv2App.Capability.Navigate (class Navigate)
-import Rtsv2App.Capability.Resource.Api (class ManageApi, getPoPdefinition, getTimedRoutes)
+import Rtsv2App.Capability.Resource.Api (class ManageApi, getPoPdefinition, getAggregatorDetails, getTimedRoutes)
 import Rtsv2App.Capability.Resource.User (class ManageUser)
 import Rtsv2App.Component.HTML.Breadcrumb as BG
 import Rtsv2App.Component.HTML.Dropdown as DP
@@ -38,8 +39,9 @@ import Rtsv2App.Data.PoP (PoPDefEcharts, timedRoutedToChartOps, timedRoutedToCha
 import Rtsv2App.Data.Profile (Profile)
 import Rtsv2App.Data.Route (Route(..))
 import Rtsv2App.Env (PoPDefEnv, UrlEnv, UserEnv, changeHtmlClass)
-import Shared.Types (CheckBoxState, PoPName(..), Server)
-import Shared.Types.Agent.State (PoPDefinition, TimedPoPRoutes, AggregatorLocation)
+import Shared.Stream (SlotRole(..))
+import Shared.Types (PoPName(..), Server)
+import Shared.Types.Agent.State (AggregatorLocation, PoPDefinition, TimedPoPRoutes, IngestAggregator)
 
 -------------------------------------------------------------------------------
 -- Types for Dashboard Page
@@ -51,7 +53,7 @@ type Input =
 
 data Action
   = Initialize
-  | HandlePoPSlotArgTable PA.Message
+  | HandlePoPSlotAggrTable PA.Message
   | Receive Input
 
 
@@ -64,10 +66,11 @@ type State =
   , popDefenition   :: Maybe (PoPDefinition Array)
   , popLeaders      :: Array Server
   , curPopName      :: PoPName
-  , checkedBoxes    :: Maybe (Array CheckBoxState)
+  , selectedAggrIndex    :: Maybe Int
   , selectedPoPName :: Maybe PoPName
   , prevRoute       :: Maybe Route
   , timedRoutes     :: Maybe (Array (TimedPoPRoutes Array))
+  , slotDetails     :: Maybe (IngestAggregator Array)
   }
 
 type ChildSlots =
@@ -75,7 +78,7 @@ type ChildSlots =
   , header          :: HD.Slot Unit
   , dropDown        :: DP.Slot Unit
   , menuSecondary   :: MS.Slot Unit
-  , popSlotArgTable :: PA.Slot Unit
+  , popSlotAggrTable :: PA.Slot Unit
   )
 
 -------------------------------------------------------------------------------
@@ -107,10 +110,11 @@ component = H.mkComponent
     , popDefenition: Nothing
     , popLeaders: []
     , curPopName: popName
-    , checkedBoxes: Nothing
+    , selectedAggrIndex: Nothing
     , selectedPoPName: Nothing
     , prevRoute
     , timedRoutes: Nothing
+    , slotDetails: Nothing
     }
 
   handleAction :: Action -> H.HalogenM State Action ChildSlots Void m Unit
@@ -145,11 +149,11 @@ component = H.mkComponent
 
         where
           updateState pd = do
-            { popDefenition, popDefEcharts, popLeaders, aggrLocs } <- updatePoPDefEnv pd
-            H.modify_ _ { popDefenition = popDefenition
-                        , popDefEcharts = popDefEcharts
-                        , popLeaders = popLeaders
-                        , aggrLocs = aggrLocs
+            env <- updatePoPDefEnv pd
+            H.modify_ _ { popDefenition = env.popDefenition
+                        , popDefEcharts = env.popDefEcharts
+                        , popLeaders = env.popLeaders
+                        , aggrLocs = env.aggrLocs
                         }
 
     Receive { popName, prevRoute } -> do
@@ -158,10 +162,10 @@ component = H.mkComponent
         H.put $ initialState { popName, prevRoute }
         handleAction Initialize
 
-    HandlePoPSlotArgTable (PA.SPoPInfo selectedInfo) -> do
-      _ <- H.modify_ _ { checkedBoxes = selectedInfo.checkedBoxes
-                       , selectedPoPName =selectedInfo.selectedPoPName
-                       }
+    HandlePoPSlotAggrTable (PA.SPoPInfo selectedInfo) -> do
+      H.modify_ _ { selectedAggrIndex = selectedInfo.selectedAggrIndex
+                  , selectedPoPName = selectedInfo.selectedPoPName
+                  }
       st <- H.get
       { popDefEnv } <- ask
       geoLocations <- H.liftEffect $ Ref.read popDefEnv.geoLocations
@@ -174,7 +178,11 @@ component = H.mkComponent
           case sequenceRecord selectedInfo of
             Nothing -> do
                liftEffect $ EC.setOptionPoP { rttData: [], scatterData: [] } chart
-            Just _  -> do
+            Just { selectedAggrIndex, selectedSlotId, selectedAddress }  -> do
+              let slotRole = fromMaybe Primary (_.role <$> st.aggrLocs !! selectedAggrIndex)
+              mSlotDetails <- hush <$> getAggregatorDetails { slotId: selectedSlotId , slotRole, serverAddress: selectedAddress }
+              H.modify_ _ {slotDetails = mSlotDetails}
+              traceM selectedInfo
               -- | go fetch timedroute and populate the chart/map with options
               maybeTimedRoutes <- getTimedRoutes selectedInfo st.curPopName
               case maybeTimedRoutes of
@@ -185,7 +193,7 @@ component = H.mkComponent
                   liftEffect $ EC.setOptionPoP { rttData: convertedRoutes, scatterData: convertedScatterRoutes } chart
 
   render :: State -> H.ComponentHTML Action ChildSlots m
-  render state@{ curPopName, currentUser, popDefenition, aggrLocs, checkedBoxes } =
+  render state@{ curPopName, currentUser, popDefenition, aggrLocs, selectedAggrIndex , slotDetails} =
     HH.div
       [ css_ "main" ]
       [ HH.slot (SProxy :: _ "header") unit HD.component { currentUser, route: LoginR } absurd
@@ -228,9 +236,9 @@ component = H.mkComponent
             [ HH.div
               [ css_ "card is-card-widget tile is-child" ]
               [ HH.slot
-                  (SProxy :: _ "popSlotArgTable")
-                  unit PA.component { aggrLocs: aggrLocs, popDef: popDefenition, checkedBoxes: checkedBoxes }
-                  (Just <<< HandlePoPSlotArgTable)
+                  (SProxy :: _ "popSlotAggrTable")
+                  unit PA.component { aggrLocs, popDef: popDefenition, selectedAggrIndex }
+                  (Just <<< HandlePoPSlotAggrTable)
               ]
             ]
           ,  HH.div
@@ -240,6 +248,12 @@ component = H.mkComponent
               (mapDiv state)
             ]
           ]
+         , HH.div
+           [ css_ "tile is-parent" ]
+           (renderSlotDetails slotDetails)
+
+
+
           -- , HH.div
           --   [ css_ "row" ]
           --   [ HH.div
@@ -293,6 +307,11 @@ component = H.mkComponent
           ]
           []
         ]
+
+      renderSlotDetails =
+        maybe [HH.text "Nothing"]
+        \details ->
+           [HH.text "Hoooray!!"]
 
       card title table =
          HH.div
