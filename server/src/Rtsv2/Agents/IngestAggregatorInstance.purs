@@ -43,7 +43,7 @@ import Erl.Process.Raw (Pid)
 import Erl.Utils (Ref, shutdown)
 import Erl.Utils as Erl
 import Foreign (Foreign)
-import Logger (Logger)
+import Logger (Logger, spy)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult, isRegistered)
 import Pinto.Gen (CallResult(..), CastResult(..))
@@ -237,6 +237,10 @@ emptyPersistentState = { localIngests: Set.empty
                        , relays: Set.empty
                        }
 
+hasIngests :: State -> Boolean
+hasIngests {persistentState: {localIngests, remoteIngests}} =
+  not (Set.isEmpty localIngests && Map.isEmpty remoteIngests)
+
 streamDetailsToAggregatorKey :: StreamDetails -> AggregatorKey
 streamDetailsToAggregatorKey streamDetails =
   AggregatorKey streamDetails.slot.id streamDetails.role
@@ -258,7 +262,7 @@ handleInfo msg state@{aggregatorKey, stateServerName} =
       pure $ CastNoReply state
 
     MaybeStop
-      | state.persistentState == emptyPersistentState -> do
+      | not hasIngests state -> do
         logInfo "Ingest Aggregator stopping" {aggregatorKey}
         pure $ CastStop state
       | otherwise -> pure $ CastNoReply state
@@ -345,15 +349,11 @@ doRemoveIngest profileName persistentStateRemoveFun state@{aggregatorKey, workfl
     state2 = persistentStateRemoveFun profileName state
   updatePersistentState state2
   removeIngestImpl workflowHandle (IngestKey slotId slotRole profileName)
-  maybeFireStopTimer state2
+  if not hasIngests state2 then
+    void $ Timer.sendAfter (serverName aggregatorKey) shutdownLingerTimeMs MaybeStop
+  else
+    pure unit
   pure state2
-
-  where
-    maybeFireStopTimer {persistentState}
-      | persistentState == emptyPersistentState = do
-          void $ Timer.sendAfter (serverName aggregatorKey) shutdownLingerTimeMs MaybeStop
-      | otherwise =
-          pure unit
 
 --------------------------------------------------------------------------------
 -- Lenses

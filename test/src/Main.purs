@@ -689,7 +689,7 @@ main =
                                                        >>= assertRelayForEgest []
                                                                         >>= as  "fra relays for both iad and dal with no egests of its own"
 
-      describeOnly "resilience" do
+      describe "resilience" do
         let
           p1Nodes = [p1n1, p1n2, p1n3]
           p2Nodes = [p2n1, p2n2]
