@@ -2,16 +2,14 @@ module Rtsv2App.Component.HTML.Tables.PoPAggr where
 
 import Prelude
 
-import Control.Monad.Reader.Trans (class MonadAsk, ask)
+import Control.Monad.Reader.Trans (class MonadAsk)
 import Data.Array (mapWithIndex, null, (!!))
 import Data.Const (Const)
-import Data.Foldable (findMap)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (un)
 import Data.Time.Duration (Milliseconds(..))
 import Effect.Aff (delay)
 import Effect.Aff.Class (class MonadAff, liftAff)
-import Effect.Ref as Ref
 import Halogen as H
 import Halogen.HTML as HH
 import Halogen.HTML.Events as HE
@@ -80,29 +78,38 @@ component = H.mkComponent
   handleAction :: Action -> H.HalogenM State Action () Message m Unit
   handleAction = case _ of
     Receive input@{ aggrLocs, popDef, selectedAggrIndex } -> do
+      -- little delay to allow loading animation to play
+      _ <- liftAff $ delay $ Milliseconds 500.0
       H.modify_ _ { selectedAggrIndex = selectedAggrIndex
                   , aggrLocs = aggrLocs
                   , popDef = popDef
+                  , isLoading = false
                   }
-      _ <- liftAff $ delay $ Milliseconds 750.0
-      H.modify_ _ { isLoading = false }
 
     Select index -> do
       st <- H.get
-      let newSelected = if st.selectedAggrIndex == Just index
-                then Nothing
-                else Just index
-      { popDefEnv } <- ask
-      transPoPLeaders <- H.liftEffect $ Ref.read popDefEnv.transPoPLeaders
+      let newSelected =
+            if st.selectedAggrIndex == Just index
+              then Nothing
+              else Just index
 
       newSt <- H.modify _ { selectedAggrIndex = newSelected }
       let
         maybeAgg :: Maybe (AggregatorLocation Array)
         maybeAgg = const (newSt.aggrLocs !! index) =<< newSelected
+
+        selectedSlot :: Maybe SlotId
         selectedSlot = _.slotId <$> maybeAgg
+
+        -- this assumes there is only one value in servers which `might` not be the case
         firstAggregator = (\aggr -> un Server <$> aggr.servers !! 0) =<< maybeAgg
+
+        selectedPname :: Maybe PoPName
         selectedPname = _.pop <$> firstAggregator
+
+        selectedServer :: Maybe ServerAddress
         selectedServer = _.address <$> firstAggregator
+
       H.raise
         (SPoPAggrInfo
            { selectedSlotId: selectedSlot
@@ -111,7 +118,6 @@ component = H.mkComponent
            , selectedAggrIndex: newSelected
            }
         )
-      pure unit
 
     Refresh -> do
       H.modify_ _ { isLoading = true }
@@ -147,14 +153,6 @@ component = H.mkComponent
         , HH.span_
           [ HH.text "Refresh" ]
         ]
-
-        -- <button type="button" class="button is-small">
-        --    <span class="icon">
-        --      <i class="mdi mdi-refresh default"></i>
-        --    </span>
-        --    <span>Refresh</span>
-        -- </button>
-
       ]
     , HH.div
         [ css_ "card-content" ]
@@ -194,7 +192,9 @@ component = H.mkComponent
     ]
 
 
-
+-------------------------------------------------------------------------------
+-- Table content
+-------------------------------------------------------------------------------
 tableNoAggr :: forall p i. Array (HH.HTML p i)
 tableNoAggr =
   [ HH.div
@@ -214,14 +214,14 @@ tableNoAggr =
     ]
   ]
 
-
+-- |
 tableTRs :: forall p. State -> HH.HTML p Action
 tableTRs state =
   HH.tbody_
   (flip mapWithIndex state.aggrLocs
-   -- (flip mapWithIndex  myTestArgLocs
     (\index aggrLoc ->
-        HH.tr_
+        HH.tr
+        [ css_ if state.selectedAggrIndex == Just index then "is-selected" else "" ]
         ( aggrLoc.servers >>=
           (\server -> do
               let s = un Server server
@@ -265,29 +265,9 @@ tableTRs state =
   )
 
 
-
-
-
--- | find the popName given selected slot
-slotToPoP :: Maybe SlotId -> Array (AggregatorLocation Array) -> Maybe PoPName
-slotToPoP mSlotId aggrLocs =
-  case mSlotId of
-    Nothing -> Nothing
-    Just slotId -> do
-      let matchedPoP = findMap (\aggrLoc -> matchServer aggrLoc) aggrLocs
-      case matchedPoP of
-        Nothing -> Nothing
-        Just x -> Just x
-      where
-        matchServer aggrLoc =
-          findMap (\server -> do
-                  let { pop, region, address } = un Server server
-                  if aggrLoc.slotId == slotId
-                    then Just pop
-                    else Nothing ) aggrLoc.servers
-
-
--- | this is for testing purposes only when displaying multiple aggregators
+---------------------------------------------------------------------------------------
+-- Test Aggrs -- this is for testing purposes only when displaying multiple aggregators
+---------------------------------------------------------------------------------------
 myTestArgLocs :: Array (AggregatorLocation Array)
 myTestArgLocs =
   [ { slotId: SlotId 1

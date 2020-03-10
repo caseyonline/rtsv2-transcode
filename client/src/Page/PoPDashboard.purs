@@ -174,30 +174,38 @@ component = H.mkComponent
       { popDefEnv } <- ask
       geoLocations <- H.liftEffect $ Ref.read popDefEnv.geoLocations
 
-      -- | does a chart exist
+      -- does a chart exist
       case st.chart of
-        Nothing    -> pure unit -- TODO: make a new chart? though there should always be one
-        Just chart ->
-          -- | check all records are Justs
-          case sequenceRecord selectedInfo of
+        -- make a new chart? though technically at this point there should always be one
+        Nothing    -> pure unit
 
+        Just chart ->
+          -- check all records selectedInfo are Just
+          case sequenceRecord selectedInfo of
             Nothing -> do
-               liftEffect $ EC.setOptionPoP { rttData: [], scatterData: [] } chart
+              -- reset the chart
+              liftEffect $ EC.setOptionPoP { rttData: [], scatterData: [] } chart
 
             Just { selectedAggrIndex, selectedSlotId, selectedAddress }  -> do
+              -- slot role from aggrLocs using currently selected index
               let slotRole = fromMaybe Primary (_.role <$> st.aggrLocs !! selectedAggrIndex)
+
+              -- fetch aggregator details
               mSlotDetails <- hush <$> getAggregatorDetails { slotId: selectedSlotId , slotRole, serverAddress: selectedAddress }
+              -- update local state with result
               H.modify_ _ { slotDetails = mSlotDetails}
-              -- | go fetch timedroute and populate the chart/map with options
+
+              -- fetch timedroute
               maybeTimedRoutes <- getTimedRoutes selectedInfo st.curPopName
-
+              -- handle result of getting timmed routes
               case maybeTimedRoutes of
-
                 Left e            -> pure unit -- TODO: display error
 
                 Right timedRoutes -> do
+                  -- convert timedRoutes into
                   let convertedRoutes = timedRoutedToChartOps timedRoutes geoLocations
-                  let convertedScatterRoutes = timedRoutedToChartScatter timedRoutes geoLocations
+                      convertedScatterRoutes = timedRoutedToChartScatter timedRoutes geoLocations
+
                   liftEffect $ EC.setOptionPoP { rttData: convertedRoutes, scatterData: convertedScatterRoutes } chart
 
     HandlePoPAggrDetails _ ->

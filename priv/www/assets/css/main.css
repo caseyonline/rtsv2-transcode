@@ -2553,6 +2553,9 @@ a.box:active {
     color: #363636; }
     .table th:not([align]) {
       text-align: left; }
+  .table tr.inactive {
+    color: #C0C0C0;
+  }
   .table tr.is-selected {
     background-color: #00d1b2;
     color: #fff; }

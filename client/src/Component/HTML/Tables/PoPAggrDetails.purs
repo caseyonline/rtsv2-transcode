@@ -3,10 +3,11 @@ module Rtsv2App.Component.HTML.Tables.PoPAggrDetails where
 import Prelude
 
 import Control.Monad.Reader.Trans (class MonadAsk)
-import Data.Array (find, mapWithIndex)
+import Data.Array (elem, find, mapWithIndex)
 import Data.Const (Const)
 import Data.Maybe (Maybe(..), maybe)
 import Data.Newtype (un)
+import Debug.Trace (traceM)
 import Effect.Aff.Class (class MonadAff)
 import Halogen as H
 import Halogen.HTML as HH
@@ -120,7 +121,7 @@ component = H.mkComponent
                   [ HH.text "Bitrate" ]
                 , HH.th
                   [ css_ "title is-7" ]
-                  [ HH.text "Address" ]
+                  [ HH.text "Active" ]
                 ]
               ]
             , ( maybe (HH.div_ []) (tableTRs state) state.slotDetails)
@@ -128,7 +129,7 @@ component = H.mkComponent
           ]
         , HH.div
           [ css_ "columns"]
-          ( maybe tableNoAggr (\_ -> []) state.selectedAggrIndex)
+          ( maybe tableNoAggr (const []) state.selectedAggrIndex)
         ]
     ]
 
@@ -136,47 +137,55 @@ component = H.mkComponent
 tableTRs :: forall p. State -> IngestAggregator Array -> HH.HTML p Action
 tableTRs state ingestAggr =
   HH.tbody_
-  (flip mapWithIndex (unwrapNode <$> ingestAggr.activeProfiles)
-    (\index iAggr ->
-        HH.tr_
-        [ HH.td
-          [ css_ "checkbox-cell" ]
-          [ HH.label
-            [ css_ "b-checkbox checkbox"]
-            [ HH.input
-              [ HP.type_ HP.InputCheckbox
-              , HP.checked $ state.selectedAggrDetailsIndex == Just index
-              , HE.onChange $ const $ Just (Select index)
-              ]
-            , HH.span
-              [ css_ "check"]
-              []
-            , HH.span
-              [ css_ "control-label"]
-              []
-            ]
-          ]
+  (flip mapWithIndex (un SlotProfile <$> ingestAggr.streamDetails.slot.profiles)
+  -- (flip mapWithIndex (unwrapNode <$> ingestAggr.activeProfiles)
+    (\index profile@{ name, rtmpStreamName, bitrate } ->
+        HH.tr
+        [ css_ if isActiveProfile name ingestAggr
+                 then ""
+                 else "inactive"
+
+        ]
+        [ if isActiveProfile name ingestAggr
+            then HH.td          
+                 [ css_ "checkbox-cell" ]
+                 [ HH.label
+                   [ css_ "b-checkbox checkbox"]
+                   [ HH.input
+                     [ HP.type_ HP.InputCheckbox
+                     , HP.checked $ state.selectedAggrDetailsIndex == Just index
+                     , HE.onChange $ const $ Just (Select index)
+                     ]
+                   , HH.span
+                     [ css_ "check"]
+                     []
+                   , HH.span
+                     [ css_ "control-label"]
+                     []
+                   ]
+                 ]
+             else HH.td_ []
+
         , HH.td
           [ dataAttr "label" "Profile name" ]
-          [ HH.text $ un ProfileName iAggr.profileName ]
+          [ HH.text $ un ProfileName name ]
         , HH.td
           [ dataAttr "label" "Stream name" ]
-          [ HH.text
-            $ maybe ""
-              (un RtmpStreamName <<< _.rtmpStreamName)
-              $ getSlotProfile ingestAggr iAggr.profileName
+          [ HH.text $ un RtmpStreamName rtmpStreamName 
           ]
         , HH.td
           [ dataAttr "label" "Bitrate" ]
-          [ HH.text
-            $ show
-            $ maybe 0
-              (_.bitrate)
-              $ getSlotProfile ingestAggr iAggr.profileName
+          [ HH.text $ (show bitrate) <> " bps"
           ]
         , HH.td
-          [ dataAttr "label" "Address" ]
-          [ HH.text $ un ServerAddress iAggr.serverAddress ]
+          [ dataAttr "label" "Active" ]
+          [ HH.span
+            [css_ "icon"]
+            [ HH.text $ if isActiveProfile name ingestAggr
+                                 then "yes"
+                                 else "no"
+            ]
+          ]
         ]
     )
   )
@@ -201,6 +210,17 @@ tableNoAggr =
     ]
   ]
 
+
+isActiveProfile :: ProfileName -> IngestAggregator Array -> Boolean
+isActiveProfile pName ingestAggr = do
+  let activeProfiles = unwrapNode <$> ingestAggr.activeProfiles
+      results = (\p -> p.profileName == pName ) <$> activeProfiles
+  elem true results
+
+
+
+
+  
 getSlotProfile
   :: IngestAggregator Array
   -> ProfileName
