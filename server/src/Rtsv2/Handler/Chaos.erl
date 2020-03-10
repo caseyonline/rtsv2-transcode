@@ -1,17 +1,16 @@
 -module(rtsv2_handler_chaos@foreign).
 
 -export([
-         chaosImpl/1
+         chaosImpl/2
         ]).
 
-chaosImpl(#{ name := NameStr
-           , exit_reason := MExitReason
+chaosImpl(#{ exit_reason := MExitReason
            , num_hits := MNumHits
-           , delay_between_hits_ms := MDelayMs }) ->
+           , delay_between_hits_ms := MDelayMs }, Name) ->
   fun() ->
-      {ok, Tokens, _} = erl_scan:string(binary_to_list(NameStr)),
-      {ok, AbsForm} = erl_parse:parse_exprs(Tokens),
-      {value, Name, _} = erl_eval:exprs(AbsForm, erl_eval:new_bindings()),
+      %% {ok, Tokens, _} = erl_scan:string(binary_to_list(NameStr)),
+      %% {ok, AbsForm} = erl_parse:parse_exprs(Tokens),
+      %% {value, Name, _} = erl_eval:exprs(AbsForm, erl_eval:new_bindings()),
 
       ExitReason = binary_to_atom(fromMaybe(<<"exit">>, MExitReason), utf8),
       NumHits = fromMaybe(1, MNumHits),

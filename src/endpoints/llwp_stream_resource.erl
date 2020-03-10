@@ -25,7 +25,7 @@
 
 init(Req, MakeSlotIdAndProfileName) ->
 
-  SlotId = binary_to_integer(cowboy_req:binding(slot_id, Req)),
+  SlotId = rtsv2_types:string_to_uuid(cowboy_req:binding(slot_id, Req)),
   ProfileName = cowboy_req:binding(profile_name, Req),
 
   ?SLOG_INFO("LLWP Stream opening", #{slot_id => SlotId,

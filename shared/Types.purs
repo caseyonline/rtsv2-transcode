@@ -15,8 +15,6 @@ module Shared.Types
        , Username(..)
        , CheckBoxState(..)
        , JsonLdContextType(..)
-       , ChaosPayload
-       , defaultKill
        , toServer
        , toServerLoad
        , serverLoadToServer
@@ -42,20 +40,6 @@ data JsonLdContextType = ServerContext
                        | DeliverToContext
                        | TimedRouteNeighbourContext
                        | ActiveIngestContext
-
-type ChaosPayload =
-  { name :: String
-  , exit_reason :: Maybe String
-  , num_hits :: Maybe Int
-  , delay_between_hits_ms :: Maybe Int
-  }
-
-defaultKill :: String -> ChaosPayload
-defaultKill name = { name
-                   , exit_reason: Nothing
-                   ,num_hits: Nothing
-                   , delay_between_hits_ms: Nothing
-                   }
 
 newtype ServerAddress = ServerAddress String
 

@@ -3,12 +3,15 @@
 
 -include_lib("id3as_common/include/common.hrl").
 
--type slot_id() :: non_neg_integer().
+-type uuid() ::  <<_:16>>.
+
+-type slot_id() :: uuid().
 
 -type slot_role() :: {primary} | {backup}.
 
 -type profile_name() :: binary_string().
 
 -type ingest_key() :: {ingest_key, slot_id(), slot_role(), binary_string()}.
+
 
 -endif.
