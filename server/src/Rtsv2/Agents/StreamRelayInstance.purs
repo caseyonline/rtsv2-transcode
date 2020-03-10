@@ -530,21 +530,24 @@ serverName = Names.streamRelayInstanceName
 
 startLink :: RelayKey ->  CreateRelayPayload -> StateServerName -> Effect StartLinkResult
 startLink relayKey payload stateServerName =
-  Gen.startLink (serverName relayKey) (init relayKey payload) handleInfo
+  Gen.startLink (serverName relayKey) (init relayKey payload stateServerName) handleInfo
 
 stopAction :: RelayKey -> Maybe PersistentState -> Effect Unit
 stopAction relayKey _persistentState =
   -- todo
   pure unit
 
-init :: RelayKey -> CreateRelayPayload -> Effect State
-init relayKey payload@{slotId, streamRole, aggregator} =
+init :: RelayKey -> CreateRelayPayload -> StateServerName -> Effect State
+init relayKey payload@{slotId, streamRole, aggregator} stateServerName =
   do
     thisServer <- PoPDefinition.getThisServer
     egestSourceRoutes <- TransPoP.routesTo (extractPoP aggregator)
 
     IntraPoP.announceLocalRelayIsAvailable relayKey
     _ <- Bus.subscribe (serverName relayKey) IntraPoP.bus IntraPoPBus
+
+    -- TODO - initialisation from stored state here
+    _ <- fromMaybe (Foo "") <$> PersistentInstanceState.getInstanceData stateServerName
 
     let
       commonStateData =
