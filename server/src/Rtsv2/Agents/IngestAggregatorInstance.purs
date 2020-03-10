@@ -120,11 +120,16 @@ serverName = Names.ingestAggregatorInstanceName
 serverNameFromIngestKey :: IngestKey -> ServerName State Msg
 serverNameFromIngestKey = serverName <<< ingestKeyToAggregatorKey
 
-addLocalIngest :: IngestKey -> Effect Unit
+addLocalIngest :: IngestKey -> Effect Boolean
 addLocalIngest ingestKey@(IngestKey _ _ profileName) =
   Gen.doCall (serverNameFromIngestKey ingestKey)
-  (
-    map (CallReply unit) <<< doAddLocalIngest profileName
+  (\state -> do
+      result <- doAddLocalIngest profileName state
+      case result of
+        Left unit ->
+          pure $ CallReply false state
+        Right state2 ->
+          pure $ CallReply true state2
   )
 
 addRemoteIngest :: IngestKey -> RemoteIngestPayload -> Effect Boolean
@@ -151,6 +156,10 @@ checkVmRef :: Ref -> Server -> Effect Boolean
 checkVmRef remoteVmRef remoteServer = do
   currentRemoteVmRef <- currentRemoteRef remoteServer
   pure $ fromMaybe false $ ((==) remoteVmRef) <$> currentRemoteVmRef
+
+checkProfileInactive :: ProfileName -> State -> Boolean
+checkProfileInactive profileName {persistentState: {localIngests, remoteIngests}} =
+  not (Set.member profileName localIngests) && not (Map.member profileName remoteIngests)
 
 removeLocalIngest :: IngestKey -> Effect Unit
 removeLocalIngest ingestKey@(IngestKey _ _ profileName) =
@@ -281,7 +290,11 @@ handleServerReset resetServer newRef state@{persistentState: {remoteIngests}} =
 
 applyPersistentState :: State -> PersistentState -> Effect State
 applyPersistentState state {localIngests, remoteIngests, relays} =
-  foldM (flip doAddLocalIngest) state localIngests
+  foldM (\innerState2 profileName -> do
+            result <- doAddLocalIngest profileName innerState2
+            pure $ case result of
+                     Left unit -> innerState2
+                     Right newState -> newState) state localIngests
   >>= (\innerState -> foldWithIndexM (\profileName innerState2 (Tuple remoteServer remoteRef) -> do
                                          result <- doAddRemoteIngest profileName remoteServer remoteRef innerState2
                                          pure $ case result of
@@ -313,27 +326,42 @@ updatePersistentState state@{ stateServerName
                             , persistentState} =
   PersistentInstanceState.recordInstanceData stateServerName persistentState
 
-doAddLocalIngest :: ProfileName -> State -> Effect State
-doAddLocalIngest profileName state@{thisServer, workflowHandle, slotId, slotRole} = do
-  logInfo "Ingest added" {slotId, slotRole, profileName}
+doAddLocalIngest :: ProfileName -> State -> Effect (Either Unit State)
+doAddLocalIngest profileName state@{thisServer, workflowHandle, slotId, slotRole} =
   let
-    state2 = addLocalIngestToPersistentState profileName state
-  updatePersistentState state2
-  addLocalIngestImpl workflowHandle (IngestKey slotId slotRole profileName)
-  pure state2
+    isInactive = checkProfileInactive profileName state
+  in
+    if isInactive then do
+      logInfo "Local Ingest added" {slotId, slotRole, profileName}
+      let
+        state2 = addLocalIngestToPersistentState profileName state
+      updatePersistentState state2
+      addLocalIngestImpl workflowHandle (IngestKey slotId slotRole profileName)
+      pure $ Right state2
+    else do
+      logInfo "Local Ingest rejected due to existing ingest" {slotId, slotRole, profileName}
+      pure $ Left unit
 
 doAddRemoteIngest :: ProfileName -> Server -> Ref -> State -> Effect (Either Unit State)
-doAddRemoteIngest profileName remoteServer remoteVmRef state@{slotId, slotRole, workflowHandle} = do
-  vmRefOk <- checkVmRef remoteVmRef remoteServer
-  if vmRefOk then do
-    logInfo "Remote ingest added" {slotId, slotRole, profileName, source: remoteServer}
-    let
-      state2 = addRemoteIngestToPersistentState profileName remoteServer remoteVmRef state
-      url = makeUrl remoteServer (IngestInstanceLlwpE slotId slotRole profileName)
-    addRemoteIngestImpl workflowHandle (IngestKey slotId slotRole profileName) (unwrap url)
-    pure $ Right state2
-  else
-    pure $ Left unit
+doAddRemoteIngest profileName remoteServer remoteVmRef state@{slotId, slotRole, workflowHandle} =
+  let
+    isInactive = checkProfileInactive profileName state
+  in
+    if isInactive then do
+      vmRefOk <- checkVmRef remoteVmRef remoteServer
+      if vmRefOk then do
+        logInfo "Remote ingest added" {slotId, slotRole, profileName, source: remoteServer}
+        let
+          state2 = addRemoteIngestToPersistentState profileName remoteServer remoteVmRef state
+          url = makeUrl remoteServer (IngestInstanceLlwpE slotId slotRole profileName)
+        addRemoteIngestImpl workflowHandle (IngestKey slotId slotRole profileName) (unwrap url)
+        pure $ Right state2
+      else do
+        logInfo "Remote Ingest rejected due to mismatched VM references" {slotId, slotRole, profileName}
+        pure $ Left unit
+    else do
+      logInfo "Remote Ingest rejected due to existing ingest" {slotId, slotRole, profileName}
+      pure $ Left unit
 
 doRegisterRelay :: (DeliverTo RelayServer) -> State -> Effect State
 doRegisterRelay deliverTo state@{slotId, slotRole} = do

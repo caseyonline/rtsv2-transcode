@@ -468,6 +468,41 @@ main =
             intraPoPState p1n2                   >>= assertAggregatorOn [] slot1
                                                                           >>= as "p1n2 is aware the ingest stopped"
 
+          it "attempt to ingest same profile twice on same node fails" do
+            ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as  "create low ingest"
+            waitForIntraPoPDisseminate
+            aggregatorStats p1n1 slot1           >>= assertStatusCode 200
+                                                     >>= assertAggregator [low]
+                                                                          >>= as  "aggregator has low profile"
+            ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as  "2nd attempt to create low ingest succceeds (but actual create is async)"
+            waitForIntraPoPDisseminate
+            aggregatorStats p1n1 slot1           >>= assertStatusCode 200
+                                                     >>= assertAggregator [low]
+                                                                          >>= as  "aggregator has single profile"
+
+          it "attempt to ingest same profile twice on different node fails" do
+            ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as  "create low ingest"
+            waitForIntraPoPDisseminate
+            intraPoPState p1n1                   >>= assertAggregatorOn [p1n1] slot1
+                                                                          >>= as "p1n1 is aware of the ingest on p1n1"
+            ingestStart    p1n2 shortName1 low  >>= assertStatusCode 200 >>= as  "2nd attempt to create low ingest succeeds (but actual create is async)"
+            intraPoPState p1n1                  >>= assertAggregatorOn [p1n1] slot1
+                                                                          >>= as "p1n1 is still aware of the ingest on p1n1"
+            waitForIntraPoPDisseminate
+            ingestStop     p1n2 slot1 low       >>= assertStatusCode 404  >>= as  "stop ingest fails with 404 since async create failed"
+            ingestStop     p1n1 slot1 low       >>= assertStatusCode 200  >>= as  "stop initial ingest"
+            waitForIntraPoPDisseminate
+
+            aggregatorStats p1n1 slot1           >>= assertStatusCode 200
+                                                     >>= assertAggregator []
+                                                                          >>= as  "aggregator now has no profiles"
+
+            ingestStart    p1n2 shortName1 low  >>= assertStatusCode 200 >>= as  "final attempt to create low ingest succeeds"
+            waitForIntraPoPDisseminate
+            aggregatorStats p1n1 slot1           >>= assertStatusCode 200
+                                                     >>= assertAggregator [low]
+                                                                          >>= as  "aggregator now has low profile again"
+
     describe "Ingest egest tests" do
       describe "one pop setup"
         let

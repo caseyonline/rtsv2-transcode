@@ -21,6 +21,7 @@ import Erl.Process.Raw (Pid)
 import Erl.Process.Raw as Raw
 import Gproc as GProc
 import Gproc as Gproc
+import Logger (spy)
 import Prometheus as Prometheus
 import Rtsv2.Agents.IngestInstance as IngestInstance
 import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
@@ -237,8 +238,8 @@ ingestStop canary slotId role profileName =
                             Rest.result isAgentAvailable req state)
 
   # Rest.resourceExists (\req state@{ingestKey} -> do
-                            isActive <- IngestInstance.isActive ingestKey
-                            Rest.result isActive req state
+                            isActive <- IngestInstance.isActive (spy "ingestKey" ingestKey)
+                            Rest.result (spy "isActive" isActive) req state
                         )
   # Rest.contentTypesProvided (\req state ->
                                 Rest.result (tuple2 "text/plain" (\req2 state2 -> do

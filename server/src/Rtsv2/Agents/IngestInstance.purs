@@ -55,6 +55,7 @@ import Shared.Types (Load, Server, ServerLoad(..), extractAddress)
 import Shared.Types.Agent.State as PublicState
 import Shared.Types.Media.Types.Rtmp (RtmpClientMetadata)
 import Shared.Types.Media.Types.SourceDetails (SourceInfo)
+import SpudGun (SpudError(..), SpudResponse(..))
 import SpudGun as SpudGun
 
 serverName :: IngestKey -> ServerName State Msg
@@ -194,8 +195,13 @@ handleInfo msg state@{ingestKey} = case msg of
     pure $ CastNoReply state{lastIngestAuditTime = eqLine.endMs}
 
   InformAggregator -> do
-    state2 <- informAggregator state
-    pure $ CastNoReply state2
+    result <- informAggregator state
+    case result of
+      Right state2 ->
+        pure $ CastNoReply state2
+      Left unit -> do
+        logInfo "Aggregator did not allow ingest to register; stopping ingest" {ingestKey}
+        pure $ CastStop state
 
   IntraPoPBus (VmReset _ _ _) ->
     pure $ CastNoReply state
@@ -250,23 +256,27 @@ doStopIngest state@{aggregatorAddr, ingestKey} = do
   Audit.ingestStop eqLine
   pure unit
 
-informAggregator :: State -> Effect State
+informAggregator :: State -> Effect (Either Unit State)
 informAggregator state@{streamDetails, ingestKey, thisServer, aggregatorRetryTime, stateServerName} = do
   maybeAggregator <- hush <$> getAggregator
   maybeIngestAdded <- sequence (addIngest <$> (extractServer <$>  maybeAggregator))
-  case fromMaybe false maybeIngestAdded of
-    true -> do
+  case fromMaybe (Right false) maybeIngestAdded of
+    Right true -> do
       PersistentInstanceState.recordInstanceData stateServerName {aggregatorAddr: maybeAggregator}
-      pure state{aggregatorAddr = maybeAggregator}
-    false -> do
+      pure $ Right state{aggregatorAddr = maybeAggregator}
+    Right false -> do
       void $ Timer.sendAfter (serverName ingestKey) (unwrap aggregatorRetryTime) InformAggregator
-      pure state
+      pure $ Right state
+    Left unit -> do
+      pure $ Left unit
   where
-    addIngest :: Server -> Effect Boolean
+    addIngest :: Server -> Effect (Either Unit Boolean)
     addIngest aggregatorAddress
       | aggregatorAddress == thisServer = do
-        IngestAggregatorInstance.addLocalIngest ingestKey
-        pure true
+        result <- IngestAggregatorInstance.addLocalIngest ingestKey
+        pure $ case result of
+                 true -> Right true
+                 false -> Left unit
       | otherwise = do
         let
           -- TODO - functions to make URLs from Server
@@ -275,8 +285,12 @@ informAggregator state@{streamDetails, ingestKey, thisServer, aggregatorRetryTim
         restResult <- SpudGun.postJson url $ ({ ingestAddress: thisServer
                                               , vmRef: vmRef} :: RemoteIngestPayload)
         case restResult of
-          Left _ -> pure $ false
-          Right _ -> pure $ true
+          Left (RequestError _) -> pure $ Right false -- We treat network errors etc as transitory and try again
+          Left (ResponseError response) -> do
+            logInfo "Failed to register with aggregator; exiting" {ingestKey, aggregatorAddress, response}
+            pure $ Left unit
+          Right _ ->
+            pure $ Right true
 
     getAggregator :: Effect (ResourceResp Server)
     getAggregator = do

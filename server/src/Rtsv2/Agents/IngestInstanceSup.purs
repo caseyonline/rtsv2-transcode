@@ -9,7 +9,7 @@ import Prelude
 import Effect (Effect)
 import Erl.Data.List (nil, (:))
 import Erl.Process.Raw (Pid)
-import Pinto (SupervisorName, okAlreadyStarted)
+import Pinto (SupervisorName, ok)
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStartTemplate, childType)
 import Pinto.Sup as Sup
@@ -38,11 +38,11 @@ startIngest ingestKey streamPublish streamDetails remoteAddress remotePort handl
                 , remotePort
                 , handlerPid
                 }
-  okAlreadyStarted =<< Sup.startSimpleChild childTemplate serverName { childStartLink: IngestInstance.startLink startArgs
-                                                                     , childStopAction: IngestInstance.stopAction ingestKey
-                                                                     , serverName: Names.ingestInstanceStateName ingestKey
-                                                                     , domain: IngestInstance.domain
-                                                                     }
+  ok =<< Sup.startSimpleChild childTemplate serverName { childStartLink: IngestInstance.startLink startArgs
+                                                       , childStopAction: IngestInstance.stopAction ingestKey
+                                                       , serverName: Names.ingestInstanceStateName ingestKey
+                                                       , domain: IngestInstance.domain
+                                                       }
 
 init :: Effect Sup.SupervisorSpec
 init = do
