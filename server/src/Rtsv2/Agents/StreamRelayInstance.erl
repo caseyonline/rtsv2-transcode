@@ -94,7 +94,7 @@ getSlotConfigurationFFI(RelayKey) ->
 start_workflow(OriginOrDownstream, SlotId) ->
   Workflow =
     #workflow{ name = {stream_relay_instance, SlotId}
-             , display_name = <<"Stream Relay Workflow for ", (integer_to_binary(SlotId))/binary>>
+             , display_name = <<"Stream Relay Workflow for ", (rtsv2_types:uuid_to_string(SlotId))/binary>>
              , tags = #{ type => stream_relay
                        , slot => SlotId
                        }

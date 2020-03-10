@@ -17,15 +17,15 @@ module Erl.Utils
 
 import Prelude
 
-import Control.Monad.Except (except, mapExcept)
-import Data.Either (Either(..), either)
+import Control.Monad.Except (except)
+import Data.Either (Either(..))
 import Data.List.NonEmpty as NEL
 import Data.Maybe (Maybe, maybe)
 import Data.Newtype (unwrap, wrap)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Process.Raw (Pid)
-import Foreign (F, Foreign, ForeignError(..), tagOf)
+import Foreign (Foreign, ForeignError(..), tagOf)
 import Shared.Common (Milliseconds)
 import Simple.JSON (class ReadForeign, class WriteForeign)
 

@@ -6,7 +6,8 @@
 -include_lib("id3as_common/include/id3as_message_bus.hrl").
 -include_lib("id3as_rtc/include/webrtc.hrl").
 -include_lib("id3as_media/include/frame.hrl").
--include("./rtsv2_rtp.hrl").
+-include("../rtsv2_types.hrl").
+-include("../rtsv2_rtp.hrl").
 
 
 -export([ init/2
@@ -71,7 +72,7 @@
 
 
 -record(stream_desc_ingest,
-        { slot_id :: non_neg_integer()
+        { slot_id :: slot_id()
         , profile_name :: binary_string()
         , stream_role :: binary_string()
         , ingest_key :: term()
@@ -80,7 +81,7 @@
 
 
 -record(stream_desc_egest,
-        { slot_id  :: binary_string()
+        { slot_id  :: slot_id()
         , egest_key :: term()
         , start_stream_result :: term()
         , get_slot_configuration :: fun()
@@ -342,7 +343,7 @@ try_build_stream_desc(Req,
                      ) ->
 
   try
-    binary_to_integer(cowboy_req:binding(slot_id, Req))
+    rtsv2_types:string_to_uuid(cowboy_req:binding(slot_id, Req))
   of
     SlotId ->
 
@@ -373,7 +374,7 @@ try_build_stream_desc(Req,
                      ) ->
 
   try
-    { binary_to_integer(cowboy_req:binding(slot_id, Req))
+    { rtsv2_types:string_to_uuid(cowboy_req:binding(slot_id, Req))
     , cowboy_req:binding(stream_role, Req)
     , cowboy_req:binding(profile_name, Req)
     }

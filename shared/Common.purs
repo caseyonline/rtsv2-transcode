@@ -16,6 +16,7 @@ newtype Milliseconds = Milliseconds Int
 -- | Url type
 newtype Url = Url String
 
+
 ------------------------------------------------------------------------------
 -- Type class derivations
 ------------------------------------------------------------------------------

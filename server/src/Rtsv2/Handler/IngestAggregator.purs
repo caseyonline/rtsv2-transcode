@@ -28,7 +28,7 @@ import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (readJSON)
 import Stetson (HttpMethod(..), StetsonHandler)
 import Stetson.Rest as Rest
-import StetsonHelper (GetHandler, PostHandler, allBody, binaryToString, jsonResponse, processPostPayload)
+import StetsonHelper (GetHandler, PostHandler, allBody, binaryToString, jsonResponse, preHookSpyState, processPostPayload)
 
 ingestAggregator :: SlotId -> SlotRole -> GetHandler (PublicState.IngestAggregator List)
 ingestAggregator slotId role = jsonResponse $ Just <$> (IngestAggregatorInstance.getState $ AggregatorKey slotId role)
@@ -82,7 +82,7 @@ ingestAggregatorsActiveIngest slotId streamRole profileName =
                                                                           in
                                                                             do
                                                                               result <- IngestAggregatorInstance.addRemoteIngest ingestKey payload
-                                                                              Rest.result result req2 state2
+                                                                              Rest.result (spy "remoteAdd said" result) req2 state2
                                                                         )) : nil)
                                 req state
                               )
@@ -98,7 +98,7 @@ ingestAggregatorsActiveIngest slotId streamRole profileName =
                         )
 
   # Rest.contentTypesProvided (\req state -> Rest.result (tuple2 "application/json" (Rest.result ""): nil) req state)
-
+  -- # Rest.preHook (preHookSpyState "IngestAggregator:activeIngest")
   # Rest.yeeha
 
 

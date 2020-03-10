@@ -2,6 +2,8 @@ module Rtsv2.Handler.LlnwStub
        ( streamAuthType
        , streamAuth
        , streamPublish
+       , db
+       , StubHost
        ) where
 
 import Prelude
@@ -10,7 +12,7 @@ import Data.Array as Array
 import Data.Either (hush)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Eq (genericEq)
-import Data.Maybe (Maybe(..), fromMaybe, isNothing)
+import Data.Maybe (Maybe(..), fromMaybe, fromMaybe', isNothing)
 import Data.Newtype (unwrap, wrap)
 import Effect (Effect)
 import Erl.Cowboy.Req (ReadBodyResult(..), Req, readBody, setBody)
@@ -22,6 +24,8 @@ import Logger (spy)
 import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
 import Shared.LlnwApiTypes (AuthType, PublishCredentials, SlotPublishAuthType(..), StreamAuth, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamPublish)
 import Shared.Stream (RtmpShortName, SlotRole(..))
+import Shared.UUID (fromString)
+import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (class ReadForeign, class WriteForeign, readJSON, writeJSON)
 import Stetson (HttpMethod(..), StetsonHandler)
 import Stetson.Rest as Rest
@@ -50,7 +54,7 @@ db =
           , username: "user"
           , password: "password" }
   , details: { role: Primary
-             , slot : { id: wrap 1
+             , slot : { id: wrap $ fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000001")
                       , name: "slot1"
                       , subscribeValidation: false
                       , profiles: [ wrap { name: wrap "high",

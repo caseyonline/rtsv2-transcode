@@ -9,7 +9,7 @@ import Data.Foldable (foldl)
 import Data.Identity (Identity(..))
 import Data.List (List(..), (:))
 import Data.Map as Map
-import Data.Maybe (Maybe(..), isNothing, fromMaybe)
+import Data.Maybe (Maybe(..), isNothing, fromMaybe, fromMaybe')
 import Data.Newtype (class Newtype, un, wrap, unwrap)
 import Data.Time.Duration (Milliseconds(..))
 import Data.Traversable (traverse, traverse_)
@@ -26,10 +26,13 @@ import Node.FS.Aff (writeTextFile)
 import OsCmd (runProc)
 import Partial.Unsafe (unsafePartial)
 import Prim.Row (class Union)
+import Shared.Chaos as Chaos
 import Shared.Stream (ProfileName(..), SlotRole(..), SlotNameAndProfileName(..))
 import Shared.Router.Endpoint (Endpoint(..), makeUrl, Canary(..))
-import Shared.Types (ServerAddress(..), ChaosPayload, extractAddress, defaultKill)
+import Shared.Types (ServerAddress(..), extractAddress)
 import Shared.Types.Agent.State as PublicState
+import Shared.Utils (lazyCrashIfMissing)
+import Shared.UUID (fromString)
 import Shared.JsonLd as JsonLd
 import Simple.JSON (class ReadForeign)
 import Simple.JSON as SimpleJSON
@@ -146,7 +149,7 @@ main =
     p4n1 = Node 4 1
     p4n2 = Node 4 2
 
-    slot1      = wrap 1
+    slot1      = wrap (fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000001"))
     shortName1 = wrap "mmddev001"
     low        = SlotNameAndProfileName "slot1" (wrap "500")
     high       = SlotNameAndProfileName "slot1" (wrap "1000")
@@ -171,18 +174,13 @@ main =
 
     intraPoPState node               = get (M.URL $ makeUrl' node ServerStateE)
 
-    ingestAggregatorName slotId role = "{n, l, {<<\"IngestAggregator\">>," <>
-                                       "{aggregatorKey," <> (show (unwrap slotId)) <>
-                                       ",{" <> (show role) <> "}}}}."
+    ingestAggregatorName slotId role = Chaos.Gproc (Chaos.GprocTuple2 (Chaos.String "IngestAggregator") (Chaos.GprocTuple3 (Chaos.Atom "aggregatorKey") (Chaos.SlotId slotId) (Chaos.SlotRole role)))
 
-    ingestName slotId role streamName = "{n, l, {<<\"Ingest\">>," <>
-                                       "{ingestKey," <> (show (unwrap slotId)) <>
-                                       ",{" <> (show role) <> "}" <>
-                                       ",<<\"" <> streamName <> "\">>}}}."
+    ingestName slotId role streamName = Chaos.Gproc (Chaos.GprocTuple2 (Chaos.String "Ingest") (Chaos.GprocTuple4 (Chaos.Atom "ingestKey") (Chaos.SlotId slotId) (Chaos.SlotRole role) (Chaos.String streamName)))
 
     killProcess node chaos           = fetch (M.URL $ makeUrl' node (Chaos))
                                          { method: M.postMethod
-                                         , body: SimpleJSON.writeJSON (chaos :: ChaosPayload)
+                                         , body: SimpleJSON.writeJSON (chaos :: Chaos.ChaosPayload)
                                          , headers: M.makeHeaders { "Content-Type": "application/json" }
                                          }
 
@@ -470,6 +468,41 @@ main =
             intraPoPState p1n2                   >>= assertAggregatorOn [] slot1
                                                                           >>= as "p1n2 is aware the ingest stopped"
 
+          it "attempt to ingest same profile twice on same node fails" do
+            ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as  "create low ingest"
+            waitForIntraPoPDisseminate
+            aggregatorStats p1n1 slot1           >>= assertStatusCode 200
+                                                     >>= assertAggregator [low]
+                                                                          >>= as  "aggregator has low profile"
+            ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as  "2nd attempt to create low ingest succceeds (but actual create is async)"
+            waitForIntraPoPDisseminate
+            aggregatorStats p1n1 slot1           >>= assertStatusCode 200
+                                                     >>= assertAggregator [low]
+                                                                          >>= as  "aggregator has single profile"
+
+          it "attempt to ingest same profile twice on different node fails" do
+            ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as  "create low ingest"
+            waitForIntraPoPDisseminate
+            intraPoPState p1n1                   >>= assertAggregatorOn [p1n1] slot1
+                                                                          >>= as "p1n1 is aware of the ingest on p1n1"
+            ingestStart    p1n2 shortName1 low  >>= assertStatusCode 200 >>= as  "2nd attempt to create low ingest succeeds (but actual create is async)"
+            intraPoPState p1n1                  >>= assertAggregatorOn [p1n1] slot1
+                                                                          >>= as "p1n1 is still aware of the ingest on p1n1"
+            waitForIntraPoPDisseminate
+            ingestStop     p1n2 slot1 low       >>= assertStatusCode 404  >>= as  "stop ingest fails with 404 since async create failed"
+            ingestStop     p1n1 slot1 low       >>= assertStatusCode 200  >>= as  "stop initial ingest"
+            waitForIntraPoPDisseminate
+
+            aggregatorStats p1n1 slot1           >>= assertStatusCode 200
+                                                     >>= assertAggregator []
+                                                                          >>= as  "aggregator now has no profiles"
+
+            ingestStart    p1n2 shortName1 low  >>= assertStatusCode 200 >>= as  "final attempt to create low ingest succeeds"
+            waitForIntraPoPDisseminate
+            aggregatorStats p1n1 slot1           >>= assertStatusCode 200
+                                                     >>= assertAggregator [low]
+                                                                          >>= as  "aggregator now has low profile again"
+
     describe "Ingest egest tests" do
       describe "one pop setup"
         let
@@ -708,7 +741,7 @@ main =
               aggregatorStats p1n1 slot1          >>= assertStatusCode 200
                                                       >>= assertAggregator [low]
                                                                            >>= as  "aggregator has low only"
-              killProcess p1n1 (defaultKill $ ingestAggregatorName slot1 Primary)
+              killProcess p1n1 (Chaos.defaultKill $ ingestAggregatorName slot1 Primary)
                                                   >>=  assertStatusCode 204 >>= as "kill process"
               waitForSupervisorRecovery                                     >>= as' "wait for supervisor"
               aggregatorStats p1n1 slot1          >>= assertStatusCode 200
@@ -721,7 +754,7 @@ main =
               aggregatorStats p1n1 slot1         >>= assertStatusCode 200
                                                      >>= assertAggregator [low]
                                                                             >>= as  "aggregator has low only"
-              killProcess p1n1 (defaultKill $ ingestName slot1 Primary "500")
+              killProcess p1n1 (Chaos.defaultKill $ ingestName slot1 Primary "500")
                                                  >>=  assertStatusCode 204 >>= as "kill process"
               waitForSupervisorRecovery                                    >>= as' "wait for supervisor"
               aggregatorStats p1n1 slot1         >>= assertStatusCode 200
@@ -736,7 +769,7 @@ main =
               aggregatorStats p1n2 slot1          >>= assertStatusCode 200
                                                       >>= assertAggregator [low]
                                                                             >>= as  "aggregator has low only"
-              killProcess p1n1 (defaultKill $ ingestName slot1 Primary "500")
+              killProcess p1n1 (Chaos.defaultKill $ ingestName slot1 Primary "500")
                                                   >>=  assertStatusCode 204 >>= as "kill process"
               waitForSupervisorRecovery                                     >>= as' "wait for supervisor"
               aggregatorStats p1n2 slot1          >>= assertStatusCode 200

@@ -21,6 +21,7 @@ import Erl.Process.Raw (Pid)
 import Erl.Process.Raw as Raw
 import Gproc as GProc
 import Gproc as Gproc
+import Logger (spy)
 import Prometheus as Prometheus
 import Rtsv2.Agents.IngestInstance as IngestInstance
 import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
@@ -155,7 +156,7 @@ statsToPrometheus stats =
 
     rtmpMetricsToPrometheus timestamp slotId profileId streamRole {totalBytesSent, totalBytesReceived, lastBytesReadReport} page =
       let
-        labels = Prometheus.toLabels $ (Tuple "slot" (Prometheus.toLabelValue (unwrap slotId))) :
+        labels = Prometheus.toLabels $ (Tuple "slot" (Prometheus.toLabelValue (show (unwrap slotId)))) :
                                        (Tuple "profile" (Prometheus.toLabelValue (unwrap profileId))) :
                                        (Tuple "role" (Prometheus.toLabelValue (show streamRole))) :
                                        nil
@@ -166,7 +167,7 @@ statsToPrometheus stats =
 
     labelsForStream :: forall a. SlotId -> ProfileName -> SlotRole -> Stream a -> Prometheus.IOLabels
     labelsForStream slotId profileId role { streamId, frameType, profileName} =
-      Prometheus.toLabels $ (Tuple "slot" (Prometheus.toLabelValue (unwrap slotId))) :
+      Prometheus.toLabels $ (Tuple "slot" (Prometheus.toLabelValue (show (unwrap slotId)))) :
                             (Tuple "profile" (Prometheus.toLabelValue (unwrap profileId))) :
                             (Tuple "role" (Prometheus.toLabelValue (show role))) :
                             (Tuple "stream_id" (Prometheus.toLabelValue streamId)) :
@@ -237,8 +238,8 @@ ingestStop canary slotId role profileName =
                             Rest.result isAgentAvailable req state)
 
   # Rest.resourceExists (\req state@{ingestKey} -> do
-                            isActive <- IngestInstance.isActive ingestKey
-                            Rest.result isActive req state
+                            isActive <- IngestInstance.isActive (spy "ingestKey" ingestKey)
+                            Rest.result (spy "isActive" isActive) req state
                         )
   # Rest.contentTypesProvided (\req state ->
                                 Rest.result (tuple2 "text/plain" (\req2 state2 -> do

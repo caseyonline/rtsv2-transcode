@@ -28,6 +28,7 @@
         , egest_key :: term()
         , receive_socket :: gen_udp:socket()
         , parse_info = rtsv2_rtp_util:build_parse_info()
+        , sequence_number_map = #{} :: maps:map(rtp:ssrc(), non_neg_integer()) %% TODO - remove when ABR sequence number rewriting is in place
         }).
 
 
@@ -53,12 +54,17 @@ handle_call(port_number, _From, #?state{ receive_socket = ReceiveSocket } = Stat
 
 
 handle_info({udp, ActualSocket, _SenderIP, _SenderPort, Data},
-            #?state{ parse_info = ParseInfo, receive_socket = ExpectedSocket } = State
+            #?state{ parse_info = ParseInfo, receive_socket = ExpectedSocket, sequence_number_map = SeqMap } = State
            )
   when
     ActualSocket =:= ExpectedSocket ->
 
-  RTP = #rtp{ payload_type = #rtp_payload_type{ encoding_id = EncodingId } } = rtp:parse(avp, Data, ParseInfo),
+  RTP = #rtp{ payload_type = #rtp_payload_type{ encoding_id = EncodingId },
+              ssrc = Ssrc} = rtp:parse(avp, Data, ParseInfo),
+
+  LastSeqNum = maps:get(Ssrc, SeqMap, 0),
+  NextSeqNum = (LastSeqNum + 1) rem 63365,
+  SeqMap2 = maps:put(Ssrc, NextSeqNum, SeqMap),
 
   %% TODO: PS: SSRC rewriting will ultimately be part of WebRTC when it
   %% supports ABR
@@ -67,16 +73,18 @@ handle_info({udp, ActualSocket, _SenderIP, _SenderPort, Data},
       ?OPUS_ENCODING_ID ->
         #rtp_sequence{ type = audio
                      , codec = opus
-                     , rtps = [ RTP#rtp{ ssrc = ?EGEST_AUDIO_SSRC } ]
+                     , rtps = [ RTP#rtp{ ssrc = ?EGEST_AUDIO_SSRC
+                                       , sequence_number = NextSeqNum } ]
                      };
       ?H264_ENCODING_ID ->
         #rtp_sequence{ type = video
                      , codec = h264
-                     , rtps = [ RTP#rtp{ ssrc = ?EGEST_VIDEO_SSRC } ]
+                     , rtps = [ RTP#rtp{ ssrc = ?EGEST_VIDEO_SSRC
+                                       , sequence_number = NextSeqNum } ]
                      }
     end,
 
-  { broadcast, Sequence, State };
+  { broadcast, Sequence, State#?state{sequence_number_map = SeqMap2} };
 
 handle_info({'EXIT', MaybeParentPid, _Reason }, #?state{ parent_pid = ParentPid } = State) when MaybeParentPid =:= ParentPid ->
   { stop, State }.

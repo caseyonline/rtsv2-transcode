@@ -6,7 +6,6 @@ module Rtsv2.Web
 import Prelude
 
 import Data.Function.Uncurried (mkFn2)
-import Data.Int (fromString)
 import Data.Maybe (fromMaybe)
 import Data.Newtype (wrap)
 import Effect (Effect)
@@ -27,6 +26,7 @@ import Rtsv2.Agents.Locator.Egest (findEgest)
 import Rtsv2.Agents.Locator.Types (LocationResp, RegistrationResp)
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
+import Rtsv2.Handler.Chaos as ChaosHandler
 import Rtsv2.Handler.Client as ClientHandler
 import Rtsv2.Handler.EgestStats as EgestStatsHandler
 import Rtsv2.Handler.Health as HealthHandler
@@ -39,13 +39,14 @@ import Rtsv2.Handler.Load as LoadHandler
 import Rtsv2.Handler.PoPDefinition as PoPDefinitionHandler
 import Rtsv2.Handler.Relay as RelayHandler
 import Rtsv2.Handler.TransPoP as TransPoPHandler
-import Rtsv2.Handler.Chaos as ChaosHandler
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Serf (Ip(..))
 import Shared.Router.Endpoint (Canary)
 import Shared.Router.Endpoint as Router
 import Shared.Stream (EgestKey(..), IngestKey(..), ProfileName, SlotId, SlotIdAndProfileName(..), SlotRole(..))
+import Shared.UUID (UUID, fromString)
+import Shared.UUID as UUID
 import Stetson (RestResult, StaticAssetLocation(..))
 import Stetson as Stetson
 import Stetson.Rest as Rest
@@ -183,7 +184,7 @@ init args = do
     makeSlotIdAndProfileName :: String -> String -> SlotIdAndProfileName
     makeSlotIdAndProfileName slotId profileName = SlotIdAndProfileName (slotIdStringToSlotId slotId) (wrap profileName)
 
-    makeIngestKey :: Int -> String -> String -> IngestKey
+    makeIngestKey :: UUID -> String -> String -> IngestKey
     makeIngestKey slotId streamRole profileName =
       IngestKey (wrap slotId) (parseSlotRole streamRole) (wrap profileName)
       where
@@ -193,16 +194,16 @@ init args = do
 
     slotIdStringToSlotId :: String -> SlotId
     slotIdStringToSlotId slotIdStr =
-      wrap $ fromMaybe 0 (fromString slotIdStr)
+      wrap $ fromMaybe UUID.empty (fromString slotIdStr)
 
     -- TODO: This code doesn't belong here
-    startStream :: Int -> Effect LocationResp
+    startStream :: UUID -> Effect LocationResp
     startStream slotId =
       do
         thisServer <- PoPDefinition.getThisServer
         findEgest (wrap slotId) thisServer
 
-    addClient :: Pid -> Int -> Effect RegistrationResp
+    addClient :: Pid -> UUID -> Effect RegistrationResp
     addClient pid slotId =
       EgestInstance.addClient pid (EgestKey (wrap slotId))
 
