@@ -162,6 +162,10 @@ component = H.mkComponent
         H.put $ initialState { popName, prevRoute }
         handleAction Initialize
 
+    HandlePoPSlotAggrTable (PA.RefreshAggr) -> do
+      H.modify_ _ { selectedAggrIndex = Nothing }
+      handleAction Initialize
+
     HandlePoPSlotAggrTable (PA.SPoPAggrInfo selectedInfo) -> do
       H.modify_ _ { selectedAggrIndex = selectedInfo.selectedAggrIndex
                   , selectedPoPName = selectedInfo.selectedPoPName
@@ -176,16 +180,21 @@ component = H.mkComponent
         Just chart ->
           -- | check all records are Justs
           case sequenceRecord selectedInfo of
+
             Nothing -> do
                liftEffect $ EC.setOptionPoP { rttData: [], scatterData: [] } chart
+
             Just { selectedAggrIndex, selectedSlotId, selectedAddress }  -> do
               let slotRole = fromMaybe Primary (_.role <$> st.aggrLocs !! selectedAggrIndex)
               mSlotDetails <- hush <$> getAggregatorDetails { slotId: selectedSlotId , slotRole, serverAddress: selectedAddress }
-              H.modify_ _ {slotDetails = mSlotDetails}
+              H.modify_ _ { slotDetails = mSlotDetails}
               -- | go fetch timedroute and populate the chart/map with options
               maybeTimedRoutes <- getTimedRoutes selectedInfo st.curPopName
+
               case maybeTimedRoutes of
+
                 Left e            -> pure unit -- TODO: display error
+
                 Right timedRoutes -> do
                   let convertedRoutes = timedRoutedToChartOps timedRoutes geoLocations
                   let convertedScatterRoutes = timedRoutedToChartScatter timedRoutes geoLocations
@@ -195,7 +204,7 @@ component = H.mkComponent
       pure unit
 
   render :: State -> H.ComponentHTML Action ChildSlots m
-  render state@{ curPopName, currentUser, popDefenition, aggrLocs, selectedAggrIndex , slotDetails} =
+  render state@{ curPopName, currentUser, popDefenition, aggrLocs, selectedAggrIndex, slotDetails } =
     HH.div
       [ css_ "main" ]
       [ HH.slot (SProxy :: _ "header") unit HD.component { currentUser, route: LoginR } absurd
@@ -229,6 +238,7 @@ component = H.mkComponent
             ]
           ]
         ]
+       
       , HH.section
         [ css_ "section is-main-section" ]
          [ HH.div
@@ -263,24 +273,6 @@ component = H.mkComponent
               ]
              ]
            ]
-
-
-          -- , HH.div
-          --   [ css_ "row" ]
-          --   [ HH.div
-          --     [ css_ "col-lg-12 col-md-12" ]
-          --     [ HH.div
-          --       [ css_ "card" ]
-          --       [ HH.div
-          --         [ css_ "card-body" ]
-          --         [ HH.h5
-          --           [ css_ "card-title" ]
-          --           [ HH.text "Ingest Details" ]
-          --        -- , tableIngest
-          --         ]
-          --       ]
-          --     ]
-          --   ]
         ]
       , footer
       ]

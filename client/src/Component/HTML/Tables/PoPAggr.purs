@@ -8,7 +8,9 @@ import Data.Const (Const)
 import Data.Foldable (findMap)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (un)
-import Effect.Aff.Class (class MonadAff)
+import Data.Time.Duration (Milliseconds(..))
+import Effect.Aff (delay)
+import Effect.Aff.Class (class MonadAff, liftAff)
 import Effect.Ref as Ref
 import Halogen as H
 import Halogen.HTML as HH
@@ -26,23 +28,27 @@ import Shared.Types.Agent.State (AggregatorLocation, PoPDefinition)
 -- Types
 -------------------------------------------------------------------------------
 type Input =
-  { popDef       :: Maybe (PoPDefinition Array)
-  , aggrLocs     :: Array (AggregatorLocation Array)
-  , selectedAggrIndex  :: Maybe Int
+  { popDef            :: Maybe (PoPDefinition Array)
+  , aggrLocs          :: Array (AggregatorLocation Array)
+  , selectedAggrIndex :: Maybe Int
   }
 
 type Slot = H.Slot (Const Void) Message
 
-data Message = SPoPAggrInfo PoPAggrSelectedInfo
+data Message
+  = SPoPAggrInfo PoPAggrSelectedInfo
+  | RefreshAggr
 
 data Action
   = Select Int
   | Receive Input
+  | Refresh
 
 type State =
   { aggrLocs          :: Array (AggregatorLocation Array)
   , popDef            :: Maybe (PoPDefinition Array)
   , selectedAggrIndex :: Maybe Int
+  , isLoading         :: Boolean
   }
 
 -------------------------------------------------------------------------------
@@ -68,15 +74,18 @@ component = H.mkComponent
     { aggrLocs
     , selectedAggrIndex: Nothing
     , popDef
+    , isLoading: false
     }
 
   handleAction :: Action -> H.HalogenM State Action () Message m Unit
   handleAction = case _ of
-    Receive input@{ aggrLocs, popDef, selectedAggrIndex } ->
+    Receive input@{ aggrLocs, popDef, selectedAggrIndex } -> do
       H.modify_ _ { selectedAggrIndex = selectedAggrIndex
                   , aggrLocs = aggrLocs
                   , popDef = popDef
                   }
+      _ <- liftAff $ delay $ Milliseconds 750.0
+      H.modify_ _ { isLoading = false }
 
     Select index -> do
       st <- H.get
@@ -104,6 +113,11 @@ component = H.mkComponent
         )
       pure unit
 
+    Refresh -> do
+      H.modify_ _ { isLoading = true }
+      H.raise (RefreshAggr)
+
+
   render :: State -> H.ComponentHTML Action () m
   render state =
     HH.div
@@ -120,6 +134,27 @@ component = H.mkComponent
           ]
         , HH.text "Active Aggregators"
         ]
+      , HH.button
+        [ css_ $ "button is-small " <> if state.isLoading then "is-loading" else ""
+        , HE.onClick $ const $ Just Refresh
+        ]
+        [ HH.span
+          [ css_ "icon" ]
+          [ HH.i
+            [ css_ "mdi mdi-refresh default" ]
+            []
+          ]
+        , HH.span_
+          [ HH.text "Refresh" ]
+        ]
+
+        -- <button type="button" class="button is-small">
+        --    <span class="icon">
+        --      <i class="mdi mdi-refresh default"></i>
+        --    </span>
+        --    <span>Refresh</span>
+        -- </button>
+
       ]
     , HH.div
         [ css_ "card-content" ]
