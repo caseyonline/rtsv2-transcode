@@ -696,7 +696,6 @@ announceStoppedLocal handler@{locationLens} agentKey = do
       pure $ Gen.CastNoReply $ updateAgentLocation removeLocalAgent locationLens agentKey thisServer state
 
 
-
 -- Builds public API for message from other PoP
 announceAvailableOtherPoP :: AgentHandler -> AgentKey -> Server -> Effect Unit
 announceAvailableOtherPoP handler@{locationLens} agentKey msgServer =
@@ -704,7 +703,6 @@ announceAvailableOtherPoP handler@{locationLens} agentKey msgServer =
     \state@{agentLocations, thisServer} -> do
       let
         locations = locationLens.get agentLocations
-        _ = spy "announceAvailableOtherPoP" {name: handler.name, agentKey, msgServer}
       timeout <- messageTimeout handler state
       logIfNewAgent handler locations thisServer agentKey msgServer
       handler.availableOtherPoP state agentKey msgServer

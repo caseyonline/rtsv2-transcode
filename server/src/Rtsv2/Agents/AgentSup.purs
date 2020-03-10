@@ -13,7 +13,7 @@ import Rtsv2.Agents.IngestAggregatorInstanceSup as IngestAggregatorInstanceSup
 import Rtsv2.Agents.IngestAggregatorSup as IngestAggregatorSup
 import Rtsv2.Agents.IngestSup as IngestSup
 import Rtsv2.Agents.IntraPoP as IntraPoP
-import Rtsv2.Agents.StreamRelayInstanceSup as StreamRelayInstanceSup
+import Rtsv2.Agents.StreamRelaySup as StreamRelaySup
 import Rtsv2.Agents.TransPoP as TransPoP
 import Rtsv2.Config as Config
 import Rtsv2.Names as Names
@@ -57,7 +57,7 @@ init = do
       Sup.buildChild
         # Sup.childType Supervisor
         # Sup.childId "streamRelayAgent"
-        # Sup.childStart StreamRelayInstanceSup.startLink unit
+        # Sup.childStart StreamRelaySup.startLink unit
         # pure
 
     makeSpec IntraPoP = do

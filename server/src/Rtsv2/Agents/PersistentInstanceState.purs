@@ -11,20 +11,22 @@ module Rtsv2.Agents.PersistentInstanceState
 import Prelude
 
 import Data.Maybe (Maybe(..))
+import Data.Tuple (Tuple(..))
 import Effect (Effect)
-import Erl.Atom (Atom)
+import Erl.Atom (Atom, atom)
 import Erl.Data.List (List)
-import Erl.Process.Raw (Pid)
+import Erl.Data.Tuple (Tuple3, toNested3)
+import Erl.Process (Process(..), SpawnedProcessState, spawnLink, (!))
+import Erl.Process.Raw (Pid, receive)
 import Erl.Utils (ExitMessage(..), ExitReason(..))
 import Erl.Utils as Erl
-import Foreign (Foreign)
+import Foreign (Foreign, unsafeToForeign)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult(..))
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
-import Pinto.Timer as Timer
 
-type StateServerName instanceData = ServerName (State instanceData) Msg
+type StateServerName instanceData = ServerName (State instanceData) (Msg instanceData)
 
 type StartArgs instanceData =
   { childStartLink :: StateServerName instanceData -> Effect StartLinkResult
@@ -33,9 +35,9 @@ type StartArgs instanceData =
   , domain :: List Atom
   }
 
-data Msg = InstanceDown Pid Foreign
-         | ChildDown ExitMessage
-         | Stop
+data Msg instanceData =
+    InstanceDown Pid Foreign
+  | ChildDown ExitMessage
 
 type State instanceData =
   { instanceData :: Maybe instanceData
@@ -45,7 +47,20 @@ type State instanceData =
   }
 
 startLink :: forall instanceData. StartArgs instanceData -> Effect StartLinkResult
-startLink startArgs@{serverName} = Gen.startLink serverName (init startArgs) handleInfo
+startLink startArgs@{serverName, domain} = do
+  callerPid <- Erl.self
+  let
+    callerProcess = Process callerPid :: Process Atom
+  logInfo domain "XXX Performing startup" {}
+  startLinkResult <- Gen.startLink serverName (init callerProcess startArgs) handleInfo
+  case startLinkResult of
+    Ok _ -> do
+      _ <- receive
+      logInfo domain "XXX Startup completed" {}
+      pure unit
+    _ ->
+      pure unit
+  pure startLinkResult
 
 getInstanceData :: forall instanceData. StateServerName instanceData -> Effect (Maybe instanceData)
 getInstanceData serverName = do
@@ -63,41 +78,45 @@ recordInstanceData serverName instanceData = do
     doRecordInstanceData state =
       CallReply unit state{instanceData = Just instanceData}
 
-init :: forall instanceData. StartArgs instanceData -> Effect (State instanceData)
-init {serverName, childStartLink, childStopAction, domain} = do
+init :: forall instanceData. (Process Atom) -> StartArgs instanceData -> Effect (State instanceData)
+init caller {serverName, childStartLink, childStopAction, domain} = do
   _ <- Erl.trapExit true
   logInfo domain "Persistent state starting child" {serverName}
   Gen.registerExternalMapping serverName ((map ChildDown) <<< Erl.exitMessageMapper)
-  childResult <- childStartLink serverName
-  case childResult of
-    Ok pid -> do
-      pure unit
-    Ignore -> do
-      logError domain "Child failed to start" { serverName
-                                              , reason: Ignore}
-      _ <- Timer.sendAfter serverName 0 Stop
-      pure unit
-    AlreadyStarted pid -> do
-      logError domain "Child already started" { serverName
-                                              , pid: pid}
-      _ <- Timer.sendAfter serverName 0 Stop
-      pure unit
-    Failed reason -> do
-      logError domain "Child failed to start" { serverName
-                                              , reason: Failed reason}
-      _ <- Timer.sendAfter serverName 0 Stop
-      pure unit
+  performInitialisation
   pure { instanceData: Nothing
        , instancePid: Nothing
        , childStopAction
        , domain
        }
+  where
+    performInitialisation = do
+      logInfo domain "XXX about to spawnlink child helper" {}
+      _ <- spawnLink launchChild
+      pure unit
+      where
+        launchChild :: SpawnedProcessState (Tuple3 Atom Pid Foreign) -> Effect Unit
+        launchChild {receive} = do
+          _ <- Erl.trapExit true
+          logInfo domain "XXX about to spawnlink child" {}
+          childResult <- childStartLink serverName
+          caller ! (atom "done")
+          case childResult of
+            Ok pid -> do
+              Tuple _ (Tuple _ (Tuple reason _)) <- toNested3 <$> receive
+              logInfo domain "XXX child exited" {reason}
+              Erl.exit reason
+              pure unit
+            other -> do
+              logError domain "Child failed to start" { serverName
+                                                      , reason: other}
+              Erl.exit $ unsafeToForeign $ atom "normal"
+              pure $ unit
 
-handleInfo :: forall instanceData. Msg -> State instanceData -> Effect (CastResult (State instanceData))
-handleInfo msg state@{instanceData, childStopAction, domain} = case msg of
-  Stop ->
-    -- This clause only exists because we can't return a stop from init
-    pure $ CastStop state
+handleInfo :: forall instanceData. Msg instanceData -> State instanceData -> Effect (CastResult (State instanceData))
+handleInfo msg state@{ instanceData
+                     , childStopAction
+                     , domain} = case msg of
 
   ChildDown (Exit pid reason) ->
     shutdown pid reason

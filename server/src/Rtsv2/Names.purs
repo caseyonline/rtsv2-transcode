@@ -3,23 +3,30 @@ module Rtsv2.Names
          agentSupName
        , egestInstanceName
        , egestInstanceSupName
+
        , ingestAggregatorSupName
        , ingestAggregatorInstanceStateName
-       , ingestAggregatorInstanceName
        , ingestAggregatorInstanceSupName
-       , ingestInstanceName
-       , ingestInstanceStateName
+       , ingestAggregatorInstanceName
+
        , ingestInstanceSupName
+       , ingestInstanceStateName
+       , ingestInstanceName
        , ingestRtmpServerName
        , ingestRtmpCryptoName
+
        , ingestStatsName
        , ingestSupName
        , intraPoPName
        , loadServerName
        , popDefinitionName
-       , streamRelayDownstreamProxyName
-       , streamRelayInstanceName
+
+       , streamRelaySupName
+       , streamRelayInstanceStateName
        , streamRelayInstanceSupName
+       , streamRelayInstanceName
+       , streamRelayDownstreamProxyName
+
        , transPoPName
        , webServerName
        , toDomain
@@ -52,20 +59,20 @@ ingestAggregatorSupName = sup IngestAggregator
 ingestAggregatorInstanceStateName :: forall a b. AggregatorKey -> ServerName a b
 ingestAggregatorInstanceStateName = gprocName2WithSuffix "State" IngestAggregator
 
-ingestAggregatorInstanceName :: forall a b. AggregatorKey -> ServerName a b
-ingestAggregatorInstanceName = gprocName2 IngestAggregator
-
 ingestAggregatorInstanceSupName :: AggregatorKey -> SupervisorName
 ingestAggregatorInstanceSupName = gprocInstanceSup IngestAggregator
 
-ingestInstanceName :: forall a b. IngestKey -> ServerName a b
-ingestInstanceName = gprocName2 Ingest
+ingestAggregatorInstanceName :: forall a b. AggregatorKey -> ServerName a b
+ingestAggregatorInstanceName = gprocName2 IngestAggregator
+
+ingestInstanceSupName :: SupervisorName
+ingestInstanceSupName = instanceSup Ingest
 
 ingestInstanceStateName :: forall a b. IngestKey -> ServerName a b
 ingestInstanceStateName = gprocName2WithSuffix "State" Ingest
 
-ingestInstanceSupName :: SupervisorName
-ingestInstanceSupName = instanceSup Ingest
+ingestInstanceName :: forall a b. IngestKey -> ServerName a b
+ingestInstanceName = gprocName2 Ingest
 
 ingestRtmpServerName :: forall a b. ServerName a b
 ingestRtmpServerName = withSuffix "RtmpServer" Ingest
@@ -88,8 +95,14 @@ loadServerName = Local (atom "Load")
 popDefinitionName :: forall a b. ServerName a b
 popDefinitionName = Local (atom "PoPDefinition")
 
-streamRelayInstanceSupName :: SupervisorName
-streamRelayInstanceSupName = instanceSup StreamRelay
+streamRelaySupName :: SupervisorName
+streamRelaySupName = sup StreamRelay
+
+streamRelayInstanceStateName :: forall a b. RelayKey -> ServerName a b
+streamRelayInstanceStateName = gprocName2WithSuffix "State" StreamRelay
+
+streamRelayInstanceSupName :: RelayKey -> SupervisorName
+streamRelayInstanceSupName = gprocInstanceSup StreamRelay
 
 streamRelayInstanceName :: forall a b. RelayKey -> ServerName a b
 streamRelayInstanceName = gprocName2 StreamRelay

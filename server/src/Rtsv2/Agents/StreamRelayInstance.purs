@@ -13,6 +13,7 @@
 --
 module Rtsv2.Agents.StreamRelayInstance
        ( startLink
+       , stopAction
        , isAvailable
        , status
        , registerEgest
@@ -20,6 +21,11 @@ module Rtsv2.Agents.StreamRelayInstance
        , slotConfiguration
        , init
        , State
+
+       , payloadToRelayKey
+       , domain
+       , PersistentState
+       , StateServerName
        ) where
 
 import Prelude
@@ -50,6 +56,7 @@ import Pinto.Gen as Gen
 import PintoHelper (exposeState)
 import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..))
 import Rtsv2.Agents.IntraPoP as IntraPoP
+import Rtsv2.Agents.PersistentInstanceState as PersistentInstanceState
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
 import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload, RegisterEgestPayload, SourceRoute, RegisterRelayPayload)
 import Rtsv2.Agents.TransPoP (PoPRoutes)
@@ -84,6 +91,10 @@ foreign import getSlotConfigurationFFI :: RelayKey -> Effect (Maybe SlotConfigur
 -- -----------------------------------------------------------------------------
 -- Gen Server State
 -- -----------------------------------------------------------------------------
+data PersistentState = Foo String
+
+type StateServerName = PersistentInstanceState.StateServerName PersistentState
+
 data State
   = StateOrigin CommonStateData OriginStreamRelayStateData
   | StateDownstream CommonStateData DownstreamStreamRelayStateData
@@ -508,7 +519,8 @@ slotConfiguration relayKey =
 -- -----------------------------------------------------------------------------
 -- Gen Server Implementation
 -- -----------------------------------------------------------------------------
-data Msg = IntraPoPBus IntraPoP.IntraPoPBusMessage
+data Msg = Init
+         | IntraPoPBus IntraPoP.IntraPoPBusMessage
 
 payloadToRelayKey :: forall r. { slotId :: SlotId, streamRole :: SlotRole | r } -> RelayKey
 payloadToRelayKey payload = RelayKey payload.slotId payload.streamRole
@@ -516,15 +528,17 @@ payloadToRelayKey payload = RelayKey payload.slotId payload.streamRole
 serverName :: RelayKey -> ServerName State Msg
 serverName = Names.streamRelayInstanceName
 
-startLink :: CreateRelayPayload -> Effect StartLinkResult
-startLink payload =
-  let
-    relayKey = payloadToRelayKey payload
-  in
-    Gen.startLink (serverName relayKey) (init payload) handleInfo
+startLink :: RelayKey ->  CreateRelayPayload -> StateServerName -> Effect StartLinkResult
+startLink relayKey payload stateServerName =
+  Gen.startLink (serverName relayKey) (init relayKey payload) handleInfo
 
-init :: CreateRelayPayload -> Effect State
-init payload@{slotId, streamRole, aggregator} =
+stopAction :: RelayKey -> Maybe PersistentState -> Effect Unit
+stopAction relayKey _persistentState =
+  -- todo
+  pure unit
+
+init :: RelayKey -> CreateRelayPayload -> Effect State
+init relayKey payload@{slotId, streamRole, aggregator} =
   do
     thisServer <- PoPDefinition.getThisServer
     egestSourceRoutes <- TransPoP.routesTo (extractPoP aggregator)
@@ -568,12 +582,12 @@ init payload@{slotId, streamRole, aggregator} =
 
         pure $ StateDownstream commonStateData downstreamStateData
 
-  where
-    relayKey = RelayKey slotId streamRole
-
 handleInfo :: Msg -> State -> Effect (CastResult State)
 handleInfo msg state =
   case msg of
+    Init ->
+      pure $ CastNoReply state
+
     IntraPoPBus (IngestAggregatorExited (AggregatorKey slotId streamRole) serverAddress)
      -- TODO - PRIMARY BACKUP
       | slotId == ourSlotId -> doStop state
@@ -774,8 +788,8 @@ relayKeyFromState (StateDownstream { relayKey } _) = relayKey
 --------------------------------------------------------------------------------
 -- Log Utilities
 --------------------------------------------------------------------------------
-domains :: List Atom
-domains = atom <$> (show Agent.StreamRelay :  "Instance" : List.nil)
+domain :: List Atom
+domain = atom <$> (show Agent.StreamRelay :  "Instance" : List.nil)
 
 logInfo :: forall a. Logger a
 logInfo = domainLog Logger.info
@@ -787,4 +801,4 @@ logError :: forall a. Logger a
 logError = domainLog Logger.error
 
 domainLog :: forall a. Logger {domain :: List Atom, misc :: a} -> Logger a
-domainLog = Logger.doLog domains
+domainLog = Logger.doLog domain

@@ -1,7 +1,5 @@
 module Rtsv2.Agents.StreamRelayInstanceSup
        ( startLink
-       , startRelay
-       , isAvailable
        )
        where
 
@@ -10,47 +8,34 @@ import Prelude
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
-import Rtsv2.Names as Names
 import Logger (Logger)
 import Logger as Logger
-import Pinto (SupervisorName)
 import Pinto as Pinto
-import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStartTemplate, childType)
+import Pinto.Sup (SupervisorChildType(..), SupervisorStrategy(..), buildChild, childId, childStart, childType)
 import Pinto.Sup as Sup
-import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload)
 import Rtsv2.Agents.StreamRelayInstance as StreamRelayInstance
+import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload)
+import Rtsv2.Names as Names
 import Shared.Agent as Agent
+import Shared.Stream (RelayKey)
 
-serverName :: SupervisorName
-serverName = Names.streamRelayInstanceSupName
+startLink :: RelayKey -> CreateRelayPayload -> StreamRelayInstance.StateServerName -> Effect Pinto.StartLinkResult
+startLink relayKey payload stateServerName = Sup.startLink (Names.streamRelayInstanceSupName relayKey) (init relayKey payload stateServerName)
 
-isAvailable :: Effect Boolean
-isAvailable = Pinto.isRegistered serverName
-
-startLink :: forall a. a -> Effect Pinto.StartLinkResult
-startLink _ = Sup.startLink serverName init
-
-startRelay :: CreateRelayPayload -> Effect Pinto.StartChildResult
-startRelay createPayload = do
-  Sup.startSimpleChild childTemplate serverName createPayload
-
-init :: Effect Sup.SupervisorSpec
-init = do
+init :: RelayKey -> CreateRelayPayload -> StreamRelayInstance.StateServerName -> Effect Sup.SupervisorSpec
+init relayKey payload stateServerName = do
   logInfo "StreamRelay Supervisor starting" {}
   pure $ Sup.buildSupervisor
-    # Sup.supervisorStrategy Sup.SimpleOneForOne
+    # Sup.supervisorIntensity 50
+    # Sup.supervisorStrategy OneForAll
     # Sup.supervisorChildren
         ( ( buildChild
               # childType Worker
-              # childId "streamRelayAgent"
-              # childStartTemplate childTemplate
-              # childRestart Transient
+              # childId "streamRelayAgentInstance"
+              # childStart (StreamRelayInstance.startLink relayKey payload) stateServerName
           )
             : nil
         )
-
-childTemplate :: Pinto.ChildTemplate CreateRelayPayload
-childTemplate = Pinto.ChildTemplate (StreamRelayInstance.startLink)
 
 --------------------------------------------------------------------------------
 -- Log helpers
