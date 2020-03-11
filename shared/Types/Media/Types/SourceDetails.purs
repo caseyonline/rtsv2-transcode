@@ -24,8 +24,7 @@ import Data.List.NonEmpty (singleton)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype, unwrap, wrap)
 import Data.Tuple (Tuple(..))
-import Foreign (F, Foreign, ForeignError(..), readArray, readInt, readString, unsafeToForeign)
-import Logger (spy)
+import Foreign (F, Foreign, ForeignError(..), readInt, readString, unsafeToForeign)
 import Simple.JSON (class ReadForeign, class WriteForeign, readImpl, writeImpl)
 
 newtype StreamId = StreamId Int
