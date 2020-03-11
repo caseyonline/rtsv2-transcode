@@ -211,7 +211,7 @@ contextTypeToString ServerContext = "server"
 contextTypeToString ServerAddressContext = "serverAddress"
 contextTypeToString DeliverToContext = "deliverTo"
 contextTypeToString TimedRouteNeighbourContext = "timedRouteNeighbour"
-contextTypeToString ActiveIngestContext = "activeIngest"
+contextTypeToString ActiveIngestLocationContext = "activeIngestLocation"
 contextTypeToString EgestStatsContext = "egestStats"
 
 
@@ -220,7 +220,7 @@ parseContextType "server" = Just ServerContext
 parseContextType "serverAddress" = Just ServerAddressContext
 parseContextType "deliverTo" = Just DeliverToContext
 parseContextType "timedRouteNeighbour" = Just TimedRouteNeighbourContext
-parseContextType "activeIngest" = Just ActiveIngestContext
+parseContextType "activeIngestLocation" = Just ActiveIngestLocationContext
 parseContextType "egestStats" = Just EgestStatsContext
 parseContextType _ = Nothing
 

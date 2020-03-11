@@ -39,7 +39,7 @@ data JsonLdContextType = ServerContext
                        | ServerAddressContext
                        | DeliverToContext
                        | TimedRouteNeighbourContext
-                       | ActiveIngestContext
+                       | ActiveIngestLocationContext
                        | EgestStatsContext
 
 newtype ServerAddress = ServerAddress String

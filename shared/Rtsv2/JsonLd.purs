@@ -15,10 +15,10 @@ module Shared.Rtsv2.JsonLd
        , LocationBySlotIdAndSlotRole
        , LocationBySlotId
 
-       , ActiveIngestContextFields
+       , ActiveIngestLocationContextFields
        , ActiveIngestLocation
        , ActiveIngestLocationNode
-       , activeIngestContext
+       , activeIngestLocationContext
        , activeIngestLocationNode
 
        , TransPoPLeaderLocationNode  -- == ServerNode
@@ -49,6 +49,7 @@ module Shared.Rtsv2.JsonLd
        , egestLocationNode
 
        , EgestStatsContextFields
+       , EgestStats
        , EgestStatsNode
        , egestStatsContext
        , egestStatsNode
@@ -126,18 +127,18 @@ type LocationBySlotId collectionType = { slotId :: SlotId
 
 ------------------------------------------------------------------------------
 -- ActiveIngest
-type ActiveIngestContextFields = ( profileName :: JsonLd.ContextValue
-                                 , serverAddress :: JsonLd.ContextValue
-                                 )
+type ActiveIngestLocationContextFields = ( profileName :: JsonLd.ContextValue
+                                         , serverAddress :: JsonLd.ContextValue
+                                         )
 
 type ActiveIngestLocation = { profileName :: ProfileName
                             , serverAddress :: ServerAddress
                             }
 
-type ActiveIngestLocationNode = JsonLd.Node ActiveIngestLocation ActiveIngestContextFields
+type ActiveIngestLocationNode = JsonLd.Node ActiveIngestLocation ActiveIngestLocationContextFields
 
-activeIngestContext :: JsonLd.Context ActiveIngestContextFields
-activeIngestContext =
+activeIngestLocationContext :: JsonLd.Context ActiveIngestLocationContextFields
+activeIngestLocationContext =
   wrap { "@language": Nothing
        , "@base": Nothing
        , "@vocab": Nothing
@@ -151,7 +152,7 @@ activeIngestLocationNode slotId slotRole profileName serverAddress =
                    , serverAddress}
        , "@id": Just $ makeUrlAddr serverAddress (IngestInstanceE slotId slotRole profileName)
        , "@nodeType": Just "http://schema.rtsv2.llnw.com/ActiveIngestLocation"
-       , "@context": Just $ ContextUrl $ makePath $ JsonLdContext ActiveIngestContext
+       , "@context": Just $ ContextUrl $ makePath $ JsonLdContext ActiveIngestLocationContext
        }
 
 ------------------------------------------------------------------------------
@@ -266,7 +267,9 @@ egestLocationNode slotId server =
 -- EgestStats
 type EgestStatsContextFields = ( clientCount :: JsonLd.ContextValue )
 
-type EgestStatsNode = JsonLd.Node { clientCount :: Int} EgestStatsContextFields
+type EgestStats = { clientCount :: Int }
+
+type EgestStatsNode = JsonLd.Node EgestStats EgestStatsContextFields
 
 egestStatsContext :: JsonLd.Context EgestStatsContextFields
 egestStatsContext = wrap { "@language": Nothing
