@@ -7,6 +7,7 @@ module Erl.Utils
        , self
        , shutdown
        , trapExit
+       , exit
        , mapExitReason
        , exitMessageMapper
        , Ref
@@ -38,6 +39,7 @@ foreign import eqRefImpl :: Ref -> Ref -> Boolean
 foreign import data Ref :: Type
 foreign import selfImpl :: Effect Pid
 foreign import trapExitImpl :: Boolean -> Effect Boolean
+foreign import exitImpl :: Foreign -> Effect Unit
 foreign import mapExitReasonImpl :: Foreign -> ExitReason
 foreign import shutdownImpl :: Pid -> Effect Unit
 foreign import exitMessageMapperImpl :: Foreign -> Maybe ExitMessage
@@ -91,3 +93,6 @@ mapExitReason = mapExitReasonImpl
 
 exitMessageMapper :: Foreign -> Maybe ExitMessage
 exitMessageMapper = exitMessageMapperImpl
+
+exit :: Foreign -> Effect Unit
+exit = exitImpl

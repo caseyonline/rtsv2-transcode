@@ -20,6 +20,8 @@
 
    , getSlotConfigurationFFI/1
    , setSlotConfigurationFFI/2
+
+   , stopWorkflowFFI/1
    ]).
 
 
@@ -86,6 +88,11 @@ getSlotConfigurationFFI(RelayKey) ->
         [{_Pid, #?metadata{ slot_configuration = SlotConfiguration }}] ->
           {just, SlotConfiguration}
       end
+  end.
+
+stopWorkflowFFI(WorkflowHandle) ->
+  fun() ->
+      id3as_workflow:stop(WorkflowHandle)
   end.
 
 %%------------------------------------------------------------------------------

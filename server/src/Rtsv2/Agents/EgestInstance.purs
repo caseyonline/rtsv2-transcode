@@ -36,7 +36,7 @@ import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.Locator.Types (LocalOrRemote(..), RegistrationResp, ResourceResp)
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
 import Rtsv2.Agents.StreamRelayInstance as StreamRelayInstance
-import Rtsv2.Agents.StreamRelayInstanceSup (startRelay) as StreamRelayInstanceSup
+import Rtsv2.Agents.StreamRelaySup (startRelay) as StreamRelaySup
 import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload, RegisterEgestPayload)
 import Rtsv2.Audit as Audit
 import Rtsv2.Config as Config
@@ -167,7 +167,7 @@ init payload@{slotId, aggregator} = do
       pure state
     Nothing -> do
       -- Launch
-      _ <- StreamRelayInstanceSup.startRelay {slotId, streamRole: Primary, aggregator}
+      _ <- StreamRelaySup.startRelay {slotId, streamRole: Primary, aggregator}
       pure state
 
 handleInfo :: Msg -> State -> Effect (CastResult State)
@@ -356,7 +356,7 @@ launchLocalOrRemote state@{egestKey: egestKey@(EgestKey slotId), aggregator, thi
   where
     payload = {slotId, streamRole: Primary, aggregator} :: CreateRelayPayload
     launchLocal _ = do
-      _ <- StreamRelayInstanceSup.startRelay payload
+      _ <- StreamRelaySup.startRelay payload
       pure unit
     launchRemote idleServer =
       let

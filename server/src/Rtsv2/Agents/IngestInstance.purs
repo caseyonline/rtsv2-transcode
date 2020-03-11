@@ -8,7 +8,7 @@ module Rtsv2.Agents.IngestInstance
    , stopIngest
    , StartArgs
 
-   , PersistentState
+   , CachedState
    , StateServerName
    , domain
 ) where
@@ -40,7 +40,7 @@ import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..), launchLocalOrRemoteGeneric
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.Locator (extractServer)
 import Rtsv2.Agents.Locator.Types (LocalOrRemote(..), ResourceResp)
-import Rtsv2.Agents.PersistentInstanceState as PersistentInstanceState
+import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Audit as Audit
 import Rtsv2.Config as Config
 import Rtsv2.Names as Names
@@ -51,11 +51,11 @@ import Shared.Common (Milliseconds, Url)
 import Shared.LlnwApiTypes (StreamDetails, StreamPublish(..))
 import Shared.Router.Endpoint (Endpoint(..), makeUrl)
 import Shared.Stream (AggregatorKey, IngestKey(..), ingestKeyToAggregatorKey)
-import Shared.Types (Load, Server, ServerLoad(..), extractAddress)
+import Shared.Types (Load, Server, ServerLoad(..))
 import Shared.Types.Agent.State as PublicState
 import Shared.Types.Media.Types.Rtmp (RtmpClientMetadata)
 import Shared.Types.Media.Types.SourceDetails (SourceInfo)
-import SpudGun (SpudError(..), SpudResponse(..))
+import SpudGun (SpudError(..))
 import SpudGun as SpudGun
 
 serverName :: IngestKey -> ServerName State Msg
@@ -67,11 +67,11 @@ data Msg
    | IntraPoPBus IntraPoP.IntraPoPBusMessage
    | HandlerDown
 
-type PersistentState =
+type CachedState =
   { aggregatorAddr :: Maybe (LocalOrRemote Server)
   }
 
-type StateServerName = PersistentInstanceState.StateServerName PersistentState
+type StateServerName = CachedInstanceState.StateServerName CachedState
 
 type State
   = { thisServer :: Server
@@ -102,7 +102,7 @@ type StartArgs
 startLink :: StartArgs -> StateServerName -> Effect StartLinkResult
 startLink args@{ingestKey} stateServerName = Gen.startLink (serverName ingestKey) (init args stateServerName) handleInfo
 
-stopAction :: IngestKey -> Maybe PersistentState -> Effect Unit
+stopAction :: IngestKey -> Maybe CachedState -> Effect Unit
 stopAction ingestKey Nothing = pure unit
 stopAction ingestKey (Just {aggregatorAddr: Nothing}) = pure unit
 stopAction ingestKey (Just {aggregatorAddr: Just addr}) =
@@ -262,7 +262,7 @@ informAggregator state@{streamDetails, ingestKey, thisServer, aggregatorRetryTim
   maybeIngestAdded <- sequence (addIngest <$> (extractServer <$>  maybeAggregator))
   case fromMaybe (Right false) maybeIngestAdded of
     Right true -> do
-      PersistentInstanceState.recordInstanceData stateServerName {aggregatorAddr: maybeAggregator}
+      CachedInstanceState.recordInstanceData stateServerName {aggregatorAddr: maybeAggregator}
       pure $ Right state{aggregatorAddr = maybeAggregator}
     Right false -> do
       void $ Timer.sendAfter (serverName ingestKey) (unwrap aggregatorRetryTime) InformAggregator

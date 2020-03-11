@@ -31,4 +31,7 @@ uuid_to_string(<<A:32/big-integer,
 
 pad(N, Bin) when byte_size(Bin) < N ->
   Pad = N - byte_size(Bin),
-  <<(binary:copy(<<"0">>, Pad))/binary, Bin/binary>>.
+  <<(binary:copy(<<"0">>, Pad))/binary, Bin/binary>>;
+
+pad(_N, Bin) ->
+  Bin.

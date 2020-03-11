@@ -13,6 +13,7 @@
         , shutdownImpl/1
         , refToStringImpl/1
         , stringToRefImpl/1
+        , exitImpl/1
         ]).
 
 
@@ -70,4 +71,9 @@ stringToRefImpl(RefNum) ->
   catch
     error:badarg ->
       {nothing}
+  end.
+
+exitImpl(Reason) ->
+  fun() ->
+      exit(Reason)
   end.

@@ -25,7 +25,8 @@ import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype, unwrap, wrap)
 import Data.Tuple (Tuple(..))
 import Foreign (F, Foreign, ForeignError(..), readArray, readInt, readString, unsafeToForeign)
-import Simple.JSON (class ReadForeign, class WriteForeign, writeImpl)
+import Logger (spy)
+import Simple.JSON (class ReadForeign, class WriteForeign, readImpl, writeImpl)
 
 newtype StreamId = StreamId Int
 
@@ -227,20 +228,19 @@ derive newtype instance writeForeignHeight :: WriteForeign Height
 -- PixelAspectRatio
 instance readForeignPixelAspectRatio :: ReadForeign PixelAspectRatio where
   readImpl fgn = do
-                 x <- readArray fgn
-                 let
-                   f = wrap <$> readIndex 0 x
-                   s = wrap <$> readIndex 1 x
-                   t = lift2 Tuple f s
-                   result = t <#> PixelAspectRatio
+    x <- readImpl fgn
+    let
+     error :: forall a. Maybe a -> F a
+     error m = except $ note (singleton (ForeignError "Failed to parse")) m
 
-                   readIndex :: Int -> Array Foreign -> F Int
-                   readIndex index array = readInt =<< (error $ array !! index)
+     readIndex :: Int -> Array Foreign -> F Int
+     readIndex index array = readInt =<< (error $ array !! index)
 
-                   error :: forall a. Maybe a -> F a
-                   error m = except $ note (singleton (ForeignError "Failed to parse")) m
-
-                 result
+     fst = wrap <$> readIndex 0 x
+     snd = wrap <$> readIndex 1 x
+     tpl = lift2 Tuple fst snd
+     result = PixelAspectRatio <$> tpl
+    result
 
 instance writeForeignPixelAspectRatio :: WriteForeign PixelAspectRatio where
   writeImpl (PixelAspectRatio (Tuple width height)) = writeImpl [unwrap width, unwrap height]

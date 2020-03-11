@@ -24,7 +24,7 @@ import Rtsv2.Agents.Locator.Relay (findOrStart)
 import Rtsv2.Agents.Locator.Types (LocalOrRemote(..), NoCapacity(..), ResourceResp, fromLocalOrRemote)
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
 import Rtsv2.Agents.StreamRelayInstance as StreamRelayInstance
-import Rtsv2.Agents.StreamRelayInstanceSup as StreamRelayInstanceSup
+import Rtsv2.Agents.StreamRelaySup as StreamRelaySup
 import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload, RegisterEgestPayload, RegisterRelayPayload)
 import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.PoPDefinition as PoPDefinition
@@ -41,7 +41,7 @@ stats :: SlotId -> SlotRole -> GetHandler (StreamRelay List)
 stats slotId slotRole = jsonResponse $ Just <$> (StreamRelayInstance.status $ RelayKey slotId slotRole)
 
 startResource :: PostHandler CreateRelayPayload
-startResource =  processPostPayload StreamRelayInstanceSup.startRelay
+startResource =  processPostPayload StreamRelaySup.startRelay
 
 registerEgest :: PostHandler RegisterEgestPayload
 registerEgest = processPostPayload StreamRelayInstance.registerEgest

@@ -25,12 +25,13 @@ import Logger (spy)
 import Prometheus as Prometheus
 import Rtsv2.Agents.IngestInstance as IngestInstance
 import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
+import Rtsv2.Agents.IngestSup as IngestSup
 import Rtsv2.Agents.IngestStats as IngestStats
 import Rtsv2.Config as Config
 import Rtsv2.Handler.MimeType as MimeType
 import Shared.LlnwApiTypes (StreamIngestProtocol(..), StreamPublish, StreamDetails)
 import Shared.Router.Endpoint (Canary)
-import Shared.Stream (IngestKey(..), ProfileName, RtmpShortName, SlotId, SlotNameAndProfileName(..), SlotRole(..))
+import Shared.Stream (IngestKey(..), ProfileName, RtmpShortName, SlotId, SlotNameAndProfileName(..), SlotRole)
 import Shared.Types.Agent.State (IngestStats)
 import Shared.Types.Agent.State as PublicState
 import Shared.Types.Workflow.Metrics.Commmon (Stream)
@@ -192,7 +193,7 @@ ingestStart canary shortName slotNameAndProfileName@(SlotNameAndProfileName slot
                                      }
                )
   # Rest.serviceAvailable (\req state -> do
-                            isAgentAvailable <- IngestInstanceSup.isAvailable
+                            isAgentAvailable <- IngestSup.isAgentAvailable
                             Rest.result isAgentAvailable req state)
   # Rest.resourceExists (\req state ->
                           let
@@ -234,7 +235,7 @@ ingestStop canary slotId role profileName =
   Rest.handler (\req -> Rest.initResult req {ingestKey: IngestKey slotId role profileName})
 
   # Rest.serviceAvailable (\req state -> do
-                            isAgentAvailable <- IngestInstanceSup.isAvailable
+                            isAgentAvailable <- IngestSup.isAgentAvailable
                             Rest.result isAgentAvailable req state)
 
   # Rest.resourceExists (\req state@{ingestKey} -> do

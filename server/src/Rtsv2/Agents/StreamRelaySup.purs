@@ -1,7 +1,7 @@
-module Rtsv2.Agents.IngestAggregatorSup
+module Rtsv2.Agents.StreamRelaySup
        ( isAgentAvailable
        , startLink
-       , startAggregator
+       , startRelay
        )
        where
 
@@ -9,34 +9,34 @@ import Prelude
 
 import Effect (Effect)
 import Erl.Data.List (nil, (:))
-import Pinto (StartChildResult, SupervisorName, isRegistered)
+import Pinto (SupervisorName, isRegistered)
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStartTemplate, childType)
 import Pinto.Sup as Sup
-import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
-import Rtsv2.Agents.IngestAggregatorInstanceSup as IngestAggregatorInstanceSup
 import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
+import Rtsv2.Agents.StreamRelayInstance as StreamRelayInstance
+import Rtsv2.Agents.StreamRelayInstanceSup as StreamRelayInstanceSup
+import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload)
 import Rtsv2.Names as Names
-import Shared.LlnwApiTypes (StreamDetails)
 
 isAgentAvailable :: Effect Boolean
 isAgentAvailable = isRegistered serverName
 
 serverName :: SupervisorName
-serverName = Names.ingestAggregatorSupName
+serverName = Names.streamRelaySupName
 
 startLink :: forall a. a -> Effect Pinto.StartLinkResult
 startLink _ = Sup.startLink serverName init
 
-startAggregator :: StreamDetails -> Effect StartChildResult
-startAggregator streamDetails =
+startRelay :: CreateRelayPayload -> Effect Pinto.StartChildResult
+startRelay createPayload =
   let
-    aggregatorKey = IngestAggregatorInstance.streamDetailsToAggregatorKey streamDetails
+    relayKey = StreamRelayInstance.payloadToRelayKey createPayload
   in
-   Sup.startSimpleChild childTemplate serverName { childStartLink: IngestAggregatorInstanceSup.startLink aggregatorKey streamDetails
-                                                 , childStopAction: IngestAggregatorInstance.stopAction aggregatorKey
-                                                 , serverName: Names.ingestAggregatorInstanceStateName aggregatorKey
-                                                 , domain: IngestAggregatorInstance.domain
+   Sup.startSimpleChild childTemplate serverName { childStartLink: StreamRelayInstanceSup.startLink relayKey createPayload
+                                                 , childStopAction: StreamRelayInstance.stopAction relayKey
+                                                 , serverName: Names.streamRelayInstanceStateName relayKey
+                                                 , domain: StreamRelayInstance.domain
                                                  }
 
 init :: Effect Sup.SupervisorSpec
@@ -53,5 +53,5 @@ init = do
           : nil
         )
 
-childTemplate :: Pinto.ChildTemplate (CachedInstanceState.StartArgs IngestAggregatorInstance.CachedState)
+childTemplate :: Pinto.ChildTemplate (CachedInstanceState.StartArgs StreamRelayInstance.CachedState)
 childTemplate = Pinto.ChildTemplate (CachedInstanceState.startLink)

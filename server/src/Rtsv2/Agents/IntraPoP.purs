@@ -356,21 +356,22 @@ newtype HandlerName = HandlerName String
 derive instance newtypeHandlerName :: Newtype HandlerName _
 
 type AgentHandler =
-  { name              :: HandlerName
+  { name                     :: HandlerName
 
-  , availableLocal    :: AgentMessageHandler
-  , availableThisPoP  :: AgentMessageHandler
-  , availableOtherPoP :: AgentMessageHandler
-  , stoppedLocal      :: AgentMessageHandler
-  , stoppedThisPoP    :: AgentMessageHandler
-  , stoppedOtherPoP   :: AgentMessageHandler
-  , gcThisPoP         :: AgentMessageHandler
-  , gcOtherPoP        :: AgentMessageHandler
+  , availableLocal           :: AgentMessageHandler
+  , availableThisPoP         :: AgentMessageHandler
+  , availableOtherPoP        :: AgentMessageHandler
+  , stoppedLocal             :: AgentMessageHandler
+  , stoppedThisPoP           :: AgentMessageHandler
+  , stoppedOtherPoP_viaTrans :: AgentMessageHandler
+  , stoppedOtherPoP_viaIntra :: AgentMessageHandler
+  , gcThisPoP                :: AgentMessageHandler
+  , gcOtherPoP               :: AgentMessageHandler
 
-  , clockLens         :: AgentClockLens
-  , locationLens      :: AgentLocationLens
+  , clockLens                :: AgentClockLens
+  , locationLens             :: AgentLocationLens
 
-  , reannounceEveryMs :: (State -> Milliseconds)
+  , reannounceEveryMs        :: (State -> Milliseconds)
     -- TODO -- Maybe add isSingleton - to generate warnings if the sets have more than one entry?
   }
 
@@ -444,20 +445,21 @@ loadHandler load =
 
 aggregatorHandler :: AgentHandler
 aggregatorHandler
-  = { name              : HandlerName "aggregator"
-    , availableLocal    : availableLocal
-    , availableThisPoP  : availableThisPoP
-    , availableOtherPoP : availableOtherPoP
-    , stoppedLocal      : stoppedLocal
-    , stoppedThisPoP    : stoppedThisPoP
-    , stoppedOtherPoP   : stoppedOtherPoP
-    , gcThisPoP         : gcThisPoP
-    , gcOtherPoP        : gcOtherPoP
+  = { name                     : HandlerName "aggregator"
+    , availableLocal           : availableLocal
+    , availableThisPoP         : availableThisPoP
+    , availableOtherPoP        : availableOtherPoP
+    , stoppedLocal             : stoppedLocal
+    , stoppedThisPoP           : stoppedThisPoP
+    , stoppedOtherPoP_viaTrans : stoppedOtherPoP_viaTrans
+    , stoppedOtherPoP_viaIntra : stoppedOtherPoP_viaIntra
+    , gcThisPoP                : gcThisPoP
+    , gcOtherPoP               : gcOtherPoP
 
-    , clockLens         : clockLens
-    , locationLens      : locationLens
+    , clockLens                : clockLens
+    , locationLens             : locationLens
 
-    , reannounceEveryMs : _.config >>> _.reannounceAgentEveryMs >>> _.aggregator >>> wrap
+    , reannounceEveryMs        : _.config >>> _.reannounceAgentEveryMs >>> _.aggregator >>> wrap
     }
   where
     availableLocal :: AgentMessageHandler
@@ -490,11 +492,16 @@ aggregatorHandler
       Bus.raise bus (IngestAggregatorExited aggregatorKey server)
       state.transPoPApi.announceAggregatorStopped agentKey server
 
-    stoppedOtherPoP :: AgentMessageHandler
-    stoppedOtherPoP state agentKey server = do
+    stoppedOtherPoP_viaTrans :: AgentMessageHandler
+    stoppedOtherPoP_viaTrans state agentKey server = do
       logInfo "Remote aggregator stopped in another PoP" {agentKey, server}
       Bus.raise bus (IngestAggregatorExited (agentKeyToAggregatorKey agentKey)  server)
       sendToIntraSerfNetwork state "aggregatorStopped" (IMAggregatorState Stopped agentKey (extractAddress server))
+
+    stoppedOtherPoP_viaIntra :: AgentMessageHandler
+    stoppedOtherPoP_viaIntra state agentKey server = do
+      logInfo "Remote aggregator stopped in another PoP" {agentKey, server}
+      Bus.raise bus (IngestAggregatorExited (agentKeyToAggregatorKey agentKey)  server)
 
     gcThisPoP :: AgentMessageHandler
     gcThisPoP state agentKey server = do
@@ -534,20 +541,21 @@ announceOtherPoPAggregatorStopped = announceStoppedOtherPoP aggregatorHandler
 
 egestHandler :: AgentHandler
 egestHandler
-  = { name              : HandlerName "egest"
-    , availableLocal    : availableLocal
-    , availableThisPoP  : availableThisPoP
-    , availableOtherPoP : availableOtherPoP
-    , stoppedLocal      : stoppedLocal
-    , stoppedThisPoP    : stoppedThisPoP
-    , stoppedOtherPoP   : stoppedOtherPoP
-    , gcThisPoP         : gcThisPoP
-    , gcOtherPoP        : gcOtherPoP
+  = { name                     : HandlerName "egest"
+    , availableLocal           : availableLocal
+    , availableThisPoP         : availableThisPoP
+    , availableOtherPoP        : availableOtherPoP
+    , stoppedLocal             : stoppedLocal
+    , stoppedThisPoP           : stoppedThisPoP
+    , stoppedOtherPoP_viaTrans : stoppedOtherPoP
+    , stoppedOtherPoP_viaIntra : stoppedOtherPoP
+    , gcThisPoP                : gcThisPoP
+    , gcOtherPoP               : gcOtherPoP
 
-    , clockLens         : clockLens
-    , locationLens      : locationLens
+    , clockLens                : clockLens
+    , locationLens             : locationLens
 
-    , reannounceEveryMs : _.config >>> _.reannounceAgentEveryMs >>> _.egest >>> wrap
+    , reannounceEveryMs        : _.config >>> _.reannounceAgentEveryMs >>> _.egest >>> wrap
 
     }
   where
@@ -602,20 +610,21 @@ announceLocalEgestStopped = announceStoppedLocal egestHandler <<< egestKeyToAgen
 
 relayHandler :: AgentHandler
 relayHandler
-  = { name              : HandlerName "relay"
-    , availableLocal    : availableLocal
-    , availableThisPoP  : availableThisPoP
-    , availableOtherPoP : availableOtherPoP
-    , stoppedLocal      : stoppedLocal
-    , stoppedThisPoP    : stoppedThisPoP
-    , stoppedOtherPoP   : stoppedOtherPoP
-    , gcThisPoP         : gcThisPoP
-    , gcOtherPoP        : gcOtherPoP
+  = { name                     : HandlerName "relay"
+    , availableLocal           : availableLocal
+    , availableThisPoP         : availableThisPoP
+    , availableOtherPoP        : availableOtherPoP
+    , stoppedLocal             : stoppedLocal
+    , stoppedThisPoP           : stoppedThisPoP
+    , stoppedOtherPoP_viaTrans : stoppedOtherPoP
+    , stoppedOtherPoP_viaIntra : stoppedOtherPoP
+    , gcThisPoP                : gcThisPoP
+    , gcOtherPoP               : gcOtherPoP
 
-    , clockLens         : clockLens
-    , locationLens      : locationLens
+    , clockLens                : clockLens
+    , locationLens             : locationLens
 
-    , reannounceEveryMs : _.config >>> _.reannounceAgentEveryMs >>> _.relay >>> wrap
+    , reannounceEveryMs        : _.config >>> _.reannounceAgentEveryMs >>> _.relay >>> wrap
     }
   where
     availableLocal state agentKey server = do
@@ -687,7 +696,6 @@ announceStoppedLocal handler@{locationLens} agentKey = do
       pure $ Gen.CastNoReply $ updateAgentLocation removeLocalAgent locationLens agentKey thisServer state
 
 
-
 -- Builds public API for message from other PoP
 announceAvailableOtherPoP :: AgentHandler -> AgentKey -> Server -> Effect Unit
 announceAvailableOtherPoP handler@{locationLens} agentKey msgServer =
@@ -695,7 +703,6 @@ announceAvailableOtherPoP handler@{locationLens} agentKey msgServer =
     \state@{agentLocations, thisServer} -> do
       let
         locations = locationLens.get agentLocations
-        _ = spy "announceAvailableOtherPoP" {name: handler.name, agentKey, msgServer}
       timeout <- messageTimeout handler state
       logIfNewAgent handler locations thisServer agentKey msgServer
       handler.availableOtherPoP state agentKey msgServer
@@ -705,7 +712,7 @@ announceStoppedOtherPoP :: AgentHandler -> AgentKey -> Server -> Effect Unit
 announceStoppedOtherPoP handler@{locationLens} agentKey server =
   Gen.doCast serverName
     \state -> do
-      handler.stoppedOtherPoP state agentKey server
+      handler.stoppedOtherPoP_viaTrans state agentKey server
       pure $ Gen.CastNoReply $ updateAgentLocation removeRemoteAgent locationLens agentKey server state
 
 -- Called by TransPoP to indicate that it is acting as this PoP's leader
@@ -1002,7 +1009,7 @@ handleAgentMessage msgLTime eventType agentKey msgServerAddress
                 newLocations = removeRemoteAgent agentKey msgServer locations
               if fromThisPoP
               then agentMessageHandler.stoppedThisPoP state agentKey msgServer
-              else pure unit
+              else agentMessageHandler.stoppedOtherPoP_viaIntra state agentKey msgServer
               pure $ state { agentClocks = newAgentClocks
                            , agentLocations = locationLens.set newLocations agentLocations
                            }
