@@ -624,7 +624,7 @@ main =
                    launch nodes
                 ) do
           after_ stopSession do
-            itOnly "aggregator presence is disseminated to all servers" do
+            it "aggregator presence is disseminated to all servers" do
               ingestStart p1n1 shortName1 low >>= assertStatusCode 200      >>= as  "create ingest"
               waitForTransPoPDisseminate                                    >>= as' "wait for transPop disseminate"
               intraPoPState p1n1                   >>= assertAggregatorOn [p1n1] slot1
