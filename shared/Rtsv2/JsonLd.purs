@@ -1,46 +1,58 @@
 module Shared.Rtsv2.JsonLd
        (
-         LocationBySlotIdAndSlotRole
-       , LocationBySlotId
+         ServerContextFields
        , ServerNode
-       , ServerAddressNode
-       , DeliverToNode
-       , EgestServedLocationNode
-       , TimedRouteNeighbourNode
-       , TimedRouteNeighbour
-       , TimedRouteNeighbourContextFields
-       , RelayServedLocationNode
-       , ActiveIngestLocationNode
-       , ActiveIngestLocation
-       , AggregatorLocationNode
-       , DownstreamRelayLocationNode
-       , RelayLocationNode
-       , EgestLocationNode
-       , ServerContextFields
-       , ServerAddressContextFields
-       , ActiveIngestContextFields
-       , DeliverToContextFields
-       , TransPoPLeaderLocationNode
-       , EgestStatsNode
-       , EgestStatsContextFields
+       , serverContext
 
-       , timedRouteNeighbourNode
+       , ServerAddressContextFields
+       , ServerAddressNode
+       , serverAddressContext
+
+       , DeliverToContextFields
+       , DeliverToNode
+       , deliverToContext
+
+       , LocationBySlotIdAndSlotRole
+       , LocationBySlotId
+
+       , ActiveIngestContextFields
+       , ActiveIngestLocation
+       , ActiveIngestLocationNode
+       , activeIngestContext
        , activeIngestLocationNode
-       , downstreamRelayLocationNode
-       , aggregatorLocationNode
-       , relayLocationNode
-       , egestLocationNode
+
+       , TransPoPLeaderLocationNode  -- == ServerNode
        , transPoPLeaderLocationNode
+
+       , TimedRouteNeighbourContextFields
+       , TimedRouteNeighbour
+       , TimedRouteNeighbourNode
+       , timedRouteNeighbourContext
+       , timedRouteNeighbourNode
+
+       , EgestServedLocationNode  -- == ServerAddressNode
        , egestServedLocationNode
+
+       , RelayServedLocationNode  -- == ServerAddressNode
        , relayServedLocationNode
+
+       , DownstreamRelayLocationNode -- == DeliverToNode
+       , downstreamRelayLocationNode
+
+       , AggregatorLocationNode -- LocationBySlotIdAndSlotRole
+       , aggregatorLocationNode
+
+       , RelayLocationNode -- LocationBySlotIdAndSlotRole
+       , relayLocationNode
+
+       , EgestLocationNode -- LocationBySlotId
+       , egestLocationNode
+
+       , EgestStatsContextFields
+       , EgestStatsNode
+       , egestStatsContext
        , egestStatsNode
 
-       , serverContext
-       , serverAddressContext
-       , deliverToContext
-       , timedRouteNeighbourContext
-       , activeIngestContext
-       , egestStatsContext
        , module JsonLd
        ) where
 
@@ -63,11 +75,27 @@ type ServerContextFields = ( address :: JsonLd.ContextValue
 
 type ServerNode = JsonLd.Node Server ServerContextFields
 
+serverContext :: JsonLd.Context ServerContextFields
+serverContext = wrap { "@language": Nothing
+                     , "@base": Nothing
+                     , "@vocab": Nothing
+                     , address: JsonLd.Other "http://schema.rtsv2.llwn.com/Infrastructure/Address"
+                     , pop: JsonLd.Other "http://schema.rtsv2.llnw.com/Infrastructure/PoP"
+                     , region: JsonLd.Other "http://schema.rtsv2.llnw.com/Infrastructure/Region"
+                     }
+
 ------------------------------------------------------------------------------
 -- ServerAddress
 type ServerAddressContextFields = ( address :: JsonLd.ContextValue )
 
 type ServerAddressNode = JsonLd.Node { address :: ServerAddress } ServerAddressContextFields
+
+serverAddressContext :: JsonLd.Context ServerAddressContextFields
+serverAddressContext = wrap { "@language": Nothing
+                            , "@base": Nothing
+                            , "@vocab": Nothing
+                            , address: JsonLd.Other "http://schema.rtsv2.llwn.com/Infrastructure/Address"
+                            }
 
 ------------------------------------------------------------------------------
 -- DeliverTo
@@ -77,6 +105,13 @@ type DeliverToContextFields = ( port :: JsonLd.ContextValue
 
 type DeliverToNode a = JsonLd.Node (DeliverTo a) DeliverToContextFields
 
+deliverToContext :: JsonLd.Context DeliverToContextFields
+deliverToContext = wrap { "@language": Nothing
+                        , "@base": Nothing
+                        , "@vocab": Nothing
+                        , port: JsonLd.Other "http://schema.rtsv2.llwn.com/Network/Port"
+                        , server: JsonLd.Other "http://schema.rtsv2.llnw.com/Infrastructure/Server"
+                        }
 
 ------------------------------------------------------------------------------
 -- LocationByXXX
@@ -101,87 +136,6 @@ type ActiveIngestLocation = { profileName :: ProfileName
 
 type ActiveIngestLocationNode = JsonLd.Node ActiveIngestLocation ActiveIngestContextFields
 
-------------------------------------------------------------------------------
--- TransPoPLeaderLocation
-type TransPoPLeaderLocationNode = ServerNode
-
-------------------------------------------------------------------------------
--- TimedRouteNode
-type TimedRouteNeighbourContextFields = ( pop :: JsonLd.ContextValue )
-
-type TimedRouteNeighbour f = { pop :: PoPName
-                             , servers :: f ServerAddress }
-
-type TimedRouteNeighbourNode f = JsonLd.Node (TimedRouteNeighbour f) TimedRouteNeighbourContextFields
-
-------------------------------------------------------------------------------
--- EgestServedLocation
-type EgestServedLocationNode = ServerAddressNode
-
-------------------------------------------------------------------------------
--- RelayServedLocation
-type RelayServedLocationNode = ServerAddressNode
-
-------------------------------------------------------------------------------
--- DownstreamRelay
-type DownstreamRelayLocationNode = DeliverToNode RelayServer
-
-------------------------------------------------------------------------------
--- AggregatorLocation
-type AggregatorLocationNode f =  LocationBySlotIdAndSlotRole f
-
-------------------------------------------------------------------------------
--- RelayLocation
-type RelayLocationNode f =  LocationBySlotIdAndSlotRole f
-
-------------------------------------------------------------------------------
--- EgestLocation
-type EgestLocationNode f =  LocationBySlotId f
-
-------------------------------------------------------------------------------
--- EgestStats
-type EgestStatsContextFields = ( clientCount :: JsonLd.ContextValue )
-
-type EgestStatsNode = JsonLd.Node { clientCount :: Int} EgestStatsContextFields
-
-serverContext :: JsonLd.Context ServerContextFields
-serverContext = wrap { "@language": Nothing
-                     , "@base": Nothing
-                     , "@vocab": Nothing
-                     , address: JsonLd.Other "http://schema.rtsv2.llwn.com/Infrastructure/Address"
-                     , pop: JsonLd.Other "http://schema.rtsv2.llnw.com/Infrastructure/PoP"
-                     , region: JsonLd.Other "http://schema.rtsv2.llnw.com/Infrastructure/Region"
-                     }
-
-serverAddressContext :: JsonLd.Context ServerAddressContextFields
-serverAddressContext = wrap { "@language": Nothing
-                            , "@base": Nothing
-                            , "@vocab": Nothing
-                            , address: JsonLd.Other "http://schema.rtsv2.llwn.com/Infrastructure/Address"
-                            }
-
-deliverToContext :: JsonLd.Context DeliverToContextFields
-deliverToContext = wrap { "@language": Nothing
-                        , "@base": Nothing
-                        , "@vocab": Nothing
-                        , port: JsonLd.Other "http://schema.rtsv2.llwn.com/Network/Port"
-                        , server: JsonLd.Other "http://schema.rtsv2.llnw.com/Infrastructure/Server"
-                        }
-
-timedRouteNeighbourContext :: JsonLd.Context TimedRouteNeighbourContextFields
-timedRouteNeighbourContext = wrap { "@language": Nothing
-                                  , "@base": Nothing
-                                  , "@vocab": Nothing
-                                  , pop: JsonLd.Other "http://schema.rtsv2.llnw.com/Infrastructure/PoP"
-                                  }
-
-egestStatsContext :: JsonLd.Context EgestStatsContextFields
-egestStatsContext = wrap { "@language": Nothing
-                         , "@base": Nothing
-                         , "@vocab": Nothing
-                         , clientCount: JsonLd.Other "http://schema.rtsv2.llnw.com/Counter"
-                         }
-
 activeIngestContext :: JsonLd.Context ActiveIngestContextFields
 activeIngestContext =
   wrap { "@language": Nothing
@@ -189,38 +143,6 @@ activeIngestContext =
        , "@vocab": Nothing
        , profileName: JsonLd.Other "http://schema.rtsv2.llwn.com/Media/ProfileName"
        , serverAddress: JsonLd.Other "http://schema.rtsv2.llnw.com/Infrastructure/ServerAddress"
-       }
-
-timedRouteNeighbourNode :: forall f. Server -> TimedRouteNeighbour f -> TimedRouteNeighbourNode f
-timedRouteNeighbourNode server neighbour@{pop} =
-  wrap { resource: neighbour
-       , "@id": Just $ makeUrl server (TimedRoutesForPoPE pop)
-       , "@nodeType": Just "http://schema.rtsv2.llnw.com/TimedRouteNeighbour"
-       , "@context": Just $ ContextUrl $ makePath $ JsonLdContext TimedRouteNeighbourContext
-       }
-
-egestServedLocationNode :: SlotId -> ServerAddress -> EgestServedLocationNode
-egestServedLocationNode slotId serverAddress =
-  wrap { resource: {address: serverAddress}
-       , "@id": Just $ makeUrlAddr serverAddress (EgestStatsE slotId)
-       , "@nodeType": Just "http://schema.rtsv2.llnw.com/EgestServedLocation"
-       , "@context": Just $ ContextUrl $ makePath $ JsonLdContext ServerAddressContext
-       }
-
-relayServedLocationNode :: SlotId -> SlotRole -> ServerAddress -> RelayServedLocationNode
-relayServedLocationNode slotId slotRole serverAddress =
-  wrap { resource: {address: serverAddress}
-       , "@id": Just $ makeUrlAddr serverAddress (RelayStatsE slotId slotRole)
-       , "@nodeType": Just "http://schema.rtsv2.llnw.com/RelayServedLocation"
-       , "@context": Just $ ContextUrl $ makePath $ JsonLdContext ServerAddressContext
-       }
-
-transPoPLeaderLocationNode :: Server -> TransPoPLeaderLocationNode
-transPoPLeaderLocationNode server =
-  wrap { resource: server
-       , "@id": Just $ makeUrl server (TimedRoutesE)
-       , "@nodeType": Just "http://schema.rtsv2.llnw.com/TransPoPLocation"
-       , "@context": Just $ ContextUrl $ makePath $ JsonLdContext ServerContext
        }
 
 activeIngestLocationNode :: SlotId -> SlotRole -> ProfileName -> ServerAddress -> ActiveIngestLocationNode
@@ -232,6 +154,70 @@ activeIngestLocationNode slotId slotRole profileName serverAddress =
        , "@context": Just $ ContextUrl $ makePath $ JsonLdContext ActiveIngestContext
        }
 
+------------------------------------------------------------------------------
+-- TransPoPLeaderLocation
+type TransPoPLeaderLocationNode = ServerNode
+
+transPoPLeaderLocationNode :: Server -> TransPoPLeaderLocationNode
+transPoPLeaderLocationNode server =
+  wrap { resource: server
+       , "@id": Just $ makeUrl server (TimedRoutesE)
+       , "@nodeType": Just "http://schema.rtsv2.llnw.com/TransPoPLocation"
+       , "@context": Just $ ContextUrl $ makePath $ JsonLdContext ServerContext
+       }
+
+------------------------------------------------------------------------------
+-- TimedRouteNeighbourNode
+type TimedRouteNeighbourContextFields = ( pop :: JsonLd.ContextValue )
+
+type TimedRouteNeighbour f = { pop :: PoPName
+                             , servers :: f ServerAddress }
+
+type TimedRouteNeighbourNode f = JsonLd.Node (TimedRouteNeighbour f) TimedRouteNeighbourContextFields
+
+timedRouteNeighbourContext :: JsonLd.Context TimedRouteNeighbourContextFields
+timedRouteNeighbourContext = wrap { "@language": Nothing
+                                  , "@base": Nothing
+                                  , "@vocab": Nothing
+                                  , pop: JsonLd.Other "http://schema.rtsv2.llnw.com/Infrastructure/PoP"
+                                  }
+
+timedRouteNeighbourNode :: forall f. Server -> TimedRouteNeighbour f -> TimedRouteNeighbourNode f
+timedRouteNeighbourNode server neighbour@{pop} =
+  wrap { resource: neighbour
+       , "@id": Just $ makeUrl server (TimedRoutesForPoPE pop)
+       , "@nodeType": Just "http://schema.rtsv2.llnw.com/TimedRouteNeighbour"
+       , "@context": Just $ ContextUrl $ makePath $ JsonLdContext TimedRouteNeighbourContext
+       }
+
+------------------------------------------------------------------------------
+-- EgestServedLocation
+type EgestServedLocationNode = ServerAddressNode
+
+egestServedLocationNode :: SlotId -> ServerAddress -> EgestServedLocationNode
+egestServedLocationNode slotId serverAddress =
+  wrap { resource: {address: serverAddress}
+       , "@id": Just $ makeUrlAddr serverAddress (EgestStatsE slotId)
+       , "@nodeType": Just "http://schema.rtsv2.llnw.com/EgestServedLocation"
+       , "@context": Just $ ContextUrl $ makePath $ JsonLdContext ServerAddressContext
+       }
+
+------------------------------------------------------------------------------
+-- RelayServedLocation
+type RelayServedLocationNode = ServerAddressNode
+
+relayServedLocationNode :: SlotId -> SlotRole -> ServerAddress -> RelayServedLocationNode
+relayServedLocationNode slotId slotRole serverAddress =
+  wrap { resource: {address: serverAddress}
+       , "@id": Just $ makeUrlAddr serverAddress (RelayStatsE slotId slotRole)
+       , "@nodeType": Just "http://schema.rtsv2.llnw.com/RelayServedLocation"
+       , "@context": Just $ ContextUrl $ makePath $ JsonLdContext ServerAddressContext
+       }
+
+------------------------------------------------------------------------------
+-- DownstreamRelayLocation
+type DownstreamRelayLocationNode = DeliverToNode RelayServer
+
 downstreamRelayLocationNode :: SlotId -> SlotRole -> DeliverTo RelayServer -> DownstreamRelayLocationNode
 downstreamRelayLocationNode slotId slotRole relay@{server} =
   wrap { resource: relay
@@ -239,6 +225,10 @@ downstreamRelayLocationNode slotId slotRole relay@{server} =
        , "@nodeType": Just "http://types.rtsv2.llnw.com/DownstreamRelayLocation"
        , "@context": Just $ ContextUrl $ makePath $ JsonLdContext DeliverToContext
        }
+
+------------------------------------------------------------------------------
+-- AggregatorLocation
+type AggregatorLocationNode f =  LocationBySlotIdAndSlotRole f
 
 aggregatorLocationNode :: SlotId -> SlotRole -> Server -> ServerNode
 aggregatorLocationNode slotId slotRole server =
@@ -248,6 +238,10 @@ aggregatorLocationNode slotId slotRole server =
        , "@context": Just $ ContextUrl $ makePath $ JsonLdContext ServerContext
        }
 
+------------------------------------------------------------------------------
+-- RelayLocation
+type RelayLocationNode f =  LocationBySlotIdAndSlotRole f
+
 relayLocationNode :: SlotId -> SlotRole -> Server -> ServerNode
 relayLocationNode slotId slotRole server =
   wrap { resource: server
@@ -256,6 +250,10 @@ relayLocationNode slotId slotRole server =
        , "@context": Just $ ContextUrl $ makePath $ JsonLdContext ServerContext
        }
 
+------------------------------------------------------------------------------
+-- EgestLocation
+type EgestLocationNode f =  LocationBySlotId f
+
 egestLocationNode :: SlotId -> Server -> ServerNode
 egestLocationNode slotId server =
   wrap { resource: server
@@ -263,6 +261,19 @@ egestLocationNode slotId server =
        , "@nodeType": Just "http://types.rtsv2.llnw.com/EgestLocation"
        , "@context": Just $ ContextUrl $ makePath $ JsonLdContext ServerContext
        }
+
+------------------------------------------------------------------------------
+-- EgestStats
+type EgestStatsContextFields = ( clientCount :: JsonLd.ContextValue )
+
+type EgestStatsNode = JsonLd.Node { clientCount :: Int} EgestStatsContextFields
+
+egestStatsContext :: JsonLd.Context EgestStatsContextFields
+egestStatsContext = wrap { "@language": Nothing
+                         , "@base": Nothing
+                         , "@vocab": Nothing
+                         , clientCount: JsonLd.Other "http://schema.rtsv2.llnw.com/Counter"
+                         }
 
 egestStatsNode :: SlotId -> Server -> Int -> EgestStatsNode
 egestStatsNode slotId server clientCount =
