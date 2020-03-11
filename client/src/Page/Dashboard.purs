@@ -25,6 +25,7 @@ import Halogen.HTML.CSS as CSS
 import Halogen.HTML.Properties as HP
 import Rtsv2App.Capability.Navigate (class Navigate)
 import Rtsv2App.Capability.Resource.Api (class ManageApi, getPoPdefinition)
+import Rtsv2App.Capability.Resource.Types (Notification, NotificationMessage)
 import Rtsv2App.Capability.Resource.User (class ManageUser)
 import Rtsv2App.Component.HTML.Breadcrumb as BG
 import Rtsv2App.Component.HTML.Footer (footer)
@@ -45,7 +46,12 @@ import Shared.Types.Agent.State (PoPDefinition, AggregatorLocation)
 -------------------------------------------------------------------------------
 data Action
   = Initialize
-  | Receive { currentUser :: Maybe Profile }
+  | Receive Input
+
+type Input =
+  { currentUser   :: Maybe Profile
+  , notifications :: Array Notification
+  }
 
 type State =
   { currentUser   :: Maybe Profile
@@ -72,8 +78,8 @@ component
   => Navigate m
   => ManageUser m
   => ManageApi m
-  => H.Component HH.HTML (Const Void) {} Void m
-component = Connect.component $ H.mkComponent
+  => H.Component HH.HTML (Const Void) Input NotificationMessage m
+component = H.mkComponent
   { initialState
   , render
   , eval: H.mkEval $ H.defaultEval
@@ -83,7 +89,7 @@ component = Connect.component $ H.mkComponent
       }
   }
   where
-  initialState { currentUser } =
+  initialState { currentUser, notifications } =
     { currentUser
     , popDefenition: Nothing
     , popDefEcharts: mempty
@@ -92,7 +98,7 @@ component = Connect.component $ H.mkComponent
     , aggrLocs: mempty
     }
 
-  handleAction :: Action -> H.HalogenM State Action ChildSlots Void m Unit
+  handleAction :: Action -> H.HalogenM State Action ChildSlots NotificationMessage m Unit
   handleAction = case _ of
     Initialize -> do
       st ← H.get
@@ -133,7 +139,7 @@ component = Connect.component $ H.mkComponent
         liftEffect $ EC.setClick { curHost: (unwrap urlEnv.curHostUrl), url: "/support#/pop/" } chart
         liftEffect $ EC.ressizeObserver chart
 
-    Receive { currentUser } ->
+    Receive { currentUser, notifications } ->
       H.modify_ _ { currentUser = currentUser }
 
   render :: State -> H.ComponentHTML Action ChildSlots m

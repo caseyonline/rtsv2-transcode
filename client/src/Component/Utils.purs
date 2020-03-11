@@ -9,8 +9,9 @@ import Effect.Aff.Bus as Bus
 import Effect.Aff.Class (class MonadAff)
 import Halogen as H
 import Halogen.Query.EventSource as ES
+import Rtsv2App.Capability.Resource.Types (NotificationMessage)
 
-type OpaqueSlot = H.Slot (Const Void) Void
+type OpaqueSlot = H.Slot (Const Void) NotificationMessage
 
 busEventSource :: forall m r act. MonadAff m => Bus.BusR' r act -> ES.EventSource m act
 busEventSource bus =

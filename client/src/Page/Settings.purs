@@ -18,6 +18,7 @@ import Halogen.HTML.Events as HE
 import Halogen.HTML.Properties as HP
 import Network.RemoteData (RemoteData(..), fromMaybe)
 import Rtsv2App.Capability.Navigate (class Navigate, logout)
+import Rtsv2App.Capability.Resource.Types (Notification, NotificationMessage)
 import Rtsv2App.Capability.Resource.User (class ManageUser, UpdateProfileFields, getCurrentUser, updateUser)
 import Rtsv2App.Component.HTML.Footer (footer)
 import Rtsv2App.Component.HTML.Header as HD
@@ -47,10 +48,16 @@ newtype SettingsForm r f = SettingsForm (r
 
 derive instance newtypeSettingsForm :: Newtype (SettingsForm r f) _
 
+type Input =
+  { currentUser   :: Maybe Profile
+  , notifications :: Array Notification
+  }
+
 data Action
   = Initialize
   | HandleForm UpdateProfileFields
   | LogUserOut
+  | Receive Input
 
 type State =
   { profile :: RemoteData String ProfileEmail
@@ -72,22 +79,23 @@ component
   => Navigate m
   => MonadAsk { userEnv :: UserEnv | r } m
   => ManageUser m
-  => H.Component HH.HTML (Const Void) {} Void m
-component = Connect.component $ H.mkComponent
+  => H.Component HH.HTML (Const Void) Input NotificationMessage m
+component = H.mkComponent
   { initialState: initialState
   , render
   , eval: H.mkEval $ H.defaultEval
       { handleAction = handleAction
+      , receive = Just <<< Receive
       , initialize = Just Initialize
       }
   }
   where
-  initialState { currentUser } =
+  initialState { currentUser, notifications } =
     { currentUser
     , profile: NotAsked
     }
 
-  handleAction :: Action -> H.HalogenM State Action ChildSlots Void m Unit
+  handleAction :: Action -> H.HalogenM State Action ChildSlots NotificationMessage m Unit
   handleAction = case _ of
     Initialize -> do
       { userEnv } <- ask
@@ -118,6 +126,8 @@ component = Connect.component $ H.mkComponent
       H.modify_ _ { profile = fromMaybe mbProfileWithEmail }
 
     LogUserOut -> logout
+
+    Receive { currentUser, notifications } -> do pure unit
 
   render :: State -> H.ComponentHTML Action ChildSlots m
   render state@{ profile, currentUser } =

@@ -18,6 +18,7 @@ import Halogen.HTML as HH
 import Halogen.HTML.Properties as HP
 import Rtsv2App.Api.Request (RegisterFields)
 import Rtsv2App.Capability.Navigate (class Navigate, navigate)
+import Rtsv2App.Capability.Resource.Types (NotificationMessage)
 import Rtsv2App.Capability.Resource.User (class ManageUser, registerUser)
 import Rtsv2App.Component.HTML.Footer (footer)
 import Rtsv2App.Component.HTML.Header as HD
@@ -64,7 +65,7 @@ component
   => ManageUser m
   => MonadAsk { userEnv :: UserEnv | r } m
   => Navigate m
-  => H.Component HH.HTML (Const Void) {} Void m
+  => H.Component HH.HTML (Const Void) {} NotificationMessage m
 component = Connect.component $ H.mkComponent
   { initialState
   , render

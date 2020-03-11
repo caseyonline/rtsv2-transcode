@@ -1,6 +1,8 @@
 module Rtsv2App.Capability.Resource.Types
        ( SlotDetailsArgs
        , PoPAggrSelectedInfo
+       , Notification
+       , NotificationMessage
        )
        where
 
@@ -22,3 +24,10 @@ type PoPAggrSelectedInfo =
     , selectedAddress   :: Maybe ServerAddress
     , selectedAggrIndex :: Maybe Int
     }
+
+type Notification =
+  { message  :: String
+  , cssStyle :: String
+  }
+
+data NotificationMessage = NotificationMessage (Array Notification) 

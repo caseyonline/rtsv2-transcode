@@ -25,6 +25,7 @@ import Halogen.HTML.Properties as HP
 import Record.Extra (sequenceRecord)
 import Rtsv2App.Capability.Navigate (class Navigate)
 import Rtsv2App.Capability.Resource.Api (class ManageApi, getPoPdefinition, getAggregatorDetails, getTimedRoutes)
+import Rtsv2App.Capability.Resource.Types (NotificationMessage, Notification)
 import Rtsv2App.Capability.Resource.User (class ManageUser)
 import Rtsv2App.Component.HTML.Breadcrumb as BG
 import Rtsv2App.Component.HTML.Dropdown as DP
@@ -49,6 +50,7 @@ import Shared.Types.Agent.State (AggregatorLocation, PoPDefinition, TimedPoPRout
 type Input =
   { popName   :: PoPName
   , prevRoute :: Maybe Route
+  , notifications :: Array Notification
   }
 
 data Action
@@ -91,7 +93,7 @@ component
   => Navigate m
   => ManageUser m
   => ManageApi m
-  => H.Component HH.HTML (Const Void) Input Void m
+  => H.Component HH.HTML (Const Void) Input NotificationMessage m
 component = H.mkComponent
   { initialState
   , render
@@ -102,7 +104,7 @@ component = H.mkComponent
       }
   }
   where
-  initialState { popName, prevRoute } =
+  initialState { popName, prevRoute, notifications } =
     { aggrLocs: []
     , chart: Nothing
     , currentUser: Nothing
@@ -117,7 +119,7 @@ component = H.mkComponent
     , slotDetails: Nothing
     }
 
-  handleAction :: Action -> H.HalogenM State Action ChildSlots Void m Unit
+  handleAction :: Action -> H.HalogenM State Action ChildSlots NotificationMessage m Unit
   handleAction = case _ of
     Initialize -> do
       st ← H.get
@@ -156,17 +158,17 @@ component = H.mkComponent
                         , aggrLocs = env.aggrLocs
                         }
 
-    Receive { popName, prevRoute } -> do
+    Receive { popName, prevRoute, notifications } -> do
       st <- H.get
       when (st.curPopName /= popName) do
-        H.put $ initialState { popName, prevRoute }
+        H.put $ initialState { popName, prevRoute, notifications }
         handleAction Initialize
 
     HandlePoPSlotAggrTable (PA.RefreshAggr) -> do
       H.modify_ _ { selectedAggrIndex = Nothing }
       handleAction Initialize
 
-    HandlePoPSlotAggrTable (PA.SPoPAggrInfo selectedInfo) -> do
+    HandlePoPSlotAggrTable (PA.PoPAggrMsg selectedInfo) -> do
       H.modify_ _ { selectedAggrIndex = selectedInfo.selectedAggrIndex
                   , selectedPoPName = selectedInfo.selectedPoPName
                   }

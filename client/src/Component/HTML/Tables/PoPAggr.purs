@@ -7,9 +7,12 @@ import Data.Array (mapWithIndex, null, (!!))
 import Data.Const (Const)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (un)
+import Data.String (take)
 import Data.Time.Duration (Milliseconds(..))
 import Effect.Aff (delay)
 import Effect.Aff.Class (class MonadAff, liftAff)
+import Effect.Class (liftEffect)
+import Foreign.ClipBoard (copyToClipboard)
 import Halogen as H
 import Halogen.HTML as HH
 import Halogen.HTML.Events as HE
@@ -21,6 +24,7 @@ import Rtsv2App.Env (PoPDefEnv)
 import Shared.Stream (SlotId(..), SlotRole(..))
 import Shared.Types (PoPName(..), RegionName(..), Server(..), ServerAddress(..))
 import Shared.Types.Agent.State (AggregatorLocation, PoPDefinition)
+import Shared.UUID as UUID
 
 -------------------------------------------------------------------------------
 -- Types
@@ -34,12 +38,13 @@ type Input =
 type Slot = H.Slot (Const Void) Message
 
 data Message
-  = SPoPAggrInfo PoPAggrSelectedInfo
+  = PoPAggrMsg PoPAggrSelectedInfo
   | RefreshAggr
 
 data Action
   = Select Int
   | Receive Input
+  | Copy String
   | Refresh
 
 type State =
@@ -111,7 +116,7 @@ component = H.mkComponent
         selectedServer = _.address <$> firstAggregator
 
       H.raise
-        (SPoPAggrInfo
+        (PoPAggrMsg
            { selectedSlotId: selectedSlot
            , selectedPoPName: selectedPname
            , selectedAddress: selectedServer
@@ -122,6 +127,10 @@ component = H.mkComponent
     Refresh -> do
       H.modify_ _ { isLoading = true }
       H.raise (RefreshAggr)
+
+    Copy val -> do
+      liftEffect $ copyToClipboard val
+
 
 
   render :: State -> H.ComponentHTML Action () m
@@ -202,7 +211,7 @@ tableNoAggr =
     [ HH.p
       [ css_ "card-header-title" ]
       [ HH.span
-        [ css_ "icon icon is-large" ]
+        [ css_ "icon is-large" ]
         [ HH.i
           [ css_ "mdi mdi-video-off-outline mdi-48px" ]
           []
@@ -214,7 +223,8 @@ tableNoAggr =
     ]
   ]
 
--- |
+
+-- | 
 tableTRs :: forall p. State -> HH.HTML p Action
 tableTRs state =
   HH.tbody_
@@ -245,7 +255,19 @@ tableTRs state =
                 ]
                 , HH.td
                   [ dataAttr "label" "Name" ]
-                  [ HH.text $ show $ un SlotId aggrLoc.slotId ]
+                  [ HH.text $ (take 3 $ show $ un SlotId aggrLoc.slotId) <> "..." <> " "
+                  , HH.button
+                    [ css_ "button is-small is-dark"
+                    , HE.onClick $ const $ Just $ Copy (show $ un SlotId aggrLoc.slotId)
+                    ]
+                    [ HH.span
+                      [ css_ "icon" ]
+                      [ HH.i
+                        [ css_ "mdi mdi-content-copy" ]
+                        []
+                      ]
+                    ]
+                  ]
                 , HH.td
                   [ dataAttr "label" "Name" ]
                   [ HH.text $ show $ aggrLoc.role ]
@@ -268,25 +290,25 @@ tableTRs state =
 ---------------------------------------------------------------------------------------
 -- Test Aggrs -- this is for testing purposes only when displaying multiple aggregators
 ---------------------------------------------------------------------------------------
-myTestArgLocs :: Array (AggregatorLocation Array)
-myTestArgLocs =
-  [ { slotId: SlotId 1
-    , role: Primary
-    , servers: [ Server
-                   { address: ServerAddress "172.16.171.1"
-                   , pop: PoPName "fra"
-                   , region: RegionName "europe"
-                   }
-               ]
-    }
-  , { slotId: SlotId 2
-    , role: Primary
-    , servers: [ Server
-                   { address: ServerAddress "172.16.170.1"
-                   , pop: PoPName "dal"
-                   , region: RegionName "america"
-                   }
-               ]
-    }
+-- myTestArgLocs :: Array (AggregatorLocation Array)
+-- myTestArgLocs =
+--   [ { slotId: SlotId $ UUID.fromString "1"
+--     , role: Primary
+--     , servers: [ Server
+--                    { address: ServerAddress "172.16.171.1"
+--                    , pop: PoPName "fra"
+--                    , region: RegionName "europe"
+--                    }
+--                ]
+--     }
+--   , { slotId: SlotId $ UUID.fromString "2"
+--     , role: Primary
+--     , servers: [ Server
+--                    { address: ServerAddress "172.16.170.1"
+--                    , pop: PoPName "dal"
+--                    , region: RegionName "america"
+--                    }
+--                ]
+--     }
 
-  ]
+--   ]

@@ -16,6 +16,7 @@ import Halogen.HTML as HH
 import Halogen.HTML.Properties as HP
 import Rtsv2App.Api.Request (LoginFields)
 import Rtsv2App.Capability.Navigate (class Navigate, navigate)
+import Rtsv2App.Capability.Resource.Types (NotificationMessage)
 import Rtsv2App.Capability.Resource.User (class ManageUser, loginUser)
 import Rtsv2App.Component.HTML.Header as HD
 import Rtsv2App.Component.HTML.Menu.MenuMain as MM
@@ -50,7 +51,7 @@ component
    . MonadAff m
   => Navigate m
   => ManageUser m
-  => H.Component HH.HTML (Const Void) Input Void m
+  => H.Component HH.HTML (Const Void) Input NotificationMessage m
 component = H.mkComponent
   { initialState: identity
   , render
@@ -60,7 +61,7 @@ component = H.mkComponent
       }
   }
   where
-  handleAction :: Action -> H.HalogenM State Action ChildSlots Void m Unit
+  handleAction :: Action -> H.HalogenM State Action ChildSlots NotificationMessage m Unit
   handleAction = case _ of
     Initialize -> do
       _ <- liftEffect $ changeHtmlClass ""

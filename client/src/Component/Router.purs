@@ -19,7 +19,10 @@ import Rtsv2App.Capability.LogMessages (class LogMessages)
 import Rtsv2App.Capability.Navigate (class Navigate, navigate)
 import Rtsv2App.Capability.Now (class Now)
 import Rtsv2App.Capability.Resource.Api (class ManageApi)
+import Rtsv2App.Capability.Resource.Types (Notification, NotificationMessage)
 import Rtsv2App.Capability.Resource.User (class ManageUser)
+import Rtsv2App.Component.HTML.NotificationMain as NotificationMain
+import Rtsv2App.Component.HTML.Utils (css_)
 import Rtsv2App.Component.Utils (OpaqueSlot)
 import Rtsv2App.Data.Profile (Profile)
 import Rtsv2App.Data.Route (Route(..), routeCodec)
@@ -34,9 +37,10 @@ import Rtsv2App.Page.Settings as Settings
 -- Types
 -------------------------------------------------------------------------------
 type State =
-  { prevRoute :: Maybe Route
-  , route :: Maybe Route
-  , currentUser :: Maybe Profile
+  { prevRoute     :: Maybe Route
+  , route         :: Maybe Route
+  , currentUser   :: Maybe Profile
+  , notifications :: Array Notification
   }
 
 data Query a
@@ -45,14 +49,18 @@ data Query a
 data Action 
   = Initialize 
   | Receive { | WithCurrentUser () }
+  | UpdateNotifications NotificationMessage
+
 
 type ChildSlots = 
-  ( dashboard :: OpaqueSlot Unit
-  , popHome   :: OpaqueSlot Unit
-  , login     :: OpaqueSlot Unit
-  , register  :: OpaqueSlot Unit
-  , settings  :: OpaqueSlot Unit
-  , notFound  :: OpaqueSlot Unit
+  ( dashboard     :: OpaqueSlot Unit
+  , popHome       :: OpaqueSlot Unit
+  , login         :: OpaqueSlot Unit
+  , register      :: OpaqueSlot Unit
+  , settings      :: OpaqueSlot Unit
+  , notFound      :: OpaqueSlot Unit
+  -- non route related slot for notifications
+  , notifications :: OpaqueSlot Unit
   )
 
 -------------------------------------------------------------------------------
@@ -69,7 +77,12 @@ component
   => ManageApi m
   => H.Component HH.HTML Query {} Void m
 component = Connect.component $ H.mkComponent
-  { initialState: \ { currentUser } -> { prevRoute: Nothing, route: Nothing, currentUser }
+  { initialState:
+      \ { currentUser } -> { prevRoute: Nothing
+                           , route: Nothing
+                           , currentUser
+                           , notifications: mempty
+                           }
   , render
   , eval: H.mkEval $ H.defaultEval 
       { handleQuery = handleQuery 
@@ -90,6 +103,9 @@ component = Connect.component $ H.mkComponent
     Receive { currentUser } -> do
       H.modify_ _ { currentUser = currentUser }
 
+    UpdateNotifications notifications -> do
+      pure unit
+
   handleQuery :: forall a. Query a -> H.HalogenM State Action ChildSlots Void m (Maybe a)
   handleQuery = case _ of
     Navigate dest a -> do
@@ -109,27 +125,37 @@ component = Connect.component $ H.mkComponent
   authorize :: Maybe Profile -> H.ComponentHTML Action ChildSlots m -> H.ComponentHTML Action ChildSlots m
   authorize mbProfile html = case mbProfile of
     Nothing ->
-      HH.slot (SProxy :: _ "login") unit Login.component { redirect: false } absurd
+      HH.slot (SProxy :: _ "login") unit Login.component { redirect: false } (Just <<< UpdateNotifications)
     Just _ ->
       html
 
   -- connecting the routes to the components
   render :: State -> H.ComponentHTML Action ChildSlots m
-  render { route, currentUser, prevRoute } = case route of
-    Just r -> case r of
-      DashboardR ->
-        HH.slot (SProxy :: _ "dashboard") unit Dashboard.component {} absurd
-          # authorize currentUser
-      PoPDashboardR popName  ->
-        HH.slot (SProxy :: _ "popHome") unit PoPDashboard.component { popName, prevRoute } absurd
-          # authorize currentUser
-      LoginR ->
-        HH.slot (SProxy :: _ "login") unit Login.component { redirect: true } absurd
-      RegisterR ->
-        HH.slot (SProxy :: _ "register") unit Register.component {} absurd
-      SettingsR ->
-        HH.slot (SProxy :: _ "settings") unit Settings.component {} absurd
-          # authorize currentUser
+  render { route, currentUser, prevRoute, notifications } = case route of
+    Just r -> 
+      HH.div_
+      [ case r of
+          DashboardR ->
+            HH.slot (SProxy :: _ "dashboard") unit Dashboard.component { currentUser, notifications } (Just <<< UpdateNotifications)
+              # authorize currentUser
+          PoPDashboardR popName  ->
+            HH.slot (SProxy :: _ "popHome") unit PoPDashboard.component { popName, prevRoute, notifications } (Just <<< UpdateNotifications)
+              # authorize currentUser
+          LoginR ->
+            HH.slot (SProxy :: _ "login") unit Login.component { redirect: true } (Just <<< UpdateNotifications)
+          RegisterR ->
+            HH.slot (SProxy :: _ "register") unit Register.component {} (Just <<< UpdateNotifications)
+          SettingsR ->
+            HH.slot (SProxy :: _ "settings") unit Settings.component { currentUser, notifications } (Just <<< UpdateNotifications)
+              # authorize currentUser
+      , HH.div
+        [ css_ "notifications is-bottom" ]
+        [ HH.slot
+            (SProxy :: _ "notifications")
+            unit NotificationMain.component { notifications }
+            (Just <<< UpdateNotifications)
+              ]
+      ]
 
     Nothing ->
       HH.div_ [ HH.text "Oh no! That page wasn't found." ]
