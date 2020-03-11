@@ -54,18 +54,32 @@ module Shared.Rtsv2.JsonLd
        , egestStatsContext
        , egestStatsNode
 
+       , IntraPoPStateContextFields
+       , IntraPoPState
+       , IntraPoPStateNode
+       , intraPoPStateContext
+       , intraPoPStateNode
+
+       , IngestAggregatorStateContextFields
+       , IngestAggregatorState
+       , IngestAggregatorStateNode
+       , ingestAggregatorStateContext
+       , ingestAggregatorStateContext
+       , ingestAggregatorStateNode
+
        , module JsonLd
        ) where
 
 import Prelude
 
 import Data.Maybe (Maybe(..))
-import Data.Newtype (wrap)
+import Data.Newtype (unwrap, wrap)
 import Shared.JsonLd (Context, ContextValue(..), ExpandedTermDefinition, Node, unwrapNode) as JsonLd
 import Shared.JsonLd (ContextDefinition(..))
+import Shared.LlnwApiTypes (StreamDetails)
 import Shared.Router.Endpoint (Endpoint(..), makePath, makeUrl, makeUrlAddr)
 import Shared.Stream (ProfileName, SlotId, SlotRole)
-import Shared.Types (DeliverTo, JsonLdContextType(..), PoPName, RelayServer, Server, ServerAddress)
+import Shared.Types (DeliverTo, EgestServer, JsonLdContextType(..), PoPName, RelayServer, Server, ServerAddress)
 
 ------------------------------------------------------------------------------
 -- Server
@@ -278,13 +292,81 @@ egestStatsContext = wrap { "@language": Nothing
                          , clientCount: JsonLd.Other "http://schema.rtsv2.llnw.com/Counter"
                          }
 
-egestStatsNode :: SlotId -> Server -> Int -> EgestStatsNode
-egestStatsNode slotId server clientCount =
-  wrap { resource: { clientCount }
+egestStatsNode :: SlotId -> Server -> EgestStats -> EgestStatsNode
+egestStatsNode slotId server stats =
+  wrap { resource: stats
        , "@id": Just $ makeUrl server (EgestStatsE slotId)
        , "@nodeType": Just "http://types.rtsv2.llnw.com/Egest"
        , "@context": Just $ ContextUrl $ makePath $ JsonLdContext EgestStatsContext
        }
+
+------------------------------------------------------------------------------
+-- IntraPoPState
+type IntraPoPStateContextFields = ( aggregatorLocations :: JsonLd.ContextValue
+                                  , relayLocations :: JsonLd.ContextValue
+                                  , egestLocations :: JsonLd.ContextValue
+                                  , currentTransPoPLeader :: JsonLd.ContextValue
+                                  )
+type IntraPoPState f
+  = { aggregatorLocations :: f (AggregatorLocationNode f)
+    , relayLocations      :: f (RelayLocationNode f)
+    , egestLocations      :: f (EgestLocationNode f)
+    , currentTransPoPLeader :: Maybe (TransPoPLeaderLocationNode)
+    }
+
+type IntraPoPStateNode f = JsonLd.Node (IntraPoPState f) IntraPoPStateContextFields
+
+intraPoPStateContext :: JsonLd.Context IntraPoPStateContextFields
+intraPoPStateContext = wrap { "@language": Nothing
+                            , "@base": Nothing
+                            , "@vocab": Nothing
+                            , aggregatorLocations: JsonLd.Other "http://schema.rtsv2.llnw.com/Infrastructure/Locations/Aggegrator"
+                            , relayLocations: JsonLd.Other "http://schema.rtsv2.llnw.com/Infrastructure/Locations/Relay"
+                            , egestLocations: JsonLd.Other "http://schema.rtsv2.llnw.com/Infrastructure/Locations/Egest"
+                            , currentTransPoPLeader: JsonLd.Other "http://schema.rtsv2.llnw.com/Infrastructure/Locations/TransPoPLeader"
+                            }
+
+intraPoPStateNode :: forall f. IntraPoPState f -> Server -> IntraPoPStateNode f
+intraPoPStateNode state server =
+  wrap { resource: state
+       , "@id": Just $ makeUrl server ServerStateE
+       , "@nodeType": Just "http://types.rtsv2.llnw.com/IntraPoP"
+       , "@context": Just $ ContextUrl $ makePath $ JsonLdContext EgestStatsContext
+       }
+
+------------------------------------------------------------------------------
+-- IngestAggregatorState
+type IngestAggregatorStateContextFields = ( role :: JsonLd.ContextValue
+                                          , streamDetails :: JsonLd.ContextValue
+                                          , activeProfiles :: JsonLd.ContextValue
+                                          , downstreamRelays :: JsonLd.ContextValue
+                                          )
+type IngestAggregatorState f
+   = { role :: SlotRole
+     , streamDetails :: StreamDetails
+     , activeProfiles :: f ActiveIngestLocationNode
+     , downstreamRelays :: f DownstreamRelayLocationNode
+     }
+
+type IngestAggregatorStateNode f = JsonLd.Node (IngestAggregatorState f) IngestAggregatorStateContextFields
+
+ingestAggregatorStateContext :: JsonLd.Context IngestAggregatorStateContextFields
+ingestAggregatorStateContext = wrap { "@language": Nothing
+                                    , "@base": Nothing
+                                    , "@vocab": Nothing
+                                    , role: JsonLd.Other "http://schema.rtsv2.llnw.com/Role"
+                                    , streamDetails: JsonLd.Other "http://schema.rtsv2.llnw.com/Media/StreamDetails"
+                                    , activeProfiles: JsonLd.Other "http://schema.rtsv2.llnw.com/Infrastructure/Locations/Ingest"
+                                    , downstreamRelays: JsonLd.Other "http://schema.rtsv2.llnw.com/Infrastructure/Locations/Relay"
+                                    }
+ingestAggregatorStateNode :: forall f. SlotId -> IngestAggregatorState f -> Server -> IngestAggregatorStateNode f
+ingestAggregatorStateNode slotId state@{role: slotRole} server =
+  wrap { resource: state
+       , "@id": Just $ makeUrl server (IngestAggregatorE slotId slotRole)
+       , "@nodeType": Just "http://types.rtsv2.llnw.com/IngestAggregator"
+       , "@context": Just $ ContextUrl $ makePath $ JsonLdContext EgestStatsContext
+       }
+
 
 -- foo :: forall resourceType otherFields newtypeType. Newtype newtypeType { resource :: resourceType | otherFields } => newtypeType -> resourceType
 -- foo = _.resource <<< unwrap

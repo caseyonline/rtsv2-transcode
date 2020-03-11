@@ -56,12 +56,12 @@ type Ingest f
     , sourceInfo :: Maybe (SourceInfo f)
     }
 
-type IngestAggregator f
-   = { role :: SlotRole
-     , streamDetails :: StreamDetails
-     , activeProfiles :: f JsonLd.ActiveIngestLocationNode
-     , downstreamRelays :: f JsonLd.DownstreamRelayLocationNode
-     }
+type IngestAggregator f = JsonLd.IngestAggregatorStateNode f
+   -- = { role :: SlotRole
+   --   , streamDetails :: StreamDetails
+   --   , activeProfiles :: f JsonLd.ActiveIngestLocationNode
+   --   , downstreamRelays :: f JsonLd.DownstreamRelayLocationNode
+   --   }
 
 type StreamRelay f
   = { egestsServed :: f JsonLd.EgestServedLocationNode
@@ -70,16 +70,11 @@ type StreamRelay f
 
 type Egest = JsonLd.EgestStatsNode
 
+type IntraPoP f = JsonLd.IntraPoPStateNode f
+
 type AgentLocation f = { agentKey :: AgentKey
                        , servers :: f Server
                        }
-
-type IntraPoP f
-  = { aggregatorLocations :: f (JsonLd.AggregatorLocationNode f)
-    , relayLocations      :: f (JsonLd.RelayLocationNode f)
-    , egestLocations      :: f (JsonLd.EgestLocationNode f)
-    , currentTransPoPLeader :: Maybe (JsonLd.TransPoPLeaderLocationNode)
-    }
 
 type AggregatorLocation f = { slotId :: SlotId
                             , role :: SlotRole

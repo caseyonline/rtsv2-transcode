@@ -4,10 +4,12 @@ import Prelude
 
 import Data.Array (catMaybes, delete, filter, intercalate, length, sort)
 import Data.Array as Array
+import Data.Bifunctor (lmap)
 import Data.Either (Either(..))
 import Data.Foldable (foldl)
 import Data.Identity (Identity(..))
 import Data.List (List(..), (:))
+import Data.List as List
 import Data.Map as Map
 import Data.Maybe (Maybe(..), isNothing, fromMaybe, fromMaybe')
 import Data.Newtype (class Newtype, un, wrap, unwrap)
@@ -19,6 +21,7 @@ import Effect (Effect)
 import Effect.Aff (Aff, attempt, delay, launchAff_, throwError)
 import Effect.Exception (error) as Exception
 import Foreign.Object as Object
+import Foreign (F)
 import Milkis as M
 import Milkis.Impl.Node (nodeFetch)
 import Node.Encoding (Encoding(..))
@@ -33,8 +36,8 @@ import Shared.Types (ServerAddress(..), extractAddress)
 import Shared.Types.Agent.State as PublicState
 import Shared.Utils (lazyCrashIfMissing)
 import Shared.UUID (fromString)
-import Shared.JsonLd as JsonLd
-import Simple.JSON (class ReadForeign)
+import Shared.Rtsv2.JsonLd as JsonLd
+import Simple.JSON (class ReadForeign, E)
 import Simple.JSON as SimpleJSON
 import Test.Spec (after_, before_, describe, describeOnly, it, itOnly)
 import Test.Spec.Reporter.Console (consoleReporter)
@@ -259,7 +262,8 @@ main =
     assertAggregator = assertBodyFun <<< predicate
       where
         predicate :: Array SlotNameAndProfileName -> PublicState.IngestAggregator Array -> Boolean
-        predicate vars {activeProfiles} = sort ((\(SlotNameAndProfileName _ profileName) -> profileName) <$> vars) == (sort $ (_.profileName <<< JsonLd.unwrapNode) <$> activeProfiles)
+        predicate vars ingestAggregatorState =
+          sort ((\(SlotNameAndProfileName _ profileName) -> profileName) <$> vars) == (sort $ (_.profileName <<< JsonLd.unwrapNode) <$> (JsonLd.unwrapNode ingestAggregatorState).activeProfiles)
 
     dumpIntraPoP = assertBodyFun $ predicate
       where
@@ -280,7 +284,7 @@ main =
                                                  if slotId == requiredSlotId
                                                  then acc <> (extractAddress <<< JsonLd.unwrapNode <$> servers)
                                                  else acc
-                                               ) []  popState.aggregatorLocations
+                                               ) []  (JsonLd.unwrapNode popState).aggregatorLocations
           in
           (sort $ (ServerAddress <<< toAddr) <$> nodes) == sort serverAddressesForSlotId
 
@@ -294,11 +298,21 @@ main =
                                                  if slotId == requiredSlotId
                                                  then acc <> (extractAddress <<< JsonLd.unwrapNode <$> servers)
                                                  else acc
-                                               ) []  popState.relayLocations
+                                               ) []  (JsonLd.unwrapNode popState).relayLocations
           in
           length (sort serverAddressesForSlotId) == count
 
-    forceGetState node = forceRight <$> intraPoPState node
+    forceGetState :: Node -> Aff (JsonLd.IntraPoPState Array)
+    forceGetState node = JsonLd.unwrapNode <$> forceRight <$> (jsonToType' :: ResponseWithBody -> Either String (PublicState.IntraPoP Array)) <$> forceRight <$> intraPoPState node
+
+    assertSame :: forall a. Show a => Eq a => List a -> Aff (Either String Unit)
+    assertSame Nil = pure $ Right unit
+    assertSame (Cons x Nil) = pure $ Right unit
+    assertSame (Cons x t@(Cons y xs)) = if x == y then assertSame t
+                                        else pure $ Left $ "\"" <> (show x) <> "\" is not the same as \"" <> (show y) <> "\""
+
+    jsonToType' :: forall a. ReadForeign a => ResponseWithBody -> Either String a
+    jsonToType' {body} = lmap (const "Failed to parse JSON") $ SimpleJSON.readJSON body
 
     assertBodiesSame :: List ResponseWithBody -> Aff (Either String Unit)
     assertBodiesSame Nil = pure $ Right unit
@@ -350,8 +364,10 @@ main =
               ) do
         after_ stopSession do
           it "Nodes all come up and agree on who the leader is" do
-            states <- traverse forceGetState (Array.toUnfoldable p1Nodes)
-            assertBodiesSame states                                      >>= as "All nodes agree on leader and other intial state"
+            states <- traverse forceGetState (Array.toUnfoldable p1Nodes) :: Aff (List (JsonLd.IntraPoPState Array))
+            let
+              leaders = JsonLd.unwrapNode <$> List.catMaybes (_.currentTransPoPLeader <$> states)
+            assertSame leaders               >>= as "All nodes agree on leader and other intial state"
 
     describe "Ingest tests"
       let
@@ -483,7 +499,7 @@ main =
             aggregatorStats p1n1 slot1           >>= assertStatusCode 200
                                                      >>= assertAggregator [low]
                                                                           >>= as  "aggregator has low profile"
-            ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as  "2nd attempt to create low ingest succceeds (but actual create is async)"
+            ingestStart    p1n1 shortName1 low  >>= assertStatusCode 500 >>= as  "2nd attempt to create low ingest fails"
             waitForIntraPoPDisseminate
             aggregatorStats p1n1 slot1           >>= assertStatusCode 200
                                                      >>= assertAggregator [low]
@@ -608,15 +624,15 @@ main =
                    launch nodes
                 ) do
           after_ stopSession do
-            it "aggregator presence is disseminated to all servers" do
-              ingestStart p1n1 shortName1 low >>= assertStatusCode 200     >>= as  "create ingest"
+            itOnly "aggregator presence is disseminated to all servers" do
+              ingestStart p1n1 shortName1 low >>= assertStatusCode 200      >>= as  "create ingest"
               waitForTransPoPDisseminate                                    >>= as' "wait for transPop disseminate"
               intraPoPState p1n1                   >>= assertAggregatorOn [p1n1] slot1
                                                                             >>= as "p1n1 is aware of the ingest on p1n1"
               states1 <- traverse forceGetState (Array.toUnfoldable p1Nodes)
-              assertBodiesSame states1                                      >>= as "All pop 1 nodes agree on leader and aggregator presence"
+              assertSame states1                                            >>= as "All pop 1 nodes agree on leader and aggregator presence"
               states2 <- traverse forceGetState (Array.toUnfoldable p2Nodes)
-              assertBodiesSame states2                                      >>= as "All pop 2 nodes agree on leader and aggregator presence"
+              assertSame states2                                            >>= as "All pop 2 nodes agree on leader and aggregator presence"
 
             it "client requests stream on other pop" do
               clientStart p2n1 slot1           >>= assertStatusCode 404 >>= as  "no egest prior to ingest"
@@ -799,13 +815,13 @@ main =
                                                       >>= assertAggregator []
                                                                            >>= as  "aggregator has no ingests"
 
-            itOnly "Launch ingest and egest, kill origin relay, assert replaced relay still has egest and origin" do
-              ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200  >>= as  "create ingest"
-              waitForAsyncProfileStart                                      >>= as' "wait for async start of profile"
-              clientStart p1n1 slot1              >>= assertStatusCode 204  >>= as  "egest available"
-              waitForAsyncProfileStart                                      >>= as' "wait for async start of profile"
-              intraPoPState p1n1                  >>= dumpIntraPoP
-                                                                            >>= as "p1n1 is aware of the ingest on p1n1"
+            -- it "Launch ingest and egest, kill origin relay, assert replaced relay still has egest and origin" do
+            --   ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200  >>= as  "create ingest"
+            --   waitForAsyncProfileStart                                      >>= as' "wait for async start of profile"
+            --   clientStart p1n1 slot1              >>= assertStatusCode 204  >>= as  "egest available"
+            --   waitForAsyncProfileStart                                      >>= as' "wait for async start of profile"
+            --   intraPoPState p1n1                  >>= dumpIntraPoP
+            --                                                                 >>= as "p1n1 is aware of the ingest on p1n1"
 
 
     describe "Cleanup" do

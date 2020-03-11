@@ -41,6 +41,8 @@ data JsonLdContextType = ServerContext
                        | TimedRouteNeighbourContext
                        | ActiveIngestLocationContext
                        | EgestStatsContext
+                       | IntraPoPStateContext
+                       | IngestAggregatorStateContext
 
 newtype ServerAddress = ServerAddress String
 

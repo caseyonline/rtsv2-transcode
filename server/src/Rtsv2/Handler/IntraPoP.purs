@@ -17,6 +17,7 @@ import Erl.Data.List (List, catMaybes, concat, nil, nub, null, (:))
 import Logger (spy)
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.IntraPoP as IntraPoPAgent
+import Shared.JsonLd as JsonLd
 import Shared.Router.Endpoint (Endpoint(..), makeUrl, makeUrlAddr)
 import Shared.Stream (AggregatorKey(..), ProfileName, SlotId, SlotRole(..))
 import Shared.Types (Server, ServerAddress, extractAddress)
@@ -83,7 +84,7 @@ getIngests slotId aggregators =
                                                  in
                                                     getIngest slotId role profileName serverAddress
                                                 ) activeProfiles
-                                    ) aggregators
+                                    ) (JsonLd.unwrapNode <$> aggregators)
 
 getIngest :: SlotId -> SlotRole -> ProfileName -> ServerAddress -> Effect (Maybe (IngestL))
 getIngest slotId slotRole profileName server = getJson' server (IngestInstanceE slotId slotRole profileName)
@@ -98,7 +99,7 @@ getOriginRelays slotId aggregators =
                                                  in
                                                     getRelay slotId role serverAddress
                                                 ) downstreamRelays
-                                    ) aggregators
+                                    ) (JsonLd.unwrapNode <$> aggregators)
 
 getDownstreamRelays :: SlotId -> List (StreamRelayL) -> Effect (List StreamRelayL)
 getDownstreamRelays slotId upstreamRelays = do

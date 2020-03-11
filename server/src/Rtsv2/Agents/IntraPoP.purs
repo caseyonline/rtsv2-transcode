@@ -203,11 +203,12 @@ testHelper payload =
     pure $ CallReply unit state {testDropAgentMessages = payload.dropAgentMessages}
 
 
-
 getPublicState :: Effect (PublicState.IntraPoP List)
 getPublicState = exposeState publicState serverName
   where
-    publicState state@{agentLocations, currentTransPoPLeader} =
+    publicState state@{agentLocations, currentTransPoPLeader, thisServer} =
+      JsonLd.intraPoPStateNode (gatherState agentLocations currentTransPoPLeader) thisServer
+    gatherState agentLocations currentTransPoPLeader =
       { aggregatorLocations: toAggregatorLocation <$>  Map.toUnfoldable agentLocations.aggregators.byAgentKey
       , relayLocations: toRelayLocation <$>  Map.toUnfoldable agentLocations.relays.byAgentKey
       , egestLocations: toEgestLocation <$>  Map.toUnfoldable agentLocations.egests.byAgentKey

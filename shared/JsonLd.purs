@@ -12,6 +12,8 @@ import Prelude
 
 import Control.Alt ((<|>))
 import Control.Apply (lift2)
+import Data.Generic.Rep (class Generic)
+import Data.Generic.Rep.Show (genericShow)
 import Data.Maybe (Maybe)
 import Data.Newtype (class Newtype, unwrap)
 import Data.Symbol (SProxy(..))
@@ -28,6 +30,8 @@ import Simple.JSON (class ReadForeign, class WriteForeign, readImpl, writeImpl)
 data ContextValue = ExpandedTermDefinition ExpandedTermDefinition
                   | Other String
 derive instance eqContextValue :: Eq ContextValue
+derive instance genericContextValue :: Generic ContextValue _
+instance showContextValue :: Show ContextValue where show = genericShow
 
 instance writeForeignContextValue :: WriteForeign ContextValue where
   writeImpl (ExpandedTermDefinition a) = writeImpl a
@@ -51,7 +55,10 @@ type ContextFields extraFields = { "@language" :: Maybe String
 newtype Context extraFields = Context (ContextFields extraFields)
 
 derive instance newtypeContext :: Newtype (Context extraFields) _
-derive instance eqContext :: (Eq (ContextFields a)) => Eq (Context a)
+derive instance eqContext :: (Eq (ContextFields extraFields)) => Eq (Context extraFields)
+derive instance genericContext :: Generic (Context extraFields) _
+instance showContext :: (Show (ContextFields a)) => Show (Context a) where
+  show (Context a) = "Context:" <> show a
 
 instance writeForeignContext :: (WriteForeign (ContextFields extraFields)) => WriteForeign (Context extraFields) where
    writeImpl (Context fields) = writeImpl fields
@@ -68,7 +75,9 @@ type ExpandedTermDefinition = { "@id" :: Maybe String
 
 data ContextDefinition contextFields = ContextRecord (Context contextFields)
                                      | ContextUrl String
-derive instance eqContextFields :: (Eq (Context contextFields)) => Eq (ContextDefinition contextFields)
+derive instance eqContextDefinition :: (Eq (Context contextFields)) => Eq (ContextDefinition contextFields)
+derive instance genericContextDefinition :: Generic (ContextDefinition contextFields) _
+instance showContextDefinition :: (Show (Context contextFields)) => Show (ContextDefinition contextFields) where show = genericShow
 
 instance writeForeignContextDefinition :: (WriteForeign (ContextFields contextFields)) => WriteForeign (ContextDefinition contextFields) where
   writeImpl (ContextRecord r) = writeImpl r
@@ -96,6 +105,7 @@ newtype Node resource contextFields = Node (NodeMetadata resource contextFields)
 
 derive instance newtypeNode :: Newtype (Node a b) _
 derive newtype instance eqNode :: (Eq a, Eq (ContextFields contextFields)) => Eq (Node a contextFields)
+derive newtype instance showNode :: (Show a, Show (ContextFields contextFields)) => Show (Node a contextFields)
 
 instance writeForeignNode :: ( Row.Union r1 (NodeMetadata''() contextFields) r2
                              , Row.Nub r2 r3

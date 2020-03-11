@@ -129,7 +129,7 @@ slotConfiguration egestKey =
 currentStats :: EgestKey -> Effect PublicState.Egest
 currentStats egestKey@(EgestKey slotId) =
   Gen.call (serverName egestKey) \state@{thisServer, clientCount} ->
-    CallReply (JsonLd.egestStatsNode slotId (wrap (unwrap thisServer)) clientCount) state
+    CallReply (JsonLd.egestStatsNode slotId (wrap (unwrap thisServer)) {clientCount}) state
 
 toEgestServer :: Server -> EgestServer
 toEgestServer = unwrap >>> wrap
