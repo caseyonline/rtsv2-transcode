@@ -102,8 +102,7 @@ type State
     }
 
 data Msg
-  = Init
-  | IntraPoPBus IntraPoP.IntraPoPBusMessage
+  = IntraPoPBus IntraPoP.IntraPoPBusMessage
   | MaybeStop
 
 isAvailable :: AggregatorKey -> Effect Boolean
@@ -217,18 +216,22 @@ init streamDetails@{role: slotRole, slot: {id: slotId}} stateServerName = do
   workflowHandleAndPids <- startWorkflowImpl (unwrap streamDetails.slot.id) $ mkKey <$> streamDetails.slot.profiles
   Gen.registerTerminate thisServerName terminate
   void $ Bus.subscribe thisServerName IntraPoP.bus IntraPoPBus
-  _ <- Timer.sendAfter thisServerName 0 Init
-  pure { config : config
-       , slotId
-       , slotRole
-       , thisServer
-       , aggregatorKey
-       , streamDetails
-       , workflowHandle: fst workflowHandleAndPids
-       , webRtcStreamServers: snd workflowHandleAndPids
-       , persistentState: emptyPersistentState
-       , stateServerName
-       }
+  let
+    initialState = { config : config
+                   , slotId
+                   , slotRole
+                   , thisServer
+                   , aggregatorKey
+                   , streamDetails
+                   , workflowHandle: fst workflowHandleAndPids
+                   , webRtcStreamServers: snd workflowHandleAndPids
+                   , persistentState: emptyPersistentState
+                   , stateServerName
+                   }
+  persistentState <- fromMaybe emptyPersistentState <$> PersistentInstanceState.getInstanceData stateServerName
+  state2 <- applyPersistentState initialState persistentState
+  pure state2
+
   where
     mkKey (SlotProfile p) = tuple3 (IngestKey streamDetails.slot.id streamDetails.role p.name) (unwrap p.rtmpStreamName) (unwrap p.name)
 
@@ -258,11 +261,6 @@ streamDetailsToAggregatorKey streamDetails =
 handleInfo :: Msg -> State -> Effect (CastResult State)
 handleInfo msg state@{aggregatorKey, stateServerName} =
   case msg of
-    Init -> do
-      persistentState <- fromMaybe emptyPersistentState <$> PersistentInstanceState.getInstanceData stateServerName
-      state2 <- applyPersistentState state persistentState
-      pure $ CastNoReply state2
-
     IntraPoPBus (VmReset server oldRef newRef) -> do
       _ <- logInfo "Server reset" {server}
       state2 <- handleServerReset server newRef state
