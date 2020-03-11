@@ -1,4 +1,4 @@
-module Rtsv2App.Component.HTML.Notification.NotificationMain where
+module Rtsv2App.Component.HTML.NotificationMain where
 
 
 import Prelude
@@ -10,17 +10,15 @@ import Halogen as H
 import Halogen.HTML as HH
 import Halogen.HTML.Events as HE
 import Halogen.HTML.Properties as HP
-import Rtsv2App.Capability.Resource.Types (Notification)
+import Rtsv2App.Capability.Resource.Types (Notification, NotificationMessage)
 import Rtsv2App.Component.HTML.Utils (css_)
 
 -------------------------------------------------------------------------------
 -- Types
 -------------------------------------------------------------------------------
-type Input = Array Notification
+type Input = { notifications :: Array Notification }
 
-type Slot = H.Slot (Const Void) Message
-
-data Message = NotificationMsg (Array Notification)
+type Slot = H.Slot (Const Void) NotificationMessage
 
 data Action
   = CloseDialog
@@ -33,7 +31,7 @@ type State =
 component
   :: forall m
    . MonadAff m
-  => H.Component HH.HTML (Const Void) Input Void m
+  => H.Component HH.HTML (Const Void) Input NotificationMessage m
 component = H.mkComponent
   { initialState: initialState
   , render
@@ -44,12 +42,12 @@ component = H.mkComponent
   }
   where
   initialState :: Input -> State
-  initialState notifications =
+  initialState { notifications } =
     { notifications }
 
   handleAction = case _ of
-    Receive s -> do
-       H.put { notifications: s }
+    Receive { notifications } -> do
+       H.put { notifications: notifications }
 
     CloseDialog -> pure unit
 
