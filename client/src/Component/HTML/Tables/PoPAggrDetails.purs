@@ -7,7 +7,6 @@ import Data.Array (elem, find, mapWithIndex)
 import Data.Const (Const)
 import Data.Maybe (Maybe(..), maybe)
 import Data.Newtype (un)
-import Debug.Trace (traceM)
 import Effect.Aff.Class (class MonadAff)
 import Halogen as H
 import Halogen.HTML as HH
@@ -20,7 +19,6 @@ import Rtsv2App.Env (PoPDefEnv)
 import Shared.LlnwApiTypes (SlotProfile(..))
 import Shared.Rtsv2.JsonLd (unwrapNode)
 import Shared.Stream (ProfileName(..), RtmpStreamName(..))
-import Shared.Types (ServerAddress(..))
 import Shared.Types.Agent.State (IngestAggregator)
 
 -------------------------------------------------------------------------------

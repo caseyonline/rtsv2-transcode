@@ -49,9 +49,7 @@ newtype SettingsForm r f = SettingsForm (r
 derive instance newtypeSettingsForm :: Newtype (SettingsForm r f) _
 
 type Input =
-  { currentUser   :: Maybe Profile
-  , notifications :: Array Notification
-  }
+  { currentUser :: Maybe Profile }
 
 data Action
   = Initialize
@@ -90,7 +88,7 @@ component = H.mkComponent
       }
   }
   where
-  initialState { currentUser, notifications } =
+  initialState { currentUser } =
     { currentUser
     , profile: NotAsked
     }
@@ -127,7 +125,7 @@ component = H.mkComponent
 
     LogUserOut -> logout
 
-    Receive { currentUser, notifications } -> do pure unit
+    Receive { currentUser } -> do pure unit
 
   render :: State -> H.ComponentHTML Action ChildSlots m
   render state@{ profile, currentUser } =

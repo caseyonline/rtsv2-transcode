@@ -13,6 +13,7 @@ import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Newtype (un)
 import Data.Symbol (SProxy(..))
 import Data.Traversable (traverse_)
+import Debug.Trace (traceM)
 import Effect.Aff.Class (class MonadAff)
 import Effect.Class (class MonadEffect, liftEffect)
 import Effect.Ref as Ref
@@ -25,7 +26,7 @@ import Halogen.HTML.Properties as HP
 import Record.Extra (sequenceRecord)
 import Rtsv2App.Capability.Navigate (class Navigate)
 import Rtsv2App.Capability.Resource.Api (class ManageApi, getPoPdefinition, getAggregatorDetails, getTimedRoutes)
-import Rtsv2App.Capability.Resource.Types (NotificationMessage, Notification)
+import Rtsv2App.Capability.Resource.Types (NotificationMessage(..))
 import Rtsv2App.Capability.Resource.User (class ManageUser)
 import Rtsv2App.Component.HTML.Breadcrumb as BG
 import Rtsv2App.Component.HTML.Dropdown as DP
@@ -33,6 +34,7 @@ import Rtsv2App.Component.HTML.Footer (footer)
 import Rtsv2App.Component.HTML.Header as HD
 import Rtsv2App.Component.HTML.Menu.MainSecondary as MS
 import Rtsv2App.Component.HTML.Menu.MenuMain as MM
+import Rtsv2App.Component.HTML.Tables.PoPAggr (Message(..))
 import Rtsv2App.Component.HTML.Tables.PoPAggr as PA
 import Rtsv2App.Component.HTML.Tables.PoPAggrDetails as PAD
 import Rtsv2App.Component.HTML.Utils (css_)
@@ -42,7 +44,7 @@ import Rtsv2App.Data.Route (Route(..))
 import Rtsv2App.Env (PoPDefEnv, UrlEnv, UserEnv, changeHtmlClass)
 import Shared.Stream (SlotRole(..))
 import Shared.Types (PoPName(..), Server)
-import Shared.Types.Agent.State (AggregatorLocation, PoPDefinition, TimedPoPRoutes, IngestAggregator)
+import Shared.Types.Agent.State (AggregatorLocation, IngestAggregator, PoPDefinition)
 
 -------------------------------------------------------------------------------
 -- Types for Dashboard Page
@@ -50,7 +52,6 @@ import Shared.Types.Agent.State (AggregatorLocation, PoPDefinition, TimedPoPRout
 type Input =
   { popName   :: PoPName
   , prevRoute :: Maybe Route
-  , notifications :: Array Notification
   }
 
 data Action
@@ -70,7 +71,6 @@ type State =
   , selectedAggrIndex :: Maybe Int
   , selectedPoPName   :: Maybe PoPName
   , prevRoute         :: Maybe Route
-  , timedRoutes       :: Maybe (Array (TimedPoPRoutes Array))
   , slotDetails       :: Maybe (IngestAggregator Array)
   }
 
@@ -104,7 +104,7 @@ component = H.mkComponent
       }
   }
   where
-  initialState { popName, prevRoute, notifications } =
+  initialState { popName, prevRoute } =
     { aggrLocs: []
     , chart: Nothing
     , currentUser: Nothing
@@ -115,7 +115,6 @@ component = H.mkComponent
     , selectedAggrIndex: Nothing
     , selectedPoPName: Nothing
     , prevRoute
-    , timedRoutes: Nothing
     , slotDetails: Nothing
     }
 
@@ -131,6 +130,7 @@ component = H.mkComponent
 
       mPopDef <- H.liftEffect $ Ref.read popDefEnv.popDefinition
 
+      -- make fresh chart map
       H.getHTMLElementRef (H.RefLabel "mymap") >>= traverse_ \element -> do
         chart <- H.liftEffect $ EC.makeChart element
         liftEffect $ EC.setOptionPoP { rttData: [], scatterData: [] } chart
@@ -158,12 +158,15 @@ component = H.mkComponent
                         , aggrLocs = env.aggrLocs
                         }
 
-    Receive { popName, prevRoute, notifications } -> do
+    Receive { popName, prevRoute } -> do
       st <- H.get
       when (st.curPopName /= popName) do
-        H.put $ initialState { popName, prevRoute, notifications }
+        H.put $ initialState { popName, prevRoute }
         handleAction Initialize
 
+    HandlePoPSlotAggrTable (NMessage notification) -> do
+      H.raise ( NSingleMessage notification )
+    
     HandlePoPSlotAggrTable (PA.RefreshAggr) -> do
       H.modify_ _ { selectedAggrIndex = Nothing }
       handleAction Initialize

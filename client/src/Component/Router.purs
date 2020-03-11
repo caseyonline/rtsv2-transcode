@@ -5,10 +5,12 @@ import Prelude
 import Component.HOC.Connect (WithCurrentUser)
 import Component.HOC.Connect as Connect
 import Control.Monad.Reader (class MonadAsk)
+import Data.Array (snoc)
 import Data.Either (hush)
 import Data.Foldable (elem)
 import Data.Maybe (Maybe(..), fromMaybe, isJust)
 import Data.Symbol (SProxy(..))
+import Debug.Trace (spy, traceM)
 import Effect.Aff.Class (class MonadAff)
 import Halogen (liftEffect)
 import Halogen as H
@@ -19,9 +21,10 @@ import Rtsv2App.Capability.LogMessages (class LogMessages)
 import Rtsv2App.Capability.Navigate (class Navigate, navigate)
 import Rtsv2App.Capability.Now (class Now)
 import Rtsv2App.Capability.Resource.Api (class ManageApi)
-import Rtsv2App.Capability.Resource.Types (Notification, NotificationMessage)
+import Rtsv2App.Capability.Resource.Types (Notification, NotificationMessage(..), NotificationContent)
 import Rtsv2App.Capability.Resource.User (class ManageUser)
 import Rtsv2App.Component.HTML.NotificationMain as NotificationMain
+import Rtsv2App.Component.HTML.Tables.PoPAggr (Message(..))
 import Rtsv2App.Component.HTML.Utils (css_)
 import Rtsv2App.Component.Utils (OpaqueSlot)
 import Rtsv2App.Data.Profile (Profile)
@@ -40,7 +43,7 @@ type State =
   { prevRoute     :: Maybe Route
   , route         :: Maybe Route
   , currentUser   :: Maybe Profile
-  , notifications :: Array Notification
+  , notifications :: (Array (Notification NotificationContent))
   }
 
 data Query a
@@ -103,8 +106,14 @@ component = Connect.component $ H.mkComponent
     Receive { currentUser } -> do
       H.modify_ _ { currentUser = currentUser }
 
-    UpdateNotifications notifications -> do
-      pure unit
+    UpdateNotifications n -> do
+      st <- H.get
+      case n of
+        NMessages notifications -> do
+          H.modify_ _ { notifications = notifications }
+
+        NSingleMessage notification -> do
+          H.modify_ _ { notifications = snoc st.notifications notification }
 
   handleQuery :: forall a. Query a -> H.HalogenM State Action ChildSlots Void m (Maybe a)
   handleQuery = case _ of
@@ -136,17 +145,17 @@ component = Connect.component $ H.mkComponent
       HH.div_
       [ case r of
           DashboardR ->
-            HH.slot (SProxy :: _ "dashboard") unit Dashboard.component { currentUser, notifications } (Just <<< UpdateNotifications)
+            HH.slot (SProxy :: _ "dashboard") unit Dashboard.component { currentUser } (Just <<< UpdateNotifications)
               # authorize currentUser
           PoPDashboardR popName  ->
-            HH.slot (SProxy :: _ "popHome") unit PoPDashboard.component { popName, prevRoute, notifications } (Just <<< UpdateNotifications)
+            HH.slot (SProxy :: _ "popHome") unit PoPDashboard.component { popName, prevRoute } (Just <<< UpdateNotifications)
               # authorize currentUser
           LoginR ->
             HH.slot (SProxy :: _ "login") unit Login.component { redirect: true } (Just <<< UpdateNotifications)
           RegisterR ->
             HH.slot (SProxy :: _ "register") unit Register.component {} (Just <<< UpdateNotifications)
           SettingsR ->
-            HH.slot (SProxy :: _ "settings") unit Settings.component { currentUser, notifications } (Just <<< UpdateNotifications)
+            HH.slot (SProxy :: _ "settings") unit Settings.component { currentUser } (Just <<< UpdateNotifications)
               # authorize currentUser
       , HH.div
         [ css_ "notifications is-bottom" ]

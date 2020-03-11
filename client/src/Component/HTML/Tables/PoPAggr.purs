@@ -18,7 +18,7 @@ import Halogen.HTML as HH
 import Halogen.HTML.Events as HE
 import Halogen.HTML.Properties as HP
 import Rtsv2App.Capability.Navigate (class Navigate)
-import Rtsv2App.Capability.Resource.Types (PoPAggrSelectedInfo)
+import Rtsv2App.Capability.Resource.Types (Notification(..), NotificationContent, PoPAggrSelectedInfo)
 import Rtsv2App.Component.HTML.Utils (css_, dataAttr)
 import Rtsv2App.Env (PoPDefEnv)
 import Shared.Stream (SlotId(..), SlotRole(..))
@@ -39,6 +39,7 @@ type Slot = H.Slot (Const Void) Message
 
 data Message
   = PoPAggrMsg PoPAggrSelectedInfo
+  | NMessage (Notification NotificationContent)
   | RefreshAggr
 
 data Action
@@ -130,8 +131,7 @@ component = H.mkComponent
 
     Copy val -> do
       liftEffect $ copyToClipboard val
-
-
+      H.raise (NMessage $ Success { message: val })
 
   render :: State -> H.ComponentHTML Action () m
   render state =

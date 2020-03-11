@@ -4,7 +4,6 @@ import Prelude
 
 import CSS.Geometry as Geometry
 import CSS.Size as Size
-import Component.HOC.Connect as Connect
 import Control.Monad.Reader (class MonadAsk, ask)
 import Data.Array (length)
 import Data.Const (Const)
@@ -25,7 +24,7 @@ import Halogen.HTML.CSS as CSS
 import Halogen.HTML.Properties as HP
 import Rtsv2App.Capability.Navigate (class Navigate)
 import Rtsv2App.Capability.Resource.Api (class ManageApi, getPoPdefinition)
-import Rtsv2App.Capability.Resource.Types (Notification, NotificationMessage)
+import Rtsv2App.Capability.Resource.Types (NotificationMessage)
 import Rtsv2App.Capability.Resource.User (class ManageUser)
 import Rtsv2App.Component.HTML.Breadcrumb as BG
 import Rtsv2App.Component.HTML.Footer (footer)
@@ -49,9 +48,7 @@ data Action
   | Receive Input
 
 type Input =
-  { currentUser   :: Maybe Profile
-  , notifications :: Array Notification
-  }
+  { currentUser   :: Maybe Profile }
 
 type State =
   { currentUser   :: Maybe Profile
@@ -89,7 +86,7 @@ component = H.mkComponent
       }
   }
   where
-  initialState { currentUser, notifications } =
+  initialState { currentUser } =
     { currentUser
     , popDefenition: Nothing
     , popDefEcharts: mempty
@@ -139,7 +136,7 @@ component = H.mkComponent
         liftEffect $ EC.setClick { curHost: (unwrap urlEnv.curHostUrl), url: "/support#/pop/" } chart
         liftEffect $ EC.ressizeObserver chart
 
-    Receive { currentUser, notifications } ->
+    Receive { currentUser } ->
       H.modify_ _ { currentUser = currentUser }
 
   render :: State -> H.ComponentHTML Action ChildSlots m

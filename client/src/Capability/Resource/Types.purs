@@ -1,8 +1,9 @@
 module Rtsv2App.Capability.Resource.Types
        ( SlotDetailsArgs
        , PoPAggrSelectedInfo
-       , Notification
-       , NotificationMessage
+       , Notification(..)
+       , NotificationContent
+       , NotificationMessage(..)
        )
        where
 
@@ -25,9 +26,18 @@ type PoPAggrSelectedInfo =
     , selectedAggrIndex :: Maybe Int
     }
 
-type Notification =
-  { message  :: String
-  , cssStyle :: String
-  }
+type NotificationContent =
+  { message :: String }
 
-data NotificationMessage = NotificationMessage (Array Notification) 
+data NotificationMessage =
+    NMessages (Array (Notification NotificationContent))
+  | NSingleMessage (Notification NotificationContent)
+
+data Notification n =
+    Danger n
+  | Dark n
+  | Info n
+  | Light n
+  | Primary n
+  | Success n
+  | Warning n
