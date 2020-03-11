@@ -44,6 +44,7 @@ data JsonLdContextType = ServerContext
                        | IntraPoPStateContext
                        | IngestAggregatorStateContext
                        | StreamRelayStateContext
+                       | IngestStateContext
 
 newtype ServerAddress = ServerAddress String
 

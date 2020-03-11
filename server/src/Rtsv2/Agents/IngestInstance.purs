@@ -32,6 +32,7 @@ import Pinto as Pinto
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
+import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Agents.IngestAggregatorInstance (RemoteIngestPayload)
 import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
 import Rtsv2.Agents.IngestAggregatorSup as IngestAggregatorSup
@@ -40,7 +41,6 @@ import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..), launchLocalOrRemoteGeneric
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.Locator (extractServer)
 import Rtsv2.Agents.Locator.Types (LocalOrRemote(..), ResourceResp)
-import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Audit as Audit
 import Rtsv2.Config as Config
 import Rtsv2.Names as Names
@@ -50,6 +50,7 @@ import Shared.Agent as Agent
 import Shared.Common (Milliseconds, Url)
 import Shared.LlnwApiTypes (StreamDetails, StreamPublish(..))
 import Shared.Router.Endpoint (Endpoint(..), makeUrl)
+import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Stream (AggregatorKey, IngestKey(..), ingestKeyToAggregatorKey)
 import Shared.Types (Load, Server, ServerLoad(..))
 import Shared.Types.Agent.State as PublicState
@@ -136,17 +137,22 @@ stopIngest ingestKey =
     pure $ CallStop unit state
 
 getPublicState :: IngestKey -> Effect (PublicState.Ingest List)
-getPublicState ingestKey =
-  Gen.call (serverName ingestKey) \state@{ clientMetadata
-                                         , sourceInfo
-                                         , remoteAddress
-                                         , remotePort
-                                         , ingestStartedTime} -> do
-    CallReply { rtmpClientMetadata: clientMetadata
-              , sourceInfo
-              , remoteAddress
-              , remotePort
-              , ingestStartedTime } state
+getPublicState ingestKey@(IngestKey slotId slotRole profileName) =
+  Gen.doCall (serverName ingestKey) \state@{ thisServer
+                                           , clientMetadata
+                                           , sourceInfo
+                                           , remoteAddress
+                                           , remotePort
+                                           , ingestStartedTime} ->
+    let
+      publicState = { rtmpClientMetadata: clientMetadata
+                    , sourceInfo
+                    , remoteAddress
+                    , remotePort
+                    , ingestStartedTime }
+      node = JsonLd.ingestStateNode slotId slotRole profileName publicState thisServer
+    in
+     pure $ CallReply node state
 
 init :: StartArgs -> StateServerName -> Effect State
 init { streamPublish

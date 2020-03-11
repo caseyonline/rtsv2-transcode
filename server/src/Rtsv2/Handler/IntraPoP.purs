@@ -60,7 +60,7 @@ slotState slotId =
       pure $ Just { aggregators
                   , ingests
                   , originRelays
-                  , downstreamRelays
+                  , downstreamRelays: nub downstreamRelays
                   , egests: nub egests
                   }
 

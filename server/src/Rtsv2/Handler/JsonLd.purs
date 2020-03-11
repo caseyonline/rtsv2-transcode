@@ -28,3 +28,4 @@ getContextJson contextType =
     doGetContextJson IntraPoPStateContext = pure $ writeJSON JsonLd.intraPoPStateContext
     doGetContextJson IngestAggregatorStateContext = pure $ writeJSON JsonLd.ingestAggregatorStateContext
     doGetContextJson StreamRelayStateContext = pure $ writeJSON JsonLd.streamRelayStateContext
+    doGetContextJson IngestStateContext = pure $ writeJSON JsonLd.ingestStateContext

@@ -47,13 +47,7 @@ type TimedPoPStep
     , rtt :: Int
     }
 
-type Ingest f
-  = { ingestStartedTime :: Milliseconds
-    , remoteAddress :: String
-    , remotePort :: Int
-    , rtmpClientMetadata :: Maybe (RtmpClientMetadata f)
-    , sourceInfo :: Maybe (SourceInfo f)
-    }
+type Ingest f = JsonLd.IngestStateNode f
 
 type IngestAggregator f = JsonLd.IngestAggregatorStateNode f
 

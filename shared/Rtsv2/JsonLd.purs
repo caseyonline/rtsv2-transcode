@@ -73,6 +73,12 @@ module Shared.Rtsv2.JsonLd
        , streamRelayStateContext
        , streamRelayStateNode
 
+       , IngestStateContextFields
+       , IngestState
+       , IngestStateNode
+       , ingestStateContext
+       , ingestStateNode
+
        , module JsonLd
        ) where
 
@@ -80,12 +86,18 @@ import Prelude
 
 import Data.Maybe (Maybe(..))
 import Data.Newtype (wrap)
+import Shared.Common (Milliseconds(..))
 import Shared.JsonLd (Context, ContextValue(..), ExpandedTermDefinition, Node, unwrapNode) as JsonLd
 import Shared.JsonLd (ContextDefinition(..))
 import Shared.LlnwApiTypes (StreamDetails)
 import Shared.Router.Endpoint (Endpoint(..), makePath, makeUrl, makeUrlAddr)
-import Shared.Stream (ProfileName, SlotId, SlotRole)
+import Shared.Stream (IngestKey(..), ProfileName, SlotId, SlotRole)
 import Shared.Types (DeliverTo, JsonLdContextType(..), PoPName, RelayServer, Server, ServerAddress)
+import Shared.Types.Media.Types.Rtmp (RtmpClientMetadata)
+import Shared.Types.Media.Types.SourceDetails (SourceInfo)
+import Shared.Types.Workflow.Metrics.FrameFlow as FrameFlow
+import Shared.Types.Workflow.Metrics.RtmpPushIngest as RtmpIngest
+import Shared.Types.Workflow.Metrics.StreamBitrateMonitor as StreamBitrateMonitor
 
 ------------------------------------------------------------------------------
 -- Server
@@ -402,6 +414,44 @@ streamRelayStateNode slotId state@{role: slotRole} server =
        , "@id": Just $ makeUrl server (RelayStatsE slotId slotRole)
        , "@nodeType": Just "http://types.rtsv2.llnw.com/IngestAggregator"
        , "@context": Just $ ContextUrl $ makePath $ JsonLdContext StreamRelayStateContext
+       }
+
+------------------------------------------------------------------------------
+-- IngestState
+type IngestStateContextFields = ( ingestStartedTime :: JsonLd.ContextValue
+                                , remoteAddress :: JsonLd.ContextValue
+                                , remotePort :: JsonLd.ContextValue
+                                , rtmpClientMetadata :: JsonLd.ContextValue
+                                , sourceInfo :: JsonLd.ContextValue
+                                )
+
+type IngestState f
+  = { ingestStartedTime :: Milliseconds
+    , remoteAddress :: String
+    , remotePort :: Int
+    , rtmpClientMetadata :: Maybe (RtmpClientMetadata f)
+    , sourceInfo :: Maybe (SourceInfo f)
+    }
+
+type IngestStateNode f = JsonLd.Node (IngestState f) IngestStateContextFields
+
+ingestStateContext :: JsonLd.Context IngestStateContextFields
+ingestStateContext = wrap { "@language": Nothing
+                          , "@base": Nothing
+                          , "@vocab": Nothing
+                          , ingestStartedTime: JsonLd.Other "http://schema.rtsv2.llnw.com/UTCTimestamp"
+                          , remoteAddress: JsonLd.Other "http://schema.rtsv2.llnw.com/Network/Address"
+                          , remotePort: JsonLd.Other "http://schema.rtsv2.llwn.com/Network/Port"
+                          , rtmpClientMetadata: JsonLd.Other "http://schema.rtsv2.llnw.com/Media/Rtmp/Metadata"
+                          , sourceInfo: JsonLd.Other "http://schema.rtsv2.llnw.com/Media/SourceInfo"
+                          }
+
+ingestStateNode :: forall f. SlotId -> SlotRole -> ProfileName -> IngestState f -> Server -> IngestStateNode f
+ingestStateNode slotId slotRole profileName state server =
+  wrap { resource: state
+       , "@id": Just $ makeUrl server (IngestInstanceE slotId slotRole profileName)
+       , "@nodeType": Just "http://types.rtsv2.llnw.com/Ingest"
+       , "@context": Just $ ContextUrl $ makePath $ JsonLdContext IngestStateContext
        }
 
 -- foo :: forall resourceType otherFields newtypeType. Newtype newtypeType { resource :: resourceType | otherFields } => newtypeType -> resourceType
