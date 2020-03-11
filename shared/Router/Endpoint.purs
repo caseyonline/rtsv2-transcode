@@ -215,6 +215,7 @@ contextTypeToString ActiveIngestLocationContext = "activeIngestLocation"
 contextTypeToString EgestStatsContext = "egestStats"
 contextTypeToString IntraPoPStateContext = "intraPoPState"
 contextTypeToString IngestAggregatorStateContext = "ingestAggregatorState"
+contextTypeToString StreamRelayStateContext = "streamRelayState"
 
 parseContextType :: String -> Maybe JsonLdContextType
 parseContextType "server" = Just ServerContext
@@ -225,6 +226,7 @@ parseContextType "activeIngestLocation" = Just ActiveIngestLocationContext
 parseContextType "egestStats" = Just EgestStatsContext
 parseContextType "intraPoPState" = Just IntraPoPStateContext
 parseContextType "ingestAggregatorState" = Just IngestAggregatorStateContext
+parseContextType "streamRelayState" = Just StreamRelayStateContext
 parseContextType _ = Nothing
 
 -- | SlotId

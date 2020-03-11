@@ -43,6 +43,7 @@ data JsonLdContextType = ServerContext
                        | EgestStatsContext
                        | IntraPoPStateContext
                        | IngestAggregatorStateContext
+                       | StreamRelayStateContext
 
 newtype ServerAddress = ServerAddress String
 

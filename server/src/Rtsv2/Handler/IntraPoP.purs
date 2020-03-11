@@ -110,7 +110,7 @@ getDownstreamRelays slotId upstreamRelays = do
                                                                      in
                                                                         getRelay slotId Primary serverAddress  -- TODO - StreamRelayL needs role
                                                                     ) relaysServed
-                                                        ) upstreamRelays
+                                                        ) (JsonLd.unwrapNode <$> upstreamRelays)
   if null downStreamRelays then
     pure nil
   else do
@@ -129,7 +129,7 @@ getEgests slotId relays =
                                                  in
                                                     getEgest slotId serverAddress
                                                 ) egestsServed
-                                    ) relays
+                                    ) (JsonLd.unwrapNode <$> relays)
 
 getEgest :: SlotId -> ServerAddress -> Effect (Maybe PublicState.Egest)
 getEgest slotId address = getJson' address (EgestStatsE slotId)

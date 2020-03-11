@@ -67,19 +67,25 @@ module Shared.Rtsv2.JsonLd
        , ingestAggregatorStateContext
        , ingestAggregatorStateNode
 
+       , StreamRelayStateContextFields
+       , StreamRelayState
+       , StreamRelayStateNode
+       , streamRelayStateContext
+       , streamRelayStateNode
+
        , module JsonLd
        ) where
 
 import Prelude
 
 import Data.Maybe (Maybe(..))
-import Data.Newtype (unwrap, wrap)
+import Data.Newtype (wrap)
 import Shared.JsonLd (Context, ContextValue(..), ExpandedTermDefinition, Node, unwrapNode) as JsonLd
 import Shared.JsonLd (ContextDefinition(..))
 import Shared.LlnwApiTypes (StreamDetails)
 import Shared.Router.Endpoint (Endpoint(..), makePath, makeUrl, makeUrlAddr)
 import Shared.Stream (ProfileName, SlotId, SlotRole)
-import Shared.Types (DeliverTo, EgestServer, JsonLdContextType(..), PoPName, RelayServer, Server, ServerAddress)
+import Shared.Types (DeliverTo, JsonLdContextType(..), PoPName, RelayServer, Server, ServerAddress)
 
 ------------------------------------------------------------------------------
 -- Server
@@ -367,6 +373,36 @@ ingestAggregatorStateNode slotId state@{role: slotRole} server =
        , "@context": Just $ ContextUrl $ makePath $ JsonLdContext EgestStatsContext
        }
 
+------------------------------------------------------------------------------
+-- StreamRelayState
+type StreamRelayStateContextFields = ( role :: JsonLd.ContextValue
+                                     , egestsServed :: JsonLd.ContextValue
+                                     , relaysServed :: JsonLd.ContextValue
+                                     )
+type StreamRelayState f
+  = { role :: SlotRole
+    , egestsServed :: f EgestServedLocationNode
+    , relaysServed :: f RelayServedLocationNode
+    }
+
+type StreamRelayStateNode f = JsonLd.Node (StreamRelayState f) StreamRelayStateContextFields
+
+streamRelayStateContext :: JsonLd.Context StreamRelayStateContextFields
+streamRelayStateContext = wrap { "@language": Nothing
+                               , "@base": Nothing
+                               , "@vocab": Nothing
+                               , role: JsonLd.Other "http://schema.rtsv2.llnw.com/Role"
+                               , egestsServed: JsonLd.Other "http://schema.rtsv2.llnw.com/Infrastructure/Locations/Egest"
+                               , relaysServed: JsonLd.Other "http://schema.rtsv2.llnw.com/Infrastructure/Locations/Relay"
+                               }
+
+streamRelayStateNode :: forall f. SlotId -> StreamRelayState f -> Server -> StreamRelayStateNode f
+streamRelayStateNode slotId state@{role: slotRole} server =
+  wrap { resource: state
+       , "@id": Just $ makeUrl server (RelayStatsE slotId slotRole)
+       , "@nodeType": Just "http://types.rtsv2.llnw.com/IngestAggregator"
+       , "@context": Just $ ContextUrl $ makePath $ JsonLdContext StreamRelayStateContext
+       }
 
 -- foo :: forall resourceType otherFields newtypeType. Newtype newtypeType { resource :: resourceType | otherFields } => newtypeType -> resourceType
 -- foo = _.resource <<< unwrap

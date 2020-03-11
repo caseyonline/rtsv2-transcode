@@ -21,7 +21,6 @@ import Prelude
 
 import Data.Maybe (Maybe)
 import Shared.Common (Milliseconds)
-import Shared.LlnwApiTypes (StreamDetails)
 import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Stream (AgentKey, IngestKey, SlotId, SlotRole)
 import Shared.Types (GeoLoc, PoPName, RegionName, Server, ServerAddress)
@@ -57,16 +56,8 @@ type Ingest f
     }
 
 type IngestAggregator f = JsonLd.IngestAggregatorStateNode f
-   -- = { role :: SlotRole
-   --   , streamDetails :: StreamDetails
-   --   , activeProfiles :: f JsonLd.ActiveIngestLocationNode
-   --   , downstreamRelays :: f JsonLd.DownstreamRelayLocationNode
-   --   }
 
-type StreamRelay f
-  = { egestsServed :: f JsonLd.EgestServedLocationNode
-    , relaysServed :: f JsonLd.RelayServedLocationNode
-    }
+type StreamRelay f = JsonLd.StreamRelayStateNode f
 
 type Egest = JsonLd.EgestStatsNode
 
