@@ -27,6 +27,7 @@ import Simple.JSON (class ReadForeign, class WriteForeign, readImpl, writeImpl)
 
 data ContextValue = ExpandedTermDefinition ExpandedTermDefinition
                   | Other String
+derive instance eqContextValue :: Eq ContextValue
 
 instance writeForeignContextValue :: WriteForeign ContextValue where
   writeImpl (ExpandedTermDefinition a) = writeImpl a
@@ -50,6 +51,7 @@ type ContextFields extraFields = { "@language" :: Maybe String
 newtype Context extraFields = Context (ContextFields extraFields)
 
 derive instance newtypeContext :: Newtype (Context extraFields) _
+derive instance eqContext :: (Eq (ContextFields a)) => Eq (Context a)
 
 instance writeForeignContext :: (WriteForeign (ContextFields extraFields)) => WriteForeign (Context extraFields) where
    writeImpl (Context fields) = writeImpl fields
@@ -66,6 +68,7 @@ type ExpandedTermDefinition = { "@id" :: Maybe String
 
 data ContextDefinition contextFields = ContextRecord (Context contextFields)
                                      | ContextUrl String
+derive instance eqContextFields :: (Eq (Context contextFields)) => Eq (ContextDefinition contextFields)
 
 instance writeForeignContextDefinition :: (WriteForeign (ContextFields contextFields)) => WriteForeign (ContextDefinition contextFields) where
   writeImpl (ContextRecord r) = writeImpl r
@@ -92,6 +95,7 @@ type NodeMetadata resource contextFields = NodeMetadata' (resource :: resource) 
 newtype Node resource contextFields = Node (NodeMetadata resource contextFields)
 
 derive instance newtypeNode :: Newtype (Node a b) _
+derive newtype instance eqNode :: (Eq a, Eq (ContextFields contextFields)) => Eq (Node a contextFields)
 
 instance writeForeignNode :: ( Row.Union r1 (NodeMetadata''() contextFields) r2
                              , Row.Nub r2 r3

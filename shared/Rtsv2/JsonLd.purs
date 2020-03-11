@@ -21,6 +21,8 @@ module Shared.Rtsv2.JsonLd
        , ActiveIngestContextFields
        , DeliverToContextFields
        , TransPoPLeaderLocationNode
+       , EgestStatsNode
+       , EgestStatsContextFields
 
        , timedRouteNeighbourNode
        , activeIngestLocationNode
@@ -31,12 +33,14 @@ module Shared.Rtsv2.JsonLd
        , transPoPLeaderLocationNode
        , egestServedLocationNode
        , relayServedLocationNode
+       , egestStatsNode
 
        , serverContext
        , serverAddressContext
        , deliverToContext
        , timedRouteNeighbourContext
        , activeIngestContext
+       , egestStatsContext
        , module JsonLd
        ) where
 
@@ -134,6 +138,12 @@ type RelayLocationNode f =  LocationBySlotIdAndSlotRole f
 -- EgestLocation
 type EgestLocationNode f =  LocationBySlotId f
 
+------------------------------------------------------------------------------
+-- EgestStats
+type EgestStatsContextFields = ( clientCount :: JsonLd.ContextValue )
+
+type EgestStatsNode = JsonLd.Node { clientCount :: Int} EgestStatsContextFields
+
 serverContext :: JsonLd.Context ServerContextFields
 serverContext = wrap { "@language": Nothing
                      , "@base": Nothing
@@ -164,6 +174,13 @@ timedRouteNeighbourContext = wrap { "@language": Nothing
                                   , "@vocab": Nothing
                                   , pop: JsonLd.Other "http://schema.rtsv2.llnw.com/Infrastructure/PoP"
                                   }
+
+egestStatsContext :: JsonLd.Context EgestStatsContextFields
+egestStatsContext = wrap { "@language": Nothing
+                         , "@base": Nothing
+                         , "@vocab": Nothing
+                         , clientCount: JsonLd.Other "http://schema.rtsv2.llnw.com/Counter"
+                         }
 
 activeIngestContext :: JsonLd.Context ActiveIngestContextFields
 activeIngestContext =
@@ -245,6 +262,14 @@ egestLocationNode slotId server =
        , "@id": Just $ makeUrl server (EgestStatsE slotId)
        , "@nodeType": Just "http://types.rtsv2.llnw.com/EgestLocation"
        , "@context": Just $ ContextUrl $ makePath $ JsonLdContext ServerContext
+       }
+
+egestStatsNode :: SlotId -> Server -> Int -> EgestStatsNode
+egestStatsNode slotId server clientCount =
+  wrap { resource: { clientCount }
+       , "@id": Just $ makeUrl server (EgestStatsE slotId)
+       , "@nodeType": Just "http://types.rtsv2.llnw.com/Egest"
+       , "@context": Just $ ContextUrl $ makePath $ JsonLdContext EgestStatsContext
        }
 
 -- foo :: forall resourceType otherFields newtypeType. Newtype newtypeType { resource :: resourceType | otherFields } => newtypeType -> resourceType

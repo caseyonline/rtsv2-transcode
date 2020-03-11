@@ -68,9 +68,7 @@ type StreamRelay f
     , relaysServed :: f JsonLd.RelayServedLocationNode
     }
 
-type Egest
-  = { clientCount :: Int
-    }
+type Egest = JsonLd.EgestStatsNode
 
 type AgentLocation f = { agentKey :: AgentKey
                        , servers :: f Server

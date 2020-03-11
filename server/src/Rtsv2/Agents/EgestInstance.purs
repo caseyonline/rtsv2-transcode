@@ -45,6 +45,7 @@ import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Utils (crashIfLeft)
 import Shared.Agent as Agent
 import Shared.LlnwApiTypes (StreamIngestProtocol(..))
+import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Stream (AggregatorKey(..), EgestKey(..), RelayKey(..), SlotId, SlotRole(..))
 import Shared.Router.Endpoint (Endpoint(..), makeUrl)
 import Shared.Common (Milliseconds)
@@ -126,10 +127,9 @@ slotConfiguration egestKey =
   getSlotConfigurationFFI egestKey
 
 currentStats :: EgestKey -> Effect PublicState.Egest
-currentStats egestKey =
-  Gen.call (serverName egestKey) \state@{clientCount} ->
-    CallReply {clientCount} state
-
+currentStats egestKey@(EgestKey slotId) =
+  Gen.call (serverName egestKey) \state@{thisServer, clientCount} ->
+    CallReply (JsonLd.egestStatsNode slotId (wrap (unwrap thisServer)) clientCount) state
 
 toEgestServer :: Server -> EgestServer
 toEgestServer = unwrap >>> wrap

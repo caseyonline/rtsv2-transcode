@@ -13,7 +13,7 @@ import Data.Newtype (unwrap)
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
-import Erl.Data.List (List, catMaybes, concat, nil, null, (:))
+import Erl.Data.List (List, catMaybes, concat, nil, nub, null, (:))
 import Logger (spy)
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.IntraPoP as IntraPoPAgent
@@ -60,7 +60,7 @@ slotState slotId =
                   , ingests
                   , originRelays
                   , downstreamRelays
-                  , egests
+                  , egests: nub egests
                   }
 
 getAggregatorServers :: SlotId -> List SlotRole -> Effect (List (Tuple SlotRole Server))

@@ -254,7 +254,7 @@ main =
     assertEgestClients = assertBodyFun <<< predicate
       where
         predicate :: Int -> PublicState.Egest -> Boolean
-        predicate count {clientCount} = count == clientCount
+        predicate count egestStats = count == (JsonLd.unwrapNode egestStats).clientCount
 
     assertAggregator = assertBodyFun <<< predicate
       where

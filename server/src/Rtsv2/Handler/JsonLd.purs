@@ -24,3 +24,4 @@ getContextJson contextType =
     doGetContextJson DeliverToContext = pure $ writeJSON JsonLd.deliverToContext
     doGetContextJson TimedRouteNeighbourContext = pure $ writeJSON JsonLd.timedRouteNeighbourContext
     doGetContextJson ActiveIngestContext = pure $ writeJSON JsonLd.activeIngestContext
+    doGetContextJson EgestStatsContext = pure $ writeJSON JsonLd.egestStatsContext
