@@ -47,6 +47,7 @@ import Erl.Data.List as List
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
 import Erl.Data.Tuple as ErlTuple
+import Foreign (Foreign)
 import Logger (Logger)
 import Logger as Logger
 import Partial.Unsafe as Unsafe
@@ -54,12 +55,11 @@ import Pinto (ServerName, StartLinkResult, isRegistered)
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import PintoHelper (exposeState)
+import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..))
 import Rtsv2.Agents.IntraPoP as IntraPoP
-import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
 import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload, RegisterEgestPayload, SourceRoute, RegisterRelayPayload)
-import Rtsv2.Agents.TransPoP (PoPRoutes)
 import Rtsv2.Agents.TransPoP as TransPoP
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
@@ -88,10 +88,13 @@ foreign import applyDownstreamPlanFFI :: DownstreamStreamRelayPlan -> WorkflowHa
 foreign import setSlotConfigurationFFI :: RelayKey -> SlotConfiguration -> Effect Unit
 foreign import getSlotConfigurationFFI :: RelayKey -> Effect (Maybe SlotConfiguration)
 
+foreign import stopWorkflowFFI :: WorkflowHandle -> Effect Unit
+
 -- -----------------------------------------------------------------------------
 -- Gen Server State
 -- -----------------------------------------------------------------------------
-data CachedState = Foo String
+data CachedState = CachedOrigin OriginStreamRelayConfig
+                 | CachedDownstream DownstreamStreamRelayConfig
 
 type StateServerName = CachedInstanceState.StateServerName CachedState
 
@@ -103,6 +106,7 @@ type CommonStateData =
   { relayKey :: RelayKey
   , thisServer :: Server
   , ingestAggregator :: Server
+  , stateServerName :: StateServerName
   }
 
 type OriginStreamRelayStateData =
@@ -225,23 +229,23 @@ registerEgest payload@{slotId, streamRole, deliverTo} =
   where
     doRegisterEgest :: State -> Effect (CallResult Unit State)
 
-    doRegisterEgest (StateOrigin commonStateData originStateData@{ config: config@{ egests } }) =
+    doRegisterEgest (StateOrigin commonStateData originStateData@{ config: config@{ egests } }) = do
       let
         newEgests = Map.insert (extractAddress deliverTo.server) deliverTo egests
         newConfig = config{ egests = newEgests }
-        newPlan = originConfigToPlan commonStateData newConfig
+      newPlan <- originConfigToPlan commonStateData newConfig
+      let
         newOriginStateData = originStateData{ config = newConfig, plan = Just newPlan }
-      in
-        applyOriginPlan commonStateData newOriginStateData
+      CallReply unit <$> applyOriginPlan commonStateData newOriginStateData
 
-    doRegisterEgest (StateDownstream commonStateData downstreamStateData@{ config: config@{ egests } }) =
+    doRegisterEgest (StateDownstream commonStateData downstreamStateData@{ config: config@{ egests } }) = do
       let
         newEgests = Map.insert (extractAddress deliverTo.server) deliverTo egests
         newConfig = config{ egests = newEgests }
-        newPlan = downstreamConfigToPlan commonStateData newConfig
+      newPlan <- downstreamConfigToPlan commonStateData newConfig
+      let
         newDownstreamStateData = downstreamStateData{ config = newConfig, plan = Just newPlan }
-      in
-        applyDownstreamPlan commonStateData newDownstreamStateData
+      CallReply unit <$> applyDownstreamPlan commonStateData newDownstreamStateData
 
 registerRelay :: RegisterRelayPayload -> Effect Unit
 registerRelay payload@{slotId, streamRole, sourceRoute, deliverTo } =
@@ -250,19 +254,19 @@ registerRelay payload@{slotId, streamRole, sourceRoute, deliverTo } =
   where
     doRegisterRelay :: State -> Effect (CallResult Unit State)
 
-    doRegisterRelay (StateOrigin commonStateData originStateData@{ config: config@{ downstreamRelays } }) =
+    doRegisterRelay (StateOrigin commonStateData originStateData@{ config: config@{ downstreamRelays } }) = do
       -- TODO: PS: log if we've got a non-nil source when we're in origin mode
       let
         newDownstreamRelays = Map.insert (extractAddress deliverTo.server) deliverTo downstreamRelays
         newConfig = config{ downstreamRelays = newDownstreamRelays }
-        newPlan = originConfigToPlan commonStateData newConfig
+      newPlan <- originConfigToPlan commonStateData newConfig
+      let
         newOriginStateData = originStateData{ config = newConfig, plan = Just newPlan }
-      in
-        applyOriginPlan commonStateData newOriginStateData
+      CallReply unit <$> applyOriginPlan commonStateData newOriginStateData
 
     doRegisterRelay (StateDownstream commonStateData downstreamStateData@{ config: config@{ downstreamRelays } }) =
       case List.uncons sourceRoute of
-        Just { head, tail } ->
+        Just { head, tail } -> do
           let
             downstreamRelayWithSource =
               { source: { next: head, rest: tail }
@@ -270,19 +274,19 @@ registerRelay payload@{slotId, streamRole, sourceRoute, deliverTo } =
               }
             newDownstreamRelays = Map.insert (extractAddress deliverTo.server) downstreamRelayWithSource downstreamRelays
             newConfig = config{ downstreamRelays = newDownstreamRelays }
-            newPlan = downstreamConfigToPlan commonStateData newConfig
+          newPlan <- downstreamConfigToPlan commonStateData newConfig
+          let
             newDownstreamStateData = downstreamStateData{ config = newConfig, plan = Just newPlan }
-          in
-            applyDownstreamPlan commonStateData newDownstreamStateData
+          CallReply unit <$> applyDownstreamPlan commonStateData newDownstreamStateData
 
         Nothing ->
           -- TODO: PS: log if we've got a nil source when we're in downstream mode
           pure $ CallReply unit $ StateDownstream commonStateData downstreamStateData
 
-applyOriginPlan :: CommonStateData -> OriginStreamRelayStateData -> Effect (CallResult Unit State)
+applyOriginPlan :: CommonStateData -> OriginStreamRelayStateData -> Effect State
 
-applyOriginPlan commonStateData originStateData@{ plan: Nothing } =
-  pure $ CallReply unit $ StateOrigin commonStateData originStateData
+applyOriginPlan commonStateData originStateData@{ config, plan: Nothing } = do
+  pure $ StateOrigin commonStateData originStateData
 
 applyOriginPlan commonStateData originStateData@{ plan: Just plan, run: runState, workflowHandle } =
   do
@@ -290,12 +294,12 @@ applyOriginPlan commonStateData originStateData@{ plan: Just plan, run: runState
 
     newRunState <- applyOriginRunResult commonStateData applyResult runState
 
-    pure $ CallReply unit $ StateOrigin commonStateData $ originStateData{ run = newRunState }
+    pure $ StateOrigin commonStateData $ originStateData{ run = newRunState }
 
-applyDownstreamPlan :: CommonStateData -> DownstreamStreamRelayStateData -> Effect (CallResult Unit State)
+applyDownstreamPlan :: CommonStateData -> DownstreamStreamRelayStateData -> Effect State
 
 applyDownstreamPlan commonStateData downstreamStateData@{ plan: Nothing } =
-  pure $ CallReply unit $ StateDownstream commonStateData downstreamStateData
+  pure $ StateDownstream commonStateData downstreamStateData
 
 applyDownstreamPlan commonStateData downstreamStateData@{ plan: Just plan, run: runState, workflowHandle } =
   do
@@ -303,7 +307,7 @@ applyDownstreamPlan commonStateData downstreamStateData@{ plan: Just plan, run: 
 
     newRunState <- applyDownstreamRunResult commonStateData applyResult runState
 
-    pure $ CallReply unit $ StateDownstream commonStateData $ downstreamStateData{ run = newRunState }
+    pure $ StateDownstream commonStateData $ downstreamStateData{ run = newRunState }
 
 applyOriginRunResult :: CommonStateData -> OriginStreamRelayApplyResult -> OriginStreamRelayRunState -> Effect OriginStreamRelayRunState
 applyOriginRunResult commonStateData@{ relayKey: relayKey@(RelayKey slotId slotRole), thisServer, ingestAggregator } applyResult runState =
@@ -533,9 +537,9 @@ startLink relayKey payload stateServerName =
   Gen.startLink (serverName relayKey) (init relayKey payload stateServerName) handleInfo
 
 stopAction :: RelayKey -> Maybe CachedState -> Effect Unit
-stopAction relayKey _cachedState =
-  -- todo
-  pure unit
+stopAction relayKey _cachedState = do
+  logInfo "Stream Relay stopping" {relayKey}
+  IntraPoP.announceLocalRelayStopped relayKey
 
 init :: RelayKey -> CreateRelayPayload -> StateServerName -> Effect State
 init relayKey payload@{slotId, streamRole, aggregator} stateServerName =
@@ -545,45 +549,68 @@ init relayKey payload@{slotId, streamRole, aggregator} stateServerName =
 
     IntraPoP.announceLocalRelayIsAvailable relayKey
     _ <- Bus.subscribe (serverName relayKey) IntraPoP.bus IntraPoPBus
-
-    -- TODO - initialisation from stored state here
-    _ <- fromMaybe (Foo "") <$> CachedInstanceState.getInstanceData stateServerName
+    Gen.registerTerminate (serverName relayKey) terminate
 
     let
       commonStateData =
         { relayKey
         , thisServer
         , ingestAggregator: aggregator
+        , stateServerName
         }
 
     if egestSourceRoutes == List.nil then
       do
         workflowHandle <- startOriginWorkflowFFI (un SlotId slotId)
-
+        config <- getCachedOriginConfig
         let
-          originStateData =
+          initialOriginStateData =
             { workflowHandle
-            , config: { egests: Map.empty, downstreamRelays: Map.empty }
+            , config
             , plan: Nothing
             , run: { slotConfiguration: Nothing, ingestAggregatorState: IngestAggregatorStateDisabled }
             }
 
-        pure $ StateOrigin commonStateData originStateData
+        newPlan <- originConfigToPlan commonStateData config
+        let
+          newOriginStateData = initialOriginStateData{ plan = Just newPlan }
+        applyOriginPlan commonStateData newOriginStateData
     else
       do
-        workflowHandle <- startDownstreamWorkflowFFI (un SlotId slotId)
-
         let
           egestUpstreamRelays = map mkUpstreamRelay egestSourceRoutes
 
-          downstreamStateData =
+        workflowHandle <- startDownstreamWorkflowFFI (un SlotId slotId)
+        config <- getCachedDownstreamConfig egestUpstreamRelays
+
+        let
+          initialDownstreamStateData =
             { workflowHandle
-            , config: { egestUpstreamRelays, egests: Map.empty, downstreamRelays: Map.empty }
+            , config
             , plan: Nothing
             , run: { slotConfiguration: Nothing, upstreamRelayStates: Map.empty }
             }
 
-        pure $ StateDownstream commonStateData downstreamStateData
+        newPlan <- downstreamConfigToPlan commonStateData config
+        let
+          newDownstreamStateData = initialDownstreamStateData{ plan = Just newPlan }
+
+        applyDownstreamPlan commonStateData newDownstreamStateData
+
+  where
+    getCachedOriginConfig =
+      case _ of
+        Nothing -> emptyOriginConfig
+        Just (CachedDownstream _) -> emptyOriginConfig
+        Just (CachedOrigin cached) -> cached
+      <$> CachedInstanceState.getInstanceData stateServerName
+
+    getCachedDownstreamConfig egestUpstreamRelays =
+      case _ of
+        Nothing -> emptyDownstreamConfig egestUpstreamRelays
+        Just (CachedOrigin _) -> emptyDownstreamConfig egestUpstreamRelays
+        Just (CachedDownstream cached) -> cached
+      <$> CachedInstanceState.getInstanceData stateServerName
 
 handleInfo :: Msg -> State -> Effect (CastResult State)
 handleInfo msg state =
@@ -593,7 +620,7 @@ handleInfo msg state =
 
     IntraPoPBus (IngestAggregatorExited (AggregatorKey slotId streamRole) serverAddress)
      -- TODO - PRIMARY BACKUP
-      | slotId == ourSlotId -> doStop state
+      | slotId == ourSlotId -> pure $ CastStop state
       | otherwise -> pure $ CastNoReply state
 
     IntraPoPBus (VmReset _ _ _) ->
@@ -601,33 +628,39 @@ handleInfo msg state =
   where
     (RelayKey ourSlotId _) = relayKeyFromState state
 
-doStop :: State -> Effect (CastResult State)
-doStop state =
-  do
-    logInfo "Stream Relay stopping" {relayKey}
-    IntraPoP.announceLocalRelayStopped relayKey
-    pure $ CastStop state
-  where
-    relayKey = relayKeyFromState state
+terminate :: Foreign -> State -> Effect Unit
+terminate reason state = do
+  logInfo "Stream Relay terminating" {reason}
+  stopWorkflow state
+  pure unit
+
+stopWorkflow (StateOrigin _ {workflowHandle}) = do
+  stopWorkflowFFI workflowHandle
+  pure unit
+stopWorkflow (StateDownstream _ {workflowHandle}) = do
+  stopWorkflowFFI workflowHandle
+  pure unit
 
 -- -----------------------------------------------------------------------------
 -- Config -> Plan Transformation
 -- -----------------------------------------------------------------------------
-originConfigToPlan :: CommonStateData -> OriginStreamRelayConfig -> OriginStreamRelayPlan
-originConfigToPlan { ingestAggregator } { egests, downstreamRelays } =
-  { egests: plannedEgests
-  , downstreamRelays: plannedDownstreamRelays
-  }
+originConfigToPlan :: CommonStateData -> OriginStreamRelayConfig -> Effect OriginStreamRelayPlan
+originConfigToPlan { ingestAggregator, stateServerName } config@{ egests, downstreamRelays } = do
+  CachedInstanceState.recordInstanceData stateServerName (CachedOrigin config)
+  pure { egests: plannedEgests
+       , downstreamRelays: plannedDownstreamRelays
+       }
   where
     plannedEgests = egests # Map.values # map deliverToAddressFromDeliverToEgestServer
     plannedDownstreamRelays = downstreamRelays # Map.values # map deliverToAddressFromDeliverToRelayServer
 
-downstreamConfigToPlan :: CommonStateData -> DownstreamStreamRelayConfig -> DownstreamStreamRelayPlan
-downstreamConfigToPlan { ingestAggregator } config@{ egestUpstreamRelays } =
-  { egests: plannedEgests
-  , downstreamRelays: plannedDownstreamRelays
-  , upstreamRelaySources
-  }
+downstreamConfigToPlan :: CommonStateData -> DownstreamStreamRelayConfig -> Effect DownstreamStreamRelayPlan
+downstreamConfigToPlan { ingestAggregator, stateServerName } config@{ egestUpstreamRelays } = do
+  CachedInstanceState.recordInstanceData stateServerName (CachedDownstream config)
+  pure { egests: plannedEgests
+       , downstreamRelays: plannedDownstreamRelays
+       , upstreamRelaySources
+       }
   where
     egestList = config.egests # Map.values
 
@@ -751,6 +784,15 @@ mergeDownstreamApplyResult { upstreamRelayReceivePorts } runState@{ upstreamRela
 --------------------------------------------------------------------------------
 -- Utilities
 --------------------------------------------------------------------------------
+
+emptyOriginConfig :: OriginStreamRelayConfig
+emptyOriginConfig =
+  { egests: Map.empty, downstreamRelays: Map.empty }
+
+emptyDownstreamConfig :: List UpstreamRelay -> DownstreamStreamRelayConfig
+emptyDownstreamConfig egestUpstreamRelays =
+  { egestUpstreamRelays, egests: Map.empty, downstreamRelays: Map.empty }
+
 mkUpstreamRelay :: SourceRoute -> UpstreamRelay
 mkUpstreamRelay route =
   let
