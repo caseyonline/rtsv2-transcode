@@ -21,7 +21,7 @@ import Erl.Data.Binary.IOData (IOData, fromBinary, toBinary)
 import Erl.Data.List (List, filter, head, nil, (:))
 import Erl.Data.Tuple (tuple2)
 import Logger (spy)
-import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
+import Rtsv2.Agents.IngestSup as IngestSup
 import Shared.LlnwApiTypes (AuthType, PublishCredentials, SlotPublishAuthType(..), StreamAuth, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamPublish)
 import Shared.Stream (RtmpShortName, SlotRole(..))
 import Shared.UUID (fromString)
@@ -143,7 +143,7 @@ postHelper lookupFun =
                                             , output: Nothing })
 
   # Rest.serviceAvailable (\req state -> do
-                              isAgentAvailable <- IngestInstanceSup.isAgentAvailable
+                              isAgentAvailable <- IngestSup.isAgentAvailable
                               Rest.result isAgentAvailable req state)
 
   # Rest.allowedMethods (Rest.result (POST : nil))

@@ -1,5 +1,5 @@
  module Rtsv2.Agents.IngestSup
-  ( isAvailable
+  ( isAgentAvailable
   , startLink
   ) where
 
@@ -17,8 +17,8 @@ import Rtsv2.Agents.IngestRtmpServer as IngestRtmpServer
 import Rtsv2.Agents.IngestStats as IngestStats
 import Rtsv2.Names as Names
 
-isAvailable :: Effect Boolean
-isAvailable = Pinto.isRegistered serverName
+isAgentAvailable :: Effect Boolean
+isAgentAvailable = Pinto.isRegistered serverName
 
 serverName :: SupervisorName
 serverName = Names.ingestSupName

@@ -1,6 +1,5 @@
  module Rtsv2.Agents.IngestInstanceSup
-  ( isAgentAvailable
-  , startLink
+  ( startLink
   , startIngest
   ) where
 
@@ -18,9 +17,6 @@ import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Names as Names
 import Shared.LlnwApiTypes (StreamDetails, StreamPublish)
 import Shared.Stream (IngestKey)
-
-isAgentAvailable :: Effect Boolean
-isAgentAvailable = Pinto.isRegistered serverName
 
 serverName :: SupervisorName
 serverName = Names.ingestInstanceSupName

@@ -1,7 +1,7 @@
 module Rtsv2.Agents.IngestAggregatorInstance
   ( startLink
   , stopAction
-  , isAvailable
+  , isInstanceAvailable
   , addLocalIngest
   , addRemoteIngest
   , removeLocalIngest
@@ -105,8 +105,8 @@ data Msg
   = IntraPoPBus IntraPoP.IntraPoPBusMessage
   | MaybeStop
 
-isAvailable :: AggregatorKey -> Effect Boolean
-isAvailable aggregatorKey = do
+isInstanceAvailable :: AggregatorKey -> Effect Boolean
+isInstanceAvailable aggregatorKey = do
   bool <- isRegistered (serverName aggregatorKey)
   pure bool
 

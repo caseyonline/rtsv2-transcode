@@ -14,7 +14,7 @@
 module Rtsv2.Agents.StreamRelayInstance
        ( startLink
        , stopAction
-       , isAvailable
+       , isInstanceAvailable
        , status
        , registerEgest
        , registerRelay
@@ -496,8 +496,8 @@ tryEnsureDownstreamSlotConfiguration { relayKey: relayKey@(RelayKey slotId slotR
             relayInOtherState ->
               tryEnsureSlotConfigurationFromRelays' tail
 
-isAvailable :: RelayKey -> Effect Boolean
-isAvailable relayKey = isRegistered (serverName relayKey)
+isInstanceAvailable :: RelayKey -> Effect Boolean
+isInstanceAvailable relayKey = isRegistered (serverName relayKey)
 
 status :: RelayKey -> Effect (PublicState.StreamRelay List)
 status =
