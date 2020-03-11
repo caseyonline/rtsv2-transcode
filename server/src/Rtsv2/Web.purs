@@ -80,6 +80,7 @@ init args = do
         , "TimedRoutesForPoPE"                          : TransPoPHandler.timedRoutesForPoP
         , "HealthCheckE"                                : HealthHandler.healthCheck
         , "ServerStateE"                                : IntraPoPHandler.publicState
+        , "SlotStateE"                                  : IntraPoPHandler.slotState
         , "PoPDefinitionE"                              : PoPDefinitionHandler.popDefinition
         , "JsonLdContext"                               : JsonLd.getContextJson
         , "EgestStatsE"                                 : EgestStatsHandler.stats
@@ -91,7 +92,8 @@ init args = do
         , "IngestAggregatorActiveIngestsPlayerJsE"      : \(_ :: SlotId) (_ :: SlotRole) (_ :: ProfileName) -> PrivDir "rtsv2" "www/assets/js"
         , "IngestAggregatorActiveIngestsPlayerControlE" : CowboyRoutePlaceholder
         , "IngestAggregatorsE"                          : IngestAggregatorHandler.ingestAggregators
-        , "IngestInstancesMetricsE"                     : IngestHandler.ingestInstancesMetrics            , "IngestInstanceE"                             : IngestHandler.ingestInstance
+        , "IngestInstancesMetricsE"                     : IngestHandler.ingestInstancesMetrics
+        , "IngestInstanceE"                             : IngestHandler.ingestInstance
         , "ClientAppAssetsE"                            : PrivDir Config.appName "www/assets"
         , "ClientAppRouteHTMLE"                         : PrivFile Config.appName "www/index.html"
 

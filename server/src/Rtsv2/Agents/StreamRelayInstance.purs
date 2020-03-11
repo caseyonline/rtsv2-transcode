@@ -634,6 +634,7 @@ terminate reason state = do
   stopWorkflow state
   pure unit
 
+stopWorkflow :: State -> Effect Unit
 stopWorkflow (StateOrigin _ {workflowHandle}) = do
   stopWorkflowFFI workflowHandle
   pure unit

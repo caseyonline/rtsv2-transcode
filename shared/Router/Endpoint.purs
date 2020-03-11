@@ -48,6 +48,7 @@ data Endpoint
   | TimedRoutesForPoPE PoPName
   | HealthCheckE
   | ServerStateE
+  | SlotStateE SlotId
   | PoPDefinitionE
   | JsonLdContext JsonLdContextType
   | EgestStatsE SlotId
@@ -122,6 +123,7 @@ endpoint = root $ sum
   , "TimedRoutesForPoPE"                               : "support" / "timedRoutes" / popName segment
   , "HealthCheckE"                                     : "support" / path "healthCheck" noArgs
   , "ServerStateE"                                     : "support" / path "state" noArgs
+  , "SlotStateE"                                       : "support" / "state" / "slot" / slotId segment
   , "PoPDefinitionE"                                   : "support" / path "popDefinition" noArgs
   , "JsonLdContext"                                    : "support" / "jsonld" / contextType segment
   , "EgestStatsE"                                      : "support" / "egest" / slotId segment

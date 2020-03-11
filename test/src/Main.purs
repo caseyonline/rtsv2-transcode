@@ -261,6 +261,15 @@ main =
         predicate :: Array SlotNameAndProfileName -> PublicState.IngestAggregator Array -> Boolean
         predicate vars {activeProfiles} = sort ((\(SlotNameAndProfileName _ profileName) -> profileName) <$> vars) == (sort $ (_.profileName <<< JsonLd.unwrapNode) <$> activeProfiles)
 
+    dumpIntraPoP = assertBodyFun $ predicate
+      where
+        predicate :: PublicState.IntraPoP Array -> Boolean
+        predicate popState =
+          let
+            _ = spy "popState" popState
+          in
+           true
+
     assertAggregatorOn nodes requiredSlotId  = assertBodyFun $ predicate
       where
         predicate :: PublicState.IntraPoP Array -> Boolean
@@ -789,6 +798,15 @@ main =
               aggregatorStats p1n2 slot1          >>= assertStatusCode 200
                                                       >>= assertAggregator []
                                                                            >>= as  "aggregator has no ingests"
+
+            itOnly "Launch ingest and egest, kill origin relay, assert replaced relay still has egest and origin" do
+              ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200  >>= as  "create ingest"
+              waitForAsyncProfileStart                                      >>= as' "wait for async start of profile"
+              clientStart p1n1 slot1              >>= assertStatusCode 204  >>= as  "egest available"
+              waitForAsyncProfileStart                                      >>= as' "wait for async start of profile"
+              intraPoPState p1n1                  >>= dumpIntraPoP
+                                                                            >>= as "p1n1 is aware of the ingest on p1n1"
+
 
     describe "Cleanup" do
       after_ stopSession do
