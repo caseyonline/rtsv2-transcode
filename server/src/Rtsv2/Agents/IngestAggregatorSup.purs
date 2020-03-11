@@ -1,5 +1,5 @@
 module Rtsv2.Agents.IngestAggregatorSup
-       ( isAvailable
+       ( isAgentAvailable
        , startLink
        , startAggregator
        )
@@ -19,8 +19,8 @@ import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Names as Names
 import Shared.LlnwApiTypes (StreamDetails)
 
-isAvailable :: Effect Boolean
-isAvailable = isRegistered serverName
+isAgentAvailable :: Effect Boolean
+isAgentAvailable = isRegistered serverName
 
 serverName :: SupervisorName
 serverName = Names.ingestAggregatorSupName

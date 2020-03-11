@@ -143,7 +143,7 @@ postHelper lookupFun =
                                             , output: Nothing })
 
   # Rest.serviceAvailable (\req state -> do
-                              isAgentAvailable <- IngestInstanceSup.isAvailable
+                              isAgentAvailable <- IngestInstanceSup.isAgentAvailable
                               Rest.result isAgentAvailable req state)
 
   # Rest.allowedMethods (Rest.result (POST : nil))

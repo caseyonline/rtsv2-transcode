@@ -2,7 +2,7 @@ module Rtsv2.Agents.EgestInstanceSup
        ( startLink
        , startEgest
        , maybeStartAndAddClient
-       , isAvailable
+       , isAgentAvailable
        )
        where
 
@@ -26,8 +26,8 @@ import Shared.Stream (EgestKey(..))
 serverName :: SupervisorName
 serverName = Names.egestInstanceSupName
 
-isAvailable :: Effect Boolean
-isAvailable = Pinto.isRegistered serverName
+isAgentAvailable :: Effect Boolean
+isAgentAvailable = Pinto.isRegistered serverName
 
 startLink :: forall a. a -> Effect Pinto.StartLinkResult
 startLink _ = Sup.startLink serverName init

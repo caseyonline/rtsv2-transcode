@@ -1,5 +1,5 @@
 module Rtsv2.Agents.StreamRelaySup
-       ( isAvailable
+       ( isAgentAvailable
        , startLink
        , startRelay
        )
@@ -19,8 +19,8 @@ import Rtsv2.Agents.StreamRelayInstanceSup as StreamRelayInstanceSup
 import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload)
 import Rtsv2.Names as Names
 
-isAvailable :: Effect Boolean
-isAvailable = isRegistered serverName
+isAgentAvailable :: Effect Boolean
+isAgentAvailable = isRegistered serverName
 
 serverName :: SupervisorName
 serverName = Names.streamRelaySupName

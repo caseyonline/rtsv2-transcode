@@ -118,7 +118,7 @@ clientStop canary slotId clientId  =
                           }
 
     serviceAvailable req state = do
-      isAgentAvailable <- EgestInstanceSup.isAvailable
+      isAgentAvailable <- EgestInstanceSup.isAgentAvailable
       Rest.result isAgentAvailable req state
 
 

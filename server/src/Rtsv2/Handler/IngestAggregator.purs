@@ -52,7 +52,7 @@ ingestAggregatorsActiveIngest slotId streamRole profileName =
                                      , aggregatorKey: AggregatorKey slotId streamRole
                                      , payload: Nothing})
   # Rest.serviceAvailable (\req state -> do
-                              isAgentAvailable <- IngestAggregatorSup.isAvailable
+                              isAgentAvailable <- IngestAggregatorSup.isAgentAvailable
                               Rest.result isAgentAvailable req state)
   # Rest.allowedMethods (Rest.result (DELETE : POST : nil))
   # Rest.resourceExists (\req state@{aggregatorKey} -> do

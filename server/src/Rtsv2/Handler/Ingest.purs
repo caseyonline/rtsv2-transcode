@@ -192,7 +192,7 @@ ingestStart canary shortName slotNameAndProfileName@(SlotNameAndProfileName slot
                                      }
                )
   # Rest.serviceAvailable (\req state -> do
-                            isAgentAvailable <- IngestInstanceSup.isAvailable
+                            isAgentAvailable <- IngestInstanceSup.isAgentAvailable
                             Rest.result isAgentAvailable req state)
   # Rest.resourceExists (\req state ->
                           let
@@ -234,7 +234,7 @@ ingestStop canary slotId role profileName =
   Rest.handler (\req -> Rest.initResult req {ingestKey: IngestKey slotId role profileName})
 
   # Rest.serviceAvailable (\req state -> do
-                            isAgentAvailable <- IngestInstanceSup.isAvailable
+                            isAgentAvailable <- IngestInstanceSup.isAgentAvailable
                             Rest.result isAgentAvailable req state)
 
   # Rest.resourceExists (\req state@{ingestKey} -> do
