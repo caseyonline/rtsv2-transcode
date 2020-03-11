@@ -12,7 +12,7 @@ module Rtsv2.Agents.IngestAggregatorInstance
   , domain
   , RemoteIngestPayload
 
-  , PersistentState
+  , CachedState
   , StateServerName
   , streamDetailsToAggregatorKey
   ) where
@@ -51,7 +51,7 @@ import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..), announceLocalAggregatorIsAvailable, announceLocalAggregatorStopped, currentRemoteRef)
 import Rtsv2.Agents.IntraPoP as IntraPoP
-import Rtsv2.Agents.PersistentInstanceState as PersistentInstanceState
+import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
 import Rtsv2.Agents.StreamRelayTypes (RegisterRelayPayload)
 import Rtsv2.Config as Config
@@ -76,12 +76,12 @@ foreign import removeIngestImpl :: WorkflowHandle -> IngestKey -> Effect Unit
 foreign import registerStreamRelayImpl :: WorkflowHandle -> String -> Int -> Effect Unit
 foreign import slotConfigurationImpl :: UUID -> Effect (Maybe SlotConfiguration)
 
-type PersistentState = { localIngests :: Set ProfileName
-                       , remoteIngests :: Map ProfileName (Tuple Server Ref)
-                       , relays :: Set (DeliverTo RelayServer)
-                       }
+type CachedState = { localIngests :: Set ProfileName
+                   , remoteIngests :: Map ProfileName (Tuple Server Ref)
+                   , relays :: Set (DeliverTo RelayServer)
+                   }
 
-type StateServerName = PersistentInstanceState.StateServerName PersistentState
+type StateServerName = CachedInstanceState.StateServerName CachedState
 
 type RemoteIngestPayload =
   { vmRef :: Ref
@@ -92,7 +92,7 @@ type State
   = { config :: Config.IngestAggregatorAgentConfig
     , slotId :: SlotId
     , slotRole :: SlotRole
-    , persistentState :: PersistentState
+    , cachedState :: CachedState
     , thisServer :: Server
     , aggregatorKey :: AggregatorKey
     , streamDetails :: StreamDetails
@@ -157,14 +157,14 @@ checkVmRef remoteVmRef remoteServer = do
   pure $ fromMaybe false $ ((==) remoteVmRef) <$> currentRemoteVmRef
 
 checkProfileInactive :: ProfileName -> State -> Boolean
-checkProfileInactive profileName {persistentState: {localIngests, remoteIngests}} =
+checkProfileInactive profileName {cachedState: {localIngests, remoteIngests}} =
   not (Set.member profileName localIngests) && not (Map.member profileName remoteIngests)
 
 removeLocalIngest :: IngestKey -> Effect Unit
 removeLocalIngest ingestKey@(IngestKey _ _ profileName) =
   Gen.doCall (serverName (ingestKeyToAggregatorKey ingestKey))
   (\state -> do
-    state2 <- doRemoveIngest profileName removeLocalIngestFromPersistentState state
+    state2 <- doRemoveIngest profileName removeLocalIngestFromCachedState state
     pure $ CallReply unit state2
   )
 
@@ -172,14 +172,14 @@ removeRemoteIngest :: IngestKey -> Effect Unit
 removeRemoteIngest ingestKey@(IngestKey _ _ profileName) =
   Gen.doCall (serverName (ingestKeyToAggregatorKey ingestKey))
   (\state -> do
-    state2 <- doRemoveIngest profileName removeRemoteIngestFromPersistentState state
+    state2 <- doRemoveIngest profileName removeRemoteIngestFromCachedState state
     pure $ CallReply unit state2
   )
 
 getState :: AggregatorKey -> Effect (PublicState.IngestAggregator List)
 getState aggregatorKey@(AggregatorKey slotId slotRole) = Gen.call (serverName aggregatorKey) getState'
   where
-    getState' state@{streamDetails, persistentState: {localIngests, remoteIngests, relays}, thisServer} =
+    getState' state@{streamDetails, cachedState: {localIngests, remoteIngests, relays}, thisServer} =
       CallReply { role: slotRole
                 , streamDetails
                 , activeProfiles: (\(Tuple profileName server) -> JsonLd.activeIngestLocationNode slotId slotRole profileName (extractAddress server)) <$> allProfiles
@@ -200,8 +200,8 @@ slotConfiguration (AggregatorKey (SlotId slotId) _streamRole) =
 startLink :: AggregatorKey -> StreamDetails -> StateServerName -> Effect StartLinkResult
 startLink aggregatorKey streamDetails stateServerName = Gen.startLink (serverName aggregatorKey) (init streamDetails stateServerName) handleInfo
 
-stopAction :: AggregatorKey -> Maybe PersistentState -> Effect Unit
-stopAction aggregatorKey _persistentState =
+stopAction :: AggregatorKey -> Maybe CachedState -> Effect Unit
+stopAction aggregatorKey _cachedState =
   announceLocalAggregatorStopped aggregatorKey
 
 init :: StreamDetails -> StateServerName -> Effect State
@@ -225,11 +225,11 @@ init streamDetails@{role: slotRole, slot: {id: slotId}} stateServerName = do
                    , streamDetails
                    , workflowHandle: fst workflowHandleAndPids
                    , webRtcStreamServers: snd workflowHandleAndPids
-                   , persistentState: emptyPersistentState
+                   , cachedState: emptyCachedState
                    , stateServerName
                    }
-  persistentState <- fromMaybe emptyPersistentState <$> PersistentInstanceState.getInstanceData stateServerName
-  state2 <- applyPersistentState initialState persistentState
+  cachedState <- fromMaybe emptyCachedState <$> CachedInstanceState.getInstanceData stateServerName
+  state2 <- applyCachedState initialState cachedState
   pure state2
 
   where
@@ -244,14 +244,14 @@ terminate reason state@{workflowHandle, webRtcStreamServers} = do
   _ <- traverse shutdown webRtcStreamServers
   pure unit
 
-emptyPersistentState :: PersistentState
-emptyPersistentState = { localIngests: Set.empty
-                       , remoteIngests: Map.empty
-                       , relays: Set.empty
-                       }
+emptyCachedState :: CachedState
+emptyCachedState = { localIngests: Set.empty
+                   , remoteIngests: Map.empty
+                   , relays: Set.empty
+                   }
 
 hasIngests :: State -> Boolean
-hasIngests {persistentState: {localIngests, remoteIngests}} =
+hasIngests {cachedState: {localIngests, remoteIngests}} =
   not (Set.isEmpty localIngests && Map.isEmpty remoteIngests)
 
 streamDetailsToAggregatorKey :: StreamDetails -> AggregatorKey
@@ -276,18 +276,18 @@ handleInfo msg state@{aggregatorKey, stateServerName} =
       | otherwise -> pure $ CastNoReply state
 
 handleServerReset :: Server -> Maybe Ref -> State -> Effect State
-handleServerReset resetServer newRef state@{persistentState: {remoteIngests}} =
+handleServerReset resetServer newRef state@{cachedState: {remoteIngests}} =
   foldWithIndexM (\profileName innerState (Tuple server ref) ->
                    if server == resetServer && (Just ref) /= newRef then
-                     doRemoveIngest profileName removeRemoteIngestFromPersistentState innerState
+                     doRemoveIngest profileName removeRemoteIngestFromCachedState innerState
                    else
                      pure innerState
                  )
   state
   remoteIngests
 
-applyPersistentState :: State -> PersistentState -> Effect State
-applyPersistentState state {localIngests, remoteIngests, relays} =
+applyCachedState :: State -> CachedState -> Effect State
+applyCachedState state {localIngests, remoteIngests, relays} =
   foldM (\innerState2 profileName -> do
             result <- doAddLocalIngest profileName innerState2
             pure $ case result of
@@ -301,28 +301,28 @@ applyPersistentState state {localIngests, remoteIngests, relays} =
                                      ) innerState remoteIngests)
   >>= (\ innerState -> foldM (flip doRegisterRelay) innerState relays)
 
-addLocalIngestToPersistentState :: ProfileName -> State -> State
-addLocalIngestToPersistentState ingestKey = set (_localIngests <<< (at ingestKey)) (Just unit)
+addLocalIngestToCachedState :: ProfileName -> State -> State
+addLocalIngestToCachedState ingestKey = set (_localIngests <<< (at ingestKey)) (Just unit)
 
-addRemoteIngestToPersistentState :: ProfileName -> Server -> Ref -> State -> State
-addRemoteIngestToPersistentState ingestKey remoteServer ref = set (_remoteIngests <<< (at ingestKey)) (Just (Tuple remoteServer ref))
+addRemoteIngestToCachedState :: ProfileName -> Server -> Ref -> State -> State
+addRemoteIngestToCachedState ingestKey remoteServer ref = set (_remoteIngests <<< (at ingestKey)) (Just (Tuple remoteServer ref))
 
-addRelayToPersistentState :: (DeliverTo RelayServer) -> State -> State
-addRelayToPersistentState payload = set (_relays <<< (at payload)) (Just unit)
+addRelayToCachedState :: (DeliverTo RelayServer) -> State -> State
+addRelayToCachedState payload = set (_relays <<< (at payload)) (Just unit)
 
-removeLocalIngestFromPersistentState :: ProfileName -> State -> State
-removeLocalIngestFromPersistentState profileName = set (_localIngests <<< (at profileName)) Nothing
+removeLocalIngestFromCachedState :: ProfileName -> State -> State
+removeLocalIngestFromCachedState profileName = set (_localIngests <<< (at profileName)) Nothing
 
-removeRemoteIngestFromPersistentState :: ProfileName -> State -> State
-removeRemoteIngestFromPersistentState profileName = set (_remoteIngests <<< (at profileName)) Nothing
+removeRemoteIngestFromCachedState :: ProfileName -> State -> State
+removeRemoteIngestFromCachedState profileName = set (_remoteIngests <<< (at profileName)) Nothing
 
-removeRelayFromPersistentState :: DeliverTo RelayServer -> State -> State
-removeRelayFromPersistentState payload = set (_relays <<< (at payload)) Nothing
+removeRelayFromCachedState :: DeliverTo RelayServer -> State -> State
+removeRelayFromCachedState payload = set (_relays <<< (at payload)) Nothing
 
-updatePersistentState :: State -> Effect Unit
-updatePersistentState state@{ stateServerName
-                            , persistentState} =
-  PersistentInstanceState.recordInstanceData stateServerName persistentState
+updateCachedState :: State -> Effect Unit
+updateCachedState state@{ stateServerName
+                        , cachedState} =
+  CachedInstanceState.recordInstanceData stateServerName cachedState
 
 doAddLocalIngest :: ProfileName -> State -> Effect (Either Unit State)
 doAddLocalIngest profileName state@{thisServer, workflowHandle, slotId, slotRole} =
@@ -332,8 +332,8 @@ doAddLocalIngest profileName state@{thisServer, workflowHandle, slotId, slotRole
     if isInactive then do
       logInfo "Local Ingest added" {slotId, slotRole, profileName}
       let
-        state2 = addLocalIngestToPersistentState profileName state
-      updatePersistentState state2
+        state2 = addLocalIngestToCachedState profileName state
+      updateCachedState state2
       addLocalIngestImpl workflowHandle (IngestKey slotId slotRole profileName)
       pure $ Right state2
     else do
@@ -350,7 +350,7 @@ doAddRemoteIngest profileName remoteServer remoteVmRef state@{slotId, slotRole, 
       if vmRefOk then do
         logInfo "Remote ingest added" {slotId, slotRole, profileName, source: remoteServer}
         let
-          state2 = addRemoteIngestToPersistentState profileName remoteServer remoteVmRef state
+          state2 = addRemoteIngestToCachedState profileName remoteServer remoteVmRef state
           url = makeUrl remoteServer (IngestInstanceLlwpE slotId slotRole profileName)
         addRemoteIngestImpl workflowHandle (IngestKey slotId slotRole profileName) (unwrap url)
         pure $ Right state2
@@ -365,16 +365,16 @@ doRegisterRelay :: (DeliverTo RelayServer) -> State -> Effect State
 doRegisterRelay deliverTo state@{slotId, slotRole} = do
   logInfo "Relay added" {slotId, slotRole, deliverTo}
   let
-    state2 = addRelayToPersistentState deliverTo state
-  updatePersistentState state2
+    state2 = addRelayToCachedState deliverTo state
+  updateCachedState state2
   registerStreamRelayImpl state.workflowHandle (deliverTo.server # unwrap # _.address # unwrap) (deliverTo.port)
   pure state2
 
 doRemoveIngest :: ProfileName -> (ProfileName -> State -> State) -> State -> Effect State
-doRemoveIngest profileName persistentStateRemoveFun state@{aggregatorKey, workflowHandle, config:{shutdownLingerTimeMs}, slotId, slotRole} = do
+doRemoveIngest profileName cachedStateRemoveFun state@{aggregatorKey, workflowHandle, config:{shutdownLingerTimeMs}, slotId, slotRole} = do
   let
-    state2 = persistentStateRemoveFun profileName state
-  updatePersistentState state2
+    state2 = cachedStateRemoveFun profileName state
+  updateCachedState state2
   removeIngestImpl workflowHandle (IngestKey slotId slotRole profileName)
   if not hasIngests state2 then
     void $ Timer.sendAfter (serverName aggregatorKey) shutdownLingerTimeMs MaybeStop
@@ -385,8 +385,8 @@ doRemoveIngest profileName persistentStateRemoveFun state@{aggregatorKey, workfl
 --------------------------------------------------------------------------------
 -- Lenses
 --------------------------------------------------------------------------------
-__persistentState :: forall a r. Lens' { persistentState :: a | r } a
-__persistentState = prop (SProxy :: SProxy "persistentState")
+__cachedState :: forall a r. Lens' { cachedState :: a | r } a
+__cachedState = prop (SProxy :: SProxy "cachedState")
 
 __localIngests :: forall a r. Lens' { localIngests :: a | r } a
 __localIngests = prop (SProxy :: SProxy "localIngests")
@@ -398,13 +398,13 @@ __relays :: forall a r. Lens' { relays :: a | r } a
 __relays = prop (SProxy :: SProxy "relays")
 
 _localIngests :: Lens' State (Set ProfileName)
-_localIngests = __persistentState <<< __localIngests
+_localIngests = __cachedState <<< __localIngests
 
 _remoteIngests :: Lens' State (Map ProfileName (Tuple Server Ref))
-_remoteIngests = __persistentState <<< __remoteIngests
+_remoteIngests = __cachedState <<< __remoteIngests
 
 _relays :: Lens' State (Set (DeliverTo RelayServer))
-_relays = __persistentState <<< __relays
+_relays = __cachedState <<< __relays
 
 --------------------------------------------------------------------------------
 -- Log helpers

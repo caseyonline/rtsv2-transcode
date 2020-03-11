@@ -14,7 +14,7 @@ import Pinto as Pinto
 import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStartTemplate, childType)
 import Pinto.Sup as Sup
 import Rtsv2.Agents.IngestInstance as IngestInstance
-import Rtsv2.Agents.PersistentInstanceState as PersistentInstanceState
+import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Names as Names
 import Shared.LlnwApiTypes (StreamDetails, StreamPublish)
 import Shared.Stream (IngestKey)
@@ -58,5 +58,5 @@ init = do
           : nil
         )
 
-childTemplate :: Pinto.ChildTemplate (PersistentInstanceState.StartArgs IngestInstance.PersistentState)
-childTemplate = Pinto.ChildTemplate (PersistentInstanceState.startLink)
+childTemplate :: Pinto.ChildTemplate (CachedInstanceState.StartArgs IngestInstance.CachedState)
+childTemplate = Pinto.ChildTemplate (CachedInstanceState.startLink)

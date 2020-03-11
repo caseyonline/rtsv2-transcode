@@ -24,7 +24,7 @@ module Rtsv2.Agents.StreamRelayInstance
 
        , payloadToRelayKey
        , domain
-       , PersistentState
+       , CachedState
        , StateServerName
        ) where
 
@@ -56,7 +56,7 @@ import Pinto.Gen as Gen
 import PintoHelper (exposeState)
 import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..))
 import Rtsv2.Agents.IntraPoP as IntraPoP
-import Rtsv2.Agents.PersistentInstanceState as PersistentInstanceState
+import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
 import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload, RegisterEgestPayload, SourceRoute, RegisterRelayPayload)
 import Rtsv2.Agents.TransPoP (PoPRoutes)
@@ -91,9 +91,9 @@ foreign import getSlotConfigurationFFI :: RelayKey -> Effect (Maybe SlotConfigur
 -- -----------------------------------------------------------------------------
 -- Gen Server State
 -- -----------------------------------------------------------------------------
-data PersistentState = Foo String
+data CachedState = Foo String
 
-type StateServerName = PersistentInstanceState.StateServerName PersistentState
+type StateServerName = CachedInstanceState.StateServerName CachedState
 
 data State
   = StateOrigin CommonStateData OriginStreamRelayStateData
@@ -532,8 +532,8 @@ startLink :: RelayKey ->  CreateRelayPayload -> StateServerName -> Effect StartL
 startLink relayKey payload stateServerName =
   Gen.startLink (serverName relayKey) (init relayKey payload stateServerName) handleInfo
 
-stopAction :: RelayKey -> Maybe PersistentState -> Effect Unit
-stopAction relayKey _persistentState =
+stopAction :: RelayKey -> Maybe CachedState -> Effect Unit
+stopAction relayKey _cachedState =
   -- todo
   pure unit
 
@@ -547,7 +547,7 @@ init relayKey payload@{slotId, streamRole, aggregator} stateServerName =
     _ <- Bus.subscribe (serverName relayKey) IntraPoP.bus IntraPoPBus
 
     -- TODO - initialisation from stored state here
-    _ <- fromMaybe (Foo "") <$> PersistentInstanceState.getInstanceData stateServerName
+    _ <- fromMaybe (Foo "") <$> CachedInstanceState.getInstanceData stateServerName
 
     let
       commonStateData =

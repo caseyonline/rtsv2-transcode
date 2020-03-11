@@ -1,4 +1,4 @@
-module Rtsv2.Agents.PersistentInstanceState
+module Rtsv2.Agents.CachedInstanceState
        ( startLink
        , Msg
        , StartArgs
@@ -81,7 +81,7 @@ recordInstanceData serverName instanceData = do
 init :: forall instanceData. (Process Atom) -> StartArgs instanceData -> Effect (State instanceData)
 init caller {serverName, childStartLink, childStopAction, domain} = do
   _ <- Erl.trapExit true
-  logInfo domain "Persistent state starting child" {serverName}
+  logInfo domain "Cached state starting child" {serverName}
   Gen.registerExternalMapping serverName ((map ChildDown) <<< Erl.exitMessageMapper)
   performInitialisation
   pure { instanceData: Nothing

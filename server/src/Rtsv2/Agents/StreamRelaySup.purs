@@ -13,7 +13,7 @@ import Pinto (SupervisorName, isRegistered)
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStartTemplate, childType)
 import Pinto.Sup as Sup
-import Rtsv2.Agents.PersistentInstanceState as PersistentInstanceState
+import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Agents.StreamRelayInstance as StreamRelayInstance
 import Rtsv2.Agents.StreamRelayInstanceSup as StreamRelayInstanceSup
 import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload)
@@ -53,5 +53,5 @@ init = do
           : nil
         )
 
-childTemplate :: Pinto.ChildTemplate (PersistentInstanceState.StartArgs StreamRelayInstance.PersistentState)
-childTemplate = Pinto.ChildTemplate (PersistentInstanceState.startLink)
+childTemplate :: Pinto.ChildTemplate (CachedInstanceState.StartArgs StreamRelayInstance.CachedState)
+childTemplate = Pinto.ChildTemplate (CachedInstanceState.startLink)
