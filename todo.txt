@@ -1,13 +1,8 @@
-[ ] - Pinto stuff - terminate, async init, return stop from init
-[S] - ingest / ingest aggregator monitoring and recovery
-[S] - handle multiple ingest aggregators
-[ ] - test4 - IngestAggregator with a name clash - 2 things running, should be 1
-[S] - test6 - Multiple stream-relay with a name clash - 2 things running, should be 1
-[ ] - add stream_id domain to logs that are pre-stream
-[A] - Pinto Either stuff
+[ ] - Pinto stuff, async init, return stop from init
+[ ] - multiple IngestAggregators for same slot/role
+[ ] - add stream_id domain to logs that are per-stream
 [ ] - intraPoP load messages
 [ ] - transPoP load messages
-[ ] - Lots of gen server calls are not checking return values.  Let It Crash
 [ ] - relay exit management
 [ ] - double check remote status through TransPoP
 [ ] - onFi passthrough from RTMP
@@ -25,6 +20,10 @@
 
 [.] - Clean up / rewrite gproc.purs - is it a direct mapping, or do we want our own API
 
+[x] - Lots of gen server calls are not checking return values.  Let It Crash
+[x] - Pinto Either stuff
+[x] - ingest / ingest aggregator monitoring and recovery
+[x] - Pinto terminate
 [x] - Erl.Cowboy.Req.binding - returns Maybe a - it doesn't know what a is.  Should be Maybe Foreign - superseeded by Duplex support
 [x] - what does /api/state return for aggregators when both primary and backup preset - suspect it needs role in there...
 [x] - When egest shuts down, stream relay crashes with udp error
