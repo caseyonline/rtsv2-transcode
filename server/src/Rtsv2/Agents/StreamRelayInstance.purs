@@ -507,14 +507,22 @@ status :: RelayKey -> Effect (PublicState.StreamRelay List)
 status =
   exposeState mkStatus <<< serverName
   where
-    mkStatus (StateOrigin {relayKey: RelayKey slotId slotRole} originStateData) =
-       { egestsServed : JsonLd.egestServedLocationNode slotId <$> Map.keys originStateData.config.egests
-       , relaysServed : JsonLd.relayServedLocationNode slotId slotRole <$> Map.keys originStateData.config.downstreamRelays
-       }
-    mkStatus (StateDownstream {relayKey: RelayKey slotId slotRole} downstreamStateData) =
-       { egestsServed : JsonLd.egestServedLocationNode slotId <$> Map.keys downstreamStateData.config.egests
-       , relaysServed : JsonLd.relayServedLocationNode slotId slotRole <$> Map.keys downstreamStateData.config.downstreamRelays
-       }
+    mkStatus (StateOrigin {relayKey: RelayKey slotId slotRole, thisServer} originStateData) =
+      JsonLd.streamRelayStateNode slotId publicState thisServer
+      where
+        publicState =
+          { role : slotRole
+          , egestsServed : JsonLd.egestServedLocationNode slotId <$> Map.keys originStateData.config.egests
+          , relaysServed : JsonLd.relayServedLocationNode slotId slotRole <$> Map.keys originStateData.config.downstreamRelays
+          }
+    mkStatus (StateDownstream {relayKey: RelayKey slotId slotRole, thisServer} downstreamStateData) =
+      JsonLd.streamRelayStateNode slotId publicState thisServer
+      where
+        publicState =
+          { role : slotRole
+          , egestsServed : JsonLd.egestServedLocationNode slotId <$> Map.keys downstreamStateData.config.egests
+          , relaysServed : JsonLd.relayServedLocationNode slotId slotRole <$> Map.keys downstreamStateData.config.downstreamRelays
+          }
 
 slotConfiguration :: RelayKey -> Effect (Maybe SlotConfiguration)
 slotConfiguration relayKey =

@@ -180,13 +180,13 @@ getState :: AggregatorKey -> Effect (PublicState.IngestAggregator List)
 getState aggregatorKey@(AggregatorKey slotId slotRole) = Gen.call (serverName aggregatorKey) getState'
   where
     getState' state@{streamDetails, cachedState: {localIngests, remoteIngests, relays}, thisServer} =
-      CallReply { role: slotRole
-                , streamDetails
-                , activeProfiles: (\(Tuple profileName server) -> JsonLd.activeIngestLocationNode slotId slotRole profileName (extractAddress server)) <$> allProfiles
-                , downstreamRelays: foldl (\acc deliverTo -> (JsonLd.downstreamRelayLocationNode slotId slotRole deliverTo) : acc) nil relays
-                }
-      state
+      CallReply (JsonLd.ingestAggregatorStateNode slotId gatherState thisServer) state
       where
+        gatherState = { role: slotRole
+                      , streamDetails
+                      , activeProfiles: (\(Tuple profileName server) -> JsonLd.activeIngestLocationNode slotId slotRole profileName (extractAddress server)) <$> allProfiles
+                      , downstreamRelays: foldl (\acc deliverTo -> (JsonLd.downstreamRelayLocationNode slotId slotRole deliverTo) : acc) nil relays
+                      }
         localProfiles outerAcc = foldl (\acc profileName -> (Tuple profileName thisServer) : acc) outerAcc localIngests
         remoteProfiles outerAcc = foldlWithIndex (\profileName acc (Tuple remoteServer ref) -> (Tuple profileName remoteServer) : acc) outerAcc remoteIngests
         allProfiles = remoteProfiles $ localProfiles nil

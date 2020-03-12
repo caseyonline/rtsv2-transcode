@@ -15,7 +15,7 @@ newtype Milliseconds = Milliseconds Int
 
 -- | Url type
 newtype Url = Url String
-
+derive newtype instance showUrl :: Show Url
 
 ------------------------------------------------------------------------------
 -- Type class derivations

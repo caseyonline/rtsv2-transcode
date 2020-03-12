@@ -211,15 +211,24 @@ contextTypeToString ServerContext = "server"
 contextTypeToString ServerAddressContext = "serverAddress"
 contextTypeToString DeliverToContext = "deliverTo"
 contextTypeToString TimedRouteNeighbourContext = "timedRouteNeighbour"
-contextTypeToString ActiveIngestContext = "activeIngest"
-
+contextTypeToString ActiveIngestLocationContext = "activeIngestLocation"
+contextTypeToString EgestStatsContext = "egestStats"
+contextTypeToString IntraPoPStateContext = "intraPoPState"
+contextTypeToString IngestAggregatorStateContext = "ingestAggregatorState"
+contextTypeToString StreamRelayStateContext = "streamRelayState"
+contextTypeToString IngestStateContext = "ingestState"
 
 parseContextType :: String -> Maybe JsonLdContextType
 parseContextType "server" = Just ServerContext
 parseContextType "serverAddress" = Just ServerAddressContext
 parseContextType "deliverTo" = Just DeliverToContext
 parseContextType "timedRouteNeighbour" = Just TimedRouteNeighbourContext
-parseContextType "activeIngest" = Just ActiveIngestContext
+parseContextType "activeIngestLocation" = Just ActiveIngestLocationContext
+parseContextType "egestStats" = Just EgestStatsContext
+parseContextType "intraPoPState" = Just IntraPoPStateContext
+parseContextType "ingestAggregatorState" = Just IngestAggregatorStateContext
+parseContextType "streamRelayState" = Just StreamRelayStateContext
+parseContextType "ingestState" = Just IngestStateContext
 parseContextType _ = Nothing
 
 -- | SlotId

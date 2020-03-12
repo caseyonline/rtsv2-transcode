@@ -39,7 +39,12 @@ data JsonLdContextType = ServerContext
                        | ServerAddressContext
                        | DeliverToContext
                        | TimedRouteNeighbourContext
-                       | ActiveIngestContext
+                       | ActiveIngestLocationContext
+                       | EgestStatsContext
+                       | IntraPoPStateContext
+                       | IngestAggregatorStateContext
+                       | StreamRelayStateContext
+                       | IngestStateContext
 
 newtype ServerAddress = ServerAddress String
 

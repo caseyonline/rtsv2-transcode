@@ -13,10 +13,11 @@ import Data.Newtype (unwrap)
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
-import Erl.Data.List (List, catMaybes, concat, nil, null, (:))
+import Erl.Data.List (List, catMaybes, concat, nil, nub, null, (:))
 import Logger (spy)
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.IntraPoP as IntraPoPAgent
+import Shared.JsonLd as JsonLd
 import Shared.Router.Endpoint (Endpoint(..), makeUrl, makeUrlAddr)
 import Shared.Stream (AggregatorKey(..), ProfileName, SlotId, SlotRole(..))
 import Shared.Types (Server, ServerAddress, extractAddress)
@@ -44,6 +45,7 @@ slotState :: SlotId -> GetHandler { aggregators :: List IngestAggregatorL
                                   , ingests :: List IngestL
                                   , originRelays :: List StreamRelayL
                                   , downstreamRelays :: List StreamRelayL
+                                  , egests :: List PublicState.Egest
                                   }
 slotState slotId =
   jsonResponse getSlotState
@@ -54,11 +56,12 @@ slotState slotId =
       ingests <- getIngests slotId aggregators
       originRelays <- getOriginRelays slotId aggregators
       downstreamRelays <- getDownstreamRelays slotId originRelays
-
+      egests <- getEgests slotId (originRelays <> downstreamRelays)
       pure $ Just { aggregators
                   , ingests
                   , originRelays
-                  , downstreamRelays
+                  , downstreamRelays: nub downstreamRelays
+                  , egests: nub egests
                   }
 
 getAggregatorServers :: SlotId -> List SlotRole -> Effect (List (Tuple SlotRole Server))
@@ -81,7 +84,7 @@ getIngests slotId aggregators =
                                                  in
                                                     getIngest slotId role profileName serverAddress
                                                 ) activeProfiles
-                                    ) aggregators
+                                    ) (JsonLd.unwrapNode <$> aggregators)
 
 getIngest :: SlotId -> SlotRole -> ProfileName -> ServerAddress -> Effect (Maybe (IngestL))
 getIngest slotId slotRole profileName server = getJson' server (IngestInstanceE slotId slotRole profileName)
@@ -96,14 +99,10 @@ getOriginRelays slotId aggregators =
                                                  in
                                                     getRelay slotId role serverAddress
                                                 ) downstreamRelays
-                                    ) aggregators
+                                    ) (JsonLd.unwrapNode <$> aggregators)
 
 getDownstreamRelays :: SlotId -> List (StreamRelayL) -> Effect (List StreamRelayL)
 getDownstreamRelays slotId upstreamRelays = do
-  getDownstreamRelays' slotId upstreamRelays
-
-getDownstreamRelays' :: SlotId -> List (StreamRelayL) -> Effect (List StreamRelayL)
-getDownstreamRelays' slotId upstreamRelays = do
   downStreamRelays <- catMaybes <$> concat <$> traverse (\{relaysServed} ->
                                                           traverse (\deliverToNode ->
                                                                      let
@@ -111,20 +110,34 @@ getDownstreamRelays' slotId upstreamRelays = do
                                                                      in
                                                                         getRelay slotId Primary serverAddress  -- TODO - StreamRelayL needs role
                                                                     ) relaysServed
-                                                        ) upstreamRelays
+                                                        ) (JsonLd.unwrapNode <$> upstreamRelays)
   if null downStreamRelays then
     pure nil
   else do
-    nextLevel <- getDownstreamRelays' slotId downStreamRelays
+    nextLevel <- getDownstreamRelays slotId downStreamRelays
     pure $ downStreamRelays <> nextLevel
 
 getRelay :: SlotId -> SlotRole -> ServerAddress -> Effect (Maybe (StreamRelayL))
-getRelay slotId slotRole server = getJson' server (RelayStatsE slotId slotRole)
+getRelay slotId slotRole address = getJson' address (RelayStatsE slotId slotRole)
+
+getEgests :: SlotId -> List (StreamRelayL) -> Effect (List PublicState.Egest)
+getEgests slotId relays =
+  catMaybes <$> concat <$> traverse (\{egestsServed} ->
+                                      traverse (\deliverToNode ->
+                                                 let
+                                                   {resource: {address: serverAddress}} = unwrap deliverToNode
+                                                 in
+                                                    getEgest slotId serverAddress
+                                                ) egestsServed
+                                    ) (JsonLd.unwrapNode <$> relays)
+
+getEgest :: SlotId -> ServerAddress -> Effect (Maybe PublicState.Egest)
+getEgest slotId address = getJson' address (EgestStatsE slotId)
 
 getJson :: forall a. ReadForeign a => Server -> Endpoint -> Effect (Maybe a)
 getJson server endpoint =
   hush <$> SpudGun.bodyToJSON <$> SpudGun.getJson (makeUrl server endpoint)
 
 getJson' :: forall a. ReadForeign a => ServerAddress -> Endpoint -> Effect (Maybe a)
-getJson' server endpoint =
-  hush <$> SpudGun.bodyToJSON <$> SpudGun.getJson (makeUrlAddr server endpoint)
+getJson' address endpoint =
+  hush <$> SpudGun.bodyToJSON <$> SpudGun.getJson (makeUrlAddr address endpoint)
