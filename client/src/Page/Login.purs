@@ -16,7 +16,7 @@ import Halogen.HTML as HH
 import Halogen.HTML.Properties as HP
 import Rtsv2App.Api.Request (LoginFields)
 import Rtsv2App.Capability.Navigate (class Navigate, navigate)
-import Rtsv2App.Capability.Resource.Types (NotificationMessage)
+import Rtsv2App.Component.Utils (NotificationMessage)
 import Rtsv2App.Capability.Resource.User (class ManageUser, loginUser)
 import Rtsv2App.Component.HTML.Header as HD
 import Rtsv2App.Component.HTML.Menu.MenuMain as MM

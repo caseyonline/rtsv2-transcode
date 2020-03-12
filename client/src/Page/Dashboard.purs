@@ -24,7 +24,7 @@ import Halogen.HTML.CSS as CSS
 import Halogen.HTML.Properties as HP
 import Rtsv2App.Capability.Navigate (class Navigate)
 import Rtsv2App.Capability.Resource.Api (class ManageApi, getPoPdefinition)
-import Rtsv2App.Capability.Resource.Types (NotificationMessage)
+import Rtsv2App.Component.Utils (NotificationMessage)
 import Rtsv2App.Capability.Resource.User (class ManageUser)
 import Rtsv2App.Component.HTML.Breadcrumb as BG
 import Rtsv2App.Component.HTML.Footer (footer)

@@ -5,7 +5,7 @@ import Prelude
 import Data.Either (Either)
 import Data.Maybe (Maybe)
 import Halogen (HalogenM, lift)
-import Rtsv2App.Capability.Resource.Types (SlotDetailsArgs, PoPAggrSelectedInfo)
+import Rtsv2App.Component.Utils (SlotDetailsArgs, PoPAggrSelectedInfo)
 import Shared.Types (PoPName, ServerAddress)
 import Shared.Types.Agent.State (IntraPoP, PoPDefinition, TimedPoPRoutes, IngestAggregator)
 

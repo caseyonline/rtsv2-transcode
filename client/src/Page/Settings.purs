@@ -18,7 +18,7 @@ import Halogen.HTML.Events as HE
 import Halogen.HTML.Properties as HP
 import Network.RemoteData (RemoteData(..), fromMaybe)
 import Rtsv2App.Capability.Navigate (class Navigate, logout)
-import Rtsv2App.Capability.Resource.Types (Notification, NotificationMessage)
+import Rtsv2App.Component.Utils (Notification, NotificationMessage)
 import Rtsv2App.Capability.Resource.User (class ManageUser, UpdateProfileFields, getCurrentUser, updateUser)
 import Rtsv2App.Component.HTML.Footer (footer)
 import Rtsv2App.Component.HTML.Header as HD

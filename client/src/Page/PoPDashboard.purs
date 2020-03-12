@@ -26,7 +26,7 @@ import Halogen.HTML.Properties as HP
 import Record.Extra (sequenceRecord)
 import Rtsv2App.Capability.Navigate (class Navigate)
 import Rtsv2App.Capability.Resource.Api (class ManageApi, getPoPdefinition, getAggregatorDetails, getTimedRoutes)
-import Rtsv2App.Capability.Resource.Types (NotificationMessage(..))
+import Rtsv2App.Component.Utils (NotificationMessage(..))
 import Rtsv2App.Capability.Resource.User (class ManageUser)
 import Rtsv2App.Component.HTML.Breadcrumb as BG
 import Rtsv2App.Component.HTML.Dropdown as DP

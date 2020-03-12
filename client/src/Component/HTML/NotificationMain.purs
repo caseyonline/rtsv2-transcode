@@ -14,7 +14,7 @@ import Halogen as H
 import Halogen.HTML as HH
 import Halogen.HTML.Events as HE
 import Halogen.HTML.Properties as HP
-import Rtsv2App.Capability.Resource.Types (Notification, NotificationContent, NotificationMessage(..))
+import Rtsv2App.Component.Utils (Notification, NotificationContent, NotificationMessage(..))
 import Rtsv2App.Component.HTML.NotificationDialog (Message(..))
 import Rtsv2App.Component.HTML.NotificationDialog as ND
 import Rtsv2App.Component.HTML.Utils (css_)

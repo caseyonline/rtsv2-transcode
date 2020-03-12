@@ -13,7 +13,7 @@ import Halogen.HTML as HH
 import Halogen.HTML.Events as HE
 import Halogen.HTML.Properties as HP
 import Rtsv2App.Capability.Navigate (class Navigate)
-import Rtsv2App.Capability.Resource.Types (PoPAggrSelectedInfo)
+import Rtsv2App.Component.Utils (PoPAggrSelectedInfo)
 import Rtsv2App.Component.HTML.Utils (css_, dataAttr)
 import Rtsv2App.Env (PoPDefEnv)
 import Shared.LlnwApiTypes (SlotProfile(..))

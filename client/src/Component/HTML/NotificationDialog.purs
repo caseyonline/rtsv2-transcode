@@ -5,16 +5,13 @@ import Prelude
 
 import Data.Const (Const)
 import Data.Maybe (Maybe(..))
-import Data.Newtype (un)
 import Data.Time.Duration (Milliseconds(..))
-import Debug.Trace (traceM)
 import Effect.Aff (delay)
 import Effect.Aff.Class (class MonadAff, liftAff)
 import Halogen as H
 import Halogen.HTML as HH
 import Halogen.HTML.Events as HE
-import Halogen.HTML.Properties as HP
-import Rtsv2App.Capability.Resource.Types (Notification(..), NotificationContent, NotificationMessage, unwrapNotification)
+import Rtsv2App.Component.Utils (Notification(..), NotificationContent, unwrapNotification)
 import Rtsv2App.Component.HTML.Utils (css_)
 
 
@@ -101,16 +98,26 @@ component = H.mkComponent
     ]
 
 toNDialogContent :: Input -> State
-toNDialogContent { notification, index } =
-  case notification of
-    Danger  n -> { message: n.message , cssStyle: "is-danger", index, title: n.title, fadeStyle: FadeInUp, autoClose: n.autoClose }
-    Dark    n -> { message: n.message , cssStyle: "is-dark", index, title: n.title, fadeStyle: FadeInUp, autoClose: n.autoClose }
-    Info    n -> { message: n.message , cssStyle: "is-info", index, title: n.title, fadeStyle: FadeInUp, autoClose: n.autoClose }
-    Light   n -> { message: n.message , cssStyle: "is-light", index, title: n.title, fadeStyle: FadeInUp, autoClose: n.autoClose }
-    Primary n -> { message: n.message , cssStyle: "is-primary", index, title: n.title, fadeStyle: FadeInUp, autoClose: n.autoClose }
-    Success n -> { message: n.message , cssStyle: "is-success", index, title: n.title, fadeStyle: FadeInUp, autoClose: n.autoClose }
-    Warning n -> { message: n.message , cssStyle: "is-warning", index, title: n.title, fadeStyle: FadeInUp, autoClose: n.autoClose }
+toNDialogContent { notification, index } = do
+  let ntf = unwrapNotification notification
+  { message: ntf.message
+  , cssStyle: inputTocssStyle notification
+  , index
+  , title: ntf.title
+  , fadeStyle: FadeInUp
+  , autoClose: ntf.autoClose 
+  }
 
+inputTocssStyle :: Notification NotificationContent -> String
+inputTocssStyle notification = 
+  case notification of
+    Danger  n -> "is-danger"
+    Dark    n -> "is-dark"
+    Info    n -> "is-info"
+    Light   n -> "is-light" 
+    Primary n -> "is-primary"
+    Success n -> "is-success"
+    Warning n -> "is-warning"
 
 whichFadeStyle :: FadeStyle -> String
 whichFadeStyle = case _ of

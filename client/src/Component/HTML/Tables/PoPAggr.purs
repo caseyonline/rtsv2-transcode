@@ -18,7 +18,7 @@ import Halogen.HTML as HH
 import Halogen.HTML.Events as HE
 import Halogen.HTML.Properties as HP
 import Rtsv2App.Capability.Navigate (class Navigate)
-import Rtsv2App.Capability.Resource.Types (Notification(..), NotificationContent, PoPAggrSelectedInfo)
+import Rtsv2App.Component.Utils (Notification(..), NotificationContent, PoPAggrSelectedInfo)
 import Rtsv2App.Component.HTML.Utils (css_, dataAttr)
 import Rtsv2App.Env (PoPDefEnv)
 import Shared.Stream (SlotId(..), SlotRole(..))
