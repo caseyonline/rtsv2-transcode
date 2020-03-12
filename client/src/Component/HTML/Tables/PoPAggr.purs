@@ -131,7 +131,10 @@ component = H.mkComponent
 
     Copy val -> do
       liftEffect $ copyToClipboard val
-      H.raise (NMessage $ Success { message: val })
+      H.raise (NMessage $ Success { message: val
+                                  , autoClose: true
+                                  , title: "Copied to clipboard"
+                                  })
 
   render :: State -> H.ComponentHTML Action () m
   render state =
@@ -257,7 +260,7 @@ tableTRs state =
                   [ dataAttr "label" "Name" ]
                   [ HH.text $ (take 3 $ show $ un SlotId aggrLoc.slotId) <> "..." <> " "
                   , HH.button
-                    [ css_ "button is-small is-dark"
+                    [ css_ "button is-small is-info"
                     , HE.onClick $ const $ Just $ Copy (show $ un SlotId aggrLoc.slotId)
                     ]
                     [ HH.span

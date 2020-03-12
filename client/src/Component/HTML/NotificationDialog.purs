@@ -5,28 +5,40 @@ import Prelude
 
 import Data.Const (Const)
 import Data.Maybe (Maybe(..))
-import Effect.Aff.Class (class MonadAff)
+import Data.Newtype (un)
+import Data.Time.Duration (Milliseconds(..))
+import Debug.Trace (traceM)
+import Effect.Aff (delay)
+import Effect.Aff.Class (class MonadAff, liftAff)
 import Halogen as H
 import Halogen.HTML as HH
 import Halogen.HTML.Events as HE
 import Halogen.HTML.Properties as HP
-import Rtsv2App.Capability.Resource.Types (Notification(..), NotificationMessage, NotificationContent)
+import Rtsv2App.Capability.Resource.Types (Notification(..), NotificationContent, NotificationMessage, unwrapNotification)
 import Rtsv2App.Component.HTML.Utils (css_)
 
 
 data Action
   = CloseDialog Int
   | Receive Input
+  | Initialize
 
 data Message = NDialogMsg Int
 
 type State = NDialogContent
 
 type NDialogContent =
-  { message  :: String
-  , cssStyle :: String
-  , index    :: Int
+  { message   :: String
+  , cssStyle  :: String
+  , index     :: Int
+  , title     :: String
+  , fadeStyle :: FadeStyle
+  , autoClose :: Boolean
   }
+
+data FadeStyle
+  = FadeInUp
+  | FadeOut
 
 type Input =
   { notification :: Notification NotificationContent
@@ -34,6 +46,7 @@ type Input =
   }
   
 type Slot = H.Slot (Const Void) Message
+
 
 component
   :: forall m
@@ -45,44 +58,66 @@ component = H.mkComponent
   , eval: H.mkEval $ H.defaultEval
       { handleAction = handleAction
       , receive = Just <<< Receive
+      , initialize = Just Initialize
       }
   }
   where
   initialState :: Input -> State
-  initialState notification = toNDialogContent notification
+  initialState notification = do
+    toNDialogContent notification
 
   handleAction :: Action -> H.HalogenM State Action () Message m Unit
   handleAction = case _ of
-    Receive notification -> H.put $ toNDialogContent notification      
+    Initialize -> do
+      st <- H.get
+      case st.autoClose of
+        true  -> do
+          _ <- liftAff $ delay $ Milliseconds 2000.0
+          handleAction $ CloseDialog st.index
+
+        false -> pure unit
+
+    Receive notification -> do
+      H.put $ toNDialogContent notification
+      handleAction $ Initialize
 
     CloseDialog index -> H.raise $ NDialogMsg index
 
-  render state@{ message, cssStyle, index } =
-    HH.div
-    [ css_ $ "snackbar is-bottom-right fadeIn " <> cssStyle ]
+  render state@{ message, cssStyle, index, title, fadeStyle, autoClose } =
+    HH.article
+    [ css_ $ "snackbar message is-bottom-right is-small" <> " " <> cssStyle <> " " <> (whichFadeStyle fadeStyle) ]
     [ HH.div
-      [ css_ "text" ]
-      [ HH.text message ]
-    , HH.div
-      [ css_ $ "action " <> cssStyle ]
-      [ HH.button
-        [ css_ "button"
+      [ css_ "message-header" ]
+      [ HH.text title
+      , HH.button
+        [ css_ "delete"
         , HE.onClick $ const $ Just $ CloseDialog index
         ]
-        [ HH.text "OK" ]
+        []
       ]
+    , HH.div
+      [ css_ $ "message-body" ]
+      [ HH.text message ]
     ]
 
 toNDialogContent :: Input -> State
 toNDialogContent { notification, index } =
   case notification of
-    Danger  n -> { message: n.message , cssStyle: "is-danger", index }
-    Dark    n -> { message: n.message , cssStyle: "is-dark", index }
-    Info    n -> { message: n.message , cssStyle: "is-info", index }
-    Light   n -> { message: n.message , cssStyle: "is-light", index }
-    Primary n -> { message: n.message , cssStyle: "is-primary", index }
-    Success n -> { message: n.message , cssStyle: "is-success", index }
-    Warning n -> { message: n.message , cssStyle: "is-warning", index }
+    Danger  n -> { message: n.message , cssStyle: "is-danger", index, title: n.title, fadeStyle: FadeInUp, autoClose: n.autoClose }
+    Dark    n -> { message: n.message , cssStyle: "is-dark", index, title: n.title, fadeStyle: FadeInUp, autoClose: n.autoClose }
+    Info    n -> { message: n.message , cssStyle: "is-info", index, title: n.title, fadeStyle: FadeInUp, autoClose: n.autoClose }
+    Light   n -> { message: n.message , cssStyle: "is-light", index, title: n.title, fadeStyle: FadeInUp, autoClose: n.autoClose }
+    Primary n -> { message: n.message , cssStyle: "is-primary", index, title: n.title, fadeStyle: FadeInUp, autoClose: n.autoClose }
+    Success n -> { message: n.message , cssStyle: "is-success", index, title: n.title, fadeStyle: FadeInUp, autoClose: n.autoClose }
+    Warning n -> { message: n.message , cssStyle: "is-warning", index, title: n.title, fadeStyle: FadeInUp, autoClose: n.autoClose }
+
+
+whichFadeStyle :: FadeStyle -> String
+whichFadeStyle = case _ of
+  FadeInUp -> "fadeInUp"
+  FadeOut  -> "fadeOut"
+
+
 
 -- <div class="notices is-bottom">
 --   <div role="alertdialog" class="snackbar is-success is-bottom-right fadeOut v-leave-to" style="">

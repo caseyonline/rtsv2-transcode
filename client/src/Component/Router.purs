@@ -158,7 +158,7 @@ component = Connect.component $ H.mkComponent
             HH.slot (SProxy :: _ "settings") unit Settings.component { currentUser } (Just <<< UpdateNotifications)
               # authorize currentUser
       , HH.div
-        [ css_ "notifications is-bottom" ]
+        [ css_ "notices is-bottom" ]
         [ HH.slot
             (SProxy :: _ "notifications")
             unit NotificationMain.component { notifications }

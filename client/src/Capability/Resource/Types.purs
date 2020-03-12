@@ -4,6 +4,7 @@ module Rtsv2App.Capability.Resource.Types
        , Notification(..)
        , NotificationContent
        , NotificationMessage(..)
+       , unwrapNotification
        )
        where
 
@@ -27,7 +28,10 @@ type PoPAggrSelectedInfo =
     }
 
 type NotificationContent =
-  { message :: String }
+  { message   :: String
+  , title     :: String
+  , autoClose :: Boolean
+  }
 
 data NotificationMessage =
     NMessages (Array (Notification NotificationContent))
@@ -41,3 +45,15 @@ data Notification n =
   | Primary n
   | Success n
   | Warning n
+
+
+unwrapNotification :: forall a. Notification a -> a
+unwrapNotification notification =
+  case notification of
+    Danger  n -> n
+    Dark    n -> n
+    Info    n -> n
+    Light   n -> n
+    Primary n -> n
+    Success n -> n
+    Warning n -> n
