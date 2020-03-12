@@ -20,7 +20,7 @@ import Control.Monad.Reader.Trans (class MonadAsk)
 import Data.Array (catMaybes, concat, findMap, index, length, mapMaybe, nub, nubBy)
 import Data.Either (hush)
 import Data.Maybe (Maybe(..), fromMaybe)
-import Data.Newtype (overF, un, wrap)
+import Data.Newtype (un)
 import Data.Traversable (traverse)
 import Effect (Effect)
 import Effect.Aff.Class (class MonadAff)
@@ -106,12 +106,18 @@ getPoPLeaderAddress popLeaders popName =
                               if (pl.pop == pName) then Just pl.address else Nothing) popLeaders
 
 toPoPleaders :: Array (Maybe (IntraPoP Array)) -> Array Server
-toPoPleaders = mapMaybe (_ >>= (\{currentTransPoPLeader} -> JsonLd.unwrapNode <$> currentTransPoPLeader))
+toPoPleaders = mapMaybe (_ >>= (\intra -> do
+                                   let i = JsonLd.unwrapNode intra
+                                   JsonLd.unwrapNode <$> i.currentTransPoPLeader))
+
+  -- mapMaybe (_ >>= (\{currentTransPoPLeader} -> JsonLd.unwrapNode <$> currentTransPoPLeader))
 
 toAggregators :: (Array (Maybe (IntraPoP Array))) -> Array (AggregatorLocation Array)
 toAggregators mIntraPoPs =
   nub $ catMaybes mIntraPoPs
-  >>= map toAggr <<< _.aggregatorLocations
+  >>= (\intra -> do
+          let { aggregatorLocations } = JsonLd.unwrapNode intra
+          map toAggr aggregatorLocations)
   where
     toAggr = \{slotId, role, servers} ->
       { slotId

@@ -13,7 +13,6 @@ import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Newtype (un)
 import Data.Symbol (SProxy(..))
 import Data.Traversable (traverse_)
-import Debug.Trace (traceM)
 import Effect.Aff.Class (class MonadAff)
 import Effect.Class (class MonadEffect, liftEffect)
 import Effect.Ref as Ref
