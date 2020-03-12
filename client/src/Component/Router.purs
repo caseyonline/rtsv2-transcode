@@ -135,7 +135,9 @@ component = Connect.component $ H.mkComponent
     Just _ ->
       html
 
-  -- connecting the routes to the components
+-------------------------------------------------------------------------------
+-- Render - connecting the routes to the components
+-------------------------------------------------------------------------------
   render :: State -> H.ComponentHTML Action ChildSlots m
   render { route, currentUser, prevRoute, notifications } = case route of
     Just r -> 
