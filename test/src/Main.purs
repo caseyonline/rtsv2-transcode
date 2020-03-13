@@ -2,7 +2,7 @@ module Main where
 
 import Prelude
 
-import Data.Array (catMaybes, delete, filter, intercalate, length, sort)
+import Data.Array (catMaybes, delete, filter, intercalate, length, sort, sortBy, head)
 import Data.Array as Array
 import Data.Bifunctor (lmap)
 import Data.Either (Either(..), fromRight)
@@ -15,6 +15,7 @@ import Data.Maybe (Maybe(..), isNothing, fromMaybe, fromMaybe')
 import Data.Newtype (class Newtype, un, wrap, unwrap)
 import Data.Time.Duration (Milliseconds(..))
 import Data.Traversable (traverse, traverse_)
+import Data.These
 import Data.Tuple (Tuple(..))
 import Debug.Trace (spy)
 import Effect (Effect)
@@ -30,8 +31,9 @@ import OsCmd (runProc)
 import Partial.Unsafe (unsafePartial)
 import Prim.Row (class Union)
 import Shared.Chaos as Chaos
-import Shared.Stream (ProfileName(..), SlotRole(..), SlotNameAndProfileName(..))
-import Shared.Router.Endpoint (Endpoint(..), makeUrl, Canary(..))
+import Shared.Stream (ProfileName(..), SlotId, SlotRole(..), SlotNameAndProfileName(..))
+import Shared.Router.Endpoint (Endpoint(..), makeUrl, makeUrlAddr, Canary(..))
+import Shared.Common (Url)
 import Shared.Types (ServerAddress(..), extractAddress)
 import Shared.Types.Agent.State as PublicState
 import Shared.Utils (lazyCrashIfMissing)
@@ -42,7 +44,15 @@ import Simple.JSON as SimpleJSON
 import Test.Spec (after_, before_, describe, describeOnly, it, itOnly)
 import Test.Spec.Reporter.Console (consoleReporter)
 import Test.Spec.Runner (runSpecT)
-
+import Text.Parsing.Parser
+import URI as URI
+import URI.HierarchicalPart (HierarchicalPart(..))
+import URI.Authority (Authority(..))
+import URI.HostPortPair as HostPortPair
+import URI.Path (Path(..))
+import URI.Host as URIHost
+import URI.HostPortPair as URIHostPortPair
+import URI.URI as URIParser
 import Control.Monad.State
 import Control.Monad.State.Class
 
@@ -184,6 +194,12 @@ main =
     ingestName slotId role streamName = Chaos.Gproc (Chaos.GprocTuple2 (Chaos.String "Ingest") (Chaos.GprocTuple4 (Chaos.Atom "ingestKey") (Chaos.SlotId slotId) (Chaos.SlotRole role) (Chaos.String streamName)))
 
     killProcess node chaos           = fetch (M.URL $ makeUrl' node (Chaos))
+                                         { method: M.postMethod
+                                         , body: SimpleJSON.writeJSON (chaos :: Chaos.ChaosPayload)
+                                         , headers: M.makeHeaders { "Content-Type": "application/json" }
+                                         }
+
+    killProcess' addr chaos          = fetch (M.URL $ unwrap $ makeUrlAddr addr (Chaos))
                                          { method: M.postMethod
                                          , body: SimpleJSON.writeJSON (chaos :: Chaos.ChaosPayload)
                                          , headers: M.makeHeaders { "Content-Type": "application/json" }
@@ -832,12 +848,16 @@ main =
             itOnly "Launch ingest and egest, kill origin relay, assert replaced relay still has egest and origin" do
               (flip evalStateT) Map.empty $ do
                 lift $ ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200  >>= as  "create ingest"
-                lift $ waitForAsyncProfileStart                                      >>= as' "wait for async start of profile"
+                lift $ waitForAsyncProfileStart                                      >>= as' "wait for async start of ingest"
                 lift $ clientStart p2n1 slot1              >>= assertStatusCode 204  >>= as  "egest available"
-                lift $ waitForAsyncProfileStart                                      >>= as' "wait for async start of profile"
-                (lift $ slotState p1n1 slot1               >>= (bodyToRecord :: ToRecord (PublicState.SlotState Array)))
+                lift $ waitForAsyncProfileStart                                      >>= as' "wait for async start of egest"
+                (lift $ slotState p1n1 slot1               >>= (bodyToRecord :: ToRecord (PublicState.SlotState Array))
+                                                           <#> ((<$>) canonicaliseSlotState))
                                                            >>= storeSlotState        >>= as'' "stored state"
-                (lift $ slotState p1n1 slot1               >>= (bodyToRecord :: ToRecord (PublicState.SlotState Array)))
+                killOriginRelay slot1 Primary
+                lift $ waitForAsyncProfileStart                                      >>= as' "wait for recovery"
+                (lift $ slotState p1n1 slot1               >>= (bodyToRecord :: ToRecord (PublicState.SlotState Array))
+                                                           <#> ((<$>) canonicaliseSlotState))
                                                            >>= compareSlotState     >>= as'' "compare state"
 
     describe "Cleanup" do
@@ -859,7 +879,75 @@ compareSlotState either@(Right slotState) = do
   currentSlotState <- gets (Map.lookup "slotState")
   if
     Just slotState == currentSlotState then pure either
-    else pure $ Left "does not match"
+  else
+    let
+      _ = spy "lhs" currentSlotState
+      _ = spy "rhs" slotState
+    in
+      pure $ Left "does not match"
+
+killOriginRelay :: forall s. SlotId -> SlotRole -> StateT (Map.Map String (PublicState.SlotState Array)) Aff Unit
+killOriginRelay slotId slotRole = do
+  mCurrentSlotState <- gets (Map.lookup "slotState")
+  case mCurrentSlotState of
+    Nothing ->
+      lift $ throwSlowError $ "No slot state"
+    Just {originRelays} ->
+      case head originRelays of
+        Just (JsonLd.Node {"@id": Just id}) ->
+          let
+            mServerAddress = urlToServerAddress id
+          in
+            case mServerAddress of
+              Just serverAddress -> do
+                _ <- lift $ killProcess' serverAddress (Chaos.defaultKill $ relayName slotId slotRole)
+                pure unit
+              Nothing ->
+                lift $ throwSlowError $ "Failed to parse URL"
+        _ ->
+          lift $ throwSlowError $ "No origin relays state or missing id"
+
+killProcess' :: ServerAddress -> Chaos.ChaosPayload -> Aff (Either String ResponseWithBody)
+killProcess' addr chaos =
+  fetch (M.URL $ unwrap $ makeUrlAddr addr (Chaos))
+               { method: M.postMethod
+               , body: SimpleJSON.writeJSON (chaos :: Chaos.ChaosPayload)
+               , headers: M.makeHeaders { "Content-Type": "application/json" }
+               }
+
+relayName slotId role = Chaos.Gproc (Chaos.GprocTuple2 (Chaos.String "StreamRelay") (Chaos.GprocTuple3 (Chaos.Atom "relayKey") (Chaos.SlotId slotId) (Chaos.SlotRole role)))
+
+urlToServerAddress :: Url -> Maybe ServerAddress
+urlToServerAddress url =
+  let
+    parseOptions = { parseUserInfo: pure
+                   , parseHosts: HostPortPair.parser pure pure
+                   , parsePath: pure
+                   , parseHierPath: pure
+                   , parseQuery: pure
+                   , parseFragment: pure
+                   }
+  in
+    case runParser (unwrap url) (URIParser.parser parseOptions) of
+      Right (URI.URI scheme (HierarchicalPartAuth (Authority _userInfo (Just (Both host _port))) _path) _query _fragment) ->
+        Just $ ServerAddress $ URIHost.print host
+      _ ->
+       Nothing
+
+canonicaliseSlotState :: PublicState.SlotState Array -> PublicState.SlotState Array
+canonicaliseSlotState { aggregators
+                      , ingests
+                      , originRelays
+                      , downstreamRelays
+                      , egests } =
+  { aggregators: sortBy byId aggregators
+  , ingests: sortBy byId ingests
+  , originRelays: sortBy byId originRelays
+  , downstreamRelays: sortBy byId downstreamRelays
+  , egests: sortBy byId egests }
+  where
+    byId :: forall a b. JsonLd.Node a b -> JsonLd.Node a b-> Ordering
+    byId (JsonLd.Node {"@id": lhs}) (JsonLd.Node {"@id": rhs}) = compare lhs rhs
 
 storeHeader :: String -> String -> Either String ResponseWithBody -> StateT (Map.Map String String) Aff (Either String ResponseWithBody)
 storeHeader header key either@(Left _) = pure either

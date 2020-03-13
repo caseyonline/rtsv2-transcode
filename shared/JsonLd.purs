@@ -4,7 +4,10 @@ module Shared.JsonLd
        , ContextDefinition(..)
        , ContextValue(..)
        , ExpandedTermDefinition
-       , Node
+       , Node(..)
+       , NodeMetadata
+       , NodeMetadata'
+       , NodeMetadata''
        , unwrapNode
        ) where
 

@@ -87,7 +87,7 @@ import Prelude
 import Data.Maybe (Maybe(..))
 import Data.Newtype (wrap)
 import Shared.Common (Milliseconds(..))
-import Shared.JsonLd (Context, ContextValue(..), ExpandedTermDefinition, Node, unwrapNode) as JsonLd
+import Shared.JsonLd (Context, ContextValue(..), ExpandedTermDefinition, Node(..), unwrapNode) as JsonLd
 import Shared.JsonLd (ContextDefinition(..))
 import Shared.LlnwApiTypes (StreamDetails)
 import Shared.Router.Endpoint (Endpoint(..), makePath, makeUrl, makeUrlAddr)
