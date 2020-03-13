@@ -18,8 +18,8 @@ import Halogen.HTML as HH
 import Halogen.HTML.Events as HE
 import Halogen.HTML.Properties as HP
 import Rtsv2App.Capability.Navigate (class Navigate)
-import Rtsv2App.Component.Utils (Notification(..), NotificationContent, PoPAggrSelectedInfo)
 import Rtsv2App.Component.HTML.Utils (css_, dataAttr)
+import Rtsv2App.Component.Utils (Notification(..), NotificationContent, NotificationMessage(..), PoPAggrSelectedInfo)
 import Rtsv2App.Env (PoPDefEnv)
 import Shared.Stream (SlotId(..), SlotRole(..))
 import Shared.Types (PoPName(..), RegionName(..), Server(..), ServerAddress(..))
@@ -39,7 +39,7 @@ type Slot = H.Slot (Const Void) Message
 
 data Message
   = PoPAggrMsg PoPAggrSelectedInfo
-  | NMessage (Notification NotificationContent)
+  | CopyMsg NotificationMessage
   | RefreshAggr
 
 data Action
@@ -131,7 +131,7 @@ component = H.mkComponent
 
     Copy val -> do
       liftEffect $ copyToClipboard val
-      H.raise (NMessage $ Success { message: val
+      H.raise (CopyMsg $ NSingleMessage $ SuccessN { message: val
                                   , autoClose: true
                                   , title: "Copied to clipboard"
                                   })

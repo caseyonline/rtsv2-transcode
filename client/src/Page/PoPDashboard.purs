@@ -25,7 +25,6 @@ import Halogen.HTML.Properties as HP
 import Record.Extra (sequenceRecord)
 import Rtsv2App.Capability.Navigate (class Navigate)
 import Rtsv2App.Capability.Resource.Api (class ManageApi, getPoPdefinition, getAggregatorDetails, getTimedRoutes)
-import Rtsv2App.Component.Utils (NotificationMessage(..))
 import Rtsv2App.Capability.Resource.User (class ManageUser)
 import Rtsv2App.Component.HTML.Breadcrumb as BG
 import Rtsv2App.Component.HTML.Dropdown as DP
@@ -37,6 +36,7 @@ import Rtsv2App.Component.HTML.Tables.PoPAggr (Message(..))
 import Rtsv2App.Component.HTML.Tables.PoPAggr as PA
 import Rtsv2App.Component.HTML.Tables.PoPAggrDetails as PAD
 import Rtsv2App.Component.HTML.Utils (css_)
+import Rtsv2App.Component.Utils (Notification(..), NotificationMessage(..))
 import Rtsv2App.Data.PoP (PoPDefEcharts, timedRoutedToChartOps, timedRoutedToChartScatter, updatePoPDefEnv)
 import Rtsv2App.Data.Profile (Profile)
 import Rtsv2App.Data.Route (Route(..))
@@ -57,6 +57,7 @@ data Action
   = Initialize
   | HandlePoPSlotAggrTable PA.Message
   | HandlePoPAggrDetails PAD.Message
+  | HandleNotificationError NotificationMessage
   | Receive Input
 
 type State =
@@ -163,9 +164,12 @@ component = H.mkComponent
         H.put $ initialState { popName, prevRoute }
         handleAction Initialize
 
-    HandlePoPSlotAggrTable (NMessage notification) -> do
-      H.raise ( NSingleMessage notification )
-    
+    HandlePoPSlotAggrTable (CopyMsg notification) -> do
+      H.raise notification
+
+    HandleNotificationError notification ->
+      H.raise notification
+
     HandlePoPSlotAggrTable (PA.RefreshAggr) -> do
       H.modify_ _ { selectedAggrIndex = Nothing }
       handleAction Initialize
@@ -195,9 +199,13 @@ component = H.mkComponent
               let slotRole = fromMaybe Primary (_.role <$> st.aggrLocs !! selectedAggrIndex)
 
               -- fetch aggregator details
-              mSlotDetails <- hush <$> getAggregatorDetails { slotId: selectedSlotId , slotRole, serverAddress: selectedAddress }
-              -- update local state with result
-              H.modify_ _ { slotDetails = mSlotDetails}
+              mSlotDetails <- getAggregatorDetails { slotId: selectedSlotId , slotRole, serverAddress: selectedAddress }
+              case mSlotDetails of
+                Left e    -> handleAction $ HandleNotificationError $ NSingleMessage $ WarningN { message: e
+                                  , autoClose: false
+                                  , title: "Warning"
+                                  }
+                Right msd -> H.modify_ _ { slotDetails = Just msd}
 
               -- fetch timedroute
               maybeTimedRoutes <- getTimedRoutes selectedInfo st.curPopName

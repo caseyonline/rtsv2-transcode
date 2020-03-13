@@ -52,13 +52,13 @@ data NotificationMessage =
   | NSingleMessage (Notification NotificationContent)
 
 data Notification n =
-    Danger n
-  | Dark n
-  | Info n
-  | Light n
-  | Primary n
-  | Success n
-  | Warning n
+    DangerN n
+  | DarkN n
+  | InfoN n
+  | LightN n
+  | PrimaryN n
+  | SuccessN n
+  | WarningN n
 
 
 -------------------------------------------------------------------------------
@@ -67,13 +67,13 @@ data Notification n =
 unwrapNotification :: forall a. Notification a -> a
 unwrapNotification notification =
   case notification of
-    Danger  n -> n
-    Dark    n -> n
-    Info    n -> n
-    Light   n -> n
-    Primary n -> n
-    Success n -> n
-    Warning n -> n
+    DangerN  n -> n
+    DarkN    n -> n
+    InfoN    n -> n
+    LightN   n -> n
+    PrimaryN n -> n
+    SuccessN n -> n
+    WarningN n -> n
 
 busEventSource :: forall m r act. MonadAff m => Bus.BusR' r act -> ES.EventSource m act
 busEventSource bus =

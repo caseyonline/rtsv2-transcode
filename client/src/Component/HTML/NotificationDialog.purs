@@ -41,7 +41,7 @@ type Input =
   { notification :: Notification NotificationContent
   , index :: Int
   }
-  
+
 type Slot = H.Slot (Const Void) Message
 
 
@@ -94,7 +94,9 @@ component = H.mkComponent
       ]
     , HH.div
       [ css_ $ "message-body" ]
-      [ HH.text message ]
+      [ HH.p_
+        [ HH.text message ]
+      ]
     ]
 
 toNDialogContent :: Input -> State
@@ -105,19 +107,19 @@ toNDialogContent { notification, index } = do
   , index
   , title: ntf.title
   , fadeStyle: FadeInUp
-  , autoClose: ntf.autoClose 
+  , autoClose: ntf.autoClose
   }
 
 inputTocssStyle :: Notification NotificationContent -> String
-inputTocssStyle notification = 
+inputTocssStyle notification =
   case notification of
-    Danger  n -> "is-danger"
-    Dark    n -> "is-dark"
-    Info    n -> "is-info"
-    Light   n -> "is-light" 
-    Primary n -> "is-primary"
-    Success n -> "is-success"
-    Warning n -> "is-warning"
+    DangerN  n -> "is-danger"
+    DarkN    n -> "is-dark"
+    InfoN    n -> "is-info"
+    LightN   n -> "is-light"
+    PrimaryN n -> "is-primary"
+    SuccessN n -> "is-success"
+    WarningN n -> "is-warning"
 
 whichFadeStyle :: FadeStyle -> String
 whichFadeStyle = case _ of
@@ -128,7 +130,7 @@ whichFadeStyle = case _ of
 
 -- <div class="notices is-bottom">
 --   <div role="alertdialog" class="snackbar is-success is-bottom-right fadeOut v-leave-to" style="">
---     <div class="text">Got click</div> 
+--     <div class="text">Got click</div>
 --     <div class="action is-success">
 --       <button class="button">OK</button>
 --     </div>

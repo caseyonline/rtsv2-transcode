@@ -4001,6 +4001,7 @@ a.list-item {
 .message {
   background-color: whitesmoke;
   border-radius: 4px;
+  white-space: pre-line;
   font-size: 1rem; }
   .message strong {
     color: currentColor; }
