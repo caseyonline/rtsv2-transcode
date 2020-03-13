@@ -5,6 +5,7 @@ import Prelude
 import Control.Monad.Reader.Trans (class MonadAsk, ReaderT, ask, asks, runReaderT)
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
+import Debug.Trace (traceM)
 import Effect.Aff (Aff)
 import Effect.Aff.Bus as Bus
 import Effect.Aff.Class (class MonadAff, liftAff)
@@ -96,10 +97,13 @@ instance manageUserAppM :: ManageUser AppM where
 
   getCurrentUser = do
     response <- mkAuthRequest { endpoint: UserE, method: Get }
-    case JSON.readJSON response of
+    case response of
       Left e -> pure Nothing
-      Right (res :: ProfileEmailRes) -> do
-        pure $ Just res.user
+      Right res ->
+        case JSON.readJSON res of
+          Left e -> pure Nothing
+          Right (r :: ProfileEmailRes) -> do
+            pure $ Just r.user
 
   updateUser fields =
     void $ mkAuthRequest { endpoint: UserE, method: Put (Just (JSON.writeJSON fields)) }
@@ -112,32 +116,43 @@ instance manageAPIAppM :: ManageApi AppM where
       Nothing -> pure $ Left "SPoPInfo not present"
       Just s@{ selectedSlotId, selectedAddress } -> do
         response <- mkOriginRequest selectedAddress { endpoint: TimedRoutesForPoPE curPopName, method: Get }
-        case JSON.readJSON response of
-          Left e -> pure $ Left $ show e
-          Right (res :: (TimedPoPRoutes Array)) -> do
-            pure $ Right res
+        case response of
+          Left e -> pure $ Left e
+          Right res ->
+            case JSON.readJSON res of
+              Left e -> pure $ Left $ show e
+              Right (r :: (TimedPoPRoutes Array)) -> do
+                pure $ Right r
 
   getAggregatorDetails { slotId, slotRole, serverAddress } = do
     response <- mkOriginRequest serverAddress { endpoint: IngestAggregatorE slotId slotRole, method: Get }
-    case JSON.readJSON response of
-      Left e -> pure $ Left $ show e
-      Right (res :: (IngestAggregator Array)) -> do
-        pure $ Right res
+    case response of
+          Left e -> pure $ Left e
+          Right res ->
+            case JSON.readJSON res of
+              Left e -> pure $ Left $ res
+              Right (r :: (IngestAggregator Array)) -> do
+                pure $ Right r
 
   getPoPdefinition = do
     response <- mkRequest { endpoint: PoPDefinitionE, method: Get }
-    case JSON.readJSON response of
-      Left e -> pure $ Left $ show e
-      Right (res :: PoPDefinition Array) -> do
-        pure $ Right res
+    case response of
+          Left e -> pure $ Left e
+          Right res ->
+            case JSON.readJSON res of
+              Left e -> pure $ Left $ show e
+              Right (r :: PoPDefinition Array) -> do
+                pure $ Right r
 
   getServerState serverAddress = do
     case serverAddress of
       Nothing -> pure $ Left "No server address given"
       Just sa -> do
         response <- mkOriginRequest sa { endpoint: ServerStateE, method: Get }
-
-        case JSON.readJSON response of
-          Left e -> pure $ Left $ show e
-          Right (res :: IntraPoP Array) -> do
-            pure $ Right res
+        case response of
+          Left e -> pure $ Left e
+          Right res ->
+            case JSON.readJSON res of
+              Left e -> pure $ Left $ show e
+              Right (r :: IntraPoP Array) -> do
+                pure $ Right r

@@ -13,7 +13,6 @@ import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Newtype (un)
 import Data.Symbol (SProxy(..))
 import Data.Traversable (traverse_)
-import Debug.Trace (traceM)
 import Effect.Aff.Class (class MonadAff)
 import Effect.Class (class MonadEffect, liftEffect)
 import Effect.Ref as Ref
@@ -31,17 +30,20 @@ import Rtsv2App.Component.HTML.Breadcrumb as BG
 import Rtsv2App.Component.HTML.Dropdown as DP
 import Rtsv2App.Component.HTML.Footer (footer)
 import Rtsv2App.Component.HTML.Header as HD
-import Rtsv2App.Component.HTML.MainSecondary as MS
-import Rtsv2App.Component.HTML.MenuMain as MM
-import Rtsv2App.Component.HTML.PoPAggregator as PA
+import Rtsv2App.Component.HTML.Menu.MainSecondary as MS
+import Rtsv2App.Component.HTML.Menu.MenuMain as MM
+import Rtsv2App.Component.HTML.Tables.PoPAggr (Message(..))
+import Rtsv2App.Component.HTML.Tables.PoPAggr as PA
+import Rtsv2App.Component.HTML.Tables.PoPAggrDetails as PAD
 import Rtsv2App.Component.HTML.Utils (css_)
+import Rtsv2App.Component.Utils (Notification(..), NotificationMessage(..))
 import Rtsv2App.Data.PoP (PoPDefEcharts, timedRoutedToChartOps, timedRoutedToChartScatter, updatePoPDefEnv)
 import Rtsv2App.Data.Profile (Profile)
 import Rtsv2App.Data.Route (Route(..))
 import Rtsv2App.Env (PoPDefEnv, UrlEnv, UserEnv, changeHtmlClass)
 import Shared.Stream (SlotRole(..))
 import Shared.Types (PoPName(..), Server)
-import Shared.Types.Agent.State (AggregatorLocation, PoPDefinition, TimedPoPRoutes, IngestAggregator)
+import Shared.Types.Agent.State (AggregatorLocation, IngestAggregator, PoPDefinition)
 
 -------------------------------------------------------------------------------
 -- Types for Dashboard Page
@@ -54,31 +56,31 @@ type Input =
 data Action
   = Initialize
   | HandlePoPSlotAggrTable PA.Message
+  | HandlePoPAggrDetails PAD.Message
+  | HandleNotificationError NotificationMessage
   | Receive Input
 
-
-
 type State =
-  { aggrLocs        :: Array (AggregatorLocation Array)
-  , chart           :: Maybe EC.Instance
-  , currentUser     :: Maybe Profile
-  , popDefEcharts   :: Array PoPDefEcharts
-  , popDefenition   :: Maybe (PoPDefinition Array)
-  , popLeaders      :: Array Server
-  , curPopName      :: PoPName
-  , selectedAggrIndex    :: Maybe Int
-  , selectedPoPName :: Maybe PoPName
-  , prevRoute       :: Maybe Route
-  , timedRoutes     :: Maybe (Array (TimedPoPRoutes Array))
-  , slotDetails     :: Maybe (IngestAggregator Array)
+  { aggrLocs          :: Array (AggregatorLocation Array)
+  , chart             :: Maybe EC.Instance
+  , currentUser       :: Maybe Profile
+  , popDefEcharts     :: Array PoPDefEcharts
+  , popDefenition     :: Maybe (PoPDefinition Array)
+  , popLeaders        :: Array Server
+  , curPopName        :: PoPName
+  , selectedAggrIndex :: Maybe Int
+  , selectedPoPName   :: Maybe PoPName
+  , prevRoute         :: Maybe Route
+  , slotDetails       :: Maybe (IngestAggregator Array)
   }
 
 type ChildSlots =
-  ( mainMenu        :: MM.Slot Unit
-  , header          :: HD.Slot Unit
-  , dropDown        :: DP.Slot Unit
-  , menuSecondary   :: MS.Slot Unit
-  , popSlotAggrTable :: PA.Slot Unit
+  ( mainMenu            :: MM.Slot Unit
+  , header              :: HD.Slot Unit
+  , dropDown            :: DP.Slot Unit
+  , menuSecondary       :: MS.Slot Unit
+  , popAggrTable        :: PA.Slot Unit
+  , popAggrDetailsTable :: PAD.Slot Unit
   )
 
 -------------------------------------------------------------------------------
@@ -91,7 +93,7 @@ component
   => Navigate m
   => ManageUser m
   => ManageApi m
-  => H.Component HH.HTML (Const Void) Input Void m
+  => H.Component HH.HTML (Const Void) Input NotificationMessage m
 component = H.mkComponent
   { initialState
   , render
@@ -113,22 +115,22 @@ component = H.mkComponent
     , selectedAggrIndex: Nothing
     , selectedPoPName: Nothing
     , prevRoute
-    , timedRoutes: Nothing
     , slotDetails: Nothing
     }
 
-  handleAction :: Action -> H.HalogenM State Action ChildSlots Void m Unit
+  handleAction :: Action -> H.HalogenM State Action ChildSlots NotificationMessage m Unit
   handleAction = case _ of
     Initialize -> do
       st ← H.get
       { popDefEnv, urlEnv, userEnv } <- ask
       -- set the class of <html />
-      _ <- liftEffect $ changeHtmlClass urlEnv.htmlClass
+      liftEffect $ changeHtmlClass urlEnv.htmlClass
       -- don't load js again if previous route was a PoPDashboard
       shouldLoadJS st.prevRoute
 
       mPopDef <- H.liftEffect $ Ref.read popDefEnv.popDefinition
 
+      -- make fresh chart map
       H.getHTMLElementRef (H.RefLabel "mymap") >>= traverse_ \element -> do
         chart <- H.liftEffect $ EC.makeChart element
         liftEffect $ EC.setOptionPoP { rttData: [], scatterData: [] } chart
@@ -162,7 +164,17 @@ component = H.mkComponent
         H.put $ initialState { popName, prevRoute }
         handleAction Initialize
 
-    HandlePoPSlotAggrTable (PA.SPoPInfo selectedInfo) -> do
+    HandlePoPSlotAggrTable (CopyMsg notification) -> do
+      H.raise notification
+
+    HandleNotificationError notification ->
+      H.raise notification
+
+    HandlePoPSlotAggrTable (PA.RefreshAggr) -> do
+      H.modify_ _ { selectedAggrIndex = Nothing }
+      handleAction Initialize
+
+    HandlePoPSlotAggrTable (PA.PoPAggrMsg selectedInfo) -> do
       H.modify_ _ { selectedAggrIndex = selectedInfo.selectedAggrIndex
                   , selectedPoPName = selectedInfo.selectedPoPName
                   }
@@ -170,30 +182,49 @@ component = H.mkComponent
       { popDefEnv } <- ask
       geoLocations <- H.liftEffect $ Ref.read popDefEnv.geoLocations
 
-      -- | does a chart exist
+      -- does a chart exist
       case st.chart of
-        Nothing    -> pure unit -- TODO: make a new chart? though there should always be one
+        -- make a new chart? though technically at this point there should always be one
+        Nothing    -> pure unit
+
         Just chart ->
-          -- | check all records are Justs
+          -- check all records selectedInfo are Just
           case sequenceRecord selectedInfo of
             Nothing -> do
-               liftEffect $ EC.setOptionPoP { rttData: [], scatterData: [] } chart
+              -- reset the chart
+              liftEffect $ EC.setOptionPoP { rttData: [], scatterData: [] } chart
+
             Just { selectedAggrIndex, selectedSlotId, selectedAddress }  -> do
+              -- slot role from aggrLocs using currently selected index
               let slotRole = fromMaybe Primary (_.role <$> st.aggrLocs !! selectedAggrIndex)
-              mSlotDetails <- hush <$> getAggregatorDetails { slotId: selectedSlotId , slotRole, serverAddress: selectedAddress }
-              H.modify_ _ {slotDetails = mSlotDetails}
-              traceM selectedInfo
-              -- | go fetch timedroute and populate the chart/map with options
+
+              -- fetch aggregator details
+              mSlotDetails <- getAggregatorDetails { slotId: selectedSlotId , slotRole, serverAddress: selectedAddress }
+              case mSlotDetails of
+                Left e    -> handleAction $ HandleNotificationError $ NSingleMessage $ WarningN { message: e
+                                  , autoClose: false
+                                  , title: "Warning"
+                                  }
+                Right msd -> H.modify_ _ { slotDetails = Just msd}
+
+              -- fetch timedroute
               maybeTimedRoutes <- getTimedRoutes selectedInfo st.curPopName
+              -- handle result of getting timmed routes
               case maybeTimedRoutes of
                 Left e            -> pure unit -- TODO: display error
+
                 Right timedRoutes -> do
+                  -- convert timedRoutes into
                   let convertedRoutes = timedRoutedToChartOps timedRoutes geoLocations
-                  let convertedScatterRoutes = timedRoutedToChartScatter timedRoutes geoLocations
+                      convertedScatterRoutes = timedRoutedToChartScatter timedRoutes geoLocations
+
                   liftEffect $ EC.setOptionPoP { rttData: convertedRoutes, scatterData: convertedScatterRoutes } chart
 
+    HandlePoPAggrDetails _ ->
+      pure unit
+
   render :: State -> H.ComponentHTML Action ChildSlots m
-  render state@{ curPopName, currentUser, popDefenition, aggrLocs, selectedAggrIndex , slotDetails} =
+  render state@{ curPopName, currentUser, popDefenition, aggrLocs, selectedAggrIndex, slotDetails } =
     HH.div
       [ css_ "main" ]
       [ HH.slot (SProxy :: _ "header") unit HD.component { currentUser, route: LoginR } absurd
@@ -227,6 +258,7 @@ component = H.mkComponent
             ]
           ]
         ]
+       
       , HH.section
         [ css_ "section is-main-section" ]
          [ HH.div
@@ -236,7 +268,7 @@ component = H.mkComponent
             [ HH.div
               [ css_ "card is-card-widget tile is-child" ]
               [ HH.slot
-                  (SProxy :: _ "popSlotAggrTable")
+                  (SProxy :: _ "popAggrTable")
                   unit PA.component { aggrLocs, popDef: popDefenition, selectedAggrIndex }
                   (Just <<< HandlePoPSlotAggrTable)
               ]
@@ -249,27 +281,18 @@ component = H.mkComponent
             ]
           ]
          , HH.div
-           [ css_ "tile is-parent" ]
-           (renderSlotDetails slotDetails)
-
-
-
-          -- , HH.div
-          --   [ css_ "row" ]
-          --   [ HH.div
-          --     [ css_ "col-lg-12 col-md-12" ]
-          --     [ HH.div
-          --       [ css_ "card" ]
-          --       [ HH.div
-          --         [ css_ "card-body" ]
-          --         [ HH.h5
-          --           [ css_ "card-title" ]
-          --           [ HH.text "Ingest Details" ]
-          --        -- , tableIngest
-          --         ]
-          --       ]
-          --     ]
-          --   ]
+           [ css_ "tile is-ancestor" ]
+           [ HH.div
+             [ css_ "tile is-parent" ]
+             [ HH.div
+               [ css_ "card map is-card-widget tile is-child" ]
+               [ HH.slot
+                  (SProxy :: _ "popAggrDetailsTable")
+                  unit PAD.component { slotDetails, selectedAggrDetailsIndex: Nothing, selectedAggrIndex }
+                  (Just <<< HandlePoPAggrDetails)
+              ]
+             ]
+           ]
         ]
       , footer
       ]
@@ -303,15 +326,14 @@ component = H.mkComponent
           , HP.ref (H.RefLabel "mymap")
           , CSS.style do
               Geometry.height $ Size.px (toNumber 400)
-              -- Geometry.width $ Size.pct (toNumber 100)
           ]
           []
         ]
 
-      renderSlotDetails =
-        maybe [HH.text "Nothing"]
-        \details ->
-           [HH.text "Hoooray!!"]
+
+
+
+
 
       card title table =
          HH.div
@@ -328,35 +350,6 @@ component = H.mkComponent
             ]
           ]
 
-      tableAgg =
-        HH.div
-        [ css_ "table-responsive"]
-        [ HH.table
-          [ css_ "table" ]
-          [ HH.thead_
-            [HH.tr_
-             [ HH.th_
-               [ HH.text "Slot Name"]
-             , HH.th_
-               [ HH.text "PoP"]
-             , HH.th_
-               [ HH.text "Region"]
-             , HH.th_
-               [ HH.text "Address"]
-             ]
-            ]
-          , HH.tbody_
-            [ HH.td_
-               [ HH.text "slot1"]
-             , HH.td_
-               [ HH.text "fra"]
-             , HH.td_
-               [ HH.text "europe"]
-             , HH.td_
-               [ HH.text "172.16.171.5"]
-             ]
-          ]
-        ]
 
       tableStream =
         HH.div

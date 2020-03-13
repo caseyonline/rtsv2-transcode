@@ -80,6 +80,16 @@ let additions =
           [ "halogen", "record" ]
           "https://github.com/citizennet/purescript-halogen-select.git"
           "v5.0.0-rc.3"
+      , milkis =
+          mkPackage
+          [ "prelude"
+          , "aff-promise"
+          , "typelevel-prelude"
+          , "foreign-object"
+          , "arraybuffer-types"
+          ]
+          "https://github.com/justinwoo/purescript-milkis.git"
+          "v7.4.0"
       }
 
 in  upstream ⫽ overrides ⫽ additions

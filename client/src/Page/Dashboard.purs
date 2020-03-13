@@ -4,7 +4,6 @@ import Prelude
 
 import CSS.Geometry as Geometry
 import CSS.Size as Size
-import Component.HOC.Connect as Connect
 import Control.Monad.Reader (class MonadAsk, ask)
 import Data.Array (length)
 import Data.Const (Const)
@@ -25,12 +24,13 @@ import Halogen.HTML.CSS as CSS
 import Halogen.HTML.Properties as HP
 import Rtsv2App.Capability.Navigate (class Navigate)
 import Rtsv2App.Capability.Resource.Api (class ManageApi, getPoPdefinition)
+import Rtsv2App.Component.Utils (NotificationMessage)
 import Rtsv2App.Capability.Resource.User (class ManageUser)
 import Rtsv2App.Component.HTML.Breadcrumb as BG
 import Rtsv2App.Component.HTML.Footer (footer)
 import Rtsv2App.Component.HTML.Header as HD
-import Rtsv2App.Component.HTML.MainSecondary as MS
-import Rtsv2App.Component.HTML.MenuMain as MM
+import Rtsv2App.Component.HTML.Menu.MainSecondary as MS
+import Rtsv2App.Component.HTML.Menu.MenuMain as MM
 import Rtsv2App.Component.HTML.Tile as TL
 import Rtsv2App.Component.HTML.Utils (css_)
 import Rtsv2App.Data.PoP (PoPDefEcharts, updatePoPDefEnv)
@@ -45,7 +45,10 @@ import Shared.Types.Agent.State (PoPDefinition, AggregatorLocation)
 -------------------------------------------------------------------------------
 data Action
   = Initialize
-  | Receive { currentUser :: Maybe Profile }
+  | Receive Input
+
+type Input =
+  { currentUser   :: Maybe Profile }
 
 type State =
   { currentUser   :: Maybe Profile
@@ -72,8 +75,8 @@ component
   => Navigate m
   => ManageUser m
   => ManageApi m
-  => H.Component HH.HTML (Const Void) {} Void m
-component = Connect.component $ H.mkComponent
+  => H.Component HH.HTML (Const Void) Input NotificationMessage m
+component = H.mkComponent
   { initialState
   , render
   , eval: H.mkEval $ H.defaultEval
@@ -92,7 +95,7 @@ component = Connect.component $ H.mkComponent
     , aggrLocs: mempty
     }
 
-  handleAction :: Action -> H.HalogenM State Action ChildSlots Void m Unit
+  handleAction :: Action -> H.HalogenM State Action ChildSlots NotificationMessage m Unit
   handleAction = case _ of
     Initialize -> do
       st ← H.get
