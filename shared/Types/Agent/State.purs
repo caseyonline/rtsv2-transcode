@@ -5,6 +5,7 @@ module Shared.Types.Agent.State
        , IngestStats
        , IntraPoP
        , PoPDefinition
+       , SlotState
        , Region
        , PoP
        , AgentLocation
@@ -19,13 +20,10 @@ module Shared.Types.Agent.State
 
 import Prelude
 
-import Data.Maybe (Maybe)
 import Shared.Common (Milliseconds)
 import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Stream (AgentKey, IngestKey, SlotId, SlotRole)
 import Shared.Types (GeoLoc, PoPName, RegionName, Server, ServerAddress)
-import Shared.Types.Media.Types.Rtmp (RtmpClientMetadata)
-import Shared.Types.Media.Types.SourceDetails (SourceInfo)
 import Shared.Types.Workflow.Metrics.FrameFlow as FrameFlow
 import Shared.Types.Workflow.Metrics.RtmpPushIngest as RtmpIngest
 import Shared.Types.Workflow.Metrics.StreamBitrateMonitor as StreamBitrateMonitor
@@ -56,6 +54,13 @@ type StreamRelay f = JsonLd.StreamRelayStateNode f
 type Egest = JsonLd.EgestStatsNode
 
 type IntraPoP f = JsonLd.IntraPoPStateNode f
+
+type SlotState f = { aggregators :: f (IngestAggregator f)
+                   , ingests :: f (Ingest f)
+                   , originRelays :: f (StreamRelay f)
+                   , downstreamRelays :: f (StreamRelay f)
+                   , egests :: f Egest
+                   }
 
 type AgentLocation f = { agentKey :: AgentKey
                        , servers :: f Server

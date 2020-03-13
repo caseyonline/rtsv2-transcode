@@ -55,12 +55,13 @@ import Data.Either (Either(..), hush)
 import Data.Filterable (filterMap)
 import Data.Foldable (foldM, foldl)
 import Data.FoldableWithIndex (foldlWithIndex)
+import Data.Int (round, toNumber)
 import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Newtype (class Newtype, unwrap, wrap)
 import Data.Set (Set)
 import Data.Set as Set
 import Data.Traversable (traverse_)
-import Data.Tuple (Tuple(..), fst)
+import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Effect.Random (randomInt)
 import Ephemeral.Map (EMap)
@@ -460,7 +461,7 @@ aggregatorHandler
     , clockLens                : clockLens
     , locationLens             : locationLens
 
-    , reannounceEveryMs        : _.config >>> _.reannounceAgentEveryMs >>> _.aggregator >>> wrap
+    , reannounceEveryMs        : _.config >>> _.reannounceAgentEveryMs >>> _.aggregator >>> toNumber >>> wrap
     }
   where
     availableLocal :: AgentMessageHandler
@@ -556,7 +557,7 @@ egestHandler
     , clockLens                : clockLens
     , locationLens             : locationLens
 
-    , reannounceEveryMs        : _.config >>> _.reannounceAgentEveryMs >>> _.egest >>> wrap
+    , reannounceEveryMs        : _.config >>> _.reannounceAgentEveryMs >>> _.egest >>> toNumber >>> wrap
 
     }
   where
@@ -625,7 +626,7 @@ relayHandler
     , clockLens                : clockLens
     , locationLens             : locationLens
 
-    , reannounceEveryMs        : _.config >>> _.reannounceAgentEveryMs >>> _.relay >>> wrap
+    , reannounceEveryMs        : _.config >>> _.reannounceAgentEveryMs >>> _.relay >>> toNumber >>> wrap
     }
   where
     availableLocal state agentKey server = do
@@ -686,7 +687,7 @@ announceAvailableLocal handler@{locationLens} agentKey =
 doAnnounceAvailableLocal :: AgentHandler -> AgentKey -> State -> Effect Unit
 doAnnounceAvailableLocal handler@{locationLens} agentKey state@{thisServer, agentLocations} = do
   handler.availableLocal state agentKey thisServer
-  void $ Timer.sendAfter serverName (unwrap $ handler.reannounceEveryMs state) $ ReAnnounce agentKey handler.name
+  void $ Timer.sendAfter serverName (round $ unwrap $ handler.reannounceEveryMs state) $ ReAnnounce agentKey handler.name
 
 announceStoppedLocal :: AgentHandler -> AgentKey -> Effect Unit
 announceStoppedLocal handler@{locationLens} agentKey = do
@@ -792,7 +793,7 @@ init { config
   case streamResp of
     Left error -> do
       logInfo "Could not connect to IntraPoP Serf Agent" { error: error }
-      Erl.sleep (wrap 100) -- Just so we don't spin like crazy...
+      Erl.sleep (wrap 100.0) -- Just so we don't spin like crazy...
       unsafeCrashWith ("could_not_connect_stream")
     Right _ ->
       pure unit
@@ -911,7 +912,7 @@ handleIntraPoPSerfMsg imsg state@{ transPoPApi: {handleRemoteLeaderAnnouncement}
 
     Serf.StreamFailed -> do
       logInfo "Lost connection to IntraPoP Serf Agent" {}
-      Erl.sleep (wrap 100) -- Just so we don't spin like crazy...
+      Erl.sleep (wrap 100.0) -- Just so we don't spin like crazy...
       -- TODO send a "stepping down message?" - except without Serf I guess we can't
       unsafeCrashWith ("lost_serf_connection")
 
@@ -1019,7 +1020,7 @@ handleAgentMessage msgLTime eventType agentKey msgServerAddress
 messageTimeout :: AgentHandler -> State -> Effect Milliseconds
 messageTimeout agentMessageHandler state = do
   now <- Erl.systemTimeMs
-  pure $ now + ((agentMessageHandler.reannounceEveryMs state) * (wrap state.config.missCountBeforeExpiry))
+  pure $ now + ((agentMessageHandler.reannounceEveryMs state) * (wrap (toNumber state.config.missCountBeforeExpiry)))
 
 --------------------------------------------------------------------------------
 -- Internal functions
@@ -1084,7 +1085,7 @@ garbageCollectVM state@{ config
   do
     now <- Erl.systemTimeMs
     let
-      expireThreshold = wrap $ config.missCountBeforeExpiry * config.vmLivenessIntervalMs
+      expireThreshold = wrap $ toNumber $ config.missCountBeforeExpiry * config.vmLivenessIntervalMs
       threshold = now - expireThreshold
       Tuple newServerRefs garbage = EMap.garbageCollect2 threshold serverRefs
       garbageCollectServer' s (Tuple server ref) = garbageCollectServer s server ref Nothing

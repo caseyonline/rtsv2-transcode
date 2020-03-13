@@ -56,3 +56,5 @@ instance writeForeignAvcProfile :: WriteForeign AvcProfile where
 -- AvcLevel
 derive newtype instance readForeignAvcLevel :: ReadForeign AvcLevel
 derive newtype instance writeForeignAvcLevel :: WriteForeign AvcLevel
+derive newtype instance showAvcLevel :: Show AvcLevel
+derive newtype instance eqAvcLevel :: Eq AvcLevel

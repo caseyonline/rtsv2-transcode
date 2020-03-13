@@ -20,6 +20,7 @@ import Prelude
 
 import Control.Monad.Except (except)
 import Data.Either (Either(..))
+import Data.Int (round, toNumber)
 import Data.List.NonEmpty as NEL
 import Data.Maybe (Maybe, maybe)
 import Data.Newtype (unwrap, wrap)
@@ -53,15 +54,15 @@ data ExitReason = Normal
 data ExitMessage = Exit Pid Foreign
 
 sleep :: Milliseconds -> Effect Unit
-sleep = sleepImpl <<< unwrap
+sleep = sleepImpl <<< round <<< unwrap
 
 -- TODO - find a place for these utility types to live (a la id3as_common?)
 
 systemTimeMs :: Effect Milliseconds
-systemTimeMs = wrap <$> systemTimeImpl (atom "millisecond")
+systemTimeMs = wrap <$> toNumber <$> systemTimeImpl (atom "millisecond")
 
 vmTimeMs :: Effect Milliseconds
-vmTimeMs = wrap <$> vmTimeImpl (atom "millisecond")
+vmTimeMs = wrap <$> toNumber <$> vmTimeImpl (atom "millisecond")
 
 instance eqRef :: Eq Ref where eq = eqRefImpl
 instance writeForeignRef :: WriteForeign Ref where writeImpl = refToStringImpl

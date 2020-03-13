@@ -196,6 +196,10 @@ instance writeForeignHlsPushSpecFormat :: WriteForeign HlsPushSpecFormat where
     where
       toString Hls = "hls"
 
+derive instance eqHlsPushSpecFormat :: Eq HlsPushSpecFormat
+instance showHlsPushSpecFormat :: Show HlsPushSpecFormat where
+  show Hls = "HLS"
+
 instance readForeignStreamOutputFormat :: ReadForeign StreamOutputFormat where
   readImpl =
     readString >=> parseAgent
@@ -216,6 +220,11 @@ instance writeForeignStreamOutputFormat :: WriteForeign StreamOutputFormat where
       toString RtmpOutput = "rtmp"
       toString HlsOutput = "hls"
 
+derive instance eqStreamOutputFormat :: Eq StreamOutputFormat
+instance showStreamOutputFormat :: Show StreamOutputFormat where
+  show WebRTCOutput = "WebRtc"
+  show RtmpOutput = "RTMP"
+  show HlsOutput = "HLS"
 
 derive instance newtypeStreamAuth :: Newtype StreamAuth _
 derive instance genericStreamAuth :: Generic StreamAuth _
@@ -265,6 +274,7 @@ derive instance newtypeSlotProfile :: Newtype SlotProfile _
 derive instance genericSlotProfile :: Generic SlotProfile _
 instance eqSlotProfile :: Eq SlotProfile where eq = genericEq
 instance compareSlotProfile :: Ord SlotProfile where compare = genericCompare
+instance showSlotProfile :: Show SlotProfile where show = genericShow
 
 instance readForeignSlotProfile :: ReadForeign SlotProfile where
   readImpl o = decode o

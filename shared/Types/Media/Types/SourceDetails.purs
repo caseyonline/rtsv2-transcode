@@ -204,24 +204,32 @@ instance writeForeignVideoCodec :: WriteForeign VideoCodec where
 derive instance newtypeStreamId :: Newtype StreamId _
 derive newtype instance readForeignStreamId :: ReadForeign StreamId
 derive newtype instance writeForeignStreamId :: WriteForeign StreamId
+derive newtype instance showStreamId :: Show StreamId
+derive newtype instance eqStreamId :: Eq StreamId
 
 ------------------------------------------------------------------------------
 -- SampleRate
 derive instance newtypeSampleRate :: Newtype SampleRate _
 derive newtype instance readForeignSampleRate :: ReadForeign SampleRate
 derive newtype instance writeForeignSampleRate :: WriteForeign SampleRate
+derive newtype instance showSampleRate :: Show SampleRate
+derive newtype instance eqSampleRate :: Eq SampleRate
 
 ------------------------------------------------------------------------------
 -- Width
 derive instance newtypeWidth :: Newtype Width _
 derive newtype instance readForeignWidth :: ReadForeign Width
 derive newtype instance writeForeignWidth :: WriteForeign Width
+derive newtype instance showWidth :: Show Width
+derive newtype instance eqWidth :: Eq Width
 
 ------------------------------------------------------------------------------
 -- Height
 derive instance newtypeHeight :: Newtype Height _
 derive newtype instance readForeignHeight :: ReadForeign Height
 derive newtype instance writeForeignHeight :: WriteForeign Height
+derive newtype instance showHeight :: Show Height
+derive newtype instance eqHeight :: Eq Height
 
 ------------------------------------------------------------------------------
 -- PixelAspectRatio
@@ -243,3 +251,6 @@ instance readForeignPixelAspectRatio :: ReadForeign PixelAspectRatio where
 
 instance writeForeignPixelAspectRatio :: WriteForeign PixelAspectRatio where
   writeImpl (PixelAspectRatio (Tuple width height)) = writeImpl [unwrap width, unwrap height]
+
+derive newtype instance showPixelAspectRatio :: Show PixelAspectRatio
+derive newtype instance eqPixelAspectRatio :: Eq PixelAspectRatio

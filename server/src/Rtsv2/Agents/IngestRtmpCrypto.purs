@@ -16,6 +16,7 @@ module Rtsv2.Agents.IngestRtmpCrypto
 import Prelude
 
 import Data.FoldableWithIndex (foldlWithIndex)
+import Data.Int (toNumber)
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (wrap)
 import Effect (Effect)
@@ -32,8 +33,8 @@ import Pinto.Timer as Timer
 import Rtsv2.Config as Config
 import Rtsv2.Names as Names
 import Rtsv2.Utils (cryptoStrongToken)
-import Shared.LlnwApiTypes (PublishCredentials(..))
 import Shared.Common (Milliseconds)
+import Shared.LlnwApiTypes (PublishCredentials(..))
 
 foreign import compareAdobeChallengeImpl :: String -> String -> String -> String -> String -> String -> Boolean
 foreign import compareLlnwChallengeImpl :: String -> String -> String -> String -> String -> String -> String -> Boolean
@@ -151,7 +152,7 @@ init _ = do
   void $ Timer.sendAfter serverName cryptoContextExpiryMs CheckExpiry
   pure $ { adobeContexts: Map.empty
          , llnwContexts: Map.empty
-         , cryptoContextExpiry: wrap cryptoContextExpiryMs
+         , cryptoContextExpiry: wrap $ toNumber cryptoContextExpiryMs
          }
 
 handleInfo :: Msg -> State -> Effect (CastResult State)

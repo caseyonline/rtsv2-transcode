@@ -113,7 +113,7 @@ getCoordinate = getCoordinateImpl Left Right
 
 -- Calculation as described in https://www.serf.io/docs/internals/coordinates.html
 calcRtt :: SerfCoordinate -> SerfCoordinate -> Milliseconds
-calcRtt lhs rhs = wrap <<< round $
+calcRtt lhs rhs = wrap $
   let sumq = foldl (\acc (Tuple a b) -> acc + ((a - b) * (a - b))) 0.0 (zip lhs.vec rhs.vec)
       rtt = sqrt sumq + lhs.height + rhs.height
       adjusted = rtt + lhs.adjustment + rhs.adjustment

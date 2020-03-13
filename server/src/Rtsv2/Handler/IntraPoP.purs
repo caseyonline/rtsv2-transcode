@@ -41,12 +41,7 @@ type IngestAggregatorL = PublicState.IngestAggregator List
 type IngestL = PublicState.Ingest List
 type StreamRelayL = PublicState.StreamRelay List
 
-slotState :: SlotId -> GetHandler { aggregators :: List IngestAggregatorL
-                                  , ingests :: List IngestL
-                                  , originRelays :: List StreamRelayL
-                                  , downstreamRelays :: List StreamRelayL
-                                  , egests :: List PublicState.Egest
-                                  }
+slotState :: SlotId -> GetHandler (PublicState.SlotState List)
 slotState slotId =
   jsonResponse getSlotState
   where

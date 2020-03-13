@@ -5,7 +5,7 @@ import Prelude
 import Data.Array (catMaybes, delete, filter, intercalate, length, sort)
 import Data.Array as Array
 import Data.Bifunctor (lmap)
-import Data.Either (Either(..))
+import Data.Either (Either(..), fromRight)
 import Data.Foldable (foldl)
 import Data.Identity (Identity(..))
 import Data.List (List(..), (:))
@@ -21,7 +21,7 @@ import Effect (Effect)
 import Effect.Aff (Aff, attempt, delay, launchAff_, throwError)
 import Effect.Exception (error) as Exception
 import Foreign.Object as Object
-import Foreign (F)
+import Foreign (F, MultipleErrors)
 import Milkis as M
 import Milkis.Impl.Node (nodeFetch)
 import Node.Encoding (Encoding(..))
@@ -177,6 +177,8 @@ main =
 
     intraPoPState node               = get (M.URL $ makeUrl' node ServerStateE)
 
+    slotState node slotId            = get (M.URL $ makeUrl' node (SlotStateE slotId))
+
     ingestAggregatorName slotId role = Chaos.Gproc (Chaos.GprocTuple2 (Chaos.String "IngestAggregator") (Chaos.GprocTuple3 (Chaos.Atom "aggregatorKey") (Chaos.SlotId slotId) (Chaos.SlotRole role)))
 
     ingestName slotId role streamName = Chaos.Gproc (Chaos.GprocTuple2 (Chaos.String "Ingest") (Chaos.GprocTuple4 (Chaos.Atom "ingestKey") (Chaos.SlotId slotId) (Chaos.SlotRole role) (Chaos.String streamName)))
@@ -233,14 +235,17 @@ main =
     as'' desc (Left err) = lift $ throwSlowError $ "Step: \"" <> desc <> "\" failed with reason: " <> err
 
 
-    debug either = let _ = spy "debug" either in either
+    debug :: forall a b. String -> Either a b -> Aff (Either a b)
+    debug msg either =
+      let
+        _ = spy msg either
+      in pure $ either
 
     debugBody (Right r) = do
       text <- M.text r
       let _ = spy "debugBody" text
       pure $ Right r
     debugBody (Left err) = let _ = spy "debugBodyErr" err in pure $ Left err
-
 
     assertRelayForEgest = assertBodyFun <<< predicate
       where
@@ -271,6 +276,15 @@ main =
         predicate popState =
           let
             _ = spy "popState" popState
+          in
+           true
+
+    dumpSlotState = assertBodyFun $ predicate
+      where
+        predicate :: PublicState.SlotState Array -> Boolean
+        predicate slotState =
+          let
+            _ = spy "slotState" slotState
           in
            true
 
@@ -815,14 +829,16 @@ main =
                                                       >>= assertAggregator []
                                                                            >>= as  "aggregator has no ingests"
 
-            -- it "Launch ingest and egest, kill origin relay, assert replaced relay still has egest and origin" do
-            --   ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200  >>= as  "create ingest"
-            --   waitForAsyncProfileStart                                      >>= as' "wait for async start of profile"
-            --   clientStart p1n1 slot1              >>= assertStatusCode 204  >>= as  "egest available"
-            --   waitForAsyncProfileStart                                      >>= as' "wait for async start of profile"
-            --   intraPoPState p1n1                  >>= dumpIntraPoP
-            --                                                                 >>= as "p1n1 is aware of the ingest on p1n1"
-
+            itOnly "Launch ingest and egest, kill origin relay, assert replaced relay still has egest and origin" do
+              (flip evalStateT) Map.empty $ do
+                lift $ ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200  >>= as  "create ingest"
+                lift $ waitForAsyncProfileStart                                      >>= as' "wait for async start of profile"
+                lift $ clientStart p2n1 slot1              >>= assertStatusCode 204  >>= as  "egest available"
+                lift $ waitForAsyncProfileStart                                      >>= as' "wait for async start of profile"
+                (lift $ slotState p1n1 slot1               >>= (bodyToRecord :: ToRecord (PublicState.SlotState Array)))
+                                                           >>= storeSlotState        >>= as'' "stored state"
+                (lift $ slotState p1n1 slot1               >>= (bodyToRecord :: ToRecord (PublicState.SlotState Array)))
+                                                           >>= compareSlotState     >>= as'' "compare state"
 
     describe "Cleanup" do
       after_ stopSession do
@@ -832,6 +848,18 @@ main =
 
   where
     testConfig = { slow: Milliseconds 5000.0, timeout: Just (Milliseconds 25000.0), exit: false }
+
+storeSlotState either@(Left _) = pure either
+storeSlotState either@(Right slotState) = do
+  _ <- modify (Map.insert "slotState" slotState)
+  pure either
+
+compareSlotState either@(Left _) = pure either
+compareSlotState either@(Right slotState) = do
+  currentSlotState <- gets (Map.lookup "slotState")
+  if
+    Just slotState == currentSlotState then pure either
+    else pure $ Left "does not match"
 
 storeHeader :: String -> String -> Either String ResponseWithBody -> StateT (Map.Map String String) Aff (Either String ResponseWithBody)
 storeHeader header key either@(Left _) = pure either
@@ -877,22 +905,35 @@ assertBodyText expected either =
         then pure either
         else pure $ Left $ "Body " <> text <> " did not match expected " <> expected
 
+assertBodyFun :: forall a. Show a => ReadForeign a => (a -> Boolean) -> Either String ResponseWithBody -> Aff (Either String ResponseWithBody)
+assertBodyFun pred left@(Left _) = pure left
+assertBodyFun pred (Right rwb) = pure $ (parse rwb) >>= (assertFun'' pred) <#> (const rwb)
+  where
+    parse :: ReadForeign a => ResponseWithBody -> Either String a
+    parse {body} = lmap (jsonError body) $ SimpleJSON.readJSON body
+    jsonError body error = "Could not parse json " <> body <> " due to " <> show error
 
-assertBodyFun ::  forall a. ReadForeign a => (a -> Boolean) -> Either String ResponseWithBody -> Aff (Either String ResponseWithBody)
-assertBodyFun pred either =
-  case either of
-    Left e -> pure $ Left e
-    Right rwb -> do
-      let
-        parsed = SimpleJSON.readJSON rwb.body
-      case parsed of
-        Right a ->
-          if pred a
-          then pure either
-          else
-            pure $ Left $ "Predicate failed for body " <> rwb.body
-        Left _ ->
-          pure $ Left $ "Could not parse json " <> rwb.body
+assertFun :: forall a. Show a => (a -> Boolean) -> Either String a -> Aff (Either String a)
+assertFun pred either =
+  pure $ assertFun' pred either
+
+assertFun' :: forall a. Show a => (a -> Boolean) -> Either String a -> Either String a
+assertFun' pred either =
+  assertFun'' pred =<< either
+
+assertFun'' :: forall a. Show a => (a -> Boolean) -> a -> Either String a
+assertFun'' pred subject =
+  if pred subject
+  then Right subject
+  else Left $ "Predicate failed for content " <> (show subject)
+
+type ToRecord a = Either String ResponseWithBody -> Aff (Either String a)
+bodyToRecord ::  forall a. ReadForeign a => ToRecord a
+bodyToRecord (Left error) = pure $ Left error
+bodyToRecord (Right {body}) =
+  pure $ lmap errorText $ SimpleJSON.readJSON body
+  where
+    errorText error = "Could not parse json " <> body <> " due to " <> show error
 
 toAddr :: Node -> String
 toAddr (Node popNum nodeNum) = "172.16." <> show (popNum + 168) <> "." <> show nodeNum

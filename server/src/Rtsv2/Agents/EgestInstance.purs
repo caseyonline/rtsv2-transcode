@@ -13,6 +13,7 @@ import Prelude
 import Bus as Bus
 import Data.Either (Either(..), hush)
 import Data.Foldable (foldl)
+import Data.Int (round, toNumber)
 import Data.Maybe (Maybe(..), maybe')
 import Data.Newtype (class Newtype, unwrap, wrap)
 import Data.Traversable (traverse)
@@ -44,11 +45,11 @@ import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Utils (crashIfLeft)
 import Shared.Agent as Agent
+import Shared.Common (Milliseconds)
 import Shared.LlnwApiTypes (StreamIngestProtocol(..))
+import Shared.Router.Endpoint (Endpoint(..), makeUrl)
 import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Stream (AggregatorKey(..), EgestKey(..), RelayKey(..), SlotId, SlotRole(..))
-import Shared.Router.Endpoint (Endpoint(..), makeUrl)
-import Shared.Common (Milliseconds)
 import Shared.Types (EgestServer(..), Load, RelayServer, Server, ServerLoad(..))
 import Shared.Types.Agent.State as PublicState
 import SpudGun as SpudGun
@@ -100,7 +101,7 @@ pendingClient egestKey =
     ourServerName = serverName egestKey
     maybeResetStopTimer state@{clientCount: 0, lingerTime} = do
       ref <- makeRef
-      _ <- Timer.sendAfter ourServerName (unwrap lingerTime) (MaybeStop ref)
+      _ <- Timer.sendAfter ourServerName (round $ unwrap lingerTime) (MaybeStop ref)
       pure $ state{ stopRef = Just ref
                   }
     maybeResetStopTimer state =
@@ -156,8 +157,8 @@ init payload@{slotId, aggregator} = do
            , thisServer : toEgestServer thisServer
            , relay : Nothing
            , clientCount: 0
-           , lingerTime: wrap lingerTimeMs
-           , relayCreationRetry : wrap relayCreationRetryMs
+           , lingerTime: wrap $ toNumber lingerTimeMs
+           , relayCreationRetry : wrap $ toNumber relayCreationRetryMs
            , stopRef: Nothing
            , receivePortNumber
            , lastEgestAuditTime: now
@@ -203,7 +204,7 @@ removeClient state@{clientCount: 0} = do
 removeClient state@{clientCount: 1, lingerTime, egestKey} = do
   ref <- makeRef
   logInfo "Last client gone, start stop timer" {}
-  _ <- Timer.sendAfter (serverName egestKey) (unwrap lingerTime) (MaybeStop ref)
+  _ <- Timer.sendAfter (serverName egestKey) (round $ unwrap lingerTime) (MaybeStop ref)
   pure $ state{ clientCount = 0
               , stopRef = Just ref
               }
@@ -278,7 +279,7 @@ initStreamRelay state@{relayCreationRetry, egestKey: egestKey@(EgestKey slotId),
       tryConfigureAndRegister localOrRemote
 
   where
-    retryLater = Timer.sendAfter (serverName egestKey) (unwrap relayCreationRetry) InitStreamRelays
+    retryLater = Timer.sendAfter (serverName egestKey) (round $ unwrap relayCreationRetry) InitStreamRelays
 
     tryConfigureAndRegister localOrRemote =
       do

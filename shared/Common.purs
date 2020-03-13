@@ -11,7 +11,7 @@ import Simple.JSON (class ReadForeign, class WriteForeign)
 
 -- TODO - find a place for these utility types to live (a la id3as_common?)
 -- | A duration measured in milliseconds.
-newtype Milliseconds = Milliseconds Int
+newtype Milliseconds = Milliseconds Number
 
 -- | Url type
 newtype Url = Url String
@@ -33,15 +33,15 @@ instance semigroupMilliseconds :: Semigroup Milliseconds where
 
 instance semiringMilliseconds :: Semiring Milliseconds where
   add (Milliseconds x) (Milliseconds y) = Milliseconds (x + y)
-  zero = Milliseconds 0
+  zero = Milliseconds 0.0
   mul (Milliseconds x) (Milliseconds y) = Milliseconds (x * y)
-  one = Milliseconds 1
+  one = Milliseconds 1.0
 
 instance ringMilliseconds :: Ring Milliseconds where
   sub (Milliseconds x) (Milliseconds y) = Milliseconds (x - y)
 
 instance monoidMilliseconds :: Monoid Milliseconds where
-  mempty = Milliseconds 0
+  mempty = Milliseconds 0.0
 
 instance showMilliseconds :: Show Milliseconds where
   show (Milliseconds n) = "(Milliseconds " <> show n <> ")"

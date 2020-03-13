@@ -17,6 +17,7 @@ import Prelude
 
 import Bus as Bus
 import Data.Either (Either(..), hush)
+import Data.Int (round, toNumber)
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (unwrap, wrap)
 import Data.Traversable (sequence)
@@ -179,7 +180,7 @@ init { streamPublish
        , streamPublish
        , streamDetails
        , ingestKey
-       , aggregatorRetryTime: wrap intraPoPLatencyMs
+       , aggregatorRetryTime: wrap $ toNumber intraPoPLatencyMs
        , aggregatorAddr: Nothing
        , clientMetadata: Nothing
        , sourceInfo: Nothing
@@ -271,7 +272,7 @@ informAggregator state@{streamDetails, ingestKey, thisServer, aggregatorRetryTim
       CachedInstanceState.recordInstanceData stateServerName {aggregatorAddr: maybeAggregator}
       pure $ Right state{aggregatorAddr = maybeAggregator}
     Right false -> do
-      void $ Timer.sendAfter (serverName ingestKey) (unwrap aggregatorRetryTime) InformAggregator
+      void $ Timer.sendAfter (serverName ingestKey) (round $ unwrap aggregatorRetryTime) InformAggregator
       pure $ Right state
     Left unit -> do
       pure $ Left unit

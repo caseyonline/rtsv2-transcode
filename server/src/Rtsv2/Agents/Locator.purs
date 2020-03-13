@@ -73,7 +73,7 @@ findAndRegister config payload =  do
           -- wait and try again
           _ <- config.logWarning "Inconsistent location information - retrying" {payload}
           -- TODO sleep duration from config
-          _ <- Erl.sleep (wrap 500)
+          _ <- Erl.sleep (wrap 500.0)
           -- cast the local server to a remote to generate a redirect back here
           pure $ Right $ Remote server
         Just (Remote server) -> do
