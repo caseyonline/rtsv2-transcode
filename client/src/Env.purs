@@ -36,6 +36,12 @@ derive instance ordLogLevel :: Ord LogLevel
 type UserEnv =
   { currentUser :: Ref (Maybe Profile)
   , userBus     :: BusRW (Maybe Profile)
+  , notices     :: Ref (Array Notification)
+  }
+
+type Notification =
+  { message  :: String
+  , cssStyle :: String
   }
 
 type PoPDefEnv =

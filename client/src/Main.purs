@@ -46,6 +46,7 @@ main = HA.runHalogenAff do
   transPoPLeaders     <- liftEffect $ Ref.new mempty
   aggregatorLocations <- liftEffect $ Ref.new mempty
   geoLocations        <- liftEffect $ Ref.new mempty
+  notices             <- liftEffect $ Ref.new mempty
 
   -- new bus to broadcast updates when the value of the current user changes;
   userBus <- liftEffect Bus.make
@@ -75,7 +76,7 @@ main = HA.runHalogenAff do
       urlEnv = { curHostUrl: (CurHostUrl curHostUrl), authUrl, htmlClass }
 
       userEnv :: UserEnv
-      userEnv = { currentUser, userBus }
+      userEnv = { currentUser, userBus, notices }
 
       popDefEnv :: PoPDefEnv
       popDefEnv = { popDefinition
