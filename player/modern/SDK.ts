@@ -10,7 +10,7 @@ const API_VERSION: string = "1.0";
 
 export function createPlayer(configuration: IPlayerConfiguration) {
   const configurationWithDefaults = PlayerConfiguration.withDefaults(configuration);
-  createPlayerPrime(configurationWithDefaults);
+  return createPlayerPrime(configurationWithDefaults);
 }
 
 function createPlayerPrime(configuration: IPlayerConfiguration) {

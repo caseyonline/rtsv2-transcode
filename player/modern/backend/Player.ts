@@ -1,6 +1,7 @@
 import IPlayer from "../frontend/IPlayer";
 
 import Session from "./Session";
+import { QualityConstraintBehavior } from "./signaling/types";
 
 export default class Player implements IPlayer {
   private account: string;
@@ -21,5 +22,9 @@ export default class Player implements IPlayer {
 
   requestMigrate(socketURL: string) {
     this.session.requestMigrate(socketURL);
+  }
+
+  setProfile(profileName: string) {
+    this.session.setQualityConstraint({ behavior: QualityConstraintBehavior.ForceQuality, variant: profileName });
   }
 }

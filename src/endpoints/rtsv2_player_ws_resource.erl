@@ -311,6 +311,9 @@ websocket_handle({ text, JSON }, State) ->
         <<"ice.done">> ->
           handle_ice_gathering_done(Message, State);
 
+        <<"set-quality-constraint-configuration">> ->
+          handle_set_quality_constraint_configuration(Message, State);
+
         _UnknownMessageType ->
           { [ close_frame(?WebSocketStatusCode_MessageNotImplemented) ]
           , State
@@ -569,6 +572,15 @@ handle_ice_gathering_done(_Message, State) ->
   }.
 
 
+handle_set_quality_constraint_configuration(#{ <<"configuration">> := #{ <<"behavior">> := _Behavior, <<"variant">> := Variant } }, #?state_running{ server_id = ServerId, trace_id = TraceId } = State) ->
+  %% TODO: PS: logging, actual abr
+  rtsv2_webrtc_session_handler:set_active_profile(ServerId, TraceId, Variant),
+  { []
+  , State
+  , hibernate
+  }.
+
+
 maybe_allocate_trace_id(ServerId, ServerEpoch, CookieDomainName, Req) ->
   case cowboy_req:match_cookies([{tid, [], undefined}], Req) of
     #{tid := TraceId} when TraceId =/= undefined ->
@@ -648,7 +660,7 @@ this_server_ip(Req) ->
   IP.
 
 
-construct_start_options(TraceId, IP, [ SlotProfile ], #stream_desc_ingest{}) ->
+construct_start_options(TraceId, IP, [ SlotProfile ] = SlotProfiles, #stream_desc_ingest{}) ->
 
   #{ firstAudioSSRC := AudioSSRC
    , firstVideoSSRC := VideoSSRC
@@ -657,7 +669,7 @@ construct_start_options(TraceId, IP, [ SlotProfile ], #stream_desc_ingest{}) ->
   #{ session_id => TraceId
    , local_address => IP
    , handler_module => rtsv2_webrtc_session_handler
-   , handler_args => [ TraceId ]
+   , handler_args => [ TraceId, SlotProfiles ]
 
      %% TODO: from config
    , ice_options => #{ resolution_disabled => false
@@ -681,12 +693,12 @@ construct_start_options(TraceId, IP, [ SlotProfile ], #stream_desc_ingest{}) ->
        end
    };
 
-construct_start_options(TraceId, IP, _SlotProfiles, #stream_desc_egest{}) ->
+construct_start_options(TraceId, IP, SlotProfiles, #stream_desc_egest{}) ->
 
   #{ session_id => TraceId
    , local_address => IP
    , handler_module => rtsv2_webrtc_session_handler
-   , handler_args => [ TraceId ]
+   , handler_args => [ TraceId, SlotProfiles ]
 
      %% TODO: from config
    , ice_options => #{ resolution_disabled => false
