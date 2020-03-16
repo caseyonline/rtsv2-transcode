@@ -868,7 +868,7 @@ main =
                                                            >>= compareSlotState identity (/=)
                                                                                      >>= asT "compare state"
 
-            itOnly "Launch ingest and egest, kill downstream relay, assert slot state is still valid" do
+            it "Launch ingest and egest, kill downstream relay, assert slot state is still valid" do
               (flip evalStateT) Map.empty $ do
                 lift $ ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200  >>= as  "create ingest"
                 lift $ waitForAsyncProfileStart                                      >>= as' "wait for async start of ingest"
