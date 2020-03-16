@@ -17,18 +17,27 @@
 
 -define(state, ?MODULE).
 
+-record(egest_stream_state,
+        { active_ssrc
+        , last_sequence = 16
+        , last_timestamp
+        , timestamp_delta = 0
+        }).
+
+-record(desired_state,
+        { desired_video_ssrc
+        , desired_audio_ssrc
+        }).
+
 %% TODO: review sequence number behaviour
 -record(?state,
         { session_id
         , profiles
 
-        , active_video_ssrc
-        , desired_video_ssrc
-        , last_video_sequence = 16
+        , desired_state = undefined
 
-        , active_audio_ssrc
-        , desired_audio_ssrc
-        , last_audio_sequence = 16
+        , video_state = #egest_stream_state{}
+        , audio_state = #egest_stream_state{}
         }).
 
 %%% timestamps?????? lip sync
@@ -54,11 +63,20 @@ handle_media_frame(_Frame, #?state{} = State) ->
 handle_info(#rtp_sequence{ type = audio } = Sequence, State) ->
   handle_audio_sequence(Sequence, State);
 
-handle_info(#rtp_sequence{ type = video, rtps = Packets } = Sequence, #?state{ desired_video_ssrc = DesiredVideoSSRC, desired_audio_ssrc = DesiredAudioSSRC } = State) when DesiredVideoSSRC =/= undefined ->
+handle_info(#rtp_sequence{ type = video, rtps = Packets } = Sequence,
+            #?state{ desired_state = #desired_state{ desired_video_ssrc = DesiredVideoSSRC, desired_audio_ssrc = DesiredAudioSSRC }
+                   , video_state = VideoState
+                   , audio_state = AudioState
+                   } = State
+           ) ->
   case lists:any(is_valid_switch_point(DesiredVideoSSRC), Packets) of
     true ->
       ?SLOG_INFO("Found valid switch point, switching SSRC", #{ video_ssrc => DesiredVideoSSRC }),
-      handle_video_sequence(Sequence, State#?state{ desired_video_ssrc = undefined, desired_audio_ssrc = undefined, active_video_ssrc = DesiredVideoSSRC, active_audio_ssrc = DesiredAudioSSRC });
+      NewState = State#?state{ desired_state = undefined
+                             , video_state = VideoState#egest_stream_state{ active_ssrc = DesiredVideoSSRC }
+                             , audio_state = AudioState#egest_stream_state{ active_ssrc = DesiredAudioSSRC }
+                             },
+      handle_video_sequence(Sequence, NewState);
     false ->
       handle_video_sequence(Sequence, State)
   end;
@@ -73,66 +91,115 @@ handle_cast({set_active_profile, Profile}, State) ->
 handle_cast(notify_socket_disconnect, State) ->
   {stop, normal, State}.
 
-handle_audio_sequence(#rtp_sequence{ type = audio } = Sequence, #?state{ active_audio_ssrc = ActiveSSRC, last_audio_sequence = LastSequenceNumber } = State) ->
-  case filter_and_renumber(Sequence, ActiveSSRC, LastSequenceNumber, ?EGEST_AUDIO_SSRC) of
+handle_audio_sequence(#rtp_sequence{ type = audio } = Sequence, #?state{ audio_state = StreamState } = State) ->
+  case filter_and_renumber(Sequence, StreamState, ?EGEST_AUDIO_SSRC) of
     false ->
       { ok
       , State
       };
-    {FilteredSequence, NewLastSequenceNumber} ->
+
+    {FilteredSequence, NewStreamState} ->
       { ok
       , FilteredSequence
-      , State#?state{ last_audio_sequence = NewLastSequenceNumber }
+      , State#?state{ audio_state = NewStreamState }
       }
   end.
 
-handle_video_sequence(#rtp_sequence{ type = video } = Sequence, #?state{ active_video_ssrc = ActiveSSRC, last_video_sequence = LastSequenceNumber } = State) ->
-  case filter_and_renumber(Sequence, ActiveSSRC, LastSequenceNumber, ?EGEST_VIDEO_SSRC) of
+handle_video_sequence(#rtp_sequence{ type = video } = Sequence, #?state{ video_state = StreamState } = State) ->
+  case filter_and_renumber(Sequence, StreamState, ?EGEST_VIDEO_SSRC) of
     false ->
       { ok
       , State
       };
-    {FilteredSequence, NewLastSequenceNumber} ->
+
+    {FilteredSequence, NewStreamState} ->
       { ok
       , FilteredSequence
-      , State#?state{ last_video_sequence = NewLastSequenceNumber }
+      , State#?state{ video_state = NewStreamState }
       }
   end.
+
+
+%%%          case MinTS - LastTimestamp of
+%%%            0 ->
+%%%              ok;
+%%%            3690 ->
+%%%              ok;
+%%%            3780 ->
+%%%              ok;
+%%%            Delta ->
+%%%              ?SLOG_DEBUG("Video Timestamps", #{ delta => Delta })
+%%%          end
 
 set_active_profile_impl(ProfileName, #?state{ profiles = Profiles } = State) ->
   MaybeMatchingProfile = lists:search(fun(#{ name := ActualProfileName }) -> ActualProfileName =:= ProfileName end, Profiles),
 
   case MaybeMatchingProfile of
     {value, #{ firstAudioSSRC := AudioSSRC, firstVideoSSRC := VideoSSRC }} ->
-      State#?state{ desired_video_ssrc = VideoSSRC
-                  , desired_audio_ssrc = AudioSSRC
+      State#?state{ desired_state =
+                      #desired_state{ desired_video_ssrc = VideoSSRC
+                                    , desired_audio_ssrc = AudioSSRC
+                                    }
                   };
     false->
       State
   end.
 
-filter_and_renumber(#rtp_sequence{ rtps = RTPs } = Sequence, ActiveSSRC, LastSequenceNumber, EgestSSRC) ->
-  {NewRTPs, NewLastSequenceNumber} =
-    lists:foldl(fun
-                  (#rtp{ ssrc = PacketSSRC } = RTP, {NewRTPsIn, LastSequenceNumberIn}) when PacketSSRC =:= ActiveSSRC ->
-                    SequenceNumberOut = (LastSequenceNumberIn + 1) rem 65536,
-                    RTPOut = RTP#rtp{ ssrc = EgestSSRC, sequence_number = SequenceNumberOut },
-                    NewRTPsOut = [ RTPOut | NewRTPsIn ],
-                    { NewRTPsOut, SequenceNumberOut };
+filter_and_renumber(#rtp_sequence{ rtps = [] }, _StreamState, _EgestSSRC) ->
+  false;
 
-                  (_RTP, Acc) ->
-                   Acc
-                end,
-                {[], LastSequenceNumber},
-                RTPs
-               ),
+filter_and_renumber(#rtp_sequence{ rtps = RTPs } = Sequence, State, EgestSSRC) ->
+  case filter_and_renumber_prime(RTPs, [], State, EgestSSRC) of
+    false ->
+      false;
 
-  case NewRTPs of
+    { RTPsOut, NewState } ->
+      { Sequence#rtp_sequence{ rtps = RTPsOut }, NewState }
+  end.
+
+
+filter_and_renumber_prime([], Acc, State, _EgestSSRC) ->
+  case Acc of
     [] ->
       false;
+
     _ ->
-      {Sequence#rtp_sequence{ rtps = lists:reverse(NewRTPs) }, NewLastSequenceNumber}
-  end.
+      { lists:reverse(Acc), State }
+  end;
+
+filter_and_renumber_prime([ #rtp{ ssrc = PacketSSRC } | Rest ], Acc, #egest_stream_state{ active_ssrc = ActiveSSRC } = State, EgestSSRC ) when PacketSSRC =/= ActiveSSRC ->
+  filter_and_renumber_prime(Rest, Acc, State, EgestSSRC);
+
+filter_and_renumber_prime([ #rtp{ timestamp = RawTimestamp } = RTP | Rest ], Acc, #egest_stream_state{ last_sequence = LastSequence, last_timestamp = LastTimestamp, timestamp_delta = LastTimestampDelta } = State, EgestSSRC ) ->
+
+  %% TODO: rollover...
+  %% TODO: foward jump...
+  {Timestamp, TimestampDelta} =
+    case RawTimestamp + LastTimestampDelta of
+      N when LastTimestamp =/= undefined andalso N < LastTimestamp ->
+        NewDelta = LastTimestamp - RawTimestamp,
+        ?SLOG_WARNING("Timestamps went back. Adjusting.", #{ from => LastTimestamp, to => N, previous_delta => LastTimestampDelta, new_delta => NewDelta }),
+        {LastTimestamp, NewDelta};
+      N ->
+        {N, LastTimestampDelta}
+    end,
+
+  SequenceNumberOut = (LastSequence + 1) rem 65536,
+
+  RTPOut = RTP#rtp{ ssrc = EgestSSRC
+                  , sequence_number = SequenceNumberOut
+                  , timestamp = Timestamp
+                  },
+
+  NewAcc = [ RTPOut | Acc ],
+
+  NewState = State#egest_stream_state{ last_sequence = SequenceNumberOut
+                                     , last_timestamp = Timestamp
+                                     , timestamp_delta = TimestampDelta
+                                     },
+
+  filter_and_renumber_prime(Rest, NewAcc, NewState, EgestSSRC).
+
 
 is_valid_switch_point(DesiredVideoSSRC) ->
   fun
