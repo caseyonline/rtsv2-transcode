@@ -29,7 +29,6 @@
         , desired_audio_ssrc
         }).
 
-%% TODO: review sequence number behaviour
 -record(?state,
         { session_id
         , profiles
@@ -39,8 +38,6 @@
         , video_state = #egest_stream_state{}
         , audio_state = #egest_stream_state{}
         }).
-
-%%% timestamps?????? lip sync
 
 set_active_profile(ServerId, TraceId, ProfileName) ->
   webrtc_stream_server:cast_session(ServerId, TraceId, {set_active_profile, ProfileName}).
@@ -120,17 +117,6 @@ handle_video_sequence(#rtp_sequence{ type = video } = Sequence, #?state{ video_s
   end.
 
 
-%%%          case MinTS - LastTimestamp of
-%%%            0 ->
-%%%              ok;
-%%%            3690 ->
-%%%              ok;
-%%%            3780 ->
-%%%              ok;
-%%%            Delta ->
-%%%              ?SLOG_DEBUG("Video Timestamps", #{ delta => Delta })
-%%%          end
-
 set_active_profile_impl(ProfileName, #?state{ profiles = Profiles } = State) ->
   MaybeMatchingProfile = lists:search(fun(#{ name := ActualProfileName }) -> ActualProfileName =:= ProfileName end, Profiles),
 
@@ -144,6 +130,7 @@ set_active_profile_impl(ProfileName, #?state{ profiles = Profiles } = State) ->
     false->
       State
   end.
+
 
 filter_and_renumber(#rtp_sequence{ rtps = [] }, _StreamState, _EgestSSRC) ->
   false;
