@@ -113,6 +113,8 @@ init args = do
         , "LoadE"                                       : LoadHandler.load
         , "RelayProxiedStatsE"                          : RelayHandler.proxiedStats
 
+        , "RelayRegisteredEgestE" : CowboyRoutePlaceholder -- TODO
+
         , "IngestStartE"                                : IngestHandler.ingestStart
         , "IngestStopE"                                 : IngestHandler.ingestStop
         , "ClientStartE"                                : ClientHandler.clientStart
@@ -187,8 +189,8 @@ init args = do
     makeSlotIdAndProfileName slotId profileName = SlotIdAndProfileName (slotIdStringToSlotId slotId) (wrap profileName)
 
     makeIngestKey :: UUID -> String -> String -> IngestKey
-    makeIngestKey slotId streamRole profileName =
-      IngestKey (wrap slotId) (parseSlotRole streamRole) (wrap profileName)
+    makeIngestKey slotId slotRole profileName =
+      IngestKey (wrap slotId) (parseSlotRole slotRole) (wrap profileName)
       where
         parseSlotRole "primary" = Primary
         parseSlotRole "backup" = Backup

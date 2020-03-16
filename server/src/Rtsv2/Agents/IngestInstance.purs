@@ -86,7 +86,7 @@ type State
     , remoteAddress :: String
     , remotePort :: Int
     , localPort :: Int
-    , aggregatorAddr :: Maybe (LocalOrRemote Server)
+    , cachedState :: CachedState
     , clientMetadata :: Maybe (RtmpClientMetadata List)
     , sourceInfo :: Maybe (SourceInfo List)
     , stateServerName :: StateServerName
@@ -181,7 +181,7 @@ init { streamPublish
        , streamDetails
        , ingestKey
        , aggregatorRetryTime: wrap $ toNumber intraPoPLatencyMs
-       , aggregatorAddr: Nothing
+       , cachedState: {aggregatorAddr: Nothing}
        , clientMetadata: Nothing
        , sourceInfo: Nothing
        , remoteAddress
@@ -256,7 +256,7 @@ ingestEqLine state@{ ingestKey: ingestKey@(IngestKey slotId slotRole _profileeNa
        }
 
 doStopIngest :: State -> Effect Unit
-doStopIngest state@{aggregatorAddr, ingestKey} = do
+doStopIngest state@{ingestKey} = do
   -- Happy state exit - we also need to remove ourselves from the ingest aggregator, but that is
   -- done in the stopAction, which will also get called in the unhappy case
   eqLine <- ingestEqLine state
@@ -269,8 +269,10 @@ informAggregator state@{streamDetails, ingestKey, thisServer, aggregatorRetryTim
   maybeIngestAdded <- sequence (addIngest <$> (extractServer <$>  maybeAggregator))
   case fromMaybe (Right false) maybeIngestAdded of
     Right true -> do
-      CachedInstanceState.recordInstanceData stateServerName {aggregatorAddr: maybeAggregator}
-      pure $ Right state{aggregatorAddr = maybeAggregator}
+      let
+        cachedState = {aggregatorAddr: maybeAggregator}
+      CachedInstanceState.recordInstanceData stateServerName cachedState
+      pure $ Right state{cachedState = cachedState}
     Right false -> do
       void $ Timer.sendAfter (serverName ingestKey) (round $ unwrap aggregatorRetryTime) InformAggregator
       pure $ Right state
@@ -322,7 +324,7 @@ informAggregator state@{streamDetails, ingestKey, thisServer, aggregatorRetryTim
           void $ crashIfLeft =<< SpudGun.postJson url streamDetails
 
 handleAggregatorExit :: AggregatorKey -> Server -> State -> Effect State
-handleAggregatorExit exitedAggregatorKey exitedAggregatorAddr state@{ingestKey, aggregatorRetryTime, aggregatorAddr}
+handleAggregatorExit exitedAggregatorKey exitedAggregatorAddr state@{ingestKey, aggregatorRetryTime, cachedState: {aggregatorAddr}}
   | exitedAggregatorKey == (ingestKeyToAggregatorKey ingestKey) && Just exitedAggregatorAddr == (extractServer <$> aggregatorAddr) = do
       void $ Timer.sendAfter (serverName ingestKey) 0 InformAggregator
       pure state
@@ -330,8 +332,8 @@ handleAggregatorExit exitedAggregatorKey exitedAggregatorAddr state@{ingestKey, 
       pure state
 
 makeActiveIngestUrl :: Server -> IngestKey -> Url
-makeActiveIngestUrl server (IngestKey slotId streamRole profileName) =
-  makeUrl server $ IngestAggregatorActiveIngestsE slotId streamRole profileName
+makeActiveIngestUrl server (IngestKey slotId slotRole profileName) =
+  makeUrl server $ IngestAggregatorActiveIngestsE slotId slotRole profileName
 
 loadThresholdToCreateAggregator :: Load
 loadThresholdToCreateAggregator = wrap 50.0

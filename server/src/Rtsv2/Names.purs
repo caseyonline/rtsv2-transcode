@@ -3,6 +3,7 @@ module Rtsv2.Names
          agentSupName
        , egestInstanceName
        , egestInstanceSupName
+       , egestInstanceStateName
 
        , ingestAggregatorSupName
        , ingestAggregatorInstanceStateName
@@ -52,6 +53,9 @@ egestInstanceName = gprocName2 Egest
 
 egestInstanceSupName :: SupervisorName
 egestInstanceSupName = instanceSup Egest
+
+egestInstanceStateName :: forall a b. EgestKey -> ServerName a b
+egestInstanceStateName = gprocName2WithSuffix "State" Egest
 
 ingestAggregatorSupName :: SupervisorName
 ingestAggregatorSupName = sup IngestAggregator

@@ -99,7 +99,7 @@ metrics = { name: "ingest_frame_count"
 statsToPrometheus :: List (PublicState.IngestStats List) -> String
 statsToPrometheus stats =
   foldl (\page { timestamp
-               , ingestKey: IngestKey slotId streamRole profileId
+               , ingestKey: IngestKey slotId slotRole profileId
                , streamBitrateMetrics
                , frameFlowMeterMetrics
                , rtmpIngestMetrics
@@ -108,15 +108,15 @@ statsToPrometheus stats =
            prometheusTimestamp = Prometheus.toTimestamp timestamp
          in
           page
-          # streamBitrateMetricsToPrometheus prometheusTimestamp slotId profileId streamRole streamBitrateMetrics
-          # frameFlowMetricsToPrometheus prometheusTimestamp slotId profileId streamRole frameFlowMeterMetrics
-          # rtmpMetricsToPrometheus prometheusTimestamp slotId profileId streamRole rtmpIngestMetrics
+          # streamBitrateMetricsToPrometheus prometheusTimestamp slotId profileId slotRole streamBitrateMetrics
+          # frameFlowMetricsToPrometheus prometheusTimestamp slotId profileId slotRole frameFlowMeterMetrics
+          # rtmpMetricsToPrometheus prometheusTimestamp slotId profileId slotRole rtmpIngestMetrics
         )
   (Prometheus.newPage metrics)
   stats
   # Prometheus.pageToString
   where
-    streamBitrateMetricsToPrometheus timestamp slotId profileId streamRole streamBitrateMetrics page =
+    streamBitrateMetricsToPrometheus timestamp slotId profileId slotRole streamBitrateMetrics page =
           foldl
           (\innerPage
             perStream@{ metrics: { frameCount
@@ -124,7 +124,7 @@ statsToPrometheus stats =
                                  , bitrate
                                  , averagePacketSize }} ->
            let
-             labels = labelsForStream slotId profileId streamRole perStream
+             labels = labelsForStream slotId profileId slotRole perStream
            in
             innerPage
             # Prometheus.addMetric "ingest_frame_count" frameCount labels timestamp
@@ -135,7 +135,7 @@ statsToPrometheus stats =
           page
           streamBitrateMetrics.perStreamMetrics
 
-    frameFlowMetricsToPrometheus timestamp slotId profileId streamRole frameFlowMetrics page =
+    frameFlowMetricsToPrometheus timestamp slotId profileId slotRole frameFlowMetrics page =
           foldl
           (\innerPage
             perStream@{ metrics: { byteCount
@@ -144,7 +144,7 @@ statsToPrometheus stats =
                                  , lastCaptureMs
                                  }} ->
            let
-             labels = labelsForStream slotId profileId streamRole perStream
+             labels = labelsForStream slotId profileId slotRole perStream
            in
             innerPage
             # Prometheus.addMetric "ingest_byte_count" byteCount labels timestamp
@@ -155,11 +155,11 @@ statsToPrometheus stats =
           page
           frameFlowMetrics.perStreamMetrics
 
-    rtmpMetricsToPrometheus timestamp slotId profileId streamRole {totalBytesSent, totalBytesReceived, lastBytesReadReport} page =
+    rtmpMetricsToPrometheus timestamp slotId profileId slotRole {totalBytesSent, totalBytesReceived, lastBytesReadReport} page =
       let
         labels = Prometheus.toLabels $ (Tuple "slot" (Prometheus.toLabelValue (show (unwrap slotId)))) :
                                        (Tuple "profile" (Prometheus.toLabelValue (unwrap profileId))) :
-                                       (Tuple "role" (Prometheus.toLabelValue (show streamRole))) :
+                                       (Tuple "role" (Prometheus.toLabelValue (show slotRole))) :
                                        nil
       in
        Prometheus.addMetric "ingest_bytes_sent" totalBytesSent labels timestamp page

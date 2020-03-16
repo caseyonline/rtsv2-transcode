@@ -111,8 +111,8 @@ isInstanceAvailable aggregatorKey = do
   bool <- isRegistered (serverName aggregatorKey)
   pure bool
 
-payloadToAggregatorKey :: forall r. { slotId :: SlotId, streamRole :: SlotRole | r } -> AggregatorKey
-payloadToAggregatorKey payload = AggregatorKey payload.slotId payload.streamRole
+payloadToAggregatorKey :: forall r. { slotId :: SlotId, slotRole :: SlotRole | r } -> AggregatorKey
+payloadToAggregatorKey payload = AggregatorKey payload.slotId payload.slotRole
 
 serverName :: AggregatorKey -> ServerName State Msg
 serverName = Names.ingestAggregatorInstanceName
@@ -194,7 +194,7 @@ getState aggregatorKey@(AggregatorKey slotId slotRole) = Gen.call (serverName ag
 
 
 slotConfiguration :: AggregatorKey -> Effect (Maybe SlotConfiguration)
-slotConfiguration (AggregatorKey (SlotId slotId) _streamRole) =
+slotConfiguration (AggregatorKey (SlotId slotId) _slotRole) =
   -- TODO: the key is what the slot config should be keyed on...
   slotConfigurationImpl slotId
 

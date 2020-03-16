@@ -28,14 +28,14 @@ import Rtsv2.Agents.StreamRelaySup as StreamRelaySup
 import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload, RegisterEgestPayload, RegisterRelayPayload)
 import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.PoPDefinition as PoPDefinition
-import Shared.Stream (RelayKey(..), SlotId, SlotRole)
 import Shared.Router.Endpoint (Endpoint(..), makeUrl)
+import Shared.Stream (RelayKey(..), SlotId, SlotRole)
 import Shared.Types (Server, extractAddress)
 import Shared.Types.Agent.State (StreamRelay)
 import Simple.JSON as JSON
 import Stetson (HttpMethod(..), StetsonHandler)
 import Stetson.Rest as Rest
-import StetsonHelper (GetHandler, PostHandler, allBody, binaryToString, jsonResponse, preHookSpyState, processPostPayload)
+import StetsonHelper (GetHandler, PostHandler, allBody, binaryToString, jsonResponse, preHookSpyState, processPostPayload, processPostPayloadWithResponseAndUrl)
 
 stats :: SlotId -> SlotRole -> GetHandler (StreamRelay List)
 stats slotId slotRole = jsonResponse $ Just <$> (StreamRelayInstance.status $ RelayKey slotId slotRole)
@@ -44,7 +44,7 @@ startResource :: PostHandler CreateRelayPayload
 startResource =  processPostPayload StreamRelaySup.startRelay
 
 registerEgest :: PostHandler RegisterEgestPayload
-registerEgest = processPostPayload StreamRelayInstance.registerEgest
+registerEgest = processPostPayloadWithResponseAndUrl (((<$>) Just) <<< StreamRelayInstance.registerEgest)
 
 registerRelay :: PostHandler RegisterRelayPayload
 registerRelay = processPostPayload StreamRelayInstance.registerRelay
@@ -82,11 +82,11 @@ proxiedStats slotId slotRole =
     previouslyExisted req state@(ProxyState {whereIsResp}) =
       Rest.result (isJust whereIsResp) req state
 
-    movedTemporarily req state@(ProxyState {whereIsResp, relayKey: (RelayKey slotId streamRole)}) =
+    movedTemporarily req state@(ProxyState {whereIsResp, relayKey: (RelayKey slotId slotRole)}) =
       case whereIsResp of
         Just server ->
           let
-            url = makeUrl server (RelayStatsE slotId streamRole)
+            url = makeUrl server (RelayStatsE slotId slotRole)
           in
             Rest.result (moved $ unwrap url) req state
         _ ->

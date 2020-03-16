@@ -144,8 +144,6 @@ postJsonFollow url bodyType = post url { body: writeJSON bodyType,
                                        , followRedirect : true
                                        }
 
-
-
 --TODO homogeneous constraint generates a function of the wrong arity ??!!
 -- makeHeaders ::
 --   forall r. -- Homogeneous r String =>

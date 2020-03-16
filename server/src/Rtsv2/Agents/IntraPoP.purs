@@ -242,7 +242,7 @@ whereIsIngestAggregator :: AggregatorKey -> Effect (Maybe Server)
 whereIsIngestAggregator aggregatorKey = head <$> whereIs (_.aggregators) (aggregatorKeyToAgentKey aggregatorKey)
 
 whereIsStreamRelay :: RelayKey -> Effect (Maybe (LocalOrRemote Server))
-whereIsStreamRelay (RelayKey slotId streamRole)  = head <$> (map $ map serverLoadToServer) <$> whereIsStreamRelay' (AgentKey slotId streamRole)
+whereIsStreamRelay (RelayKey slotId slotRole)  = head <$> (map $ map serverLoadToServer) <$> whereIsStreamRelay' (AgentKey slotId slotRole)
 
 whereIsEgest :: EgestKey -> Effect (List ServerLoad)
 whereIsEgest egestKey = (map fromLocalOrRemote) <$> (whereIsEgest' $ egestKeyToAgentKey egestKey)
@@ -668,12 +668,12 @@ relayHandler
 
 -- Called by RelayAgent to indicate relay on this node
 announceLocalRelayIsAvailable :: RelayKey -> Effect Unit
-announceLocalRelayIsAvailable (RelayKey slotId streamRole) = do
-  announceAvailableLocal relayHandler (AgentKey slotId streamRole)
+announceLocalRelayIsAvailable (RelayKey slotId slotRole) = do
+  announceAvailableLocal relayHandler (AgentKey slotId slotRole)
 
 announceLocalRelayStopped :: RelayKey -> Effect Unit
-announceLocalRelayStopped (RelayKey slotId streamRole) = do
-  announceStoppedLocal relayHandler (AgentKey slotId streamRole)
+announceLocalRelayStopped (RelayKey slotId slotRole) = do
+  announceStoppedLocal relayHandler (AgentKey slotId slotRole)
 
 -- Builds public API for events on this server
 announceAvailableLocal :: AgentHandler -> AgentKey -> Effect Unit

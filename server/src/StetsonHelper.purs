@@ -7,6 +7,7 @@ module StetsonHelper
 
        , processPostPayload
        , processPostPayloadWithResponse
+       , processPostPayloadWithResponseAndUrl
        , PostHandler
        , PostHandlerWithResponse
        , PostHandlerState
@@ -23,6 +24,7 @@ import Prelude
 
 import Data.Either (hush)
 import Data.Maybe (Maybe(..), fromMaybe, fromMaybe', isJust, isNothing)
+import Data.Newtype (unwrap)
 import Effect (Effect)
 import Erl.Cowboy.Req (ReadBodyResult(..), Req, readBody, setHeader)
 import Erl.Data.Binary (Binary)
@@ -32,6 +34,7 @@ import Erl.Data.Tuple (Tuple2, fst, snd, tuple2)
 import Logger (spy)
 import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.Utils (noprocToMaybe)
+import Shared.Common (Url)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (class ReadForeign, class WriteForeign, writeJSON)
 import Simple.JSON as JSON
@@ -75,7 +78,8 @@ multiMimeResponse mimeFormatters getData =
 -- POST helpers
 ------------------------------------------------------------------------------
 type PostHandlerState a b = { mPayload :: Maybe a
-                            , mResponse :: Maybe b}
+                            , mResponse :: Maybe b
+                            , mUrl :: Maybe Url}
 
 type PostHandler a = StetsonHandler (PostHandlerState a String)
 type PostHandlerWithResponse a b = StetsonHandler (PostHandlerState a b)
@@ -86,6 +90,10 @@ processPostPayload proxiedFun =
 
 processPostPayloadWithResponse :: forall a b. ReadForeign a => WriteForeign b => (a -> Effect (Maybe b)) -> PostHandlerWithResponse a b
 processPostPayloadWithResponse proxiedFun =
+  processPostPayloadWithResponseAndUrl (\a -> ((<$>) (tuple2 Nothing)) <$> (proxiedFun a))
+
+processPostPayloadWithResponseAndUrl :: forall a b. ReadForeign a => WriteForeign b => (a -> Effect (Maybe (Tuple2 (Maybe Url) b))) -> PostHandlerWithResponse a b
+processPostPayloadWithResponseAndUrl proxiedFun =
   Rest.handler init
   # Rest.allowedMethods (Rest.result (POST : mempty))
   # Rest.contentTypesAccepted (\req state -> Rest.result (singleton $ MimeType.json acceptJson) req state)
@@ -98,18 +106,25 @@ processPostPayloadWithResponse proxiedFun =
         (mPayload :: Maybe a) <- (hush <$> JSON.readJSON <$> binaryToString <$> allBody req mempty)
         Rest.initResult req { mPayload
                             , mResponse : Nothing
+                            , mUrl : Nothing
                             }
 
     acceptJson req state@{mPayload} = do
       let
         payload = fromMaybe' (lazyCrashIfMissing "impossible noEgestPayload") mPayload
       mResp <- proxiedFun payload
-      Rest.result true req state{mResponse = mResp}
+      let
+        mUrl = join $ fst <$> mResp
+        mResponse = snd <$> mResp
+        req2 = fromMaybe req $ ((flip (setHeader "location") req) <$> unwrap <$> mUrl)
+      Rest.result true req2 state{ mUrl = mUrl
+                                 , mResponse = mResponse
+                                 }
 
     malformedRequest req state@{mPayload} =
       Rest.result (isNothing mPayload) req state
 
-    provideJson req state@{mResponse} = do
+    provideJson req state@{mResponse, mUrl} = do
       let
         response = fromMaybe "" $ JSON.writeJSON <$> mResponse
       Rest.result response req state
