@@ -8,6 +8,7 @@ import Data.Bifunctor (lmap)
 import Data.Either (Either(..), fromRight)
 import Data.Foldable (foldl)
 import Data.Identity (Identity(..))
+import Data.Lens (Lens', Traversal', over, set, traversed)
 import Data.List (List(..), (:))
 import Data.List as List
 import Data.Map as Map
@@ -852,12 +853,12 @@ main =
                 lift $ clientStart p2n1 slot1              >>= assertStatusCode 204  >>= as  "egest available"
                 lift $ waitForAsyncProfileStart                                      >>= as' "wait for async start of egest"
                 (lift $ slotState p1n1 slot1               >>= (bodyToRecord :: ToRecord (PublicState.SlotState Array))
-                                                           <#> ((<$>) canonicaliseSlotState))
+                                                           <#> ((<$>) (excludePorts <<< canonicaliseSlotState)))
                                                            >>= storeSlotState        >>= as'' "stored state"
                 killOriginRelay slot1 Primary
                 lift $ waitForAsyncProfileStart                                      >>= as' "wait for recovery"
                 (lift $ slotState p1n1 slot1               >>= (bodyToRecord :: ToRecord (PublicState.SlotState Array))
-                                                           <#> ((<$>) canonicaliseSlotState))
+                                                           <#> ((<$>) (excludePorts <<< canonicaliseSlotState)))
                                                            >>= compareSlotState     >>= as'' "compare state"
 
     describe "Cleanup" do
@@ -948,6 +949,23 @@ canonicaliseSlotState { aggregators
   where
     byId :: forall a b. JsonLd.Node a b -> JsonLd.Node a b-> Ordering
     byId (JsonLd.Node {"@id": lhs}) (JsonLd.Node {"@id": rhs}) = compare lhs rhs
+
+excludePorts :: PublicState.SlotState Array -> PublicState.SlotState Array
+excludePorts { aggregators
+             , ingests
+             , originRelays
+             , downstreamRelays
+             , egests } =
+  { aggregators: excludeAggregatorPorts <$> aggregators
+  , ingests: ingests
+  , originRelays: originRelays
+  , downstreamRelays: downstreamRelays
+  , egests: egests }
+  where
+    excludeAggregatorPorts =
+      over (JsonLd._unwrappedNode <<< JsonLd._resource <<< JsonLd._downstreamRelays <<< traversed) excludeDownstreamRelayPorts
+    excludeDownstreamRelayPorts  =
+      set (JsonLd._unwrappedNode <<< JsonLd._resource <<< JsonLd._port) 0
 
 storeHeader :: String -> String -> Either String ResponseWithBody -> StateT (Map.Map String String) Aff (Either String ResponseWithBody)
 storeHeader header key either@(Left _) = pure either

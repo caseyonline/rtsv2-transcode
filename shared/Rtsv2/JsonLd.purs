@@ -64,7 +64,6 @@ module Shared.Rtsv2.JsonLd
        , IngestAggregatorState
        , IngestAggregatorStateNode
        , ingestAggregatorStateContext
-       , ingestAggregatorStateContext
        , ingestAggregatorStateNode
 
        , StreamRelayStateContextFields
@@ -79,25 +78,36 @@ module Shared.Rtsv2.JsonLd
        , ingestStateContext
        , ingestStateNode
 
+       , _downstreamRelays
+       , _port
+
        , module JsonLd
        ) where
 
 import Prelude
 
+import Data.Lens (Lens')
+import Data.Lens.Record (prop)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (wrap)
-import Shared.Common (Milliseconds(..))
-import Shared.JsonLd (Context, ContextValue(..), ExpandedTermDefinition, Node(..), unwrapNode) as JsonLd
+import Data.Symbol (SProxy(..))
+import Shared.Common (Milliseconds)
+import Shared.JsonLd ( Context
+                     , ContextValue(..)
+                     , ExpandedTermDefinition
+                     , Node(..)
+                     , NodeMetadata
+                     , unwrapNode
+                     , _unwrappedNode
+                     , _resource
+                     ) as JsonLd
 import Shared.JsonLd (ContextDefinition(..))
 import Shared.LlnwApiTypes (StreamDetails)
 import Shared.Router.Endpoint (Endpoint(..), makePath, makeUrl, makeUrlAddr)
-import Shared.Stream (IngestKey(..), ProfileName, SlotId, SlotRole)
+import Shared.Stream (ProfileName, SlotId, SlotRole)
 import Shared.Types (DeliverTo, JsonLdContextType(..), PoPName, RelayServer, Server, ServerAddress)
 import Shared.Types.Media.Types.Rtmp (RtmpClientMetadata)
 import Shared.Types.Media.Types.SourceDetails (SourceInfo)
-import Shared.Types.Workflow.Metrics.FrameFlow as FrameFlow
-import Shared.Types.Workflow.Metrics.RtmpPushIngest as RtmpIngest
-import Shared.Types.Workflow.Metrics.StreamBitrateMonitor as StreamBitrateMonitor
 
 ------------------------------------------------------------------------------
 -- Server
@@ -453,6 +463,15 @@ ingestStateNode slotId slotRole profileName state server =
        , "@nodeType": Just "http://types.rtsv2.llnw.com/Ingest"
        , "@context": Just $ ContextUrl $ makePath $ JsonLdContext IngestStateContext
        }
+
+--------------------------------------------------------------------------------
+-- Lenses
+--------------------------------------------------------------------------------
+_downstreamRelays :: forall a b. Lens' {downstreamRelays :: a | b} a
+_downstreamRelays = prop (SProxy :: SProxy "downstreamRelays")
+
+_port :: forall a b. Lens' {port :: a | b} a
+_port = prop (SProxy :: SProxy "port")
 
 -- foo :: forall resourceType otherFields newtypeType. Newtype newtypeType { resource :: resourceType | otherFields } => newtypeType -> resourceType
 -- foo = _.resource <<< unwrap

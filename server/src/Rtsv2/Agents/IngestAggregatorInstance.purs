@@ -23,7 +23,7 @@ import Bus as Bus
 import Data.Either (Either(..))
 import Data.Foldable (foldM, foldl)
 import Data.FoldableWithIndex (foldWithIndexM, foldlWithIndex)
-import Data.Lens (Lens', set)
+import Data.Lens (Lens', set, view)
 import Data.Lens.At (at)
 import Data.Lens.Record (prop)
 import Data.Maybe (Maybe(..), fromMaybe)
@@ -49,9 +49,9 @@ import Pinto (ServerName, StartLinkResult, isRegistered)
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
+import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..), announceLocalAggregatorIsAvailable, announceLocalAggregatorStopped, currentRemoteRef)
 import Rtsv2.Agents.IntraPoP as IntraPoP
-import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
 import Rtsv2.Agents.StreamRelayTypes (RegisterRelayPayload)
 import Rtsv2.Config as Config
@@ -74,11 +74,12 @@ foreign import addLocalIngestImpl :: WorkflowHandle -> IngestKey -> Effect Unit
 foreign import addRemoteIngestImpl :: WorkflowHandle -> IngestKey -> String -> Effect Unit
 foreign import removeIngestImpl :: WorkflowHandle -> IngestKey -> Effect Unit
 foreign import registerStreamRelayImpl :: WorkflowHandle -> String -> Int -> Effect Unit
+foreign import deRegisterStreamRelayImpl :: WorkflowHandle -> String -> Int -> Effect Unit
 foreign import slotConfigurationImpl :: UUID -> Effect (Maybe SlotConfiguration)
 
 type CachedState = { localIngests :: Set ProfileName
                    , remoteIngests :: Map ProfileName (Tuple Server Ref)
-                   , relays :: Set (DeliverTo RelayServer)
+                   , relays :: Map RelayServer Int
                    }
 
 type StateServerName = CachedInstanceState.StateServerName CachedState
@@ -185,7 +186,7 @@ getState aggregatorKey@(AggregatorKey slotId slotRole) = Gen.call (serverName ag
         gatherState = { role: slotRole
                       , streamDetails
                       , activeProfiles: (\(Tuple profileName server) -> JsonLd.activeIngestLocationNode slotId slotRole profileName (extractAddress server)) <$> allProfiles
-                      , downstreamRelays: foldl (\acc deliverTo -> (JsonLd.downstreamRelayLocationNode slotId slotRole deliverTo) : acc) nil relays
+                      , downstreamRelays: foldlWithIndex (\server acc port -> (JsonLd.downstreamRelayLocationNode slotId slotRole {server, port}) : acc) nil relays
                       }
         localProfiles outerAcc = foldl (\acc profileName -> (Tuple profileName thisServer) : acc) outerAcc localIngests
         remoteProfiles outerAcc = foldlWithIndex (\profileName acc (Tuple remoteServer ref) -> (Tuple profileName remoteServer) : acc) outerAcc remoteIngests
@@ -247,7 +248,7 @@ terminate reason state@{workflowHandle, webRtcStreamServers} = do
 emptyCachedState :: CachedState
 emptyCachedState = { localIngests: Set.empty
                    , remoteIngests: Map.empty
-                   , relays: Set.empty
+                   , relays: Map.empty
                    }
 
 hasIngests :: State -> Boolean
@@ -299,7 +300,8 @@ applyCachedState state {localIngests, remoteIngests, relays} =
                                            Left unit -> innerState2
                                            Right newState -> newState
                                      ) innerState remoteIngests)
-  >>= (\ innerState -> foldM (flip doRegisterRelay) innerState relays)
+  >>= (\ innerState -> foldWithIndexM (\server innerState2 port ->
+                                        doRegisterRelay {server, port} innerState2) innerState relays)
 
 addLocalIngestToCachedState :: ProfileName -> State -> State
 addLocalIngestToCachedState ingestKey = set (_localIngests <<< (at ingestKey)) (Just unit)
@@ -308,7 +310,7 @@ addRemoteIngestToCachedState :: ProfileName -> Server -> Ref -> State -> State
 addRemoteIngestToCachedState ingestKey remoteServer ref = set (_remoteIngests <<< (at ingestKey)) (Just (Tuple remoteServer ref))
 
 addRelayToCachedState :: (DeliverTo RelayServer) -> State -> State
-addRelayToCachedState payload = set (_relays <<< (at payload)) (Just unit)
+addRelayToCachedState {server, port} = set (_relays <<< (at server)) (Just port)
 
 removeLocalIngestFromCachedState :: ProfileName -> State -> State
 removeLocalIngestFromCachedState profileName = set (_localIngests <<< (at profileName)) Nothing
@@ -317,7 +319,7 @@ removeRemoteIngestFromCachedState :: ProfileName -> State -> State
 removeRemoteIngestFromCachedState profileName = set (_remoteIngests <<< (at profileName)) Nothing
 
 removeRelayFromCachedState :: DeliverTo RelayServer -> State -> State
-removeRelayFromCachedState payload = set (_relays <<< (at payload)) Nothing
+removeRelayFromCachedState {server} = set (_relays <<< (at server)) Nothing
 
 updateCachedState :: State -> Effect Unit
 updateCachedState state@{ stateServerName
@@ -362,13 +364,20 @@ doAddRemoteIngest profileName remoteServer remoteVmRef state@{slotId, slotRole, 
       pure $ Left unit
 
 doRegisterRelay :: (DeliverTo RelayServer) -> State -> Effect State
-doRegisterRelay deliverTo state@{slotId, slotRole} = do
+doRegisterRelay deliverTo@{server} state@{slotId, slotRole, workflowHandle} = do
   logInfo "Relay added" {slotId, slotRole, deliverTo}
+  let
+    maybeExistingPort = view (_relays <<< (at server)) state
+  deRegisterStreamRelayImpl' maybeExistingPort
   let
     state2 = addRelayToCachedState deliverTo state
   updateCachedState state2
-  registerStreamRelayImpl state.workflowHandle (deliverTo.server # unwrap # _.address # unwrap) (deliverTo.port)
+  registerStreamRelayImpl workflowHandle serverAddress (deliverTo.port)
   pure state2
+  where
+    serverAddress = server # unwrap # _.address # unwrap
+    deRegisterStreamRelayImpl' Nothing = pure unit
+    deRegisterStreamRelayImpl' (Just port) = deRegisterStreamRelayImpl workflowHandle serverAddress port
 
 doRemoveIngest :: ProfileName -> (ProfileName -> State -> State) -> State -> Effect State
 doRemoveIngest profileName cachedStateRemoveFun state@{aggregatorKey, workflowHandle, config:{shutdownLingerTimeMs}, slotId, slotRole} = do
@@ -403,7 +412,7 @@ _localIngests = __cachedState <<< __localIngests
 _remoteIngests :: Lens' State (Map ProfileName (Tuple Server Ref))
 _remoteIngests = __cachedState <<< __remoteIngests
 
-_relays :: Lens' State (Set (DeliverTo RelayServer))
+_relays :: Lens' State (Map RelayServer Int)
 _relays = __cachedState <<< __relays
 
 --------------------------------------------------------------------------------
