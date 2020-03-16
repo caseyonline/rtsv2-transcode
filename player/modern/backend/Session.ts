@@ -236,6 +236,12 @@ export default class Session extends EventEmitter implements ISession {
         }
         break;
 
+      case "quality-change":
+        {
+          console.debug("The server has switched the stream variant.", message);
+        }
+        break;
+
       default:
         this.unexpectedMessage(message);
     }

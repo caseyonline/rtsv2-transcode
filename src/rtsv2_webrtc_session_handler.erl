@@ -25,13 +25,15 @@
         }).
 
 -record(desired_state,
-        { desired_video_ssrc
+        { profile_name
+        , desired_video_ssrc
         , desired_audio_ssrc
         }).
 
 -record(?state,
         { session_id
         , profiles
+        , web_socket
 
         , desired_state = undefined
 
@@ -43,9 +45,9 @@ set_active_profile(ServerId, TraceId, ProfileName) ->
   webrtc_stream_server:cast_session(ServerId, TraceId, {set_active_profile, ProfileName}).
 
 
-init([ SessionId, [ #{ name := ActiveProfileName } | _ ] = Profiles ]) ->
+init([ SessionId, [ #{ name := ActiveProfileName } | _ ] = Profiles, WebSocket ]) ->
   ?DEBUG("Session handler started for session ~p in profile ~p", [SessionId, ActiveProfileName]),
-  State1 = #?state{ session_id = SessionId, profiles = Profiles },
+  State1 = #?state{ session_id = SessionId, profiles = Profiles, web_socket = WebSocket },
   State2 = set_active_profile_impl(ActiveProfileName, State1),
   State2.
 
@@ -61,14 +63,20 @@ handle_info(#rtp_sequence{ type = audio } = Sequence, State) ->
   handle_audio_sequence(Sequence, State);
 
 handle_info(#rtp_sequence{ type = video, rtps = Packets } = Sequence,
-            #?state{ desired_state = #desired_state{ desired_video_ssrc = DesiredVideoSSRC, desired_audio_ssrc = DesiredAudioSSRC }
+            #?state{ desired_state =
+                       #desired_state{ desired_video_ssrc = DesiredVideoSSRC
+                                     , desired_audio_ssrc = DesiredAudioSSRC
+                                     , profile_name = ProfileName
+                                     }
                    , video_state = VideoState
                    , audio_state = AudioState
+                   , web_socket = WebSocket
                    } = State
            ) ->
   case lists:any(is_valid_switch_point(DesiredVideoSSRC), Packets) of
     true ->
       ?SLOG_INFO("Found valid switch point, switching SSRC", #{ video_ssrc => DesiredVideoSSRC }),
+      rtsv2_player_ws_resource:notify_profile_switched(ProfileName, WebSocket),
       NewState = State#?state{ desired_state = undefined
                              , video_state = VideoState#egest_stream_state{ active_ssrc = DesiredVideoSSRC }
                              , audio_state = AudioState#egest_stream_state{ active_ssrc = DesiredAudioSSRC }
@@ -125,6 +133,7 @@ set_active_profile_impl(ProfileName, #?state{ profiles = Profiles } = State) ->
       State#?state{ desired_state =
                       #desired_state{ desired_video_ssrc = VideoSSRC
                                     , desired_audio_ssrc = AudioSSRC
+                                    , profile_name = ProfileName
                                     }
                   };
     false->

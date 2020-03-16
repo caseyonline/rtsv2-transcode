@@ -10,6 +10,9 @@
 -include("../rtsv2_rtp.hrl").
 
 
+-export([ notify_profile_switched/2 ]).
+
+
 -export([ init/2
         , terminate/3
         ]).
@@ -101,6 +104,10 @@
 -define(WebSocketStatusCode_InvalidSDP, 4002).
 -define(WebSocketStatusCode_StreamNotFound, 4003).
 -define(WebSocketStatusCode_StreamNotReadyRetryLater, 4004).
+
+
+notify_profile_switched(ProfileName, WebSocket) ->
+  WebSocket ! { profile_switched, ProfileName }.
 
 
 init(Req, Params) ->
@@ -284,6 +291,13 @@ websocket_info({ session_event
                   #{ <<"index">> => LineIndex
                    , <<"candidate">> => Candidate
                    }
+                ) ]
+  , State
+  };
+
+websocket_info({profile_switched, ProfileName}, State) ->
+  { [ json_frame( <<"quality-change">>,
+                  #{ <<"activeVariant">> => ProfileName }
                 ) ]
   , State
   };
@@ -669,7 +683,7 @@ construct_start_options(TraceId, IP, [ SlotProfile ] = SlotProfiles, #stream_des
   #{ session_id => TraceId
    , local_address => IP
    , handler_module => rtsv2_webrtc_session_handler
-   , handler_args => [ TraceId, SlotProfiles ]
+   , handler_args => [ TraceId, SlotProfiles, self() ]
 
      %% TODO: from config
    , ice_options => #{ resolution_disabled => false
@@ -698,7 +712,7 @@ construct_start_options(TraceId, IP, SlotProfiles, #stream_desc_egest{}) ->
   #{ session_id => TraceId
    , local_address => IP
    , handler_module => rtsv2_webrtc_session_handler
-   , handler_args => [ TraceId, SlotProfiles ]
+   , handler_args => [ TraceId, SlotProfiles, self() ]
 
      %% TODO: from config
    , ice_options => #{ resolution_disabled => false
