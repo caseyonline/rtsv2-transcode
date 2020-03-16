@@ -20,9 +20,11 @@ module Shared.Types.Agent.State
 
 import Prelude
 
+import Data.Lens (traversed)
+import Data.Traversable (class Traversable)
 import Shared.Common (Milliseconds)
 import Shared.Rtsv2.JsonLd as JsonLd
-import Shared.Stream (AgentKey, IngestKey, SlotId, SlotRole)
+import Shared.Stream (AgentKey, IngestKey, ProfileName(..), SlotId, SlotRole)
 import Shared.Types (GeoLoc, PoPName, RegionName, Server, ServerAddress)
 import Shared.Types.Workflow.Metrics.FrameFlow as FrameFlow
 import Shared.Types.Workflow.Metrics.RtmpPushIngest as RtmpIngest
@@ -65,6 +67,9 @@ type SlotState f = { aggregators :: f (IngestAggregator f)
 type AgentLocation f = { agentKey :: AgentKey
                        , servers :: f Server
                        }
+--foo :: forall f. Functor f => f JsonLd.DownstreamRelayLocationNode -> ServerAddress
+foo nodes =
+  traversed <<< JsonLd._unwrappedNode <<< JsonLd._id
 
 type AggregatorLocation f = { slotId :: SlotId
                             , role :: SlotRole

@@ -33,9 +33,6 @@ module Shared.Rtsv2.JsonLd
        , EgestServedLocationNode  -- == ServerAddressNode
        , egestServedLocationNode
 
-       , RelayServedLocationNode  -- == ServerAddressNode
-       , relayServedLocationNode
-
        , DownstreamRelayLocationNode -- == DeliverToNode
        , downstreamRelayLocationNode
 
@@ -79,6 +76,9 @@ module Shared.Rtsv2.JsonLd
        , ingestStateNode
 
        , _downstreamRelays
+       , _activeProfiles
+       , _profileName
+       , _relaysServed
        , _port
 
        , module JsonLd
@@ -99,6 +99,7 @@ import Shared.JsonLd ( Context
                      , NodeMetadata
                      , unwrapNode
                      , _unwrappedNode
+                     , _id
                      , _resource
                      ) as JsonLd
 import Shared.JsonLd (ContextDefinition(..))
@@ -242,18 +243,6 @@ egestServedLocationNode slotId serverAddress =
   wrap { resource: {address: serverAddress}
        , "@id": Just $ makeUrlAddr serverAddress (EgestStatsE slotId)
        , "@nodeType": Just "http://schema.rtsv2.llnw.com/EgestServedLocation"
-       , "@context": Just $ ContextUrl $ makePath $ JsonLdContext ServerAddressContext
-       }
-
-------------------------------------------------------------------------------
--- RelayServedLocation
-type RelayServedLocationNode = ServerAddressNode
-
-relayServedLocationNode :: SlotId -> SlotRole -> ServerAddress -> RelayServedLocationNode
-relayServedLocationNode slotId slotRole serverAddress =
-  wrap { resource: {address: serverAddress}
-       , "@id": Just $ makeUrlAddr serverAddress (RelayStatsE slotId slotRole)
-       , "@nodeType": Just "http://schema.rtsv2.llnw.com/RelayServedLocation"
        , "@context": Just $ ContextUrl $ makePath $ JsonLdContext ServerAddressContext
        }
 
@@ -404,7 +393,7 @@ type StreamRelayStateContextFields = ( role :: JsonLd.ContextValue
 type StreamRelayState f
   = { role :: SlotRole
     , egestsServed :: f EgestServedLocationNode
-    , relaysServed :: f RelayServedLocationNode
+    , relaysServed :: f DownstreamRelayLocationNode
     }
 
 type StreamRelayStateNode f = JsonLd.Node (StreamRelayState f) StreamRelayStateContextFields
@@ -469,6 +458,15 @@ ingestStateNode slotId slotRole profileName state server =
 --------------------------------------------------------------------------------
 _downstreamRelays :: forall a b. Lens' {downstreamRelays :: a | b} a
 _downstreamRelays = prop (SProxy :: SProxy "downstreamRelays")
+
+_activeProfiles :: forall a b. Lens' {activeProfiles :: a | b} a
+_activeProfiles = prop (SProxy :: SProxy "activeProfiles")
+
+_profileName :: forall a b. Lens' {profileName :: a | b} a
+_profileName = prop (SProxy :: SProxy "profileName")
+
+_relaysServed :: forall a b. Lens' {relaysServed :: a | b} a
+_relaysServed = prop (SProxy :: SProxy "relaysServed")
 
 _port :: forall a b. Lens' {port :: a | b} a
 _port = prop (SProxy :: SProxy "port")

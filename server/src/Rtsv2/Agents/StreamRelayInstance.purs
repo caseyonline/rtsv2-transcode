@@ -513,7 +513,7 @@ status =
         publicState =
           { role : slotRole
           , egestsServed : JsonLd.egestServedLocationNode slotId <$> Map.keys originStateData.config.egests
-          , relaysServed : JsonLd.relayServedLocationNode slotId slotRole <$> Map.keys originStateData.config.downstreamRelays
+          , relaysServed : JsonLd.downstreamRelayLocationNode slotId slotRole <$> Map.values originStateData.config.downstreamRelays
           }
     mkStatus (StateDownstream {relayKey: RelayKey slotId slotRole, thisServer} downstreamStateData) =
       JsonLd.streamRelayStateNode slotId publicState thisServer
@@ -521,7 +521,7 @@ status =
         publicState =
           { role : slotRole
           , egestsServed : JsonLd.egestServedLocationNode slotId <$> Map.keys downstreamStateData.config.egests
-          , relaysServed : JsonLd.relayServedLocationNode slotId slotRole <$> Map.keys downstreamStateData.config.downstreamRelays
+          , relaysServed : JsonLd.downstreamRelayLocationNode slotId slotRole <$> _.deliverTo <$> Map.values downstreamStateData.config.downstreamRelays
           }
 
 slotConfiguration :: RelayKey -> Effect (Maybe SlotConfiguration)

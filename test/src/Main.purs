@@ -8,7 +8,7 @@ import Data.Bifunctor (lmap)
 import Data.Either (Either(..), fromRight)
 import Data.Foldable (foldl)
 import Data.Identity (Identity(..))
-import Data.Lens (Lens', Traversal', over, set, traversed)
+import Data.Lens (Lens', Traversal', _Just, firstOf, over, set, traversed)
 import Data.List (List(..), (:))
 import Data.List as List
 import Data.Map as Map
@@ -245,12 +245,16 @@ main =
       let _ = maybeLogStep "step" desc in
       pure $ unit
 
-    as'' :: forall r s. String -> Either String r -> StateT s Aff Unit
-    as'' desc (Right r) =
+    asT :: forall r s. String -> Either String r -> StateT s Aff Unit
+    asT desc (Right r) =
       let _ = maybeLogStep "step" desc in
       pure $ unit
-    as'' desc (Left err) = lift $ throwSlowError $ "Step: \"" <> desc <> "\" failed with reason: " <> err
+    asT desc (Left err) = lift $ throwSlowError $ "Step: \"" <> desc <> "\" failed with reason: " <> err
 
+    asT' :: forall a b. String -> b -> StateT a Aff Unit
+    asT' desc _ =
+      let _ = maybeLogStep "step" desc in
+      pure $ unit
 
     debug :: forall a b. String -> Either a b -> Aff (Either a b)
     debug msg either =
@@ -274,7 +278,7 @@ main =
       where
         predicate :: Array Node -> PublicState.StreamRelay Array -> Boolean
         predicate servers streamRelayState =
-          (sort $ (ServerAddress <<< toAddr) <$> servers) == sort (_.address <<< JsonLd.unwrapNode <$> (JsonLd.unwrapNode streamRelayState).relaysServed)
+          (sort $ (ServerAddress <<< toAddr) <$> servers) == sort (_.address <<< unwrap <<< _.server <<< JsonLd.unwrapNode <$> (JsonLd.unwrapNode streamRelayState).relaysServed)
 
     assertEgestClients = assertBodyFun <<< predicate
       where
@@ -604,12 +608,12 @@ main =
                 (lift $ clientStart p1n2 slot1          >>= assertStatusCode 204
                                                         >>= assertHeader (Tuple "x-servedby" "172.16.169.2"))
                                                         >>= storeHeader "x-client-id" "clientId1"
-                                                                                 >>= as'' "first egest is same node"
+                                                                                 >>= asT "first egest is same node"
                 lift $ waitForIntraPoPDisseminate                                >>= as' "allow intraPoP egest avaialable to disseminate"
                 (lift $ clientStart p1n3 slot1          >>= assertStatusCode 204
                                                         >>= assertHeader (Tuple "x-servedby" "172.16.169.2"))
                                                         >>= storeHeader "x-client-id" "clientId2"
-                                                                                 >>= as'' "p1n3 egest redirects to p1n2"
+                                                                                 >>= asT "p1n3 egest redirects to p1n2"
                 lift $ egestStats   p1n2 slot1          >>= assertStatusCode 200
                                                         >>= assertEgestClients 2
                                                                                  >>= as "agent should have 2 clients"
@@ -617,11 +621,11 @@ main =
                 (lift $ clientStart p1n2 slot1          >>= assertStatusCode 204
                                                         >>= assertHeader (Tuple "x-servedby" "172.16.169.2"))
                                                         >>= storeHeader "x-client-id" "clientId3"
-                                                                                 >>= as'' "p1n2 stays on node2"
+                                                                                 >>= asT "p1n2 stays on node2"
                 (lift $ clientStart p1n3 slot1          >>= assertStatusCode 204
                                                         >>= assertHeader (Tuple "x-servedby" "172.16.169.2"))
                                                         >>= storeHeader "x-client-id" "clientId4"
-                                                                                 >>= as'' "p1n3 egest still redirects to p1n2"
+                                                                                 >>= asT "p1n3 egest still redirects to p1n2"
                 lift $ egestStats   p1n2 slot1          >>= assertStatusCode 200
                                                         >>= assertEgestClients 4
                                                                                  >>= as "agent now has 4 clients"
@@ -782,7 +786,8 @@ main =
         let
           p1Nodes = [p1n1, p1n2, p1n3]
           p2Nodes = [p2n1, p2n2]
-          nodes = p1Nodes <> p2Nodes
+          p3Nodes = [p3n1]
+          nodes = p1Nodes <> p2Nodes <> p3Nodes
           allNodesBar node = delete node nodes
           maxOut server = setLoad server 60.0 >>= assertStatusCode 204 >>= as ("set load on " <> toAddr server)
           sysconfig = "test/config/partial_nodes/sys.config"
@@ -846,7 +851,24 @@ main =
                                                       >>= assertAggregator []
                                                                            >>= as  "aggregator has no ingests"
 
-            itOnly "Launch ingest and egest, kill origin relay, assert replaced relay still has egest and origin" do
+            it "Launch ingest and egest, kill origin relay, assert slot state is still valid" do
+              (flip evalStateT) Map.empty $ do
+                lift $ ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200  >>= as  "create ingest"
+                lift $ waitForAsyncProfileStart                                      >>= as' "wait for async start of ingest"
+                lift $ clientStart p2n1 slot1              >>= assertStatusCode 204  >>= as  "egest available"
+                lift $ waitForAsyncProfileStart                                      >>= as' "wait for async start of egest"
+                (lift $ slotState p1n1 slot1               >>= (bodyToRecord :: ToRecord (PublicState.SlotState Array))
+                                                           <#> ((<$>) canonicaliseSlotState))
+                                                           >>= storeSlotState        >>= asT "stored state"
+                killOriginRelay slot1 Primary                                        >>= asT' "kill origin relay"
+                lift $ waitForAsyncProfileStart                                      >>= as' "wait for recovery"
+                (lift $ slotState p1n1 slot1               >>= (bodyToRecord :: ToRecord (PublicState.SlotState Array))
+                                                           <#> ((<$>) canonicaliseSlotState))
+                                                           >>= compareSlotState excludePorts (==)
+                                                           >>= compareSlotState identity (/=)
+                                                                                     >>= asT "compare state"
+
+            itOnly "Launch ingest and egest, kill downstream relay, assert slot state is still valid" do
               (flip evalStateT) Map.empty $ do
                 lift $ ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200  >>= as  "create ingest"
                 lift $ waitForAsyncProfileStart                                      >>= as' "wait for async start of ingest"
@@ -854,12 +876,14 @@ main =
                 lift $ waitForAsyncProfileStart                                      >>= as' "wait for async start of egest"
                 (lift $ slotState p1n1 slot1               >>= (bodyToRecord :: ToRecord (PublicState.SlotState Array))
                                                            <#> ((<$>) (excludePorts <<< canonicaliseSlotState)))
-                                                           >>= storeSlotState        >>= as'' "stored state"
-                killOriginRelay slot1 Primary
+                                                           >>= storeSlotState        >>= asT "stored state"
+                killDownstreamRelay slot1 Primary                                    >>= asT' "kill downstream relay"
                 lift $ waitForAsyncProfileStart                                      >>= as' "wait for recovery"
                 (lift $ slotState p1n1 slot1               >>= (bodyToRecord :: ToRecord (PublicState.SlotState Array))
-                                                           <#> ((<$>) (excludePorts <<< canonicaliseSlotState)))
-                                                           >>= compareSlotState     >>= as'' "compare state"
+                                                           <#> ((<$>) canonicaliseSlotState))
+                                                           >>= compareSlotState excludePorts (==)
+                                                           >>= compareSlotState identity (/=)
+                                                                                     >>= asT "compare state"
 
     describe "Cleanup" do
       after_ stopSession do
@@ -875,11 +899,11 @@ storeSlotState either@(Right slotState) = do
   _ <- modify (Map.insert "slotState" slotState)
   pure either
 
-compareSlotState either@(Left _) = pure either
-compareSlotState either@(Right slotState) = do
+compareSlotState preFilter predicate either@(Left _) = pure either
+compareSlotState preFilter predicate either@(Right slotState) = do
   currentSlotState <- gets (Map.lookup "slotState")
   if
-    Just slotState == currentSlotState then pure either
+    predicate (Just (preFilter slotState)) (preFilter <$> currentSlotState) then pure either
   else
     let
       _ = spy "lhs" currentSlotState
@@ -887,26 +911,39 @@ compareSlotState either@(Right slotState) = do
     in
       pure $ Left "does not match"
 
-killOriginRelay :: forall s. SlotId -> SlotRole -> StateT (Map.Map String (PublicState.SlotState Array)) Aff Unit
+killOriginRelay :: SlotId -> SlotRole -> StateT (Map.Map String (PublicState.SlotState Array)) Aff Unit
 killOriginRelay slotId slotRole = do
   mCurrentSlotState <- gets (Map.lookup "slotState")
   case mCurrentSlotState of
     Nothing ->
       lift $ throwSlowError $ "No slot state"
     Just {originRelays} ->
-      case head originRelays of
-        Just (JsonLd.Node {"@id": Just id}) ->
-          let
-            mServerAddress = urlToServerAddress id
-          in
-            case mServerAddress of
-              Just serverAddress -> do
-                _ <- lift $ killProcess' serverAddress (Chaos.defaultKill $ relayName slotId slotRole)
-                pure unit
-              Nothing ->
-                lift $ throwSlowError $ "Failed to parse URL"
-        _ ->
-          lift $ throwSlowError $ "No origin relays state or missing id"
+      lift $ killRelay slotId slotRole originRelays
+
+killDownstreamRelay :: SlotId -> SlotRole -> StateT (Map.Map String (PublicState.SlotState Array)) Aff Unit
+killDownstreamRelay slotId slotRole = do
+  mCurrentSlotState <- gets (Map.lookup "slotState")
+  case mCurrentSlotState of
+    Nothing ->
+      lift $ throwSlowError $ "No slot state"
+    Just {downstreamRelays} -> do
+      lift $ killRelay slotId slotRole downstreamRelays
+
+killRelay :: SlotId -> SlotRole -> Array (JsonLd.StreamRelayStateNode Array) -> Aff Unit
+killRelay slotId slotRole relays =
+  case firstOf (traversed <<< JsonLd._unwrappedNode <<< JsonLd._id <<< _Just) relays of
+      Just id ->
+        let
+          mServerAddress = urlToServerAddress id
+        in
+          case mServerAddress of
+            Just serverAddress -> do
+              _ <- killProcess' (spy "kill" serverAddress) (Chaos.defaultKill $ relayName slotId slotRole)
+              pure unit
+            Nothing ->
+              throwSlowError $ "Failed to parse URL"
+      _ ->
+        throwSlowError $ "No relays or missing id"
 
 killProcess' :: ServerAddress -> Chaos.ChaosPayload -> Aff (Either String ResponseWithBody)
 killProcess' addr chaos =
@@ -958,13 +995,15 @@ excludePorts { aggregators
              , egests } =
   { aggregators: excludeAggregatorPorts <$> aggregators
   , ingests: ingests
-  , originRelays: originRelays
-  , downstreamRelays: downstreamRelays
+  , originRelays: excludeRelayPorts <$> originRelays
+  , downstreamRelays: excludeRelayPorts <$> downstreamRelays
   , egests: egests }
   where
     excludeAggregatorPorts =
-      over (JsonLd._unwrappedNode <<< JsonLd._resource <<< JsonLd._downstreamRelays <<< traversed) excludeDownstreamRelayPorts
-    excludeDownstreamRelayPorts  =
+      over (JsonLd._unwrappedNode <<< JsonLd._resource <<< JsonLd._downstreamRelays <<< traversed) clearPort
+    excludeRelayPorts =
+      over (JsonLd._unwrappedNode <<< JsonLd._resource <<< JsonLd._relaysServed <<< traversed) clearPort
+    clearPort  =
       set (JsonLd._unwrappedNode <<< JsonLd._resource <<< JsonLd._port) 0
 
 storeHeader :: String -> String -> Either String ResponseWithBody -> StateT (Map.Map String String) Aff (Either String ResponseWithBody)

@@ -11,6 +11,7 @@ module Shared.JsonLd
        , unwrapNode
 
        , _unwrappedNode
+       , _id
        , _resource
 
        ) where
@@ -165,6 +166,9 @@ unwrapNode (Node {resource}) = resource
 --------------------------------------------------------------------------------
 _unwrappedNode :: forall resource contextFields. Lens' (Node resource contextFields) (NodeMetadata resource contextFields)
 _unwrappedNode = _Newtype
+
+_id :: forall resource contextFields. Lens' (NodeMetadata resource contextFields) (Maybe Url)
+_id = prop (SProxy :: SProxy "@id")
 
 _resource :: forall resource contextFields. Lens' (NodeMetadata resource contextFields) resource
 _resource = prop (SProxy :: SProxy "resource")
