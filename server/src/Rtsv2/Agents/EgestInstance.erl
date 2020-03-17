@@ -71,10 +71,20 @@ webrtc_stream_server_stats_to_purs(#{ server_id := Id
                                     , session_info := SessionInfo}) ->
   #{ serverId => Id
    , sessionCount => SessionCount
-   , sessionInfo => maps:map(fun webrtc_session_manager_stats_to_purs/2, SessionInfo)}.
+   , sessionInfo => maps:filter(fun(_, undefined) -> false;
+                                   (_, _) -> true
+                                end,
+                                maps:map(fun webrtc_session_manager_stats_to_purs/2, SessionInfo)
+                               )
+   }.
 
 webrtc_session_manager_stats_to_purs(_, #{ channels := Channels }) ->
-  #{channels => maps:map(fun webrtc_media_channel_stats_to_purs/2, Channels)}.
+  try
+    #{channels => maps:map(fun webrtc_media_channel_stats_to_purs/2, Channels)}
+  catch
+    _:_ ->
+      undefined
+  end.
 
 webrtc_media_channel_stats_to_purs(_, #{ frames_dropped_no_return := FramesDroppedNoReturn
                                        , frames_dropped_no_crypto := FramesDroppedNoCrypto

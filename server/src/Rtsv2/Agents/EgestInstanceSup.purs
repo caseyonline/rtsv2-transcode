@@ -18,6 +18,7 @@ import Pinto (SupervisorName)
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStartTemplate, childType)
 import Pinto.Sup as Sup
+import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Agents.EgestInstance (CreateEgestPayload)
 import Rtsv2.Agents.EgestInstance as EgestInstance
 import Rtsv2.Names as Names
@@ -33,8 +34,15 @@ startLink :: forall a. a -> Effect Pinto.StartLinkResult
 startLink _ = Sup.startLink serverName init
 
 startEgest :: CreateEgestPayload -> Effect Pinto.StartChildResult
-startEgest payload =
-  Sup.startSimpleChild childTemplate serverName payload
+startEgest payload@{slotId} =
+  let
+    egestKey = EgestKey slotId
+  in
+    Sup.startSimpleChild childTemplate serverName { childStartLink: EgestInstance.startLink payload
+                                                  , childStopAction: EgestInstance.stopAction egestKey
+                                                  , serverName: Names.egestInstanceStateName egestKey
+                                                  , domain: EgestInstance.domain
+                                                  }
 
 maybeStartAndAddClient :: Pid -> CreateEgestPayload -> Effect Unit
 maybeStartAndAddClient pid payload = do
@@ -42,17 +50,12 @@ maybeStartAndAddClient pid payload = do
   isActive <- EgestInstance.isActive egestKey
   case isActive of
     false -> do
-             _ <- Sup.startSimpleChild childTemplate serverName payload
-             maybeStartAndAddClient pid payload
+      _ <- startEgest payload
+      maybeStartAndAddClient pid payload
     true ->
       do
         _ <- EgestInstance.addClient pid egestKey
         pure unit
-
-  -- result <- Sup.startSimpleChild childTemplate serverName slotId
-  -- case result of
-  --   Pinto.AlreadyStarted pid -> pure unit
-  --   Pinto.Started pid -> pure unit
 
 init :: Effect Sup.SupervisorSpec
 init = do
@@ -70,8 +73,8 @@ init = do
       : nil
     )
 
-childTemplate :: Pinto.ChildTemplate CreateEgestPayload
-childTemplate = Pinto.ChildTemplate (EgestInstance.startLink)
+childTemplate :: Pinto.ChildTemplate (CachedInstanceState.StartArgs EgestInstance.CachedState)
+childTemplate = Pinto.ChildTemplate (CachedInstanceState.startLink)
 
 --------------------------------------------------------------------------------
 -- Log helpers

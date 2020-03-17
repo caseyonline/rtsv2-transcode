@@ -1,12 +1,18 @@
 module Rtsv2.Agents.EgestInstance
   ( startLink
+  , stopAction
   , isActive
   , pendingClient
   , addClient
   , currentStats
   , slotConfiguration
   , CreateEgestPayload
-  ) where
+
+  , CachedState
+  , DeleteData
+  , StateServerName
+  , domain
+) where
 
 import Prelude
 
@@ -14,14 +20,15 @@ import Bus as Bus
 import Data.Either (Either(..), hush)
 import Data.Foldable (foldl)
 import Data.Int (round, toNumber)
-import Data.Maybe (Maybe(..), maybe')
+import Data.Maybe (Maybe(..), fromMaybe, fromMaybe', maybe')
 import Data.Newtype (class Newtype, unwrap, wrap)
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
-import Erl.Data.List (List, singleton)
+import Erl.Data.List (List, filter, head, singleton)
 import Erl.Data.Map (values)
+import Erl.Data.Tuple (fst, snd)
 import Erl.Process.Raw (Pid)
 import Erl.Utils (Ref, makeRef, systemTimeMs)
 import Logger (Logger, spy)
@@ -31,6 +38,7 @@ import Pinto as Pinto
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
+import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Agents.EgestInstance.WebRTCTypes (WebRTCStreamServerStats, WebRTCSessionManagerStats)
 import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..), launchLocalOrRemoteGeneric)
 import Rtsv2.Agents.IntraPoP as IntraPoP
@@ -38,20 +46,22 @@ import Rtsv2.Agents.Locator.Types (LocalOrRemote(..), RegistrationResp, Resource
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
 import Rtsv2.Agents.StreamRelayInstance as StreamRelayInstance
 import Rtsv2.Agents.StreamRelaySup (startRelay) as StreamRelaySup
-import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload, RegisterEgestPayload)
+import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload, RegisterEgestPayload, DeRegisterEgestPayload)
 import Rtsv2.Audit as Audit
 import Rtsv2.Config as Config
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
-import Rtsv2.Utils (crashIfLeft)
+import Rtsv2.Utils (crashIfLeft, noprocToMaybe)
 import Shared.Agent as Agent
-import Shared.Common (Milliseconds)
+import Shared.Common (Milliseconds, Url)
 import Shared.LlnwApiTypes (StreamIngestProtocol(..))
 import Shared.Router.Endpoint (Endpoint(..), makeUrl)
 import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Stream (AggregatorKey(..), EgestKey(..), RelayKey(..), SlotId, SlotRole(..))
-import Shared.Types (EgestServer(..), Load, RelayServer, Server, ServerLoad(..))
+import Shared.Types (DeliverTo, EgestServer(..), Load, RelayServer, Server, ServerLoad(..))
 import Shared.Types.Agent.State as PublicState
+import Shared.Utils (lazyCrashIfMissing)
+import SpudGun (SpudResponse(..))
 import SpudGun as SpudGun
 
 foreign import startEgestReceiverFFI :: EgestKey -> Effect Int
@@ -64,17 +74,25 @@ type CreateEgestPayload
     , aggregator :: Server
     }
 
+data DeleteData = LocalDelete DeRegisterEgestPayload
+                | RemoteDelete Url
+
+type CachedState = DeleteData
+
+type StateServerName = CachedInstanceState.StateServerName CachedState
+
 type State
   = { egestKey :: EgestKey
     , aggregator :: Server
     , thisServer :: EgestServer
-    , relay :: Maybe (LocalOrRemote RelayServer)
+    , cachedState :: Maybe CachedState
     , clientCount :: Int
     , lingerTime :: Milliseconds
     , relayCreationRetry :: Milliseconds
     , stopRef :: Maybe Ref
     , receivePortNumber :: Int
     , lastEgestAuditTime :: Milliseconds
+    , stateServerName :: StateServerName
     }
 
 payloadToEgestKey :: CreateEgestPayload -> EgestKey
@@ -92,8 +110,15 @@ serverName egestKey = Names.egestInstanceName egestKey
 isActive :: EgestKey -> Effect Boolean
 isActive egestKey = Pinto.isRegistered (serverName egestKey)
 
-startLink :: CreateEgestPayload -> Effect StartLinkResult
-startLink payload = Gen.startLink (serverName $ payloadToEgestKey payload) (init payload) handleInfo
+startLink :: CreateEgestPayload -> StateServerName -> Effect StartLinkResult
+startLink payload stateServerName = Gen.startLink (serverName $ payloadToEgestKey payload) (init payload stateServerName) handleInfo
+
+stopAction :: EgestKey -> Maybe CachedState -> Effect Unit
+stopAction egestKey mCachedState = do
+  logInfo "Egest stopping" {egestKey}
+  IntraPoP.announceLocalEgestStopped egestKey
+  fromMaybe (pure unit) $ deRegisterWithRelay <$> mCachedState
+  pure unit
 
 pendingClient :: EgestKey -> Effect RegistrationResp
 pendingClient egestKey =
@@ -135,8 +160,8 @@ currentStats egestKey@(EgestKey slotId) =
 toEgestServer :: Server -> EgestServer
 toEgestServer = unwrap >>> wrap
 
-init :: CreateEgestPayload -> Effect State
-init payload@{slotId, aggregator} = do
+init :: CreateEgestPayload -> StateServerName -> Effect State
+init payload@{slotId, aggregator} stateServerName = do
   let
     egestKey = payloadToEgestKey payload
     relayKey = RelayKey slotId Primary
@@ -155,20 +180,21 @@ init payload@{slotId, aggregator} = do
     state ={ egestKey
            , aggregator
            , thisServer : toEgestServer thisServer
-           , relay : Nothing
-           , clientCount: 0
-           , lingerTime: wrap $ toNumber lingerTimeMs
+           , cachedState : Nothing
+           , clientCount : 0
+           , lingerTime : wrap $ toNumber lingerTimeMs
            , relayCreationRetry : wrap $ toNumber relayCreationRetryMs
-           , stopRef: Nothing
+           , stopRef : Nothing
            , receivePortNumber
            , lastEgestAuditTime: now
+           , stateServerName
            }
   case maybeRelay of
     Just relay ->
       pure state
     Nothing -> do
       -- Launch
-      _ <- StreamRelaySup.startRelay {slotId, streamRole: Primary, aggregator}
+      _ <- StreamRelaySup.startRelay {slotId, slotRole: Primary, aggregator}
       pure state
 
 handleInfo :: Msg -> State -> Effect (CastResult State)
@@ -188,7 +214,7 @@ handleInfo msg state@{egestKey: egestKey@(EgestKey ourSlotId)} =
 
     MaybeStop ref -> maybeStop ref state
 
-    IntraPoPBus (IngestAggregatorExited (AggregatorKey slotId streamRole) serverAddress)
+    IntraPoPBus (IngestAggregatorExited (AggregatorKey slotId slotRole) serverAddress)
      -- TODO - PRIMARY BACKUP
       | slotId == ourSlotId -> doStop state
       | otherwise -> pure $ CastNoReply state
@@ -260,16 +286,14 @@ maybeStop ref state@{ clientCount
 
 doStop :: State -> Effect (CastResult State)
 doStop state@{egestKey} = do
-  logInfo "Egest stopping" {egestKey}
-  IntraPoP.announceLocalEgestStopped egestKey
+  -- Stop actions are all performed in stopAction, which gets called by the CachedState gen_server
   pure $ CastStop state
 
-
 initStreamRelay :: State -> Effect State
-initStreamRelay state@{relayCreationRetry, egestKey: egestKey@(EgestKey slotId), aggregator, thisServer} = do
+initStreamRelay state@{relayCreationRetry, egestKey: egestKey@(EgestKey slotId), aggregator, thisServer, stateServerName} = do
   relayResp <- findOrStartRelayForStream state
 
-  case spy "initStreamRelay - relayResp" relayResp of
+  case relayResp of
     Left _ ->
       do
         void retryLater
@@ -283,7 +307,7 @@ initStreamRelay state@{relayCreationRetry, egestKey: egestKey@(EgestKey slotId),
 
     tryConfigureAndRegister localOrRemote =
       do
-        registerWithRelay localOrRemote registrationPayload
+        deleteData <- registerWithRelay localOrRemote registrationPayload
 
         maybeConfiguration <- getRelaySlotConfiguration localOrRemote slotId
 
@@ -291,34 +315,52 @@ initStreamRelay state@{relayCreationRetry, egestKey: egestKey@(EgestKey slotId),
           Just configuration ->
             do
               setSlotConfigurationFFI egestKey configuration
-
-              pure state{relay = Just $ toRelayServer <$> localOrRemote}
+              let
+                cachedState = deleteData
+              CachedInstanceState.recordInstanceData stateServerName cachedState
+              pure state{cachedState = Just cachedState}
 
           Nothing ->
             do
               void retryLater
               pure state
 
+    deliverTo :: DeliverTo EgestServer
+    deliverTo = { server: state.thisServer, port: state.receivePortNumber }
+
     registrationPayload  :: RegisterEgestPayload
     registrationPayload =
       { slotId
-      , streamRole: Primary
-      , deliverTo: { server: state.thisServer, port: state.receivePortNumber }
+      , slotRole: Primary
+      , deliverTo: deliverTo
       }
 
-registerWithRelay :: (LocalOrRemote Server) -> RegisterEgestPayload -> Effect Unit
-
-registerWithRelay (Local _) payload =
+registerWithRelay :: (LocalOrRemote Server) -> RegisterEgestPayload -> Effect DeleteData
+registerWithRelay (Local _) payload@{slotId, slotRole, deliverTo: {server: Egest {address: egestServerAddress}}} =
   do
-    StreamRelayInstance.registerEgest payload
-    pure unit
-
+    _ <- StreamRelayInstance.registerEgest payload
+    pure (LocalDelete {slotId, slotRole, egestServerAddress})
 registerWithRelay (Remote remoteServer) payload =
   do
     let url = makeUrl remoteServer RelayRegisterEgestE
-    void <$> crashIfLeft =<< SpudGun.postJson url payload
-    pure unit
+    SpudResponse _ headers _ <- crashIfLeft =<< SpudGun.postJson url payload
+    pure (RemoteDelete (location headers))
+  where
+    location headers = filter (fst >>> ((==) "location")) headers
+                       # head
+                       # fromMaybe' (lazyCrashIfMissing "no location header")
+                       # snd
+                       # wrap
 
+deRegisterWithRelay :: DeleteData -> Effect Unit
+deRegisterWithRelay (LocalDelete payload) =
+  do
+    _ <- noprocToMaybe $ StreamRelayInstance.deRegisterEgest payload
+    pure unit
+deRegisterWithRelay (RemoteDelete deleteUrl) =
+  do
+    void <$> crashIfLeft =<< SpudGun.delete deleteUrl {}
+    pure unit
 
 getRelaySlotConfiguration :: (LocalOrRemote Server) -> SlotId -> Effect (Maybe SlotConfiguration)
 getRelaySlotConfiguration (Local _) slotId =
@@ -355,7 +397,7 @@ launchLocalOrRemote :: State -> Effect (ResourceResp Server)
 launchLocalOrRemote state@{egestKey: egestKey@(EgestKey slotId), aggregator, thisServer} =
   launchLocalOrRemoteGeneric filterForLoad launchLocal launchRemote
   where
-    payload = {slotId, streamRole: Primary, aggregator} :: CreateRelayPayload
+    payload = {slotId, slotRole: Primary, aggregator} :: CreateRelayPayload
     launchLocal _ = do
       _ <- StreamRelaySup.startRelay payload
       pure unit
@@ -436,8 +478,8 @@ filterForLoad (ServerLoad sl) = sl.load < loadThresholdToCreateRelay
 --------------------------------------------------------------------------------
 -- Log helpers
 --------------------------------------------------------------------------------
-domains :: List Atom
-domains = Agent.Egest # show # atom # singleton
+domain :: List Atom
+domain = Agent.Egest # show # atom # singleton
 
 logInfo :: forall a. Logger a
 logInfo = domainLog Logger.info
@@ -446,4 +488,4 @@ logInfo = domainLog Logger.info
 -- logWarning = domainLog Logger.warning
 
 domainLog :: forall a. Logger {domain :: List Atom, misc :: a} -> Logger a
-domainLog = Logger.doLog domains
+domainLog = Logger.doLog domain

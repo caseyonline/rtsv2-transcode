@@ -21,6 +21,7 @@
          addRemoteIngestImpl/3,
          removeIngestImpl/2,
          registerStreamRelayImpl/3,
+         deRegisterStreamRelayImpl/3,
          slotConfigurationImpl/1
         ]).
 
@@ -89,6 +90,13 @@ registerStreamRelayImpl(Handle, Host, Port) ->
   fun() ->
       io:format(user, "Going to start sending information to ~p:~p", [Host, Port]),
       ok = id3as_workflow:ioctl(slot_media_source_publish, {register_stream_relay, Host, Port}, Handle),
+      ok
+  end.
+
+deRegisterStreamRelayImpl(Handle, Host, Port) ->
+  fun() ->
+      io:format(user, "Going to stop sending information to ~p:~p", [Host, Port]),
+      ok = id3as_workflow:ioctl(slot_media_source_publish, {deregister_stream_relay, Host, Port}, Handle),
       ok
   end.
 

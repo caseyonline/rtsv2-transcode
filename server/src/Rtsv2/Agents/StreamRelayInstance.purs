@@ -18,6 +18,7 @@ module Rtsv2.Agents.StreamRelayInstance
        , status
        , registerEgest
        , registerRelay
+       , deRegisterEgest
        , slotConfiguration
        , init
        , State
@@ -46,9 +47,10 @@ import Erl.Data.List (List, (:))
 import Erl.Data.List as List
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
+import Erl.Data.Tuple (Tuple2, tuple2)
 import Erl.Data.Tuple as ErlTuple
 import Foreign (Foreign)
-import Logger (Logger)
+import Logger (Logger, spy)
 import Logger as Logger
 import Partial.Unsafe as Unsafe
 import Pinto (ServerName, StartLinkResult, isRegistered)
@@ -59,7 +61,7 @@ import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..))
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
-import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload, RegisterEgestPayload, SourceRoute, RegisterRelayPayload)
+import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload, RegisterEgestPayload, RegisterRelayPayload, SourceRoute, DeRegisterEgestPayload)
 import Rtsv2.Agents.TransPoP as TransPoP
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
@@ -222,33 +224,48 @@ type UpstreamRelay =
 -- -----------------------------------------------------------------------------
 -- API
 -- -----------------------------------------------------------------------------
-registerEgest :: RegisterEgestPayload -> Effect Unit
-registerEgest payload@{slotId, streamRole, deliverTo} =
+registerEgest :: RegisterEgestPayload -> Effect (Tuple2 (Maybe Url) String)
+registerEgest payload@{slotId, slotRole, deliverTo} =
   Gen.doCall (serverName $ payloadToRelayKey payload) doRegisterEgest
 
   where
-    doRegisterEgest :: State -> Effect (CallResult Unit State)
+    doRegisterEgest :: State -> Effect (CallResult (Tuple2 (Maybe Url) String) State)
 
-    doRegisterEgest (StateOrigin commonStateData originStateData@{ config: config@{ egests } }) = do
+    doRegisterEgest (StateOrigin commonStateData@{thisServer} originStateData@{ config: config@{ egests } }) = do
       let
-        newEgests = Map.insert (extractAddress deliverTo.server) deliverTo egests
+        newEgests = Map.insert egestServer deliverTo egests
         newConfig = config{ egests = newEgests }
       newPlan <- originConfigToPlan commonStateData newConfig
       let
         newOriginStateData = originStateData{ config = newConfig, plan = Just newPlan }
-      CallReply unit <$> applyOriginPlan commonStateData newOriginStateData
+      CallReply (response thisServer) <$> applyOriginPlan commonStateData newOriginStateData
 
-    doRegisterEgest (StateDownstream commonStateData downstreamStateData@{ config: config@{ egests } }) = do
+    doRegisterEgest (StateDownstream commonStateData@{thisServer} downstreamStateData@{ config: config@{ egests } }) = do
       let
-        newEgests = Map.insert (extractAddress deliverTo.server) deliverTo egests
+        newEgests = Map.insert egestServer deliverTo egests
         newConfig = config{ egests = newEgests }
       newPlan <- downstreamConfigToPlan commonStateData newConfig
       let
         newDownstreamStateData = downstreamStateData{ config = newConfig, plan = Just newPlan }
-      CallReply unit <$> applyDownstreamPlan commonStateData newDownstreamStateData
+      CallReply (response thisServer) <$> applyDownstreamPlan commonStateData newDownstreamStateData
+
+    egestServer = (extractAddress deliverTo.server)
+    location server = makeUrl server (RelayRegisteredEgestE slotId slotRole egestServer)
+    response server = tuple2 (Just (location server)) ""
+
+
+deRegisterEgest :: DeRegisterEgestPayload -> Effect (Maybe Unit)
+deRegisterEgest {slotId, slotRole, egestServerAddress} =
+  Gen.doCall (serverName $ RelayKey slotId slotRole) doDeRegisterRelay
+  where
+    doDeRegisterRelay state = do
+      -- All we need here is the egestAddress, since that's all we have as the key in the map
+      -- TODO - the actual deregister!
+      pure $ CallReply (Just unit) state
+
 
 registerRelay :: RegisterRelayPayload -> Effect Unit
-registerRelay payload@{slotId, streamRole, sourceRoute, deliverTo } =
+registerRelay payload@{slotId, slotRole, sourceRoute, deliverTo } =
   Gen.doCall (serverName $ payloadToRelayKey payload) doRegisterRelay
 
   where
@@ -330,7 +347,7 @@ applyOriginRunResult commonStateData@{ relayKey: relayKey@(RelayKey slotId slotR
 
         -- Should this be a different type? sourceRoute is redundant when registered with an IA
         registerPayload :: RegisterRelayPayload
-        registerPayload = {slotId, streamRole: slotRole, deliverTo, sourceRoute: List.nil}
+        registerPayload = {slotId, slotRole, deliverTo, sourceRoute: List.nil}
       in
         do
            response <- SpudGun.postJson registerURL registerPayload
@@ -401,7 +418,7 @@ applyDownstreamRunResult commonStateData@{ relayKey: relayKey@(RelayKey slotId s
 
           Just randomServerInPoP ->
             let
-              payload = { slotId, streamRole: slotRole, aggregator: ingestAggregator } :: CreateRelayPayload
+              payload = { slotId, slotRole, aggregator: ingestAggregator } :: CreateRelayPayload
               url = makeUrlAddr randomServerInPoP RelayEnsureStartedE
             in
               do
@@ -423,7 +440,7 @@ applyDownstreamRunResult commonStateData@{ relayKey: relayKey@(RelayKey slotId s
 
         payload =
           { slotId
-          , streamRole: slotRole
+          , slotRole
           , deliverTo
           , sourceRoute: remainingRoute
           }
@@ -513,7 +530,7 @@ status =
         publicState =
           { role : slotRole
           , egestsServed : JsonLd.egestServedLocationNode slotId <$> Map.keys originStateData.config.egests
-          , relaysServed : JsonLd.relayServedLocationNode slotId slotRole <$> Map.keys originStateData.config.downstreamRelays
+          , relaysServed : JsonLd.downstreamRelayLocationNode slotId slotRole <$> Map.values originStateData.config.downstreamRelays
           }
     mkStatus (StateDownstream {relayKey: RelayKey slotId slotRole, thisServer} downstreamStateData) =
       JsonLd.streamRelayStateNode slotId publicState thisServer
@@ -521,7 +538,7 @@ status =
         publicState =
           { role : slotRole
           , egestsServed : JsonLd.egestServedLocationNode slotId <$> Map.keys downstreamStateData.config.egests
-          , relaysServed : JsonLd.relayServedLocationNode slotId slotRole <$> Map.keys downstreamStateData.config.downstreamRelays
+          , relaysServed : JsonLd.downstreamRelayLocationNode slotId slotRole <$> _.deliverTo <$> Map.values downstreamStateData.config.downstreamRelays
           }
 
 slotConfiguration :: RelayKey -> Effect (Maybe SlotConfiguration)
@@ -534,8 +551,8 @@ slotConfiguration relayKey =
 data Msg = Init
          | IntraPoPBus IntraPoP.IntraPoPBusMessage
 
-payloadToRelayKey :: forall r. { slotId :: SlotId, streamRole :: SlotRole | r } -> RelayKey
-payloadToRelayKey payload = RelayKey payload.slotId payload.streamRole
+payloadToRelayKey :: forall r. { slotId :: SlotId, slotRole :: SlotRole | r } -> RelayKey
+payloadToRelayKey payload = RelayKey payload.slotId payload.slotRole
 
 serverName :: RelayKey -> ServerName State Msg
 serverName = Names.streamRelayInstanceName
@@ -550,7 +567,7 @@ stopAction relayKey _cachedState = do
   IntraPoP.announceLocalRelayStopped relayKey
 
 init :: RelayKey -> CreateRelayPayload -> StateServerName -> Effect State
-init relayKey payload@{slotId, streamRole, aggregator} stateServerName =
+init relayKey payload@{slotId, slotRole, aggregator} stateServerName =
   do
     thisServer <- PoPDefinition.getThisServer
     egestSourceRoutes <- TransPoP.routesTo (extractPoP aggregator)
@@ -626,7 +643,7 @@ handleInfo msg state =
     Init ->
       pure $ CastNoReply state
 
-    IntraPoPBus (IngestAggregatorExited (AggregatorKey slotId streamRole) serverAddress)
+    IntraPoPBus (IngestAggregatorExited (AggregatorKey slotId slotRole) serverAddress)
      -- TODO - PRIMARY BACKUP
       | slotId == ourSlotId -> pure $ CastStop state
       | otherwise -> pure $ CastNoReply state
@@ -810,12 +827,12 @@ mkUpstreamRelay route =
     { next, rest }
 
 fetchIngestAggregatorSlotConfiguration :: Server -> SlotId -> SlotRole -> Effect (Either JsonResponseError SlotConfiguration)
-fetchIngestAggregatorSlotConfiguration aggregator slotId streamRole =
-  fetchSlotConfiguration $ makeUrl aggregator $ IngestAggregatorSlotConfigurationE slotId streamRole
+fetchIngestAggregatorSlotConfiguration aggregator slotId slotRole =
+  fetchSlotConfiguration $ makeUrl aggregator $ IngestAggregatorSlotConfigurationE slotId slotRole
 
 fetchStreamRelaySlotConfiguration :: ServerAddress -> SlotId -> SlotRole -> Effect (Either JsonResponseError SlotConfiguration)
-fetchStreamRelaySlotConfiguration relay slotId streamRole =
-  fetchSlotConfiguration $ makeUrlAddr relay $ RelaySlotConfigurationE slotId streamRole
+fetchStreamRelaySlotConfiguration relay slotId slotRole =
+  fetchSlotConfiguration $ makeUrlAddr relay $ RelaySlotConfigurationE slotId slotRole
 
 fetchSlotConfiguration :: Url -> Effect (Either JsonResponseError SlotConfiguration)
 fetchSlotConfiguration url =

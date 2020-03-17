@@ -1,5 +1,5 @@
 module Shared.Types
-       ( DeliverTo
+       ( DeliverTo(..)
        , GeoLoc(..)
        , LeaderGeoLoc(..)
        , Load

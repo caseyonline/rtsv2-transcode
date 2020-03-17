@@ -20,9 +20,6 @@ import Shared.Agent as Agent
 import Shared.Stream (RelayKey(..))
 import Shared.Types (Server, ServerLoad(..))
 
-
-
-
 findOrStart :: CreateRelayPayload -> Effect (ResourceResp Server)
 findOrStart =
   Locator.findOrStart { findFun : IntraPoP.whereIsStreamRelay <<< payloadToRelayKey
@@ -31,15 +28,11 @@ findOrStart =
                       , logWarning
                       }
   where
-    payloadToRelayKey payload = RelayKey payload.slotId payload.streamRole
+    payloadToRelayKey payload = RelayKey payload.slotId payload.slotRole
     hasCapacityForRelay (ServerLoad sl) =  unwrap sl.load < 50.0
     startLocalRelay payload = do
-      _ <- StreamRelaySup.startRelay { slotId: payload.slotId, streamRole: payload.streamRole, aggregator: payload.aggregator}
+      _ <- StreamRelaySup.startRelay { slotId: payload.slotId, slotRole: payload.slotRole, aggregator: payload.aggregator}
       pure unit
-
-
-
-
 
 -- findRelayAndRegisterForChain :: RegisterRelayChainPayload -> Effect LocationResp
 -- findRelayAndRegisterForChain =

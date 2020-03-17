@@ -167,6 +167,34 @@ ioctl({register_stream_relay, Host, Port}, State = #?state{ stream_relays = Stre
 
     Other ->
       {ok, {error, {dns_resolve_failed, Other}}, State}
+  end;
+
+ioctl({deregister_stream_relay, Host, Port}, State = #?state{ slot_id = SlotId
+                                                            , stream_relays = StreamRelays
+                                                            , stream_relays_by_socket = StreamRelaysBySocket }) ->
+  case inet:gethostbyname(?to_list(Host)) of
+    {ok, #hostent{ h_addr_list = [ Addr | _ ] }} ->
+
+      MapKey = {Addr, Port},
+
+      case maps:find(MapKey, StreamRelays) of
+        {ok, Socket} ->
+          _ = gen_udp:close(Socket),
+          NewStreamRelays = maps:remove(MapKey, StreamRelays),
+          NewStreamRelaysBySocket = maps:remove(Socket, StreamRelaysBySocket),
+
+          {ok, State#?state{ stream_relays = NewStreamRelays
+                           , stream_relays_by_socket = NewStreamRelaysBySocket}};
+
+        error ->
+          ?SLOG_INFO("Deregistering: stream relay not registered", #{ slot_id => SlotId
+                                                                    , stream_relay_host => Host
+                                                                    , stream_relay_port => Port}),
+          {ok, State}
+      end;
+
+    Other ->
+      {ok, {error, {dns_resolve_failed, Other}}, State}
   end.
 
 

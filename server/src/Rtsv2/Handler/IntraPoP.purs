@@ -20,7 +20,7 @@ import Rtsv2.Agents.IntraPoP as IntraPoPAgent
 import Shared.JsonLd as JsonLd
 import Shared.Router.Endpoint (Endpoint(..), makeUrl, makeUrlAddr)
 import Shared.Stream (AggregatorKey(..), ProfileName, SlotId, SlotRole(..))
-import Shared.Types (Server, ServerAddress, extractAddress)
+import Shared.Types (RelayServer, Server, ServerAddress, extractAddress)
 import Shared.Types.Agent.State as PublicState
 import Simple.JSON (class ReadForeign)
 import SpudGun as SpudGun
@@ -101,7 +101,8 @@ getDownstreamRelays slotId upstreamRelays = do
   downStreamRelays <- catMaybes <$> concat <$> traverse (\{relaysServed} ->
                                                           traverse (\deliverToNode ->
                                                                      let
-                                                                       {resource: {address: serverAddress}} = unwrap deliverToNode
+                                                                       {resource: {server: relayServer}} = unwrap deliverToNode
+                                                                       {address: serverAddress} = unwrap relayServer
                                                                      in
                                                                         getRelay slotId Primary serverAddress  -- TODO - StreamRelayL needs role
                                                                     ) relaysServed

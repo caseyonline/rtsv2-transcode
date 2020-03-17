@@ -2,6 +2,7 @@ import ISession from "./ISession";
 import EventEmitter from "./util/EventEmitter.ts";
 import { WebSocketProtocolStatusCode } from "./util/WebSocketUtil.ts";
 
+import { IQualityConstraintConfiguration } from "./signaling/types.ts";
 import * as ClientMessages from "./signaling/clientMessages.ts";
 import * as ServerMessages from "./signaling/serverMessages.ts";
 
@@ -235,6 +236,12 @@ export default class Session extends EventEmitter implements ISession {
         }
         break;
 
+      case "quality-change":
+        {
+          console.debug("The server has switched the stream variant.", message);
+        }
+        break;
+
       default:
         this.unexpectedMessage(message);
     }
@@ -242,6 +249,13 @@ export default class Session extends EventEmitter implements ISession {
 
   unexpectedMessage(message) {
     console.error(`Got unexpected message with type ${message.type} in state ${this.state}.`, message);
+  }
+
+  setQualityConstraint(constraintConfiguration: IQualityConstraintConfiguration) {
+      this.sendToSocket({
+        "type": "set-quality-constraint-configuration",
+        "configuration": constraintConfiguration
+      });
   }
 
   requestMigrate(socketURL: string) {

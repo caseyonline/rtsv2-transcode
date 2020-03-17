@@ -29,6 +29,7 @@ You can edit this file as you like.
     , "test-unit"
     , "toppokki"
     , "tuples"
+    , "uri"
     ]
 , packages =
     ./packages.dhall

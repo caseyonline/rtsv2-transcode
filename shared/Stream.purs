@@ -68,16 +68,16 @@ data IngestKey = IngestKey SlotId SlotRole ProfileName
 data AgentKey = AgentKey SlotId SlotRole
 
 aggregatorKeyToAgentKey :: AggregatorKey -> AgentKey
-aggregatorKeyToAgentKey (AggregatorKey slotId streamRole) = AgentKey slotId streamRole
+aggregatorKeyToAgentKey (AggregatorKey slotId slotRole) = AgentKey slotId slotRole
 
 ingestKeyToAggregatorKey :: IngestKey -> AggregatorKey
-ingestKeyToAggregatorKey (IngestKey slotId streamRole streamProfileName) = (AggregatorKey slotId streamRole)
+ingestKeyToAggregatorKey (IngestKey slotId slotRole streamProfileName) = (AggregatorKey slotId slotRole)
 
 agentKeyToAggregatorKey :: AgentKey -> AggregatorKey
-agentKeyToAggregatorKey (AgentKey slotId streamRole) = AggregatorKey slotId streamRole
+agentKeyToAggregatorKey (AgentKey slotId slotRole) = AggregatorKey slotId slotRole
 
 ingestKeyToProfileName :: IngestKey -> ProfileName
-ingestKeyToProfileName (IngestKey slotId streamRole streamProfileName) = streamProfileName
+ingestKeyToProfileName (IngestKey slotId slotRole streamProfileName) = streamProfileName
 
 toSlotId :: SlotIdAndProfileName -> SlotId
 toSlotId (SlotIdAndProfileName s _) = s
@@ -248,11 +248,11 @@ instance readForeignIngestKey :: ReadForeign IngestKey where
     mapper <$> readImpl f
     where
       mapper :: IngestKeyJson -> IngestKey
-      mapper {slotId, role: streamRole, profile: streamProfileName} = IngestKey slotId streamRole streamProfileName
+      mapper {slotId, role: slotRole, profile: streamProfileName} = IngestKey slotId slotRole streamProfileName
 
 instance writeForeignIngestKey :: WriteForeign IngestKey where
-  writeImpl (IngestKey slotId streamRole streamProfileName) = writeImpl { slotId: slotId
-                                                                      , role: streamRole
+  writeImpl (IngestKey slotId slotRole streamProfileName) = writeImpl { slotId: slotId
+                                                                      , role: slotRole
                                                                       , profile: streamProfileName}
 ------------------------------------------------------------------------------
 -- AgentKey

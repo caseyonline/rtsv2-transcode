@@ -4,8 +4,16 @@ module Shared.JsonLd
        , ContextDefinition(..)
        , ContextValue(..)
        , ExpandedTermDefinition
-       , Node
+       , Node(..)
+       , NodeMetadata
+       , NodeMetadata'
+       , NodeMetadata''
        , unwrapNode
+
+       , _unwrappedNode
+       , _id
+       , _resource
+
        ) where
 
 import Prelude
@@ -14,6 +22,9 @@ import Control.Alt ((<|>))
 import Control.Apply (lift2)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show (genericShow)
+import Data.Lens (Lens')
+import Data.Lens.Iso.Newtype (_Newtype)
+import Data.Lens.Record (prop)
 import Data.Maybe (Maybe)
 import Data.Newtype (class Newtype, unwrap)
 import Data.Symbol (SProxy(..))
@@ -149,3 +160,15 @@ mergeResourceAndMetadata metadata resource =
 
 unwrapNode :: forall a b. Node a b -> a
 unwrapNode (Node {resource}) = resource
+
+--------------------------------------------------------------------------------
+-- Lenses
+--------------------------------------------------------------------------------
+_unwrappedNode :: forall resource contextFields. Lens' (Node resource contextFields) (NodeMetadata resource contextFields)
+_unwrappedNode = _Newtype
+
+_id :: forall resource contextFields. Lens' (NodeMetadata resource contextFields) (Maybe Url)
+_id = prop (SProxy :: SProxy "@id")
+
+_resource :: forall resource contextFields. Lens' (NodeMetadata resource contextFields) resource
+_resource = prop (SProxy :: SProxy "resource")

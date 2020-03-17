@@ -33,9 +33,6 @@ module Shared.Rtsv2.JsonLd
        , EgestServedLocationNode  -- == ServerAddressNode
        , egestServedLocationNode
 
-       , RelayServedLocationNode  -- == ServerAddressNode
-       , relayServedLocationNode
-
        , DownstreamRelayLocationNode -- == DeliverToNode
        , downstreamRelayLocationNode
 
@@ -64,7 +61,6 @@ module Shared.Rtsv2.JsonLd
        , IngestAggregatorState
        , IngestAggregatorStateNode
        , ingestAggregatorStateContext
-       , ingestAggregatorStateContext
        , ingestAggregatorStateNode
 
        , StreamRelayStateContextFields
@@ -79,25 +75,40 @@ module Shared.Rtsv2.JsonLd
        , ingestStateContext
        , ingestStateNode
 
+       , _downstreamRelays
+       , _activeProfiles
+       , _profileName
+       , _relaysServed
+       , _port
+
        , module JsonLd
        ) where
 
 import Prelude
 
+import Data.Lens (Lens')
+import Data.Lens.Record (prop)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (wrap)
-import Shared.Common (Milliseconds(..))
-import Shared.JsonLd (Context, ContextValue(..), ExpandedTermDefinition, Node, unwrapNode) as JsonLd
+import Data.Symbol (SProxy(..))
+import Shared.Common (Milliseconds)
+import Shared.JsonLd ( Context
+                     , ContextValue(..)
+                     , ExpandedTermDefinition
+                     , Node(..)
+                     , NodeMetadata
+                     , unwrapNode
+                     , _unwrappedNode
+                     , _id
+                     , _resource
+                     ) as JsonLd
 import Shared.JsonLd (ContextDefinition(..))
 import Shared.LlnwApiTypes (StreamDetails)
 import Shared.Router.Endpoint (Endpoint(..), makePath, makeUrl, makeUrlAddr)
-import Shared.Stream (IngestKey(..), ProfileName, SlotId, SlotRole)
+import Shared.Stream (ProfileName, SlotId, SlotRole)
 import Shared.Types (DeliverTo, JsonLdContextType(..), PoPName, RelayServer, Server, ServerAddress)
 import Shared.Types.Media.Types.Rtmp (RtmpClientMetadata)
 import Shared.Types.Media.Types.SourceDetails (SourceInfo)
-import Shared.Types.Workflow.Metrics.FrameFlow as FrameFlow
-import Shared.Types.Workflow.Metrics.RtmpPushIngest as RtmpIngest
-import Shared.Types.Workflow.Metrics.StreamBitrateMonitor as StreamBitrateMonitor
 
 ------------------------------------------------------------------------------
 -- Server
@@ -232,18 +243,6 @@ egestServedLocationNode slotId serverAddress =
   wrap { resource: {address: serverAddress}
        , "@id": Just $ makeUrlAddr serverAddress (EgestStatsE slotId)
        , "@nodeType": Just "http://schema.rtsv2.llnw.com/EgestServedLocation"
-       , "@context": Just $ ContextUrl $ makePath $ JsonLdContext ServerAddressContext
-       }
-
-------------------------------------------------------------------------------
--- RelayServedLocation
-type RelayServedLocationNode = ServerAddressNode
-
-relayServedLocationNode :: SlotId -> SlotRole -> ServerAddress -> RelayServedLocationNode
-relayServedLocationNode slotId slotRole serverAddress =
-  wrap { resource: {address: serverAddress}
-       , "@id": Just $ makeUrlAddr serverAddress (RelayStatsE slotId slotRole)
-       , "@nodeType": Just "http://schema.rtsv2.llnw.com/RelayServedLocation"
        , "@context": Just $ ContextUrl $ makePath $ JsonLdContext ServerAddressContext
        }
 
@@ -394,7 +393,7 @@ type StreamRelayStateContextFields = ( role :: JsonLd.ContextValue
 type StreamRelayState f
   = { role :: SlotRole
     , egestsServed :: f EgestServedLocationNode
-    , relaysServed :: f RelayServedLocationNode
+    , relaysServed :: f DownstreamRelayLocationNode
     }
 
 type StreamRelayStateNode f = JsonLd.Node (StreamRelayState f) StreamRelayStateContextFields
@@ -453,6 +452,24 @@ ingestStateNode slotId slotRole profileName state server =
        , "@nodeType": Just "http://types.rtsv2.llnw.com/Ingest"
        , "@context": Just $ ContextUrl $ makePath $ JsonLdContext IngestStateContext
        }
+
+--------------------------------------------------------------------------------
+-- Lenses
+--------------------------------------------------------------------------------
+_downstreamRelays :: forall a b. Lens' {downstreamRelays :: a | b} a
+_downstreamRelays = prop (SProxy :: SProxy "downstreamRelays")
+
+_activeProfiles :: forall a b. Lens' {activeProfiles :: a | b} a
+_activeProfiles = prop (SProxy :: SProxy "activeProfiles")
+
+_profileName :: forall a b. Lens' {profileName :: a | b} a
+_profileName = prop (SProxy :: SProxy "profileName")
+
+_relaysServed :: forall a b. Lens' {relaysServed :: a | b} a
+_relaysServed = prop (SProxy :: SProxy "relaysServed")
+
+_port :: forall a b. Lens' {port :: a | b} a
+_port = prop (SProxy :: SProxy "port")
 
 -- foo :: forall resourceType otherFields newtypeType. Newtype newtypeType { resource :: resourceType | otherFields } => newtypeType -> resourceType
 -- foo = _.resource <<< unwrap

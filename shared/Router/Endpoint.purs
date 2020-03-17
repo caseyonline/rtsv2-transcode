@@ -73,6 +73,8 @@ data Endpoint
   | RelayRegisterEgestE
   | RelayRegisterRelayE
   | RelaySlotConfigurationE SlotId SlotRole
+  | RelayRegisteredEgestE SlotId SlotRole ServerAddress
+
   | IngestAggregatorActiveIngestsE SlotId SlotRole ProfileName
   | IngestAggregatorSlotConfigurationE SlotId SlotRole
   | IngestAggregatorRegisterRelayE
@@ -152,6 +154,7 @@ endpoint = root $ sum
   , "RelayRegisterEgestE"                              : "system" / "relay" / "register" / path "egest" noArgs
   , "RelayRegisterRelayE"                              : "system" / "relay" / "register" / path "relay" noArgs
   , "RelaySlotConfigurationE"                          : "system" / "relay" / slotId segment / slotRole segment / "slot"
+  , "RelayRegisteredEgestE"                            : "system" / "relay" / slotId segment / slotRole segment / "egests" / serverAddress segment
 
   , "IngestAggregatorActiveIngestsE"                   : "system" / "ingestAggregator" / slotId segment / slotRole segment / "activeIngests" / profileName segment
   , "IngestAggregatorSlotConfigurationE"               : "system" / "ingestAggregator" / slotId segment / slotRole segment / "slot"
@@ -237,6 +240,13 @@ parseSlotId = ((<$>) wrap) <<< fromString
 
 slotIdToString :: SlotId -> String
 slotIdToString = show <<< unwrap
+
+-- | ServerAddress
+parseServerAddress :: String -> Maybe ServerAddress
+parseServerAddress = wrapParser
+
+serverAddressToString :: ServerAddress -> String
+serverAddressToString = unwrap
 
 -- | ProfileName
 parseProfileName :: String -> Maybe ProfileName
@@ -327,6 +337,10 @@ slotId = as slotIdToString (parseSlotId >>> note "Bad SlotId")
 -- | This combinator transforms a codec over `String` into one that operates on the `ProfileName` type.
 profileName :: RouteDuplex' String -> RouteDuplex' ProfileName
 profileName = as profileNameToString (parseProfileName >>> note "Bad ProfileName")
+
+-- | This combinator transforms a codec over `String` into one that operates on the `ServerAddress` type.
+serverAddress :: RouteDuplex' String -> RouteDuplex' ServerAddress
+serverAddress = as serverAddressToString (parseServerAddress >>> note "Bad ServerAddress")
 
 -- | This combinator transforms a codec over `String` into one that operates on the `ProfileName` type.
 slotRole :: RouteDuplex' String -> RouteDuplex' SlotRole

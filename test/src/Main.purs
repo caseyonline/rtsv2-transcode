@@ -2,12 +2,13 @@ module Main where
 
 import Prelude
 
-import Data.Array (catMaybes, delete, filter, intercalate, length, sort)
+import Data.Array (catMaybes, delete, filter, intercalate, length, sort, sortBy, head)
 import Data.Array as Array
 import Data.Bifunctor (lmap)
 import Data.Either (Either(..), fromRight)
 import Data.Foldable (foldl)
 import Data.Identity (Identity(..))
+import Data.Lens (Lens', Traversal', _Just, firstOf, over, set, traversed)
 import Data.List (List(..), (:))
 import Data.List as List
 import Data.Map as Map
@@ -15,6 +16,7 @@ import Data.Maybe (Maybe(..), isNothing, fromMaybe, fromMaybe')
 import Data.Newtype (class Newtype, un, wrap, unwrap)
 import Data.Time.Duration (Milliseconds(..))
 import Data.Traversable (traverse, traverse_)
+import Data.These
 import Data.Tuple (Tuple(..))
 import Debug.Trace (spy)
 import Effect (Effect)
@@ -30,8 +32,9 @@ import OsCmd (runProc)
 import Partial.Unsafe (unsafePartial)
 import Prim.Row (class Union)
 import Shared.Chaos as Chaos
-import Shared.Stream (ProfileName(..), SlotRole(..), SlotNameAndProfileName(..))
-import Shared.Router.Endpoint (Endpoint(..), makeUrl, Canary(..))
+import Shared.Stream (ProfileName(..), SlotId, SlotRole(..), SlotNameAndProfileName(..))
+import Shared.Router.Endpoint (Endpoint(..), makeUrl, makeUrlAddr, Canary(..))
+import Shared.Common (Url)
 import Shared.Types (ServerAddress(..), extractAddress)
 import Shared.Types.Agent.State as PublicState
 import Shared.Utils (lazyCrashIfMissing)
@@ -42,7 +45,15 @@ import Simple.JSON as SimpleJSON
 import Test.Spec (after_, before_, describe, describeOnly, it, itOnly)
 import Test.Spec.Reporter.Console (consoleReporter)
 import Test.Spec.Runner (runSpecT)
-
+import Text.Parsing.Parser
+import URI as URI
+import URI.HierarchicalPart (HierarchicalPart(..))
+import URI.Authority (Authority(..))
+import URI.HostPortPair as HostPortPair
+import URI.Path (Path(..))
+import URI.Host as URIHost
+import URI.HostPortPair as URIHostPortPair
+import URI.URI as URIParser
 import Control.Monad.State
 import Control.Monad.State.Class
 
@@ -189,6 +200,12 @@ main =
                                          , headers: M.makeHeaders { "Content-Type": "application/json" }
                                          }
 
+    killProcess' addr chaos          = fetch (M.URL $ unwrap $ makeUrlAddr addr (Chaos))
+                                         { method: M.postMethod
+                                         , body: SimpleJSON.writeJSON (chaos :: Chaos.ChaosPayload)
+                                         , headers: M.makeHeaders { "Content-Type": "application/json" }
+                                         }
+
     clientStart node slotId          = fetch (M.URL $ makeUrl' node (ClientStartE Live slotId))
                                          { method: M.postMethod
                                          , body: "{}"
@@ -228,12 +245,16 @@ main =
       let _ = maybeLogStep "step" desc in
       pure $ unit
 
-    as'' :: forall r s. String -> Either String r -> StateT s Aff Unit
-    as'' desc (Right r) =
+    asT :: forall r s. String -> Either String r -> StateT s Aff Unit
+    asT desc (Right r) =
       let _ = maybeLogStep "step" desc in
       pure $ unit
-    as'' desc (Left err) = lift $ throwSlowError $ "Step: \"" <> desc <> "\" failed with reason: " <> err
+    asT desc (Left err) = lift $ throwSlowError $ "Step: \"" <> desc <> "\" failed with reason: " <> err
 
+    asT' :: forall a b. String -> b -> StateT a Aff Unit
+    asT' desc _ =
+      let _ = maybeLogStep "step" desc in
+      pure $ unit
 
     debug :: forall a b. String -> Either a b -> Aff (Either a b)
     debug msg either =
@@ -257,7 +278,7 @@ main =
       where
         predicate :: Array Node -> PublicState.StreamRelay Array -> Boolean
         predicate servers streamRelayState =
-          (sort $ (ServerAddress <<< toAddr) <$> servers) == sort (_.address <<< JsonLd.unwrapNode <$> (JsonLd.unwrapNode streamRelayState).relaysServed)
+          (sort $ (ServerAddress <<< toAddr) <$> servers) == sort (_.address <<< unwrap <<< _.server <<< JsonLd.unwrapNode <$> (JsonLd.unwrapNode streamRelayState).relaysServed)
 
     assertEgestClients = assertBodyFun <<< predicate
       where
@@ -352,6 +373,8 @@ main =
     waitForAsyncProfileStart       = delayMs  150.0
     waitForAsyncProfileStop        = delayMs  100.0
 
+    waitForRemoteAsyncProfileStart = delayMs  350.0
+
     waitForIntraPoPDisseminate     = delayMs  500.0
 
     waitForNodeStartDisseminate    = delayMs 1000.0
@@ -367,7 +390,7 @@ main =
 
   in
   launchAff_ $ un Identity $ runSpecT testConfig [consoleReporter] do
-    describe "Startup tests"
+    describe "1 Startup tests"
       let
         p1Nodes = [p1n1, p1n2, p1n3]
         nodes = p1Nodes
@@ -377,13 +400,13 @@ main =
                  launch nodes
               ) do
         after_ stopSession do
-          it "Nodes all come up and agree on who the leader is" do
+          it "1.1 Nodes all come up and agree on who the leader is" do
             states <- traverse forceGetState (Array.toUnfoldable p1Nodes) :: Aff (List (JsonLd.IntraPoPState Array))
             let
               leaders = JsonLd.unwrapNode <$> List.catMaybes (_.currentTransPoPLeader <$> states)
             assertSame leaders               >>= as "All nodes agree on leader and other intial state"
 
-    describe "Ingest tests"
+    describe "2 Ingest tests"
       let
         p1Nodes = [p1n1, p1n2, p1n3]
         nodes = p1Nodes
@@ -396,14 +419,14 @@ main =
                  launch nodes
               ) do
         after_ stopSession do
-          it "ingest aggregation created on ingest node" do
+          it "2.1 ingest aggregation created on ingest node" do
             ingestStart    p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
             waitForAsyncProfileStart                                     >>= as' "wait for async start of profile"
             aggregatorStats p1n1 slot1          >>= assertStatusCode 200
                                                     >>= assertAggregator [low]
                                                                          >>= as  "aggregator has low only"
 
-          it "2nd ingest doesn't start new aggregator since one is running" do
+          it "2.2 2nd ingest doesn't start new aggregator since one is running" do
             ingestStart    p1n1 shortName1 low   >>= assertStatusCode 200 >>= as "create low ingest"
             waitForAsyncProfileStart                                      >>= as' "wait for async start of profile"
             setLoad         p1n1 60.0            >>= assertStatusCode 204 >>= as "set load on server"
@@ -413,7 +436,7 @@ main =
                                                      >>= assertAggregator [low, high]
                                                                           >>= as "aggregator has 2 profiles"
 
-          it "if ingest node is too loaded, then ingest aggregation starts on non-ingest node" do
+          it "2.3 if ingest node is too loaded, then ingest aggregation starts on non-ingest node" do
             traverse_ maxOut (allNodesBar p1n2)                           >>= as' "load up all servers bar one"
             waitForIntraPoPDisseminate                                    >>= as' "allow load to disseminate"
             ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as  "create low ingest"
@@ -424,7 +447,7 @@ main =
                                                      >>= assertAggregator [low, high]
                                                                           >>= as  "aggregator is on p1n2"
 
-          it "ingest on different node removes itself from aggregator when stopped" do
+          it "2.4 ingest on different node removes itself from aggregator when stopped" do
             traverse_ maxOut (allNodesBar p1n2)                          >>= as' "load up all servers bar one"
             waitForIntraPoPDisseminate                                   >>= as' "allow load to disseminate"
             ingestStart    p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create low ingest"
@@ -440,7 +463,7 @@ main =
                                                     >>= assertAggregator []
                                                                          >>= as  "aggregator has no profiles"
 
-          it "ingest restarts aggregator if aggregator exits" do
+          it "2.5 ingest restarts aggregator if aggregator exits" do
             traverse_ maxOut (allNodesBar p1n2)                           >>= as' "load up all servers bar one"
             waitForIntraPoPDisseminate                                    >>= as' "allow load to disseminate"
             ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as  "create low ingest"
@@ -456,7 +479,7 @@ main =
                                                      >>= assertAggregator [low]
                                                                           >>= as  "failed aggregator moved to new idle server"
 
-          it "aggregator exits after last profile stops (with linger time)" do
+          it "2.6 aggregator exits after last profile stops (with linger time)" do
             ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as  "create low ingest"
             ingestStart    p1n1 shortName1 high >>= assertStatusCode 200 >>= as  "create high ingest"
             waitForAsyncProfileStart
@@ -477,7 +500,7 @@ main =
             waitForMoreThanLinger                                         >>= as' "wait for linger time"
             aggregatorStats p1n1 slot1           >>= assertStatusCode 404 >>= as  "aggregator stops after linger"
 
-          it "aggregator does not exit during linger time" do
+          it "2.7 aggregator does not exit during linger time" do
             ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as  "create low ingest"
             waitForAsyncProfileStart
             aggregatorStats p1n1 slot1           >>= assertStatusCode 200
@@ -495,7 +518,7 @@ main =
                                                      >>= assertAggregator [high]
                                                                           >>= as  "lingered aggregator has high profile"
 
-          it "aggregator liveness detected on node stop" do
+          it "2.8 aggregator liveness detected on node stop" do
             ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as  "create low ingest"
             waitForIntraPoPDisseminate
             intraPoPState p1n1                   >>= assertAggregatorOn [p1n1] slot1
@@ -507,7 +530,7 @@ main =
             intraPoPState p1n2                   >>= assertAggregatorOn [] slot1
                                                                           >>= as "p1n2 is aware the ingest stopped"
 
-          it "attempt to ingest same profile twice on same node fails" do
+          it "2.9 attempt to ingest same profile twice on same node fails" do
             ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as  "create low ingest"
             waitForIntraPoPDisseminate
             aggregatorStats p1n1 slot1           >>= assertStatusCode 200
@@ -519,7 +542,7 @@ main =
                                                      >>= assertAggregator [low]
                                                                           >>= as  "aggregator has single profile"
 
-          it "attempt to ingest same profile twice on different node fails" do
+          it "2.10 attempt to ingest same profile twice on different node fails" do
             ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as  "create low ingest"
             waitForIntraPoPDisseminate
             intraPoPState p1n1                   >>= assertAggregatorOn [p1n1] slot1
@@ -542,8 +565,8 @@ main =
                                                      >>= assertAggregator [low]
                                                                           >>= as  "aggregator now has low profile again"
 
-    describe "Ingest egest tests" do
-      describe "one pop setup"
+    describe "3 Ingest egest tests" do
+      describe "3.1 one pop setup"
         let
           p1Nodes = [p1n1, p1n2, p1n3]
           nodes = p1Nodes
@@ -554,7 +577,7 @@ main =
                    launch nodes
                 ) do
           after_ stopSession do
-            it "client requests stream on ingest node" do
+            it "3.1.1 client requests stream on ingest node" do
                 clientStart p1n1 slot1           >>= assertStatusCode 404 >>= as  "no egest prior to ingest"
                 relayStats   p1n1 slot1          >>= assertStatusCode 404 >>= as  "no relay prior to ingest"
                 ingestStart p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
@@ -567,7 +590,7 @@ main =
                 egestStats   p1n1 slot1          >>= assertStatusCode 200
                                                      >>= assertEgestClients 1
                                                                           >>= as "agent should have 1 client"
-            it "client requests stream on non-ingest node" do
+            it "3.1.2 client requests stream on non-ingest node" do
               clientStart p1n2 slot1           >>= assertStatusCode 404 >>= as  "no egest prior to ingest"
               relayStats   p1n2 slot1          >>= assertStatusCode 404 >>= as  "no remote relay prior to ingest"
               ingestStart p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
@@ -578,7 +601,7 @@ main =
                                                    >>= assertEgestClients 1
                                                                         >>= as "agent should have 1 client"
 
-            it "client requests stream on 2nd node on ingest pop" do
+            it "3.1.3 client requests stream on 2nd node on ingest pop" do
               (flip evalStateT) Map.empty $ do
                 lift $ clientStart p1n2 slot1           >>= assertStatusCode 404 >>= as "no egest p1n2 prior to ingest"
                 lift $ clientStart p1n3 slot1           >>= assertStatusCode 404 >>= as "no egest p1n3 prior to ingest"
@@ -587,12 +610,12 @@ main =
                 (lift $ clientStart p1n2 slot1          >>= assertStatusCode 204
                                                         >>= assertHeader (Tuple "x-servedby" "172.16.169.2"))
                                                         >>= storeHeader "x-client-id" "clientId1"
-                                                                                 >>= as'' "first egest is same node"
+                                                                                 >>= asT "first egest is same node"
                 lift $ waitForIntraPoPDisseminate                                >>= as' "allow intraPoP egest avaialable to disseminate"
                 (lift $ clientStart p1n3 slot1          >>= assertStatusCode 204
                                                         >>= assertHeader (Tuple "x-servedby" "172.16.169.2"))
                                                         >>= storeHeader "x-client-id" "clientId2"
-                                                                                 >>= as'' "p1n3 egest redirects to p1n2"
+                                                                                 >>= asT "p1n3 egest redirects to p1n2"
                 lift $ egestStats   p1n2 slot1          >>= assertStatusCode 200
                                                         >>= assertEgestClients 2
                                                                                  >>= as "agent should have 2 clients"
@@ -600,11 +623,11 @@ main =
                 (lift $ clientStart p1n2 slot1          >>= assertStatusCode 204
                                                         >>= assertHeader (Tuple "x-servedby" "172.16.169.2"))
                                                         >>= storeHeader "x-client-id" "clientId3"
-                                                                                 >>= as'' "p1n2 stays on node2"
+                                                                                 >>= asT "p1n2 stays on node2"
                 (lift $ clientStart p1n3 slot1          >>= assertStatusCode 204
                                                         >>= assertHeader (Tuple "x-servedby" "172.16.169.2"))
                                                         >>= storeHeader "x-client-id" "clientId4"
-                                                                                 >>= as'' "p1n3 egest still redirects to p1n2"
+                                                                                 >>= asT "p1n3 egest still redirects to p1n2"
                 lift $ egestStats   p1n2 slot1          >>= assertStatusCode 200
                                                         >>= assertEgestClients 4
                                                                                  >>= as "agent now has 4 clients"
@@ -628,7 +651,7 @@ main =
                                                         >>= assertEgestClients 1
                                                                                  >>= as "node 3 agent should have 1 client"
 
-      describe "two pop setup" do
+      describe "3.2 two pop setup" do
         let
           p1Nodes = [p1n1, p1n2, p1n3]
           p2Nodes = [p2n1, p2n2]
@@ -638,7 +661,7 @@ main =
                    launch nodes
                 ) do
           after_ stopSession do
-            it "aggregator presence is disseminated to all servers" do
+            it "3.2.1 aggregator presence is disseminated to all servers" do
               ingestStart p1n1 shortName1 low >>= assertStatusCode 200      >>= as  "create ingest"
               waitForTransPoPDisseminate                                    >>= as' "wait for transPop disseminate"
               intraPoPState p1n1                   >>= assertAggregatorOn [p1n1] slot1
@@ -648,7 +671,7 @@ main =
               states2 <- traverse forceGetState (Array.toUnfoldable p2Nodes)
               assertSame states2                                            >>= as "All pop 2 nodes agree on leader and aggregator presence"
 
-            it "client requests stream on other pop" do
+            it "3.2.2 client requests stream on other pop" do
               clientStart p2n1 slot1           >>= assertStatusCode 404 >>= as  "no egest prior to ingest"
               relayStats   p1n1 slot1          >>= assertStatusCode 404 >>= as  "no remote relay prior to ingest"
               relayStats   p2n1 slot1          >>= assertStatusCode 404 >>= as  "no local relay prior to ingest"
@@ -665,7 +688,7 @@ main =
                                                    >>= assertRelayForRelay [p2n1]
                                                                         >>= as  "remote relay is serving local relay"
 
-            it "client ingest starts and stops" do
+            it "3.2.3 client ingest starts and stops" do
               clientStart p1n2 slot1           >>= assertStatusCode 404 >>= as  "no local egest prior to ingest"
               clientStart p2n1 slot1           >>= assertStatusCode 404 >>= as  "no remote egest prior to ingest"
               ingestStart p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
@@ -679,7 +702,7 @@ main =
               -- TODO - assert the relays stop as well - might be slow with timeouts chaining...
 
 
-      describe "node startup - one pop" do
+      describe "3.3 node startup - one pop" do
         let
           phase1Nodes = [p1n1, p1n2]
           phase2Nodes = [p1n3]
@@ -690,7 +713,7 @@ main =
                    launch' phase1Nodes sysconfig
                 ) do
           after_ stopSession do
-            it "a node that starts late gets to see existing streams" do
+            it "3.3.1 a node that starts late gets to see existing streams" do
               ingestStart p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
               waitForIntraPoPDisseminate                                >>= as' "let ingest presence disseminate"
               launch' phase2Nodes sysconfig                             >>= as' "start new node after ingest already running"
@@ -699,7 +722,7 @@ main =
 
             -- TODO - egest - test stream we think is not present when it is
 
-      describe "packet loss - one pop" do
+      describe "3.4 packet loss - one pop" do
         let
           nodes = [p1n1, p1n2]
           sysconfig = "test/config/partial_nodes/sys.config"
@@ -708,7 +731,7 @@ main =
                    launch' nodes sysconfig
                 ) do
           after_ stopSession do
-            it "aggregator expired after extended packet loss" do
+            it "3.4.1 aggregator expired after extended packet loss" do
               ingestStart p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
               waitForIntraPoPDisseminate                                >>= as' "let ingest presence disseminate"
               clientStart p1n2 slot1           >>= assertStatusCode 204 >>= as  "local egest post ingest"
@@ -724,7 +747,7 @@ main =
 
               clientStart p1n2 slot1           >>= assertStatusCode 204 >>= as  "Client can join once more"
 
-      describe "four pop setup" do
+      describe "3.5 four pop setup" do
         let
           p1Nodes = [p1n1]  -- iad
           p2Nodes = [p2n1]  -- dal
@@ -739,7 +762,7 @@ main =
                    launch nodes
                 ) do
           after_ stopSession do
-            it "lax -> fra sets up 2 non-overlapping relay chains" do
+            it "3.5.1 lax -> fra sets up 2 non-overlapping relay chains" do
               waitForIntraPoPDisseminate                                >>= as' "allow intraPoP to spread location of relay"
               ingestStart p3n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
               waitForTransPoPDisseminate                                >>= as' "wait for transPop disseminate"
@@ -761,84 +784,108 @@ main =
                                                        >>= assertRelayForEgest []
                                                                         >>= as  "fra relays for both iad and dal with no egests of its own"
 
-      describe "resilience" do
-        let
-          p1Nodes = [p1n1, p1n2, p1n3]
-          p2Nodes = [p2n1, p2n2]
-          nodes = p1Nodes <> p2Nodes
-          allNodesBar node = delete node nodes
-          maxOut server = setLoad server 60.0 >>= assertStatusCode 204 >>= as ("set load on " <> toAddr server)
-          sysconfig = "test/config/partial_nodes/sys.config"
-        before_ (do
-                   startSession nodes
-                   launch' nodes sysconfig
-                ) do
-          after_ stopSession do
-            it "Launch ingest, terminate ingest aggregator process, new ingest aggregator continues to pull from ingest" do
-              ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as  "create ingest"
-              waitForAsyncProfileStart                                     >>= as' "wait for async start of profile"
-              aggregatorStats p1n1 slot1          >>= assertStatusCode 200
-                                                      >>= assertAggregator [low]
-                                                                           >>= as  "aggregator has low only"
-              killProcess p1n1 (Chaos.defaultKill $ ingestAggregatorName slot1 Primary)
-                                                  >>=  assertStatusCode 204 >>= as "kill process"
-              waitForSupervisorRecovery                                     >>= as' "wait for supervisor"
-              aggregatorStats p1n1 slot1          >>= assertStatusCode 200
-                                                      >>= assertAggregator [low]
-                                                                           >>= as  "aggregator still has low"
+    describe "4 resilience" do
+      let
+        p1Nodes = [p1n1, p1n2, p1n3]
+        p2Nodes = [p2n1, p2n2]
+        p3Nodes = [p3n1]
+        nodes = p1Nodes <> p2Nodes <> p3Nodes
+        allNodesBar node = delete node nodes
+        maxOut server = setLoad server 60.0 >>= assertStatusCode 204 >>= as ("set load on " <> toAddr server)
+        sysconfig = "test/config/partial_nodes/sys.config"
+      before_ (do
+                 startSession nodes
+                 launch' nodes sysconfig
+              ) do
+        after_ stopSession do
+          it "4.1 Launch ingest, terminate ingest aggregator process, new ingest aggregator continues to pull from ingest" do
+            ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as  "create ingest"
+            waitForAsyncProfileStart                                     >>= as' "wait for async start of profile"
+            aggregatorStats p1n1 slot1          >>= assertStatusCode 200
+                                                    >>= assertAggregator [low]
+                                                                         >>= as  "aggregator has low only"
+            killProcess p1n1 (Chaos.defaultKill $ ingestAggregatorName slot1 Primary)
+                                                >>=  assertStatusCode 204 >>= as "kill process"
+            waitForSupervisorRecovery                                     >>= as' "wait for supervisor"
+            aggregatorStats p1n1 slot1          >>= assertStatusCode 200
+                                                    >>= assertAggregator [low]
+                                                                         >>= as  "aggregator still has low"
 
-            it "Launch ingest with local aggregator, terminate ingest process, ingest aggregator removes ingest from list of active ingests" do
-              ingestStart    p1n1 shortName1 low >>= assertStatusCode 200   >>= as  "create ingest"
-              waitForAsyncProfileStart                                      >>= as' "wait for async start of profile"
-              aggregatorStats p1n1 slot1         >>= assertStatusCode 200
-                                                     >>= assertAggregator [low]
-                                                                            >>= as  "aggregator has low only"
-              killProcess p1n1 (Chaos.defaultKill $ ingestName slot1 Primary "500")
-                                                 >>=  assertStatusCode 204 >>= as "kill process"
-              waitForSupervisorRecovery                                    >>= as' "wait for supervisor"
-              aggregatorStats p1n1 slot1         >>= assertStatusCode 200
-                                                     >>= assertAggregator []
-                                                                           >>= as  "aggregator has no ingests"
+          it "4.2 Launch ingest with local aggregator, terminate ingest process, ingest aggregator removes ingest from list of active ingests" do
+            ingestStart    p1n1 shortName1 low >>= assertStatusCode 200   >>= as  "create ingest"
+            waitForAsyncProfileStart                                      >>= as' "wait for async start of profile"
+            aggregatorStats p1n1 slot1         >>= assertStatusCode 200
+                                                   >>= assertAggregator [low]
+                                                                          >>= as  "aggregator has low only"
+            killProcess p1n1 (Chaos.defaultKill $ ingestName slot1 Primary "500")
+                                               >>=  assertStatusCode 204 >>= as "kill process"
+            waitForSupervisorRecovery                                    >>= as' "wait for supervisor"
+            aggregatorStats p1n1 slot1         >>= assertStatusCode 200
+                                                   >>= assertAggregator []
+                                                                         >>= as  "aggregator has no ingests"
 
-            it "Launch ingest with remote aggregator, terminate ingest process, ingest aggregator removes ingest from list of active ingests" do
-              traverse_ maxOut (allNodesBar p1n2)                           >>= as' "load up all servers bar one"
-              waitForIntraPoPDisseminate                                    >>= as' "allow load to disseminate"
-              ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200  >>= as  "create ingest"
-              waitForAsyncProfileStart                                      >>= as' "wait for async start of profile"
-              aggregatorStats p1n2 slot1          >>= assertStatusCode 200
-                                                      >>= assertAggregator [low]
-                                                                            >>= as  "aggregator has low only"
-              killProcess p1n1 (Chaos.defaultKill $ ingestName slot1 Primary "500")
-                                                  >>=  assertStatusCode 204 >>= as "kill process"
-              waitForSupervisorRecovery                                     >>= as' "wait for supervisor"
-              aggregatorStats p1n2 slot1          >>= assertStatusCode 200
-                                                      >>= assertAggregator []
-                                                                            >>= as  "aggregator has no ingests"
+          it "4.3 Launch ingest with remote aggregator, terminate ingest process, ingest aggregator removes ingest from list of active ingests" do
+            traverse_ maxOut (allNodesBar p1n2)                           >>= as' "load up all servers bar one"
+            waitForIntraPoPDisseminate                                    >>= as' "allow load to disseminate"
+            ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200  >>= as  "create ingest"
+            waitForAsyncProfileStart                                      >>= as' "wait for async start of profile"
+            aggregatorStats p1n2 slot1          >>= assertStatusCode 200
+                                                    >>= assertAggregator [low]
+                                                                          >>= as  "aggregator has low only"
+            killProcess p1n1 (Chaos.defaultKill $ ingestName slot1 Primary "500")
+                                                >>=  assertStatusCode 204 >>= as "kill process"
+            waitForSupervisorRecovery                                     >>= as' "wait for supervisor"
+            aggregatorStats p1n2 slot1          >>= assertStatusCode 200
+                                                    >>= assertAggregator []
+                                                                          >>= as  "aggregator has no ingests"
 
-            it "Launch ingest with remote aggregator, terminate ingest node, ingest aggregator removes ingest from list of active ingests" do
-              traverse_ maxOut (allNodesBar p1n2)                           >>= as' "load up all servers bar one"
-              waitForIntraPoPDisseminate                                    >>= as' "allow load to disseminate"
-              ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200  >>= as  "create ingest"
-              waitForAsyncProfileStart                                      >>= as' "wait for async start of profile"
-              aggregatorStats p1n2 slot1          >>= assertStatusCode 200
-                                                      >>= assertAggregator [low]
-                                                                           >>= as  "aggregator has low only"
-              stopNode p1n1                                                >>= as' "stop ingest node"
-              waitForIntraPoPDisseminate                                   >>= as' "allow failure to disseminate"
-              aggregatorStats p1n2 slot1          >>= assertStatusCode 200
-                                                      >>= assertAggregator []
-                                                                           >>= as  "aggregator has no ingests"
+          it "4.4 Launch ingest with remote aggregator, terminate ingest node, ingest aggregator removes ingest from list of active ingests" do
+            traverse_ maxOut (allNodesBar p1n2)                           >>= as' "load up all servers bar one"
+            waitForIntraPoPDisseminate                                    >>= as' "allow load to disseminate"
+            ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200  >>= as  "create ingest"
+            waitForRemoteAsyncProfileStart                                >>= as' "wait for async start of profile"
+            aggregatorStats p1n2 slot1          >>= assertStatusCode 200
+                                                    >>= assertAggregator [low]
+                                                                         >>= as  "aggregator has low only"
+            stopNode p1n1                                                >>= as' "stop ingest node"
+            waitForIntraPoPDisseminate                                   >>= as' "allow failure to disseminate"
+            aggregatorStats p1n2 slot1          >>= assertStatusCode 200
+                                                    >>= assertAggregator []
+                                                                         >>= as  "aggregator has no ingests"
 
-            itOnly "Launch ingest and egest, kill origin relay, assert replaced relay still has egest and origin" do
-              (flip evalStateT) Map.empty $ do
-                lift $ ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200  >>= as  "create ingest"
-                lift $ waitForAsyncProfileStart                                      >>= as' "wait for async start of profile"
-                lift $ clientStart p2n1 slot1              >>= assertStatusCode 204  >>= as  "egest available"
-                lift $ waitForAsyncProfileStart                                      >>= as' "wait for async start of profile"
-                (lift $ slotState p1n1 slot1               >>= (bodyToRecord :: ToRecord (PublicState.SlotState Array)))
-                                                           >>= storeSlotState        >>= as'' "stored state"
-                (lift $ slotState p1n1 slot1               >>= (bodyToRecord :: ToRecord (PublicState.SlotState Array)))
-                                                           >>= compareSlotState     >>= as'' "compare state"
+          it "4.5 Launch ingest and egest, kill origin relay, assert slot state is still valid" do
+            (flip evalStateT) Map.empty $ do
+              lift $ ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200  >>= as  "create ingest"
+              lift $ waitForAsyncProfileStart                                      >>= as' "wait for async start of ingest"
+              lift $ clientStart p2n1 slot1              >>= assertStatusCode 204  >>= as  "egest available"
+              lift $ waitForAsyncProfileStart                                      >>= as' "wait for async start of egest"
+              (lift $ slotState p1n1 slot1               >>= (bodyToRecord :: ToRecord (PublicState.SlotState Array))
+                                                         <#> ((<$>) canonicaliseSlotState))
+                                                         >>= storeSlotState        >>= asT "stored state"
+              killOriginRelay slot1 Primary                                        >>= asT' "kill origin relay"
+              lift $ waitForAsyncProfileStart                                      >>= as' "wait for recovery"
+              (lift $ slotState p1n1 slot1               >>= (bodyToRecord :: ToRecord (PublicState.SlotState Array))
+                                                         <#> ((<$>) canonicaliseSlotState))
+                                                         >>= compareSlotState excludePorts (==)
+                                                         >>= compareSlotState identity (/=)
+                                                                                   >>= asT "compare state"
+
+          it "4.6 Launch ingest and egest, kill downstream relay, assert slot state is still valid" do
+            (flip evalStateT) Map.empty $ do
+              lift $ ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200  >>= as  "create ingest"
+              lift $ waitForAsyncProfileStart                                      >>= as' "wait for async start of ingest"
+              lift $ clientStart p2n1 slot1              >>= assertStatusCode 204  >>= as  "egest available"
+              lift $ waitForAsyncProfileStart                                      >>= as' "wait for async start of egest"
+              (lift $ slotState p1n1 slot1               >>= (bodyToRecord :: ToRecord (PublicState.SlotState Array))
+                                                         <#> ((<$>) (excludePorts <<< canonicaliseSlotState)))
+                                                         >>= storeSlotState        >>= asT "stored state"
+              killDownstreamRelay slot1 Primary                                    >>= asT' "kill downstream relay"
+              lift $ waitForAsyncProfileStart                                      >>= as' "wait for recovery"
+              (lift $ slotState p1n1 slot1               >>= (bodyToRecord :: ToRecord (PublicState.SlotState Array))
+                                                         <#> ((<$>) canonicaliseSlotState))
+                                                         >>= compareSlotState excludePorts (==)
+                                                         >>= compareSlotState identity (/=)
+                                                                                   >>= asT "compare state"
 
     describe "Cleanup" do
       after_ stopSession do
@@ -854,12 +901,112 @@ storeSlotState either@(Right slotState) = do
   _ <- modify (Map.insert "slotState" slotState)
   pure either
 
-compareSlotState either@(Left _) = pure either
-compareSlotState either@(Right slotState) = do
+compareSlotState preFilter predicate either@(Left _) = pure either
+compareSlotState preFilter predicate either@(Right slotState) = do
   currentSlotState <- gets (Map.lookup "slotState")
   if
-    Just slotState == currentSlotState then pure either
-    else pure $ Left "does not match"
+    predicate (Just (preFilter slotState)) (preFilter <$> currentSlotState) then pure either
+  else
+    let
+      _ = spy "lhs" currentSlotState
+      _ = spy "rhs" slotState
+    in
+      pure $ Left "does not match"
+
+killOriginRelay :: SlotId -> SlotRole -> StateT (Map.Map String (PublicState.SlotState Array)) Aff Unit
+killOriginRelay slotId slotRole = do
+  mCurrentSlotState <- gets (Map.lookup "slotState")
+  case mCurrentSlotState of
+    Nothing ->
+      lift $ throwSlowError $ "No slot state"
+    Just {originRelays} ->
+      lift $ killRelay slotId slotRole originRelays
+
+killDownstreamRelay :: SlotId -> SlotRole -> StateT (Map.Map String (PublicState.SlotState Array)) Aff Unit
+killDownstreamRelay slotId slotRole = do
+  mCurrentSlotState <- gets (Map.lookup "slotState")
+  case mCurrentSlotState of
+    Nothing ->
+      lift $ throwSlowError $ "No slot state"
+    Just {downstreamRelays} -> do
+      lift $ killRelay slotId slotRole downstreamRelays
+
+killRelay :: SlotId -> SlotRole -> Array (JsonLd.StreamRelayStateNode Array) -> Aff Unit
+killRelay slotId slotRole relays =
+  case firstOf (traversed <<< JsonLd._unwrappedNode <<< JsonLd._id <<< _Just) relays of
+      Just id ->
+        let
+          mServerAddress = urlToServerAddress id
+        in
+          case mServerAddress of
+            Just serverAddress -> do
+              _ <- killProcess' (spy "kill" serverAddress) (Chaos.defaultKill $ relayName slotId slotRole)
+              pure unit
+            Nothing ->
+              throwSlowError $ "Failed to parse URL"
+      _ ->
+        throwSlowError $ "No relays or missing id"
+
+killProcess' :: ServerAddress -> Chaos.ChaosPayload -> Aff (Either String ResponseWithBody)
+killProcess' addr chaos =
+  fetch (M.URL $ unwrap $ makeUrlAddr addr (Chaos))
+               { method: M.postMethod
+               , body: SimpleJSON.writeJSON (chaos :: Chaos.ChaosPayload)
+               , headers: M.makeHeaders { "Content-Type": "application/json" }
+               }
+
+relayName slotId role = Chaos.Gproc (Chaos.GprocTuple2 (Chaos.String "StreamRelay") (Chaos.GprocTuple3 (Chaos.Atom "relayKey") (Chaos.SlotId slotId) (Chaos.SlotRole role)))
+
+urlToServerAddress :: Url -> Maybe ServerAddress
+urlToServerAddress url =
+  let
+    parseOptions = { parseUserInfo: pure
+                   , parseHosts: HostPortPair.parser pure pure
+                   , parsePath: pure
+                   , parseHierPath: pure
+                   , parseQuery: pure
+                   , parseFragment: pure
+                   }
+  in
+    case runParser (unwrap url) (URIParser.parser parseOptions) of
+      Right (URI.URI scheme (HierarchicalPartAuth (Authority _userInfo (Just (Both host _port))) _path) _query _fragment) ->
+        Just $ ServerAddress $ URIHost.print host
+      _ ->
+       Nothing
+
+canonicaliseSlotState :: PublicState.SlotState Array -> PublicState.SlotState Array
+canonicaliseSlotState { aggregators
+                      , ingests
+                      , originRelays
+                      , downstreamRelays
+                      , egests } =
+  { aggregators: sortBy byId aggregators
+  , ingests: sortBy byId ingests
+  , originRelays: sortBy byId originRelays
+  , downstreamRelays: sortBy byId downstreamRelays
+  , egests: sortBy byId egests }
+  where
+    byId :: forall a b. JsonLd.Node a b -> JsonLd.Node a b-> Ordering
+    byId (JsonLd.Node {"@id": lhs}) (JsonLd.Node {"@id": rhs}) = compare lhs rhs
+
+excludePorts :: PublicState.SlotState Array -> PublicState.SlotState Array
+excludePorts { aggregators
+             , ingests
+             , originRelays
+             , downstreamRelays
+             , egests } =
+  { aggregators: excludeAggregatorPorts <$> aggregators
+  , ingests: ingests
+  , originRelays: excludeRelayPorts <$> originRelays
+  , downstreamRelays: excludeRelayPorts <$> downstreamRelays
+  , egests: egests }
+  where
+    excludeAggregatorPorts =
+      over (JsonLd._unwrappedNode <<< JsonLd._resource <<< JsonLd._downstreamRelays <<< traversed) clearPort
+    excludeRelayPorts =
+      over (JsonLd._unwrappedNode <<< JsonLd._resource <<< JsonLd._relaysServed <<< traversed) clearPort
+    clearPort  =
+      set (JsonLd._unwrappedNode <<< JsonLd._resource <<< JsonLd._port) 0
 
 storeHeader :: String -> String -> Either String ResponseWithBody -> StateT (Map.Map String String) Aff (Either String ResponseWithBody)
 storeHeader header key either@(Left _) = pure either
@@ -963,6 +1110,7 @@ launch nodes = launch' nodes "test/config/sys.config"
 launch' :: Array Node -> String -> Aff Unit
 launch' nodesToStart sysconfig = do
   nodesToStart <#> mkNode  sysconfig # launchNodes
+  delay (Milliseconds 1000.0)
   where
   launchNodes :: Array TestNode -> Aff Unit
   launchNodes nodes = do

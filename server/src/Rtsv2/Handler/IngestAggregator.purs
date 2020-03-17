@@ -44,10 +44,10 @@ type IngestAggregatorsActiveIngestState = { ingestKey :: IngestKey
                                           , payload :: Maybe RemoteIngestPayload
                                           }
 ingestAggregatorsActiveIngest :: SlotId -> SlotRole -> ProfileName -> StetsonHandler IngestAggregatorsActiveIngestState
-ingestAggregatorsActiveIngest slotId streamRole profileName =
+ingestAggregatorsActiveIngest slotId slotRole profileName =
   Rest.handler (\req ->
-                 Rest.initResult req { ingestKey: IngestKey slotId streamRole profileName
-                                     , aggregatorKey: AggregatorKey slotId streamRole
+                 Rest.initResult req { ingestKey: IngestKey slotId slotRole profileName
+                                     , aggregatorKey: AggregatorKey slotId slotRole
                                      , payload: Nothing})
   # Rest.serviceAvailable (\req state -> do
                               isAgentAvailable <- IngestAggregatorSup.isAgentAvailable

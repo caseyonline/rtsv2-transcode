@@ -113,7 +113,7 @@ writeIngestLine reason { ingestIp
                  , shortname: toList $ unwrap rtmpShortName
                  , streamName: toList $ unwrap rtmpStreamName
                  , slotId: toList $ show $ unwrap slotId
-                 , streamRole: toList $ show slotRole
+                 , slotRole: toList $ show slotRole
                  , connectionType: toList $ case connectionType of
                                               Rtmp -> "RTMP"
                                               WebRTC -> "WebRTC"
