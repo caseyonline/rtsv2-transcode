@@ -169,7 +169,8 @@ ioctl({register_stream_relay, Host, Port}, State = #?state{ stream_relays = Stre
       {ok, {error, {dns_resolve_failed, Other}}, State}
   end;
 
-ioctl({deregister_stream_relay, Host, Port}, State = #?state{ stream_relays = StreamRelays
+ioctl({deregister_stream_relay, Host, Port}, State = #?state{ slot_id = SlotId
+                                                            , stream_relays = StreamRelays
                                                             , stream_relays_by_socket = StreamRelaysBySocket }) ->
   case inet:gethostbyname(?to_list(Host)) of
     {ok, #hostent{ h_addr_list = [ Addr | _ ] }} ->
@@ -186,7 +187,10 @@ ioctl({deregister_stream_relay, Host, Port}, State = #?state{ stream_relays = St
                            , stream_relays_by_socket = NewStreamRelaysBySocket}};
 
         error ->
-          {ok, {error, not_registered}, State}
+          ?SLOG_INFO("Deregistering: stream relay not registered", #{ slot_id => SlotId
+                                                                    , stream_relay_host => Host
+                                                                    , stream_relay_port => Port}),
+          {ok, State}
       end;
 
     Other ->
