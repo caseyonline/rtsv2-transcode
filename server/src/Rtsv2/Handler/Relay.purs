@@ -3,6 +3,7 @@ module Rtsv2.Handler.Relay
        , ensureStarted
        , registerEgest
        , registerRelay
+       , deRegisterRelay
        , slotConfiguration
        , stats
        , proxiedStats
@@ -30,18 +31,18 @@ import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Router.Endpoint (Endpoint(..), makeUrl)
 import Shared.Stream (RelayKey(..), SlotId, SlotRole)
-import Shared.Types (Server, extractAddress)
+import Shared.Types (Server, ServerAddress, extractAddress)
 import Shared.Types.Agent.State (StreamRelay)
 import Simple.JSON as JSON
 import Stetson (HttpMethod(..), StetsonHandler)
 import Stetson.Rest as Rest
-import StetsonHelper (GetHandler, PostHandler, allBody, binaryToString, jsonResponse, preHookSpyState, processPostPayload, processPostPayloadWithResponseAndUrl)
+import StetsonHelper (DeleteHandler, GetHandler, PostHandler, allBody, binaryToString, jsonResponse, preHookSpyState, processDelete, processPostPayload, processPostPayloadWithResponseAndUrl)
 
 stats :: SlotId -> SlotRole -> GetHandler (StreamRelay List)
 stats slotId slotRole = jsonResponse $ Just <$> (StreamRelayInstance.status $ RelayKey slotId slotRole)
 
 startResource :: PostHandler CreateRelayPayload
-startResource =  processPostPayload StreamRelaySup.startRelay
+startResource = processPostPayload StreamRelaySup.startRelay
 
 registerEgest :: PostHandler RegisterEgestPayload
 registerEgest = processPostPayloadWithResponseAndUrl (((<$>) Just) <<< StreamRelayInstance.registerEgest)
@@ -49,13 +50,16 @@ registerEgest = processPostPayloadWithResponseAndUrl (((<$>) Just) <<< StreamRel
 registerRelay :: PostHandler RegisterRelayPayload
 registerRelay = processPostPayload StreamRelayInstance.registerRelay
 
+deRegisterRelay :: SlotId -> SlotRole -> ServerAddress -> DeleteHandler
+deRegisterRelay slotId slotRole egestServerAddress =
+  processDelete (StreamRelayInstance.deRegisterEgest {slotId, slotRole, egestServerAddress})
+
 slotConfiguration :: SlotId -> SlotRole -> GetHandler (Maybe SlotConfiguration)
 slotConfiguration slotId role =
   jsonResponse $ Just <$> (StreamRelayInstance.slotConfiguration (RelayKey slotId role))
 
 newtype ProxyState
   = ProxyState { whereIsResp :: Maybe Server
-               , relayKey:: RelayKey
                }
 
 proxiedStats :: SlotId -> SlotRole -> StetsonHandler ProxyState
@@ -73,8 +77,7 @@ proxiedStats slotId slotRole =
       whereIsResp <- (map fromLocalOrRemote) <$> IntraPoP.whereIsStreamRelay relayKey
       Rest.initResult req $
           ProxyState { whereIsResp
-                            , relayKey
-                            }
+                     }
 
     resourceExists req state =
       Rest.result false req state
@@ -82,7 +85,7 @@ proxiedStats slotId slotRole =
     previouslyExisted req state@(ProxyState {whereIsResp}) =
       Rest.result (isJust whereIsResp) req state
 
-    movedTemporarily req state@(ProxyState {whereIsResp, relayKey: (RelayKey slotId slotRole)}) =
+    movedTemporarily req state@(ProxyState {whereIsResp}) =
       case whereIsResp of
         Just server ->
           let
@@ -107,7 +110,7 @@ ensureStarted =
   # Rest.resourceExists resourceExists
   # Rest.previouslyExisted previouslyExisted
   # Rest.movedTemporarily movedTemporarily
-  # Rest.preHook (preHookSpyState "Relay:ensureStarted")
+  --# Rest.preHook (preHookSpyState "Relay:ensureStarted")
   # Rest.yeeha
 
   where

@@ -105,6 +105,8 @@ init args = do
         , "RelayRegisterEgestE"                         : RelayHandler.registerEgest
         , "RelayRegisterRelayE"                         : RelayHandler.registerRelay
         , "RelaySlotConfigurationE"                     : RelayHandler.slotConfiguration
+        , "RelayRegisteredEgestE"                       : RelayHandler.deRegisterRelay
+
         , "IngestAggregatorActiveIngestsE"              : IngestAggregatorHandler.ingestAggregatorsActiveIngest
         , "IngestAggregatorSlotConfigurationE"          : IngestAggregatorHandler.slotConfiguration
         , "IngestAggregatorRegisterRelayE"              : IngestAggregatorHandler.registerRelay
@@ -112,8 +114,6 @@ init args = do
         , "IntraPoPTestHelperE"                         : IntraPoPHandler.testHelper
         , "LoadE"                                       : LoadHandler.load
         , "RelayProxiedStatsE"                          : RelayHandler.proxiedStats
-
-        , "RelayRegisteredEgestE" : CowboyRoutePlaceholder -- TODO
 
         , "IngestStartE"                                : IngestHandler.ingestStart
         , "IngestStopE"                                 : IngestHandler.ingestStop

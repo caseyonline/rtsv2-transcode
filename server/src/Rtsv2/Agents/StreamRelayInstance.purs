@@ -254,10 +254,15 @@ registerEgest payload@{slotId, slotRole, deliverTo} =
     response server = tuple2 (Just (location server)) ""
 
 
-deRegisterEgest :: DeRegisterEgestPayload -> Effect Unit
-deRegisterEgest server =
-  -- todo
-  pure unit
+deRegisterEgest :: DeRegisterEgestPayload -> Effect (Maybe Unit)
+deRegisterEgest {slotId, slotRole, egestServerAddress} =
+  Gen.doCall (serverName $ RelayKey slotId slotRole) doDeRegisterRelay
+  where
+    doDeRegisterRelay state = do
+      -- All we need here is the egestAddress, since that's all we have as the key in the map
+      -- TODO - the actual deregister!
+      pure $ CallReply (Just unit) state
+
 
 registerRelay :: RegisterRelayPayload -> Effect Unit
 registerRelay payload@{slotId, slotRole, sourceRoute, deliverTo } =

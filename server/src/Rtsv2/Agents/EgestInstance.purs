@@ -20,7 +20,7 @@ import Bus as Bus
 import Data.Either (Either(..), hush)
 import Data.Foldable (foldl)
 import Data.Int (round, toNumber)
-import Data.Maybe (Maybe(..), fromMaybe', maybe')
+import Data.Maybe (Maybe(..), fromMaybe, fromMaybe', maybe')
 import Data.Newtype (class Newtype, unwrap, wrap)
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..))
@@ -51,14 +51,14 @@ import Rtsv2.Audit as Audit
 import Rtsv2.Config as Config
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
-import Rtsv2.Utils (crashIfLeft)
+import Rtsv2.Utils (crashIfLeft, noprocToMaybe)
 import Shared.Agent as Agent
 import Shared.Common (Milliseconds, Url)
 import Shared.LlnwApiTypes (StreamIngestProtocol(..))
 import Shared.Router.Endpoint (Endpoint(..), makeUrl)
 import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Stream (AggregatorKey(..), EgestKey(..), RelayKey(..), SlotId, SlotRole(..))
-import Shared.Types (EgestServer(..), Load, RelayServer, Server, ServerLoad(..), DeliverTo)
+import Shared.Types (DeliverTo, EgestServer(..), Load, RelayServer, Server, ServerLoad(..))
 import Shared.Types.Agent.State as PublicState
 import Shared.Utils (lazyCrashIfMissing)
 import SpudGun (SpudResponse(..))
@@ -74,7 +74,7 @@ type CreateEgestPayload
     , aggregator :: Server
     }
 
-data DeleteData = LocalDelete RegisterEgestPayload
+data DeleteData = LocalDelete DeRegisterEgestPayload
                 | RemoteDelete Url
 
 type CachedState = DeleteData
@@ -114,29 +114,11 @@ startLink :: CreateEgestPayload -> StateServerName -> Effect StartLinkResult
 startLink payload stateServerName = Gen.startLink (serverName $ payloadToEgestKey payload) (init payload stateServerName) handleInfo
 
 stopAction :: EgestKey -> Maybe CachedState -> Effect Unit
-stopAction egestKey Nothing = pure unit
-stopAction egestKey@(EgestKey slotId) (Just (LocalDelete payload)) =
+stopAction egestKey mCachedState = do
+  logInfo "Egest stopping" {egestKey}
+  IntraPoP.announceLocalEgestStopped egestKey
+  fromMaybe (pure unit) $ deRegisterWithRelay <$> mCachedState
   pure unit
-stopAction egestKey@(EgestKey slotId) (Just (RemoteDelete url)) =
-  pure unit
-   -- todo - also need stuff that's in doStop
-  -- todo here - we need enough in CachedState to make the deregister call to the relay
-  -- type DeRegisterEgestPayload
-  -- = { slotId :: SlotId
-  --   , slotRole :: SlotRole -- currently hardwired to Primary...
-  --   , deliverTo :: DeliverTo EgestServer
-  --   }
-
-
-  -- removeIngest addr
-  -- where
-  --   removeIngest (Local aggregator) = do
-  --     IngestAggregatorInstance.removeLocalIngest ingestKey
-  --     pure unit
-  --   removeIngest (Remote aggregator) = do
-  --     let
-  --       url = makeActiveIngestUrl aggregator ingestKey
-  --     void $ crashIfLeft =<< SpudGun.delete url {}
 
 pendingClient :: EgestKey -> Effect RegistrationResp
 pendingClient egestKey =
@@ -304,8 +286,7 @@ maybeStop ref state@{ clientCount
 
 doStop :: State -> Effect (CastResult State)
 doStop state@{egestKey} = do
-  logInfo "Egest stopping" {egestKey}
-  IntraPoP.announceLocalEgestStopped egestKey
+  -- Stop actions are all performed in stopAction, which gets called by the CachedState gen_server
   pure $ CastStop state
 
 initStreamRelay :: State -> Effect State
@@ -355,10 +336,10 @@ initStreamRelay state@{relayCreationRetry, egestKey: egestKey@(EgestKey slotId),
       }
 
 registerWithRelay :: (LocalOrRemote Server) -> RegisterEgestPayload -> Effect DeleteData
-registerWithRelay (Local _) payload =
+registerWithRelay (Local _) payload@{slotId, slotRole, deliverTo: {server: Egest {address: egestServerAddress}}} =
   do
     _ <- StreamRelayInstance.registerEgest payload
-    pure (LocalDelete payload)
+    pure (LocalDelete {slotId, slotRole, egestServerAddress})
 registerWithRelay (Remote remoteServer) payload =
   do
     let url = makeUrl remoteServer RelayRegisterEgestE
@@ -371,15 +352,14 @@ registerWithRelay (Remote remoteServer) payload =
                        # snd
                        # wrap
 
-deRegisterWithRelay :: (LocalOrRemote Server) -> DeRegisterEgestPayload -> Effect Unit
-deRegisterWithRelay (Local _) payload =
+deRegisterWithRelay :: DeleteData -> Effect Unit
+deRegisterWithRelay (LocalDelete payload) =
   do
-    StreamRelayInstance.deRegisterEgest payload
+    _ <- noprocToMaybe $ StreamRelayInstance.deRegisterEgest payload
     pure unit
-deRegisterWithRelay (Remote remoteServer) payload =
+deRegisterWithRelay (RemoteDelete deleteUrl) =
   do
-    -- let url = makeUrl remoteServer RelayRegisterEgestE
-    -- void <$> crashIfLeft =<< SpudGun.delete url payload
+    void <$> crashIfLeft =<< SpudGun.delete deleteUrl {}
     pure unit
 
 getRelaySlotConfiguration :: (LocalOrRemote Server) -> SlotId -> Effect (Maybe SlotConfiguration)

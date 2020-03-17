@@ -11,7 +11,7 @@ module Rtsv2.Agents.StreamRelayTypes
 import Erl.Data.List (List)
 import Rtsv2.Agents.Locator.Types (LocalOrRemote)
 import Shared.Stream (SlotId, SlotRole)
-import Shared.Types (Server, DeliverTo, EgestServer, PoPName, RelayServer)
+import Shared.Types (DeliverTo, EgestServer, PoPName, RelayServer, Server, ServerAddress(..))
 
 type CreateRelayPayload
   = { slotId :: SlotId
@@ -49,7 +49,7 @@ type RegisterEgestPayload
 type DeRegisterEgestPayload
   = { slotId :: SlotId
     , slotRole :: SlotRole
-    , deliverTo :: DeliverTo EgestServer
+    , egestServerAddress :: ServerAddress
     }
 
 type SourceRoute = List PoPName

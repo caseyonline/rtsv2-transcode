@@ -12,6 +12,9 @@ module StetsonHelper
        , PostHandlerWithResponse
        , PostHandlerState
 
+       , processDelete
+       , DeleteHandler
+
        , allBody
        , binaryToString
 
@@ -128,6 +131,26 @@ processPostPayloadWithResponseAndUrl proxiedFun =
       let
         response = fromMaybe "" $ JSON.writeJSON <$> mResponse
       Rest.result response req state
+
+------------------------------------------------------------------------------
+-- DELETE helpers
+------------------------------------------------------------------------------
+type DeleteHandler = StetsonHandler (Maybe Unit)
+
+processDelete :: Effect (Maybe Unit) -> DeleteHandler
+processDelete deleteFun =
+  Rest.handler (\req -> Rest.initResult req Nothing)
+  # Rest.allowedMethods (Rest.result (DELETE : mempty))
+  # Rest.resourceExists (\req state -> do
+                            mResp <- deleteFun
+                            Rest.result (isJust mResp) req mResp
+                        )
+  # Rest.deleteResource (\req state ->
+                          case state of
+                            Nothing -> Rest.result false req state
+                            Just _ -> Rest.result true req state
+                        )
+  # Rest.yeeha
 
 --------------------------------------------------------------------------------
 -- Body helpers
