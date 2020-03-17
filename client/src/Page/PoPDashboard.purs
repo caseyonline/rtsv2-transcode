@@ -7,7 +7,7 @@ import CSS.Size as Size
 import Control.Monad.Reader (class MonadAsk, ask)
 import Data.Array ((!!))
 import Data.Const (Const)
-import Data.Either (Either(..), hush)
+import Data.Either (Either(..))
 import Data.Int (toNumber)
 import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Newtype (un)
@@ -30,8 +30,7 @@ import Rtsv2App.Component.HTML.Breadcrumb as BG
 import Rtsv2App.Component.HTML.Dropdown as DP
 import Rtsv2App.Component.HTML.Footer (footer)
 import Rtsv2App.Component.HTML.Header as HD
-import Rtsv2App.Component.HTML.Menu.MainSecondary as MS
-import Rtsv2App.Component.HTML.Menu.MenuMain as MM
+import Rtsv2App.Component.HTML.Menu.MenuWrapper as MW
 import Rtsv2App.Component.HTML.Tables.PoPAggr (Message(..))
 import Rtsv2App.Component.HTML.Tables.PoPAggr as PA
 import Rtsv2App.Component.HTML.Tables.PoPAggrDetails as PAD
@@ -75,10 +74,9 @@ type State =
   }
 
 type ChildSlots =
-  ( mainMenu            :: MM.Slot Unit
+  ( menuWrapper         :: MW.Slot Unit
   , header              :: HD.Slot Unit
   , dropDown            :: DP.Slot Unit
-  , menuSecondary       :: MS.Slot Unit
   , popAggrTable        :: PA.Slot Unit
   , popAggrDetailsTable :: PAD.Slot Unit
   )
@@ -227,9 +225,8 @@ component = H.mkComponent
   render state@{ curPopName, currentUser, popDefenition, aggrLocs, selectedAggrIndex, slotDetails } =
     HH.div
       [ css_ "main" ]
-      [ HH.slot (SProxy :: _ "header") unit HD.component { currentUser, route: LoginR } absurd
-      , HH.slot (SProxy :: _ "mainMenu") unit MM.component { currentUser, route: PoPDashboardR curPopName } absurd
-      , HH.slot (SProxy :: _ "menuSecondary") unit MS.component { currentUser, route: DashboardR } absurd
+      [ HH.slot (SProxy :: _ "header") unit HD.component { currentUser, route: PoPDashboardR curPopName } absurd
+      , HH.slot (SProxy :: _ "menuWrapper") unit MW.component { curPopName: Just curPopName, currentUser, route: PoPDashboardR curPopName } absurd
       , BG.component
         [ HH.li_
           [ HH.text "Admin" ]

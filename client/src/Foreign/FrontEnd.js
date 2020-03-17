@@ -97,50 +97,50 @@ exports.init_ = function() {
     })
 
     /* Aside: submenus */
-  const asideSecondaryToggle = function(e) {
-      //e.preventDefault()
+  // const asideSecondaryToggle = function(e) {
+  //     //e.preventDefault()
 
-      const asideMain = document.getElementById('aside-main')
+  //     const asideMain = document.getElementById('aside-main')
 
-      Array.from(asideMain.getElementsByClassName('is-active-original')).concat(Array.from(asideMain.getElementsByClassName('is-active'))).forEach(elA => {
-        if (!elA.classList.contains('jb-aside-secondary-toggle')) {
-          if (elA.classList.contains('is-active-original')) {
-            elA.classList.remove('is-active-original')
-            elA.classList.add('is-active')
-          } else {
-            elA.classList.remove('is-active')
-            elA.classList.add('is-active-original')
-          }
-        }
-      })
+  //     Array.from(asideMain.getElementsByClassName('is-active-original')).concat(Array.from(asideMain.getElementsByClassName('is-active'))).forEach(elA => {
+  //       if (!elA.classList.contains('jb-aside-secondary-toggle')) {
+  //         if (elA.classList.contains('is-active-original')) {
+  //           elA.classList.remove('is-active-original')
+  //           elA.classList.add('is-active')
+  //         } else {
+  //           elA.classList.remove('is-active')
+  //           elA.classList.add('is-active-original')
+  //         }
+  //       }
+  //     })
 
-      if (e.currentTarget.classList.contains('jb-aside-secondary-toggle')) {
-        e.currentTarget.classList.toggle('is-active')
-      } else {
-        Array.from(asideMain.getElementsByClassName('jb-aside-secondary-toggle')).forEach(elA => {
-          elA.classList.remove('is-active')
-        })
-      }
+  //     if (e.currentTarget.classList.contains('jb-aside-secondary-toggle')) {
+  //       e.currentTarget.classList.toggle('is-active')
+  //     } else {
+  //       Array.from(asideMain.getElementsByClassName('jb-aside-secondary-toggle')).forEach(elA => {
+  //         elA.classList.remove('is-active')
+  //       })
+  //     }
 
-      document.getElementById('aside-secondary').classList.toggle('is-hidden')
-      //document.getElementById('ui-overlay').classList.toggle('is-hidden')
-      asideMain.classList.toggle('has-secondary')
-    }
+  //     document.getElementById('aside-secondary').classList.toggle('is-hidden')
+  //     //document.getElementById('ui-overlay').classList.toggle('is-hidden')
+  //     asideMain.classList.toggle('has-secondary')
+  //   }
 
-    Array.from(document.getElementsByClassName('jb-aside-secondary-toggle')).forEach(
-    function(el) {
-      el.addEventListener('click', asideSecondaryToggle)
-    })
+  //   Array.from(document.getElementsByClassName('jb-aside-secondary-toggle')).forEach(
+  //   function(el) {
+  //     el.addEventListener('click', asideSecondaryToggle)
+  //   })
 
-    Array.from(document.getElementsByClassName('aside-close')).forEach(
-    function(el) {
-      el.addEventListener('click', asideSecondaryToggle)
-    })
+  //   Array.from(document.getElementsByClassName('aside-close')).forEach(
+  //   function(el) {
+  //     el.addEventListener('click', asideSecondaryToggle)
+  //   })
 
-    Array.from(document.getElementsByClassName('aside-secondary-li')).forEach(
-    function(el) {
-      el.addEventListener('click', asideSecondaryToggle)
-    })
+  //   Array.from(document.getElementsByClassName('aside-secondary-li')).forEach(
+  //   function(el) {
+  //     el.addEventListener('click', asideSecondaryToggle)
+  //   })
 
     /* Ui overlay */
     // document.getElementById('ui-overlay').addEventListener('click', asideSecondaryToggle)

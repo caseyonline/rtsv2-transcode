@@ -18,17 +18,17 @@ import Halogen.HTML as HH
 import Halogen.HTML.Properties as HP
 import Rtsv2App.Api.Request (RegisterFields)
 import Rtsv2App.Capability.Navigate (class Navigate, navigate)
-import Rtsv2App.Component.Utils (NotificationMessage)
 import Rtsv2App.Capability.Resource.User (class ManageUser, registerUser)
 import Rtsv2App.Component.HTML.Footer (footer)
 import Rtsv2App.Component.HTML.Header as HD
-import Rtsv2App.Component.HTML.Menu.MenuMain as MM
+import Rtsv2App.Component.HTML.Menu.MenuWrapper as MW
 import Rtsv2App.Component.HTML.Utils (css_, safeHref)
+import Rtsv2App.Component.Utils (NotificationMessage)
 import Rtsv2App.Data.Email (Email)
 import Rtsv2App.Data.Profile (Profile)
 import Rtsv2App.Data.Route (Route(..))
 import Rtsv2App.Data.Username (Username)
-import Rtsv2App.Env (UserEnv)
+import Rtsv2App.Env (UserEnv, PoPDefEnv)
 import Rtsv2App.Form.Field as Field
 import Rtsv2App.Form.Validation as V
 
@@ -40,7 +40,7 @@ type State =
 
 newtype RegisterForm r f = RegisterForm (r
   ( username :: f V.FormError String Username
-  , email :: f V.FormError String Email
+  , email    :: f V.FormError String Email
   , password :: f V.FormError String String
   ))
 
@@ -51,9 +51,9 @@ data Action
   | Receive { currentUser :: Maybe Profile }
 
 type ChildSlots =
-  ( formless :: F.Slot RegisterForm (Const Void) () RegisterFields Unit
-  , mainMenu :: MM.Slot Unit
-  , header :: MM.Slot Unit
+  ( formless    :: F.Slot RegisterForm (Const Void) () RegisterFields Unit
+  , menuWrapper :: MW.Slot Unit
+  , header      :: HD.Slot Unit
   )
 
 -------------------------------------------------------------------------------
@@ -63,7 +63,7 @@ component
   :: forall m r
    . MonadAff m
   => ManageUser m
-  => MonadAsk { userEnv :: UserEnv | r } m
+  => MonadAsk { userEnv :: UserEnv, popDefEnv :: PoPDefEnv | r } m
   => Navigate m
   => H.Component HH.HTML (Const Void) {} NotificationMessage m
 component = Connect.component $ H.mkComponent
@@ -89,7 +89,7 @@ component = Connect.component $ H.mkComponent
     HH.div
       [ css_ "main" ]
       [ HH.slot (SProxy :: _ "header") unit HD.component { currentUser, route: RegisterR } absurd
-      , HH.slot (SProxy :: _ "mainMenu") unit MM.component { currentUser , route: RegisterR } absurd
+      , HH.slot (SProxy :: _ "menuWrapper") unit MW.component { curPopName: Nothing, currentUser, route: DashboardR } absurd
       , HH.div
         [ css_ "app-content content" ]
         [ HH.div
