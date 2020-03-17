@@ -5,7 +5,6 @@ import Prelude
 import Data.Const (Const)
 import Data.Maybe (Maybe(..))
 import Data.Monoid (guard)
-import Debug.Trace (traceM)
 import Effect.Aff.Class (class MonadAff)
 import Effect.Class (liftEffect)
 import Halogen as H
@@ -17,7 +16,7 @@ import Rtsv2App.Component.HTML.Menu.MainHelper (MenuState, closeSecondaryMenu, i
 import Rtsv2App.Component.HTML.Utils (css_, safeHref)
 import Rtsv2App.Data.Profile (Profile)
 import Rtsv2App.Data.Route (Route(..))
-import Shared.Types (PoPName(..))
+import Shared.Types (PoPName)
 
 -------------------------------------------------------------------------------
 -- Types
@@ -72,7 +71,6 @@ component = H.mkComponent
 
   handleAction = case _ of
     Receive { currentUser, route, isMenuClosed, curPopName } -> do
-      traceM route
       H.put { currentUser
             , route
             , isMenuClosed
