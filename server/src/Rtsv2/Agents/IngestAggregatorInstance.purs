@@ -68,14 +68,14 @@ import Shared.UUID (UUID)
 
 -- TODO: proper type for handle, as done in other places
 type WorkflowHandle = Foreign
-foreign import startWorkflowImpl :: UUID -> Array (Tuple3 IngestKey String String) -> Effect (Tuple2 WorkflowHandle (List Pid))
+foreign import startWorkflowImpl :: UUID -> SlotRole -> Array (Tuple3 IngestKey String String) -> Effect (Tuple2 WorkflowHandle (List Pid))
 foreign import stopWorkflowImpl :: WorkflowHandle -> Effect Unit
 foreign import addLocalIngestImpl :: WorkflowHandle -> IngestKey -> Effect Unit
 foreign import addRemoteIngestImpl :: WorkflowHandle -> IngestKey -> String -> Effect Unit
 foreign import removeIngestImpl :: WorkflowHandle -> IngestKey -> Effect Unit
 foreign import registerStreamRelayImpl :: WorkflowHandle -> String -> Int -> Effect Unit
 foreign import deRegisterStreamRelayImpl :: WorkflowHandle -> String -> Int -> Effect Unit
-foreign import slotConfigurationImpl :: UUID -> Effect (Maybe SlotConfiguration)
+foreign import slotConfigurationImpl :: UUID -> SlotRole -> Effect (Maybe SlotConfiguration)
 
 type CachedState = { localIngests :: Set ProfileName
                    , remoteIngests :: Map ProfileName (Tuple Server Ref)
@@ -194,9 +194,9 @@ getState aggregatorKey@(AggregatorKey slotId slotRole) = Gen.call (serverName ag
 
 
 slotConfiguration :: AggregatorKey -> Effect (Maybe SlotConfiguration)
-slotConfiguration (AggregatorKey (SlotId slotId) _slotRole) =
+slotConfiguration (AggregatorKey (SlotId slotId) slotRole) =
   -- TODO: the key is what the slot config should be keyed on...
-  slotConfigurationImpl slotId
+  slotConfigurationImpl slotId slotRole
 
 startLink :: AggregatorKey -> StreamDetails -> StateServerName -> Effect StartLinkResult
 startLink aggregatorKey streamDetails stateServerName = Gen.startLink (serverName aggregatorKey) (init streamDetails stateServerName) handleInfo
@@ -214,7 +214,7 @@ init streamDetails@{role: slotRole, slot: {id: slotId}} stateServerName = do
   config <- Config.ingestAggregatorAgentConfig
   thisServer <- PoPDefinition.getThisServer
   announceLocalAggregatorIsAvailable aggregatorKey
-  workflowHandleAndPids <- startWorkflowImpl (unwrap streamDetails.slot.id) $ mkKey <$> streamDetails.slot.profiles
+  workflowHandleAndPids <- startWorkflowImpl (unwrap streamDetails.slot.id) streamDetails.role $ mkKey <$> streamDetails.slot.profiles
   Gen.registerTerminate thisServerName terminate
   void $ Bus.subscribe thisServerName IntraPoP.bus IntraPoPBus
   let

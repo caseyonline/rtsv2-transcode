@@ -70,8 +70,8 @@ init args = do
         Router.endpoint
         {
         -- Public
-          "ClientPlayerE"                               :  \(_ :: Canary) (_ :: SlotId) -> PrivFile "rtsv2" "www/egestReferencePlayer.html"
-        , "ClientPlayerJsE"                             : \(_ :: Canary) (_ :: SlotId) -> PrivDir "rtsv2" "www/assets/js"
+          "ClientPlayerE"                               : \(_ :: Canary) (_ :: SlotId) (_ :: SlotRole) -> PrivFile "rtsv2" "www/egestReferencePlayer.html"
+        , "ClientPlayerJsE"                             : \(_ :: Canary) (_ :: SlotId) (_ :: SlotRole) -> PrivDir "rtsv2" "www/assets/js"
         , "ClientPlayerControlE"                        : CowboyRoutePlaceholder
 
         -- Support
@@ -153,10 +153,10 @@ init args = do
                                    })
 
       -- ClientPlayerControlE Canary SlotId
-      : cowboyRoute ("/public/" <> canaryBinding <> "/client/" <> slotIdBinding <> "/session")
+      : cowboyRoute ("/public/" <> canaryBinding <> "/client/" <> slotIdBinding <> "/" <> slotRoleBinding <> "/session")
                     "rtsv2_player_ws_resource"
                     (unsafeToForeign { mode: (atom "egest")
-                                     , make_egest_key: EgestKey
+                                     , make_egest_key: makeEgestKey
                                      , start_stream: startStream
                                      , add_client: mkFn2 addClient
                                      , get_slot_configuration: EgestInstance.slotConfiguration
@@ -180,13 +180,21 @@ init args = do
 
 
     slotIdBinding = ":slot_id"
-    slotRoleBinding = ":slot"
+    slotRoleBinding = ":slot_role"
     profileNameBinding = ":profile_name"
     canaryBinding = ":canary"
     referenceBinding = ":reference"
 
     makeSlotIdAndProfileName :: String -> String -> SlotIdAndProfileName
     makeSlotIdAndProfileName slotId profileName = SlotIdAndProfileName (slotIdStringToSlotId slotId) (wrap profileName)
+
+    makeEgestKey :: UUID -> String -> EgestKey
+    makeEgestKey slotId slotRole =
+      EgestKey (wrap slotId) (parseSlotRole slotRole)
+      where
+        parseSlotRole "primary" = Primary
+        parseSlotRole "backup" = Backup
+        parseSlotRole _ = Primary
 
     makeIngestKey :: UUID -> String -> String -> IngestKey
     makeIngestKey slotId slotRole profileName =
@@ -201,15 +209,15 @@ init args = do
       wrap $ fromMaybe UUID.empty (fromString slotIdStr)
 
     -- TODO: This code doesn't belong here
-    startStream :: UUID -> Effect LocationResp
-    startStream slotId =
+    startStream :: EgestKey -> Effect LocationResp
+    startStream (EgestKey slotId slotRole) =
       do
         thisServer <- PoPDefinition.getThisServer
-        findEgest (wrap slotId) thisServer
+        findEgest slotId slotRole thisServer
 
-    addClient :: Pid -> UUID -> Effect RegistrationResp
-    addClient pid slotId =
-      EgestInstance.addClient pid (EgestKey (wrap slotId))
+    addClient :: Pid -> EgestKey -> Effect RegistrationResp
+    addClient pid egestKey =
+      EgestInstance.addClient pid egestKey
 
     cowboyRoute path moduleName initialState =
       Path (tuple3

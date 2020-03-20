@@ -225,9 +225,10 @@ getPublicState = exposeState publicState serverName
       , role
       , servers: JsonLd.relayLocationNode slotId role <$> Set.toUnfoldable v
       }
-    toEgestLocation (Tuple (AgentKey slotId _role) v) =
+    toEgestLocation (Tuple (AgentKey slotId role) v) =
       { slotId
-      , servers: JsonLd.egestLocationNode slotId <$> Set.toUnfoldable v
+      , role
+      , servers: JsonLd.egestLocationNode slotId role <$> Set.toUnfoldable v
       }
 
 currentLocalRef :: Effect Ref
@@ -599,9 +600,8 @@ egestHandler
                     }
 
 
--- Egests do not have different instances for Primary and Backup, so model them all as Primary
 egestKeyToAgentKey :: EgestKey -> AgentKey
-egestKeyToAgentKey (EgestKey slotId) = AgentKey slotId Primary
+egestKeyToAgentKey (EgestKey slotId slotRole) = AgentKey slotId slotRole
 
 -- Called by EgestAgent to indicate egest on this node
 announceLocalEgestIsAvailable :: EgestKey -> Effect Unit

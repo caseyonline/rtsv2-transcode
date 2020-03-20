@@ -38,9 +38,9 @@ instance showCanary :: Show Canary where
 data Endpoint
   =
   -- Public
-    ClientPlayerE Canary SlotId
-  | ClientPlayerJsE Canary SlotId (Array String)
-  | ClientPlayerControlE Canary SlotId
+    ClientPlayerE Canary SlotId SlotRole
+  | ClientPlayerJsE Canary SlotId SlotRole (Array String)
+  | ClientPlayerControlE Canary SlotId SlotRole
 
   -- Support
   | VMMetricsE
@@ -51,7 +51,7 @@ data Endpoint
   | SlotStateE SlotId
   | PoPDefinitionE
   | JsonLdContext JsonLdContextType
-  | EgestStatsE SlotId
+  | EgestStatsE SlotId SlotRole
   | RelayStatsE SlotId SlotRole
   | IngestAggregatorE SlotId SlotRole
   | IngestAggregatorPlayerE SlotId SlotRole
@@ -87,8 +87,9 @@ data Endpoint
 
   | IngestStartE Canary RtmpShortName SlotNameAndProfileName
   | IngestStopE Canary SlotId SlotRole ProfileName
-  | ClientStartE Canary SlotId
-  | ClientStopE Canary SlotId String
+
+  | ClientStartE Canary SlotId SlotRole
+  | ClientStopE Canary SlotId SlotRole String
 
   | StreamAuthTypeE
   | StreamAuthE
@@ -115,9 +116,9 @@ endpoint :: RouteDuplex' Endpoint
 endpoint = root $ sum
   {
   -- Public
-    "ClientPlayerE"                                    : "public" / canary segment / "client" / slotId segment / "player"
-  , "ClientPlayerJsE"                                  : "public" / canary segment / "client" / slotId segment / "js" / rest
-  , "ClientPlayerControlE"                             : "public" / canary segment / "client" / slotId segment / "session" -- URL duplicated in Web.purs
+    "ClientPlayerE"                                    : "public" / canary segment / "client" / slotId segment / slotRole segment / "player"
+  , "ClientPlayerJsE"                                  : "public" / canary segment / "client" / slotId segment / slotRole segment / "js" / rest
+  , "ClientPlayerControlE"                             : "public" / canary segment / "client" / slotId segment / slotRole segment / "session" -- URL duplicated in Web.purs
 
   -- Support
   , "VMMetricsE"                                       : "support" / "vm" / path "metrics" noArgs
@@ -128,7 +129,7 @@ endpoint = root $ sum
   , "SlotStateE"                                       : "support" / "state" / "slot" / slotId segment
   , "PoPDefinitionE"                                   : "support" / path "popDefinition" noArgs
   , "JsonLdContext"                                    : "support" / "jsonld" / contextType segment
-  , "EgestStatsE"                                      : "support" / "egest" / slotId segment
+  , "EgestStatsE"                                      : "support" / "egest" / slotId segment / slotRole segment
   , "RelayStatsE"                                      : "support" / "relay" / slotId segment / slotRole segment  -- TODO - stats vs status
   , "IngestAggregatorE"                                : "support" / "ingestAggregator" / slotId segment / slotRole segment
 
@@ -169,8 +170,8 @@ endpoint = root $ sum
 
   , "IngestStartE"                                     : "system" / "test" / canary segment / "ingest" / shortName segment / slotNameAndProfile segment / "start"
   , "IngestStopE"                                      : "system" / "test" / canary segment / "ingest" / slotId segment / slotRole segment / profileName segment / "stop"
-  , "ClientStartE"                                     : "system" / "test" / canary segment / "client" / slotId segment / "start"
-  , "ClientStopE"                                      : "system" / "test" / canary segment / "client" / slotId segment / "stop" / segment
+  , "ClientStartE"                                     : "system" / "test" / canary segment / "client" / slotId segment / slotRole segment / "start"
+  , "ClientStopE"                                      : "system" / "test" / canary segment / "client" / slotId segment / slotRole segment / "stop" / segment
 
   , "StreamAuthTypeE"                                  : "system" / "llnwstub" / "rts" / "v1" / path "streamauthtype" noArgs
   , "StreamAuthE"                                      : "system" / "llnwstub" / "rts" / "v1" / path "streamauth" noArgs

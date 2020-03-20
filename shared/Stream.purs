@@ -43,7 +43,7 @@ import Shared.UUID (UUID, fromString)
 newtype SlotId = SlotId UUID
 
 data SlotRole = Primary
-                | Backup
+              | Backup
 
 data SlotIdAndRole = SlotIdAndRole SlotId SlotRole
 
@@ -57,7 +57,7 @@ newtype RtmpShortName = RtmpShortName String
 
 newtype RtmpStreamName = RtmpStreamName String
 
-newtype EgestKey = EgestKey SlotId
+data EgestKey = EgestKey SlotId SlotRole
 
 data AggregatorKey = AggregatorKey SlotId SlotRole
 

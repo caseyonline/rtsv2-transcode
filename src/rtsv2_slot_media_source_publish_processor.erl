@@ -10,7 +10,7 @@
 -include("./rtsv2_slot_media_source_publish_processor.hrl").
 
 %% API
--export([ maybe_slot_configuration/1
+-export([ maybe_slot_configuration/2
         ]).
 
 %% Workflow API
@@ -44,8 +44,8 @@
 %%------------------------------------------------------------------------------
 %% API
 %%------------------------------------------------------------------------------
-maybe_slot_configuration(SlotId) ->
-  case gproc:lookup_local_properties({metadata, name(SlotId)}) of
+maybe_slot_configuration(SlotId, SlotRole) ->
+  case gproc:lookup_local_properties({metadata, name(SlotId, SlotRole)}) of
     [] ->
       undefined;
 
@@ -63,11 +63,12 @@ spec(_Processor) ->
 
 initialise(#processor{config =
                         #rtsv2_slot_media_source_publish_processor_config{ slot_name = SlotId
+                                                                         , slot_role = SlotRole
                                                                          , slot_configuration = SlotConfiguration
                                                                          }
                      }) ->
 
-  Name = name(SlotId),
+  Name = name(SlotId, SlotRole),
 
   _ = gproc:add_local_property({metadata, Name},
                                #?metadata{ slot_configuration = SlotConfiguration }
@@ -207,5 +208,5 @@ flush(State) ->
 %%------------------------------------------------------------------------------
 %% Private Functions
 %%------------------------------------------------------------------------------
-name(SlotId) ->
-  { slot_media_source, SlotId }.
+name(SlotId, SlotRole) ->
+  { slot_media_source, SlotId, SlotRole }.

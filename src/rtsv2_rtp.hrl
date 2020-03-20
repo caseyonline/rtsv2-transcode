@@ -18,8 +18,4 @@
 -define(make_video_ssrc(ProfileIndex, StreamIndex), (ProfileIndex bsl 16) bor (?SSRC_VIDEO_TAG bsl 8) bor StreamIndex).
 
 
--define(EGEST_AUDIO_SSRC, ?make_audio_ssrc(?PROFILE_INDEX_RESERVED_EGEST, 0)).
--define(EGEST_VIDEO_SSRC, ?make_video_ssrc(?PROFILE_INDEX_RESERVED_EGEST, 0)).
-
-
 -endif.

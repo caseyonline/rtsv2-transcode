@@ -77,7 +77,7 @@
 -record(stream_desc_ingest,
         { slot_id :: slot_id()
         , profile_name :: binary_string()
-        , stream_role :: binary_string()
+        , slot_role :: binary_string()
         , ingest_key :: term()
         }).
 -type stream_desc_ingest() :: #stream_desc_ingest{}.
@@ -85,10 +85,13 @@
 
 -record(stream_desc_egest,
         { slot_id  :: slot_id()
+        , slot_role :: binary_string()
         , egest_key :: term()
         , start_stream_result :: term()
         , get_slot_configuration :: fun()
         , add_client :: fun()
+        , audio_ssrc :: rtp:ssrc()
+        , video_ssrc :: rtp:ssrc()
         }).
 -type stream_desc_egest() :: #stream_desc_egest{}.
 
@@ -360,22 +363,41 @@ try_build_stream_desc(Req,
                      ) ->
 
   try
-    rtsv2_types:string_to_uuid(cowboy_req:binding(slot_id, Req))
+    { rtsv2_types:string_to_uuid(cowboy_req:binding(slot_id, Req))
+    , cowboy_req:binding(slot_role, Req)
+    }
   of
-    SlotId ->
+    { SlotId, SlotRole } ->
+
+      { AudioSSRC, VideoSSRC } =
+        case SlotRole of
+          <<"primary">> ->
+            { ?make_audio_ssrc(?PROFILE_INDEX_RESERVED_EGEST, 0)
+            , ?make_video_ssrc(?PROFILE_INDEX_RESERVED_EGEST, 0)
+            };
+          <<"backup">> ->
+            { ?make_audio_ssrc(?PROFILE_INDEX_RESERVED_EGEST, 1)
+            , ?make_video_ssrc(?PROFILE_INDEX_RESERVED_EGEST, 1)
+            }
+        end,
+
+      EgestKey = (MakeEgestKey(SlotId))(SlotRole),
 
       %% NOTE: StartStream returns an effect, hence the extra invocation
       StartStreamResult =
-        (StartStream(SlotId))(),
+        (StartStream(EgestKey))(),
 
-      io:format(user, "START STREAM RESULT: ~p -> ~p~n~n", [SlotId, StartStreamResult]),
+      io:format(user, "START STREAM RESULT: ~p -> ~p~n~n", [EgestKey, StartStreamResult]),
 
       StreamDesc =
         #stream_desc_egest{ slot_id =  SlotId
-                          , egest_key = MakeEgestKey(SlotId)
+                          , slot_role = SlotRole
+                          , egest_key = EgestKey
                           , start_stream_result = StartStreamResult
                           , get_slot_configuration = GetSlotConfiguration
                           , add_client = AddClient
+                          , audio_ssrc = AudioSSRC
+                          , video_ssrc = VideoSSRC
                           },
 
       StreamDesc
@@ -392,16 +414,16 @@ try_build_stream_desc(Req,
 
   try
     { rtsv2_types:string_to_uuid(cowboy_req:binding(slot_id, Req))
-    , cowboy_req:binding(stream_role, Req)
+    , cowboy_req:binding(slot_role, Req)
     , cowboy_req:binding(profile_name, Req)
     }
   of
-    {SlotId, StreamRole, ProfileName} ->
+    {SlotId, SlotRole, ProfileName} ->
       #stream_desc_ingest{ slot_id = SlotId
-                        , stream_role = StreamRole
-                        , profile_name = ProfileName
-                        , ingest_key = ((MakeIngestKey(SlotId))(StreamRole))(ProfileName)
-                        }
+                         , slot_role = SlotRole
+                         , profile_name = ProfileName
+                         , ingest_key = ((MakeIngestKey(SlotId))(SlotRole))(ProfileName)
+                         }
   catch
     error:badarg ->
       undefined
@@ -497,10 +519,10 @@ transition_to_running([ #{ name := ActiveProfileName } | _OtherProfiles ] = Prof
   webrtc_stream_server:subscribe_for_msgs(TraceId, #subscription_options{}),
 
   case StreamDesc of
-    #stream_desc_egest{ slot_id = SlotId
+    #stream_desc_egest{ egest_key = EgestKey
                       , add_client = AddClient
                       } ->
-      {right, unit} = (AddClient(self(), SlotId))();
+      {right, unit} = (AddClient(self(), EgestKey))();
     _ ->
       ok
   end,
@@ -683,7 +705,7 @@ construct_start_options(TraceId, IP, [ SlotProfile ] = SlotProfiles, #stream_des
   #{ session_id => TraceId
    , local_address => IP
    , handler_module => rtsv2_webrtc_session_handler
-   , handler_args => [ TraceId, SlotProfiles, self() ]
+   , handler_args => [ TraceId, SlotProfiles, self(), AudioSSRC, VideoSSRC ]
 
      %% TODO: from config
    , ice_options => #{ resolution_disabled => false
@@ -707,12 +729,12 @@ construct_start_options(TraceId, IP, [ SlotProfile ] = SlotProfiles, #stream_des
        end
    };
 
-construct_start_options(TraceId, IP, SlotProfiles, #stream_desc_egest{}) ->
+construct_start_options(TraceId, IP, SlotProfiles, #stream_desc_egest{ audio_ssrc = AudioSSRC, video_ssrc = VideoSSRC }) ->
 
   #{ session_id => TraceId
    , local_address => IP
    , handler_module => rtsv2_webrtc_session_handler
-   , handler_args => [ TraceId, SlotProfiles, self() ]
+   , handler_args => [ TraceId, SlotProfiles, self(), AudioSSRC, VideoSSRC ]
 
      %% TODO: from config
    , ice_options => #{ resolution_disabled => false
@@ -721,8 +743,8 @@ construct_start_options(TraceId, IP, SlotProfiles, #stream_desc_egest{}) ->
 
    , rtp_egest_config =>
        { passthrough
-       , #{ audio_ssrc => ?EGEST_AUDIO_SSRC
-          , video_ssrc => ?EGEST_VIDEO_SSRC
+       , #{ audio_ssrc => AudioSSRC
+          , video_ssrc => VideoSSRC
           }
        }
 

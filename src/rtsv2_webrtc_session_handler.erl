@@ -22,6 +22,7 @@
         , last_sequence = 16
         , last_timestamp
         , timestamp_delta = 0
+        , egest_ssrc
         }).
 
 -record(desired_state,
@@ -37,17 +38,22 @@
 
         , desired_state = undefined
 
-        , video_state = #egest_stream_state{}
-        , audio_state = #egest_stream_state{}
+        , video_state :: #egest_stream_state{}
+        , audio_state :: #egest_stream_state{}
         }).
 
 set_active_profile(ServerId, TraceId, ProfileName) ->
   webrtc_stream_server:cast_session(ServerId, TraceId, {set_active_profile, ProfileName}).
 
 
-init([ SessionId, [ #{ name := ActiveProfileName } | _ ] = Profiles, WebSocket ]) ->
+init([ SessionId, [ #{ name := ActiveProfileName } | _ ] = Profiles, WebSocket, AudioSSRC, VideoSSRC ]) ->
   ?DEBUG("Session handler started for session ~p in profile ~p", [SessionId, ActiveProfileName]),
-  State1 = #?state{ session_id = SessionId, profiles = Profiles, web_socket = WebSocket },
+  State1 = #?state{ session_id = SessionId
+                  , profiles = Profiles
+                  , web_socket = WebSocket
+                  , audio_state = #egest_stream_state{ egest_ssrc = AudioSSRC }
+                  , video_state = #egest_stream_state{ egest_ssrc = VideoSSRC }
+                  },
   State2 = set_active_profile_impl(ActiveProfileName, State1),
   State2.
 
@@ -97,7 +103,7 @@ handle_cast(notify_socket_disconnect, State) ->
   {stop, normal, State}.
 
 handle_audio_sequence(#rtp_sequence{ type = audio } = Sequence, #?state{ audio_state = StreamState } = State) ->
-  case filter_and_renumber(Sequence, StreamState, ?EGEST_AUDIO_SSRC) of
+  case filter_and_renumber(Sequence, StreamState) of
     false ->
       { ok
       , State
@@ -111,7 +117,7 @@ handle_audio_sequence(#rtp_sequence{ type = audio } = Sequence, #?state{ audio_s
   end.
 
 handle_video_sequence(#rtp_sequence{ type = video } = Sequence, #?state{ video_state = StreamState } = State) ->
-  case filter_and_renumber(Sequence, StreamState, ?EGEST_VIDEO_SSRC) of
+  case filter_and_renumber(Sequence, StreamState) of
     false ->
       { ok
       , State
@@ -141,11 +147,11 @@ set_active_profile_impl(ProfileName, #?state{ profiles = Profiles } = State) ->
   end.
 
 
-filter_and_renumber(#rtp_sequence{ rtps = [] }, _StreamState, _EgestSSRC) ->
+filter_and_renumber(#rtp_sequence{ rtps = [] }, _StreamState) ->
   false;
 
-filter_and_renumber(#rtp_sequence{ rtps = RTPs } = Sequence, State, EgestSSRC) ->
-  case filter_and_renumber_prime(RTPs, [], State, EgestSSRC) of
+filter_and_renumber(#rtp_sequence{ rtps = RTPs } = Sequence, State) ->
+  case filter_and_renumber_prime(RTPs, [], State) of
     false ->
       false;
 
@@ -154,7 +160,7 @@ filter_and_renumber(#rtp_sequence{ rtps = RTPs } = Sequence, State, EgestSSRC) -
   end.
 
 
-filter_and_renumber_prime([], Acc, State, _EgestSSRC) ->
+filter_and_renumber_prime([], Acc, State) ->
   case Acc of
     [] ->
       false;
@@ -163,10 +169,10 @@ filter_and_renumber_prime([], Acc, State, _EgestSSRC) ->
       { lists:reverse(Acc), State }
   end;
 
-filter_and_renumber_prime([ #rtp{ ssrc = PacketSSRC } | Rest ], Acc, #egest_stream_state{ active_ssrc = ActiveSSRC } = State, EgestSSRC ) when PacketSSRC =/= ActiveSSRC ->
-  filter_and_renumber_prime(Rest, Acc, State, EgestSSRC);
+filter_and_renumber_prime([ #rtp{ ssrc = PacketSSRC } | Rest ], Acc, #egest_stream_state{ active_ssrc = ActiveSSRC } = State) when PacketSSRC =/= ActiveSSRC ->
+  filter_and_renumber_prime(Rest, Acc, State);
 
-filter_and_renumber_prime([ #rtp{ timestamp = RawTimestamp } = RTP | Rest ], Acc, #egest_stream_state{ last_sequence = LastSequence, last_timestamp = LastTimestamp, timestamp_delta = LastTimestampDelta } = State, EgestSSRC ) ->
+filter_and_renumber_prime([ #rtp{ timestamp = RawTimestamp } = RTP | Rest ], Acc, #egest_stream_state{ last_sequence = LastSequence, last_timestamp = LastTimestamp, timestamp_delta = LastTimestampDelta, egest_ssrc = EgestSSRC } = State ) ->
 
   %% TODO: rollover...
   %% TODO: foward jump...
@@ -194,7 +200,7 @@ filter_and_renumber_prime([ #rtp{ timestamp = RawTimestamp } = RTP | Rest ], Acc
                                      , timestamp_delta = TimestampDelta
                                      },
 
-  filter_and_renumber_prime(Rest, NewAcc, NewState, EgestSSRC).
+  filter_and_renumber_prime(Rest, NewAcc, NewState).
 
 
 is_valid_switch_point(DesiredVideoSSRC) ->

@@ -78,10 +78,12 @@ clientStart (SlotId slotId) = do
   pure unit
 
 clientStop :: EgestKey -> Effect Unit
-clientStop (EgestKey (SlotId slotId)) = do
+clientStop (EgestKey (SlotId slotId) slotRole) = do
   _ <- Logger.info "" { domain: (atom "audit") : (atom "client") : nil
                       , event: toList "stop"
-                      , slotId: toList $ show slotId}
+                      , slotId: toList $ show slotId
+                      , slotRole: toList $ show slotRole
+                      }
   pure unit
 
 

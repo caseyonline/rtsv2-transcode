@@ -34,9 +34,9 @@ startLink :: forall a. a -> Effect Pinto.StartLinkResult
 startLink _ = Sup.startLink serverName init
 
 startEgest :: CreateEgestPayload -> Effect Pinto.StartChildResult
-startEgest payload@{slotId} =
+startEgest payload@{slotId, slotRole} =
   let
-    egestKey = EgestKey slotId
+    egestKey = EgestKey slotId slotRole
   in
     Sup.startSimpleChild childTemplate serverName { childStartLink: EgestInstance.startLink payload
                                                   , childStopAction: EgestInstance.stopAction egestKey
@@ -46,7 +46,7 @@ startEgest payload@{slotId} =
 
 maybeStartAndAddClient :: Pid -> CreateEgestPayload -> Effect Unit
 maybeStartAndAddClient pid payload = do
-  let egestKey = (EgestKey payload.slotId)
+  let egestKey = (EgestKey payload.slotId payload.slotRole)
   isActive <- EgestInstance.isActive egestKey
   case isActive of
     false -> do
