@@ -7,9 +7,10 @@ import Prelude
 
 import Data.Maybe (Maybe(..))
 import Rtsv2.Agents.EgestInstance as EgestInstance
-import Shared.Stream (EgestKey(..), SlotId)
+import Shared.Stream (EgestKey(..), SlotId, SlotRole)
 import Shared.Types.Agent.State as PublicState
 import StetsonHelper (GetHandler, jsonResponse)
 
-stats :: SlotId -> GetHandler PublicState.Egest
-stats = jsonResponse <<< (map Just) <<< EgestInstance.currentStats <<< EgestKey
+stats :: SlotId -> SlotRole -> GetHandler PublicState.Egest
+stats slotId slotRole =
+  jsonResponse $ (map Just) $ EgestInstance.currentStats $ EgestKey slotId slotRole

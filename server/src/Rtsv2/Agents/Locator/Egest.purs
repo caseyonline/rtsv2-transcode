@@ -35,8 +35,8 @@ type StartArgs = { slotId :: SlotId
                  , aggregator :: Server
                  }
 
-findEgest :: SlotId -> Server -> Effect LocationResp
-findEgest slotId thisServer = runExceptT
+findEgest :: SlotId -> SlotRole -> Server -> Effect LocationResp
+findEgest slotId slotRole thisServer = runExceptT
   $ ExceptT getLocal
   <|> ExceptT getRemote
   <|> ExceptT createResourceAndRecurse
@@ -54,26 +54,26 @@ findEgest slotId thisServer = runExceptT
       eResourceResp <- getIdle
       let
         _ = lift2 startLocalOrRemote eAggregator eResourceResp
-      findEgest' slotId thisServer
+      findEgest' slotId slotRole thisServer
 
     findAggregator = (note NotFound) <$> IntraPoP.whereIsIngestAggregator (AggregatorKey slotId Primary)
 
     getIdle = (lmap (const NoResource)) <$> IntraPoP.getIdleServer capacityForEgest
 
     startLocalOrRemote aggregator (Local _) =
-      okAlreadyStarted =<<  EgestInstanceSup.startEgest {slotId, aggregator}
+      okAlreadyStarted =<<  EgestInstanceSup.startEgest {slotId, slotRole, aggregator}
     startLocalOrRemote aggregator (Remote remote) =
-      void <$> crashIfLeft =<< SpudGun.postJson (makeUrl remote EgestE) ({slotId, aggregator} :: CreateEgestPayload)
+      void <$> crashIfLeft =<< SpudGun.postJson (makeUrl remote EgestE) ({slotId, slotRole, aggregator} :: CreateEgestPayload)
 
-    egestKey = (EgestKey slotId)
+    egestKey = (EgestKey slotId slotRole)
     pickCandidate = head
     capacityForClient (ServerLoad sl) =  unwrap sl.load < 90.0
     capacityForEgest (ServerLoad sl) =  unwrap sl.load < 50.0
 
-findEgest' :: SlotId -> Server -> Effect LocationResp
-findEgest' slotId thisServer = do
+findEgest' :: SlotId -> SlotRole -> Server -> Effect LocationResp
+findEgest' slotId slotRole thisServer = do
   let
-    egestKey = (EgestKey slotId)
+    egestKey = (EgestKey slotId slotRole)
   apiResp <- noprocToMaybe $ EgestInstance.pendingClient egestKey
   case apiResp of
     Just _ ->
@@ -81,7 +81,7 @@ findEgest' slotId thisServer = do
     Nothing -> do
       -- does the stream even exists
       -- TODO - Primary and Backup
-      mAggregator <- IntraPoP.whereIsIngestAggregator (AggregatorKey slotId Primary)
+      mAggregator <- IntraPoP.whereIsIngestAggregator (AggregatorKey slotId slotRole)
       case spy "mAggregator" mAggregator of
         Nothing ->
           pure $ Left NotFound
@@ -100,18 +100,18 @@ findEgest' slotId thisServer = do
                   pure $ Left NoResource
                 Right localOrRemote -> do
                   startLocalOrRemote localOrRemote aggregator
-                  findEgest slotId thisServer
+                  findEgest slotId slotRole thisServer
   where
    pickCandidate = head
    capacityForClient (ServerLoad sl) =  unwrap sl.load < 90.0
    capacityForEgest (ServerLoad sl) =  unwrap sl.load < 50.0
    startLocalOrRemote :: (LocalOrRemote ServerLoad) -> Server -> Effect Unit
    startLocalOrRemote  (Local _) aggregator = do
-     okAlreadyStarted =<<  EgestInstanceSup.startEgest {slotId, aggregator}
+     okAlreadyStarted =<<  EgestInstanceSup.startEgest {slotId, slotRole, aggregator}
    startLocalOrRemote  (Remote remote) aggregator = do
      let
        url = makeUrl remote EgestE
-     void <$> crashIfLeft =<< SpudGun.postJson url ({slotId, aggregator} :: CreateEgestPayload)
+     void <$> crashIfLeft =<< SpudGun.postJson url ({slotId, slotRole, aggregator} :: CreateEgestPayload)
 
 
 --------------------------------------------------------------------------------

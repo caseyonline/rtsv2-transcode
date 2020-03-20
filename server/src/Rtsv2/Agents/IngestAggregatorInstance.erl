@@ -15,14 +15,14 @@
 -include("../../../../src/rtsv2_rtp.hrl").
 
 -export([
-         startWorkflowImpl/2,
+         startWorkflowImpl/3,
          stopWorkflowImpl/1,
          addLocalIngestImpl/2,
          addRemoteIngestImpl/3,
          removeIngestImpl/2,
          registerStreamRelayImpl/3,
          deRegisterStreamRelayImpl/3,
-         slotConfigurationImpl/1
+         slotConfigurationImpl/2
         ]).
 
 -define(frames_with_source_id(SourceId), #named_ets_spec{name = list_to_atom("frames_with_source_id: " ++ ??SourceId),
@@ -38,7 +38,7 @@
         }).
 
 
-startWorkflowImpl(SlotId, ProfileArray) ->
+startWorkflowImpl(SlotId, SlotRole, ProfileArray) ->
   fun() ->
       Profiles = array:to_list(ProfileArray),
 
@@ -63,7 +63,7 @@ startWorkflowImpl(SlotId, ProfileArray) ->
                        Profiles
                       ),
 
-        startWorkflow(SlotId, EnrichedProfiles)
+        startWorkflow(SlotId, SlotRole, EnrichedProfiles)
   end.
 
 stopWorkflowImpl(Handle) ->
@@ -100,9 +100,9 @@ deRegisterStreamRelayImpl(Handle, Host, Port) ->
       ok
   end.
 
-slotConfigurationImpl(SlotId) ->
+slotConfigurationImpl(SlotId, SlotRole) ->
   fun() ->
-      case rtsv2_slot_media_source_publish_processor:maybe_slot_configuration(SlotId) of
+      case rtsv2_slot_media_source_publish_processor:maybe_slot_configuration(SlotId, SlotRole) of
         undefined ->
           {nothing};
 
@@ -114,7 +114,7 @@ slotConfigurationImpl(SlotId) ->
 %%------------------------------------------------------------------------------
 %% Internal functions
 %%------------------------------------------------------------------------------
-startWorkflow(SlotId, Profiles) ->
+startWorkflow(SlotId, SlotRole, Profiles) ->
 
   Pids = lists:map(fun(IngestKey) ->
                        {ok, Pid} = webrtc_stream_server:start_link(IngestKey, #{stream_module => rtsv2_webrtc_ingest_preview_stream_handler,
@@ -286,6 +286,7 @@ startWorkflow(SlotId, Profiles) ->
                                         , module = rtsv2_slot_media_source_publish_processor
                                         , config =
                                             #rtsv2_slot_media_source_publish_processor_config{ slot_name = SlotId
+                                                                                             , slot_role = SlotRole
                                                                                              , slot_configuration = slot_configuration(SlotId, Profiles)
                                                                                              }
                                         },

@@ -37,39 +37,71 @@ data StubHost = Any
 derive instance genericStubHost :: Generic StubHost _
 instance eqStubHost :: Eq StubHost where eq = genericEq
 
-db :: List { auth :: { host :: StubHost
-                     , protocol :: StreamIngestProtocol
-                     , rtmpShortName :: RtmpShortName
-                     , authType :: SlotPublishAuthType
-                     , username :: String
-                     , password :: String
-                     }
-           , details :: StreamDetails
-           }
-db =
-  { auth: { host: Any --"172.16.171.5"
-          , protocol: Rtmp
-          , rtmpShortName: wrap "mmddev001"
-          , authType: Llnw
-          , username: "user"
-          , password: "password" }
-  , details: { role: Primary
-             , slot : { id: wrap $ fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000001")
-                      , name: "slot1"
-                      , subscribeValidation: false
-                      , profiles: [ wrap { name: wrap "high",
-                                           rtmpStreamName: wrap "slot1_1000",
-                                           bitrate: 1000000}
-                                  , wrap { name: wrap "low",
-                                           rtmpStreamName: wrap "slot1_500",
-                                           bitrate: 500000}
-                                  ]
-                      , outputFormats : []
-                      }
-             , push : []
-             }
+type SlotDbEntry =
+  { auth :: { host :: StubHost
+            , protocol :: StreamIngestProtocol
+            , rtmpShortName :: RtmpShortName
+            , authType :: SlotPublishAuthType
+            , username :: String
+            , password :: String
+            }
+  , details :: StreamDetails
   }
-  : nil
+
+db :: List SlotDbEntry
+db =
+  slotA : slotB : nil
+
+  where
+    slotA =
+      { auth: { host: Any --"172.16.171.5"
+              , protocol: Rtmp
+              , rtmpShortName: wrap "mmddev001"
+              , authType: Llnw
+              , username: "user"
+              , password: "password" }
+      , details: { role: Primary
+                 , slot : { id: wrap $ fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000001")
+                          , name: "slot1"
+                          , subscribeValidation: false
+                          , profiles: [ wrap { name: wrap "high",
+                                               rtmpStreamName: wrap "slot1_1000",
+                                               bitrate: 1000000}
+                                      , wrap { name: wrap "low",
+                                               rtmpStreamName: wrap "slot1_500",
+                                               bitrate: 500000}
+                                      ]
+                          , outputFormats : []
+                          }
+                 , push : []
+                 }
+      }
+
+    slotB =
+      { auth: { host: Any --"172.16.171.5"
+              , protocol: Rtmp
+              , rtmpShortName: wrap "mmddev001"
+              , authType: Llnw
+              , username: "user"
+              , password: "password" }
+      , details: { role: Backup
+                 , slot : { id: wrap $ fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000001")
+                          , name: "slot1b"
+                          , subscribeValidation: false
+                          , profiles: [ wrap { name: wrap "high",
+                                               rtmpStreamName: wrap "slot1b_1000",
+                                               bitrate: 1000000}
+                                      , wrap { name: wrap "low",
+                                               rtmpStreamName: wrap "slot1b_500",
+                                               bitrate: 500000}
+                                      ]
+                          , outputFormats : []
+                          }
+                 , push : []
+                 }
+      }
+
+
 
 streamAuthType :: PostHelper StreamConnection AuthType
 streamAuthType =
