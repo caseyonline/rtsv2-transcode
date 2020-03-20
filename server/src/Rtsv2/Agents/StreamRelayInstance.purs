@@ -254,14 +254,29 @@ registerEgest payload@{slotId, slotRole, deliverTo} =
     response server = tuple2 (Just (location server)) ""
 
 
-deRegisterEgest :: DeRegisterEgestPayload -> Effect (Maybe Unit)
+deRegisterEgest :: DeRegisterEgestPayload -> Effect Unit
 deRegisterEgest {slotId, slotRole, egestServerAddress} =
-  Gen.doCall (serverName $ RelayKey slotId slotRole) doDeRegisterRelay
+  Gen.doCall (serverName $ RelayKey slotId slotRole) doDeRegisterEgest
   where
-    doDeRegisterRelay state = do
-      -- All we need here is the egestAddress, since that's all we have as the key in the map
-      -- TODO - the actual deregister!
-      pure $ CallReply (Just unit) state
+    doDeRegisterEgest (StateOrigin commonStateData@{thisServer} originStateData@{ config: config@{ egests } }) = do
+      let
+        newEgests = Map.delete egestServer egests
+        newConfig = config{ egests = newEgests }
+      newPlan <- originConfigToPlan commonStateData newConfig
+      let
+        newOriginStateData = originStateData{ config = newConfig, plan = Just newPlan }
+      CallReply unit <$> applyOriginPlan commonStateData newOriginStateData
+
+    doDeRegisterEgest (StateDownstream commonStateData@{thisServer} downstreamStateData@{ config: config@{ egests } }) = do
+      let
+        newEgests = Map.delete egestServer egests
+        newConfig = config{ egests = newEgests }
+      newPlan <- downstreamConfigToPlan commonStateData newConfig
+      let
+        newDownstreamStateData = downstreamStateData{ config = newConfig, plan = Just newPlan }
+      CallReply unit <$> applyDownstreamPlan commonStateData newDownstreamStateData
+
+    egestServer = egestServerAddress
 
 
 registerRelay :: RegisterRelayPayload -> Effect Unit

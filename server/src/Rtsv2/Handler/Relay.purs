@@ -52,7 +52,7 @@ registerRelay = processPostPayload StreamRelayInstance.registerRelay
 
 deRegisterRelay :: SlotId -> SlotRole -> ServerAddress -> DeleteHandler
 deRegisterRelay slotId slotRole egestServerAddress =
-  processDelete (StreamRelayInstance.deRegisterEgest {slotId, slotRole, egestServerAddress})
+  processDelete (Just <$> (StreamRelayInstance.deRegisterEgest {slotId, slotRole, egestServerAddress}))
 
 slotConfiguration :: SlotId -> SlotRole -> GetHandler (Maybe SlotConfiguration)
 slotConfiguration slotId role =
