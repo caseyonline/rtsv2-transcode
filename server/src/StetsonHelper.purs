@@ -7,7 +7,7 @@ module StetsonHelper
 
        , processPostPayload
        , processPostPayloadWithResponse
-       , processPostPayloadWithResponseAndUrl
+       , processPostPayloadWithResponseAndLocationUrl
        , PostHandler
        , PostHandlerWithResponse
        , PostHandlerState
@@ -93,10 +93,10 @@ processPostPayload proxiedFun =
 
 processPostPayloadWithResponse :: forall a b. ReadForeign a => WriteForeign b => (a -> Effect (Maybe b)) -> PostHandlerWithResponse a b
 processPostPayloadWithResponse proxiedFun =
-  processPostPayloadWithResponseAndUrl (\a -> ((<$>) (tuple2 Nothing)) <$> (proxiedFun a))
+  processPostPayloadWithResponseAndLocationUrl (\a -> ((<$>) (tuple2 Nothing)) <$> (proxiedFun a))
 
-processPostPayloadWithResponseAndUrl :: forall a b. ReadForeign a => WriteForeign b => (a -> Effect (Maybe (Tuple2 (Maybe Url) b))) -> PostHandlerWithResponse a b
-processPostPayloadWithResponseAndUrl proxiedFun =
+processPostPayloadWithResponseAndLocationUrl :: forall a b. ReadForeign a => WriteForeign b => (a -> Effect (Maybe (Tuple2 (Maybe Url) b))) -> PostHandlerWithResponse a b
+processPostPayloadWithResponseAndLocationUrl proxiedFun =
   Rest.handler init
   # Rest.allowedMethods (Rest.result (POST : mempty))
   # Rest.contentTypesAccepted (\req state -> Rest.result (singleton $ MimeType.json acceptJson) req state)

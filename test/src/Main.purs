@@ -174,7 +174,7 @@ main =
 
     makeUrl' node path = unwrap $ makeUrl (serverAddress node) path
 
-    egestStats node slotId           = get (M.URL $ makeUrl' node (EgestStatsE slotId))
+    egestStats node slotId           = get (M.URL $ makeUrl' node (EgestStatsE slotId Primary))
 
     aggregatorStats node slotId      = get (M.URL $ makeUrl' node (IngestAggregatorE slotId Primary))
 
@@ -206,13 +206,13 @@ main =
                                          , headers: M.makeHeaders { "Content-Type": "application/json" }
                                          }
 
-    clientStart node slotId          = fetch (M.URL $ makeUrl' node (ClientStartE Live slotId))
+    clientStart node slotId          = fetch (M.URL $ makeUrl' node (ClientStartE Live slotId Primary))
                                          { method: M.postMethod
                                          , body: "{}"
                                          , headers: M.makeHeaders { "Content-Type": "application/json" }
                                          }
 
-    clientStop clientId node slotId  = fetch (M.URL $ makeUrl' node (ClientStopE Live slotId clientId))
+    clientStop clientId node slotId  = fetch (M.URL $ makeUrl' node (ClientStopE Live slotId Primary clientId))
                                          { method: M.postMethod
                                          , body: "{}"
                                          , headers: M.makeHeaders { "Content-Type": "application/json" }

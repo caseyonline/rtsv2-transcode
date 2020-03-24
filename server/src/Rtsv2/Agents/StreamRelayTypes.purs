@@ -36,8 +36,7 @@ type RegisterRelayPayload
 type DeRegisterRelayPayload
   = { slotId :: SlotId
     , slotRole :: SlotRole
-    , deliverTo :: DeliverTo RelayServer
-    , sourceRoute :: SourceRoute
+    , relayServerAddress :: ServerAddress
     }
 
 type RegisterEgestPayload

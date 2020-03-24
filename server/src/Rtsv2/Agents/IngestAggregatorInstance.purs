@@ -7,6 +7,7 @@ module Rtsv2.Agents.IngestAggregatorInstance
   , removeLocalIngest
   , removeRemoteIngest
   , registerRelay
+  , deRegisterRelay
   , getState
   , slotConfiguration
   , domain
@@ -33,12 +34,13 @@ import Data.Set as Set
 import Data.Symbol (SProxy(..))
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..))
+import Data.Tuple as PursTuple
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
-import Erl.Data.List (List, nil, (:))
+import Erl.Data.List (List, head, nil, (:))
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
-import Erl.Data.Tuple (Tuple2, Tuple3, fst, snd, tuple3)
+import Erl.Data.Tuple (Tuple2, Tuple3, fst, snd, tuple2, tuple3)
 import Erl.Process.Raw (Pid)
 import Erl.Utils (Ref, shutdown)
 import Erl.Utils as Erl
@@ -53,21 +55,21 @@ import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..), announceLocalAggregatorIsAvailable, announceLocalAggregatorStopped, currentRemoteRef)
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
-import Rtsv2.Agents.StreamRelayTypes (RegisterRelayPayload)
+import Rtsv2.Agents.StreamRelayTypes (RegisterRelayPayload, DeRegisterRelayPayload)
 import Rtsv2.Config as Config
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Agent as Agent
+import Shared.Common (Url)
 import Shared.LlnwApiTypes (SlotProfile(..), StreamDetails)
 import Shared.Router.Endpoint (Endpoint(..), makeUrl)
 import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Stream (AggregatorKey(..), IngestKey(..), ProfileName, SlotId(..), SlotRole, ingestKeyToAggregatorKey)
-import Shared.Types (DeliverTo, RelayServer, Server, extractAddress)
+import Shared.Types (DeliverTo, RelayServer(..), Server, extractAddress)
 import Shared.Types.Agent.State as PublicState
 import Shared.UUID (UUID)
 
--- TODO: proper type for handle, as done in other places
-type WorkflowHandle = Foreign
+foreign import data WorkflowHandle :: Type
 foreign import startWorkflowImpl :: UUID -> SlotRole -> Array (Tuple3 IngestKey String String) -> Effect (Tuple2 WorkflowHandle (List Pid))
 foreign import stopWorkflowImpl :: WorkflowHandle -> Effect Unit
 foreign import addLocalIngestImpl :: WorkflowHandle -> IngestKey -> Effect Unit
@@ -146,10 +148,26 @@ addRemoteIngest ingestKey@(IngestKey _ _ profileName) payload@{ingestAddress: re
   )
 
 registerRelay :: RegisterRelayPayload -> Effect Unit
-registerRelay payload@{deliverTo} =
-  Gen.doCast (serverName $ payloadToAggregatorKey payload)
-  (
-    map Gen.CastNoReply <<< doRegisterRelay deliverTo
+registerRelay payload@{slotId, slotRole, deliverTo} =
+  Gen.doCall (serverName $ payloadToAggregatorKey payload)
+  (\state@{thisServer} ->
+    CallReply unit <$> doRegisterRelay deliverTo state
+  )
+
+deRegisterRelay :: DeRegisterRelayPayload -> Effect Unit
+deRegisterRelay {slotId, slotRole, relayServerAddress} =
+  Gen.doCall (serverName (AggregatorKey slotId slotRole))
+  (\state@{cachedState: cachedState@{relays}, workflowHandle} -> do
+    let
+      deRegisterStreamRelayImpl' Nothing = pure unit
+      deRegisterStreamRelayImpl' (Just port) = deRegisterStreamRelayImpl workflowHandle (unwrap relayServerAddress) port
+
+      maybeItem = head $ Map.toUnfoldable $ Map.filterWithKey (\(Relay {address}) _ -> address == relayServerAddress) relays
+      maybeRelay = PursTuple.fst <$> maybeItem
+      maybePort = PursTuple.snd <$> maybeItem
+      state2 = fromMaybe state $ ((flip removeRelayFromCachedState state) <$> maybeRelay)
+    deRegisterStreamRelayImpl' maybePort
+    pure $ CallReply unit state2
   )
 
 checkVmRef :: Ref -> Server -> Effect Boolean
@@ -318,8 +336,8 @@ removeLocalIngestFromCachedState profileName = set (_localIngests <<< (at profil
 removeRemoteIngestFromCachedState :: ProfileName -> State -> State
 removeRemoteIngestFromCachedState profileName = set (_remoteIngests <<< (at profileName)) Nothing
 
-removeRelayFromCachedState :: DeliverTo RelayServer -> State -> State
-removeRelayFromCachedState {server} = set (_relays <<< (at server)) Nothing
+removeRelayFromCachedState :: RelayServer -> State -> State
+removeRelayFromCachedState server = set (_relays <<< (at server)) Nothing
 
 updateCachedState :: State -> Effect Unit
 updateCachedState state@{ stateServerName

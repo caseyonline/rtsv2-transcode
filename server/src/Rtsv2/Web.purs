@@ -105,11 +105,13 @@ init args = do
         , "RelayRegisterEgestE"                         : RelayHandler.registerEgest
         , "RelayRegisterRelayE"                         : RelayHandler.registerRelay
         , "RelaySlotConfigurationE"                     : RelayHandler.slotConfiguration
-        , "RelayRegisteredEgestE"                       : RelayHandler.deRegisterRelay
+        , "RelayRegisteredEgestE"                       : RelayHandler.deRegisterEgest
+        , "RelayRegisteredRelayE"                       : RelayHandler.deRegisterRelay
 
         , "IngestAggregatorActiveIngestsE"              : IngestAggregatorHandler.ingestAggregatorsActiveIngest
         , "IngestAggregatorSlotConfigurationE"          : IngestAggregatorHandler.slotConfiguration
         , "IngestAggregatorRegisterRelayE"              : IngestAggregatorHandler.registerRelay
+        , "IngestAggregatorRegisteredRelayE"            : IngestAggregatorHandler.deRegisterRelay
         , "IngestInstanceLlwpE"                         : CowboyRoutePlaceholder
         , "IntraPoPTestHelperE"                         : IntraPoPHandler.testHelper
         , "LoadE"                                       : LoadHandler.load

@@ -20,15 +20,14 @@ import Bus as Bus
 import Data.Either (Either(..), hush)
 import Data.Foldable (foldl)
 import Data.Int (round, toNumber)
-import Data.Maybe (Maybe(..), fromMaybe, fromMaybe', maybe')
+import Data.Maybe (Maybe(..), fromMaybe, maybe')
 import Data.Newtype (class Newtype, unwrap, wrap)
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
-import Erl.Data.List (List, filter, head, singleton)
+import Erl.Data.List (List, singleton)
 import Erl.Data.Map (values)
-import Erl.Data.Tuple (fst, snd)
 import Erl.Process.Raw (Pid)
 import Erl.Utils (Ref, makeRef, systemTimeMs)
 import Logger (Logger, spy)
@@ -53,14 +52,13 @@ import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Utils (crashIfLeft, noprocToMaybe)
 import Shared.Agent as Agent
-import Shared.Common (Milliseconds, Url)
+import Shared.Common (Milliseconds)
 import Shared.LlnwApiTypes (StreamIngestProtocol(..))
 import Shared.Router.Endpoint (Endpoint(..), makeUrl)
 import Shared.Rtsv2.JsonLd as JsonLd
-import Shared.Stream (AggregatorKey(..), EgestKey(..), RelayKey(..), SlotId, SlotRole(..))
+import Shared.Stream (AggregatorKey(..), EgestKey(..), RelayKey(..), SlotId, SlotRole)
 import Shared.Types (DeliverTo, EgestServer(..), Load, RelayServer, Server, ServerLoad(..))
 import Shared.Types.Agent.State as PublicState
-import Shared.Utils (lazyCrashIfMissing)
 import SpudGun (SpudResponse(..))
 import SpudGun as SpudGun
 
@@ -76,7 +74,7 @@ type CreateEgestPayload
     }
 
 data DeleteData = LocalDelete DeRegisterEgestPayload
-                | RemoteDelete Url
+                | RemoteDelete Server DeRegisterEgestPayload
 
 type CachedState = DeleteData
 
@@ -340,25 +338,21 @@ registerWithRelay (Local _) payload@{slotId, slotRole, deliverTo: {server: Egest
   do
     _ <- StreamRelayInstance.registerEgest payload
     pure (LocalDelete {slotId, slotRole, egestServerAddress})
-registerWithRelay (Remote remoteServer) payload =
+registerWithRelay (Remote remoteServer) payload@{slotId, slotRole, deliverTo: {server: Egest {address: egestServerAddress}}} =
   do
     let url = makeUrl remoteServer RelayRegisterEgestE
-    SpudResponse _ headers _ <- crashIfLeft =<< SpudGun.postJson url payload
-    pure (RemoteDelete (location headers))
-  where
-    location headers = filter (fst >>> ((==) "location")) headers
-                       # head
-                       # fromMaybe' (lazyCrashIfMissing "no location header")
-                       # snd
-                       # wrap
+    SpudResponse _ _ _ <- crashIfLeft =<< SpudGun.postJson url payload
+    pure (RemoteDelete remoteServer {slotId, slotRole, egestServerAddress})
 
 deRegisterWithRelay :: DeleteData -> Effect Unit
 deRegisterWithRelay (LocalDelete payload) =
   do
     _ <- noprocToMaybe $ StreamRelayInstance.deRegisterEgest payload
     pure unit
-deRegisterWithRelay (RemoteDelete deleteUrl) =
+deRegisterWithRelay (RemoteDelete remoteServer {slotId, slotRole, egestServerAddress}) =
   do
+    let
+      deleteUrl = makeUrl remoteServer (RelayRegisteredEgestE slotId slotRole egestServerAddress)
     void <$> crashIfLeft =<< SpudGun.delete deleteUrl {}
     pure unit
 

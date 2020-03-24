@@ -20,9 +20,10 @@ module Shared.Types.Agent.State
 
 import Prelude
 
-import Data.Lens (traversed)
+import Data.Lens (_Just, firstOf, traversed)
+import Data.Maybe (Maybe)
 import Data.Traversable (class Traversable)
-import Shared.Common (Milliseconds)
+import Shared.Common (Milliseconds, Url)
 import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Stream (AgentKey, IngestKey, ProfileName(..), SlotId, SlotRole)
 import Shared.Types (GeoLoc, PoPName, RegionName, Server, ServerAddress)
@@ -68,8 +69,9 @@ type AgentLocation f = { agentKey :: AgentKey
                        , servers :: f Server
                        }
 --foo :: forall f. Functor f => f JsonLd.DownstreamRelayLocationNode -> ServerAddress
+foo :: forall f. Traversable f => f JsonLd.DownstreamRelayLocationNode -> Maybe Url
 foo nodes =
-  traversed <<< JsonLd._unwrappedNode <<< JsonLd._id
+ firstOf (traversed <<< JsonLd._unwrappedNode <<< JsonLd._id <<< _Just) nodes
 
 type AggregatorLocation f = { slotId :: SlotId
                             , role :: SlotRole

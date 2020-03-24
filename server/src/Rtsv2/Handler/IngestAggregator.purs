@@ -3,6 +3,7 @@ module Rtsv2.Handler.IngestAggregator
        , ingestAggregators
        , ingestAggregatorsActiveIngest
        , registerRelay
+       , deRegisterRelay
        , slotConfiguration
        )
        where
@@ -21,12 +22,13 @@ import Rtsv2.Agents.SlotTypes (SlotConfiguration)
 import Rtsv2.Agents.StreamRelayTypes (RegisterRelayPayload)
 import Shared.LlnwApiTypes (StreamDetails)
 import Shared.Stream (AggregatorKey(..), IngestKey(..), ProfileName, SlotId, SlotRole)
+import Shared.Types (ServerAddress)
 import Shared.Types.Agent.State as PublicState
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (readJSON)
 import Stetson (HttpMethod(..), StetsonHandler)
 import Stetson.Rest as Rest
-import StetsonHelper (GetHandler, PostHandler, allBody, binaryToString, jsonResponse, processPostPayload)
+import StetsonHelper (DeleteHandler, GetHandler, PostHandler, allBody, binaryToString, jsonResponse, processDelete, processPostPayload)
 
 ingestAggregator :: SlotId -> SlotRole -> GetHandler (PublicState.IngestAggregator List)
 ingestAggregator slotId role = jsonResponse $ Just <$> (IngestAggregatorInstance.getState $ AggregatorKey slotId role)
@@ -99,6 +101,9 @@ ingestAggregatorsActiveIngest slotId slotRole profileName =
   -- # Rest.preHook (preHookSpyState "IngestAggregator:activeIngest")
   # Rest.yeeha
 
-
 registerRelay :: PostHandler RegisterRelayPayload
 registerRelay = processPostPayload IngestAggregatorInstance.registerRelay
+
+deRegisterRelay :: SlotId -> SlotRole -> ServerAddress -> DeleteHandler
+deRegisterRelay slotId slotRole relayServerAddress =
+  processDelete (Just <$> (IngestAggregatorInstance.deRegisterRelay {slotId, slotRole, relayServerAddress}))
