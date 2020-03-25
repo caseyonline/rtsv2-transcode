@@ -6,7 +6,13 @@ module Shared.Router.Endpoint ( Endpoint(..)
                               , makeUrlWithPath
                               , makeUrlAddr
                               , makeUrlAddrWithPath
+                              , makeWsUrl
+                              , makeWsUrlWithPath
+                              , makeWsUrlAddr
+                              , makeWsUrlAddrWithPath
+                              , parseSlotId
                               , parseSlotRole
+                              , parseServerAddress
                               , uName
                               , popName
                               ) where
@@ -75,6 +81,7 @@ data Endpoint
   | RelaySlotConfigurationE SlotId SlotRole
   | RelayRegisteredEgestE SlotId SlotRole ServerAddress
   | RelayRegisteredRelayE SlotId SlotRole ServerAddress
+  | RelayRegisteredEgestWs SlotId SlotRole ServerAddress
   | IngestAggregatorActiveIngestsE SlotId SlotRole ProfileName
   | IngestAggregatorSlotConfigurationE SlotId SlotRole
   | IngestAggregatorRegisterRelayE
@@ -158,6 +165,7 @@ endpoint = root $ sum
   , "RelaySlotConfigurationE"                          : "system" / "relay" / slotId segment / slotRole segment / "slot"
   , "RelayRegisteredEgestE"                            : "system" / "relay" / slotId segment / slotRole segment / "egests" / serverAddress segment
   , "RelayRegisteredRelayE"                            : "system" / "relay" / slotId segment / slotRole segment / "relays" / serverAddress segment
+  , "RelayRegisteredEgestWs"                           : "system" / "relay" / slotId segment / slotRole segment / "egests" / serverAddress segment / "ws"
 
   , "IngestAggregatorActiveIngestsE"                   : "system" / "ingestAggregator" / slotId segment / slotRole segment / "activeIngests" / profileName segment
   , "IngestAggregatorSlotConfigurationE"               : "system" / "ingestAggregator" / slotId segment / slotRole segment / "slot"
@@ -211,6 +219,23 @@ makeUrlAddr serverAddr ep =
 makeUrlAddrWithPath :: ServerAddress -> String -> Url
 makeUrlAddrWithPath (ServerAddress host) path =
   wrap $ "http://" <> host <> ":3000" <> path
+
+
+makeWsUrl :: forall r a. Newtype a { address :: ServerAddress | r }
+        => a -> Endpoint -> Url
+makeWsUrl server ep = makeWsUrlAddr (extractAddress server) ep
+
+makeWsUrlWithPath :: forall r a. Newtype a { address :: ServerAddress | r }
+        => a -> String -> Url
+makeWsUrlWithPath server path = makeWsUrlAddrWithPath (extractAddress server) path
+
+makeWsUrlAddr :: ServerAddress -> Endpoint -> Url
+makeWsUrlAddr serverAddr ep =
+  makeWsUrlAddrWithPath serverAddr (makePath ep)
+
+makeWsUrlAddrWithPath :: ServerAddress -> String -> Url
+makeWsUrlAddrWithPath (ServerAddress host) path =
+  wrap $ "ws://" <> host <> ":3000" <> path
 
 -- | JsonLd Context Type
 contextTypeToString :: JsonLdContextType -> String

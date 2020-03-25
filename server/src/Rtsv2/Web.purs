@@ -107,6 +107,7 @@ init args = do
         , "RelaySlotConfigurationE"                     : RelayHandler.slotConfiguration
         , "RelayRegisteredEgestE"                       : RelayHandler.deRegisterEgest
         , "RelayRegisteredRelayE"                       : RelayHandler.deRegisterRelay
+        , "RelayRegisteredEgestWs"                      : CowboyRoutePlaceholder
 
         , "IngestAggregatorActiveIngestsE"              : IngestAggregatorHandler.ingestAggregatorsActiveIngest
         , "IngestAggregatorSlotConfigurationE"          : IngestAggregatorHandler.slotConfiguration
@@ -169,6 +170,10 @@ init args = do
                    "llwp_stream_resource"
                    ((unsafeToForeign) makeSlotIdAndProfileName)
 
+      : cowboyRoute ("/system/relay/" <> slotIdBinding <> "/" <> slotRoleBinding <> "/egests/" <> serverAddressBinding <> "/ws")
+                  "stetson_webSocketHandler@ps"
+                  (unsafeToForeign RelayHandler.registeredEgestWs)
+
       --WorkflowsE
       : cowboyRoute ("/system/workflows") "id3as_workflows_resource" (unsafeToForeign unit)
       -- WorkflowGraphE String
@@ -184,6 +189,7 @@ init args = do
     slotIdBinding = ":slot_id"
     slotRoleBinding = ":slot_role"
     profileNameBinding = ":profile_name"
+    serverAddressBinding = ":server_address"
     canaryBinding = ":canary"
     referenceBinding = ":reference"
 

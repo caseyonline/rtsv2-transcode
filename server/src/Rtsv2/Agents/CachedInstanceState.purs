@@ -51,12 +51,10 @@ startLink startArgs@{serverName, domain} = do
   callerPid <- Erl.self
   let
     callerProcess = Process callerPid :: Process Atom
-  logInfo domain "XXX Performing startup" {}
   startLinkResult <- Gen.startLink serverName (init callerProcess startArgs) handleInfo
   case startLinkResult of
     Ok _ -> do
       _ <- receive
-      logInfo domain "XXX Startup completed" {}
       pure unit
     _ ->
       pure unit
@@ -91,20 +89,17 @@ init caller {serverName, childStartLink, childStopAction, domain} = do
        }
   where
     performInitialisation = do
-      logInfo domain "XXX about to spawnlink child helper" {}
       _ <- spawnLink launchChild
       pure unit
       where
         launchChild :: SpawnedProcessState (Tuple3 Atom Pid Foreign) -> Effect Unit
         launchChild {receive} = do
           _ <- Erl.trapExit true
-          logInfo domain "XXX about to spawnlink child" {}
           childResult <- childStartLink serverName
           caller ! (atom "done")
           case childResult of
             Ok pid -> do
               Tuple _ (Tuple _ (Tuple reason _)) <- toNested3 <$> receive
-              logInfo domain "XXX child exited" {reason}
               Erl.exit reason
               pure unit
             other -> do

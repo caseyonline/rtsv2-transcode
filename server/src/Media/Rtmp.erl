@@ -78,7 +78,7 @@ add_value_to_map(Name, Value, Map = #{other := Other}) ->
   maps:put(other, [#{name => Name,
                      value => rtmp_metadata_value_to_purs(Value)} | Other], Map).
 
-map_audio_codec_id(AudioCodecId) ->
+map_audio_codec_id(AudioCodecId) when is_number(AudioCodecId) ->
   case trunc(AudioCodecId) of
     0 -> {uncompressed};
     1 -> {aDPCM};
@@ -87,15 +87,26 @@ map_audio_codec_id(AudioCodecId) ->
     6 -> {nellymoser};
     10 -> {aAC};
     11 -> {speex}
+  end;
+
+map_audio_codec_id(AudioCodecId) ->
+  case AudioCodecId of
+    <<"mp4a">> -> {aAC}
   end.
 
-map_video_codec_id(VideoCodecId) ->
+map_video_codec_id(VideoCodecId) when is_number(VideoCodecId) ->
   case trunc(VideoCodecId) of
     2 -> {sorensonH263};
     3 -> {screen};
     4 -> {on2VP6};
     5 -> {on2VP6Transparency};
-    7 -> {h264}
+    7 -> {h264};
+    <<"avc1">> -> {h264}
+  end;
+
+map_video_codec_id(VideoCodecId) ->
+  case VideoCodecId of
+    <<"avc1">> -> {h264}
   end.
 
 map_avc_profile(AvcProfile) ->

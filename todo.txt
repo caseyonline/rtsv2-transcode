@@ -1,3 +1,4 @@
+[ ] - Media.Rtmp.foreignToMetadata to have try/catch everywhere so as not to die horribly if client encoder sends unexpected metadata
 [ ] - intrapop to raise bus message if relay exits
       - egest to subscribe and take appropriate action - either exit itself or launch new relay?
 [ ] - Pinto stuff, async init, return stop from init

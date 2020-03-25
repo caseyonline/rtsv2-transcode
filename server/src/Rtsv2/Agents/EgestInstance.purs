@@ -45,7 +45,7 @@ import Rtsv2.Agents.Locator.Types (LocalOrRemote(..), RegistrationResp, Resource
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
 import Rtsv2.Agents.StreamRelayInstance as StreamRelayInstance
 import Rtsv2.Agents.StreamRelaySup (startRelay) as StreamRelaySup
-import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload, RegisterEgestPayload, DeRegisterEgestPayload)
+import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload, DeRegisterEgestPayload, EgestClientWsMessage(..), EgestServerWsMessage, RegisterEgestPayload)
 import Rtsv2.Audit as Audit
 import Rtsv2.Config as Config
 import Rtsv2.Names as Names
@@ -54,13 +54,15 @@ import Rtsv2.Utils (crashIfLeft, noprocToMaybe)
 import Shared.Agent as Agent
 import Shared.Common (Milliseconds)
 import Shared.LlnwApiTypes (StreamIngestProtocol(..))
-import Shared.Router.Endpoint (Endpoint(..), makeUrl)
+import Shared.Router.Endpoint (Endpoint(..), makeUrl, makeWsUrl)
 import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Stream (AggregatorKey(..), EgestKey(..), RelayKey(..), SlotId, SlotRole)
 import Shared.Types (DeliverTo, EgestServer(..), Load, RelayServer, Server, ServerLoad(..))
 import Shared.Types.Agent.State as PublicState
 import SpudGun (SpudResponse(..))
 import SpudGun as SpudGun
+import WsGun (GunProtocolResponse(..), GunState, ProcessResponse(..))
+import WsGun as WsGun
 
 foreign import startEgestReceiverFFI :: EgestKey -> Effect Int
 foreign import getStatsFFI :: EgestKey -> Effect (WebRTCStreamServerStats EgestKey)
@@ -73,8 +75,8 @@ type CreateEgestPayload
     , aggregator :: Server
     }
 
-data DeleteData = LocalDelete DeRegisterEgestPayload
-                | RemoteDelete Server DeRegisterEgestPayload
+data DeleteData = LocalDelete DeRegisterEgestPayload (GunState EgestClientWsMessage EgestServerWsMessage)
+                | RemoteDelete Server DeRegisterEgestPayload (GunState EgestClientWsMessage EgestServerWsMessage)
 
 type CachedState = DeleteData
 
@@ -102,6 +104,7 @@ data Msg = WriteEqLog
          | InitStreamRelays
          | MaybeStop Ref
          | IntraPoPBus IntraPoP.IntraPoPBusMessage
+         | Gun WsGun.GunMsg
 
 serverName :: EgestKey -> ServerName State Msg
 serverName egestKey = Names.egestInstanceName egestKey
@@ -174,6 +177,7 @@ init payload@{slotId, slotRole, aggregator} stateServerName = do
   _ <- Timer.sendAfter (serverName egestKey) 0 InitStreamRelays
   _ <- Timer.sendEvery (serverName egestKey) eqLogIntervalMs WriteEqLog
 
+  Gen.registerExternalMapping (serverName egestKey) (\m -> Gun <$> (WsGun.messageMapper m))
   maybeRelay <- IntraPoP.whereIsStreamRelay relayKey
   let
     state ={ egestKey
@@ -197,7 +201,7 @@ init payload@{slotId, slotRole, aggregator} stateServerName = do
       pure state
 
 handleInfo :: Msg -> State -> Effect (CastResult State)
-handleInfo msg state@{egestKey: egestKey@(EgestKey ourSlotId ourSlotRole)} =
+handleInfo msg state@{egestKey: egestKey@(EgestKey ourSlotId ourSlotRole), cachedState} =
   case msg of
     WriteEqLog -> do
       Tuple endMs eqLines <- egestEqLines state
@@ -219,6 +223,36 @@ handleInfo msg state@{egestKey: egestKey@(EgestKey ourSlotId ourSlotRole)} =
 
     IntraPoPBus (VmReset _ _ _) ->
       pure $ CastNoReply state
+
+    Gun inMsg -> do
+      case wsState cachedState of
+        Just s -> processGunMessage s inMsg
+        Nothing -> pure $ CastNoReply state
+
+  where
+    wsState Nothing = Nothing
+    wsState (Just (LocalDelete _ s)) = Just s
+    wsState (Just (RemoteDelete _ _ s)) = Just s
+
+    processGunMessage gunState inMsg = do
+      processResponse <- WsGun.processMessage gunState inMsg
+      _ <- logInfo "GUN" { inMsg
+                         , processResponse
+                         }
+      case processResponse of
+        Left error -> do
+          _ <- logInfo "Gun process error" {error}
+          pure $ CastNoReply state
+
+        Right (ProtocolResponse Upgrade) -> do
+          _ <- WsGun.send gunState (Register {ourSlotId, ourSlotRole})
+          pure $ CastNoReply state
+
+        Right (ProtocolResponse _) ->
+          pure $ CastNoReply state
+
+        Right (Frame frame) ->
+          pure $ CastNoReply state
 
 removeClient :: State -> Effect State
 removeClient state@{clientCount: 0} = do
@@ -336,20 +370,27 @@ initStreamRelay state@{relayCreationRetry, egestKey: egestKey@(EgestKey slotId s
 registerWithRelay :: (LocalOrRemote Server) -> RegisterEgestPayload -> Effect DeleteData
 registerWithRelay (Local _) payload@{slotId, slotRole, deliverTo: {server: Egest {address: egestServerAddress}}} =
   do
+    thisServer <- PoPDefinition.getThisServer
+    let
+      wsUrl = makeWsUrl thisServer $ RelayRegisteredEgestWs slotId slotRole egestServerAddress
     _ <- StreamRelayInstance.registerEgest payload
-    pure (LocalDelete {slotId, slotRole, egestServerAddress})
+    wsState <- crashIfLeft =<< WsGun.openWebSocket (spy "XXX HITTING (LOCAL)" wsUrl)
+    pure (LocalDelete {slotId, slotRole, egestServerAddress} wsState)
 registerWithRelay (Remote remoteServer) payload@{slotId, slotRole, deliverTo: {server: Egest {address: egestServerAddress}}} =
   do
-    let url = makeUrl remoteServer RelayRegisterEgestE
+    let
+      url = makeUrl remoteServer RelayRegisterEgestE
+      wsUrl = makeWsUrl remoteServer $ RelayRegisteredEgestWs slotId slotRole egestServerAddress
     SpudResponse _ _ _ <- crashIfLeft =<< SpudGun.postJson url payload
-    pure (RemoteDelete remoteServer {slotId, slotRole, egestServerAddress})
+    wsState <- crashIfLeft =<< WsGun.openWebSocket (spy "XXX HITTING" wsUrl)
+    pure (RemoteDelete remoteServer {slotId, slotRole, egestServerAddress} wsState)
 
 deRegisterWithRelay :: DeleteData -> Effect Unit
-deRegisterWithRelay (LocalDelete payload) =
+deRegisterWithRelay (LocalDelete payload _) =
   do
     _ <- noprocToMaybe $ StreamRelayInstance.deRegisterEgest payload
     pure unit
-deRegisterWithRelay (RemoteDelete remoteServer {slotId, slotRole, egestServerAddress}) =
+deRegisterWithRelay (RemoteDelete remoteServer {slotId, slotRole, egestServerAddress} _) =
   do
     let
       deleteUrl = makeUrl remoteServer (RelayRegisteredEgestE slotId slotRole egestServerAddress)
