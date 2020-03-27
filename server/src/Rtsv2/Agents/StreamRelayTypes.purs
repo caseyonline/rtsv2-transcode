@@ -8,6 +8,7 @@ module Rtsv2.Agents.StreamRelayTypes
   , RelayToRelayClientWsMessage(..)
   , EgestClientWsMessage(..)
   , DownstreamWsMessage(..)
+  , WebSocketHandlerMessage(..)
   ) where
 
 import Prelude
@@ -62,6 +63,9 @@ data RelayToRelayClientWsMessage = RelayToRelay Unit
 data EgestClientWsMessage = EdgeToRelay Unit
 
 data DownstreamWsMessage = SlotConfig SlotConfiguration
+
+data WebSocketHandlerMessage = WsStop
+                             | WsSend DownstreamWsMessage
 
 ------------------------------------------------------------------------------
 -- RelayToRelayClientWsMessage

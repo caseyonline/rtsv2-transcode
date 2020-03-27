@@ -13,7 +13,6 @@ import Prelude
 
 import Data.Either (hush)
 import Data.Maybe (Maybe(..), fromMaybe', isNothing)
-import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Erl.Atom (atom)
 import Erl.Cowboy.Req (method)
@@ -26,7 +25,7 @@ import Logger (spy)
 import Rtsv2.Agents.IngestAggregatorInstance (RemoteIngestPayload)
 import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
 import Rtsv2.Agents.IngestAggregatorSup as IngestAggregatorSup
-import Rtsv2.Agents.StreamRelayTypes (DownstreamWsMessage(..), RelayToRelayClientWsMessage)
+import Rtsv2.Agents.StreamRelayTypes (DownstreamWsMessage(..), RelayToRelayClientWsMessage, WebSocketHandlerMessage(..))
 import Rtsv2.Handler.Relay as RelayHandler
 import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.LlnwApiTypes (StreamDetails)
@@ -127,7 +126,7 @@ type WsRelayState =
   , aggregatorKey :: AggregatorKey
   }
 
-registeredRelayWs :: WebSocketHandler Unit WsRelayState
+registeredRelayWs :: WebSocketHandler WebSocketHandlerMessage WsRelayState
 registeredRelayWs =
   RelayHandler.webSocketHandler init wsInit handle info
   where
@@ -154,10 +153,13 @@ registeredRelayWs =
     wsInit state@{slotId, slotRole, relayServer, relayPort} = do
       self <- Process <$> Erl.self :: Effect (Process DownstreamWsMessage)
       slotConfiguration <- IngestAggregatorInstance.registerRelay slotId slotRole {server: relayServer, port: relayPort} self
-      pure (Tuple (Just (SlotConfig slotConfiguration)) state)
+      pure $ RelayHandler.WebSocketReply (SlotConfig slotConfiguration) state
 
-    handle :: WsRelayState -> RelayToRelayClientWsMessage -> Effect (Tuple (Maybe DownstreamWsMessage) WsRelayState)
+    handle :: WsRelayState -> RelayToRelayClientWsMessage -> Effect (RelayHandler.WebSocketHandlerResult DownstreamWsMessage WsRelayState)
     handle state _ = do
-      pure (Tuple Nothing state)
+      pure $ RelayHandler.WebSocketNoReply state
 
-    info state msg = pure $ Tuple Nothing state
+    info state WsStop =
+      pure $ RelayHandler.WebSocketStop state
+    info state (WsSend msg) =
+      pure $ RelayHandler.WebSocketReply msg state

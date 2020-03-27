@@ -63,7 +63,7 @@ import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..))
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
-import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload, DeRegisterEgestPayload, DeRegisterRelayPayload, DownstreamWsMessage(..), RegisterEgestPayload, RegisterRelayPayload, RelayToRelayClientWsMessage)
+import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload, DeRegisterEgestPayload, DeRegisterRelayPayload, DownstreamWsMessage(..), RegisterEgestPayload, RegisterRelayPayload, RelayToRelayClientWsMessage, WebSocketHandlerMessage(..), WebSocketHandlerMessage)
 import Rtsv2.Agents.TransPoP as TransPoP
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
@@ -139,9 +139,9 @@ type DownstreamStreamRelayStateData =
 --       cases such as a failed deregistration followed quickly by
 --       a registration
 --
-type EgestMap = Map ServerAddress (Tuple (Process DownstreamWsMessage) (DeliverTo EgestServer))
-type OriginRelayMap = Map ServerAddress (Tuple (Process DownstreamWsMessage) (DeliverTo RelayServer))
-type DownstreamRelayMap = Map ServerAddress (Tuple (Process DownstreamWsMessage) DownstreamRelayWithSource)
+type EgestMap = Map ServerAddress (Tuple (Process WebSocketHandlerMessage) (DeliverTo EgestServer))
+type OriginRelayMap = Map ServerAddress (Tuple (Process WebSocketHandlerMessage) (DeliverTo RelayServer))
+type DownstreamRelayMap = Map ServerAddress (Tuple (Process WebSocketHandlerMessage) DownstreamRelayWithSource)
 
 type OriginStreamRelayConfig =
   { egests :: EgestMap
@@ -234,7 +234,7 @@ type UpstreamRelay =
 -- -----------------------------------------------------------------------------
 -- API
 -- -----------------------------------------------------------------------------
-registerEgest :: RegisterEgestPayload -> Process DownstreamWsMessage -> Effect (Maybe SlotConfiguration)
+registerEgest :: RegisterEgestPayload -> Process WebSocketHandlerMessage -> Effect (Maybe SlotConfiguration)
 registerEgest payload@{slotId, slotRole, deliverTo} handler =
   Gen.doCall (serverName $ payloadToRelayKey payload) doRegisterEgest
 
@@ -270,7 +270,7 @@ deRegisterEgest {slotId, slotRole, egestServerAddress} =
     egestServer = egestServerAddress
 
 
-registerRelay :: RegisterRelayPayload -> (Process DownstreamWsMessage) -> Effect (Maybe SlotConfiguration)
+registerRelay :: RegisterRelayPayload -> (Process WebSocketHandlerMessage) -> Effect (Maybe SlotConfiguration)
 registerRelay payload@{slotId, slotRole, sourceRoute, deliverTo } handler =
   Gen.doCall (serverName $ payloadToRelayKey payload) doRegisterRelay
 
@@ -737,12 +737,12 @@ handleInfo msg state =
     findAggregatorSocket gunMsg (IngestAggregatorStatePendingRegistration _) = Nothing
     findAggregatorSocket gunMsg (IngestAggregatorStateRegistered _ socket) = Just socket
 
-    sendSlotConfiguration :: SlotConfiguration -> (Process DownstreamWsMessage) -> Effect Unit
+    sendSlotConfiguration :: SlotConfiguration -> (Process WebSocketHandlerMessage) -> Effect Unit
     sendSlotConfiguration slotConfiguration process =
-      process ! SlotConfig slotConfiguration
+      process ! (WsSend $ SlotConfig slotConfiguration)
 
-    maybeSendSlotConfiguration :: forall r egestKey egestServer relayKey relayServer. Maybe SlotConfiguration -> Maybe SlotConfiguration -> {egests :: Map egestKey (Tuple (Process DownstreamWsMessage) egestServer),
-                                                                                                                                             downstreamRelays :: Map relayKey (Tuple (Process DownstreamWsMessage) relayServer) | r} -> Effect Unit
+    maybeSendSlotConfiguration :: forall r egestKey egestServer relayKey relayServer. Maybe SlotConfiguration -> Maybe SlotConfiguration -> {egests :: Map egestKey (Tuple (Process WebSocketHandlerMessage) egestServer),
+                                                                                                                                             downstreamRelays :: Map relayKey (Tuple (Process WebSocketHandlerMessage) relayServer) | r} -> Effect Unit
     maybeSendSlotConfiguration Nothing (Just newSlotConfiguration) {egests, downstreamRelays} = do
       let
         egestPids = Map.values egests <#> PursTuple.fst

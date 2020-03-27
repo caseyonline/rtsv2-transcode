@@ -14,6 +14,7 @@ module Rtsv2.Handler.Relay
        , ProxyState
 
        , webSocketHandler
+       , WebSocketHandlerResult(..)
        ) where
 
 import Prelude
@@ -21,7 +22,6 @@ import Prelude
 import Data.Either (Either(..), hush, isRight)
 import Data.Maybe (Maybe(..), fromMaybe', isJust, isNothing, maybe)
 import Data.Newtype (unwrap)
-import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Erl.Atom (atom)
 import Erl.Cowboy.Handlers.Rest (moved, notMoved)
@@ -38,7 +38,7 @@ import Rtsv2.Agents.Locator.Relay (findOrStart)
 import Rtsv2.Agents.Locator.Types (LocalOrRemote(..), NoCapacity(..), ResourceResp, fromLocalOrRemote)
 import Rtsv2.Agents.StreamRelayInstance as StreamRelayInstance
 import Rtsv2.Agents.StreamRelaySup as StreamRelaySup
-import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload, DownstreamWsMessage(..), EgestClientWsMessage, RelayToRelayClientWsMessage)
+import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload, DownstreamWsMessage(..), EgestClientWsMessage, RelayToRelayClientWsMessage, WebSocketHandlerMessage(..))
 import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Router.Endpoint (Endpoint(..), makeUrl, parseSlotId, parseSlotRole, parseServerAddress, parseInt, parseSourceRoute)
@@ -183,7 +183,7 @@ type WsRelayState =
   , relayKey :: RelayKey
   }
 
-registeredRelayWs :: WebSocketHandler DownstreamWsMessage WsRelayState
+registeredRelayWs :: WebSocketHandler WebSocketHandlerMessage WsRelayState
 registeredRelayWs =
   webSocketHandler init wsInit handle info
   where
@@ -210,16 +210,20 @@ registeredRelayWs =
            }
 
     wsInit state@{slotId, slotRole, relayServer, relayPort, sourceRoute} = do
-      self <- Process <$> Erl.self :: Effect (Process DownstreamWsMessage)
+      self <- Process <$> Erl.self :: Effect (Process WebSocketHandlerMessage)
       maybeSlotConfiguration <- StreamRelayInstance.registerRelay {slotId, slotRole, deliverTo: {server: relayServer, port: relayPort}, sourceRoute} self
-      pure (Tuple (SlotConfig <$> maybeSlotConfiguration) state)
+      pure $ case maybeSlotConfiguration of
+               Nothing -> WebSocketNoReply state
+               Just slotConfiguration -> WebSocketReply (SlotConfig slotConfiguration) state
 
-    handle :: WsRelayState -> RelayToRelayClientWsMessage -> Effect (Tuple (Maybe DownstreamWsMessage) WsRelayState)
+    handle :: WsRelayState -> RelayToRelayClientWsMessage -> Effect (WebSocketHandlerResult DownstreamWsMessage WsRelayState)
     handle state _ = do
-      pure (Tuple Nothing state)
+      pure $ WebSocketNoReply state
 
-    info state msg =
-      pure $ Tuple (Just msg) state
+    info state WsStop =
+      pure $ WebSocketStop state
+    info state (WsSend msg) =
+      pure $ WebSocketReply msg state
 
 type WsEgestState =
   { slotId :: SlotId
@@ -230,7 +234,7 @@ type WsEgestState =
   , relayKey :: RelayKey
   }
 
-registeredEgestWs :: WebSocketHandler DownstreamWsMessage WsEgestState
+registeredEgestWs :: WebSocketHandler WebSocketHandlerMessage WsEgestState
 registeredEgestWs =
   webSocketHandler init wsInit handle info
   where
@@ -255,23 +259,31 @@ registeredEgestWs =
            }
 
     wsInit state@{slotId, slotRole, egestServer, egestPort} = do
-      self <- Process <$> Erl.self :: Effect (Process DownstreamWsMessage)
+      self <- Process <$> Erl.self :: Effect (Process WebSocketHandlerMessage)
       maybeSlotConfiguration <- StreamRelayInstance.registerEgest {slotId, slotRole, deliverTo: {server: egestServer, port: egestPort}} self --todo: and pid
-      pure (Tuple (SlotConfig <$> maybeSlotConfiguration) state)
+      pure $ case maybeSlotConfiguration of
+               Nothing -> WebSocketNoReply state
+               Just slotConfiguration -> WebSocketReply (SlotConfig slotConfiguration) state
 
-    handle :: WsEgestState -> EgestClientWsMessage -> Effect (Tuple (Maybe DownstreamWsMessage) WsEgestState)
-    handle state _ =
-      pure $ Tuple Nothing state
+    handle :: WsEgestState -> EgestClientWsMessage -> Effect (WebSocketHandlerResult DownstreamWsMessage WsEgestState)
+    handle state _ = do
+      pure $ WebSocketNoReply state
 
-    info state msg =
-      pure $ Tuple (Just msg) state
+    info state WsStop =
+      pure $ WebSocketStop state
+    info state (WsSend msg) =
+      pure $ WebSocketReply msg state
 
 -- TODO Largely generic helper - could move into StetsonHelper at some point....
+data WebSocketHandlerResult serverMsg state = WebSocketNoReply state
+                                            | WebSocketReply serverMsg state
+                                            | WebSocketStop state
+
 webSocketHandler :: forall clientMsg serverMsg infoMsg state. ReadForeign clientMsg => WriteForeign serverMsg =>
                     (Req -> Effect state) ->
-                    (state -> Effect (Tuple (Maybe serverMsg) state)) ->
-                    (state -> clientMsg -> Effect (Tuple (Maybe serverMsg) state)) ->
-                    (state -> infoMsg -> Effect (Tuple (Maybe serverMsg) state)) ->
+                    (state -> Effect (WebSocketHandlerResult serverMsg state)) ->
+                    (state -> clientMsg -> Effect (WebSocketHandlerResult serverMsg state)) ->
+                    (state -> infoMsg -> Effect (WebSocketHandlerResult serverMsg state)) ->
                     WebSocketHandler infoMsg state
 webSocketHandler init wsInit handle info =
   WebSocket.handler (\req -> do
@@ -281,14 +293,7 @@ webSocketHandler init wsInit handle info =
 
   # WebSocket.init (\router state -> do
                      res <- wsInit state
-                     case res of
-                       Tuple Nothing state2 ->
-                         pure $ NoReply state2
-                       Tuple (Just response) state2 ->
-                         let
-                           str = writeJSON response
-                         in
-                           pure $ Reply (singleton (TextFrame str)) state
+                     pure $ dispatchResult res
                    )
 
   # WebSocket.handle (\rawFrame state ->
@@ -300,14 +305,7 @@ webSocketHandler init wsInit handle info =
                                pure $ NoReply state
                              Right frame -> do
                                res <- handle state frame
-                               case res of
-                                 Tuple Nothing state2 ->
-                                   pure $ NoReply state
-                                 Tuple (Just response) state2 ->
-                                   let
-                                     json = writeJSON response
-                                   in
-                                     pure $ Reply (singleton (TextFrame json)) state
+                               pure $ dispatchResult res
                          BinaryFrame bin ->
                            pure $ NoReply state
                          PingFrame bin ->
@@ -318,13 +316,18 @@ webSocketHandler init wsInit handle info =
 
   # WebSocket.info (\msg state -> do
                        res <- info state msg
-                       case res of
-                         Tuple Nothing state2 ->
-                           pure $ NoReply state
-                         Tuple (Just response) state2 ->
-                           let
-                             str = writeJSON response
-                           in
-                             pure $ Reply (singleton (TextFrame str)) state
+                       pure $ dispatchResult res
                    )
   --# WebSocket.yeeha - no yeeha...
+  where
+    dispatchResult res =
+      case res of
+        WebSocketNoReply state ->
+          NoReply state
+        WebSocketReply response state ->
+          let
+            str = writeJSON response
+          in
+            Reply (singleton (TextFrame str)) state
+        WebSocketStop state ->
+          Stop state
