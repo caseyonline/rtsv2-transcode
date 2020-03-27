@@ -764,10 +764,10 @@ main =
           after_ stopSession do
             it "3.5.1 lax -> fra sets up 2 non-overlapping relay chains" do
               waitForIntraPoPDisseminate                                >>= as' "allow intraPoP to spread location of relay"
-              ingestStart p3n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
+              ingestStart p3n1 shortName1  low >>= assertStatusCode 200 >>= as  "create ingest"
               waitForTransPoPDisseminate                                >>= as' "wait for transPop disseminate"
               clientStart p4n1 slot1           >>= assertStatusCode 204 >>= as  "egest available in lax"
-              relayStats   p4n1 slot1          >>= assertStatusCode 200 >>= as  "local relay exists"
+              relayStats  p4n1 slot1           >>= assertStatusCode 200 >>= as  "local relay exists"
               waitForAsyncRelayStart                                    >>= as' "wait for the relay chain to start"
               waitForIntraPoPDisseminate                                >>= as' "allow intraPoP to spread location of relay"
               relayStats p1n1 slot1            >>= assertStatusCode 200

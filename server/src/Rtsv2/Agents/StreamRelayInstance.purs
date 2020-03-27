@@ -292,6 +292,7 @@ registerRelay payload@{slotId, slotRole, sourceRoute, deliverTo } handler =
               , deliverTo
               }
             newDownstreamRelays = Map.insert (extractAddress deliverTo.server) (Tuple handler downstreamRelayWithSource) downstreamRelays
+
           CallReply slotConfig <$> applyDownstreamNewRelays newDownstreamRelays commonStateData downstreamStateData
 
         Nothing ->
@@ -343,11 +344,8 @@ applyDownstreamPlan commonStateData@{stateServerName} downstreamStateData@{ conf
 applyDownstreamPlan commonStateData@{stateServerName} downstreamStateData@{ config, plan: Just plan, run: runState, workflowHandle } =
   do
     applyResult <- applyDownstreamPlanFFI plan workflowHandle
-
     newRunState <- applyDownstreamRunResult commonStateData applyResult runState
-
     CachedInstanceState.recordInstanceData stateServerName (CachedDownstream config (Just newRunState))
-
     pure $ StateDownstream commonStateData $ downstreamStateData{ run = newRunState }
 
 applyOriginRunResult :: CommonStateData -> OriginStreamRelayApplyResult -> OriginStreamRelayRunState -> Effect OriginStreamRelayRunState

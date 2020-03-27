@@ -130,7 +130,7 @@ ensureStarted =
   # Rest.resourceExists resourceExists
   # Rest.previouslyExisted previouslyExisted
   # Rest.movedTemporarily movedTemporarily
-  --# Rest.preHook (preHookSpyState "Relay:ensureStarted")
+--  # Rest.preHook (preHookSpyState "Relay:ensureStarted")
   # Rest.yeeha
 
   where
