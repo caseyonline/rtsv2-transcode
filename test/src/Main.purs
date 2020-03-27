@@ -371,7 +371,7 @@ main =
     waitForAsyncRelayStop          = delayMs  100.0
 
     waitForAsyncProfileStart       = delayMs  150.0
-    waitForAsyncProfileStop        = delayMs  100.0
+    waitForAsyncProfileStop        = delayMs  200.0
 
     waitForRemoteAsyncProfileStart = delayMs  350.0
 

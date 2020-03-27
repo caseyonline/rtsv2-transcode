@@ -1,7 +1,7 @@
 -module(wsGun@foreign).
 
 -export([ openImpl/1
-        , upgradeImpl/1
+        , upgradeImpl/2
         , sendImpl/2
         , messageMapperImpl/1
         ]).
@@ -20,9 +20,7 @@ openImpl(Url) ->
                                                }
                                  }) of
         {ok, ConnPid} ->
-          erlang:put(ConnPid, Path ++ Query),
-
-          {right, ConnPid};
+          {right, {ConnPid, Path ++ Query}};
 
         {error, Reason} ->
           {left, Reason}
@@ -34,9 +32,8 @@ sendImpl(Msg, ConnPid) ->
       gun:ws_send(ConnPid, {text, Msg})
   end.
 
-upgradeImpl(ConnPid) ->
+upgradeImpl(ConnPid, Path) ->
   fun() ->
-      Path = erlang:erase(ConnPid),
       Ref = gun:ws_upgrade(ConnPid, Path),
       Ref
   end.

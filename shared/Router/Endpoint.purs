@@ -21,7 +21,7 @@ module Shared.Router.Endpoint ( Endpoint(..)
 
 import Prelude hiding ((/))
 
-import Data.Array (intercalate, (!!))
+import Data.Array (fromFoldable, intercalate, (!!))
 import Data.Either (note)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show (genericShow)
@@ -29,14 +29,12 @@ import Data.Int as Int
 import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype, unwrap, wrap)
 import Data.String (Pattern(..), split)
-import Erl.Data.List (fromFoldable)
 import Routing.Duplex (RouteDuplex', as, path, print, rest, root, segment)
 import Routing.Duplex.Generic (noArgs, sum)
 import Routing.Duplex.Generic.Syntax ((/))
-import Rtsv2.Agents.StreamRelayTypes (SourceRoute)
 import Shared.Common (Url)
 import Shared.Stream (ProfileName(..), RtmpShortName, SlotId, SlotIdAndProfileName(..), SlotNameAndProfileName(..), SlotRole(..))
-import Shared.Types (JsonLdContextType(..), PoPName(..), ServerAddress(..), Username(..), extractAddress)
+import Shared.Types (JsonLdContextType(..), PoPName(..), ServerAddress(..), Username(..), SourceRoute, extractAddress)
 import Shared.UUID (fromString)
 
 data Canary = Live
@@ -83,15 +81,16 @@ data Endpoint
   | RelayEnsureStartedE
 --  | RelayRegisterEgestE
 --  | RelayRegisterRelayE
-  | RelaySlotConfigurationE SlotId SlotRole
+--  | RelaySlotConfigurationE SlotId SlotRole
 --  | RelayRegisteredEgestE SlotId SlotRole ServerAddress
 --  | RelayRegisteredRelayE SlotId SlotRole ServerAddress
   | RelayRegisteredRelayWs SlotId SlotRole ServerAddress Int SourceRoute
   | RelayRegisteredEgestWs SlotId SlotRole ServerAddress Int
   | IngestAggregatorActiveIngestsE SlotId SlotRole ProfileName
-  | IngestAggregatorSlotConfigurationE SlotId SlotRole
-  | IngestAggregatorRegisterRelayE
-  | IngestAggregatorRegisteredRelayE SlotId SlotRole ServerAddress
+--  | IngestAggregatorSlotConfigurationE SlotId SlotRole
+--  | IngestAggregatorRegisterRelayE
+--  | IngestAggregatorRegisteredRelayE SlotId SlotRole ServerAddress
+  | IngestAggregatorRegisteredRelayWs SlotId SlotRole ServerAddress Int
   | IngestInstanceLlwpE SlotId SlotRole ProfileName
   | IntraPoPTestHelperE
   | LoadE
@@ -168,17 +167,20 @@ endpoint = root $ sum
   , "RelayEnsureStartedE"                              : "system" / "relay" / path "ensureStarted"  noArgs
 --  , "RelayRegisterEgestE"                              : "system" / "relay" / "register" / path "egest" noArgs
 --  , "RelayRegisterRelayE"                              : "system" / "relay" / "register" / path "relay" noArgs
-  , "RelaySlotConfigurationE"                          : "system" / "relay" / slotId segment / slotRole segment / "slot"
+--  , "RelaySlotConfigurationE"                          : "system" / "relay" / slotId segment / slotRole segment / "slot"
 --  , "RelayRegisteredEgestE"                            : "system" / "relay" / slotId segment / slotRole segment / "egests" / serverAddress segment
 --  , "RelayRegisteredRelayE"                            : "system" / "relay" / slotId segment / slotRole segment / "relays" / serverAddress segment
   , "RelayRegisteredRelayWs"                           : "system" / "relay" / slotId segment / slotRole segment / "relays" / serverAddress segment / port segment / sourceRoute segment / "ws"
   , "RelayRegisteredEgestWs"                           : "system" / "relay" / slotId segment / slotRole segment / "egests" / serverAddress segment / port segment / "ws"
 
   , "IngestAggregatorActiveIngestsE"                   : "system" / "ingestAggregator" / slotId segment / slotRole segment / "activeIngests" / profileName segment
-  , "IngestAggregatorSlotConfigurationE"               : "system" / "ingestAggregator" / slotId segment / slotRole segment / "slot"
-  , "IngestAggregatorRegisterRelayE"                   : "system" / "ingestAggregator" / path "register" noArgs
+--  , "IngestAggregatorSlotConfigurationE"               : "system" / "ingestAggregator" / slotId segment / slotRole segment / "slot"
 
-  , "IngestAggregatorRegisteredRelayE"                 : "system" / "ingestAggregator" / slotId segment / slotRole segment / "relays" / serverAddress segment
+--, "IngestAggregatorRegisterRelayE"                   : "system" / "ingestAggregator" / path "register" noArgs
+
+--  , "IngestAggregatorRegisteredRelayE"                 : "system" / "ingestAggregator" / slotId segment / slotRole segment / "relays" / serverAddress segment
+  , "IngestAggregatorRegisteredRelayWs"                : "system" / "ingestAggregator" / slotId segment / slotRole segment / "relays" / serverAddress segment / port segment / "ws"
+
   , "IngestInstanceLlwpE"                              : "system" / "ingest" / slotId segment / slotRole segment / profileName segment / "llwp" -- URL duplicated in Web.purs
 
   , "IntraPoPTestHelperE"                              : "system" / "test" / path "intraPoP" noArgs
@@ -279,7 +281,7 @@ intToString = show
 
 -- | SourceRoute
 parseSourceRoute :: String -> Maybe SourceRoute
-parseSourceRoute str = Just $ PoPName <$> (fromFoldable $ split (Pattern ":") str)
+parseSourceRoute str = Just $ PoPName <$> split (Pattern ":") str
 
 sourceRouteToString :: SourceRoute -> String
 sourceRouteToString route = intercalate ":" $ unwrap <$> route

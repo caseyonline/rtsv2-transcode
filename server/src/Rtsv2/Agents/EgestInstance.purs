@@ -5,7 +5,7 @@ module Rtsv2.Agents.EgestInstance
   , pendingClient
   , addClient
   , currentStats
-  , slotConfiguration
+  , getSlotConfiguration
   , CreateEgestPayload
 
   , CachedState
@@ -94,6 +94,7 @@ type State
     , lastEgestAuditTime :: Milliseconds
     , stateServerName :: StateServerName
     , relayWebSocket :: Maybe WebSocket
+    , slotConfiguration :: Maybe SlotConfiguration
     }
 
 payloadToEgestKey :: CreateEgestPayload -> EgestKey
@@ -150,9 +151,9 @@ addClient handlerPid egestKey =
                                         , stopRef = Nothing
                                         }
 
-slotConfiguration :: EgestKey -> Effect (Maybe SlotConfiguration)
-slotConfiguration egestKey =
-  getSlotConfigurationFFI egestKey
+getSlotConfiguration :: EgestKey -> Effect (Maybe SlotConfiguration)
+getSlotConfiguration egestKey =
+  Gen.call (serverName egestKey) (\state@{slotConfiguration} -> CallReply slotConfiguration state)
 
 currentStats :: EgestKey -> Effect PublicState.Egest
 currentStats egestKey@(EgestKey slotId slotRole) =
@@ -192,6 +193,7 @@ init payload@{slotId, slotRole, aggregator} stateServerName = do
            , lastEgestAuditTime: now
            , stateServerName
            , relayWebSocket: Nothing
+           , slotConfiguration: Nothing
            }
   case maybeRelay of
     Just relay ->
@@ -251,10 +253,14 @@ handleInfo msg state@{egestKey: egestKey@(EgestKey slotId slotRole)} =
             -- todo - kick off timer?  If websocket doesn't recover, attempt to launch new relay?
             pure $ CastNoReply state
 
-          Right (WsGun.Frame (SlotConfig relaySlotConfiguration)) -> do
-            _ <- logInfo "XXX Gun received slot configuration" {relaySlotConfiguration}
-            setSlotConfigurationFFI egestKey relaySlotConfiguration
-            pure $ CastNoReply state
+          Right (WsGun.Frame (SlotConfig slotConfiguration))
+            | Nothing <- state.slotConfiguration -> do
+              _ <- logInfo "Received slot configuration" {slotConfiguration}
+              setSlotConfigurationFFI egestKey slotConfiguration
+              pure $ CastNoReply state{slotConfiguration = Just slotConfiguration}
+
+            | otherwise ->
+              pure $ CastNoReply state
       else
         pure $ CastNoReply state
 
@@ -336,8 +342,7 @@ doStop state@{egestKey} = do
   pure $ CastStop state
 
 initStreamRelay :: State -> Effect State
-initStreamRelay state@{relayCreationRetry, egestKey: egestKey@(EgestKey slotId slotRole), aggregator, thisServer, stateServerName} = do
-  mSlotConfig <- slotConfiguration egestKey
+initStreamRelay state@{relayCreationRetry, egestKey: egestKey@(EgestKey slotId slotRole), aggregator, thisServer, stateServerName, slotConfiguration: mSlotConfig} = do
   case mSlotConfig of
     Nothing -> do
       relayResp <- findOrStartRelayForStream state

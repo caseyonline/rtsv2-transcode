@@ -9,7 +9,6 @@ module Rtsv2.Agents.IngestAggregatorInstance
   , registerRelay
   , deRegisterRelay
   , getState
-  , slotConfiguration
   , domain
   , RemoteIngestPayload
 
@@ -40,7 +39,8 @@ import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, head, nil, (:))
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
-import Erl.Data.Tuple (Tuple2, Tuple3, fst, snd, tuple2, tuple3)
+import Erl.Data.Tuple (Tuple3, toNested3, tuple3)
+import Erl.Process (Process(..))
 import Erl.Process.Raw (Pid)
 import Erl.Utils (Ref, shutdown)
 import Erl.Utils as Erl
@@ -55,29 +55,27 @@ import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..), announceLocalAggregatorIsAvailable, announceLocalAggregatorStopped, currentRemoteRef)
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
-import Rtsv2.Agents.StreamRelayTypes (RegisterRelayPayload, DeRegisterRelayPayload)
+import Rtsv2.Agents.StreamRelayTypes (DeRegisterRelayPayload, DownstreamWsMessage)
 import Rtsv2.Config as Config
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Agent as Agent
-import Shared.Common (Url)
 import Shared.LlnwApiTypes (SlotProfile(..), StreamDetails)
 import Shared.Router.Endpoint (Endpoint(..), makeUrl)
 import Shared.Rtsv2.JsonLd as JsonLd
-import Shared.Stream (AggregatorKey(..), IngestKey(..), ProfileName, SlotId(..), SlotRole, ingestKeyToAggregatorKey)
+import Shared.Stream (AggregatorKey(..), IngestKey(..), ProfileName, SlotId, SlotRole, ingestKeyToAggregatorKey)
 import Shared.Types (DeliverTo, RelayServer(..), Server, extractAddress)
 import Shared.Types.Agent.State as PublicState
 import Shared.UUID (UUID)
 
 foreign import data WorkflowHandle :: Type
-foreign import startWorkflowImpl :: UUID -> SlotRole -> Array (Tuple3 IngestKey String String) -> Effect (Tuple2 WorkflowHandle (List Pid))
+foreign import startWorkflowImpl :: UUID -> SlotRole -> Array (Tuple3 IngestKey String String) -> Effect (Tuple3 WorkflowHandle (List Pid) SlotConfiguration)
 foreign import stopWorkflowImpl :: WorkflowHandle -> Effect Unit
 foreign import addLocalIngestImpl :: WorkflowHandle -> IngestKey -> Effect Unit
 foreign import addRemoteIngestImpl :: WorkflowHandle -> IngestKey -> String -> Effect Unit
 foreign import removeIngestImpl :: WorkflowHandle -> IngestKey -> Effect Unit
 foreign import registerStreamRelayImpl :: WorkflowHandle -> String -> Int -> Effect Unit
 foreign import deRegisterStreamRelayImpl :: WorkflowHandle -> String -> Int -> Effect Unit
-foreign import slotConfigurationImpl :: UUID -> SlotRole -> Effect (Maybe SlotConfiguration)
 
 type CachedState = { localIngests :: Set ProfileName
                    , remoteIngests :: Map ProfileName (Tuple Server Ref)
@@ -102,6 +100,7 @@ type State
     , workflowHandle :: WorkflowHandle
     , webRtcStreamServers :: List Pid
     , stateServerName :: StateServerName
+    , slotConfiguration :: SlotConfiguration
     }
 
 data Msg
@@ -147,12 +146,14 @@ addRemoteIngest ingestKey@(IngestKey _ _ profileName) payload@{ingestAddress: re
         pure $ CallReply true state2
   )
 
-registerRelay :: RegisterRelayPayload -> Effect Unit
-registerRelay payload@{slotId, slotRole, deliverTo} =
-  Gen.doCall (serverName $ payloadToAggregatorKey payload)
-  (\state@{thisServer} ->
-    CallReply unit <$> doRegisterRelay deliverTo state
+registerRelay :: SlotId -> SlotRole -> DeliverTo RelayServer -> Process DownstreamWsMessage -> Effect SlotConfiguration
+registerRelay slotId slotRole deliverTo handler =
+  Gen.doCall (serverName $ key)
+  (\state@{thisServer, slotConfiguration} -> do
+    CallReply slotConfiguration <$> doRegisterRelay deliverTo state
   )
+  where
+    key = AggregatorKey slotId slotRole
 
 deRegisterRelay :: DeRegisterRelayPayload -> Effect Unit
 deRegisterRelay {slotId, slotRole, relayServerAddress} =
@@ -211,11 +212,6 @@ getState aggregatorKey@(AggregatorKey slotId slotRole) = Gen.call (serverName ag
         allProfiles = remoteProfiles $ localProfiles nil
 
 
-slotConfiguration :: AggregatorKey -> Effect (Maybe SlotConfiguration)
-slotConfiguration (AggregatorKey (SlotId slotId) slotRole) =
-  -- TODO: the key is what the slot config should be keyed on...
-  slotConfigurationImpl slotId slotRole
-
 startLink :: AggregatorKey -> StreamDetails -> StateServerName -> Effect StartLinkResult
 startLink aggregatorKey streamDetails stateServerName = Gen.startLink (serverName aggregatorKey) (init streamDetails stateServerName) handleInfo
 
@@ -232,20 +228,22 @@ init streamDetails@{role: slotRole, slot: {id: slotId}} stateServerName = do
   config <- Config.ingestAggregatorAgentConfig
   thisServer <- PoPDefinition.getThisServer
   announceLocalAggregatorIsAvailable aggregatorKey
-  workflowHandleAndPids <- startWorkflowImpl (unwrap streamDetails.slot.id) streamDetails.role $ mkKey <$> streamDetails.slot.profiles
+  workflowHandleAndPidsAndSlotConfiguration <- startWorkflowImpl (unwrap streamDetails.slot.id) streamDetails.role $ mkKey <$> streamDetails.slot.profiles
   Gen.registerTerminate thisServerName terminate
   void $ Bus.subscribe thisServerName IntraPoP.bus IntraPoPBus
   let
+    Tuple workflowHandle (Tuple webRtcStreamServers (Tuple slotConfiguration _)) = toNested3 workflowHandleAndPidsAndSlotConfiguration
     initialState = { config : config
                    , slotId
                    , slotRole
                    , thisServer
                    , aggregatorKey
                    , streamDetails
-                   , workflowHandle: fst workflowHandleAndPids
-                   , webRtcStreamServers: snd workflowHandleAndPids
+                   , workflowHandle
+                   , webRtcStreamServers
                    , cachedState: emptyCachedState
                    , stateServerName
+                   , slotConfiguration
                    }
   cachedState <- fromMaybe emptyCachedState <$> CachedInstanceState.getInstanceData stateServerName
   state2 <- applyCachedState initialState cachedState

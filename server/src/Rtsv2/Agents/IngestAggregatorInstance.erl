@@ -21,8 +21,7 @@
          addRemoteIngestImpl/3,
          removeIngestImpl/2,
          registerStreamRelayImpl/3,
-         deRegisterStreamRelayImpl/3,
-         slotConfigurationImpl/2
+         deRegisterStreamRelayImpl/3
         ]).
 
 -define(frames_with_source_id(SourceId), #named_ets_spec{name = list_to_atom("frames_with_source_id: " ++ ??SourceId),
@@ -100,21 +99,12 @@ deRegisterStreamRelayImpl(Handle, Host, Port) ->
       ok
   end.
 
-slotConfigurationImpl(SlotId, SlotRole) ->
-  fun() ->
-      case rtsv2_slot_media_source_publish_processor:maybe_slot_configuration(SlotId, SlotRole) of
-        undefined ->
-          {nothing};
-
-        SlotConfiguration ->
-          {just, SlotConfiguration}
-      end
-  end.
-
 %%------------------------------------------------------------------------------
 %% Internal functions
 %%------------------------------------------------------------------------------
 startWorkflow(SlotId, SlotRole, Profiles) ->
+
+  SlotConfiguration = slot_configuration(SlotId, Profiles),
 
   Pids = lists:map(fun(IngestKey) ->
                        {ok, Pid} = webrtc_stream_server:start_link(IngestKey, #{stream_module => rtsv2_webrtc_ingest_preview_stream_handler,
@@ -287,7 +277,7 @@ startWorkflow(SlotId, SlotRole, Profiles) ->
                                         , config =
                                             #rtsv2_slot_media_source_publish_processor_config{ slot_name = SlotId
                                                                                              , slot_role = SlotRole
-                                                                                             , slot_configuration = slot_configuration(SlotId, Profiles)
+                                                                                             , slot_configuration = SlotConfiguration
                                                                                              }
                                         },
 
@@ -316,7 +306,7 @@ startWorkflow(SlotId, SlotRole, Profiles) ->
 
   {ok, Handle} = id3as_workflow:workflow_handle(Pid),
 
-  {Handle, Pids}.
+  {Handle, Pids, SlotConfiguration}.
 
 mux_to_rtp(#frame{ profile = #audio_profile{ codec = Codec } } = Frame, { AudioEgest, VideoEgest }) ->
   { NewAudioEgest, RTPs } = rtp_opus_egest:step(AudioEgest, Frame),

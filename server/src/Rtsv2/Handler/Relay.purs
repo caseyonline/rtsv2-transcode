@@ -7,18 +7,20 @@ module Rtsv2.Handler.Relay
        , deRegisterRelay
        , registeredRelayWs
        , registeredEgestWs
-       , slotConfiguration
+       --, slotConfiguration
        , stats
        , proxiedStats
        , StartState
        , ProxyState
+
+       , webSocketHandler
        ) where
 
 import Prelude
 
 import Data.Either (Either(..), hush, isRight)
 import Data.Maybe (Maybe(..), fromMaybe', isJust, isNothing, maybe)
-import Data.Newtype (unwrap, wrap)
+import Data.Newtype (unwrap)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Erl.Atom (atom)
@@ -34,15 +36,14 @@ import Logger (spy)
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.Locator.Relay (findOrStart)
 import Rtsv2.Agents.Locator.Types (LocalOrRemote(..), NoCapacity(..), ResourceResp, fromLocalOrRemote)
-import Rtsv2.Agents.SlotTypes (SlotConfiguration)
 import Rtsv2.Agents.StreamRelayInstance as StreamRelayInstance
 import Rtsv2.Agents.StreamRelaySup as StreamRelaySup
-import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload, DownstreamWsMessage(..), EgestClientWsMessage(..), RegisterEgestPayload, RegisterRelayPayload, RelayToRelayClientWsMessage(..), SourceRoute)
+import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload, DownstreamWsMessage(..), EgestClientWsMessage, RelayToRelayClientWsMessage)
 import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Router.Endpoint (Endpoint(..), makeUrl, parseSlotId, parseSlotRole, parseServerAddress, parseInt, parseSourceRoute)
 import Shared.Stream (RelayKey(..), SlotId, SlotRole)
-import Shared.Types (EgestServer(..), RelayServer(..), Server, ServerAddress, ServerLocation(..), extractAddress)
+import Shared.Types (EgestServer(..), RelayServer(..), Server, ServerAddress, ServerLocation(..), SourceRoute, extractAddress)
 import Shared.Types.Agent.State (StreamRelay)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (class ReadForeign, class WriteForeign, readJSON, writeJSON)
@@ -73,9 +74,9 @@ deRegisterRelay :: SlotId -> SlotRole -> ServerAddress -> DeleteHandler
 deRegisterRelay slotId slotRole relayServerAddress =
   processDelete (Just <$> (StreamRelayInstance.deRegisterRelay {slotId, slotRole, relayServerAddress}))
 
-slotConfiguration :: SlotId -> SlotRole -> GetHandler (Maybe SlotConfiguration)
-slotConfiguration slotId role =
-  jsonResponse $ Just <$> (StreamRelayInstance.slotConfiguration (RelayKey slotId role))
+-- slotConfiguration :: SlotId -> SlotRole -> GetHandler (Maybe SlotConfiguration)
+-- slotConfiguration slotId role =
+--   jsonResponse $ Just <$> (StreamRelayInstance.slotConfiguration (RelayKey slotId role))
 
 newtype ProxyState
   = ProxyState { whereIsResp :: Maybe Server
@@ -182,7 +183,7 @@ type WsRelayState =
   , relayKey :: RelayKey
   }
 
-registeredRelayWs :: WebSocketHandler Unit WsRelayState
+registeredRelayWs :: WebSocketHandler DownstreamWsMessage WsRelayState
 registeredRelayWs =
   webSocketHandler init wsInit handle info
   where
@@ -217,7 +218,8 @@ registeredRelayWs =
     handle state _ = do
       pure (Tuple Nothing state)
 
-    info state msg = pure $ Tuple Nothing state
+    info state msg =
+      pure $ Tuple (Just msg) state
 
 type WsEgestState =
   { slotId :: SlotId
@@ -228,7 +230,7 @@ type WsEgestState =
   , relayKey :: RelayKey
   }
 
-registeredEgestWs :: WebSocketHandler Unit WsEgestState
+registeredEgestWs :: WebSocketHandler DownstreamWsMessage WsEgestState
 registeredEgestWs =
   webSocketHandler init wsInit handle info
   where
@@ -261,15 +263,16 @@ registeredEgestWs =
     handle state _ =
       pure $ Tuple Nothing state
 
-    info state msg = pure $ Tuple Nothing state
+    info state msg =
+      pure $ Tuple (Just msg) state
 
--- Largely generic helper - could move into StetsonHelper at some point....
+-- TODO Largely generic helper - could move into StetsonHelper at some point....
 webSocketHandler :: forall clientMsg serverMsg infoMsg state. ReadForeign clientMsg => WriteForeign serverMsg =>
                     (Req -> Effect state) ->
                     (state -> Effect (Tuple (Maybe serverMsg) state)) ->
                     (state -> clientMsg -> Effect (Tuple (Maybe serverMsg) state)) ->
                     (state -> infoMsg -> Effect (Tuple (Maybe serverMsg) state)) ->
-                    WebSocketHandler Unit state
+                    WebSocketHandler infoMsg state
 webSocketHandler init wsInit handle info =
   WebSocket.handler (\req -> do
                         state <- init req
@@ -302,9 +305,9 @@ webSocketHandler init wsInit handle info =
                                    pure $ NoReply state
                                  Tuple (Just response) state2 ->
                                    let
-                                     str = writeJSON response
+                                     json = writeJSON response
                                    in
-                                     pure $ Reply (singleton (TextFrame str)) state
+                                     pure $ Reply (singleton (TextFrame json)) state
                          BinaryFrame bin ->
                            pure $ NoReply state
                          PingFrame bin ->
@@ -313,9 +316,15 @@ webSocketHandler init wsInit handle info =
                            pure $ NoReply state
                      )
 
-  # WebSocket.info (\router state ->
-                     let
-                       _ = spy "XXX-info router" router
-                     in
-                      pure $ NoReply state)
+  # WebSocket.info (\msg state -> do
+                       res <- info state msg
+                       case res of
+                         Tuple Nothing state2 ->
+                           pure $ NoReply state
+                         Tuple (Just response) state2 ->
+                           let
+                             str = writeJSON response
+                           in
+                             pure $ Reply (singleton (TextFrame str)) state
+                   )
   --# WebSocket.yeeha - no yeeha...

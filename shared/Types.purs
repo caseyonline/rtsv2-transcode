@@ -4,6 +4,7 @@ module Shared.Types
        , LeaderGeoLoc(..)
        , Load
        , PoPName(..)
+       , SourceRoute
        , RegionName(..)
        , Server(..)
        , ServerAddress(..)
@@ -51,6 +52,8 @@ newtype ServerAddress = ServerAddress String
 newtype RegionName = RegionName String
 
 newtype PoPName = PoPName String
+
+type SourceRoute = Array PoPName
 
 newtype GeoLoc = GeoLoc String
 

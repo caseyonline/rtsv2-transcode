@@ -11,6 +11,9 @@ function main {
   create_net
   tmux -L "$session" -2 new-session -d -s "$session"
   sleep 0.5
+
+  MSG=$'\n---------------------------------- NEXT TEST ----------------------------------\n\n'
+  echo "${MSG}" | tee -a ../../logs/**/*.log >/dev/null 2>&1 || true
 }
 
 

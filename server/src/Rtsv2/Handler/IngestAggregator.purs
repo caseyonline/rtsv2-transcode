@@ -2,9 +2,10 @@ module Rtsv2.Handler.IngestAggregator
        ( ingestAggregator
        , ingestAggregators
        , ingestAggregatorsActiveIngest
-       , registerRelay
-       , deRegisterRelay
-       , slotConfiguration
+       -- , registerRelay
+       -- , deRegisterRelay
+--       , slotConfiguration
+       , registeredRelayWs
        )
        where
 
@@ -12,30 +13,39 @@ import Prelude
 
 import Data.Either (hush)
 import Data.Maybe (Maybe(..), fromMaybe', isNothing)
+import Data.Tuple (Tuple(..))
+import Effect (Effect)
+import Erl.Atom (atom)
 import Erl.Cowboy.Req (method)
+import Erl.Cowboy.Req as Req
 import Erl.Data.List (List, nil, (:))
 import Erl.Data.Tuple (tuple2)
+import Erl.Process (Process(..))
+import Erl.Utils as Erl
+import Logger (spy)
 import Rtsv2.Agents.IngestAggregatorInstance (RemoteIngestPayload)
 import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
 import Rtsv2.Agents.IngestAggregatorSup as IngestAggregatorSup
-import Rtsv2.Agents.SlotTypes (SlotConfiguration)
-import Rtsv2.Agents.StreamRelayTypes (RegisterRelayPayload)
+import Rtsv2.Agents.StreamRelayTypes (DownstreamWsMessage(..), RelayToRelayClientWsMessage)
+import Rtsv2.Handler.Relay as RelayHandler
+import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.LlnwApiTypes (StreamDetails)
+import Shared.Router.Endpoint (parseInt, parseServerAddress, parseSlotId, parseSlotRole)
 import Shared.Stream (AggregatorKey(..), IngestKey(..), ProfileName, SlotId, SlotRole)
-import Shared.Types (ServerAddress)
+import Shared.Types (RelayServer(..), ServerAddress, ServerLocation(..))
 import Shared.Types.Agent.State as PublicState
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (readJSON)
-import Stetson (HttpMethod(..), StetsonHandler)
+import Stetson (HttpMethod(..), StetsonHandler, WebSocketHandler)
 import Stetson.Rest as Rest
-import StetsonHelper (DeleteHandler, GetHandler, PostHandler, allBody, binaryToString, jsonResponse, processDelete, processPostPayload)
+import StetsonHelper (GetHandler, PostHandler, allBody, binaryToString, jsonResponse, processPostPayload)
 
 ingestAggregator :: SlotId -> SlotRole -> GetHandler (PublicState.IngestAggregator List)
 ingestAggregator slotId role = jsonResponse $ Just <$> (IngestAggregatorInstance.getState $ AggregatorKey slotId role)
 
-slotConfiguration :: SlotId -> SlotRole -> GetHandler SlotConfiguration
-slotConfiguration slotId role =
-  jsonResponse $ IngestAggregatorInstance.slotConfiguration (AggregatorKey slotId role)
+-- slotConfiguration :: SlotId -> SlotRole -> GetHandler SlotConfiguration
+-- slotConfiguration slotId role =
+--   jsonResponse $ IngestAggregatorInstance.slotConfiguration (AggregatorKey slotId role)
 
 ingestAggregators :: PostHandler StreamDetails
 ingestAggregators = processPostPayload IngestAggregatorSup.startAggregator
@@ -101,9 +111,53 @@ ingestAggregatorsActiveIngest slotId slotRole profileName =
   -- # Rest.preHook (preHookSpyState "IngestAggregator:activeIngest")
   # Rest.yeeha
 
-registerRelay :: PostHandler RegisterRelayPayload
-registerRelay = processPostPayload IngestAggregatorInstance.registerRelay
+-- registerRelay :: PostHandler RegisterRelayPayload
+-- registerRelay = processPostPayload IngestAggregatorInstance.registerRelay
 
-deRegisterRelay :: SlotId -> SlotRole -> ServerAddress -> DeleteHandler
-deRegisterRelay slotId slotRole relayServerAddress =
-  processDelete (Just <$> (IngestAggregatorInstance.deRegisterRelay {slotId, slotRole, relayServerAddress}))
+-- deRegisterRelay :: SlotId -> SlotRole -> ServerAddress -> DeleteHandler
+-- deRegisterRelay slotId slotRole relayServerAddress =
+--   processDelete (Just <$> (IngestAggregatorInstance.deRegisterRelay {slotId, slotRole, relayServerAddress}))
+
+type WsRelayState =
+  { slotId :: SlotId
+  , slotRole :: SlotRole
+  , relayAddress :: ServerAddress
+  , relayPort :: Int
+  , relayServer :: RelayServer
+  , aggregatorKey :: AggregatorKey
+  }
+
+registeredRelayWs :: WebSocketHandler Unit WsRelayState
+registeredRelayWs =
+  RelayHandler.webSocketHandler init wsInit handle info
+  where
+    init req = do
+      let
+        slotId = fromMaybe' (lazyCrashIfMissing "no slot_id binding") $ parseSlotId =<< Req.binding (atom "slot_id") req
+        slotRole = fromMaybe' (lazyCrashIfMissing "no slot_role binding") $ parseSlotRole =<< Req.binding (atom "slot_role") req
+        relayAddress = fromMaybe' (lazyCrashIfMissing "no server_address binding") $ parseServerAddress =<< Req.binding (atom "server_address") req
+        relayPort = fromMaybe' (lazyCrashIfMissing "no port") $ parseInt =<< Req.binding (atom "port") req
+      mServerLocation <- PoPDefinition.whereIsServer relayAddress
+      let
+        ServerLocation {pop, region} = fromMaybe' (lazyCrashIfMissing "unknown server") mServerLocation
+      pure { slotId
+           , slotRole
+           , relayAddress
+           , relayPort
+           , relayServer: Relay { address: relayAddress
+                                , pop
+                                , region
+                                }
+           , aggregatorKey: AggregatorKey slotId slotRole
+           }
+
+    wsInit state@{slotId, slotRole, relayServer, relayPort} = do
+      self <- Process <$> Erl.self :: Effect (Process DownstreamWsMessage)
+      slotConfiguration <- IngestAggregatorInstance.registerRelay slotId slotRole {server: relayServer, port: relayPort} self
+      pure (Tuple (Just (SlotConfig slotConfiguration)) state)
+
+    handle :: WsRelayState -> RelayToRelayClientWsMessage -> Effect (Tuple (Maybe DownstreamWsMessage) WsRelayState)
+    handle state _ = do
+      pure (Tuple Nothing state)
+
+    info state msg = pure $ Tuple Nothing state
