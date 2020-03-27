@@ -41,6 +41,11 @@ upgradeImpl(ConnPid, Path) ->
 messageMapperImpl({gun_up, ConnPid, Protocol}) ->
   {just, {gunUp, ConnPid, map_protocol(Protocol)}};
 
+%% gun 2.0 clause
+messageMapperImpl({gun_down, ConnPid, Protocol, Reason, KilledStreams}) ->
+  {just, {gunDown, ConnPid, map_protocol(Protocol), Reason, KilledStreams, []}};
+
+%% pre-gun 2.0 clause
 messageMapperImpl({gun_down, ConnPid, Protocol, Reason, KilledStreams, UnprocessedStreams}) ->
   {just, {gunDown, ConnPid, map_protocol(Protocol), Reason, KilledStreams, UnprocessedStreams}};
 
