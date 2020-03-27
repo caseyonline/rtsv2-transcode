@@ -102,11 +102,12 @@ init args = do
         , "EgestE"                                      : dummyHandler -- TODO write this - needed for a client to create a remote egest
         , "RelayE"                                      : RelayHandler.startResource
         , "RelayEnsureStartedE"                         : RelayHandler.ensureStarted
-        , "RelayRegisterEgestE"                         : RelayHandler.registerEgest
-        , "RelayRegisterRelayE"                         : RelayHandler.registerRelay
+--        , "RelayRegisterEgestE"                         : RelayHandler.registerEgest
+--        , "RelayRegisterRelayE"                         : RelayHandler.registerRelay
         , "RelaySlotConfigurationE"                     : RelayHandler.slotConfiguration
-        , "RelayRegisteredEgestE"                       : RelayHandler.deRegisterEgest
-        , "RelayRegisteredRelayE"                       : RelayHandler.deRegisterRelay
+--        , "RelayRegisteredEgestE"                       : RelayHandler.deRegisterEgest
+--        , "RelayRegisteredRelayE"                       : RelayHandler.deRegisterRelay
+        , "RelayRegisteredRelayWs"                      : CowboyRoutePlaceholder
         , "RelayRegisteredEgestWs"                      : CowboyRoutePlaceholder
 
         , "IngestAggregatorActiveIngestsE"              : IngestAggregatorHandler.ingestAggregatorsActiveIngest
@@ -170,7 +171,11 @@ init args = do
                    "llwp_stream_resource"
                    ((unsafeToForeign) makeSlotIdAndProfileName)
 
-      : cowboyRoute ("/system/relay/" <> slotIdBinding <> "/" <> slotRoleBinding <> "/egests/" <> serverAddressBinding <> "/ws")
+      : cowboyRoute ("/system/relay/" <> slotIdBinding <> "/" <> slotRoleBinding <> "/relays/" <> serverAddressBinding <> "/" <> portBinding <> "/" <> sourceRouteBinding <> "/ws")
+                  "stetson_webSocketHandler@ps"
+                  (unsafeToForeign RelayHandler.registeredRelayWs)
+
+      : cowboyRoute ("/system/relay/" <> slotIdBinding <> "/" <> slotRoleBinding <> "/egests/" <> serverAddressBinding <> "/" <> portBinding <> "/ws")
                   "stetson_webSocketHandler@ps"
                   (unsafeToForeign RelayHandler.registeredEgestWs)
 
@@ -190,6 +195,8 @@ init args = do
     slotRoleBinding = ":slot_role"
     profileNameBinding = ":profile_name"
     serverAddressBinding = ":server_address"
+    portBinding = ":port"
+    sourceRouteBinding = ":source_route"
     canaryBinding = ":canary"
     referenceBinding = ":reference"
 

@@ -12,29 +12,19 @@ openImpl(Url) ->
       {ok, {_Scheme, _UserInfo, Host, Port, Path, Query}} = http_uri:parse(binary_to_list(Url)),
 
       ConnectTimeout = 5000,
-      PingPeriod = 1000,
 
       {ok, ConnPid} = gun:open(Host, Port, #{ connect_timeout => ConnectTimeout
+                                            , retry => 0
+                                            , supervise => false
                                             , ws_opts => #{compress => true}
                                             }),
 
-      {ok, TRef} = timer:send_interval(PingPeriod, {wsgun, ping}),
+      erlang:put(ConnPid, Path ++ Query),
 
-      {right, {gunState, #{ connPid => ConnPid
-                          , path => Path ++ Query
-                          , tref => TRef
-                          }}}
-
-      %% case gun:await_up(ConnPid, ConnectTimeout) of
-      %%   {error, timeout} -> {left, {error, connect_timeout}};
-      %%   {error, UpOther} -> {left, {error, UpOther}};
-      %%   {ok, _Protocol} ->
-      %%     _Ref = gun:ws_upgrade(ConnPid, Path ++ Query),
-      %%     {right, ConnPid}
-      %% end
+      {right, ConnPid}
   end.
 
-sendImpl(ConnPid, Msg) ->
+sendImpl(Msg, ConnPid) ->
   fun() ->
       gun:ws_send(ConnPid, {text, Msg})
   end.
@@ -50,12 +40,13 @@ pingImpl(ConnPid) ->
 
 upgradeImpl(ConnPid, Path) ->
   fun() ->
+      Path = erlang:erase(ConnPid),
       Ref = gun:ws_upgrade(ConnPid, Path),
       Ref
   end.
 
-messageMapperImpl({wsgun, ping}) ->
-  {just, {gunWsSendPing}};
+messageMapperImpl({wsgun, ping, ConnPid}) ->
+  {just, {gunWsSendPing, ConnPid}};
 
 messageMapperImpl({gun_up, ConnPid, Protocol}) ->
   {just, {gunUp, ConnPid, map_protocol(Protocol)}};

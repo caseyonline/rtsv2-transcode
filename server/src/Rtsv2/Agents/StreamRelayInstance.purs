@@ -41,6 +41,8 @@ import Data.Maybe as Maybe
 import Data.Newtype (un)
 import Data.Traversable (traverse)
 import Data.TraversableWithIndex (traverseWithIndex)
+import Data.Tuple (Tuple(..))
+import Data.Tuple as PursTuple
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, (:))
@@ -49,6 +51,7 @@ import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
 import Erl.Data.Tuple (Tuple2, tuple2)
 import Erl.Data.Tuple as ErlTuple
+import Erl.Process (Process(..))
 import Foreign (Foreign)
 import Logger (Logger, spy)
 import Logger as Logger
@@ -61,14 +64,14 @@ import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..))
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
-import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload, DeRegisterEgestPayload, RegisterEgestPayload, RegisterRelayPayload, SourceRoute, DeRegisterRelayPayload)
+import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload, DeRegisterEgestPayload, DeRegisterRelayPayload, DownstreamWsMessage(..), RegisterEgestPayload, RegisterRelayPayload, RelayToRelayClientWsMessage(..), SourceRoute)
 import Rtsv2.Agents.TransPoP as TransPoP
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Utils (crashIfLeft)
 import Shared.Agent as Agent
 import Shared.Common (Url)
-import Shared.Router.Endpoint (Endpoint(..), makeUrlAddr, makeUrl)
+import Shared.Router.Endpoint (Endpoint(..), makeUrl, makeUrlAddr, makeWsUrl, makeWsUrlAddr)
 import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Stream (AggregatorKey(..), RelayKey(..), SlotId(..), SlotRole)
 import Shared.Types (PoPName, DeliverTo, EgestServer, RelayServer(..), Server(..), ServerAddress(..), extractPoP, extractAddress)
@@ -76,6 +79,8 @@ import Shared.Types.Agent.State as PublicState
 import Shared.UUID (UUID)
 import SpudGun (SpudResponse(..), JsonResponseError, StatusCode(..))
 import SpudGun as SpudGun
+import WsGun (GunProtocolError, ProcessResponse)
+import WsGun as WsGun
 
 -- -----------------------------------------------------------------------------
 -- FFI
@@ -92,6 +97,17 @@ foreign import setSlotConfigurationFFI :: RelayKey -> SlotConfiguration -> Effec
 foreign import getSlotConfigurationFFI :: RelayKey -> Effect (Maybe SlotConfiguration)
 
 foreign import stopWorkflowFFI :: WorkflowHandle -> Effect Unit
+
+-- -----------------------------------------------------------------------------
+-- WebSocket
+-- -----------------------------------------------------------------------------
+data WsOk = OkRelay UpstreamRelay (ProcessResponse DownstreamWsMessage)
+data WsError = ErrRelay UpstreamRelay GunProtocolError
+
+type WsOkMapper = ((ProcessResponse DownstreamWsMessage) -> WsOk)
+type WsErrorMapper = (GunProtocolError -> WsError)
+type WsKey = UpstreamRelay
+type WsContext = WsGun.Context RelayToRelayClientWsMessage DownstreamWsMessage WsOk WsError WsKey
 
 -- -----------------------------------------------------------------------------
 -- Gen Server State
@@ -136,14 +152,16 @@ type DownstreamStreamRelayStateData =
 --       cases such as a failed deregistration followed quickly by
 --       a registration
 --
+type EgestMap = Map ServerAddress (Tuple (Process DownstreamWsMessage) (DeliverTo EgestServer))
+
 type OriginStreamRelayConfig =
-  { egests :: Map ServerAddress (DeliverTo EgestServer)
+  { egests :: EgestMap
   , downstreamRelays :: Map ServerAddress (DeliverTo RelayServer)
   }
 
 type DownstreamStreamRelayConfig =
   { egestUpstreamRelays :: List UpstreamRelay
-  , egests :: Map ServerAddress (DeliverTo EgestServer)
+  , egests :: EgestMap
   , downstreamRelays :: Map ServerAddress DownstreamRelayWithSource
   }
 
@@ -190,11 +208,13 @@ type DownstreamStreamRelayApplyResult =
 type OriginStreamRelayRunState =
   { slotConfiguration :: Maybe SlotConfiguration
   , ingestAggregatorState :: IngestAggregatorState
+  , wsContext :: WsContext
   }
 
 type DownstreamStreamRelayRunState =
   { slotConfiguration :: Maybe SlotConfiguration
   , upstreamRelayStates :: Map UpstreamRelay UpstreamRelayState
+  , wsContext :: WsContext
   }
 
 data UpstreamRelayState
@@ -225,22 +245,22 @@ type UpstreamRelay =
 -- -----------------------------------------------------------------------------
 -- API
 -- -----------------------------------------------------------------------------
-registerEgest :: RegisterEgestPayload -> Effect Unit
-registerEgest payload@{slotId, slotRole, deliverTo} =
+registerEgest :: RegisterEgestPayload -> (Process DownstreamWsMessage) -> Effect (Maybe SlotConfiguration)
+registerEgest payload@{slotId, slotRole, deliverTo} handler =
   Gen.doCall (serverName $ payloadToRelayKey payload) doRegisterEgest
 
   where
-    doRegisterEgest :: State -> Effect (CallResult Unit State)
+    doRegisterEgest :: State -> Effect (CallResult (Maybe SlotConfiguration) State)
 
-    doRegisterEgest state@(StateOrigin {thisServer} { config: { egests } }) = do
+    doRegisterEgest state@(StateOrigin {thisServer} { config: { egests }, run: { slotConfiguration: slotConfig } }) = do
       let
-        newEgests = Map.insert egestServer deliverTo egests
-      CallReply unit <$> applyNewEgests newEgests state
+        newEgests = Map.insert egestServer (Tuple handler deliverTo) egests
+      CallReply slotConfig <$> applyNewEgests newEgests state
 
-    doRegisterEgest state@(StateDownstream {thisServer} { config: { egests } }) = do
+    doRegisterEgest state@(StateDownstream {thisServer} { config: { egests }, run: { slotConfiguration: slotConfig } }) = do
       let
-        newEgests = Map.insert egestServer deliverTo egests
-      CallReply unit <$> applyNewEgests newEgests state
+        newEgests = Map.insert egestServer (Tuple handler deliverTo) egests
+      CallReply slotConfig <$> applyNewEgests newEgests state
 
     egestServer = (extractAddress deliverTo.server)
 
@@ -261,20 +281,20 @@ deRegisterEgest {slotId, slotRole, egestServerAddress} =
     egestServer = egestServerAddress
 
 
-registerRelay :: RegisterRelayPayload -> Effect Unit
-registerRelay payload@{slotId, slotRole, sourceRoute, deliverTo } =
+registerRelay :: RegisterRelayPayload -> (Process DownstreamWsMessage) -> Effect (Maybe SlotConfiguration)
+registerRelay payload@{slotId, slotRole, sourceRoute, deliverTo } handler =
   Gen.doCall (serverName $ payloadToRelayKey payload) doRegisterRelay
 
   where
-    doRegisterRelay :: State -> Effect(CallResult Unit State)
+    doRegisterRelay :: State -> Effect(CallResult (Maybe SlotConfiguration) State)
 
-    doRegisterRelay (StateOrigin commonStateData@{thisServer} originStateData@{ config: config@{ downstreamRelays } }) = do
+    doRegisterRelay (StateOrigin commonStateData@{thisServer} originStateData@{ config: config@{ downstreamRelays }, run: { slotConfiguration: slotConfig } }) = do
       -- TODO: PS: log if we've got a non-nil source when we're in origin mode
       let
         newDownstreamRelays = Map.insert (extractAddress deliverTo.server) deliverTo downstreamRelays
-      CallReply unit <$> applyOriginNewRelays newDownstreamRelays commonStateData originStateData
+      CallReply slotConfig <$> applyOriginNewRelays newDownstreamRelays commonStateData originStateData
 
-    doRegisterRelay (StateDownstream commonStateData@{thisServer} downstreamStateData@{ config: config@{ downstreamRelays } }) =
+    doRegisterRelay (StateDownstream commonStateData@{thisServer} downstreamStateData@{ config: config@{ downstreamRelays }, run: { slotConfiguration: slotConfig } }) =
       case List.uncons sourceRoute of
         Just { head, tail } -> do
           let
@@ -283,11 +303,11 @@ registerRelay payload@{slotId, slotRole, sourceRoute, deliverTo } =
               , deliverTo
               }
             newDownstreamRelays = Map.insert (extractAddress deliverTo.server) downstreamRelayWithSource downstreamRelays
-          CallReply unit <$> applyDownstreamNewRelays newDownstreamRelays commonStateData downstreamStateData
+          CallReply slotConfig <$> applyDownstreamNewRelays newDownstreamRelays commonStateData downstreamStateData
 
         Nothing ->
           -- TODO: PS: log if we've got a nil source when we're in downstream mode
-          pure $ CallReply unit $ StateDownstream commonStateData downstreamStateData
+          pure $ CallReply Nothing $ StateDownstream commonStateData downstreamStateData
 
     relayServer = (extractAddress deliverTo.server)
 
@@ -384,25 +404,32 @@ applyDownstreamRunResult commonStateData@{ relayKey: relayKey@(RelayKey slotId s
     >>= tryEnsureDownstreamSlotConfiguration commonStateData
 
   where
-    maybeTryRegisterUpstreamRelays runStateIn@{ upstreamRelayStates } =
+    maybeTryRegisterUpstreamRelays runStateIn@{ upstreamRelayStates, wsContext } =
       do
-        newUpstreamRelayStates <- traverseWithIndex maybeTryRegisterUpstreamRelay upstreamRelayStates
-        pure $ runStateIn{ upstreamRelayStates = newUpstreamRelayStates }
+        Tuple wsContext2 newUpstreamRelayStates <- foldlWithIndex (\index acc val -> do
+                                                                      Tuple innerWsContext innerRelayStates <- acc
+                                                                      Tuple innerWsContext2 val2 <- maybeTryRegisterUpstreamRelay innerWsContext index val
+                                                                      pure $ Tuple innerWsContext2 (Map.insert index val innerRelayStates)
+                                                                  )
+                                                                  (pure $ Tuple wsContext Map.empty)
+                                                                  upstreamRelayStates
+        pure $ runStateIn{ upstreamRelayStates = newUpstreamRelayStates
+                         , wsContext = wsContext2}
 
-    maybeTryRegisterUpstreamRelay :: UpstreamRelay -> UpstreamRelayState -> Effect UpstreamRelayState
-    maybeTryRegisterUpstreamRelay upstreamRelay upstreamRelayStateIn =
+    maybeTryRegisterUpstreamRelay :: WsContext -> UpstreamRelay -> UpstreamRelayState -> Effect (Tuple WsContext UpstreamRelayState)
+    maybeTryRegisterUpstreamRelay wsContext upstreamRelay upstreamRelayStateIn =
       case upstreamRelayStateIn of
         UpstreamRelayStatePendingRegistration portNumber ->
-          tryRegisterUpstreamRelay upstreamRelay portNumber
+          tryRegisterUpstreamRelay wsContext upstreamRelay portNumber
 
         UpstreamRelayStatePendingDeregistration portNumber serverAddress ->
           -- TODO: PS: deregistrations
-          pure upstreamRelayStateIn
+          pure (Tuple wsContext upstreamRelayStateIn)
 
         _alreadyRegisteredOrDeregistered ->
-          pure upstreamRelayStateIn
+          pure (Tuple wsContext upstreamRelayStateIn)
 
-    tryRegisterUpstreamRelay { next, rest } portNumber =
+    tryRegisterUpstreamRelay wsContext upstreamRelay@{ next, rest } portNumber =
       do
         maybeRelayAddress <- ensureRelayInPoP next
 
@@ -410,18 +437,21 @@ applyDownstreamRunResult commonStateData@{ relayKey: relayKey@(RelayKey slotId s
 
         case maybeRelayAddress of
           Nothing ->
-            pure $ UpstreamRelayStatePendingRegistration portNumber
+            pure $ Tuple wsContext (UpstreamRelayStatePendingRegistration portNumber)
 
           Just relayAddress ->
             do
-              registerResult <- registerWithSpecificRelay portNumber relayAddress rest
+              wsContext2 <- registerWithSpecificRelay wsContext portNumber relayAddress upstreamRelay
 
-              _ <- (logInfo "Attempted registration with relay" { registerResult, relayAddress, portNumber })
+              _ <- (logInfo "Attempted registration with relay" { relayAddress, portNumber })
 
-              if registerResult then
-                pure $ UpstreamRelayStateRegistered portNumber relayAddress
-              else
-                pure $ UpstreamRelayStatePendingRegistration portNumber
+              pure $ Tuple wsContext2 (UpstreamRelayStatePendingRegistration portNumber)
+
+              -- todo
+              -- if registerResult then
+              --   pure $ UpstreamRelayStateRegistered portNumber relayAddress
+              -- else
+              --   pure $ UpstreamRelayStatePendingRegistration portNumber
 
     ensureRelayInPoP pop =
       do
@@ -446,7 +476,7 @@ applyDownstreamRunResult commonStateData@{ relayKey: relayKey@(RelayKey slotId s
                   _other ->
                     pure $ Nothing
 
-    registerWithSpecificRelay portNumber chosenRelay remainingRoute =
+    registerWithSpecificRelay wsContext portNumber chosenRelay upstreamRelay@{next, rest: remainingRoute} =
       let
         deliverTo =
           { server: (thisServer # un Server # Relay)
@@ -460,19 +490,14 @@ applyDownstreamRunResult commonStateData@{ relayKey: relayKey@(RelayKey slotId s
           , sourceRoute: remainingRoute
           }
 
-        url = makeUrlAddr chosenRelay RelayRegisterRelayE
+        wsUrl = makeWsUrlAddr chosenRelay $ RelayRegisteredRelayWs slotId slotRole (extractAddress thisServer) portNumber remainingRoute
       in
         do
-
-        -- Don't use follow here as we should be talking to the correct server directly
-        eitherResponse <- SpudGun.postJson url payload
-
-        case eitherResponse of
-          Right response@(SpudResponse (StatusCode statusCode) _headers _body) | statusCode >= 200 && statusCode < 300 ->
-            pure true
-
-          _other ->
-            pure false
+          let
+            okMapper = OkRelay upstreamRelay
+            errMapper = ErrRelay upstreamRelay
+          wsContext2 <- crashIfLeft =<< WsGun.openWebSocket wsContext okMapper errMapper upstreamRelay wsUrl
+          pure wsContext2
 
 tryEnsureOriginSlotConfiguration :: CommonStateData -> OriginStreamRelayRunState -> Effect OriginStreamRelayRunState
 
@@ -565,6 +590,7 @@ slotConfiguration relayKey =
 -- -----------------------------------------------------------------------------
 data Msg = Init
          | IntraPoPBus IntraPoP.IntraPoPBusMessage
+         | Gun WsGun.GunMsg
 
 payloadToRelayKey :: forall r. { slotId :: SlotId, slotRole :: SlotRole | r } -> RelayKey
 payloadToRelayKey payload = RelayKey payload.slotId payload.slotRole
@@ -605,23 +631,25 @@ stopAction relayKey@(RelayKey slotId slotRole) cachedState = do
       pure unit
 
     deRegisterUpstreams (Just {upstreamRelayStates}) thisServer = do
-      _ <- traverse (deRegisterUpstream thisServer) (Map.values upstreamRelayStates)
+-- todo      _ <- traverse (deRegisterUpstream thisServer) (Map.values upstreamRelayStates)
       pure unit
 
-    deRegisterUpstream thisServer (UpstreamRelayStatePendingDeregistration _portNumber relayAddress) = do
-      let
-        deleteUrl = makeUrlAddr relayAddress $ RelayRegisteredRelayE slotId slotRole (extractAddress thisServer)
-      void <$> crashIfLeft =<< SpudGun.delete deleteUrl {}
-      pure unit
+    -- deRegisterUpstream thisServer (UpstreamRelayStatePendingDeregistration _portNumber relayAddress) = do
+    --   let
+    --     deleteUrl = makeUrlAddr relayAddress $ RelayRegisteredRelayE slotId slotRole (extractAddress thisServer)
+    --   void <$> crashIfLeft =<< SpudGun.delete deleteUrl {}
+    --   pure unit
 
-    deRegisterUpstream _ _ =
-      pure unit
+    -- deRegisterUpstream _ _ =
+    --   pure unit
 
 init :: RelayKey -> CreateRelayPayload -> StateServerName -> Effect State
 init relayKey payload@{slotId, slotRole, aggregator} stateServerName =
   do
+    Gen.registerExternalMapping (serverName relayKey) (\m -> Gun <$> (WsGun.messageMapper m))
     thisServer <- PoPDefinition.getThisServer
     egestSourceRoutes <- TransPoP.routesTo (extractPoP aggregator)
+
 
     IntraPoP.announceLocalRelayIsAvailable relayKey
     _ <- Bus.subscribe (serverName relayKey) IntraPoP.bus IntraPoPBus
@@ -644,7 +672,10 @@ init relayKey payload@{slotId, slotRole, aggregator} stateServerName =
             { workflowHandle
             , config
             , plan: Nothing
-            , run: { slotConfiguration: Nothing, ingestAggregatorState: IngestAggregatorStateDisabled }
+            , run: { slotConfiguration: Nothing
+                   , ingestAggregatorState: IngestAggregatorStateDisabled
+                   , wsContext: WsGun.newContext
+                   }
             }
 
         newPlan <- originConfigToPlan commonStateData config
@@ -664,7 +695,10 @@ init relayKey payload@{slotId, slotRole, aggregator} stateServerName =
             { workflowHandle
             , config
             , plan: Nothing
-            , run: { slotConfiguration: Nothing, upstreamRelayStates: Map.empty }
+            , run: { slotConfiguration: Nothing
+                   , upstreamRelayStates: Map.empty
+                   , wsContext: WsGun.newContext
+                   }
             }
 
         newPlan <- downstreamConfigToPlan commonStateData config
@@ -701,8 +735,48 @@ handleInfo msg state =
 
     IntraPoPBus (VmReset _ _ _) ->
       pure $ CastNoReply state
+
+    Gun inMsg ->
+      processGunMessage state inMsg
   where
     (RelayKey ourSlotId _) = relayKeyFromState state
+
+    processGunMessage (StateOrigin common origin@{run}) gunMsg = do
+      run2 <- processGunMessage' run gunMsg
+      pure $ CastNoReply $ StateOrigin common origin{run = run2}
+
+    processGunMessage (StateDownstream common downstream@{run}) gunMsg = do
+      run2 <- processGunMessage' run gunMsg
+      pure $ CastNoReply $ StateDownstream common downstream{run = run2}
+
+    processGunMessage' :: forall r. { wsContext :: WsContext
+                                    , slotConfiguration :: Maybe SlotConfiguration | r} ->
+                                    WsGun.GunMsg ->
+                                    Effect { wsContext :: WsContext
+                                           , slotConfiguration :: Maybe SlotConfiguration | r}
+    processGunMessage' run@{wsContext} gunMsg = do
+      processResponse <- WsGun.processMessage wsContext gunMsg
+      case processResponse of
+        Left error -> do
+          _ <- logInfo "XXX Gun process error" {error}
+          pure $ run
+
+        Right (OkRelay _slotRole (WsGun.Internal _)) ->
+          pure $ run
+
+        Right (OkRelay _upstreamRelay WsGun.WebSocketUp) -> do
+          _ <- logInfo "XXX Relay WebSocket up" {relay: _upstreamRelay}
+              --   pure $ UpstreamRelayStateRegistered portNumber relayAddress
+          pure $ run
+
+        Right (OkRelay _slotRole WsGun.WebSocketDown) -> do
+          -- todo - kick off timer?  If websocket doesn't recover, attempt to launch new relay?
+          pure $ run
+
+        Right (OkRelay _slotRole (WsGun.Frame (SlotConfig receivedSlotConfiguration))) -> do
+          _ <- logInfo "XXX Gun received slot configuration" {receivedSlotConfiguration}
+          setSlotConfigurationFFI (relayKeyFromState state) receivedSlotConfiguration
+          pure run{ slotConfiguration = Just receivedSlotConfiguration }
 
 terminate :: Foreign -> State -> Effect Unit
 terminate reason state = do
@@ -727,7 +801,7 @@ originConfigToPlan { ingestAggregator, stateServerName } config@{ egests, downst
        , downstreamRelays: plannedDownstreamRelays
        }
   where
-    plannedEgests = egests # Map.values # map deliverToAddressFromDeliverToEgestServer
+    plannedEgests = egests # Map.values # map PursTuple.snd # map deliverToAddressFromDeliverToEgestServer
     plannedDownstreamRelays = downstreamRelays # Map.values # map deliverToAddressFromDeliverToRelayServer
 
 downstreamConfigToPlan :: CommonStateData -> DownstreamStreamRelayConfig -> Effect DownstreamStreamRelayPlan
@@ -739,7 +813,7 @@ downstreamConfigToPlan { ingestAggregator, stateServerName } config@{ egestUpstr
   where
     egestList = config.egests # Map.values
 
-    plannedEgests = egestList <#> deliverToAddressFromDeliverToEgestServer
+    plannedEgests = egestList <#> PursTuple.snd <#> deliverToAddressFromDeliverToEgestServer
 
     plannedDownstreamRelays = downstreamRelayList # map (_.deliverTo) # map deliverToAddressFromDeliverToRelayServer
 
@@ -859,7 +933,7 @@ mergeDownstreamApplyResult { upstreamRelayReceivePorts } runState@{ upstreamRela
 --------------------------------------------------------------------------------
 -- Utilities
 --------------------------------------------------------------------------------
-applyNewEgests :: Map ServerAddress (DeliverTo EgestServer) -> State -> Effect State
+applyNewEgests :: EgestMap -> State -> Effect State
 applyNewEgests newEgests (StateOrigin commonStateData@{thisServer} originStateData@{config}) = do
   let
     newConfig = config{ egests = newEgests }

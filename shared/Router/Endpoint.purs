@@ -13,25 +13,30 @@ module Shared.Router.Endpoint ( Endpoint(..)
                               , parseSlotId
                               , parseSlotRole
                               , parseServerAddress
+                              , parseSourceRoute
+                              , parseInt
                               , uName
                               , popName
                               ) where
 
 import Prelude hiding ((/))
 
-import Data.Array ((!!))
+import Data.Array (intercalate, (!!))
 import Data.Either (note)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show (genericShow)
+import Data.Int as Int
 import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype, unwrap, wrap)
 import Data.String (Pattern(..), split)
+import Erl.Data.List (fromFoldable)
 import Routing.Duplex (RouteDuplex', as, path, print, rest, root, segment)
 import Routing.Duplex.Generic (noArgs, sum)
 import Routing.Duplex.Generic.Syntax ((/))
+import Rtsv2.Agents.StreamRelayTypes (SourceRoute)
 import Shared.Common (Url)
 import Shared.Stream (ProfileName(..), RtmpShortName, SlotId, SlotIdAndProfileName(..), SlotNameAndProfileName(..), SlotRole(..))
-import Shared.Types (JsonLdContextType(..), PoPName, ServerAddress(..), Username(..), extractAddress)
+import Shared.Types (JsonLdContextType(..), PoPName(..), ServerAddress(..), Username(..), extractAddress)
 import Shared.UUID (fromString)
 
 data Canary = Live
@@ -76,12 +81,13 @@ data Endpoint
   | EgestE
   | RelayE
   | RelayEnsureStartedE
-  | RelayRegisterEgestE
-  | RelayRegisterRelayE
+--  | RelayRegisterEgestE
+--  | RelayRegisterRelayE
   | RelaySlotConfigurationE SlotId SlotRole
-  | RelayRegisteredEgestE SlotId SlotRole ServerAddress
-  | RelayRegisteredRelayE SlotId SlotRole ServerAddress
-  | RelayRegisteredEgestWs SlotId SlotRole ServerAddress
+--  | RelayRegisteredEgestE SlotId SlotRole ServerAddress
+--  | RelayRegisteredRelayE SlotId SlotRole ServerAddress
+  | RelayRegisteredRelayWs SlotId SlotRole ServerAddress Int SourceRoute
+  | RelayRegisteredEgestWs SlotId SlotRole ServerAddress Int
   | IngestAggregatorActiveIngestsE SlotId SlotRole ProfileName
   | IngestAggregatorSlotConfigurationE SlotId SlotRole
   | IngestAggregatorRegisterRelayE
@@ -160,12 +166,13 @@ endpoint = root $ sum
 
   , "RelayE"                                           : "system" / "relay" / path "egest"  noArgs
   , "RelayEnsureStartedE"                              : "system" / "relay" / path "ensureStarted"  noArgs
-  , "RelayRegisterEgestE"                              : "system" / "relay" / "register" / path "egest" noArgs
-  , "RelayRegisterRelayE"                              : "system" / "relay" / "register" / path "relay" noArgs
+--  , "RelayRegisterEgestE"                              : "system" / "relay" / "register" / path "egest" noArgs
+--  , "RelayRegisterRelayE"                              : "system" / "relay" / "register" / path "relay" noArgs
   , "RelaySlotConfigurationE"                          : "system" / "relay" / slotId segment / slotRole segment / "slot"
-  , "RelayRegisteredEgestE"                            : "system" / "relay" / slotId segment / slotRole segment / "egests" / serverAddress segment
-  , "RelayRegisteredRelayE"                            : "system" / "relay" / slotId segment / slotRole segment / "relays" / serverAddress segment
-  , "RelayRegisteredEgestWs"                           : "system" / "relay" / slotId segment / slotRole segment / "egests" / serverAddress segment / "ws"
+--  , "RelayRegisteredEgestE"                            : "system" / "relay" / slotId segment / slotRole segment / "egests" / serverAddress segment
+--  , "RelayRegisteredRelayE"                            : "system" / "relay" / slotId segment / slotRole segment / "relays" / serverAddress segment
+  , "RelayRegisteredRelayWs"                           : "system" / "relay" / slotId segment / slotRole segment / "relays" / serverAddress segment / port segment / sourceRoute segment / "ws"
+  , "RelayRegisteredEgestWs"                           : "system" / "relay" / slotId segment / slotRole segment / "egests" / serverAddress segment / port segment / "ws"
 
   , "IngestAggregatorActiveIngestsE"                   : "system" / "ingestAggregator" / slotId segment / slotRole segment / "activeIngests" / profileName segment
   , "IngestAggregatorSlotConfigurationE"               : "system" / "ingestAggregator" / slotId segment / slotRole segment / "slot"
@@ -262,6 +269,20 @@ parseContextType "ingestAggregatorState" = Just IngestAggregatorStateContext
 parseContextType "streamRelayState" = Just StreamRelayStateContext
 parseContextType "ingestState" = Just IngestStateContext
 parseContextType _ = Nothing
+
+-- | Int
+parseInt :: String -> Maybe Int
+parseInt = Int.fromString
+
+intToString :: Int -> String
+intToString = show
+
+-- | SourceRoute
+parseSourceRoute :: String -> Maybe SourceRoute
+parseSourceRoute str = Just $ PoPName <$> (fromFoldable $ split (Pattern ":") str)
+
+sourceRouteToString :: SourceRoute -> String
+sourceRouteToString route = intercalate ":" $ unwrap <$> route
 
 -- | SlotId
 parseSlotId :: String -> Maybe SlotId
@@ -374,6 +395,14 @@ serverAddress = as serverAddressToString (parseServerAddress >>> note "Bad Serve
 -- | This combinator transforms a codec over `String` into one that operates on the `ProfileName` type.
 slotRole :: RouteDuplex' String -> RouteDuplex' SlotRole
 slotRole = as slotRoleToString (parseSlotRole >>> note "Bad SlotRole")
+
+-- | This combinator transforms a codec over `String` into one that operates on the `Int` type.
+port :: RouteDuplex' String -> RouteDuplex' Int
+port = as intToString (parseInt >>> note "Bad Port")
+
+-- | This combinator transforms a codec over `String` into one that operates on the `Int` type.
+sourceRoute :: RouteDuplex' String -> RouteDuplex' SourceRoute
+sourceRoute = as sourceRouteToString (parseSourceRoute >>> note "Bad SourceRoute")
 
 -- | This combinator transforms a codec over `String` into one that operates on the `SlotNameAndProfileName` type.
 slotNameAndProfile :: RouteDuplex' String -> RouteDuplex' SlotNameAndProfileName
