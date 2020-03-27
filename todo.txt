@@ -20,6 +20,7 @@
 [ ] - Egest needs to know model primary and backup
 [ ] - Port Data.Int53 or Data.Long to purescript, and then change Milliseconds type
 [ ] - Smoke test for prometheus metric endpoints (spin up ingest, hti endpoint, assert a 200)
+[ ] - Proper Serf messages codec (not just binary to term)
 
 [ ] - Shared objects
 
