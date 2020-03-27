@@ -17,10 +17,10 @@ module Rtsv2.Agents.EgestInstance
 import Prelude
 
 import Bus as Bus
-import Data.Either (Either(..), hush)
+import Data.Either (Either(..))
 import Data.Foldable (foldl)
 import Data.Int (round, toNumber)
-import Data.Maybe (Maybe(..), fromMaybe, maybe')
+import Data.Maybe (Maybe(..), maybe')
 import Data.Newtype (class Newtype, unwrap, wrap)
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..))
@@ -43,14 +43,13 @@ import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..), launchLocalOrRemoteGeneric
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.Locator.Types (LocalOrRemote(..), RegistrationResp, ResourceResp)
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
-import Rtsv2.Agents.StreamRelayInstance as StreamRelayInstance
 import Rtsv2.Agents.StreamRelaySup (startRelay) as StreamRelaySup
-import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload, DeRegisterEgestPayload, EgestClientWsMessage(..), DownstreamWsMessage(..), RegisterEgestPayload)
+import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload, DeRegisterEgestPayload, DownstreamWsMessage(..), EgestClientWsMessage, RegisterEgestPayload)
 import Rtsv2.Audit as Audit
 import Rtsv2.Config as Config
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
-import Rtsv2.Utils (crashIfLeft, noprocToMaybe)
+import Rtsv2.Utils (crashIfLeft)
 import Shared.Agent as Agent
 import Shared.Common (Milliseconds)
 import Shared.LlnwApiTypes (StreamIngestProtocol(..))
@@ -59,9 +58,7 @@ import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Stream (AggregatorKey(..), EgestKey(..), RelayKey(..), SlotId, SlotRole)
 import Shared.Types (DeliverTo, EgestServer(..), Load, RelayServer, Server, ServerLoad(..))
 import Shared.Types.Agent.State as PublicState
-import SpudGun (SpudResponse(..))
 import SpudGun as SpudGun
-import WsGun (GunProtocolError, ProcessResponse)
 import WsGun as WsGun
 
 foreign import startEgestReceiverFFI :: EgestKey -> Effect Int
@@ -82,13 +79,7 @@ type CachedState = DeleteData
 
 type StateServerName = CachedInstanceState.StateServerName CachedState
 
-data WsOk = OkRelay SlotRole (ProcessResponse DownstreamWsMessage)
-data WsError = ErrRelay SlotRole GunProtocolError
-
-type WsOkMapper = ((ProcessResponse DownstreamWsMessage) -> WsOk)
-type WsErrorMapper = (GunProtocolError -> WsError)
-type WsKey = SlotRole
-type WsContext = WsGun.Context EgestClientWsMessage DownstreamWsMessage WsOk WsError WsKey
+type WebSocket = WsGun.WebSocket EgestClientWsMessage DownstreamWsMessage
 
 type State
   = { egestKey :: EgestKey
@@ -102,7 +93,7 @@ type State
     , receivePortNumber :: Int
     , lastEgestAuditTime :: Milliseconds
     , stateServerName :: StateServerName
-    , wsContext :: WsContext
+    , relayWebSocket :: Maybe WebSocket
     }
 
 payloadToEgestKey :: CreateEgestPayload -> EgestKey
@@ -200,7 +191,7 @@ init payload@{slotId, slotRole, aggregator} stateServerName = do
            , receivePortNumber
            , lastEgestAuditTime: now
            , stateServerName
-           , wsContext: WsGun.newContext
+           , relayWebSocket: Nothing
            }
   case maybeRelay of
     Just relay ->
@@ -234,32 +225,38 @@ handleInfo msg state@{egestKey: egestKey@(EgestKey slotId slotRole)} =
     IntraPoPBus (VmReset _ _ _) ->
       pure $ CastNoReply state
 
-    Gun inMsg ->
-      processGunMessage state inMsg
+    Gun gunMsg ->
+      processGunMessage state gunMsg
 
   where
-    processGunMessage state@{wsContext} inMsg = do
-      processResponse <- WsGun.processMessage wsContext inMsg
-      case processResponse of
-        Left error -> do
-          _ <- logInfo "Gun process error" {error}
-          pure $ CastNoReply state
+    processGunMessage state@{relayWebSocket: Nothing} gunMsg =
+      pure $ CastNoReply state
 
-        Right (OkRelay _slotRole (WsGun.Internal _)) ->
-          pure $ CastNoReply state
+    processGunMessage state@{relayWebSocket: Just socket} gunMsg =
+      if WsGun.isSocketForMessage gunMsg socket then do
+        processResponse <- WsGun.processMessage socket gunMsg
+        case processResponse of
+          Left error -> do
+            _ <- logInfo "Gun process error" {error}
+            pure $ CastNoReply state
 
-        Right (OkRelay _slotRole WsGun.WebSocketUp) -> do
-          _ <- logInfo "Relay WebSocket up" {slotRole: _slotRole}
-          pure $ CastNoReply state
+          Right (WsGun.Internal _) ->
+            pure $ CastNoReply state
 
-        Right (OkRelay _slotRole WsGun.WebSocketDown) -> do
-          -- todo - kick off timer?  If websocket doesn't recover, attempt to launch new relay?
-          pure $ CastNoReply state
+          Right WsGun.WebSocketUp -> do
+            _ <- logInfo "Relay WebSocket up" {}
+            pure $ CastNoReply state
 
-        Right (OkRelay _slotRole (WsGun.Frame (SlotConfig relaySlotConfiguration))) -> do
-          _ <- logInfo "XXX Gun received slot configuration" {relaySlotConfiguration}
-          setSlotConfigurationFFI egestKey relaySlotConfiguration
-          pure $ CastNoReply state
+          Right WsGun.WebSocketDown -> do
+            -- todo - kick off timer?  If websocket doesn't recover, attempt to launch new relay?
+            pure $ CastNoReply state
+
+          Right (WsGun.Frame (SlotConfig relaySlotConfiguration)) -> do
+            _ <- logInfo "XXX Gun received slot configuration" {relaySlotConfiguration}
+            setSlotConfigurationFFI egestKey relaySlotConfiguration
+            pure $ CastNoReply state
+      else
+        pure $ CastNoReply state
 
     deliverTo :: DeliverTo EgestServer
     deliverTo = { server: state.thisServer, port: state.receivePortNumber }
@@ -339,7 +336,7 @@ doStop state@{egestKey} = do
   pure $ CastStop state
 
 initStreamRelay :: State -> Effect State
-initStreamRelay state@{relayCreationRetry, egestKey: egestKey@(EgestKey slotId slotRole), aggregator, thisServer, stateServerName, wsContext} = do
+initStreamRelay state@{relayCreationRetry, egestKey: egestKey@(EgestKey slotId slotRole), aggregator, thisServer, stateServerName} = do
   mSlotConfig <- slotConfiguration egestKey
   case mSlotConfig of
     Nothing -> do
@@ -365,13 +362,13 @@ initStreamRelay state@{relayCreationRetry, egestKey: egestKey@(EgestKey slotId s
     tryConfigureAndRegister relayServer =
       do
         -- todo - don't need registrationPayload
-        Tuple deleteData wsContext2 <- registerWithRelay relayServer registrationPayload wsContext
+        Tuple deleteData webSocket <- registerWithRelay relayServer registrationPayload
         CachedInstanceState.recordInstanceData stateServerName deleteData
 
         void retryLater
 
         pure state{ cachedState = Just deleteData
-                  , wsContext = wsContext2}
+                  , relayWebSocket = Just webSocket}
 
     deliverTo :: DeliverTo EgestServer
     deliverTo = { server: state.thisServer, port: state.receivePortNumber }
@@ -384,15 +381,13 @@ initStreamRelay state@{relayCreationRetry, egestKey: egestKey@(EgestKey slotId s
       }
 
 -- todo - don't need payload - also rename - it's just "createRelayWebsocket"
-registerWithRelay :: Server -> RegisterEgestPayload -> WsContext -> Effect (Tuple DeleteData WsContext)
-registerWithRelay remoteServer payload@{slotId, slotRole, deliverTo: {server: Egest {address: egestServerAddress}, port}} wsContext =
+registerWithRelay :: Server -> RegisterEgestPayload -> Effect (Tuple DeleteData WebSocket)
+registerWithRelay remoteServer payload@{slotId, slotRole, deliverTo: {server: Egest {address: egestServerAddress}, port}} =
   do
     let
       wsUrl = makeWsUrl remoteServer $ RelayRegisteredEgestWs slotId slotRole egestServerAddress port
-      okMapper = OkRelay slotRole
-      errMapper = ErrRelay slotRole
-    wsContext2 <- crashIfLeft =<< WsGun.openWebSocket wsContext okMapper errMapper slotRole wsUrl
-    pure $ Tuple (RemoteDelete remoteServer {slotId, slotRole, egestServerAddress}) wsContext2
+    webSocket <- crashIfLeft =<< WsGun.openWebSocket wsUrl
+    pure $ Tuple (RemoteDelete remoteServer {slotId, slotRole, egestServerAddress}) webSocket
 
 -- todo - do we need?  just close Websocket and the handler will deRegister in the terminate...
 -- deRegisterWithRelay :: DeleteData -> Effect Unit
@@ -407,14 +402,14 @@ registerWithRelay remoteServer payload@{slotId, slotRole, deliverTo: {server: Eg
 --     void <$> crashIfLeft =<< SpudGun.delete deleteUrl {}
 --     pure unit
 
-getRelaySlotConfiguration :: Server -> SlotId -> SlotRole -> Effect (Maybe SlotConfiguration)
-getRelaySlotConfiguration relayServer slotId slotRole =
-  do
-    slotConfiguration' <- SpudGun.getJson configURL
-    pure $ log $ hush $ (SpudGun.bodyToJSON slotConfiguration')
-  where
-    configURL = makeUrl relayServer $ RelaySlotConfigurationE slotId slotRole
-    log = spy $ "Egest Instance Slot Config from Remote Relay"
+-- getRelaySlotConfiguration :: Server -> SlotId -> SlotRole -> Effect (Maybe SlotConfiguration)
+-- getRelaySlotConfiguration relayServer slotId slotRole =
+--   do
+--     slotConfiguration' <- SpudGun.getJson configURL
+--     pure $ log $ hush $ (SpudGun.bodyToJSON slotConfiguration')
+--   where
+--     configURL = makeUrl relayServer $ RelaySlotConfigurationE slotId slotRole
+--     log = spy $ "Egest Instance Slot Config from Remote Relay"
 
 --------------------------------------------------------------------------------
 -- Do we have a relay in this pop - yes -> use it

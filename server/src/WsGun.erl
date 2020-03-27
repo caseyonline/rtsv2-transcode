@@ -1,9 +1,8 @@
 -module(wsGun@foreign).
 
 -export([ openImpl/1
-        , upgradeImpl/2
+        , upgradeImpl/1
         , sendImpl/2
-        , pingImpl/1
         , messageMapperImpl/1
         ]).
 
@@ -13,15 +12,21 @@ openImpl(Url) ->
 
       ConnectTimeout = 5000,
 
-      {ok, ConnPid} = gun:open(Host, Port, #{ connect_timeout => ConnectTimeout
-                                            , retry => 0
-                                            , supervise => false
-                                            , ws_opts => #{compress => true}
-                                            }),
+      case gun:open(Host, Port, #{ connect_timeout => ConnectTimeout
+                                 , retry => 0
+                                 , supervise => false
+                                 , ws_opts => #{ compress => true
+                                               , silence_pings => true
+                                               }
+                                 }) of
+        {ok, ConnPid} ->
+          erlang:put(ConnPid, Path ++ Query),
 
-      erlang:put(ConnPid, Path ++ Query),
+          {right, ConnPid};
 
-      {right, ConnPid}
+        {error, Reason} ->
+          {left, Reason}
+      end
   end.
 
 sendImpl(Msg, ConnPid) ->
@@ -29,24 +34,12 @@ sendImpl(Msg, ConnPid) ->
       gun:ws_send(ConnPid, {text, Msg})
   end.
 
-pingImpl(ConnPid) ->
-  fun() ->
-      try
-        gun:ws_send(ConnPid, {ping, <<0>>})
-      catch
-        _:_ -> ok
-      end
-  end.
-
-upgradeImpl(ConnPid, Path) ->
+upgradeImpl(ConnPid) ->
   fun() ->
       Path = erlang:erase(ConnPid),
       Ref = gun:ws_upgrade(ConnPid, Path),
       Ref
   end.
-
-messageMapperImpl({wsgun, ping, ConnPid}) ->
-  {just, {gunWsSendPing, ConnPid}};
 
 messageMapperImpl({gun_up, ConnPid, Protocol}) ->
   {just, {gunUp, ConnPid, map_protocol(Protocol)}};
