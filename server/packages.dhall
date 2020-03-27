@@ -77,8 +77,13 @@ let overrides =
                 [ "erl-cowboy", "routing-duplex" ]
             }
       , erl-cowboy =
-            upstream.erl-cowboy
-          ⫽ { version = "03eaeab111dd1b2cf499ca977fe4cc61df8fd254" }
+          { dependencies =
+              [ "erl-process", "erl-modules" ]
+          , repo =
+              "ssh://git@github.com/id3as/purescript-erl-cowboy.git"
+          , version =
+              "81e7e8ed5c89aaaacb9df23f181a325811969002"
+          }
       , strings =
           upstream.strings ⫽ { version = "v4.0.1-erl1" }
       , record-prefix =
