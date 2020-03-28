@@ -39,8 +39,6 @@ import Data.Maybe as Maybe
 import Data.Newtype (un, unwrap)
 import Data.Traversable (traverse)
 import Data.TraversableWithIndex (traverseWithIndex)
-import Data.Tuple (Tuple(..))
-import Data.Tuple as PursTuple
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, toUnfoldable, (:))
@@ -136,9 +134,15 @@ type DownstreamStreamRelayStateData =
 --       cases such as a failed deregistration followed quickly by
 --       a registration
 --
-type EgestMap = Map ServerAddress (Tuple (Process WebSocketHandlerMessage) (DeliverTo EgestServer))
-type OriginRelayMap = Map ServerAddress (Tuple (Process WebSocketHandlerMessage) (DeliverTo RelayServer))
-type DownstreamRelayMap = Map ServerAddress (Tuple (Process WebSocketHandlerMessage) DownstreamRelayWithSource)
+type EgestMap = Map ServerAddress { handler :: Process WebSocketHandlerMessage
+                                  , deliverTo :: DeliverTo EgestServer
+                                  }
+type OriginRelayMap = Map ServerAddress { handler :: Process WebSocketHandlerMessage
+                                        , deliverTo :: DeliverTo RelayServer
+                                        }
+type DownstreamRelayMap = Map ServerAddress { handler :: Process WebSocketHandlerMessage
+                                            , deliverToWithSource :: DownstreamRelayWithSource
+                                            }
 
 type OriginStreamRelayConfig =
   { egests :: EgestMap
@@ -247,7 +251,7 @@ registerEgest slotId slotRole egestServer egestPort handler@(Process handlerPid)
 
     egestAddress = (unwrap egestServer).address
     deliverTo = { server: egestServer, port: egestPort }
-    updateMap egests = Map.insert egestAddress (Tuple handler deliverTo) egests
+    updateMap egests = Map.insert egestAddress { handler, deliverTo } egests
     monitor = Gen.monitorPid (serverName $ RelayKey slotId slotRole) handlerPid (\_ -> EgestDown egestAddress)
 
 registerRelay :: SlotId -> SlotRole -> RelayServer -> Int -> SourceRoute -> (Process WebSocketHandlerMessage) -> Effect (Maybe SlotConfiguration)
@@ -260,7 +264,7 @@ registerRelay slotId slotRole relayServer relayPort sourceRoute handler@(Process
     doRegisterRelay (StateOrigin commonStateData@{thisServer} originStateData@{ config: config@{ downstreamRelays }, run: { slotConfiguration: slotConfig } }) = do
       -- TODO: PS: log if we've got a non-nil source when we're in origin mode
       let
-        newDownstreamRelays = Map.insert relayAddress (Tuple handler deliverTo) downstreamRelays
+        newDownstreamRelays = Map.insert relayAddress { handler, deliverTo} downstreamRelays
       CallReply slotConfig <$> applyOriginNewRelays newDownstreamRelays commonStateData originStateData
 
     doRegisterRelay (StateDownstream commonStateData@{thisServer} downstreamStateData@{ config: config@{ downstreamRelays }, run: { slotConfiguration: slotConfig } }) =
@@ -271,7 +275,7 @@ registerRelay slotId slotRole relayServer relayPort sourceRoute handler@(Process
               { source: { next: head, rest: tail }
               , deliverTo
               }
-            newDownstreamRelays = Map.insert relayAddress (Tuple handler downstreamRelayWithSource) downstreamRelays
+            newDownstreamRelays = Map.insert relayAddress { handler, deliverToWithSource: downstreamRelayWithSource} downstreamRelays
 
           CallReply slotConfig <$> applyDownstreamNewRelays newDownstreamRelays commonStateData downstreamStateData
 
@@ -440,7 +444,7 @@ status =
         publicState =
           { role : slotRole
           , egestsServed : JsonLd.egestServedLocationNode slotId slotRole <$> Map.keys originStateData.config.egests
-          , relaysServed : JsonLd.downstreamRelayLocationNode slotId slotRole <$> PursTuple.snd <$> Map.values originStateData.config.downstreamRelays
+          , relaysServed : JsonLd.downstreamRelayLocationNode slotId slotRole <$> _.deliverTo <$> Map.values originStateData.config.downstreamRelays
           }
     mkStatus (StateDownstream {relayKey: RelayKey slotId slotRole, thisServer} downstreamStateData) =
       JsonLd.streamRelayStateNode slotId publicState thisServer
@@ -448,7 +452,7 @@ status =
         publicState =
           { role : slotRole
           , egestsServed : JsonLd.egestServedLocationNode slotId slotRole <$> Map.keys downstreamStateData.config.egests
-          , relaysServed : JsonLd.downstreamRelayLocationNode slotId slotRole <$> _.deliverTo <$> PursTuple.snd <$> Map.values downstreamStateData.config.downstreamRelays
+          , relaysServed : JsonLd.downstreamRelayLocationNode slotId slotRole <$> _.deliverTo <$> _.deliverToWithSource <$> Map.values downstreamStateData.config.downstreamRelays
           }
 
 -- -----------------------------------------------------------------------------
@@ -515,7 +519,6 @@ init relayKey payload@{slotId, slotRole, aggregator} stateServerName =
     thisServer <- PoPDefinition.getThisServer
     egestSourceRoutes <- TransPoP.routesTo (extractPoP aggregator)
 
-
     IntraPoP.announceLocalRelayIsAvailable relayKey
     _ <- Bus.subscribe (serverName relayKey) IntraPoP.bus IntraPoPBus
     Gen.registerTerminate (serverName relayKey) terminate
@@ -532,6 +535,9 @@ init relayKey payload@{slotId, slotRole, aggregator} stateServerName =
       do
         workflowHandle <- startOriginWorkflowFFI (un SlotId slotId)
         config <- getCachedOriginConfig
+        monitorEgests config
+        monitorRelays config
+
         let
           initialOriginStateData =
             { workflowHandle
@@ -553,6 +559,8 @@ init relayKey payload@{slotId, slotRole, aggregator} stateServerName =
 
         workflowHandle <- startDownstreamWorkflowFFI (un SlotId slotId)
         config <- getCachedDownstreamConfig egestUpstreamRelays
+        monitorEgests config
+        monitorRelays config
 
         let
           initialDownstreamStateData =
@@ -584,6 +592,34 @@ init relayKey payload@{slotId, slotRole, aggregator} stateServerName =
         Just (CachedOrigin _ _ _) -> emptyDownstreamConfig egestUpstreamRelays
         Just (CachedDownstream cachedConfig _) -> cachedConfig
       <$> CachedInstanceState.getInstanceData stateServerName
+
+    emptyOriginConfig =
+      { egests: Map.empty
+      , downstreamRelays: Map.empty }
+
+    emptyDownstreamConfig egestUpstreamRelays =
+      { egestUpstreamRelays
+      , egests: Map.empty
+      , downstreamRelays: Map.empty }
+
+    monitorEgest egestAddress {handler: Process pid} =
+      Gen.monitorPid (serverName relayKey) pid (\_ -> EgestDown egestAddress)
+
+    monitorEgests :: forall r. {egests :: EgestMap | r} -> Effect Unit
+    monitorEgests {egests} = do
+      _ <- traverseWithIndex monitorEgest egests
+      pure unit
+
+    monitorRelay :: forall r1. ServerAddress -> { handler :: Process WebSocketHandlerMessage | r1} -> Effect Unit
+    monitorRelay relayAddress {handler: Process pid} =
+      Gen.monitorPid (serverName relayKey) pid (\_ -> RelayDown relayAddress)
+
+    monitorRelays :: forall r1 r2. { downstreamRelays :: Map ServerAddress { handler :: Process WebSocketHandlerMessage
+                                                                           | r1}
+                                   | r2 } -> Effect Unit
+    monitorRelays {downstreamRelays} = do
+      _ <- traverseWithIndex monitorRelay downstreamRelays
+      pure unit
 
 handleInfo :: Msg -> State -> Effect (CastResult State)
 handleInfo msg state =
@@ -652,12 +688,12 @@ handleInfo msg state =
     sendSlotConfiguration slotConfiguration process =
       process ! (WsSend $ SlotConfig slotConfiguration)
 
-    maybeSendSlotConfiguration :: forall r egestKey egestServer relayKey relayServer. Maybe SlotConfiguration -> Maybe SlotConfiguration -> {egests :: Map egestKey (Tuple (Process WebSocketHandlerMessage) egestServer),
-                                                                                                                                             downstreamRelays :: Map relayKey (Tuple (Process WebSocketHandlerMessage) relayServer) | r} -> Effect Unit
+    maybeSendSlotConfiguration :: forall r1 r2 r3 egestKey relayKey. Maybe SlotConfiguration -> Maybe SlotConfiguration -> {egests :: Map egestKey { handler :: Process WebSocketHandlerMessage | r1 },
+                                                                                                                                                    downstreamRelays :: Map relayKey { handler :: Process WebSocketHandlerMessage | r2 } | r3 } -> Effect Unit
     maybeSendSlotConfiguration Nothing (Just newSlotConfiguration) {egests, downstreamRelays} = do
       let
-        egestPids = Map.values egests <#> PursTuple.fst
-        relayPids = Map.values downstreamRelays <#> PursTuple.fst
+        egestPids = Map.values egests <#> _.handler
+        relayPids = Map.values downstreamRelays <#> _.handler
       _ <- traverse (sendSlotConfiguration newSlotConfiguration) (egestPids <> relayPids)
       pure unit
     maybeSendSlotConfiguration _oldRun _newRun _config =
@@ -734,8 +770,8 @@ originConfigToPlan { ingestAggregator, stateServerName } config@{ egests, downst
        , downstreamRelays: plannedDownstreamRelays
        }
   where
-    plannedEgests = egests # Map.values # map PursTuple.snd # map deliverToAddressFromDeliverToEgestServer
-    plannedDownstreamRelays = downstreamRelays # Map.values <#> PursTuple.snd # map deliverToAddressFromDeliverToRelayServer
+    plannedEgests = egests # Map.values # map _.deliverTo # map deliverToAddressFromDeliverToEgestServer
+    plannedDownstreamRelays = downstreamRelays # Map.values <#> _.deliverTo # map deliverToAddressFromDeliverToRelayServer
 
 downstreamConfigToPlan :: CommonStateData -> DownstreamStreamRelayConfig -> Effect DownstreamStreamRelayPlan
 downstreamConfigToPlan { ingestAggregator, stateServerName } config@{ egestUpstreamRelays } = do
@@ -746,9 +782,9 @@ downstreamConfigToPlan { ingestAggregator, stateServerName } config@{ egestUpstr
   where
     egestList = config.egests # Map.values
 
-    plannedEgests = egestList <#> PursTuple.snd <#> deliverToAddressFromDeliverToEgestServer
+    plannedEgests = egestList <#> _.deliverTo <#> deliverToAddressFromDeliverToEgestServer
 
-    plannedDownstreamRelays = downstreamRelayList <#> PursTuple.snd # map (_.deliverTo) # map deliverToAddressFromDeliverToRelayServer
+    plannedDownstreamRelays = downstreamRelayList <#> _.deliverToWithSource # map (_.deliverTo) # map deliverToAddressFromDeliverToRelayServer
 
     downstreamRelayList = config.downstreamRelays # Map.values
 
@@ -766,7 +802,7 @@ downstreamConfigToPlan { ingestAggregator, stateServerName } config@{ egestUpstr
 
     ensureRelaySourcesForDownstreamRelays downstreamRelays upstreamRelaySources =
       downstreamRelays
-        <#> PursTuple.snd
+        <#> _.deliverToWithSource
         # map (\relay -> { upstream: relay.source, downstream: deliverToAddressFromDeliverToRelayServer relay.deliverTo })
         # foldl (\z relay -> ensureRelaySource relay.upstream z) upstreamRelaySources
 
@@ -901,15 +937,6 @@ applyDownstreamNewRelays newDownstreamRelays commonStateData downstreamStateData
   let
     newDownstreamStateData = downstreamStateData{ config = newConfig, plan = Just newPlan }
   applyDownstreamPlan commonStateData newDownstreamStateData
-
-
-emptyOriginConfig :: OriginStreamRelayConfig
-emptyOriginConfig =
-  { egests: Map.empty, downstreamRelays: Map.empty }
-
-emptyDownstreamConfig :: List UpstreamRelay -> DownstreamStreamRelayConfig
-emptyDownstreamConfig egestUpstreamRelays =
-  { egestUpstreamRelays, egests: Map.empty, downstreamRelays: Map.empty }
 
 mkUpstreamRelay :: SourceRoute -> UpstreamRelay
 mkUpstreamRelay route =
