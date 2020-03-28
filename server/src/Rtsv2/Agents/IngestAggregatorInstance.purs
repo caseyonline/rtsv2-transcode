@@ -7,12 +7,12 @@ module Rtsv2.Agents.IngestAggregatorInstance
   , removeLocalIngest
   , removeRemoteIngest
   , registerRelay
-  , deRegisterRelay
   , getState
   , domain
   , RemoteIngestPayload
 
   , CachedState
+  , RegisteredRelay
   , StateServerName
   , streamDetailsToAggregatorKey
   ) where
@@ -33,10 +33,9 @@ import Data.Set as Set
 import Data.Symbol (SProxy(..))
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..))
-import Data.Tuple as PursTuple
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
-import Erl.Data.List (List, head, nil, (:))
+import Erl.Data.List (List, nil, (:))
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
 import Erl.Data.Tuple (Tuple3, toNested3, tuple3)
@@ -55,7 +54,7 @@ import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..), announceLocalAggregatorIsAvailable, announceLocalAggregatorStopped, currentRemoteRef)
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
-import Rtsv2.Agents.StreamRelayTypes (DeRegisterRelayPayload, DownstreamWsMessage)
+import Rtsv2.Agents.StreamRelayTypes (DownstreamWsMessage)
 import Rtsv2.Config as Config
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
@@ -64,7 +63,7 @@ import Shared.LlnwApiTypes (SlotProfile(..), StreamDetails)
 import Shared.Router.Endpoint (Endpoint(..), makeUrl)
 import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Stream (AggregatorKey(..), IngestKey(..), ProfileName, SlotId, SlotRole, ingestKeyToAggregatorKey)
-import Shared.Types (DeliverTo, RelayServer(..), Server, extractAddress)
+import Shared.Types (DeliverTo, RelayServer, Server, extractAddress)
 import Shared.Types.Agent.State as PublicState
 import Shared.UUID (UUID)
 
@@ -77,9 +76,13 @@ foreign import removeIngestImpl :: WorkflowHandle -> IngestKey -> Effect Unit
 foreign import registerStreamRelayImpl :: WorkflowHandle -> String -> Int -> Effect Unit
 foreign import deRegisterStreamRelayImpl :: WorkflowHandle -> String -> Int -> Effect Unit
 
+type RegisteredRelay = { port :: Int
+                       , handler :: Process DownstreamWsMessage
+                       }
+
 type CachedState = { localIngests :: Set ProfileName
                    , remoteIngests :: Map ProfileName (Tuple Server Ref)
-                   , relays :: Map RelayServer Int
+                   , relays :: Map RelayServer RegisteredRelay
                    }
 
 type StateServerName = CachedInstanceState.StateServerName CachedState
@@ -106,6 +109,7 @@ type State
 data Msg
   = IntraPoPBus IntraPoP.IntraPoPBusMessage
   | MaybeStop
+  | RelayDown RelayServer
 
 isInstanceAvailable :: AggregatorKey -> Effect Boolean
 isInstanceAvailable aggregatorKey = do
@@ -150,26 +154,10 @@ registerRelay :: SlotId -> SlotRole -> DeliverTo RelayServer -> Process Downstre
 registerRelay slotId slotRole deliverTo handler =
   Gen.doCall (serverName $ key)
   (\state@{thisServer, slotConfiguration} -> do
-    CallReply slotConfiguration <$> doRegisterRelay deliverTo state
+    CallReply slotConfiguration <$> doRegisterRelay deliverTo handler state
   )
   where
     key = AggregatorKey slotId slotRole
-
-deRegisterRelay :: DeRegisterRelayPayload -> Effect Unit
-deRegisterRelay {slotId, slotRole, relayServerAddress} =
-  Gen.doCall (serverName (AggregatorKey slotId slotRole))
-  (\state@{cachedState: cachedState@{relays}, workflowHandle} -> do
-    let
-      deRegisterStreamRelayImpl' Nothing = pure unit
-      deRegisterStreamRelayImpl' (Just port) = deRegisterStreamRelayImpl workflowHandle (unwrap relayServerAddress) port
-
-      maybeItem = head $ Map.toUnfoldable $ Map.filterWithKey (\(Relay {address}) _ -> address == relayServerAddress) relays
-      maybeRelay = PursTuple.fst <$> maybeItem
-      maybePort = PursTuple.snd <$> maybeItem
-      state2 = fromMaybe state $ ((flip removeRelayFromCachedState state) <$> maybeRelay)
-    deRegisterStreamRelayImpl' maybePort
-    pure $ CallReply unit state2
-  )
 
 checkVmRef :: Ref -> Server -> Effect Boolean
 checkVmRef remoteVmRef remoteServer = do
@@ -205,7 +193,7 @@ getState aggregatorKey@(AggregatorKey slotId slotRole) = Gen.call (serverName ag
         gatherState = { role: slotRole
                       , streamDetails
                       , activeProfiles: (\(Tuple profileName server) -> JsonLd.activeIngestLocationNode slotId slotRole profileName (extractAddress server)) <$> allProfiles
-                      , downstreamRelays: foldlWithIndex (\server acc port -> (JsonLd.downstreamRelayLocationNode slotId slotRole {server, port}) : acc) nil relays
+                      , downstreamRelays: foldlWithIndex (\server acc {port} -> (JsonLd.downstreamRelayLocationNode slotId slotRole {server, port}) : acc) nil relays
                       }
         localProfiles outerAcc = foldl (\acc profileName -> (Tuple profileName thisServer) : acc) outerAcc localIngests
         remoteProfiles outerAcc = foldlWithIndex (\profileName acc (Tuple remoteServer ref) -> (Tuple profileName remoteServer) : acc) outerAcc remoteIngests
@@ -276,7 +264,7 @@ streamDetailsToAggregatorKey streamDetails =
   AggregatorKey streamDetails.slot.id streamDetails.role
 
 handleInfo :: Msg -> State -> Effect (CastResult State)
-handleInfo msg state@{aggregatorKey, stateServerName} =
+handleInfo msg state@{aggregatorKey, stateServerName, workflowHandle} =
   case msg of
     IntraPoPBus (VmReset server oldRef newRef) -> do
       _ <- logInfo "Server reset" {server}
@@ -285,6 +273,13 @@ handleInfo msg state@{aggregatorKey, stateServerName} =
 
     IntraPoPBus (IngestAggregatorExited _ _) ->
       pure $ CastNoReply state
+
+    RelayDown relayServer -> do
+      let
+        serverAddress = relayServer # unwrap # _.address # unwrap
+        maybeExistingPort = view (_relays <<< (at relayServer)) state
+      fromMaybe (pure unit) $ deRegisterStreamRelayImpl workflowHandle serverAddress <$> _.port <$> maybeExistingPort
+      pure $ CastNoReply (removeRelayFromCachedState relayServer state)
 
     MaybeStop
       | not hasIngests state -> do
@@ -316,8 +311,8 @@ applyCachedState state {localIngests, remoteIngests, relays} =
                                            Left unit -> innerState2
                                            Right newState -> newState
                                      ) innerState remoteIngests)
-  >>= (\ innerState -> foldWithIndexM (\server innerState2 port ->
-                                        doRegisterRelay {server, port} innerState2) innerState relays)
+  >>= (\ innerState -> foldWithIndexM (\server innerState2 {port, handler} ->
+                                        doRegisterRelay {server, port} handler innerState2) innerState relays)
 
 addLocalIngestToCachedState :: ProfileName -> State -> State
 addLocalIngestToCachedState ingestKey = set (_localIngests <<< (at ingestKey)) (Just unit)
@@ -325,8 +320,8 @@ addLocalIngestToCachedState ingestKey = set (_localIngests <<< (at ingestKey)) (
 addRemoteIngestToCachedState :: ProfileName -> Server -> Ref -> State -> State
 addRemoteIngestToCachedState ingestKey remoteServer ref = set (_remoteIngests <<< (at ingestKey)) (Just (Tuple remoteServer ref))
 
-addRelayToCachedState :: (DeliverTo RelayServer) -> State -> State
-addRelayToCachedState {server, port} = set (_relays <<< (at server)) (Just port)
+addRelayToCachedState :: (DeliverTo RelayServer) -> Process DownstreamWsMessage -> State -> State
+addRelayToCachedState {server, port} handler = set (_relays <<< (at server)) (Just {port, handler})
 
 removeLocalIngestFromCachedState :: ProfileName -> State -> State
 removeLocalIngestFromCachedState profileName = set (_localIngests <<< (at profileName)) Nothing
@@ -379,21 +374,23 @@ doAddRemoteIngest profileName remoteServer remoteVmRef state@{slotId, slotRole, 
       logInfo "Remote Ingest rejected due to existing ingest" {slotId, slotRole, profileName}
       pure $ Left unit
 
-doRegisterRelay :: (DeliverTo RelayServer) -> State -> Effect State
-doRegisterRelay deliverTo@{server} state@{slotId, slotRole, workflowHandle} = do
+doRegisterRelay :: (DeliverTo RelayServer) -> Process DownstreamWsMessage -> State -> Effect State
+doRegisterRelay deliverTo@{server} handler@(Process handlerPid) state@{slotId, slotRole, workflowHandle} = do
+  -- todo - monitor handler
   logInfo "Relay added" {slotId, slotRole, deliverTo}
   let
     maybeExistingPort = view (_relays <<< (at server)) state
   deRegisterStreamRelayImpl' maybeExistingPort
   let
-    state2 = addRelayToCachedState deliverTo state
+    state2 = addRelayToCachedState deliverTo handler state
   updateCachedState state2
   registerStreamRelayImpl workflowHandle serverAddress (deliverTo.port)
+  Gen.monitorPid (serverName $ AggregatorKey slotId slotRole) handlerPid (\_ -> RelayDown server)
   pure state2
   where
     serverAddress = server # unwrap # _.address # unwrap
     deRegisterStreamRelayImpl' Nothing = pure unit
-    deRegisterStreamRelayImpl' (Just port) = deRegisterStreamRelayImpl workflowHandle serverAddress port
+    deRegisterStreamRelayImpl' (Just {port}) = deRegisterStreamRelayImpl workflowHandle serverAddress port
 
 doRemoveIngest :: ProfileName -> (ProfileName -> State -> State) -> State -> Effect State
 doRemoveIngest profileName cachedStateRemoveFun state@{aggregatorKey, workflowHandle, config:{shutdownLingerTimeMs}, slotId, slotRole} = do
@@ -428,7 +425,7 @@ _localIngests = __cachedState <<< __localIngests
 _remoteIngests :: Lens' State (Map ProfileName (Tuple Server Ref))
 _remoteIngests = __cachedState <<< __remoteIngests
 
-_relays :: Lens' State (Map RelayServer Int)
+_relays :: Lens' State (Map RelayServer RegisteredRelay)
 _relays = __cachedState <<< __relays
 
 --------------------------------------------------------------------------------

@@ -1,10 +1,6 @@
 module Rtsv2.Agents.StreamRelayTypes
   ( CreateRelayPayload
   , CreateProxyPayload
-  , RegisterRelayPayload
-  , RegisterEgestPayload
-  , DeRegisterRelayPayload
-  , DeRegisterEgestPayload
   , RelayToRelayClientWsMessage(..)
   , EgestClientWsMessage(..)
   , DownstreamWsMessage(..)
@@ -13,11 +9,10 @@ module Rtsv2.Agents.StreamRelayTypes
 
 import Prelude
 
-import Erl.Data.List (List)
 import Foreign (F, Foreign, ForeignError(..), fail)
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
 import Shared.Stream (SlotId, SlotRole)
-import Shared.Types (DeliverTo, EgestServer, PoPName, RelayServer, Server, ServerAddress, SourceRoute)
+import Shared.Types (PoPName, Server)
 import Simple.JSON (class ReadForeign, class WriteForeign, readImpl, writeImpl)
 
 type CreateRelayPayload
@@ -31,31 +26,6 @@ type CreateProxyPayload
     , slotRole :: SlotRole
     , proxyFor :: PoPName
     , aggregator:: Server
-    }
-
-type RegisterRelayPayload
-  = { slotId :: SlotId
-    , slotRole :: SlotRole
-    , deliverTo :: DeliverTo RelayServer
-    , sourceRoute :: SourceRoute
-    }
-
-type DeRegisterRelayPayload
-  = { slotId :: SlotId
-    , slotRole :: SlotRole
-    , relayServerAddress :: ServerAddress
-    }
-
-type RegisterEgestPayload
-  = { slotId :: SlotId
-    , slotRole :: SlotRole
-    , deliverTo :: DeliverTo EgestServer
-    }
-
-type DeRegisterEgestPayload
-  = { slotId :: SlotId
-    , slotRole :: SlotRole
-    , egestServerAddress :: ServerAddress
     }
 
 data RelayToRelayClientWsMessage = RelayToRelay Unit

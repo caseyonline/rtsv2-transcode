@@ -1,5 +1,6 @@
 module WsGun
        ( openWebSocket
+       , closeWebSocket
        , messageMapper
        , processMessage
        , send
@@ -68,6 +69,7 @@ data ProcessError errorMsg = Error errorMsg
                            | UnknownSocket
 
 foreign import openImpl :: Url -> Effect (Either Foreign (Tuple2 ConnPid String))
+foreign import closeImpl :: ConnPid -> Effect Unit
 foreign import upgradeImpl :: Pid -> String -> Effect StreamRef
 foreign import messageMapperImpl :: Foreign -> Maybe GunMsg
 foreign import sendImpl :: String -> Pid -> Effect Unit
@@ -76,6 +78,10 @@ openWebSocket :: forall clientMsg serverMsg. Url -> Effect (Either Foreign (WebS
 openWebSocket url = do
   res <- openImpl url
   pure $ (\tuple -> Connection (fst tuple) (snd tuple)) <$> res
+
+closeWebSocket :: forall clientMsg serverMsg. WebSocket clientMsg serverMsg -> Effect Unit
+closeWebSocket (Connection connPid _path) =
+  closeImpl connPid
 
 processMessage :: forall clientMsg serverMsg. ReadForeign serverMsg => WebSocket clientMsg serverMsg -> GunMsg -> Effect (Either GunProtocolError (ProcessResponse serverMsg))
 processMessage _socket@(Connection _connPid path)  gunMsg@(GunUp connPid _protocol) = do

@@ -9,7 +9,7 @@ module Rtsv2.Agents.EgestInstance
   , CreateEgestPayload
 
   , CachedState
-  , DeleteData
+  , WebSocket
   , StateServerName
   , domain
 ) where
@@ -20,7 +20,7 @@ import Bus as Bus
 import Data.Either (Either(..))
 import Data.Foldable (foldl)
 import Data.Int (round, toNumber)
-import Data.Maybe (Maybe(..), maybe')
+import Data.Maybe (Maybe(..), fromMaybe, maybe')
 import Data.Newtype (class Newtype, unwrap, wrap)
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..))
@@ -44,7 +44,7 @@ import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.Locator.Types (LocalOrRemote(..), RegistrationResp, ResourceResp)
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
 import Rtsv2.Agents.StreamRelaySup (startRelay) as StreamRelaySup
-import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload, DeRegisterEgestPayload, DownstreamWsMessage(..), EgestClientWsMessage, RegisterEgestPayload)
+import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload, DownstreamWsMessage(..), EgestClientWsMessage)
 import Rtsv2.Audit as Audit
 import Rtsv2.Config as Config
 import Rtsv2.Names as Names
@@ -56,7 +56,7 @@ import Shared.LlnwApiTypes (StreamIngestProtocol(..))
 import Shared.Router.Endpoint (Endpoint(..), makeUrl, makeWsUrl)
 import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Stream (AggregatorKey(..), EgestKey(..), RelayKey(..), SlotId, SlotRole)
-import Shared.Types (DeliverTo, EgestServer(..), Load, RelayServer, Server, ServerLoad(..))
+import Shared.Types (DeliverTo, EgestServer(..), Load, RelayServer, Server, ServerLoad(..), extractAddress)
 import Shared.Types.Agent.State as PublicState
 import SpudGun as SpudGun
 import WsGun as WsGun
@@ -72,20 +72,16 @@ type CreateEgestPayload
     , aggregator :: Server
     }
 
-data DeleteData = LocalDelete DeRegisterEgestPayload
-                | RemoteDelete Server DeRegisterEgestPayload
-
-type CachedState = DeleteData
-
 type StateServerName = CachedInstanceState.StateServerName CachedState
 
 type WebSocket = WsGun.WebSocket EgestClientWsMessage DownstreamWsMessage
+
+type CachedState = WebSocket
 
 type State
   = { egestKey :: EgestKey
     , aggregator :: Server
     , thisServer :: EgestServer
-    , cachedState :: Maybe CachedState
     , clientCount :: Int
     , lingerTime :: Milliseconds
     , relayCreationRetry :: Milliseconds
@@ -120,7 +116,7 @@ stopAction :: EgestKey -> Maybe CachedState -> Effect Unit
 stopAction egestKey mCachedState = do
   logInfo "Egest stopping" {egestKey}
   IntraPoP.announceLocalEgestStopped egestKey
--- todo  fromMaybe (pure unit) $ deRegisterWithRelay <$> mCachedState
+  fromMaybe (pure unit) $ WsGun.closeWebSocket <$> mCachedState
   pure unit
 
 pendingClient :: EgestKey -> Effect RegistrationResp
@@ -184,7 +180,6 @@ init payload@{slotId, slotRole, aggregator} stateServerName = do
     state ={ egestKey
            , aggregator
            , thisServer : toEgestServer thisServer
-           , cachedState : Nothing
            , clientCount : 0
            , lingerTime : wrap $ toNumber lingerTimeMs
            , relayCreationRetry : wrap $ toNumber relayCreationRetryMs
@@ -263,16 +258,6 @@ handleInfo msg state@{egestKey: egestKey@(EgestKey slotId slotRole)} =
               pure $ CastNoReply state
       else
         pure $ CastNoReply state
-
-    deliverTo :: DeliverTo EgestServer
-    deliverTo = { server: state.thisServer, port: state.receivePortNumber }
-
-    registrationPayload  :: RegisterEgestPayload
-    registrationPayload =
-      { slotId
-      , slotRole
-      , deliverTo: deliverTo
-      }
 
 removeClient :: State -> Effect State
 removeClient state@{clientCount: 0} = do
@@ -366,55 +351,16 @@ initStreamRelay state@{relayCreationRetry, egestKey: egestKey@(EgestKey slotId s
 
     tryConfigureAndRegister relayServer =
       do
-        -- todo - don't need registrationPayload
-        Tuple deleteData webSocket <- registerWithRelay relayServer registrationPayload
-        CachedInstanceState.recordInstanceData stateServerName deleteData
+        let
+          wsUrl = makeWsUrl relayServer $ RelayRegisteredEgestWs slotId slotRole (extractAddress thisServer) state.receivePortNumber
+        webSocket <- crashIfLeft =<< WsGun.openWebSocket wsUrl
 
+        CachedInstanceState.recordInstanceData stateServerName webSocket
+
+        -- TODO - do we need this?  If websocket drops, then we start timer....
         void retryLater
 
-        pure state{ cachedState = Just deleteData
-                  , relayWebSocket = Just webSocket}
-
-    deliverTo :: DeliverTo EgestServer
-    deliverTo = { server: state.thisServer, port: state.receivePortNumber }
-
-    registrationPayload  :: RegisterEgestPayload
-    registrationPayload =
-      { slotId
-      , slotRole
-      , deliverTo: deliverTo
-      }
-
--- todo - don't need payload - also rename - it's just "createRelayWebsocket"
-registerWithRelay :: Server -> RegisterEgestPayload -> Effect (Tuple DeleteData WebSocket)
-registerWithRelay remoteServer payload@{slotId, slotRole, deliverTo: {server: Egest {address: egestServerAddress}, port}} =
-  do
-    let
-      wsUrl = makeWsUrl remoteServer $ RelayRegisteredEgestWs slotId slotRole egestServerAddress port
-    webSocket <- crashIfLeft =<< WsGun.openWebSocket wsUrl
-    pure $ Tuple (RemoteDelete remoteServer {slotId, slotRole, egestServerAddress}) webSocket
-
--- todo - do we need?  just close Websocket and the handler will deRegister in the terminate...
--- deRegisterWithRelay :: DeleteData -> Effect Unit
--- deRegisterWithRelay (LocalDelete payload) =
---   do
---     _ <- noprocToMaybe $ StreamRelayInstance.deRegisterEgest payload
---     pure unit
--- deRegisterWithRelay (RemoteDelete remoteServer {slotId, slotRole, egestServerAddress}) =
---   do
---     let
---       deleteUrl = makeUrl remoteServer (RelayRegisteredEgestE slotId slotRole egestServerAddress)
---     void <$> crashIfLeft =<< SpudGun.delete deleteUrl {}
---     pure unit
-
--- getRelaySlotConfiguration :: Server -> SlotId -> SlotRole -> Effect (Maybe SlotConfiguration)
--- getRelaySlotConfiguration relayServer slotId slotRole =
---   do
---     slotConfiguration' <- SpudGun.getJson configURL
---     pure $ log $ hush $ (SpudGun.bodyToJSON slotConfiguration')
---   where
---     configURL = makeUrl relayServer $ RelaySlotConfigurationE slotId slotRole
---     log = spy $ "Egest Instance Slot Config from Remote Relay"
+        pure state{ relayWebSocket = Just webSocket}
 
 --------------------------------------------------------------------------------
 -- Do we have a relay in this pop - yes -> use it

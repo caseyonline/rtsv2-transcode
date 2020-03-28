@@ -1,13 +1,8 @@
 module Rtsv2.Handler.Relay
        ( startResource
        , ensureStarted
-       -- , registerEgest
-       -- , registerRelay
-       , deRegisterEgest
-       , deRegisterRelay
        , registeredRelayWs
        , registeredEgestWs
-       --, slotConfiguration
        , stats
        , proxiedStats
        , StartState
@@ -52,31 +47,13 @@ import Stetson (HttpMethod(..), StetsonHandler, WebSocketHandler)
 import Stetson.Rest as Rest
 import Stetson.Types (WebSocketCallResult(..))
 import Stetson.WebSocket as WebSocket
-import StetsonHelper (DeleteHandler, GetHandler, PostHandler, allBody, binaryToString, jsonResponse, processDelete, processPostPayload)
+import StetsonHelper (GetHandler, PostHandler, allBody, binaryToString, jsonResponse, processPostPayload)
 
 stats :: SlotId -> SlotRole -> GetHandler (StreamRelay List)
 stats slotId slotRole = jsonResponse $ Just <$> (StreamRelayInstance.status $ RelayKey slotId slotRole)
 
 startResource :: PostHandler CreateRelayPayload
 startResource = processPostPayload StreamRelaySup.startRelay
-
--- registerEgest :: PostHandler RegisterEgestPayload
--- registerEgest = processPostPayload StreamRelayInstance.registerEgest
-
--- registerRelay :: PostHandler RegisterRelayPayload
--- registerRelay = processPostPayload StreamRelayInstance.registerRelay
-
-deRegisterEgest :: SlotId -> SlotRole -> ServerAddress -> DeleteHandler
-deRegisterEgest slotId slotRole egestServerAddress =
-  processDelete (Just <$> (StreamRelayInstance.deRegisterEgest {slotId, slotRole, egestServerAddress}))
-
-deRegisterRelay :: SlotId -> SlotRole -> ServerAddress -> DeleteHandler
-deRegisterRelay slotId slotRole relayServerAddress =
-  processDelete (Just <$> (StreamRelayInstance.deRegisterRelay {slotId, slotRole, relayServerAddress}))
-
--- slotConfiguration :: SlotId -> SlotRole -> GetHandler (Maybe SlotConfiguration)
--- slotConfiguration slotId role =
---   jsonResponse $ Just <$> (StreamRelayInstance.slotConfiguration (RelayKey slotId role))
 
 newtype ProxyState
   = ProxyState { whereIsResp :: Maybe Server
@@ -211,7 +188,7 @@ registeredRelayWs =
 
     wsInit state@{slotId, slotRole, relayServer, relayPort, sourceRoute} = do
       self <- Process <$> Erl.self :: Effect (Process WebSocketHandlerMessage)
-      maybeSlotConfiguration <- StreamRelayInstance.registerRelay {slotId, slotRole, deliverTo: {server: relayServer, port: relayPort}, sourceRoute} self
+      maybeSlotConfiguration <- StreamRelayInstance.registerRelay slotId slotRole relayServer relayPort sourceRoute self
       pure $ case maybeSlotConfiguration of
                Nothing -> WebSocketNoReply state
                Just slotConfiguration -> WebSocketReply (SlotConfig slotConfiguration) state
@@ -260,7 +237,7 @@ registeredEgestWs =
 
     wsInit state@{slotId, slotRole, egestServer, egestPort} = do
       self <- Process <$> Erl.self :: Effect (Process WebSocketHandlerMessage)
-      maybeSlotConfiguration <- StreamRelayInstance.registerEgest {slotId, slotRole, deliverTo: {server: egestServer, port: egestPort}} self --todo: and pid
+      maybeSlotConfiguration <- StreamRelayInstance.registerEgest slotId slotRole egestServer egestPort self
       pure $ case maybeSlotConfiguration of
                Nothing -> WebSocketNoReply state
                Just slotConfiguration -> WebSocketReply (SlotConfig slotConfiguration) state

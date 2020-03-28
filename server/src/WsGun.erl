@@ -1,6 +1,7 @@
 -module(wsGun@foreign).
 
 -export([ openImpl/1
+        , closeImpl/1
         , upgradeImpl/2
         , sendImpl/2
         , messageMapperImpl/1
@@ -25,6 +26,11 @@ openImpl(Url) ->
         {error, Reason} ->
           {left, Reason}
       end
+  end.
+
+closeImpl(ConnPid) ->
+  fun() ->
+      ok = gun:close(ConnPid)
   end.
 
 sendImpl(Msg, ConnPid) ->
