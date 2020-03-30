@@ -72,7 +72,7 @@ let overrides =
       , erl-stetson =
             upstream.erl-stetson
           ⫽ { version =
-                "914803225f19533c7962e0aab5d498458370bad7"
+                "ee4f7cf591b38e900bd39e3396243b956587c626"
             , dependencies =
                 [ "erl-cowboy", "routing-duplex" ]
             }
