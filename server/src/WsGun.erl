@@ -30,7 +30,10 @@ openImpl(Url) ->
 
 closeImpl(ConnPid) ->
   fun() ->
-      ok = gun:close(ConnPid)
+      case gun:close(ConnPid) of
+        ok -> io:format(user, "Socket ~p closed~n", [ConnPid]), ok;
+        {error, not_found} -> io:format(user, "Socket ~p not found~n", [ConnPid]), ok
+      end
   end.
 
 sendImpl(Msg, ConnPid) ->

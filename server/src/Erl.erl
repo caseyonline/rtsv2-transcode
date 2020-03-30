@@ -7,6 +7,7 @@
         , privDirImpl/1
         , eqRefImpl/2
         , selfImpl/0
+        , monitorImpl/1
         , trapExitImpl/1
         , mapExitReasonImpl/1
         , exitMessageMapperImpl/1
@@ -45,6 +46,29 @@ selfImpl() ->
 trapExitImpl(Value) ->
   fun() ->
       process_flag(trap_exit, Value)
+  end.
+
+monitorImpl(ToMonitor) ->
+  fun() ->
+      Pid = case ToMonitor of
+              P when is_pid(P) ->
+                P;
+              {via, Module, Name} ->
+                Module:whereis_name(Name);
+              {global, Name} ->
+                global:whereis_name(Name);
+              Name when is_atom(Name) ->
+                whereis(Name)
+            end,
+
+      case Pid of
+        undefined ->
+          %% DOWN
+          Ref = make_ref(),
+          self() ! {'DOWN', Ref, process, undefined, noproc};
+        _ ->
+          erlang:monitor(process, Pid)
+      end
   end.
 
 mapExitReasonImpl(normal) -> {normal};

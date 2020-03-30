@@ -7,43 +7,43 @@ module Rtsv2.Handler.Relay
        , proxiedStats
        , StartState
        , ProxyState
-
-       , webSocketHandler
-       , WebSocketHandlerResult(..)
        ) where
 
 import Prelude
 
 import Data.Either (Either(..), hush, isRight)
-import Data.Maybe (Maybe(..), fromMaybe', isJust, isNothing, maybe)
+import Data.Maybe (Maybe(..), fromMaybe, fromMaybe', isJust, isNothing, maybe)
 import Data.Newtype (unwrap)
 import Effect (Effect)
-import Erl.Atom (atom)
+import Erl.Atom (Atom)
 import Erl.Cowboy.Handlers.Rest (moved, notMoved)
 import Erl.Cowboy.Handlers.WebSocket (Frame(..))
 import Erl.Cowboy.Req (Req, StatusCode(..), replyWithoutBody, setHeader)
-import Erl.Cowboy.Req as Req
 import Erl.Data.List (List, singleton, (:))
 import Erl.Data.Map as Map
 import Erl.Process (Process(..))
 import Erl.Utils as Erl
+import Foreign (Foreign)
 import Logger (spy)
+import Logger as Logger
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.Locator.Relay (findOrStart)
 import Rtsv2.Agents.Locator.Types (LocalOrRemote(..), NoCapacity(..), ResourceResp, fromLocalOrRemote)
 import Rtsv2.Agents.StreamRelayInstance as StreamRelayInstance
 import Rtsv2.Agents.StreamRelaySup as StreamRelaySup
 import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload, DownstreamWsMessage(..), EgestClientWsMessage, RelayToRelayClientWsMessage, WebSocketHandlerMessage(..))
+import Rtsv2.Handler.Helper (WebSocketHandlerResult(..), webSocketHandler)
 import Rtsv2.Handler.MimeType as MimeType
+import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
-import Shared.Router.Endpoint (Endpoint(..), makeUrl, parseSlotId, parseSlotRole, parseServerAddress, parseInt, parseSourceRoute)
+import Shared.Router.Endpoint (Endpoint(..), makeUrl)
 import Shared.Stream (RelayKey(..), SlotId, SlotRole)
 import Shared.Types (EgestServer(..), RelayServer(..), Server, ServerAddress, ServerLocation(..), SourceRoute, extractAddress)
 import Shared.Types.Agent.State (StreamRelay)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (class ReadForeign, class WriteForeign, readJSON, writeJSON)
 import Simple.JSON as JSON
-import Stetson (HttpMethod(..), StetsonHandler, WebSocketHandler)
+import Stetson (HttpMethod(..), InnerStetsonHandler, StetsonHandler)
 import Stetson.Rest as Rest
 import Stetson.Types (WebSocketCallResult(..))
 import Stetson.WebSocket as WebSocket
@@ -151,43 +151,28 @@ ensureStarted =
           Rest.result notMoved req state
 
 type WsRelayState =
-  { slotId :: SlotId
-  , slotRole :: SlotRole
-  , relayAddress :: ServerAddress
-  , relayPort :: Int
-  , relayServer :: RelayServer
-  , sourceRoute :: SourceRoute
+  { relayServer :: RelayServer
   , relayKey :: RelayKey
   }
 
-registeredRelayWs :: WebSocketHandler WebSocketHandlerMessage WsRelayState
-registeredRelayWs =
+registeredRelayWs :: SlotId -> SlotRole -> ServerAddress -> Int -> SourceRoute -> InnerStetsonHandler WebSocketHandlerMessage WsRelayState
+registeredRelayWs slotId slotRole relayAddress relayPort sourceRoute =
   webSocketHandler init wsInit handle info
   where
     init req = do
-      let
-        slotId = fromMaybe' (lazyCrashIfMissing "no slot_id binding") $ parseSlotId =<< Req.binding (atom "slot_id") req
-        slotRole = fromMaybe' (lazyCrashIfMissing "no slot_role binding") $ parseSlotRole =<< Req.binding (atom "slot_role") req
-        relayAddress = fromMaybe' (lazyCrashIfMissing "no server_address binding") $ parseServerAddress =<< Req.binding (atom "server_address") req
-        relayPort = fromMaybe' (lazyCrashIfMissing "no port") $ parseInt =<< Req.binding (atom "port") req
-        sourceRoute = fromMaybe' (lazyCrashIfMissing "no source_route") $ parseSourceRoute =<< Req.binding (atom "source_route") req
       mServerLocation <- PoPDefinition.whereIsServer relayAddress
       let
         ServerLocation {pop, region} = fromMaybe' (lazyCrashIfMissing "unknown server") mServerLocation
-      pure { slotId
-           , slotRole
-           , relayAddress
-           , relayPort
-           , relayServer: Relay { address: relayAddress
+      pure { relayServer: Relay { address: relayAddress
                                 , pop
                                 , region
                                 }
-           , sourceRoute
            , relayKey: RelayKey slotId slotRole
            }
 
-    wsInit state@{slotId, slotRole, relayServer, relayPort, sourceRoute} = do
+    wsInit state@{relayServer, relayKey} = do
       self <- Process <$> Erl.self :: Effect (Process WebSocketHandlerMessage)
+      Erl.monitor (Names.streamRelayInstanceStateName relayKey)
       maybeSlotConfiguration <- StreamRelayInstance.registerRelay slotId slotRole relayServer relayPort sourceRoute self
       pure $ case maybeSlotConfiguration of
                Nothing -> WebSocketNoReply state
@@ -203,40 +188,28 @@ registeredRelayWs =
       pure $ WebSocketReply msg state
 
 type WsEgestState =
-  { slotId :: SlotId
-  , slotRole :: SlotRole
-  , egestAddress :: ServerAddress
-  , egestPort :: Int
-  , egestServer :: EgestServer
+  { egestServer :: EgestServer
   , relayKey :: RelayKey
   }
 
-registeredEgestWs :: WebSocketHandler WebSocketHandlerMessage WsEgestState
-registeredEgestWs =
+registeredEgestWs :: SlotId -> SlotRole -> ServerAddress -> Int -> InnerStetsonHandler WebSocketHandlerMessage WsEgestState--WebSocketHandler WebSocketHandlerMessage WsEgestState
+registeredEgestWs slotId slotRole egestAddress egestPort =
   webSocketHandler init wsInit handle info
   where
     init req = do
-      let
-        slotId = fromMaybe' (lazyCrashIfMissing "no slot_id binding") $ parseSlotId =<< Req.binding (atom "slot_id") req
-        slotRole = fromMaybe' (lazyCrashIfMissing "no slot_role binding") $ parseSlotRole =<< Req.binding (atom "slot_role") req
-        egestAddress = fromMaybe' (lazyCrashIfMissing "no server_address binding") $ parseServerAddress =<< Req.binding (atom "server_address") req
-        egestPort = fromMaybe' (lazyCrashIfMissing "no port") $ parseInt =<< Req.binding (atom "port") req
       mServerLocation <- PoPDefinition.whereIsServer egestAddress
       let
         ServerLocation {pop, region} = fromMaybe' (lazyCrashIfMissing "unknown server") mServerLocation
-      pure { slotId
-           , slotRole
-           , egestAddress
-           , egestPort
-           , egestServer: Egest { address: egestAddress
+      pure { egestServer: Egest { address: egestAddress
                                 , pop
                                 , region
                                 }
            , relayKey: RelayKey slotId slotRole
            }
 
-    wsInit state@{slotId, slotRole, egestServer, egestPort} = do
+    wsInit state@{egestServer, relayKey} = do
       self <- Process <$> Erl.self :: Effect (Process WebSocketHandlerMessage)
+      Erl.monitor (Names.streamRelayInstanceStateName relayKey)
       maybeSlotConfiguration <- StreamRelayInstance.registerEgest slotId slotRole egestServer egestPort self
       pure $ case maybeSlotConfiguration of
                Nothing -> WebSocketNoReply state
@@ -246,65 +219,14 @@ registeredEgestWs =
     handle state _ = do
       pure $ WebSocketNoReply state
 
-    info state WsStop =
+    info state WsStop = do
+      _ <- logInfo StreamRelayInstance.domain "Agent closed - closing websocket" {}
       pure $ WebSocketStop state
     info state (WsSend msg) =
       pure $ WebSocketReply msg state
 
--- TODO Largely generic helper - could move into StetsonHelper at some point....
-data WebSocketHandlerResult serverMsg state = WebSocketNoReply state
-                                            | WebSocketReply serverMsg state
-                                            | WebSocketStop state
-
-webSocketHandler :: forall clientMsg serverMsg infoMsg state. ReadForeign clientMsg => WriteForeign serverMsg =>
-                    (Req -> Effect state) ->
-                    (state -> Effect (WebSocketHandlerResult serverMsg state)) ->
-                    (state -> clientMsg -> Effect (WebSocketHandlerResult serverMsg state)) ->
-                    (state -> infoMsg -> Effect (WebSocketHandlerResult serverMsg state)) ->
-                    WebSocketHandler infoMsg state
-webSocketHandler init wsInit handle info =
-  WebSocket.handler (\req -> do
-                        state <- init req
-                        WebSocket.initResult req state
-                    )
-
-  # WebSocket.init (\router state -> do
-                     res <- wsInit state
-                     pure $ dispatchResult res
-                   )
-
-  # WebSocket.handle (\rawFrame state ->
-                       case rawFrame of
-                         TextFrame str ->
-                           case readJSON str of
-                             Left _ ->
-                               -- todo - what about parse failures?  Should crash?
-                               pure $ NoReply state
-                             Right frame -> do
-                               res <- handle state frame
-                               pure $ dispatchResult res
-                         BinaryFrame bin ->
-                           pure $ NoReply state
-                         PingFrame bin ->
-                           pure $ NoReply state
-                         PongFrame bin ->
-                           pure $ NoReply state
-                     )
-
-  # WebSocket.info (\msg state -> do
-                       res <- info state msg
-                       pure $ dispatchResult res
-                   )
-  --# WebSocket.yeeha - no yeeha...
-  where
-    dispatchResult res =
-      case res of
-        WebSocketNoReply state ->
-          NoReply state
-        WebSocketReply response state ->
-          let
-            str = writeJSON response
-          in
-            Reply (singleton (TextFrame str)) state
-        WebSocketStop state ->
-          Stop state
+--------------------------------------------------------------------------------
+-- Log helpers
+--------------------------------------------------------------------------------
+logInfo :: forall a. List Atom -> String -> a -> Effect Unit
+logInfo domain msg misc = Logger.doLog domain Logger.info msg misc

@@ -213,7 +213,7 @@ handleInfo msg state@{egestKey: egestKey@(EgestKey slotId slotRole)} =
 
     InitStreamRelays -> CastNoReply <$> initStreamRelay state
 
-    MaybeStop ref -> maybeStop ref state
+    MaybeStop ref -> maybeStop ref
 
     IntraPoPBus (IngestAggregatorExited (AggregatorKey exitedSlotId exitedSlotRole) serverAddress)
       | exitedSlotId == slotId && exitedSlotRole == slotRole -> doStop state
@@ -226,6 +226,10 @@ handleInfo msg state@{egestKey: egestKey@(EgestKey slotId slotRole)} =
       processGunMessage state gunMsg
 
   where
+    maybeStop ref
+      | (state.clientCount == 0) && (Just ref == state.stopRef) = doStop state
+      | otherwise = pure $ CastNoReply state
+
     processGunMessage state@{relayWebSocket: Nothing} gunMsg =
       pure $ CastNoReply state
 
@@ -245,8 +249,8 @@ handleInfo msg state@{egestKey: egestKey@(EgestKey slotId slotRole)} =
             pure $ CastNoReply state
 
           Right WsGun.WebSocketDown -> do
-            -- todo - kick off timer?  If websocket doesn't recover, attempt to launch new relay?
-            pure $ CastNoReply state
+            _ <- logInfo "Relay WebSocket down" {}
+            CastNoReply <$> initStreamRelay state
 
           Right (WsGun.Frame (SlotConfig slotConfiguration))
             | Nothing <- state.slotConfiguration -> do
@@ -314,13 +318,6 @@ egestEqLine slotId thisServerAddr startMs endMs {channels} =
   , lostPackets: lostAcc
   }
 
-maybeStop :: Ref -> State -> Effect (CastResult State)
-maybeStop ref state@{ clientCount
-                    , stopRef
-                    }
-  | (clientCount == 0) && (Just ref == stopRef) = doStop state
-  | otherwise = pure $ CastNoReply state
-
 doStop :: State -> Effect (CastResult State)
 doStop state@{egestKey} = do
   -- Stop actions are all performed in stopAction, which gets called by the CachedState gen_server
@@ -335,7 +332,7 @@ initStreamRelay state@{relayCreationRetry, egestKey: egestKey@(EgestKey slotId s
       case relayResp of
         Left _ ->
           do
-            void retryLater
+            _ <- Timer.sendAfter (serverName egestKey) (round $ unwrap relayCreationRetry) InitStreamRelays
             pure state
 
         Right (Local local) ->
@@ -347,8 +344,6 @@ initStreamRelay state@{relayCreationRetry, egestKey: egestKey@(EgestKey slotId s
       pure state
 
   where
-    retryLater = Timer.sendAfter (serverName egestKey) (round $ unwrap relayCreationRetry) InitStreamRelays
-
     tryConfigureAndRegister relayServer =
       do
         let
@@ -356,9 +351,6 @@ initStreamRelay state@{relayCreationRetry, egestKey: egestKey@(EgestKey slotId s
         webSocket <- crashIfLeft =<< WsGun.openWebSocket wsUrl
 
         CachedInstanceState.recordInstanceData stateServerName webSocket
-
-        -- TODO - do we need this?  If websocket drops, then we start timer....
-        void retryLater
 
         pure state{ relayWebSocket = Just webSocket}
 

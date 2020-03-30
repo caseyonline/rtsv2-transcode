@@ -102,19 +102,12 @@ init args = do
         , "EgestE"                                      : dummyHandler -- TODO write this - needed for a client to create a remote egest
         , "RelayE"                                      : RelayHandler.startResource
         , "RelayEnsureStartedE"                         : RelayHandler.ensureStarted
---        , "RelayRegisterEgestE"                         : RelayHandler.registerEgest
---        , "RelayRegisterRelayE"                         : RelayHandler.registerRelay
---        , "RelaySlotConfigurationE"                     : RelayHandler.slotConfiguration
---        , "RelayRegisteredEgestE"                       : RelayHandler.deRegisterEgest
---        , "RelayRegisteredRelayE"                       : RelayHandler.deRegisterRelay
-        , "RelayRegisteredRelayWs"                      : CowboyRoutePlaceholder
-        , "RelayRegisteredEgestWs"                      : CowboyRoutePlaceholder
+        , "RelayRegisteredRelayWs"                      : RelayHandler.registeredRelayWs
+        , "RelayRegisteredEgestWs"                      : RelayHandler.registeredEgestWs
 
         , "IngestAggregatorActiveIngestsE"              : IngestAggregatorHandler.ingestAggregatorsActiveIngest
---        , "IngestAggregatorSlotConfigurationE"          : IngestAggregatorHandler.slotConfiguration
---        , "IngestAggregatorRegisterRelayE"              : IngestAggregatorHandler.registerRelay
---        , "IngestAggregatorRegisteredRelayE"            : IngestAggregatorHandler.deRegisterRelay
-        , "IngestAggregatorRegisteredRelayWs"           : CowboyRoutePlaceholder
+        , "IngestAggregatorRegisteredRelayWs"           : IngestAggregatorHandler.registeredRelayWs
+
         , "IngestInstanceLlwpE"                         : CowboyRoutePlaceholder
         , "IntraPoPTestHelperE"                         : IntraPoPHandler.testHelper
         , "LoadE"                                       : LoadHandler.load
@@ -172,22 +165,7 @@ init args = do
                    "llwp_stream_resource"
                    ((unsafeToForeign) makeSlotIdAndProfileName)
 
-      -- RelayRegisteredRelayWs
-      : cowboyRoute ("/system/relay/" <> slotIdBinding <> "/" <> slotRoleBinding <> "/relays/" <> serverAddressBinding <> "/" <> portBinding <> "/" <> sourceRouteBinding <> "/ws")
-                  "stetson_webSocketHandler@ps"
-                  (unsafeToForeign RelayHandler.registeredRelayWs)
-
-      -- RelayRegisteredEgestWs
-      : cowboyRoute ("/system/relay/" <> slotIdBinding <> "/" <> slotRoleBinding <> "/egests/" <> serverAddressBinding <> "/" <> portBinding <> "/ws")
-                  "stetson_webSocketHandler@ps"
-                  (unsafeToForeign RelayHandler.registeredEgestWs)
-
-      -- IngestAggregatorRegisteredRelayWs
-      : cowboyRoute ("/system/ingestAggregator/" <> slotIdBinding <> "/" <> slotRoleBinding <> "/relays/" <> serverAddressBinding <> "/" <> portBinding <> "/ws")
-                  "stetson_webSocketHandler@ps"
-                  (unsafeToForeign IngestAggregatorHandler.registeredRelayWs)
-
-      --WorkflowsE
+      --workflows
       : cowboyRoute ("/system/workflows") "id3as_workflows_resource" (unsafeToForeign unit)
       -- WorkflowGraphE String
       : cowboyRoute ("/system/workflows" <> referenceBinding <> "/graph") "id3as_workflow_graph_resource" (unsafeToForeign (atom "graph"))

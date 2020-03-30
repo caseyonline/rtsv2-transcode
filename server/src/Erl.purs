@@ -8,6 +8,7 @@ module Erl.Utils
        , shutdown
        , trapExit
        , exit
+       , monitor
        , mapExitReason
        , exitMessageMapper
        , Ref
@@ -26,8 +27,11 @@ import Data.Maybe (Maybe, maybe)
 import Data.Newtype (unwrap, wrap)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
+import Erl.Data.Tuple (tuple2, tuple3)
+import Erl.ModuleName (NativeModuleName(..))
 import Erl.Process.Raw (Pid)
-import Foreign (Foreign, ForeignError(..), tagOf)
+import Foreign (Foreign, ForeignError(..), tagOf, unsafeToForeign)
+import Pinto (ServerName(..))
 import Shared.Common (Milliseconds)
 import Simple.JSON (class ReadForeign, class WriteForeign)
 
@@ -46,6 +50,7 @@ foreign import shutdownImpl :: Pid -> Effect Unit
 foreign import exitMessageMapperImpl :: Foreign -> Maybe ExitMessage
 foreign import refToStringImpl :: Ref -> Foreign
 foreign import stringToRefImpl :: Foreign -> Maybe Ref
+foreign import monitorImpl :: Foreign -> Effect Unit
 
 data ExitReason = Normal
                 | Shutdown Foreign
@@ -85,6 +90,11 @@ trapExit = trapExitImpl
 
 self :: Effect Pid
 self = selfImpl
+
+monitor :: forall a b. ServerName a b -> Effect Unit
+monitor (Local name) = monitorImpl $ unsafeToForeign $ name
+monitor (Global name) = monitorImpl $ unsafeToForeign $ tuple2 (atom "global") name
+monitor (Via (NativeModuleName m) name) = monitorImpl $ unsafeToForeign $ tuple3 (atom "via") m name
 
 shutdown :: Pid -> Effect Unit
 shutdown = shutdownImpl

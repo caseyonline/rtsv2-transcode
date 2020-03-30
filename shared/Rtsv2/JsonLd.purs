@@ -381,7 +381,7 @@ ingestAggregatorStateNode slotId state@{role: slotRole} server =
   wrap { resource: state
        , "@id": Just $ makeUrl server (IngestAggregatorE slotId slotRole)
        , "@nodeType": Just "http://types.rtsv2.llnw.com/IngestAggregator"
-       , "@context": Just $ ContextUrl $ makePath $ JsonLdContext EgestStatsContext
+       , "@context": Just $ ContextUrl $ makePath $ JsonLdContext IngestAggregatorStateContext
        }
 
 ------------------------------------------------------------------------------
@@ -411,7 +411,7 @@ streamRelayStateNode :: forall f. SlotId -> StreamRelayState f -> Server -> Stre
 streamRelayStateNode slotId state@{role: slotRole} server =
   wrap { resource: state
        , "@id": Just $ makeUrl server (RelayStatsE slotId slotRole)
-       , "@nodeType": Just "http://types.rtsv2.llnw.com/IngestAggregator"
+       , "@nodeType": Just "http://types.rtsv2.llnw.com/StreamRelay"
        , "@context": Just $ ContextUrl $ makePath $ JsonLdContext StreamRelayStateContext
        }
 

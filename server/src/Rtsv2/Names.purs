@@ -31,6 +31,8 @@ module Rtsv2.Names
        , transPoPName
        , webServerName
        , toDomain
+
+       , gprocName
        )
        where
 

@@ -7,6 +7,7 @@ module Rtsv2.Config
   , PoPDefinitionConfig
   , IntraPoPAgentConfig
   , TransPoPAgentConfig
+  , StreamRelayConfig
   , EgestAgentConfig
   , IntraPoPAgentApi
   , TransPoPAgentApi
@@ -23,6 +24,7 @@ module Rtsv2.Config
   , ingestStatsConfig
   , ingestInstanceConfig
   , ingestAggregatorAgentConfig
+  , streamRelayConfig
   , egestAgentConfig
   , rtmpIngestConfig
   , llnwApiConfig
@@ -109,6 +111,10 @@ type TransPoPAgentConfig
     , replayMessagesOnJoin :: Boolean
     }
 
+type StreamRelayConfig
+  = { lingerTimeMs :: Int
+    }
+
 type IntraPoPAgentApi
   = { announceOtherPoPAggregatorIsAvailable :: AgentKey -> Server -> Effect Unit
     , announceOtherPoPAggregatorStopped :: AgentKey -> Server -> Effect Unit
@@ -188,6 +194,10 @@ transPoPAgentConfig = do
 ingestAggregatorAgentConfig :: Effect IngestAggregatorAgentConfig
 ingestAggregatorAgentConfig = do
   getMandatoryRecord "ingestAggregatorConfig"
+
+streamRelayConfig :: Effect StreamRelayConfig
+streamRelayConfig = do
+  getMandatoryRecord "streamRelayConfig"
 
 ingestStatsConfig :: Effect IngestStatsConfig
 ingestStatsConfig = do
