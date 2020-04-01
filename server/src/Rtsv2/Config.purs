@@ -113,6 +113,7 @@ type TransPoPAgentConfig
 
 type StreamRelayConfig
   = { lingerTimeMs :: Int
+    , reApplyPlanTimeMs :: Int
     }
 
 type IntraPoPAgentApi

@@ -34,7 +34,6 @@ import Data.Array as Array
 import Data.Either (Either(..))
 import Data.Foldable (find, foldl)
 import Data.FoldableWithIndex (foldlWithIndex)
-import Data.Int (round)
 import Data.Maybe (Maybe(..))
 import Data.Maybe as Maybe
 import Data.Newtype (un, unwrap)
@@ -71,7 +70,6 @@ import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Utils (crashIfLeft)
 import Shared.Agent as Agent
-import Shared.Common (Milliseconds(..))
 import Shared.Router.Endpoint (Endpoint(..), makeUrlAddr, makeWsUrl, makeWsUrlAddr)
 import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Stream (AggregatorKey(..), RelayKey(..), SlotId(..), SlotRole)
@@ -479,6 +477,7 @@ data Msg = IntraPoPBus IntraPoP.IntraPoPBusMessage
          | EgestDown ServerAddress
          | RelayDown ServerAddress
          | MaybeStop Ref
+         | ReApplyPlan
 
 payloadToRelayKey :: forall r. { slotId :: SlotId, slotRole :: SlotRole | r } -> RelayKey
 payloadToRelayKey payload = RelayKey payload.slotId payload.slotRole
@@ -643,6 +642,11 @@ handleInfo :: Msg -> State -> Effect (CastResult State)
 handleInfo msg state =
   case msg of
 
+    ReApplyPlan
+      | StateOrigin common run <- state -> CastNoReply <$> applyOriginPlan common run
+      | StateDownstream common run <- state -> CastNoReply <$> applyDownstreamPlan common run
+      | otherwise -> pure $ CastNoReply state -- todo - why clause needed?
+
     IntraPoPBus (IngestAggregatorExited (AggregatorKey slotId slotRole) serverAddress)
      -- TODO - PRIMARY BACKUP
       | slotId == ourSlotId -> pure $ CastStop state
@@ -749,15 +753,17 @@ handleInfo msg state =
       _ <- traverse (sendSlotConfiguration newSlotConfiguration) (egestPids <> relayPids)
       pure unit
 
-    processGunMessage state@(StateOrigin common origin@{config, run: run@{ingestAggregatorState}}) gunMsg = do
+    processGunMessage state@(StateOrigin common@{config: {reApplyPlanTimeMs}} origin@{config, run: run@{ingestAggregatorState}}) gunMsg = do
       case findAggregatorSocket gunMsg ingestAggregatorState of
         Just {portNumber, socket} -> do
           let
             noop =
               pure state
 
-            down =
-              applyOriginPlan common origin{ run = run { ingestAggregatorState = IngestAggregatorStatePendingRegistration portNumber} }
+            down = do
+              _ <- logInfo "Aggregator down, scheduling replay" {reApplyPlanTimeMs}
+              _ <- Timer.sendAfter (serverName relayKey) reApplyPlanTimeMs ReApplyPlan
+              pure $ StateOrigin common origin{ run = run { ingestAggregatorState = IngestAggregatorStatePendingRegistration portNumber} }
 
             slotConfig slotConfiguration
               | Nothing <- run.slotConfiguration = do
@@ -773,18 +779,19 @@ handleInfo msg state =
         Nothing ->
           pure $ CastNoReply state
 
-    processGunMessage state@(StateDownstream common downstream@{config, run: run@{upstreamRelayStates}}) gunMsg =
+    processGunMessage state@(StateDownstream common@{config: {reApplyPlanTimeMs}} downstream@{config, run: run@{upstreamRelayStates}}) gunMsg =
       case findUpstreamSocket gunMsg upstreamRelayStates of
         Just {upstreamRelay, socket, portNumber} -> do
           let
             noop =
               pure state
 
-            down =
+            down = do
+              _ <- logInfo "Upstream Relay down, scheduling replay" {upstreamRelay, reApplyPlanTimeMs}
+              _ <- Timer.sendAfter (serverName relayKey) reApplyPlanTimeMs ReApplyPlan
               let
                 newRelayStates = Map.insert upstreamRelay (UpstreamRelayStatePendingRegistration portNumber) upstreamRelayStates
-              in
-                applyDownstreamPlan common downstream{run = run{ upstreamRelayStates = newRelayStates } }
+              pure $ StateDownstream common downstream{run = run{ upstreamRelayStates = newRelayStates } }
 
             slotConfig slotConfiguration
               | Nothing <- run.slotConfiguration = do

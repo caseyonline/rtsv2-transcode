@@ -9,6 +9,7 @@ module Rtsv2.Agents.IngestInstance
    , StartArgs
 
    , CachedState
+   , WebSocket
    , StateServerName
    , domain
 ) where
@@ -34,31 +35,30 @@ import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
-import Rtsv2.Agents.IngestAggregatorInstance (RemoteIngestPayload)
-import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
 import Rtsv2.Agents.IngestAggregatorSup as IngestAggregatorSup
 import Rtsv2.Agents.IngestStats as IngestStats
 import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..), launchLocalOrRemoteGeneric)
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.Locator (extractServer)
 import Rtsv2.Agents.Locator.Types (LocalOrRemote(..), ResourceResp)
+import Rtsv2.Agents.StreamRelayTypes (DownstreamWsMessage(..), IngestToAggregatorClientWsMessage)
 import Rtsv2.Audit as Audit
 import Rtsv2.Config as Config
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Utils (crashIfLeft)
 import Shared.Agent as Agent
-import Shared.Common (Milliseconds, Url)
+import Shared.Common (Milliseconds)
 import Shared.LlnwApiTypes (StreamDetails, StreamPublish(..))
-import Shared.Router.Endpoint (Endpoint(..), makeUrl)
+import Shared.Router.Endpoint (Endpoint(..), makeUrl, makeWsUrl)
 import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Stream (AggregatorKey, IngestKey(..), ingestKeyToAggregatorKey)
-import Shared.Types (Load, Server, ServerLoad(..))
+import Shared.Types (Load, Server, ServerLoad(..), extractAddress)
 import Shared.Types.Agent.State as PublicState
 import Shared.Types.Media.Types.Rtmp (RtmpClientMetadata)
 import Shared.Types.Media.Types.SourceDetails (SourceInfo)
-import SpudGun (SpudError(..))
 import SpudGun as SpudGun
+import WsGun as WsGun
 
 serverName :: IngestKey -> ServerName State Msg
 serverName ingestKey = Names.ingestInstanceName ingestKey
@@ -68,10 +68,11 @@ data Msg
    | InformAggregator
    | IntraPoPBus IntraPoP.IntraPoPBusMessage
    | HandlerDown
+   | Gun WsGun.GunMsg
 
-type CachedState =
-  { aggregatorAddr :: Maybe (LocalOrRemote Server)
-  }
+type WebSocket = WsGun.WebSocket IngestToAggregatorClientWsMessage DownstreamWsMessage
+
+type CachedState = WebSocket
 
 type StateServerName = CachedInstanceState.StateServerName CachedState
 
@@ -86,7 +87,7 @@ type State
     , remoteAddress :: String
     , remotePort :: Int
     , localPort :: Int
-    , cachedState :: CachedState
+    , aggregatorWebSocket :: Maybe WebSocket
     , clientMetadata :: Maybe (RtmpClientMetadata List)
     , sourceInfo :: Maybe (SourceInfo List)
     , stateServerName :: StateServerName
@@ -105,18 +106,10 @@ startLink :: StartArgs -> StateServerName -> Effect StartLinkResult
 startLink args@{ingestKey} stateServerName = Gen.startLink (serverName ingestKey) (init args stateServerName) handleInfo
 
 stopAction :: IngestKey -> Maybe CachedState -> Effect Unit
-stopAction ingestKey Nothing = pure unit
-stopAction ingestKey (Just {aggregatorAddr: Nothing}) = pure unit
-stopAction ingestKey (Just {aggregatorAddr: Just addr}) =
-  removeIngest addr
-  where
-    removeIngest (Local aggregator) = do
-      IngestAggregatorInstance.removeLocalIngest ingestKey
-      pure unit
-    removeIngest (Remote aggregator) = do
-      let
-        url = makeActiveIngestUrl aggregator ingestKey
-      void $ crashIfLeft =<< SpudGun.delete url {}
+stopAction ingestKey mCachedState = do
+  logInfo "Ingest stopping" {ingestKey}
+  fromMaybe (pure unit) $ WsGun.closeWebSocket <$> mCachedState
+  pure unit
 
 isActive :: IngestKey -> Effect Boolean
 isActive ingestKey = Pinto.isRegistered (serverName ingestKey)
@@ -175,13 +168,14 @@ init { streamPublish
   void $ Bus.subscribe ourServerName IntraPoP.bus IntraPoPBus
   void $ Timer.sendAfter ourServerName 0 InformAggregator
   void $ Timer.sendEvery ourServerName eqLogIntervalMs WriteEqLog
+  Gen.registerExternalMapping (serverName ingestKey) (\m -> Gun <$> (WsGun.messageMapper m))
 
   pure { thisServer
        , streamPublish
        , streamDetails
        , ingestKey
        , aggregatorRetryTime: wrap $ toNumber intraPoPLatencyMs
-       , cachedState: {aggregatorAddr: Nothing}
+       , aggregatorWebSocket: Nothing
        , clientMetadata: Nothing
        , sourceInfo: Nothing
        , remoteAddress
@@ -202,19 +196,14 @@ handleInfo msg state@{ingestKey} = case msg of
     pure $ CastNoReply state{lastIngestAuditTime = eqLine.endMs}
 
   InformAggregator -> do
-    result <- informAggregator state
-    case result of
-      Right state2 ->
-        pure $ CastNoReply state2
-      Left unit -> do
-        logInfo "Aggregator did not allow ingest to register; stopping ingest" {ingestKey}
-        pure $ CastStop state
+    state2 <- informAggregator state
+    pure $ CastNoReply state2
 
   IntraPoPBus (VmReset _ _ _) ->
     pure $ CastNoReply state
 
   IntraPoPBus (IngestAggregatorExited aggregatorKey serverAddress) -> do
-    logInfo "exit" {aggregatorKey, serverAddress, ingestKey: state.ingestKey}
+    logInfo "Aggregator has exited" {aggregatorKey, serverAddress, ingestKey: state.ingestKey}
     state2 <- handleAggregatorExit aggregatorKey serverAddress state
     pure $ CastNoReply state2
 
@@ -222,6 +211,39 @@ handleInfo msg state@{ingestKey} = case msg of
     logInfo "RTMP Handler has exited" {ingestKey}
     doStopIngest state
     pure $ CastStop state
+
+  Gun gunMsg ->
+    processGunMessage state gunMsg
+
+  where
+    processGunMessage state@{aggregatorWebSocket: Nothing} gunMsg =
+      pure $ CastNoReply state
+
+    processGunMessage state@{aggregatorWebSocket: Just socket} gunMsg =
+      if WsGun.isSocketForMessage gunMsg socket then do
+        processResponse <- WsGun.processMessage socket gunMsg
+        case processResponse of
+          Left error -> do
+            _ <- logInfo "Gun process error" {error}
+            pure $ CastNoReply state
+
+          Right (WsGun.Internal _) ->
+            pure $ CastNoReply state
+
+          Right WsGun.WebSocketUp -> do
+            _ <- logInfo "Aggregator WebSocket up" {}
+            pure $ CastNoReply state
+
+          Right WsGun.WebSocketDown -> do
+            _ <- logInfo "Aggregator WebSocket down" {}
+            state2 <- informAggregator state
+            pure $ CastNoReply state2
+
+          Right (WsGun.Frame (SlotConfig _)) ->
+            pure $ CastNoReply state
+
+      else
+        pure $ CastNoReply state
 
 ingestEqLine :: State -> Effect Audit.IngestEqLine
 ingestEqLine state@{ ingestKey: ingestKey@(IngestKey slotId slotRole _profileeName)
@@ -263,43 +285,24 @@ doStopIngest state@{ingestKey} = do
   Audit.ingestStop eqLine
   pure unit
 
-informAggregator :: State -> Effect (Either Unit State)
-informAggregator state@{streamDetails, ingestKey, thisServer, aggregatorRetryTime, stateServerName} = do
+informAggregator :: State -> Effect State
+informAggregator state@{streamDetails, ingestKey: ingestKey@(IngestKey slotId slotRole profileName), thisServer, aggregatorRetryTime, stateServerName} = do
   maybeAggregator <- hush <$> getAggregator
-  maybeIngestAdded <- sequence (addIngest <$> (extractServer <$>  maybeAggregator))
-  case fromMaybe (Right false) maybeIngestAdded of
-    Right true -> do
-      let
-        cachedState = {aggregatorAddr: maybeAggregator}
-      CachedInstanceState.recordInstanceData stateServerName cachedState
-      pure $ Right state{cachedState = cachedState}
-    Right false -> do
+  maybeIngestAdded <- sequence (addIngest <$> (extractServer <$> maybeAggregator))
+  case maybeIngestAdded of
+    Just webSocket -> do
+      CachedInstanceState.recordInstanceData stateServerName webSocket
+      pure $ state{aggregatorWebSocket = Just webSocket}
+    Nothing -> do
       void $ Timer.sendAfter (serverName ingestKey) (round $ unwrap aggregatorRetryTime) InformAggregator
-      pure $ Right state
-    Left unit -> do
-      pure $ Left unit
+      pure $ state
   where
-    addIngest :: Server -> Effect (Either Unit Boolean)
-    addIngest aggregatorAddress
-      | aggregatorAddress == thisServer = do
-        result <- IngestAggregatorInstance.addLocalIngest ingestKey
-        pure $ case result of
-                 true -> Right true
-                 false -> Left unit
-      | otherwise = do
+    addIngest :: Server -> Effect WebSocket
+    addIngest aggregatorAddress = do
         let
-          -- TODO - functions to make URLs from Server
-          url = makeActiveIngestUrl aggregatorAddress ingestKey
-        vmRef <- IntraPoP.currentLocalRef
-        restResult <- SpudGun.postJson url $ ({ ingestAddress: thisServer
-                                              , vmRef: vmRef} :: RemoteIngestPayload)
-        case restResult of
-          Left (RequestError _) -> pure $ Right false -- We treat network errors etc as transitory and try again
-          Left (ResponseError response) -> do
-            logInfo "Failed to register with aggregator; exiting" {ingestKey, aggregatorAddress, response}
-            pure $ Left unit
-          Right _ ->
-            pure $ Right true
+          wsUrl = makeWsUrl aggregatorAddress $ IngestAggregatorRegisteredIngestWs slotId slotRole profileName (extractAddress thisServer)
+        webSocket <- crashIfLeft =<< WsGun.openWebSocket wsUrl
+        pure webSocket
 
     getAggregator :: Effect (ResourceResp Server)
     getAggregator = do
@@ -324,16 +327,13 @@ informAggregator state@{streamDetails, ingestKey, thisServer, aggregatorRetryTim
           void $ crashIfLeft =<< SpudGun.postJson url streamDetails
 
 handleAggregatorExit :: AggregatorKey -> Server -> State -> Effect State
-handleAggregatorExit exitedAggregatorKey exitedAggregatorAddr state@{ingestKey, aggregatorRetryTime, cachedState: {aggregatorAddr}}
-  | exitedAggregatorKey == (ingestKeyToAggregatorKey ingestKey) && Just exitedAggregatorAddr == (extractServer <$> aggregatorAddr) = do
+handleAggregatorExit exitedAggregatorKey exitedAggregatorAddr state@{ingestKey, aggregatorRetryTime, aggregatorWebSocket: mWebSocket}
+  | exitedAggregatorKey == (ingestKeyToAggregatorKey ingestKey) = do
+      fromMaybe (pure unit) $ WsGun.closeWebSocket <$> mWebSocket
       void $ Timer.sendAfter (serverName ingestKey) 0 InformAggregator
       pure state
   | otherwise =
       pure state
-
-makeActiveIngestUrl :: Server -> IngestKey -> Url
-makeActiveIngestUrl server (IngestKey slotId slotRole profileName) =
-  makeUrl server $ IngestAggregatorActiveIngestsE slotId slotRole profileName
 
 loadThresholdToCreateAggregator :: Load
 loadThresholdToCreateAggregator = wrap 50.0

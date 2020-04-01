@@ -839,7 +839,7 @@ main =
                                                     >>= assertAggregator []
                                                                           >>= as  "aggregator has no ingests"
 
-          it "4.4 Launch ingest with remote aggregator, terminate ingest node, ingest aggregator removes ingest from list of active ingests" do
+          itOnly "4.4 Launch ingest with remote aggregator, terminate ingest node, ingest aggregator removes ingest from list of active ingests" do
             traverse_ maxOut (allNodesBar p1n2)                           >>= as' "load up all servers bar one"
             waitForIntraPoPDisseminate                                    >>= as' "allow load to disseminate"
             ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200  >>= as  "create ingest"

@@ -105,7 +105,7 @@ init args = do
         , "RelayRegisteredRelayWs"                      : RelayHandler.registeredRelayWs
         , "RelayRegisteredEgestWs"                      : RelayHandler.registeredEgestWs
 
-        , "IngestAggregatorActiveIngestsE"              : IngestAggregatorHandler.ingestAggregatorsActiveIngest
+        , "IngestAggregatorRegisteredIngestWs"          : IngestAggregatorHandler.registeredIngestWs
         , "IngestAggregatorRegisteredRelayWs"           : IngestAggregatorHandler.registeredRelayWs
 
         , "IngestInstanceLlwpE"                         : CowboyRoutePlaceholder

@@ -607,7 +607,7 @@ joinAllSerf state@{ config: config@{rejoinEveryMs}, serfRpcAddress, members } =
                                      url = makeUrlAddr serverAddress TransPoPLeaderE
 
                                    restResult <- bodyToString <$> SpudGun.getText url
-                                   case spy "spawnFunrestResult" restResult of
+                                   case restResult of
                                      Left _ -> pure unit
                                      Right "" -> pure unit
                                      Right addr -> do

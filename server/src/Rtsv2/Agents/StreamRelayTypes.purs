@@ -3,6 +3,7 @@ module Rtsv2.Agents.StreamRelayTypes
   , CreateProxyPayload
   , RelayToRelayClientWsMessage(..)
   , EgestClientWsMessage(..)
+  , IngestToAggregatorClientWsMessage(..)
   , DownstreamWsMessage(..)
   , WebSocketHandlerMessage(..)
   ) where
@@ -28,6 +29,8 @@ type CreateProxyPayload
     , aggregator:: Server
     }
 
+data IngestToAggregatorClientWsMessage = IngestToAggregator Unit
+
 data RelayToRelayClientWsMessage = RelayToRelay Unit
 
 data EgestClientWsMessage = EdgeToRelay Unit
@@ -36,6 +39,11 @@ data DownstreamWsMessage = SlotConfig SlotConfiguration
 
 data WebSocketHandlerMessage = WsStop
                              | WsSend DownstreamWsMessage
+
+------------------------------------------------------------------------------
+-- IngestToAggregatorClientWsMessage
+instance readForeignIngestToAggregatorClientWsMessage :: ReadForeign IngestToAggregatorClientWsMessage where
+  readImpl o = fail $ ForeignError ("no client message")
 
 ------------------------------------------------------------------------------
 -- RelayToRelayClientWsMessage

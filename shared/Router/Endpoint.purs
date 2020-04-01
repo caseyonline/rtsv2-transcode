@@ -79,24 +79,15 @@ data Endpoint
   | EgestE
   | RelayE
   | RelayEnsureStartedE
---  | RelayRegisterEgestE
---  | RelayRegisterRelayE
---  | RelaySlotConfigurationE SlotId SlotRole
---  | RelayRegisteredEgestE SlotId SlotRole ServerAddress
---  | RelayRegisteredRelayE SlotId SlotRole ServerAddress
   | RelayRegisteredRelayWs SlotId SlotRole ServerAddress Int SourceRoute
   | RelayRegisteredEgestWs SlotId SlotRole ServerAddress Int
-  | IngestAggregatorActiveIngestsE SlotId SlotRole ProfileName
---  | IngestAggregatorSlotConfigurationE SlotId SlotRole
---  | IngestAggregatorRegisterRelayE
---  | IngestAggregatorRegisteredRelayE SlotId SlotRole ServerAddress
+  | IngestAggregatorRegisteredIngestWs SlotId SlotRole ProfileName ServerAddress
   | IngestAggregatorRegisteredRelayWs SlotId SlotRole ServerAddress Int
   | IngestInstanceLlwpE SlotId SlotRole ProfileName
   | IntraPoPTestHelperE
   | LoadE
   | RelayProxiedStatsE SlotId SlotRole
   | Chaos
-
 
   | IngestStartE Canary RtmpShortName SlotNameAndProfileName
   | IngestStopE Canary SlotId SlotRole ProfileName
@@ -165,20 +156,10 @@ endpoint = root $ sum
 
   , "RelayE"                                           : "system" / "relay" / path "egest"  noArgs
   , "RelayEnsureStartedE"                              : "system" / "relay" / path "ensureStarted"  noArgs
---  , "RelayRegisterEgestE"                              : "system" / "relay" / "register" / path "egest" noArgs
---  , "RelayRegisterRelayE"                              : "system" / "relay" / "register" / path "relay" noArgs
---  , "RelaySlotConfigurationE"                          : "system" / "relay" / slotId segment / slotRole segment / "slot"
---  , "RelayRegisteredEgestE"                            : "system" / "relay" / slotId segment / slotRole segment / "egests" / serverAddress segment
---  , "RelayRegisteredRelayE"                            : "system" / "relay" / slotId segment / slotRole segment / "relays" / serverAddress segment
   , "RelayRegisteredRelayWs"                           : "system" / "relay" / slotId segment / slotRole segment / "relays" / serverAddress segment / port segment / sourceRoute segment / "ws"
   , "RelayRegisteredEgestWs"                           : "system" / "relay" / slotId segment / slotRole segment / "egests" / serverAddress segment / port segment / "ws"
 
-  , "IngestAggregatorActiveIngestsE"                   : "system" / "ingestAggregator" / slotId segment / slotRole segment / "activeIngests" / profileName segment
---  , "IngestAggregatorSlotConfigurationE"               : "system" / "ingestAggregator" / slotId segment / slotRole segment / "slot"
-
---, "IngestAggregatorRegisterRelayE"                   : "system" / "ingestAggregator" / path "register" noArgs
-
---  , "IngestAggregatorRegisteredRelayE"                 : "system" / "ingestAggregator" / slotId segment / slotRole segment / "relays" / serverAddress segment
+  , "IngestAggregatorRegisteredIngestWs"               : "system" / "ingestAggregator" / slotId segment / slotRole segment / "ingests" / profileName segment / serverAddress segment / "ws"
   , "IngestAggregatorRegisteredRelayWs"                : "system" / "ingestAggregator" / slotId segment / slotRole segment / "relays" / serverAddress segment / port segment / "ws"
 
   , "IngestInstanceLlwpE"                              : "system" / "ingest" / slotId segment / slotRole segment / profileName segment / "llwp" -- URL duplicated in Web.purs

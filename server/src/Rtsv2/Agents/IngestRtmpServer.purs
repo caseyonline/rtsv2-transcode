@@ -72,39 +72,20 @@ init _ = do
   {streamAuthTypeUrl, streamAuthUrl, streamPublishUrl} <- Config.llnwApiConfig
   let
     callbacks :: Callbacks
-    callbacks = { init: mkFn3 handlerInit
+    callbacks = { init: mkFn3 onConnectCallback
                 }
   crashIfLeft =<< startServerImpl Left (Right unit) interfaceIp port nbAcceptors callbacks
   pure $ {}
 
-handlerInit :: String -> String -> Foreign -> (Effect RtmpAuthResponse)
-handlerInit host rtmpShortName foreignQuery =
+onConnectCallback :: String -> String -> Foreign -> (Effect RtmpAuthResponse)
+onConnectCallback host rtmpShortName foreignQuery =
   let
     authRequest = rtmpQueryToPurs foreignQuery
   in
     processAuthRequest host rtmpShortName authRequest
 
-processAuthRequest :: String -> String -> RtmpAuthRequest -> Effect RtmpAuthResponse
-processAuthRequest host rtmpShortName Initial = do
-  authType <- getStreamAuthType host rtmpShortName
-  pure $ fromMaybe RejectRequest $ InitialResponse <$> authType
-
-processAuthRequest host rtmpShortName (AdobePhase1 {username}) = do
-  context <- IngestRtmpCrypto.newAdobeContext username
-  pure $ AdobePhase1Response username context
-
-processAuthRequest host rtmpShortName (LlnwPhase1 {username}) = do
-  context <- IngestRtmpCrypto.newLlnwContext username
-  pure $ LlnwPhase1Response username context
-
-processAuthRequest host rtmpShortName (AdobePhase2 authParams@{username}) =
-  processAuthRequest' host rtmpShortName username (AdobePhase2P authParams)
-
-processAuthRequest host rtmpShortName (LlnwPhase2 authParams@{username}) =
-  processAuthRequest' host rtmpShortName username (LlnwPhase2P authParams)
-
-handlerHandle :: String -> String -> String -> String -> Int -> String -> Pid -> Foreign -> Effect Unit
-handlerHandle host rtmpShortNameStr username remoteAddress remotePort rtmpStreamNameStr rtmpPid publishArgs = do
+onStreamCallback :: String -> String -> String -> String -> Int -> String -> Pid -> Foreign -> Effect Unit
+onStreamCallback host rtmpShortNameStr username remoteAddress remotePort rtmpStreamNameStr rtmpPid publishArgs = do
   let
     rtmpShortName = wrap rtmpShortNameStr
     rtmpStreamName = wrap rtmpStreamNameStr
@@ -139,8 +120,27 @@ handlerHandle host rtmpShortNameStr username remoteAddress remotePort rtmpStream
     makeIngestKey profileName {role, slot: {id: slotId}} =
       IngestKey slotId role profileName
 
-processAuthRequest' :: String -> String -> String -> Phase2Params -> Effect RtmpAuthResponse
-processAuthRequest' host rtmpShortName username authParams = do
+processAuthRequest :: String -> String -> RtmpAuthRequest -> Effect RtmpAuthResponse
+processAuthRequest host rtmpShortName Initial = do
+  authType <- getStreamAuthType host rtmpShortName
+  pure $ fromMaybe RejectRequest $ InitialResponse <$> authType
+
+processAuthRequest host rtmpShortName (AdobePhase1 {username}) = do
+  context <- IngestRtmpCrypto.newAdobeContext username
+  pure $ AdobePhase1Response username context
+
+processAuthRequest host rtmpShortName (LlnwPhase1 {username}) = do
+  context <- IngestRtmpCrypto.newLlnwContext username
+  pure $ LlnwPhase1Response username context
+
+processAuthRequest host rtmpShortName (AdobePhase2 authParams@{username}) =
+  processPhase2Authentication host rtmpShortName username (AdobePhase2P authParams)
+
+processAuthRequest host rtmpShortName (LlnwPhase2 authParams@{username}) =
+  processPhase2Authentication host rtmpShortName username (LlnwPhase2P authParams)
+
+processPhase2Authentication :: String -> String -> String -> Phase2Params -> Effect RtmpAuthResponse
+processPhase2Authentication host rtmpShortName username authParams = do
   let
     authType = case authParams of
                  AdobePhase2P _ -> Adobe
@@ -151,7 +151,7 @@ processAuthRequest' host rtmpShortName username authParams = do
       pure RejectRequest
     Just publishCredentials -> do
       ok <- checkCredentials host rtmpShortName username publishCredentials authParams
-      if ok then pure $ AcceptRequest (mkFn5 (handlerHandle host rtmpShortName username))
+      if ok then pure $ AcceptRequest (mkFn5 (onStreamCallback host rtmpShortName username))
       else pure RejectRequest
 
 startWorkflowAndBlock :: Pid -> Foreign -> IngestKey -> Effect Unit
