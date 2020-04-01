@@ -87,8 +87,6 @@ registeredRelayWs slotId slotRole relayAddress relayPort =
 
     wsInit state@{relayServer} = do
       self <- Process <$> Erl.self :: Effect (Process (WebSocketHandlerMessage DownstreamWsMessage))
-      let
-        _ = spy "About to call registerRelay" {}
       slotConfiguration <- IngestAggregatorInstance.registerRelay slotId slotRole {server: relayServer, port: relayPort} self
       pure $ WebSocketReply (SlotConfig slotConfiguration) state
 
