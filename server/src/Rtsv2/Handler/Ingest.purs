@@ -21,12 +21,11 @@ import Erl.Process.Raw (Pid)
 import Erl.Process.Raw as Raw
 import Gproc as GProc
 import Gproc as Gproc
-import Logger (spy)
 import Prometheus as Prometheus
 import Rtsv2.Agents.IngestInstance as IngestInstance
 import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
-import Rtsv2.Agents.IngestSup as IngestSup
 import Rtsv2.Agents.IngestStats as IngestStats
+import Rtsv2.Agents.IngestSup as IngestSup
 import Rtsv2.Config as Config
 import Rtsv2.Handler.MimeType as MimeType
 import Shared.LlnwApiTypes (StreamIngestProtocol(..), StreamPublish, StreamDetails)
@@ -212,7 +211,6 @@ ingestStart canary shortName slotNameAndProfileName@(SlotNameAndProfileName slot
                              Rest.result (isJust streamDetails) req state{ streamDetails = streamDetails
                                                                          , streamPublish = Just streamPublishPayload}
                           )
-  -- TODO - hideous spawn here, but ingestInstance needs to do a monitor... - ideally we sleep forever and kill it in ingestStop...
   # Rest.contentTypesProvided (\req state ->
                                   Rest.result (tuple2 "text/plain" (\req2 state2@{ streamDetails: maybeStreamDetails
                                                                                  , streamPublish: maybeStreamPublish
@@ -239,13 +237,13 @@ ingestStop canary slotId role profileName =
                             Rest.result isAgentAvailable req state)
 
   # Rest.resourceExists (\req state@{ingestKey} -> do
-                            isActive <- IngestInstance.isActive (spy "ingestKey" ingestKey)
-                            Rest.result (spy "isActive" isActive) req state
+                            stopFakeIngest state.ingestKey
+                            isActive <- IngestInstance.isActive ingestKey
+                            Rest.result isActive req state
                         )
   # Rest.contentTypesProvided (\req state ->
                                 Rest.result (tuple2 "text/plain" (\req2 state2 -> do
                                                                      stopFakeIngest state.ingestKey
-                                                                     --IngestInstance.stopIngest state.ingestKey
                                                                      Rest.result "ingestStopped" req2 state2
                                                                  ) : nil) req state)
   # Rest.yeeha

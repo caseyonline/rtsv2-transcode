@@ -37,7 +37,7 @@ import Erl.Data.Map as Map
 import Erl.Data.Tuple (Tuple3, toNested3, tuple3)
 import Erl.Process (Process(..))
 import Erl.Process.Raw (Pid)
-import Erl.Utils (Ref, shutdown)
+import Erl.Utils (shutdown)
 import Erl.Utils as Erl
 import Foreign (Foreign)
 import Logger (Logger, spy)
@@ -50,7 +50,7 @@ import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..), announceLocalAggregatorIsAvailable, announceLocalAggregatorStopped)
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
-import Rtsv2.Agents.StreamRelayTypes (DownstreamWsMessage)
+import Rtsv2.Agents.StreamRelayTypes (AggregatorToIngestWsMessage, DownstreamWsMessage, WebSocketHandlerMessage)
 import Rtsv2.Config as Config
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
@@ -73,7 +73,7 @@ foreign import registerStreamRelayImpl :: WorkflowHandle -> String -> Int -> Eff
 foreign import deRegisterStreamRelayImpl :: WorkflowHandle -> String -> Int -> Effect Unit
 
 type RegisteredRelay = { port :: Int
-                       , handler :: Process DownstreamWsMessage
+                       , handler :: Process (WebSocketHandlerMessage DownstreamWsMessage)
                        }
 
 type CachedState = { localIngests :: Set ProfileName
@@ -117,7 +117,7 @@ serverName = Names.ingestAggregatorInstanceName
 serverNameFromIngestKey :: IngestKey -> ServerName State Msg
 serverNameFromIngestKey = serverName <<< ingestKeyToAggregatorKey
 
-registerIngest :: SlotId -> SlotRole -> ProfileName -> ServerAddress -> Process DownstreamWsMessage -> Effect Boolean
+registerIngest :: SlotId -> SlotRole -> ProfileName -> ServerAddress -> Process (WebSocketHandlerMessage AggregatorToIngestWsMessage) -> Effect Boolean
 registerIngest slotId slotRole profileName ingestAddress handler@(Process handlerPid) =
   Gen.doCall thisServerName
   (\state@{thisServer} -> do
@@ -136,7 +136,7 @@ registerIngest slotId slotRole profileName ingestAddress handler@(Process handle
   where
     thisServerName = serverName (AggregatorKey slotId slotRole)
 
-registerRelay :: SlotId -> SlotRole -> DeliverTo RelayServer -> Process DownstreamWsMessage -> Effect SlotConfiguration
+registerRelay :: SlotId -> SlotRole -> DeliverTo RelayServer -> Process (WebSocketHandlerMessage DownstreamWsMessage) -> Effect SlotConfiguration
 registerRelay slotId slotRole deliverTo handler =
   Gen.doCall (serverName $ key)
   (\state@{thisServer, slotConfiguration} -> do
@@ -169,7 +169,8 @@ startLink :: AggregatorKey -> StreamDetails -> StateServerName -> Effect StartLi
 startLink aggregatorKey streamDetails stateServerName = Gen.startLink (serverName aggregatorKey) (init streamDetails stateServerName) handleInfo
 
 stopAction :: AggregatorKey -> Maybe CachedState -> Effect Unit
-stopAction aggregatorKey _cachedState =
+stopAction aggregatorKey _cachedState = do
+  logStop "Ingest Aggregator stopping" {aggregatorKey}
   announceLocalAggregatorStopped aggregatorKey
 
 init :: StreamDetails -> StateServerName -> Effect State
@@ -177,7 +178,7 @@ init streamDetails@{role: slotRole, slot: {id: slotId}} stateServerName = do
   let
     thisServerName = (serverName (streamDetailsToAggregatorKey streamDetails))
   _ <- Erl.trapExit true
-  logInfo "Ingest Aggregator starting" {aggregatorKey, streamDetails}
+  logStart "Ingest Aggregator starting" {aggregatorKey, streamDetails}
   config <- Config.ingestAggregatorAgentConfig
   thisServer <- PoPDefinition.getThisServer
   announceLocalAggregatorIsAvailable aggregatorKey
@@ -282,7 +283,7 @@ addLocalIngestToCachedState ingestKey = set (_localIngests <<< (at ingestKey)) (
 addRemoteIngestToCachedState :: ProfileName -> ServerAddress -> State -> State
 addRemoteIngestToCachedState ingestKey ingestAddress = set (_remoteIngests <<< (at ingestKey)) (Just ingestAddress)
 
-addRelayToCachedState :: (DeliverTo RelayServer) -> Process DownstreamWsMessage -> State -> State
+addRelayToCachedState :: (DeliverTo RelayServer) -> Process (WebSocketHandlerMessage DownstreamWsMessage) -> State -> State
 addRelayToCachedState {server, port} handler = set (_relays <<< (at server)) (Just {port, handler})
 
 removeLocalIngestFromCachedState :: ProfileName -> State -> State
@@ -331,7 +332,7 @@ doAddRemoteIngest profileName ingestAddress state@{slotId, slotRole, workflowHan
       logInfo "Remote Ingest rejected due to existing ingest" {slotId, slotRole, profileName}
       pure $ Left unit
 
-doRegisterRelay :: (DeliverTo RelayServer) -> Process DownstreamWsMessage -> State -> Effect State
+doRegisterRelay :: (DeliverTo RelayServer) -> Process (WebSocketHandlerMessage DownstreamWsMessage) -> State -> Effect State
 doRegisterRelay deliverTo@{server} handler@(Process handlerPid) state@{slotId, slotRole, workflowHandle} = do
   -- todo - monitor handler
   logInfo "Relay added" {slotId, slotRole, deliverTo}
@@ -391,11 +392,14 @@ _relays = __cachedState <<< __relays
 domain :: List Atom
 domain = atom <$> (show Agent.IngestAggregator : "Instance" : nil)
 
-logInfo :: forall a. Logger a
-logInfo = domainLog Logger.info
+logInfo :: forall a. Logger (Record a)
+logInfo = Logger.doLog domain Logger.info
 
-logWarning :: forall a. Logger a
-logWarning = domainLog Logger.warning
+logWarning :: forall a. Logger (Record a)
+logWarning = Logger.doLog domain Logger.warning
 
-domainLog :: forall a. Logger {domain :: List Atom, misc :: a} -> Logger a
-domainLog = Logger.doLog domain
+logStart :: forall a. Logger (Record a)
+logStart = Logger.doLogEvent domain Logger.Start Logger.info
+
+logStop :: forall a. Logger (Record a)
+logStop = Logger.doLogEvent domain Logger.Stop Logger.info

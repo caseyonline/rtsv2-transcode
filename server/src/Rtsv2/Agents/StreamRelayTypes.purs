@@ -3,7 +3,7 @@ module Rtsv2.Agents.StreamRelayTypes
   , CreateProxyPayload
   , RelayToRelayClientWsMessage(..)
   , EgestClientWsMessage(..)
-  , IngestToAggregatorClientWsMessage(..)
+  , AggregatorToIngestWsMessage(..)
   , DownstreamWsMessage(..)
   , WebSocketHandlerMessage(..)
   ) where
@@ -11,6 +11,7 @@ module Rtsv2.Agents.StreamRelayTypes
 import Prelude
 
 import Foreign (F, Foreign, ForeignError(..), fail)
+import Partial.Unsafe (unsafeCrashWith)
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
 import Shared.Stream (SlotId, SlotRole)
 import Shared.Types (PoPName, Server)
@@ -29,7 +30,7 @@ type CreateProxyPayload
     , aggregator:: Server
     }
 
-data IngestToAggregatorClientWsMessage = IngestToAggregator Unit
+data AggregatorToIngestWsMessage = IngestStop
 
 data RelayToRelayClientWsMessage = RelayToRelay Unit
 
@@ -37,33 +38,31 @@ data EgestClientWsMessage = EdgeToRelay Unit
 
 data DownstreamWsMessage = SlotConfig SlotConfiguration
 
-data WebSocketHandlerMessage = WsStop
-                             | WsSend DownstreamWsMessage
+data WebSocketHandlerMessage a = WsStop
+                               | WsSend a
 
 ------------------------------------------------------------------------------
 -- IngestToAggregatorClientWsMessage
-instance readForeignIngestToAggregatorClientWsMessage :: ReadForeign IngestToAggregatorClientWsMessage where
-  readImpl o = fail $ ForeignError ("no client message")
+instance readForeignAggregatorToIngestWsMessage :: ReadForeign AggregatorToIngestWsMessage where
+  readImpl o = decodeValue =<< decodeTag o
+    where
+      decodeTag :: Foreign -> F {tag :: String, value :: Foreign}
+      decodeTag a = readImpl a
+
+      decodeValue :: {tag :: String, value :: Foreign} -> F AggregatorToIngestWsMessage
+      -- decodeValue {tag: "register",
+      --              value: val} = RelayRegister <$> readImpl val
+      decodeValue {tag: "ingestStop"} = pure IngestStop
+      decodeValue {tag} = fail $ ForeignError ("unknown tag: " <> tag)
+
+instance writeForeignAggregatorToIngestWsMessage :: WriteForeign AggregatorToIngestWsMessage where
+  writeImpl IngestStop = writeImpl { tag: "ingestStop"
+                                   , value: 0 }
 
 ------------------------------------------------------------------------------
 -- RelayToRelayClientWsMessage
 instance readForeignRelayToRelayClientWsMessage :: ReadForeign RelayToRelayClientWsMessage where
   readImpl o = fail $ ForeignError ("no client message")
-
--- instance readForeignRelayToRelayClientWsMessage :: ReadForeign RelayToRelayClientWsMessage where
---   readImpl o = decodeValue =<< decodeTag o
---     where
---       decodeTag :: Foreign -> F {tag :: String, value :: Foreign}
---       decodeTag a = readImpl a
-
---       decodeValue :: {tag :: String, value :: Foreign} -> F RelayToRelayClientWsMessage
---       decodeValue {tag: "register",
---                    value: val} = RelayRegister <$> readImpl val
---       decodeValue {tag} = fail $ ForeignError ("unknown tag: " <> tag)
-
--- instance writeForeignRelayToRelayClientWsMessage :: WriteForeign RelayToRelayClientWsMessage where
---   writeImpl (RelayRegister r) = writeImpl { tag: "register"
---                                           , value: writeImpl r}
 
 ------------------------------------------------------------------------------
 -- EgestClientWsMessage

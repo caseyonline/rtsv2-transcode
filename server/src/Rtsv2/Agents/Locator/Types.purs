@@ -3,7 +3,7 @@ module Rtsv2.Agents.Locator.Types
        , FailureReason(..)
        , LocalOrRemote(..)
        , ResourceResp(..)
-       , NoCapacity(..)
+       , ResourceFailed(..)
        , RegistrationResp(..)
        , ServerSelectionPredicate
        , FindAndRegisterConfig
@@ -26,7 +26,7 @@ type FindOrStartConfig payload
   = { findFun :: (payload -> Effect (Maybe (LocalOrRemote Server)))
     , handlerCreationPredicate :: ServerSelectionPredicate
     , startLocalFun :: payload -> Effect Unit
-    , logWarning :: forall a. Logger a
+    , logWarning :: forall a. Logger (Record a)
     }
 
 type FindAndRegisterConfig payload
@@ -35,7 +35,7 @@ type FindAndRegisterConfig payload
     , handlerCreationPredicate :: ServerSelectionPredicate
     , startLocalFun :: payload -> Effect Unit
     , startRemoteFun :: ServerLoad -> payload -> Effect Unit
-    , logWarning :: forall a. Logger a
+    , logWarning :: forall a. Logger (Record a)
     }
 
 type ServerSelectionPredicate = ServerLoad -> Boolean
@@ -63,8 +63,9 @@ fromLocalOrRemote (Remote a) = a
 --------------------------------------------------------------------------------
 -- API Types - maybe move me
 --------------------------------------------------------------------------------
-type ResourceResp a = Either NoCapacity (LocalOrRemote a)
+type ResourceResp a = Either ResourceFailed (LocalOrRemote a)
 
-data NoCapacity = NoCapacity
+data ResourceFailed = NoCapacity
+                    | LaunchFailed
 
 type RegistrationResp = (Either FailureReason Unit)

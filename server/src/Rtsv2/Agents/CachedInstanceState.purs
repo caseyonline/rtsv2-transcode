@@ -139,8 +139,8 @@ handleInfo msg state@{ instanceData
 --------------------------------------------------------------------------------
 -- Log helpers
 --------------------------------------------------------------------------------
-logInfo :: forall a. List Atom -> String -> a -> Effect Unit
+logInfo :: forall a. List Atom -> String -> Record a -> Effect Unit
 logInfo domain msg misc = Logger.doLog domain Logger.info msg misc
 
-logError :: forall a. List Atom -> String -> a -> Effect Unit
+logError :: forall a. List Atom -> String -> Record a -> Effect Unit
 logError domain msg misc = Logger.doLog domain Logger.error msg misc

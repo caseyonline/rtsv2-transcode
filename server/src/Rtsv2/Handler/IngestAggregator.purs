@@ -16,7 +16,7 @@ import Erl.Utils as Erl
 import Logger (spy)
 import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
 import Rtsv2.Agents.IngestAggregatorSup as IngestAggregatorSup
-import Rtsv2.Agents.StreamRelayTypes (DownstreamWsMessage(..), IngestToAggregatorClientWsMessage, RelayToRelayClientWsMessage, WebSocketHandlerMessage(..))
+import Rtsv2.Agents.StreamRelayTypes (AggregatorToIngestWsMessage(..), DownstreamWsMessage(..), RelayToRelayClientWsMessage, WebSocketHandlerMessage(..))
 import Rtsv2.Handler.Helper (WebSocketHandlerResult(..), webSocketHandler)
 import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.LlnwApiTypes (StreamDetails)
@@ -38,7 +38,7 @@ type WsIngestState =
   , aggregatorKey :: AggregatorKey
   }
 
-registeredIngestWs :: SlotId -> SlotRole -> ProfileName -> ServerAddress -> InnerStetsonHandler WebSocketHandlerMessage WsIngestState
+registeredIngestWs :: SlotId -> SlotRole -> ProfileName -> ServerAddress -> InnerStetsonHandler (WebSocketHandlerMessage AggregatorToIngestWsMessage) WsIngestState
 registeredIngestWs slotId slotRole profileName ingestAddress =
   webSocketHandler init wsInit handle info
   where
@@ -47,18 +47,17 @@ registeredIngestWs slotId slotRole profileName ingestAddress =
            , aggregatorKey: AggregatorKey slotId slotRole
            }
     wsInit state = do
-      self <- Process <$> Erl.self :: Effect (Process DownstreamWsMessage)
-      let
-        _ = spy "About to call registerIngest" {}
+      self <- Process <$> Erl.self :: Effect (Process (WebSocketHandlerMessage AggregatorToIngestWsMessage))
       result <- IngestAggregatorInstance.registerIngest slotId slotRole profileName ingestAddress self
       case result of
         true ->
           pure $ WebSocketNoReply state
         false ->
-          pure $ WebSocketStop state
+          pure $ WebSocketReply IngestStop state
 
-    handle :: WsIngestState -> IngestToAggregatorClientWsMessage -> Effect (WebSocketHandlerResult DownstreamWsMessage WsIngestState)
+    handle :: WsIngestState -> DownstreamWsMessage -> Effect (WebSocketHandlerResult AggregatorToIngestWsMessage WsIngestState)
     handle state _ = do
+      -- this will be onFI etc - call in to aggregator
       pure $ WebSocketNoReply state
 
     info state WsStop =
@@ -66,13 +65,12 @@ registeredIngestWs slotId slotRole profileName ingestAddress =
     info state (WsSend msg) =
       pure $ WebSocketReply msg state
 
-
 type WsRelayState =
   { relayServer :: RelayServer
   , aggregatorKey :: AggregatorKey
   }
 
-registeredRelayWs :: SlotId -> SlotRole -> ServerAddress -> Int -> InnerStetsonHandler WebSocketHandlerMessage WsRelayState
+registeredRelayWs :: SlotId -> SlotRole -> ServerAddress -> Int -> InnerStetsonHandler (WebSocketHandlerMessage DownstreamWsMessage)  WsRelayState
 registeredRelayWs slotId slotRole relayAddress relayPort =
   webSocketHandler init wsInit handle info
   where
@@ -88,7 +86,7 @@ registeredRelayWs slotId slotRole relayAddress relayPort =
            }
 
     wsInit state@{relayServer} = do
-      self <- Process <$> Erl.self :: Effect (Process DownstreamWsMessage)
+      self <- Process <$> Erl.self :: Effect (Process (WebSocketHandlerMessage DownstreamWsMessage))
       let
         _ = spy "About to call registerRelay" {}
       slotConfiguration <- IngestAggregatorInstance.registerRelay slotId slotRole {server: relayServer, port: relayPort} self

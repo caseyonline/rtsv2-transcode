@@ -6,6 +6,7 @@ import Data.Array (catMaybes, delete, filter, intercalate, length, sort, sortBy,
 import Data.Array as Array
 import Data.Bifunctor (lmap)
 import Data.Either (Either(..), fromRight)
+import Data.Enum (class Enum, class BoundedEnum, fromEnum)
 import Data.Foldable (foldl)
 import Data.Identity (Identity(..))
 import Data.Lens (Lens', Traversal', _Just, firstOf, over, set, traversed)
@@ -14,6 +15,8 @@ import Data.List as List
 import Data.Map as Map
 import Data.Maybe (Maybe(..), isNothing, fromMaybe, fromMaybe')
 import Data.Newtype (class Newtype, un, wrap, unwrap)
+import Data.String as String
+import Data.Time
 import Data.Time.Duration (Milliseconds(..))
 import Data.Traversable (traverse, traverse_)
 import Data.These
@@ -22,6 +25,8 @@ import Debug.Trace (spy)
 import Effect (Effect)
 import Effect.Aff (Aff, attempt, delay, launchAff_, throwError)
 import Effect.Exception (error) as Exception
+import Effect.Unsafe (unsafePerformEffect)
+import Effect.Now as Now
 import Foreign.Object as Object
 import Foreign (F, MultipleErrors)
 import Milkis as M
@@ -230,15 +235,31 @@ main =
                                           , headers: M.makeHeaders { "Content-Type": "application/json" }
                                           }
 
+    currentTime :: Effect String
+    currentTime = do
+      let
+        format :: forall a. BoundedEnum a => a -> Int -> String
+        format enum len =
+          let out = show (fromEnum enum)
+              pad = len - (String.length out)
+          in
+           if pad == 1 then "0" <> out
+           else if pad == 2 then "00" <> out
+                else out
+      Time hour minute second millisecond <- Now.nowTime
+      pure $ (format hour 2) <> ":" <> (format minute 2) <> ":" <> (format second 2) <> "." <> (format millisecond 3)
+
     maybeLogStep s a =
-      let _ = spy s a in
-      unit
+      let
+        _ = spy ((unsafePerformEffect currentTime) <> ": " <> s) a
+      in
+       unit
 
     as :: forall r. String -> Either String r -> Aff Unit
     as desc (Right r) =
       let _ = maybeLogStep "step" desc in
       pure $ unit
-    as desc (Left err) = throwSlowError $ "Step: \"" <> desc <> "\" failed with reason: " <> err
+    as desc (Left err) = throwSlowError $ (unsafePerformEffect currentTime) <> ": Step: \"" <> desc <> "\" failed with reason: " <> err
 
     as' :: forall a. String -> a -> Aff Unit
     as' desc _ =
@@ -249,7 +270,7 @@ main =
     asT desc (Right r) =
       let _ = maybeLogStep "step" desc in
       pure $ unit
-    asT desc (Left err) = lift $ throwSlowError $ "Step: \"" <> desc <> "\" failed with reason: " <> err
+    asT desc (Left err) = lift $ throwSlowError $ (unsafePerformEffect currentTime) <> ": Step: \"" <> desc <> "\" failed with reason: " <> err
 
     asT' :: forall a b. String -> b -> StateT a Aff Unit
     asT' desc _ =
@@ -375,7 +396,7 @@ main =
 
     waitForRemoteAsyncProfileStart = delayMs  350.0
 
-    waitForIntraPoPDisseminate     = delayMs  500.0
+    waitForIntraPoPDisseminate     = delayMs  700.0
 
     waitForNodeStartDisseminate    = delayMs 1000.0
     waitForNodeFailureDisseminate  = delayMs 3500.0 -- TODO - seems big
@@ -474,7 +495,7 @@ main =
             traverse_ (aggregatorNotPresent slot1) (allNodesBar p1n2)     >>= as' "aggregator not on busy servers"
             setLoad         p1n3 0.0             >>= assertStatusCode 204 >>= as  "mark p1n3 as idle"
             stopNode p1n2                        >>= as' "make p1n2 fail"
-            waitForNodeFailureDisseminate                                 >>= as' "allow failure to disseminate"
+            waitForIntraPoPDisseminate                                    >>= as' "allow failure to disseminate"
             aggregatorStats p1n3 slot1           >>= assertStatusCode 200
                                                      >>= assertAggregator [low]
                                                                           >>= as  "failed aggregator moved to new idle server"
@@ -553,7 +574,7 @@ main =
             waitForIntraPoPDisseminate
             ingestStop     p1n2 slot1 low       >>= assertStatusCode 404  >>= as  "stop ingest fails with 404 since async create failed"
             ingestStop     p1n1 slot1 low       >>= assertStatusCode 200  >>= as  "stop initial ingest"
-            waitForIntraPoPDisseminate
+            waitForAsyncProfileStart
 
             aggregatorStats p1n1 slot1           >>= assertStatusCode 200
                                                      >>= assertAggregator []
@@ -839,7 +860,7 @@ main =
                                                     >>= assertAggregator []
                                                                           >>= as  "aggregator has no ingests"
 
-          itOnly "4.4 Launch ingest with remote aggregator, terminate ingest node, ingest aggregator removes ingest from list of active ingests" do
+          it "4.4 Launch ingest with remote aggregator, terminate ingest node, ingest aggregator removes ingest from list of active ingests" do
             traverse_ maxOut (allNodesBar p1n2)                           >>= as' "load up all servers bar one"
             waitForIntraPoPDisseminate                                    >>= as' "allow load to disseminate"
             ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200  >>= as  "create ingest"
@@ -848,7 +869,8 @@ main =
                                                     >>= assertAggregator [low]
                                                                          >>= as  "aggregator has low only"
             stopNode p1n1                                                >>= as' "stop ingest node"
-            waitForIntraPoPDisseminate                                   >>= as' "allow failure to disseminate"
+            waitForAsyncProfileStop                                      >>= as' "allow failure to disseminate"
+            waitForAsyncProfileStop                                      >>= as' "allow failure to disseminate2"
             aggregatorStats p1n2 slot1          >>= assertStatusCode 200
                                                     >>= assertAggregator []
                                                                          >>= as  "aggregator has no ingests"

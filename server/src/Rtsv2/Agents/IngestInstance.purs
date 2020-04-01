@@ -17,17 +17,16 @@ module Rtsv2.Agents.IngestInstance
 import Prelude
 
 import Bus as Bus
-import Data.Either (Either(..), hush)
+import Data.Either (Either(..), either, hush)
 import Data.Int (round, toNumber)
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (unwrap, wrap)
-import Data.Traversable (sequence)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
 import Erl.Process.Raw (Pid)
 import Erl.Utils (systemTimeMs)
-import Logger (Logger)
+import Logger (Logger, spy)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
 import Pinto as Pinto
@@ -41,7 +40,7 @@ import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..), launchLocalOrRemoteGeneric
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.Locator (extractServer)
 import Rtsv2.Agents.Locator.Types (LocalOrRemote(..), ResourceResp)
-import Rtsv2.Agents.StreamRelayTypes (DownstreamWsMessage(..), IngestToAggregatorClientWsMessage)
+import Rtsv2.Agents.StreamRelayTypes (AggregatorToIngestWsMessage(..), DownstreamWsMessage)
 import Rtsv2.Audit as Audit
 import Rtsv2.Config as Config
 import Rtsv2.Names as Names
@@ -70,7 +69,7 @@ data Msg
    | HandlerDown
    | Gun WsGun.GunMsg
 
-type WebSocket = WsGun.WebSocket IngestToAggregatorClientWsMessage DownstreamWsMessage
+type WebSocket = WsGun.WebSocket DownstreamWsMessage AggregatorToIngestWsMessage
 
 type CachedState = WebSocket
 
@@ -107,7 +106,7 @@ startLink args@{ingestKey} stateServerName = Gen.startLink (serverName ingestKey
 
 stopAction :: IngestKey -> Maybe CachedState -> Effect Unit
 stopAction ingestKey mCachedState = do
-  logInfo "Ingest stopping" {ingestKey}
+  logStop "Ingest stopping" {ingestKey}
   fromMaybe (pure unit) $ WsGun.closeWebSocket <$> mCachedState
   pure unit
 
@@ -127,6 +126,7 @@ setSourceInfo ingestKey sourceInfo =
 stopIngest :: IngestKey -> Effect Unit
 stopIngest ingestKey =
   Gen.doCall (serverName ingestKey) \state -> do
+    logInfo "Stopping due to stopIngest called" {ingestKey}
     doStopIngest state
     pure $ CallStop unit state
 
@@ -156,13 +156,12 @@ init { streamPublish
      , remotePort
      , handlerPid} stateServerName = do
 
-  logInfo "Ingest starting" {ingestKey, handlerPid}
+  logStart "Ingest starting" {ingestKey, handlerPid}
 
   thisServer <- PoPDefinition.getThisServer
   now <- systemTimeMs
   {port: localPort} <- Config.rtmpIngestConfig
-  {intraPoPLatencyMs} <- Config.globalConfig
-  {eqLogIntervalMs} <- Config.ingestInstanceConfig
+  {eqLogIntervalMs, aggregatorRetryTimeMs} <- Config.ingestInstanceConfig
 
   Gen.monitorPid ourServerName handlerPid (\_ -> HandlerDown)
   void $ Bus.subscribe ourServerName IntraPoP.bus IntraPoPBus
@@ -174,7 +173,7 @@ init { streamPublish
        , streamPublish
        , streamDetails
        , ingestKey
-       , aggregatorRetryTime: wrap $ toNumber intraPoPLatencyMs
+       , aggregatorRetryTime: wrap $ toNumber aggregatorRetryTimeMs
        , aggregatorWebSocket: Nothing
        , clientMetadata: Nothing
        , sourceInfo: Nothing
@@ -239,8 +238,9 @@ handleInfo msg state@{ingestKey} = case msg of
             state2 <- informAggregator state
             pure $ CastNoReply state2
 
-          Right (WsGun.Frame (SlotConfig _)) ->
-            pure $ CastNoReply state
+          Right (WsGun.Frame IngestStop) -> do
+            _ <- logInfo "Aggregator requested that ingest stops" {}
+            pure $ CastStop state
 
       else
         pure $ CastNoReply state
@@ -288,21 +288,24 @@ doStopIngest state@{ingestKey} = do
 informAggregator :: State -> Effect State
 informAggregator state@{streamDetails, ingestKey: ingestKey@(IngestKey slotId slotRole profileName), thisServer, aggregatorRetryTime, stateServerName} = do
   maybeAggregator <- hush <$> getAggregator
-  maybeIngestAdded <- sequence (addIngest <$> (extractServer <$> maybeAggregator))
+  maybeIngestAdded <- addIngest $ (extractServer <$> maybeAggregator)
   case maybeIngestAdded of
     Just webSocket -> do
+      logInfo "WebSocket connected" {maybeAggregator}
       CachedInstanceState.recordInstanceData stateServerName webSocket
       pure $ state{aggregatorWebSocket = Just webSocket}
     Nothing -> do
+      logInfo "WebSocket attempt failed; retrying" {maybeAggregator, aggregatorRetryTime}
       void $ Timer.sendAfter (serverName ingestKey) (round $ unwrap aggregatorRetryTime) InformAggregator
       pure $ state
   where
-    addIngest :: Server -> Effect WebSocket
-    addIngest aggregatorAddress = do
+    addIngest :: Maybe Server -> Effect (Maybe WebSocket)
+    addIngest Nothing = pure Nothing
+    addIngest (Just aggregatorAddress) = do
         let
           wsUrl = makeWsUrl aggregatorAddress $ IngestAggregatorRegisteredIngestWs slotId slotRole profileName (extractAddress thisServer)
-        webSocket <- crashIfLeft =<< WsGun.openWebSocket wsUrl
-        pure webSocket
+        webSocket <- WsGun.openWebSocket wsUrl
+        pure $ hush webSocket
 
     getAggregator :: Effect (ResourceResp Server)
     getAggregator = do
@@ -317,14 +320,14 @@ informAggregator state@{streamDetails, ingestKey: ingestKey@(IngestKey slotId sl
     launchLocalOrRemote = do
       launchLocalOrRemoteGeneric filterForAggregatorLoad launchLocal launchRemote
       where
-        launchLocal :: ServerLoad -> Effect Unit
+        launchLocal :: ServerLoad -> Effect Boolean
         launchLocal _ = do
           void $ IngestAggregatorSup.startAggregator streamDetails
-          pure unit
+          pure true
         launchRemote idleServer = do
           let
             url = makeUrl idleServer IngestAggregatorsE
-          void $ crashIfLeft =<< SpudGun.postJson url streamDetails
+          either (const false) (const true) <$> SpudGun.postJson url streamDetails
 
 handleAggregatorExit :: AggregatorKey -> Server -> State -> Effect State
 handleAggregatorExit exitedAggregatorKey exitedAggregatorAddr state@{ingestKey, aggregatorRetryTime, aggregatorWebSocket: mWebSocket}
@@ -347,11 +350,11 @@ filterForAggregatorLoad (ServerLoad sl) = sl.load < loadThresholdToCreateAggrega
 domain :: List Atom
 domain = atom <$> (show Agent.Ingest :  "Instance" : nil)
 
-logInfo :: forall a. Logger a
-logInfo = domainLog Logger.info
+logInfo :: forall a. Logger (Record a)
+logInfo = Logger.doLog domain Logger.info
 
---logWarning :: forall a. Logger a
---logWarning = domainLog Logger.warning
+logStart :: forall a. Logger (Record a)
+logStart = Logger.doLogEvent domain Logger.Start Logger.info
 
-domainLog :: forall a. Logger {domain :: List Atom, misc :: a} -> Logger a
-domainLog = Logger.doLog domain
+logStop :: forall a. Logger (Record a)
+logStop = Logger.doLogEvent domain Logger.Stop Logger.info

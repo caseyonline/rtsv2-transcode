@@ -17,7 +17,7 @@ module Rtsv2.Agents.EgestInstance
 import Prelude
 
 import Bus as Bus
-import Data.Either (Either(..))
+import Data.Either (Either(..), either, hush)
 import Data.Foldable (foldl)
 import Data.Int (round, toNumber)
 import Data.Maybe (Maybe(..), fromMaybe, maybe')
@@ -114,7 +114,7 @@ startLink payload stateServerName = Gen.startLink (serverName $ payloadToEgestKe
 
 stopAction :: EgestKey -> Maybe CachedState -> Effect Unit
 stopAction egestKey mCachedState = do
-  logInfo "Egest stopping" {egestKey}
+  logStop "Egest stopping" {egestKey}
   IntraPoP.announceLocalEgestStopped egestKey
   fromMaybe (pure unit) $ WsGun.closeWebSocket <$> mCachedState
   pure unit
@@ -166,7 +166,7 @@ init payload@{slotId, slotRole, aggregator} stateServerName = do
     relayKey = RelayKey slotId slotRole
   receivePortNumber <- startEgestReceiverFFI egestKey
   _ <- Bus.subscribe (serverName egestKey) IntraPoP.bus IntraPoPBus
-  logInfo "Egest starting" {payload, receivePortNumber}
+  logStart "Egest starting" {payload, receivePortNumber}
   {eqLogIntervalMs, lingerTimeMs, relayCreationRetryMs} <- Config.egestAgentConfig
   now <- systemTimeMs
   thisServer <- PoPDefinition.getThisServer
@@ -348,11 +348,14 @@ initStreamRelay state@{relayCreationRetry, egestKey: egestKey@(EgestKey slotId s
       do
         let
           wsUrl = makeWsUrl relayServer $ RelayRegisteredEgestWs slotId slotRole (extractAddress thisServer) state.receivePortNumber
-        webSocket <- crashIfLeft =<< WsGun.openWebSocket wsUrl
-
-        CachedInstanceState.recordInstanceData stateServerName webSocket
-
-        pure state{ relayWebSocket = Just webSocket}
+        maybeWebSocket <- hush <$> WsGun.openWebSocket wsUrl
+        case maybeWebSocket of
+          Just webSocket -> do
+            CachedInstanceState.recordInstanceData stateServerName webSocket
+            pure state{ relayWebSocket = Just webSocket}
+          Nothing -> do
+            _ <- Timer.sendAfter (serverName egestKey) (round $ unwrap relayCreationRetry) InitStreamRelays
+            pure state
 
 --------------------------------------------------------------------------------
 -- Do we have a relay in this pop - yes -> use it
@@ -371,11 +374,11 @@ launchLocalOrRemote state@{egestKey: egestKey@(EgestKey slotId slotRole), aggreg
     payload = {slotId, slotRole, aggregator} :: CreateRelayPayload
     launchLocal _ = do
       _ <- StreamRelaySup.startRelay payload
-      pure unit
-    launchRemote idleServer =
+      pure true
+    launchRemote idleServer = do
       let
         url = makeUrl idleServer RelayE
-      in void <$> crashIfLeft =<< SpudGun.postJson url payload
+      either (const false) (const true) <$> SpudGun.postJson url payload
 
 toRelayServer :: forall a b. Newtype a b => Newtype RelayServer b => a -> RelayServer
 toRelayServer = unwrap >>> wrap
@@ -448,11 +451,11 @@ filterForLoad (ServerLoad sl) = sl.load < loadThresholdToCreateRelay
 domain :: List Atom
 domain = Agent.Egest # show # atom # singleton
 
-logInfo :: forall a. Logger a
-logInfo = domainLog Logger.info
+logInfo :: forall a. Logger (Record a)
+logInfo = Logger.doLog domain Logger.info
 
--- logWarning :: forall a. Logger a
--- logWarning = domainLog Logger.warning
+logStart :: forall a. Logger (Record a)
+logStart = Logger.doLogEvent domain Logger.Start Logger.info
 
-domainLog :: forall a. Logger {domain :: List Atom, misc :: a} -> Logger a
-domainLog = Logger.doLog domain
+logStop :: forall a. Logger (Record a)
+logStop = Logger.doLogEvent domain Logger.Stop Logger.info

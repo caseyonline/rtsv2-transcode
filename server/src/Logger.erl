@@ -22,9 +22,14 @@
                          line => Line,
                          file => File},
 
+            Args2 = case maps:get(event, Args, undefined) of
+                      {Event} -> maps:put(event, Event, Args);
+                      _ -> Args
+                    end,
+
             case logger:allow(Level, Module) of
               true ->
-                apply(logger, macro_log, [Location, Level, binary_to_list(Msg), [], Args]),
+                apply(logger, macro_log, [Location, Level, binary_to_list(Msg), [], Args2]),
                 unit;
               false ->
                 unit

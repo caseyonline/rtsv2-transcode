@@ -31,7 +31,7 @@ import Prelude
 
 import Bus as Bus
 import Data.Array as Array
-import Data.Either (Either(..))
+import Data.Either (Either(..), hush)
 import Data.Foldable (find, foldl)
 import Data.FoldableWithIndex (foldlWithIndex)
 import Data.Maybe (Maybe(..))
@@ -141,13 +141,13 @@ type DownstreamStreamRelayStateData =
 --       cases such as a failed deregistration followed quickly by
 --       a registration
 --
-type EgestMap = Map ServerAddress { handler :: Process WebSocketHandlerMessage
+type EgestMap = Map ServerAddress { handler :: Process (WebSocketHandlerMessage DownstreamWsMessage)
                                   , deliverTo :: DeliverTo EgestServer
                                   }
-type OriginRelayMap = Map ServerAddress { handler :: Process WebSocketHandlerMessage
+type OriginRelayMap = Map ServerAddress { handler :: Process (WebSocketHandlerMessage DownstreamWsMessage)
                                         , deliverTo :: DeliverTo RelayServer
                                         }
-type DownstreamRelayMap = Map ServerAddress { handler :: Process WebSocketHandlerMessage
+type DownstreamRelayMap = Map ServerAddress { handler :: Process (WebSocketHandlerMessage DownstreamWsMessage)
                                             , deliverToWithSource :: DownstreamRelayWithSource
                                             }
 
@@ -248,7 +248,7 @@ clearStopRef (StateOrigin commonState runState) =
 clearStopRef (StateDownstream commonState runState) =
   StateDownstream commonState{stopRef = Nothing} runState
 
-registerEgest :: SlotId -> SlotRole -> EgestServer -> Int -> Process WebSocketHandlerMessage -> Effect (Maybe SlotConfiguration)
+registerEgest :: SlotId -> SlotRole -> EgestServer -> Int -> Process (WebSocketHandlerMessage DownstreamWsMessage)  -> Effect (Maybe SlotConfiguration)
 registerEgest slotId slotRole egestServer egestPort handler@(Process handlerPid) =
   Gen.doCall (serverName $ RelayKey slotId slotRole) doRegisterEgest
   where
@@ -267,7 +267,7 @@ registerEgest slotId slotRole egestServer egestPort handler@(Process handlerPid)
     updateMap egests = Map.insert egestAddress { handler, deliverTo } egests
     monitor = Gen.monitorPid (serverName $ RelayKey slotId slotRole) handlerPid (\_ -> EgestDown egestAddress)
 
-registerRelay :: SlotId -> SlotRole -> RelayServer -> Int -> SourceRoute -> (Process WebSocketHandlerMessage) -> Effect (Maybe SlotConfiguration)
+registerRelay :: SlotId -> SlotRole -> RelayServer -> Int -> SourceRoute -> (Process (WebSocketHandlerMessage DownstreamWsMessage)) -> Effect (Maybe SlotConfiguration)
 registerRelay slotId slotRole relayServer relayPort sourceRoute handler@(Process handlerPid) =
   Gen.doCall (serverName $ RelayKey slotId slotRole) doRegisterRelay
 
@@ -396,11 +396,15 @@ applyDownstreamRunResult commonStateData@{ relayKey: relayKey@(RelayKey slotId s
 
           Just relayAddress ->
             do
-              webSocket <- registerWithSpecificRelay portNumber relayAddress rest
+              maybeWebSocket <- registerWithSpecificRelay portNumber relayAddress rest
 
               _ <- (logInfo "Attempted registration with relay" { relayAddress, portNumber })
 
-              pure $ (UpstreamRelayStateRegistered portNumber relayAddress webSocket)
+              case maybeWebSocket of
+                Just webSocket ->
+                  pure $ (UpstreamRelayStateRegistered portNumber relayAddress webSocket)
+                Nothing ->
+                  pure $ (UpstreamRelayStatePendingRegistration portNumber)
 
     ensureRelayInPoP pop =
       do
@@ -442,8 +446,8 @@ applyDownstreamRunResult commonStateData@{ relayKey: relayKey@(RelayKey slotId s
         wsUrl = makeWsUrlAddr chosenRelay $ RelayRegisteredRelayWs slotId slotRole (extractAddress thisServer) portNumber remainingRoute
       in
         do
-          webSocket <- crashIfLeft =<< WsGun.openWebSocket wsUrl
-          pure webSocket
+          webSocket <- WsGun.openWebSocket wsUrl
+          pure $ hush webSocket
 
 isInstanceAvailable :: RelayKey -> Effect Boolean
 isInstanceAvailable relayKey = isRegistered (serverName relayKey)
@@ -491,7 +495,7 @@ startLink relayKey payload stateServerName =
 
 stopAction :: RelayKey -> Maybe CachedState -> Effect Unit
 stopAction relayKey@(RelayKey slotId slotRole) cachedState = do
-  logInfo "Stream Relay stopping" {relayKey}
+  logStop "Stream Relay stopping" {relayKey}
   thisServer <- PoPDefinition.getThisServer
   deRegisterFromPeers cachedState
   IntraPoP.announceLocalRelayStopped relayKey
@@ -550,6 +554,7 @@ init relayKey payload@{slotId, slotRole, aggregator} stateServerName =
 
     if egestSourceRoutes == List.nil then
       do
+        logStart "Origin Relay Starting" {relayKey}
         workflowHandle <- startOriginWorkflowFFI (un SlotId slotId)
         config <- getCachedOriginConfig
         monitorEgests config
@@ -571,6 +576,7 @@ init relayKey payload@{slotId, slotRole, aggregator} stateServerName =
         applyOriginPlan commonStateData newOriginStateData
     else
       do
+        logStart "Downstream Relay Starting" {relayKey}
         let
           egestUpstreamRelays = map mkUpstreamRelay $ toUnfoldable <$> egestSourceRoutes
 
@@ -627,11 +633,11 @@ init relayKey payload@{slotId, slotRole, aggregator} stateServerName =
       _ <- traverseWithIndex monitorEgest egests
       pure unit
 
-    monitorRelay :: forall r1. ServerAddress -> { handler :: Process WebSocketHandlerMessage | r1} -> Effect Unit
+    monitorRelay :: forall r1. ServerAddress -> { handler :: Process (WebSocketHandlerMessage DownstreamWsMessage) | r1} -> Effect Unit
     monitorRelay relayAddress {handler: Process pid} =
       Gen.monitorPid (serverName relayKey) pid (\_ -> RelayDown relayAddress)
 
-    monitorRelays :: forall r1 r2. { downstreamRelays :: Map ServerAddress { handler :: Process WebSocketHandlerMessage
+    monitorRelays :: forall r1 r2. { downstreamRelays :: Map ServerAddress { handler :: Process (WebSocketHandlerMessage DownstreamWsMessage)
                                                                            | r1}
                                    | r2 } -> Effect Unit
     monitorRelays {downstreamRelays} = do
@@ -729,12 +735,12 @@ handleInfo msg state =
     findAggregatorSocket gunMsg (IngestAggregatorStatePendingRegistration _) = Nothing
     findAggregatorSocket gunMsg (IngestAggregatorStateRegistered portNumber socket) = Just {socket, portNumber}
 
-    sendSlotConfiguration :: SlotConfiguration -> (Process WebSocketHandlerMessage) -> Effect Unit
+    sendSlotConfiguration :: SlotConfiguration -> (Process (WebSocketHandlerMessage DownstreamWsMessage)) -> Effect Unit
     sendSlotConfiguration slotConfiguration process =
       process ! (WsSend $ SlotConfig slotConfiguration)
 
-    maybeSendSlotConfiguration :: forall r1 r2 r3 egestKey relayKey. Maybe SlotConfiguration -> Maybe SlotConfiguration -> {egests :: Map egestKey { handler :: Process WebSocketHandlerMessage | r1 },
-                                                                                                                                                    downstreamRelays :: Map relayKey { handler :: Process WebSocketHandlerMessage | r2 } | r3 } -> Effect Unit
+    maybeSendSlotConfiguration :: forall r1 r2 r3 egestKey relayKey. Maybe SlotConfiguration -> Maybe SlotConfiguration -> {egests :: Map egestKey { handler :: Process (WebSocketHandlerMessage DownstreamWsMessage) | r1 },
+                                                                                                                                                    downstreamRelays :: Map relayKey { handler :: Process (WebSocketHandlerMessage DownstreamWsMessage) | r2 } | r3 } -> Effect Unit
     maybeSendSlotConfiguration Nothing (Just newSlotConfiguration) {egests, downstreamRelays} = do
       let
         egestPids = Map.values egests <#> _.handler
@@ -744,8 +750,8 @@ handleInfo msg state =
     maybeSendSlotConfiguration _oldRun _newRun _config =
       pure unit
 
-    sendSlotConfigurationToPeers :: forall r1 r2 r3 egestKey relayKey. SlotConfiguration -> { egests :: Map egestKey { handler :: Process WebSocketHandlerMessage | r1 }
-                                                                                            , downstreamRelays :: Map relayKey { handler :: Process WebSocketHandlerMessage | r2 } | r3 } -> Effect Unit
+    sendSlotConfigurationToPeers :: forall r1 r2 r3 egestKey relayKey. SlotConfiguration -> { egests :: Map egestKey { handler :: Process (WebSocketHandlerMessage DownstreamWsMessage) | r1 }
+                                                                                            , downstreamRelays :: Map relayKey { handler :: Process (WebSocketHandlerMessage DownstreamWsMessage) | r2 } | r3 } -> Effect Unit
     sendSlotConfigurationToPeers newSlotConfiguration {egests, downstreamRelays} = do
       let
         egestPids = Map.values egests <#> _.handler
@@ -1052,14 +1058,17 @@ relayKeyFromState (StateDownstream { relayKey } _) = relayKey
 domain :: List Atom
 domain = atom <$> (show Agent.StreamRelay :  "Instance" : List.nil)
 
-logInfo :: forall a. Logger a
-logInfo = domainLog Logger.info
+logInfo :: forall a. Logger (Record a)
+logInfo = Logger.doLog domain Logger.info
 
-logWarning :: forall a. Logger a
-logWarning = domainLog Logger.warning
+logWarning :: forall a. Logger (Record a)
+logWarning = Logger.doLog domain Logger.warning
 
-logError :: forall a. Logger a
-logError = domainLog Logger.error
+logError :: forall a. Logger (Record a)
+logError = Logger.doLog domain Logger.error
 
-domainLog :: forall a. Logger {domain :: List Atom, misc :: a} -> Logger a
-domainLog = Logger.doLog domain
+logStart :: forall a. Logger (Record a)
+logStart = Logger.doLogEvent domain Logger.Start Logger.info
+
+logStop :: forall a. Logger (Record a)
+logStop = Logger.doLogEvent domain Logger.Stop Logger.info

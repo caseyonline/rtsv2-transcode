@@ -43,11 +43,8 @@ init relayKey payload stateServerName = do
 domains :: List Atom
 domains = atom <$> (show Agent.StreamRelay :  "Instance" : nil)
 
-logInfo :: forall a. Logger a
+logInfo :: forall a. Logger (Record a)
 logInfo = domainLog Logger.info
 
---logWarning :: forall a. Logger a
---logWarning = domainLog Logger.warning
-
-domainLog :: forall a. Logger {domain :: List Atom, misc :: a} -> Logger a
+domainLog :: forall a. Logger {domain :: List Atom, misc :: Record a} -> Logger (Record a)
 domainLog = Logger.doLog domains

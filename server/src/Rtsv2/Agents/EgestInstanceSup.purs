@@ -59,7 +59,7 @@ maybeStartAndAddClient pid payload = do
 
 init :: Effect Sup.SupervisorSpec
 init = do
-  logInfo "Egest Supervisor starting" {}
+  logStart "Egest Supervisor starting" {}
   pure
     $ Sup.buildSupervisor
     # Sup.supervisorStrategy Sup.SimpleOneForOne
@@ -79,14 +79,14 @@ childTemplate = Pinto.ChildTemplate (CachedInstanceState.startLink)
 --------------------------------------------------------------------------------
 -- Log helpers
 --------------------------------------------------------------------------------
-domains :: List Atom
-domains = serverName # Names.toDomain # singleton
+domain :: List Atom
+domain = serverName # Names.toDomain # singleton
 
-logInfo :: forall a. Logger a
-logInfo = domainLog Logger.info
+logInfo :: forall a. Logger (Record a)
+logInfo = Logger.doLog domain Logger.info
 
-logWarning :: forall a. Logger a
-logWarning = domainLog Logger.warning
+logWarning :: forall a. Logger (Record a)
+logWarning = Logger.doLog domain Logger.warning
 
-domainLog :: forall a. Logger {domain :: List Atom, misc :: a} -> Logger a
-domainLog = Logger.doLog domains
+logStart :: forall a. Logger (Record a)
+logStart = Logger.doLogEvent domain Logger.Start Logger.info

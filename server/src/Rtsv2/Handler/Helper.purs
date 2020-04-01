@@ -17,18 +17,18 @@ import Simple.JSON (class ReadForeign, class WriteForeign, readJSON, writeJSON)
 import Stetson (InnerStetsonHandler, WebSocketCallResult(..))
 import Stetson.WebSocket as WebSocket
 
-foreign import webSocketMsgMapperImpl :: Foreign -> Maybe WebSocketHandlerMessage
+foreign import webSocketMsgMapperImpl :: forall a. Foreign -> Maybe (WebSocketHandlerMessage a)
 
 data WebSocketHandlerResult serverMsg state = WebSocketNoReply state
                                             | WebSocketReply serverMsg state
                                             | WebSocketStop state
 
-webSocketHandler :: forall clientMsg serverMsg state. ReadForeign clientMsg => WriteForeign serverMsg =>
+webSocketHandler :: forall clientMsg serverMsg infoMsg state. ReadForeign clientMsg => WriteForeign serverMsg =>
                     (Req -> Effect state) ->
                     (state -> Effect (WebSocketHandlerResult serverMsg state)) ->
                     (state -> clientMsg -> Effect (WebSocketHandlerResult serverMsg state)) ->
-                    (state -> WebSocketHandlerMessage -> Effect (WebSocketHandlerResult serverMsg state)) ->
-                    InnerStetsonHandler WebSocketHandlerMessage state
+                    (state -> WebSocketHandlerMessage infoMsg -> Effect (WebSocketHandlerResult serverMsg state)) ->
+                    InnerStetsonHandler (WebSocketHandlerMessage infoMsg) state
 webSocketHandler init wsInit handle info =
   WebSocket.handler (\req -> do
                         state <- init req

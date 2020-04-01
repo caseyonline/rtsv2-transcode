@@ -42,14 +42,13 @@ import Data.Maybe (Maybe, fromMaybe, fromMaybe')
 import Data.Traversable (traverse)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
-import Erl.Data.List (List, singleton)
+import Erl.Data.List (List)
 import Foreign (F, Foreign, readString, unsafeReadTagged)
-import Logger (Logger)
 import Logger as Logger
 import Partial.Unsafe (unsafeCrashWith)
 import Rtsv2.Node as Node
 import Shared.Agent (Agent, strToAgent)
-import Shared.Stream (AgentKey, AggregatorKey(..))
+import Shared.Stream (AgentKey)
 import Shared.Types (Server)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (class ReadForeign, readImpl)
@@ -70,6 +69,7 @@ type PoPDefinitionConfig
 
 type IngestInstanceConfig
   = { eqLogIntervalMs :: Int
+    , aggregatorRetryTimeMs :: Int
     }
 
 type IngestAggregatorAgentConfig
@@ -253,22 +253,3 @@ getMandatoryRecord v = do
         unsafeCrashWith ("invalid_config " <> v)
     Right ok ->
       pure $ ok
-
-
---------------------------------------------------------------------------------
--- Log helpers
---------------------------------------------------------------------------------
-domains :: List Atom
-domains = atom "Config" # singleton
-
---logInfo :: forall a. Logger a
---logInfo = domainLog Logger.info
-
---logWarning :: forall a. Logger a
---logWarning = domainLog Logger.warning
-
-logError :: forall a. Logger a
-logError = domainLog Logger.warning
-
-domainLog :: forall a. Logger {domain :: List Atom, misc :: a} -> Logger a
-domainLog = Logger.doLog domains

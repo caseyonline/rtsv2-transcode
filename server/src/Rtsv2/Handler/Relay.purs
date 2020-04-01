@@ -28,7 +28,7 @@ import Logger (spy)
 import Logger as Logger
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.Locator.Relay (findOrStart)
-import Rtsv2.Agents.Locator.Types (LocalOrRemote(..), NoCapacity(..), ResourceResp, fromLocalOrRemote)
+import Rtsv2.Agents.Locator.Types (LocalOrRemote(..), ResourceFailed(..), ResourceResp, fromLocalOrRemote)
 import Rtsv2.Agents.StreamRelayInstance as StreamRelayInstance
 import Rtsv2.Agents.StreamRelaySup as StreamRelaySup
 import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload, DownstreamWsMessage(..), EgestClientWsMessage, RelayToRelayClientWsMessage, WebSocketHandlerMessage(..))
@@ -132,6 +132,10 @@ ensureStarted =
           --TODO - don't think this should be a 502
           newReq <- replyWithoutBody (StatusCode 502) Map.empty req
           Rest.stop newReq state
+        Left LaunchFailed -> do
+          --TODO - don't think this should be a 502
+          newReq <- replyWithoutBody (StatusCode 502) Map.empty req
+          Rest.stop newReq state
         Right (Local _)  ->
           Rest.result true req state
         Right (Remote _) ->
@@ -155,7 +159,7 @@ type WsRelayState =
   , relayKey :: RelayKey
   }
 
-registeredRelayWs :: SlotId -> SlotRole -> ServerAddress -> Int -> SourceRoute -> InnerStetsonHandler WebSocketHandlerMessage WsRelayState
+registeredRelayWs :: SlotId -> SlotRole -> ServerAddress -> Int -> SourceRoute -> InnerStetsonHandler (WebSocketHandlerMessage DownstreamWsMessage) WsRelayState
 registeredRelayWs slotId slotRole relayAddress relayPort sourceRoute =
   webSocketHandler init wsInit handle info
   where
@@ -171,7 +175,7 @@ registeredRelayWs slotId slotRole relayAddress relayPort sourceRoute =
            }
 
     wsInit state@{relayServer, relayKey} = do
-      self <- Process <$> Erl.self :: Effect (Process WebSocketHandlerMessage)
+      self <- Process <$> Erl.self :: Effect (Process (WebSocketHandlerMessage DownstreamWsMessage))
       Erl.monitor (Names.streamRelayInstanceStateName relayKey)
       maybeSlotConfiguration <- StreamRelayInstance.registerRelay slotId slotRole relayServer relayPort sourceRoute self
       pure $ case maybeSlotConfiguration of
@@ -192,7 +196,7 @@ type WsEgestState =
   , relayKey :: RelayKey
   }
 
-registeredEgestWs :: SlotId -> SlotRole -> ServerAddress -> Int -> InnerStetsonHandler WebSocketHandlerMessage WsEgestState--WebSocketHandler WebSocketHandlerMessage WsEgestState
+registeredEgestWs :: SlotId -> SlotRole -> ServerAddress -> Int -> InnerStetsonHandler (WebSocketHandlerMessage DownstreamWsMessage) WsEgestState
 registeredEgestWs slotId slotRole egestAddress egestPort =
   webSocketHandler init wsInit handle info
   where
@@ -208,7 +212,7 @@ registeredEgestWs slotId slotRole egestAddress egestPort =
            }
 
     wsInit state@{egestServer, relayKey} = do
-      self <- Process <$> Erl.self :: Effect (Process WebSocketHandlerMessage)
+      self <- Process <$> Erl.self :: Effect (Process (WebSocketHandlerMessage DownstreamWsMessage))
       Erl.monitor (Names.streamRelayInstanceStateName relayKey)
       maybeSlotConfiguration <- StreamRelayInstance.registerEgest slotId slotRole egestServer egestPort self
       pure $ case maybeSlotConfiguration of
@@ -228,5 +232,5 @@ registeredEgestWs slotId slotRole egestAddress egestPort =
 --------------------------------------------------------------------------------
 -- Log helpers
 --------------------------------------------------------------------------------
-logInfo :: forall a. List Atom -> String -> a -> Effect Unit
+logInfo :: forall a. List Atom -> String -> Record a -> Effect Unit
 logInfo domain msg misc = Logger.doLog domain Logger.info msg misc

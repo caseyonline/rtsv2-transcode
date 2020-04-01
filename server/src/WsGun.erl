@@ -15,7 +15,7 @@ openImpl(Url) ->
 
       case gun:open(Host, Port, #{ connect_timeout => ConnectTimeout
                                  , retry => 0
-                                 , supervise => false
+                                 %%, supervise => false
                                  , ws_opts => #{ compress => true
                                                , silence_pings => true
                                                }

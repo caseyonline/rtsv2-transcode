@@ -60,7 +60,7 @@ import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Newtype (class Newtype, unwrap, wrap)
 import Data.Set (Set)
 import Data.Set as Set
-import Data.Traversable (traverse_)
+import Data.Traversable (sequence, traverse, traverse_)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Effect.Random (randomInt)
@@ -84,7 +84,7 @@ import Pinto.Timer as Timer
 import PintoHelper (exposeState)
 import Prim.Row (class Nub, class Union)
 import Record as Record
-import Rtsv2.Agents.Locator.Types (LocalOrRemote(..), NoCapacity(..), ResourceResp, ServerSelectionPredicate, fromLocalOrRemote)
+import Rtsv2.Agents.Locator.Types (LocalOrRemote(..), ResourceFailed(..), ServerSelectionPredicate, ResourceResp, fromLocalOrRemote)
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
 import Rtsv2.Health (Health, percentageToHealth)
@@ -98,6 +98,7 @@ import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Stream (AgentKey(..), AggregatorKey, EgestKey(..), RelayKey(..), SlotRole(..), agentKeyToAggregatorKey, aggregatorKeyToAgentKey)
 import Shared.Types (Load, Server(..), ServerAddress(..), ServerLoad(..), extractAddress, extractPoP, serverLoadToServer, toServer, toServerLoad)
 import Shared.Types.Agent.State as PublicState
+import Unsafe.Coerce (unsafeCoerce)
 
 
 type TestHelperPayload =
@@ -741,19 +742,20 @@ updateAgentLocation action lens agentKey server state@{agentLocations} =
 --------------------------------------------------------------------------------
 -- Helper for consistent behaivour around launching resources within a PoP
 --------------------------------------------------------------------------------
-launchLocalOrRemoteGeneric :: (ServerLoad -> Boolean) -> (ServerLoad -> Effect Unit) -> (ServerLoad -> Effect Unit) -> Effect (ResourceResp Server)
+launchLocalOrRemoteGeneric :: (ServerLoad -> Boolean) -> (ServerLoad -> Effect Boolean) -> (ServerLoad -> Effect Boolean) -> Effect (ResourceResp Server)
 launchLocalOrRemoteGeneric pred launchLocal launchRemote = do
   idleServerResp <- getIdleServer pred
-  launchResp <-  -- TODO - currently unit - maybe allow some sort of check?
-    case idleServerResp of
-      Right (Local local) ->
-        launchLocal local
-      Right (Remote remote) ->
-        launchRemote remote
-      Left NoCapacity ->
-        pure unit
-  pure $ (map serverLoadToServer) <$> idleServerResp
-
+  launchResp <- launch idleServerResp
+  pure $ (map serverLoadToServer) <$> launchResp
+  where
+    launch :: Either ResourceFailed (LocalOrRemote ServerLoad) -> Effect (ResourceResp ServerLoad)
+    launch (Left err) = pure (Left err)
+    launch (Right resource) = do
+      resp <- launch' resource
+      pure $ if resp then Right resource
+             else Left LaunchFailed
+    launch' (Local local) = launchLocal local
+    launch' (Remote remote) = launchRemote remote
 
 --------------------------------------------------------------------------------
 -- Gen Server methods
@@ -1240,13 +1242,13 @@ serverLoad {server, load} = toServerLoad server load
 domains :: List Atom
 domains = serverName # Names.toDomain # singleton
 
-logInfo :: forall a. Logger a
+logInfo :: forall a. Logger (Record a)
 logInfo = domainLog Logger.info
 
-logWarning :: forall a. Logger a
+logWarning :: forall a. Logger (Record a)
 logWarning = domainLog Logger.warning
 
-domainLog :: forall a. Logger {domain :: List Atom, misc :: a} -> Logger a
+domainLog :: forall a. Logger {domain :: List Atom, misc :: Record a} -> Logger (Record a)
 domainLog = Logger.doLog domains
 
 maybeLogError :: forall a b c d e. Union b (error :: e) c => Nub c d => String -> Either e a -> Record b  -> Effect Unit

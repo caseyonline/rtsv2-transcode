@@ -347,11 +347,11 @@ serverName = Names.popDefinitionName
 domains :: List Atom
 domains = serverName # Names.toDomain # singleton
 
-logInfo :: forall a. Logger a
+logInfo :: forall a. Logger (Record a)
 logInfo = domainLog Logger.info
 
-logWarning :: forall a. Logger a
+logWarning :: forall a. Logger (Record a)
 logWarning = domainLog Logger.warning
 
-domainLog :: forall a. Logger {domain :: List Atom, misc :: a} -> Logger a
+domainLog :: forall a. Logger {domain :: List Atom, misc :: Record a} -> Logger (Record a)
 domainLog = Logger.doLog domains
