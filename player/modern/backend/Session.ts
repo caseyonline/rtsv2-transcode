@@ -246,6 +246,7 @@ export default class Session extends EventEmitter implements ISession {
         {
           console.debug("Source encoder onFI.", message.timestamp, message.pts);
         }
+        break;
 
       default:
         this.unexpectedMessage(message);

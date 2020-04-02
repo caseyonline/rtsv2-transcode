@@ -7,6 +7,7 @@ export type Message
   | QualityChangeMessage
   | SDPOfferResponseMessage
   | ICECandidateMessage
+  | OnFIMessage
 
 /** The data provided by an init event. */
 export interface InitMessage {
