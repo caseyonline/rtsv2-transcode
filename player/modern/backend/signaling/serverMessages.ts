@@ -68,3 +68,14 @@ export interface ICECandidateMessage {
   /** The media line index to which the candidate applies. */
   readonly index: number;
 }
+
+/**  An on-fi message originating from the source ingest. */
+export interface OnFIMessage {
+  readonly type: "on-fi";
+
+  /** The source encoder timestamp. */
+  readonly timestamp: number;
+
+  /** The corresponding video timestamp. */
+  readonly pts: number;
+}
