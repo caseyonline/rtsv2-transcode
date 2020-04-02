@@ -386,20 +386,18 @@ main =
 
     waitForMessageTimeout          = delayMs 2000.0
 
-    waitForSupervisorRecovery      = delayMs  50.0
+    waitForSupervisorRecovery      = delayMs  100.0
 
-    waitForAsyncRelayStart         = delayMs  100.0
+    waitForAsyncProfileStart       = delayMs  250.0 -- Time between starting an ingest and the aggregator being up with that profile
+    waitForAsyncProfileStop        = delayMs  250.0 -- Time between stopping an ingest and the aggregator removing that profile
+
+    waitForAsyncRelayStart         = delayMs  200.0
     waitForAsyncRelayStop          = delayMs  100.0
-
-    waitForAsyncProfileStart       = delayMs  200.0
-    waitForAsyncProfileStop        = delayMs  200.0
-
-    waitForRemoteAsyncProfileStart = delayMs  350.0
 
     waitForIntraPoPDisseminate     = delayMs  700.0
 
     waitForNodeStartDisseminate    = delayMs 1000.0
-    waitForNodeFailureDisseminate  = delayMs 3500.0 -- TODO - seems big
+    waitForNodeFailureDisseminate  = delayMs 750.0
 
     waitForTransPoPDisseminate     = delayMs 2000.0
     waitForTransPoPStopDisseminate = delayMs 5000.0 -- TODO - seeems big
@@ -495,7 +493,7 @@ main =
             traverse_ (aggregatorNotPresent slot1) (allNodesBar p1n2)     >>= as' "aggregator not on busy servers"
             setLoad         p1n3 0.0             >>= assertStatusCode 204 >>= as  "mark p1n3 as idle"
             stopNode p1n2                        >>= as' "make p1n2 fail"
-            waitForIntraPoPDisseminate                                    >>= as' "allow failure to disseminate"
+            waitForNodeFailureDisseminate                                 >>= as' "allow failure to disseminate"
             aggregatorStats p1n3 slot1           >>= assertStatusCode 200
                                                      >>= assertAggregator [low]
                                                                           >>= as  "failed aggregator moved to new idle server"
@@ -856,7 +854,6 @@ main =
             killProcess p1n1 (Chaos.defaultKill $ ingestName slot1 Primary "500")
                                                 >>=  assertStatusCode 204 >>= as "kill process"
             waitForSupervisorRecovery                                     >>= as' "wait for supervisor"
-            waitForSupervisorRecovery                                     >>= as' "wait for supervisor2"
             aggregatorStats p1n2 slot1          >>= assertStatusCode 200
                                                     >>= assertAggregator []
                                                                           >>= as  "aggregator has no ingests"
@@ -865,7 +862,7 @@ main =
             traverse_ maxOut (allNodesBar p1n2)                           >>= as' "load up all servers bar one"
             waitForIntraPoPDisseminate                                    >>= as' "allow load to disseminate"
             ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200  >>= as  "create ingest"
-            waitForRemoteAsyncProfileStart                                >>= as' "wait for async start of profile"
+            waitForAsyncProfileStart                                      >>= as' "wait for async start of profile"
             aggregatorStats p1n2 slot1          >>= assertStatusCode 200
                                                     >>= assertAggregator [low]
                                                                          >>= as  "aggregator has low only"
@@ -874,40 +871,39 @@ main =
                                                     >>= assertAggregator []
                                                                          >>= as  "aggregator has no ingests"
 
-          -- currently, when the relay is killed the websocket drops, and the egest eagerly restarts a newe downstream elsewhere...
-          -- it "4.5 Launch ingest and egest, kill origin relay, assert slot state is still valid" do
-          --   (flip evalStateT) Map.empty $ do
-          --     lift $ ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200  >>= as  "create ingest"
-          --     lift $ waitForAsyncProfileStart                                      >>= as' "wait for async start of ingest"
-          --     lift $ clientStart p2n1 slot1              >>= assertStatusCode 204  >>= as  "egest available"
-          --     lift $ waitForAsyncProfileStart                                      >>= as' "wait for async start of egest"
-          --     (lift $ slotState p1n1 slot1               >>= (bodyToRecord :: ToRecord (PublicState.SlotState Array))
-          --                                                <#> ((<$>) canonicaliseSlotState))
-          --                                                >>= storeSlotState        >>= asT "stored state"
-          --     killOriginRelay slot1 Primary                                        >>= asT' "kill origin relay"
-          --     lift $ waitForAsyncProfileStart                                      >>= as' "wait for recovery"
-          --     (lift $ slotState p1n1 slot1               >>= (bodyToRecord :: ToRecord (PublicState.SlotState Array))
-          --                                                <#> ((<$>) canonicaliseSlotState))
-          --                                                >>= compareSlotState excludePorts (==)
-          --                                                >>= compareSlotState identity (/=)
-          --                                                                          >>= asT "compare state"
+          it "4.5 Launch ingest and egest, kill origin relay, assert slot state is still valid" do
+            (flip evalStateT) Map.empty $ do
+              lift $ ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200  >>= as  "create ingest"
+              lift $ waitForTransPoPDisseminate                                    >>= as' "wait for async start of ingest"
+              lift $ clientStart p2n1 slot1              >>= assertStatusCode 204  >>= as  "egest available"
+              lift $ waitForTransPoPDisseminate                                    >>= as' "wait for async start of egest"
+              (lift $ slotState p1n1 slot1               >>= (bodyToRecord :: ToRecord (PublicState.SlotState Array))
+                                                         <#> ((<$>) canonicaliseSlotState))
+                                                         >>= storeSlotState        >>= asT "stored state"
+              killOriginRelay slot1 Primary                                        >>= asT' "kill origin relay"
+              lift $ waitForAsyncProfileStart                                      >>= as' "wait for recovery"
+              (lift $ slotState p1n1 slot1               >>= (bodyToRecord :: ToRecord (PublicState.SlotState Array))
+                                                         <#> ((<$>) canonicaliseSlotState))
+                                                         >>= compareSlotState excludePorts (==)
+                                                         >>= compareSlotState identity (/=)
+                                                                                   >>= asT "compare state"
 
-          -- itOnly "4.6 Launch ingest and egest, kill downstream relay, assert slot state is still valid" do
-          --   (flip evalStateT) Map.empty $ do
-          --     lift $ ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200  >>= as  "create ingest"
-          --     lift $ waitForAsyncProfileStart                                      >>= as' "wait for async start of ingest"
-          --     lift $ clientStart p2n1 slot1              >>= assertStatusCode 204  >>= as  "egest available"
-          --     lift $ waitForAsyncProfileStart                                      >>= as' "wait for async start of egest"
-          --     (lift $ slotState p1n1 slot1               >>= (bodyToRecord :: ToRecord (PublicState.SlotState Array))
-          --                                                <#> ((<$>) (excludePorts <<< canonicaliseSlotState)))
-          --                                                >>= storeSlotState        >>= asT "stored state"
-          --     killDownstreamRelay slot1 Primary                                    >>= asT' "kill downstream relay"
-          --     lift $ waitForAsyncProfileStart                                      >>= as' "wait for recovery"
-          --     (lift $ slotState p1n1 slot1               >>= (bodyToRecord :: ToRecord (PublicState.SlotState Array))
-          --                                                <#> ((<$>) canonicaliseSlotState))
-          --                                                >>= compareSlotState excludePorts (==)
-          --                                                >>= compareSlotState identity (/=)
-          --                                                                          >>= asT "compare state"
+          it "4.6 Launch ingest and egest, kill downstream relay, assert slot state is still valid" do
+            (flip evalStateT) Map.empty $ do
+              lift $ ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200  >>= as  "create ingest"
+              lift $ waitForTransPoPDisseminate                                    >>= as' "wait for async start of ingest"
+              lift $ clientStart p2n1 slot1              >>= assertStatusCode 204  >>= as  "egest available"
+              lift $ waitForTransPoPDisseminate                                    >>= as' "wait for async start of egest"
+              (lift $ slotState p1n1 slot1               >>= (bodyToRecord :: ToRecord (PublicState.SlotState Array))
+                                                         <#> ((<$>) (excludePorts <<< canonicaliseSlotState)))
+                                                         >>= storeSlotState        >>= asT "stored state"
+              killDownstreamRelay slot1 Primary                                    >>= asT' "kill downstream relay"
+              lift $ waitForAsyncProfileStart                                      >>= as' "wait for recovery"
+              (lift $ slotState p1n1 slot1               >>= (bodyToRecord :: ToRecord (PublicState.SlotState Array))
+                                                         <#> ((<$>) canonicaliseSlotState))
+                                                         >>= compareSlotState excludePorts (==)
+                                                         >>= compareSlotState identity (/=)
+                                                                                   >>= asT "compare state"
 
     describe "Cleanup" do
       after_ stopSession do

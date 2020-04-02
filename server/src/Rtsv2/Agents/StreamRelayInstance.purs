@@ -34,7 +34,7 @@ import Data.Array as Array
 import Data.Either (Either(..), hush)
 import Data.Foldable (find, foldl)
 import Data.FoldableWithIndex (foldlWithIndex)
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Maybe as Maybe
 import Data.Newtype (un, unwrap)
 import Data.Traversable (traverse)
@@ -541,6 +541,7 @@ init relayKey payload@{slotId, slotRole, aggregator} stateServerName =
     IntraPoP.announceLocalRelayIsAvailable relayKey
     _ <- Bus.subscribe (serverName relayKey) IntraPoP.bus IntraPoPBus
     Gen.registerTerminate (serverName relayKey) terminate
+    mConfig <- CachedInstanceState.getInstanceData stateServerName
 
     let
       commonStateData =
@@ -554,9 +555,10 @@ init relayKey payload@{slotId, slotRole, aggregator} stateServerName =
 
     if egestSourceRoutes == List.nil then
       do
-        logStart "Origin Relay Starting" {relayKey}
+        logStart (fromMaybe "Origin Relay Starting" ((const "Origin Relay Restarting") <$> mConfig)) {relayKey}
         workflowHandle <- startOriginWorkflowFFI (un SlotId slotId)
-        config <- getCachedOriginConfig
+        let
+          config = cachedConfigToOriginConfig mConfig
         monitorEgests config
         monitorRelays config
 
@@ -576,12 +578,13 @@ init relayKey payload@{slotId, slotRole, aggregator} stateServerName =
         applyOriginPlan commonStateData newOriginStateData
     else
       do
-        logStart "Downstream Relay Starting" {relayKey}
+        logStart (fromMaybe "Downstream Relay Starting" ((const "Downstream Relay Restarting") <$> mConfig)) {relayKey}
         let
           egestUpstreamRelays = map mkUpstreamRelay $ toUnfoldable <$> egestSourceRoutes
 
         workflowHandle <- startDownstreamWorkflowFFI (un SlotId slotId)
-        config <- getCachedDownstreamConfig egestUpstreamRelays
+        let
+          config = cachedConfigToDownstreamConfig mConfig egestUpstreamRelays
         monitorEgests config
         monitorRelays config
 
@@ -602,19 +605,17 @@ init relayKey payload@{slotId, slotRole, aggregator} stateServerName =
         applyDownstreamPlan commonStateData newDownstreamStateData
 
   where
-    getCachedOriginConfig =
-      case _ of
+    cachedConfigToOriginConfig mConfig =
+      case mConfig of
         Nothing -> emptyOriginConfig
         Just (CachedDownstream _ _) -> emptyOriginConfig
         Just (CachedOrigin _ cachedConfig _) -> cachedConfig
-      <$> CachedInstanceState.getInstanceData stateServerName
 
-    getCachedDownstreamConfig egestUpstreamRelays =
-      case _ of
+    cachedConfigToDownstreamConfig mConfig egestUpstreamRelays =
+      case mConfig of
         Nothing -> emptyDownstreamConfig egestUpstreamRelays
         Just (CachedOrigin _ _ _) -> emptyDownstreamConfig egestUpstreamRelays
         Just (CachedDownstream cachedConfig _) -> cachedConfig
-      <$> CachedInstanceState.getInstanceData stateServerName
 
     emptyOriginConfig =
       { egests: Map.empty

@@ -291,7 +291,7 @@ informAggregator state@{streamDetails, ingestKey: ingestKey@(IngestKey slotId sl
   maybeIngestAdded <- addIngest $ (extractServer <$> maybeAggregator)
   case maybeIngestAdded of
     Just webSocket -> do
-      logInfo "WebSocket connected" {maybeAggregator}
+      logInfo "WebSocket connection started" {maybeAggregator}
       CachedInstanceState.recordInstanceData stateServerName webSocket
       pure $ state{aggregatorWebSocket = Just webSocket}
     Nothing -> do
