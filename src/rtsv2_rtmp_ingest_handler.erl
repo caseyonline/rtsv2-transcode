@@ -60,7 +60,7 @@ handle(#?state{rtmp_pid = Rtmp,
   receive
     {Rtmp, {request, publish, PublishArgs = {_RtmpStreamId, _ClientId, Path}}} ->
 
-      [StreamNameStr | _] = string:tokens(Path, "&"),
+      [StreamNameStr | _] = string:tokens(Path, "?"),
       StreamName = list_to_binary(StreamNameStr),
 
       (Handle(RemoteIpStr, RemotePort, StreamName, Rtmp, PublishArgs))(),

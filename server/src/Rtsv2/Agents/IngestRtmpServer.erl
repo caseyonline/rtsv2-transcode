@@ -177,6 +177,10 @@ workflow_loop(ClientMetadataFn, SourceInfoFn) ->
       unit = (ClientMetadataFn(Metadata))(),
       workflow_loop(ClientMetadataFn, SourceInfoFn);
 
+    #workflow_output{message = #workflow_data_msg{data = #rtmp_onfi_timestamp{timestamp = Timestamp}}} ->
+      io:format(user, "TIMESTAMP ~p~n", [i_utils:epoch_milliseconds_to_iso8601(Timestamp)]),
+      workflow_loop(ClientMetadataFn, SourceInfoFn);
+
     #workflow_output{message = #workflow_data_msg{data = SourceInfo = #source_info{}}} ->
       unit = (SourceInfoFn(SourceInfo))(),
       workflow_loop(ClientMetadataFn, SourceInfoFn);

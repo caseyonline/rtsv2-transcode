@@ -57,7 +57,7 @@ db =
       { auth: { host: Any --"172.16.171.5"
               , protocol: Rtmp
               , rtmpShortName: wrap "mmddev001"
-              , authType: Llnw
+              , authType: Adobe
               , username: "user"
               , password: "password" }
       , details: { role: Primary
