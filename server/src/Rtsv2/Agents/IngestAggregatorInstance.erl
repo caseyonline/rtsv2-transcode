@@ -7,6 +7,7 @@
 -include_lib("id3as_media/include/audio_levels.hrl").
 -include_lib("id3as_media/include/send_to_bus_processor.hrl").
 -include_lib("id3as_media/include/fun_processor.hrl").
+-include_lib("id3as_media/include/rtmp.hrl").
 -include_lib("id3as_rtc/include/rtp.hrl").
 -ifdef(__RTC_FEAT_FEC).
 -include_lib("id3as_rtc/include/rtp_ulp_fec.hrl").
@@ -21,7 +22,8 @@
          addRemoteIngestImpl/3,
          removeIngestImpl/2,
          registerStreamRelayImpl/3,
-         deRegisterStreamRelayImpl/3
+         deRegisterStreamRelayImpl/3,
+         workflowMessageMapperImpl/1
         ]).
 
 -define(frames_with_source_id(SourceId), #named_ets_spec{name = list_to_atom("frames_with_source_id: " ++ ??SourceId),
@@ -99,6 +101,19 @@ deRegisterStreamRelayImpl(Handle, Host, Port) ->
       ok
   end.
 
+workflowMessageMapperImpl(#workflow_output{message = #workflow_data_msg{data = #frame{type = script,
+                                                                                      pts = Pts,
+                                                                                      frame_metadata = #rtmp_onfi_timestamp{
+                                                                                                          timestamp = Timestamp
+                                                                                                         }}}}) ->
+  {just, {rtmpOnFI, Timestamp, Pts}};
+
+workflowMessageMapperImpl(#workflow_output{}) ->
+  {just, {noop}};
+
+workflowMessageMapperImpl(_) ->
+  {nothing}.
+
 %%------------------------------------------------------------------------------
 %% Internal functions
 %%------------------------------------------------------------------------------
@@ -165,8 +180,9 @@ startWorkflow(SlotId, SlotRole, Profiles) ->
                                             #compound_processor{
                                                name = binary_to_atom(ProfileName, utf8),
                                                display_name = <<ProfileName/binary, " (receiving from ", StreamName/binary, ")">>,
-                                               spec = #processor_spec{consumes = ?frames},
-                                               subscribes_to = {aggregate, ?frames_with_source_id(ProfileName)},
+                                               spec = #processor_spec{consumes = [?audio_frames, ?video_frames]},
+                                               subscribes_to = [{aggregate, ?audio_frames_with_source_id(ProfileName)},
+                                                                {aggregate, ?video_frames_with_source_id(ProfileName)}],
                                                processors = [
                                                              #processor{name = audio_decode,
                                                                         display_name = <<"Audio Decode">>,
@@ -279,26 +295,7 @@ startWorkflow(SlotId, SlotRole, Profiles) ->
                                                                                              , slot_role = SlotRole
                                                                                              , slot_configuration = SlotConfiguration
                                                                                              }
-                                        },
-
-                              %% lists:map(fun(#profile_info{ profile_name = ProfileName } ) ->
-                              %%               #processor{ name = binary_to_atom(<<ProfileName/binary, "null">>, utf8)
-                              %%                         , subscribes_to = binary_to_atom(ProfileName, utf8)
-                              %%                         , module = dev_null_processor
-                              %%                         }
-                              %%           end,
-                              %%           Profiles
-                              %%          ),
-
-                              %% TODO - remove once complete - shouldn't be getting stray output messages
-                              lists:map(fun(#enriched_slot_profile{ profile_name = ProfileName } ) ->
-                                            #processor{ name = binary_to_atom(<<"GC ", ProfileName/binary>>, utf8)
-                                                      , subscribes_to = binary_to_atom(ProfileName, utf8)
-                                                      , module = dev_null_processor
-                                                      }
-                                        end,
-                                        Profiles
-                                       )
+                                        }
                              ]
                },
 

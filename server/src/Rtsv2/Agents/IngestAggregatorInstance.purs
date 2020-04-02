@@ -35,7 +35,7 @@ import Erl.Data.List (List, nil, (:))
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
 import Erl.Data.Tuple (Tuple3, toNested3, tuple3)
-import Erl.Process (Process(..))
+import Erl.Process (Process(..), (!))
 import Erl.Process.Raw (Pid)
 import Erl.Utils (shutdown)
 import Erl.Utils as Erl
@@ -50,7 +50,7 @@ import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..), announceLocalAggregatorIsAvailable, announceLocalAggregatorStopped)
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
-import Rtsv2.Agents.StreamRelayTypes (AggregatorToIngestWsMessage, DownstreamWsMessage, WebSocketHandlerMessage)
+import Rtsv2.Agents.StreamRelayTypes (AggregatorToIngestWsMessage, DownstreamWsMessage(..), WebSocketHandlerMessage(..))
 import Rtsv2.Config as Config
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
@@ -71,6 +71,7 @@ foreign import addRemoteIngestImpl :: WorkflowHandle -> IngestKey -> String -> E
 foreign import removeIngestImpl :: WorkflowHandle -> IngestKey -> Effect Unit
 foreign import registerStreamRelayImpl :: WorkflowHandle -> String -> Int -> Effect Unit
 foreign import deRegisterStreamRelayImpl :: WorkflowHandle -> String -> Int -> Effect Unit
+foreign import workflowMessageMapperImpl :: Foreign -> Maybe WorkflowMsg
 
 type RegisteredRelay = { port :: Int
                        , handler :: Process (WebSocketHandlerMessage DownstreamWsMessage)
@@ -97,11 +98,15 @@ type State
     , slotConfiguration :: SlotConfiguration
     }
 
+data WorkflowMsg = Noop
+                 | RtmpOnFI Int Int
+
 data Msg
   = IntraPoPBus IntraPoP.IntraPoPBusMessage
   | MaybeStop
   | RelayDown RelayServer
   | IngestDown ProfileName ServerAddress Boolean
+  | Workflow WorkflowMsg
 
 isInstanceAvailable :: AggregatorKey -> Effect Boolean
 isInstanceAvailable aggregatorKey = do
@@ -175,13 +180,12 @@ stopAction aggregatorKey _cachedState = do
 
 init :: StreamDetails -> StateServerName -> Effect State
 init streamDetails@{role: slotRole, slot: {id: slotId}} stateServerName = do
-  let
-    thisServerName = (serverName (streamDetailsToAggregatorKey streamDetails))
   _ <- Erl.trapExit true
   logStart "Ingest Aggregator starting" {aggregatorKey, streamDetails}
   config <- Config.ingestAggregatorAgentConfig
   thisServer <- PoPDefinition.getThisServer
   announceLocalAggregatorIsAvailable aggregatorKey
+  Gen.registerExternalMapping thisServerName (\m -> Workflow <$> workflowMessageMapperImpl m)
   workflowHandleAndPidsAndSlotConfiguration <- startWorkflowImpl (unwrap streamDetails.slot.id) streamDetails.role $ mkKey <$> streamDetails.slot.profiles
   Gen.registerTerminate thisServerName terminate
   void $ Bus.subscribe thisServerName IntraPoP.bus IntraPoPBus
@@ -205,8 +209,8 @@ init streamDetails@{role: slotRole, slot: {id: slotId}} stateServerName = do
 
   where
     mkKey (SlotProfile p) = tuple3 (IngestKey streamDetails.slot.id streamDetails.role p.name) (unwrap p.rtmpStreamName) (unwrap p.name)
-
     aggregatorKey = streamDetailsToAggregatorKey streamDetails
+    thisServerName = (serverName (aggregatorKey))
 
 terminate :: Foreign -> State -> Effect Unit
 terminate reason state@{workflowHandle, webRtcStreamServers} = do
@@ -236,6 +240,15 @@ handleInfo msg state@{aggregatorKey, stateServerName, workflowHandle} =
       pure $ CastNoReply state
 
     IntraPoPBus (IngestAggregatorExited _ _) ->
+      pure $ CastNoReply state
+
+    Workflow Noop ->
+      pure $ CastNoReply state
+
+    Workflow (RtmpOnFI timestamp pts) -> do
+      let
+        send relay = relay ! (WsSend $ OnFI timestamp pts)
+      _ <- traverse send $ _.handler <$> Map.values state.cachedState.relays
       pure $ CastNoReply state
 
     RelayDown relayServer -> do

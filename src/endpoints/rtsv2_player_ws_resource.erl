@@ -305,6 +305,14 @@ websocket_info({profile_switched, ProfileName}, State) ->
   , State
   };
 
+websocket_info({egestOnFI, Timestamp, Pts}, State) ->
+  { [ json_frame( <<"on-fi">>,
+                  #{ <<"timestamp">> => Timestamp
+                   , <<"pts">> => Pts }
+                ) ]
+  , State
+  };
+
 websocket_info(not_implemented, State) ->
   {ok, State}.
 
@@ -517,7 +525,7 @@ transition_to_running([ #{ name := ActiveProfileName } | _OtherProfiles ] = Prof
   StartOptions = construct_start_options(TraceId, PublicIPString, Profiles, StreamDesc),
   webrtc_stream_server:ensure_session(ServerId, TraceId, StartOptions),
   webrtc_stream_server:subscribe_for_msgs(TraceId, #subscription_options{}),
-
+  ?I_SUBSCRIBE_BUS_MSGS(<<"egest_bus">>),
   case StreamDesc of
     #stream_desc_egest{ egest_key = EgestKey
                       , add_client = AddClient

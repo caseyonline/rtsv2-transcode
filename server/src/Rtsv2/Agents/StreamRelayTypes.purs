@@ -11,7 +11,6 @@ module Rtsv2.Agents.StreamRelayTypes
 import Prelude
 
 import Foreign (F, Foreign, ForeignError(..), fail)
-import Partial.Unsafe (unsafeCrashWith)
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
 import Shared.Stream (SlotId, SlotRole)
 import Shared.Types (PoPName, Server)
@@ -37,6 +36,7 @@ data RelayToRelayClientWsMessage = RelayToRelay Unit
 data EgestClientWsMessage = EdgeToRelay Unit
 
 data DownstreamWsMessage = SlotConfig SlotConfiguration
+                         | OnFI Int Int
 
 data WebSocketHandlerMessage a = WsStop
                                | WsSend a
@@ -80,8 +80,14 @@ instance readForeignDownstreamWsMessage :: ReadForeign DownstreamWsMessage where
       decodeValue :: {tag :: String, value :: Foreign} -> F DownstreamWsMessage
       decodeValue {tag: "slotConfig",
                    value: val} = SlotConfig <$> readImpl val
+      decodeValue {tag: "onFI",
+                   value: val} = (\{timestamp, pts} -> OnFI timestamp pts) <$> (readImpl val :: F { timestamp :: Int
+                                                                                                  , pts :: Int})
       decodeValue {tag} = fail $ ForeignError ("unknown tag: " <> tag)
 
 instance writeForeignDownstreamWsMessage :: WriteForeign DownstreamWsMessage where
   writeImpl (SlotConfig c) = writeImpl { tag: "slotConfig"
                                        , value: writeImpl c}
+  writeImpl (OnFI timestamp pts) = writeImpl { tag: "onFI"
+                                             , value: {timestamp, pts}
+                                             }

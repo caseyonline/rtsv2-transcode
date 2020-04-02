@@ -736,28 +736,17 @@ handleInfo msg state =
     findAggregatorSocket gunMsg (IngestAggregatorStatePendingRegistration _) = Nothing
     findAggregatorSocket gunMsg (IngestAggregatorStateRegistered portNumber socket) = Just {socket, portNumber}
 
-    sendSlotConfiguration :: SlotConfiguration -> (Process (WebSocketHandlerMessage DownstreamWsMessage)) -> Effect Unit
-    sendSlotConfiguration slotConfiguration process =
-      process ! (WsSend $ SlotConfig slotConfiguration)
+    sendMessage :: DownstreamWsMessage -> (Process (WebSocketHandlerMessage DownstreamWsMessage)) -> Effect Unit
+    sendMessage msg process =
+      process ! (WsSend msg)
 
-    maybeSendSlotConfiguration :: forall r1 r2 r3 egestKey relayKey. Maybe SlotConfiguration -> Maybe SlotConfiguration -> {egests :: Map egestKey { handler :: Process (WebSocketHandlerMessage DownstreamWsMessage) | r1 },
-                                                                                                                                                    downstreamRelays :: Map relayKey { handler :: Process (WebSocketHandlerMessage DownstreamWsMessage) | r2 } | r3 } -> Effect Unit
-    maybeSendSlotConfiguration Nothing (Just newSlotConfiguration) {egests, downstreamRelays} = do
+    sendMessageToPeers :: forall r1 r2 r3 egestKey relayKey. DownstreamWsMessage -> { egests :: Map egestKey { handler :: Process (WebSocketHandlerMessage DownstreamWsMessage) | r1 }
+                                                                                    , downstreamRelays :: Map relayKey { handler :: Process (WebSocketHandlerMessage DownstreamWsMessage) | r2 } | r3 } -> Effect Unit
+    sendMessageToPeers msg {egests, downstreamRelays} = do
       let
         egestPids = Map.values egests <#> _.handler
         relayPids = Map.values downstreamRelays <#> _.handler
-      _ <- traverse (sendSlotConfiguration newSlotConfiguration) (egestPids <> relayPids)
-      pure unit
-    maybeSendSlotConfiguration _oldRun _newRun _config =
-      pure unit
-
-    sendSlotConfigurationToPeers :: forall r1 r2 r3 egestKey relayKey. SlotConfiguration -> { egests :: Map egestKey { handler :: Process (WebSocketHandlerMessage DownstreamWsMessage) | r1 }
-                                                                                            , downstreamRelays :: Map relayKey { handler :: Process (WebSocketHandlerMessage DownstreamWsMessage) | r2 } | r3 } -> Effect Unit
-    sendSlotConfigurationToPeers newSlotConfiguration {egests, downstreamRelays} = do
-      let
-        egestPids = Map.values egests <#> _.handler
-        relayPids = Map.values downstreamRelays <#> _.handler
-      _ <- traverse (sendSlotConfiguration newSlotConfiguration) (egestPids <> relayPids)
+      _ <- traverse (sendMessage msg) (egestPids <> relayPids)
       pure unit
 
     processGunMessage state@(StateOrigin common@{config: {reApplyPlanTimeMs}} origin@{config, run: run@{ingestAggregatorState}}) gunMsg = do
@@ -776,12 +765,16 @@ handleInfo msg state =
               | Nothing <- run.slotConfiguration = do
                 _ <- logInfo "Received slot configuration" {slotConfiguration}
                 setSlotConfigurationFFI (relayKeyFromState state) slotConfiguration
-                sendSlotConfigurationToPeers slotConfiguration config
+                sendMessageToPeers (SlotConfig slotConfiguration) config
                 pure $ StateOrigin common origin{ run = run { slotConfiguration = Just slotConfiguration }}
               | otherwise =
                 pure state
 
-          CastNoReply <$> processGunMessage' noop down slotConfig socket gunMsg
+            send msg = do
+              sendMessageToPeers msg config
+              pure state
+
+          CastNoReply <$> processGunMessage' noop down slotConfig send socket gunMsg
 
         Nothing ->
           pure $ CastNoReply state
@@ -804,18 +797,22 @@ handleInfo msg state =
               | Nothing <- run.slotConfiguration = do
                 _ <- logInfo "Received slot configuration" {slotConfiguration}
                 setSlotConfigurationFFI (relayKeyFromState state) slotConfiguration
-                sendSlotConfigurationToPeers slotConfiguration config
+                sendMessageToPeers (SlotConfig slotConfiguration) config
                 pure $ StateDownstream common downstream{run = run{ slotConfiguration = Just slotConfiguration }}
               | otherwise =
                 pure state
 
-          CastNoReply <$> processGunMessage' noop down slotConfig socket gunMsg
+            send msg = do
+              sendMessageToPeers msg config
+              pure state
+
+          CastNoReply <$> processGunMessage' noop down slotConfig send socket gunMsg
 
         Nothing ->
           pure $ CastNoReply state
 
-    processGunMessage' :: forall a. Effect a -> Effect a -> (SlotConfiguration -> Effect a) -> WebSocket -> WsGun.GunMsg -> Effect a
-    processGunMessage' noop down slotConfig socket gunMsg = do
+    processGunMessage' :: forall a b. Effect a -> Effect a -> (SlotConfiguration -> Effect a) -> (DownstreamWsMessage -> Effect a) -> WebSocket -> WsGun.GunMsg -> Effect a
+    processGunMessage' noop down slotConfig send socket gunMsg = do
       processResponse <- WsGun.processMessage socket gunMsg
       case processResponse of
         Left error -> do
@@ -835,6 +832,9 @@ handleInfo msg state =
 
         Right (WsGun.Frame (SlotConfig slotConfiguration)) ->
           slotConfig slotConfiguration
+
+        Right (WsGun.Frame onFI@(OnFI timestamp pts)) -> do
+          send onFI
 
 terminate :: Foreign -> State -> Effect Unit
 terminate reason state = do

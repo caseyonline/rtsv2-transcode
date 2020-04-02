@@ -99,6 +99,11 @@ start_workflow(Rtmp, PublishArgs, Key = {ingestKey, SlotName, StreamRole, Profil
                                          module = rtmp_tag_to_frame
                                         },
 
+                              #processor{name = onfi_to_frame,
+                                         subscribes_to = [?previous, {rtmp_ingest, ?rtmp_onfi_timestamps}],
+                                         module = rtmp_onfi_to_frame
+                                        },
+
                               #processor{name = set_source_id,
                                          subscribes_to = ?previous,
                                          module = set_source_id,
@@ -175,10 +180,6 @@ workflow_loop(ClientMetadataFn, SourceInfoFn) ->
 
     #workflow_output{message = #workflow_data_msg{data = #rtmp_client_metadata{metadata = Metadata}}} ->
       unit = (ClientMetadataFn(Metadata))(),
-      workflow_loop(ClientMetadataFn, SourceInfoFn);
-
-    #workflow_output{message = #workflow_data_msg{data = #rtmp_onfi_timestamp{timestamp = Timestamp}}} ->
-      io:format(user, "TIMESTAMP ~p~n", [i_utils:epoch_milliseconds_to_iso8601(Timestamp)]),
       workflow_loop(ClientMetadataFn, SourceInfoFn);
 
     #workflow_output{message = #workflow_data_msg{data = SourceInfo = #source_info{}}} ->

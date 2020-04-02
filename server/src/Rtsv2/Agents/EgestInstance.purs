@@ -96,6 +96,11 @@ type State
 payloadToEgestKey :: CreateEgestPayload -> EgestKey
 payloadToEgestKey payload = EgestKey payload.slotId payload.slotRole
 
+data EgestBusMsg = EgestOnFI Int Int
+
+bus :: Bus.Bus EgestBusMsg
+bus = Bus.bus "egest_bus"
+
 data Msg = WriteEqLog
          | HandlerDown
          | InitStreamRelays
@@ -260,6 +265,11 @@ handleInfo msg state@{egestKey: egestKey@(EgestKey slotId slotRole)} =
 
             | otherwise ->
               pure $ CastNoReply state
+
+          Right (WsGun.Frame onFI@(OnFI timestamp pts)) -> do
+            Bus.raise bus (EgestOnFI timestamp pts)
+            pure $ CastNoReply state
+
       else
         pure $ CastNoReply state
 

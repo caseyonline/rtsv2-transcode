@@ -14,6 +14,7 @@ import Simple.JSON.Generics (enumSumRep)
 data FrameType = Video
                | Audio
                | Subtitles
+               | Script
                | ProgramDetails
                | PCR
 
@@ -34,6 +35,7 @@ instance showFrameType :: Show FrameType where
   show Subtitles = "subtitles"
   show ProgramDetails = "program_details"
   show PCR = "pcr"
+  show Script = "script"
 instance readFrameType :: ReadForeign FrameType where readImpl = enumSumRep
 instance writeForeignFrameType :: WriteForeign FrameType where
   writeImpl Video = writeImpl "video"
@@ -41,3 +43,4 @@ instance writeForeignFrameType :: WriteForeign FrameType where
   writeImpl Subtitles = writeImpl "subtitles"
   writeImpl ProgramDetails = writeImpl "programDetails"
   writeImpl PCR = writeImpl "pcr"
+  writeImpl Script = writeImpl "script"
