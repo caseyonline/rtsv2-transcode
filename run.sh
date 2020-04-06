@@ -2,6 +2,8 @@
 set -eu
 set -o pipefail
 
+cd "$(dirname "${BASH_SOURCE[0]}")"
+
 update_env_script() {
   ENV_SCRIPT=scripts/env/${ENV_NAME}
 }
@@ -26,6 +28,10 @@ if [[ ! -f "${ENV_SCRIPT}" ]]; then
   echo "No environment specified, and no user-specific environment found, falling back to the common environment."
   ENV_NAME=common
   update_env_script
+fi
+
+if [[ -d "$PWD/bin" ]]; then
+  export PATH=$PATH:$PWD/bin
 fi
 
 source scripts/shared_functions.sh
