@@ -224,6 +224,8 @@ instance writeForeignSlotRole :: WriteForeign SlotRole where
 
 ------------------------------------------------------------------------------
 -- EgestKey
+derive instance eqEgestKey :: Eq EgestKey
+derive instance ordEgestKey :: Ord EgestKey
 
 ------------------------------------------------------------------------------
 -- AggregatorKey
@@ -232,6 +234,8 @@ derive instance ordAggregatorKey :: Ord AggregatorKey
 
 ------------------------------------------------------------------------------
 -- RelayKey
+derive instance eqRelayKey :: Eq RelayKey
+derive instance ordRelayKey :: Ord RelayKey
 
 ------------------------------------------------------------------------------
 -- IngestKey

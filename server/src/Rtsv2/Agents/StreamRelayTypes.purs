@@ -1,8 +1,8 @@
 module Rtsv2.Agents.StreamRelayTypes
   ( CreateRelayPayload
   , CreateProxyPayload
-  , RelayToRelayClientWsMessage(..)
-  , EgestClientWsMessage(..)
+  , RelayUpstreamWsMessage(..)
+  , EgestUpstreamWsMessage(..)
   , AggregatorToIngestWsMessage(..)
   , DownstreamWsMessage(..)
   , WebSocketHandlerMessage(..)
@@ -10,8 +10,10 @@ module Rtsv2.Agents.StreamRelayTypes
 
 import Prelude
 
-import Foreign (F, Foreign, ForeignError(..), fail)
+import Data.Generic.Rep (class Generic)
+import Kishimen (genericSumToVariant, variantToGenericSum)
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
+import Rtsv2.DataObject as DO
 import Shared.Stream (SlotId, SlotRole)
 import Shared.Types (PoPName, Server)
 import Simple.JSON (class ReadForeign, class WriteForeign, readImpl, writeImpl)
@@ -30,64 +32,59 @@ type CreateProxyPayload
     }
 
 data AggregatorToIngestWsMessage = IngestStop
+                                 | AggregatorUpstreamDataObjectMessage String
 
-data RelayToRelayClientWsMessage = RelayToRelay Unit
+data RelayUpstreamWsMessage = RelayUpstreamDataObjectMessage DO.Message
+                            | RelayUpstreamDataObjectUpdateMessage DO.ObjectUpdateMessage
 
-data EgestClientWsMessage = EdgeToRelay Unit
+data EgestUpstreamWsMessage = EdgeToRelayDataObjectMessage DO.Message
+                            | EdgeToRelayDataObjectUpdateMessage DO.ObjectUpdateMessage
 
 data DownstreamWsMessage = SlotConfig SlotConfiguration
-                         | OnFI Int Int
+                         | OnFI {timestamp:: Int, pts:: Int}
+                         | DataObjectMessage DO.Message
+                         | DataObjectUpdateResponse DO.ObjectUpdateResponseMessage
+                         | DataObject DO.ObjectBroadcastMessage
 
 data WebSocketHandlerMessage a = WsStop
                                | WsSend a
 
 ------------------------------------------------------------------------------
 -- IngestToAggregatorClientWsMessage
-instance readForeignAggregatorToIngestWsMessage :: ReadForeign AggregatorToIngestWsMessage where
-  readImpl o = decodeValue =<< decodeTag o
-    where
-      decodeTag :: Foreign -> F {tag :: String, value :: Foreign}
-      decodeTag a = readImpl a
+derive instance genericAggregatorToIngestWsMessage :: Generic AggregatorToIngestWsMessage _
 
-      decodeValue :: {tag :: String, value :: Foreign} -> F AggregatorToIngestWsMessage
-      -- decodeValue {tag: "register",
-      --              value: val} = RelayRegister <$> readImpl val
-      decodeValue {tag: "ingestStop"} = pure IngestStop
-      decodeValue {tag} = fail $ ForeignError ("unknown tag: " <> tag)
+instance readForeignAggregatorToIngestWsMessage :: ReadForeign AggregatorToIngestWsMessage where
+  readImpl o = variantToGenericSum <$> readImpl o
 
 instance writeForeignAggregatorToIngestWsMessage :: WriteForeign AggregatorToIngestWsMessage where
-  writeImpl IngestStop = writeImpl { tag: "ingestStop"
-                                   , value: 0 }
+  writeImpl msg = writeImpl (genericSumToVariant msg)
 
 ------------------------------------------------------------------------------
--- RelayToRelayClientWsMessage
-instance readForeignRelayToRelayClientWsMessage :: ReadForeign RelayToRelayClientWsMessage where
-  readImpl o = fail $ ForeignError ("no client message")
+-- RelayUpstreamWsMessage
+derive instance genericRelayUpstreamWsMessage :: Generic RelayUpstreamWsMessage _
+
+instance readForeignRelayUpstreamWsMessage :: ReadForeign RelayUpstreamWsMessage where
+  readImpl o = variantToGenericSum <$> readImpl o
+
+instance writeForeignRelayUpstreamWsMessage :: WriteForeign RelayUpstreamWsMessage where
+  writeImpl msg = writeImpl (genericSumToVariant msg)
 
 ------------------------------------------------------------------------------
--- EgestClientWsMessage
-instance readForeignEgestClientWsMessage :: ReadForeign EgestClientWsMessage where
-  readImpl o = fail $ ForeignError ("no client message")
+-- EgestUpstreamWsMessage
+derive instance genericEgestUpstreamWsMessage :: Generic EgestUpstreamWsMessage _
+
+instance readForeignEgestUpstreamWsMessage :: ReadForeign EgestUpstreamWsMessage where
+  readImpl o = variantToGenericSum <$> readImpl o
+
+instance writeForeignEgestUpstreamWsMessage :: WriteForeign EgestUpstreamWsMessage where
+  writeImpl msg = writeImpl (genericSumToVariant msg)
 
 ------------------------------------------------------------------------------
 -- DownstreamWsMessage
-instance readForeignDownstreamWsMessage :: ReadForeign DownstreamWsMessage where
-  readImpl o = decodeValue =<< decodeTag o
-    where
-      decodeTag :: Foreign -> F {tag :: String, value :: Foreign}
-      decodeTag a = readImpl a
+derive instance genericDownstreamWsMessage :: Generic DownstreamWsMessage _
 
-      decodeValue :: {tag :: String, value :: Foreign} -> F DownstreamWsMessage
-      decodeValue {tag: "slotConfig",
-                   value: val} = SlotConfig <$> readImpl val
-      decodeValue {tag: "onFI",
-                   value: val} = (\{timestamp, pts} -> OnFI timestamp pts) <$> (readImpl val :: F { timestamp :: Int
-                                                                                                  , pts :: Int})
-      decodeValue {tag} = fail $ ForeignError ("unknown tag: " <> tag)
+instance readForeignDownstreamWsMessage :: ReadForeign DownstreamWsMessage where
+  readImpl o = variantToGenericSum <$> readImpl o
 
 instance writeForeignDownstreamWsMessage :: WriteForeign DownstreamWsMessage where
-  writeImpl (SlotConfig c) = writeImpl { tag: "slotConfig"
-                                       , value: writeImpl c}
-  writeImpl (OnFI timestamp pts) = writeImpl { tag: "onFI"
-                                             , value: {timestamp, pts}
-                                             }
+  writeImpl msg = writeImpl (genericSumToVariant msg)

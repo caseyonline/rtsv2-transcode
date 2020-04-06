@@ -4,9 +4,7 @@ module Rtsv2.Agents.SlotTypes
        )
        where
 
-import Prelude
-
-import Erl.Data.List (List, nil, uncons, (:))
+import Erl.Data.List (List)
 
 type SlotConfiguration =
   { profiles :: List SlotProfile

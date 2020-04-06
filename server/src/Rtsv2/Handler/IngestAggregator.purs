@@ -16,8 +16,9 @@ import Erl.Utils as Erl
 import Logger (spy)
 import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
 import Rtsv2.Agents.IngestAggregatorSup as IngestAggregatorSup
-import Rtsv2.Agents.StreamRelayTypes (AggregatorToIngestWsMessage(..), DownstreamWsMessage(..), RelayToRelayClientWsMessage, WebSocketHandlerMessage(..))
+import Rtsv2.Agents.StreamRelayTypes (AggregatorToIngestWsMessage(..), DownstreamWsMessage(..), RelayUpstreamWsMessage(..), WebSocketHandlerMessage(..))
 import Rtsv2.Handler.Helper (WebSocketHandlerResult(..), webSocketHandler)
+import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.LlnwApiTypes (StreamDetails)
 import Shared.Stream (AggregatorKey(..), IngestKey(..), ProfileName, SlotId, SlotRole)
@@ -46,11 +47,12 @@ registeredIngestWs slotId slotRole profileName ingestAddress =
       pure { ingestKey: IngestKey slotId slotRole profileName
            , aggregatorKey: AggregatorKey slotId slotRole
            }
-    wsInit state = do
+    wsInit state@{aggregatorKey} = do
       self <- Process <$> Erl.self :: Effect (Process (WebSocketHandlerMessage AggregatorToIngestWsMessage))
       result <- IngestAggregatorInstance.registerIngest slotId slotRole profileName ingestAddress self
       case result of
-        true ->
+        true -> do
+          Erl.monitor (Names.ingestAggregatorInstanceStateName aggregatorKey)
           pure $ WebSocketNoReply state
         false ->
           pure $ WebSocketReply IngestStop state
@@ -85,13 +87,18 @@ registeredRelayWs slotId slotRole relayAddress relayPort =
            , aggregatorKey: AggregatorKey slotId slotRole
            }
 
-    wsInit state@{relayServer} = do
+    wsInit state@{relayServer, aggregatorKey} = do
       self <- Process <$> Erl.self :: Effect (Process (WebSocketHandlerMessage DownstreamWsMessage))
+      Erl.monitor (Names.ingestAggregatorInstanceStateName aggregatorKey)
       slotConfiguration <- IngestAggregatorInstance.registerRelay slotId slotRole {server: relayServer, port: relayPort} self
       pure $ WebSocketReply (SlotConfig slotConfiguration) state
 
-    handle :: WsRelayState -> RelayToRelayClientWsMessage -> Effect (WebSocketHandlerResult DownstreamWsMessage WsRelayState)
-    handle state _ = do
+    handle :: WsRelayState -> RelayUpstreamWsMessage -> Effect (WebSocketHandlerResult DownstreamWsMessage WsRelayState)
+    handle state@{aggregatorKey} (RelayUpstreamDataObjectMessage msg) = do
+      IngestAggregatorInstance.dataObjectSendMessage aggregatorKey msg
+      pure $ WebSocketNoReply state
+    handle state@{aggregatorKey} (RelayUpstreamDataObjectUpdateMessage msg) = do
+      IngestAggregatorInstance.dataObjectUpdate aggregatorKey msg
       pure $ WebSocketNoReply state
 
     info state WsStop =

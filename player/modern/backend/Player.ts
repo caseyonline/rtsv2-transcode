@@ -27,4 +27,16 @@ export default class Player implements IPlayer {
   setProfile(profileName: string) {
     this.session.setQualityConstraint({ behavior: QualityConstraintBehavior.ForceQuality, variant: profileName });
   }
+
+  sendPrivateMessage(to: string[], msg: string) {
+    this.session.sendMessage({ tag: "private", to: to }, msg );
+  }
+
+  sendPublisherMessage(msg: string) {
+    this.session.sendMessage({ tag: "publisher" }, msg );
+  }
+
+  sendBroadcastMessage(msg: string) {
+    this.session.sendMessage({ tag: "broadcast" }, msg );
+  }
 }

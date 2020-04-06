@@ -12,26 +12,23 @@ module Rtsv2.Handler.Relay
 import Prelude
 
 import Data.Either (Either(..), hush, isRight)
-import Data.Maybe (Maybe(..), fromMaybe, fromMaybe', isJust, isNothing, maybe)
+import Data.Maybe (Maybe(..), fromMaybe', isJust, isNothing, maybe)
 import Data.Newtype (unwrap)
 import Effect (Effect)
 import Erl.Atom (Atom)
 import Erl.Cowboy.Handlers.Rest (moved, notMoved)
-import Erl.Cowboy.Handlers.WebSocket (Frame(..))
-import Erl.Cowboy.Req (Req, StatusCode(..), replyWithoutBody, setHeader)
+import Erl.Cowboy.Req (StatusCode(..), replyWithoutBody, setHeader)
 import Erl.Data.List (List, singleton, (:))
 import Erl.Data.Map as Map
 import Erl.Process (Process(..))
 import Erl.Utils as Erl
-import Foreign (Foreign)
-import Logger (spy)
 import Logger as Logger
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.Locator.Relay (findOrStart)
 import Rtsv2.Agents.Locator.Types (LocalOrRemote(..), ResourceFailed(..), ResourceResp, fromLocalOrRemote)
 import Rtsv2.Agents.StreamRelayInstance as StreamRelayInstance
 import Rtsv2.Agents.StreamRelaySup as StreamRelaySup
-import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload, DownstreamWsMessage(..), EgestClientWsMessage, RelayToRelayClientWsMessage, WebSocketHandlerMessage(..))
+import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload, DownstreamWsMessage(..), EgestUpstreamWsMessage(..), RelayUpstreamWsMessage(..), WebSocketHandlerMessage(..))
 import Rtsv2.Handler.Helper (WebSocketHandlerResult(..), webSocketHandler)
 import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.Names as Names
@@ -41,12 +38,9 @@ import Shared.Stream (RelayKey(..), SlotId, SlotRole)
 import Shared.Types (EgestServer(..), RelayServer(..), Server, ServerAddress, ServerLocation(..), SourceRoute, extractAddress)
 import Shared.Types.Agent.State (StreamRelay)
 import Shared.Utils (lazyCrashIfMissing)
-import Simple.JSON (class ReadForeign, class WriteForeign, readJSON, writeJSON)
 import Simple.JSON as JSON
 import Stetson (HttpMethod(..), InnerStetsonHandler, StetsonHandler)
 import Stetson.Rest as Rest
-import Stetson.Types (WebSocketCallResult(..))
-import Stetson.WebSocket as WebSocket
 import StetsonHelper (GetHandler, PostHandler, allBody, binaryToString, jsonResponse, processPostPayload)
 
 stats :: SlotId -> SlotRole -> GetHandler (StreamRelay List)
@@ -182,8 +176,12 @@ registeredRelayWs slotId slotRole relayAddress relayPort sourceRoute =
                Nothing -> WebSocketNoReply state
                Just slotConfiguration -> WebSocketReply (SlotConfig slotConfiguration) state
 
-    handle :: WsRelayState -> RelayToRelayClientWsMessage -> Effect (WebSocketHandlerResult DownstreamWsMessage WsRelayState)
-    handle state _ = do
+    handle :: WsRelayState -> RelayUpstreamWsMessage -> Effect (WebSocketHandlerResult DownstreamWsMessage WsRelayState)
+    handle state@{relayKey} (RelayUpstreamDataObjectMessage msg) = do
+      StreamRelayInstance.dataObjectSendMessage relayKey msg
+      pure $ WebSocketNoReply state
+    handle state@{relayKey} (RelayUpstreamDataObjectUpdateMessage msg) = do
+      StreamRelayInstance.dataObjectUpdateSendMessage relayKey msg
       pure $ WebSocketNoReply state
 
     info state WsStop =
@@ -219,8 +217,12 @@ registeredEgestWs slotId slotRole egestAddress egestPort =
                Nothing -> WebSocketNoReply state
                Just slotConfiguration -> WebSocketReply (SlotConfig slotConfiguration) state
 
-    handle :: WsEgestState -> EgestClientWsMessage -> Effect (WebSocketHandlerResult DownstreamWsMessage WsEgestState)
-    handle state _ = do
+    handle :: WsEgestState -> EgestUpstreamWsMessage -> Effect (WebSocketHandlerResult DownstreamWsMessage WsEgestState)
+    handle state@{relayKey} (EdgeToRelayDataObjectMessage msg) = do
+      StreamRelayInstance.dataObjectSendMessage relayKey msg
+      pure $ WebSocketNoReply state
+    handle state@{relayKey} (EdgeToRelayDataObjectUpdateMessage msg) = do
+      StreamRelayInstance.dataObjectUpdateSendMessage relayKey msg
       pure $ WebSocketNoReply state
 
     info state WsStop = do

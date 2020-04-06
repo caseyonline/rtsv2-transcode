@@ -6,6 +6,7 @@ module Rtsv2.Agents.EgestInstance
   , addClient
   , currentStats
   , getSlotConfiguration
+  , dataObjectSendMessage
   , CreateEgestPayload
 
   , CachedState
@@ -30,7 +31,7 @@ import Erl.Data.List (List, singleton)
 import Erl.Data.Map (values)
 import Erl.Process.Raw (Pid)
 import Erl.Utils (Ref, makeRef, systemTimeMs)
-import Logger (Logger, spy)
+import Logger (Logger)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
 import Pinto as Pinto
@@ -44,19 +45,20 @@ import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.Locator.Types (LocalOrRemote(..), RegistrationResp, ResourceResp)
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
 import Rtsv2.Agents.StreamRelaySup (startRelay) as StreamRelaySup
-import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload, DownstreamWsMessage(..), EgestClientWsMessage)
+import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload, DownstreamWsMessage(..), EgestUpstreamWsMessage(..))
 import Rtsv2.Audit as Audit
 import Rtsv2.Config as Config
+import Rtsv2.DataObject as DO
+import Rtsv2.DataObject as DataObject
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
-import Rtsv2.Utils (crashIfLeft)
 import Shared.Agent as Agent
 import Shared.Common (Milliseconds)
 import Shared.LlnwApiTypes (StreamIngestProtocol(..))
 import Shared.Router.Endpoint (Endpoint(..), makeUrl, makeWsUrl)
 import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Stream (AggregatorKey(..), EgestKey(..), RelayKey(..), SlotId, SlotRole)
-import Shared.Types (DeliverTo, EgestServer(..), Load, RelayServer, Server, ServerLoad(..), extractAddress)
+import Shared.Types (EgestServer(..), Load, RelayServer, Server, ServerLoad(..), extractAddress)
 import Shared.Types.Agent.State as PublicState
 import SpudGun as SpudGun
 import WsGun as WsGun
@@ -74,7 +76,7 @@ type CreateEgestPayload
 
 type StateServerName = CachedInstanceState.StateServerName CachedState
 
-type WebSocket = WsGun.WebSocket EgestClientWsMessage DownstreamWsMessage
+type WebSocket = WsGun.WebSocket EgestUpstreamWsMessage DownstreamWsMessage
 
 type CachedState = WebSocket
 
@@ -97,6 +99,9 @@ payloadToEgestKey :: CreateEgestPayload -> EgestKey
 payloadToEgestKey payload = EgestKey payload.slotId payload.slotRole
 
 data EgestBusMsg = EgestOnFI Int Int
+                 | EgestDataObjectMessage DO.Message
+                 | EgestDataObjectUpdateResponse DO.ObjectUpdateResponseMessage
+                 | EgestDataObjectBroadcast DO.ObjectBroadcastMessage
 
 bus :: Bus.Bus EgestBusMsg
 bus = Bus.bus "egest_bus"
@@ -155,6 +160,16 @@ addClient handlerPid egestKey =
 getSlotConfiguration :: EgestKey -> Effect (Maybe SlotConfiguration)
 getSlotConfiguration egestKey =
   Gen.call (serverName egestKey) (\state@{slotConfiguration} -> CallReply slotConfiguration state)
+
+dataObjectSendMessage :: EgestKey -> DO.Message -> Effect Unit
+dataObjectSendMessage egestKey msg =
+  Gen.doCall (serverName egestKey)
+  (\state@{relayWebSocket: mRelayWebSocket} -> do
+    _ <- case mRelayWebSocket of
+           Just socket -> void $ WsGun.send socket (EdgeToRelayDataObjectMessage msg)
+           Nothing -> pure unit
+    pure $ CallReply unit state
+  )
 
 currentStats :: EgestKey -> Effect PublicState.Egest
 currentStats egestKey@(EgestKey slotId slotRole) =
@@ -266,8 +281,26 @@ handleInfo msg state@{egestKey: egestKey@(EgestKey slotId slotRole)} =
             | otherwise ->
               pure $ CastNoReply state
 
-          Right (WsGun.Frame onFI@(OnFI timestamp pts)) -> do
+          Right (WsGun.Frame (OnFI {timestamp, pts})) -> do
             Bus.raise bus (EgestOnFI timestamp pts)
+            pure $ CastNoReply state
+
+          Right (WsGun.Frame (DataObjectMessage dataObjectMsg)) -> do
+            shouldProcess <- DataObject.shouldProcessMessage egestKey dataObjectMsg
+            if shouldProcess then Bus.raise bus (EgestDataObjectMessage dataObjectMsg)
+            else pure unit
+            pure $ CastNoReply state
+
+          Right (WsGun.Frame (DataObjectUpdateResponse dataObjectMsg)) -> do
+            shouldProcess <- DataObject.shouldProcessMessage egestKey dataObjectMsg
+            if shouldProcess then Bus.raise bus (EgestDataObjectUpdateResponse dataObjectMsg)
+            else pure unit
+            pure $ CastNoReply state
+
+          Right (WsGun.Frame (DataObject dataObject)) -> do
+            shouldProcess <- DataObject.shouldProcessMessage egestKey dataObject
+            if shouldProcess then Bus.raise bus (EgestDataObjectBroadcast dataObject)
+            else pure unit
             pure $ CastNoReply state
 
       else

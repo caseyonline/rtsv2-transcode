@@ -89,6 +89,7 @@
         , egest_key :: term()
         , start_stream_result :: term()
         , get_slot_configuration :: fun()
+        , data_object_send_message :: fun()
         , add_client :: fun()
         , audio_ssrc :: rtp:ssrc()
         , video_ssrc :: rtp:ssrc()
@@ -313,9 +314,29 @@ websocket_info({egestOnFI, Timestamp, Pts}, State) ->
   , State
   };
 
+websocket_info({egestDataObjectMessage, #{ destination := Destination
+                                         , msg := Msg
+                                         , sender := Sender }}, State = #?state_running{ trace_id = Id }) ->
+
+  OkToSend = case Destination of
+               {broadcast} -> true;
+               {private, IdList} -> lists:member(Id, IdList)
+             end,
+
+  if
+    OkToSend ->
+      {[ json_frame( <<"dataobject.message">>,
+                     #{ <<"sender">> => Sender
+                      , <<"msg" >> => Msg
+                      }
+                   ) ]
+      , State};
+    ?otherwise ->
+      {ok, State}
+  end;
+
 websocket_info(not_implemented, State) ->
   {ok, State}.
-
 
 websocket_handle({ text, JSON }, State) ->
   try
@@ -338,6 +359,9 @@ websocket_handle({ text, JSON }, State) ->
 
         <<"set-quality-constraint-configuration">> ->
           handle_set_quality_constraint_configuration(Message, State);
+
+        <<"dataobject.send-message">> ->
+          handle_data_object_send_message(Message, State);
 
         _UnknownMessageType ->
           { [ close_frame(?WebSocketStatusCode_MessageNotImplemented) ]
@@ -366,6 +390,7 @@ try_build_stream_desc(Req,
                        , make_egest_key := MakeEgestKey
                        , start_stream := StartStream
                        , get_slot_configuration := GetSlotConfiguration
+                       , data_object_send_message := DataObjectSendMessage
                        , add_client := AddClient
                        }
                      ) ->
@@ -403,6 +428,7 @@ try_build_stream_desc(Req,
                           , egest_key = EgestKey
                           , start_stream_result = StartStreamResult
                           , get_slot_configuration = GetSlotConfiguration
+                          , data_object_send_message = DataObjectSendMessage
                           , add_client = AddClient
                           , audio_ssrc = AudioSSRC
                           , video_ssrc = VideoSSRC
@@ -562,7 +588,6 @@ transition_to_running([ #{ name := ActiveProfileName } | _OtherProfiles ] = Prof
 
 
 handle_ping(State) ->
-  ?LOG_DEBUG(#{ what => "ping", result => "ok" }),
   { [ json_frame(<<"pong">>) ]
   , State
   }.
@@ -624,6 +649,29 @@ handle_set_quality_constraint_configuration(#{ <<"configuration">> := #{ <<"beha
   , hibernate
   }.
 
+handle_data_object_send_message(#{ <<"msg">> := Message
+                                 , <<"destination">> := Destination },
+                                State = #?state_running { trace_id = Id
+                                                        , stream_desc = #stream_desc_egest {
+                                                                           egest_key = Key
+                                                                          , data_object_send_message = SendMessage
+                                                                          } }) ->
+
+  PursMessageDestination = case Destination of
+                             #{ <<"tag">> := <<"publisher">> } -> {publisher};
+                             #{ <<"tag">> := <<"broadcast">> } -> {broadcast};
+                             #{ <<"tag">> := <<"private">>, <<"to">> :=  To } -> {private, To}
+                           end,
+
+  PursMessage = #{ sender => Id
+                 , destination => PursMessageDestination
+                 , msg => Message
+                 , ref => make_ref()
+                 },
+
+  ((SendMessage(Key))(PursMessage))(),
+
+  {ok, State}.
 
 maybe_allocate_trace_id(ServerId, ServerEpoch, CookieDomainName, Req) ->
   case cowboy_req:match_cookies([{tid, [], undefined}], Req) of

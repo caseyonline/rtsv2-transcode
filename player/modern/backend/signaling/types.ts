@@ -40,3 +40,18 @@ export interface IQualityConstraintConfiguration {
   /** The variant to use in conjunction with the behavior property to control which variant(s) the player will received */
   readonly variant : string;
 }
+
+interface PublisherMessageDestination {
+  tag: "publisher"
+}
+
+interface BroadcastMessageDestination {
+  tag: "broadcast"
+}
+
+interface PrivateMessageDestination {
+  tag: "private"
+  to: string[]
+}
+
+export type MessageDestination = PublisherMessageDestination | BroadcastMessageDestination | PrivateMessageDestination

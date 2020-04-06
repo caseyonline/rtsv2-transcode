@@ -6,6 +6,8 @@ module Rtsv2.Agents.IngestAggregatorInstance
   , registerRelay
   , getState
   , domain
+  , dataObjectSendMessage
+  , dataObjectUpdate
 
   , CachedState
   , RegisteredRelay
@@ -17,15 +19,12 @@ import Prelude
 
 import Bus as Bus
 import Data.Either (Either(..))
-import Data.Foldable (foldM, foldl)
 import Data.FoldableWithIndex (foldWithIndexM, foldlWithIndex)
 import Data.Lens (Lens', set, view)
 import Data.Lens.At (at)
 import Data.Lens.Record (prop)
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (unwrap)
-import Data.Set (Set)
-import Data.Set as Set
 import Data.Symbol (SProxy(..))
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..))
@@ -40,7 +39,7 @@ import Erl.Process.Raw (Pid)
 import Erl.Utils (shutdown)
 import Erl.Utils as Erl
 import Foreign (Foreign)
-import Logger (Logger, spy)
+import Logger (Logger)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult, isRegistered)
 import Pinto.Gen (CallResult(..), CastResult(..))
@@ -50,8 +49,11 @@ import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..), announceLocalAggregatorIsAvailable, announceLocalAggregatorStopped)
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
-import Rtsv2.Agents.StreamRelayTypes (AggregatorToIngestWsMessage, DownstreamWsMessage(..), WebSocketHandlerMessage(..))
+import Rtsv2.Agents.StreamRelayTypes (AggregatorToIngestWsMessage(..), DownstreamWsMessage(..), WebSocketHandlerMessage(..))
 import Rtsv2.Config as Config
+import Rtsv2.DataObject (ObjectUpdateMessage(..))
+import Rtsv2.DataObject as DO
+import Rtsv2.DataObject as DataObject
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Agent as Agent
@@ -77,8 +79,9 @@ type RegisteredRelay = { port :: Int
                        , handler :: Process (WebSocketHandlerMessage DownstreamWsMessage)
                        }
 
-type CachedState = { localIngests :: Set ProfileName
-                   , remoteIngests :: Map ProfileName ServerAddress
+type CachedState = { localIngests :: Map ProfileName (Process (WebSocketHandlerMessage AggregatorToIngestWsMessage))
+                   , remoteIngests :: Map ProfileName { ingestAddress :: ServerAddress
+                                                      , handler :: Process (WebSocketHandlerMessage AggregatorToIngestWsMessage) }
                    , relays :: Map RelayServer RegisteredRelay
                    }
 
@@ -96,6 +99,7 @@ type State
     , webRtcStreamServers :: List Pid
     , stateServerName :: StateServerName
     , slotConfiguration :: SlotConfiguration
+    , dataObject :: DO.Object
     }
 
 data WorkflowMsg = Noop
@@ -129,8 +133,8 @@ registerIngest slotId slotRole profileName ingestAddress handler@(Process handle
       let
         isLocal = extractAddress thisServer == ingestAddress
       result <- if isLocal
-                then doAddLocalIngest profileName state
-                else doAddRemoteIngest profileName ingestAddress state
+                then doAddLocalIngest profileName handler state
+                else doAddRemoteIngest profileName handler ingestAddress state
       case result of
         Left unit ->
           pure $ CallReply false state
@@ -152,7 +156,7 @@ registerRelay slotId slotRole deliverTo handler =
 
 checkProfileInactive :: ProfileName -> State -> Boolean
 checkProfileInactive profileName {cachedState: {localIngests, remoteIngests}} =
-  not (Set.member profileName localIngests) && not (Map.member profileName remoteIngests)
+  not (Map.member profileName localIngests) && not (Map.member profileName remoteIngests)
 
 getState :: AggregatorKey -> Effect (PublicState.IngestAggregator List)
 getState aggregatorKey@(AggregatorKey slotId slotRole) = Gen.call (serverName aggregatorKey) getState'
@@ -165,10 +169,52 @@ getState aggregatorKey@(AggregatorKey slotId slotRole) = Gen.call (serverName ag
                       , activeProfiles: (\(Tuple profileName ingestAddress) -> JsonLd.activeIngestLocationNode slotId slotRole profileName ingestAddress) <$> allProfiles
                       , downstreamRelays: foldlWithIndex (\server acc {port} -> (JsonLd.downstreamRelayLocationNode slotId slotRole {server, port}) : acc) nil relays
                       }
-        localProfiles outerAcc = foldl (\acc profileName -> (Tuple profileName (extractAddress thisServer)) : acc) outerAcc localIngests
-        remoteProfiles outerAcc = foldlWithIndex (\profileName acc ingestAddress -> (Tuple profileName ingestAddress) : acc) outerAcc remoteIngests
+        localProfiles outerAcc = foldlWithIndex (\profileName acc _handler -> (Tuple profileName (extractAddress thisServer)) : acc) outerAcc localIngests
+        remoteProfiles outerAcc = foldlWithIndex (\profileName acc {ingestAddress} -> (Tuple profileName ingestAddress) : acc) outerAcc remoteIngests
         allProfiles = remoteProfiles $ localProfiles nil
 
+
+dataObjectSendMessage :: AggregatorKey -> DO.Message -> Effect Unit
+dataObjectSendMessage aggregatorKey msg@(DO.Message {destination: DO.Publisher
+                                                    , msg: payload}) =
+  Gen.doCall (serverName aggregatorKey)
+  (\state@{cachedState: {localIngests, remoteIngests}} -> do
+    shouldProcess <- DataObject.shouldProcessMessage aggregatorKey msg
+    if shouldProcess then do
+      void $ traverse doSend $ Map.values localIngests
+      void $ traverse doSend $ _.handler <$> Map.values remoteIngests
+    else pure unit
+    pure $ CallReply unit state
+  )
+  where
+    doSend handler =
+      handler ! WsSend (AggregatorUpstreamDataObjectMessage payload)
+
+dataObjectSendMessage aggregatorKey msg =
+  Gen.doCall (serverName aggregatorKey)
+  (\state@{cachedState: {relays}} -> do
+    shouldProcess <- DataObject.shouldProcessMessage aggregatorKey msg
+    if shouldProcess then void $ traverse doSendMessage $ Map.values relays
+    else pure unit
+    pure $ CallReply unit state
+  )
+  where
+    doSendMessage { handler } =
+      handler ! WsSend (DataObjectMessage msg)
+
+dataObjectUpdate :: AggregatorKey -> DO.ObjectUpdateMessage -> Effect Unit
+dataObjectUpdate aggregatorKey msg@(ObjectUpdateMessage {sender, senderRef, operation}) =
+  Gen.doCall (serverName aggregatorKey)
+  (\state@{dataObject, cachedState: {relays}} -> do
+    shouldProcess <- DataObject.shouldProcessMessage aggregatorKey msg
+    if shouldProcess then performUpdate dataObject
+    else pure unit
+    pure $ CallReply unit state
+  )
+  where
+    performUpdate dataObject = pure unit
+      -- case DO.update operation dataObject of
+      --   Left response
 
 startLink :: AggregatorKey -> StreamDetails -> StateServerName -> Effect StartLinkResult
 startLink aggregatorKey streamDetails stateServerName = Gen.startLink (serverName aggregatorKey) (init streamDetails stateServerName) handleInfo
@@ -202,6 +248,7 @@ init streamDetails@{role: slotRole, slot: {id: slotId}} stateServerName = do
                    , cachedState: emptyCachedState
                    , stateServerName
                    , slotConfiguration
+                   , dataObject: DO.new
                    }
   cachedState <- fromMaybe emptyCachedState <$> CachedInstanceState.getInstanceData stateServerName
   state2 <- applyCachedState initialState cachedState
@@ -220,14 +267,14 @@ terminate reason state@{workflowHandle, webRtcStreamServers} = do
   pure unit
 
 emptyCachedState :: CachedState
-emptyCachedState = { localIngests: Set.empty
+emptyCachedState = { localIngests: Map.empty
                    , remoteIngests: Map.empty
                    , relays: Map.empty
                    }
 
 hasIngests :: State -> Boolean
 hasIngests {cachedState: {localIngests, remoteIngests}} =
-  not (Set.isEmpty localIngests && Map.isEmpty remoteIngests)
+  not (Map.isEmpty localIngests && Map.isEmpty remoteIngests)
 
 streamDetailsToAggregatorKey :: StreamDetails -> AggregatorKey
 streamDetailsToAggregatorKey streamDetails =
@@ -247,7 +294,7 @@ handleInfo msg state@{aggregatorKey, stateServerName, workflowHandle} =
 
     Workflow (RtmpOnFI timestamp pts) -> do
       let
-        send relay = relay ! (WsSend $ OnFI timestamp pts)
+        send relay = relay ! (WsSend $ OnFI {timestamp, pts})
       _ <- traverse send $ _.handler <$> Map.values state.cachedState.relays
       pure $ CastNoReply state
 
@@ -276,13 +323,13 @@ handleInfo msg state@{aggregatorKey, stateServerName, workflowHandle} =
 
 applyCachedState :: State -> CachedState -> Effect State
 applyCachedState state {localIngests, remoteIngests, relays} =
-  foldM (\innerState2 profileName -> do
-            result <- doAddLocalIngest profileName innerState2
+  foldWithIndexM (\profileName innerState2 handler -> do
+            result <- doAddLocalIngest profileName handler innerState2
             pure $ case result of
                      Left unit -> innerState2
                      Right newState -> newState) state localIngests
-  >>= (\innerState -> foldWithIndexM (\profileName innerState2 remoteServer -> do
-                                         result <- doAddRemoteIngest profileName remoteServer innerState2
+  >>= (\innerState -> foldWithIndexM (\profileName innerState2 {ingestAddress, handler} -> do
+                                         result <- doAddRemoteIngest profileName handler ingestAddress innerState2
                                          pure $ case result of
                                            Left unit -> innerState2
                                            Right newState -> newState
@@ -290,11 +337,11 @@ applyCachedState state {localIngests, remoteIngests, relays} =
   >>= (\ innerState -> foldWithIndexM (\server innerState2 {port, handler} ->
                                         doRegisterRelay {server, port} handler innerState2) innerState relays)
 
-addLocalIngestToCachedState :: ProfileName -> State -> State
-addLocalIngestToCachedState ingestKey = set (_localIngests <<< (at ingestKey)) (Just unit)
+addLocalIngestToCachedState :: ProfileName -> Process (WebSocketHandlerMessage AggregatorToIngestWsMessage) -> State -> State
+addLocalIngestToCachedState ingestKey handler = set (_localIngests <<< (at ingestKey)) (Just handler)
 
-addRemoteIngestToCachedState :: ProfileName -> ServerAddress -> State -> State
-addRemoteIngestToCachedState ingestKey ingestAddress = set (_remoteIngests <<< (at ingestKey)) (Just ingestAddress)
+addRemoteIngestToCachedState :: ProfileName -> Process (WebSocketHandlerMessage AggregatorToIngestWsMessage) -> ServerAddress -> State -> State
+addRemoteIngestToCachedState ingestKey handler ingestAddress = set (_remoteIngests <<< (at ingestKey)) (Just {ingestAddress, handler})
 
 addRelayToCachedState :: (DeliverTo RelayServer) -> Process (WebSocketHandlerMessage DownstreamWsMessage) -> State -> State
 addRelayToCachedState {server, port} handler = set (_relays <<< (at server)) (Just {port, handler})
@@ -313,15 +360,15 @@ updateCachedState state@{ stateServerName
                         , cachedState} =
   CachedInstanceState.recordInstanceData stateServerName cachedState
 
-doAddLocalIngest :: ProfileName -> State -> Effect (Either Unit State)
-doAddLocalIngest profileName state@{thisServer, workflowHandle, slotId, slotRole} =
+doAddLocalIngest :: ProfileName -> Process (WebSocketHandlerMessage AggregatorToIngestWsMessage) -> State -> Effect (Either Unit State)
+doAddLocalIngest profileName handler state@{thisServer, workflowHandle, slotId, slotRole} =
   let
     isInactive = checkProfileInactive profileName state
   in
     if isInactive then do
       logInfo "Local Ingest added" {slotId, slotRole, profileName}
       let
-        state2 = addLocalIngestToCachedState profileName state
+        state2 = addLocalIngestToCachedState profileName handler state
       updateCachedState state2
       addLocalIngestImpl workflowHandle (IngestKey slotId slotRole profileName)
       pure $ Right state2
@@ -329,15 +376,15 @@ doAddLocalIngest profileName state@{thisServer, workflowHandle, slotId, slotRole
       logInfo "Local Ingest rejected due to existing ingest" {slotId, slotRole, profileName}
       pure $ Left unit
 
-doAddRemoteIngest :: ProfileName -> ServerAddress -> State -> Effect (Either Unit State)
-doAddRemoteIngest profileName ingestAddress state@{slotId, slotRole, workflowHandle} =
+doAddRemoteIngest :: ProfileName -> Process (WebSocketHandlerMessage AggregatorToIngestWsMessage) -> ServerAddress -> State -> Effect (Either Unit State)
+doAddRemoteIngest profileName handler ingestAddress state@{slotId, slotRole, workflowHandle} =
   let
     isInactive = checkProfileInactive profileName state
   in
     if isInactive then do
       logInfo "Remote ingest added" {slotId, slotRole, profileName, ingestAddress}
       let
-        state2 = addRemoteIngestToCachedState profileName ingestAddress state
+        state2 = addRemoteIngestToCachedState profileName handler ingestAddress state
         url = makeUrlAddr ingestAddress (IngestInstanceLlwpE slotId slotRole profileName)
       addRemoteIngestImpl workflowHandle (IngestKey slotId slotRole profileName) (unwrap url)
       pure $ Right state2
@@ -390,10 +437,11 @@ __remoteIngests = prop (SProxy :: SProxy "remoteIngests")
 __relays :: forall a r. Lens' { relays :: a | r } a
 __relays = prop (SProxy :: SProxy "relays")
 
-_localIngests :: Lens' State (Set ProfileName)
+_localIngests :: Lens' State (Map ProfileName (Process (WebSocketHandlerMessage AggregatorToIngestWsMessage)))
 _localIngests = __cachedState <<< __localIngests
 
-_remoteIngests :: Lens' State (Map ProfileName ServerAddress)
+_remoteIngests :: Lens' State (Map ProfileName { ingestAddress :: ServerAddress
+                                               , handler :: Process (WebSocketHandlerMessage AggregatorToIngestWsMessage) })
 _remoteIngests = __cachedState <<< __remoteIngests
 
 _relays :: Lens' State (Map RelayServer RegisteredRelay)

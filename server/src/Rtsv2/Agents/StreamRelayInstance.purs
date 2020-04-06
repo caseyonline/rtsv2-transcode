@@ -18,6 +18,8 @@ module Rtsv2.Agents.StreamRelayInstance
        , status
        , registerEgest
        , registerRelay
+       , dataObjectSendMessage
+       , dataObjectUpdateSendMessage
        , init
        , State
 
@@ -62,13 +64,14 @@ import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..))
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
-import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload, DownstreamWsMessage(..), RelayToRelayClientWsMessage, WebSocketHandlerMessage(..))
+import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload, DownstreamWsMessage(..), RelayUpstreamWsMessage(..), WebSocketHandlerMessage(..))
 import Rtsv2.Agents.TransPoP as TransPoP
 import Rtsv2.Config (StreamRelayConfig)
 import Rtsv2.Config as Config
+import Rtsv2.DataObject as DO
+import Rtsv2.DataObject as DataObject
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
-import Rtsv2.Utils (crashIfLeft)
 import Shared.Agent as Agent
 import Shared.Router.Endpoint (Endpoint(..), makeUrlAddr, makeWsUrl, makeWsUrlAddr)
 import Shared.Rtsv2.JsonLd as JsonLd
@@ -202,7 +205,7 @@ type DownstreamStreamRelayApplyResult =
 -- -----------------------------------------------------------------------------
 -- Run State Data Model
 -- -----------------------------------------------------------------------------
-type WebSocket = WsGun.WebSocket RelayToRelayClientWsMessage DownstreamWsMessage
+type WebSocket = WsGun.WebSocket RelayUpstreamWsMessage DownstreamWsMessage
 
 type OriginStreamRelayRunState =
   { slotConfiguration :: Maybe SlotConfiguration
@@ -300,6 +303,26 @@ registerRelay slotId slotRole relayServer relayPort sourceRoute handler@(Process
     relayAddress = (unwrap relayServer).address
     deliverTo = { server: relayServer, port: relayPort }
     monitor = Gen.monitorPid (serverName $ RelayKey slotId slotRole) handlerPid (\_ -> RelayDown relayAddress)
+
+dataObjectSendMessage :: RelayKey -> DO.Message -> Effect Unit
+dataObjectSendMessage relayKey msg =
+  Gen.doCall (serverName relayKey)
+  (\state -> do
+    shouldProcess <- DataObject.shouldProcessMessage relayKey msg
+    if shouldProcess then sendMessageToUpstreams (RelayUpstreamDataObjectMessage msg) state
+    else pure unit
+    pure $ CallReply unit state
+  )
+
+dataObjectUpdateSendMessage :: RelayKey -> DO.ObjectUpdateMessage -> Effect Unit
+dataObjectUpdateSendMessage relayKey msg =
+  Gen.doCall (serverName relayKey)
+  (\state -> do
+    shouldProcess <- DataObject.shouldProcessMessage relayKey msg
+    if shouldProcess then sendMessageToUpstreams (RelayUpstreamDataObjectUpdateMessage msg) state
+    else pure unit
+    pure $ CallReply unit state
+  )
 
 applyOriginPlan :: CommonStateData -> OriginStreamRelayStateData -> Effect State
 
@@ -740,9 +763,9 @@ handleInfo msg state =
     sendMessage msg process =
       process ! (WsSend msg)
 
-    sendMessageToPeers :: forall r1 r2 r3 egestKey relayKey. DownstreamWsMessage -> { egests :: Map egestKey { handler :: Process (WebSocketHandlerMessage DownstreamWsMessage) | r1 }
+    sendMessageToDownstreams :: forall r1 r2 r3 egestKey relayKey. DownstreamWsMessage -> { egests :: Map egestKey { handler :: Process (WebSocketHandlerMessage DownstreamWsMessage) | r1 }
                                                                                     , downstreamRelays :: Map relayKey { handler :: Process (WebSocketHandlerMessage DownstreamWsMessage) | r2 } | r3 } -> Effect Unit
-    sendMessageToPeers msg {egests, downstreamRelays} = do
+    sendMessageToDownstreams msg {egests, downstreamRelays} = do
       let
         egestPids = Map.values egests <#> _.handler
         relayPids = Map.values downstreamRelays <#> _.handler
@@ -765,13 +788,13 @@ handleInfo msg state =
               | Nothing <- run.slotConfiguration = do
                 _ <- logInfo "Received slot configuration" {slotConfiguration}
                 setSlotConfigurationFFI (relayKeyFromState state) slotConfiguration
-                sendMessageToPeers (SlotConfig slotConfiguration) config
+                sendMessageToDownstreams (SlotConfig slotConfiguration) config
                 pure $ StateOrigin common origin{ run = run { slotConfiguration = Just slotConfiguration }}
               | otherwise =
                 pure state
 
             send msg = do
-              sendMessageToPeers msg config
+              sendMessageToDownstreams msg config
               pure state
 
           CastNoReply <$> processGunMessage' noop down slotConfig send socket gunMsg
@@ -797,13 +820,13 @@ handleInfo msg state =
               | Nothing <- run.slotConfiguration = do
                 _ <- logInfo "Received slot configuration" {slotConfiguration}
                 setSlotConfigurationFFI (relayKeyFromState state) slotConfiguration
-                sendMessageToPeers (SlotConfig slotConfiguration) config
+                sendMessageToDownstreams (SlotConfig slotConfiguration) config
                 pure $ StateDownstream common downstream{run = run{ slotConfiguration = Just slotConfiguration }}
               | otherwise =
                 pure state
 
             send msg = do
-              sendMessageToPeers msg config
+              sendMessageToDownstreams msg config
               pure state
 
           CastNoReply <$> processGunMessage' noop down slotConfig send socket gunMsg
@@ -833,8 +856,17 @@ handleInfo msg state =
         Right (WsGun.Frame (SlotConfig slotConfiguration)) ->
           slotConfig slotConfiguration
 
-        Right (WsGun.Frame onFI@(OnFI timestamp pts)) -> do
+        Right (WsGun.Frame onFI@(OnFI _)) -> do
           send onFI
+
+        Right (WsGun.Frame dataObjectMsg@(DataObjectMessage _msg)) -> do
+          send dataObjectMsg
+
+        Right (WsGun.Frame dataObjectMsg@(DataObjectUpdateResponse _msg)) -> do
+          send dataObjectMsg
+
+        Right (WsGun.Frame dataObjectMsg@(DataObject _msg)) -> do
+          send dataObjectMsg
 
 terminate :: Foreign -> State -> Effect Unit
 terminate reason state = do
@@ -849,6 +881,24 @@ stopWorkflow (StateOrigin _ {workflowHandle}) = do
 stopWorkflow (StateDownstream _ {workflowHandle}) = do
   stopWorkflowFFI workflowHandle
   pure unit
+
+sendMessageToUpstreams :: RelayUpstreamWsMessage -> State -> Effect Unit
+sendMessageToUpstreams msg (StateOrigin _ {run: { ingestAggregatorState } }) = do
+  sendUpstream ingestAggregatorState
+  pure unit
+  where
+    sendUpstream IngestAggregatorStateDisabled = pure unit
+    sendUpstream (IngestAggregatorStatePendingRegistration _portNumber) = pure unit
+    sendUpstream (IngestAggregatorStateRegistered _portNumber socket) = WsGun.send socket msg
+
+sendMessageToUpstreams msg (StateDownstream _ {run: { upstreamRelayStates } }) = do
+  void $ traverse sendUpstream $ Map.values upstreamRelayStates
+  pure unit
+  where
+    sendUpstream (UpstreamRelayStatePendingRegistration _portNumber) = pure unit
+    sendUpstream (UpstreamRelayStateRegistered _portNumber _serverAddress socket) = WsGun.send socket msg
+    sendUpstream (UpstreamRelayStatePendingDeregistration _portNumber _serverAddress socket) = WsGun.send socket msg
+    sendUpstream (UpstreamRelayStateDeregistered _portNumber) = pure unit
 
 -- -----------------------------------------------------------------------------
 -- Config -> Plan Transformation

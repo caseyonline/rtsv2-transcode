@@ -242,6 +242,11 @@ handleInfo msg state@{ingestKey} = case msg of
             _ <- logInfo "Aggregator requested that ingest stops" {}
             pure $ CastStop state
 
+          Right (WsGun.Frame (AggregatorUpstreamDataObjectMessage dataObject)) -> do
+            -- TODO - stick on bus for publisher websocket
+            _ <- logInfo "Publisher message: " {msg}
+            pure $ CastNoReply state
+
       else
         pure $ CastNoReply state
 

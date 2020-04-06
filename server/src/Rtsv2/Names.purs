@@ -28,6 +28,7 @@ module Rtsv2.Names
        , streamRelayInstanceName
        , streamRelayDownstreamProxyName
 
+       , dataObjectName
        , transPoPName
        , webServerName
        , toDomain
@@ -121,6 +122,9 @@ transPoPName = localName TransPoP
 
 webServerName :: forall a b. ServerName a b
 webServerName = Local (atom "Web")
+
+dataObjectName :: forall a b. ServerName a b
+dataObjectName = Local (atom "DataObject")
 
 toDomain :: forall a b. ServerName a b -> Atom
 toDomain (Local name) = name

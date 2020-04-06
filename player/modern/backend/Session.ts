@@ -2,7 +2,7 @@ import ISession from "./ISession";
 import EventEmitter from "./util/EventEmitter.ts";
 import { WebSocketProtocolStatusCode } from "./util/WebSocketUtil.ts";
 
-import { IQualityConstraintConfiguration } from "./signaling/types.ts";
+import { IQualityConstraintConfiguration, MessageDestination } from "./signaling/types.ts";
 import * as ClientMessages from "./signaling/clientMessages.ts";
 import * as ServerMessages from "./signaling/serverMessages.ts";
 
@@ -248,6 +248,12 @@ export default class Session extends EventEmitter implements ISession {
         }
         break;
 
+      case "dataobject.message":
+        {
+          console.debug("Recevied message.", message.sender, message.msg);
+        }
+        break;
+
       default:
         this.unexpectedMessage(message);
     }
@@ -268,6 +274,14 @@ export default class Session extends EventEmitter implements ISession {
     console.debug(`Attempting migration to ${socketURL}`);
     this.socketURL = socketURL;
     this.createSocket();
+  }
+
+  sendMessage(destination: MessageDestination, msg: string) {
+    this.sendToSocket({
+      "type": "dataobject.send-message",
+      "destination": destination,
+      "msg": msg
+    });
   }
 
   async beginNegotiation() {

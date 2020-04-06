@@ -1,4 +1,4 @@
-import { IQualityConstraintConfiguration } from "./types";
+import { IQualityConstraintConfiguration, MessageDestination } from "./types";
 
 export type Message
   = PingMessage
@@ -6,6 +6,7 @@ export type Message
   | ICECandidateMessage
   | ICEDoneMessage
   | SetQualityConstraintConfigurationMessage
+  | DataObjectSendMessage
 
 /** A ping message, these should be sent regularly by clients to ensure that the WebSocket connection is left open
  *  if the underlying WebSocket implementation doesn't not automatically generate ping frames (web browsers do not).
@@ -44,4 +45,15 @@ export interface SetQualityConstraintConfigurationMessage {
 
   /** The configuration to apply. */
   readonly configuration: IQualityConstraintConfiguration;
+}
+
+/** Send a message through the DataObject subsystem. */
+export interface DataObjectSendMessage {
+  readonly type: "dataobject.send-message";
+
+  /** The message destination **/
+  readonly destination: MessageDestination
+
+  /** The message **/
+  readonly msg: string
 }

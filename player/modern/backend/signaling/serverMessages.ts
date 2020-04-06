@@ -8,6 +8,7 @@ export type Message
   | SDPOfferResponseMessage
   | ICECandidateMessage
   | OnFIMessage
+  | DataObjectReceiveMessage
 
 /** The data provided by an init event. */
 export interface InitMessage {
@@ -79,4 +80,15 @@ export interface OnFIMessage {
 
   /** The corresponding video timestamp. */
   readonly pts: number;
+}
+
+/** Receive a message from the DataObject subsystem. */
+export interface DataObjectReceiveMessage {
+  readonly type: "dataobject.message";
+
+  /** The message sended **/
+  readonly sender: string
+
+  /** The message **/
+  readonly msg: string
 }

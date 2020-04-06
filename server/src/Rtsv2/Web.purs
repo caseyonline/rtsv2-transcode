@@ -158,6 +158,7 @@ init args = do
                                      , start_stream: startStream
                                      , add_client: mkFn2 addClient
                                      , get_slot_configuration: EgestInstance.getSlotConfiguration
+                                     , data_object_send_message: EgestInstance.dataObjectSendMessage
                                      })
 
       -- IngestInstanceLlwpE SlotId SlotRole ProfileName
