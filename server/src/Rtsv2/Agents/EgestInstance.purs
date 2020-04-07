@@ -7,6 +7,7 @@ module Rtsv2.Agents.EgestInstance
   , currentStats
   , getSlotConfiguration
   , dataObjectSendMessage
+  , dataObjectUpdate
   , CreateEgestPayload
 
   , CachedState
@@ -167,6 +168,16 @@ dataObjectSendMessage egestKey msg =
   (\state@{relayWebSocket: mRelayWebSocket} -> do
     _ <- case mRelayWebSocket of
            Just socket -> void $ WsGun.send socket (EdgeToRelayDataObjectMessage msg)
+           Nothing -> pure unit
+    pure $ CallReply unit state
+  )
+
+dataObjectUpdate :: EgestKey -> DO.ObjectUpdateMessage -> Effect Unit
+dataObjectUpdate egestKey updateMsg =
+  Gen.doCall (serverName egestKey)
+  (\state@{relayWebSocket: mRelayWebSocket} -> do
+    _ <- case mRelayWebSocket of
+           Just socket -> void $ WsGun.send socket (EdgeToRelayDataObjectUpdateMessage updateMsg)
            Nothing -> pure unit
     pure $ CallReply unit state
   )

@@ -90,6 +90,7 @@
         , start_stream_result :: term()
         , get_slot_configuration :: fun()
         , data_object_send_message :: fun()
+        , data_object_update :: fun()
         , add_client :: fun()
         , audio_ssrc :: rtp:ssrc()
         , video_ssrc :: rtp:ssrc()
@@ -335,6 +336,38 @@ websocket_info({egestDataObjectMessage, #{ destination := Destination
       {ok, State}
   end;
 
+websocket_info({egestDataObjectUpdateResponse,#{response := Response, %%{ok},
+                                                senderRef := SenderRef,
+                                                to := To}}, State = #?state_running{ trace_id = Id }) ->
+  if
+    To == Id ->
+      { [ json_frame( <<"dataobject.update-response">>,
+                      #{ <<"senderRef">> => SenderRef,
+                         <<"response">> => case Response of
+                                             {ok} -> <<"ok">>;
+                                             {error, {invalidKey, _}} -> <<"invalidKey">>;
+                                             {error, {invalidOperation, _}} -> <<"invalidOperation">>
+                                           end
+                       }
+                    ) ]
+        , State
+      };
+    ?otherwise ->
+      {ok, State}
+  end;
+
+websocket_info({egestDataObjectBroadcast, #{object := Object}}, State) ->
+  { [ json_frame( <<"dataobject.broadcast">>,
+                  #{ <<"object">> => dataobject_to_ts(Object)
+                   }
+                ) ]
+  , State
+  };
+
+websocket_info(Other, State) ->
+  io:format(user, "OTHER: ~p~n", [Other]),
+  {ok, State};
+
 websocket_info(not_implemented, State) ->
   {ok, State}.
 
@@ -362,6 +395,9 @@ websocket_handle({ text, JSON }, State) ->
 
         <<"dataobject.send-message">> ->
           handle_data_object_send_message(Message, State);
+
+        <<"dataobject.update">> ->
+          handle_data_object_update(Message, State);
 
         _UnknownMessageType ->
           { [ close_frame(?WebSocketStatusCode_MessageNotImplemented) ]
@@ -391,6 +427,7 @@ try_build_stream_desc(Req,
                        , start_stream := StartStream
                        , get_slot_configuration := GetSlotConfiguration
                        , data_object_send_message := DataObjectSendMessage
+                       , data_object_update := DataObjectUpdate
                        , add_client := AddClient
                        }
                      ) ->
@@ -429,6 +466,7 @@ try_build_stream_desc(Req,
                           , start_stream_result = StartStreamResult
                           , get_slot_configuration = GetSlotConfiguration
                           , data_object_send_message = DataObjectSendMessage
+                          , data_object_update = DataObjectUpdate
                           , add_client = AddClient
                           , audio_ssrc = AudioSSRC
                           , video_ssrc = VideoSSRC
@@ -656,7 +694,6 @@ handle_data_object_send_message(#{ <<"msg">> := Message
                                                                            egest_key = Key
                                                                           , data_object_send_message = SendMessage
                                                                           } }) ->
-
   PursMessageDestination = case Destination of
                              #{ <<"tag">> := <<"publisher">> } -> {publisher};
                              #{ <<"tag">> := <<"broadcast">> } -> {broadcast};
@@ -672,6 +709,96 @@ handle_data_object_send_message(#{ <<"msg">> := Message
   ((SendMessage(Key))(PursMessage))(),
 
   {ok, State}.
+
+handle_data_object_update(#{ <<"operation">> := Operation,
+                             <<"senderRef">> := SenderRef },
+                          State = #?state_running { trace_id = Id
+                                                  , stream_desc = #stream_desc_egest {
+                                                                     egest_key = EgestKey
+                                                                    , data_object_update = DataObjectUpdate
+                                                                    } }) ->
+  try
+    PursOperation = case Operation of
+                      #{ <<"tag">> := <<"inc">>
+                       , <<"key">> := Key
+                       , <<"increment">> := Inc } ->
+                        InitialValue = get_maybe(<<"initialValue">>, Operation),
+
+                        {inc, #{ key => Key
+                               , increment => Inc
+                               , initialValue => InitialValue
+                               }};
+
+                      #{ <<"tag">> := <<"dec">>
+                       , <<"key">> := Key
+                       , <<"decrement">> := Dec } ->
+                        InitialValue = get_maybe(<<"initialValue">>, Operation),
+
+                        {dec, #{ key => Key
+                               , decrement => Dec
+                               , initialValue => InitialValue
+                               }};
+
+                      #{ <<"tag">> := <<"cas">>
+                       , <<"key">> := Key
+                       , <<"compare">> := Compare
+                       , <<"swap">> := Swap
+                       , <<"createIfMissing">> := CreateIfMissing } ->
+
+                        {compareAndSwap, #{ key => Key
+                                          , compare => to_dataobject_value(Compare)
+                                          , swap => to_dataobject_value(Swap)
+                                          , createIfMissing => CreateIfMissing
+                                          }};
+
+                      #{ <<"tag">> := <<"update">>
+                       , <<"key">> := Key
+                       , <<"value">> := Value
+                       , <<"createIfMissing">> := CreateIfMissing } ->
+
+                        {update, #{ key => Key
+                                  , value => to_dataobject_value(Value)
+                                  , createIfMissing => CreateIfMissing
+                                  }};
+
+                      #{ <<"tag">> := <<"insert">>
+                       , <<"key">> := Key
+                       , <<"value">> := Value
+                       , <<"failIfPresent">> := FailIfPresent } ->
+
+                        {insert, #{ key => Key
+                                  , value => to_dataobject_value(Value)
+                                  , failIfPresent => FailIfPresent
+                                  }};
+
+                      #{ <<"tag">> := <<"remove">>
+                       , <<"key">> := Key
+                       , <<"failIfMissing">> := FailIfMissing } ->
+
+                        {remove, #{ key => Key
+                                  , failIfMissing => FailIfMissing
+                                  }}
+
+                    end,
+
+    PursMessage = #{ sender => Id
+                   , senderRef => SenderRef
+                   , operation => PursOperation
+                   , ref => make_ref()
+                   },
+
+    ((DataObjectUpdate(EgestKey))(PursMessage))(),
+
+    {ok, State}
+  catch
+    _Class:_Reason ->
+      io:format(user, "FAIL ~p: ~p~n", [Operation, {_Class, _Reason}]),
+      { [ json_frame( <<"dataobject.update-response">>,
+                      #{ <<"senderRef">> => SenderRef,
+                         <<"response">> => <<"invalidRequest">>} ) ]
+      , State
+      }
+  end.
 
 maybe_allocate_trace_id(ServerId, ServerEpoch, CookieDomainName, Req) ->
   case cowboy_req:match_cookies([{tid, [], undefined}], Req) of
@@ -820,3 +947,47 @@ construct_server_id(#stream_desc_ingest{ ingest_key = IngestKey }) ->
 
 construct_server_id(#stream_desc_egest{ egest_key = EgestKey }) ->
   EgestKey.
+
+get_maybe(Key, Map) ->
+  case maps:get(Key, Map, undefined) of
+    undefined ->
+      {nothing};
+    Value ->
+      {just, Value}
+  end.
+
+dataobject_to_ts(#{map := Map,
+                   version := Version}) ->
+  #{ <<"version">> => Version
+   , <<"map">> => maps:map(fun(_Key, Value) -> dataobject_value_to_ts(Value) end, Map)
+   }.
+
+dataobject_value_to_ts({bool, Boolean}) ->
+  Boolean;
+dataobject_value_to_ts({number, Number}) ->
+  Number;
+dataobject_value_to_ts({string, String}) ->
+  String;
+dataobject_value_to_ts({list, List}) ->
+  [dataobject_value_to_ts(Item) || Item <- List];
+dataobject_value_to_ts({map, Map}) ->
+  maps:map(fun(_Key, Value) ->
+               dataobject_value_to_ts(Value)
+           end,
+           Map).
+
+to_dataobject_value(true) ->
+  {bool, true};
+to_dataobject_value(false) ->
+  {bool, false};
+to_dataobject_value(Number) when is_number(Number) ->
+  {number, Number * 1.0};
+to_dataobject_value(String) when is_binary(String) ->
+  {string, String};
+to_dataobject_value(List) when is_list(List) ->
+  {list, [to_dataobject_value(Item) || Item <- List]};
+to_dataobject_value(Map) when is_map(Map) ->
+  {map, maps:map(fun(Key, Value) when is_binary(Key) ->
+                     to_dataobject_value(Value)
+                 end,
+                 Map)}.

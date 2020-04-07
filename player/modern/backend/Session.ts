@@ -2,7 +2,10 @@ import ISession from "./ISession";
 import EventEmitter from "./util/EventEmitter.ts";
 import { WebSocketProtocolStatusCode } from "./util/WebSocketUtil.ts";
 
-import { IQualityConstraintConfiguration, MessageDestination } from "./signaling/types.ts";
+import { IQualityConstraintConfiguration
+         , MessageDestination
+         , DataObjectUpdateOperation} from "./signaling/types.ts";
+
 import * as ClientMessages from "./signaling/clientMessages.ts";
 import * as ServerMessages from "./signaling/serverMessages.ts";
 
@@ -250,7 +253,17 @@ export default class Session extends EventEmitter implements ISession {
 
       case "dataobject.message":
         {
-          console.debug("Recevied message.", message.sender, message.msg);
+          console.debug(`Received message - from: ${message.sender}, body: ${message.msg}`);
+        }
+        break;
+      case "dataobject.update-response":
+        {
+          console.debug(`Update response - senderRef: ${message.senderRef}, response: ${message.response}`);
+        }
+        break;
+      case "dataobject.broadcast":
+        {
+          console.debug("Data Object.", message.object);
         }
         break;
 
@@ -282,6 +295,14 @@ export default class Session extends EventEmitter implements ISession {
       "destination": destination,
       "msg": msg
     });
+  }
+
+  sendUpdate(operation: DataObjectUpdateOperation, senderRef: string) {
+    this.sendToSocket({
+      "type": "dataobject.update",
+      "senderRef": senderRef,
+      "operation": operation
+    })
   }
 
   async beginNegotiation() {

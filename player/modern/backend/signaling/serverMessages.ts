@@ -1,4 +1,6 @@
-import { EdgeDetails } from "./types";
+import { EdgeDetails
+         , DataObjectUpdateResponse
+         , DataObject } from "./types";
 
 export type Message
   = InitMessage
@@ -9,6 +11,8 @@ export type Message
   | ICECandidateMessage
   | OnFIMessage
   | DataObjectReceiveMessage
+  | DataObjectUpdateResponseMessage
+  | DataObjectBroadcastMessage
 
 /** The data provided by an init event. */
 export interface InitMessage {
@@ -91,4 +95,18 @@ export interface DataObjectReceiveMessage {
 
   /** The message **/
   readonly msg: string
+}
+
+export interface DataObjectUpdateResponseMessage {
+  readonly type: "dataobject.update-response";
+
+  readonly senderRef: string;
+
+  readonly response: DataObjectUpdateResponse;
+}
+
+export interface DataObjectBroadcastMessage {
+  readonly type: "dataobject.broadcast";
+
+  readonly object: DataObject;
 }

@@ -24,7 +24,7 @@ import Prelude
 import Data.Either (Either(..))
 import Data.FoldableWithIndex (foldlWithIndex)
 import Data.Generic.Rep (class Generic)
-import Data.Maybe (Maybe)
+import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Erl.Data.List (List)
 import Erl.Data.Map (Map)
@@ -53,23 +53,24 @@ newtype Message = Message { sender :: SubscriberId
 
 newtype ObjectKey = ObjectKey String
 
-data ObjectValue = Int Int
+-- todo - float?
+data ObjectValue = Bool Boolean
+                 | Number Number
                  | String String
-                 | List ObjectValue
-                 | Map { key :: ObjectKey
-                       , value :: ObjectValue }
+                 | List (List ObjectValue)
+                 | Map (Map String ObjectValue) -- key - do after updating purs etc
 
-newtype Object = Object { keyValues :: Map String ObjectValue
+newtype Object = Object { map :: Map String ObjectValue -- key - do after updating purs etc
                         , version :: Int
                         }
 
 data ObjectUpdateOperation = Inc { key :: ObjectKey
-                                 , increment :: Int
-                                 , initialValue :: Maybe Int
+                                 , increment :: Number
+                                 , initialValue :: Maybe Number
                                  }
                            | Dec { key :: ObjectKey
-                                 , decrement :: Int
-                                 , initialValue :: Maybe Int
+                                 , decrement :: Number
+                                 , initialValue :: Maybe Number
                                  }
                            | CompareAndSwap { key :: ObjectKey
                                             , compare :: ObjectValue
@@ -82,10 +83,9 @@ data ObjectUpdateOperation = Inc { key :: ObjectKey
                                     }
                            | Insert { key :: ObjectKey
                                     , value :: ObjectValue
-                                    , createIfMissing :: Boolean
+                                    , failIfPresent :: Boolean
                                     }
                            | Remove { key :: ObjectKey
-                                    , value :: ObjectValue
                                     , failIfMissing :: Boolean
                                     }
 
@@ -96,9 +96,10 @@ newtype ObjectUpdateMessage = ObjectUpdateMessage { sender :: SubscriberId
 
 data ObjectUpdateError = InvalidKey ObjectKey
                        | InvalidOperation ObjectKey
+                       | InvalidRequest
 
 data ObjectUpdateResponse = Ok
-                          | ObjectUpdateError
+                          | Error ObjectUpdateError
 
 newtype ObjectUpdateResponseMessage = ObjectUpdateResponseMessage { to :: SubscriberId
                                                                   , senderRef :: String
@@ -139,10 +140,36 @@ shouldProcessMessage key msg = Gen.doCall serverName
   )
 
 new :: Object
-new = Object { keyValues: Map.empty
+new = Object { map: Map.empty
              , version: 0 }
 
 update :: ObjectUpdateOperation -> Object -> Either ObjectUpdateError Object
+update (Inc {key: ObjectKey key, increment, initialValue: Nothing}) (Object {map: currentMap, version}) =
+  case Map.lookup key currentMap of
+    Just (Number value) ->
+      Right $ Object { map: Map.insert key (Number (value + increment)) currentMap
+                     , version: version + 1
+                     }
+    Just _ ->
+      Left $ InvalidOperation (ObjectKey key)
+
+    Nothing ->
+      Left $ InvalidKey (ObjectKey key)
+
+update (Inc {key: ObjectKey key, increment, initialValue: Just initialValue}) (Object {map: currentMap, version}) =
+  case Map.lookup key currentMap of
+    Just (Number value) ->
+      Right $ Object { map: Map.insert key (Number (value + increment)) currentMap
+                     , version: version + 1
+                     }
+    Just _ ->
+      Left $ InvalidOperation (ObjectKey key)
+
+    Nothing ->
+      Right $ Object { map: Map.insert key (Number initialValue) currentMap
+                     , version: version + 1
+                     }
+
 update updateMessage currentObject =
   Right currentObject
 
@@ -208,6 +235,7 @@ derive newtype instance writeForeignMessage :: WriteForeign Message
 
 ------------------------------------------------------------------------------
 -- ObjectKey
+derive instance eqObjectKey :: Eq ObjectKey
 derive newtype instance readForeignObjectKey :: ReadForeign ObjectKey
 derive newtype instance writeForeignObjectKey :: WriteForeign ObjectKey
 
@@ -237,6 +265,17 @@ instance writeForeignObjectUpdateOperation :: WriteForeign ObjectUpdateOperation
   writeImpl msg = writeImpl (genericSumToVariant msg)
 
 ------------------------------------------------------------------------------
+-- ObjectUpdateError
+derive instance eqObjectUpdateError :: Eq ObjectUpdateError
+derive instance genericObjectUpdateError :: Generic ObjectUpdateError _
+
+instance readForeignObjectUpdateError :: ReadForeign ObjectUpdateError where
+  readImpl o = variantToGenericSum <$> readImpl o
+
+instance writeForeignObjectUpdateError :: WriteForeign ObjectUpdateError where
+  writeImpl msg = writeImpl (genericSumToVariant msg)
+
+------------------------------------------------------------------------------
 -- ObjectUpdateMessage
 instance dataObjectRefObjectUpdateMessage :: DataObjectRef ObjectUpdateMessage where
   ref (ObjectUpdateMessage {ref: msgRef}) = msgRef
@@ -245,6 +284,7 @@ derive newtype instance writeForeignObjectUpdateMessage :: WriteForeign ObjectUp
 
 ------------------------------------------------------------------------------
 -- ObjectUpdateResponse
+derive instance eqObjectUpdateResponse :: Eq ObjectUpdateResponse
 derive instance genericObjectUpdateResponse :: Generic ObjectUpdateResponse _
 
 instance readForeignObjectUpdateResponse :: ReadForeign ObjectUpdateResponse where

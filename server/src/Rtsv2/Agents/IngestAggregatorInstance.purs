@@ -18,7 +18,7 @@ module Rtsv2.Agents.IngestAggregatorInstance
 import Prelude
 
 import Bus as Bus
-import Data.Either (Either(..))
+import Data.Either (Either(..), either)
 import Data.FoldableWithIndex (foldWithIndexM, foldlWithIndex)
 import Data.Lens (Lens', set, view)
 import Data.Lens.At (at)
@@ -39,7 +39,7 @@ import Erl.Process.Raw (Pid)
 import Erl.Utils (shutdown)
 import Erl.Utils as Erl
 import Foreign (Foreign)
-import Logger (Logger)
+import Logger (Logger, spy)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult, isRegistered)
 import Pinto.Gen (CallResult(..), CastResult(..))
@@ -53,7 +53,6 @@ import Rtsv2.Agents.StreamRelayTypes (AggregatorToIngestWsMessage(..), Downstrea
 import Rtsv2.Config as Config
 import Rtsv2.DataObject (ObjectUpdateMessage(..))
 import Rtsv2.DataObject as DO
-import Rtsv2.DataObject as DataObject
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Agent as Agent
@@ -179,7 +178,7 @@ dataObjectSendMessage aggregatorKey msg@(DO.Message {destination: DO.Publisher
                                                     , msg: payload}) =
   Gen.doCall (serverName aggregatorKey)
   (\state@{cachedState: {localIngests, remoteIngests}} -> do
-    shouldProcess <- DataObject.shouldProcessMessage aggregatorKey msg
+    shouldProcess <- DO.shouldProcessMessage aggregatorKey msg
     if shouldProcess then do
       void $ traverse doSend $ Map.values localIngests
       void $ traverse doSend $ _.handler <$> Map.values remoteIngests
@@ -192,29 +191,57 @@ dataObjectSendMessage aggregatorKey msg@(DO.Message {destination: DO.Publisher
 
 dataObjectSendMessage aggregatorKey msg =
   Gen.doCall (serverName aggregatorKey)
-  (\state@{cachedState: {relays}} -> do
-    shouldProcess <- DataObject.shouldProcessMessage aggregatorKey msg
-    if shouldProcess then void $ traverse doSendMessage $ Map.values relays
+  (\state -> do
+    shouldProcess <- DO.shouldProcessMessage aggregatorKey msg
+    if shouldProcess then sendDownstream state (DataObjectMessage msg)
     else pure unit
     pure $ CallReply unit state
   )
-  where
-    doSendMessage { handler } =
-      handler ! WsSend (DataObjectMessage msg)
 
 dataObjectUpdate :: AggregatorKey -> DO.ObjectUpdateMessage -> Effect Unit
 dataObjectUpdate aggregatorKey msg@(ObjectUpdateMessage {sender, senderRef, operation}) =
   Gen.doCall (serverName aggregatorKey)
-  (\state@{dataObject, cachedState: {relays}} -> do
-    shouldProcess <- DataObject.shouldProcessMessage aggregatorKey msg
-    if shouldProcess then performUpdate dataObject
-    else pure unit
-    pure $ CallReply unit state
+  (\state@{dataObject} -> do
+    shouldProcess <- DO.shouldProcessMessage aggregatorKey msg
+    if shouldProcess then do
+      ref <- Erl.makeRef
+      let
+        {response, state: state2} = performUpdate state dataObject
+        responseMsg = DO.ObjectUpdateResponseMessage { to: sender
+                                                     , senderRef
+                                                     , response: response
+                                                     , ref}
+      sendDownstream state2 (DataObjectUpdateResponse responseMsg)
+      if response == DO.Ok then do
+        ref2 <- Erl.makeRef
+        let
+          broadcastMsg = DO.ObjectBroadcastMessage { object: state2.dataObject
+                                                   , ref: ref2}
+        sendDownstream state2 (DataObject broadcastMsg)
+      else pure unit
+      pure $ CallReply unit state2
+    else
+      pure $ CallReply unit state
   )
   where
-    performUpdate dataObject = pure unit
-      -- case DO.update operation dataObject of
-      --   Left response
+    performUpdate state dataObject =
+      either (onError state) (onSuccess state) $ DO.update operation dataObject
+
+    onError state objectUpdateError =
+      { response: DO.Error objectUpdateError
+      , state}
+
+    onSuccess state newObject =
+      { response: DO.Ok
+      , state: state{dataObject = newObject} }
+
+sendDownstream :: State -> DownstreamWsMessage -> Effect Unit
+sendDownstream {cachedState: {relays}} msg = do
+  void $ traverse doSendMessage $ Map.values relays
+  pure unit
+  where
+    doSendMessage { handler } =
+      handler ! WsSend msg
 
 startLink :: AggregatorKey -> StreamDetails -> StateServerName -> Effect StartLinkResult
 startLink aggregatorKey streamDetails stateServerName = Gen.startLink (serverName aggregatorKey) (init streamDetails stateServerName) handleInfo

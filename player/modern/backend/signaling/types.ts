@@ -41,17 +41,78 @@ export interface IQualityConstraintConfiguration {
   readonly variant : string;
 }
 
+export interface DataObject {
+  readonly version: number;
+  readonly map: Record<string, any>
+}
+
+export type DataObjectUpdateOperation
+  = DataObjectInc
+  | DataObjectDec
+  | DataObjectCAS
+  | DataObjectUpdate
+  | DataObjectInsert
+  | DataObjectRemove;
+
+interface DataObjectInc {
+  tag: "inc";
+  key: string;
+  increment: number;
+  initialValue?: number;
+}
+
+interface DataObjectDec {
+  tag: "dec";
+  key: string;
+  decrement: number;
+  initialValue?: number;
+}
+
+interface DataObjectCAS {
+  tag: "cas";
+  key: string;
+  compare: any;
+  swap: any;
+  createIfMissing: boolean;
+}
+
+interface DataObjectUpdate {
+  tag: "update";
+  key: string;
+  value: any;
+  createIfMissing: boolean;
+}
+
+interface DataObjectInsert {
+  tag: "insert";
+  key: string;
+  value: any;
+  failIfPresent: boolean;
+}
+
+interface DataObjectRemove {
+  tag: "remove";
+  key: string;
+  failIfMissing: boolean;
+}
+
+export type DataObjectUpdateResponse
+  = "invalidKey"
+  | "invalidOperation"
+  | "invalidRequest"
+  | "ok"
+
 interface PublisherMessageDestination {
-  tag: "publisher"
+  tag: "publisher";
 }
 
 interface BroadcastMessageDestination {
-  tag: "broadcast"
+  tag: "broadcast";
 }
 
 interface PrivateMessageDestination {
-  tag: "private"
-  to: string[]
+  tag: "private";
+  to: string[];
 }
 
 export type MessageDestination = PublisherMessageDestination | BroadcastMessageDestination | PrivateMessageDestination
