@@ -147,8 +147,11 @@ registerIngest slotId slotRole profileName ingestAddress handler@(Process handle
 registerRelay :: SlotId -> SlotRole -> DeliverTo RelayServer -> Process (WebSocketHandlerMessage DownstreamWsMessage) -> Effect SlotConfiguration
 registerRelay slotId slotRole deliverTo handler =
   Gen.doCall (serverName $ key)
-  (\state@{thisServer, slotConfiguration} -> do
-    CallReply slotConfiguration <$> doRegisterRelay deliverTo handler state
+  (\state@{thisServer, slotConfiguration, dataObject} -> do
+      ref <- Erl.makeRef
+      handler ! (WsSend $ DataObject $ DO.ObjectBroadcastMessage { object: dataObject
+                                                                 , ref})
+      CallReply slotConfiguration <$> doRegisterRelay deliverTo handler state
   )
   where
     key = AggregatorKey slotId slotRole

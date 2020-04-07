@@ -51,6 +51,7 @@ import Erl.Data.Map as Map
 import Erl.Data.Tuple as ErlTuple
 import Erl.Process (Process(..), (!))
 import Erl.Utils (Ref, makeRef)
+import Erl.Utils as Erl
 import Foreign (Foreign)
 import Logger (Logger, spy)
 import Logger as Logger
@@ -69,7 +70,6 @@ import Rtsv2.Agents.TransPoP as TransPoP
 import Rtsv2.Config (StreamRelayConfig)
 import Rtsv2.Config as Config
 import Rtsv2.DataObject as DO
-import Rtsv2.DataObject as DataObject
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Agent as Agent
@@ -118,6 +118,7 @@ type CommonStateData =
   , stateServerName :: StateServerName
   , config :: StreamRelayConfig
   , stopRef :: Maybe Ref
+  , dataObject :: Maybe DO.Object
   }
 
 type OriginStreamRelayStateData =
@@ -257,18 +258,25 @@ registerEgest slotId slotRole egestServer egestPort handler@(Process handlerPid)
   where
     doRegisterEgest :: State -> Effect (CallResult (Maybe SlotConfiguration) State)
 
-    doRegisterEgest state@(StateOrigin {thisServer} { config: { egests }, run: { slotConfiguration: slotConfig } }) = do
+    doRegisterEgest state@(StateOrigin {thisServer, dataObject} { config: { egests }, run: { slotConfiguration: slotConfig } }) = do
       monitor
+      maybeSend dataObject
       CallReply slotConfig <$> clearStopRef <$> applyNewEgests (updateMap egests) state
 
-    doRegisterEgest state@(StateDownstream {thisServer} { config: { egests }, run: { slotConfiguration: slotConfig } }) = do
+    doRegisterEgest state@(StateDownstream {thisServer, dataObject} { config: { egests }, run: { slotConfiguration: slotConfig } }) = do
       monitor
+      maybeSend dataObject
       CallReply slotConfig <$> clearStopRef <$> applyNewEgests (updateMap egests) state
 
     egestAddress = (unwrap egestServer).address
     deliverTo = { server: egestServer, port: egestPort }
     updateMap egests = Map.insert egestAddress { handler, deliverTo } egests
     monitor = Gen.monitorPid (serverName $ RelayKey slotId slotRole) handlerPid (\_ -> EgestDown egestAddress)
+    maybeSend Nothing = pure unit
+    maybeSend (Just dataObject) = do
+      ref <- Erl.makeRef
+      sendMessageToDownstream (DataObject $ DO.ObjectBroadcastMessage { object: dataObject
+                                                                      , ref}) handler
 
 registerRelay :: SlotId -> SlotRole -> RelayServer -> Int -> SourceRoute -> (Process (WebSocketHandlerMessage DownstreamWsMessage)) -> Effect (Maybe SlotConfiguration)
 registerRelay slotId slotRole relayServer relayPort sourceRoute handler@(Process handlerPid) =
@@ -277,14 +285,15 @@ registerRelay slotId slotRole relayServer relayPort sourceRoute handler@(Process
   where
     doRegisterRelay :: State -> Effect(CallResult (Maybe SlotConfiguration) State)
 
-    doRegisterRelay (StateOrigin commonStateData@{thisServer} originStateData@{ config: config@{ downstreamRelays }, run: { slotConfiguration: slotConfig } }) = do
+    doRegisterRelay (StateOrigin commonStateData@{thisServer, dataObject} originStateData@{ config: config@{ downstreamRelays }, run: { slotConfiguration: slotConfig } }) = do
       -- TODO: PS: log if we've got a non-nil source when we're in origin mode
       let
         newDownstreamRelays = Map.insert relayAddress { handler, deliverTo} downstreamRelays
+      maybeSend dataObject
       monitor
       CallReply slotConfig <$> clearStopRef <$> applyOriginNewRelays newDownstreamRelays commonStateData originStateData
 
-    doRegisterRelay (StateDownstream commonStateData@{thisServer} downstreamStateData@{ config: config@{ downstreamRelays }, run: { slotConfiguration: slotConfig } }) =
+    doRegisterRelay (StateDownstream commonStateData@{thisServer, dataObject} downstreamStateData@{ config: config@{ downstreamRelays }, run: { slotConfiguration: slotConfig } }) =
       case Array.uncons sourceRoute of
         Just { head, tail } -> do
           let
@@ -293,6 +302,7 @@ registerRelay slotId slotRole relayServer relayPort sourceRoute handler@(Process
               , deliverTo
               }
             newDownstreamRelays = Map.insert relayAddress { handler, deliverToWithSource: downstreamRelayWithSource} downstreamRelays
+          maybeSend dataObject
           monitor
           CallReply slotConfig <$> clearStopRef <$> applyDownstreamNewRelays newDownstreamRelays commonStateData downstreamStateData
 
@@ -303,12 +313,17 @@ registerRelay slotId slotRole relayServer relayPort sourceRoute handler@(Process
     relayAddress = (unwrap relayServer).address
     deliverTo = { server: relayServer, port: relayPort }
     monitor = Gen.monitorPid (serverName $ RelayKey slotId slotRole) handlerPid (\_ -> RelayDown relayAddress)
+    maybeSend Nothing = pure unit
+    maybeSend (Just dataObject) = do
+      ref <- Erl.makeRef
+      sendMessageToDownstream (DataObject $ DO.ObjectBroadcastMessage { object: dataObject
+                                                                      , ref}) handler
 
 dataObjectSendMessage :: RelayKey -> DO.Message -> Effect Unit
 dataObjectSendMessage relayKey msg =
   Gen.doCall (serverName relayKey)
   (\state -> do
-    shouldProcess <- DataObject.shouldProcessMessage relayKey msg
+    shouldProcess <- DO.shouldProcessMessage relayKey msg
     if shouldProcess then sendMessageToUpstreams (RelayUpstreamDataObjectMessage msg) state
     else pure unit
     pure $ CallReply unit state
@@ -318,7 +333,7 @@ dataObjectUpdateSendMessage :: RelayKey -> DO.ObjectUpdateMessage -> Effect Unit
 dataObjectUpdateSendMessage relayKey msg =
   Gen.doCall (serverName relayKey)
   (\state -> do
-    shouldProcess <- DataObject.shouldProcessMessage relayKey msg
+    shouldProcess <- DO.shouldProcessMessage relayKey msg
     if shouldProcess then sendMessageToUpstreams (RelayUpstreamDataObjectUpdateMessage msg) state
     else pure unit
     pure $ CallReply unit state
@@ -574,6 +589,7 @@ init relayKey payload@{slotId, slotRole, aggregator} stateServerName =
         , stateServerName
         , config: streamRelayConfig
         , stopRef: Nothing
+        , dataObject: Nothing
         }
 
     if egestSourceRoutes == List.nil then
@@ -759,17 +775,13 @@ handleInfo msg state =
     findAggregatorSocket gunMsg (IngestAggregatorStatePendingRegistration _) = Nothing
     findAggregatorSocket gunMsg (IngestAggregatorStateRegistered portNumber socket) = Just {socket, portNumber}
 
-    sendMessage :: DownstreamWsMessage -> (Process (WebSocketHandlerMessage DownstreamWsMessage)) -> Effect Unit
-    sendMessage msg process =
-      process ! (WsSend msg)
-
     sendMessageToDownstreams :: forall r1 r2 r3 egestKey relayKey. DownstreamWsMessage -> { egests :: Map egestKey { handler :: Process (WebSocketHandlerMessage DownstreamWsMessage) | r1 }
                                                                                     , downstreamRelays :: Map relayKey { handler :: Process (WebSocketHandlerMessage DownstreamWsMessage) | r2 } | r3 } -> Effect Unit
     sendMessageToDownstreams msg {egests, downstreamRelays} = do
       let
         egestPids = Map.values egests <#> _.handler
         relayPids = Map.values downstreamRelays <#> _.handler
-      _ <- traverse (sendMessage msg) (egestPids <> relayPids)
+      _ <- traverse (sendMessageToDownstream msg) (egestPids <> relayPids)
       pure unit
 
     processGunMessage state@(StateOrigin common@{config: {reApplyPlanTimeMs}} origin@{config, run: run@{ingestAggregatorState}}) gunMsg = do
@@ -792,6 +804,10 @@ handleInfo msg state =
                 pure $ StateOrigin common origin{ run = run { slotConfiguration = Just slotConfiguration }}
               | otherwise =
                 pure state
+
+            send msg@(DataObject (DO.ObjectBroadcastMessage {object})) = do
+              sendMessageToDownstreams msg config
+              pure $ StateOrigin common{dataObject = Just object} origin
 
             send msg = do
               sendMessageToDownstreams msg config
@@ -825,6 +841,10 @@ handleInfo msg state =
               | otherwise =
                 pure state
 
+            send msg@(DataObject (DO.ObjectBroadcastMessage {object})) = do
+              sendMessageToDownstreams msg config
+              pure $ StateDownstream common{dataObject = Just object} downstream
+
             send msg = do
               sendMessageToDownstreams msg config
               pure state
@@ -834,7 +854,7 @@ handleInfo msg state =
         Nothing ->
           pure $ CastNoReply state
 
-    processGunMessage' :: forall a b. Effect a -> Effect a -> (SlotConfiguration -> Effect a) -> (DownstreamWsMessage -> Effect a) -> WebSocket -> WsGun.GunMsg -> Effect a
+    processGunMessage' :: forall a. Effect a -> Effect a -> (SlotConfiguration -> Effect a) -> (DownstreamWsMessage -> Effect a) -> WebSocket -> WsGun.GunMsg -> Effect a
     processGunMessage' noop down slotConfig send socket gunMsg = do
       processResponse <- WsGun.processMessage socket gunMsg
       case processResponse of
@@ -1102,6 +1122,11 @@ deliverToAddressFromDeliverToRelayServer { server, port } =
 relayKeyFromState :: State -> RelayKey
 relayKeyFromState (StateOrigin { relayKey } _) = relayKey
 relayKeyFromState (StateDownstream { relayKey } _) = relayKey
+
+sendMessageToDownstream :: DownstreamWsMessage -> (Process (WebSocketHandlerMessage DownstreamWsMessage)) -> Effect Unit
+sendMessageToDownstream msg process =
+  process ! (WsSend msg)
+
 
 --------------------------------------------------------------------------------
 -- Log Utilities

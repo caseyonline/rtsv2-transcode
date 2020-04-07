@@ -1,4 +1,3 @@
-[ ] - Media.Rtmp.foreignToMetadata to have try/catch everywhere so as not to die horribly if client encoder sends unexpected metadata
 [ ] - intrapop to raise bus message if relay exits
       - egest to subscribe and take appropriate action - either exit itself or launch new relay?
 [ ] - Pinto stuff, async init, return stop from init
@@ -6,26 +5,26 @@
 [ ] - add stream_id domain to logs that are per-stream
 [ ] - intraPoP load messages
 [ ] - transPoP load messages
-[ ] - relay exit management
 [ ] - double check remote status through TransPoP
-[ ] - onFi passthrough from RTMP
 [ ] - audio only - needs change to StreamDetails to indicate no video, since aggregator is currently waiting for iframe to sync multiple streams
 [ ] - Mediavault API integration
 [ ] - HLS Egest from Aggregator
 [ ] - RTMP Egest - from edge
 [ ] - Canary / startup / migrating clients away etc
-[ ] - review timeouts in tests
 [ ] - egest / client merging when load drops
 [ ] - relay merging when multiple instances start
 [ ] - Egest needs to know model primary and backup
 [ ] - Port Data.Int53 or Data.Long to purescript, and then change Milliseconds type
 [ ] - Smoke test for prometheus metric endpoints (spin up ingest, hti endpoint, assert a 200)
 [ ] - Proper Serf messages codec (not just binary to term)
-
 [ ] - Shared objects
 
 [.] - Clean up / rewrite gproc.purs - is it a direct mapping, or do we want our own API
 
+[x] - relay exit management
+[x] - review timeouts in tests
+[x] - onFi passthrough from RTMP
+[x] - Media.Rtmp.foreignToMetadata to have try/catch everywhere so as not to die horribly if client encoder sends unexpected metadata
 [x] - Lots of gen server calls are not checking return values.  Let It Crash
 [x] - Pinto Either stuff
 [x] - ingest / ingest aggregator monitoring and recovery

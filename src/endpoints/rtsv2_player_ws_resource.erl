@@ -336,7 +336,7 @@ websocket_info({egestDataObjectMessage, #{ destination := Destination
       {ok, State}
   end;
 
-websocket_info({egestDataObjectUpdateResponse,#{response := Response, %%{ok},
+websocket_info({egestDataObjectUpdateResponse,#{response := Response,
                                                 senderRef := SenderRef,
                                                 to := To}}, State = #?state_running{ trace_id = Id }) ->
   if

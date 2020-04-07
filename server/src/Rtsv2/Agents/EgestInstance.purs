@@ -96,6 +96,7 @@ type State
     , stateServerName :: StateServerName
     , relayWebSocket :: Maybe WebSocket
     , slotConfiguration :: Maybe SlotConfiguration
+    , lastOnFI :: Int
     , dataObject :: Maybe DO.Object
     }
 
@@ -228,6 +229,7 @@ init payload@{slotId, slotRole, aggregator} stateServerName = do
            , relayWebSocket: Nothing
            , slotConfiguration: Nothing
            , dataObject: Nothing
+           , lastOnFI: 0
            }
   case maybeRelay of
     Just relay ->
@@ -272,7 +274,7 @@ handleInfo msg state@{egestKey: egestKey@(EgestKey slotId slotRole)} =
     processGunMessage state@{relayWebSocket: Nothing} gunMsg =
       pure $ CastNoReply state
 
-    processGunMessage state@{relayWebSocket: Just socket} gunMsg =
+    processGunMessage state@{relayWebSocket: Just socket, lastOnFI} gunMsg =
       if WsGun.isSocketForMessage gunMsg socket then do
         processResponse <- WsGun.processMessage socket gunMsg
         case processResponse of
@@ -300,8 +302,11 @@ handleInfo msg state@{egestKey: egestKey@(EgestKey slotId slotRole)} =
             | otherwise ->
               pure $ CastNoReply state
 
-          Right (WsGun.Frame (OnFI {timestamp, pts})) -> do
+          Right (WsGun.Frame (OnFI {timestamp, pts})) | timestamp > lastOnFI -> do
             Bus.raise bus (EgestOnFI timestamp pts)
+            pure $ CastNoReply state{lastOnFI = timestamp}
+
+          Right (WsGun.Frame (OnFI {timestamp, pts})) ->
             pure $ CastNoReply state
 
           Right (WsGun.Frame (DataObjectMessage dataObjectMsg)) -> do
