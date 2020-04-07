@@ -50,56 +50,76 @@ export type DataObjectUpdateOperation
   = DataObjectInc
   | DataObjectDec
   | DataObjectCAS
+  | DataObjectAdd
   | DataObjectUpdate
-  | DataObjectInsert
-  | DataObjectRemove;
+  | DataObjectDelete
+  | DataObjectListInsert
+  | DataObjectListRemove
+;
 
 interface DataObjectInc {
   tag: "inc";
-  key: string;
+  keys: string[];
   increment: number;
-  initialValue?: number;
+  createIfKeyMissing: boolean;
 }
 
 interface DataObjectDec {
   tag: "dec";
-  key: string;
+  keys: string[];
   decrement: number;
-  initialValue?: number;
+  createIfKeyMissing: boolean;
 }
 
 interface DataObjectCAS {
   tag: "cas";
-  key: string;
+  keys: string[];
   compare: any;
   swap: any;
-  createIfMissing: boolean;
+  createIfKeyMissing: boolean;
+}
+
+interface DataObjectAdd {
+  tag: "add";
+  keys: string[];
+  value: any;
+  failIfKeyPresent: boolean;
 }
 
 interface DataObjectUpdate {
   tag: "update";
-  key: string;
+  keys: string[];
   value: any;
-  createIfMissing: boolean;
+  createIfKeyMissing: boolean;
 }
 
-interface DataObjectInsert {
-  tag: "insert";
-  key: string;
-  value: any;
-  failIfPresent: boolean;
+interface DataObjectDelete {
+  tag: "delete";
+  keys: string[];
+  failIfKeyMissing: boolean;
 }
 
-interface DataObjectRemove {
-  tag: "remove";
-  key: string;
-  failIfMissing: boolean;
+interface DataObjectListInsert {
+  tag: "list.insert";
+  keys: string[];
+  value: any;
+  createIfKeyMissing: boolean;
+  failIfValuePresent: boolean;
+}
+
+interface DataObjectListRemove {
+  tag: "list.remove";
+  keys: string[];
+  value: any;
+  failIfKeyMissing: boolean;
+  failIfValueMissing: boolean;
 }
 
 export type DataObjectUpdateResponse
   = "invalidKey"
   | "invalidOperation"
   | "invalidRequest"
+  | "compareAndSwapFailed"
   | "ok"
 
 interface PublisherMessageDestination {

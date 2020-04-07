@@ -40,51 +40,70 @@ export default class Player implements IPlayer {
     this.session.sendMessage({ tag: "broadcast" }, msg );
   }
 
-  dataObjectInc(key: string, increment: number, senderRef: string, initialValue?: number) {
+  dataObjectInc(keys: string[], increment: number, senderRef: string, createIfKeyMissing: boolean) {
     this.session.sendUpdate({ tag: "inc"
-                              , key: key
+                              , keys: keys
                               , increment: increment
-                              , initialValue: initialValue
+                              , createIfKeyMissing: createIfKeyMissing
                             }, senderRef);
   }
 
-  dataObjectDec(key: string, decrement: number, senderRef: string, initialValue?: number) {
+  dataObjectDec(keys: string[], decrement: number, senderRef: string, createIfKeyMissing: boolean) {
     this.session.sendUpdate({ tag: "dec"
-                              , key: key
+                              , keys: keys
                               , decrement: decrement
-                              , initialValue: initialValue
+                              , createIfKeyMissing: createIfKeyMissing
                             }, senderRef);
   }
 
-  dataObjectCAS(key: string, compare: any, swap: any, createIfMissing: boolean, senderRef: string) {
+  dataObjectCAS(keys: string[], compare: any, swap: any, createIfKeyMissing: boolean, senderRef: string) {
     this.session.sendUpdate({ tag: "cas"
-                              , key: key
+                              , keys: keys
                               , compare: compare
                               , swap: swap
-                              , createIfMissing: createIfMissing
+                              , createIfKeyMissing: createIfKeyMissing
                             }, senderRef);
   }
 
-  dataObjectUpdate(key: string, value: any, createIfMissing: boolean, senderRef: string) {
+  dataObjectAdd(keys: string[], value: any, failIfKeyPresent: boolean, senderRef: string) {
+    this.session.sendUpdate({ tag: "add"
+                              , keys: keys
+                              , value: value
+                              , failIfKeyPresent: failIfKeyPresent
+                            }, senderRef);
+  }
+
+
+  dataObjectUpdate(keys: string[], value: any, createIfKeyMissing: boolean, senderRef: string) {
     this.session.sendUpdate({ tag: "update"
-                              , key: key
+                              , keys: keys
                               , value: value
-                              , createIfMissing: createIfMissing
+                              , createIfKeyMissing: createIfKeyMissing
                             }, senderRef);
   }
 
-  dataObjectInsert(key: string, value: any, failIfPresent: boolean, senderRef: string) {
-    this.session.sendUpdate({ tag: "insert"
-                              , key: key
-                              , value: value
-                              , failIfPresent: failIfPresent
+  dataObjectDelete(keys: string[], failIfKeyMissing: boolean, senderRef: string) {
+    this.session.sendUpdate({ tag: "delete"
+                              , keys: keys
+                              , failIfKeyMissing: failIfKeyMissing
                             }, senderRef);
   }
 
-  dataObjectRemove(key: string, failIfMissing: boolean, senderRef: string) {
-    this.session.sendUpdate({ tag: "remove"
-                              , key: key
-                              , failIfMissing: failIfMissing
+  dataObjectListInsert(keys: string[], value: any, createIfKeyMissing: boolean, failIfValuePresent: boolean, senderRef: string) {
+    this.session.sendUpdate({ tag: "list.insert"
+                              , keys: keys
+                              , value: value
+                              , createIfKeyMissing: createIfKeyMissing
+                              , failIfValuePresent: failIfValuePresent
+                            }, senderRef);
+  }
+
+  dataObjectListRemove(keys: string[], value: any, failIfKeyMissing: boolean, failIfValueMissing: boolean, senderRef: string) {
+    this.session.sendUpdate({ tag: "list.remove"
+                              , keys: keys
+                              , value: value
+                              , failIfKeyMissing: failIfKeyMissing
+                              , failIfValueMissing: failIfValueMissing
                             }, senderRef);
   }
 }

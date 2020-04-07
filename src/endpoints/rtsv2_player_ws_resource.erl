@@ -346,7 +346,8 @@ websocket_info({egestDataObjectUpdateResponse,#{response := Response, %%{ok},
                          <<"response">> => case Response of
                                              {ok} -> <<"ok">>;
                                              {error, {invalidKey, _}} -> <<"invalidKey">>;
-                                             {error, {invalidOperation, _}} -> <<"invalidOperation">>
+                                             {error, {invalidOperation, _}} -> <<"invalidOperation">>;
+                                             {error, {compareAndSwapFailed, _}} -> <<"compareAndSwapFailed">>
                                            end
                        }
                     ) ]
@@ -720,65 +721,88 @@ handle_data_object_update(#{ <<"operation">> := Operation,
   try
     PursOperation = case Operation of
                       #{ <<"tag">> := <<"inc">>
-                       , <<"key">> := Key
-                       , <<"increment">> := Inc } ->
-                        InitialValue = get_maybe(<<"initialValue">>, Operation),
+                       , <<"keys">> := Keys
+                       , <<"increment">> := Inc
+                       , <<"createIfKeyMissing">> := CreateIfKeyMissing } ->
 
-                        {inc, #{ key => Key
+                        {inc, #{ keys => Keys
                                , increment => Inc
-                               , initialValue => InitialValue
+                               , createIfKeyMissing => CreateIfKeyMissing
                                }};
 
                       #{ <<"tag">> := <<"dec">>
-                       , <<"key">> := Key
-                       , <<"decrement">> := Dec } ->
-                        InitialValue = get_maybe(<<"initialValue">>, Operation),
+                       , <<"keys">> := Keys
+                       , <<"decrement">> := Dec
+                       , <<"createIfKeyMissing">> := CreateIfKeyMissing } ->
 
-                        {dec, #{ key => Key
+                        {dec, #{ keys => Keys
                                , decrement => Dec
-                               , initialValue => InitialValue
+                               , createIfKeyMissing => CreateIfKeyMissing
                                }};
 
                       #{ <<"tag">> := <<"cas">>
-                       , <<"key">> := Key
+                       , <<"keys">> := Keys
                        , <<"compare">> := Compare
                        , <<"swap">> := Swap
-                       , <<"createIfMissing">> := CreateIfMissing } ->
+                       , <<"createIfKeyMissing">> := CreateIfKeyMissing } ->
 
-                        {compareAndSwap, #{ key => Key
-                                          , compare => to_dataobject_value(Compare)
-                                          , swap => to_dataobject_value(Swap)
-                                          , createIfMissing => CreateIfMissing
+                        {compareAndSwap, #{ keys => Keys
+                                          , compare => dataobject_value_to_purs(Compare)
+                                          , swap => dataobject_value_to_purs(Swap)
+                                          , createIfKeyMissing => CreateIfKeyMissing
                                           }};
 
+                      #{ <<"tag">> := <<"add">>
+                       , <<"keys">> := Keys
+                       , <<"value">> := Value
+                       , <<"failIfKeyPresent">> := FailIfKeyPresent } ->
+
+                        {add, #{ keys => Keys
+                               , value => dataobject_value_to_purs(Value)
+                               , failIfKeyPresent => FailIfKeyPresent
+                               }};
+
                       #{ <<"tag">> := <<"update">>
-                       , <<"key">> := Key
+                       , <<"keys">> := Keys
                        , <<"value">> := Value
-                       , <<"createIfMissing">> := CreateIfMissing } ->
+                       , <<"createIfKeyMissing">> := CreateIfKeyMissing } ->
 
-                        {update, #{ key => Key
-                                  , value => to_dataobject_value(Value)
-                                  , createIfMissing => CreateIfMissing
+                        {update, #{ keys => Keys
+                                  , value => dataobject_value_to_purs(Value)
+                                  , createIfKeyMissing => CreateIfKeyMissing
                                   }};
 
-                      #{ <<"tag">> := <<"insert">>
-                       , <<"key">> := Key
-                       , <<"value">> := Value
-                       , <<"failIfPresent">> := FailIfPresent } ->
+                      #{ <<"tag">> := <<"delete">>
+                       , <<"keys">> := Keys
+                       , <<"failIfKeyMissing">> := FailIfKeyMissing } ->
 
-                        {insert, #{ key => Key
-                                  , value => to_dataobject_value(Value)
-                                  , failIfPresent => FailIfPresent
+                        {delete, #{ keys => Keys
+                                  , failIfKeyMissing => FailIfKeyMissing
                                   }};
 
-                      #{ <<"tag">> := <<"remove">>
-                       , <<"key">> := Key
-                       , <<"failIfMissing">> := FailIfMissing } ->
+                      #{ <<"tag">> := <<"list.insert">>
+                       , <<"keys">> := Keys
+                       , <<"value">> := Value
+                       , <<"createIfKeyMissing">> := CreateIfKeyMissing
+                       , <<"failIfValuePresent">> := FailIfValuePresent } ->
 
-                        {remove, #{ key => Key
-                                  , failIfMissing => FailIfMissing
-                                  }}
+                        {listInsert, #{ keys => Keys
+                                      , value => dataobject_value_to_purs(Value)
+                                      , createIfKeyMissing => CreateIfKeyMissing
+                                      , failIfValuePresent => FailIfValuePresent
+                                      }};
 
+                      #{ <<"tag">> := <<"list.remove">>
+                       , <<"keys">> := Keys
+                       , <<"value">> := Value
+                       , <<"failIfKeyMissing">> := FailIfKeyMissing
+                       , <<"failIfValueMissing">> := FailIfValuePresent } ->
+
+                        {listRemove, #{ keys => Keys
+                                      , value => dataobject_value_to_purs(Value)
+                                      , failIfKeyMissing => FailIfKeyMissing
+                                      , failIfValueMissing => FailIfValuePresent
+                                      }}
                     end,
 
     PursMessage = #{ sender => Id
@@ -792,13 +816,29 @@ handle_data_object_update(#{ <<"operation">> := Operation,
     {ok, State}
   catch
     _Class:_Reason ->
-      io:format(user, "FAIL ~p: ~p~n", [Operation, {_Class, _Reason}]),
+      io:format(user, "Invalid Request: ~p: ~p~n", [Operation, {_Class, _Reason}]),
       { [ json_frame( <<"dataobject.update-response">>,
                       #{ <<"senderRef">> => SenderRef,
                          <<"response">> => <<"invalidRequest">>} ) ]
       , State
       }
-  end.
+  end;
+
+handle_data_object_update(Request = #{ <<"senderRef">> := SenderRef }, State) ->
+  io:format(user, "Invalid Request: ~p~n", [Request]),
+  { [ json_frame( <<"dataobject.update-response">>,
+                  #{ <<"senderRef">> => SenderRef,
+                     <<"response">> => <<"invalidRequest">>} ) ]
+  , State
+  };
+
+handle_data_object_update(Request, State) ->
+  io:format(user, "Invalid Request: ~p~n", [Request]),
+  { [ json_frame( <<"dataobject.update-response">>,
+                  #{ <<"senderRef">> => <<"unknown">>,
+                     <<"response">> => <<"invalidRequest">>} ) ]
+  , State
+  }.
 
 maybe_allocate_trace_id(ServerId, ServerEpoch, CookieDomainName, Req) ->
   case cowboy_req:match_cookies([{tid, [], undefined}], Req) of
@@ -966,6 +1006,8 @@ dataobject_value_to_ts({bool, Boolean}) ->
   Boolean;
 dataobject_value_to_ts({number, Number}) ->
   Number;
+dataobject_value_to_ts({counter, Number}) ->
+  Number;
 dataobject_value_to_ts({string, String}) ->
   String;
 dataobject_value_to_ts({list, List}) ->
@@ -976,18 +1018,18 @@ dataobject_value_to_ts({map, Map}) ->
            end,
            Map).
 
-to_dataobject_value(true) ->
+dataobject_value_to_purs(true) ->
   {bool, true};
-to_dataobject_value(false) ->
+dataobject_value_to_purs(false) ->
   {bool, false};
-to_dataobject_value(Number) when is_number(Number) ->
+dataobject_value_to_purs(Number) when is_number(Number) ->
   {number, Number * 1.0};
-to_dataobject_value(String) when is_binary(String) ->
+dataobject_value_to_purs(String) when is_binary(String) ->
   {string, String};
-to_dataobject_value(List) when is_list(List) ->
-  {list, [to_dataobject_value(Item) || Item <- List]};
-to_dataobject_value(Map) when is_map(Map) ->
+dataobject_value_to_purs(List) when is_list(List) ->
+  {list, [dataobject_value_to_purs(Item) || Item <- List]};
+dataobject_value_to_purs(Map) when is_map(Map) ->
   {map, maps:map(fun(Key, Value) when is_binary(Key) ->
-                     to_dataobject_value(Value)
+                     dataobject_value_to_purs(Value)
                  end,
                  Map)}.

@@ -26,11 +26,13 @@ import Data.FoldableWithIndex (foldlWithIndex)
 import Data.Generic.Rep (class Generic)
 import Data.Maybe (Maybe(..))
 import Effect (Effect)
-import Erl.Data.List (List)
+import Erl.Data.List (List, null, singleton, uncons, (:))
+import Erl.Data.List as List
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
 import Erl.Utils (Ref, systemTimeMs)
 import Kishimen (genericSumToVariant, variantToGenericSum)
+import Logger (spy)
 import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
@@ -53,8 +55,8 @@ newtype Message = Message { sender :: SubscriberId
 
 newtype ObjectKey = ObjectKey String
 
--- todo - float?
 data ObjectValue = Bool Boolean
+                 | Counter Number
                  | Number Number
                  | String String
                  | List (List ObjectValue)
@@ -64,38 +66,53 @@ newtype Object = Object { map :: Map String ObjectValue -- key - do after updati
                         , version :: Int
                         }
 
-data ObjectUpdateOperation = Inc { key :: ObjectKey
+data ObjectUpdateOperation = Inc { keys :: List ObjectKey
                                  , increment :: Number
-                                 , initialValue :: Maybe Number
+                                 , createIfKeyMissing :: Boolean
                                  }
-                           | Dec { key :: ObjectKey
+                           | Dec { keys :: List ObjectKey
                                  , decrement :: Number
-                                 , initialValue :: Maybe Number
+                                 , createIfKeyMissing :: Boolean
                                  }
-                           | CompareAndSwap { key :: ObjectKey
+                           | CompareAndSwap { keys :: List ObjectKey
                                             , compare :: ObjectValue
                                             , swap :: ObjectValue
-                                            , createIfMissing :: Boolean
+                                            , createIfKeyMissing :: Boolean
                                             }
-                           | Update { key :: ObjectKey
+                           | Add { keys :: List ObjectKey
+                                 , value :: ObjectValue
+                                 , failIfKeyPresent :: Boolean
+                                 }
+                           | Update { keys :: List ObjectKey
                                     , value :: ObjectValue
-                                    , createIfMissing :: Boolean
+                                    , createIfKeyMissing :: Boolean
                                     }
-                           | Insert { key :: ObjectKey
-                                    , value :: ObjectValue
-                                    , failIfPresent :: Boolean
+                           | Delete { keys :: List ObjectKey
+                                    , failIfKeyMissing :: Boolean
                                     }
-                           | Remove { key :: ObjectKey
-                                    , failIfMissing :: Boolean
-                                    }
+                           | ListInsert { keys :: List ObjectKey
+                                        , value :: ObjectValue
+                                        , createIfKeyMissing :: Boolean
+                                        , failIfValuePresent :: Boolean
+                                        }
+                           | ListRemove { keys :: List ObjectKey
+                                        , value :: ObjectValue
+                                        , failIfKeyMissing :: Boolean
+                                        , failIfValueMissing :: Boolean
+                                        }
+
 
 newtype ObjectUpdateMessage = ObjectUpdateMessage { sender :: SubscriberId
                                                   , senderRef :: String
                                                   , operation :: ObjectUpdateOperation
                                                   , ref :: Ref }
 
-data ObjectUpdateError = InvalidKey ObjectKey
-                       | InvalidOperation ObjectKey
+data ObjectUpdateError = InvalidKey { keys :: List ObjectKey }
+                       | InvalidValue { keys :: List ObjectKey
+                                      , value :: ObjectValue }
+                       | InvalidOperation { keys :: List ObjectKey }
+                       | CompareAndSwapFailed { keys :: List ObjectKey
+                                              , currentValue :: ObjectValue }
                        | InvalidRequest
 
 data ObjectUpdateResponse = Ok
@@ -144,34 +161,66 @@ new = Object { map: Map.empty
              , version: 0 }
 
 update :: ObjectUpdateOperation -> Object -> Either ObjectUpdateError Object
-update (Inc {key: ObjectKey key, increment, initialValue: Nothing}) (Object {map: currentMap, version}) =
-  case Map.lookup key currentMap of
-    Just (Number value) ->
-      Right $ Object { map: Map.insert key (Number (value + increment)) currentMap
-                     , version: version + 1
-                     }
-    Just _ ->
-      Left $ InvalidOperation (ObjectKey key)
+update (Inc {keys, increment, createIfKeyMissing}) (Object {map: currentMap, version}) =
+  updateObject version <$> performUpdate keys currentMap createIfKeyMissing doInc
+  where
+    doInc (Just (Counter value)) = Right $ Just (Counter (value + increment))
+    doInc Nothing = Right $ Just (Counter increment)
+    doInc (Just _) = Left $ InvalidOperation {keys}
 
-    Nothing ->
-      Left $ InvalidKey (ObjectKey key)
+update (Dec {keys, decrement, createIfKeyMissing}) (Object {map: currentMap, version}) =
+  updateObject version <$> performUpdate keys currentMap createIfKeyMissing doDec
+  where
+    doDec (Just (Counter value)) = Right $ Just (Counter (value - decrement))
+    doDec Nothing = Right $ Just (Counter (0.0 - decrement))
+    doDec (Just _) = Left $ InvalidOperation {keys}
 
-update (Inc {key: ObjectKey key, increment, initialValue: Just initialValue}) (Object {map: currentMap, version}) =
-  case Map.lookup key currentMap of
-    Just (Number value) ->
-      Right $ Object { map: Map.insert key (Number (value + increment)) currentMap
-                     , version: version + 1
-                     }
-    Just _ ->
-      Left $ InvalidOperation (ObjectKey key)
+update (CompareAndSwap {keys, compare, swap, createIfKeyMissing}) (Object {map: currentMap, version}) =
+  updateObject version <$> performUpdate keys currentMap createIfKeyMissing doCas
+  where
+    doCas (Just currentValue) | currentValue /= compare = Left $ CompareAndSwapFailed {keys, currentValue}
+    doCas _ = Right $ Just swap
 
-    Nothing ->
-      Right $ Object { map: Map.insert key (Number initialValue) currentMap
-                     , version: version + 1
-                     }
+update (Add {keys, value, failIfKeyPresent}) (Object {map: currentMap, version}) =
+  updateObject version <$> performUpdate keys currentMap true doAdd
+  where
+    doAdd (Just _) | failIfKeyPresent = Left $ InvalidKey {keys}
+    doAdd _ = Right $ Just value
 
-update updateMessage currentObject =
-  Right currentObject
+update (Update {keys, value, createIfKeyMissing}) (Object {map: currentMap, version}) =
+  updateObject version <$> performUpdate keys currentMap createIfKeyMissing doUpdate
+  where
+    doUpdate _ = Right $ Just value
+
+update (Delete {keys, failIfKeyMissing}) (Object {map: currentMap, version}) =
+  updateObject version <$> performUpdate keys currentMap true doDelete
+  where
+    doDelete Nothing | failIfKeyMissing = Left $ InvalidKey {keys}
+    doDelete _ = Right $ Nothing
+
+update (ListInsert {keys, value, createIfKeyMissing, failIfValuePresent}) (Object {map: currentMap, version}) =
+  updateObject version <$> performUpdate keys currentMap createIfKeyMissing doListInsert
+  where
+    doListInsert Nothing = Right $ Just (List (singleton value))
+    doListInsert (Just (List list)) | not failIfValuePresent = Right $ Just (List (value : list))
+    doListInsert (Just (List list)) =
+      if List.elemIndex value list == Nothing then Right $ Just (List (value : list))
+      else Left $ InvalidValue {keys, value}
+    doListInsert (Just _) = Left $ InvalidOperation {keys}
+
+update (ListRemove {keys, value, failIfKeyMissing, failIfValueMissing}) (Object {map: currentMap, version}) =
+  updateObject version <$> performUpdate keys currentMap true doListRemove
+  where
+    doListRemove Nothing | failIfValueMissing = Left $ InvalidKey {keys}
+    doListRemove Nothing = Right $ Nothing
+    doListRemove (Just (List list)) | not failIfValueMissing = Right $ Just $ List $ List.delete value list
+    doListRemove (Just (List list)) =
+      if List.elemIndex value list == Nothing then Left $ InvalidValue {keys, value}
+      else Right $ Just $ List $ List.delete value list
+    doListRemove (Just _) = Left $ InvalidOperation {keys}
+
+-- TODO - map update / insert / remove
+
 
 ------------------------------------------------------------------------------
 -- gen_server callbacks
@@ -211,6 +260,33 @@ doExpiry state@{expireAfter, refs} = do
             refs
   pure state{refs = refs2}
 
+performUpdate :: List ObjectKey -> Map String ObjectValue -> Boolean -> (Maybe ObjectValue -> Either ObjectUpdateError (Maybe ObjectValue)) -> Either ObjectUpdateError (Map String ObjectValue)
+performUpdate keys map createIfKeyMissing updateFun = performUpdate' keys keys map createIfKeyMissing updateFun
+
+performUpdate' :: List ObjectKey -> List ObjectKey -> Map String ObjectValue -> Boolean -> (Maybe ObjectValue -> Either ObjectUpdateError (Maybe ObjectValue)) -> Either ObjectUpdateError (Map String ObjectValue)
+performUpdate' fullPath keys map createIfKeyMissing updateFun =
+  case uncons keys of
+    Nothing -> Left $ InvalidKey {keys: fullPath}
+    Just {head: (ObjectKey head), tail} | null tail ->
+      case Map.lookup head map of
+        Nothing
+          | createIfKeyMissing -> (\newValue -> Map.alter (\_ -> newValue) head map) <$> updateFun Nothing
+          | otherwise -> Left $ InvalidKey {keys: fullPath}
+        Just value ->
+          (\newValue -> Map.alter (\_ -> newValue) head map) <$> updateFun (Just value)
+    Just {head: (ObjectKey head), tail} ->
+      case Map.lookup head map of
+        Nothing
+          | createIfKeyMissing -> (\newMap -> Map.insert head (Map newMap) map) <$> performUpdate' fullPath tail Map.empty createIfKeyMissing updateFun
+          | otherwise -> Left $ InvalidKey {keys: fullPath}
+        Just (Map childMap) ->
+          (\newMap -> Map.insert head (Map newMap) map) <$> performUpdate' fullPath tail childMap createIfKeyMissing updateFun
+        _ -> Left $ InvalidKey {keys: fullPath}
+
+updateObject :: Int -> Map String ObjectValue -> Object
+updateObject version newMap =
+  Object {map: newMap, version: version + 1}
+
 ------------------------------------------------------------------------------
 -- SubscriberId
 derive newtype instance readForeignSubscriberId :: ReadForeign SubscriberId
@@ -246,6 +322,7 @@ derive newtype instance writeForeignObject :: WriteForeign Object
 
 ------------------------------------------------------------------------------
 -- ObjectValue
+derive instance eqObjectValue :: Eq ObjectValue
 derive instance genericObjectValue :: Generic ObjectValue _
 
 instance readForeignObjectValue :: ReadForeign ObjectValue where
