@@ -30,6 +30,7 @@ import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, singleton)
 import Erl.Data.Map (values)
+import Erl.Process (Process(..), (!))
 import Erl.Process.Raw (Pid)
 import Erl.Utils (Ref, makeRef, systemTimeMs)
 import Logger (Logger)
@@ -49,6 +50,7 @@ import Rtsv2.Agents.StreamRelaySup (startRelay) as StreamRelaySup
 import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload, DownstreamWsMessage(..), EgestUpstreamWsMessage(..))
 import Rtsv2.Audit as Audit
 import Rtsv2.Config as Config
+import Rtsv2.DataObject (ObjectBroadcastMessage(..))
 import Rtsv2.DataObject as DO
 import Rtsv2.DataObject as DataObject
 import Rtsv2.Names as Names
@@ -94,6 +96,7 @@ type State
     , stateServerName :: StateServerName
     , relayWebSocket :: Maybe WebSocket
     , slotConfiguration :: Maybe SlotConfiguration
+    , dataObject :: Maybe DO.Object
     }
 
 payloadToEgestKey :: CreateEgestPayload -> EgestKey
@@ -102,7 +105,7 @@ payloadToEgestKey payload = EgestKey payload.slotId payload.slotRole
 data EgestBusMsg = EgestOnFI Int Int
                  | EgestDataObjectMessage DO.Message
                  | EgestDataObjectUpdateResponse DO.ObjectUpdateResponseMessage
-                 | EgestDataObjectBroadcast DO.ObjectBroadcastMessage
+                 | EgestDataObjectBroadcast DO.Object
 
 bus :: Bus.Bus EgestBusMsg
 bus = Bus.bus "egest_bus"
@@ -151,12 +154,16 @@ addClient handlerPid egestKey =
   let
     ourServerName = serverName egestKey
   in
-   Gen.doCall ourServerName \state@{clientCount} -> do
+   Gen.doCall ourServerName \state@{clientCount, dataObject} -> do
      logInfo "Add client" {newCount: clientCount + 1}
      Gen.monitorPid ourServerName handlerPid (\_ -> HandlerDown)
+     maybeSend dataObject
      pure $ CallReply (Right unit) state{ clientCount = clientCount + 1
                                         , stopRef = Nothing
                                         }
+  where
+    maybeSend Nothing = pure unit
+    maybeSend (Just dataObject) = (Process handlerPid) ! (EgestDataObjectBroadcast dataObject)
 
 getSlotConfiguration :: EgestKey -> Effect (Maybe SlotConfiguration)
 getSlotConfiguration egestKey =
@@ -220,6 +227,7 @@ init payload@{slotId, slotRole, aggregator} stateServerName = do
            , stateServerName
            , relayWebSocket: Nothing
            , slotConfiguration: Nothing
+           , dataObject: Nothing
            }
   case maybeRelay of
     Just relay ->
@@ -308,11 +316,13 @@ handleInfo msg state@{egestKey: egestKey@(EgestKey slotId slotRole)} =
             else pure unit
             pure $ CastNoReply state
 
-          Right (WsGun.Frame (DataObject dataObject)) -> do
-            shouldProcess <- DataObject.shouldProcessMessage egestKey dataObject
-            if shouldProcess then Bus.raise bus (EgestDataObjectBroadcast dataObject)
-            else pure unit
-            pure $ CastNoReply state
+          Right (WsGun.Frame (DataObject dataObjectMsg@(ObjectBroadcastMessage {object: dataObject}))) -> do
+            shouldProcess <- DataObject.shouldProcessMessage egestKey dataObjectMsg
+            if shouldProcess then do
+              _ <- Bus.raise bus (EgestDataObjectBroadcast dataObject)
+              pure $ CastNoReply state{dataObject = Just dataObject}
+            else
+              pure $ CastNoReply state
 
       else
         pure $ CastNoReply state

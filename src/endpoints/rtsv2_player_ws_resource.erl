@@ -357,7 +357,7 @@ websocket_info({egestDataObjectUpdateResponse,#{response := Response, %%{ok},
       {ok, State}
   end;
 
-websocket_info({egestDataObjectBroadcast, #{object := Object}}, State) ->
+websocket_info({egestDataObjectBroadcast, Object}, State) ->
   { [ json_frame( <<"dataobject.broadcast">>,
                   #{ <<"object">> => dataobject_to_ts(Object)
                    }
