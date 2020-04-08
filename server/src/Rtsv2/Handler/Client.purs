@@ -25,7 +25,6 @@ import Gproc as Gproc
 import Logger (Logger, spy)
 import Logger as Logger
 import Rtsv2.Agents.EgestInstance as EgestInstance
-import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
 import Rtsv2.Agents.Locator.Egest (findEgest)
 import Rtsv2.Agents.Locator.Types (FailureReason(..), LocalOrRemote(..))
 import Rtsv2.Audit as Audit
@@ -116,11 +115,6 @@ clientStop canary slotId slotRole clientId  =
       thisNode <- extractAddress <$> PoPDefinition.getThisServer
       Rest.initResult req { egestKey: EgestKey slotId slotRole
                           }
-
-    serviceAvailable req state = do
-      isAgentAvailable <- EgestInstanceSup.isAgentAvailable
-      Rest.result isAgentAvailable req state
-
 
     resourceExists req state@{egestKey} = do
       isActive <- EgestInstance.isActive egestKey

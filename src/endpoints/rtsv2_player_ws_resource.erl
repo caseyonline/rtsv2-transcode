@@ -365,10 +365,6 @@ websocket_info({egestDataObjectBroadcast, Object}, State) ->
   , State
   };
 
-websocket_info(Other, State) ->
-  io:format(user, "OTHER: ~p~n", [Other]),
-  {ok, State};
-
 websocket_info(not_implemented, State) ->
   {ok, State}.
 
@@ -987,14 +983,6 @@ construct_server_id(#stream_desc_ingest{ ingest_key = IngestKey }) ->
 
 construct_server_id(#stream_desc_egest{ egest_key = EgestKey }) ->
   EgestKey.
-
-get_maybe(Key, Map) ->
-  case maps:get(Key, Map, undefined) of
-    undefined ->
-      {nothing};
-    Value ->
-      {just, Value}
-  end.
 
 dataobject_to_ts(#{map := Map,
                    version := Version}) ->

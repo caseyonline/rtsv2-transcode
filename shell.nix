@@ -12,9 +12,8 @@ let
     builtins.fetchGit {
       url = "https://github.com/purerl/nixpkgs-purerl.git";
       ref = "master";
-      rev = "73897ce89970ed125c09bbc6217d30a3f72d33a1";
+      rev = "5da0a433bcefe607e0bd182b79b220af980a4c78";
     };
-
   id3asPackages =
     builtins.fetchGit {
       name = "id3as-packages";
@@ -64,14 +63,14 @@ mkShell {
 
     # Purescript - we use a specific version rather than
     # whatever the latest is exposed via nixpkgs
-    id3as.purescript-0-13-5
+    id3as.purescript-0-13-6
 
     # Purescript extras
     id3as.spago-0-12-1-0
     id3as.dhall-json-1-5-0
 
     # Purerl backend for purescript
-    purerl.purerl-0-0-1
+    purerl.purerl-0-0-5
 
     # Needed by something purescript-y - hopefully A/S can pinpoint what...
     jq

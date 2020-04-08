@@ -14,20 +14,14 @@ mergeOverrides() ->
       case application:get_env(?APP, overrides) of
         undefined -> ok;
         {ok, Overrides} ->
-          lists:foreach(fun({Key, Overrides}) ->
-                            {ok, Org} =  application:get_env(?APP, Key),
-                            mergeMaps(Org, Overrides),
-                            application:set_env(?APP,Key, maps:merge(Org, Overrides))
+          lists:foreach(fun({Key, Override}) ->
+                            {ok, Org} = application:get_env(?APP, Key),
+                            application:set_env(?APP, Key, maps:merge(Org, Override))
                         end,
                         Overrides)
       end,
       ok
   end.
-
-mergeMaps(Org, Overrides) ->
-  maps:fold(fun maps:update/3,
-            Org,
-            Overrides).
 
 getEnv_(Name) ->
   fun() ->

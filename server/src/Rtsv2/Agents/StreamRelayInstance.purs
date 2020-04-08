@@ -469,18 +469,6 @@ applyDownstreamRunResult commonStateData@{ relayKey: relayKey@(RelayKey slotId s
 
     registerWithSpecificRelay portNumber chosenRelay remainingRoute =
       let
-        deliverTo =
-          { server: (thisServer # un Server # Relay)
-          , port: portNumber
-          }
-
-        payload =
-          { slotId
-          , slotRole
-          , deliverTo
-          , sourceRoute: remainingRoute
-          }
-
         wsUrl = makeWsUrlAddr chosenRelay $ RelayRegisteredRelayWs slotId slotRole (extractAddress thisServer) portNumber remainingRoute
       in
         do
