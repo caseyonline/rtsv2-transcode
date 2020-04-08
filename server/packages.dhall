@@ -7,6 +7,33 @@ let overrides =
           , repo = "ssh://git@github.com/id3as/purescript-erl-pinto.git"
           , version = "7ab2b1e0b3cbee664c4d1dad27a2a218b0aa23ab"
           }
+      , simple-json =
+          { dependencies =
+            [ "assert"
+            , "effect"
+            , "erl-lists"
+            , "erl-maps"
+            , "exceptions"
+            , "foldable-traversable"
+            , "foreign"
+            , "functions"
+            , "generics-rep"
+            , "globals"
+            , "lists"
+            , "nullable"
+            , "ordered-collections"
+            , "partial"
+            , "prelude"
+            , "random"
+            , "record"
+            , "strings"
+            , "transformers"
+            , "typelevel-prelude"
+            , "variant"
+            ]
+          , repo = "https://github.com/purerl/purescript-simple-json"
+          , version = "54becc3cf31c58a4ff56c6073ed0a200cc11e10d"
+          }
       , simple-json-generics =
           { dependencies = [ "simple-json" ]
           , repo =

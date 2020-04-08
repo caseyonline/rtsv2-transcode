@@ -25,6 +25,7 @@ import Data.Either (Either(..))
 import Data.FoldableWithIndex (foldlWithIndex)
 import Data.Generic.Rep (class Generic)
 import Data.Maybe (Maybe(..))
+import Data.Newtype (class Newtype)
 import Effect (Effect)
 import Erl.Data.List (List, null, singleton, uncons, (:))
 import Erl.Data.List as List
@@ -60,9 +61,9 @@ data ObjectValue = Bool Boolean
                  | Number Number
                  | String String
                  | List (List ObjectValue)
-                 | Map (Map String ObjectValue) -- key - do after updating purs etc
+                 | Map (Map ObjectKey ObjectValue)
 
-newtype Object = Object { map :: Map String ObjectValue -- key - do after updating purs etc
+newtype Object = Object { map :: Map ObjectKey ObjectValue
                         , version :: Int
                         }
 
@@ -260,21 +261,21 @@ doExpiry state@{expireAfter, refs} = do
             refs
   pure state{refs = refs2}
 
-performUpdate :: List ObjectKey -> Map String ObjectValue -> Boolean -> (Maybe ObjectValue -> Either ObjectUpdateError (Maybe ObjectValue)) -> Either ObjectUpdateError (Map String ObjectValue)
+performUpdate :: List ObjectKey -> Map ObjectKey ObjectValue -> Boolean -> (Maybe ObjectValue -> Either ObjectUpdateError (Maybe ObjectValue)) -> Either ObjectUpdateError (Map ObjectKey ObjectValue)
 performUpdate keys map createIfKeyMissing updateFun = performUpdate' keys keys map createIfKeyMissing updateFun
 
-performUpdate' :: List ObjectKey -> List ObjectKey -> Map String ObjectValue -> Boolean -> (Maybe ObjectValue -> Either ObjectUpdateError (Maybe ObjectValue)) -> Either ObjectUpdateError (Map String ObjectValue)
+performUpdate' :: List ObjectKey -> List ObjectKey -> Map ObjectKey ObjectValue -> Boolean -> (Maybe ObjectValue -> Either ObjectUpdateError (Maybe ObjectValue)) -> Either ObjectUpdateError (Map ObjectKey ObjectValue)
 performUpdate' fullPath keys map createIfKeyMissing updateFun =
   case uncons keys of
     Nothing -> Left $ InvalidKey {keys: fullPath}
-    Just {head: (ObjectKey head), tail} | null tail ->
+    Just {head, tail} | null tail ->
       case Map.lookup head map of
         Nothing
           | createIfKeyMissing -> (\newValue -> Map.alter (\_ -> newValue) head map) <$> updateFun Nothing
           | otherwise -> Left $ InvalidKey {keys: fullPath}
         Just value ->
           (\newValue -> Map.alter (\_ -> newValue) head map) <$> updateFun (Just value)
-    Just {head: (ObjectKey head), tail} ->
+    Just {head, tail} ->
       case Map.lookup head map of
         Nothing
           | createIfKeyMissing -> (\newMap -> Map.insert head (Map newMap) map) <$> performUpdate' fullPath tail Map.empty createIfKeyMissing updateFun
@@ -283,7 +284,7 @@ performUpdate' fullPath keys map createIfKeyMissing updateFun =
           (\newMap -> Map.insert head (Map newMap) map) <$> performUpdate' fullPath tail childMap createIfKeyMissing updateFun
         _ -> Left $ InvalidKey {keys: fullPath}
 
-updateObject :: Int -> Map String ObjectValue -> Object
+updateObject :: Int -> Map ObjectKey ObjectValue -> Object
 updateObject version newMap =
   Object {map: newMap, version: version + 1}
 
@@ -312,6 +313,7 @@ derive newtype instance writeForeignMessage :: WriteForeign Message
 ------------------------------------------------------------------------------
 -- ObjectKey
 derive instance eqObjectKey :: Eq ObjectKey
+derive instance newtypeObjectKey :: Newtype ObjectKey _
 derive newtype instance readForeignObjectKey :: ReadForeign ObjectKey
 derive newtype instance writeForeignObjectKey :: WriteForeign ObjectKey
 
