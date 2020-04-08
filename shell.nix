@@ -12,7 +12,7 @@ let
     builtins.fetchGit {
       url = "https://github.com/purerl/nixpkgs-purerl.git";
       ref = "master";
-      rev = "d3bbfe2f505247fa11a9dc59575b17c0c3389349";
+      rev = "5da0a433bcefe607e0bd182b79b220af980a4c78";
     };
   id3asPackages =
     builtins.fetchGit {
@@ -70,7 +70,7 @@ mkShell {
     id3as.dhall-json-1-5-0
 
     # Purerl backend for purescript
-    purerl.purerl-0-0-4
+    purerl.purerl-0-0-5
 
     # Needed by something purescript-y - hopefully A/S can pinpoint what...
     jq
