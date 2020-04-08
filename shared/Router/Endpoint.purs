@@ -83,6 +83,7 @@ data Endpoint
   | RelayRegisteredEgestWs SlotId SlotRole ServerAddress Int
   | IngestAggregatorRegisteredIngestWs SlotId SlotRole ProfileName ServerAddress
   | IngestAggregatorRegisteredRelayWs SlotId SlotRole ServerAddress Int
+  | IngestAggregatorBackupWs SlotId SlotRole
   | IngestInstanceLlwpE SlotId SlotRole ProfileName
   | IntraPoPTestHelperE
   | LoadE
@@ -154,13 +155,14 @@ endpoint = root $ sum
 
   , "EgestE"                                           : "system" / path "egest"  noArgs
 
-  , "RelayE"                                           : "system" / "relay" / path "egest"  noArgs
-  , "RelayEnsureStartedE"                              : "system" / "relay" / path "ensureStarted"  noArgs
+  , "RelayE"                                           : "system" / "relay" / path "egest" noArgs
+  , "RelayEnsureStartedE"                              : "system" / "relay" / path "ensureStarted" noArgs
   , "RelayRegisteredRelayWs"                           : "system" / "relay" / slotId segment / slotRole segment / "relays" / serverAddress segment / port segment / sourceRoute segment / "ws"
   , "RelayRegisteredEgestWs"                           : "system" / "relay" / slotId segment / slotRole segment / "egests" / serverAddress segment / port segment / "ws"
 
   , "IngestAggregatorRegisteredIngestWs"               : "system" / "ingestAggregator" / slotId segment / slotRole segment / "ingests" / profileName segment / serverAddress segment / "ws"
   , "IngestAggregatorRegisteredRelayWs"                : "system" / "ingestAggregator" / slotId segment / slotRole segment / "relays" / serverAddress segment / port segment / "ws"
+  , "IngestAggregatorBackupWs"                         : "system" / "ingestAggregator" / slotId segment / slotRole segment / "backupws"
 
   , "IngestInstanceLlwpE"                              : "system" / "ingest" / slotId segment / slotRole segment / profileName segment / "llwp" -- URL duplicated in Web.purs
 

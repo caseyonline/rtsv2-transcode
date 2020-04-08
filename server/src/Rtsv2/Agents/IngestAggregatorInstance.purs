@@ -2,6 +2,7 @@ module Rtsv2.Agents.IngestAggregatorInstance
   ( startLink
   , stopAction
   , isInstanceAvailable
+  , registerBackup
   , registerIngest
   , registerRelay
   , getState
@@ -125,6 +126,20 @@ serverName = Names.ingestAggregatorInstanceName
 serverNameFromIngestKey :: IngestKey -> ServerName State Msg
 serverNameFromIngestKey = serverName <<< ingestKeyToAggregatorKey
 
+registerBackup :: SlotId -> SlotRole -> Process (WebSocketHandlerMessage DownstreamWsMessage) -> Effect DO.Object
+registerBackup slotId slotRole handler@(Process handlerPid) =
+  Gen.doCall thisServerName
+  (\state@{dataObject} -> do
+      _ <- logInfo "Backup registered with primary" {slotId, slotRole}
+      -- todo - monitor pid
+      --      - remember pid
+      --      - on message, send message to pid
+      --      - on data object update, send object to pid
+      pure $ CallReply dataObject state
+  )
+  where
+    thisServerName = serverName (AggregatorKey slotId slotRole)
+
 registerIngest :: SlotId -> SlotRole -> ProfileName -> ServerAddress -> Process (WebSocketHandlerMessage AggregatorToIngestWsMessage) -> Effect Boolean
 registerIngest slotId slotRole profileName ingestAddress handler@(Process handlerPid) =
   Gen.doCall thisServerName
@@ -190,7 +205,7 @@ dataObjectSendMessage aggregatorKey msg@(DO.Message {destination: DO.Publisher
   )
   where
     doSend handler =
-      handler ! WsSend (AggregatorUpstreamDataObjectMessage payload)
+      handler ! WsSend (AggregatorToIngestDataObjectMessage payload)
 
 dataObjectSendMessage aggregatorKey msg =
   Gen.doCall (serverName aggregatorKey)

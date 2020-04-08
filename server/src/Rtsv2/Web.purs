@@ -107,6 +107,7 @@ init args = do
 
         , "IngestAggregatorRegisteredIngestWs"          : IngestAggregatorHandler.registeredIngestWs
         , "IngestAggregatorRegisteredRelayWs"           : IngestAggregatorHandler.registeredRelayWs
+        , "IngestAggregatorBackupWs"                    : IngestAggregatorHandler.backupWs
 
         , "IngestInstanceLlwpE"                         : CowboyRoutePlaceholder
         , "IntraPoPTestHelperE"                         : IntraPoPHandler.testHelper

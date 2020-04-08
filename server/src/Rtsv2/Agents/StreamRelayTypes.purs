@@ -1,6 +1,7 @@
 module Rtsv2.Agents.StreamRelayTypes
   ( CreateRelayPayload
   , CreateProxyPayload
+  , AggregatorUpstreamWsMessage(..)
   , RelayUpstreamWsMessage(..)
   , EgestUpstreamWsMessage(..)
   , AggregatorToIngestWsMessage(..)
@@ -32,7 +33,10 @@ type CreateProxyPayload
     }
 
 data AggregatorToIngestWsMessage = IngestStop
-                                 | AggregatorUpstreamDataObjectMessage String
+                                 | AggregatorToIngestDataObjectMessage String
+
+data AggregatorUpstreamWsMessage = AggregatorUpstreamDataObjectMessage DO.Message
+                                 | AggregatorUpstreamDataObjectUpdateMessage DO.ObjectUpdateMessage
 
 data RelayUpstreamWsMessage = RelayUpstreamDataObjectMessage DO.Message
                             | RelayUpstreamDataObjectUpdateMessage DO.ObjectUpdateMessage
@@ -50,13 +54,23 @@ data WebSocketHandlerMessage a = WsStop
                                | WsSend a
 
 ------------------------------------------------------------------------------
--- IngestToAggregatorClientWsMessage
+-- AggregatorToIngestWsMessage
 derive instance genericAggregatorToIngestWsMessage :: Generic AggregatorToIngestWsMessage _
 
 instance readForeignAggregatorToIngestWsMessage :: ReadForeign AggregatorToIngestWsMessage where
   readImpl o = variantToGenericSum <$> readImpl o
 
 instance writeForeignAggregatorToIngestWsMessage :: WriteForeign AggregatorToIngestWsMessage where
+  writeImpl msg = writeImpl (genericSumToVariant msg)
+
+------------------------------------------------------------------------------
+-- AggregatorUpstreamWsMessage
+derive instance genericAggregatorUpstreamWsMessage :: Generic AggregatorUpstreamWsMessage _
+
+instance readForeignAggregatorUpstreamWsMessage :: ReadForeign AggregatorUpstreamWsMessage where
+  readImpl o = variantToGenericSum <$> readImpl o
+
+instance writeForeignAggregatorUpstreamWsMessage :: WriteForeign AggregatorUpstreamWsMessage where
   writeImpl msg = writeImpl (genericSumToVariant msg)
 
 ------------------------------------------------------------------------------
