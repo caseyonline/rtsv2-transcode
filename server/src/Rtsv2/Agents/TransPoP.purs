@@ -33,7 +33,7 @@ import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
 import Erl.Process (spawnLink)
 import Erl.Utils (sleep, systemTimeMs, privDir)
-import Logger (Logger, spy)
+import Logger (Logger)
 import Logger as Logger
 import Network (Network, addEdge', bestPaths, emptyNetwork, pathsBetween)
 import Os (osCmd)
@@ -45,7 +45,7 @@ import Pinto.Timer as Timer
 import PintoHelper (exposeState)
 import Prim.Row (class Nub, class Union)
 import Record as Record
-import Rtsv2.Agents.IntraPoP (AgentClock, whereIsIngestAggregator)
+import Rtsv2.Agents.IntraPoP (AgentClock)
 import Rtsv2.Config (IntraPoPAgentApi, TransPoPAgentConfig)
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
@@ -585,16 +585,13 @@ joinAllSerf state@{ config: config@{rejoinEveryMs}, serfRpcAddress, members } =
       if length toJoin < (Map.size allOtherPoPs) / 2 then
         pure unit
       else
-        let _ = spy "toJoin" {toJoin} in
         traverse_ (\{ name, servers: serversInPoP } ->
                     do
                      indexes <- distinctRandomNumbers 1 ((length serversInPoP) - 1)
                      let
-                       _ = spy "indexes" {indexes}
                        servers :: List ServerAddress
                        servers = traverse (\i -> index serversInPoP i) indexes
                                  # fromMaybe nil
-                       _ = spy "servers" {servers}
                      (spawnFun serverAddressToSerfAddress servers)
                   )
                   toJoin

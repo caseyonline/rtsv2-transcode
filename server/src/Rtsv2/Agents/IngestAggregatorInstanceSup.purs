@@ -8,7 +8,6 @@ import Prelude
 
 import Effect (Effect)
 import Erl.Data.List (nil, (:))
-import Logger (spy)
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildType(..), SupervisorSpec, SupervisorStrategy(..))
 import Pinto.Sup as Sup

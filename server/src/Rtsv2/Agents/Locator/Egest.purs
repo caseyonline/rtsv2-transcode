@@ -15,7 +15,7 @@ import Data.Newtype (unwrap)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, filter, head, nil, (:))
-import Logger (Logger, spy)
+import Logger (Logger)
 import Logger as Logger
 import Pinto (okAlreadyStarted)
 import Rtsv2.Agents.EgestInstance (CreateEgestPayload)
@@ -82,7 +82,7 @@ findEgest' slotId slotRole thisServer = do
       -- does the stream even exists
       -- TODO - Primary and Backup
       mAggregator <- IntraPoP.whereIsIngestAggregator (AggregatorKey slotId slotRole)
-      case spy "mAggregator" mAggregator of
+      case mAggregator of
         Nothing ->
           pure $ Left NotFound
         Just aggregator -> do

@@ -25,7 +25,7 @@ import Data.Maybe (Maybe)
 import Data.Traversable (class Traversable)
 import Shared.Common (Milliseconds, Url)
 import Shared.Rtsv2.JsonLd as JsonLd
-import Shared.Stream (AgentKey, IngestKey, ProfileName(..), SlotId, SlotRole)
+import Shared.Stream (AgentKey, IngestKey, SlotId, SlotRole)
 import Shared.Types (GeoLoc, PoPName, RegionName, Server, ServerAddress)
 import Shared.Types.Workflow.Metrics.FrameFlow as FrameFlow
 import Shared.Types.Workflow.Metrics.RtmpPushIngest as RtmpIngest

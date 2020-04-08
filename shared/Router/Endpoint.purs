@@ -21,7 +21,7 @@ module Shared.Router.Endpoint ( Endpoint(..)
 
 import Prelude hiding ((/))
 
-import Data.Array (fromFoldable, intercalate, (!!))
+import Data.Array (intercalate, (!!))
 import Data.Either (note)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show (genericShow)

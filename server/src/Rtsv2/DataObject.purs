@@ -33,7 +33,6 @@ import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
 import Erl.Utils (Ref, systemTimeMs)
 import Kishimen (genericSumToVariant, variantToGenericSum)
-import Logger (spy)
 import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen

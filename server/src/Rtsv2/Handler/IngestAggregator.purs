@@ -14,7 +14,6 @@ import Effect (Effect)
 import Erl.Data.List (List)
 import Erl.Process (Process(..))
 import Erl.Utils as Erl
-import Logger (spy)
 import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
 import Rtsv2.Agents.IngestAggregatorSup as IngestAggregatorSup
 import Rtsv2.Agents.StreamRelayTypes (AggregatorToIngestWsMessage(..), AggregatorUpstreamWsMessage(..), DownstreamWsMessage(..), RelayUpstreamWsMessage(..), WebSocketHandlerMessage(..))

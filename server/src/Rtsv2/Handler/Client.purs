@@ -22,7 +22,7 @@ import Erl.Process.Raw (Pid)
 import Erl.Process.Raw as Raw
 import Gproc as GProc
 import Gproc as Gproc
-import Logger (Logger, spy)
+import Logger (Logger)
 import Logger as Logger
 import Rtsv2.Agents.EgestInstance as EgestInstance
 import Rtsv2.Agents.Locator.Egest (findEgest)
@@ -60,7 +60,6 @@ clientStart canary slotId slotRole =
       let
         req2 = setHeader "x-servedby" (unwrap $ extractAddress thisServer) req
                # setHeader "x-client-id" clientId
-        _ = spy "egestResp" egestResp
       Rest.initResult req2 $ ClientStartState { clientId, egestResp }
 
     acceptAny req state = Rest.result true req state
@@ -91,7 +90,7 @@ clientStart canary slotId slotRole =
 
     movedTemporarily :: Req -> ClientStartState -> Effect (RestResult MovedResult ClientStartState)
     movedTemporarily req state@(ClientStartState { egestResp}) =
-      case spy "moved" egestResp of
+      case egestResp of
         Right (Remote server) ->
           let
             url = makeUrl server (ClientStartE canary slotId slotRole)

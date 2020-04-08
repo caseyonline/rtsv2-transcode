@@ -40,7 +40,7 @@ import Erl.Process.Raw (Pid)
 import Erl.Utils (shutdown)
 import Erl.Utils as Erl
 import Foreign (Foreign)
-import Logger (Logger, spy)
+import Logger (Logger)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult, isRegistered)
 import Pinto.Gen (CallResult(..), CastResult(..))

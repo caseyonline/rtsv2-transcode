@@ -9,14 +9,13 @@ import Effect (Effect)
 import Erl.Atom (atom)
 import Erl.Data.Tuple (tuple2, tuple3, tuple4)
 import Foreign (Foreign, unsafeToForeign)
-import Logger (spy)
 import Shared.Chaos (ChaosGprocName(..), ChaosName(..), ChaosPayload)
 import StetsonHelper (PostHandler, processPostPayload)
 
 foreign import chaosImpl :: ChaosPayload -> Foreign -> Effect Unit
 
 chaos :: PostHandler ChaosPayload
-chaos = processPostPayload (\p@{name} -> chaosImpl p (spy "NAME" (chaosNameToErlang name)))
+chaos = processPostPayload (\p@{name} -> chaosImpl p (chaosNameToErlang name))
 
 chaosNameToErlang :: ChaosName -> Foreign
 chaosNameToErlang (Local string) = unsafeToForeign string

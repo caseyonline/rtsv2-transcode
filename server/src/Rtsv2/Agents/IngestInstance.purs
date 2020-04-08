@@ -26,7 +26,7 @@ import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
 import Erl.Process.Raw (Pid)
 import Erl.Utils (systemTimeMs)
-import Logger (Logger, spy)
+import Logger (Logger)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
 import Pinto as Pinto
@@ -45,7 +45,6 @@ import Rtsv2.Audit as Audit
 import Rtsv2.Config as Config
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
-import Rtsv2.Utils (crashIfLeft)
 import Shared.Agent as Agent
 import Shared.Common (Milliseconds)
 import Shared.LlnwApiTypes (StreamDetails, StreamPublish(..))
@@ -214,41 +213,41 @@ handleInfo msg state@{ingestKey} = case msg of
   Gun gunMsg ->
     processGunMessage state gunMsg
 
-  where
-    processGunMessage state@{aggregatorWebSocket: Nothing} gunMsg =
-      pure $ CastNoReply state
+processGunMessage :: State -> WsGun.GunMsg -> Effect (CastResult State)
+processGunMessage state@{aggregatorWebSocket: Nothing} gunMsg =
+  pure $ CastNoReply state
 
-    processGunMessage state@{aggregatorWebSocket: Just socket} gunMsg =
-      if WsGun.isSocketForMessage gunMsg socket then do
-        processResponse <- WsGun.processMessage socket gunMsg
-        case processResponse of
-          Left error -> do
-            _ <- logInfo "Gun process error" {error}
-            pure $ CastNoReply state
-
-          Right (WsGun.Internal _) ->
-            pure $ CastNoReply state
-
-          Right WsGun.WebSocketUp -> do
-            _ <- logInfo "Aggregator WebSocket up" {}
-            pure $ CastNoReply state
-
-          Right WsGun.WebSocketDown -> do
-            _ <- logInfo "Aggregator WebSocket down" {}
-            state2 <- informAggregator state
-            pure $ CastNoReply state2
-
-          Right (WsGun.Frame IngestStop) -> do
-            _ <- logInfo "Aggregator requested that ingest stops" {}
-            pure $ CastStop state
-
-          Right (WsGun.Frame (AggregatorToIngestDataObjectMessage dataObject)) -> do
-            -- TODO - stick on bus for publisher websocket
-            _ <- logInfo "Publisher message: " {msg}
-            pure $ CastNoReply state
-
-      else
+processGunMessage state@{aggregatorWebSocket: Just socket} gunMsg =
+  if WsGun.isSocketForMessage gunMsg socket then do
+    processResponse <- WsGun.processMessage socket gunMsg
+    case processResponse of
+      Left error -> do
+        _ <- logInfo "Gun process error" {error}
         pure $ CastNoReply state
+
+      Right (WsGun.Internal _) ->
+        pure $ CastNoReply state
+
+      Right WsGun.WebSocketUp -> do
+        _ <- logInfo "Aggregator WebSocket up" {}
+        pure $ CastNoReply state
+
+      Right WsGun.WebSocketDown -> do
+        _ <- logInfo "Aggregator WebSocket down" {}
+        state2 <- informAggregator state
+        pure $ CastNoReply state2
+
+      Right (WsGun.Frame IngestStop) -> do
+        _ <- logInfo "Aggregator requested that ingest stops" {}
+        pure $ CastStop state
+
+      Right (WsGun.Frame (AggregatorToIngestDataObjectMessage msg)) -> do
+        -- TODO - stick on bus for publisher websocket
+        _ <- logInfo "Publisher message: " {msg}
+        pure $ CastNoReply state
+
+  else
+    pure $ CastNoReply state
 
 ingestEqLine :: State -> Effect Audit.IngestEqLine
 ingestEqLine state@{ ingestKey: ingestKey@(IngestKey slotId slotRole _profileeName)

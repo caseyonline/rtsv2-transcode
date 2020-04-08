@@ -271,66 +271,67 @@ handleInfo msg state@{egestKey: egestKey@(EgestKey slotId slotRole)} =
       | (state.clientCount == 0) && (Just ref == state.stopRef) = doStop state
       | otherwise = pure $ CastNoReply state
 
-    processGunMessage state@{relayWebSocket: Nothing} gunMsg =
-      pure $ CastNoReply state
+processGunMessage :: State -> WsGun.GunMsg -> Effect (CastResult State)
+processGunMessage state@{relayWebSocket: Nothing} gunMsg =
+  pure $ CastNoReply state
 
-    processGunMessage state@{relayWebSocket: Just socket, lastOnFI} gunMsg =
-      if WsGun.isSocketForMessage gunMsg socket then do
-        processResponse <- WsGun.processMessage socket gunMsg
-        case processResponse of
-          Left error -> do
-            _ <- logInfo "Gun process error" {error}
-            pure $ CastNoReply state
-
-          Right (WsGun.Internal _) ->
-            pure $ CastNoReply state
-
-          Right WsGun.WebSocketUp -> do
-            _ <- logInfo "Relay WebSocket up" {}
-            pure $ CastNoReply state
-
-          Right WsGun.WebSocketDown -> do
-            _ <- logInfo "Relay WebSocket down" {}
-            CastNoReply <$> initStreamRelay state
-
-          Right (WsGun.Frame (SlotConfig slotConfiguration))
-            | Nothing <- state.slotConfiguration -> do
-              _ <- logInfo "Received slot configuration" {slotConfiguration}
-              setSlotConfigurationFFI egestKey slotConfiguration
-              pure $ CastNoReply state{slotConfiguration = Just slotConfiguration}
-
-            | otherwise ->
-              pure $ CastNoReply state
-
-          Right (WsGun.Frame (OnFI {timestamp, pts})) | timestamp > lastOnFI -> do
-            Bus.raise bus (EgestOnFI timestamp pts)
-            pure $ CastNoReply state{lastOnFI = timestamp}
-
-          Right (WsGun.Frame (OnFI {timestamp, pts})) ->
-            pure $ CastNoReply state
-
-          Right (WsGun.Frame (DataObjectMessage dataObjectMsg)) -> do
-            shouldProcess <- DataObject.shouldProcessMessage egestKey dataObjectMsg
-            if shouldProcess then Bus.raise bus (EgestDataObjectMessage dataObjectMsg)
-            else pure unit
-            pure $ CastNoReply state
-
-          Right (WsGun.Frame (DataObjectUpdateResponse dataObjectMsg)) -> do
-            shouldProcess <- DataObject.shouldProcessMessage egestKey dataObjectMsg
-            if shouldProcess then Bus.raise bus (EgestDataObjectUpdateResponse dataObjectMsg)
-            else pure unit
-            pure $ CastNoReply state
-
-          Right (WsGun.Frame (DataObject dataObjectMsg@(ObjectBroadcastMessage {object: dataObject}))) -> do
-            shouldProcess <- DataObject.shouldProcessMessage egestKey dataObjectMsg
-            if shouldProcess then do
-              _ <- Bus.raise bus (EgestDataObjectBroadcast dataObject)
-              pure $ CastNoReply state{dataObject = Just dataObject}
-            else
-              pure $ CastNoReply state
-
-      else
+processGunMessage state@{relayWebSocket: Just socket, egestKey, lastOnFI} gunMsg =
+  if WsGun.isSocketForMessage gunMsg socket then do
+    processResponse <- WsGun.processMessage socket gunMsg
+    case processResponse of
+      Left error -> do
+        _ <- logInfo "Gun process error" {error}
         pure $ CastNoReply state
+
+      Right (WsGun.Internal _) ->
+        pure $ CastNoReply state
+
+      Right WsGun.WebSocketUp -> do
+        _ <- logInfo "Relay WebSocket up" {}
+        pure $ CastNoReply state
+
+      Right WsGun.WebSocketDown -> do
+        _ <- logInfo "Relay WebSocket down" {}
+        CastNoReply <$> initStreamRelay state
+
+      Right (WsGun.Frame (SlotConfig slotConfiguration))
+        | Nothing <- state.slotConfiguration -> do
+          _ <- logInfo "Received slot configuration" {slotConfiguration}
+          setSlotConfigurationFFI egestKey slotConfiguration
+          pure $ CastNoReply state{slotConfiguration = Just slotConfiguration}
+
+        | otherwise ->
+          pure $ CastNoReply state
+
+      Right (WsGun.Frame (OnFI {timestamp, pts})) | timestamp > lastOnFI -> do
+        Bus.raise bus (EgestOnFI timestamp pts)
+        pure $ CastNoReply state{lastOnFI = timestamp}
+
+      Right (WsGun.Frame (OnFI {timestamp, pts})) ->
+        pure $ CastNoReply state
+
+      Right (WsGun.Frame (DataObjectMessage dataObjectMsg)) -> do
+        shouldProcess <- DataObject.shouldProcessMessage egestKey dataObjectMsg
+        if shouldProcess then Bus.raise bus (EgestDataObjectMessage dataObjectMsg)
+        else pure unit
+        pure $ CastNoReply state
+
+      Right (WsGun.Frame (DataObjectUpdateResponse dataObjectMsg)) -> do
+        shouldProcess <- DataObject.shouldProcessMessage egestKey dataObjectMsg
+        if shouldProcess then Bus.raise bus (EgestDataObjectUpdateResponse dataObjectMsg)
+        else pure unit
+        pure $ CastNoReply state
+
+      Right (WsGun.Frame (DataObject dataObjectMsg@(ObjectBroadcastMessage {object: dataObject}))) -> do
+        shouldProcess <- DataObject.shouldProcessMessage egestKey dataObjectMsg
+        if shouldProcess then do
+          _ <- Bus.raise bus (EgestDataObjectBroadcast dataObject)
+          pure $ CastNoReply state{dataObject = Just dataObject}
+        else
+          pure $ CastNoReply state
+
+  else
+    pure $ CastNoReply state
 
 removeClient :: State -> Effect State
 removeClient state@{clientCount: 0} = do

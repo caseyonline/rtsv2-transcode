@@ -20,7 +20,6 @@ import Erl.Data.Binary (Binary)
 import Erl.Data.Binary.IOData (IOData, fromBinary, toBinary)
 import Erl.Data.List (List, filter, head, nil, (:))
 import Erl.Data.Tuple (tuple2)
-import Logger (spy)
 import Rtsv2.Agents.IngestSup as IngestSup
 import Shared.LlnwApiTypes (AuthType, PublishCredentials, SlotPublishAuthType(..), StreamAuth, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamPublish)
 import Shared.Stream (RtmpShortName, SlotRole(..))
@@ -185,9 +184,6 @@ postHelper lookupFun =
                               let
                                 eJSON = readJSON $ binaryToString body
                                 maybePayload = hush $ eJSON
-                                _ = spy "body" $ binaryToString body
-                                _ = spy "json" $ eJSON
-                                _ = spy "maybePayload" maybePayload
                               Rest.result (isNothing maybePayload) req state{payload = maybePayload})
 
   # Rest.contentTypesAccepted (\req state ->

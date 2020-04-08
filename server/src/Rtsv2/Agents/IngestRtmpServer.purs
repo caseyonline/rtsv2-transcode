@@ -14,7 +14,6 @@ import Data.Newtype (wrap)
 import Effect (Effect)
 import Erl.Process.Raw (Pid)
 import Foreign (Foreign)
-import Logger (spy)
 import Media.Rtmp as Rtmp
 import Media.SourceDetails as SourceDetails
 import Pinto (ServerName)
@@ -167,23 +166,21 @@ startWorkflowAndBlock rtmpPid publishArgs ingestKey =
 getStreamAuthType :: String -> String -> Effect (Maybe AuthType)
 getStreamAuthType host rtmpShortName = do
   {streamAuthTypeUrl: url} <- Config.llnwApiConfig
-  restResult <- SpudGun.postJson (wrap url) (spy "authtype body" (wrap { host
-                                                                       , protocol: Rtmp
-                                                                       , rtmpShortName: wrap rtmpShortName}) :: StreamConnection
-                                            )
-  pure $ hush (bodyToJSON (spy "authtype result" restResult))
+  restResult <- SpudGun.postJson (wrap url) (wrap { host
+                                                  , protocol: Rtmp
+                                                  , rtmpShortName: wrap rtmpShortName} :: StreamConnection)
+  pure $ hush (bodyToJSON restResult)
 
 getPublishCredentials :: String -> String -> String -> Effect (Maybe PublishCredentials)
 getPublishCredentials host rtmpShortName username = do
   {streamAuthUrl: url} <- Config.llnwApiConfig
-  restResult <- SpudGun.postJson (wrap (spy "auth url" url)) (spy "auth body" (wrap { host
-                                                                                    , rtmpShortName: wrap rtmpShortName
-                                                                                    , username}) :: StreamAuth
-                                                             )
-  pure $ hush $ bodyToJSON (spy "auth result" restResult)
+  restResult <- SpudGun.postJson (wrap url) (wrap { host
+                                                  , rtmpShortName: wrap rtmpShortName
+                                                  , username} :: StreamAuth)
+  pure $ hush $ bodyToJSON restResult
 
 getStreamDetails :: StreamPublish -> Effect (Maybe StreamDetails)
 getStreamDetails streamPublish = do
   {streamPublishUrl: url} <- Config.llnwApiConfig
-  restResult <- SpudGun.postJson (wrap (spy "publish url" url)) (spy "publish body" streamPublish)
-  pure $ hush (spy "publish parse" (bodyToJSON (spy "publish result" restResult)))
+  restResult <- SpudGun.postJson (wrap url) streamPublish
+  pure $ hush $ bodyToJSON restResult

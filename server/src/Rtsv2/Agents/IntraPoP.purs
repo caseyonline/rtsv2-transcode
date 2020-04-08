@@ -60,7 +60,7 @@ import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Newtype (class Newtype, unwrap, wrap)
 import Data.Set (Set)
 import Data.Set as Set
-import Data.Traversable (sequence, traverse, traverse_)
+import Data.Traversable (traverse_)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Effect.Random (randomInt)
@@ -74,7 +74,7 @@ import Erl.Process (Process, spawnLink)
 import Erl.Utils (Ref, makeRef)
 import Erl.Utils as Erl
 import Heterogeneous.Folding (hfoldl)
-import Logger (Logger, spy)
+import Logger (Logger)
 import Logger as Logger
 import Partial.Unsafe (unsafeCrashWith, unsafePartial)
 import Pinto (ServerName, StartLinkResult)
@@ -95,11 +95,9 @@ import Serf as Serf
 import Shared.Common (Milliseconds)
 import Shared.Rtsv2.JsonLd (transPoPLeaderLocationNode)
 import Shared.Rtsv2.JsonLd as JsonLd
-import Shared.Stream (AgentKey(..), AggregatorKey, EgestKey(..), RelayKey(..), SlotRole(..), agentKeyToAggregatorKey, aggregatorKeyToAgentKey)
+import Shared.Stream (AgentKey(..), AggregatorKey, EgestKey(..), RelayKey(..), agentKeyToAggregatorKey, aggregatorKeyToAgentKey)
 import Shared.Types (Load, Server(..), ServerAddress(..), ServerLoad(..), extractAddress, extractPoP, serverLoadToServer, toServer, toServerLoad)
 import Shared.Types.Agent.State as PublicState
-import Unsafe.Coerce (unsafeCoerce)
-
 
 type TestHelperPayload =
   { dropAgentMessages :: Boolean
