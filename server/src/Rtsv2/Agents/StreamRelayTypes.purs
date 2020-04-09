@@ -1,7 +1,8 @@
 module Rtsv2.Agents.StreamRelayTypes
   ( CreateRelayPayload
   , CreateProxyPayload
-  , AggregatorUpstreamWsMessage(..)
+  , AggregatorPrimaryToBackupWsMessage(..)
+  , AggregatorBackupToPrimaryWsMessage(..)
   , RelayUpstreamWsMessage(..)
   , EgestUpstreamWsMessage(..)
   , AggregatorToIngestWsMessage(..)
@@ -35,8 +36,15 @@ type CreateProxyPayload
 data AggregatorToIngestWsMessage = IngestStop
                                  | AggregatorToIngestDataObjectMessage String
 
-data AggregatorUpstreamWsMessage = AggregatorUpstreamDataObjectMessage DO.Message
-                                 | AggregatorUpstreamDataObjectUpdateMessage DO.ObjectUpdateMessage
+data AggregatorPrimaryToBackupWsMessage = P2B_Synchronise
+                                        | P2B_Latest DO.Object
+                                        | P2B_Message DO.Message
+                                        | P2B_UpdateResponse DO.ObjectUpdateResponseMessage
+
+data AggregatorBackupToPrimaryWsMessage = B2P_SynchroniseObject DO.Object
+                                        | B2P_SynchroniseNoObject
+                                        | B2P_Message DO.Message
+                                        | B2P_Update DO.ObjectUpdateMessage
 
 data RelayUpstreamWsMessage = RelayUpstreamDataObjectMessage DO.Message
                             | RelayUpstreamDataObjectUpdateMessage DO.ObjectUpdateMessage
@@ -64,13 +72,23 @@ instance writeForeignAggregatorToIngestWsMessage :: WriteForeign AggregatorToIng
   writeImpl msg = writeImpl (genericSumToVariant msg)
 
 ------------------------------------------------------------------------------
--- AggregatorUpstreamWsMessage
-derive instance genericAggregatorUpstreamWsMessage :: Generic AggregatorUpstreamWsMessage _
+-- AggregatorPrimaryToBackupWsMessage
+derive instance genericAggregatorPrimaryToBackupWsMessage :: Generic AggregatorPrimaryToBackupWsMessage _
 
-instance readForeignAggregatorUpstreamWsMessage :: ReadForeign AggregatorUpstreamWsMessage where
+instance readForeignAggregatorPrimaryToBackupWsMessage :: ReadForeign AggregatorPrimaryToBackupWsMessage where
   readImpl o = variantToGenericSum <$> readImpl o
 
-instance writeForeignAggregatorUpstreamWsMessage :: WriteForeign AggregatorUpstreamWsMessage where
+instance writeForeignAggregatorPrimaryToBackupWsMessage :: WriteForeign AggregatorPrimaryToBackupWsMessage where
+  writeImpl msg = writeImpl (genericSumToVariant msg)
+
+------------------------------------------------------------------------------
+-- AggregatorBackupToPrimaryWsMessage
+derive instance genericAggregatorBackupToPrimaryWsMessage :: Generic AggregatorBackupToPrimaryWsMessage _
+
+instance readForeignAggregatorBackupToPrimaryWsMessage :: ReadForeign AggregatorBackupToPrimaryWsMessage where
+  readImpl o = variantToGenericSum <$> readImpl o
+
+instance writeForeignAggregatorBackupToPrimaryWsMessage :: WriteForeign AggregatorBackupToPrimaryWsMessage where
   writeImpl msg = writeImpl (genericSumToVariant msg)
 
 ------------------------------------------------------------------------------

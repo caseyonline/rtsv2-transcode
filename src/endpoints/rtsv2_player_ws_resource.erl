@@ -346,8 +346,14 @@ websocket_info({egestDataObjectUpdateResponse,#{response := Response,
                          <<"response">> => case Response of
                                              {ok} -> <<"ok">>;
                                              {error, {invalidKey, _}} -> <<"invalidKey">>;
+                                             {error, {invalidValue, _}} -> <<"invalidValue">>;
                                              {error, {invalidOperation, _}} -> <<"invalidOperation">>;
-                                             {error, {compareAndSwapFailed, _}} -> <<"compareAndSwapFailed">>
+                                             {error, {compareAndSwapFailed, _}} -> <<"compareAndSwapFailed">>;
+                                             {error, {invalidRequest}} -> <<"invalidRequest">>;
+                                             {error, {pendingInitialisation}} -> <<"pendingInitialisation">>;
+                                             {error, {pendingSynchronisation}} -> <<"pendingSynchronisation">>;
+                                             {error, {networkError}} -> <<"networkError">>;
+                                             {error, {unexpected}} -> <<"unexpected">>
                                            end
                        }
                     ) ]

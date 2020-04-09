@@ -200,6 +200,9 @@ handleInfo msg state@{ingestKey} = case msg of
   IntraPoPBus (VmReset _ _ _) ->
     pure $ CastNoReply state
 
+  IntraPoPBus (IngestAggregatorStarted _ _) -> do
+    pure $ CastNoReply state
+
   IntraPoPBus (IngestAggregatorExited aggregatorKey serverAddress) -> do
     logInfo "Aggregator has exited" {aggregatorKey, serverAddress, ingestKey: state.ingestKey}
     state2 <- handleAggregatorExit aggregatorKey serverAddress state

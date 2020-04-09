@@ -256,6 +256,9 @@ handleInfo msg state@{egestKey: egestKey@(EgestKey slotId slotRole)} =
 
     MaybeStop ref -> maybeStop ref
 
+    IntraPoPBus (IngestAggregatorStarted _ _) ->
+      pure $ CastNoReply state
+
     IntraPoPBus (IngestAggregatorExited (AggregatorKey exitedSlotId exitedSlotRole) serverAddress)
       | exitedSlotId == slotId && exitedSlotRole == slotRole -> doStop state
       | otherwise -> pure $ CastNoReply state

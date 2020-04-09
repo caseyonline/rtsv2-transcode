@@ -9,15 +9,14 @@ module Rtsv2.Handler.IngestAggregator
 
 import Prelude
 
-import Data.Maybe (Maybe(..), fromMaybe')
+import Data.Maybe (Maybe(..), fromMaybe', maybe)
 import Effect (Effect)
 import Erl.Data.List (List)
 import Erl.Process (Process(..))
 import Erl.Utils as Erl
 import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
 import Rtsv2.Agents.IngestAggregatorSup as IngestAggregatorSup
-import Rtsv2.Agents.StreamRelayTypes (AggregatorToIngestWsMessage(..), AggregatorUpstreamWsMessage(..), DownstreamWsMessage(..), RelayUpstreamWsMessage(..), WebSocketHandlerMessage(..))
-import Rtsv2.DataObject as DO
+import Rtsv2.Agents.StreamRelayTypes (AggregatorBackupToPrimaryWsMessage, AggregatorPrimaryToBackupWsMessage, AggregatorToIngestWsMessage(..), DownstreamWsMessage(..), RelayUpstreamWsMessage(..), WebSocketHandlerMessage(..))
 import Rtsv2.Handler.Helper (WebSocketHandlerResult(..), webSocketHandler)
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
@@ -111,7 +110,7 @@ type WsBackupState =
   { aggregatorKey :: AggregatorKey
   }
 
-backupWs :: SlotId -> SlotRole -> InnerStetsonHandler (WebSocketHandlerMessage DownstreamWsMessage) WsBackupState
+backupWs :: SlotId -> SlotRole -> InnerStetsonHandler (WebSocketHandlerMessage AggregatorBackupToPrimaryWsMessage) WsBackupState
 backupWs slotId slotRole =
   webSocketHandler init wsInit handle info
   where
@@ -120,18 +119,17 @@ backupWs slotId slotRole =
            }
 
     wsInit state@{aggregatorKey} = do
-      self <- Process <$> Erl.self :: Effect (Process (WebSocketHandlerMessage DownstreamWsMessage))
-      Erl.monitor (Names.ingestAggregatorInstanceStateName aggregatorKey)
-      ref <- Erl.makeRef
-      dataObject <- IngestAggregatorInstance.registerBackup slotId slotRole self
-      pure $ WebSocketReply (DataObject (DO.ObjectBroadcastMessage {ref, object: dataObject})) state
+      self <- Process <$> Erl.self :: Effect (Process (WebSocketHandlerMessage AggregatorBackupToPrimaryWsMessage))
+      accepted <- IngestAggregatorInstance.registerPrimary slotId slotRole self
+      if accepted then do
+        Erl.monitor (Names.ingestAggregatorInstanceStateName aggregatorKey)
+        pure $ (WebSocketNoReply state)
+      else
+        pure $ (WebSocketStop state)
 
-    handle :: WsBackupState -> AggregatorUpstreamWsMessage -> Effect (WebSocketHandlerResult DownstreamWsMessage WsBackupState)
-    handle state@{aggregatorKey} (AggregatorUpstreamDataObjectMessage msg) = do
-      IngestAggregatorInstance.dataObjectSendMessage aggregatorKey msg
-      pure $ WebSocketNoReply state
-    handle state@{aggregatorKey} (AggregatorUpstreamDataObjectUpdateMessage msg) = do
-      IngestAggregatorInstance.dataObjectUpdate aggregatorKey msg
+    handle :: WsBackupState -> AggregatorPrimaryToBackupWsMessage -> Effect (WebSocketHandlerResult AggregatorBackupToPrimaryWsMessage WsBackupState)
+    handle state@{aggregatorKey} msg = do
+      IngestAggregatorInstance.processMessageFromPrimary aggregatorKey msg
       pure $ WebSocketNoReply state
 
     info state WsStop =

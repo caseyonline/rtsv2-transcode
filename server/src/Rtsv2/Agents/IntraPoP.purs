@@ -178,7 +178,8 @@ data Msg
   | ReAnnounce AgentKey HandlerName
 
 data IntraPoPBusMessage
-  = IngestAggregatorExited AggregatorKey Server
+  = IngestAggregatorStarted AggregatorKey Server
+  | IngestAggregatorExited AggregatorKey Server
   | VmReset Server Ref (Maybe Ref)
 
 
@@ -466,17 +467,25 @@ aggregatorHandler
   where
     availableLocal :: AgentMessageHandler
     availableLocal state agentKey server = do
+      let
+        aggregatorKey = agentKeyToAggregatorKey agentKey
+      Bus.raise bus (IngestAggregatorStarted aggregatorKey server)
       sendToIntraSerfNetwork state "aggregatorAvailable" (IMAggregatorState Available agentKey (extractAddress server))
       state.transPoPApi.announceAggregatorIsAvailable agentKey server
 
     availableThisPoP :: AgentMessageHandler
     availableThisPoP state agentKey server = do
+      let
+        aggregatorKey = agentKeyToAggregatorKey agentKey
+      Bus.raise bus (IngestAggregatorStarted aggregatorKey server)
       state.transPoPApi.announceAggregatorIsAvailable agentKey server
 
     availableOtherPoP :: AgentMessageHandler
     availableOtherPoP state agentKey server = do
+      let
+        aggregatorKey = agentKeyToAggregatorKey agentKey
+      Bus.raise bus (IngestAggregatorStarted aggregatorKey server)
       sendToIntraSerfNetwork state "aggregatorAvailable" (IMAggregatorState Available agentKey (extractAddress server))
-
 
     stoppedLocal :: AgentMessageHandler
     stoppedLocal state agentKey server = do

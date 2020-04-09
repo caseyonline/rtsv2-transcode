@@ -7,7 +7,6 @@ module Shared.Types.Workflow.Metrics.Commmon
 import Prelude
 
 import Data.Generic.Rep (class Generic)
-import Data.Generic.Rep.Show (genericShow)
 import Simple.JSON (class ReadForeign, class WriteForeign, writeImpl)
 import Simple.JSON.Generics (enumSumRep)
 

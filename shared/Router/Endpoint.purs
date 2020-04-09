@@ -162,7 +162,7 @@ endpoint = root $ sum
 
   , "IngestAggregatorRegisteredIngestWs"               : "system" / "ingestAggregator" / slotId segment / slotRole segment / "ingests" / profileName segment / serverAddress segment / "ws"
   , "IngestAggregatorRegisteredRelayWs"                : "system" / "ingestAggregator" / slotId segment / slotRole segment / "relays" / serverAddress segment / port segment / "ws"
-  , "IngestAggregatorBackupWs"                         : "system" / "ingestAggregator" / slotId segment / slotRole segment / "backupws"
+  , "IngestAggregatorBackupWs"                         : "system" / "ingestAggregator" / slotId segment / slotRole segment / "backupWs"
 
   , "IngestInstanceLlwpE"                              : "system" / "ingest" / slotId segment / slotRole segment / profileName segment / "llwp" -- URL duplicated in Web.purs
 

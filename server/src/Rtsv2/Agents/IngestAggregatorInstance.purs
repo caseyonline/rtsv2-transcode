@@ -1,30 +1,66 @@
+--------------------------------------------------------------------------------
+-- Mermaid description of the state transitions for the dataobject ownership.
+-- (paste into this: https://mermaid-js.github.io/mermaid-live-editor/#/edit/)
+--
+-- graph TD
+--  p[Primary] --> backupExists(Backup Exists)
+-- 	backupExists --No--> createObject(Create Object)
+-- 	backupExists --Yes--> sendSynchronise(Send Synchronise)
+-- 	sendSynchronise --> awaitResponse(Await Response)
+-- 	awaitResponse --Backup Exits--> createObject
+-- 	awaitResponse --No Object--> createObject
+-- 	awaitResponse --Synchronise--> mergeObjects(Merge Objects)
+-- 	mergeObjects --> sendLatest(Send Latest)
+-- 	createObject --> sendLatest
+-- 	sendLatest --> primaryOwned(Primary Owned)
+-- 	primaryOwned --Backup Starts--> sendSynchronise2(Send Synchronise)
+-- 	sendSynchronise2 --Backup Exits--> primaryOwned
+-- 	sendSynchronise2 --No Object-->sendLatest
+-- 	sendSynchronise2 --Synchronise--> mergeObjects
+--
+-- 	b[Backup] --> primaryExists(Primary Exists)
+--  primaryExists --No--> bCreateObject(Create Object)
+-- 	primaryExists --Yes--> bAwaitConnection(Await Connection)
+-- 	bAwaitConnection --Primary Exits--> bCreateObject
+-- 	bAwaitConnection --SendSynchronise Received--> bSendNoObject(Send NoObject Response)
+-- 	bSendNoObject --> bPeerOwned(Peer Owned)
+-- 	bCreateObject --> backupOwned(Backup Owned)
+-- 	backupOwned --SendSynchronise Received--> bSendSyncResponse(Send Synchronise Response)
+-- 	bSendSyncResponse --> bAwaitResponse(Await Latest)
+-- 	bAwaitResponse --Receive Latest--> bPeerOwned
+-- 	bAwaitResponse --Primary Exits--> backupOwned
+-- 	bPeerOwned --Primary Exits--> backupOwned
+--------------------------------------------------------------------------------
+
 module Rtsv2.Agents.IngestAggregatorInstance
   ( startLink
   , stopAction
   , isInstanceAvailable
-  , registerBackup
+  , registerPrimary
   , registerIngest
   , registerRelay
   , getState
   , domain
   , dataObjectSendMessage
   , dataObjectUpdate
-
+  , processMessageFromPrimary
   , CachedState
   , RegisteredRelay
   , StateServerName
+  , IngestProcess
+  , RelayProcess
   , streamDetailsToAggregatorKey
   ) where
 
 import Prelude
 
 import Bus as Bus
-import Data.Either (Either(..), either)
+import Data.Either (Either(..), either, hush)
 import Data.FoldableWithIndex (foldWithIndexM, foldlWithIndex)
 import Data.Lens (Lens', set, view)
 import Data.Lens.At (at)
 import Data.Lens.Record (prop)
-import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Newtype (unwrap)
 import Data.Symbol (SProxy(..))
 import Data.Traversable (traverse)
@@ -50,20 +86,21 @@ import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..), announceLocalAggregatorIsAvailable, announceLocalAggregatorStopped)
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
-import Rtsv2.Agents.StreamRelayTypes (AggregatorToIngestWsMessage(..), DownstreamWsMessage(..), WebSocketHandlerMessage(..))
+import Rtsv2.Agents.StreamRelayTypes (AggregatorBackupToPrimaryWsMessage(..), AggregatorPrimaryToBackupWsMessage(..), AggregatorToIngestWsMessage(..), DownstreamWsMessage(..), WebSocketHandlerMessage(..))
 import Rtsv2.Config as Config
-import Rtsv2.DataObject (ObjectUpdateMessage(..))
+import Rtsv2.DataObject (ObjectUpdateError(..), ObjectUpdateMessage(..))
 import Rtsv2.DataObject as DO
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Agent as Agent
 import Shared.LlnwApiTypes (SlotProfile(..), StreamDetails)
-import Shared.Router.Endpoint (Endpoint(..), makeUrlAddr)
+import Shared.Router.Endpoint (Endpoint(..), makeUrlAddr, makeWsUrl)
 import Shared.Rtsv2.JsonLd as JsonLd
-import Shared.Stream (AggregatorKey(..), IngestKey(..), ProfileName, SlotId, SlotRole, ingestKeyToAggregatorKey)
+import Shared.Stream (AggregatorKey(..), IngestKey(..), ProfileName, SlotId, SlotRole(..), ingestKeyToAggregatorKey)
 import Shared.Types (DeliverTo, RelayServer, Server, ServerAddress, extractAddress)
 import Shared.Types.Agent.State as PublicState
 import Shared.UUID (UUID)
+import WsGun as WsGun
 
 foreign import data WorkflowHandle :: Type
 foreign import startWorkflowImpl :: UUID -> SlotRole -> Array (Tuple3 IngestKey String String) -> Effect (Tuple3 WorkflowHandle (List Pid) SlotConfiguration)
@@ -75,22 +112,46 @@ foreign import registerStreamRelayImpl :: WorkflowHandle -> String -> Int -> Eff
 foreign import deRegisterStreamRelayImpl :: WorkflowHandle -> String -> Int -> Effect Unit
 foreign import workflowMessageMapperImpl :: Foreign -> Maybe WorkflowMsg
 
+-- todo - rename
+type PeerWebsocket = WsGun.WebSocket AggregatorPrimaryToBackupWsMessage AggregatorBackupToPrimaryWsMessage
+type PeerProcess = Process (WebSocketHandlerMessage AggregatorBackupToPrimaryWsMessage)
+
+type RelayProcess = Process (WebSocketHandlerMessage DownstreamWsMessage)
+type IngestProcess = Process (WebSocketHandlerMessage AggregatorToIngestWsMessage)
+
 type RegisteredRelay = { port :: Int
-                       , handler :: Process (WebSocketHandlerMessage DownstreamWsMessage)
+                       , handler :: RelayProcess
                        }
 
-type CachedState = { localIngests :: Map ProfileName (Process (WebSocketHandlerMessage AggregatorToIngestWsMessage))
+type CachedState = { localIngests :: Map ProfileName IngestProcess
                    , remoteIngests :: Map ProfileName { ingestAddress :: ServerAddress
-                                                      , handler :: Process (WebSocketHandlerMessage AggregatorToIngestWsMessage) }
+                                                      , handler :: IngestProcess }
                    , relays :: Map RelayServer RegisteredRelay
                    }
 
 type StateServerName = CachedInstanceState.StateServerName CachedState
 
+type PrimaryDataObject = DO.Object
+
+data BackupDataObject = OwnedByUs DO.Object
+                      | OwnedByPrimary DO.Object
+                      | Synchronising DO.Object
+
+type PrimaryDOState
+  = { dataObject :: Maybe DO.Object
+    , connectionToBackup :: Maybe PeerWebsocket
+    }
+
+type BackupDOState
+  = { dataObject :: Maybe BackupDataObject
+    , connectionToPrimary :: Maybe PeerProcess
+    }
+
 type State
   = { config :: Config.IngestAggregatorAgentConfig
     , slotId :: SlotId
     , slotRole :: SlotRole
+    , peerRole :: SlotRole
     , cachedState :: CachedState
     , thisServer :: Server
     , aggregatorKey :: AggregatorKey
@@ -99,7 +160,7 @@ type State
     , webRtcStreamServers :: List Pid
     , stateServerName :: StateServerName
     , slotConfiguration :: SlotConfiguration
-    , dataObject :: DO.Object
+    , dataObjectState :: Either PrimaryDOState BackupDOState
     }
 
 data WorkflowMsg = Noop
@@ -107,6 +168,8 @@ data WorkflowMsg = Noop
 
 data Msg
   = IntraPoPBus IntraPoP.IntraPoPBusMessage
+  | AttemptConnectionToBackup
+  | Gun WsGun.GunMsg
   | MaybeStop
   | RelayDown RelayServer
   | IngestDown ProfileName ServerAddress Boolean
@@ -126,21 +189,21 @@ serverName = Names.ingestAggregatorInstanceName
 serverNameFromIngestKey :: IngestKey -> ServerName State Msg
 serverNameFromIngestKey = serverName <<< ingestKeyToAggregatorKey
 
-registerBackup :: SlotId -> SlotRole -> Process (WebSocketHandlerMessage DownstreamWsMessage) -> Effect DO.Object
-registerBackup slotId slotRole handler@(Process handlerPid) =
-  Gen.doCall thisServerName
-  (\state@{dataObject} -> do
-      _ <- logInfo "Backup registered with primary" {slotId, slotRole}
-      -- todo - monitor pid
-      --      - remember pid
-      --      - on message, send message to pid
-      --      - on data object update, send object to pid
-      pure $ CallReply dataObject state
-  )
+registerPrimary :: SlotId -> SlotRole -> PeerProcess -> Effect Boolean
+registerPrimary slotId slotRole handler@(Process handlerPid) =
+  Gen.doCall thisServerName doRegisterPrimary
   where
+    doRegisterPrimary state@{dataObjectState: Right dos} =
+      -- todo - monitor pid
+      pure $ CallReply true state{dataObjectState = Right dos{connectionToPrimary = Just handler}}
+
+    doRegisterPrimary state =
+      -- We are primary, who the heck called us!
+      pure $ CallReply false state
+
     thisServerName = serverName (AggregatorKey slotId slotRole)
 
-registerIngest :: SlotId -> SlotRole -> ProfileName -> ServerAddress -> Process (WebSocketHandlerMessage AggregatorToIngestWsMessage) -> Effect Boolean
+registerIngest :: SlotId -> SlotRole -> ProfileName -> ServerAddress -> IngestProcess -> Effect Boolean
 registerIngest slotId slotRole profileName ingestAddress handler@(Process handlerPid) =
   Gen.doCall thisServerName
   (\state@{thisServer} -> do
@@ -159,17 +222,60 @@ registerIngest slotId slotRole profileName ingestAddress handler@(Process handle
   where
     thisServerName = serverName (AggregatorKey slotId slotRole)
 
-registerRelay :: SlotId -> SlotRole -> DeliverTo RelayServer -> Process (WebSocketHandlerMessage DownstreamWsMessage) -> Effect SlotConfiguration
+registerRelay :: SlotId -> SlotRole -> DeliverTo RelayServer -> RelayProcess -> Effect SlotConfiguration
 registerRelay slotId slotRole deliverTo handler =
   Gen.doCall (serverName $ key)
-  (\state@{thisServer, slotConfiguration, dataObject} -> do
-      ref <- Erl.makeRef
-      handler ! (WsSend $ DataObject $ DO.ObjectBroadcastMessage { object: dataObject
-                                                                 , ref})
+  (\state@{thisServer, slotConfiguration, dataObjectState} -> do
+      case getDataObject dataObjectState of
+        Just dataObject -> do
+          ref <- Erl.makeRef
+          handler ! (WsSend $ DataObject $ DO.ObjectBroadcastMessage { object: dataObject
+                                                                     , ref})
+        _ ->
+          pure unit
       CallReply slotConfiguration <$> doRegisterRelay deliverTo handler state
   )
   where
     key = AggregatorKey slotId slotRole
+    getDataObject (Left {dataObject: Nothing}) = Nothing
+    getDataObject (Left {dataObject: Just dataObject}) = Just dataObject
+    getDataObject (Right {dataObject: Nothing}) = Nothing
+    getDataObject (Right {dataObject: Just (OwnedByUs dataObject)}) = Just dataObject
+    getDataObject (Right {dataObject: Just (OwnedByPrimary dataObject)}) = Just dataObject
+    getDataObject (Right {dataObject: Just (Synchronising dataObject)}) = Nothing
+
+processMessageFromPrimary :: AggregatorKey -> AggregatorPrimaryToBackupWsMessage -> Effect Unit
+processMessageFromPrimary aggregatorKey msg =
+  Gen.doCall (serverName aggregatorKey) doProcessMessage
+  where
+    doProcessMessage state@{dataObjectState: Right dos@{dataObject: mDataObject}} =
+      case msg of
+        P2B_Synchronise -> do
+          _ <- logInfo "XXX Synchronise request from primary" {}
+          sendToPrimary dos (maybe B2P_SynchroniseNoObject (B2P_SynchroniseObject <<< getDataObject) mDataObject)
+          pure $ CallReply unit state
+
+        P2B_Latest latestObject -> do
+          _ <- logInfo "XXX Latest object from primary" {}
+          sendBroadcast state latestObject
+          pure $ CallReply unit state{dataObjectState = Right dos{dataObject = Just (OwnedByPrimary latestObject)}}
+
+        P2B_Message message -> do
+          sendDownstream state (DataObjectMessage message)
+          pure $ CallReply unit state
+
+        P2B_UpdateResponse responseMessage -> do
+          _ <- logInfo "XXX Update response from primary" {}
+          sendDownstream state (DataObjectUpdateResponse responseMessage)
+          pure $ CallReply unit state
+
+    doProcessMessage state@{dataObjectState: Left _} =
+      -- We are primary, who the heck called us!
+     pure $ CallReply unit state
+
+    getDataObject (OwnedByUs dataObject) = dataObject
+    getDataObject (OwnedByPrimary dataObject) = dataObject
+    getDataObject (Synchronising dataObject) = dataObject
 
 checkProfileInactive :: ProfileName -> State -> Boolean
 checkProfileInactive profileName {cachedState: {localIngests, remoteIngests}} =
@@ -200,6 +306,7 @@ dataObjectSendMessage aggregatorKey msg@(DO.Message {destination: DO.Publisher
     if shouldProcess then do
       void $ traverse doSend $ Map.values localIngests
       void $ traverse doSend $ _.handler <$> Map.values remoteIngests
+      sendMessageToPeer state msg
     else pure unit
     pure $ CallReply unit state
   )
@@ -211,47 +318,91 @@ dataObjectSendMessage aggregatorKey msg =
   Gen.doCall (serverName aggregatorKey)
   (\state -> do
     shouldProcess <- DO.shouldProcessMessage aggregatorKey msg
-    if shouldProcess then sendDownstream state (DataObjectMessage msg)
+    if shouldProcess then do
+      sendDownstream state (DataObjectMessage msg)
+      sendMessageToPeer state msg
     else pure unit
     pure $ CallReply unit state
   )
 
 dataObjectUpdate :: AggregatorKey -> DO.ObjectUpdateMessage -> Effect Unit
-dataObjectUpdate aggregatorKey msg@(ObjectUpdateMessage {sender, senderRef, operation}) =
-  Gen.doCall (serverName aggregatorKey)
-  (\state@{dataObject} -> do
-    shouldProcess <- DO.shouldProcessMessage aggregatorKey msg
-    if shouldProcess then do
-      ref <- Erl.makeRef
-      let
-        {response, state: state2} = performUpdate state dataObject
-        responseMsg = DO.ObjectUpdateResponseMessage { to: sender
-                                                     , senderRef
-                                                     , response: response
-                                                     , ref}
-      sendDownstream state2 (DataObjectUpdateResponse responseMsg)
-      if response == DO.Ok then do
-        ref2 <- Erl.makeRef
-        let
-          broadcastMsg = DO.ObjectBroadcastMessage { object: state2.dataObject
-                                                   , ref: ref2}
-        sendDownstream state2 (DataObject broadcastMsg)
-      else pure unit
-      pure $ CallReply unit state2
-    else
-      pure $ CallReply unit state
-  )
+dataObjectUpdate aggregatorKey msg@(ObjectUpdateMessage {operation}) =
+  Gen.doCall (serverName aggregatorKey) maybeDoDataObjectUpdate
   where
-    performUpdate state dataObject =
-      either (onError state) (onSuccess state) $ DO.update operation dataObject
+    maybeDoDataObjectUpdate state = do
+      shouldProcess <- DO.shouldProcessMessage aggregatorKey msg
+      CallReply unit <$> if shouldProcess then doDataObjectUpdate state
+                         else pure state
 
-    onError state objectUpdateError =
-      { response: DO.Error objectUpdateError
-      , state}
+    doDataObjectUpdate state@{dataObjectState: Left {dataObject: Nothing}} = do
+      -- Primary with no data object
+      sendResponse state $ DO.Error PendingInitialisation
+      pure state
 
-    onSuccess state newObject =
-      { response: DO.Ok
-      , state: state{dataObject = newObject} }
+    doDataObjectUpdate state@{dataObjectState: Left dos@{dataObject: Just dataObject}} = do
+      -- Primary with data object
+      let
+        onPrimarySuccess newDataObject = do
+          sendResponse state DO.Ok
+          sendBroadcast state newDataObject
+          sendToBackup dos (P2B_Latest newDataObject)
+          pure state{dataObjectState = Left dos{dataObject = Just newDataObject}}
+      either (onError state) onPrimarySuccess $ DO.update operation dataObject
+
+    doDataObjectUpdate state@{dataObjectState: Right {dataObject: Nothing}} = do
+      -- Backup with no data object
+      sendResponse state $ DO.Error PendingInitialisation
+      pure state
+
+    doDataObjectUpdate state@{dataObjectState: Right dos@{dataObject: Just (OwnedByUs dataObject)}} = do
+      -- Backup with data object.  Given we own it, there can't be a primary
+      let
+        onBackupSuccess newDataObject = do
+          sendResponse state DO.Ok
+          sendBroadcast state newDataObject
+          pure state{dataObjectState = Right dos{dataObject = Just (OwnedByUs newDataObject)}}
+      either (onError state) onBackupSuccess $ DO.update operation dataObject
+
+    doDataObjectUpdate state@{dataObjectState: Right {dataObject: Just (Synchronising _)}} = do
+      -- Backup but currently synchronising.  Can't accept updates
+      sendResponse state $ DO.Error PendingSynchronisation
+      pure state
+
+    doDataObjectUpdate state@{dataObjectState: Right {dataObject: Just (OwnedByPrimary _),
+                                                      connectionToPrimary: Nothing}} = do
+      -- Backup but owned by primary but no current connection.  Can't accept updates
+      sendResponse state $ DO.Error NetworkError
+      pure state
+
+    doDataObjectUpdate state@{dataObjectState: Right dos@{dataObject: Just (OwnedByPrimary _),
+                                                          connectionToPrimary: Just handler}} = do
+      -- Backup but owned by primary - send the update to primary for processing
+      sendToPrimary dos (B2P_Update msg)
+      pure state
+
+    onError state objectUpdateError = do
+      sendResponse state $ DO.Error objectUpdateError
+      pure state
+
+    sendResponse state response = do
+      responseMsg <- makeResponse msg response
+      sendDownstream state (DataObjectUpdateResponse responseMsg)
+
+makeResponse :: DO.ObjectUpdateMessage -> DO.ObjectUpdateResponse -> Effect DO.ObjectUpdateResponseMessage
+makeResponse (ObjectUpdateMessage {sender, senderRef, operation}) response = do
+  ref <- Erl.makeRef
+  pure $ DO.ObjectUpdateResponseMessage { to: sender
+                                        , senderRef
+                                        , response
+                                        , ref}
+
+sendBroadcast :: State -> DO.Object -> Effect Unit
+sendBroadcast state dataObject = do
+  ref <- Erl.makeRef
+  let
+    broadcastMsg = DO.ObjectBroadcastMessage { object: dataObject
+                                             , ref: ref}
+  sendDownstream state (DataObject broadcastMsg)
 
 sendDownstream :: State -> DownstreamWsMessage -> Effect Unit
 sendDownstream {cachedState: {relays}} msg = do
@@ -271,12 +422,13 @@ stopAction aggregatorKey _cachedState = do
 
 init :: StreamDetails -> StateServerName -> Effect State
 init streamDetails@{role: slotRole, slot: {id: slotId}} stateServerName = do
-  _ <- Erl.trapExit true
   logStart "Ingest Aggregator starting" {aggregatorKey, streamDetails}
+  _ <- Erl.trapExit true
   config <- Config.ingestAggregatorAgentConfig
   thisServer <- PoPDefinition.getThisServer
   announceLocalAggregatorIsAvailable aggregatorKey
   Gen.registerExternalMapping thisServerName (\m -> Workflow <$> workflowMessageMapperImpl m)
+  Gen.registerExternalMapping thisServerName (\m -> Gun <$> (WsGun.messageMapper m))
   workflowHandleAndPidsAndSlotConfiguration <- startWorkflowImpl (unwrap streamDetails.slot.id) streamDetails.role $ mkKey <$> streamDetails.slot.profiles
   Gen.registerTerminate thisServerName terminate
   void $ Bus.subscribe thisServerName IntraPoP.bus IntraPoPBus
@@ -285,6 +437,7 @@ init streamDetails@{role: slotRole, slot: {id: slotId}} stateServerName = do
     initialState = { config : config
                    , slotId
                    , slotRole
+                   , peerRole: if slotRole == Primary then Backup else Primary
                    , thisServer
                    , aggregatorKey
                    , streamDetails
@@ -293,16 +446,56 @@ init streamDetails@{role: slotRole, slot: {id: slotId}} stateServerName = do
                    , cachedState: emptyCachedState
                    , stateServerName
                    , slotConfiguration
-                   , dataObject: DO.new
+                   , dataObjectState: case slotRole of
+                                        Primary -> Left { dataObject: Nothing
+                                                        , connectionToBackup: Nothing }
+                                        Backup -> Right { dataObject: Nothing
+                                                        , connectionToPrimary: Nothing }
                    }
   cachedState <- fromMaybe emptyCachedState <$> CachedInstanceState.getInstanceData stateServerName
   state2 <- applyCachedState initialState cachedState
-  pure state2
-
+  state3 <- attemptConnectionToBackup state2
+  pure state3
   where
     mkKey (SlotProfile p) = tuple3 (IngestKey streamDetails.slot.id streamDetails.role p.name) (unwrap p.rtmpStreamName) (unwrap p.name)
     aggregatorKey = streamDetailsToAggregatorKey streamDetails
     thisServerName = (serverName (aggregatorKey))
+
+attemptConnectionToBackup :: State -> Effect State
+attemptConnectionToBackup state@{dataObjectState: Left {connectionToBackup: Just _}} = do
+  -- No need to attempt connection since we have a connection
+  pure $ state
+
+attemptConnectionToBackup state@{slotId, slotRole, dataObjectState: Left dos@{}} = do
+  let
+    peerKey = AggregatorKey slotId Backup
+  mPeerAggregator <- IntraPoP.whereIsIngestAggregator peerKey
+  case mPeerAggregator of
+    Nothing -> do
+      -- No peer; we don't need a peerConnection, we can start our own dataObject
+      -- When a peer starts, we'll hear about it from IntraPoP
+      _ <- logInfo "XXX Failed to find backup in IntraPoP" {peerKey}
+      pure state{dataObjectState = Left dos{ dataObject = Just DO.new }}
+
+    Just peerAggregator -> do
+      let
+        peerWsUrl = makeWsUrl peerAggregator $ IngestAggregatorBackupWs slotId Backup
+      _ <- logInfo "XXX Attempting to open websocket to peer" {peerWsUrl}
+      mPeerWebSocket <- hush <$> WsGun.openWebSocket peerWsUrl
+      case mPeerWebSocket of
+        Nothing -> do
+          -- We have a peer but failed to connect - start timer to retry
+          _ <- logInfo "XXX Failed to open websocket" {peerWsUrl}
+          _ <- Timer.sendAfter (serverName (AggregatorKey slotId slotRole)) 1000 AttemptConnectionToBackup
+          pure state
+        Just socket -> do
+          -- We have a peer and have connected - it'll send us its data object...
+          _ <- logInfo "XXX peer is up!" {peerWsUrl}
+          pure state{dataObjectState = Left dos{ connectionToBackup = Just socket}}
+
+attemptConnectionToBackup state = do
+  -- No need to attempt connection since are backup!
+  pure $ state
 
 terminate :: Foreign -> State -> Effect Unit
 terminate reason state@{workflowHandle, webRtcStreamServers} = do
@@ -326,9 +519,66 @@ streamDetailsToAggregatorKey streamDetails =
   AggregatorKey streamDetails.slot.id streamDetails.role
 
 handleInfo :: Msg -> State -> Effect (CastResult State)
-handleInfo msg state@{aggregatorKey, stateServerName, workflowHandle} =
+handleInfo msg state@{aggregatorKey, slotId, stateServerName, workflowHandle} =
   case msg of
+    AttemptConnectionToBackup -> do
+      state2 <- attemptConnectionToBackup state
+      pure $ CastNoReply state2
+
+    Gun inMsg ->
+      processGunMessage state inMsg
+
     IntraPoPBus (VmReset server oldRef newRef) -> do
+      pure $ CastNoReply state
+
+    IntraPoPBus (IngestAggregatorStarted (AggregatorKey startedId Backup) _) | startedId == slotId -> do
+      -- We are primary and backup just started.  Attempt a connection
+      state2 <- attemptConnectionToBackup state
+      pure $ CastNoReply state2
+
+    IntraPoPBus (IngestAggregatorExited (AggregatorKey exitedId Backup) _) | exitedId == slotId -> do
+      _ <- logInfo "XXX Backup aggregator exited" {slotId}
+      CastNoReply <$> case state of
+                        { dataObjectState: Left {dataObject: Nothing} } -> do
+                          -- We are primary with no object, and backup just exited.  We can create
+                          let
+                            dataObject = DO.new
+                          sendBroadcast state dataObject
+                          pure state{dataObjectState = Left { dataObject: Just dataObject
+                                                            , connectionToBackup: Nothing}}
+                        _ ->
+                          -- We are primary and we have an object.  Nothing to do
+                          pure state
+
+    IntraPoPBus (IngestAggregatorStarted (AggregatorKey startedId Primary) _) | startedId == slotId -> do
+      -- We are backup and primary just started.  Nothing to do.
+      pure $ CastNoReply state
+
+    IntraPoPBus (IngestAggregatorExited (AggregatorKey exitedId Primary) _) | exitedId == slotId -> do
+      _ <- logInfo "XXX Primay aggregator exited" {slotId}
+      CastNoReply <$> case state of
+                        { dataObjectState: Right { dataObject: Nothing } } -> do
+                          -- We are backup with no object, and primary just exited.  We can create
+                          let
+                            dataObject = DO.new
+                          sendBroadcast state dataObject
+                          pure state{dataObjectState = Right { dataObject: Just (OwnedByUs dataObject)
+                                                             , connectionToPrimary: Nothing }}
+
+                        { dataObjectState: Right { dataObject: Just (OwnedByPrimary dataObject) } } ->
+                          -- We are backup and currently hold a copy of the primary.  Make it ours
+                          pure state{dataObjectState = Right { dataObject: Just (OwnedByUs dataObject)
+                                                             , connectionToPrimary: Nothing }}
+
+                        { dataObjectState: Right { dataObject: Just (Synchronising dataObject) } } ->
+                          -- We are backup and are currently synchronising. That's not going to happen, so make it ours
+                          pure state{dataObjectState =  Right { dataObject: Just (OwnedByUs dataObject)
+                                                              , connectionToPrimary: Nothing }}
+
+                        _ ->
+                          pure state
+
+    IntraPoPBus (IngestAggregatorStarted _ _) ->
       pure $ CastNoReply state
 
     IntraPoPBus (IngestAggregatorExited _ _) ->
@@ -366,6 +616,120 @@ handleInfo msg state@{aggregatorKey, stateServerName, workflowHandle} =
         state2 <- doRemoveIngest profileName removeRemoteIngestFromCachedState state
         pure $ CastNoReply state2
 
+processGunMessage :: State -> WsGun.GunMsg -> Effect (CastResult State)
+processGunMessage state@{slotId, slotRole, dataObjectState: Left dos@{connectionToBackup: Just socket}} gunMsg =
+  if WsGun.isSocketForMessage gunMsg socket then do
+    processResponse <- WsGun.processMessage socket gunMsg
+    case processResponse of
+      Left error -> do
+        _ <- logInfo "Gun process error" {error}
+        pure $ CastNoReply state
+
+      Right (WsGun.Internal _) ->
+        pure $ CastNoReply state
+
+      Right WsGun.WebSocketUp -> do
+        _ <- logInfo "Backup WebSocket up" {slotId}
+        WsGun.send socket P2B_Synchronise
+        pure $ CastNoReply state
+
+      Right WsGun.WebSocketDown -> do
+        _ <- logInfo "Backup WebSocket down" {slotId}
+        CastNoReply <$> attemptConnectionToBackup state{dataObjectState = Left dos{connectionToBackup = Nothing}}
+
+      Right (WsGun.Frame (B2P_Message msg)) -> do
+        _ <- logInfo "XXX Received message from backup" {msg}
+        sendDownstream state (DataObjectMessage msg)
+        pure $ CastNoReply state
+
+      Right (WsGun.Frame (B2P_Update updateMsg@(ObjectUpdateMessage {operation})))
+        | {dataObject: Just dataObject } <- dos ->
+        -- We are primary and just got an update msg from backup. Do the update
+        let
+          onSuccess newDataObject = do
+            responseMsg <- makeResponse updateMsg $ DO.Ok
+            sendToBackup dos (P2B_UpdateResponse responseMsg)
+            sendToBackup dos (P2B_Latest newDataObject)
+            sendBroadcast state newDataObject
+            pure state{dataObjectState = Left dos{dataObject = Just newDataObject}}
+          onError objectUpdateError = do
+            responseMsg <- makeResponse updateMsg $ DO.Error objectUpdateError
+            sendToBackup dos (P2B_UpdateResponse responseMsg)
+            pure state
+        in do
+          _ <- logInfo "XXX Received objectUpdate message from backup" {updateMsg}
+          CastNoReply <$> (either onError onSuccess $ DO.update operation dataObject)
+
+      Right (WsGun.Frame (B2P_Update updateMsg)) -> do
+        -- We are primary and just got an update msg from backup, but are not in the expected state
+        -- Fail the update and log a big warning - shouldn't be able to get here
+        _ <- logWarning "DataObject Update message received from backup when we have no data object" {}
+        responseMsg <- makeResponse updateMsg $ DO.Error Unexpected
+        sendToBackup dos (P2B_UpdateResponse responseMsg)
+        pure $ CastNoReply state
+
+      Right (WsGun.Frame (B2P_SynchroniseObject backupDataObject))
+        | {dataObject: Just dataObject} <- dos -> do
+        _ <- logInfo "XXX Got sync message from backup for merge" {backupDataObject}
+        -- We are primary and just got an object from backup to synchronise with
+        sendToBackup dos (P2B_Latest dataObject)
+        -- TODO - the actual merge
+        pure $ CastNoReply state
+
+      Right (WsGun.Frame (B2P_SynchroniseObject backupDataObject)) -> do
+        -- We are primary and just got an object from backup to synchronise with, but we have not object. Simples.
+        _ <- logInfo "XXX Got sync message from backup when we have nothing" {backupDataObject}
+        sendToBackup dos (P2B_Latest backupDataObject)
+        pure $ CastNoReply state{dataObjectState = Left dos{dataObject = Just backupDataObject}}
+
+      Right (WsGun.Frame B2P_SynchroniseNoObject)
+        | {dataObject: Just dataObject} <- dos -> do
+        -- We are primary - just send backup our latest
+        _ <- logInfo "XXX Got sync no-object message from backup when we have something" {}
+        sendToBackup dos (P2B_Latest dataObject)
+        pure $ CastNoReply state
+
+      Right (WsGun.Frame B2P_SynchroniseNoObject) -> do
+        -- We are primary, but we have not object. Simples.
+        _ <- logInfo "XXX Got sync no-object message from backup when we have nothing" {}
+        let
+          dataObject = DO.new
+        sendToBackup dos (P2B_Latest dataObject)
+        pure $ CastNoReply state{dataObjectState = Left dos{dataObject = Just dataObject}}
+else
+    pure $ CastNoReply state
+
+processGunMessage state gunMsg =
+  pure $ CastNoReply state
+
+sendMessageToPeer :: State -> DO.Message -> Effect Unit
+sendMessageToPeer state@{dataObjectState: Left primary} msg = do
+  sendToBackup primary $ P2B_Message msg
+
+sendMessageToPeer state@{dataObjectState: Right backup} msg = do
+  sendToPrimary backup $ B2P_Message msg
+
+sendToPrimary :: BackupDOState -> AggregatorBackupToPrimaryWsMessage -> Effect Unit
+sendToPrimary {connectionToPrimary: Nothing} msg = do
+  _ <- logInfo "XXX Can't sent to primary" {msg}
+  pure unit
+
+sendToPrimary {connectionToPrimary: Just process} msg = do
+  _ <- logInfo "XXX Sending to process" {msg}
+  process ! (WsSend msg)
+  pure unit
+
+sendToBackup :: PrimaryDOState -> AggregatorPrimaryToBackupWsMessage -> Effect Unit
+sendToBackup {connectionToBackup: Nothing} msg = do
+  _ <- logInfo "XXX Can't sent to backup" {msg}
+  pure unit
+
+sendToBackup {connectionToBackup: Just webSocket} msg = do
+  _ <- logInfo "XXX Sending to websocket" {msg}
+  WsGun.send webSocket msg
+  pure unit
+
+
 applyCachedState :: State -> CachedState -> Effect State
 applyCachedState state {localIngests, remoteIngests, relays} =
   foldWithIndexM (\profileName innerState2 handler -> do
@@ -382,13 +746,13 @@ applyCachedState state {localIngests, remoteIngests, relays} =
   >>= (\ innerState -> foldWithIndexM (\server innerState2 {port, handler} ->
                                         doRegisterRelay {server, port} handler innerState2) innerState relays)
 
-addLocalIngestToCachedState :: ProfileName -> Process (WebSocketHandlerMessage AggregatorToIngestWsMessage) -> State -> State
+addLocalIngestToCachedState :: ProfileName -> IngestProcess -> State -> State
 addLocalIngestToCachedState ingestKey handler = set (_localIngests <<< (at ingestKey)) (Just handler)
 
-addRemoteIngestToCachedState :: ProfileName -> Process (WebSocketHandlerMessage AggregatorToIngestWsMessage) -> ServerAddress -> State -> State
+addRemoteIngestToCachedState :: ProfileName -> IngestProcess -> ServerAddress -> State -> State
 addRemoteIngestToCachedState ingestKey handler ingestAddress = set (_remoteIngests <<< (at ingestKey)) (Just {ingestAddress, handler})
 
-addRelayToCachedState :: (DeliverTo RelayServer) -> Process (WebSocketHandlerMessage DownstreamWsMessage) -> State -> State
+addRelayToCachedState :: (DeliverTo RelayServer) -> RelayProcess -> State -> State
 addRelayToCachedState {server, port} handler = set (_relays <<< (at server)) (Just {port, handler})
 
 removeLocalIngestFromCachedState :: ProfileName -> State -> State
@@ -405,7 +769,7 @@ updateCachedState state@{ stateServerName
                         , cachedState} =
   CachedInstanceState.recordInstanceData stateServerName cachedState
 
-doAddLocalIngest :: ProfileName -> Process (WebSocketHandlerMessage AggregatorToIngestWsMessage) -> State -> Effect (Either Unit State)
+doAddLocalIngest :: ProfileName -> IngestProcess -> State -> Effect (Either Unit State)
 doAddLocalIngest profileName handler state@{thisServer, workflowHandle, slotId, slotRole} =
   let
     isInactive = checkProfileInactive profileName state
@@ -421,8 +785,9 @@ doAddLocalIngest profileName handler state@{thisServer, workflowHandle, slotId, 
       logInfo "Local Ingest rejected due to existing ingest" {slotId, slotRole, profileName}
       pure $ Left unit
 
-doAddRemoteIngest :: ProfileName -> Process (WebSocketHandlerMessage AggregatorToIngestWsMessage) -> ServerAddress -> State -> Effect (Either Unit State)
+doAddRemoteIngest :: ProfileName -> IngestProcess -> ServerAddress -> State -> Effect (Either Unit State)
 doAddRemoteIngest profileName handler ingestAddress state@{slotId, slotRole, workflowHandle} =
+  -- todo - monitor ingest
   let
     isInactive = checkProfileInactive profileName state
   in
@@ -437,9 +802,8 @@ doAddRemoteIngest profileName handler ingestAddress state@{slotId, slotRole, wor
       logInfo "Remote Ingest rejected due to existing ingest" {slotId, slotRole, profileName}
       pure $ Left unit
 
-doRegisterRelay :: (DeliverTo RelayServer) -> Process (WebSocketHandlerMessage DownstreamWsMessage) -> State -> Effect State
+doRegisterRelay :: (DeliverTo RelayServer) -> RelayProcess -> State -> Effect State
 doRegisterRelay deliverTo@{server} handler@(Process handlerPid) state@{slotId, slotRole, workflowHandle} = do
-  -- todo - monitor handler
   logInfo "Relay added" {slotId, slotRole, deliverTo}
   let
     maybeExistingPort = view (_relays <<< (at server)) state
@@ -482,11 +846,11 @@ __remoteIngests = prop (SProxy :: SProxy "remoteIngests")
 __relays :: forall a r. Lens' { relays :: a | r } a
 __relays = prop (SProxy :: SProxy "relays")
 
-_localIngests :: Lens' State (Map ProfileName (Process (WebSocketHandlerMessage AggregatorToIngestWsMessage)))
+_localIngests :: Lens' State (Map ProfileName IngestProcess)
 _localIngests = __cachedState <<< __localIngests
 
 _remoteIngests :: Lens' State (Map ProfileName { ingestAddress :: ServerAddress
-                                               , handler :: Process (WebSocketHandlerMessage AggregatorToIngestWsMessage) })
+                                               , handler :: IngestProcess })
 _remoteIngests = __cachedState <<< __remoteIngests
 
 _relays :: Lens' State (Map RelayServer RegisteredRelay)

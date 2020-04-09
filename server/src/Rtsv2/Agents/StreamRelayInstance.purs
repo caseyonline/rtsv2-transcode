@@ -681,6 +681,9 @@ handleInfo msg state =
       | StateDownstream common run <- state -> CastNoReply <$> applyDownstreamPlan common run
       | otherwise -> pure $ CastNoReply state -- todo - why clause needed?
 
+    IntraPoPBus (IngestAggregatorStarted _ _) ->
+      pure $ CastNoReply state
+
     IntraPoPBus (IngestAggregatorExited (AggregatorKey slotId slotRole) serverAddress)
      -- TODO - PRIMARY BACKUP
       | slotId == ourSlotId -> pure $ CastStop state
