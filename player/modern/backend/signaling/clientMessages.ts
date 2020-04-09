@@ -61,10 +61,13 @@ export interface DataObjectSendMessage {
   readonly msg: string;
 }
 
+/** Perform a data object update. */
 export interface DataObjectUpdateMessage {
   readonly type: "dataobject.update";
 
+  /** An opaque reference returned in the response. */
   readonly senderRef: string;
 
+  /** The operation to perform. */
   readonly operation: DataObjectUpdateOperation;
 }

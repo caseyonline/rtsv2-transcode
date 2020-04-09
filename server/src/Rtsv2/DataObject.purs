@@ -114,7 +114,6 @@ data ObjectUpdateError = InvalidKey { keys :: List ObjectKey }
                        | InvalidOperation { keys :: List ObjectKey }
                        | CompareAndSwapFailed { keys :: List ObjectKey
                                               , currentValue :: ObjectValue }
-                       | InvalidRequest
                        | PendingInitialisation
                        | PendingSynchronisation
                        | NetworkError

@@ -97,16 +97,21 @@ export interface DataObjectReceiveMessage {
   readonly msg: string
 }
 
+/** Receive a response to a previous update. */
 export interface DataObjectUpdateResponseMessage {
   readonly type: "dataobject.update-response";
 
+  /** An opaque reference as sent on the request. */
   readonly senderRef: string;
 
+  /** The response code. */
   readonly response: DataObjectUpdateResponse;
 }
 
+/** Receive the latest DataObject. */
 export interface DataObjectBroadcastMessage {
   readonly type: "dataobject.broadcast";
 
+  /** The DataObject. */
   readonly object: DataObject;
 }
