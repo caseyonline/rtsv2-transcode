@@ -4,7 +4,7 @@ set -e
 
 cd ${0%/*}
 
-read -r HOSTNAME PRIVATE_IFACE PUBLIC_IFACE DISK_LOG_ROOT <<< $(cat ~/rtsv2_environment)
+read -r HOSTNAME PRIVATE_IFACE PUBLIC_IFACE DISK_LOG_ROOT <<< $(cat /id3as/rtsv2_environment)
 
 mkdir -p $DISK_LOG_ROOT
 
