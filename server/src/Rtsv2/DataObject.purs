@@ -17,6 +17,7 @@ module Rtsv2.DataObject
        , ref
        , new
        , update
+       , merge
        ) where
 
 import Prelude
@@ -225,6 +226,8 @@ update (ListRemove {keys, value, failIfKeyMissing, failIfValueMissing}) (Object 
 
 -- TODO - map update / insert / remove
 
+merge :: Object -> Object -> Object
+merge lhs rhs = lhs
 
 ------------------------------------------------------------------------------
 -- gen_server callbacks

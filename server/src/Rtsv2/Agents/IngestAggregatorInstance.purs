@@ -88,7 +88,6 @@ import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
 import Rtsv2.Agents.StreamRelayTypes (AggregatorBackupToPrimaryWsMessage(..), AggregatorPrimaryToBackupWsMessage(..), AggregatorToIngestWsMessage(..), DownstreamWsMessage(..), WebSocketHandlerMessage(..))
 import Rtsv2.Config as Config
-import Rtsv2.DataObject (ObjectUpdateError(..), ObjectUpdateMessage(..))
 import Rtsv2.DataObject as DO
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
@@ -112,9 +111,8 @@ foreign import registerStreamRelayImpl :: WorkflowHandle -> String -> Int -> Eff
 foreign import deRegisterStreamRelayImpl :: WorkflowHandle -> String -> Int -> Effect Unit
 foreign import workflowMessageMapperImpl :: Foreign -> Maybe WorkflowMsg
 
--- todo - rename
-type PeerWebsocket = WsGun.WebSocket AggregatorPrimaryToBackupWsMessage AggregatorBackupToPrimaryWsMessage
-type PeerProcess = Process (WebSocketHandlerMessage AggregatorBackupToPrimaryWsMessage)
+type PrimaryToBackupWebsocket = WsGun.WebSocket AggregatorPrimaryToBackupWsMessage AggregatorBackupToPrimaryWsMessage
+type BackupToPrimaryProcess = Process (WebSocketHandlerMessage AggregatorBackupToPrimaryWsMessage)
 
 type RelayProcess = Process (WebSocketHandlerMessage DownstreamWsMessage)
 type IngestProcess = Process (WebSocketHandlerMessage AggregatorToIngestWsMessage)
@@ -139,12 +137,12 @@ data BackupDataObject = OwnedByUs DO.Object
 
 type PrimaryDOState
   = { dataObject :: Maybe DO.Object
-    , connectionToBackup :: Maybe PeerWebsocket
+    , connectionToBackup :: Maybe PrimaryToBackupWebsocket
     }
 
 type BackupDOState
   = { dataObject :: Maybe BackupDataObject
-    , connectionToPrimary :: Maybe PeerProcess
+    , connectionToPrimary :: Maybe BackupToPrimaryProcess
     }
 
 type State
@@ -173,6 +171,7 @@ data Msg
   | MaybeStop
   | RelayDown RelayServer
   | IngestDown ProfileName ServerAddress Boolean
+  | PrimaryHandlerDown
   | Workflow WorkflowMsg
 
 isInstanceAvailable :: AggregatorKey -> Effect Boolean
@@ -189,12 +188,12 @@ serverName = Names.ingestAggregatorInstanceName
 serverNameFromIngestKey :: IngestKey -> ServerName State Msg
 serverNameFromIngestKey = serverName <<< ingestKeyToAggregatorKey
 
-registerPrimary :: SlotId -> SlotRole -> PeerProcess -> Effect Boolean
+registerPrimary :: SlotId -> SlotRole -> BackupToPrimaryProcess -> Effect Boolean
 registerPrimary slotId slotRole handler@(Process handlerPid) =
   Gen.doCall thisServerName doRegisterPrimary
   where
-    doRegisterPrimary state@{dataObjectState: Right dos} =
-      -- todo - monitor pid
+    doRegisterPrimary state@{dataObjectState: Right dos} = do
+      Gen.monitorPid thisServerName handlerPid (\_ -> PrimaryHandlerDown)
       pure $ CallReply true state{dataObjectState = Right dos{connectionToPrimary = Just handler}}
 
     doRegisterPrimary state =
@@ -326,7 +325,7 @@ dataObjectSendMessage aggregatorKey msg =
   )
 
 dataObjectUpdate :: AggregatorKey -> DO.ObjectUpdateMessage -> Effect Unit
-dataObjectUpdate aggregatorKey msg@(ObjectUpdateMessage {operation}) =
+dataObjectUpdate aggregatorKey msg@(DO.ObjectUpdateMessage {operation}) =
   Gen.doCall (serverName aggregatorKey) maybeDoDataObjectUpdate
   where
     maybeDoDataObjectUpdate state = do
@@ -336,7 +335,7 @@ dataObjectUpdate aggregatorKey msg@(ObjectUpdateMessage {operation}) =
 
     doDataObjectUpdate state@{dataObjectState: Left {dataObject: Nothing}} = do
       -- Primary with no data object
-      sendResponse state $ DO.Error PendingInitialisation
+      sendResponse state $ DO.Error DO.PendingInitialisation
       pure state
 
     doDataObjectUpdate state@{dataObjectState: Left dos@{dataObject: Just dataObject}} = do
@@ -351,7 +350,7 @@ dataObjectUpdate aggregatorKey msg@(ObjectUpdateMessage {operation}) =
 
     doDataObjectUpdate state@{dataObjectState: Right {dataObject: Nothing}} = do
       -- Backup with no data object
-      sendResponse state $ DO.Error PendingInitialisation
+      sendResponse state $ DO.Error DO.PendingInitialisation
       pure state
 
     doDataObjectUpdate state@{dataObjectState: Right dos@{dataObject: Just (OwnedByUs dataObject)}} = do
@@ -365,13 +364,13 @@ dataObjectUpdate aggregatorKey msg@(ObjectUpdateMessage {operation}) =
 
     doDataObjectUpdate state@{dataObjectState: Right {dataObject: Just (Synchronising _)}} = do
       -- Backup but currently synchronising.  Can't accept updates
-      sendResponse state $ DO.Error PendingSynchronisation
+      sendResponse state $ DO.Error DO.PendingSynchronisation
       pure state
 
     doDataObjectUpdate state@{dataObjectState: Right {dataObject: Just (OwnedByPrimary _),
                                                       connectionToPrimary: Nothing}} = do
       -- Backup but owned by primary but no current connection.  Can't accept updates
-      sendResponse state $ DO.Error NetworkError
+      sendResponse state $ DO.Error DO.NetworkError
       pure state
 
     doDataObjectUpdate state@{dataObjectState: Right dos@{dataObject: Just (OwnedByPrimary _),
@@ -389,7 +388,7 @@ dataObjectUpdate aggregatorKey msg@(ObjectUpdateMessage {operation}) =
       sendDownstream state (DataObjectUpdateResponse responseMsg)
 
 makeResponse :: DO.ObjectUpdateMessage -> DO.ObjectUpdateResponse -> Effect DO.ObjectUpdateResponseMessage
-makeResponse (ObjectUpdateMessage {sender, senderRef, operation}) response = do
+makeResponse (DO.ObjectUpdateMessage {sender, senderRef, operation}) response = do
   ref <- Erl.makeRef
   pure $ DO.ObjectUpdateResponseMessage { to: sender
                                         , senderRef
@@ -525,6 +524,14 @@ handleInfo msg state@{aggregatorKey, slotId, stateServerName, workflowHandle} =
       state2 <- attemptConnectionToBackup state
       pure $ CastNoReply state2
 
+    PrimaryHandlerDown | { dataObjectState: Right dos } <- state -> do
+      _ <- logInfo "XXX Primary handler down" {slotId}
+      pure $ CastNoReply state{ dataObjectState = Right dos {connectionToPrimary = Nothing } }
+
+    PrimaryHandlerDown ->
+      -- Should never hit this, primary down will always hit backup
+      pure $ CastNoReply state
+
     Gun inMsg ->
       processGunMessage state inMsg
 
@@ -642,7 +649,7 @@ processGunMessage state@{slotId, slotRole, dataObjectState: Left dos@{connection
         sendDownstream state (DataObjectMessage msg)
         pure $ CastNoReply state
 
-      Right (WsGun.Frame (B2P_Update updateMsg@(ObjectUpdateMessage {operation})))
+      Right (WsGun.Frame (B2P_Update updateMsg@(DO.ObjectUpdateMessage {operation})))
         | {dataObject: Just dataObject } <- dos ->
         -- We are primary and just got an update msg from backup. Do the update
         let
@@ -664,7 +671,7 @@ processGunMessage state@{slotId, slotRole, dataObjectState: Left dos@{connection
         -- We are primary and just got an update msg from backup, but are not in the expected state
         -- Fail the update and log a big warning - shouldn't be able to get here
         _ <- logWarning "DataObject Update message received from backup when we have no data object" {}
-        responseMsg <- makeResponse updateMsg $ DO.Error Unexpected
+        responseMsg <- makeResponse updateMsg $ DO.Error DO.Unexpected
         sendToBackup dos (P2B_UpdateResponse responseMsg)
         pure $ CastNoReply state
 
@@ -672,9 +679,10 @@ processGunMessage state@{slotId, slotRole, dataObjectState: Left dos@{connection
         | {dataObject: Just dataObject} <- dos -> do
         _ <- logInfo "XXX Got sync message from backup for merge" {backupDataObject}
         -- We are primary and just got an object from backup to synchronise with
-        sendToBackup dos (P2B_Latest dataObject)
-        -- TODO - the actual merge
-        pure $ CastNoReply state
+        let
+          merged = DO.merge dataObject backupDataObject
+        sendToBackup dos (P2B_Latest merged)
+        pure $ CastNoReply state{dataObjectState = Left dos{dataObject = Just merged}}
 
       Right (WsGun.Frame (B2P_SynchroniseObject backupDataObject)) -> do
         -- We are primary and just got an object from backup to synchronise with, but we have not object. Simples.
