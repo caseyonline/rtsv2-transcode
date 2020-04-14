@@ -12,8 +12,12 @@ import Data.Function.Uncurried (Fn3, Fn5, mkFn3, mkFn5)
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (wrap)
 import Effect (Effect)
+import Erl.Atom (Atom, atom)
+import Erl.Data.List (List, nil, (:))
 import Erl.Process.Raw (Pid)
 import Foreign (Foreign)
+import Logger (Logger)
+import Logger as Logger
 import Media.Rtmp as Rtmp
 import Media.SourceDetails as SourceDetails
 import Pinto (ServerName)
@@ -28,9 +32,10 @@ import Rtsv2.Env as Env
 import Rtsv2.Names as Names
 import Rtsv2.Utils (crashIfLeft)
 import Serf (Ip)
+import Shared.Agent as Agent
 import Shared.LlnwApiTypes (AuthType, PublishCredentials, SlotProfile(..), SlotPublishAuthType(..), StreamAuth, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamPublish)
 import Shared.Stream (IngestKey(..))
-import SpudGun (bodyToJSON)
+import SpudGun (JsonResponseError, bodyToJSON)
 import SpudGun as SpudGun
 import Stetson.WebSocketHandler (self)
 
@@ -96,10 +101,11 @@ onStreamCallback host rtmpShortNameStr username remoteAddress remotePort rtmpStr
                          }
   maybeStreamDetails <- getStreamDetails streamPublish
   case maybeStreamDetails of
-    Nothing ->
+    Left error -> do
+      _ <- logInfo "StreamPublish rejected" {reason: error}
       pure unit
 
-    Just streamDetails -> do
+    Right streamDetails -> do
       case findProfile rtmpStreamName streamDetails of
         Nothing ->
           pure unit
@@ -179,8 +185,14 @@ getPublishCredentials host rtmpShortName username = do
                                                   , username} :: StreamAuth)
   pure $ hush $ bodyToJSON restResult
 
-getStreamDetails :: StreamPublish -> Effect (Maybe StreamDetails)
+getStreamDetails :: StreamPublish -> Effect (Either JsonResponseError StreamDetails)
 getStreamDetails streamPublish = do
   {streamPublishUrl: url} <- Config.llnwApiConfig
   restResult <- SpudGun.postJson (wrap url) streamPublish
-  pure $ hush $ bodyToJSON restResult
+  pure $ bodyToJSON restResult
+
+domain :: List Atom
+domain = atom <$> (show Agent.Ingest :  "Instance" : nil)
+
+logInfo :: forall a. Logger (Record a)
+logInfo = Logger.doLog domain Logger.info
