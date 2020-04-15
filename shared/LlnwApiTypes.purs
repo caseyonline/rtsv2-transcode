@@ -20,6 +20,7 @@ module Shared.LlnwApiTypes
        , SlotProfile(..)
        , HlsPushSpecFormat
        , HlsPushAuth
+       , SlotLookupResult
        )
        where
 
@@ -111,6 +112,10 @@ type StreamDetails =
   { role :: SlotRole
   , slot :: SlotDetails
   , push :: Array HlsPushSpec
+  }
+
+type SlotLookupResult =
+  { id :: SlotId
   }
 
 --------------------------------------------------------------------------------

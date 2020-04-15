@@ -50,6 +50,7 @@ data Endpoint
     ClientPlayerE Canary SlotId SlotRole
   | ClientPlayerJsE Canary SlotId SlotRole (Array String)
   | ClientPlayerControlE Canary SlotId SlotRole
+  | StreamDiscoveryE Canary String String
 
   -- Support
   | VMMetricsE
@@ -99,6 +100,7 @@ data Endpoint
   | StreamAuthTypeE
   | StreamAuthE
   | StreamPublishE
+  | SlotLookupE String String
 
   | WorkflowsE
   | WorkflowGraphE String
@@ -121,7 +123,8 @@ endpoint :: RouteDuplex' Endpoint
 endpoint = root $ sum
   {
   -- Public
-    "ClientPlayerE"                                    : "public" / canary segment / "client" / slotId segment / slotRole segment / "player"
+    "StreamDiscoveryE"                                 : "public" / canary segment / "discovery" / "v1" / segment / segment
+  , "ClientPlayerE"                                    : "public" / canary segment / "client" / slotId segment / slotRole segment / "player"
   , "ClientPlayerJsE"                                  : "public" / canary segment / "client" / slotId segment / slotRole segment / "js" / rest
   , "ClientPlayerControlE"                             : "public" / canary segment / "client" / slotId segment / slotRole segment / "session" -- URL duplicated in Web.purs
 
@@ -176,6 +179,7 @@ endpoint = root $ sum
   , "ClientStartE"                                     : "system" / "test" / canary segment / "client" / slotId segment / slotRole segment / "start"
   , "ClientStopE"                                      : "system" / "test" / canary segment / "client" / slotId segment / slotRole segment / "stop" / segment
 
+  , "SlotLookupE"                                      : "system" / "llnwstub" / "rts" / "v1" / "slotid" / segment / segment
   , "StreamAuthTypeE"                                  : "system" / "llnwstub" / "rts" / "v1" / path "streamauthtype" noArgs
   , "StreamAuthE"                                      : "system" / "llnwstub" / "rts" / "v1" / path "streamauth" noArgs
   , "StreamPublishE"                                   : "system" / "llnwstub" / "rts" / "v1" / path "streampublish" noArgs
@@ -406,5 +410,4 @@ canary :: RouteDuplex' String -> RouteDuplex' Canary
 canary = as canaryToString (parseCanary >>> note "Bad CanaryId")
 
 uName :: RouteDuplex' String -> RouteDuplex' Username
-uName = as userNametoString (parseUsername >>> note "Bad username"
-)
+uName = as userNametoString (parseUsername >>> note "Bad username")

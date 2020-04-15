@@ -2,6 +2,7 @@ module Rtsv2.Handler.LlnwStub
        ( streamAuthType
        , streamAuth
        , streamPublish
+       , slotLookup
        , db
        , StubHost
        ) where
@@ -12,7 +13,7 @@ import Data.Array as Array
 import Data.Either (hush)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Eq (genericEq)
-import Data.Maybe (Maybe(..), fromMaybe, fromMaybe', isNothing)
+import Data.Maybe (Maybe(..), fromMaybe, fromMaybe', isNothing, isJust, fromJust)
 import Data.Newtype (unwrap, wrap)
 import Effect (Effect)
 import Erl.Cowboy.Req (ReadBodyResult(..), Req, readBody, setBody)
@@ -21,7 +22,8 @@ import Erl.Data.Binary.IOData (IOData, fromBinary, toBinary)
 import Erl.Data.List (List, filter, head, nil, (:))
 import Erl.Data.Tuple (tuple2)
 import Rtsv2.Agents.IngestSup as IngestSup
-import Shared.LlnwApiTypes (AuthType, PublishCredentials, SlotPublishAuthType(..), StreamAuth, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamPublish)
+import Rtsv2.Handler.MimeType as MimeType
+import Shared.LlnwApiTypes (AuthType, PublishCredentials, SlotPublishAuthType(..), StreamAuth, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamPublish, SlotLookupResult)
 import Shared.Stream (RtmpShortName, SlotRole(..))
 import Shared.UUID (fromString)
 import Shared.Utils (lazyCrashIfMissing)
@@ -29,6 +31,8 @@ import Simple.JSON (class ReadForeign, class WriteForeign, readJSON, writeJSON)
 import Stetson (HttpMethod(..), StetsonHandler)
 import Stetson.Rest as Rest
 import Unsafe.Coerce (unsafeCoerce)
+import Partial.Unsafe (unsafePartial)
+
 
 data StubHost = Any
               | SpecificHost String
@@ -100,8 +104,6 @@ db =
                  }
       }
 
-
-
 streamAuthType :: PostHelper StreamConnection AuthType
 streamAuthType =
   postHelper lookup
@@ -110,7 +112,7 @@ streamAuthType =
 
     lookup' Nothing = Nothing
     lookup' (Just {host, protocol, rtmpShortName}) =
-      filter (\{auth: { host: candidateHost
+      filter (\ {auth: { host: candidateHost
                       , protocol: candidateProtocol
                       , rtmpShortName: candidateShortName }} ->
               ((candidateHost == Any) || (candidateHost == SpecificHost host))
@@ -128,7 +130,7 @@ streamAuth =
 
     lookup' Nothing = Nothing
     lookup' (Just {host, rtmpShortName, username}) =
-      filter (\{auth: { host: candidateHost
+      filter (\ {auth: { host: candidateHost
                       , rtmpShortName: candidateShortName
                       , username: candidateUsername }} ->
               ((candidateHost == Any) || (candidateHost == SpecificHost host))
@@ -147,7 +149,7 @@ streamPublish =
 
     lookup' Nothing = Nothing
     lookup' (Just {host, protocol, rtmpShortName, rtmpStreamName, username}) =
-      filter (\{ auth: { host: candidateHost
+      filter (\ { auth: { host: candidateHost
                        , protocol: candidateProtocol
                        , rtmpShortName: candidateShortName
                        , username: candidateUsername }
@@ -164,6 +166,30 @@ streamPublish =
               db
       # head
       <#> _.details
+
+
+slotLookup :: String -> String -> StetsonHandler Unit
+slotLookup accountName streamName =
+  Rest.handler (\req -> Rest.initResult req unit)
+  # Rest.resourceExists (\req state -> Rest.result (isJust matchingEntry) req state)
+  # Rest.contentTypesProvided (\req state -> Rest.result (MimeType.json jsonHandler : nil) req unit)
+  # Rest.yeeha
+  where
+    jsonHandler req state =
+      let
+        justEntry = unsafePartial $ fromJust matchingEntry
+        result =
+          { id: justEntry.details.slot.id
+          } :: SlotLookupResult
+      in
+        Rest.result (writeJSON result) req state
+
+    matchingEntry =
+      filter isMatchingEntry db # head
+
+    isMatchingEntry entry =
+      (unwrap entry.auth.rtmpShortName) == accountName
+      && entry.details.slot.name == streamName
 
 type PostHelper a b = StetsonHandler { payload :: Maybe a
                                      , output :: Maybe b

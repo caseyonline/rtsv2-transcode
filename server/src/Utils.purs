@@ -5,11 +5,13 @@ module Rtsv2.Utils
   , undefined
   , cryptoStrongBytes
   , cryptoStrongToken
+  , chainEither
+  , chainIntoEither
   ) where
 
 import Prelude
 
-import Data.Either (Either(..))
+import Data.Either (Either(..), either)
 import Data.Int (round, toNumber)
 import Data.Maybe (Maybe(..), fromMaybe)
 import Effect (Effect)
@@ -40,3 +42,9 @@ foreign import binaryToHexStr :: Binary -> String
 cryptoStrongToken :: Int -> Effect String
 cryptoStrongToken n =
   binaryToBase64 <$> cryptoStrongBytes (round ((toNumber n) / 1.333))
+
+chainEither :: forall l a b. (a -> Effect (Either l b)) -> Either l a -> Effect (Either l b)
+chainEither = either (pure <<< Left)
+
+chainIntoEither :: forall l a b. (a -> Effect b) -> Either l a -> Effect (Either l b)
+chainIntoEither = chainEither <<< ( (map Right) <<< _ )
