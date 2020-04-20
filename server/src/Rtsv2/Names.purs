@@ -1,6 +1,7 @@
 module Rtsv2.Names
        (
          agentSupName
+       , egestSupName
        , egestInstanceName
        , egestInstanceSupName
        , egestInstanceStateName
@@ -50,6 +51,9 @@ import Shared.Types (PoPName)
 
 agentSupName :: SupervisorName
 agentSupName = Local (atom "AgentSup")
+
+egestSupName :: SupervisorName
+egestSupName = sup Egest
 
 egestInstanceName :: forall a b. EgestKey -> ServerName a b
 egestInstanceName = gprocName2 Egest
@@ -128,7 +132,6 @@ dataObjectName = Local (atom "DataObject")
 
 toDomain :: forall a b. ServerName a b -> Atom
 toDomain (Local name) = name
-toDomain (Global name) = name
 toDomain _ = atom "gproc domain unknown"
 
 --------------------------------------------------------------------------------

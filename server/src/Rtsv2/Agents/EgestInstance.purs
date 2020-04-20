@@ -66,7 +66,7 @@ import Shared.Types.Agent.State as PublicState
 import SpudGun as SpudGun
 import WsGun as WsGun
 
-foreign import startEgestReceiverFFI :: EgestKey -> Effect Int
+foreign import startEgestReceiverFFI :: EgestKey -> Boolean -> Effect Int
 foreign import getStatsFFI :: EgestKey -> Effect (WebRTCStreamServerStats EgestKey)
 foreign import setSlotConfigurationFFI :: EgestKey -> SlotConfiguration -> Effect Unit
 foreign import getSlotConfigurationFFI :: EgestKey -> Effect (Maybe SlotConfiguration)
@@ -203,7 +203,8 @@ init payload@{slotId, slotRole, aggregator} stateServerName = do
   let
     egestKey = payloadToEgestKey payload
     relayKey = RelayKey slotId slotRole
-  receivePortNumber <- startEgestReceiverFFI egestKey
+  { useMediaGateway } <- Config.featureFlags
+  receivePortNumber <- startEgestReceiverFFI egestKey useMediaGateway
   _ <- Bus.subscribe (serverName egestKey) IntraPoP.bus IntraPoPBus
   logStart "Egest starting" {payload, receivePortNumber}
   {eqLogIntervalMs, lingerTimeMs, relayCreationRetryMs} <- Config.egestAgentConfig

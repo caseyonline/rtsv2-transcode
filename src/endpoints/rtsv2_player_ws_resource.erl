@@ -79,6 +79,7 @@
         , profile_name :: binary_string()
         , slot_role :: binary_string()
         , ingest_key :: term()
+        , use_media_gateway :: boolean()
         }).
 -type stream_desc_ingest() :: #stream_desc_ingest{}.
 
@@ -94,6 +95,7 @@
         , add_client :: fun()
         , audio_ssrc :: rtp:ssrc()
         , video_ssrc :: rtp:ssrc()
+        , use_media_gateway :: boolean()
         }).
 -type stream_desc_egest() :: #stream_desc_egest{}.
 
@@ -431,6 +433,7 @@ try_build_stream_desc(Req,
                        , data_object_send_message := DataObjectSendMessage
                        , data_object_update := DataObjectUpdate
                        , add_client := AddClient
+                       , use_media_gateway := UseMediaGateway
                        }
                      ) ->
 
@@ -472,6 +475,7 @@ try_build_stream_desc(Req,
                           , add_client = AddClient
                           , audio_ssrc = AudioSSRC
                           , video_ssrc = VideoSSRC
+                          , use_media_gateway = UseMediaGateway
                           },
 
       StreamDesc
@@ -483,6 +487,7 @@ try_build_stream_desc(Req,
 try_build_stream_desc(Req,
                       #{ mode := ingest
                        , make_ingest_key := MakeIngestKey
+                       , use_media_gateway := UseMediaGateway
                        }
                      ) ->
 
@@ -497,6 +502,7 @@ try_build_stream_desc(Req,
                          , slot_role = SlotRole
                          , profile_name = ProfileName
                          , ingest_key = ((MakeIngestKey(SlotId))(SlotRole))(ProfileName)
+                         , use_media_gateway = UseMediaGateway
                          }
   catch
     error:badarg ->
@@ -920,7 +926,7 @@ this_server_ip(Req) ->
   IP.
 
 
-construct_start_options(TraceId, IP, [ SlotProfile ] = SlotProfiles, #stream_desc_ingest{}) ->
+construct_start_options(TraceId, IP, [ SlotProfile ] = SlotProfiles, #stream_desc_ingest{ use_media_gateway = UseMediaGateway }) ->
 
   #{ firstAudioSSRC := AudioSSRC
    , firstVideoSSRC := VideoSSRC
@@ -929,7 +935,7 @@ construct_start_options(TraceId, IP, [ SlotProfile ] = SlotProfiles, #stream_des
   #{ session_id => TraceId
    , local_address => IP
    , handler_module => rtsv2_webrtc_session_handler
-   , handler_args => [ TraceId, SlotProfiles, self(), AudioSSRC, VideoSSRC ]
+   , handler_args => [ TraceId, SlotProfiles, self(), AudioSSRC, VideoSSRC, UseMediaGateway ]
 
      %% TODO: from config
    , ice_options => #{ resolution_disabled => false
@@ -953,12 +959,14 @@ construct_start_options(TraceId, IP, [ SlotProfile ] = SlotProfiles, #stream_des
        end
    };
 
-construct_start_options(TraceId, IP, SlotProfiles, #stream_desc_egest{ audio_ssrc = AudioSSRC, video_ssrc = VideoSSRC }) ->
+construct_start_options(TraceId, IP, SlotProfiles, #stream_desc_egest{ audio_ssrc = AudioSSRC
+                                                                     , video_ssrc = VideoSSRC
+                                                                     , use_media_gateway = UseMediaGateway }) ->
 
   #{ session_id => TraceId
    , local_address => IP
    , handler_module => rtsv2_webrtc_session_handler
-   , handler_args => [ TraceId, SlotProfiles, self(), AudioSSRC, VideoSSRC ]
+   , handler_args => [ TraceId, SlotProfiles, self(), AudioSSRC, VideoSSRC, UseMediaGateway ]
 
      %% TODO: from config
    , ice_options => #{ resolution_disabled => false

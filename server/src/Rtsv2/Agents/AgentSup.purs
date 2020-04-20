@@ -8,7 +8,7 @@ import Erl.Data.List ((:))
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildSpec, SupervisorChildType(..), SupervisorSpec, SupervisorStrategy(..))
 import Pinto.Sup as Sup
-import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
+import Rtsv2.Agents.EgestSup as EgestSup
 import Rtsv2.Agents.IngestAggregatorSup as IngestAggregatorSup
 import Rtsv2.Agents.IngestSup as IngestSup
 import Rtsv2.Agents.IntraPoP as IntraPoP
@@ -35,7 +35,7 @@ init = do
       Sup.buildChild
         # Sup.childType Supervisor
         # Sup.childId "egestAgent"
-        # Sup.childStart EgestInstanceSup.startLink unit
+        # Sup.childStart EgestSup.startLink unit
         # pure
 
     makeSpec Ingest =

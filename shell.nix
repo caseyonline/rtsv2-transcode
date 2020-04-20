@@ -1,5 +1,5 @@
 let
-  erlangReleases = builtins.fetchTarball https://github.com/nixerl/nixpkgs-nixerl/archive/v1.0.2-devel.tar.gz;
+  erlangReleases = builtins.fetchTarball https://github.com/nixerl/nixpkgs-nixerl/archive/v1.0.4-devel.tar.gz;
 
   pinnedNix =
     builtins.fetchGit {
@@ -50,8 +50,8 @@ mkShell {
 
     tmux
 
-    nixerl.erlang-22-1-8.erlang
-    nixerl.erlang-22-1-8.rebar3
+    nixerl.erlang-22-3.erlang
+    nixerl.erlang-22-3.rebar3
 
     # Needed for UI build
     nodejs

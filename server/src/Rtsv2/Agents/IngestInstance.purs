@@ -338,7 +338,7 @@ informAggregator state@{streamDetails, ingestKey: ingestKey@(IngestKey slotId sl
 handleAggregatorExit :: AggregatorKey -> Server -> State -> Effect State
 handleAggregatorExit exitedAggregatorKey exitedAggregatorAddr state@{ingestKey, aggregatorRetryTime, aggregatorWebSocket: mWebSocket}
   | exitedAggregatorKey == (ingestKeyToAggregatorKey ingestKey) = do
-      logInfo "Aggregator has exited" {aggregatorKey, serverAddress, ingestKey: state.ingestKey}
+      logInfo "Aggregator has exited" {exitedAggregatorKey, exitedAggregatorAddr, ingestKey: state.ingestKey}
       fromMaybe (pure unit) $ WsGun.closeWebSocket <$> mWebSocket
       void $ Timer.sendAfter (serverName ingestKey) 0 InformAggregator
       pure state

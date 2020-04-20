@@ -1,5 +1,6 @@
 module Rtsv2.Config
-  ( GlobalConfig
+  ( FeatureFlags
+  , GlobalConfig
   , IngestInstanceConfig
   , IngestAggregatorAgentConfig
   , IngestStatsConfig
@@ -15,6 +16,7 @@ module Rtsv2.Config
   , LoadMonitorConfig
   , HealthConfig
   , appName
+  , featureFlags
   , webConfig
   , globalConfig
   , nodeConfig
@@ -53,6 +55,9 @@ import Shared.Types (Server)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (class ReadForeign, readImpl)
 
+type FeatureFlags
+  = { useMediaGateway :: Boolean
+    }
 
 -- TODO - config should include BindIFace or BindIp
 type WebConfig = { port :: Int }
@@ -160,6 +165,10 @@ foreign import mergeOverrides :: Effect Foreign
 
 appName :: String
 appName = "rtsv2"
+
+featureFlags :: Effect FeatureFlags
+featureFlags = do
+  getMandatoryRecord "featureFlags"
 
 webConfig :: Effect WebConfig
 webConfig = do

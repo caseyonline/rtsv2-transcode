@@ -65,6 +65,7 @@ startLink args =
 
 init :: Config.WebConfig -> Effect State
 init args = do
+  featureFlags <- Config.featureFlags
   bindIp <- Env.privateInterfaceIp
   Stetson.configure
     # Stetson.routes
@@ -137,21 +138,22 @@ init args = do
         , "UsersE"                                      : CowboyRoutePlaceholder
         , "ProfilesE"                                   : CowboyRoutePlaceholder
         }
-    # Stetson.cowboyRoutes cowboyRoutes
+    # Stetson.cowboyRoutes (cowboyRoutes featureFlags)
     # Stetson.port args.port
     # (uncurry4 Stetson.bindTo) (ipToTuple bindIp)
     # Stetson.startClear "http_listener"
   pure $ State {}
 
   where
-    cowboyRoutes :: List Path
-    cowboyRoutes =
+    cowboyRoutes :: Config.FeatureFlags -> List Path
+    cowboyRoutes { useMediaGateway } =
       -- Some duplication of URLs here from those in Endpoint.purs due to current inability to build cowboy-style bindings from stongly-typed parameters
       -- IngestAggregatorActiveIngestsPlayerControlE SlotId SlotRole ProfileName
       cowboyRoute ("/support/ingestAggregator/" <> slotIdBinding <> "/" <> slotRoleBinding <> "/activeIngests/" <> profileNameBinding <> "/control")
                   "rtsv2_player_ws_resource"
                   (unsafeToForeign { mode: (atom "ingest")
                                    , make_ingest_key: makeIngestKey
+                                   , use_media_gateway: useMediaGateway
                                    })
 
       -- ClientPlayerControlE Canary SlotId
@@ -164,6 +166,7 @@ init args = do
                                      , get_slot_configuration: EgestInstance.getSlotConfiguration
                                      , data_object_send_message: EgestInstance.dataObjectSendMessage
                                      , data_object_update: EgestInstance.dataObjectUpdate
+                                     , use_media_gateway: useMediaGateway
                                      })
 
       -- IngestInstanceLlwpE SlotId SlotRole ProfileName
