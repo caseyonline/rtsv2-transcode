@@ -27,7 +27,6 @@ import Erl.Data.Tuple (Tuple2, fst, snd)
 import Erl.Process.Raw (Pid)
 import Erl.Utils (Ref)
 import Foreign (Foreign)
-import Logger (spy)
 import Shared.Common (Url)
 import Simple.JSON (class ReadForeign, class WriteForeign, readJSON, writeJSON)
 

@@ -37,9 +37,6 @@ port_number(EgestKey) ->
 
 init(_Args = [ ParentPid, {egestKey, << SlotId:128/big-unsigned-integer >>, {SlotRole}} = EgestKey ]) ->
 
-  %% TODO: move this to the supervision structure
-  rtsv2_media_gateway_api:start_link(),
-
   process_flag(trap_exit, true),
 
   %% NOTE: Erlang doesn't receive on this socket, that task is delegated to the
