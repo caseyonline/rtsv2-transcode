@@ -204,7 +204,6 @@ handleInfo msg state@{ingestKey} = case msg of
     pure $ CastNoReply state
 
   IntraPoPBus (IngestAggregatorExited aggregatorKey serverAddress) -> do
-    logInfo "Aggregator has exited" {aggregatorKey, serverAddress, ingestKey: state.ingestKey}
     state2 <- handleAggregatorExit aggregatorKey serverAddress state
     pure $ CastNoReply state2
 
@@ -339,6 +338,7 @@ informAggregator state@{streamDetails, ingestKey: ingestKey@(IngestKey slotId sl
 handleAggregatorExit :: AggregatorKey -> Server -> State -> Effect State
 handleAggregatorExit exitedAggregatorKey exitedAggregatorAddr state@{ingestKey, aggregatorRetryTime, aggregatorWebSocket: mWebSocket}
   | exitedAggregatorKey == (ingestKeyToAggregatorKey ingestKey) = do
+      logInfo "Aggregator has exited" {aggregatorKey, serverAddress, ingestKey: state.ingestKey}
       fromMaybe (pure unit) $ WsGun.closeWebSocket <$> mWebSocket
       void $ Timer.sendAfter (serverName ingestKey) 0 InformAggregator
       pure state
