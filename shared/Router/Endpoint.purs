@@ -52,6 +52,10 @@ data Endpoint
   | ClientPlayerControlE Canary SlotId SlotRole
   | StreamDiscoveryE Canary String String
 
+  | ClientWebRTCIngestE Canary String String
+  | ClientWebRTCIngestFeedE Canary String String
+  | ClientWebRTCIngestFeedJsE Canary String String (Array String)
+
   -- Support
   | VMMetricsE
   | TimedRoutesE
@@ -127,6 +131,10 @@ endpoint = root $ sum
   , "ClientPlayerE"                                    : "public" / canary segment / "client" / slotId segment / slotRole segment / "player"
   , "ClientPlayerJsE"                                  : "public" / canary segment / "client" / slotId segment / slotRole segment / "js" / rest
   , "ClientPlayerControlE"                             : "public" / canary segment / "client" / slotId segment / slotRole segment / "session" -- URL duplicated in Web.purs
+
+  , "ClientWebRTCIngestE"                              : "public" / canary segment / "ingest" / segment / segment / "control"
+  , "ClientWebRTCIngestFeedE"                          : "public" / canary segment / "ingest" / segment / segment / "feed"
+  , "ClientWebRTCIngestFeedJsE"                        : "public" / canary segment / "ingest" / segment / segment / "files" / rest
 
   -- Support
   , "VMMetricsE"                                       : "support" / "vm" / path "metrics" noArgs

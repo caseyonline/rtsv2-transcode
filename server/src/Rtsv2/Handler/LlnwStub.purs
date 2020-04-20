@@ -53,7 +53,7 @@ type SlotDbEntry =
 
 db :: List SlotDbEntry
 db =
-  slotA : slotB : nil
+  slotA : slotB : webRtcSlotA : nil
 
   where
     slotA =
@@ -96,6 +96,30 @@ db =
                                                bitrate: 1000000}
                                       , wrap { name: wrap "low",
                                                rtmpStreamName: wrap "slot1b_500",
+                                               bitrate: 500000}
+                                      ]
+                          , outputFormats : []
+                          }
+                 , push : []
+                 }
+      }
+
+    webRtcSlotA =
+      { auth: { host: Any --"172.16.171.5"
+              , protocol: WebRTC
+              , rtmpShortName: wrap "mmddev001"
+              , authType: Adobe
+              , username: "user"
+              , password: "password" }
+      , details: { role: Primary
+                 , slot : { id: wrap $ fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000002")
+                          , name: "slot2"
+                          , subscribeValidation: false
+                          , profiles: [ wrap { name: wrap "high",
+                                               rtmpStreamName: wrap "slot1_1000",
+                                               bitrate: 1000000}
+                                      , wrap { name: wrap "low",
+                                               rtmpStreamName: wrap "slot1_500",
                                                bitrate: 500000}
                                       ]
                           , outputFormats : []

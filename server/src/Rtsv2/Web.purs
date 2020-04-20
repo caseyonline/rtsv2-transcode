@@ -5,9 +5,9 @@ module Rtsv2.Web
 
 import Prelude
 
-import Data.Function.Uncurried (mkFn2)
+import Data.Function.Uncurried (mkFn2, mkFn6)
 import Data.Maybe (fromMaybe)
-import Data.Newtype (wrap)
+import Data.Newtype (unwrap, wrap)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Cowboy.Req (Req)
@@ -22,6 +22,7 @@ import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen as Gen
 import Rtsv2.Agents.EgestInstance as EgestInstance
+import Rtsv2.Agents.IngestWebRTCIngestHandler as IngestWebRTCIngestHandler
 import Rtsv2.Agents.Locator.Egest (findEgest)
 import Rtsv2.Agents.Locator.Types (LocationResp, RegistrationResp)
 import Rtsv2.Config as Config
@@ -46,6 +47,7 @@ import Serf (Ip(..))
 import Shared.Router.Endpoint (Canary)
 import Shared.Router.Endpoint as Router
 import Shared.Stream (EgestKey(..), IngestKey(..), ProfileName, SlotId, SlotIdAndProfileName(..), SlotRole(..))
+import Shared.Types (Server, extractAddress)
 import Shared.UUID (UUID, fromString)
 import Shared.UUID as UUID
 import Stetson (RestResult, StaticAssetLocation(..))
@@ -67,6 +69,7 @@ init :: Config.WebConfig -> Effect State
 init args = do
   featureFlags <- Config.featureFlags
   bindIp <- Env.privateInterfaceIp
+  thisServer <- PoPDefinition.getThisServer
   Stetson.configure
     # Stetson.routes
         Router.endpoint
@@ -75,6 +78,10 @@ init args = do
           "ClientPlayerE"                               : \(_ :: Canary) (_ :: SlotId) (_ :: SlotRole) -> PrivFile "rtsv2" "www/egestReferencePlayer.html"
         , "ClientPlayerJsE"                             : \(_ :: Canary) (_ :: SlotId) (_ :: SlotRole) -> PrivDir "rtsv2" "www/assets/js"
         , "ClientPlayerControlE"                        : CowboyRoutePlaceholder
+
+        , "ClientWebRTCIngestE"                         : CowboyRoutePlaceholder
+        , "ClientWebRTCIngestFeedE"                     : \(_ :: Canary) (_ :: String) (_ :: String) -> PrivFile "rtsv2" "www/webrtc-ingest/feed.html"
+        , "ClientWebRTCIngestFeedJsE"                   : \(_ :: Canary) (_ :: String) (_ :: String) -> PrivDir "rtsv2" "www/webrtc-ingest/files"
 
         -- Support
         , "VMMetricsE"                                  : HealthHandler.vmMetrics
@@ -138,15 +145,15 @@ init args = do
         , "UsersE"                                      : CowboyRoutePlaceholder
         , "ProfilesE"                                   : CowboyRoutePlaceholder
         }
-    # Stetson.cowboyRoutes (cowboyRoutes featureFlags)
+    # Stetson.cowboyRoutes (cowboyRoutes thisServer featureFlags)
     # Stetson.port args.port
     # (uncurry4 Stetson.bindTo) (ipToTuple bindIp)
     # Stetson.startClear "http_listener"
   pure $ State {}
 
   where
-    cowboyRoutes :: Config.FeatureFlags -> List Path
-    cowboyRoutes { useMediaGateway } =
+    cowboyRoutes :: Server -> Config.FeatureFlags -> List Path
+    cowboyRoutes thisServer { useMediaGateway } =
       -- Some duplication of URLs here from those in Endpoint.purs due to current inability to build cowboy-style bindings from stongly-typed parameters
       -- IngestAggregatorActiveIngestsPlayerControlE SlotId SlotRole ProfileName
       cowboyRoute ("/support/ingestAggregator/" <> slotIdBinding <> "/" <> slotRoleBinding <> "/activeIngests/" <> profileNameBinding <> "/control")
@@ -174,6 +181,12 @@ init args = do
                    "llwp_stream_resource"
                    ((unsafeToForeign) makeSlotIdAndProfileName)
 
+      -- ClientWebRTCIngestE SlotId SlotRole
+      : cowboyRoute ("/public/" <> canaryBinding <> "/ingest/" <> accountBinding <> "/" <> streamNameBinding <> "/control")
+                    "rtsv2_webrtc_push_ingest_ws_resource"
+                    (unsafeToForeign { publish_stream: mkFn6 $ IngestWebRTCIngestHandler.publishStream (unwrap $ extractAddress thisServer)
+                                     })
+
       --workflows
       : cowboyRoute ("/system/workflows") "id3as_workflows_resource" (unsafeToForeign unit)
       -- WorkflowGraphE String
@@ -194,6 +207,8 @@ init args = do
     sourceRouteBinding = ":source_route"
     canaryBinding = ":canary"
     referenceBinding = ":reference"
+    accountBinding = ":account"
+    streamNameBinding = ":stream_name"
 
     makeSlotIdAndProfileName :: String -> String -> SlotIdAndProfileName
     makeSlotIdAndProfileName slotId profileName = SlotIdAndProfileName (slotIdStringToSlotId slotId) (wrap profileName)

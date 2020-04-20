@@ -192,7 +192,7 @@ getStreamDetails streamPublish = do
   pure $ bodyToJSON restResult
 
 domain :: List Atom
-domain = atom <$> (show Agent.Ingest :  "Instance" : nil)
+domain = atom <$> (show Agent.Ingest : "Instance" : nil)
 
 logInfo :: forall a. Logger (Record a)
 logInfo = Logger.doLog domain Logger.info
