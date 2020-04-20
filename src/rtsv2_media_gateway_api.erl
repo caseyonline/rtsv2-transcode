@@ -9,7 +9,7 @@
 -include("./rtsv2_rtp.hrl").
 
 
--export([ start_link/0
+-export([ start_link/1
         , add_egest/3
         , add_egest_client/4
         ]).
@@ -30,7 +30,8 @@
 
 
 -record(?state,
-        { server_port :: port()
+        { uds_path :: binary_string()
+        , server_port :: port()
         , control_socket :: socket:socket()
         }).
 
@@ -38,8 +39,8 @@
 %%% ----------------------------------------------------------------------------
 %%% Public API
 %%% ----------------------------------------------------------------------------
-start_link() ->
-  gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+start_link(ThisServerAddress) ->
+  gen_server:start_link({local, ?SERVER}, ?MODULE, [ThisServerAddress], []).
 
 
 add_egest(SlotId, SlotRole, ReceiveSocket) ->
@@ -53,15 +54,17 @@ add_egest_client(SlotId, SlotRole, ClientId, EgestClientConfig) ->
 %%% ----------------------------------------------------------------------------
 %%% Gen Server Implementation
 %%% ----------------------------------------------------------------------------
-init([]) ->
+init([ThisServerAddress]) ->
   process_flag(trap_exit, true),
 
   Cmd = filename:join([code:priv_dir(rtsv2), "scripts", "runMediaGateway.sh"]),
+  UdsPath = <<"/tmp/rtsv2-media-gateway-", ThisServerAddress/binary, ".sock">>,
 
-  %% Port = erlang:open_port({spawn_executable, Cmd}, [exit_status]),
+  Port = erlang:open_port({spawn_executable, Cmd}, [exit_status, {args, [UdsPath]}]),
 
   State =
-    #?state{ %%server_port = Port
+    #?state{ uds_path = UdsPath
+           , server_port = Port
            },
 
   {ok, State}.
@@ -125,9 +128,9 @@ handle_info({Port, {exit_status, Status}}, #?state{ server_port = ServerPort } =
 ensure_control_socket(#?state{ control_socket = ControlSocket } = State) when ControlSocket =/= undefined ->
   State;
 
-ensure_control_socket(State) ->
+ensure_control_socket(State = #?state{ uds_path = UdsPath }) ->
   {ok, MediaGateway} = socket:open(local, stream),
-  DBindAddress = #{ family => local, path => <<"/tmp/rtsv2-media-gateway.sock">> },
+  DBindAddress = #{ family => local, path => UdsPath },
   ok = socket:connect(MediaGateway, DBindAddress),
   State#?state{ control_socket = MediaGateway }.
 

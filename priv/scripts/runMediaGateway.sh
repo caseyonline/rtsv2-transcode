@@ -1,2 +1,3 @@
 #!/usr/bin/env bash
-rtsv2-media-gateway 1>>/tmp/rtsv2-media-gateway.log  2>>/tmp/rtsv2-media-gateway.err
+socketPath=$1
+rtsv2-media-gateway $socketPath 1>>/tmp/rtsv2-media-gateway.log  2>>/tmp/rtsv2-media-gateway.err
