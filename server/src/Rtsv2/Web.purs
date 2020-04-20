@@ -38,6 +38,7 @@ import Rtsv2.Handler.LlnwStub as LlnwStubHandler
 import Rtsv2.Handler.Load as LoadHandler
 import Rtsv2.Handler.PoPDefinition as PoPDefinitionHandler
 import Rtsv2.Handler.Relay as RelayHandler
+import Rtsv2.Handler.StreamDiscovery as StreamDiscoveryHandler
 import Rtsv2.Handler.TransPoP as TransPoPHandler
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
@@ -96,6 +97,7 @@ init args = do
         , "IngestInstanceE"                             : IngestHandler.ingestInstance
         , "ClientAppAssetsE"                            : PrivDir Config.appName "www/assets"
         , "ClientAppRouteHTMLE"                         : PrivFile Config.appName "www/index.html"
+        , "StreamDiscoveryE"                            : StreamDiscoveryHandler.discover
 
         -- System
         , "TransPoPLeaderE"                             : IntraPoPHandler.leader
@@ -123,6 +125,7 @@ init args = do
         , "StreamAuthTypeE"                             : LlnwStubHandler.streamAuthType
         , "StreamAuthE"                                 : LlnwStubHandler.streamAuth
         , "StreamPublishE"                              : LlnwStubHandler.streamPublish
+        , "SlotLookupE"                                 : LlnwStubHandler.slotLookup
 
         , "WorkflowsE"                                  : CowboyRoutePlaceholder -- id3as_workflows_resource
         , "WorkflowGraphE"                              : CowboyRoutePlaceholder -- id3as_workflow_graph_resource

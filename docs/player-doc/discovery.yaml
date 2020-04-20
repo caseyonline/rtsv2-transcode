@@ -4,7 +4,7 @@ info:
   title: RTSv2 Player Discovery API
   description: |
     Describes the HTTP endpoint used to discover information
-    used to initiate a RTS connection.
+    used to initiate an RTS connection.
 
 schemes:
   - http
@@ -17,10 +17,15 @@ produces:
   - application/json
 
 paths:
-  /api/client/discovery/1/{account}/{streamName}:
+  /public/{canary}/discovery/v1/{account}/{streamName}:
     get:
       description: Get the discovery information required to connect to the specified stream.
       parameters:
+        - in: path
+          name: canary
+          description: The canary token, e.g. live.
+          required: true
+          type: string
         - in: path
           name: account
           description: The account publishing the stream.

@@ -138,6 +138,7 @@ type LlnwApiConfig
   = { streamAuthTypeUrl :: String
     , streamAuthUrl :: String
     , streamPublishUrl :: String
+    , slotLookupUrl :: String
     }
 
 type LoadMonitorConfig
