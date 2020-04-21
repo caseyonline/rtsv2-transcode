@@ -65,9 +65,11 @@ export default class RealTimeCore extends EventEmitter {
 
   connect() {
     const client = this.client = new RTCPeerConnection(this.options.serverConfig);
+
     client.onicecandidate = (event) => this.handleIceCandidateFromClient(event);
     client.oniceconnectionstatechange = (event) => this.handleIceConnectionChange(event);
-    client.onaddstream = (event) => this.handleGotRemoteStream(event);
+    client.onconnectionstatechange = (event) => this.handleConnectionStateChange(event);
+
 
     if (this.localStream != null) {
       const audioTracks = this.localStream.getAudioTracks();
@@ -85,6 +87,7 @@ export default class RealTimeCore extends EventEmitter {
       offerOptions
     ).then(
       (desc) => {
+        desc["sdp"] = this.setMediaBitrate(desc.sdp, "video", this.options.videoBitrate);
         this.log.debug("received local description, applying", desc);
         client.setLocalDescription(desc).then(
           () => {
@@ -111,6 +114,7 @@ export default class RealTimeCore extends EventEmitter {
   }
 
   handleIceCandidateFromClient(event) {
+    if (this.client == null) return;
     if (event.candidate !== null) {
       this.log.debug("browser ICE candidate", event.candidate);
       this.signal(event.candidate);
@@ -122,7 +126,15 @@ export default class RealTimeCore extends EventEmitter {
   }
 
   handleIceConnectionChange(event) {
-    this.log.debug("Connection state change", event);
+    if (this.client == null) return;
+    this.log.debug("ICE Connection state change", event);
+  }
+
+  handleConnectionStateChange(event) {
+    if (this.client == null) return;
+    if (this.client.connectionState == "connected") {
+      this.emit("connected");
+    }
   }
 
   signal(payload) {
@@ -130,13 +142,15 @@ export default class RealTimeCore extends EventEmitter {
   }
 
   handleSignal(encodedResponse) {
+    if (this.client == null) return;
     const client = this.client;
     const response = JSON.parse(encodedResponse);
 
     if (response.sdp) {
       this.log.debug("received remote sdp:", response.sdp);
 
-      const desc = {"type": "answer", "sdp": response.sdp};
+      const sdp2 = this.setMediaBitrate(response.sdp, "video", this.options.videoBitrate);
+      const desc = {"type": "answer", "sdp": sdp2};
 
       client.setRemoteDescription(desc).then(
         () => {
@@ -162,10 +176,42 @@ export default class RealTimeCore extends EventEmitter {
     }
   }
 
-  handleGotRemoteStream(event) {
-    this.remoteStream = event.stream;
-    this.mediaElement.srcObject = event.stream;
-    this.log.debug("client received remote stream", event);
-    this.emit("connected");
+  setMediaBitrate(sdp, media, bitrate) {
+    var lines = sdp.split("\n");
+    var line = -1;
+    for (var i = 0; i < lines.length; i++) {
+      if (lines[i].indexOf("m="+media) === 0) {
+        line = i;
+        break;
+      }
+    }
+    if (line === -1) {
+      return sdp;
+    }
+
+    // Pass the m line
+    line++;
+
+    // Skip i and c lines
+    while(lines[line].indexOf("i=") === 0 || lines[line].indexOf("c=") === 0) {
+      line++;
+    }
+
+    var newLines
+    // If we're on a b line, replace it
+    if (lines[line].indexOf("b") === 0) {
+      lines[line] = "b=AS:"+bitrate;
+      newLines = lines.slice(0, line);
+    }
+    else {
+      // Add a new b line
+      newLines = lines.slice(0, line);
+      newLines.push("b=AS:"+bitrate);
+    }
+
+    newLines.push("a=fmtp:102 x-google-start-bitrate=" + bitrate + "; x-google-max-bitrate=" + Math.trunc(bitrate * 1.1) + "; x-google-min-bitrate=" + Math.trunc(bitrate * 0.75));
+    newLines = newLines.concat(lines.slice(line, lines.length));
+
+    return newLines.join("\n");
   }
 }

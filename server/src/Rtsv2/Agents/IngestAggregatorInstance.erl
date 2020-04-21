@@ -184,34 +184,51 @@ startWorkflow(SlotId, SlotRole, Profiles) ->
                                                subscribes_to = [{aggregate, ?audio_frames_with_source_id(ProfileName)},
                                                                 {aggregate, ?video_frames_with_source_id(ProfileName)}],
                                                processors = [
-                                                             #processor{name = audio_decode,
-                                                                        display_name = <<"Audio Decode">>,
-                                                                        subscribes_to = {outside_world, ?audio_frames},
-                                                                        module = fdk_aac_decoder
-                                                                       },
-
-                                                             #processor{name = audio_levels,
-                                                                        display_name = <<"dB Levels">>,
-                                                                        subscribes_to = ?previous,
-                                                                        module = audio_levels,
-                                                                        config = #audio_levels_config{mode = consumes,
-                                                                                                      tag = levels}
-                                                                       },
-
-                                                             #processor{name = levels_to_bus,
-                                                                        display_name = <<"Publish Levels">>,
-                                                                        subscribes_to = ?previous,
-                                                                        module = send_to_bus_processor,
-                                                                        config = #send_to_bus_processor_config{consumes = true,
-                                                                                                               bus_name = {audio_levels, IngestKey}}
-                                                                       },
-
                                                              #processor{name = audio_transcode,
                                                                         display_name = <<"Audio Transcode">>,
-                                                                        subscribes_to = audio_decode,
+                                                                        subscribes_to = {outside_world, ?audio_frames},
                                                                         module = audio_transcode,
-                                                                        config = AudioConfig
+                                                                        config = #audio_transcode_config{
+                                                                                    outputs = [
+                                                                                               #named_output{ profile_name = opus
+                                                                                                            , frame_spec = #frame_spec{
+                                                                                                                              profile = #audio_profile{
+                                                                                                                                           codec = opus
+                                                                                                                                           }
+                                                                                                                             }
+                                                                                                            }
+                                                                                              ]
+                                                                                   }
                                                                        },
+
+                                                             %% #processor{name = audio_decode,
+                                                             %%            display_name = <<"Audio Decode">>,
+                                                             %%            subscribes_to = {outside_world, ?audio_frames},
+                                                             %%            module = fdk_aac_decoder
+                                                             %%           },
+
+                                                             %% #processor{name = audio_levels,
+                                                             %%            display_name = <<"dB Levels">>,
+                                                             %%            subscribes_to = ?previous,
+                                                             %%            module = audio_levels,
+                                                             %%            config = #audio_levels_config{mode = consumes,
+                                                             %%                                          tag = levels}
+                                                             %%           },
+
+                                                             %% #processor{name = levels_to_bus,
+                                                             %%            display_name = <<"Publish Levels">>,
+                                                             %%            subscribes_to = ?previous,
+                                                             %%            module = send_to_bus_processor,
+                                                             %%            config = #send_to_bus_processor_config{consumes = true,
+                                                             %%                                                   bus_name = {audio_levels, IngestKey}}
+                                                             %%           },
+
+                                                             %% #processor{name = audio_transcode,
+                                                             %%            display_name = <<"Audio Transcode">>,
+                                                             %%            subscribes_to = audio_decode,
+                                                             %%            module = audio_transcode,
+                                                             %%            config = AudioConfig
+                                                             %%           },
 
                                                              #processor{name = rtp,
                                                                         display_name = <<"WebRTC RTP Mux">>,

@@ -1,0 +1,14 @@
+html *
+{
+   font-size: 1em !important;
+   font-family: Arial !important;
+}
+
+#info {
+  padding-top: 20px;
+}
+
+#stats {
+  padding-top: 20px;
+  font-size: 0.75em;
+}

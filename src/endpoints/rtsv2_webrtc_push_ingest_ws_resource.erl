@@ -2,10 +2,16 @@
 
 -include_lib("id3as_common/include/common.hrl").
 -include_lib("id3as_rtc/include/webrtc.hrl").
+-include_lib("id3as_media/include/id3as_workflow.hrl").
+-include_lib("id3as_avp/include/avp_ingest_source_details_extractor.hrl").
+
 -include("../rtsv2_types.hrl").
 
--export([ init/2 ]).
--export([ websocket_handle/2
+-export([ init/2
+        , terminate/3]).
+
+-export([ websocket_init/1
+        , websocket_handle/2
         , websocket_info/2
         ]).
 
@@ -15,6 +21,8 @@
         { session_id :: binary()
         , webrtc_session_ref :: reference()
         , stream_details :: term()
+        , profile_name :: term()
+        , source_info_fun :: fun()
         }).
 
 -record(state,
@@ -24,9 +32,13 @@
         , account :: binary_string()
         , stream_name :: binary_string()
         , state = #pending{} :: #pending{} | #connected{}
-        , last_activity = i_timestamp:utc_now() :: erlang:timestamp()
         , publish_stream :: fun()
         }).
+
+-define(WebSocketStatusCode_DataInconsistentWithType, 1007).
+-define(WebSocketStatusCode_MessageBad, 4001).
+-define(WebSocketStatusCode_StateBad, 4002).
+-define(WebSocketStatusCode_AuthenticationFailed, 4003).
 
 init(Req, #{ publish_stream := PublishStream }) ->
 
@@ -36,70 +48,144 @@ init(Req, #{ publish_stream := PublishStream }) ->
   StreamName = cowboy_req:binding(stream_name, Req),
 
   Me = cowboy_req:host(Req),
-  {cowboy_websocket, Req, #state{ me = Me
-                                , remote_host = RemoteHost
-                                , remote_port = RemotePort
-                                , account = Account
-                                , stream_name = StreamName
-                                , publish_stream = PublishStream }}.
 
-websocket_handle({text, JSON}, State = #state{state = InnerState}) ->
-  case jsx:decode(JSON, [return_maps]) of
-    Map = #{ <<"type">> := Type } ->
-      MaybeData = maps:get(<<"data">>, Map, undefined),
-      case handle_message(Type, MaybeData, InnerState, State) of
-        {ok, NewInnerState} ->
-          {ok, update_state(State, NewInnerState)};
-        {reply, Reply, NewInnerState} ->
-          {reply, {text, jsx:encode(Reply)}, update_state(State, NewInnerState)}
-      end
-  end.
+  timer:send_interval(1000, send_fir),
 
-handle_message(<<"join">>, Data, _InnerState = #pending{}, _OuterState = #state{ account = Account
-                                                                               , stream_name = StreamName
-                                                                               , remote_host = RemoteHost
-                                                                               , remote_port = RemotePort
-                                                                               , publish_stream = PublishStream
-                                                                               }) ->
+  {cowboy_websocket
+  , Req
+  , #state{ me = Me
+          , remote_host = RemoteHost
+          , remote_port = RemotePort
+          , account = Account
+          , stream_name = StreamName
+          , publish_stream = PublishStream
+          }
+  }.
 
-  case jsx:decode(Data, [return_maps]) of
-    #{ <<"username">> := Username
-     , <<"password">> := Password } ->
+terminate(_Reason, _PartialReq, _State) ->
+  ok.
 
-      case (PublishStream(Account, Username, Password, RemoteHost, RemotePort, StreamName))() of
+websocket_init(State) ->
+  timer:send_interval(1000, send_fir),
 
-        {just, StreamDetails} ->
-io:format(user, "GOT JOIN ~p~n", [StreamDetails]),
-          ?INFO("Got stream details! ~p", [StreamDetails]),
-          SessionId = generate_session_id(),
-          webrtc_session:subscribe_for_msgs(SessionId, [#webrtc_session_response{}]),
-          Response = make_response(<<"join">>, SessionId),
-          {reply, Response, #connected{ session_id = SessionId
-                                      , stream_details = StreamDetails}};
-        {nothing} ->
-          ?INFO("Publish failed", []),
-          {close, 4001, <<>>}
+  {ok, State}.
+
+websocket_handle({text, JSON}, State) ->
+
+  try
+    jsx:decode(JSON, [return_maps])
+  of
+    #{ <<"type">> := Type } = Message ->
+
+      case Type of
+        <<"ping">> ->
+          handle_ping(State);
+
+        <<"join">> ->
+          handle_join(Message, State);
+
+        <<"rtc">> ->
+          handle_rtc(Message, State)
+
       end;
 
-    _ ->
-      {close, 4002, <<>>}
+    _BadlyFormattedMessage ->
+      { [ close_frame(?WebSocketStatusCode_DataInconsistentWithType) ]
+      , State
+      }
+
+  catch
+    error:badarg ->
+      { [ close_frame(?WebSocketStatusCode_DataInconsistentWithType) ]
+      , State
+      }
+  end.
+
+websocket_info(send_fir, State = #state{ state = #pending{} }) ->
+  {ok, State};
+
+websocket_info(send_fir, State = #state{ state = #connected{session_id = SessionId} }) ->
+  webrtc_session:send_fir(SessionId),
+  {ok, State};
+
+websocket_info(#webrtc_session_response { payload = Payload }, State) ->
+  { [ json_frame( <<"rtc">>,
+                  #{payload => Payload} ) ],
+    State
+  };
+
+websocket_info({'DOWN', Ref, process, _Pid, _Reason}, State = #connected{webrtc_session_ref = RTCSessionRef})
+  when
+    RTCSessionRef =:= Ref
+    ->
+
+  {ok, State};
+
+websocket_info(#workflow_output{message = #workflow_data_msg{data = SourceInfo = #source_info{}}}, State = #state { state = #connected { source_info_fun = SourceInfoFn } }) ->
+  unit = (SourceInfoFn(SourceInfo))(),
+  {ok, State};
+
+websocket_info(_Info, State) ->
+  ?INFO("HERE WITH ~p", [_Info]),
+  {ok, State}.
+
+handle_join(#{ <<"username">> := Username
+             , <<"password">> := Password }, State = #state{ account = Account
+                                                           , stream_name = StreamName
+                                                           , remote_host = RemoteHost
+                                                           , remote_port = RemotePort
+                                                           , publish_stream = PublishStream
+                                                           , state = #pending{}
+                                                           }) ->
+
+  case (PublishStream(Account, Username, Password, RemoteHost, RemotePort, StreamName))() of
+
+    {just, #{ streamDetails := StreamDetails
+            , profileName := ProfileName
+            , sourceInfo := SourceInfoFn}} ->
+      SessionId = generate_session_id(),
+      webrtc_session:subscribe_for_msgs(SessionId, [#webrtc_session_response{}]),
+
+      { [ json_frame( <<"join">>,
+                      #{session_id => SessionId}
+                    ) ],
+        State#state{state = #connected{ session_id = SessionId
+                                      , stream_details = StreamDetails
+                                      , profile_name = ProfileName
+                                      , source_info_fun = SourceInfoFn
+                                      }}
+      };
+
+    {nothing} ->
+      { [ close_frame(?WebSocketStatusCode_AuthenticationFailed) ]
+      , State
+      }
   end;
 
-handle_message(<<"rtc">>,
-               Payload,
-               InnerState = #connected{ session_id = SessionId
-                                      , webrtc_session_ref = InitialRTCSessionRef
-                                      , stream_details = #{ streamDetails := #{ slot := #{ id := SlotId }
-                                                                              , role := SlotRole
-                                                                              }
-                                                          , profileName := ProfileName
-                                                          }
-                                      },
-               #state{ me = Me
-                     , account = Account
-                     , stream_name = StreamName
-                     }
-              ) ->
+handle_join(#{ <<"username">> := _
+             , <<"password">> := _ }, State = #state{ state = #connected{} }) ->
+  { [ close_frame(?WebSocketStatusCode_StateBad) ]
+  , State
+  };
+
+handle_join(_Data, State) ->
+  { [ close_frame(?WebSocketStatusCode_MessageBad) ]
+  , State
+  }.
+
+handle_rtc(#{ <<"data">> := Payload },
+           OuterState = #state{ me = Me
+                              , account = Account
+                              , stream_name = StreamName
+                              , state = InnerState = #connected{ session_id = SessionId
+                                                               , webrtc_session_ref = InitialRTCSessionRef
+                                                               , stream_details = #{ slot := #{ id := SlotId }
+                                                                                   , role := SlotRole
+                                                                                   }
+                                                               , profile_name = ProfileName
+                                                               }
+                              }
+          ) ->
 
   {RTCSessionRef, Response} = try
                                 {InitialRTCSessionRef, webrtc_session:handle_request(SessionId, Payload)}
@@ -122,66 +208,49 @@ handle_message(<<"rtc">>,
 
   NewInnerState = InnerState#connected{ webrtc_session_ref = RTCSessionRef },
 
+  NewOuterState = OuterState#state{state = NewInnerState},
+
   case Response of
     {ok, #webrtc_session_response{payload = ResponsePayload}} ->
-      {reply, make_session_response(ResponsePayload), NewInnerState};
+      { [ json_frame( <<"rtc">>,
+                      #{payload => ResponsePayload} ) ],
+        NewOuterState
+      };
 
     ok ->
-      {ok, NewInnerState};
+      {[], NewOuterState };
 
     {error, unsupported} ->
       %% future client? in any event, webrtc_session will have logged something
-      {ok, NewInnerState}
+      {[], NewOuterState }
   end;
 
-handle_message(<<"ping">>, Data, InnerState = #connected{}, _OuterState) ->
-  {reply, make_response(<<"pong">>, Data), InnerState}.
+handle_rtc(#{ <<"data">> := _}, State = #state { state = #pending{} }) ->
+  { [ close_frame(?WebSocketStatusCode_StateBad) ]
+  , State
+  };
 
-websocket_info(#webrtc_session_response { payload = Payload }, State) ->
-  {reply, {text, jsx:encode(make_session_response(Payload))}, State};
+handle_rtc(_Data, State) ->
+  { [ close_frame(?WebSocketStatusCode_MessageBad) ]
+  , State
+  }.
 
-websocket_info({'DOWN', Ref, process, _Pid, _Reason}, State = #connected{webrtc_session_ref = RTCSessionRef})
-  when
-    RTCSessionRef =:= Ref
-    ->
-
-  {ok, State};
-
-websocket_info(_Info, State) ->
-  ?INFO("HERE WITH ~p", [_Info]),
-  {ok, State}.
-
-make_session_response(Payload) ->
-  make_response(rtc, Payload).
-
-make_response(Type, undefined) ->
-  [ {type, Type}
-  ];
-
-
-make_response(Type, Payload) ->
-  [ {type, Type}
-  , {data, Payload}
-  ].
-
-update_state(State, NewInnerState) ->
-  State#state{ state = NewInnerState
-             , last_activity = i_timestamp:utc_now()
-             }.
-
-%% maybe_disconnect_existing(_SessionId = undefined) ->
-%%   ok;
-%% maybe_disconnect_existing(_SessionId = null) ->
-%%   ok;
-%% maybe_disconnect_existing(SessionId) ->
-%%   webrtc_session:stop(SessionId).
-
-%% maybe_generate_session_id(_SessionId = undefined) ->
-%%   generate_session_id();
-%% maybe_generate_session_id(_SessionId = null) ->
-%%   generate_session_id();
-%% maybe_generate_session_id(SessionId) ->
-%%   SessionId.
+handle_ping(State) ->
+  { [ json_frame(<<"pong">>) ]
+  , State
+  }.
 
 generate_session_id() ->
   uuid:uuid_to_string(uuid:get_v4(), binary_standard).
+
+json_frame(Type) ->  json_frame(Type, undefined).
+
+json_frame(Type, undefined) -> json_frame(Type, #{});
+
+json_frame(Type, Data) -> {text, jsx:encode(Data#{ <<"type">> => Type})}.
+
+close_frame(Code) ->
+  close_frame(Code, <<>>).
+
+close_frame(Code, Reason) ->
+  {close, Code, Reason}.

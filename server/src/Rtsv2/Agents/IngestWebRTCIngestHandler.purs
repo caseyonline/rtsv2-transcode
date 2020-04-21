@@ -16,7 +16,7 @@ import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
 import Erl.Utils (self)
 import Foreign (Foreign)
-import Logger (Logger, spy)
+import Logger (Logger)
 import Logger as Logger
 import Media.SourceDetails as SourceDetails
 import Rtsv2.Agents.IngestInstance as IngestInstance
@@ -24,14 +24,16 @@ import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
 import Rtsv2.Config as Config
 import Shared.Agent as Agent
 import Shared.LlnwApiTypes (PublishCredentials(..), SlotProfile(..), StreamAuth, StreamDetails, StreamIngestProtocol(..), StreamPublish(..))
-import Shared.Stream (IngestKey(..), ProfileName(..), RtmpStreamName(..))
+import Shared.Stream (IngestKey(..), ProfileName, RtmpStreamName(..))
 import SpudGun (JsonResponseError, bodyToJSON)
 import SpudGun as SpudGun
 
 foreign import startWorkflowImpl :: IngestKey -> (Foreign -> (Effect Unit)) -> Effect Unit
 
 publishStream :: String -> String -> String -> String -> String -> Int -> String -> Effect (Maybe { streamDetails :: StreamDetails
-                                                                                                  , profileName :: ProfileName} )
+                                                                                                  , profileName :: ProfileName
+                                                                                                  , sourceInfo :: Foreign -> Effect Unit
+                                                                                                  } )
 publishStream host account username password remoteAddress remotePort streamName = do
   let
     rtmpShortName = wrap account
@@ -70,7 +72,7 @@ publishStream host account username password remoteAddress remotePort streamName
               self <- self
               IngestInstanceSup.startIngest ingestKey streamPublish streamDetails remoteAddress remotePort self
               startWorkflow ingestKey
-              pure $ Just {streamDetails, profileName}
+              pure $ Just {streamDetails, profileName, sourceInfo: sourceInfo ingestKey}
     _ -> do
       _ <- logInfo "getPublishCredentials failed" {}
       pure Nothing
@@ -80,6 +82,10 @@ publishStream host account username password remoteAddress remotePort streamName
 
     makeIngestKey profileName {role, slot: {id: slotId}} =
       IngestKey slotId role profileName
+
+    sourceInfo ingestKey foreignSourceInfo = do
+      IngestInstance.setSourceInfo ingestKey (SourceDetails.foreignToSourceInfo foreignSourceInfo)
+
 
 -- TODO - monitor or something?
 stopStream :: IngestKey -> Effect Unit

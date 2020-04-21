@@ -208,7 +208,7 @@ handleInfo msg state@{ingestKey} = case msg of
     pure $ CastNoReply state2
 
   HandlerDown -> do
-    logInfo "RTMP Handler has exited" {ingestKey}
+    logInfo "Ingest Handler has exited" {ingestKey}
     doStopIngest state
     pure $ CastStop state
 

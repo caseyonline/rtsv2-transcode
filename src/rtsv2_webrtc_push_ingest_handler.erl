@@ -14,6 +14,7 @@
 -include_lib("id3as_media/include/receive_from_bus_generator.hrl").
 -include_lib("id3as_media/include/send_to_bus_processor.hrl").
 -include_lib("id3as_media/include/fun_processor.hrl").
+-include_lib("id3as_media/include/h264.hrl").
 
 -define(state, ?MODULE).
 
@@ -41,6 +42,9 @@ handle_info({lost_ownership, _OperatorId}, State) ->
 
 start_workflow(SlotId, SlotRole, ProfileName) ->
   BusName = {rtsv2_webrtc_ingest_bus, SlotId, SlotRole, ProfileName},
+
+  %% TODO - don't need the other workflow in webrtcingest.erl - this can do it all...
+  %% TODO - handle failure
 
   WorkflowDefinition =
     #workflow{ name = ?MODULE

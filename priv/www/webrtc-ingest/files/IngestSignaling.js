@@ -21,16 +21,26 @@ export default class SignalingChannel extends EventEmitter {
     var signalSocket = this.signalSocket = new WebSocket(this.signalPath);
     signalSocket.onopen = (event) => this.handleSocketOpen(event);
     signalSocket.onmessage = (event) => this.handleSocketMessage(event);
+    signalSocket.onclose = (event) => this.handleSocketClose(event);
+  }
+
+  stop() {
+    this.signalSocket.close();
   }
 
   sendRtc(message) {
-    this.sendMessage("rtc", message, SCHEDULE_PING_YES);
+    this.sendMessage("rtc", {data: message}, SCHEDULE_PING_YES);
   }
 
   handleSocketOpen(event) {
     var toSend = { "username": this.username, "password": this.password };
-    this.sendMessage("join", JSON.stringify(toSend), SCHEDULE_PING_NO);
+    this.sendMessage("join", toSend, SCHEDULE_PING_NO);
     this.emit("ready");
+  }
+
+  handleSocketClose(event) {
+    this.emit("stopped");
+    this.signalSocket = null;
   }
 
   schedulePing() {
@@ -48,11 +58,13 @@ export default class SignalingChannel extends EventEmitter {
   }
 
   sendPing() {
-    this.sendMessage("ping", undefined, SCHEDULE_PING_YES);
+    this.sendMessage("ping", {}, SCHEDULE_PING_YES);
   }
 
   sendMessage(type, data, schedulePing) {
-    var toSend = { "type": type, "data": data };
+    if (this.signalSocket == null) return;
+    var toSend = data;
+    toSend["type"] = type;
     this.signalSocket.send(JSON.stringify(toSend));
 
     if (schedulePing) {
@@ -65,10 +77,10 @@ export default class SignalingChannel extends EventEmitter {
 
     switch (response.type) {
     case "rtc":
-      this.emit("rtc", response.data);
+      this.emit("rtc", response.payload);
       break;
     case "join":
-      this.emit("joined", response.data);
+      this.emit("joined", response.session_id);
       this.schedulePing();
       break;
     case "pong":

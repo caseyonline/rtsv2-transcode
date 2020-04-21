@@ -21,9 +21,10 @@ export default class Ingest extends EventEmitter {
     this.signaling.on("joined", (sessionId) => this._handleJoin(sessionId));
   }
 
-  start(username, password) {
+  start(username, password, bitrate) {
     this.emit("starting");
     this.signaling.start(username, password);
+    this.bitrate = bitrate;
   }
 
   call() {
@@ -33,6 +34,10 @@ export default class Ingest extends EventEmitter {
 
   hangup() {
     this.rtc.disconnect();
+  }
+
+  stop() {
+    this.signaling.stop();
   }
 
   mediaElement() {
@@ -58,6 +63,7 @@ export default class Ingest extends EventEmitter {
       sendVideo: true,
       receiveAudio: false,
       receiveVideo: false,
+      videoBitrate: this.bitrate,
       serverConfig: {
         iceServers: Array.prototype.concat(stunServers, turnServers)
       }

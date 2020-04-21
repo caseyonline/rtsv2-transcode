@@ -17,11 +17,11 @@
 [ ] - Port Data.Int53 or Data.Long to purescript, and then change Milliseconds type
 [ ] - Smoke test for prometheus metric endpoints (spin up ingest, hti endpoint, assert a 200)
 [ ] - Proper Serf messages codec (not just binary to term)
-[ ] - Shared objects
 [ ] - Generic onFoo messages out of RTMP ingest
 
-[.] - Clean up / rewrite gproc.purs - is it a direct mapping, or do we want our own API
 
+[x] - Clean up / rewrite gproc.purs - is it a direct mapping, or do we want our own API (Nick has taken on general cleanup)
+[x] - Shared objects
 [x] - relay exit management
 [x] - review timeouts in tests
 [x] - onFi passthrough from RTMP
