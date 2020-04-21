@@ -14,7 +14,7 @@ import Effect (Effect)
 import Effect.Aff (Aff, delay)
 import Effect.Now as Now
 import Helpers.Types (Node(..), TestNode)
-import OsCmd (runProc)
+import Helpers.OsCmd (runProc)
 import Shared.Chaos as Chaos
 import Shared.Stream (ProfileName(..), SlotId, SlotRole(..), SlotNameAndProfileName(..))
 import Shared.UUID (fromString)

@@ -3,6 +3,8 @@ module Main where
 import Prelude
 
 import Control.Monad.State (evalStateT, lift)
+import Cases.Startup (startupTests)
+import Cases.Ingest (ingestTests)
 import Data.Array (delete)
 import Data.Array as Array
 import Data.Identity (Identity(..))
@@ -19,12 +21,11 @@ import Effect.Aff (Aff, delay, launchAff_)
 import Helpers.Assert
 import Helpers.CreateString (toAddrFromNode)
 import Helpers.Env
-import Helpers.Env as Env
-import Helpers.Extras
+import Helpers.Functions
 import Helpers.HTTP as HTTP
 import Helpers.Log (as, as', asT, asT')
 import Helpers.Types (Node, TestNode, ToRecord)
-import OsCmd (runProc)
+import Helpers.OsCmd (runProc)
 import Shared.Chaos as Chaos
 import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Stream (SlotRole(..))
@@ -37,180 +38,9 @@ import Test.Spec.Runner (runSpecT)
 main :: Effect Unit
 main =
   launchAff_ $ un Identity $ runSpecT testConfig [consoleReporter] do
-    describe "1 Startup tests"
-      let
-        p1Nodes = [Env.p1n1, Env.p1n2, Env.p1n3]
-        nodes = p1Nodes
-      in do
-      before_ (do
-                 startSession nodes
-                 launch nodes
-              ) do
-        after_ stopSession do
-          it "1.1 Nodes all come up and agree on who the leader is" do
-            states <- traverse forceGetState (Array.toUnfoldable p1Nodes) :: Aff (List (JsonLd.IntraPoPState Array))
-            let
-              leaders = JsonLd.unwrapNode <$> List.catMaybes (_.currentTransPoPLeader <$> states)
-            assertSame leaders               >>= as "All nodes agree on leader and other intial state"
+    startupTests
+    ingestTests
 
-    describe "2 Ingest tests"
-      let
-        p1Nodes = [Env.p1n1, Env.p1n2, Env.p1n3]
-        nodes = p1Nodes
-        allNodesBar node = delete node nodes
-        maxOut server = HTTP.setLoad server 60.0 >>= assertStatusCode 204 >>= as ("set load on " <> toAddrFromNode server)
-        aggregatorNotPresent slot server = HTTP.getAggregatorStats server slot >>= assertStatusCode 404 >>= as ("aggregator not on " <> toAddrFromNode server)
-      in do
-      before_ (do
-                 startSession nodes
-                 launch nodes
-              ) do
-        after_ stopSession do
-          it "2.1 ingest aggregation created on ingest node" do
-            HTTP.ingestStart    p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create ingest"
-            waitForAsyncProfileStart                                     >>= as' "wait for async start of profile"
-            HTTP.getAggregatorStats p1n1 slot1          >>= assertStatusCode 200
-                                                    >>= assertAggregator [low]
-                                                                         >>= as  "aggregator has low only"
-
-          it "2.2 2nd ingest doesn't start new aggregator since one is running" do
-            HTTP.ingestStart    p1n1 shortName1 low   >>= assertStatusCode 200 >>= as "create low ingest"
-            waitForAsyncProfileStart                                      >>= as' "wait for async start of profile"
-            HTTP.setLoad         p1n1 60.0            >>= assertStatusCode 204 >>= as "set load on server"
-            HTTP.ingestStart    p1n1 shortName1 high  >>= assertStatusCode 200 >>= as "create high ingest"
-            waitForAsyncProfileStart                                      >>= as' "wait for async start of profile"
-            HTTP.getAggregatorStats p1n1 slot1           >>= assertStatusCode 200
-                                                     >>= assertAggregator [low, high]
-                                                                          >>= as "aggregator has 2 profiles"
-
-          it "2.3 if ingest node is too loaded, then ingest aggregation starts on non-ingest node" do
-            traverse_ maxOut (allNodesBar p1n2)                           >>= as' "load up all servers bar one"
-            waitForIntraPoPDisseminate                                    >>= as' "allow load to disseminate"
-            HTTP.ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as  "create low ingest"
-            waitForIntraPoPDisseminate                                    >>= as' "allow remote ingest location to disseminate"
-            HTTP.ingestStart    p1n1 shortName1 high >>= assertStatusCode 200 >>= as  "create high ingest"
-            waitForAsyncProfileStart                                      >>= as' "wait for async start of profile"
-            HTTP.getAggregatorStats p1n2 slot1           >>= assertStatusCode 200
-                                                     >>= assertAggregator [low, high]
-                                                                          >>= as  "aggregator is on p1n2"
-
-          it "2.4 ingest on different node removes itself from aggregator when stopped" do
-            traverse_ maxOut (allNodesBar p1n2)                          >>= as' "load up all servers bar one"
-            waitForIntraPoPDisseminate                                   >>= as' "allow load to disseminate"
-            HTTP.ingestStart    p1n1 shortName1 low >>= assertStatusCode 200 >>= as  "create low ingest"
-            waitForAsyncProfileStart                                     >>= as' "wait for async start of profile"
-            HTTP.getAggregatorStats p1n2 slot1          >>= assertStatusCode 200
-                                                    >>= assertAggregator [low]
-                                                                         >>= as  "aggregator created on idle server"
-            (traverse_ (aggregatorNotPresent slot1) (allNodesBar p1n2))  >>= as' "aggregator not on busy servers"
-
-            HTTP.ingestStop     p1n1 slot1 low >>= assertStatusCode 200 >>= as  "stop low ingest"
-            waitForAsyncProfileStop                                      >>= as' "wait for async stop of profile"
-            HTTP.getAggregatorStats p1n2 slot1          >>= assertStatusCode 200
-                                                    >>= assertAggregator []
-                                                                         >>= as  "aggregator has no profiles"
-
-          it "2.5 ingest restarts aggregator if aggregator exits" do
-            traverse_ maxOut (allNodesBar p1n2)                           >>= as' "load up all servers bar one"
-            waitForIntraPoPDisseminate                                    >>= as' "allow load to disseminate"
-            HTTP.ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as  "create low ingest"
-            waitForAsyncProfileStart                                      >>= as' "wait for async start of profile"
-            HTTP.getAggregatorStats p1n2 slot1           >>= assertStatusCode 200
-                                                     >>= assertAggregator [low]
-                                                                          >>= as  "aggregator created on idle server"
-            traverse_ (aggregatorNotPresent slot1) (allNodesBar p1n2)     >>= as' "aggregator not on busy servers"
-            HTTP.setLoad         p1n3 0.0             >>= assertStatusCode 204 >>= as  "mark p1n3 as idle"
-            stopNode p1n2                        >>= as' "make p1n2 fail"
-            waitForNodeFailureDisseminate                                 >>= as' "allow failure to disseminate"
-            HTTP.getAggregatorStats p1n3 slot1           >>= assertStatusCode 200
-                                                     >>= assertAggregator [low]
-                                                                          >>= as  "failed aggregator moved to new idle server"
-
-          it "2.6 aggregator exits after last profile stops (with linger time)" do
-            HTTP.ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as  "create low ingest"
-            HTTP.ingestStart    p1n1 shortName1 high >>= assertStatusCode 200 >>= as  "create high ingest"
-            waitForAsyncProfileStart
-            HTTP.getAggregatorStats p1n1 slot1           >>= assertStatusCode 200
-                                                     >>= assertAggregator [low, high]
-                                                                          >>= as  "aggregator has both profiles"
-
-            HTTP.ingestStop     p1n1 slot1 low  >>= assertStatusCode 200 >>= as  "stop low ingest"
-            waitForAsyncProfileStop
-            HTTP.getAggregatorStats p1n1 slot1           >>= assertStatusCode 200
-                                                     >>= assertAggregator [high]
-                                                                          >>= as  "aggregator only has high"
-            HTTP.ingestStop     p1n1 slot1 high >>= assertStatusCode 200 >>= as  "stop high ingest"
-            waitForAsyncProfileStop
-            HTTP.getAggregatorStats p1n1 slot1           >>= assertStatusCode 200
-                                                     >>= assertAggregator []
-                                                                          >>= as  "aggregator has no profiles"
-            waitForMoreThanLinger                                         >>= as' "wait for linger time"
-            HTTP.getAggregatorStats p1n1 slot1           >>= assertStatusCode 404 >>= as  "aggregator stops after linger"
-
-          it "2.7 aggregator does not exit during linger time" do
-            HTTP.ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as  "create low ingest"
-            waitForAsyncProfileStart
-            HTTP.getAggregatorStats p1n1 slot1           >>= assertStatusCode 200
-                                                     >>= assertAggregator [low]
-                                                                          >>= as  "aggregator created"
-            HTTP.ingestStop     p1n1 slot1 low >>= assertStatusCode 200  >>= as  "stop low ingest"
-            waitForAsyncProfileStop
-            HTTP.getAggregatorStats p1n1 slot1          >>= assertStatusCode 200
-                                                    >>= assertAggregator []
-                                                                          >>= as  "aggregator has no profiles"
-            waitForLessThanLinger                                         >>= as' "wait for less than the linger time"
-            HTTP.ingestStart    p1n2 shortName1 high >>= assertStatusCode 200 >>= as  "create high ingest on another node"
-            waitForAsyncProfileStart                                      >>= as' "wait for async start of profile"
-            HTTP.getAggregatorStats p1n1 slot1           >>= assertStatusCode 200
-                                                     >>= assertAggregator [high]
-                                                                          >>= as  "lingered aggregator has high profile"
-
-          it "2.8 aggregator liveness detected on node stop" do
-            HTTP.ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as  "create low ingest"
-            waitForIntraPoPDisseminate
-            HTTP.getIntraPoPState p1n1                   >>= assertAggregatorOn [p1n1] slot1
-                                                                          >>= as "p1n1 is aware of the ingest on p1n1"
-            HTTP.getIntraPoPState p1n2                   >>= assertAggregatorOn [p1n1] slot1
-                                                                          >>= as "p1n2 is aware of the ingest on p1n1"
-            stopNode p1n1                        >>= as' "make p1n1 fail"
-            waitForNodeFailureDisseminate                                 >>= as' "allow failure to disseminate"
-            HTTP.getIntraPoPState p1n2                   >>= assertAggregatorOn [] slot1
-                                                                          >>= as "p1n2 is aware the ingest stopped"
-
-          it "2.9 attempt to ingest same profile twice on same node fails" do
-            HTTP.ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as  "create low ingest"
-            waitForIntraPoPDisseminate
-            HTTP.getAggregatorStats p1n1 slot1           >>= assertStatusCode 200
-                                                     >>= assertAggregator [low]
-                                                                          >>= as  "aggregator has low profile"
-            HTTP.ingestStart    p1n1 shortName1 low  >>= assertStatusCode 500 >>= as  "2nd attempt to create low ingest fails"
-            waitForIntraPoPDisseminate
-            HTTP.getAggregatorStats p1n1 slot1           >>= assertStatusCode 200
-                                                     >>= assertAggregator [low]
-                                                                          >>= as  "aggregator has single profile"
-
-          it "2.10 attempt to ingest same profile twice on different node fails" do
-            HTTP.ingestStart    p1n1 shortName1 low  >>= assertStatusCode 200 >>= as  "create low ingest"
-            waitForIntraPoPDisseminate
-            HTTP.getIntraPoPState p1n1                   >>= assertAggregatorOn [p1n1] slot1
-                                                                          >>= as "p1n1 is aware of the ingest on p1n1"
-            HTTP.ingestStart    p1n2 shortName1 low  >>= assertStatusCode 200 >>= as  "2nd attempt to create low ingest succeeds (but actual create is async)"
-            HTTP.getIntraPoPState p1n1                  >>= assertAggregatorOn [p1n1] slot1
-                                                                          >>= as "p1n1 is still aware of the ingest on p1n1"
-            waitForIntraPoPDisseminate
-            HTTP.ingestStop     p1n2 slot1 low       >>= assertStatusCode 404  >>= as  "stop ingest fails with 404 since async create failed"
-            HTTP.ingestStop     p1n1 slot1 low       >>= assertStatusCode 200  >>= as  "stop initial ingest"
-            waitForAsyncProfileStart
-
-            HTTP.getAggregatorStats p1n1 slot1           >>= assertStatusCode 200
-                                                     >>= assertAggregator []
-                                                                          >>= as  "aggregator now has no profiles"
-
-            HTTP.ingestStart    p1n2 shortName1 low  >>= assertStatusCode 200 >>= as  "final attempt to create low ingest succeeds"
-            waitForIntraPoPDisseminate
-            HTTP.getAggregatorStats p1n1 slot1           >>= assertStatusCode 200
-                                                     >>= assertAggregator [low]
-                                                                          >>= as  "aggregator now has low profile again"
 
     describe "3 Ingest egest tests" do
       describe "3.1 one pop setup"
@@ -542,25 +372,3 @@ main =
   where
     testConfig = { slow: Milliseconds 5000.0, timeout: Just (Milliseconds 25000.0), exit: false }
 
-
-launch :: Array Node -> Aff Unit
-launch nodes = launch' nodes "test/config/sys.config"
-
-launch' :: Array Node -> String -> Aff Unit
-launch' nodesToStart sysconfig = do
-  nodesToStart <#> mkNode  sysconfig # launchNodes
-  delay (Milliseconds 1000.0)
-  where
-  launchNodes :: Array TestNode -> Aff Unit
-  launchNodes nodes = do
-    traverse_ (\tn -> runProc "./scripts/startNode.sh"
-                      [ sessionName
-                      , tn.addr
-                      , tn.ifaceIndexString
-                      , tn.addr
-                      , tn.sysConfig
-                      ]) nodes
-
-    traverse_ (\tn -> runProc "./scripts/waitForNode.sh"
-                      [ tn.addr
-                      ]) nodes

@@ -1,4 +1,4 @@
-module Helpers.Extras where
+module Helpers.Functions where
 
 import Prelude
 
@@ -13,6 +13,7 @@ import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (unwrap)
 import Data.These (These(..))
 import Data.Time.Duration (Milliseconds(..))
+import Data.Traversable (traverse, traverse_)
 import Debug.Trace (spy)
 import Effect.Aff (Aff, delay)
 import Foreign.Object as Object
@@ -23,7 +24,7 @@ import Helpers.Log (throwSlowError)
 import Helpers.Types (Node, PoPInfo, ResWithBody, TestNode, ToRecord)
 import Node.Encoding (Encoding(..))
 import Node.FS.Aff (writeTextFile)
-import OsCmd (runProc)
+import Helpers.OsCmd (runProc)
 import Partial.Unsafe (unsafePartial)
 import Shared.Chaos as Chaos
 import Shared.Common (Url)
@@ -40,6 +41,29 @@ import URI.HierarchicalPart (HierarchicalPart(..))
 import URI.Host as URIHost
 import URI.HostPortPair as HostPortPair
 import URI.URI as URIParser
+
+
+launch :: Array Node -> Aff Unit
+launch nodes = launch' nodes "test/config/sys.config"
+
+launch' :: Array Node -> String -> Aff Unit
+launch' nodesToStart sysconfig = do
+  nodesToStart <#> mkNode  sysconfig # launchNodes
+  delay (Milliseconds 1000.0)
+  where
+  launchNodes :: Array TestNode -> Aff Unit
+  launchNodes nodes = do
+    traverse_ (\tn -> runProc "./scripts/startNode.sh"
+                      [ sessionName
+                      , tn.addr
+                      , tn.ifaceIndexString
+                      , tn.addr
+                      , tn.sysConfig
+                      ]) nodes
+
+    traverse_ (\tn -> runProc "./scripts/waitForNode.sh"
+                      [ tn.addr
+                      ]) nodes
 
 
 -- | Node
