@@ -56,7 +56,7 @@ export default class RealTimeCore extends EventEmitter {
     navigator.mediaDevices.getUserMedia({audio: sendAudio, video: sendVideo})
       .then((stream) => {
         this.localStream = stream;
-        this.emit("userMediaReady");
+        this.emit("userMediaReady", stream);
       })
       .catch((error) => {
         this.emit("userMediaFailed", error);
@@ -110,6 +110,9 @@ export default class RealTimeCore extends EventEmitter {
   disconnect() {
     this.client.close();
     this.client = null;
+    this.localStream.getTracks().forEach(function(track) {
+      track.stop();
+    });
     this.emit("disconnected");
   }
 

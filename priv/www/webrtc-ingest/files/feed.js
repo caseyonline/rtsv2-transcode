@@ -29,6 +29,7 @@ export const ingest = new Ingest(socketPath);
 
 const startButton = document.getElementById("start-ingest");
 const stopButton = document.getElementById("stop-ingest");
+const video = document.getElementById("vid");
 
 ingest.on("starting", function onStarting() {
   console.log("Ingest starting");
@@ -38,9 +39,13 @@ ingest.on("startFailed", function onStartFailed(error) {
   startButton.disabled = false;
 });
 
-ingest.on("started", function() {
+ingest.on("started", function(stream) {
   console.log("Obtained source, connecting over WebRTC...");
   ingest.call();
+
+  vid.srcObject = stream;
+  vid.muted = true;
+  vid.play();
 });
 
 ingest.on("called", function() {
@@ -65,6 +70,9 @@ ingest.on("hangup", function() {
 
 ingest.on("stop", function() {
   console.log("Socket closed.");
+  vid.srcObject = '';
+  vid.currentTime = 0;
+  vid.load();
   ingest = new Ingest(socketPath);
 });
 
@@ -94,26 +102,41 @@ function displayStats() {
           for (let stat of stats.values()) {
             switch (stat.type) {
             case "codec": {
-              console.log("timestamp", stat.timestamp);
+              //console.log("timestamp", stat.timestamp);
               break;
             }
             case "outbound-rtp": {
-              console.log("bytesSent", stat.bytesSent);
-              console.log("frames", stat.framesEncoded);
-              console.log("keyframes", stat.keyFramesEncoded);
-              console.log("packets", stat.packetsSent);
-              console.log("pli", stat.pliCount);
-              console.log("sendDelay", stat.totalPacketSendDelay);
+              document.getElementById("frames").innerHTML = stat.framesEncoded;
+              document.getElementById("keyFrames").innerHTML = stat.keyFramesEncoded;
+              document.getElementById("packets").innerHTML = stat.packetsSent;
+              document.getElementById("pli").innerHTML = stat.pliCount;
+              document.getElementById("sendDelay").innerHTML = stat.totalPacketSendDelay;
               break;
             }
             case "media-source": {
-              console.log("fps", stat.framesPerSecond);
-              console.log("height", stat.height);
-              console.log("width", stat.width);
+              document.getElementById("resolution").innerHTML = stat.width + "x" + stat.height
+                + ", " + stat.framesPerSecond + "fps";
               break;
             }
             }
-            console.log(stat);
+            //console.log("video", stat);
+          }
+        });
+    }
+    else {
+      sender.getStats()
+        .then( (stats) => {
+          for (let stat of stats.values()) {
+            switch (stat.type) {
+            case "codec": {
+              document.getElementById("sampleRate").innerHTML = stat.clockRate + "kHz";
+              break;
+            }
+            case "media-source": {
+              //document.getElementById("audioEnergy").innerHTML = stat.totalAudioEnergy
+            }
+            }
+            //console.log("audio", stat);
           }
         });
     }

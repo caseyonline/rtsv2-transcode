@@ -69,7 +69,7 @@ export default class Ingest extends EventEmitter {
       }
     });
 
-    this.rtc.on("userMediaReady", () => this.emit("started"));
+    this.rtc.on("userMediaReady", (stream) => this.emit("started", stream));
     this.rtc.on("userMediaFailed", (error) => this.emit("startFailed", error));
     this.rtc.on("connected", () => this.emit("called"));
     this.rtc.on("connectFailed", (error) => this.emit("callFailed", error));

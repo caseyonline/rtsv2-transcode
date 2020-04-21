@@ -1,21 +1,65 @@
-<head>
-  <title>RTS-V2 WebRTC Push Ingest</title>
-  <link rel="stylesheet" type="text/css" href="files/feed.css">
-</head>
-<body>
-  <input id="username" type="text" value="user"></input>
-  <input id="password" type="password" value="password"></input>
-  <button id="start-ingest">Start Ingest</button>
-  <button id="stop-ingest" disabled>Stop Ingest</button>
-
-  <div id="info">
-    Microphone: <span id="microphone"></span><br/>
-    Camera: <span id="camera"></span>
-  </div>
-  <div id="stats">
-    Bytes Sent: <span id="bytes-sent"></span>
-  </div>
-
-  </p>
-  <script type="module" src="files/feed.js"></script>
-</body>
+<!doctype html>
+<html lang="en">
+  <head>
+    <!-- Required meta tags -->
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title>RTS-V2 WebRTC Push Ingest</title>
+    <link rel="stylesheet" type="text/css" href="files/feed.css">
+    <link rel="stylesheet" type="text/css" href="/support/assets/css/bootstrap.min.css">
+  </head>
+  <body>
+    <header>
+    </header>
+    <div class="container">
+      <div class="row">
+        <div class="col-sm">
+          <form>
+            <div class="form-group">
+              <label for="username">Username</label>
+              <input type="text" class="form-control" id="username" value="user"></input>
+            </div>
+            <div class="form-group">
+              <label for="password">Password</label>
+              <input type="password" class="form-control" id="password" value="password"></input>
+            </div>
+            <button id="start-ingest" type="button" class="btn btn-primary">Start Ingest</button>
+            <button id="stop-ingest" type="button" class="btn btn-primary" disabled>Stop Ingest</button>
+          </form>
+          <video id="vid" width="80%" class="mt-1"></video>
+        </div>
+        <div class="col-sm">
+          <div class="card">
+            <div class="card-body">
+              <h5 class="card-title">Microphone</h5>
+              <p class="card-text" id="microphone"></p>
+              <p class="card-text"><span id="sampleRate"></span></p>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-body">
+              <h5 class="card-title">Camera</h5>
+              <p class="card-text" id="camera"></p>
+              <p class="card-text"><span id="resolution"></span></p>
+            </div>
+          </div>
+        </div>
+        <div class="col-sm">
+          <ul class="list-group">
+            <li class="list-group-item">Bytes sent: <span id="bytes-sent"></span></li>
+            <li class="list-group-item">Frames: <span id="frames"></span></li>
+            <li class="list-group-item">Key Frames: <span id="keyFrames"></span></li>
+            <li class="list-group-item">Packets: <span id="packets"></span></li>
+            <li class="list-group-item">PLI: <span id="pli"></span></li>
+            <li class="list-group-item">Send Delay: <span id="sendDelay"></span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="files/feed.js"></script>
+    <!-- Optional JavaScript -->
+    <!-- jQuery first, then Popper.js, then Bootstrap JS -->
+    <script src="/support/assets/js/jquery-3.4.1.slim.min.js"></script>
+    <script src="/support/assets/js/bootstrap.bundle.min.js"></script>
+  </body>
+</html>
