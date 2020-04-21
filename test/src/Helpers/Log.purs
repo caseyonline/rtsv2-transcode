@@ -10,6 +10,7 @@ import Effect.Aff (Aff, delay, throwError)
 import Effect.Exception (error) as Exception
 import Effect.Unsafe (unsafePerformEffect)
 import Helpers.Env (currentTime)
+import Milkis as M
 
 throwSlowError :: forall e. String -> Aff e
 throwSlowError e = do
@@ -60,3 +61,18 @@ asT' :: forall a b. String -> b -> StateT a Aff Unit
 asT' desc _ = do
   let _ = maybeLogStep "step" desc
   pure $ unit
+
+
+-- | Debugging
+
+debug :: forall a b. String -> Either a b -> Aff (Either a b)
+debug msg either =
+  let
+    _ = spy msg either
+  in pure $ either
+
+debugBody (Right r) = do
+  text <- M.text r
+  let _ = spy "debugBody" text
+  pure $ Right r
+debugBody (Left err) = let _ = spy "debugBodyErr" err in pure $ Left err

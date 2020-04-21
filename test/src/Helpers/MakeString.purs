@@ -63,8 +63,12 @@ mkPoPJsonString nodes =
 
 
 
+-- | URLs
 mkServerAddress :: Node -> NodeAddress
 mkServerAddress node = NodeAddress {address: ServerAddress $ toAddrFromNode node}
 
 makeUrlAndUnwrap :: Node -> Endpoint -> String
 makeUrlAndUnwrap node path = unwrap $ makeUrl (mkServerAddress node) path
+
+toIfaceIndexString :: Node -> String
+toIfaceIndexString (Node popNum nodeNum) = show (popNum * 10) <> show nodeNum

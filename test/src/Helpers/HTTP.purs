@@ -6,7 +6,7 @@ import Data.Either (Either(..))
 import Data.Newtype (unwrap)
 import Effect.Aff (Aff, attempt)
 import Helpers.CreateString (makeUrlAndUnwrap)
-import Helpers.Types (Node)
+import Helpers.Types (Node, ResWithBody(..))
 import Milkis as M
 import Milkis.Impl.Node (nodeFetch)
 import Prim.Row (class Union)
@@ -16,11 +16,6 @@ import Shared.Stream (RtmpShortName, SlotId, SlotNameAndProfileName(..), SlotRol
 import Shared.Types (ServerAddress(..))
 import Simple.JSON as SimpleJSON
 
-type ResWithBody =
-  { headers :: M.Headers
-  , body :: String
-  , statusCode :: Int
-  }
 
 fetch
   :: forall options trash.

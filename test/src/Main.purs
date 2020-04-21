@@ -2,180 +2,40 @@ module Main where
 
 import Prelude
 
-import Data.Array (delete, length, sort, sortBy)
+import Control.Monad.State (evalStateT, lift)
+import Data.Array (delete)
 import Data.Array as Array
-import Data.Bifunctor (lmap)
-import Data.Either (Either(..))
-import Data.Enum (class BoundedEnum, fromEnum)
-import Data.Foldable (foldl)
 import Data.Identity (Identity(..))
-import Data.Lens (_Just, firstOf, over, set, traversed)
-import Data.List (List(..))
+import Data.List (List)
 import Data.List as List
 import Data.Map as Map
-import Data.Maybe (Maybe(..), fromMaybe, isNothing)
-import Data.Newtype (un, unwrap)
-import Data.String as String
-import Data.Time (Time(..))
+import Data.Maybe (Maybe(..))
+import Data.Newtype (un)
 import Data.Time.Duration (Milliseconds(..))
 import Data.Traversable (traverse, traverse_)
-import Data.These (These(..))
 import Data.Tuple (Tuple(..))
-import Debug.Trace (spy)
 import Effect (Effect)
-import Effect.Aff (Aff, delay, launchAff_, throwError)
-import Effect.Exception (error) as Exception
-import Effect.Unsafe (unsafePerformEffect)
-import Effect.Now as Now
-import Foreign.Object as Object
-import Milkis as M
+import Effect.Aff (Aff, delay, launchAff_)
+import Helpers.Assert
+import Helpers.CreateString (toAddrFromNode)
+import Helpers.Env
+import Helpers.Env as Env
+import Helpers.Extras
+import Helpers.HTTP as HTTP
+import Helpers.Log (as, as', asT, asT')
+import Helpers.Types (Node, TestNode, ToRecord)
 import OsCmd (runProc)
-import Partial.Unsafe (unsafePartial)
 import Shared.Chaos as Chaos
-import Shared.Stream (SlotId, SlotNameAndProfileName(..), SlotRole(..))
-import Shared.Router.Endpoint (Canary(..), Endpoint(..), makeUrlAddr)
-import Shared.Common (Url)
-import Shared.Types (ServerAddress(..), extractAddress)
-import Shared.Types.Agent.State as PublicState
 import Shared.Rtsv2.JsonLd as JsonLd
-import Simple.JSON (class ReadForeign)
-import Simple.JSON as SimpleJSON
+import Shared.Stream (SlotRole(..))
+import Shared.Types.Agent.State as PublicState
 import Test.Spec (after_, before_, describe, describeOnly, it, itOnly)
 import Test.Spec.Reporter.Console (consoleReporter)
 import Test.Spec.Runner (runSpecT)
-import Text.Parsing.Parser
-import URI as URI
-import URI.HierarchicalPart (HierarchicalPart(..))
-import URI.Authority (Authority(..))
-import URI.HostPortPair as HostPortPair
-import URI.Path (Path(..))
-import URI.Host as URIHost
-import URI.HostPortPair as URIHostPortPair
-import URI.URI as URIParser
-import Control.Monad.State (StateT, evalStateT, lift)
-import Control.Monad.State.Class (class MonadState, gets, modify)
-import Helpers.Env as Env
-import Helpers.HTTP as HTTP
-import Helpers.Types (Node(..), TestNode)
-import Helpers.Node (startSession, stopSession, stopNode)
-import Helpers.Env
-import Helpers.CreateString (toAddrFromNode, mkServerAddress, makeUrlAndUnwrap)
-import Helpers.Log (throwSlowError, maybeLogStep, as, as', asT, asT')
 
-
-forceRight :: forall a b. Either a b -> b
-forceRight e = unsafePartial $ case e of
-  Right b -> b
 
 main :: Effect Unit
 main =
-  let
-
-    debug :: forall a b. String -> Either a b -> Aff (Either a b)
-    debug msg either =
-      let
-        _ = spy msg either
-      in pure $ either
-
-    debugBody (Right r) = do
-      text <- M.text r
-      let _ = spy "debugBody" text
-      pure $ Right r
-    debugBody (Left err) = let _ = spy "debugBodyErr" err in pure $ Left err
-
-    assertRelayForEgest = assertBodyFun <<< predicate
-      where
-        predicate :: Array Node -> PublicState.StreamRelay Array -> Boolean
-        predicate servers streamRelayState =
-          (sort $ (ServerAddress <<< toAddrFromNode) <$> servers) == sort (_.address <<< JsonLd.unwrapNode <$> (JsonLd.unwrapNode streamRelayState).egestsServed)
-
-    assertRelayForRelay = assertBodyFun <<< predicate
-      where
-        predicate :: Array Node -> PublicState.StreamRelay Array -> Boolean
-        predicate servers streamRelayState =
-          (sort $ (ServerAddress <<< toAddrFromNode) <$> servers) == sort (_.address <<< unwrap <<< _.server <<< JsonLd.unwrapNode <$> (JsonLd.unwrapNode streamRelayState).relaysServed)
-
-    assertEgestClients = assertBodyFun <<< predicate
-      where
-        predicate :: Int -> PublicState.Egest -> Boolean
-        predicate count egestStats = count == (JsonLd.unwrapNode egestStats).clientCount
-
-    assertAggregator = assertBodyFun <<< predicate
-      where
-        predicate :: Array SlotNameAndProfileName -> PublicState.IngestAggregator Array -> Boolean
-        predicate vars ingestAggregatorState =
-          sort ((\(SlotNameAndProfileName _ profileName) -> profileName) <$> vars) == (sort $ (_.profileName <<< JsonLd.unwrapNode) <$> (JsonLd.unwrapNode ingestAggregatorState).activeProfiles)
-
-    dumpIntraPoP = assertBodyFun $ predicate
-      where
-        predicate :: PublicState.IntraPoP Array -> Boolean
-        predicate popState =
-          let
-            _ = spy "popState" popState
-          in
-           true
-
-    dumpSlotState = assertBodyFun $ predicate
-      where
-        predicate :: PublicState.SlotState Array -> Boolean
-        predicate slotState =
-          let
-            _ = spy "slotState" slotState
-          in
-           true
-
-    assertAggregatorOn nodes requiredSlotId  = assertBodyFun $ predicate
-      where
-        predicate :: PublicState.IntraPoP Array -> Boolean
-        predicate popState =
-          let
-            nodeAddresses = toAddrFromNode
-            serverAddressesForSlotId = foldl (\acc {slotId, servers} ->
-                                                 if slotId == requiredSlotId
-                                                 then acc <> (extractAddress <<< JsonLd.unwrapNode <$> servers)
-                                                 else acc
-                                               ) []  (JsonLd.unwrapNode popState).aggregatorLocations
-          in
-          (sort $ (ServerAddress <<< toAddrFromNode) <$> nodes) == sort serverAddressesForSlotId
-
-    assertRelayCount requiredSlotId count = assertBodyFun $ predicate
-      where
-        predicate :: (PublicState.IntraPoP Array) -> Boolean
-        predicate popState =
-          let
-            nodeAddresses = toAddrFromNode
-            serverAddressesForSlotId = foldl (\acc {slotId, servers} ->
-                                                 if slotId == requiredSlotId
-                                                 then acc <> (extractAddress <<< JsonLd.unwrapNode <$> servers)
-                                                 else acc
-                                               ) []  (JsonLd.unwrapNode popState).relayLocations
-          in
-          length (sort serverAddressesForSlotId) == count
-
-    forceGetState :: Node -> Aff (JsonLd.IntraPoPState Array)
-    forceGetState node = JsonLd.unwrapNode <$> forceRight <$> (jsonToType' :: HTTP.ResWithBody -> Either String (PublicState.IntraPoP Array)) <$> forceRight <$> HTTP.getIntraPoPState node
-
-    assertSame :: forall a. Show a => Eq a => List a -> Aff (Either String Unit)
-    assertSame Nil = pure $ Right unit
-    assertSame (Cons x Nil) = pure $ Right unit
-    assertSame (Cons x t@(Cons y xs)) = if x == y then assertSame t
-                                        else pure $ Left $ "\"" <> (show x) <> "\" is not the same as \"" <> (show y) <> "\""
-
-    jsonToType' :: forall a. ReadForeign a => HTTP.ResWithBody -> Either String a
-    jsonToType' {body} = lmap (const "Failed to parse JSON") $ SimpleJSON.readJSON body
-
-    assertBodiesSame :: List HTTP.ResWithBody -> Aff (Either String Unit)
-    assertBodiesSame Nil = pure $ Right unit
-    assertBodiesSame (Cons x xs) = pure $ assertBodiesSame_ x.body xs
-      where
-        assertBodiesSame_ :: String -> List HTTP.ResWithBody -> Either String Unit
-        assertBodiesSame_ _ Nil = Right unit
-        assertBodiesSame_ firstBody (Cons y ys) =
-          if y.body == firstBody
-          then assertBodiesSame_ firstBody ys
-          else Left $ "\"" <> firstBody <> "\" is not the same as \"" <> y.body <> "\""
-
-  in
   launchAff_ $ un Identity $ runSpecT testConfig [consoleReporter] do
     describe "1 Startup tests"
       let
@@ -681,194 +541,6 @@ main =
 
   where
     testConfig = { slow: Milliseconds 5000.0, timeout: Just (Milliseconds 25000.0), exit: false }
-
-storeSlotState either@(Left _) = pure either
-storeSlotState either@(Right slotState) = do
-  _ <- modify (Map.insert "slotState" slotState)
-  pure either
-
-compareSlotState preFilter predicate either@(Left _) = pure either
-compareSlotState preFilter predicate either@(Right slotState) = do
-  currentSlotState <- gets (Map.lookup "slotState")
-  if
-    predicate (Just (preFilter slotState)) (preFilter <$> currentSlotState) then pure either
-  else
-    let
-      _ = spy "lhs" currentSlotState
-      _ = spy "rhs" slotState
-    in
-      pure $ Left "does not match"
-
-killOriginRelay :: SlotId -> SlotRole -> StateT (Map.Map String (PublicState.SlotState Array)) Aff Unit
-killOriginRelay slotId slotRole = do
-  mCurrentSlotState <- gets (Map.lookup "slotState")
-  case mCurrentSlotState of
-    Nothing ->
-      lift $ throwSlowError $ "No slot state"
-    Just {originRelays} ->
-      lift $ killRelay slotId slotRole originRelays
-
-killDownstreamRelay :: SlotId -> SlotRole -> StateT (Map.Map String (PublicState.SlotState Array)) Aff Unit
-killDownstreamRelay slotId slotRole = do
-  mCurrentSlotState <- gets (Map.lookup "slotState")
-  case mCurrentSlotState of
-    Nothing ->
-      lift $ throwSlowError $ "No slot state"
-    Just {downstreamRelays} -> do
-      lift $ killRelay slotId slotRole downstreamRelays
-
-killRelay :: SlotId -> SlotRole -> Array (JsonLd.StreamRelayStateNode Array) -> Aff Unit
-killRelay slotId slotRole relays =
-  case firstOf (traversed <<< JsonLd._unwrappedNode <<< JsonLd._id <<< _Just) relays of
-      Just id ->
-        let
-          mServerAddress = urlToServerAddress id
-        in
-          case mServerAddress of
-            Just serverAddress -> do
-              _ <- HTTP.killProcessServerAddr (spy "kill" serverAddress) (Chaos.defaultKill $ relayName slotId slotRole)
-              pure unit
-            Nothing ->
-              throwSlowError $ "Failed to parse URL"
-      _ ->
-        throwSlowError $ "No relays or missing id"
-
-relayName slotId role = Chaos.Gproc (Chaos.GprocTuple2 (Chaos.String "StreamRelay") (Chaos.GprocTuple3 (Chaos.Atom "relayKey") (Chaos.SlotId slotId) (Chaos.SlotRole role)))
-
-urlToServerAddress :: Url -> Maybe ServerAddress
-urlToServerAddress url =
-  let
-    parseOptions = { parseUserInfo: pure
-                   , parseHosts: HostPortPair.parser pure pure
-                   , parsePath: pure
-                   , parseHierPath: pure
-                   , parseQuery: pure
-                   , parseFragment: pure
-                   }
-  in
-    case runParser (unwrap url) (URIParser.parser parseOptions) of
-      Right (URI.URI scheme (HierarchicalPartAuth (Authority _userInfo (Just (Both host _port))) _path) _query _fragment) ->
-        Just $ ServerAddress $ URIHost.print host
-      _ ->
-       Nothing
-
-canonicaliseSlotState :: PublicState.SlotState Array -> PublicState.SlotState Array
-canonicaliseSlotState { aggregators
-                      , ingests
-                      , originRelays
-                      , downstreamRelays
-                      , egests } =
-  { aggregators: sortBy byId aggregators
-  , ingests: sortBy byId ingests
-  , originRelays: sortBy byId originRelays
-  , downstreamRelays: sortBy byId downstreamRelays
-  , egests: sortBy byId egests }
-  where
-    byId :: forall a b. JsonLd.Node a b -> JsonLd.Node a b-> Ordering
-    byId (JsonLd.Node {"@id": lhs}) (JsonLd.Node {"@id": rhs}) = compare lhs rhs
-
-excludePorts :: PublicState.SlotState Array -> PublicState.SlotState Array
-excludePorts { aggregators
-             , ingests
-             , originRelays
-             , downstreamRelays
-             , egests } =
-  { aggregators: excludeAggregatorPorts <$> aggregators
-  , ingests: ingests
-  , originRelays: excludeRelayPorts <$> originRelays
-  , downstreamRelays: excludeRelayPorts <$> downstreamRelays
-  , egests: egests }
-  where
-    excludeAggregatorPorts =
-      over (JsonLd._unwrappedNode <<< JsonLd._resource <<< JsonLd._downstreamRelays <<< traversed) clearPort
-    excludeRelayPorts =
-      over (JsonLd._unwrappedNode <<< JsonLd._resource <<< JsonLd._relaysServed <<< traversed) clearPort
-    clearPort  =
-      set (JsonLd._unwrappedNode <<< JsonLd._resource <<< JsonLd._port) 0
-
-storeHeader :: String -> String -> Either String HTTP.ResWithBody -> StateT (Map.Map String String) Aff (Either String HTTP.ResWithBody)
-storeHeader header key either@(Left _) = pure either
-storeHeader header key either@(Right {headers}) = do
-  let
-    value = fromMaybe "unknown" $ Object.lookup header headers
-  _ <- modify (Map.insert key value)
-  pure either
-
-getStateValue :: forall v m k. MonadState (Map.Map k v) m => Ord k => k -> v -> m v
-getStateValue key defaultValue = gets (fromMaybe defaultValue <<< Map.lookup key)
-
-assertStatusCode :: Int -> Either String HTTP.ResWithBody -> Aff (Either String HTTP.ResWithBody)
-assertStatusCode expectedCode either =
-  pure $ either >>= (\rwb ->
-                      if rwb.statusCode == expectedCode
-                      then either
-                      else Left $  "Unexpected statuscode: Expected " <> show expectedCode <> ", got " <> show rwb.statusCode
-                    )
-
-assertHeader :: Tuple String String -> Either String HTTP.ResWithBody -> Aff (Either String HTTP.ResWithBody)
-assertHeader (Tuple header value) either =
-  pure $ either >>= (\rwb@{headers} ->
-                      let
-                        mEqual = Object.lookup header headers
-                                 >>= (\hdrVal -> if hdrVal == value then Just true
-                                                 else Nothing
-                                     )
-
-                      in
-                       if isNothing mEqual
-                       then Left $ "Header " <> header <> ":" <> value <> " not present in response " <> show headers
-                       else either
-                    )
-
-assertBodyText :: String -> Either String M.Response -> Aff (Either String M.Response)
-assertBodyText expected either =
-  case either of
-    Left e -> pure $ Left e
-    Right response -> do
-      text <- M.text response
-      if text == expected
-        then pure either
-        else pure $ Left $ "Body " <> text <> " did not match expected " <> expected
-
-assertBodyFun :: forall a. Show a => ReadForeign a => (a -> Boolean) -> Either String HTTP.ResWithBody -> Aff (Either String HTTP.ResWithBody)
-assertBodyFun pred left@(Left _) = pure left
-assertBodyFun pred (Right rwb) = pure $ (parse rwb) >>= (assertFun'' pred) <#> (const rwb)
-  where
-    parse :: ReadForeign a => HTTP.ResWithBody -> Either String a
-    parse {body} = lmap (jsonError body) $ SimpleJSON.readJSON body
-    jsonError body error = "Could not parse json " <> body <> " due to " <> show error
-
-assertFun :: forall a. Show a => (a -> Boolean) -> Either String a -> Aff (Either String a)
-assertFun pred either =
-  pure $ assertFun' pred either
-
-assertFun' :: forall a. Show a => (a -> Boolean) -> Either String a -> Either String a
-assertFun' pred either =
-  assertFun'' pred =<< either
-
-assertFun'' :: forall a. Show a => (a -> Boolean) -> a -> Either String a
-assertFun'' pred subject =
-  if pred subject
-  then Right subject
-  else Left $ "Predicate failed for content " <> (show subject)
-
-type ToRecord a = Either String HTTP.ResWithBody -> Aff (Either String a)
-bodyToRecord ::  forall a. ReadForeign a => ToRecord a
-bodyToRecord (Left error) = pure $ Left error
-bodyToRecord (Right {body}) =
-  pure $ lmap errorText $ SimpleJSON.readJSON body
-  where
-    errorText error = "Could not parse json " <> body <> " due to " <> show error
-
-
-toIfaceIndexString :: Node -> String
-toIfaceIndexString (Node popNum nodeNum) = show (popNum * 10) <> show nodeNum
-
-mkNode :: String  -> Node -> TestNode
-mkNode sysConfig node = {ifaceIndexString: toIfaceIndexString node, addr: toAddrFromNode node, sysConfig}
-
-
-
 
 
 launch :: Array Node -> Aff Unit
