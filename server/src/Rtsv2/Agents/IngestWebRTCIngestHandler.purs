@@ -78,6 +78,7 @@ publishStream host account username remoteAddress remotePort streamName = do
           let
             ingestKey = makeIngestKey profileName streamDetails
           self <- self
+          -- TODO - if ingest running, this just crashes
           IngestInstanceSup.startIngest ingestKey streamPublish streamDetails remoteAddress remotePort self
           workflowPid <- startWorkflow ingestKey
           pure $ Just {streamDetails, profileName, sourceInfo: sourceInfo ingestKey, workflowPid}

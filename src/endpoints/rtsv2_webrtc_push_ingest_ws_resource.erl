@@ -185,6 +185,28 @@ websocket_info(send_fir, State = #?state_ingesting{trace_id = TraceId}) ->
 websocket_info(send_fir, State) ->
   {ok, State};
 
+websocket_info(#webrtc_session_response{payload = Payload}, State) ->
+
+  case jsx:decode(Payload, [return_maps]) of
+    #{ <<"server_ice_candidate">> :=
+         #{ <<"sdpMLineIndex">> := MediaLineIndex
+          , <<"candidate">> := Candidate
+          }
+     } ->
+      { [ json_frame( <<"ice.candidate">>,
+                      #{ <<"index">> => MediaLineIndex
+                       , <<"candidate">> => Candidate
+                       }
+                    ) ]
+      , State
+      };
+
+    Other ->
+      ?INFO("HERE ~p", [Other]),
+      { []
+      , State
+      }
+  end;
 
 websocket_info({'DOWN', Ref, process, _Pid, _Reason}, State = #?state_ingesting{webrtc_session_ref = RTCSessionRef})
   when RTCSessionRef =:= Ref ->
@@ -268,6 +290,7 @@ handle_start_ingest(#{ }, State = #?state_authenticated{ trace_id = TraceId
                                             rtsv2_webrtc_push_ingest_handler,
                                             [ SlotId, SlotRole, ProfileName ]
                                            ),
+      webrtc_session:subscribe_for_msgs(TraceId, [#webrtc_session_response{}]),
 
       %% Make sure we go away if/when the RTC session
       %% goes down
@@ -337,7 +360,7 @@ handle_ping(State) ->
 handle_sdp_offer(#{ <<"offer">> := SDP }, #?state_ingesting{ trace_id = TraceId } = State) ->
   case webrtc_session:handle_client_offer(TraceId, SDP) of
     {ok, ResponseSDP} ->
-      ?LOG_DEBUG(#{ what => "negotiation.offer-received", result => "ok", context => #{ offer => SDP } }),
+      ?LOG_DEBUG(#{ what => "negotiation.offer-received", result => "ok", context => #{ offer => SDP, response => ResponseSDP } }),
       { [ json_frame( <<"sdp.offer-response">>, #{ <<"response">> => ResponseSDP } ) ]
       , State
       };
