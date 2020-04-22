@@ -145,7 +145,7 @@ process_input(Input = #frame{source_metadata = #source_metadata{source_id = Id,
                                                         }) ->
 
   Key = {Id, Instance},
-?INFO("INPUT ~p, ~p", [{Input#frame.stream_metadata#stream_metadata.stream_id, Id, Instance}, Dts]),
+
   case maps:get(Key, Streams, undefined) of
     undefined ->
       %% We should also check if there's an entry for Id with an old instance (which could also be the reference - if the reference dies,
@@ -203,7 +203,7 @@ process_input(Input = #frame{source_metadata = #source_metadata{source_id = Id,
 
       Output = Input#frame{pts = Pts + Delta,
                            dts = Dts + Delta},
-?INFO("OUT ~p ~p", [Input#frame.stream_metadata#stream_metadata.stream_id, Dts + Delta]),
+
       State2 = case FrameMetadata of
                  #video_frame_metadata{is_idr_frame = true} ->
                    StreamState2 = StreamState#active_stream_state{last_iframe_utc = CaptureUs,

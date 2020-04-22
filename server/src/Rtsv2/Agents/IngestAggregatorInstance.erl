@@ -188,17 +188,7 @@ startWorkflow(SlotId, SlotRole, Profiles) ->
                                                                         display_name = <<"Audio Transcode">>,
                                                                         subscribes_to = {outside_world, ?audio_frames},
                                                                         module = audio_transcode,
-                                                                        config = #audio_transcode_config{
-                                                                                    outputs = [
-                                                                                               #named_output{ profile_name = opus
-                                                                                                            , frame_spec = #frame_spec{
-                                                                                                                              profile = #audio_profile{
-                                                                                                                                           codec = opus
-                                                                                                                                           }
-                                                                                                                             }
-                                                                                                            }
-                                                                                              ]
-                                                                                   }
+                                                                        config = AudioConfig
                                                                        },
 
                                                              %% #processor{name = audio_decode,
