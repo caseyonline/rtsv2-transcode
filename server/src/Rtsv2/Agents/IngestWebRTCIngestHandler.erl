@@ -8,16 +8,13 @@
 -include_lib("id3as_media/include/send_to_bus_processor.hrl").
 -include_lib("id3as_avp/include/avp_ingest_source_details_extractor.hrl").
 
--export([ startWorkflowImpl/2
+-export([ startWorkflowImpl/1
         ]).
 
-startWorkflowImpl(IngestKey, SourceInfoFn) ->
+startWorkflowImpl(IngestKey) ->
   fun() ->
-      {ok, _WorkflowPid} = start_workflow(IngestKey),
-
-      %% Stream is now connected - we block in here, when we return the rtmp_server instance will close
-%%      workflow_loop(SourceInfoFn)
-        ok
+      {ok, WorkflowPid} = start_workflow(IngestKey),
+      WorkflowPid
   end.
 
 %%------------------------------------------------------------------------------
@@ -108,19 +105,3 @@ start_workflow(Key = {ingestKey, SlotId, SlotRole, ProfileName}) ->
   {ok, WorkflowPid} = id3as_workflow:start_link(Workflow),
 
   {ok, WorkflowPid}.
-
-workflow_loop(SourceInfoFn) ->
-  %% the workflow is dealing with the RTMP, so just wait until it says we are done
-  receive
-    #workflow_output{message = #no_active_generators_msg{}} ->
-      ?SLOG_WARNING("Client exited"),
-      ok;
-
-    #workflow_output{message = #workflow_data_msg{data = SourceInfo = #source_info{}}} ->
-      unit = (SourceInfoFn(SourceInfo))(),
-      workflow_loop(SourceInfoFn);
-
-    Other ->
-      ?SLOG_WARNING("Unexpected workflow output", #{output => Other}),
-      workflow_loop(SourceInfoFn)
-  end.

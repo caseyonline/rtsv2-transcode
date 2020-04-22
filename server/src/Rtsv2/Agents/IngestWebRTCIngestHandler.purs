@@ -1,6 +1,7 @@
 module Rtsv2.Agents.IngestWebRTCIngestHandler
        (
-         publishStream
+         authenticate
+       , publishStream
        , stopStream
        )
        where
@@ -14,9 +15,10 @@ import Data.Newtype (wrap)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
+import Erl.Process.Raw (Pid)
 import Erl.Utils (self)
 import Foreign (Foreign)
-import Logger (Logger)
+import Logger (Logger, spy)
 import Logger as Logger
 import Media.SourceDetails as SourceDetails
 import Rtsv2.Agents.IngestInstance as IngestInstance
@@ -28,13 +30,27 @@ import Shared.Stream (IngestKey(..), ProfileName, RtmpStreamName(..))
 import SpudGun (JsonResponseError, bodyToJSON)
 import SpudGun as SpudGun
 
-foreign import startWorkflowImpl :: IngestKey -> (Foreign -> (Effect Unit)) -> Effect Unit
+foreign import startWorkflowImpl :: IngestKey -> Effect Pid
 
-publishStream :: String -> String -> String -> String -> String -> Int -> String -> Effect (Maybe { streamDetails :: StreamDetails
-                                                                                                  , profileName :: ProfileName
-                                                                                                  , sourceInfo :: Foreign -> Effect Unit
-                                                                                                  } )
-publishStream host account username password remoteAddress remotePort streamName = do
+authenticate :: String -> String -> String -> String -> Effect (Maybe Unit)
+authenticate host account username password = do
+  maybePublishCredentials <- getPublishCredentials host account username
+
+  case maybePublishCredentials of
+    Just (PublishCredentials { username: expectedUsername
+                             , password: expectedPassword})
+      | expectedUsername == username
+        , expectedPassword == password -> do
+        pure $ Just unit
+    _ ->
+      pure Nothing
+
+publishStream :: String -> String -> String -> String -> Int -> String -> Effect (Maybe { streamDetails :: StreamDetails
+                                                                                        , profileName :: ProfileName
+                                                                                        , sourceInfo :: Foreign -> Effect Unit
+                                                                                        , workflowPid :: Pid
+                                                                                        } )
+publishStream host account username remoteAddress remotePort streamName = do
   let
     rtmpShortName = wrap account
     rtmpStreamName = wrap streamName
@@ -44,38 +60,27 @@ publishStream host account username password remoteAddress remotePort streamName
                          , rtmpStreamName
                          , username
                          }
-  maybePublishCredentials <- getPublishCredentials host account username
+  maybeStreamDetails <- getStreamDetails streamPublish
 
-  case maybePublishCredentials of
-    Just (PublishCredentials { username: expectedUsername
-                             , password: expectedPassword})
-      | expectedUsername == username
-        , expectedPassword == password -> do
+  case maybeStreamDetails of
+    Left error -> do
+      _ <- logInfo "StreamPublish rejected" {reason: error}
+      pure Nothing
 
-      maybeStreamDetails <- getStreamDetails streamPublish
-
-      case maybeStreamDetails of
-        Left error -> do
-          _ <- logInfo "StreamPublish rejected" {reason: error}
+    Right streamDetails -> do
+      case findProfile streamDetails of
+        Nothing -> do
+          _ <- logInfo "StreamProfile not found" { streamDetails
+                                                 , streamName }
           pure Nothing
 
-        Right streamDetails -> do
-          case findProfile streamDetails of
-            Nothing -> do
-              _ <- logInfo "StreamProfile not found" { streamDetails
-                                                     , streamName }
-              pure Nothing
-
-            Just (SlotProfile { name: profileName }) -> do
-              let
-                ingestKey = makeIngestKey profileName streamDetails
-              self <- self
-              IngestInstanceSup.startIngest ingestKey streamPublish streamDetails remoteAddress remotePort self
-              startWorkflow ingestKey
-              pure $ Just {streamDetails, profileName, sourceInfo: sourceInfo ingestKey}
-    _ -> do
-      _ <- logInfo "getPublishCredentials failed" {}
-      pure Nothing
+        Just (SlotProfile { name: profileName }) -> do
+          let
+            ingestKey = makeIngestKey profileName streamDetails
+          self <- self
+          IngestInstanceSup.startIngest ingestKey streamPublish streamDetails remoteAddress remotePort self
+          workflowPid <- startWorkflow ingestKey
+          pure $ Just {streamDetails, profileName, sourceInfo: sourceInfo ingestKey, workflowPid}
   where
     findProfile streamDetails@{ slot: { profiles } } =
       find (\ (SlotProfile { rtmpStreamName: RtmpStreamName profileStreamName }) -> profileStreamName == streamName) profiles
@@ -86,10 +91,9 @@ publishStream host account username password remoteAddress remotePort streamName
     sourceInfo ingestKey foreignSourceInfo = do
       IngestInstance.setSourceInfo ingestKey (SourceDetails.foreignToSourceInfo foreignSourceInfo)
 
-
--- TODO - monitor or something?
 stopStream :: IngestKey -> Effect Unit
 stopStream ingestKey =
+  -- workflow is still running, we need to stop it - can return it from publishStream and have it passed into stopStream
   IngestInstance.stopIngest ingestKey
 
 getPublishCredentials :: String -> String -> String -> Effect (Maybe PublishCredentials)
@@ -112,9 +116,6 @@ domain = atom <$> (show Agent.Ingest : "Instance" : nil)
 logInfo :: forall a. Logger (Record a)
 logInfo = Logger.doLog domain Logger.info
 
-startWorkflow :: IngestKey -> Effect Unit
+startWorkflow :: IngestKey -> Effect Pid
 startWorkflow ingestKey =
-  startWorkflowImpl ingestKey sourceInfo
-  where
-    sourceInfo foreignSourceInfo = do
-      IngestInstance.setSourceInfo ingestKey (SourceDetails.foreignToSourceInfo foreignSourceInfo)
+  startWorkflowImpl ingestKey

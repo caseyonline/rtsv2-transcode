@@ -5,7 +5,7 @@ module Rtsv2.Web
 
 import Prelude
 
-import Data.Function.Uncurried (mkFn2, mkFn6)
+import Data.Function.Uncurried (mkFn2, mkFn3, mkFn5)
 import Data.Maybe (fromMaybe)
 import Data.Newtype (unwrap, wrap)
 import Effect (Effect)
@@ -44,6 +44,7 @@ import Rtsv2.Handler.TransPoP as TransPoPHandler
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Serf (Ip(..))
+import Shared.LlnwApiTypes (StreamDetails)
 import Shared.Router.Endpoint (Canary)
 import Shared.Router.Endpoint as Router
 import Shared.Stream (EgestKey(..), IngestKey(..), ProfileName, SlotId, SlotIdAndProfileName(..), SlotRole(..))
@@ -79,9 +80,9 @@ init args = do
         , "ClientPlayerJsE"                             : \(_ :: Canary) (_ :: SlotId) (_ :: SlotRole) -> PrivDir "rtsv2" "www/assets/js"
         , "ClientPlayerControlE"                        : CowboyRoutePlaceholder
 
-        , "ClientWebRTCIngestE"                         : CowboyRoutePlaceholder
-        , "ClientWebRTCIngestFeedE"                     : \(_ :: Canary) (_ :: String) (_ :: String) -> PrivFile "rtsv2" "www/webrtc-ingest/feed.html"
-        , "ClientWebRTCIngestFeedJsE"                   : \(_ :: Canary) (_ :: String) (_ :: String) -> PrivDir "rtsv2" "www/webrtc-ingest/files"
+        , "ClientWebRTCIngestE"                         : \(_ :: Canary) (_ :: String) (_ :: String) -> PrivFile "rtsv2" "www/referenceIngest.html"
+        , "ClientWebRTCIngestAssetsE"                   : \(_ :: Canary) (_ :: String) (_ :: String) -> PrivDir "rtsv2" "www/assets"
+        , "ClientWebRTCIngestControlE"                  : CowboyRoutePlaceholder
 
         -- Support
         , "VMMetricsE"                                  : HealthHandler.vmMetrics
@@ -181,10 +182,13 @@ init args = do
                    "llwp_stream_resource"
                    ((unsafeToForeign) makeSlotIdAndProfileName)
 
-      -- ClientWebRTCIngestE SlotId SlotRole
-      : cowboyRoute ("/public/" <> canaryBinding <> "/ingest/" <> accountBinding <> "/" <> streamNameBinding <> "/control")
+      -- ClientWebRTCIngestContorlE SlotId SlotRole
+      : cowboyRoute ("/public/" <> canaryBinding <> "/ingest/" <> accountBinding <> "/" <> streamNameBinding <> "/session")
                     "rtsv2_webrtc_push_ingest_ws_resource"
-                    (unsafeToForeign { publish_stream: mkFn6 $ IngestWebRTCIngestHandler.publishStream (unwrap $ extractAddress thisServer)
+                    (unsafeToForeign { authenticate: mkFn3 $ IngestWebRTCIngestHandler.authenticate (unwrap $ extractAddress thisServer)
+                                     , publish_stream: mkFn5 $ IngestWebRTCIngestHandler.publishStream (unwrap $ extractAddress thisServer)
+                                     , make_ingest_key: mkFn2 makeIngestKey2
+                                     , stop_stream: IngestWebRTCIngestHandler.stopStream
                                      })
 
       --workflows
@@ -212,6 +216,10 @@ init args = do
 
     makeSlotIdAndProfileName :: String -> String -> SlotIdAndProfileName
     makeSlotIdAndProfileName slotId profileName = SlotIdAndProfileName (slotIdStringToSlotId slotId) (wrap profileName)
+
+    makeIngestKey2 :: StreamDetails -> ProfileName -> IngestKey
+    makeIngestKey2 { slot : { id }, role } profileName =
+      IngestKey id role profileName
 
     makeEgestKey :: UUID -> String -> EgestKey
     makeEgestKey slotId slotRole =

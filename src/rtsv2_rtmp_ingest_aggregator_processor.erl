@@ -48,18 +48,19 @@ process_input({ingest_stopped, _}, State = #?state{streams = undefined}) ->
   %% Ingest stopped before we saw any frames
   {ok, State};
 
-process_input({ingest_stopped, Id}, State = #?state{reference_stream = ReferenceStream,
-                                                    streams = Streams,
-                                                    pending_program_details = PendingProgramDetails}) ->
+process_input({ingest_stopped, Id = {ingestKey, _SlotId, _SlotRole, ProfileName}},
+              State = #?state{reference_stream = ReferenceStream,
+                              streams = Streams,
+                              pending_program_details = PendingProgramDetails}) ->
 
   ?SLOG_INFO("Ingest stopped", #{stream => Id}),
 
-  NewStreams = maps:filter(fun({Key, _Ref}, _) -> Key /= Id end, Streams),
+  NewStreams = maps:filter(fun({Key, _Ref}, _) -> Key /= ProfileName end, Streams),
 
-  PendingProgramDetails2 = maps:filter(fun(Key, _Frame) -> Key /= Id end, PendingProgramDetails),
+  PendingProgramDetails2 = maps:filter(fun(Key, _Frame) -> Key /= ProfileName end, PendingProgramDetails),
 
   case ReferenceStream of
-    {Id, _} ->
+    {ProfileName, _} ->
       case maps:fold(fun(Key, #active_stream_state{last_iframe_utc = LastIFrame}, undefined) ->
                          {LastIFrame, Key};
                         (Key, #active_stream_state{last_iframe_utc = LastIFrame}, Acc = {CandidateLastIFrame, _CandidateKey}) ->
@@ -99,10 +100,13 @@ process_input(Input = #frame{source_metadata = #source_metadata{source_id = Id,
 
   %% No reference - this stream is the new reference and no timestamp delta needed
   Key = {Id, Instance},
+  Now = ?now_ms * 90,
+  Delta = Now - Dts,
 
-  ?SLOG_INFO("Stream selected as reference", #{stream => Id}),
+  ?SLOG_INFO("Stream selected as reference", #{ stream => Id
+                                              , delta => Delta}),
 
-  StreamState = #active_stream_state{delta = 0,
+  StreamState = #active_stream_state{delta = Delta,
                                      last_iframe_utc = CaptureUs,
                                      last_iframe_dts = Dts},
 
@@ -141,7 +145,7 @@ process_input(Input = #frame{source_metadata = #source_metadata{source_id = Id,
                                                         }) ->
 
   Key = {Id, Instance},
-
+?INFO("INPUT ~p, ~p", [{Input#frame.stream_metadata#stream_metadata.stream_id, Id, Instance}, Dts]),
   case maps:get(Key, Streams, undefined) of
     undefined ->
       %% We should also check if there's an entry for Id with an old instance (which could also be the reference - if the reference dies,
@@ -183,7 +187,6 @@ process_input(Input = #frame{source_metadata = #source_metadata{source_id = Id,
                        [ProgramDetails#frame{dts = DeltadFrame#frame.dts,
                                              pts = DeltadFrame#frame.dts}, DeltadFrame]
                    end,
-
           {ok, Output, State2#?state{pending_program_details = maps:remove(Id, PendingProgramDetails)}};
 
         _ ->
@@ -200,7 +203,7 @@ process_input(Input = #frame{source_metadata = #source_metadata{source_id = Id,
 
       Output = Input#frame{pts = Pts + Delta,
                            dts = Dts + Delta},
-
+?INFO("OUT ~p ~p", [Input#frame.stream_metadata#stream_metadata.stream_id, Dts + Delta]),
       State2 = case FrameMetadata of
                  #video_frame_metadata{is_idr_frame = true} ->
                    StreamState2 = StreamState#active_stream_state{last_iframe_utc = CaptureUs,

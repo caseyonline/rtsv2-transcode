@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <!-- Required meta tags -->
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title>LLNW Ingest Reference</title>
+    <link href=data:, rel=icon">
+    <link rel="stylesheet" type="text/css" href="css/bootstrap.min.css">
+    <style>
+      body
+      {
+        padding-top: 60px;
+      }
+      @media (max-width: 980px)
+      {
+        body
+        {
+          padding-top: 0;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="row">
+        <div class="col-sm">
+          <form>
+            <div class="form-group">
+              <label for="username">Username</label>
+              <input type="text" class="form-control" id="username" value="user"></input>
+            </div>
+            <div class="form-group">
+              <label for="password">Password</label>
+              <input type="password" class="form-control" id="password" value="password"></input>
+            </div>
+            <button id="authenticate" type="button" class="btn btn-primary" disabled>Authenticate</button>
+            <button id="start-ingest" type="button" class="btn btn-primary" disabled>Start Ingest</button>
+            <button id="stop-ingest" type="button" class="btn btn-primary" disabled>Stop Ingest</button>
+          </form>
+          <video id="llnw-rts-ingest" controls muted width="80%" class="mt-1"></video>
+        </div>
+        <div class="col-sm">
+          <div class="card">
+            <div class="card-body">
+              <h5 class="card-title">Microphone</h5>
+              <p class="card-text" id="microphone"></p>
+              <p class="card-text"><span id="sampleRate"></span></p>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-body">
+              <h5 class="card-title">Camera</h5>
+              <p class="card-text" id="camera"></p>
+              <p class="card-text"><span id="resolution"></span></p>
+            </div>
+          </div>
+        </div>
+        <div class="col-sm">
+          <ul class="list-group">
+            <li class="list-group-item">Bytes sent: <span id="bytesSent"></span></li>
+            <li class="list-group-item">Frames: <span id="frames"></span></li>
+            <li class="list-group-item">Key Frames: <span id="keyFrames"></span></li>
+            <li class="list-group-item">Packets: <span id="packets"></span></li>
+            <li class="list-group-item">PLI: <span id="pli"></span></li>
+            <li class="list-group-item">Send Delay: <span id="sendDelay"></span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <script src="js/llnwrts-ingest-sdk-2.0.0.js"></script>
+    <script src="/support/assets/js/jquery-3.4.1.slim.min.js"></script>
+    <script src="/support/assets/js/bootstrap.bundle.min.js"></script>
+    <script>
+      (function() {
+        const pathname = window.location.pathname;
+        const parent = pathname.substring(1, pathname.lastIndexOf("/"));
+
+        var config = {
+          account: "mmddev001",
+          streamName: "slot1_1000",
+          username: "user",
+          password: "password",
+          overrides: {
+            socketAuthority: window.location.host,
+            socketSecure: window.location.protocol === "https:",
+            socketPath: parent + "/session",
+          }
+        };
+
+        var ingest = LimelightIngestSDK.createIngest(config);
+
+        ingest.on("connected", (event) => {
+          $("#authenticate").prop("disabled", false);
+        });
+
+        ingest.on("authenticated", (event) => {
+          $("#authenticate").prop("disabled", true);
+          $("#start-ingest").prop("disabled", false);
+        });
+
+        ingest.on("ingest-active", () => {
+          $("#stop-ingest").prop("disabled", false);
+        });
+
+        ingest.on("ingest-stopped", () => {
+          $("#start-ingest").prop("disabled", false);
+          $("#camera").html("");
+          $("#microphone").html("");
+          $("#frames").html("");
+          $("#keyFrames").html("");
+          $("#packets").html("");
+          $("#pli").html("");
+          $("#sendDelay").html("");
+          $("#bytesSent").html("");
+          $("#resolution").html("");
+        });
+
+        ingest.on("ingest-video-stats", (stats) => {
+          for (let stat of stats.values()) {
+            switch (stat.type) {
+              case "codec":
+                {
+                  $("sampleRate").html(stat.clockRate + "kHz");
+                }
+                break;
+            }
+            //console.log("audio", stat);
+          }
+        });
+
+        ingest.on("ingest-video-stats", (stats) => {
+          for (let stat of stats.values()) {
+            switch (stat.type) {
+              case "outbound-rtp":
+                {
+                  $("#frames").html(stat.framesEncoded);
+                  $("#keyFrames").html(stat.keyFramesEncoded);
+                  $("#packets").html(stat.packetsSent);
+                  $("#pli").html(stat.pliCount);
+                  $("#sendDelay").html(stat.totalPacketSendDelay);
+                }
+                break;
+              case "transport":
+                {
+                  $("#bytesSent").html(stat.bytesSent);
+                }
+                break;
+              case "media-source":
+                {
+                  $("#resolution").html(stat.width + "x" + stat.height + ", " + stat.framesPerSecond + "fps");
+                }
+                break;
+            }
+            //console.log("video", stat);
+          }
+        });
+
+        $("#authenticate").on("click", (event) => {
+          ingest.authenticate($("#username").val(), $("#password").val());
+        })
+
+        $("#start-ingest").on("click", (evvent) => {
+          $("#start-ingest").prop("disabled", true);
+          navigator.mediaDevices.getUserMedia({audio: true, video: true})
+                   .then((stream) => {
+                     stream.getTracks().forEach((track) => {
+                       if (track.kind == "video") {
+                         $("#camera").html(track.label);
+                       }
+                       else if (track.kind == "audio") {
+                         $("#microphone").html(track.label);
+                       }
+                     });
+                     ingest.startIngest(stream)
+                   })
+                   .catch((error) => {
+                     $("#start-ingest").prop("disabled", false);
+                     console.log("userMediaFailed", error);
+                   });
+        })
+
+        $("#stop-ingest").on("click", (evvent) => {
+          $("#stop-ingest").prop("disabled", true);
+          ingest.stopIngest();
+        })
+
+        window.ingest = ingest;
+      })();
+    </script>
+  </body>
+</html>
