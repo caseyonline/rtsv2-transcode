@@ -10,12 +10,15 @@ import Helpers.Types (Node(..), NodeAddress(..), PoPInfo)
 import Shared.Router.Endpoint (Endpoint(..), makeUrl, makeUrlAddr)
 import Shared.Types (ServerAddress(..))
 
--- | Node
+-------------------------------------------------------------------------------
+-- Node
+-------------------------------------------------------------------------------
 toAddrFromNode :: Node -> String
 toAddrFromNode (Node popNum nodeNum) = "172.16." <> show (popNum + 168) <> "." <> show nodeNum
 
-
--- | PoP
+-------------------------------------------------------------------------------
+-- PoP
+-------------------------------------------------------------------------------
 mkPoPJsonString :: Array Node -> String
 mkPoPJsonString nodes =
   let
@@ -63,7 +66,9 @@ mkPoPJsonString nodes =
 
 
 
--- | URLs
+-------------------------------------------------------------------------------
+-- Url
+-------------------------------------------------------------------------------
 mkServerAddress :: Node -> NodeAddress
 mkServerAddress node = NodeAddress {address: ServerAddress $ toAddrFromNode node}
 

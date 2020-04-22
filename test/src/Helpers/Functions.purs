@@ -4,7 +4,7 @@ import Prelude
 
 import Control.Monad.State (StateT, lift)
 import Control.Monad.State.Class (class MonadState, gets, modify)
-import Data.Array (sortBy)
+import Data.Array (sortBy, delete)
 import Data.Bifunctor (lmap)
 import Data.Either (Either(..))
 import Data.Lens (_Just, firstOf, over, set, traversed)
@@ -17,14 +17,15 @@ import Data.Traversable (traverse, traverse_)
 import Debug.Trace (spy)
 import Effect.Aff (Aff, delay)
 import Foreign.Object as Object
+import Helpers.Assert as A
 import Helpers.CreateString (mkPoPJsonString, toAddrFromNode, toIfaceIndexString)
 import Helpers.Env (sessionName)
 import Helpers.HTTP as HTTP
-import Helpers.Log (throwSlowError)
+import Helpers.Log (throwSlowError, as)
+import Helpers.OsCmd (runProc)
 import Helpers.Types (Node, PoPInfo, ResWithBody, TestNode, ToRecord)
 import Node.Encoding (Encoding(..))
 import Node.FS.Aff (writeTextFile)
-import Helpers.OsCmd (runProc)
 import Partial.Unsafe (unsafePartial)
 import Shared.Chaos as Chaos
 import Shared.Common (Url)
@@ -65,8 +66,9 @@ launch' nodesToStart sysconfig = do
                       [ tn.addr
                       ]) nodes
 
-
--- | Node
+-------------------------------------------------------------------------------
+-- Node
+-------------------------------------------------------------------------------
 mkNode :: String  -> Node -> TestNode
 mkNode sysConfig node =
   {ifaceIndexString: toIfaceIndexString node, addr: toAddrFromNode node, sysConfig}
@@ -90,7 +92,9 @@ stopSession = do
   _ <- delay (Milliseconds 200.0)
   runProc "./scripts/stopSession.sh" [sessionName]
 
--- | Relay
+-------------------------------------------------------------------------------
+-- Relay
+-------------------------------------------------------------------------------
 killOriginRelay :: SlotId -> SlotRole -> StateT (Map.Map String (PublicState.SlotState Array)) Aff Unit
 killOriginRelay slotId slotRole = do
   mCurrentSlotState <- gets (Map.lookup "slotState")
@@ -135,13 +139,15 @@ relayName slotId role =
                    (Chaos.SlotRole role)))
 
 
-
--- | PoP
+-------------------------------------------------------------------------------
+-- PoP
+-------------------------------------------------------------------------------
 makePoPInfo :: String -> Int -> PoPInfo
 makePoPInfo n i = {name: n, number: i, x: 0.0, y: 0.0}
 
-
--- | Slot
+-------------------------------------------------------------------------------
+-- Slot
+-------------------------------------------------------------------------------
 storeSlotState either@(Left _) = pure either
 storeSlotState either@(Right slotState) = do
   _ <- modify (Map.insert "slotState" slotState)
@@ -181,8 +187,9 @@ excludePorts { aggregators
     clearPort  =
       set (JsonLd._unwrappedNode <<< JsonLd._resource <<< JsonLd._port) 0
 
-
--- | Others
+-------------------------------------------------------------------------------
+-- Others
+-------------------------------------------------------------------------------
 urlToServerAddress :: Url -> Maybe ServerAddress
 urlToServerAddress url =
   let
@@ -233,3 +240,12 @@ forceGetState node =
                     <$> (jsonToType' :: ResWithBody -> Either String (PublicState.IntraPoP Array))
                     <$> forceRight
                     <$> HTTP.getIntraPoPState node
+
+allNodesBar :: Node -> Array Node -> Array Node
+allNodesBar node nodes = delete node nodes
+
+maxOut :: Node -> Aff Unit
+maxOut server = HTTP.setLoad server 60.0 >>= A.assertStatusCode 204 >>= as ("set load on " <> toAddrFromNode server)
+
+aggregatorNotPresent :: SlotId -> Node -> Aff Unit
+aggregatorNotPresent slot server = HTTP.getAggregatorStats server slot >>= A.assertStatusCode 404 >>= as ("aggregator not on " <> toAddrFromNode server)
