@@ -9,7 +9,7 @@ module.exports = env => {
   if (!env) {
     env = {
       outName: "llnwrts-ingest-sdk-2.0.0.js",
-      buildDir: path.resolve(__dirname, "../priv/www/assets/js"),
+      buildDir: path.resolve(__dirname, "../../priv/www/assets/js"),
     }
   }
 

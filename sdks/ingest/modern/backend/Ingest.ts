@@ -1,6 +1,7 @@
-import { StreamIngestProtocol } from "../backend/signaling/types";
-import { IIngest, IConnectedEventData } from "../frontend/IIngest";
-import EventEmitter from "./util/EventEmitter.ts";
+import { StreamIngestProtocol } from "../../../shared/llnw-types.ts"
+import { IIngest } from "../frontend/IIngest";
+import { IConnectedEventData } from "../backend/ISession";
+import EventEmitter from "../../../shared/util/EventEmitter.ts";
 
 import { ISession } from "./ISession";
 import Session from "./Session";

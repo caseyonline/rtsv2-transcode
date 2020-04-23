@@ -1,24 +1,3 @@
-// TODO - duplicated with player
-
-export const enum StreamIngestProtocol {
-  webrtc = "webrtc",
-  rtmp = "rtmp"
-}
-
-/** Details used to connect to an ingest. */
-export interface IngestDetails {
-
-  /** A list of STUN/TURN servers to provide to the WebRTC infrastructure. */
-  readonly iceServers: ICEServerDetails[];
-}
-
-/** Details of a STUN/ICE server to be used with WebRTC. */
-export interface ICEServerDetails {
-  readonly url: string;
-  readonly username?: string;
-  readonly credential?: string;
-}
-
 /** Top level data object type. */
 export interface DataObject {
   readonly version: number;

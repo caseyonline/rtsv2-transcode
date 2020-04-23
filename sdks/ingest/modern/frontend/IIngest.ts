@@ -1,7 +1,10 @@
-import { IConnectedEventData, IAuthenticatedEventData } from "../frontend/IIngest";
-import { StreamIngestProtocol } from "./signaling/types";
+import { StreamIngestProtocol } from "../../../shared/llnw-types";
 
-export interface ISession {
+import { IConnectedEventData, IAuthenticatedEventData } from "../backend/ISession";
+
+/** Provides the API surface of an ingest object. */
+export interface IIngest {
+
   /** Authenticate with the server
    */
   authenticate(username: string, password: string, protocol: StreamIngestProtocol);
@@ -34,7 +37,7 @@ export interface ISession {
    */
   on(event: "ingest-stopped", handler: () => void);
 
-  /** Attaches to the reset event.  This event is emitted upon session
+  /** Attaches to the reset event.  This event is emitted upon ingest
    * reset
    */
   on(event: "reset", handler: () => void);

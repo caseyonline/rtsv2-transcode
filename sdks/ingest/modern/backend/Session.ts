@@ -1,12 +1,16 @@
-import { IConnectedEventData, IAuthenticatedEventData } from "../frontend/IIngest"
-import { ISession } from "./ISession";
-import EventEmitter from "./util/EventEmitter.ts";
-import { WebSocketProtocolStatusCode } from "./util/WebSocketUtil.ts";
+import { ISession
+         , IConnectedEventData
+         , IAuthenticatedEventData} from "./ISession";
+
+import EventEmitter from "../../../shared/util/EventEmitter.ts";
+
+import { WebSocketProtocolStatusCode } from "../../../shared/util/WebSocketUtil.ts";
 
 import { IngestDetails
-         , MessageDestination
-         , DataObjectUpdateOperation
-         , StreamIngestProtocol} from "./signaling/types.ts";
+         , StreamIngestProtocol } from "../../../shared/llnw-types.ts"
+
+import { MessageDestination
+         , DataObjectUpdateOperation } from "../../../shared/data-object-types.ts";
 
 import * as ClientMessages from "./signaling/clientMessages.ts";
 import * as ServerMessages from "./signaling/serverMessages.ts";

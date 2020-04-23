@@ -1,6 +1,12 @@
-import { IngestDetails
-         , DataObjectUpdateResponse
-         , DataObject } from "./types";
+import { IngestDetails } from "../../../../shared/llnw-types"
+
+import { SDPOfferResponseMessage
+         , ICECandidateMessage } from "../../../../shared/rtc-server-messages"
+
+import { DataObjectReceiveMessage
+         , DataObjectUpdateResponseMessage
+         , DataObjectBroadcastMessage
+       } from "../../../../shared/data-object-server-messages";
 
 export type Message
   = InitMessage
@@ -57,25 +63,6 @@ export interface PongMessage {
   readonly type: "pong";
 }
 
-/** The response to an SDP offer sent from the client. */
-export interface SDPOfferResponseMessage {
-  readonly type: "sdp.offer-response";
-
-  /** The SDP which describes the response from the server to the client's offer. */
-  readonly response: string;
-}
-
-/**  A candidate from the WebRTC implementation on the server for the client to use in its ICE process. */
-export interface ICECandidateMessage {
-  readonly type: "ice.candidate";
-
-  /** The candidate line. */
-  readonly candidate: string;
-
-  /** The media line index to which the candidate applies. */
-  readonly index: number;
-}
-
 /**  An on-fi message originating from the source ingest. */
 export interface OnFIMessage {
   readonly type: "on-fi";
@@ -85,34 +72,4 @@ export interface OnFIMessage {
 
   /** The corresponding video timestamp. */
   readonly pts: number;
-}
-
-/** Receive a message from the DataObject subsystem. */
-export interface DataObjectReceiveMessage {
-  readonly type: "dataobject.message";
-
-  /** The message sended **/
-  readonly sender: string
-
-  /** The message **/
-  readonly msg: string
-}
-
-/** Receive a response to a previous update. */
-export interface DataObjectUpdateResponseMessage {
-  readonly type: "dataobject.update-response";
-
-  /** An opaque reference as sent on the request. */
-  readonly senderRef: string;
-
-  /** The response code. */
-  readonly response: DataObjectUpdateResponse;
-}
-
-/** Receive the latest DataObject. */
-export interface DataObjectBroadcastMessage {
-  readonly type: "dataobject.broadcast";
-
-  /** The DataObject. */
-  readonly object: DataObject;
 }
