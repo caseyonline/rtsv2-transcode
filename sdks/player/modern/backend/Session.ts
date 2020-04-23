@@ -63,6 +63,21 @@ export default class Session extends EventEmitter implements ISession {
     this.socket.onmessage = (event) => this.handleSocketMessage(event);
   }
 
+  stop() {
+    this.socket.onopen = null;
+    this.socket.onclose = null;
+    this.socket.onerror = null;
+    this.socket.onmessage = null;
+    this.peer.onicecandidate = null;
+    this.peer.onicegatheringstatechange = null;
+    this.peer.oniceconnectionstatechange = null;
+    this.peer.onconnectionstatechange = null;
+    this.peer.onsignalingstatechange = null;
+    this.peer.ontrack = null;
+    this.socket.close();
+    this.peer.close();
+  }
+
   pingSocket() {
     if (this.state === SessionState.Opening) {
       return;
@@ -286,6 +301,15 @@ export default class Session extends EventEmitter implements ISession {
       });
   }
 
+  reportStats() {
+    if (this.state == SessionState.Negotiating) {
+      this.peer.getReceivers().forEach((receiver) => receiver.getStats().then((stats) => {
+        this.emit("playback-" + receiver.track.kind + "-stats", stats);
+      }))
+      setTimeout(() => { this.reportStats() }, 1000);
+    }
+  }
+
   requestMigrate(socketURL: string) {
     console.debug(`Attempting migration to ${socketURL}`);
     this.socketURL = socketURL;
@@ -383,6 +407,14 @@ export default class Session extends EventEmitter implements ISession {
 
   handlePeerConnectionStateChange(event) {
     console.debug(`Connection State changed to ${event.target.connectionState}`);
+    switch (event.target.connectionState) {
+      case "connected":
+        {
+          setTimeout(() => { this.reportStats() }, 1000);
+          this.emit("playback-active", {});
+        }
+        break;
+    }
   }
 
   handlePeerSignalingStateChange(event) {

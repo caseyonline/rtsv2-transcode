@@ -77,7 +77,7 @@ init args = do
         {
         -- Public
           "ClientPlayerE"                               : \(_ :: Canary) (_ :: SlotId) (_ :: SlotRole) -> PrivFile "rtsv2" "www/egestReferencePlayer.html"
-        , "ClientPlayerJsE"                             : \(_ :: Canary) (_ :: SlotId) (_ :: SlotRole) -> PrivDir "rtsv2" "www/assets/js"
+        , "ClientPlayerAssetsE"                         : \(_ :: Canary) (_ :: SlotId) (_ :: SlotRole) -> PrivDir "rtsv2" "www/assets"
         , "ClientPlayerControlE"                        : CowboyRoutePlaceholder
 
         , "ClientWebRTCIngestE"                         : \(_ :: Canary) (_ :: String) (_ :: String) -> PrivFile "rtsv2" "www/referenceIngest.html"

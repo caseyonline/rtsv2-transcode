@@ -2,14 +2,17 @@ import IPlayer from "../frontend/IPlayer";
 
 import Session from "./Session";
 import { QualityConstraintBehavior } from "./signaling/types";
+import EventEmitter from "../../../shared/util/EventEmitter.ts";
 
-export default class Player implements IPlayer {
+export default class Player extends EventEmitter implements IPlayer {
   private account: string;
   private stream: string;
   private videoElement: HTMLVideoElement;
   private session: Session;
+  private localStream?: any = null;
 
   constructor(account: string, stream: string, socketURL: string, videoElement: HTMLVideoElement) {
+    super();
     this.account = account;
     this.stream = stream;
     this.videoElement = videoElement;
@@ -17,7 +20,26 @@ export default class Player implements IPlayer {
     this.session.on("stream", stream => {
       console.debug("Received stream from session manager.");
       this.videoElement.srcObject = stream;
+      this.localStream = stream;
     });
+    this.session.on("playback-active", () => {
+      this.emit("playback-active", {});
+    });
+    this.session.on("playback-audio-stats", (stats) => {
+      this.emit("playback-audio-stats", stats);
+    });
+    this.session.on("playback-video-stats", (stats) => {
+      this.emit("playback-video-stats", stats);
+    });
+  }
+
+  stop() {
+    this.session.stop();
+    this.videoElement.srcObject = null;
+    this.videoElement.currentTime = 0;
+    if (this.localStream) {
+      this.localStream.getTracks().forEach((track) => track.stop());
+    }
   }
 
   requestMigrate(socketURL: string) {

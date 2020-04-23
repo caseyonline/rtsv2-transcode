@@ -48,8 +48,8 @@ data Endpoint
   =
   -- Public
     ClientPlayerE Canary SlotId SlotRole
-  | ClientPlayerJsE Canary SlotId SlotRole (Array String)
   | ClientPlayerControlE Canary SlotId SlotRole
+  | ClientPlayerAssetsE Canary SlotId SlotRole (Array String)
   | StreamDiscoveryE Canary String String
 
   | ClientWebRTCIngestE Canary String String
@@ -130,8 +130,8 @@ endpoint = root $ sum
     "StreamDiscoveryE"                                 : "public" / canary segment / "discovery" / "v1" / segment / segment
 
   , "ClientPlayerE"                                    : "public" / canary segment / "client" / slotId segment / slotRole segment / "player"
-  , "ClientPlayerJsE"                                  : "public" / canary segment / "client" / slotId segment / slotRole segment / "js" / rest
   , "ClientPlayerControlE"                             : "public" / canary segment / "client" / slotId segment / slotRole segment / "session" -- URL duplicated in Web.purs
+  , "ClientPlayerAssetsE"                              : "public" / canary segment / "client" / slotId segment / slotRole segment / rest
 
   , "ClientWebRTCIngestE"                              : "public" / canary segment / "ingest" / segment / segment / "ingest"
   , "ClientWebRTCIngestControlE"                       : "public" / canary segment / "ingest" / segment / segment / "session"

@@ -169,7 +169,7 @@
                 }
                 break;
             }
-            //console.log("audio", stat);
+            //console.log("audio stats", Array.from(stats.values()));
           }
         });
 
@@ -196,7 +196,7 @@
                 }
                 break;
             }
-            //console.log("video", stat);
+            //console.log("video stats", Array.from(stats.values()));
           }
         });
 
@@ -206,9 +206,9 @@
           $("#authenticate").prop("disabled", true);
           $("#protocol-webrtc").prop("disabled", true);
           $("#protocol-rtmp").prop("disabled", true);
-        })
+        });
 
-        $("#start-ingest").on("click", (evvent) => {
+        $("#start-ingest").on("click", (event) => {
           $("#start-ingest").prop("disabled", true);
           navigator.mediaDevices.getUserMedia({audio: true, video: true})
                    .then((stream) => {
