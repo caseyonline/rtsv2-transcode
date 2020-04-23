@@ -21,6 +21,19 @@ export interface IIngest {
    */
   stopIngest();
 
+  /** Data Object functions
+   */
+  sendPrivateMessage(to: string[], msg: string);
+  sendBroadcastMessage(msg: string);
+  dataObjectInc(keys: string[], increment: number, senderRef: string, createIfKeyMissing: boolean);
+  dataObjectDec(keys: string[], decrement: number, senderRef: string, createIfKeyMissing: boolean);
+  dataObjectCAS(keys: string[], compare: any, swap: any, createIfKeyMissing: boolean, senderRef: string);
+  dataObjectAdd(keys: string[], value: any, failIfKeyPresent: boolean, senderRef: string);
+  dataObjectUpdate(keys: string[], value: any, createIfKeyMissing: boolean, senderRef: string);
+  dataObjectDelete(keys: string[], failIfKeyMissing: boolean, senderRef: string);
+  dataObjectListInsert(keys: string[], value: any, createIfKeyMissing: boolean, failIfValuePresent: boolean, senderRef: string);
+  dataObjectListRemove(keys: string[], value: any, failIfKeyMissing: boolean, failIfValueMissing: boolean, senderRef: string);
+
   /** Attaches to the connected event.  This event is emitted upon
    * successful websocket connection
    */

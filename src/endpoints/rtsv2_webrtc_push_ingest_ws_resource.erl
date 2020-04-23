@@ -35,6 +35,8 @@
 
 -record(authentication_response,
         { start_stream :: fun()
+        , data_object_send_message :: fun()
+        , data_object_update :: fun()
         , stream_details :: term()
         , protocol :: {webRTC} | {rtmp}
         , slot_id :: slot_id()
@@ -150,19 +152,13 @@ websocket_handle({text, JSON}, State) ->
           handle_ice_gathering_candidate(Message, State);
 
         <<"ice.done">> ->
-          handle_ice_gathering_done(Message, State)
+          handle_ice_gathering_done(Message, State);
 
-        %% TODO
-        %% <<"dataobject.send-message">> ->
-        %%   handle_data_object_send_message(Message, State);
+        <<"dataobject.send-message">> ->
+          handle_data_object_send_message(Message, State);
 
-        %% <<"dataobject.update">> ->
-        %%   handle_data_object_update(Message, State);
-
-
-        %% <<"rtc">> ->
-        %%   handle_rtc(Message, State)
-
+        <<"dataobject.update">> ->
+          handle_data_object_update(Message, State)
       end;
 
     _BadlyFormattedMessage ->
@@ -212,6 +208,29 @@ websocket_info({ingestDataObjectMessage, #{ msg := Msg
                ) ]
   , State};
 
+websocket_info({ingestDataObjectUpdateResponse,#{response := Response
+                                                , senderRef := SenderRef
+                                                , to := To}}, State) when is_record(State, ?state_authenticated);
+                                                                          is_record(State, ?state_ingesting) ->
+
+  TraceId = case State of
+              #?state_authenticated{ stream_desc = #stream_desc{trace_id = Id}} -> Id;
+              #?state_ingesting{ stream_desc = #stream_desc{trace_id = Id}} -> Id
+            end,
+
+  if
+    To == TraceId ->
+      { [ json_frame( <<"dataobject.update-response">>,
+                      #{ <<"senderRef">> => SenderRef,
+                         <<"response">> => endpoint_helpers:dataobject_response_to_ts(Response)
+                       }
+                    ) ]
+        , State
+      };
+    ?otherwise ->
+      {ok, State}
+  end;
+
 websocket_info({ingestDataObjectBroadcast, Object}, State) when is_record(State, ?state_authenticated);
                                                                 is_record(State, ?state_ingesting) ->
   { [ json_frame( <<"dataobject.broadcast">>,
@@ -259,7 +278,10 @@ handle_authenticate(#{ <<"username">> := Username
                                 , role := SlotRole
                                 }
             , profileName := ProfileName
-            , startStream := StartStream}} ->
+            , startStream := StartStream
+            , dataObjectSendMessage := SendMessage
+            , dataObjectUpdate := ObjectUpdate
+            }} ->
 
       ?I_SUBSCRIBE_BUS_MSGS({ingestBus, {ingestKey, SlotId, SlotRole, ProfileName}}),
 
@@ -276,6 +298,8 @@ handle_authenticate(#{ <<"username">> := Username
                                                                                  , profile_name = ProfileName
                                                                                  , protocol = PursProtocol
                                                                                  , start_stream = StartStream
+                                                                                 , data_object_send_message = SendMessage
+                                                                                 , data_object_update = ObjectUpdate
                                                                                  }
                              }
       };
@@ -430,6 +454,83 @@ handle_ice_gathering_done(_Message, State) ->
   { []
   , State
   , hibernate
+  }.
+
+handle_data_object_send_message(#{ <<"msg">> := Message
+                                 , <<"destination">> := Destination },
+                                State) when is_record(State, ?state_authenticated);
+                                            is_record(State, ?state_ingesting) ->
+
+  {SendMessageFn, TraceId} = case State of
+                               #?state_authenticated{ stream_desc = #stream_desc{trace_id = Id}
+                                                    , authentication_response = #authentication_response{data_object_send_message = Fn}} -> {Fn, Id};
+                               #?state_ingesting{ stream_desc = #stream_desc{trace_id = Id}
+                                                , authentication_response = #authentication_response{data_object_send_message = Fn}} -> {Fn, Id}
+                             end,
+
+  PursMessageDestination = case Destination of
+                             #{ <<"tag">> := <<"publisher">> } -> {publisher};
+                             #{ <<"tag">> := <<"broadcast">> } -> {broadcast};
+                             #{ <<"tag">> := <<"private">>, <<"to">> :=  To } -> {private, To}
+                           end,
+
+  PursMessage = #{ sender => TraceId
+                 , destination => PursMessageDestination
+                 , msg => Message
+                 , ref => make_ref()
+                 },
+
+  (SendMessageFn(PursMessage))(),
+
+  {ok, State}.
+
+handle_data_object_update(#{ <<"operation">> := Operation,
+                             <<"senderRef">> := SenderRef },
+                          State) when is_record(State, ?state_authenticated);
+                                      is_record(State, ?state_ingesting) ->
+
+  {UpdateFn, TraceId} = case State of
+                          #?state_authenticated{ stream_desc = #stream_desc{trace_id = Id}
+                                               , authentication_response = #authentication_response{data_object_update = Fn}} -> {Fn, Id};
+                          #?state_ingesting{ stream_desc = #stream_desc{trace_id = Id}
+                                           , authentication_response = #authentication_response{data_object_update = Fn}} -> {Fn, Id}
+                        end,
+
+  try
+    PursOperation = endpoint_helpers:dataobject_operation_to_purs(Operation),
+    PursMessage = #{ sender => TraceId
+                   , senderRef => SenderRef
+                   , operation => PursOperation
+                   , ref => make_ref()
+                   },
+
+    (UpdateFn(PursMessage))(),
+
+    {ok, State}
+  catch
+    _Class:_Reason ->
+      io:format(user, "Invalid Request: ~p: ~p~n", [Operation, {_Class, _Reason}]),
+      { [ json_frame( <<"dataobject.update-response">>,
+                      #{ <<"senderRef">> => SenderRef,
+                         <<"response">> => <<"invalidRequest">>} ) ]
+      , State
+      }
+  end;
+
+handle_data_object_update(Request = #{ <<"senderRef">> := SenderRef }, State) ->
+  io:format(user, "Invalid Request: ~p~n", [Request]),
+  { [ json_frame( <<"dataobject.update-response">>,
+                  #{ <<"senderRef">> => SenderRef,
+                     <<"response">> => <<"invalidRequest">>} ) ]
+  , State
+  };
+
+handle_data_object_update(Request, State) ->
+  io:format(user, "Invalid Request: ~p~n", [Request]),
+  { [ json_frame( <<"dataobject.update-response">>,
+                  #{ <<"senderRef">> => <<"unknown">>,
+                     <<"response">> => <<"invalidRequest">>} ) ]
+  , State
   }.
 
 generate_trace_id() ->

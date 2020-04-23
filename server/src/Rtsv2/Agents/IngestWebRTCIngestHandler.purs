@@ -22,6 +22,7 @@ import Media.SourceDetails as SourceDetails
 import Rtsv2.Agents.IngestInstance as IngestInstance
 import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
 import Rtsv2.Config as Config
+import Rtsv2.DataObject as DO
 import Shared.Agent as Agent
 import Shared.LlnwApiTypes (PublishCredentials(..), SlotProfile(..), StreamAuth, StreamDetails, StreamIngestProtocol(..), StreamPublish(..))
 import Shared.Stream (IngestKey(..), ProfileName, RtmpStreamName(..))
@@ -33,6 +34,8 @@ foreign import startWorkflowImpl :: IngestKey -> Effect Pid
 type AuthenticateResult = { streamDetails :: StreamDetails
                           , profileName :: ProfileName
                           , startStream :: Maybe (Effect (Maybe StartStreamResult))
+                          , dataObjectSendMessage :: DO.Message -> Effect Unit
+                          , dataObjectUpdate :: DO.ObjectUpdateMessage -> Effect Unit
                           }
 
 type StartStreamResult = { sourceInfo :: Foreign -> Effect Unit
@@ -84,6 +87,8 @@ authenticate host protocol account username password streamName remoteAddress re
                 pure $ Just { streamDetails
                             , profileName
                             , startStream: maybeStartStream
+                            , dataObjectSendMessage: IngestInstance.dataObjectSendMessage ingestKey
+                            , dataObjectUpdate: IngestInstance.dataObjectUpdate ingestKey
                             }
     Right _ -> do
       _ <- logInfo "Authentication failed; invalid username / password" {username}

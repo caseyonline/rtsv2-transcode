@@ -85,6 +85,22 @@ export default class Session extends EventEmitter implements ISession {
     this.state = SessionState.Stopping;
   }
 
+  sendMessage(destination: MessageDestination, msg: string) {
+    this.sendToSocket({
+      "type": "dataobject.send-message",
+      "destination": destination,
+      "msg": msg
+    });
+  }
+
+  sendUpdate(operation: DataObjectUpdateOperation, senderRef: string) {
+    this.sendToSocket({
+      "type": "dataobject.update",
+      "senderRef": senderRef,
+      "operation": operation
+    })
+  }
+
   createSocket() {
     const maybePreviousSocket = this.socket;
     this.socket = new WebSocket(this.socketURL);

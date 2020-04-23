@@ -16,7 +16,7 @@ import Erl.Process (Process(..))
 import Erl.Utils as Erl
 import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
 import Rtsv2.Agents.IngestAggregatorSup as IngestAggregatorSup
-import Rtsv2.Agents.StreamRelayTypes (AggregatorBackupToPrimaryWsMessage, AggregatorPrimaryToBackupWsMessage, AggregatorToIngestWsMessage(..), DownstreamWsMessage(..), RelayUpstreamWsMessage(..), WebSocketHandlerMessage(..))
+import Rtsv2.Agents.StreamRelayTypes (AggregatorBackupToPrimaryWsMessage, AggregatorPrimaryToBackupWsMessage, AggregatorToIngestWsMessage(..), DownstreamWsMessage(..), IngestToAggregatorWsMessage(..), RelayUpstreamWsMessage(..), WebSocketHandlerMessage(..))
 import Rtsv2.Handler.Helper (WebSocketHandlerResult(..), webSocketHandler)
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
@@ -57,9 +57,12 @@ registeredIngestWs slotId slotRole profileName ingestAddress =
         false ->
           pure $ WebSocketReply IngestStop state
 
-    handle :: WsIngestState -> DownstreamWsMessage -> Effect (WebSocketHandlerResult AggregatorToIngestWsMessage WsIngestState)
-    handle state _ = do
-      -- this will be onFI etc - call in to aggregator
+    handle :: WsIngestState -> IngestToAggregatorWsMessage -> Effect (WebSocketHandlerResult AggregatorToIngestWsMessage WsIngestState)
+    handle state@{aggregatorKey} (IngestToAggregatorDataObjectMessage msg) = do
+      IngestAggregatorInstance.dataObjectSendMessage aggregatorKey msg
+      pure $ WebSocketNoReply state
+    handle state@{aggregatorKey} (IngestToAggregatorDataObjectUpdateMessage msg) = do
+      IngestAggregatorInstance.dataObjectUpdate aggregatorKey msg
       pure $ WebSocketNoReply state
 
     info state WsStop =

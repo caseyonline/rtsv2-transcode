@@ -379,6 +379,7 @@ dataObjectUpdate aggregatorKey msg@(DO.ObjectUpdateMessage {operation}) =
     sendResponse state response = do
       responseMsg <- makeResponse msg response
       sendDownstream state (DataObjectUpdateResponse responseMsg)
+      sendToIngests state (AggregatorToIngestDataObjectUpdateResponse responseMsg)
 
 makeResponse :: DO.ObjectUpdateMessage -> DO.ObjectUpdateResponse -> Effect DO.ObjectUpdateResponseMessage
 makeResponse (DO.ObjectUpdateMessage {sender, senderRef, operation}) response = do

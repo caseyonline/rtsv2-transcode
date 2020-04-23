@@ -2,7 +2,21 @@
 
 -export([ dataobject_to_ts/1
         , dataobject_operation_to_purs/1
+        , dataobject_response_to_ts/1
         ]).
+
+dataobject_response_to_ts(Response) ->
+  case Response of
+    {ok} -> <<"ok">>;
+    {error, {invalidKey, _}} -> <<"invalidKey">>;
+    {error, {invalidValue, _}} -> <<"invalidValue">>;
+    {error, {invalidOperation, _}} -> <<"invalidOperation">>;
+    {error, {compareAndSwapFailed, _}} -> <<"compareAndSwapFailed">>;
+    {error, {pendingInitialisation}} -> <<"pendingInitialisation">>;
+    {error, {pendingSynchronisation}} -> <<"pendingSynchronisation">>;
+    {error, {networkError}} -> <<"networkError">>;
+    {error, {unexpected}} -> <<"unexpected">>
+  end.
 
 dataobject_to_ts(#{map := Map,
                    version := Version}) ->

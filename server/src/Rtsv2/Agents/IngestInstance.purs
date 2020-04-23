@@ -5,6 +5,8 @@ module Rtsv2.Agents.IngestInstance
    , setClientMetadata
    , setSourceInfo
    , getPublicState
+   , dataObjectSendMessage
+   , dataObjectUpdate
    , stopIngest
    , StartArgs
 
@@ -41,7 +43,7 @@ import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..), launchLocalOrRemoteGeneric
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.Locator (extractServer)
 import Rtsv2.Agents.Locator.Types (LocalOrRemote(..), ResourceResp)
-import Rtsv2.Agents.StreamRelayTypes (AggregatorToIngestWsMessage(..), DownstreamWsMessage)
+import Rtsv2.Agents.StreamRelayTypes (AggregatorToIngestWsMessage(..), IngestToAggregatorWsMessage(..))
 import Rtsv2.Audit as Audit
 import Rtsv2.Config as Config
 import Rtsv2.DataObject as DO
@@ -77,7 +79,7 @@ data IngestBusMsg = IngestDataObjectMessage DO.Message
 bus :: IngestKey -> Bus.Bus (Tuple2 Atom IngestKey) IngestBusMsg
 bus ingestKey = Bus.bus (tuple2 (atom "ingestBus") ingestKey)
 
-type WebSocket = WsGun.WebSocket DownstreamWsMessage AggregatorToIngestWsMessage
+type WebSocket = WsGun.WebSocket IngestToAggregatorWsMessage AggregatorToIngestWsMessage
 
 type CachedState = WebSocket
 
@@ -155,6 +157,26 @@ getPublicState ingestKey@(IngestKey slotId slotRole profileName) =
       node = JsonLd.ingestStateNode slotId slotRole profileName publicState thisServer
     in
      pure $ CallReply node state
+
+dataObjectSendMessage :: IngestKey -> DO.Message -> Effect Unit
+dataObjectSendMessage ingestKey msg =
+  Gen.doCall (serverName ingestKey)
+  (\state@{aggregatorWebSocket} -> do
+      _ <- case aggregatorWebSocket of
+        Just socket -> void $ WsGun.send socket (IngestToAggregatorDataObjectMessage msg)
+        Nothing -> pure unit
+      pure $ CallReply unit state
+  )
+
+dataObjectUpdate :: IngestKey -> DO.ObjectUpdateMessage -> Effect Unit
+dataObjectUpdate ingestKey updateMsg =
+  Gen.doCall (serverName ingestKey)
+  (\state@{aggregatorWebSocket} -> do
+      _ <- case aggregatorWebSocket of
+        Just socket -> void $ WsGun.send socket (IngestToAggregatorDataObjectUpdateMessage updateMsg)
+        Nothing -> pure unit
+      pure $ CallReply unit state
+  )
 
 init :: StartArgs -> StateServerName -> Effect State
 init { streamPublish
@@ -258,6 +280,10 @@ processGunMessage state@{aggregatorWebSocket: Just socket, ingestKey} gunMsg =
 
       Right (WsGun.Frame (AggregatorToIngestDataObject object)) -> do
         Bus.raise (bus ingestKey) (IngestDataObjectBroadcast object)
+        pure $ CastNoReply state
+
+      Right (WsGun.Frame (AggregatorToIngestDataObjectUpdateResponse response)) -> do
+        Bus.raise (bus ingestKey) (IngestDataObjectUpdateResponse response)
         pure $ CastNoReply state
 
   else

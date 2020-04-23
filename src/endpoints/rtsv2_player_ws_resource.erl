@@ -341,22 +341,11 @@ websocket_info({egestDataObjectMessage, #{ destination := Destination
 websocket_info({egestDataObjectUpdateResponse,#{response := Response,
                                                 senderRef := SenderRef,
                                                 to := To}}, State = #?state_running{ trace_id = Id }) ->
-?INFO("RESPONSE TO ~p, US ~p", [To, Id]),
   if
     To == Id ->
       { [ json_frame( <<"dataobject.update-response">>,
                       #{ <<"senderRef">> => SenderRef,
-                         <<"response">> => case Response of
-                                             {ok} -> <<"ok">>;
-                                             {error, {invalidKey, _}} -> <<"invalidKey">>;
-                                             {error, {invalidValue, _}} -> <<"invalidValue">>;
-                                             {error, {invalidOperation, _}} -> <<"invalidOperation">>;
-                                             {error, {compareAndSwapFailed, _}} -> <<"compareAndSwapFailed">>;
-                                             {error, {pendingInitialisation}} -> <<"pendingInitialisation">>;
-                                             {error, {pendingSynchronisation}} -> <<"pendingSynchronisation">>;
-                                             {error, {networkError}} -> <<"networkError">>;
-                                             {error, {unexpected}} -> <<"unexpected">>
-                                           end
+                         <<"response">> => endpoint_helpers:dataobject_response_to_ts(Response)
                        }
                     ) ]
         , State

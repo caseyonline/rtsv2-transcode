@@ -1,6 +1,8 @@
 import { StreamIngestProtocol } from "../../../shared/llnw-types";
 
-import { DataObject } from "../../../shared/data-object-types";
+import { DataObject
+         , MessageDestination
+         , DataObjectUpdateOperation} from "../../../shared/data-object-types";
 
 import { DataObjectReceiveMessage } from "../../../shared/data-object-server-messages";
 
@@ -16,6 +18,11 @@ export interface ISession {
   /** Stop an ingest
    */
   stopIngest();
+
+  /** Data object functions
+   */
+  sendMessage(destination: MessageDestination, msg: string);
+  sendUpdate(operation: DataObjectUpdateOperation, senderRef: string);
 
   /** Attaches to the connected event.  This event is emitted upon
    * successful websocket connection

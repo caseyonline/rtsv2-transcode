@@ -5,6 +5,7 @@ module Rtsv2.Agents.StreamRelayTypes
   , AggregatorBackupToPrimaryWsMessage(..)
   , RelayUpstreamWsMessage(..)
   , EgestUpstreamWsMessage(..)
+  , IngestToAggregatorWsMessage(..)
   , AggregatorToIngestWsMessage(..)
   , DownstreamWsMessage(..)
   , WebSocketHandlerMessage(..)
@@ -33,8 +34,12 @@ type CreateProxyPayload
     , aggregator:: Server
     }
 
+data IngestToAggregatorWsMessage = IngestToAggregatorDataObjectMessage DO.Message
+                                 | IngestToAggregatorDataObjectUpdateMessage DO.ObjectUpdateMessage
+
 data AggregatorToIngestWsMessage = IngestStop
                                  | AggregatorToIngestDataObjectMessage DO.Message
+                                 | AggregatorToIngestDataObjectUpdateResponse DO.ObjectUpdateResponseMessage
                                  | AggregatorToIngestDataObject DO.Object
 
 data AggregatorPrimaryToBackupWsMessage = P2B_Synchronise
@@ -61,6 +66,16 @@ data DownstreamWsMessage = SlotConfig SlotConfiguration
 
 data WebSocketHandlerMessage a = WsStop
                                | WsSend a
+
+------------------------------------------------------------------------------
+-- IngestToAggregatorWsMessage
+derive instance genericIngestToAggregatorWsMessage :: Generic IngestToAggregatorWsMessage _
+
+instance readForeignIngestToAggregatorWsMessage :: ReadForeign IngestToAggregatorWsMessage where
+  readImpl o = variantToGenericSum <$> readImpl o
+
+instance writeForeignIngestToAggregatorWsMessage :: WriteForeign IngestToAggregatorWsMessage where
+  writeImpl msg = writeImpl (genericSumToVariant msg)
 
 ------------------------------------------------------------------------------
 -- AggregatorToIngestWsMessage
