@@ -30,6 +30,7 @@ import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, singleton)
 import Erl.Data.Map (values)
+import Erl.Data.Tuple (Tuple2, tuple2)
 import Erl.Process (Process(..), (!))
 import Erl.Process.Raw (Pid)
 import Erl.Utils (Ref, makeRef, systemTimeMs)
@@ -108,8 +109,8 @@ data EgestBusMsg = EgestOnFI Int Int
                  | EgestDataObjectUpdateResponse DO.ObjectUpdateResponseMessage
                  | EgestDataObjectBroadcast DO.Object
 
-bus :: Bus.Bus EgestBusMsg
-bus = Bus.bus "egest_bus"
+bus :: EgestKey -> Bus.Bus (Tuple2 Atom EgestKey) EgestBusMsg
+bus egestKey = Bus.bus (tuple2 (atom "egestBus") egestKey)
 
 data Msg = WriteEqLog
          | HandlerDown
@@ -308,7 +309,7 @@ processGunMessage state@{relayWebSocket: Just socket, egestKey, lastOnFI} gunMsg
           pure $ CastNoReply state
 
       Right (WsGun.Frame (OnFI {timestamp, pts})) | timestamp > lastOnFI -> do
-        Bus.raise bus (EgestOnFI timestamp pts)
+        Bus.raise (bus egestKey) (EgestOnFI timestamp pts)
         pure $ CastNoReply state{lastOnFI = timestamp}
 
       Right (WsGun.Frame (OnFI {timestamp, pts})) ->
@@ -316,20 +317,20 @@ processGunMessage state@{relayWebSocket: Just socket, egestKey, lastOnFI} gunMsg
 
       Right (WsGun.Frame (DataObjectMessage dataObjectMsg)) -> do
         shouldProcess <- DataObject.shouldProcessMessage egestKey dataObjectMsg
-        if shouldProcess then Bus.raise bus (EgestDataObjectMessage dataObjectMsg)
+        if shouldProcess then Bus.raise (bus egestKey) (EgestDataObjectMessage dataObjectMsg)
         else pure unit
         pure $ CastNoReply state
 
       Right (WsGun.Frame (DataObjectUpdateResponse dataObjectMsg)) -> do
         shouldProcess <- DataObject.shouldProcessMessage egestKey dataObjectMsg
-        if shouldProcess then Bus.raise bus (EgestDataObjectUpdateResponse dataObjectMsg)
+        if shouldProcess then Bus.raise (bus egestKey) (EgestDataObjectUpdateResponse dataObjectMsg)
         else pure unit
         pure $ CastNoReply state
 
       Right (WsGun.Frame (DataObject dataObjectMsg@(ObjectBroadcastMessage {object: dataObject}))) -> do
         shouldProcess <- DataObject.shouldProcessMessage egestKey dataObjectMsg
         if shouldProcess then do
-          _ <- Bus.raise bus (EgestDataObjectBroadcast dataObject)
+          _ <- Bus.raise (bus egestKey) (EgestDataObjectBroadcast dataObject)
           pure $ CastNoReply state{dataObject = Just dataObject}
         else
           pure $ CastNoReply state

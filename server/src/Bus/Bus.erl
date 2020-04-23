@@ -41,5 +41,6 @@ unsubscribe_(Pid) ->
 
 raise_(Bus, Msg) ->
   fun() ->
+io:format(user, "XXX SEND ~p", [Bus]),
       ?I_RAISE_BUS_MSG(Bus, Msg)
   end.

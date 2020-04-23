@@ -24,6 +24,7 @@ import Data.Newtype (unwrap, wrap)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
+import Erl.Data.Tuple (Tuple2, tuple2)
 import Erl.Process.Raw (Pid)
 import Erl.Utils (systemTimeMs)
 import Logger (Logger)
@@ -43,6 +44,7 @@ import Rtsv2.Agents.Locator.Types (LocalOrRemote(..), ResourceResp)
 import Rtsv2.Agents.StreamRelayTypes (AggregatorToIngestWsMessage(..), DownstreamWsMessage)
 import Rtsv2.Audit as Audit
 import Rtsv2.Config as Config
+import Rtsv2.DataObject as DO
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Agent as Agent
@@ -67,6 +69,13 @@ data Msg
    | IntraPoPBus IntraPoP.IntraPoPBusMessage
    | HandlerDown
    | Gun WsGun.GunMsg
+
+data IngestBusMsg = IngestDataObjectMessage DO.Message
+                  | IngestDataObjectUpdateResponse DO.ObjectUpdateResponseMessage
+                  | IngestDataObjectBroadcast DO.Object
+
+bus :: IngestKey -> Bus.Bus (Tuple2 Atom IngestKey) IngestBusMsg
+bus ingestKey = Bus.bus (tuple2 (atom "ingestBus") ingestKey)
 
 type WebSocket = WsGun.WebSocket DownstreamWsMessage AggregatorToIngestWsMessage
 
@@ -219,7 +228,7 @@ processGunMessage :: State -> WsGun.GunMsg -> Effect (CastResult State)
 processGunMessage state@{aggregatorWebSocket: Nothing} gunMsg =
   pure $ CastNoReply state
 
-processGunMessage state@{aggregatorWebSocket: Just socket} gunMsg =
+processGunMessage state@{aggregatorWebSocket: Just socket, ingestKey} gunMsg =
   if WsGun.isSocketForMessage gunMsg socket then do
     processResponse <- WsGun.processMessage socket gunMsg
     case processResponse of
@@ -244,8 +253,11 @@ processGunMessage state@{aggregatorWebSocket: Just socket} gunMsg =
         pure $ CastStop state
 
       Right (WsGun.Frame (AggregatorToIngestDataObjectMessage msg)) -> do
-        -- TODO - stick on bus for publisher websocket
-        _ <- logInfo "Publisher message: " {msg}
+        Bus.raise (bus ingestKey) (IngestDataObjectMessage msg)
+        pure $ CastNoReply state
+
+      Right (WsGun.Frame (AggregatorToIngestDataObject object)) -> do
+        Bus.raise (bus ingestKey) (IngestDataObjectBroadcast object)
         pure $ CastNoReply state
 
   else

@@ -3,6 +3,7 @@
 -include_lib("kernel/include/inet.hrl").
 
 -include_lib("id3as_common/include/common.hrl").
+-include_lib("id3as_common/include/id3as_message_bus.hrl").
 -include_lib("id3as_rtc/include/webrtc.hrl").
 -include_lib("id3as_media/include/id3as_workflow.hrl").
 -include_lib("id3as_avp/include/avp_ingest_source_details_extractor.hrl").
@@ -197,14 +198,32 @@ websocket_info(#webrtc_session_response{payload = Payload}, State) ->
                        }
                     ) ]
       , State
-      };
-
-    Other ->
-      ?INFO("HERE ~p", [Other]),
-      { []
-      , State
       }
   end;
+
+websocket_info({ingestDataObjectMessage, #{ msg := Msg
+                                          , sender := Sender }}, State) when is_record(State, ?state_authenticated);
+                                                                             is_record(State, ?state_ingesting) ->
+
+  {[ json_frame( <<"dataobject.message">>,
+                 #{ <<"sender">> => Sender
+                  , <<"msg" >> => Msg
+                  }
+               ) ]
+  , State};
+
+websocket_info({ingestDataObjectBroadcast, Object}, State) when is_record(State, ?state_authenticated);
+                                                                is_record(State, ?state_ingesting) ->
+  { [ json_frame( <<"dataobject.broadcast">>,
+                  #{ <<"object">> => endpoint_helpers:dataobject_to_ts(Object)
+                   }
+                ) ]
+  , State
+  };
+
+websocket_info(#workflow_output{message = #workflow_data_msg{data = SourceInfo = #source_info{}}}, State = #?state_ingesting { source_info = SourceInfoFn }) ->
+  unit = (SourceInfoFn(SourceInfo))(),
+  {ok, State};
 
 websocket_info({'DOWN', Ref, process, _Pid, Reason}, State = #?state_ingesting{webrtc_session_ref = RTCSessionRef})
   when RTCSessionRef =:= Ref ->
@@ -212,10 +231,6 @@ websocket_info({'DOWN', Ref, process, _Pid, Reason}, State = #?state_ingesting{w
   { [ close_frame(?WebSocketStatusCode_WebRTCSessionFailed) ]
   , State
   };
-
-websocket_info(#workflow_output{message = #workflow_data_msg{data = SourceInfo = #source_info{}}}, State = #?state_ingesting { source_info = SourceInfoFn }) ->
-  unit = (SourceInfoFn(SourceInfo))(),
-  {ok, State};
 
 websocket_info(_Info, State) ->
   ?INFO("HERE WITH ~p", [_Info]),
@@ -245,6 +260,8 @@ handle_authenticate(#{ <<"username">> := Username
                                 }
             , profileName := ProfileName
             , startStream := StartStream}} ->
+
+      ?I_SUBSCRIBE_BUS_MSGS({ingestBus, {ingestKey, SlotId, SlotRole, ProfileName}}),
 
       { [ json_frame( <<"authenticated">>,
                       #{ thisIngest =>

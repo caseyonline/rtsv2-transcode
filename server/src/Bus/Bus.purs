@@ -7,20 +7,20 @@ import Pinto (ServerName)
 
 newtype SubscriptionRef msg = SubscriptionRef Pid
 
-foreign import subscribe_ :: forall busMsg msg. (Pid -> SubscriptionRef busMsg) -> String -> (busMsg -> msg) -> Effect (SubscriptionRef busMsg)
+foreign import subscribe_ :: forall busName busMsg msg. (Pid -> SubscriptionRef busMsg) -> busName -> (busMsg -> msg) -> Effect (SubscriptionRef busMsg)
 foreign import unsubscribe_ :: Pid -> Effect Unit
-foreign import raise_ :: forall msg. String -> msg -> Effect Unit
+foreign import raise_ :: forall busName busMsg. busName -> busMsg -> Effect Unit
 
-newtype Bus msg = Bus String
+newtype Bus busName busMsg = Bus busName
 
-bus :: forall msg. String -> Bus msg
+bus :: forall busName busMsg. busName -> Bus busName busMsg
 bus name = Bus name
 
-subscribe :: forall busMsg state msg. ServerName state msg -> Bus busMsg -> (busMsg -> msg) -> Effect (SubscriptionRef busMsg)
+subscribe :: forall busName busMsg state msg. ServerName state msg -> Bus busName busMsg -> (busMsg -> msg) -> Effect (SubscriptionRef busMsg)
 subscribe _ (Bus name) mapper = subscribe_ SubscriptionRef name mapper
 
 unsubscribe :: forall busMsg. SubscriptionRef busMsg -> Effect Unit
 unsubscribe (SubscriptionRef pid) = unsubscribe_ pid
 
-raise :: forall busMsg. Bus busMsg -> busMsg -> Effect Unit
+raise :: forall busName busMsg. Bus busName busMsg -> busMsg -> Effect Unit
 raise (Bus name) msg = raise_ name msg

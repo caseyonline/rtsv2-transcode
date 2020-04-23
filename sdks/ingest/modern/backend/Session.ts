@@ -334,17 +334,19 @@ export default class Session extends EventEmitter implements ISession {
 
       case "dataobject.message":
         {
-          console.debug(`Received message - from: ${message.sender}, body: ${message.msg}`);
+          this.emit("data-object-message", message);
         }
         break;
+
       case "dataobject.update-response":
         {
           console.debug(`Update response - senderRef: ${message.senderRef}, response: ${message.response}`);
         }
         break;
+
       case "dataobject.broadcast":
         {
-          console.debug("Data Object.", message.object);
+          this.emit("data-object", message.object);
         }
         break;
 

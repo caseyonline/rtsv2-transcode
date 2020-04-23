@@ -251,12 +251,10 @@ processMessageFromPrimary aggregatorKey msg =
     doProcessMessage state@{dataObjectState: Right dos@{dataObject: mDataObject}} =
       case msg of
         P2B_Synchronise -> do
-          _ <- logInfo "XXX Synchronise request from primary" {}
           sendToPrimary dos (maybe B2P_SynchroniseNoObject (B2P_SynchroniseObject <<< getDataObject) mDataObject)
           pure $ CallReply unit state
 
         P2B_Latest latestObject -> do
-          _ <- logInfo "XXX Latest object from primary" {}
           sendBroadcast state latestObject
           pure $ CallReply unit state{dataObjectState = Right dos{dataObject = Just (OwnedByPrimary latestObject)}}
 
@@ -265,7 +263,6 @@ processMessageFromPrimary aggregatorKey msg =
           pure $ CallReply unit state
 
         P2B_UpdateResponse responseMessage -> do
-          _ <- logInfo "XXX Update response from primary" {}
           sendDownstream state (DataObjectUpdateResponse responseMessage)
           pure $ CallReply unit state
 
@@ -298,21 +295,16 @@ getState aggregatorKey@(AggregatorKey slotId slotRole) = Gen.call (serverName ag
 
 
 dataObjectSendMessage :: AggregatorKey -> DO.Message -> Effect Unit
-dataObjectSendMessage aggregatorKey msg@(DO.Message {destination: DO.Publisher
-                                                    , msg: payload}) =
+dataObjectSendMessage aggregatorKey msg@(DO.Message {destination: DO.Publisher}) =
   Gen.doCall (serverName aggregatorKey)
   (\state@{cachedState: {localIngests, remoteIngests}} -> do
     shouldProcess <- DO.shouldProcessMessage aggregatorKey msg
     if shouldProcess then do
-      void $ traverse doSend $ Map.values localIngests
-      void $ traverse doSend $ _.handler <$> Map.values remoteIngests
+      sendToIngests state (AggregatorToIngestDataObjectMessage msg)
       sendMessageToPeer state msg
     else pure unit
     pure $ CallReply unit state
   )
-  where
-    doSend handler =
-      handler ! WsSend (AggregatorToIngestDataObjectMessage payload)
 
 dataObjectSendMessage aggregatorKey msg =
   Gen.doCall (serverName aggregatorKey)
@@ -403,6 +395,7 @@ sendBroadcast state dataObject = do
     broadcastMsg = DO.ObjectBroadcastMessage { object: dataObject
                                              , ref: ref}
   sendDownstream state (DataObject broadcastMsg)
+  sendToIngests state (AggregatorToIngestDataObject dataObject)
 
 sendDownstream :: State -> DownstreamWsMessage -> Effect Unit
 sendDownstream {cachedState: {relays}} msg = do
@@ -411,6 +404,14 @@ sendDownstream {cachedState: {relays}} msg = do
   where
     doSendMessage { handler } =
       handler ! WsSend msg
+
+sendToIngests :: State -> AggregatorToIngestWsMessage -> Effect Unit
+sendToIngests {cachedState: {localIngests, remoteIngests}} message = do
+  void $ traverse doSend $ Map.values localIngests
+  void $ traverse doSend $ _.handler <$> Map.values remoteIngests
+  where
+    doSend handler =
+      handler ! WsSend message
 
 startLink :: AggregatorKey -> StreamDetails -> StateServerName -> Effect StartLinkResult
 startLink aggregatorKey streamDetails stateServerName = Gen.startLink (serverName aggregatorKey) (init streamDetails stateServerName) handleInfo
@@ -475,23 +476,19 @@ attemptConnectionToBackup state@{slotId, slotRole, dataObjectState: Left dos@{}}
     Nothing -> do
       -- No peer; we don't need a peerConnection, we can start our own dataObject
       -- When a peer starts, we'll hear about it from IntraPoP
-      _ <- logInfo "XXX Failed to find backup in IntraPoP" {peerKey}
       pure state{dataObjectState = Left dos{ dataObject = Just DO.new }}
 
     Just peerAggregator -> do
       let
         peerWsUrl = makeWsUrl peerAggregator $ IngestAggregatorBackupWs slotId Backup
-      _ <- logInfo "XXX Attempting to open websocket to peer" {peerWsUrl}
       mPeerWebSocket <- hush <$> WsGun.openWebSocket peerWsUrl
       case mPeerWebSocket of
         Nothing -> do
           -- We have a peer but failed to connect - start timer to retry
-          _ <- logInfo "XXX Failed to open websocket" {peerWsUrl}
           _ <- Timer.sendAfter (serverName (AggregatorKey slotId slotRole)) 1000 AttemptConnectionToBackup
           pure state
         Just socket -> do
           -- We have a peer and have connected - it'll send us its data object...
-          _ <- logInfo "XXX peer is up!" {peerWsUrl}
           pure state{dataObjectState = Left dos{ connectionToBackup = Just socket}}
 
 attemptConnectionToBackup state = do

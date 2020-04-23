@@ -61,6 +61,14 @@ export default class Ingest extends EventEmitter implements IIngest {
     this.session.on("ingest-video-stats", (stats) => {
       this.emit("ingest-video-stats", stats);
     });
+
+    this.session.on("data-object-message", (message) => {
+      this.emit("data-object-message", message);
+    });
+
+    this.session.on("data-object", (message) => {
+      this.emit("data-object", message);
+    });
   }
 
   authenticate(username: string, password: string, protocol: StreamIngestProtocol) {

@@ -76,8 +76,8 @@
 
 -record(stream_desc_ingest,
         { slot_id :: slot_id()
-        , profile_name :: binary_string()
-        , slot_role :: binary_string()
+        , profile_name :: profile_name()
+        , slot_role :: slot_role()
         , ingest_key :: term()
         , use_media_gateway :: boolean()
         }).
@@ -86,7 +86,7 @@
 
 -record(stream_desc_egest,
         { slot_id  :: slot_id()
-        , slot_role :: binary_string()
+        , slot_role :: slot_role()
         , egest_key :: term()
         , start_stream_result :: term()
         , get_slot_configuration :: fun()
@@ -341,6 +341,7 @@ websocket_info({egestDataObjectMessage, #{ destination := Destination
 websocket_info({egestDataObjectUpdateResponse,#{response := Response,
                                                 senderRef := SenderRef,
                                                 to := To}}, State = #?state_running{ trace_id = Id }) ->
+?INFO("RESPONSE TO ~p, US ~p", [To, Id]),
   if
     To == Id ->
       { [ json_frame( <<"dataobject.update-response">>,
@@ -366,7 +367,7 @@ websocket_info({egestDataObjectUpdateResponse,#{response := Response,
 
 websocket_info({egestDataObjectBroadcast, Object}, State) ->
   { [ json_frame( <<"dataobject.broadcast">>,
-                  #{ <<"object">> => dataobject_to_ts(Object)
+                  #{ <<"object">> => endpoint_helpers:dataobject_to_ts(Object)
                    }
                 ) ]
   , State
@@ -439,18 +440,18 @@ try_build_stream_desc(Req,
 
   try
     { rtsv2_types:string_to_uuid(cowboy_req:binding(slot_id, Req))
-    , cowboy_req:binding(slot_role, Req)
+    , rtsv2_types:string_to_slot_role(cowboy_req:binding(slot_role, Req))
     }
   of
     { SlotId, SlotRole } ->
 
       { AudioSSRC, VideoSSRC } =
         case SlotRole of
-          <<"primary">> ->
+          {primary} ->
             { ?make_audio_ssrc(?PROFILE_INDEX_RESERVED_EGEST, 0)
             , ?make_video_ssrc(?PROFILE_INDEX_RESERVED_EGEST, 0)
             };
-          <<"backup">> ->
+          {backup} ->
             { ?make_audio_ssrc(?PROFILE_INDEX_RESERVED_EGEST, 1)
             , ?make_video_ssrc(?PROFILE_INDEX_RESERVED_EGEST, 1)
             }
@@ -493,7 +494,7 @@ try_build_stream_desc(Req,
 
   try
     { rtsv2_types:string_to_uuid(cowboy_req:binding(slot_id, Req))
-    , cowboy_req:binding(slot_role, Req)
+    , rtsv2_type:string_to_slot_role(cowboy_req:binding(slot_role, Req))
     , cowboy_req:binding(profile_name, Req)
     }
   of
@@ -597,11 +598,14 @@ transition_to_running([ #{ name := ActiveProfileName } | _OtherProfiles ] = Prof
   StartOptions = construct_start_options(TraceId, PublicIPString, Profiles, StreamDesc),
   webrtc_stream_server:ensure_session(ServerId, TraceId, StartOptions),
   webrtc_stream_server:subscribe_for_msgs(TraceId, #subscription_options{}),
-  ?I_SUBSCRIBE_BUS_MSGS(<<"egest_bus">>),
   case StreamDesc of
     #stream_desc_egest{ egest_key = EgestKey
                       , add_client = AddClient
+                      , slot_id = SlotId
+                      , slot_role = SlotRole
                       } ->
+
+      ?I_SUBSCRIBE_BUS_MSGS({egestBus, {egestKey, SlotId, SlotRole}}),
       {right, unit} = (AddClient(self(), EgestKey))();
     _ ->
       ok
@@ -726,92 +730,7 @@ handle_data_object_update(#{ <<"operation">> := Operation,
                                                                     , data_object_update = DataObjectUpdate
                                                                     } }) ->
   try
-    PursOperation = case Operation of
-                      #{ <<"tag">> := <<"inc">>
-                       , <<"keys">> := Keys
-                       , <<"increment">> := Inc
-                       , <<"createIfKeyMissing">> := CreateIfKeyMissing } ->
-
-                        {inc, #{ keys => Keys
-                               , increment => Inc
-                               , createIfKeyMissing => CreateIfKeyMissing
-                               }};
-
-                      #{ <<"tag">> := <<"dec">>
-                       , <<"keys">> := Keys
-                       , <<"decrement">> := Dec
-                       , <<"createIfKeyMissing">> := CreateIfKeyMissing } ->
-
-                        {dec, #{ keys => Keys
-                               , decrement => Dec
-                               , createIfKeyMissing => CreateIfKeyMissing
-                               }};
-
-                      #{ <<"tag">> := <<"cas">>
-                       , <<"keys">> := Keys
-                       , <<"compare">> := Compare
-                       , <<"swap">> := Swap
-                       , <<"createIfKeyMissing">> := CreateIfKeyMissing } ->
-
-                        {compareAndSwap, #{ keys => Keys
-                                          , compare => dataobject_value_to_purs(Compare)
-                                          , swap => dataobject_value_to_purs(Swap)
-                                          , createIfKeyMissing => CreateIfKeyMissing
-                                          }};
-
-                      #{ <<"tag">> := <<"add">>
-                       , <<"keys">> := Keys
-                       , <<"value">> := Value
-                       , <<"failIfKeyPresent">> := FailIfKeyPresent } ->
-
-                        {add, #{ keys => Keys
-                               , value => dataobject_value_to_purs(Value)
-                               , failIfKeyPresent => FailIfKeyPresent
-                               }};
-
-                      #{ <<"tag">> := <<"update">>
-                       , <<"keys">> := Keys
-                       , <<"value">> := Value
-                       , <<"createIfKeyMissing">> := CreateIfKeyMissing } ->
-
-                        {update, #{ keys => Keys
-                                  , value => dataobject_value_to_purs(Value)
-                                  , createIfKeyMissing => CreateIfKeyMissing
-                                  }};
-
-                      #{ <<"tag">> := <<"delete">>
-                       , <<"keys">> := Keys
-                       , <<"failIfKeyMissing">> := FailIfKeyMissing } ->
-
-                        {delete, #{ keys => Keys
-                                  , failIfKeyMissing => FailIfKeyMissing
-                                  }};
-
-                      #{ <<"tag">> := <<"list.insert">>
-                       , <<"keys">> := Keys
-                       , <<"value">> := Value
-                       , <<"createIfKeyMissing">> := CreateIfKeyMissing
-                       , <<"failIfValuePresent">> := FailIfValuePresent } ->
-
-                        {listInsert, #{ keys => Keys
-                                      , value => dataobject_value_to_purs(Value)
-                                      , createIfKeyMissing => CreateIfKeyMissing
-                                      , failIfValuePresent => FailIfValuePresent
-                                      }};
-
-                      #{ <<"tag">> := <<"list.remove">>
-                       , <<"keys">> := Keys
-                       , <<"value">> := Value
-                       , <<"failIfKeyMissing">> := FailIfKeyMissing
-                       , <<"failIfValueMissing">> := FailIfValuePresent } ->
-
-                        {listRemove, #{ keys => Keys
-                                      , value => dataobject_value_to_purs(Value)
-                                      , failIfKeyMissing => FailIfKeyMissing
-                                      , failIfValueMissing => FailIfValuePresent
-                                      }}
-                    end,
-
+    PursOperation = endpoint_helpers:dataobject_operation_to_purs(Operation),
     PursMessage = #{ sender => Id
                    , senderRef => SenderRef
                    , operation => PursOperation
@@ -996,41 +915,3 @@ construct_server_id(#stream_desc_ingest{ ingest_key = IngestKey }) ->
 
 construct_server_id(#stream_desc_egest{ egest_key = EgestKey }) ->
   EgestKey.
-
-dataobject_to_ts(#{map := Map,
-                   version := Version}) ->
-  #{ <<"version">> => Version
-   , <<"map">> => maps:map(fun(_Key, Value) -> dataobject_value_to_ts(Value) end, Map)
-   }.
-
-dataobject_value_to_ts({bool, Boolean}) ->
-  Boolean;
-dataobject_value_to_ts({number, Number}) ->
-  Number;
-dataobject_value_to_ts({counter, Number}) ->
-  Number;
-dataobject_value_to_ts({string, String}) ->
-  String;
-dataobject_value_to_ts({list, List}) ->
-  [dataobject_value_to_ts(Item) || Item <- List];
-dataobject_value_to_ts({map, Map}) ->
-  maps:map(fun(_Key, Value) ->
-               dataobject_value_to_ts(Value)
-           end,
-           Map).
-
-dataobject_value_to_purs(true) ->
-  {bool, true};
-dataobject_value_to_purs(false) ->
-  {bool, false};
-dataobject_value_to_purs(Number) when is_number(Number) ->
-  {number, Number * 1.0};
-dataobject_value_to_purs(String) when is_binary(String) ->
-  {string, String};
-dataobject_value_to_purs(List) when is_list(List) ->
-  {list, [dataobject_value_to_purs(Item) || Item <- List]};
-dataobject_value_to_purs(Map) when is_map(Map) ->
-  {map, maps:map(fun(Key, Value) when is_binary(Key) ->
-                     dataobject_value_to_purs(Value)
-                 end,
-                 Map)}.

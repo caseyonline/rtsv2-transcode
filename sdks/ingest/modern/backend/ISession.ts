@@ -1,5 +1,9 @@
 import { StreamIngestProtocol } from "../../../shared/llnw-types";
 
+import { DataObject } from "../../../shared/data-object-types";
+
+import { DataObjectReceiveMessage } from "../../../shared/data-object-server-messages";
+
 export interface ISession {
   /** Authenticate with the server
    */
@@ -43,6 +47,16 @@ export interface ISession {
    */
   on(event: "ingest-audio-stats", handler: (e: any) => void);
   on(event: "ingest-video-stats", handler: (e: any) => void);
+
+  /** Attaches to the data-object-message event.  This event is emitted upon
+   * receipt of a message sent to the publisher
+   */
+  on(event: "data-object-message", handler: (message: DataObjectReceiveMessage) => void);
+
+  /** Attaches to the data-object event.  This event is emitted upon
+   * receipt of the latest data object
+   */
+  on(event: "data-object", handler: (message: DataObject) => void);
 }
 
 /** The data provided by a connected event */

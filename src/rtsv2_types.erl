@@ -2,6 +2,7 @@
 
 -export([ string_to_uuid/1
         , uuid_to_string/1
+        , string_to_slot_role/1
         ]).
 
 string_to_uuid(<<A:8/binary, "-",
@@ -28,6 +29,9 @@ uuid_to_string(<<A:32/big-integer,
     (pad(4, (erlang:integer_to_binary(C, 16)))):4/binary, "-",
     (pad(4, (erlang:integer_to_binary(D, 16)))):4/binary, "-",
     (pad(12, (erlang:integer_to_binary(E, 16)))):12/binary>>.
+
+string_to_slot_role(<<"primary">>) -> {primary};
+string_to_slot_role(<<"backup">>) -> {backup}.
 
 pad(N, Bin) when byte_size(Bin) < N ->
   Pad = N - byte_size(Bin),

@@ -143,6 +143,14 @@
           clearFields();
         });
 
+        ingest.on("data-object-message", (message) => {
+          console.log("Received publisher message: ", message);
+        });
+
+        ingest.on("data-object", (object) => {
+          console.log("Received latest data object: ", object);
+        });
+
         ingest.on("reset", () => {
           $("#authenticate").prop("disabled", true);
           $("#protocol-webrtc").prop("disabled", true);

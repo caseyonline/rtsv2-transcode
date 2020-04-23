@@ -34,7 +34,8 @@ type CreateProxyPayload
     }
 
 data AggregatorToIngestWsMessage = IngestStop
-                                 | AggregatorToIngestDataObjectMessage String
+                                 | AggregatorToIngestDataObjectMessage DO.Message
+                                 | AggregatorToIngestDataObject DO.Object
 
 data AggregatorPrimaryToBackupWsMessage = P2B_Synchronise
                                         | P2B_Latest DO.Object

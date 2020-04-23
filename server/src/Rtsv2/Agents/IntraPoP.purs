@@ -194,7 +194,7 @@ health =
       currentHealth = percentageToHealth healthConfig $ (Map.size members) * 100 / ((length allOtherServers) + 1)
     pure $ CallReply currentHealth state
 
-bus :: Bus.Bus IntraPoPBusMessage
+bus :: Bus.Bus String IntraPoPBusMessage
 bus = Bus.bus "intrapop_bus"
 
 
