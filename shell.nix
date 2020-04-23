@@ -14,11 +14,19 @@ let
       ref = "master";
       rev = "5da0a433bcefe607e0bd182b79b220af980a4c78";
     };
+
   id3asPackages =
     builtins.fetchGit {
       name = "id3as-packages";
       url = "git@github.com:id3as/nixpkgs-private.git";
       rev = "cb044716e048364a028f9fb17b06e12058d68c97";
+    };
+
+  oxidizedPackages =
+    builtins.fetchGit {
+      name = "id3as-oxidized-packages";
+      url = "git@github.com:id3as/oxidized.git";
+      rev = "22f64b587cae8bc620a73d0425252d084501cf24";
     };
 
   nixpkgs =
@@ -27,6 +35,7 @@ let
         (import erlangReleases)
         (import purerlReleases)
         (import id3asPackages)
+        (import oxidizedPackages)
       ];
     };
 
@@ -61,6 +70,9 @@ mkShell {
     # Our nativedeps environment
     id3as.nd-env
 
+    # The Media Gateway
+    rtsv2-media-gateway
+
     # Purescript - we use a specific version rather than
     # whatever the latest is exposed via nixpkgs
     id3as.purescript-0-13-6
@@ -75,7 +87,5 @@ mkShell {
     # Needed by something purescript-y - hopefully A/S can pinpoint what...
     jq
     serfdom
-  ] ++ optionals stdenv.isLinux [ iproute
-                                ]
-;
+  ] ++ optionals stdenv.isLinux [ iproute ];
 }
