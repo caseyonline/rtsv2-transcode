@@ -1,10 +1,13 @@
 import ISession from "./ISession";
-import EventEmitter from "./util/EventEmitter.ts";
-import { WebSocketProtocolStatusCode } from "./util/WebSocketUtil.ts";
 
-import { IQualityConstraintConfiguration
-         , MessageDestination
-         , DataObjectUpdateOperation} from "./signaling/types.ts";
+import EventEmitter from "../../../shared/util/EventEmitter.ts";
+
+import { WebSocketProtocolStatusCode } from "../../../shared/util/WebSocketUtil.ts";
+
+import { IQualityConstraintConfiguration } from "./signaling/types.ts";
+
+import { MessageDestination
+         , DataObjectUpdateOperation} from "../../../shared/data-object-types.ts";
 
 import * as ClientMessages from "./signaling/clientMessages.ts";
 import * as ServerMessages from "./signaling/serverMessages.ts";
