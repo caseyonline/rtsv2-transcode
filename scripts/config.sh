@@ -6,9 +6,9 @@ declare VIDEO_PRESET=faster
 
 case "${USER}" in
   stears)
-    # MEDIA_FILE_500=../assets/stargate-nobframes.ts
-    MEDIA_FILE_500=../assets/tos-inverse.ts
-    MEDIA_FILE_1000=../assets/tos-abr.ts
+    # MEDIA_FILE_500=../_assets/stargate-nobframes.ts
+    MEDIA_FILE_500=../_assets/tos-inverse.ts
+    MEDIA_FILE_1000=../_assets/tos-abr.ts
 
     case "$(cat /etc/hostname)" in
       stdarwin)
