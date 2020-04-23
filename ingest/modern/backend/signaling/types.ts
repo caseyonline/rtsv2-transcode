@@ -1,5 +1,10 @@
 // TODO - duplicated with player
 
+export const enum StreamIngestProtocol {
+  webrtc = "webrtc",
+  rtmp = "rtmp"
+}
+
 /** Details used to connect to an ingest. */
 export interface IngestDetails {
 

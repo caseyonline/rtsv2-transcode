@@ -5,7 +5,7 @@ module Rtsv2.Web
 
 import Prelude
 
-import Data.Function.Uncurried (mkFn2, mkFn3, mkFn5)
+import Data.Function.Uncurried (mkFn2, mkFn7)
 import Data.Maybe (fromMaybe)
 import Data.Newtype (unwrap, wrap)
 import Effect (Effect)
@@ -185,10 +185,7 @@ init args = do
       -- ClientWebRTCIngestContorlE SlotId SlotRole
       : cowboyRoute ("/public/" <> canaryBinding <> "/ingest/" <> accountBinding <> "/" <> streamNameBinding <> "/session")
                     "rtsv2_webrtc_push_ingest_ws_resource"
-                    (unsafeToForeign { authenticate: mkFn3 $ IngestWebRTCIngestHandler.authenticate (unwrap $ extractAddress thisServer)
-                                     , publish_stream: mkFn5 $ IngestWebRTCIngestHandler.publishStream (unwrap $ extractAddress thisServer)
-                                     , make_ingest_key: mkFn2 makeIngestKey2
-                                     , stop_stream: IngestWebRTCIngestHandler.stopStream
+                    (unsafeToForeign { authenticate: mkFn7 $ IngestWebRTCIngestHandler.authenticate (unwrap $ extractAddress thisServer)
                                      })
 
       --workflows

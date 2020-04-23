@@ -73,7 +73,7 @@ import Erl.Data.Map as Map
 import Erl.Data.Tuple (Tuple3, toNested3, tuple3)
 import Erl.Process (Process(..), (!))
 import Erl.Process.Raw (Pid)
-import Erl.Utils (shutdown)
+import Erl.Utils (Ref, shutdown)
 import Erl.Utils as Erl
 import Foreign (Foreign)
 import Logger (Logger)
@@ -159,6 +159,7 @@ type State
     , stateServerName :: StateServerName
     , slotConfiguration :: SlotConfiguration
     , dataObjectState :: Either PrimaryDOState BackupDOState
+    , maybeStopRef :: Maybe Ref
     }
 
 data WorkflowMsg = Noop
@@ -168,7 +169,7 @@ data Msg
   = IntraPoPBus IntraPoP.IntraPoPBusMessage
   | AttemptConnectionToBackup
   | Gun WsGun.GunMsg
-  | MaybeStop
+  | MaybeStop Ref
   | RelayDown RelayServer
   | IngestDown ProfileName ServerAddress Boolean
   | PrimaryHandlerDown
@@ -450,6 +451,7 @@ init streamDetails@{role: slotRole, slot: {id: slotId}} stateServerName = do
                                                         , connectionToBackup: Nothing }
                                         Backup -> Right { dataObject: Nothing
                                                         , connectionToPrimary: Nothing }
+                   , maybeStopRef: Nothing
                    }
   cachedState <- fromMaybe emptyCachedState <$> CachedInstanceState.getInstanceData stateServerName
   state2 <- applyCachedState initialState cachedState
@@ -518,7 +520,7 @@ streamDetailsToAggregatorKey streamDetails =
   AggregatorKey streamDetails.slot.id streamDetails.role
 
 handleInfo :: Msg -> State -> Effect (CastResult State)
-handleInfo msg state@{aggregatorKey, slotId, stateServerName, workflowHandle} =
+handleInfo msg state@{aggregatorKey, slotId, stateServerName, workflowHandle, maybeStopRef} =
   case msg of
     AttemptConnectionToBackup -> do
       state2 <- attemptConnectionToBackup state
@@ -607,8 +609,9 @@ handleInfo msg state@{aggregatorKey, slotId, stateServerName, workflowHandle} =
       fromMaybe (pure unit) $ deRegisterStreamRelayImpl workflowHandle serverAddress <$> _.port <$> maybeExistingPort
       pure $ CastNoReply (removeRelayFromCachedState relayServer state)
 
-    MaybeStop
-      | not hasIngests state -> do
+    MaybeStop ref
+      | Just ref == maybeStopRef
+      , not hasIngests state -> do
         logInfo "Ingest Aggregator stopping" {aggregatorKey}
         pure $ CastStop state
       | otherwise -> pure $ CastNoReply state
@@ -833,11 +836,12 @@ doRemoveIngest profileName cachedStateRemoveFun state@{aggregatorKey, workflowHa
     state2 = cachedStateRemoveFun profileName state
   updateCachedState state2
   removeIngestImpl workflowHandle (IngestKey slotId slotRole profileName)
-  if not hasIngests state2 then
-    void $ Timer.sendAfter (serverName aggregatorKey) shutdownLingerTimeMs MaybeStop
+  if not hasIngests state2 then do
+    ref <- Erl.makeRef
+    void $ Timer.sendAfter (serverName aggregatorKey) shutdownLingerTimeMs (MaybeStop ref)
+    pure state2{maybeStopRef = Just ref}
   else
-    pure unit
-  pure state2
+    pure state2
 
 --------------------------------------------------------------------------------
 -- Lenses

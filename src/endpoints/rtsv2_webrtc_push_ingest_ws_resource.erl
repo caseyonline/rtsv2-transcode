@@ -23,53 +23,54 @@
 -define(state_failed,        rtsv2_websrc_push_ingest_ws_resource_state_failed).
 
 -record(stream_desc,
-        { remote_host :: binary_string()
+        { trace_id :: binary()
+        , public_ip_string :: binary_string()
+        , remote_host :: binary_string()
         , remote_port :: non_neg_integer()
         , account :: binary_string()
         , stream_name :: binary_string()
         , authenticate :: fun()
-        , publish_stream :: fun()
-        , make_ingest_key :: fun()
-        , stop_stream :: fun()
+        }).
+
+-record(authentication_response,
+        { start_stream :: fun()
+        , stream_details :: term()
+        , protocol :: {webRTC} | {rtmp}
+        , slot_id :: slot_id()
+        , slot_role :: slot_role()
+        , profile_name :: profile_name()
+        , username :: binary()
         }).
 
 -record(?state_initializing,
         { stream_desc :: #stream_desc{}
-        , trace_id :: binary()
-        , public_ip_string :: binary_string()
         , ice_servers :: list(map())
         }).
 
 -record(?state_authenticated,
         { stream_desc :: #stream_desc{}
-        , trace_id :: binary()
-        , public_ip_string :: binary_string()
-        , username :: binary()
+        , authentication_response :: #authentication_response{}
         }).
 
 -record(?state_ingesting,
         { stream_desc :: #stream_desc{}
-        , trace_id :: binary()
-        , public_ip_string :: binary_string()
+        , authentication_response :: #authentication_response{}
         , webrtc_session_pid :: pid()
         , webrtc_session_ref :: reference()
         , workflow_pid :: pid()
-        , stream_details :: term()
-        , profile_name :: term()
-        , username :: binary()
-        , source_info_fun :: fun()
+        , stop_stream :: fun()
+        , source_info :: fun()
         }).
 
--define(WebSocketStatusCode_DataInconsistentWithType, 1007).
--define(WebSocketStatusCode_MessageBad, 4001).
--define(WebSocketStatusCode_StateBad, 4002).
--define(WebSocketStatusCode_InvalidSDP, 4003).
--define(WebSocketStatusCode_AuthenticationFailed, 4004).
+-define(WebSocketStatusCode_WebRTCSessionFailed, {1001, <<"WebRTC session failed">>}).
+-define(WebSocketStatusCode_DataInconsistentWithType, {1007, <<"Malformed message">>}).
+-define(WebSocketStatusCode_MessageBad, {4001, <<"Invalid data in RTP negotiation">>}).
+-define(WebSocketStatusCode_StateBad, {4002, <<"Request made whilst in invalid state">>}).
+-define(WebSocketStatusCode_InvalidSDP, {4003, <<"Invalid SDP">>}).
+-define(WebSocketStatusCode_AuthenticationFailed, {4004, <<"Authentication failed">>}).
+-define(WebSocketStatusCode_IngestAlreadyRunning, {4005, <<"Ingest already active">>}).
 
-init(Req, #{ authenticate := Authenticate
-           , publish_stream := PublishStream
-           , make_ingest_key := MakeIngestKey
-           , stop_stream := StopStream }) ->
+init(Req, #{ authenticate := Authenticate }) ->
 
   PublicIP = this_server_ip(Req),
   PublicIPString = i_convert:convert(PublicIP, binary_string),
@@ -90,17 +91,14 @@ init(Req, #{ authenticate := Authenticate
                            , account = Account
                            , stream_name = StreamName
                            , authenticate = Authenticate
-                           , make_ingest_key = MakeIngestKey
-                           , publish_stream = PublishStream
-                           , stop_stream = StopStream
+                           , trace_id = TraceId
+                           , public_ip_string = PublicIPString
                            },
 
   {cowboy_websocket
   , Req
   , #?state_initializing{ stream_desc = StreamDesc
-                        , trace_id = TraceId
                         , ice_servers = IceServers
-                        , public_ip_string = PublicIPString
                         }
   }.
 
@@ -113,7 +111,7 @@ terminate(_Reason, _PartialReq, #?state_ingesting{ webrtc_session_pid = SessionP
 terminate(_Reason, _PartialReq, _State) ->
   ok.
 
-websocket_init(State = #?state_initializing{ trace_id = TraceId }) ->
+websocket_init(State = #?state_initializing{ stream_desc = #stream_desc{ trace_id = TraceId }}) ->
   timer:send_interval(1000, send_fir),
 
   %% Needs to come from config!
@@ -178,7 +176,7 @@ websocket_handle({text, JSON}, State) ->
       }
   end.
 
-websocket_info(send_fir, State = #?state_ingesting{trace_id = TraceId}) ->
+websocket_info(send_fir, State = #?state_ingesting{stream_desc = #stream_desc{trace_id = TraceId}}) ->
   webrtc_session:send_fir(TraceId),
   {ok, State};
 
@@ -208,13 +206,14 @@ websocket_info(#webrtc_session_response{payload = Payload}, State) ->
       }
   end;
 
-websocket_info({'DOWN', Ref, process, _Pid, _Reason}, State = #?state_ingesting{webrtc_session_ref = RTCSessionRef})
+websocket_info({'DOWN', Ref, process, _Pid, Reason}, State = #?state_ingesting{webrtc_session_ref = RTCSessionRef})
   when RTCSessionRef =:= Ref ->
-  { [ close_frame(1001) ]
+  ?SLOG_INFO("WebRTC Session down", #{reason => Reason}),
+  { [ close_frame(?WebSocketStatusCode_WebRTCSessionFailed) ]
   , State
   };
 
-websocket_info(#workflow_output{message = #workflow_data_msg{data = SourceInfo = #source_info{}}}, State = #?state_ingesting { source_info_fun = SourceInfoFn }) ->
+websocket_info(#workflow_output{message = #workflow_data_msg{data = SourceInfo = #source_info{}}}, State = #?state_ingesting { source_info = SourceInfoFn }) ->
   unit = (SourceInfoFn(SourceInfo))(),
   {ok, State};
 
@@ -223,17 +222,29 @@ websocket_info(_Info, State) ->
   {ok, State}.
 
 handle_authenticate(#{ <<"username">> := Username
-                     , <<"password">> := Password }, State = #?state_initializing{ trace_id = TraceId
-                                                                                 , ice_servers = IceServers
-                                                                                 , public_ip_string = PublicIpString
+                     , <<"password">> := Password
+                     , <<"protocol">> := Protocol }, State = #?state_initializing{ ice_servers = IceServers
                                                                                  , stream_desc = StreamDesc = #stream_desc{ account = Account
+                                                                                                                          , stream_name = StreamName
+                                                                                                                          , remote_host = RemoteHost
+                                                                                                                          , remote_port = RemotePort
                                                                                                                           , authenticate = Authenticate
                                                                                                                           }
-                                                                                 }) ->
+                                                                                 }) when Protocol == <<"webrtc">>;
+                                                                                         Protocol == <<"rtmp">> ->
 
-  case (Authenticate(Account, Username, Password))() of
+  PursProtocol = case Protocol of
+                   <<"webrtc">> -> {webRTC};
+                   <<"rtmp">> -> {rtmp}
+                 end,
 
-    {just, unit } ->
+  case (Authenticate(PursProtocol, Account, Username, Password, StreamName, RemoteHost, RemotePort))() of
+
+    {just, #{ streamDetails := #{ slot := #{ id := SlotId }
+                                , role := SlotRole
+                                }
+            , profileName := ProfileName
+            , startStream := StartStream}} ->
 
       { [ json_frame( <<"authenticated">>,
                       #{ thisIngest =>
@@ -241,10 +252,14 @@ handle_authenticate(#{ <<"username">> := Username
                             }
                        }
                     ) ],
-        #?state_authenticated{ trace_id = TraceId
-                             , stream_desc = StreamDesc
-                             , public_ip_string = PublicIpString
-                             , username = Username
+        #?state_authenticated{ stream_desc = StreamDesc
+                             , authentication_response = #authentication_response{ username = Username
+                                                                                 , slot_id = SlotId
+                                                                                 , slot_role = SlotRole
+                                                                                 , profile_name = ProfileName
+                                                                                 , protocol = PursProtocol
+                                                                                 , start_stream = StartStream
+                                                                                 }
                              }
       };
 
@@ -255,57 +270,54 @@ handle_authenticate(#{ <<"username">> := Username
   end;
 
 handle_authenticate(#{ <<"username">> := _
-                     , <<"password">> := _ }, State) when not is_record(State, ?state_initializing) ->
+                     , <<"password">> := _
+                     , <<"protocol">> := Protocol}, State) when not is_record(State, ?state_initializing),
+                                                                (Protocol == <<"webrtc">> orelse Protocol == <<"rtmp">>) ->
   { [ close_frame(?WebSocketStatusCode_StateBad) ]
   , State
   };
 
 handle_authenticate(_Data, State) ->
-  { [ close_frame(?WebSocketStatusCode_MessageBad) ]
+  { [ close_frame(?WebSocketStatusCode_DataInconsistentWithType) ]
   , State
   }.
 
-handle_start_ingest(#{ }, State = #?state_authenticated{ trace_id = TraceId
-                                                       , username = Username
-                                                       , public_ip_string = PublicIpString
-                                                       , stream_desc = StreamDesc = #stream_desc{ account = Account
-                                                                                                , stream_name = StreamName
-                                                                                                , remote_host = RemoteHost
-                                                                                                , remote_port = RemotePort
-                                                                                                , publish_stream = PublishStream
-                                                                                                }
+handle_start_ingest(#{ }, State = #?state_authenticated{ stream_desc =
+                                                           StreamDesc = #stream_desc{ trace_id = TraceId
+                                                                                    , public_ip_string = PublicIPString
+                                                                                    }
+                                                       , authentication_response =
+                                                           AuthenticationResponse = #authentication_response{ slot_id = SlotId
+                                                                                                            , slot_role = SlotRole
+                                                                                                            , profile_name = ProfileName
+                                                                                                            , start_stream = {just, StartStreamFn}
+                                                                                                            , protocol = {webRTC}
+                                                                                                            }
                                                        }) ->
 
-  case (PublishStream(Account, Username, RemoteHost, RemotePort, StreamName))() of
+  case StartStreamFn() of
 
-    {just, #{ streamDetails := StreamDetails = #{ slot := #{ id := SlotId }
-                                                , role := SlotRole
-                                                }
-            , profileName := ProfileName
-            , sourceInfo := SourceInfoFn
+    {just, #{ sourceInfo := SourceInfoFn
+            , stopStream := StopStreamFn
             , workflowPid := WorkflowPid}} ->
 
       {ok, Pid} = webrtc_session:start_link(TraceId,
-                                            PublicIpString,
+                                            PublicIPString,
                                             rtsv2_webrtc_push_ingest_handler,
                                             [ SlotId, SlotRole, ProfileName ]
                                            ),
       webrtc_session:subscribe_for_msgs(TraceId, [#webrtc_session_response{}]),
 
-      %% Make sure we go away if/when the RTC session
-      %% goes down
+      %% Make sure we go away if/when the RTC session goes down
       NewRTCSessionRef = monitor(process, Pid),
 
       { [ json_frame( <<"ingest-started">>,
                       #{}
                     ) ],
         #?state_ingesting{ stream_desc = StreamDesc
-                         , trace_id = TraceId
-                         , public_ip_string = PublicIpString
-                         , stream_details = StreamDetails
-                         , profile_name = ProfileName
-                         , source_info_fun = SourceInfoFn
-                         , username = Username
+                         , authentication_response = AuthenticationResponse
+                         , source_info = SourceInfoFn
+                         , stop_stream = StopStreamFn
                          , webrtc_session_pid = Pid
                          , workflow_pid = WorkflowPid
                          , webrtc_session_ref = NewRTCSessionRef
@@ -313,7 +325,7 @@ handle_start_ingest(#{ }, State = #?state_authenticated{ trace_id = TraceId
       };
 
     {nothing} ->
-      { [ close_frame(?WebSocketStatusCode_AuthenticationFailed) ]
+      { [ close_frame(?WebSocketStatusCode_IngestAlreadyRunning) ]
       , State
       }
   end;
@@ -325,25 +337,19 @@ handle_start_ingest(_, State) ->
 
 handle_stop_ingest(_, _State = #?state_ingesting{ webrtc_session_pid = SessionPid
                                                 , workflow_pid = WorkflowPid
-                                                , stream_desc = StreamDesc = #stream_desc{ stop_stream = StopStream
-                                                                                         , make_ingest_key = MakeIngestKey
-                                                                                         }
-                                                , stream_details = StreamDetails
-                                                , profile_name = ProfileName
-                                                , trace_id = TraceId
-                                                , public_ip_string = PublicIpString
-                                                , username = Username}) ->
+                                                , stop_stream = StopStreamFn
+                                                , stream_desc = StreamDesc
+                                                , authentication_response = AuthenticationResponse
+                                                }) ->
   gen_server:stop(SessionPid),
   id3as_workflow:stop(WorkflowPid),
-  (StopStream(MakeIngestKey(StreamDetails, ProfileName)))(),
+  StopStreamFn(),
 
   { [ json_frame( <<"ingest-stopped">>,
                   #{}
                 ) ],
     #?state_authenticated{ stream_desc = StreamDesc
-                         , trace_id = TraceId
-                         , public_ip_string = PublicIpString
-                         , username = Username
+                         , authentication_response = AuthenticationResponse
                          }
   };
 
@@ -357,7 +363,9 @@ handle_ping(State) ->
   , State
   }.
 
-handle_sdp_offer(#{ <<"offer">> := SDP }, #?state_ingesting{ trace_id = TraceId } = State) ->
+handle_sdp_offer(#{ <<"offer">> := SDP },
+                 #?state_ingesting{ stream_desc = #stream_desc{ trace_id = TraceId }} = State) ->
+
   case webrtc_session:handle_client_offer(TraceId, SDP) of
     {ok, ResponseSDP} ->
       ?LOG_DEBUG(#{ what => "negotiation.offer-received", result => "ok", context => #{ offer => SDP, response => ResponseSDP } }),
@@ -378,7 +386,10 @@ handle_sdp_offer(BadMessage, State) ->
   , State
   }.
 
-handle_ice_gathering_candidate(#{ <<"candidate">> := Candidate, <<"index">> := MediaLineIndex }, #?state_ingesting{ trace_id = TraceId } = State) ->
+handle_ice_gathering_candidate(#{ <<"candidate">> := Candidate
+                                , <<"index">> := MediaLineIndex },
+                               #?state_ingesting{ stream_desc = #stream_desc{ trace_id = TraceId }} = State) ->
+
   case webrtc_session:handle_ice_candidate(TraceId, MediaLineIndex, Candidate) of
     ok ->
       ?LOG_DEBUG(#{ what => "negotiation.ice-candidate-received", result => "ok", candidate => Candidate, media_line_index => MediaLineIndex });
@@ -390,12 +401,14 @@ handle_ice_gathering_candidate(#{ <<"candidate">> := Candidate, <<"index">> := M
   { [], State };
 
 handle_ice_gathering_candidate(BadMessage, State) ->
+
   ?LOG_DEBUG(#{ what => "negotiation.ice-candidate-received", result => "error", reason => "one or more fields missing", bad_message => BadMessage }),
   { [ close_frame(?WebSocketStatusCode_MessageBad) ]
   , State
   }.
 
 handle_ice_gathering_done(_Message, State) ->
+
   ?LOG_DEBUG(#{ what => "negotiation.ice-gathering-done", result => "ok" }),
   { []
   , State
@@ -410,6 +423,9 @@ json_frame(Type) ->  json_frame(Type, undefined).
 json_frame(Type, undefined) -> json_frame(Type, #{});
 
 json_frame(Type, Data) -> {text, jsx:encode(Data#{ <<"type">> => Type})}.
+
+close_frame({Code, Reason}) ->
+  close_frame(Code, Reason);
 
 close_frame(Code) ->
   close_frame(Code, <<>>).

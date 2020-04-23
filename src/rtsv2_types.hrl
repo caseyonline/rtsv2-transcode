@@ -13,5 +13,4 @@
 
 -type ingest_key() :: {ingest_key, slot_id(), slot_role(), binary_string()}.
 
-
 -endif.

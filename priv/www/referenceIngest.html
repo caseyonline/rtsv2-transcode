@@ -19,26 +19,47 @@
           padding-top: 0;
         }
       }
+      video{
+        border-radius: 10px;
+      }
     </style>
   </head>
   <body>
     <div class="container">
       <div class="row">
         <div class="col-sm">
-          <form>
-            <div class="form-group">
-              <label for="username">Username</label>
-              <input type="text" class="form-control" id="username" value="user"></input>
+          <div class="row">
+            <div class="col">
+              <form>
+                <div class="form-group">
+                  <label for="username">Username</label>
+                  <input type="text" class="form-control" id="username" value="user"></input>
+                </div>
+                <div class="form-group">
+                  <label for="password">Password</label>
+                  <input type="password" class="form-control" id="password" value="password"></input>
+                </div>
+                <div class="form-group">
+                  <div class="btn-group btn-group-toggle" data-toggle="buttons">
+                    <label class="btn btn-light active">
+                      <input type="radio" name="protocol" id="protocol-webrtc" checked disabled> WebRTC
+                    </label>
+                    <label class="btn btn-light">
+                      <input type="radio" name="protocol" id="protocol-rtmp" disabled> RTMP
+                    </label>
+                  </div>
+                </div>
+                <button id="authenticate" type="button" class="btn btn-primary" disabled>Authenticate</button>
+                <button id="start-ingest" type="button" class="btn btn-primary" disabled>Start Ingest</button>
+                <button id="stop-ingest" type="button" class="btn btn-primary" disabled>Stop Ingest</button>
+              </form>
             </div>
-            <div class="form-group">
-              <label for="password">Password</label>
-              <input type="password" class="form-control" id="password" value="password"></input>
+          </div>
+          <div class="row mt-1">
+            <div class="col text-center">
+                <video id="llnw-rts-ingest" controls muted width="100%"></video>
             </div>
-            <button id="authenticate" type="button" class="btn btn-primary" disabled>Authenticate</button>
-            <button id="start-ingest" type="button" class="btn btn-primary" disabled>Start Ingest</button>
-            <button id="stop-ingest" type="button" class="btn btn-primary" disabled>Stop Ingest</button>
-          </form>
-          <video id="llnw-rts-ingest" controls muted width="80%" class="mt-1"></video>
+          </div>
         </div>
         <div class="col-sm">
           <div class="card">
@@ -89,23 +110,7 @@
           }
         };
 
-        var ingest = LimelightIngestSDK.createIngest(config);
-
-        ingest.on("connected", (event) => {
-          $("#authenticate").prop("disabled", false);
-        });
-
-        ingest.on("authenticated", (event) => {
-          $("#authenticate").prop("disabled", true);
-          $("#start-ingest").prop("disabled", false);
-        });
-
-        ingest.on("ingest-active", () => {
-          $("#stop-ingest").prop("disabled", false);
-        });
-
-        ingest.on("ingest-stopped", () => {
-          $("#start-ingest").prop("disabled", false);
+        function clearFields() {
           $("#camera").html("");
           $("#microphone").html("");
           $("#frames").html("");
@@ -115,6 +120,36 @@
           $("#sendDelay").html("");
           $("#bytesSent").html("");
           $("#resolution").html("");
+        }
+
+        var ingest = LimelightIngestSDK.createIngest(config);
+
+        ingest.on("connected", (event) => {
+          $("#authenticate").prop("disabled", false);
+        });
+
+        ingest.on("authenticated", (event) => {
+          if ($("#protocol-webrtc").prop("checked")) {
+            $("#start-ingest").prop("disabled", false);
+          }
+        });
+
+        ingest.on("ingest-active", () => {
+          $("#stop-ingest").prop("disabled", false);
+        });
+
+        ingest.on("ingest-stopped", () => {
+          $("#start-ingest").prop("disabled", false);
+          clearFields();
+        });
+
+        ingest.on("reset", () => {
+          $("#authenticate").prop("disabled", true);
+          $("#protocol-webrtc").prop("disabled", true);
+          $("#protocol-rtmp").prop("disabled", true);
+          $("#start-ingest").prop("disabled", true);
+          $("#stop-ingest").prop("disabled", true);
+          clearFields();
         });
 
         ingest.on("ingest-video-stats", (stats) => {
@@ -158,7 +193,11 @@
         });
 
         $("#authenticate").on("click", (event) => {
-          ingest.authenticate($("#username").val(), $("#password").val());
+          var protocol = ($("#protocol-webrtc").prop("checked")) ? "webrtc" : "rtmp";
+          ingest.authenticate($("#username").val(), $("#password").val(), protocol);
+          $("#authenticate").prop("disabled", true);
+          $("#protocol-webrtc").prop("disabled", true);
+          $("#protocol-rtmp").prop("disabled", true);
         })
 
         $("#start-ingest").on("click", (evvent) => {
@@ -173,7 +212,7 @@
                          $("#microphone").html(track.label);
                        }
                      });
-                     ingest.startIngest(stream)
+                     ingest.startIngest(stream, 5000)
                    })
                    .catch((error) => {
                      $("#start-ingest").prop("disabled", false);

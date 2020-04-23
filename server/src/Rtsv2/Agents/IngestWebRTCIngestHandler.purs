@@ -1,14 +1,12 @@
 module Rtsv2.Agents.IngestWebRTCIngestHandler
        (
          authenticate
-       , publishStream
-       , stopStream
        )
        where
 
 import Prelude
 
-import Data.Either (Either(..), hush)
+import Data.Either (Either(..))
 import Data.Foldable (find)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (wrap)
@@ -16,9 +14,9 @@ import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
 import Erl.Process.Raw (Pid)
-import Erl.Utils (self)
+import Erl.Utils as Erl
 import Foreign (Foreign)
-import Logger (Logger, spy)
+import Logger (Logger)
 import Logger as Logger
 import Media.SourceDetails as SourceDetails
 import Rtsv2.Agents.IngestInstance as IngestInstance
@@ -32,56 +30,68 @@ import SpudGun as SpudGun
 
 foreign import startWorkflowImpl :: IngestKey -> Effect Pid
 
-authenticate :: String -> String -> String -> String -> Effect (Maybe Unit)
-authenticate host account username password = do
-  maybePublishCredentials <- getPublishCredentials host account username
+type AuthenticateResult = { streamDetails :: StreamDetails
+                          , profileName :: ProfileName
+                          , startStream :: Maybe (Effect (Maybe StartStreamResult))
+                          }
 
-  case maybePublishCredentials of
-    Just (PublishCredentials { username: expectedUsername
-                             , password: expectedPassword})
-      | expectedUsername == username
-        , expectedPassword == password -> do
-        pure $ Just unit
-    _ ->
-      pure Nothing
-
-publishStream :: String -> String -> String -> String -> Int -> String -> Effect (Maybe { streamDetails :: StreamDetails
-                                                                                        , profileName :: ProfileName
-                                                                                        , sourceInfo :: Foreign -> Effect Unit
-                                                                                        , workflowPid :: Pid
-                                                                                        } )
-publishStream host account username remoteAddress remotePort streamName = do
-  let
-    rtmpShortName = wrap account
-    rtmpStreamName = wrap streamName
-    streamPublish = wrap { host
-                         , protocol: WebRTC
-                         , rtmpShortName
-                         , rtmpStreamName
-                         , username
+type StartStreamResult = { sourceInfo :: Foreign -> Effect Unit
+                         , workflowPid :: Pid
+                         , stopStream :: Effect Unit
                          }
-  maybeStreamDetails <- getStreamDetails streamPublish
 
-  case maybeStreamDetails of
-    Left error -> do
-      _ <- logInfo "StreamPublish rejected" {reason: error}
+authenticate :: String -> StreamIngestProtocol -> String -> String -> String -> String -> String -> Int -> Effect (Maybe AuthenticateResult)
+authenticate host protocol account username password streamName remoteAddress remotePort = do
+  publishCredentials <- getPublishCredentials host account username
+
+  case publishCredentials of
+    Right (PublishCredentials { username: expectedUsername
+                              , password: expectedPassword})
+      | expectedUsername == username
+      , expectedPassword == password -> do
+        let
+          rtmpShortName = wrap account
+          rtmpStreamName = wrap streamName
+          streamPublish = wrap { host
+                               , protocol
+                               , rtmpShortName
+                               , rtmpStreamName
+                               , username
+                               }
+        maybeStreamDetails <- getStreamDetails streamPublish
+
+        case maybeStreamDetails of
+          Left error -> do
+            _ <- logInfo "StreamPublish rejected" {reason: error}
+            pure Nothing
+
+          Right streamDetails -> do
+            case findProfile streamDetails of
+              Nothing -> do
+                _ <- logInfo "StreamProfile not found" { streamDetails
+                                                       , streamName }
+                pure Nothing
+
+              Just (SlotProfile { name: profileName }) -> do
+                let
+                  ingestKey = makeIngestKey profileName streamDetails
+                maybeStartStream <- case protocol of
+                                      WebRTC -> do
+                                        self <- Erl.self
+                                        pure $ Just $ startStream ingestKey $ IngestInstanceSup.startIngest ingestKey streamPublish streamDetails remoteAddress remotePort self
+                                      Rtmp ->
+                                        pure Nothing
+                pure $ Just { streamDetails
+                            , profileName
+                            , startStream: maybeStartStream
+                            }
+    Right _ -> do
+      _ <- logInfo "Authentication failed; invalid username / password" {username}
       pure Nothing
 
-    Right streamDetails -> do
-      case findProfile streamDetails of
-        Nothing -> do
-          _ <- logInfo "StreamProfile not found" { streamDetails
-                                                 , streamName }
-          pure Nothing
-
-        Just (SlotProfile { name: profileName }) -> do
-          let
-            ingestKey = makeIngestKey profileName streamDetails
-          self <- self
-          -- TODO - if ingest running, this just crashes
-          IngestInstanceSup.startIngest ingestKey streamPublish streamDetails remoteAddress remotePort self
-          workflowPid <- startWorkflow ingestKey
-          pure $ Just {streamDetails, profileName, sourceInfo: sourceInfo ingestKey, workflowPid}
+    Left error -> do
+      _ <- logInfo "Authentication error" {reason: error}
+      pure Nothing
   where
     findProfile streamDetails@{ slot: { profiles } } =
       find (\ (SlotProfile { rtmpStreamName: RtmpStreamName profileStreamName }) -> profileStreamName == streamName) profiles
@@ -89,21 +99,33 @@ publishStream host account username remoteAddress remotePort streamName = do
     makeIngestKey profileName {role, slot: {id: slotId}} =
       IngestKey slotId role profileName
 
-    sourceInfo ingestKey foreignSourceInfo = do
+
+startStream :: IngestKey -> Effect (Maybe Unit) -> Effect (Maybe StartStreamResult)
+startStream ingestKey startFn = do
+  maybeStarted <- startFn
+  case maybeStarted of
+    Just _ -> do
+      workflowPid <- startWorkflow ingestKey
+      pure $ Just { sourceInfo: sourceInfo
+                  , stopStream: stopStream ingestKey
+                  , workflowPid}
+    Nothing ->
+      pure Nothing
+  where
+    sourceInfo foreignSourceInfo = do
       IngestInstance.setSourceInfo ingestKey (SourceDetails.foreignToSourceInfo foreignSourceInfo)
 
 stopStream :: IngestKey -> Effect Unit
 stopStream ingestKey =
-  -- workflow is still running, we need to stop it - can return it from publishStream and have it passed into stopStream
   IngestInstance.stopIngest ingestKey
 
-getPublishCredentials :: String -> String -> String -> Effect (Maybe PublishCredentials)
+getPublishCredentials :: String -> String -> String -> Effect (Either JsonResponseError PublishCredentials)
 getPublishCredentials host rtmpShortName username = do
   {streamAuthUrl: url} <- Config.llnwApiConfig
   restResult <- SpudGun.postJson (wrap url) (wrap { host
                                                   , rtmpShortName: wrap rtmpShortName
                                                   , username} :: StreamAuth)
-  pure $ hush $ bodyToJSON restResult
+  pure $ bodyToJSON restResult
 
 getStreamDetails :: StreamPublish -> Effect (Either JsonResponseError StreamDetails)
 getStreamDetails streamPublish@(StreamPublish {rtmpStreamName}) = do

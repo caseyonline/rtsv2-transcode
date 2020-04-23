@@ -5,7 +5,8 @@ import { WebSocketProtocolStatusCode } from "./util/WebSocketUtil.ts";
 
 import { IngestDetails
          , MessageDestination
-         , DataObjectUpdateOperation} from "./signaling/types.ts";
+         , DataObjectUpdateOperation
+         , StreamIngestProtocol} from "./signaling/types.ts";
 
 import * as ClientMessages from "./signaling/clientMessages.ts";
 import * as ServerMessages from "./signaling/serverMessages.ts";
@@ -37,6 +38,7 @@ export default class Session extends EventEmitter implements ISession {
   private traceId?: string = null;
   private peer?: RTCPeerConnection = null;
   private localStream?: any = null;
+  private requestedBitrate?: number = null;
   private serverIngestStopped: boolean = false;
   private peerConnectionStopped: boolean = false;
 
@@ -47,7 +49,7 @@ export default class Session extends EventEmitter implements ISession {
     setInterval(() => this.pingSocket(), PING_INTERVAL_MS);
   }
 
-  authenticate(username: string, password: string) {
+  authenticate(username: string, password: string, protocol: StreamIngestProtocol) {
     if (this.state != SessionState.Connected) {
       console.warn(`Attempt to authenticate whilst in invalid state ${this.state}`);
       return;
@@ -55,15 +57,17 @@ export default class Session extends EventEmitter implements ISession {
     this.sendToSocket({ "type": "authenticate"
                         , "username": username
                         , "password": password
+                        , "protocol": protocol
                       });
   }
 
-  startIngest(stream) {
+  startIngest(stream, bitrate) {
     if (this.state != SessionState.Authenticated) {
       console.warn(`Attempt to start ingest when not authenticated`);
       return;
     }
     this.localStream = stream;
+    this.requestedBitrate = bitrate
     this.sendToSocket({ "type": "start-ingest" });
   }
 
@@ -121,6 +125,9 @@ export default class Session extends EventEmitter implements ISession {
         "offerToReceiveAudio": false,
         "offerToReceiveVideo": false,
       });
+
+      offer["sdp"] = this.setMediaBitrate(offer.sdp, "video", this.requestedBitrate);
+
       console.debug("Local description obtained.", offer.sdp);
 
       this.sendToSocket({
@@ -147,60 +154,46 @@ export default class Session extends EventEmitter implements ISession {
   // TODO: restart logic, it really depends on whether the media session is there too...
   handleSocketClose(event: CloseEvent) {
     console.warn(`The socket closed with code ${event.code} and reason '${event.reason}'`);
-    switch (event.code) {
-      case WebSocketProtocolStatusCode.NormalClosure:
-
-        // This shouldn't really happen at all, we'd use our custom
-        // IngestClosed message if the stream died, so reconnect.
-        this.reconnectSocket();
+    switch (this.state) {
+      case SessionState.Opening:
+        {
+          // Nothing to do
+        }
         break;
-
-      case WebSocketProtocolStatusCode.GoingAway:
-
-        // We only send this if we're shutting down the ingest
-        this.switchServer();
+      case SessionState.AwaitingInitialization:
+        {
+          // Nothing to do
+        }
         break;
-
-      case WebSocketProtocolStatusCode.Client_ConnectionClosedAbnormally:
-
-        // Sent by a browser if the connection goes away without a close frame - just assume
-        // the server went away in this case. If cowboy caught the error, we'd get
-        // an UnexpectedConnection, which implies at the least that something more
-        // severe went wrong
-        this.switchServer();
+      case SessionState.Connected:
+        {
+          // Nothing to do
+        }
         break;
-
-      case WebSocketProtocolStatusCode.UnexpectedCondition:
-
-        // Sent by cowboy if the socket handler crashes
-        this.reconnectSocket();
+      case SessionState.Authenticated:
+        {
+          // Nothing to do
+        }
         break;
-
-      case WebSocketProtocolStatusCode.Client_TLSFailure:
-
-        // Pretty serious stuff
-        this.createDeferredLogEntry({
-          message: "TLS failure.",
-          socketURL: this.socketURL
-        });
-        this.switchServer();
+      case SessionState.Negotiating:
+        {
+          this.serverIngestStopped = true;
+          this.peer.close();
+          this.clearPeerCallbacks();
+        }
         break;
+    }
 
-      case RTSStatusCode.IngestClosed:
-        // The ingest has been closed, no need to do anything further
-        break;
+    this.resetState();
+    this.emit("reset", {});
 
-      default:
-
-        // Unknown problem, just switch server
-        this.createDeferredLogEntry({
-          message: "Unknown socket close status.",
-          socketURL: this.socketURL,
-          status: event.code,
-          reason: event.reason
-        });
-        this.switchServer();
-        break;
+    if (event.code == 1006) {
+      setTimeout(() => {
+        this.createSocket();
+      }, 1000);
+    }
+    else {
+      this.createSocket();
     }
   }
 
@@ -316,8 +309,10 @@ export default class Session extends EventEmitter implements ISession {
 
       case "sdp.offer-response":
         {
-          console.debug("Remote description obtained.", message.response);
-          await this.peer.setRemoteDescription({ "sdp": message.response, "type": "answer" });
+          var sdp = this.setMediaBitrate(message.response, "video", this.requestedBitrate);
+          console.debug("Remote description obtained.", sdp);
+
+          await this.peer.setRemoteDescription({ "sdp": sdp, "type": "answer" });
           console.debug("Remote description applied.");
         }
         break;
@@ -400,9 +395,19 @@ export default class Session extends EventEmitter implements ISession {
 
   handlePeerConnectionStateChange(event) {
     console.debug(`Connection State changed to ${event.target.connectionState}`);
-    if (event.target.connectionState == "connected") {
-      setTimeout(() => { this.reportStats() }, 1000);
-      this.emit("ingest-active", {});
+    switch (event.target.connectionState) {
+      case "connected":
+        {
+          setTimeout(() => { this.reportStats() }, 1000);
+          this.emit("ingest-active", {});
+        }
+        break;
+      case "failed":
+        {
+          this.sendToSocket({ "type": "stop-ingest" });
+          this.emit("ingest-stopped", {});
+        }
+        break;
     }
   }
 
@@ -410,16 +415,32 @@ export default class Session extends EventEmitter implements ISession {
     console.debug(`Signaling State changed to ${event.target.signalingState}`);
 
     if (event.target.signalingState == "closed") {
+      this.clearPeerCallbacks();
+      this.peer = null;
+      this.peerConnectionStopped = true;
+      this.maybeEmitStopped();
+    }
+  }
+
+  clearPeerCallbacks() {
       this.peer.onicecandidate = null;
       this.peer.onicegatheringstatechange = null;
       this.peer.oniceconnectionstatechange = null;
       this.peer.onconnectionstatechange = null;
       this.peer.onsignalingstatechange = null;
       this.peer.ontrack = null;
-      this.peer = null;
-      this.peerConnectionStopped = true;
-      this.maybeEmitStopped();
-    }
+  }
+
+  resetState() {
+    this.socket = null;
+    this.state = SessionState.Opening;
+    this.serverConfig = null;
+    this.traceId = null;
+    this.peer = null;
+    this.localStream = null;
+    this.requestedBitrate = null;
+    this.serverIngestStopped = false;
+    this.peerConnectionStopped = false;
   }
 
   handlePeerTrack(event) {
@@ -440,13 +461,6 @@ export default class Session extends EventEmitter implements ISession {
     }
   }
 
-  reconnectSocket() {
-    this.createSocket();
-  }
-
-  switchServer() {
-  }
-
   pingSocket() {
     if (this.state === SessionState.Opening) {
       return;
@@ -463,9 +477,6 @@ export default class Session extends EventEmitter implements ISession {
 
   unexpectedMessage(message) {
     console.error(`Got unexpected message with type ${message.type} in state ${this.state}.`, message);
-  }
-
-  createDeferredLogEntry(data) {
   }
 
   sendToSocket(message: ClientMessages.Message) {
@@ -492,4 +503,44 @@ export default class Session extends EventEmitter implements ISession {
       }
     }
   }
+
+  setMediaBitrate(sdp, media, bitrate) {
+    var lines = sdp.split("\n");
+    var line = -1;
+    for (var i = 0; i < lines.length; i++) {
+      if (lines[i].indexOf("m="+media) === 0) {
+        line = i;
+        break;
+      }
+    }
+    if (line === -1) {
+      return sdp;
+    }
+
+    // Pass the m line
+    line++;
+
+    // Skip i and c lines
+    while(lines[line].indexOf("i=") === 0 || lines[line].indexOf("c=") === 0) {
+      line++;
+    }
+
+    var newLines
+    // If we're on a b line, replace it
+    if (lines[line].indexOf("b") === 0) {
+      lines[line] = "b=AS:"+bitrate;
+      newLines = lines.slice(0, line);
+    }
+    else {
+      // Add a new b line
+      newLines = lines.slice(0, line);
+      newLines.push("b=AS:"+bitrate);
+    }
+
+    newLines.push("a=fmtp:102 x-google-start-bitrate=" + bitrate + "; x-google-max-bitrate=" + Math.trunc(bitrate * 1.1) + "; x-google-min-bitrate=" + Math.trunc(bitrate * 0.75));
+    newLines = newLines.concat(lines.slice(line, lines.length));
+
+    return newLines.join("\n");
+  }
+
 }

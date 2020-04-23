@@ -252,7 +252,7 @@ processGunMessage state@{aggregatorWebSocket: Just socket} gunMsg =
     pure $ CastNoReply state
 
 ingestEqLine :: State -> Effect Audit.IngestEqLine
-ingestEqLine state@{ ingestKey: ingestKey@(IngestKey slotId slotRole _profileeName)
+ingestEqLine state@{ ingestKey: ingestKey@(IngestKey slotId slotRole _profileName)
                    , streamPublish: StreamPublish { host: ingestIp
                                                   , protocol: connectionType
                                                   , rtmpShortName

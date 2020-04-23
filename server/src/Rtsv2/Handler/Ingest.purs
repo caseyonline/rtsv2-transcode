@@ -15,6 +15,8 @@ import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Erl.Atom (atom)
+import Erl.Cowboy.Req (StatusCode(..))
+import Erl.Cowboy.Req as Req
 import Erl.Data.List (List, nil, (:))
 import Erl.Data.Tuple (tuple2)
 import Erl.Process.Raw (Pid)
@@ -220,8 +222,14 @@ ingestStart canary shortName slotNameAndProfileName@(SlotNameAndProfileName slot
                                                                          streamPublish = fromMaybe' (lazyCrashIfMissing "stream_publish missing") maybeStreamPublish
                                                                          ingestKey = IngestKey streamDetails.slot.id streamDetails.role profileName
                                                                        pid <- startFakeIngest ingestKey
-                                                                       IngestInstanceSup.startIngest ingestKey streamPublish streamDetails "127.0.0.1" 0 pid
-                                                                       Rest.result "ingestStarted" req2 state2
+                                                                       maybeStarted <- IngestInstanceSup.startIngest ingestKey streamPublish streamDetails "127.0.0.1" 0 pid
+                                                                       case maybeStarted of
+                                                                         Just _ ->
+                                                                           Rest.result "ingestStarted" req2 state2
+                                                                         Nothing -> do
+                                                                           stopFakeIngest ingestKey
+                                                                           req3 <- Req.replyStatus (StatusCode 409) req2
+                                                                           Rest.result "ingestStartFailed" req3 state2
                                                                    ) : nil) req state)
   # Rest.yeeha
 

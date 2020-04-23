@@ -1,13 +1,14 @@
-import { IConnectedEventData, IAuthenticatedEventData } from "../frontend/IIngest"
+import { IConnectedEventData, IAuthenticatedEventData } from "../frontend/IIngest";
+import { StreamIngestProtocol } from "./signaling/types";
 
 export interface ISession {
   /** Authenticate with the server
    */
-  authenticate(username: string, password: string);
+  authenticate(username: string, password: string, protocol: StreamIngestProtocol);
 
   /** Start an ingest
    */
-  startIngest(stream: any);
+  startIngest(stream: any, bitrate: number);
 
   /** Stop an ingest
    */
@@ -32,6 +33,11 @@ export interface ISession {
    * ingest stop
    */
   on(event: "ingest-stopped", handler: () => void);
+
+  /** Attaches to the reset event.  This event is emitted upon session
+   * reset
+   */
+  on(event: "reset", handler: () => void);
 
   /** Attaches to the ingest-stats event.  This event is emitted each
    * second with statistics from the underlying peer connection

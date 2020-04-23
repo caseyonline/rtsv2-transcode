@@ -1,3 +1,4 @@
+import { StreamIngestProtocol } from "../backend/signaling/types";
 import { IIngest, IConnectedEventData } from "../frontend/IIngest";
 import EventEmitter from "./util/EventEmitter.ts";
 
@@ -43,6 +44,15 @@ export default class Ingest extends EventEmitter implements IIngest {
       this.emit("ingest-stopped", {});
     });
 
+    this.session.on("reset", () => {
+      this.videoElement.srcObject = null;
+      this.videoElement.currentTime = 0;
+      if (this.localStream) {
+        this.localStream.getTracks().forEach((track) => track.stop());
+      }
+      this.emit("reset", {});
+    });
+
     this.session.on("ingest-audio-stats", (stats) => {
       this.emit("ingest-audio-stats", stats);
     });
@@ -52,21 +62,21 @@ export default class Ingest extends EventEmitter implements IIngest {
     });
   }
 
-  authenticate(username: string, password: string) {
+  authenticate(username: string, password: string, protocol: StreamIngestProtocol) {
     if (this.state != IngestState.Connected) {
       console.warn(`Attempt to authenticate whilst in invalid state ${this.state}`);
       return;
     }
-    this.session.authenticate(username, password);
+    this.session.authenticate(username, password, protocol);
   }
 
-  startIngest(stream: any) {
+  startIngest(stream: any, bitrate: number) {
     if (this.state != IngestState.Authenticated) {
       console.warn(`Attempt to start ingest when not authenticated`);
       return;
     }
     this.localStream = stream;
-    this.session.startIngest(stream);
+    this.session.startIngest(stream, bitrate);
   }
 
   stopIngest() {

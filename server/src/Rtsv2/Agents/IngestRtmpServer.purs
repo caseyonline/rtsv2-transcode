@@ -114,10 +114,14 @@ onStreamCallback host rtmpShortNameStr username remoteAddress remotePort rtmpStr
           let
             ingestKey = makeIngestKey profileName streamDetails
           self <- self
-          IngestInstanceSup.startIngest ingestKey streamPublish streamDetails remoteAddress remotePort self
-          startWorkflowAndBlock rtmpPid publishArgs ingestKey
-          IngestInstance.stopIngest ingestKey
-          pure unit
+          maybeStarted <- IngestInstanceSup.startIngest ingestKey streamPublish streamDetails remoteAddress remotePort self
+          case maybeStarted of
+            Just unit -> do
+              startWorkflowAndBlock rtmpPid publishArgs ingestKey
+              IngestInstance.stopIngest ingestKey
+              pure unit
+            Nothing ->
+              pure unit
   where
     findProfile ingestStreamName streamDetails@{ slot: { profiles } } =
       find (\ (SlotProfile { rtmpStreamName: profileStreamName }) -> profileStreamName == ingestStreamName) profiles

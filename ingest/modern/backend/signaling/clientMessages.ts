@@ -1,5 +1,6 @@
 import { MessageDestination
-         , DataObjectUpdateOperation } from "./types";
+         , DataObjectUpdateOperation
+         , StreamIngestProtocol } from "./types";
 
 export type Message
   = PingMessage
@@ -28,6 +29,9 @@ export interface AuthenticateMessage {
 
   /** The password. */
   readonly password: string;
+
+  /** The protocol. */
+  readonly protocol: StreamIngestProtocol;
 }
 
 /** Request an ingest start. */

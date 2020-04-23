@@ -13,10 +13,10 @@
 -record(?state,
         {
          rtmp_pid :: pid(),
-         handle :: fun()
+         on_stream_callback :: fun()
         }).
 
-init(Rtmp, ConnectArgs, [#{ init := Init  }]) ->
+init(Rtmp, ConnectArgs, [#{ init := OnConnectCallback  }]) ->
 
   {_, TcUrl} = lists:keyfind("tcUrl", 1, ConnectArgs),
 
@@ -30,7 +30,7 @@ init(Rtmp, ConnectArgs, [#{ init := Init  }]) ->
      query = Query
     } = rtmp_utils:parse_url(TcUrl),
 
-  Response = (Init(Host, ShortName, Query))(),
+  Response = (OnConnectCallback(Host, ShortName, Query))(),
 
   case Response of
     {rejectRequest} ->
@@ -46,13 +46,13 @@ init(Rtmp, ConnectArgs, [#{ init := Init  }]) ->
     {llnwPhase1Response, Username, #{nonce := Nonce}} ->
       {authenticate, llnw, Username, Nonce};
 
-    {acceptRequest, Handle} ->
+    {acceptRequest, OnStreamCallback} ->
       {ok, #?state{rtmp_pid = Rtmp,
-                   handle = Handle}}
+                   on_stream_callback = OnStreamCallback}}
   end.
 
 handle(#?state{rtmp_pid = Rtmp,
-               handle = Handle}) ->
+               on_stream_callback = OnStreamCallback}) ->
 
   {ok, {RemoteIp, RemotePort}} = rtmp:peername(Rtmp),
   RemoteIpStr = list_to_binary(inet:ntoa(RemoteIp)),
@@ -63,7 +63,7 @@ handle(#?state{rtmp_pid = Rtmp,
       [StreamNameStr | _] = string:tokens(Path, "?"),
       StreamName = list_to_binary(StreamNameStr),
 
-      (Handle(RemoteIpStr, RemotePort, StreamName, Rtmp, PublishArgs))(),
+      (OnStreamCallback(RemoteIpStr, RemotePort, StreamName, Rtmp, PublishArgs))(),
 
       rtmp:close(Rtmp)
   end.
