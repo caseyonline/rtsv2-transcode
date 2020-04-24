@@ -1,4 +1,4 @@
-module OsCmd
+module Helpers.OsCmd
   ( runProc
   ) where
 
