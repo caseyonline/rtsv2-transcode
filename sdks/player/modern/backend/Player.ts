@@ -31,14 +31,14 @@ export default class Player extends EventEmitter implements IPlayer {
     this.session.on("active-profiles", (profiles) => {
       this.emit("active-profiles", profiles);
     });
-    this.session.on("dataobject.message", (message) => {
-      this.emit("dataobject.message", message);
+    this.session.on("data-object-message", (message) => {
+      this.emit("data-object-message", message);
     });
-    this.session.on("dataobject.update-response", (response) => {
+    this.session.on("data-object-update-response", (response) => {
       this.emit("dataobject.update-response", response);
     });
-    this.session.on("dataobject.broadcast", (dataObject) => {
-      this.emit("dataobject.broadcast", dataObject);
+    this.session.on("data-object", (dataObject) => {
+      this.emit("data-object", dataObject);
     });
     this.session.on("playback-active", () => {
       this.emit("playback-active", {});

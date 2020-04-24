@@ -72,14 +72,14 @@
         player.on("active-profiles", (profiles) => {
           console.log("active-profiles", profiles);
         });
-        player.on("dataobject.message", (message) => {
-          console.log("dataobject.message", message);
+        player.on("data-object-message", (message) => {
+          console.log("data-object-message", message);
         });
-        player.on("dataobject.update-response", (response) => {
-          console.log("dataobject.update-response", response);
+        player.on("data-object-update-response", (response) => {
+          console.log("data-object-update-response", response);
         });
-        player.on("dataobject.broadcast", (dataObject) => {
-          console.log("dataobject.broadcast", dataObject);
+        player.on("data-object", (dataObject) => {
+          console.log("data-object", dataObject);
         });
         player.on("playback-active", () => {
           $("#stop").prop("disabled", false);
