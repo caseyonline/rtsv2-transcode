@@ -315,6 +315,23 @@ export default class Session extends EventEmitter implements ISession {
           this.beginNegotiation();
         }
         break;
+      case "dataobject.message":
+        {
+          this.emit("data-object-message", message);
+        }
+        break;
+
+      case "dataobject.update-response":
+        {
+          this.emit("data-object-update-response", message);
+        }
+        break;
+
+      case "dataobject.broadcast":
+        {
+          this.emit("data-object", message.object);
+        }
+        break;
       default:
         this.unexpectedMessage(message);
     }
@@ -356,7 +373,7 @@ export default class Session extends EventEmitter implements ISession {
 
       case "dataobject.update-response":
         {
-          console.debug(`Update response - senderRef: ${message.senderRef}, response: ${message.response}`);
+          this.emit("data-object-update-response", message);
         }
         break;
 

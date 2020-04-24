@@ -28,7 +28,7 @@ import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
-import Erl.Data.List (List, singleton)
+import Erl.Data.List (List, nil, singleton)
 import Erl.Data.Map (values)
 import Erl.Data.Tuple (Tuple2, tuple2)
 import Erl.Process (Process(..), (!))
@@ -48,7 +48,7 @@ import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.Locator.Types (LocalOrRemote(..), RegistrationResp, ResourceResp)
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
 import Rtsv2.Agents.StreamRelaySup (startRelay) as StreamRelaySup
-import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload, DownstreamWsMessage(..), EgestUpstreamWsMessage(..))
+import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload, DownstreamWsMessage(..), EgestUpstreamWsMessage(..), ActiveProfiles(..))
 import Rtsv2.Audit as Audit
 import Rtsv2.Config as Config
 import Rtsv2.DataObject (ObjectBroadcastMessage(..))
@@ -61,7 +61,7 @@ import Shared.Common (Milliseconds)
 import Shared.LlnwApiTypes (StreamIngestProtocol(..))
 import Shared.Router.Endpoint (Endpoint(..), makeUrl, makeWsUrl)
 import Shared.Rtsv2.JsonLd as JsonLd
-import Shared.Stream (AggregatorKey(..), EgestKey(..), RelayKey(..), SlotId, SlotRole)
+import Shared.Stream (AggregatorKey(..), EgestKey(..), ProfileName(..), RelayKey(..), SlotId, SlotRole)
 import Shared.Types (EgestServer(..), Load, RelayServer, Server, ServerLoad(..), extractAddress)
 import Shared.Types.Agent.State as PublicState
 import SpudGun as SpudGun
@@ -99,12 +99,14 @@ type State
     , slotConfiguration :: Maybe SlotConfiguration
     , lastOnFI :: Int
     , dataObject :: Maybe DO.Object
+    , activeProfiles :: List ProfileName
     }
 
 payloadToEgestKey :: CreateEgestPayload -> EgestKey
 payloadToEgestKey payload = EgestKey payload.slotId payload.slotRole
 
 data EgestBusMsg = EgestOnFI Int Int
+                 | EgestCurrentActiveProfiles (List ProfileName)
                  | EgestDataObjectMessage DO.Message
                  | EgestDataObjectUpdateResponse DO.ObjectUpdateResponseMessage
                  | EgestDataObjectBroadcast DO.Object
@@ -156,10 +158,11 @@ addClient handlerPid egestKey =
   let
     ourServerName = serverName egestKey
   in
-   Gen.doCall ourServerName \state@{clientCount, dataObject} -> do
+   Gen.doCall ourServerName \state@{clientCount, dataObject, activeProfiles} -> do
      logInfo "Add client" {newCount: clientCount + 1}
      Gen.monitorPid ourServerName handlerPid (\_ -> HandlerDown)
      maybeSend dataObject
+     (Process handlerPid) ! (EgestCurrentActiveProfiles activeProfiles)
      pure $ CallReply (Right unit) state{ clientCount = clientCount + 1
                                         , stopRef = Nothing
                                         }
@@ -232,6 +235,7 @@ init payload@{slotId, slotRole, aggregator} stateServerName = do
            , slotConfiguration: Nothing
            , dataObject: Nothing
            , lastOnFI: 0
+           , activeProfiles: nil
            }
   case maybeRelay of
     Just relay ->
@@ -314,6 +318,14 @@ processGunMessage state@{relayWebSocket: Just socket, egestKey, lastOnFI} gunMsg
 
       Right (WsGun.Frame (OnFI {timestamp, pts})) ->
         pure $ CastNoReply state
+
+      Right (WsGun.Frame (CurrentActiveProfiles activeProfiles@(ActiveProfiles {profiles}))) -> do
+        shouldProcess <- DataObject.shouldProcessMessage egestKey activeProfiles
+        if shouldProcess then do
+          Bus.raise (bus egestKey) (EgestCurrentActiveProfiles profiles)
+          pure $ CastNoReply state{activeProfiles = profiles}
+        else
+          pure $ CastNoReply state
 
       Right (WsGun.Frame (DataObjectMessage dataObjectMsg)) -> do
         shouldProcess <- DataObject.shouldProcessMessage egestKey dataObjectMsg

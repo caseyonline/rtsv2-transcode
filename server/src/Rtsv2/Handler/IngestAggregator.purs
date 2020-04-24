@@ -9,7 +9,7 @@ module Rtsv2.Handler.IngestAggregator
 
 import Prelude
 
-import Data.Maybe (Maybe(..), fromMaybe', maybe)
+import Data.Maybe (Maybe(..), fromMaybe')
 import Effect (Effect)
 import Erl.Data.List (List)
 import Erl.Process (Process(..))

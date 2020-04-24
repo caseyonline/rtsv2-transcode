@@ -2,9 +2,12 @@ import { StreamIngestProtocol } from "../../../shared/llnw-types";
 
 import { DataObject
          , MessageDestination
-         , DataObjectUpdateOperation} from "../../../shared/data-object-types";
+         , DataObjectUpdateOperation
+       } from "../../../shared/data-object-types";
 
-import { DataObjectReceiveMessage } from "../../../shared/data-object-server-messages";
+import { DataObjectReceiveMessage
+         , DataObjectUpdateResponseMessage
+       } from "../../../shared/data-object-server-messages";
 
 export interface ISession {
   /** Authenticate with the server
@@ -59,6 +62,11 @@ export interface ISession {
    * receipt of a message sent to the publisher
    */
   on(event: "data-object-message", handler: (message: DataObjectReceiveMessage) => void);
+
+  /** Attaches to the data-object-update-response event.  This event is emitted upon
+   * receipt of an update response
+   */
+  on(event: "data-object-update-response", handler: (message: DataObjectUpdateResponseMessage) => void);
 
   /** Attaches to the data-object event.  This event is emitted upon
    * receipt of the latest data object

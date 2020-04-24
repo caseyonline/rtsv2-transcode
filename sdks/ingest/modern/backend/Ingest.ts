@@ -66,6 +66,10 @@ export default class Ingest extends EventEmitter implements IIngest {
       this.emit("data-object-message", message);
     });
 
+    this.session.on("data-object-update-response", (message) => {
+      this.emit("data-object-update-response", message);
+    });
+
     this.session.on("data-object", (message) => {
       this.emit("data-object", message);
     });

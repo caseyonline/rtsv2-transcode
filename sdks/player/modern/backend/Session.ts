@@ -259,29 +259,37 @@ export default class Session extends EventEmitter implements ISession {
 
       case "quality-change":
         {
-          console.debug("The server has switched the stream variant.", message);
+          this.emit("quality-change", message);
         }
         break;
 
       case "on-fi":
         {
-          console.debug("Source encoder onFI.", message.timestamp, message.pts);
+          this.emit("source-onfi", message);
+        }
+        break;
+
+      case "active-profiles":
+        {
+          this.emit("active-profiles", message.activeProfiles);
         }
         break;
 
       case "dataobject.message":
         {
-          console.debug(`Received message - from: ${message.sender}, body: ${message.msg}`);
+          this.emit("data-object-message", message);
         }
         break;
+
       case "dataobject.update-response":
         {
-          console.debug(`Update response - senderRef: ${message.senderRef}, response: ${message.response}`);
+          this.emit("data-object-update-response", message);
         }
         break;
+
       case "dataobject.broadcast":
         {
-          console.debug("Data Object.", message.object);
+          this.emit("data-object", message.object);
         }
         break;
 

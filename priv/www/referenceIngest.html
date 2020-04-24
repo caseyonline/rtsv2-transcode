@@ -147,6 +147,10 @@
           console.log("Received publisher message: ", message);
         });
 
+        ingest.on("data-object-update-response", (message) => {
+          console.log("Received update response: ", message);
+        });
+
         ingest.on("data-object", (object) => {
           console.log("Received latest data object: ", object);
         });

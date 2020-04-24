@@ -86,7 +86,7 @@ import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..), announceLocalAggregatorIsAvailable, announceLocalAggregatorStopped)
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
-import Rtsv2.Agents.StreamRelayTypes (AggregatorBackupToPrimaryWsMessage(..), AggregatorPrimaryToBackupWsMessage(..), AggregatorToIngestWsMessage(..), DownstreamWsMessage(..), WebSocketHandlerMessage(..))
+import Rtsv2.Agents.StreamRelayTypes (ActiveProfiles(..), AggregatorBackupToPrimaryWsMessage(..), AggregatorPrimaryToBackupWsMessage(..), AggregatorToIngestWsMessage(..), DownstreamWsMessage(..), WebSocketHandlerMessage(..))
 import Rtsv2.Config as Config
 import Rtsv2.DataObject as DO
 import Rtsv2.Names as Names
@@ -233,6 +233,8 @@ registerRelay slotId slotRole deliverTo handler =
                                                                      , ref})
         _ ->
           pure unit
+      activeProfiles <- currentActiveProfiles state
+      handler ! (WsSend $ CurrentActiveProfiles activeProfiles)
       CallReply slotConfiguration <$> doRegisterRelay deliverTo handler state
   )
   where
@@ -525,7 +527,6 @@ handleInfo msg state@{aggregatorKey, slotId, stateServerName, workflowHandle, ma
       pure $ CastNoReply state2
 
     PrimaryHandlerDown | { dataObjectState: Right dos } <- state -> do
-      _ <- logInfo "XXX Primary handler down" {slotId}
       pure $ CastNoReply state{ dataObjectState = Right dos {connectionToPrimary = Nothing } }
 
     PrimaryHandlerDown ->
@@ -544,7 +545,6 @@ handleInfo msg state@{aggregatorKey, slotId, stateServerName, workflowHandle, ma
       pure $ CastNoReply state2
 
     IntraPoPBus (IngestAggregatorExited (AggregatorKey exitedId Backup) _) | exitedId == slotId -> do
-      _ <- logInfo "XXX Backup aggregator exited" {slotId}
       CastNoReply <$> case state of
                         { dataObjectState: Left {dataObject: Nothing} } -> do
                           -- We are primary with no object, and backup just exited.  We can create
@@ -562,7 +562,6 @@ handleInfo msg state@{aggregatorKey, slotId, stateServerName, workflowHandle, ma
       pure $ CastNoReply state
 
     IntraPoPBus (IngestAggregatorExited (AggregatorKey exitedId Primary) _) | exitedId == slotId -> do
-      _ <- logInfo "XXX Primay aggregator exited" {slotId}
       CastNoReply <$> case state of
                         { dataObjectState: Right { dataObject: Nothing } } -> do
                           -- We are backup with no object, and primary just exited.  We can create
@@ -646,7 +645,6 @@ processGunMessage state@{slotId, slotRole, dataObjectState: Left dos@{connection
         CastNoReply <$> attemptConnectionToBackup state{dataObjectState = Left dos{connectionToBackup = Nothing}}
 
       Right (WsGun.Frame (B2P_Message msg)) -> do
-        _ <- logInfo "XXX Received message from backup" {msg}
         sendDownstream state (DataObjectMessage msg)
         pure $ CastNoReply state
 
@@ -665,7 +663,6 @@ processGunMessage state@{slotId, slotRole, dataObjectState: Left dos@{connection
             sendToBackup dos (P2B_UpdateResponse responseMsg)
             pure state
         in do
-          _ <- logInfo "XXX Received objectUpdate message from backup" {updateMsg}
           CastNoReply <$> (either onError onSuccess $ DO.update operation dataObject)
 
       Right (WsGun.Frame (B2P_Update updateMsg)) -> do
@@ -678,7 +675,6 @@ processGunMessage state@{slotId, slotRole, dataObjectState: Left dos@{connection
 
       Right (WsGun.Frame (B2P_SynchroniseObject backupDataObject))
         | {dataObject: Just dataObject} <- dos -> do
-        _ <- logInfo "XXX Got sync message from backup for merge" {backupDataObject}
         -- We are primary and just got an object from backup to synchronise with
         let
           merged = DO.merge dataObject backupDataObject
@@ -687,20 +683,17 @@ processGunMessage state@{slotId, slotRole, dataObjectState: Left dos@{connection
 
       Right (WsGun.Frame (B2P_SynchroniseObject backupDataObject)) -> do
         -- We are primary and just got an object from backup to synchronise with, but we have not object. Simples.
-        _ <- logInfo "XXX Got sync message from backup when we have nothing" {backupDataObject}
         sendToBackup dos (P2B_Latest backupDataObject)
         pure $ CastNoReply state{dataObjectState = Left dos{dataObject = Just backupDataObject}}
 
       Right (WsGun.Frame B2P_SynchroniseNoObject)
         | {dataObject: Just dataObject} <- dos -> do
         -- We are primary - just send backup our latest
-        _ <- logInfo "XXX Got sync no-object message from backup when we have something" {}
         sendToBackup dos (P2B_Latest dataObject)
         pure $ CastNoReply state
 
       Right (WsGun.Frame B2P_SynchroniseNoObject) -> do
         -- We are primary, but we have not object. Simples.
-        _ <- logInfo "XXX Got sync no-object message from backup when we have nothing" {}
         let
           dataObject = DO.new
         sendToBackup dos (P2B_Latest dataObject)
@@ -720,21 +713,17 @@ sendMessageToPeer state@{dataObjectState: Right backup} msg = do
 
 sendToPrimary :: BackupDOState -> AggregatorBackupToPrimaryWsMessage -> Effect Unit
 sendToPrimary {connectionToPrimary: Nothing} msg = do
-  _ <- logInfo "XXX Can't sent to primary" {msg}
   pure unit
 
 sendToPrimary {connectionToPrimary: Just process} msg = do
-  _ <- logInfo "XXX Sending to process" {msg}
   process ! (WsSend msg)
   pure unit
 
 sendToBackup :: PrimaryDOState -> AggregatorPrimaryToBackupWsMessage -> Effect Unit
 sendToBackup {connectionToBackup: Nothing} msg = do
-  _ <- logInfo "XXX Can't sent to backup" {msg}
   pure unit
 
 sendToBackup {connectionToBackup: Just webSocket} msg = do
-  _ <- logInfo "XXX Sending to websocket" {msg}
   WsGun.send webSocket msg
   pure unit
 
@@ -778,6 +767,18 @@ updateCachedState state@{ stateServerName
                         , cachedState} =
   CachedInstanceState.recordInstanceData stateServerName cachedState
 
+currentActiveProfiles :: State -> Effect ActiveProfiles
+currentActiveProfiles {cachedState: {localIngests, remoteIngests}} = do
+  let
+    profiles = Map.keys localIngests <> Map.keys remoteIngests
+  ref <- Erl.makeRef
+  pure $ ActiveProfiles {profiles, ref}
+
+sendActiveProfiles :: State -> Effect Unit
+sendActiveProfiles state = do
+  activeProfiles <- currentActiveProfiles state
+  sendDownstream state (CurrentActiveProfiles activeProfiles)
+
 doAddLocalIngest :: ProfileName -> IngestProcess -> State -> Effect (Either Unit State)
 doAddLocalIngest profileName handler state@{thisServer, workflowHandle, slotId, slotRole} =
   let
@@ -788,6 +789,7 @@ doAddLocalIngest profileName handler state@{thisServer, workflowHandle, slotId, 
       let
         state2 = addLocalIngestToCachedState profileName handler state
       updateCachedState state2
+      sendActiveProfiles state2
       addLocalIngestImpl workflowHandle (IngestKey slotId slotRole profileName)
       pure $ Right state2
     else do
@@ -805,6 +807,8 @@ doAddRemoteIngest profileName handler ingestAddress state@{slotId, slotRole, wor
       let
         state2 = addRemoteIngestToCachedState profileName handler ingestAddress state
         url = makeUrlAddr ingestAddress (IngestInstanceLlwpE slotId slotRole profileName)
+      updateCachedState state2
+      sendActiveProfiles state2
       addRemoteIngestImpl workflowHandle (IngestKey slotId slotRole profileName) (unwrap url)
       pure $ Right state2
     else do
@@ -833,6 +837,7 @@ doRemoveIngest profileName cachedStateRemoveFun state@{aggregatorKey, workflowHa
   let
     state2 = cachedStateRemoveFun profileName state
   updateCachedState state2
+  sendActiveProfiles state2
   removeIngestImpl workflowHandle (IngestKey slotId slotRole profileName)
   if not hasIngests state2 then do
     ref <- Erl.makeRef

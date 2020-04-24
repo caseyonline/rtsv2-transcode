@@ -9,15 +9,19 @@ module Rtsv2.Agents.StreamRelayTypes
   , AggregatorToIngestWsMessage(..)
   , DownstreamWsMessage(..)
   , WebSocketHandlerMessage(..)
+  , ActiveProfiles(..)
   ) where
 
 import Prelude
 
 import Data.Generic.Rep (class Generic)
+import Erl.Data.List (List)
+import Erl.Utils (Ref)
 import Kishimen (genericSumToVariant, variantToGenericSum)
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
+import Rtsv2.DataObject (class DataObjectRef)
 import Rtsv2.DataObject as DO
-import Shared.Stream (SlotId, SlotRole)
+import Shared.Stream (ProfileName(..), SlotId, SlotRole)
 import Shared.Types (PoPName, Server)
 import Simple.JSON (class ReadForeign, class WriteForeign, readImpl, writeImpl)
 
@@ -58,14 +62,32 @@ data RelayUpstreamWsMessage = RelayUpstreamDataObjectMessage DO.Message
 data EgestUpstreamWsMessage = EdgeToRelayDataObjectMessage DO.Message
                             | EdgeToRelayDataObjectUpdateMessage DO.ObjectUpdateMessage
 
+newtype ActiveProfiles = ActiveProfiles { profiles :: List ProfileName
+                                        , ref :: Ref
+                                        }
+
 data DownstreamWsMessage = SlotConfig SlotConfiguration
                          | OnFI {timestamp:: Int, pts:: Int}
+                         | CurrentActiveProfiles ActiveProfiles
                          | DataObjectMessage DO.Message
                          | DataObjectUpdateResponse DO.ObjectUpdateResponseMessage
                          | DataObject DO.ObjectBroadcastMessage
 
 data WebSocketHandlerMessage a = WsStop
                                | WsSend a
+
+------------------------------------------------------------------------------
+-- ActiveProfiles
+derive instance genericActiveProfiles :: Generic ActiveProfiles _
+
+instance readForeignActiveProfiles :: ReadForeign ActiveProfiles where
+  readImpl o = variantToGenericSum <$> readImpl o
+
+instance writeForeignActiveProfiles :: WriteForeign ActiveProfiles where
+  writeImpl msg = writeImpl (genericSumToVariant msg)
+
+instance dataObjectRefActiveProfiles :: DataObjectRef ActiveProfiles where
+  ref (ActiveProfiles {ref: msgRef}) = msgRef
 
 ------------------------------------------------------------------------------
 -- IngestToAggregatorWsMessage
@@ -76,6 +98,7 @@ instance readForeignIngestToAggregatorWsMessage :: ReadForeign IngestToAggregato
 
 instance writeForeignIngestToAggregatorWsMessage :: WriteForeign IngestToAggregatorWsMessage where
   writeImpl msg = writeImpl (genericSumToVariant msg)
+
 
 ------------------------------------------------------------------------------
 -- AggregatorToIngestWsMessage

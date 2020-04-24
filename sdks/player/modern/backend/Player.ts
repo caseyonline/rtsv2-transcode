@@ -22,6 +22,24 @@ export default class Player extends EventEmitter implements IPlayer {
       this.videoElement.srcObject = stream;
       this.localStream = stream;
     });
+    this.session.on("quality-change", (message) => {
+      this.emit("quality-change", message);
+    });
+    this.session.on("on-fi", (message) => {
+      this.emit("on-fi", message);
+    });
+    this.session.on("active-profiles", (profiles) => {
+      this.emit("active-profiles", profiles);
+    });
+    this.session.on("dataobject.message", (message) => {
+      this.emit("dataobject.message", message);
+    });
+    this.session.on("dataobject.update-response", (response) => {
+      this.emit("dataobject.update-response", response);
+    });
+    this.session.on("dataobject.broadcast", (dataObject) => {
+      this.emit("dataobject.broadcast", dataObject);
+    });
     this.session.on("playback-active", () => {
       this.emit("playback-active", {});
     });

@@ -9,7 +9,7 @@ import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Erl.Data.List (nil, (:))
 import Erl.Process.Raw (Pid)
-import Pinto (StartChildResult(..), SupervisorName, ok)
+import Pinto (StartChildResult(..), SupervisorName)
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStartTemplate, childType)
 import Pinto.Sup as Sup

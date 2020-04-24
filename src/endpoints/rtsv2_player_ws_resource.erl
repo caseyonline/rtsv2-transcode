@@ -362,6 +362,14 @@ websocket_info({egestDataObjectBroadcast, Object}, State) ->
   , State
   };
 
+websocket_info({egestCurrentActiveProfiles, ActiveProfiles}, State) ->
+  { [ json_frame( <<"active-profiles">>,
+                  #{ <<"activeProfiles">> => ActiveProfiles
+                   }
+                ) ]
+  , State
+  };
+
 websocket_info(not_implemented, State) ->
   {ok, State}.
 

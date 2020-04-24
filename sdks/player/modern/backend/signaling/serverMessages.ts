@@ -16,6 +16,7 @@ export type Message
   | SDPOfferResponseMessage
   | ICECandidateMessage
   | OnFIMessage
+  | ActiveProfiles
   | DataObjectReceiveMessage
   | DataObjectUpdateResponseMessage
   | DataObjectBroadcastMessage
@@ -71,4 +72,12 @@ export interface OnFIMessage {
 
   /** The corresponding video timestamp. */
   readonly pts: number;
+}
+
+/** An active-profiles message originating from the ingest aggregator. */
+export interface ActiveProfiles {
+  readonly type: "active-profiles";
+
+  /** The active profiles. */
+  readonly activeProfiles: Array<string>;
 }
