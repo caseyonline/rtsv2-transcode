@@ -22,7 +22,7 @@ import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.LlnwApiTypes (StreamDetails)
 import Shared.Stream (AggregatorKey(..), IngestKey(..), ProfileName, SlotId, SlotRole)
-import Shared.Types (RelayServer(..), ServerAddress, ServerLocation(..))
+import Shared.Types (RelayServer(..), Server(..), ServerAddress)
 import Shared.Types.Agent.State as PublicState
 import Shared.Utils (lazyCrashIfMissing)
 import Stetson (InnerStetsonHandler)
@@ -80,13 +80,10 @@ registeredRelayWs slotId slotRole relayAddress relayPort =
   webSocketHandler init wsInit handle info
   where
     init req = do
-      mServerLocation <- PoPDefinition.whereIsServer relayAddress
+      mServer <- PoPDefinition.whereIsServer relayAddress
       let
-        ServerLocation {pop, region} = fromMaybe' (lazyCrashIfMissing "unknown server") mServerLocation
-      pure { relayServer: Relay { address: relayAddress
-                                , pop
-                                , region
-                                }
+        Server server = fromMaybe' (lazyCrashIfMissing "unknown server") mServer
+      pure { relayServer: Relay server
            , aggregatorKey: AggregatorKey slotId slotRole
            }
 

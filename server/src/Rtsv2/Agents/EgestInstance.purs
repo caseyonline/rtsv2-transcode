@@ -61,7 +61,7 @@ import Shared.Common (Milliseconds)
 import Shared.LlnwApiTypes (StreamIngestProtocol(..))
 import Shared.Router.Endpoint (Endpoint(..), makeUrl, makeWsUrl)
 import Shared.Rtsv2.JsonLd as JsonLd
-import Shared.Stream (AggregatorKey(..), EgestKey(..), ProfileName(..), RelayKey(..), SlotId, SlotRole)
+import Shared.Stream (AggregatorKey(..), EgestKey(..), ProfileName, RelayKey(..), SlotId, SlotRole)
 import Shared.Types (EgestServer(..), Load, RelayServer, Server, ServerLoad(..), extractAddress)
 import Shared.Types.Agent.State as PublicState
 import SpudGun as SpudGun

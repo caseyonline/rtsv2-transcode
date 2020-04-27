@@ -7,14 +7,11 @@ import Prelude
 
 import Data.Bifunctor (lmap)
 import Data.Filterable (filterMap)
-import Data.Maybe (Maybe(..), maybe, fromJust, isJust)
-import Data.Maybe (Maybe(..), maybe, fromJust, isJust)
-import Data.Either (Either(..), hush, either)
-import Data.Newtype (wrap, unwrap)
+import Data.Maybe (Maybe(..))
+import Data.Either (Either(..), either)
 import Data.String (replace, Replacement(..), Pattern(..))
 import Data.Traversable (traverse)
 import Effect (Effect)
-import Effect.Console (log)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:), singleton)
 import Logger (Logger)
@@ -22,24 +19,16 @@ import Logger as Logger
 import Rtsv2.Agents.Locator.Egest as EgestLocator
 import Rtsv2.Agents.Locator.Types as LocatorTypes
 import Rtsv2.Agents.Locator.Types (fromLocalOrRemote)
-import Rtsv2.Agents.IntraPoP as IntraPoP
-import Rtsv2.Agents.TransPoP as TransPoP
 import Rtsv2.Config as Config
-import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.PoPDefinition as PoPDefinition
-import Rtsv2.Utils (chainEither, chainIntoEither)
-import Simple.JSON as JSON
-import Simple.JSON (writeJSON)
+import Rtsv2.Utils (chainIntoEither)
 import Shared.Common (Url(Url))
-import Shared.Router.Endpoint (Endpoint(ClientPlayerControlE), Canary(..), makeUrl)
-import Shared.Types (extractAddress, Server)
+import Shared.Router.Endpoint (Canary, Endpoint(ClientPlayerControlE), makeUrl)
 import Shared.LlnwApiTypes (SlotLookupResult)
-import Shared.Stream (SlotId(..), SlotRole(..))
-import Shared.UUID (UUID)
+import Shared.Stream (SlotId, SlotRole(..))
 import SpudGun (bodyToJSON, JsonResponseError)
 import SpudGun as SpudGun
 import Stetson (StetsonHandler)
-import Stetson.Rest as Rest
 import StetsonHelper (jsonResponse)
 
 discover :: Canary -> String -> String -> StetsonHandler (Maybe (List Url))

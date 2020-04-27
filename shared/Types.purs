@@ -16,8 +16,11 @@ module Shared.Types
        , Username(..)
        , CheckBoxState(..)
        , JsonLdContextType(..)
-       , toServer
+       , SpecInt(..)
+       , NetworkBPS(..)
+       , Percentage(..)
        , toServerLoad
+       , toServerLocation
        , serverLoadToServer
        , extractAddress
        , extractPoP
@@ -28,13 +31,19 @@ module Shared.Types
 import Prelude
 
 import Data.Generic.Rep (class Generic)
+import Data.Generic.Rep.Eq (genericEq)
 import Data.Generic.Rep.Show (genericShow)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype, unwrap)
 import Data.Symbol (SProxy(..))
 import Record as Record
+import Shared.Agent (Agent)
 import Shared.Stream (SlotId)
 import Simple.JSON (class ReadForeign, class WriteForeign)
+
+newtype NetworkBPS = NetworkBPS Int
+newtype SpecInt = SpecInt Number
+newtype Percentage = Percentage Number
 
 data JsonLdContextType = ServerContext
                        | ServerAddressContext
@@ -63,33 +72,34 @@ newtype ServerLocation = ServerLocation { pop :: PoPName
                                         , region :: RegionName
                                         }
 
-type ServerRec = { address :: ServerAddress
-                 , pop :: PoPName
-                 , region :: RegionName
-                 }
+type ServerRec l = { address :: ServerAddress
+                   , pop :: PoPName
+                   , region :: RegionName
+                   , maxCpuCapacity :: SpecInt
+                   , maxNetworkCapacity :: NetworkBPS
+                   , capabilityTags :: Array String
+                   , agents :: Array Agent
+                     | l
+                   }
 
-newtype Server = Server ServerRec
-newtype RelayServer = Relay ServerRec
-newtype EgestServer = Egest ServerRec
+newtype Server = Server (ServerRec ())
+newtype RelayServer = Relay (ServerRec ())
+newtype EgestServer = Egest (ServerRec ())
 
 type DeliverTo serverType
   = { server :: serverType
     , port :: Int
     }
 
-newtype ServerLoad = ServerLoad { address :: ServerAddress
-                                , pop :: PoPName
-                                , region :: RegionName
-                                , load :: Load
-                                }
-
-toServer :: ServerAddress -> ServerLocation -> Server
-toServer sa (ServerLocation ls) =
-  Server $ Record.insert address_ sa ls
+newtype ServerLoad = ServerLoad (ServerRec (load :: Load))
 
 toServerLoad :: Server -> Load -> ServerLoad
 toServerLoad  (Server ls) load =
   ServerLoad $ Record.insert load_ load ls
+
+toServerLocation :: forall r a. Newtype a { pop :: PoPName
+                                          , region :: RegionName | r } => a -> ServerLocation
+toServerLocation = unwrap >>> (\{pop, region} -> ServerLocation {pop, region})
 
 serverLoadToServer :: ServerLoad -> Server
 serverLoadToServer (ServerLoad sl) =
@@ -206,6 +216,41 @@ derive newtype instance ordServerLoad :: Ord ServerLoad
 derive newtype instance showServerLoad :: Show ServerLoad
 derive newtype instance readForeignServerLoad :: ReadForeign ServerLoad
 derive newtype instance writeForeignServerLoad :: WriteForeign ServerLoad
+
+------------------------------------------------------------------------------
+-- NetworkBPS
+derive instance newtypeNetworkBPS :: Newtype NetworkBPS _
+derive instance genericNetworkBPS :: Generic NetworkBPS _
+instance showNetworkBPS :: Show NetworkBPS where show = genericShow
+instance eqNetworkBPS :: Eq NetworkBPS where eq = genericEq
+derive newtype instance readForeignNetworkBPS :: ReadForeign NetworkBPS
+derive newtype instance writeForeignNetworkBPS :: WriteForeign NetworkBPS
+instance ordNetworkBPS :: Ord NetworkBPS where
+  compare (NetworkBPS x) (NetworkBPS y) = compare x y
+instance semigroupNetworkBPS :: Semigroup NetworkBPS where
+  append (NetworkBPS x) (NetworkBPS y) = NetworkBPS (x + y)
+
+------------------------------------------------------------------------------
+-- SpecInt
+derive instance newtypeSpecInt :: Newtype SpecInt _
+derive instance genericSpecInt :: Generic SpecInt _
+instance showSpecInt :: Show SpecInt where show = genericShow
+instance eqSpecInt :: Eq SpecInt where eq = genericEq
+derive newtype instance readForeignSpecInt :: ReadForeign SpecInt
+derive newtype instance writeForeignSpecInt :: WriteForeign SpecInt
+instance ordSpecInt :: Ord SpecInt where
+  compare (SpecInt x) (SpecInt y) = compare x y
+
+------------------------------------------------------------------------------
+-- Percentage
+derive instance newtypePercentage :: Newtype Percentage _
+derive newtype instance readForeignPercentage :: ReadForeign Percentage
+derive newtype instance writeForeignPercentage :: WriteForeign Percentage
+derive newtype instance eqPercentage :: Eq Percentage
+derive newtype instance ordPercentage :: Ord Percentage
+instance semigroupPercentage :: Semigroup Percentage where
+  append (Percentage x) (Percentage y) = Percentage (x + y)
+
 
 ------------------------------------------------------------------------------
 -- FrontEnd Specific Types

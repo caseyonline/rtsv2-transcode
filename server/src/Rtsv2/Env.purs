@@ -8,6 +8,7 @@ module Rtsv2.Env
 
 import Prelude
 
+import Data.Int (fromString)
 import Data.Maybe (Maybe, fromMaybe')
 import Effect (Effect)
 import Ip as Ip
@@ -54,4 +55,3 @@ privateInterfaceIp =
   where
     getIp :: String -> Effect (Maybe Ip)
     getIp str = Ip.getInterfaceIp str
-

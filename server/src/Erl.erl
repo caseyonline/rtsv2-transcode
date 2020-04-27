@@ -15,6 +15,7 @@
         , refToStringImpl/1
         , stringToRefImpl/1
         , exitImpl/1
+        , readTuple2Impl/1
         ]).
 
 
@@ -101,3 +102,8 @@ exitImpl(Reason) ->
   fun() ->
       exit(Reason)
   end.
+
+readTuple2Impl({A, B}) ->
+  {just, {A, B}};
+readTuple2Impl(_) ->
+  {nothing}.

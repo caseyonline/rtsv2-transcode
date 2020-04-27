@@ -123,18 +123,25 @@ clientStop canary slotId slotRole clientId  =
       do
       _ <- Audit.clientStop egestKey
       _ <- stopHandler clientId
-      -- _ <- EgestInstance.removeClient egestKey
       Rest.result true req state
 
 startHandler :: String -> Effect Pid
 startHandler clientId =
   let
     proc = do
+      _ <- logInfo "fake handler starting" {}
       _ <- GProc.register (tuple2 (atom "test_egest_client") clientId)
-      _ <- Raw.receive
+      handlerLoop
+      _ <- logInfo "fake handler stopping" {}
       pure unit
   in
     Raw.spawn proc
+
+handlerLoop :: Effect Unit
+handlerLoop = do
+  x <- Raw.receive
+  if (x == (atom "stop")) then pure unit
+    else handlerLoop
 
 stopHandler :: String -> Effect Unit
 stopHandler clientId = do

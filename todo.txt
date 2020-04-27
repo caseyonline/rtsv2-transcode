@@ -1,3 +1,4 @@
+[ ] - ingest to timeout and exit if not media seen for X seconds - https://jira.atlas.llnw.com/browse/RTSV2-54
 [ ] - intrapop to raise bus message if relay exits
       - egest to subscribe and take appropriate action - either exit itself or launch new relay?
 [ ] - Pinto stuff, async init, return stop from init

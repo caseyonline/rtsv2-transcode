@@ -73,7 +73,7 @@ import Rtsv2.DataObject as DO
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Agent as Agent
-import Shared.Router.Endpoint (Endpoint(..), makeUrlAddr, makeWsUrl, makeWsUrlAddr)
+import Shared.Router.Endpoint (Endpoint(..), makeUrl, makeUrlAddr, makeWsUrl, makeWsUrlAddr)
 import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Stream (AggregatorKey(..), ProfileName(..), RelayKey(..), SlotId(..), SlotRole)
 import Shared.Types (DeliverTo, EgestServer, PoPName, RelayServer, Server, ServerAddress(..), SourceRoute, extractAddress, extractPoP)
@@ -468,7 +468,7 @@ applyDownstreamRunResult commonStateData@{ relayKey: relayKey@(RelayKey slotId s
           Just randomServerInPoP ->
             let
               payload = { slotId, slotRole, aggregator: ingestAggregator } :: CreateRelayPayload
-              url = makeUrlAddr randomServerInPoP RelayEnsureStartedE
+              url = makeUrl randomServerInPoP RelayEnsureStartedE
             in
               do
                 eitherResponse <- SpudGun.postJsonFollow url payload

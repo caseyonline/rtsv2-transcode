@@ -21,7 +21,7 @@ import Kishimen (genericSumToVariant, variantToGenericSum)
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
 import Rtsv2.DataObject (class DataObjectRef)
 import Rtsv2.DataObject as DO
-import Shared.Stream (ProfileName(..), SlotId, SlotRole)
+import Shared.Stream (ProfileName, SlotId, SlotRole)
 import Shared.Types (PoPName, Server)
 import Simple.JSON (class ReadForeign, class WriteForeign, readImpl, writeImpl)
 

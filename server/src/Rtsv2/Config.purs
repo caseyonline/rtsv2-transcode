@@ -13,9 +13,10 @@ module Rtsv2.Config
   , IntraPoPAgentApi
   , TransPoPAgentApi
   , LlnwApiConfig
-  , LoadMonitorConfig
   , HealthConfig
+  , LoadConfig
   , appName
+  , loadConfig
   , featureFlags
   , webConfig
   , globalConfig
@@ -30,7 +31,6 @@ module Rtsv2.Config
   , egestAgentConfig
   , rtmpIngestConfig
   , llnwApiConfig
-  , loadMonitorConfig
   , healthConfig
   , mergeOverrides
   ) where
@@ -48,12 +48,19 @@ import Erl.Data.List (List)
 import Foreign (F, Foreign, readString, unsafeReadTagged)
 import Logger as Logger
 import Partial.Unsafe (unsafeCrashWith)
+import Rtsv2.LoadTypes as LoadTypes
 import Rtsv2.Node as Node
-import Shared.Agent (Agent, strToAgent)
+import Shared.Agent (Agent, AggregatorSerfPayload, strToAgent)
 import Shared.Stream (AgentKey)
-import Shared.Types (Server)
+import Shared.Types (NetworkBPS, Server, SpecInt)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (class ReadForeign, readImpl)
+
+type LoadConfig
+  = { loadAnnounceMs :: Int
+    , limits :: LoadTypes.LoadLimits
+    , costs :: LoadTypes.LoadCosts
+    }
 
 type FeatureFlags
   = { useMediaGateway :: Boolean
@@ -122,13 +129,13 @@ type StreamRelayConfig
     }
 
 type IntraPoPAgentApi
-  = { announceOtherPoPAggregatorIsAvailable :: AgentKey -> Server -> Effect Unit
+  = { announceOtherPoPAggregatorIsAvailable :: AggregatorSerfPayload -> AgentKey -> Server -> Effect Unit
     , announceOtherPoPAggregatorStopped :: AgentKey -> Server -> Effect Unit
     , announceTransPoPLeader :: Effect Unit
     }
 
 type TransPoPAgentApi
-  = { announceAggregatorIsAvailable :: AgentKey -> Server -> Effect Unit
+  = { announceAggregatorIsAvailable :: AggregatorSerfPayload -> AgentKey -> Server -> Effect Unit
     , announceAggregatorStopped :: AgentKey -> Server -> Effect Unit
     , handleRemoteLeaderAnnouncement :: Server -> Effect Unit
     }
@@ -146,10 +153,6 @@ type LlnwApiConfig
     , slotLookupUrl :: String
     }
 
-type LoadMonitorConfig
-  = {loadAnnounceMs :: Int}
-
-
 type HealthConfig
   = { thresholds :: { perfect :: Int
                     , excellent :: Int
@@ -165,6 +168,10 @@ foreign import mergeOverrides :: Effect Foreign
 
 appName :: String
 appName = "rtsv2"
+
+loadConfig :: Effect LoadConfig
+loadConfig = do
+  getMandatoryRecord "loadConfig"
 
 featureFlags :: Effect FeatureFlags
 featureFlags = do
@@ -229,11 +236,6 @@ rtmpIngestConfig = do
 llnwApiConfig :: Effect LlnwApiConfig
 llnwApiConfig = do
   getMandatoryRecord "llnwApiConfig"
-
-loadMonitorConfig :: Effect LoadMonitorConfig
-loadMonitorConfig = do
-  getMandatoryRecord "loadMonitorConfig"
-
 
 healthConfig :: Effect HealthConfig
 healthConfig = do

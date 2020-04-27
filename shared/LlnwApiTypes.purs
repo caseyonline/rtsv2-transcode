@@ -150,7 +150,7 @@ instance compareStreamIngestProtocol :: Ord StreamIngestProtocol where
 instance showStreamIngestProtocol :: Show StreamIngestProtocol where
   show = genericShow
 
-derive instance newtypePublicCredentials :: Newtype PublishCredentials _
+derive instance newtypePublishCredentials :: Newtype PublishCredentials _
 derive newtype instance readForeignPublishCredentials :: ReadForeign PublishCredentials
 derive newtype instance writeForeignPublishCredentials :: WriteForeign PublishCredentials
 

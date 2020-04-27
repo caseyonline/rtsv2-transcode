@@ -35,7 +35,7 @@ import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Router.Endpoint (Endpoint(..), makeUrl)
 import Shared.Stream (RelayKey(..), SlotId, SlotRole)
-import Shared.Types (EgestServer(..), RelayServer(..), Server, ServerAddress, ServerLocation(..), SourceRoute, extractAddress)
+import Shared.Types (EgestServer(..), RelayServer(..), Server(..), ServerAddress, SourceRoute, extractAddress)
 import Shared.Types.Agent.State (StreamRelay)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON as JSON
@@ -160,11 +160,8 @@ registeredRelayWs slotId slotRole relayAddress relayPort sourceRoute =
     init req = do
       mServerLocation <- PoPDefinition.whereIsServer relayAddress
       let
-        ServerLocation {pop, region} = fromMaybe' (lazyCrashIfMissing "unknown server") mServerLocation
-      pure { relayServer: Relay { address: relayAddress
-                                , pop
-                                , region
-                                }
+        Server server = fromMaybe' (lazyCrashIfMissing "unknown server") mServerLocation
+      pure { relayServer: Relay server
            , relayKey: RelayKey slotId slotRole
            }
 
@@ -201,11 +198,8 @@ registeredEgestWs slotId slotRole egestAddress egestPort =
     init req = do
       mServerLocation <- PoPDefinition.whereIsServer egestAddress
       let
-        ServerLocation {pop, region} = fromMaybe' (lazyCrashIfMissing "unknown server") mServerLocation
-      pure { egestServer: Egest { address: egestAddress
-                                , pop
-                                , region
-                                }
+        Server server = fromMaybe' (lazyCrashIfMissing "unknown server") mServerLocation
+      pure { egestServer: Egest server
            , relayKey: RelayKey slotId slotRole
            }
 

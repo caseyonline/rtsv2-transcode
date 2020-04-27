@@ -48,15 +48,25 @@ mkPoPJsonString nodes =
         Just nodesThisPoP -> Just $
           show pop.name <> ": { \"geoLoc\" : [" <> (quote $ show pop.x) <> ","
                         <> (quote $ show pop.y) <> "], \"nodes\": ["
-                        <> intercalate ", " (quote <<< toAddrFromNode <$> nodesThisPoP)
+                        <> intercalate ", " (mkNode <$> nodesThisPoP)
                         <> "]}"
 
     mkRegion :: String -> (Array String) -> Maybe String
     mkRegion name [] = Nothing
     mkRegion name pops = Just $
       quote name <> ": {"
-                 <> intercalate ", " pops
+                 <> (intercalate ", " pops)
                  <> "}"
+
+    mkNode :: Node -> String
+    mkNode node =
+      "{"
+      <> "\"address\":" <> ((quote <<< toAddrFromNode) node)
+      <> ", \"maxCpuCapacity\": 1000"
+      <> ", \"maxNetworkCapacity\": 1000000000"
+      <> ", \"capabilityTags\": []"
+      <> ", \"agents\": [\"TransPoP\", \"Ingest\", \"IngestAggregator\", \"StreamRelay\", \"Egest\"]"
+      <> "}"
 
     america = mkRegion "americas" $ catMaybes $ mkPoP <$> [iad, dal, lax]
     europe  = mkRegion "europe"   $ catMaybes $ mkPoP <$> [fra]

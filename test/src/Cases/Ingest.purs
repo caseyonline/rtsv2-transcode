@@ -10,7 +10,7 @@ import Helpers.HTTP as HTTP
 import Helpers.Env as E
 import Helpers.Functions (startSession, launch, stopSession, stopNode, maxOut, allNodesBar, aggregatorNotPresent)
 import Helpers.Types (Node)
-import Test.Spec (SpecT, after_, before_, describe, it)
+import Test.Spec (SpecT, after_, before_, describe, it, itOnly)
 
 -------------------------------------------------------------------------------
 -- Main
@@ -173,7 +173,7 @@ ingestTests9 =
     HTTP.getAggregatorStats E.p1n1 E.slot1      >>= assertStatusCode 200
                                                 >>= assertAggregator [E.low]
                                                 >>= as "aggregator has low profile"
-    HTTP.ingestStart E.p1n1 E.shortName1 E.low  >>= assertStatusCode 500 >>= as "2nd attempt to create low ingest fails"
+    HTTP.ingestStart E.p1n1 E.shortName1 E.low  >>= assertStatusCode 409 >>= as "2nd attempt to create low ingest fails"
     E.waitForIntraPoPDisseminate
     HTTP.getAggregatorStats E.p1n1 E.slot1      >>= assertStatusCode 200
                                                 >>= assertAggregator [E.low]

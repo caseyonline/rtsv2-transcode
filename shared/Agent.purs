@@ -1,8 +1,10 @@
-module Shared.Agent (
-                Agent(..)
-              , strToAgent
-              , agentToStr
-              ) where
+module Shared.Agent
+       (
+         Agent(..)
+       , AggregatorSerfPayload(..)
+       , strToAgent
+       , agentToStr
+       ) where
 
 import Prelude
 
@@ -13,9 +15,10 @@ import Data.Generic.Rep.Eq (genericEq)
 import Data.Generic.Rep.Show (genericShow)
 import Data.List.NonEmpty (singleton)
 import Data.Maybe (Maybe(..), fromMaybe')
-import Foreign (ForeignError(..), readString)
+import Data.Tuple (Tuple)
+import Foreign (ForeignError(..), readString, unsafeToForeign)
 import Shared.Utils (lazyCrashIfMissing)
-import Simple.JSON (class ReadForeign)
+import Simple.JSON (class ReadForeign, class WriteForeign)
 
 --import Test.QuickCheck.Arbitrary (class Arbitrary, genericArbitrary)
 
@@ -26,23 +29,32 @@ data Agent = Egest
            | IntraPoP
            | TransPoP
 
+type AggregatorSerfPayload = Tuple Int Int
+
 --------------------------------------------------------------------------------
 -- Type class derivations
 --------------------------------------------------------------------------------
 derive instance genericAgent :: Generic Agent _
-
-instance eqAgent :: Eq Agent where
-  eq = genericEq
-
-instance showAgent :: Show Agent where
-  show = genericShow
-
-instance foreignAgent :: ReadForeign Agent where
+instance eqAgent :: Eq Agent where eq = genericEq
+instance showAgent :: Show Agent where show = genericShow
+instance readForeignAgent :: ReadForeign Agent where
   readImpl =
     readString >=> parseAgent
     where
       error s = singleton (ForeignError (errorString s))
       parseAgent s = except $ note (error s) (strToMaybeAgent s)
+instance writForeignAgent :: WriteForeign Agent where
+  writeImpl = agentToStr >>> unsafeToForeign
+
+instance ordAgent :: Ord Agent where
+  compare x y = compare (toInt x) (toInt y)
+    where
+      toInt TransPoP = 1
+      toInt IntraPoP = 2
+      toInt Ingest = 3
+      toInt IngestAggregator = 4
+      toInt StreamRelay = 5
+      toInt Egest = 6
 
 strToAgent :: String -> Agent
 strToAgent s =

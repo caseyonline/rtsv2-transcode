@@ -2,32 +2,98 @@
   "america": {
     "iad": {
       "geoLoc": ["-77.039851", "38.877270"],
-      "nodes": [ "172.16.169.1",
-                 "172.16.169.2"
+      "nodes": [ { "address": "172.16.169.1"
+                 , "maxCpuCapacity": 1000
+                 , "maxNetworkCapacity": 1000000000
+                 , "capabilityTags": []
+                 , "agents": ["TransPoP", "Ingest", "IngestAggregator", "StreamRelay", "Egest"]
+                 },
+                 {"address": "172.16.162"
+                 , "maxCpuCapacity": 1000
+                 , "maxNetworkCapacity": 1000000000
+                 , "capabilityTags": []
+                 , "agents": ["TransPoP", "Ingest", "IngestAggregator", "StreamRelay", "Egest"]
+                 }
                ]
     },
     "dal": {
       "geoLoc": ["-96.796989","32.776665"],
-      "nodes": [ "172.16.170.1",
-                 "172.16.170.2",
-                 "172.16.170.3",
-                 "172.16.170.4",
-                 "172.16.170.5"
+      "nodes": [ { "address": "172.16.170.1"
+                 , "maxCpuCapacity": 1000
+                 , "maxNetworkCapacity": 1000000000
+                 , "capabilityTags": []
+                 , "agents": ["TransPoP", "Ingest", "IngestAggregator", "StreamRelay", "Egest"]
+                 },
+                 { "address": "172.16.170.2"
+                 , "maxCpuCapacity": 1000
+                 , "maxNetworkCapacity": 1000000000
+                 , "capabilityTags": []
+                 , "agents": ["TransPoP", "Ingest", "IngestAggregator", "StreamRelay", "Egest"]
+                 },
+                 { "address": "172.16.170.3"
+                 , "maxCpuCapacity": 1000
+                 , "maxNetworkCapacity": 1000000000
+                 , "capabilityTags": []
+                 , "agents": ["TransPoP", "Ingest", "IngestAggregator", "StreamRelay", "Egest"]
+                 },
+                 { "address": "172.16.170.4"
+                 , "maxCpuCapacity": 1000
+                 , "maxNetworkCapacity": 1000000000
+                 , "capabilityTags": []
+                 , "agents": ["TransPoP", "Ingest", "IngestAggregator", "StreamRelay", "Egest"]
+                 },
+                 { "address": "172.16.170.5"
+                 , "maxCpuCapacity": 1000
+                 , "maxNetworkCapacity": 1000000000
+                 , "capabilityTags": []
+                 , "agents": ["TransPoP", "Ingest", "IngestAggregator", "StreamRelay", "Egest"]
+                 }
                ]
     },
     "lax": {
       "geoLoc": ["-118.243685","34.052234"],
-      "nodes": [ "172.16.172.1" ]
+      "nodes": [ { "address": "172.16.172.1"
+                 , "maxCpuCapacity": 1000
+                 , "maxNetworkCapacity": 1000000000
+                 , "capabilityTags": []
+                 , "agents": ["TransPoP", "Ingest", "IngestAggregator", "StreamRelay", "Egest"]
+                 }
+               ]
     }
   },
   "europe": {
     "fra": {
       "geoLoc": ["8.682127","50.110922"],
-      "nodes": [ "172.16.171.1",
-                 "172.16.171.2",
-                 "172.16.171.3",
-                 "172.16.171.4",
-                 "172.16.171.5"
+      "nodes": [ { "address": "172.16.171.1"
+                 , "maxCpuCapacity": 1000
+                 , "maxNetworkCapacity": 1000000000
+                 , "capabilityTags": []
+                 , "agents": ["TransPoP", "Ingest", "IngestAggregator", "StreamRelay", "Egest"]
+                 },
+                 { "address": "172.16.171.2"
+                 , "maxCpuCapacity": 1000
+                 , "maxNetworkCapacity": 1000000000
+                 , "capabilityTags": []
+                 , "agents": ["TransPoP", "Ingest", "IngestAggregator", "StreamRelay", "Egest"]
+                 },
+                 { "address": "172.16.171.3"
+                 , "maxCpuCapacity": 1000
+                 , "maxNetworkCapacity": 1000000000
+                 , "capabilityTags": []
+                 , "agents": ["TransPoP", "Ingest", "IngestAggregator", "StreamRelay", "Egest"]
+                 },
+                 { "address": "172.16.171.4"
+                 , "maxCpuCapacity": 1000
+                 , "maxNetworkCapacity": 1000000000
+                 , "capabilityTags": []
+                 , "agents": ["TransPoP", "Ingest", "IngestAggregator", "StreamRelay", "Egest"]
+                 },
+                 {"address": "172.16.171.5"
+                , "maxCpuCapacity": 1000
+                 , "maxNetworkCapacity": 1000000000
+                 , "capabilityTags": []
+                 , "agents": ["TransPoP", "Ingest", "IngestAggregator", "StreamRelay", "Egest"]
+                 }
                ]
     }
   }

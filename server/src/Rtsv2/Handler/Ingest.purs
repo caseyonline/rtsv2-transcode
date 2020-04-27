@@ -14,15 +14,18 @@ import Data.Newtype (unwrap, wrap)
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
-import Erl.Atom (atom)
+import Erl.Atom (Atom, atom)
 import Erl.Cowboy.Req (StatusCode(..))
 import Erl.Cowboy.Req as Req
 import Erl.Data.List (List, nil, (:))
+import Erl.Data.List as List
 import Erl.Data.Tuple (tuple2)
 import Erl.Process.Raw (Pid)
 import Erl.Process.Raw as Raw
 import Gproc as GProc
 import Gproc as Gproc
+import Logger (Logger)
+import Logger as Logger
 import Prometheus as Prometheus
 import Rtsv2.Agents.IngestInstance as IngestInstance
 import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
@@ -223,11 +226,12 @@ ingestStart canary shortName slotNameAndProfileName@(SlotNameAndProfileName slot
                                                                          ingestKey = IngestKey streamDetails.slot.id streamDetails.role profileName
                                                                        pid <- startFakeIngest ingestKey
                                                                        maybeStarted <- IngestInstanceSup.startIngest ingestKey streamPublish streamDetails "127.0.0.1" 0 pid
+                                                                       _ <- logInfo "IngestInstanceSup returned" {maybeStarted}
                                                                        case maybeStarted of
                                                                          Just _ ->
                                                                            Rest.result "ingestStarted" req2 state2
                                                                          Nothing -> do
-                                                                           stopFakeIngest ingestKey
+                                                                           -- No need to stop the fake ingest, since its gproc.register will have failed
                                                                            req3 <- Req.replyStatus (StatusCode 409) req2
                                                                            Rest.result "ingestStartFailed" req3 state2
                                                                    ) : nil) req state)
@@ -260,14 +264,35 @@ startFakeIngest :: IngestKey -> Effect Pid
 startFakeIngest ingestKey =
   let
     proc = do
+      _ <- logInfo "fake ingest running" {}
       _ <- GProc.register (tuple2 (atom "test_ingest_client") ingestKey)
-      _ <- Raw.receive
+      handlerLoop
+      _ <- logInfo "fake ingest stopping" {}
       pure unit
   in
     Raw.spawn proc
 
+handlerLoop :: Effect Unit
+handlerLoop = do
+  x <- Raw.receive
+  if (x == (atom "stop")) then pure unit
+    else handlerLoop
+
 stopFakeIngest :: IngestKey -> Effect Unit
 stopFakeIngest ingestKey = do
   pid <- Gproc.whereIs (tuple2 (atom "test_ingest_client") ingestKey)
+  _ <- logInfo "stopping fake ingest" {}
   _ <- traverse ((flip Raw.send) (atom "stop")) pid
   pure unit
+
+--------------------------------------------------------------------------------
+-- Log helpers
+--------------------------------------------------------------------------------
+domains :: List Atom
+domains = atom <$> ("Client" :  "Instance" : List.nil)
+
+logInfo :: forall a. Logger (Record a)
+logInfo = domainLog Logger.info
+
+domainLog :: forall a. Logger {domain :: List Atom, misc :: Record a} -> Logger (Record a)
+domainLog = Logger.doLog domains
