@@ -21,7 +21,7 @@ import Helpers.Assert as A
 import Helpers.CreateString (mkPoPJsonString, toAddrFromNode, toIfaceIndexString)
 import Helpers.Env (sessionName)
 import Helpers.HTTP as HTTP
-import Helpers.Log (throwSlowError, as)
+import Helpers.Log (throwSlowError, as, as')
 import Helpers.OsCmd (runProc)
 import Helpers.Types (Node, PoPInfo, ResWithBody, TestNode, ToRecord)
 import Node.Encoding (Encoding(..))
@@ -95,7 +95,7 @@ stopSession = do
 
 startSlotHigh1000 :: String -> Aff Unit
 startSlotHigh1000 ip = do
-  _ <- delay (Milliseconds 5000.0)
+  _ <- delay (Milliseconds 5000.0) >>= as' "Slot 1000 script loaded"
   runProc "./scripts/run_slot1_1000.sh" [ip]
 
 -------------------------------------------------------------------------------
