@@ -23,9 +23,9 @@ import Rtsv2.Config as Config
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Utils (chainIntoEither)
 import Shared.Common (Url(Url))
-import Shared.Router.Endpoint (Canary, Endpoint(ClientPlayerControlE), makeUrl)
-import Shared.LlnwApiTypes (SlotLookupResult)
-import Shared.Stream (SlotId, SlotRole(..))
+import Shared.Rtsv2.Router.Endpoint (Canary, Endpoint(ClientPlayerControlE), makeUrl)
+import Shared.Rtsv2.LlnwApiTypes (SlotLookupResult)
+import Shared.Rtsv2.Stream (SlotId, SlotRole(..))
 import SpudGun (bodyToJSON, JsonResponseError)
 import SpudGun as SpudGun
 import Stetson (StetsonHandler)

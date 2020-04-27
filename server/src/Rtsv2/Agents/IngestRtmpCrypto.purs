@@ -34,7 +34,7 @@ import Rtsv2.Config as Config
 import Rtsv2.Names as Names
 import Rtsv2.Utils (cryptoStrongToken)
 import Shared.Common (Milliseconds)
-import Shared.LlnwApiTypes (PublishCredentials(..))
+import Shared.Rtsv2.LlnwApiTypes (PublishCredentials(..))
 
 foreign import compareAdobeChallengeImpl :: String -> String -> String -> String -> String -> String -> Boolean
 foreign import compareLlnwChallengeImpl :: String -> String -> String -> String -> String -> String -> String -> Boolean

@@ -27,12 +27,12 @@ import Helpers.Types (Node, PoPInfo, ResWithBody, TestNode, ToRecord)
 import Node.Encoding (Encoding(..))
 import Node.FS.Aff (writeTextFile)
 import Partial.Unsafe (unsafePartial)
-import Shared.Chaos as Chaos
+import Shared.Rtsv2.Chaos as Chaos
 import Shared.Common (Url)
 import Shared.Rtsv2.JsonLd as JsonLd
-import Shared.Stream (SlotId, SlotRole)
-import Shared.Types (ServerAddress(..))
-import Shared.Types.Agent.State as PublicState
+import Shared.Rtsv2.Stream (SlotId, SlotRole)
+import Shared.Rtsv2.Types (ServerAddress(..))
+import Shared.Rtsv2.Agent.State as PublicState
 import Simple.JSON (class ReadForeign)
 import Simple.JSON as SimpleJSON
 import Text.Parsing.Parser (runParser)

@@ -72,12 +72,12 @@ import Rtsv2.Config as Config
 import Rtsv2.DataObject as DO
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
-import Shared.Agent as Agent
-import Shared.Router.Endpoint (Endpoint(..), makeUrl, makeUrlAddr, makeWsUrl, makeWsUrlAddr)
+import Shared.Rtsv2.Agent as Agent
+import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl, makeUrlAddr, makeWsUrl, makeWsUrlAddr)
 import Shared.Rtsv2.JsonLd as JsonLd
-import Shared.Stream (AggregatorKey(..), ProfileName(..), RelayKey(..), SlotId(..), SlotRole)
-import Shared.Types (DeliverTo, EgestServer, PoPName, RelayServer, Server, ServerAddress(..), SourceRoute, extractAddress, extractPoP)
-import Shared.Types.Agent.State as PublicState
+import Shared.Rtsv2.Stream (AggregatorKey(..), ProfileName(..), RelayKey(..), SlotId(..), SlotRole)
+import Shared.Rtsv2.Types (DeliverTo, EgestServer, PoPName, RelayServer, Server, ServerAddress(..), SourceRoute, extractAddress, extractPoP)
+import Shared.Rtsv2.Agent.State as PublicState
 import Shared.UUID (UUID)
 import SpudGun (SpudResponse(..), StatusCode(..))
 import SpudGun as SpudGun

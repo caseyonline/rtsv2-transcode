@@ -1,4 +1,4 @@
-module Shared.Agent
+module Shared.Rtsv2.Agent
        (
          Agent(..)
        , AggregatorSerfPayload(..)

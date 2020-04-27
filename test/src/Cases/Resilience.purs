@@ -8,15 +8,15 @@ import Data.Map as Map
 import Data.Traversable (traverse_)
 import Effect.Aff (Aff)
 import Helpers.Types (Node, ToRecord)
-import Shared.Types.Agent.State as PublicState
+import Shared.Rtsv2.Agent.State as PublicState
 import Helpers.Assert as A
 import Helpers.CreateString (toAddrFromNode)
 import Helpers.Env as E
 import Helpers.Functions as F
 import Helpers.HTTP as HTTP
 import Helpers.Log (as, as', asT, asT')
-import Shared.Stream (SlotRole(..))
-import Shared.Chaos as Chaos
+import Shared.Rtsv2.Stream (SlotRole(..))
+import Shared.Rtsv2.Chaos as Chaos
 import Test.Spec (SpecT, after_, before_, describe, it)
 
 

@@ -103,10 +103,10 @@ import Shared.JsonLd ( Context
                      , _resource
                      ) as JsonLd
 import Shared.JsonLd (ContextDefinition(..))
-import Shared.LlnwApiTypes (StreamDetails)
-import Shared.Router.Endpoint (Endpoint(..), makePath, makeUrl, makeUrlAddr)
-import Shared.Stream (ProfileName, SlotId, SlotRole)
-import Shared.Types (DeliverTo, JsonLdContextType(..), PoPName, RelayServer, Server, ServerAddress)
+import Shared.Rtsv2.LlnwApiTypes (StreamDetails)
+import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makePath, makeUrl, makeUrlAddr)
+import Shared.Rtsv2.Stream (ProfileName, SlotId, SlotRole)
+import Shared.Rtsv2.Types (DeliverTo, JsonLdContextType(..), PoPName, RelayServer, Server, ServerAddress)
 import Shared.Types.Media.Types.Rtmp (RtmpClientMetadata)
 import Shared.Types.Media.Types.SourceDetails (SourceInfo)
 

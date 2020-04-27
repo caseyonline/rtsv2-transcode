@@ -1,23 +1,24 @@
-module Shared.Router.Endpoint ( Endpoint(..)
-                              , Canary(..)
-                              , endpoint
-                              , makePath
-                              , makeUrl
-                              , makeUrlWithPath
-                              , makeUrlAddr
-                              , makeUrlAddrWithPath
-                              , makeWsUrl
-                              , makeWsUrlWithPath
-                              , makeWsUrlAddr
-                              , makeWsUrlAddrWithPath
-                              , parseSlotId
-                              , parseSlotRole
-                              , parseServerAddress
-                              , parseSourceRoute
-                              , parseInt
-                              , uName
-                              , popName
-                              ) where
+module Shared.Rtsv2.Router.Endpoint
+       ( Endpoint(..)
+       , Canary(..)
+       , endpoint
+       , makePath
+       , makeUrl
+       , makeUrlWithPath
+       , makeUrlAddr
+       , makeUrlAddrWithPath
+       , makeWsUrl
+       , makeWsUrlWithPath
+       , makeWsUrlAddr
+       , makeWsUrlAddrWithPath
+       , parseSlotId
+       , parseSlotRole
+       , parseServerAddress
+       , parseSourceRoute
+       , parseInt
+       , uName
+       , popName
+       ) where
 
 import Prelude hiding ((/))
 
@@ -33,8 +34,8 @@ import Routing.Duplex (RouteDuplex', as, path, print, rest, root, segment)
 import Routing.Duplex.Generic (noArgs, sum)
 import Routing.Duplex.Generic.Syntax ((/))
 import Shared.Common (Url)
-import Shared.Stream (ProfileName(..), RtmpShortName, SlotId, SlotIdAndProfileName(..), SlotNameAndProfileName(..), SlotRole(..))
-import Shared.Types (JsonLdContextType(..), PoPName(..), ServerAddress(..), Username(..), SourceRoute, extractAddress)
+import Shared.Rtsv2.Stream (ProfileName(..), RtmpShortName, SlotId, SlotIdAndProfileName(..), SlotNameAndProfileName(..), SlotRole(..))
+import Shared.Rtsv2.Types (JsonLdContextType(..), PoPName(..), ServerAddress(..), Username(..), SourceRoute, extractAddress)
 import Shared.UUID (fromString)
 
 data Canary = Live

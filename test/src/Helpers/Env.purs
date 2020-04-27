@@ -15,8 +15,8 @@ import Effect.Aff (Aff, delay)
 import Effect.Now as Now
 import Helpers.Types (Node(..), TestNode)
 import Helpers.OsCmd (runProc)
-import Shared.Chaos as Chaos
-import Shared.Stream (ProfileName(..), SlotId, SlotRole(..), SlotNameAndProfileName(..))
+import Shared.Rtsv2.Chaos as Chaos
+import Shared.Rtsv2.Stream (ProfileName(..), SlotId, SlotRole(..), SlotNameAndProfileName(..))
 import Shared.UUID (fromString)
 import Shared.Utils (lazyCrashIfMissing)
 

@@ -16,7 +16,7 @@ import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.Locator.Types (FailureReason(..), FindAndRegisterConfig, FindOrStartConfig, LocalOrRemote(..), LocationResp, ResourceResp)
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Utils (noprocToMaybe)
-import Shared.Types (Server, serverLoadToServer)
+import Shared.Rtsv2.Types (Server, serverLoadToServer)
 
 
 extractServer :: forall a. LocalOrRemote a -> a

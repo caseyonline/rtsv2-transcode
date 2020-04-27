@@ -23,9 +23,9 @@ import Rtsv2.Agents.IngestInstance as IngestInstance
 import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
 import Rtsv2.Config as Config
 import Rtsv2.DataObject as DO
-import Shared.Agent as Agent
-import Shared.LlnwApiTypes (PublishCredentials(..), SlotProfile(..), StreamAuth, StreamDetails, StreamIngestProtocol(..), StreamPublish(..))
-import Shared.Stream (IngestKey(..), ProfileName, RtmpStreamName(..))
+import Shared.Rtsv2.Agent as Agent
+import Shared.Rtsv2.LlnwApiTypes (PublishCredentials(..), SlotProfile(..), StreamAuth, StreamDetails, StreamIngestProtocol(..), StreamPublish(..))
+import Shared.Rtsv2.Stream (IngestKey(..), ProfileName, RtmpStreamName(..))
 import SpudGun (JsonResponseError, bodyToJSON)
 import SpudGun as SpudGun
 

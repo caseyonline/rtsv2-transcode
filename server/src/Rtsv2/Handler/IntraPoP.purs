@@ -17,10 +17,10 @@ import Erl.Data.List (List, catMaybes, concat, nil, nub, null, (:))
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.IntraPoP as IntraPoPAgent
 import Shared.JsonLd as JsonLd
-import Shared.Router.Endpoint (Endpoint(..), makeUrl, makeUrlAddr)
-import Shared.Stream (AggregatorKey(..), ProfileName, SlotId, SlotRole(..))
-import Shared.Types (Server, ServerAddress, extractAddress)
-import Shared.Types.Agent.State as PublicState
+import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl, makeUrlAddr)
+import Shared.Rtsv2.Stream (AggregatorKey(..), ProfileName, SlotId, SlotRole(..))
+import Shared.Rtsv2.Types (Server, ServerAddress, extractAddress)
+import Shared.Rtsv2.Agent.State as PublicState
 import Simple.JSON (class ReadForeign)
 import SpudGun as SpudGun
 import StetsonHelper (GetHandler, PostHandler, jsonResponse, processPostPayload, textResponse)

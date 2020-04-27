@@ -44,11 +44,11 @@ import Rtsv2.Handler.TransPoP as TransPoPHandler
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Serf (Ip(..))
-import Shared.LlnwApiTypes (StreamDetails)
-import Shared.Router.Endpoint (Canary)
-import Shared.Router.Endpoint as Router
-import Shared.Stream (EgestKey(..), IngestKey(..), ProfileName, SlotId, SlotIdAndProfileName(..), SlotRole(..))
-import Shared.Types (Server, extractAddress)
+import Shared.Rtsv2.LlnwApiTypes (StreamDetails)
+import Shared.Rtsv2.Router.Endpoint (Canary)
+import Shared.Rtsv2.Router.Endpoint as Router
+import Shared.Rtsv2.Stream (EgestKey(..), IngestKey(..), ProfileName, SlotId, SlotIdAndProfileName(..), SlotRole(..))
+import Shared.Rtsv2.Types (Server, extractAddress)
 import Shared.UUID (UUID, fromString)
 import Shared.UUID as UUID
 import Stetson (RestResult, StaticAssetLocation(..))

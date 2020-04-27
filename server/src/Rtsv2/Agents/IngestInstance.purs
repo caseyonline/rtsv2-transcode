@@ -49,14 +49,14 @@ import Rtsv2.Config as Config
 import Rtsv2.DataObject as DO
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
-import Shared.Agent as Agent
+import Shared.Rtsv2.Agent as Agent
 import Shared.Common (Milliseconds)
-import Shared.LlnwApiTypes (StreamDetails, StreamPublish(..))
-import Shared.Router.Endpoint (Endpoint(..), makeUrl, makeWsUrl)
+import Shared.Rtsv2.LlnwApiTypes (StreamDetails, StreamPublish(..))
+import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl, makeWsUrl)
 import Shared.Rtsv2.JsonLd as JsonLd
-import Shared.Stream (AggregatorKey, IngestKey(..), ingestKeyToAggregatorKey)
-import Shared.Types (Load, Server, ServerLoad(..), extractAddress)
-import Shared.Types.Agent.State as PublicState
+import Shared.Rtsv2.Stream (AggregatorKey, IngestKey(..), ingestKeyToAggregatorKey)
+import Shared.Rtsv2.Types (Load, Server, ServerLoad(..), extractAddress)
+import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Types.Media.Types.Rtmp (RtmpClientMetadata)
 import Shared.Types.Media.Types.SourceDetails (SourceInfo)
 import SpudGun as SpudGun

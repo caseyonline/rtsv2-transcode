@@ -1,4 +1,4 @@
-module Shared.Types
+module Shared.Rtsv2.Types
        ( DeliverTo(..)
        , GeoLoc(..)
        , LeaderGeoLoc(..)
@@ -37,8 +37,8 @@ import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype, unwrap)
 import Data.Symbol (SProxy(..))
 import Record as Record
-import Shared.Agent (Agent)
-import Shared.Stream (SlotId)
+import Shared.Rtsv2.Agent (Agent)
+import Shared.Rtsv2.Stream (SlotId)
 import Simple.JSON (class ReadForeign, class WriteForeign)
 
 newtype NetworkBPS = NetworkBPS Int

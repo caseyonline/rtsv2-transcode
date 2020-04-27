@@ -5,7 +5,7 @@ import Prelude
 import Effect.Aff (Aff)
 import Data.Either (Either(..))
 import Data.Newtype (class Newtype)
-import Shared.Types (ServerAddress(..))
+import Shared.Rtsv2.Types (ServerAddress(..))
 import Milkis as M
 
 

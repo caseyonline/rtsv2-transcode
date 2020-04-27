@@ -16,7 +16,7 @@ import Data.Newtype (class Newtype, unwrap, wrap)
 import Erl.Data.Tuple (Tuple2, tuple2, uncurry2)
 import Erl.Utils as Erl
 import Foreign (F, Foreign)
-import Shared.Types (NetworkBPS, Percentage, SpecInt)
+import Shared.Rtsv2.Types (NetworkBPS, Percentage, SpecInt)
 import Simple.JSON (class ReadForeign, read')
 
 

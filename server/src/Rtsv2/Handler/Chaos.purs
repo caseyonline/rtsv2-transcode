@@ -9,7 +9,7 @@ import Effect (Effect)
 import Erl.Atom (atom)
 import Erl.Data.Tuple (tuple2, tuple3, tuple4)
 import Foreign (Foreign, unsafeToForeign)
-import Shared.Chaos (ChaosGprocName(..), ChaosName(..), ChaosPayload)
+import Shared.Rtsv2.Chaos (ChaosGprocName(..), ChaosName(..), ChaosPayload)
 import StetsonHelper (PostHandler, processPostPayload)
 
 foreign import chaosImpl :: ChaosPayload -> Foreign -> Effect Unit

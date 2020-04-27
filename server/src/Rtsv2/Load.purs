@@ -25,8 +25,8 @@ import Rtsv2.Config (LoadConfig)
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
 import Rtsv2.Names as Names
-import Shared.Agent (AggregatorSerfPayload)
-import Shared.Types (Load, NetworkBPS(..), Percentage(..), SpecInt(..))
+import Shared.Rtsv2.Agent (AggregatorSerfPayload)
+import Shared.Rtsv2.Types (Load, NetworkBPS(..), Percentage(..), SpecInt(..))
 
 -- decaying things
 -- monitor actual load - cpu %age and network bps

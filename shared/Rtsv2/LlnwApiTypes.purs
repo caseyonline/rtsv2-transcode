@@ -5,7 +5,7 @@
 -- * Capitization differs on shortname vs streamName
 -- * Can slot details change when stream is live - assuming not
 
-module Shared.LlnwApiTypes
+module Shared.Rtsv2.LlnwApiTypes
        ( StreamConnection
        , AuthType
        , StreamIngestProtocol(..)
@@ -37,7 +37,7 @@ import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype)
 import Foreign (ForeignError(..), readString, unsafeToForeign)
 import Record (rename)
-import Shared.Stream (ProfileName, RtmpShortName, RtmpStreamName, SlotId, SlotRole)
+import Shared.Rtsv2.Stream (ProfileName, RtmpShortName, RtmpStreamName, SlotId, SlotRole)
 import Simple.JSON (class ReadForeign, class WriteForeign, readImpl, writeImpl)
 import Type.Prelude (SProxy(..))
 

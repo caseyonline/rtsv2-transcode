@@ -91,13 +91,13 @@ import Rtsv2.Config as Config
 import Rtsv2.DataObject as DO
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
-import Shared.Agent as Agent
-import Shared.LlnwApiTypes (SlotProfile(..), StreamDetails)
-import Shared.Router.Endpoint (Endpoint(..), makeUrlAddr, makeWsUrl)
+import Shared.Rtsv2.Agent as Agent
+import Shared.Rtsv2.LlnwApiTypes (SlotProfile(..), StreamDetails)
+import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrlAddr, makeWsUrl)
 import Shared.Rtsv2.JsonLd as JsonLd
-import Shared.Stream (AggregatorKey(..), IngestKey(..), ProfileName, SlotId, SlotRole(..), ingestKeyToAggregatorKey)
-import Shared.Types (DeliverTo, RelayServer, Server, ServerAddress, extractAddress)
-import Shared.Types.Agent.State as PublicState
+import Shared.Rtsv2.Stream (AggregatorKey(..), IngestKey(..), ProfileName, SlotId, SlotRole(..), ingestKeyToAggregatorKey)
+import Shared.Rtsv2.Types (DeliverTo, RelayServer, Server, ServerAddress, extractAddress)
+import Shared.Rtsv2.Agent.State as PublicState
 import Shared.UUID (UUID)
 import WsGun as WsGun
 

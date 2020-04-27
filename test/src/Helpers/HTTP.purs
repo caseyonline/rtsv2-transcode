@@ -10,10 +10,10 @@ import Helpers.Types (Node, ResWithBody(..))
 import Milkis as M
 import Milkis.Impl.Node (nodeFetch)
 import Prim.Row (class Union)
-import Shared.Chaos as Chaos
-import Shared.Router.Endpoint (Canary(..), Endpoint(..), makeUrlAddr)
-import Shared.Stream (RtmpShortName, SlotId, SlotNameAndProfileName(..), SlotRole(..))
-import Shared.Types (ServerAddress(..))
+import Shared.Rtsv2.Chaos as Chaos
+import Shared.Rtsv2.Router.Endpoint (Canary(..), Endpoint(..), makeUrlAddr)
+import Shared.Rtsv2.Stream (RtmpShortName, SlotId, SlotNameAndProfileName(..), SlotRole(..))
+import Shared.Rtsv2.Types (ServerAddress(..))
 import Simple.JSON as SimpleJSON
 
 

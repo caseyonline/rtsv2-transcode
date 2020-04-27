@@ -20,9 +20,9 @@ import Helpers.HTTP as HTTP
 import Helpers.Types (ResWithBody(..), Node(..), TestNode)
 import Milkis as M
 import Shared.Rtsv2.JsonLd as JsonLd
-import Shared.Stream (SlotId, SlotNameAndProfileName(..), SlotRole(..))
-import Shared.Types (ServerAddress(..), extractAddress)
-import Shared.Types.Agent.State as PublicState
+import Shared.Rtsv2.Stream (SlotId, SlotNameAndProfileName(..), SlotRole(..))
+import Shared.Rtsv2.Types (ServerAddress(..), extractAddress)
+import Shared.Rtsv2.Agent.State as PublicState
 import Simple.JSON (class ReadForeign)
 import Simple.JSON as SimpleJSON
 

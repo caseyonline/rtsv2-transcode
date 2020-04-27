@@ -16,8 +16,8 @@ import Pinto.Sup as Sup
 import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Agents.IngestInstance as IngestInstance
 import Rtsv2.Names as Names
-import Shared.LlnwApiTypes (StreamDetails, StreamPublish)
-import Shared.Stream (IngestKey)
+import Shared.Rtsv2.LlnwApiTypes (StreamDetails, StreamPublish)
+import Shared.Rtsv2.Stream (IngestKey)
 
 serverName :: SupervisorName
 serverName = Names.ingestInstanceSupName

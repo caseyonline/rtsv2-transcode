@@ -56,14 +56,14 @@ import Rtsv2.DataObject as DO
 import Rtsv2.DataObject as DataObject
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
-import Shared.Agent as Agent
+import Shared.Rtsv2.Agent as Agent
 import Shared.Common (Milliseconds)
-import Shared.LlnwApiTypes (StreamIngestProtocol(..))
-import Shared.Router.Endpoint (Endpoint(..), makeUrl, makeWsUrl)
+import Shared.Rtsv2.LlnwApiTypes (StreamIngestProtocol(..))
+import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl, makeWsUrl)
 import Shared.Rtsv2.JsonLd as JsonLd
-import Shared.Stream (AggregatorKey(..), EgestKey(..), ProfileName, RelayKey(..), SlotId, SlotRole)
-import Shared.Types (EgestServer(..), Load, RelayServer, Server, ServerLoad(..), extractAddress)
-import Shared.Types.Agent.State as PublicState
+import Shared.Rtsv2.Stream (AggregatorKey(..), EgestKey(..), ProfileName, RelayKey(..), SlotId, SlotRole)
+import Shared.Rtsv2.Types (EgestServer(..), Load, RelayServer, Server, ServerLoad(..), extractAddress)
+import Shared.Rtsv2.Agent.State as PublicState
 import SpudGun as SpudGun
 import WsGun as WsGun
 

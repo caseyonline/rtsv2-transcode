@@ -17,7 +17,7 @@ import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
 import Rtsv2.Agents.IngestAggregatorInstanceSup as IngestAggregatorInstanceSup
 import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Names as Names
-import Shared.LlnwApiTypes (StreamDetails)
+import Shared.Rtsv2.LlnwApiTypes (StreamDetails)
 
 isAgentAvailable :: Effect Boolean
 isAgentAvailable = isRegistered serverName

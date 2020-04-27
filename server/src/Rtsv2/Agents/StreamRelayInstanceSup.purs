@@ -16,8 +16,8 @@ import Pinto.Sup as Sup
 import Rtsv2.Agents.StreamRelayInstance as StreamRelayInstance
 import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload)
 import Rtsv2.Names as Names
-import Shared.Agent as Agent
-import Shared.Stream (RelayKey)
+import Shared.Rtsv2.Agent as Agent
+import Shared.Rtsv2.Stream (RelayKey)
 
 startLink :: RelayKey -> CreateRelayPayload -> StreamRelayInstance.StateServerName -> Effect Pinto.StartLinkResult
 startLink relayKey payload stateServerName = Sup.startLink (Names.streamRelayInstanceSupName relayKey) (init relayKey payload stateServerName)

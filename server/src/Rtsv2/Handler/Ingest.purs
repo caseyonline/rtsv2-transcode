@@ -33,11 +33,11 @@ import Rtsv2.Agents.IngestStats as IngestStats
 import Rtsv2.Agents.IngestSup as IngestSup
 import Rtsv2.Config as Config
 import Rtsv2.Handler.MimeType as MimeType
-import Shared.LlnwApiTypes (StreamIngestProtocol(..), StreamPublish, StreamDetails)
-import Shared.Router.Endpoint (Canary)
-import Shared.Stream (IngestKey(..), ProfileName, RtmpShortName, SlotId, SlotNameAndProfileName(..), SlotRole)
-import Shared.Types.Agent.State (IngestStats)
-import Shared.Types.Agent.State as PublicState
+import Shared.Rtsv2.LlnwApiTypes (StreamIngestProtocol(..), StreamPublish, StreamDetails)
+import Shared.Rtsv2.Router.Endpoint (Canary)
+import Shared.Rtsv2.Stream (IngestKey(..), ProfileName, RtmpShortName, SlotId, SlotNameAndProfileName(..), SlotRole)
+import Shared.Rtsv2.Agent.State (IngestStats)
+import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Types.Workflow.Metrics.Commmon (Stream)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (writeJSON)

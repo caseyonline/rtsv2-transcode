@@ -1,4 +1,4 @@
-module Shared.Chaos
+module Shared.Rtsv2.Chaos
        (
          ChaosPayload
        , ChaosName(..)
@@ -12,7 +12,7 @@ import Prelude
 import Control.Alt ((<|>))
 import Data.Maybe (Maybe(..))
 import Foreign (Foreign, F)
-import Shared.Stream as Stream
+import Shared.Rtsv2.Stream as Stream
 import Simple.JSON (class ReadForeign, class WriteForeign, readImpl, writeImpl)
 
 data ChaosGprocName = String String

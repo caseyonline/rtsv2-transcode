@@ -16,9 +16,9 @@ import Rtsv2.Agents.Locator (findOrStart) as Locator
 import Rtsv2.Agents.Locator.Types (ResourceResp)
 import Rtsv2.Agents.StreamRelaySup as StreamRelaySup
 import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload)
-import Shared.Agent as Agent
-import Shared.Stream (RelayKey(..))
-import Shared.Types (Server, ServerLoad(..))
+import Shared.Rtsv2.Agent as Agent
+import Shared.Rtsv2.Stream (RelayKey(..))
+import Shared.Rtsv2.Types (Server, ServerLoad(..))
 
 findOrStart :: CreateRelayPayload -> Effect (ResourceResp Server)
 findOrStart =

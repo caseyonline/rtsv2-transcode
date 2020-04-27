@@ -20,7 +20,7 @@ import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
 import Rtsv2.Config as Config
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
-import Shared.Types (extractAddress)
+import Shared.Rtsv2.Types (extractAddress)
 
 isAgentAvailable :: Effect Boolean
 isAgentAvailable = Pinto.isRegistered serverName

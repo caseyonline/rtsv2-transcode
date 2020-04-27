@@ -7,7 +7,7 @@ import Prelude
 import Data.Maybe (Maybe(..))
 import Erl.Data.List (List)
 import Rtsv2.PoPDefinition as PoPDefinition
-import Shared.Types.Agent.State as PublicState
+import Shared.Rtsv2.Agent.State as PublicState
 import StetsonHelper (GetHandler, jsonResponse)
 
 popDefinition :: GetHandler (PublicState.PoPDefinition List)

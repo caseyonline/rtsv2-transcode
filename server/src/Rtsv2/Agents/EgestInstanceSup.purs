@@ -22,7 +22,7 @@ import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Agents.EgestInstance (CreateEgestPayload)
 import Rtsv2.Agents.EgestInstance as EgestInstance
 import Rtsv2.Names as Names
-import Shared.Stream (EgestKey(..))
+import Shared.Rtsv2.Stream (EgestKey(..))
 
 serverName :: SupervisorName
 serverName = Names.egestInstanceSupName

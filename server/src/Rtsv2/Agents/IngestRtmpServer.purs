@@ -32,9 +32,9 @@ import Rtsv2.Env as Env
 import Rtsv2.Names as Names
 import Rtsv2.Utils (crashIfLeft)
 import Serf (Ip)
-import Shared.Agent as Agent
-import Shared.LlnwApiTypes (AuthType, PublishCredentials, SlotProfile(..), SlotPublishAuthType(..), StreamAuth, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamPublish)
-import Shared.Stream (IngestKey(..))
+import Shared.Rtsv2.Agent as Agent
+import Shared.Rtsv2.LlnwApiTypes (AuthType, PublishCredentials, SlotProfile(..), SlotPublishAuthType(..), StreamAuth, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamPublish)
+import Shared.Rtsv2.Stream (IngestKey(..))
 import SpudGun (JsonResponseError, bodyToJSON)
 import SpudGun as SpudGun
 import Stetson.WebSocketHandler (self)

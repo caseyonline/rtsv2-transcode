@@ -11,8 +11,8 @@ import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple(..))
 import Erl.Data.List (List)
 import Rtsv2.Agents.TransPoP as TransPoP
-import Shared.Types (PoPName)
-import Shared.Types.Agent.State as PublicState
+import Shared.Rtsv2.Types (PoPName)
+import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.JsonLd as JsonLd
 import StetsonHelper (GetHandler, jsonResponse)
 

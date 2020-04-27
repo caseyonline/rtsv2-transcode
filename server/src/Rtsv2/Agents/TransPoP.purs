@@ -56,13 +56,13 @@ import Rtsv2.PoPDefinition (PoP)
 import Rtsv2.PoPDefinition as PoPDefinition
 import Serf (IpAndPort, LamportClock, SerfCoordinate, calcRtt)
 import Serf as Serf
-import Shared.Agent (AggregatorSerfPayload)
+import Shared.Rtsv2.Agent (AggregatorSerfPayload)
 import Shared.Common (Milliseconds)
-import Shared.Router.Endpoint (Endpoint(..), makeUrlAddr)
+import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrlAddr)
 import Shared.Rtsv2.JsonLd as JsonLd
-import Shared.Stream (AgentKey)
-import Shared.Types (PoPName, Server, ServerAddress(..), extractAddress, extractPoP)
-import Shared.Types.Agent.State as PublicState
+import Shared.Rtsv2.Stream (AgentKey)
+import Shared.Rtsv2.Types (PoPName, Server, ServerAddress(..), extractAddress, extractPoP)
+import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Utils (distinctRandomNumbers)
 import SpudGun (bodyToString)
 import SpudGun as SpudGun

@@ -18,7 +18,7 @@ import Data.Either (Either)
 import Data.Maybe (Maybe)
 import Effect (Effect)
 import Logger (Logger)
-import Shared.Types (Server, ServerLoad)
+import Shared.Rtsv2.Types (Server, ServerLoad)
 
 
 

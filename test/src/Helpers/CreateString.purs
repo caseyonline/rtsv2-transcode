@@ -7,8 +7,8 @@ import Data.Map as Map
 import Data.Maybe
 import Data.Newtype (unwrap)
 import Helpers.Types (Node(..), NodeAddress(..), PoPInfo)
-import Shared.Router.Endpoint (Endpoint(..), makeUrl, makeUrlAddr)
-import Shared.Types (ServerAddress(..))
+import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl, makeUrlAddr)
+import Shared.Rtsv2.Types (ServerAddress(..))
 
 -------------------------------------------------------------------------------
 -- Node

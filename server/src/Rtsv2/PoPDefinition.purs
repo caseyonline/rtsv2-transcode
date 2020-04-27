@@ -43,9 +43,9 @@ import PintoHelper (doExposeState, exposeState)
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
 import Rtsv2.Names as Names
-import Shared.Agent (Agent)
-import Shared.Types (GeoLoc, NetworkBPS, PoPName, RegionName, Server(..), ServerAddress(..), ServerLocation(..), SpecInt, extractPoP, toServerLocation)
-import Shared.Types.Agent.State as PublicState
+import Shared.Rtsv2.Agent (Agent)
+import Shared.Rtsv2.Types (GeoLoc, NetworkBPS, PoPName, RegionName, Server(..), ServerAddress(..), ServerLocation(..), SpecInt, extractPoP, toServerLocation)
+import Shared.Rtsv2.Agent.State as PublicState
 import Simple.JSON as JSON
 
 type PoPInfo =

@@ -20,10 +20,10 @@ import Rtsv2.Agents.StreamRelayTypes (AggregatorBackupToPrimaryWsMessage, Aggreg
 import Rtsv2.Handler.Helper (WebSocketHandlerResult(..), webSocketHandler)
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
-import Shared.LlnwApiTypes (StreamDetails)
-import Shared.Stream (AggregatorKey(..), IngestKey(..), ProfileName, SlotId, SlotRole)
-import Shared.Types (RelayServer(..), Server(..), ServerAddress)
-import Shared.Types.Agent.State as PublicState
+import Shared.Rtsv2.LlnwApiTypes (StreamDetails)
+import Shared.Rtsv2.Stream (AggregatorKey(..), IngestKey(..), ProfileName, SlotId, SlotRole)
+import Shared.Rtsv2.Types (RelayServer(..), Server(..), ServerAddress)
+import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Utils (lazyCrashIfMissing)
 import Stetson (InnerStetsonHandler)
 import StetsonHelper (GetHandler, PostHandler, jsonResponse, processPostPayload)

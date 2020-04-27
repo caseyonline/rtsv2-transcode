@@ -1,4 +1,4 @@
-module Shared.Stream
+module Shared.Rtsv2.Stream
   ( RtmpShortName(..)
   , RtmpStreamName(..)
   , SlotId(..)

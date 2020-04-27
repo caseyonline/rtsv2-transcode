@@ -92,13 +92,13 @@ import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Serf (IpAndPort, LamportClock)
 import Serf as Serf
-import Shared.Agent (AggregatorSerfPayload)
+import Shared.Rtsv2.Agent (AggregatorSerfPayload)
 import Shared.Common (Milliseconds)
 import Shared.Rtsv2.JsonLd (transPoPLeaderLocationNode)
 import Shared.Rtsv2.JsonLd as JsonLd
-import Shared.Stream (AgentKey(..), AggregatorKey, EgestKey(..), RelayKey(..), agentKeyToAggregatorKey, aggregatorKeyToAgentKey)
-import Shared.Types (Load, Server(..), ServerAddress(..), ServerLoad(..), extractAddress, extractPoP, serverLoadToServer, toServerLoad)
-import Shared.Types.Agent.State as PublicState
+import Shared.Rtsv2.Stream (AgentKey(..), AggregatorKey, EgestKey(..), RelayKey(..), agentKeyToAggregatorKey, aggregatorKeyToAgentKey)
+import Shared.Rtsv2.Types (Load, Server(..), ServerAddress(..), ServerLoad(..), extractAddress, extractPoP, serverLoadToServer, toServerLoad)
+import Shared.Rtsv2.Agent.State as PublicState
 
 type TestHelperPayload =
   { dropAgentMessages :: Boolean

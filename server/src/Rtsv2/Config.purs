@@ -48,9 +48,9 @@ import Foreign (F, Foreign, readString, unsafeReadTagged)
 import Logger as Logger
 import Partial.Unsafe (unsafeCrashWith)
 import Rtsv2.LoadTypes as LoadTypes
-import Shared.Agent (Agent, AggregatorSerfPayload, strToAgent)
-import Shared.Stream (AgentKey)
-import Shared.Types (Server)
+import Shared.Rtsv2.Agent (Agent, AggregatorSerfPayload, strToAgent)
+import Shared.Rtsv2.Stream (AgentKey)
+import Shared.Rtsv2.Types (Server)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (class ReadForeign, readImpl)
 

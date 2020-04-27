@@ -45,9 +45,9 @@ import Erl.Data.Tuple (tuple2, tuple3, tuple4)
 import Erl.ModuleName (NativeModuleName(..))
 import Foreign (unsafeToForeign)
 import Pinto (ServerName(..), SupervisorName)
-import Shared.Agent (Agent(..))
-import Shared.Stream (AggregatorKey, EgestKey, IngestKey, RelayKey)
-import Shared.Types (PoPName)
+import Shared.Rtsv2.Agent (Agent(..))
+import Shared.Rtsv2.Stream (AggregatorKey, EgestKey, IngestKey, RelayKey)
+import Shared.Rtsv2.Types (PoPName)
 
 agentSupName :: SupervisorName
 agentSupName = Local (atom "AgentSup")

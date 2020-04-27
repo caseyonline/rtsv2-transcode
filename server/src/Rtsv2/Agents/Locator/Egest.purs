@@ -24,10 +24,10 @@ import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.Locator.Types (FailureReason(..), LocalOrRemote(..), LocationResp)
 import Rtsv2.Utils (crashIfLeft, noprocToMaybe)
-import Shared.Agent as Agent
-import Shared.Router.Endpoint (Endpoint(..), makeUrl)
-import Shared.Stream (AggregatorKey(..), EgestKey(..), SlotId, SlotRole(..))
-import Shared.Types (Server, ServerLoad(..), serverLoadToServer)
+import Shared.Rtsv2.Agent as Agent
+import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
+import Shared.Rtsv2.Stream (AggregatorKey(..), EgestKey(..), SlotId, SlotRole(..))
+import Shared.Rtsv2.Types (Server, ServerLoad(..), serverLoadToServer)
 import SpudGun as SpudGun
 
 type StartArgs = { slotId :: SlotId

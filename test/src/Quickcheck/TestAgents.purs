@@ -4,7 +4,7 @@ import Prelude
 
 import Data.Generic.Rep (to)
 import Data.Newtype (class Newtype)
-import Shared.Agent (Agent, agentToStr, strToAgent)
+import Shared.Rtsv2.Agent (Agent, agentToStr, strToAgent)
 import Test.QuickCheck.Arbitrary (class Arbitrary, arbitrary)
 
 encodeDecodeIsIdentity :: AgentNT -> Boolean
