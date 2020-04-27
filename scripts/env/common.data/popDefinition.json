@@ -8,7 +8,7 @@
                  , "capabilityTags": []
                  , "agents": ["TransPoP", "Ingest", "IngestAggregator", "StreamRelay", "Egest"]
                  },
-                 {"address": "172.16.162"
+                 {"address": "172.16.169.2"
                  , "maxCpuCapacity": 1000
                  , "maxNetworkCapacity": 1000000000
                  , "capabilityTags": []

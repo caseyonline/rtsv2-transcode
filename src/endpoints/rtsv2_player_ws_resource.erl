@@ -205,8 +205,8 @@ init_prime(Req, StreamDesc) ->
   end.
 
 
-terminate(_Reason, _PartialReq, #?state_running{ server_id = ServerId, trace_id = TraceId }) ->
-  %% ?LOG_DEBUG(#{ what => "close", reason => Reason }),
+terminate(Reason, _PartialReq, #?state_running{ server_id = ServerId, trace_id = TraceId }) ->
+  ?SLOG_DEBUG("Terminating", #{ what => "close", reason => Reason }),
   webrtc_stream_server:cast_session(ServerId, TraceId, notify_socket_disconnect),
   ok;
 

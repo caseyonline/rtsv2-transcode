@@ -240,7 +240,7 @@ export default class Session extends EventEmitter implements ISession {
 
       case "sdp.offer-response":
         {
-          console.debug("Remote description obtained.");
+          console.debug("Remote description obtained.", message.response);
           await this.peer.setRemoteDescription({ "sdp": message.response, "type": "answer" });
           console.debug("Remote description applied.");
         }
