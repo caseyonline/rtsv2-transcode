@@ -20,7 +20,6 @@ module Rtsv2.Config
   , featureFlags
   , webConfig
   , globalConfig
-  , nodeConfig
   , popDefinitionConfig
   , intraPoPAgentConfig
   , transPoPAgentConfig
@@ -49,10 +48,9 @@ import Foreign (F, Foreign, readString, unsafeReadTagged)
 import Logger as Logger
 import Partial.Unsafe (unsafeCrashWith)
 import Rtsv2.LoadTypes as LoadTypes
-import Rtsv2.Node as Node
 import Shared.Agent (Agent, AggregatorSerfPayload, strToAgent)
 import Shared.Stream (AgentKey)
-import Shared.Types (NetworkBPS, Server, SpecInt)
+import Shared.Types (Server)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (class ReadForeign, readImpl)
 
@@ -191,10 +189,6 @@ configuredAgents :: Effect (List Agent)
 configuredAgents = do
   agentStrings <- getMandatory (readList >=> traverse readString) "agents"
   pure $ strToAgent <$> agentStrings
-
-nodeConfig :: Effect Node.Config
-nodeConfig = do
-  getMandatoryRecord "nodeConfig"
 
 popDefinitionConfig :: Effect PoPDefinitionConfig
 popDefinitionConfig = do

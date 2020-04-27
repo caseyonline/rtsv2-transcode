@@ -2,6 +2,7 @@ module Rtsv2.Agents.AgentSup where
 
 import Prelude
 
+import Data.Array (toUnfoldable)
 import Data.Traversable (sequence)
 import Effect (Effect)
 import Erl.Data.List ((:))
@@ -16,15 +17,17 @@ import Rtsv2.Agents.StreamRelaySup as StreamRelaySup
 import Rtsv2.Agents.TransPoP as TransPoP
 import Rtsv2.Config as Config
 import Rtsv2.Names as Names
+import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Agent (Agent(..))
+import Shared.Types (Server(..))
 
 startLink :: Unit -> Effect Pinto.StartLinkResult
 startLink _ = Sup.startLink Names.agentSupName init
 
 init :: Effect SupervisorSpec
 init = do
-  nodeConfig <- Config.nodeConfig
-  agentSpecs <- sequence $ (makeSpec <$> (IntraPoP : nodeConfig.agents))
+  (Server {agents}) <- PoPDefinition.getThisServer
+  agentSpecs <- sequence $ (makeSpec <$> (IntraPoP : (toUnfoldable agents)))
   pure $ Sup.buildSupervisor
     # Sup.supervisorStrategy OneForOne
     # Sup.supervisorChildren agentSpecs
