@@ -92,6 +92,12 @@ stopSession = do
   _ <- delay (Milliseconds 200.0)
   runProc "./scripts/stopSession.sh" [sessionName]
 
+
+startSlotHigh1000 :: String -> Aff Unit
+startSlotHigh1000 ip = do
+  _ <- delay (Milliseconds 5000.0)
+  runProc "./scripts/run_slot1_1000.sh" [ip]
+
 -------------------------------------------------------------------------------
 -- Relay
 -------------------------------------------------------------------------------

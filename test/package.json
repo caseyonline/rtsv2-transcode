@@ -5,7 +5,7 @@
   "license": "Closed source!!!",
   "dependencies": {
     "node-fetch": "^2.6.0",
-    "puppeteer": "2.0.0",
+    "puppeteer": "3.0.1",
     "xhr2": "0.2.0"
   }
 }

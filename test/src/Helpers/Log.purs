@@ -13,7 +13,6 @@ import Helpers.Env (currentTime)
 import Milkis as M
 
 
-
 throwSlowError :: forall e. String -> Aff e
 throwSlowError e = do
   _ <- delay (Milliseconds 200.0)
