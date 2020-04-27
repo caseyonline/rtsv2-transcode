@@ -3,7 +3,7 @@ module Browser.WebRTCTest where
 import Prelude
 
 import Data.Identity (Identity(..))
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (un)
 import Data.Either
 import Effect (Effect)
@@ -28,8 +28,6 @@ import Toppokki as T
 import Foreign (readString, unsafeFromForeign)
 import Data.Int (fromString)
 
-testConfig :: Config
-testConfig = { slow: (Milliseconds 500.00), timeout: Just (Milliseconds 10000.00), exit: true }
 
 launchArgs :: Array String
 launchArgs = [ "--vmodule=*/webrtc/*=3"
@@ -65,7 +63,7 @@ webRTCTest =
           -- _ <- T.unsafeEvaluateOnNewDocument jsFile page
 
           T.goto (appUrl Env.p1n1) page
-          _ <- delay (Milliseconds 2000.00) >>= L.as' "waited video to start"
+          _ <- delay (Milliseconds 3000.00) >>= L.as' "waited video to start"
 
           frames1 <- getInnerText "#frames" page
           packets1 <- getInnerText "#packets" page
@@ -75,8 +73,10 @@ webRTCTest =
           frames2 <- getInnerText "#frames" page
           packets2 <- getInnerText "#packets" page
 
-          Assert.assert "frames aren't increasing" ( frames1 < frames2) >>= L.as' ("frames are increasing: " <> frames1 <> " > " <> frames2)
-          Assert.assert "packets aren't increasing" ( packets1 < packets2) >>= L.as' ("packets are increasing: " <> packets1 <> " > " <> packets2)
+          let frameDiff = stringToInt frames2 - stringToInt frames1
+
+          Assert.assert "frames aren't increasing" (frameDiff > 70) >>= L.as' ("frames increased by: " <> show frameDiff)
+          Assert.assert "packets aren't increasing" ((stringToInt packets1) < (stringToInt packets2)) >>= L.as' ("packets are increasing: " <> packets1 <> " > " <> packets2)
           T.close browser
 
 
@@ -89,8 +89,7 @@ getInnerText selector page = do
   let innerText = (unsafeFromForeign innerTextF) :: String
   pure innerText
 
--- stringToInt :: String -> Either (Aff Unit) Int
--- stringToInt s =
---   case fromString s of
---     Left -> Test.failure "DOM value isn't an Int"
---     Just int -> Right int
+
+stringToInt :: String -> Int
+stringToInt s =
+  fromMaybe 0 $ fromString s
