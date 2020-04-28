@@ -218,13 +218,9 @@ init args = do
     makeIngestKey2 { slot : { id }, role } profileName =
       IngestKey id role profileName
 
-    makeEgestKey :: UUID -> String -> EgestKey
+    makeEgestKey :: UUID -> SlotRole -> EgestKey
     makeEgestKey slotId slotRole =
-      EgestKey (wrap slotId) (parseSlotRole slotRole)
-      where
-        parseSlotRole "primary" = Primary
-        parseSlotRole "backup" = Backup
-        parseSlotRole _ = Primary
+      EgestKey (wrap slotId) slotRole
 
     makeIngestKey :: UUID -> String -> String -> IngestKey
     makeIngestKey slotId slotRole profileName =

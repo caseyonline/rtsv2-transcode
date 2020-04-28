@@ -20,7 +20,7 @@ import Helpers.Types (Node)
 import Node.Encoding (Encoding(..))
 import Node.FS.Aff (readTextFile)
 import RTCPeerConnection (getVideoStats)
-import Test.Spec (SpecT, describe, it, before_, after_)
+import Test.Spec (SpecT, describe, describeOnly, it, itOnly, before_, after_)
 import Test.Spec.Runner (Config)
 import Test.Unit.Assert as Assert
 import Test.Unit as Test
@@ -51,7 +51,7 @@ appUrl node pb = T.URL $ "http:"
 
 webRTCTest :: forall m. Monad m => SpecT Aff Unit m Unit
 webRTCTest =
-  describe "WebRTC browser tests" do
+  describeOnly "WebRTC browser tests" do
     primaryStream
     backupStream
 
@@ -62,6 +62,7 @@ primaryStream =
     before_ (F.startSession [Env.p1n1] *> F.launch [Env.p1n1] *> F.startSlotHigh1000 (C.toAddrFromNode Env.p1n1)) do
       after_ (F.stopSession *> F.stopSlot) do
         it "can check that a streaming video has started and is playing on Primary" do
+          _ <- delay (Milliseconds 2000.00) >>= L.as' "wait for ingest to start fully"
           browser <- T.launch { headless: false
                               , args: launchArgs
                               , devtools: true
@@ -73,7 +74,7 @@ primaryStream =
           -- _ <- T.unsafeEvaluateOnNewDocument jsFile page
 
           T.goto (appUrl Env.p1n1 "primary") page
-          _ <- delay (Milliseconds 4000.00) >>= L.as' "waited video to start"
+          _ <- delay (Milliseconds 4000.00) >>= L.as' "wait for video to start"
 
           frames1 <- getInnerText "#frames" page
           packets1 <- getInnerText "#packets" page
@@ -88,7 +89,7 @@ primaryStream =
           _ <- L.as' ("frames increased by: " <> show frameDiff) ""
 
           Assert.assert "frames aren't increasing" (frameDiff > 70) >>= L.as' ("frames increased by: " <> show frameDiff)
-          Assert.assert "packets aren't increasing" ((stringToInt packets1) < (stringToInt packets2)) >>= L.as' ("packets are increasing: " <> packets1 <> " > " <> packets2)
+          Assert.assert "packets aren't increasing" ((stringToInt packets1) < (stringToInt packets2)) >>= L.as' ("packets are increasing: " <> packets2 <> " > " <> packets1)
           T.close browser
 
 
@@ -99,6 +100,7 @@ backupStream =
     before_ (F.startSession [Env.p1n1] *> F.launch [Env.p1n1] *> F.startSlotHigh1000Backup (C.toAddrFromNode Env.p1n1)) do
       after_ (F.stopSession *> F.stopSlot) do
         it "can check that a streaming video has started and is playing on Backup" do
+          _ <- delay (Milliseconds 2000.00) >>= L.as' "wait for ingest to start fully"
           browser <- T.launch { headless: false
                               , args: launchArgs
                               , devtools: true
@@ -106,7 +108,7 @@ backupStream =
           page <- T.newPage browser
 
           T.goto (appUrl Env.p1n1 "backup") page
-          _ <- delay (Milliseconds 3000.00) >>= L.as' "waited video to start"
+          _ <- delay (Milliseconds 3000.00) >>= L.as' "wait for video to start"
 
           frames1 <- getInnerText "#frames" page
           packets1 <- getInnerText "#packets" page
@@ -119,7 +121,7 @@ backupStream =
           let frameDiff = stringToInt frames2 - stringToInt frames1
 
           Assert.assert "frames aren't increasing" (frameDiff > 70) >>= L.as' ("frames increased by: " <> show frameDiff)
-          Assert.assert "packets aren't increasing" ((stringToInt packets1) < (stringToInt packets2)) >>= L.as' ("packets are increasing: " <> packets1 <> " > " <> packets2)
+          Assert.assert "packets aren't increasing" ((stringToInt packets1) < (stringToInt packets2)) >>= L.as' ("packets are increasing: " <> packets2 <> " > " <> packets1)
           T.close browser
 
 
