@@ -23,6 +23,7 @@ import Data.Either (Either(..), either, hush)
 import Data.Int (round, toNumber)
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (unwrap, wrap)
+import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
@@ -47,16 +48,18 @@ import Rtsv2.Agents.StreamRelayTypes (AggregatorToIngestWsMessage(..), IngestToA
 import Rtsv2.Audit as Audit
 import Rtsv2.Config as Config
 import Rtsv2.DataObject as DO
+import Rtsv2.Load as Load
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
-import Shared.Rtsv2.Agent as Agent
 import Shared.Common (Milliseconds)
+import Shared.Rtsv2.Agent (emptySlotCharacteristics)
+import Shared.Rtsv2.Agent as Agent
+import Shared.Rtsv2.Agent.State as PublicState
+import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Rtsv2.LlnwApiTypes (StreamDetails, StreamPublish(..))
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl, makeWsUrl)
-import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Rtsv2.Stream (AggregatorKey, IngestKey(..), ingestKeyToAggregatorKey)
-import Shared.Rtsv2.Types (Load, Server, ServerLoad(..), extractAddress)
-import Shared.Rtsv2.Agent.State as PublicState
+import Shared.Rtsv2.Types (CurrentLoad, Server, ServerLoad(..), extractAddress)
 import Shared.Types.Media.Types.Rtmp (RtmpClientMetadata)
 import Shared.Types.Media.Types.SourceDetails (SourceInfo)
 import SpudGun as SpudGun
@@ -89,6 +92,7 @@ type State
   = { thisServer :: Server
     , aggregatorRetryTime :: Milliseconds
     , ingestKey :: IngestKey
+    , loadConfig :: Config.LoadConfig
     , streamPublish :: StreamPublish
     , streamDetails :: StreamDetails
     , ingestStartedTime :: Milliseconds
@@ -187,7 +191,7 @@ init { streamPublish
      , handlerPid} stateServerName = do
 
   logStart "Ingest starting" {ingestKey, handlerPid}
-
+  loadConfig <- Config.loadConfig
   thisServer <- PoPDefinition.getThisServer
   now <- systemTimeMs
   {port: localPort} <- Config.rtmpIngestConfig
@@ -202,6 +206,7 @@ init { streamPublish
   pure { thisServer
        , streamPublish
        , streamDetails
+       , loadConfig
        , ingestKey
        , aggregatorRetryTime: wrap $ toNumber aggregatorRetryTimeMs
        , aggregatorWebSocket: Nothing
@@ -330,7 +335,7 @@ doStopIngest state@{ingestKey} = do
   pure unit
 
 informAggregator :: State -> Effect State
-informAggregator state@{streamDetails, ingestKey: ingestKey@(IngestKey slotId slotRole profileName), thisServer, aggregatorRetryTime, stateServerName} = do
+informAggregator state@{streamDetails, ingestKey: ingestKey@(IngestKey slotId slotRole profileName), thisServer, aggregatorRetryTime, stateServerName, loadConfig} = do
   maybeAggregator <- hush <$> getAggregator
   maybeIngestAdded <- addIngest $ (extractServer <$> maybeAggregator)
   case maybeIngestAdded of
@@ -343,6 +348,7 @@ informAggregator state@{streamDetails, ingestKey: ingestKey@(IngestKey slotId sl
       void $ Timer.sendAfter (serverName ingestKey) (round $ unwrap aggregatorRetryTime) InformAggregator
       pure $ state
   where
+    slotCharacteristics = emptySlotCharacteristics -- TODO - num stream etc here
     addIngest :: Maybe Server -> Effect (Maybe WebSocket)
     addIngest Nothing = pure Nothing
     addIngest (Just aggregatorAddress) = do
@@ -362,7 +368,7 @@ informAggregator state@{streamDetails, ingestKey: ingestKey@(IngestKey slotId sl
 
     launchLocalOrRemote :: Effect (ResourceResp Server)
     launchLocalOrRemote = do
-      launchLocalOrRemoteGeneric filterForAggregatorLoad launchLocal launchRemote
+      launchLocalOrRemoteGeneric (Load.hasCapacityForAggregator slotCharacteristics loadConfig) launchLocal launchRemote
       where
         launchLocal :: ServerLoad -> Effect Boolean
         launchLocal _ = do
@@ -382,12 +388,6 @@ handleAggregatorExit exitedAggregatorKey exitedAggregatorAddr state@{ingestKey, 
       pure state
   | otherwise =
       pure state
-
-loadThresholdToCreateAggregator :: Load
-loadThresholdToCreateAggregator = wrap 50.0
-
-filterForAggregatorLoad :: ServerLoad -> Boolean
-filterForAggregatorLoad (ServerLoad sl) = sl.load < loadThresholdToCreateAggregator
 
 --------------------------------------------------------------------------------
 -- Log helpers

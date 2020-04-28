@@ -2,6 +2,10 @@ module Rtsv2.Load
        ( startLink
        , load
        , setLoad
+       , hasCapacityForEgestInstance
+       , hasCapacityForEgestClient
+       , hasCapacityForStreamRelay
+       , hasCapacityForAggregator
        ) where
 
 import Prelude
@@ -13,12 +17,11 @@ import Data.Maybe (Maybe(..))
 import Data.Newtype (unwrap, wrap)
 import Data.Set (fromFoldable)
 import Data.Set as Set
-import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Erl.Atom (Atom)
 import Erl.Data.List (List, singleton)
 import Erl.Data.Tuple (Tuple2, uncurry2)
-import Logger (Logger)
+import Logger (Logger, spy)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen (CallResult(..), CastResult(..))
@@ -28,37 +31,32 @@ import Rtsv2.Agents.IntraPoP as IntraPop
 import Rtsv2.Config (LoadConfig)
 import Rtsv2.Config as Config
 import Rtsv2.Names as Names
-import Shared.Rtsv2.Agent (AggregatorSerfPayload)
-import Shared.Rtsv2.Types (Load, NetworkBPS(..), Percentage(..), Server(..), SpecInt(..))
+import Shared.Rtsv2.Agent (SlotCharacteristics)
+import Shared.Rtsv2.Types (CurrentLoad(..), NetworkKbps(..), Percentage(..), ServerLoad(..), SpecInt(..), minLoad)
 
-type CurrentLoad =
-  { currentCPU :: Percentage
-  , currentNetwork :: NetworkBPS
-  }
+hasCapacityForEgestInstance :: SlotCharacteristics -> LoadConfig -> ServerLoad -> LoadCheckResult
+hasCapacityForEgestInstance slotCharacteristics {costs: LoadCosts {egest: agentCosts}, limits} targetServer =
+  hasCapacity (spy "payload" slotCharacteristics) (spy "candidate" targetServer) agentCosts limits
 
-hasCapacityForEgestInstance :: AggregatorSerfPayload -> Server -> CurrentLoad -> LoadConfig -> LoadCheckResult
-hasCapacityForEgestInstance serfPayload targetServer currentLoad {costs: LoadCosts {egest: agentCosts}, limits} =
-  hasCapacity serfPayload targetServer currentLoad agentCosts limits
+hasCapacityForEgestClient :: SlotCharacteristics -> LoadConfig -> ServerLoad -> LoadCheckResult
+hasCapacityForEgestClient slotCharacteristics {costs: LoadCosts {egest: agentCosts}, limits} targetServer =
+  hasCapacity slotCharacteristics targetServer agentCosts limits
 
-hasCapacityForEgestClient :: AggregatorSerfPayload -> Server -> CurrentLoad -> LoadConfig -> LoadCheckResult
-hasCapacityForEgestClient serfPayload targetServer currentLoad {costs: LoadCosts {egest: agentCosts}, limits} =
-  hasCapacity serfPayload targetServer currentLoad agentCosts limits
+hasCapacityForStreamRelay :: SlotCharacteristics -> LoadConfig -> ServerLoad -> LoadCheckResult
+hasCapacityForStreamRelay slotCharacteristics {costs: LoadCosts {streamRelay: agentCosts}, limits} targetServer =
+  hasCapacity slotCharacteristics targetServer agentCosts limits
 
-hasCapacityForStreamRelay :: AggregatorSerfPayload -> Server -> CurrentLoad -> LoadConfig -> LoadCheckResult
-hasCapacityForStreamRelay serfPayload targetServer currentLoad {costs: LoadCosts {streamRelay: agentCosts}, limits} =
-  hasCapacity serfPayload targetServer currentLoad agentCosts limits
+hasCapacityForAggregator :: SlotCharacteristics -> LoadConfig -> ServerLoad -> LoadCheckResult
+hasCapacityForAggregator slotCharacteristics {costs: LoadCosts {ingestAggregator: agentCosts}, limits} targetServer =
+  hasCapacity slotCharacteristics targetServer agentCosts limits
 
-hasCapacityForAggregator :: AggregatorSerfPayload -> Server -> CurrentLoad -> LoadConfig -> LoadCheckResult
-hasCapacityForAggregator serfPayload targetServer currentLoad {costs: LoadCosts {ingestAggregator: agentCosts}, limits} =
-  hasCapacity serfPayload targetServer currentLoad agentCosts limits
+hasCapacityForRtmpIngest :: SlotCharacteristics -> LoadConfig -> ServerLoad -> LoadCheckResult
+hasCapacityForRtmpIngest slotCharacteristics {costs: LoadCosts {webRTCIngest: agentCosts}, limits} targetServer =
+  hasCapacity slotCharacteristics targetServer agentCosts limits
 
-hasCapacityForRtmpIngest :: AggregatorSerfPayload -> Server -> CurrentLoad -> LoadConfig -> LoadCheckResult
-hasCapacityForRtmpIngest serfPayload targetServer currentLoad {costs: LoadCosts {webRTCIngest: agentCosts}, limits} =
-  hasCapacity serfPayload targetServer currentLoad agentCosts limits
-
-hasCapacityForWebRTCIngest :: AggregatorSerfPayload -> Server -> CurrentLoad -> LoadConfig -> LoadCheckResult
-hasCapacityForWebRTCIngest serfPayload targetServer currentLoad {costs: LoadCosts {rtmpIngest: agentCosts}, limits} =
-  hasCapacity serfPayload targetServer currentLoad agentCosts limits
+hasCapacityForWebRTCIngest :: SlotCharacteristics -> LoadConfig -> ServerLoad -> LoadCheckResult
+hasCapacityForWebRTCIngest slotCharacteristics {costs: LoadCosts {rtmpIngest: agentCosts}, limits} targetServer =
+  hasCapacity slotCharacteristics targetServer agentCosts limits
 
 foreign import data CpuState :: Type
 foreign import cpuUtilInitImpl :: Effect CpuState
@@ -70,7 +68,7 @@ foreign import networkUtilImpl :: NetState -> Effect (Tuple2 Int NetState)
 
 type State =
   {
-    load :: Load
+    load :: CurrentLoad
   , cpuUtilState :: CpuState
   , networkUtilState :: NetState
   }
@@ -84,14 +82,14 @@ startLink :: Unit -> Effect StartLinkResult
 startLink args =
   Gen.startLink serverName (init args) handleInfo
 
-load :: Effect Load
+load :: Effect CurrentLoad
 load =
   Gen.call serverName \state@{ load: currentLoad } -> CallReply currentLoad state
 
-setLoad :: Number -> Effect Unit
+setLoad :: CurrentLoad -> Effect Unit
 setLoad newLoad = do
-  IntraPop.announceLoad (wrap newLoad)
-  Gen.call serverName \state -> CallReply unit state{load = (wrap newLoad)}
+  IntraPop.announceLoad newLoad
+  Gen.call serverName \state -> CallReply unit state{load = newLoad}
 
 init :: Unit -> Effect State
 init args = do
@@ -100,7 +98,7 @@ init args = do
   cpuUtilState <- cpuUtilInitImpl
   networkUtilState <- networkUtilInitImpl
   void $ Timer.sendEvery serverName config.loadAnnounceMs Tick
-  pure $ { load: (wrap 0.0)
+  pure $ { load: minLoad
          , cpuUtilState
          , networkUtilState
          }
@@ -122,7 +120,7 @@ getCurrentCpu state@{cpuUtilState} = do
   uncurry2 (\util cpuUtilState2 -> do
                pure {cpu: wrap util, state: state{cpuUtilState = cpuUtilState2}}) res
 
-getCurrentNetwork :: State -> Effect { network :: NetworkBPS
+getCurrentNetwork :: State -> Effect { network :: NetworkKbps
                                      , state :: State }
 getCurrentNetwork state@{networkUtilState} = do
   res <- networkUtilImpl networkUtilState
@@ -132,33 +130,33 @@ getCurrentNetwork state@{networkUtilState} = do
 --------------------------------------------------------------------------------
 -- Internals
 --------------------------------------------------------------------------------
-hasCapacity :: AggregatorSerfPayload -> Server -> CurrentLoad -> LoadAgentCosts -> LoadLimits -> LoadCheckResult
-hasCapacity serfPayload@(Tuple numStreams bitrate) targetServer currentLoad agentCosts limits =
+hasCapacity :: SlotCharacteristics -> ServerLoad -> LoadAgentCosts -> LoadLimits -> LoadCheckResult
+hasCapacity slotCharacteristics targetServer agentCosts limits =
   let
-    {currentCPU, currentNetwork} = currentLoad
-    Server {maxCpuCapacity, maxNetworkCapacity} = targetServer
+    ServerLoad {maxCpuCapacity, maxNetworkCapacity, load} = targetServer
+    CurrentLoad {currentCpu, currentNetwork} = load
     LoadLimits {cpu: cpuLimits, network: networkLimits} = limits
 
-    LoadFixedCost {cpu: additionalCpu, network: additionalNetwork} = agentCostsToFixed serfPayload targetServer agentCosts
-    proposedCpu = currentCPU <> (cpuUnitsToPercentage additionalCpu maxCpuCapacity)
+    LoadFixedCost {cpu: additionalCpu, network: additionalNetwork} = agentCostsToFixed slotCharacteristics targetServer agentCosts
+    proposedCpu = currentCpu <> (cpuUnitsToPercentage additionalCpu maxCpuCapacity)
     proposedNetwork = networkToPercentage (currentNetwork <> additionalNetwork) maxNetworkCapacity
     cpuResult = checkWatermark proposedCpu cpuLimits
     networkResult = checkWatermark proposedNetwork networkLimits
   in
-   max cpuResult networkResult
+   spy "result" $ max cpuResult networkResult
 
-agentCostsToFixed :: AggregatorSerfPayload -> Server -> LoadAgentCosts -> LoadFixedCost
-agentCostsToFixed serfPayload@(Tuple numStreams bitrate) targetServer agentCosts =
+agentCostsToFixed :: SlotCharacteristics -> ServerLoad -> LoadAgentCosts -> LoadFixedCost
+agentCostsToFixed slotCharacteristics@{numProfiles, totalBitrate} targetServer agentCosts =
   let
-    LoadAgentCosts {fixed, perStream, perBPS, hardwareFactors} = agentCosts
-    perStreamFixed = perStreamToFixed perStream numStreams
-    perBitrateFixed = perBitrateToFixed perBPS bitrate
-    standardFixed = fixed <> perStreamFixed <> perBitrateFixed
+    LoadAgentCosts {fixed, perProfile, perKbps, hardwareFactors} = agentCosts
+    perProfileFixed = perProfileToFixed perProfile numProfiles
+    perBitrateFixed = perBitrateToFixed perKbps totalBitrate
+    standardFixed = fixed <> perProfileFixed <> perBitrateFixed
   in
     adjustForHardwareCapabilites standardFixed targetServer hardwareFactors
 
-perStreamToFixed :: LoadVariableCost -> Int -> LoadFixedCost
-perStreamToFixed variable numStreams =
+perProfileToFixed :: LoadVariableCost -> Int -> LoadFixedCost
+perProfileToFixed variable numStreams =
   let
     LoadVariableCost {cpu, network} = variable
   in
@@ -175,8 +173,8 @@ perBitrateToFixed variable bitrate =
                   , network: wrap $ (unwrap network) * bitrate
                   }
 
-adjustForHardwareCapabilites :: LoadFixedCost -> Server -> List HardwareFactor -> LoadFixedCost
-adjustForHardwareCapabilites initialCost (Server {capabilityTags}) hardwareFactors =
+adjustForHardwareCapabilites :: LoadFixedCost -> ServerLoad -> List HardwareFactor -> LoadFixedCost
+adjustForHardwareCapabilites initialCost (ServerLoad {capabilityTags}) hardwareFactors =
   foldl applyHardwareCapability initialCost hardwareFactors
   where
     applyHardwareCapability cost (HardwareFactor {name, cpuFactor, networkFactor}) =
@@ -202,8 +200,8 @@ checkWatermark percentage (LoadWatermarks {lowWaterMark, highWaterMark}) =
 cpuUnitsToPercentage :: SpecInt -> SpecInt -> Percentage
 cpuUnitsToPercentage (SpecInt x) (SpecInt y) = Percentage (x * 100.0 / y)
 
-networkToPercentage :: NetworkBPS -> NetworkBPS -> Percentage
-networkToPercentage (NetworkBPS x) (NetworkBPS y) = Percentage ((toNumber x) * 100.0 / (toNumber y))
+networkToPercentage :: NetworkKbps -> NetworkKbps -> Percentage
+networkToPercentage (NetworkKbps x) (NetworkKbps y) = Percentage ((toNumber x) * 100.0 / (toNumber y))
 
 
 --------------------------------------------------------------------------------

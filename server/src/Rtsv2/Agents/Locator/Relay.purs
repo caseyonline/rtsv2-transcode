@@ -5,7 +5,6 @@ module Rtsv2.Agents.Locator.Relay
 
 import Prelude
 
-import Data.Newtype (unwrap)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
@@ -16,55 +15,28 @@ import Rtsv2.Agents.Locator (findOrStart) as Locator
 import Rtsv2.Agents.Locator.Types (ResourceResp)
 import Rtsv2.Agents.StreamRelaySup as StreamRelaySup
 import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload)
+import Rtsv2.Config as Config
+import Rtsv2.Load as Load
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.Stream (RelayKey(..))
-import Shared.Rtsv2.Types (Server, ServerLoad(..))
+import Shared.Rtsv2.Types (Server)
 
-findOrStart :: CreateRelayPayload -> Effect (ResourceResp Server)
-findOrStart =
+findOrStart :: Config.LoadConfig -> CreateRelayPayload -> Effect (ResourceResp Server)
+findOrStart loadConfig payload@{slotCharacteristics} =
   Locator.findOrStart { findFun : IntraPoP.whereIsStreamRelay <<< payloadToRelayKey
-                      , handlerCreationPredicate : hasCapacityForRelay
+                      , handlerCreationPredicate : Load.hasCapacityForStreamRelay slotCharacteristics loadConfig
                       , startLocalFun : startLocalRelay
                       , logWarning
-                      }
+                      } payload
   where
     payloadToRelayKey payload = RelayKey payload.slotId payload.slotRole
-    hasCapacityForRelay (ServerLoad sl) =  unwrap sl.load < 50.0
     startLocalRelay payload = do
-      _ <- StreamRelaySup.startRelay { slotId: payload.slotId, slotRole: payload.slotRole, aggregator: payload.aggregator}
+      _ <- StreamRelaySup.startRelay { slotId: payload.slotId, slotRole: payload.slotRole, aggregator: payload.aggregator, slotCharacteristics}
       pure unit
-
--- findRelayAndRegisterForChain :: RegisterRelayChainPayload -> Effect LocationResp
--- findRelayAndRegisterForChain =
---   findAndRegister { registerFun : registerRelayChain
---                   , findFun : IntraPoP.whereIsStreamRelay <<< _.slotId
---                   , handlerCreationPredicate : hasCapacityForRelay
---                   , startLocalFun : startLocalRelay
---                   , startRemoteFun : startRemoteRelay
---                   , logWarning
---                   }
---   where
---    hasCapacityForRelay (ServerLoad sl) =  unwrap sl.load < 50.0
---    startLocalRelay payload = do
---      _ <- StreamRelayInstanceSup.startRelay { slotId: payload.slotId, aggregatorPoP : payload.aggregatorPoP}
---      pure unit
---    startRemoteRelay sl payload = do
---      let
---        url = makeUrl sl RelayE
---      resp <- SpudGun.postJson url payload
---      pure unit
-
 
 --------------------------------------------------------------------------------
 -- Internal
 --------------------------------------------------------------------------------
--- startLocalOrRemote :: (LocalOrRemote ServerLoad) -> SlotId -> Server -> Effect Unit
--- startLocalOrRemote  (Local _) slotId aggregator = do
---   void <$> crashIfLeft =<< startChildToStartLink <$> EgestInstanceSup.startEgest {slotId, aggregator}
--- startLocalOrRemote  (Remote remote) slotId aggregator = do
---   let
---     url = makeUrl remote EgestE
---   void <$> crashIfLeft =<< SpudGun.postJson url ({slotId, aggregator} :: CreateEgestPayload)
 
 --------------------------------------------------------------------------------
 -- Log helpers

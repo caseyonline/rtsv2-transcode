@@ -69,6 +69,7 @@ startLink args =
 init :: Config.WebConfig -> Effect State
 init args = do
   featureFlags <- Config.featureFlags
+  loadConfig <- Config.loadConfig
   bindIp <- Env.privateInterfaceIp
   thisServer <- PoPDefinition.getThisServer
   Stetson.configure
@@ -112,7 +113,7 @@ init args = do
         , "TransPoPLeaderE"                             : IntraPoPHandler.leader
         , "EgestE"                                      : dummyHandler -- TODO write this - needed for a client to create a remote egest
         , "RelayE"                                      : RelayHandler.startResource
-        , "RelayEnsureStartedE"                         : RelayHandler.ensureStarted
+        , "RelayEnsureStartedE"                         : RelayHandler.ensureStarted loadConfig
         , "RelayRegisteredRelayWs"                      : RelayHandler.registeredRelayWs
         , "RelayRegisteredEgestWs"                      : RelayHandler.registeredEgestWs
 
@@ -127,7 +128,7 @@ init args = do
 
         , "IngestStartE"                                : IngestHandler.ingestStart
         , "IngestStopE"                                 : IngestHandler.ingestStop
-        , "ClientStartE"                                : ClientHandler.clientStart
+        , "ClientStartE"                                : ClientHandler.clientStart loadConfig
         , "ClientStopE"                                 : ClientHandler.clientStop
         , "Chaos"                                       : ChaosHandler.chaos
 
@@ -146,15 +147,15 @@ init args = do
         , "UsersE"                                      : CowboyRoutePlaceholder
         , "ProfilesE"                                   : CowboyRoutePlaceholder
         }
-    # Stetson.cowboyRoutes (cowboyRoutes thisServer featureFlags)
+    # Stetson.cowboyRoutes (cowboyRoutes thisServer featureFlags loadConfig)
     # Stetson.port args.port
     # (uncurry4 Stetson.bindTo) (ipToTuple bindIp)
     # Stetson.startClear "http_listener"
   pure $ State {}
 
   where
-    cowboyRoutes :: Server -> Config.FeatureFlags -> List Path
-    cowboyRoutes thisServer { useMediaGateway } =
+    cowboyRoutes :: Server -> Config.FeatureFlags -> Config.LoadConfig -> List Path
+    cowboyRoutes thisServer { useMediaGateway } loadConfig =
       -- Some duplication of URLs here from those in Endpoint.purs due to current inability to build cowboy-style bindings from stongly-typed parameters
       -- IngestAggregatorActiveIngestsPlayerControlE SlotId SlotRole ProfileName
       cowboyRoute ("/support/ingestAggregator/" <> slotIdBinding <> "/" <> slotRoleBinding <> "/activeIngests/" <> profileNameBinding <> "/control")
@@ -169,7 +170,7 @@ init args = do
                     "rtsv2_player_ws_resource"
                     (unsafeToForeign { mode: (atom "egest")
                                      , make_egest_key: makeEgestKey
-                                     , start_stream: startStream
+                                     , start_stream: startStream loadConfig
                                      , add_client: mkFn2 addClient
                                      , get_slot_configuration: EgestInstance.getSlotConfiguration
                                      , data_object_send_message: EgestInstance.dataObjectSendMessage
@@ -235,11 +236,11 @@ init args = do
       wrap $ fromMaybe UUID.empty (fromString slotIdStr)
 
     -- TODO: This code doesn't belong here
-    startStream :: EgestKey -> Effect LocationResp
-    startStream (EgestKey slotId slotRole) =
+    startStream :: Config.LoadConfig -> EgestKey -> Effect LocationResp
+    startStream loadConfig (EgestKey slotId slotRole) =
       do
         thisServer <- PoPDefinition.getThisServer
-        findEgest slotId slotRole thisServer
+        findEgest slotId slotRole loadConfig thisServer
 
     addClient :: Pid -> EgestKey -> Effect RegistrationResp
     addClient pid egestKey =

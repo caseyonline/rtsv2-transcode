@@ -14,6 +14,7 @@ import Erl.Data.Binary.IOData (IOData, fromBinary, toBinary)
 import Erl.Data.List (nil, singleton, (:))
 import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.Load as Load
+import Shared.Rtsv2.Types (CurrentLoad, minLoad)
 import Simple.JSON (readJSON)
 import Simple.JSON as JSON
 import Stetson (HttpMethod(..), StetsonHandler)
@@ -22,7 +23,7 @@ import Unsafe.Coerce (unsafeCoerce)
 
 type State =
   {
-    load :: Number
+    load :: CurrentLoad
   }
 
 load :: StetsonHandler State
@@ -34,7 +35,7 @@ load =
   # Rest.contentTypesAccepted (\req state -> Rest.result (singleton $ MimeType.json acceptJson) req state)
   # Rest.yeeha
   where
-    init req = Rest.initResult req {load: 0.0}
+    init req = Rest.initResult req {load: minLoad}
 
     malformedRequest req state =
       do

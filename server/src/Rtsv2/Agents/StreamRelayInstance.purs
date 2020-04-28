@@ -67,17 +67,18 @@ import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
 import Rtsv2.Agents.StreamRelayTypes (ActiveProfiles(..), CreateRelayPayload, DownstreamWsMessage(..), RelayUpstreamWsMessage(..), WebSocketHandlerMessage(..))
 import Rtsv2.Agents.TransPoP as TransPoP
-import Rtsv2.Config (StreamRelayConfig)
+import Rtsv2.Config (StreamRelayConfig, LoadConfig)
 import Rtsv2.Config as Config
 import Rtsv2.DataObject as DO
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
+import Shared.Rtsv2.Agent (SlotCharacteristics)
 import Shared.Rtsv2.Agent as Agent
-import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl, makeUrlAddr, makeWsUrl, makeWsUrlAddr)
-import Shared.Rtsv2.JsonLd as JsonLd
-import Shared.Rtsv2.Stream (AggregatorKey(..), ProfileName(..), RelayKey(..), SlotId(..), SlotRole)
-import Shared.Rtsv2.Types (DeliverTo, EgestServer, PoPName, RelayServer, Server, ServerAddress(..), SourceRoute, extractAddress, extractPoP)
 import Shared.Rtsv2.Agent.State as PublicState
+import Shared.Rtsv2.JsonLd as JsonLd
+import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl, makeWsUrl, makeWsUrlAddr)
+import Shared.Rtsv2.Stream (AggregatorKey(..), ProfileName, RelayKey(..), SlotId(..), SlotRole)
+import Shared.Rtsv2.Types (DeliverTo, EgestServer, PoPName, RelayServer, Server, ServerAddress(..), SourceRoute, extractAddress, extractPoP)
 import Shared.UUID (UUID)
 import SpudGun (SpudResponse(..), StatusCode(..))
 import SpudGun as SpudGun
@@ -115,6 +116,8 @@ type CommonStateData =
   { relayKey :: RelayKey
   , thisServer :: Server
   , ingestAggregator :: Server
+  , slotCharacteristics :: SlotCharacteristics
+  , loadConfig :: LoadConfig
   , stateServerName :: StateServerName
   , config :: StreamRelayConfig
   , stopRef :: Maybe Ref
@@ -411,7 +414,7 @@ applyOriginRunResult commonStateData@{ relayKey: relayKey@(RelayKey slotId slotR
                pure runStateIn
 
 applyDownstreamRunResult :: CommonStateData -> DownstreamStreamRelayApplyResult -> DownstreamStreamRelayRunState -> Effect DownstreamStreamRelayRunState
-applyDownstreamRunResult commonStateData@{ relayKey: relayKey@(RelayKey slotId slotRole), thisServer, ingestAggregator } applyResult runState =
+applyDownstreamRunResult commonStateData@{ relayKey: relayKey@(RelayKey slotId slotRole), thisServer, ingestAggregator, slotCharacteristics, loadConfig } applyResult runState =
   (pure runState)
     <#> mergeDownstreamApplyResult applyResult
     >>= maybeTryRegisterUpstreamRelays
@@ -467,7 +470,7 @@ applyDownstreamRunResult commonStateData@{ relayKey: relayKey@(RelayKey slotId s
 
           Just randomServerInPoP ->
             let
-              payload = { slotId, slotRole, aggregator: ingestAggregator } :: CreateRelayPayload
+              payload = { slotId, slotRole, aggregator: ingestAggregator, slotCharacteristics } :: CreateRelayPayload
               url = makeUrl randomServerInPoP RelayEnsureStartedE
             in
               do
@@ -571,12 +574,13 @@ stopAction relayKey@(RelayKey slotId slotRole) cachedState = do
       pure unit
 
 init :: RelayKey -> CreateRelayPayload -> StateServerName -> Effect State
-init relayKey payload@{slotId, slotRole, aggregator} stateServerName =
+init relayKey payload@{slotId, slotRole, aggregator, slotCharacteristics} stateServerName =
   do
     Gen.registerExternalMapping (serverName relayKey) (\m -> Gun <$> (WsGun.messageMapper m))
     thisServer <- PoPDefinition.getThisServer
     egestSourceRoutes <- TransPoP.routesTo (extractPoP aggregator)
     streamRelayConfig <- Config.streamRelayConfig
+    loadConfig <- Config.loadConfig
     IntraPoP.announceLocalRelayIsAvailable relayKey
     _ <- Bus.subscribe (serverName relayKey) IntraPoP.bus IntraPoPBus
     Gen.registerTerminate (serverName relayKey) terminate
@@ -586,6 +590,8 @@ init relayKey payload@{slotId, slotRole, aggregator} stateServerName =
       commonStateData =
         { relayKey
         , thisServer
+        , slotCharacteristics
+        , loadConfig
         , ingestAggregator: aggregator
         , stateServerName
         , config: streamRelayConfig

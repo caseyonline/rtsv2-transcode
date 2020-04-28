@@ -56,13 +56,13 @@ import Rtsv2.PoPDefinition (PoP)
 import Rtsv2.PoPDefinition as PoPDefinition
 import Serf (IpAndPort, LamportClock, SerfCoordinate, calcRtt)
 import Serf as Serf
-import Shared.Rtsv2.Agent (AggregatorSerfPayload)
 import Shared.Common (Milliseconds)
-import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrlAddr)
+import Shared.Rtsv2.Agent (SlotCharacteristics, emptySlotCharacteristics)
+import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.JsonLd as JsonLd
+import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrlAddr)
 import Shared.Rtsv2.Stream (AgentKey)
 import Shared.Rtsv2.Types (PoPName, Server, ServerAddress(..), extractAddress, extractPoP)
-import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Utils (distinctRandomNumbers)
 import SpudGun (bodyToString)
 import SpudGun as SpudGun
@@ -99,7 +99,7 @@ data EventType
   = Available
   | Stopped
 
-data TransMessage = TMAggregatorState EventType AgentKey ServerAddress AggregatorSerfPayload
+data TransMessage = TMAggregatorState EventType AgentKey ServerAddress SlotCharacteristics
 
 data Msg
   = LeaderTimeoutTick
@@ -177,8 +177,8 @@ health =
       allOtherPoPs <- PoPDefinition.getOtherPoPs
       pure $ Health.percentageToHealth healthConfig $ (Map.size members) * 100 / ((Map.size allOtherPoPs) + 1)
 
-announceAggregatorIsAvailable :: AggregatorSerfPayload -> AgentKey -> Server -> Effect Unit
-announceAggregatorIsAvailable serfPayload agentKey server =
+announceAggregatorIsAvailable :: SlotCharacteristics -> AgentKey -> Server -> Effect Unit
+announceAggregatorIsAvailable slotCharacteristics agentKey server =
   Gen.doCast serverName ((map CastNoReply) <<< doAnnounceStreamIsAvailable)
   where
     doAnnounceStreamIsAvailable :: State -> Effect State
@@ -187,7 +187,7 @@ announceAggregatorIsAvailable serfPayload agentKey server =
     doAnnounceStreamIsAvailable state@{ thisServer
                                       , serfRpcAddress
                                       } = do
-      result <- Serf.event state.serfRpcAddress "streamAvailable" (TMAggregatorState Available agentKey (extractAddress server) serfPayload) false
+      result <- Serf.event state.serfRpcAddress "streamAvailable" (TMAggregatorState Available agentKey (extractAddress server) slotCharacteristics) false
       maybeLogError "Trans-PoP serf event failed" result {}
       pure state
 
@@ -206,7 +206,7 @@ announceAggregatorStopped agentKey server =
       then do
             -- Message from our pop - distribute over trans-pop
             --logInfo "Local stream stopped being delivered to trans-pop" { slotId: slotId }
-            result <- Serf.event state.serfRpcAddress "streamStopped" (TMAggregatorState Stopped agentKey (extractAddress server) (Tuple 0 0)) false
+            result <- Serf.event state.serfRpcAddress "streamStopped" (TMAggregatorState Stopped agentKey (extractAddress server) emptySlotCharacteristics) false
             maybeLogError "Trans-PoP serf event failed" result {}
             pure state
       else pure state
@@ -335,22 +335,22 @@ handleInfo msg state =
             unsafeCrashWith ("lost_serf_connection")
           Serf.UserEvent name ltime coalesce transMessage ->
             case transMessage of
-              TMAggregatorState eventType slotId msgOrigin serfPayload -> do
-                handleAgentMessage ltime eventType slotId msgOrigin serfPayload state
+              TMAggregatorState eventType slotId msgOrigin slotCharacteristics -> do
+                handleAgentMessage ltime eventType slotId msgOrigin slotCharacteristics state
 
 
 
 handleTransPoPMessage :: TransMessage -> State -> Effect State
-handleTransPoPMessage (TMAggregatorState Available agentKey address serfPayload) state@{intraPoPApi} = do
+handleTransPoPMessage (TMAggregatorState Available agentKey address slotCharacteristics) state@{intraPoPApi} = do
   logInfo "Remote stream available" {agentKey, address}
   mServer <- PoPDefinition.whereIsServer address
   case mServer of
     Nothing -> pure state
     Just server -> do
-      intraPoPApi.announceOtherPoPAggregatorIsAvailable serfPayload agentKey server
+      intraPoPApi.announceOtherPoPAggregatorIsAvailable slotCharacteristics agentKey server
       pure state
 
-handleTransPoPMessage (TMAggregatorState Stopped agentKey address serfPayload) state@{intraPoPApi} = do
+handleTransPoPMessage (TMAggregatorState Stopped agentKey address slotCharacteristics) state@{intraPoPApi} = do
   logInfo "Remote stream stopped" {agentKey, address}
   mServer <- PoPDefinition.whereIsServer address
   case mServer of
@@ -619,8 +619,8 @@ joinAllSerf state@{ config: config@{rejoinEveryMs}, serfRpcAddress, members } =
 
 
 
-handleAgentMessage :: LamportClock -> EventType -> AgentKey -> ServerAddress -> AggregatorSerfPayload -> State -> Effect State
-handleAgentMessage msgLTime eventType agentKey msgServerAddress serfPayload
+handleAgentMessage :: LamportClock -> EventType -> AgentKey -> ServerAddress -> SlotCharacteristics -> State -> Effect State
+handleAgentMessage msgLTime eventType agentKey msgServerAddress slotCharacteristics
                    state@{thisServer} = do
   -- let _ = spy "agentMessage" {name: agentMessageHandler.name, eventType, slotId, msgServerAddress}
   -- Make sure the message is from a known origin and does not have an expired Lamport clock
@@ -648,7 +648,7 @@ handleAgentMessage msgLTime eventType agentKey msgServerAddress serfPayload
 
             case eventType of
               Available -> do
-                state.intraPoPApi.announceOtherPoPAggregatorIsAvailable serfPayload agentKey msgServer
+                state.intraPoPApi.announceOtherPoPAggregatorIsAvailable slotCharacteristics agentKey msgServer
               Stopped -> do
                 state.intraPoPApi.announceOtherPoPAggregatorStopped agentKey msgServer
             pure $ state { agentClocks = {aggregatorClocks : newAgentClock} }

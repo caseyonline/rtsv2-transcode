@@ -29,14 +29,15 @@ import Rtsv2.Agents.Locator.Types (LocalOrRemote(..), ResourceFailed(..), Resour
 import Rtsv2.Agents.StreamRelayInstance as StreamRelayInstance
 import Rtsv2.Agents.StreamRelaySup as StreamRelaySup
 import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload, DownstreamWsMessage(..), EgestUpstreamWsMessage(..), RelayUpstreamWsMessage(..), WebSocketHandlerMessage(..))
+import Rtsv2.Config (LoadConfig)
 import Rtsv2.Handler.Helper (WebSocketHandlerResult(..), webSocketHandler)
 import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
+import Shared.Rtsv2.Agent.State (StreamRelay)
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Shared.Rtsv2.Stream (RelayKey(..), SlotId, SlotRole)
 import Shared.Rtsv2.Types (EgestServer(..), RelayServer(..), Server(..), ServerAddress, SourceRoute, extractAddress)
-import Shared.Rtsv2.Agent.State (StreamRelay)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON as JSON
 import Stetson (HttpMethod(..), InnerStetsonHandler, StetsonHandler)
@@ -92,8 +93,8 @@ newtype StartState = StartState { mPayload :: Maybe CreateRelayPayload
                                 , apiResp  :: ResourceResp Server
                                 }
 
-ensureStarted :: StetsonHandler StartState
-ensureStarted =
+ensureStarted :: LoadConfig -> StetsonHandler StartState
+ensureStarted loadConfig =
   Rest.handler init
   # Rest.allowedMethods (Rest.result (POST : mempty))
   # Rest.contentTypesAccepted (\req state -> Rest.result (singleton $ MimeType.json acceptJson) req state)
@@ -108,7 +109,7 @@ ensureStarted =
     init req = do
       thisServer <- PoPDefinition.getThisServer
       mPayload <- (hush <$> JSON.readJSON <$> binaryToString <$> allBody req mempty)
-      apiResp <- maybe (pure $ Left NoCapacity) findOrStart mPayload
+      apiResp <- maybe (pure $ Left NoCapacity) (findOrStart loadConfig) mPayload
 
       let
         req2 = setHeader "x-servedby" (unwrap $ extractAddress thisServer) req

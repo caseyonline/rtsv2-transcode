@@ -18,9 +18,8 @@ import Data.Either (Either)
 import Data.Maybe (Maybe)
 import Effect (Effect)
 import Logger (Logger)
+import Rtsv2.LoadTypes (LoadCheckResult)
 import Shared.Rtsv2.Types (Server, ServerLoad)
-
-
 
 type FindOrStartConfig payload
   = { findFun :: (payload -> Effect (Maybe (LocalOrRemote Server)))
@@ -38,7 +37,7 @@ type FindAndRegisterConfig payload
     , logWarning :: forall a. Logger (Record a)
     }
 
-type ServerSelectionPredicate = ServerLoad -> Boolean
+type ServerSelectionPredicate = ServerLoad -> LoadCheckResult
 
 data FailureReason
   = NotFound
@@ -53,12 +52,9 @@ derive instance functorLocalOrRemoteF :: Functor LocalOrRemote
 
 type LocationResp = (Either FailureReason (LocalOrRemote Server))
 
-
 fromLocalOrRemote :: forall a. LocalOrRemote a -> a
 fromLocalOrRemote (Local a) = a
 fromLocalOrRemote (Remote a) = a
-
-
 
 --------------------------------------------------------------------------------
 -- API Types - maybe move me

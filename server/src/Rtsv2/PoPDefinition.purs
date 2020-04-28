@@ -44,7 +44,7 @@ import Rtsv2.Config as Config
 import Rtsv2.Env as Env
 import Rtsv2.Names as Names
 import Shared.Rtsv2.Agent (Agent)
-import Shared.Rtsv2.Types (GeoLoc, NetworkBPS, PoPName, RegionName, Server(..), ServerAddress(..), ServerLocation(..), SpecInt, extractPoP, toServerLocation)
+import Shared.Rtsv2.Types (GeoLoc, NetworkKbps, PoPName, RegionName, Server(..), ServerAddress(..), ServerLocation(..), SpecInt, extractPoP, toServerLocation)
 import Shared.Rtsv2.Agent.State as PublicState
 import Simple.JSON as JSON
 
@@ -83,7 +83,7 @@ type PoPJson =  Map PoPName PoPInfoJson
 
 type ServerJson = { address :: ServerAddress
                   , maxCpuCapacity :: SpecInt
-                  , maxNetworkCapacity :: NetworkBPS
+                  , maxNetworkCapacity :: NetworkKbps
                   , capabilityTags :: Array String
                   , agents :: Array Agent
                   }

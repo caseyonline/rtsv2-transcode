@@ -1,9 +1,10 @@
 module Shared.Rtsv2.Agent
        (
          Agent(..)
-       , AggregatorSerfPayload(..)
+       , SlotCharacteristics(..)
        , strToAgent
        , agentToStr
+       , emptySlotCharacteristics
        ) where
 
 import Prelude
@@ -15,7 +16,6 @@ import Data.Generic.Rep.Eq (genericEq)
 import Data.Generic.Rep.Show (genericShow)
 import Data.List.NonEmpty (singleton)
 import Data.Maybe (Maybe(..), fromMaybe')
-import Data.Tuple (Tuple)
 import Foreign (ForeignError(..), readString, unsafeToForeign)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (class ReadForeign, class WriteForeign)
@@ -29,7 +29,12 @@ data Agent = Egest
            | IntraPoP
            | TransPoP
 
-type AggregatorSerfPayload = Tuple Int Int
+type SlotCharacteristics = { numProfiles :: Int
+                           , totalBitrate :: Int }
+
+emptySlotCharacteristics :: SlotCharacteristics
+emptySlotCharacteristics = { numProfiles: 0
+                           , totalBitrate: 0 }
 
 --------------------------------------------------------------------------------
 -- Type class derivations

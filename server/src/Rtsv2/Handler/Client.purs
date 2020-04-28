@@ -28,22 +28,22 @@ import Rtsv2.Agents.EgestInstance as EgestInstance
 import Rtsv2.Agents.Locator.Egest (findEgest)
 import Rtsv2.Agents.Locator.Types (FailureReason(..), LocalOrRemote(..))
 import Rtsv2.Audit as Audit
+import Rtsv2.Config (LoadConfig)
 import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.PoPDefinition as PoPDefinition
-import Shared.Rtsv2.Router.Endpoint (Endpoint(..), Canary, makeUrl)
 import Rtsv2.Utils (cryptoStrongToken)
+import Shared.Rtsv2.Router.Endpoint (Endpoint(..), Canary, makeUrl)
 import Shared.Rtsv2.Stream (EgestKey(..), SlotId, SlotRole)
 import Shared.Rtsv2.Types (Server, extractAddress)
 import Stetson (HttpMethod(..), RestResult, StetsonHandler)
 import Stetson.Rest as Rest
 
-
 newtype ClientStartState = ClientStartState { clientId :: String
                                             , egestResp :: (Either FailureReason (LocalOrRemote Server))
                                             }
 
-clientStart :: Canary -> SlotId -> SlotRole -> StetsonHandler ClientStartState
-clientStart canary slotId slotRole =
+clientStart :: LoadConfig -> Canary -> SlotId -> SlotRole -> StetsonHandler ClientStartState
+clientStart loadConfig canary slotId slotRole =
   Rest.handler init
   # Rest.allowedMethods (Rest.result (POST : mempty))
   # Rest.contentTypesAccepted (\req state -> Rest.result (singleton $ MimeType.json acceptAny) req state)
@@ -56,7 +56,7 @@ clientStart canary slotId slotRole =
     init req = do
       clientId <- replaceAll (Pattern "/") (Replacement "_") <$> cryptoStrongToken 4
       thisServer <- PoPDefinition.getThisServer
-      egestResp <- findEgest slotId slotRole thisServer
+      egestResp <- findEgest slotId slotRole loadConfig thisServer
       let
         req2 = setHeader "x-servedby" (unwrap $ extractAddress thisServer) req
                # setHeader "x-client-id" clientId

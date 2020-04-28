@@ -430,7 +430,7 @@ init streamDetails@{role: slotRole, slot: {id: slotId}} stateServerName = do
   _ <- Erl.trapExit true
   config <- Config.ingestAggregatorAgentConfig
   thisServer <- PoPDefinition.getThisServer
-  announceLocalAggregatorIsAvailable aggregatorKey (Tuple 0 0) -- TODO - num stream etc here
+  announceLocalAggregatorIsAvailable aggregatorKey {numProfiles: 0, totalBitrate: 0} -- TODO - num stream etc here
   Gen.registerExternalMapping thisServerName (\m -> Workflow <$> workflowMessageMapperImpl m)
   Gen.registerExternalMapping thisServerName (\m -> Gun <$> (WsGun.messageMapper m))
   workflowHandleAndPidsAndSlotConfiguration <- startWorkflowImpl (unwrap streamDetails.slot.id) streamDetails.role $ mkKey <$> streamDetails.slot.profiles

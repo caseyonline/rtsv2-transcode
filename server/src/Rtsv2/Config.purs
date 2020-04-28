@@ -48,7 +48,7 @@ import Foreign (F, Foreign, readString, unsafeReadTagged)
 import Logger as Logger
 import Partial.Unsafe (unsafeCrashWith)
 import Rtsv2.LoadTypes as LoadTypes
-import Shared.Rtsv2.Agent (Agent, AggregatorSerfPayload, strToAgent)
+import Shared.Rtsv2.Agent (Agent, SlotCharacteristics, strToAgent)
 import Shared.Rtsv2.Stream (AgentKey)
 import Shared.Rtsv2.Types (Server)
 import Shared.Utils (lazyCrashIfMissing)
@@ -127,13 +127,13 @@ type StreamRelayConfig
     }
 
 type IntraPoPAgentApi
-  = { announceOtherPoPAggregatorIsAvailable :: AggregatorSerfPayload -> AgentKey -> Server -> Effect Unit
+  = { announceOtherPoPAggregatorIsAvailable :: SlotCharacteristics -> AgentKey -> Server -> Effect Unit
     , announceOtherPoPAggregatorStopped :: AgentKey -> Server -> Effect Unit
     , announceTransPoPLeader :: Effect Unit
     }
 
 type TransPoPAgentApi
-  = { announceAggregatorIsAvailable :: AggregatorSerfPayload -> AgentKey -> Server -> Effect Unit
+  = { announceAggregatorIsAvailable :: SlotCharacteristics -> AgentKey -> Server -> Effect Unit
     , announceAggregatorStopped :: AgentKey -> Server -> Effect Unit
     , handleRemoteLeaderAnnouncement :: Server -> Effect Unit
     }

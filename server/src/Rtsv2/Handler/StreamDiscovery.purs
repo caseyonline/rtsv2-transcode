@@ -6,9 +6,9 @@ module Rtsv2.Handler.StreamDiscovery
 import Prelude
 
 import Data.Bifunctor (lmap)
+import Data.Either (Either(..), either)
 import Data.Filterable (filterMap)
 import Data.Maybe (Maybe(..))
-import Data.Either (Either(..), either)
 import Data.String (replace, Replacement(..), Pattern(..))
 import Data.Traversable (traverse)
 import Effect (Effect)
@@ -17,19 +17,20 @@ import Erl.Data.List (List, nil, (:), singleton)
 import Logger (Logger)
 import Logger as Logger
 import Rtsv2.Agents.Locator.Egest as EgestLocator
-import Rtsv2.Agents.Locator.Types as LocatorTypes
 import Rtsv2.Agents.Locator.Types (fromLocalOrRemote)
+import Rtsv2.Agents.Locator.Types as LocatorTypes
 import Rtsv2.Config as Config
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Utils (chainIntoEither)
 import Shared.Common (Url(Url))
-import Shared.Rtsv2.Router.Endpoint (Canary, Endpoint(ClientPlayerControlE), makeUrl)
 import Shared.Rtsv2.LlnwApiTypes (SlotLookupResult)
+import Shared.Rtsv2.Router.Endpoint (Canary, Endpoint(ClientPlayerControlE), makeUrl)
 import Shared.Rtsv2.Stream (SlotId, SlotRole(..))
 import SpudGun (bodyToJSON, JsonResponseError)
 import SpudGun as SpudGun
 import Stetson (StetsonHandler)
 import StetsonHelper (jsonResponse)
+import Unsafe.Coerce (unsafeCoerce)
 
 discover :: Canary -> String -> String -> StetsonHandler (Maybe (List Url))
 discover canary accountName streamName =
@@ -76,7 +77,8 @@ discover canary accountName streamName =
 
     getSessionUrl :: SlotRole -> SlotLookupResult -> Effect (Either LocatorTypes.FailureReason Url)
     getSessionUrl role slot =
-      PoPDefinition.getThisServer >>= EgestLocator.findEgest slot.id role <#> map ( fromLocalOrRemote >>> ((flip makeUrl) (ClientPlayerControlE canary slot.id role)))
+      unsafeCoerce 1
+      --todo PoPDefinition.getThisServer >>= EgestLocator.findEgest slot.id role <#> map ( fromLocalOrRemote >>> ((flip makeUrl) (ClientPlayerControlE canary slot.id role)))
 
     getSlot :: Effect (Either JsonResponseError SlotLookupResult)
     getSlot = getSlotLookupUrl >>= SpudGun.getJson <#> bodyToJSON

@@ -14,7 +14,7 @@ import Prelude
 import Data.Maybe (Maybe)
 import Data.Newtype (class Newtype, unwrap, wrap)
 import Erl.Data.List (List)
-import Shared.Rtsv2.Types (NetworkBPS, Percentage, SpecInt)
+import Shared.Rtsv2.Types (NetworkKbps, Percentage, SpecInt)
 import Simple.JSON (class ReadForeign)
 
 data LoadCheckResult = Green
@@ -26,11 +26,11 @@ newtype LoadWatermarks = LoadWatermarks { lowWaterMark :: Percentage
                                         }
 
 newtype LoadFixedCost = LoadFixedCost { cpu :: SpecInt
-                                      , network :: NetworkBPS
+                                      , network :: NetworkKbps
                                       }
 
 newtype LoadVariableCost = LoadVariableCost { cpu :: SpecInt
-                                            , network :: NetworkBPS
+                                            , network :: NetworkKbps
                                             }
 
 newtype HardwareFactor = HardwareFactor { name :: String
@@ -39,8 +39,8 @@ newtype HardwareFactor = HardwareFactor { name :: String
                                         }
 
 newtype LoadAgentCosts = LoadAgentCosts { fixed :: LoadFixedCost
-                                        , perStream :: LoadVariableCost
-                                        , perBPS :: LoadVariableCost
+                                        , perProfile :: LoadVariableCost
+                                        , perKbps :: LoadVariableCost
                                         , hardwareFactors :: List HardwareFactor
                                         }
 

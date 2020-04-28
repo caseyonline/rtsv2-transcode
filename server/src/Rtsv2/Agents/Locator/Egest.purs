@@ -6,12 +6,10 @@ module Rtsv2.Agents.Locator.Egest
 import Prelude
 
 import Control.Alt ((<|>))
-import Control.Apply (lift2)
 import Control.Monad.Except (ExceptT(..), runExceptT)
 import Data.Bifunctor (lmap)
 import Data.Either (Either(..), note)
 import Data.Maybe (Maybe(..))
-import Data.Newtype (unwrap)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, filter, head, nil, (:))
@@ -23,11 +21,15 @@ import Rtsv2.Agents.EgestInstance as EgestInstance
 import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.Locator.Types (FailureReason(..), LocalOrRemote(..), LocationResp)
+import Rtsv2.Config (LoadConfig)
+import Rtsv2.Load as Load
+import Rtsv2.LoadTypes (LoadCheckResult(..))
 import Rtsv2.Utils (crashIfLeft, noprocToMaybe)
+import Shared.Rtsv2.Agent (SlotCharacteristics)
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
-import Shared.Rtsv2.Stream (AggregatorKey(..), EgestKey(..), SlotId, SlotRole(..))
-import Shared.Rtsv2.Types (Server, ServerLoad(..), serverLoadToServer)
+import Shared.Rtsv2.Stream (AggregatorKey(..), EgestKey(..), SlotId, SlotRole)
+import Shared.Rtsv2.Types (Server, serverLoadToServer)
 import SpudGun as SpudGun
 
 type StartArgs = { slotId :: SlotId
@@ -35,8 +37,15 @@ type StartArgs = { slotId :: SlotId
                  , aggregator :: Server
                  }
 
-findEgest :: SlotId -> SlotRole -> Server -> Effect LocationResp
-findEgest slotId slotRole thisServer = runExceptT
+findEgest :: SlotId -> SlotRole -> LoadConfig -> Server -> Effect LocationResp
+findEgest slotId slotRole loadConfig thisServer = do
+  mIngestAggregator <- IntraPoP.whereIsIngestAggregatorWithPayload (AggregatorKey slotId slotRole)
+  case mIngestAggregator of
+    Nothing ->  pure $ Left NotFound
+    Just {payload, server: aggregator} -> findEgest' slotId slotRole loadConfig thisServer payload aggregator
+
+findEgest' :: SlotId -> SlotRole -> LoadConfig -> Server -> SlotCharacteristics -> Server -> Effect LocationResp
+findEgest' slotId slotRole loadConfig thisServer slotCharacteristics aggregator = runExceptT
   $ ExceptT getLocal
   <|> ExceptT getRemote
   <|> ExceptT createResourceAndRecurse
@@ -50,69 +59,26 @@ findEgest slotId slotRole thisServer = runExceptT
       pure $ note NotFound $ (Remote <<< serverLoadToServer) <$> mEgest
 
     createResourceAndRecurse = do
-      eAggregator <- findAggregator
       eResourceResp <- getIdle
-      let
-        _ = lift2 startLocalOrRemote eAggregator eResourceResp
-      findEgest' slotId slotRole thisServer
-
-    findAggregator = (note NotFound) <$> IntraPoP.whereIsIngestAggregator (AggregatorKey slotId Primary)
+      case eResourceResp of
+        Left error -> pure $ Left error
+        Right localOrRemote -> do
+          startLocalOrRemote localOrRemote
+          findEgest' slotId slotRole loadConfig thisServer slotCharacteristics aggregator
 
     getIdle = (lmap (const NoResource)) <$> IntraPoP.getIdleServer capacityForEgest
 
-    startLocalOrRemote aggregator (Local _) =
-      okAlreadyStarted =<<  EgestInstanceSup.startEgest {slotId, slotRole, aggregator}
-    startLocalOrRemote aggregator (Remote remote) =
-      void <$> crashIfLeft =<< SpudGun.postJson (makeUrl remote EgestE) ({slotId, slotRole, aggregator} :: CreateEgestPayload)
+    startLocalOrRemote (Local _) =
+      okAlreadyStarted =<< EgestInstanceSup.startEgest {slotId, slotRole, aggregator, slotCharacteristics}
+    startLocalOrRemote (Remote remote) =
+      void <$> crashIfLeft =<< SpudGun.postJson (makeUrl remote EgestE) ({slotId, slotRole, aggregator, slotCharacteristics} :: CreateEgestPayload)
 
     egestKey = (EgestKey slotId slotRole)
     pickCandidate = head
-    capacityForClient (ServerLoad sl) =  unwrap sl.load < 90.0
-    capacityForEgest (ServerLoad sl) =  unwrap sl.load < 50.0
 
-findEgest' :: SlotId -> SlotRole -> Server -> Effect LocationResp
-findEgest' slotId slotRole thisServer = do
-  let
-    egestKey = (EgestKey slotId slotRole)
-  apiResp <- noprocToMaybe $ EgestInstance.pendingClient egestKey
-  case apiResp of
-    Just _ ->
-      pure $ Right $ Local thisServer
-    Nothing -> do
-      -- does the stream even exists
-      -- TODO - Primary and Backup
-      mAggregator <- IntraPoP.whereIsIngestAggregator (AggregatorKey slotId slotRole)
-      case mAggregator of
-        Nothing ->
-          pure $ Left NotFound
-        Just aggregator -> do
-          allEgest <- IntraPoP.whereIsEgest egestKey
-          let
-            mEgest =  pickCandidate $ filter capacityForClient allEgest
-          case mEgest of
-            Just egest -> do
-              pure $ Right $ Remote $ serverLoadToServer egest
-            Nothing -> do
-              -- TODO use launchLocalOrRemoteGeneric
-              resourceResp <- IntraPoP.getIdleServer capacityForEgest
-              case resourceResp of
-                Left _ ->
-                  pure $ Left NoResource
-                Right localOrRemote -> do
-                  startLocalOrRemote localOrRemote aggregator
-                  findEgest slotId slotRole thisServer
-  where
-   pickCandidate = head
-   capacityForClient (ServerLoad sl) =  unwrap sl.load < 90.0
-   capacityForEgest (ServerLoad sl) =  unwrap sl.load < 50.0
-   startLocalOrRemote :: (LocalOrRemote ServerLoad) -> Server -> Effect Unit
-   startLocalOrRemote  (Local _) aggregator = do
-     okAlreadyStarted =<<  EgestInstanceSup.startEgest {slotId, slotRole, aggregator}
-   startLocalOrRemote  (Remote remote) aggregator = do
-     let
-       url = makeUrl remote EgestE
-     void <$> crashIfLeft =<< SpudGun.postJson url ({slotId, slotRole, aggregator} :: CreateEgestPayload)
+    capacityForClient = ((==) Green) <<< Load.hasCapacityForEgestClient slotCharacteristics loadConfig
 
+    capacityForEgest = Load.hasCapacityForEgestInstance slotCharacteristics loadConfig
 
 --------------------------------------------------------------------------------
 -- Log helpers

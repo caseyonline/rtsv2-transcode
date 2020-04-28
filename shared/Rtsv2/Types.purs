@@ -2,7 +2,7 @@ module Shared.Rtsv2.Types
        ( DeliverTo(..)
        , GeoLoc(..)
        , LeaderGeoLoc(..)
-       , Load
+       , CurrentLoad(..)
        , PoPName(..)
        , SourceRoute
        , RegionName(..)
@@ -17,7 +17,7 @@ module Shared.Rtsv2.Types
        , CheckBoxState(..)
        , JsonLdContextType(..)
        , SpecInt(..)
-       , NetworkBPS(..)
+       , NetworkKbps(..)
        , Percentage(..)
        , toServerLoad
        , toServerLocation
@@ -26,6 +26,8 @@ module Shared.Rtsv2.Types
        , extractPoP
        , toStringPname
        , parsePname
+       , minLoad
+       , maxLoad
        ) where
 
 import Prelude
@@ -34,14 +36,14 @@ import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Eq (genericEq)
 import Data.Generic.Rep.Show (genericShow)
 import Data.Maybe (Maybe(..))
-import Data.Newtype (class Newtype, unwrap)
+import Data.Newtype (class Newtype, unwrap, wrap)
 import Data.Symbol (SProxy(..))
 import Record as Record
 import Shared.Rtsv2.Agent (Agent)
 import Shared.Rtsv2.Stream (SlotId)
 import Simple.JSON (class ReadForeign, class WriteForeign)
 
-newtype NetworkBPS = NetworkBPS Int
+newtype NetworkKbps = NetworkKbps Int
 newtype SpecInt = SpecInt Number
 newtype Percentage = Percentage Number
 
@@ -66,7 +68,9 @@ type SourceRoute = Array PoPName
 
 newtype GeoLoc = GeoLoc String
 
-newtype Load = Load Number
+newtype CurrentLoad = CurrentLoad { currentCpu :: Percentage
+                                  , currentNetwork :: NetworkKbps
+                                  }
 
 newtype ServerLocation = ServerLocation { pop :: PoPName
                                         , region :: RegionName
@@ -76,7 +80,7 @@ type ServerRec l = { address :: ServerAddress
                    , pop :: PoPName
                    , region :: RegionName
                    , maxCpuCapacity :: SpecInt
-                   , maxNetworkCapacity :: NetworkBPS
+                   , maxNetworkCapacity :: NetworkKbps
                    , capabilityTags :: Array String
                    , agents :: Array Agent
                      | l
@@ -91,9 +95,9 @@ type DeliverTo serverType
     , port :: Int
     }
 
-newtype ServerLoad = ServerLoad (ServerRec (load :: Load))
+newtype ServerLoad = ServerLoad (ServerRec (load :: CurrentLoad))
 
-toServerLoad :: Server -> Load -> ServerLoad
+toServerLoad :: Server -> CurrentLoad -> ServerLoad
 toServerLoad  (Server ls) load =
   ServerLoad $ Record.insert load_ load ls
 
@@ -110,6 +114,15 @@ extractPoP = unwrap >>> _.pop
 
 extractAddress :: forall r a. Newtype a { address :: ServerAddress | r } => a -> ServerAddress
 extractAddress = unwrap >>> _.address
+
+minLoad :: CurrentLoad
+minLoad = CurrentLoad { currentCpu: wrap 0.0
+                      , currentNetwork: wrap 0 }
+
+maxLoad :: CurrentLoad
+maxLoad = CurrentLoad { currentCpu: wrap 100.0
+                      , currentNetwork: wrap 2147483647 }
+
 
 ------------------------------------------------------------------------------
 -- Type class derivations
@@ -165,12 +178,12 @@ derive newtype instance writeForeignGeoLoc :: WriteForeign GeoLoc
 
 ------------------------------------------------------------------------------
 -- Load
-derive instance newtypeLoad :: Newtype Load _
-derive newtype instance eqLoad :: Eq Load
-derive newtype instance ordLoad :: Ord Load
-derive newtype instance showLoad :: Show Load
-derive newtype instance readForeignLoad :: ReadForeign Load
-derive newtype instance writeForeignLoad :: WriteForeign Load
+derive instance newtypeLoad :: Newtype CurrentLoad _
+derive newtype instance eqLoad :: Eq CurrentLoad
+derive newtype instance ordLoad :: Ord CurrentLoad
+derive newtype instance showLoad :: Show CurrentLoad
+derive newtype instance readForeignLoad :: ReadForeign CurrentLoad
+derive newtype instance writeForeignLoad :: WriteForeign CurrentLoad
 
 ------------------------------------------------------------------------------
 -- ServerLocation
@@ -218,17 +231,17 @@ derive newtype instance readForeignServerLoad :: ReadForeign ServerLoad
 derive newtype instance writeForeignServerLoad :: WriteForeign ServerLoad
 
 ------------------------------------------------------------------------------
--- NetworkBPS
-derive instance newtypeNetworkBPS :: Newtype NetworkBPS _
-derive instance genericNetworkBPS :: Generic NetworkBPS _
-instance showNetworkBPS :: Show NetworkBPS where show = genericShow
-instance eqNetworkBPS :: Eq NetworkBPS where eq = genericEq
-derive newtype instance readForeignNetworkBPS :: ReadForeign NetworkBPS
-derive newtype instance writeForeignNetworkBPS :: WriteForeign NetworkBPS
-instance ordNetworkBPS :: Ord NetworkBPS where
-  compare (NetworkBPS x) (NetworkBPS y) = compare x y
-instance semigroupNetworkBPS :: Semigroup NetworkBPS where
-  append (NetworkBPS x) (NetworkBPS y) = NetworkBPS (x + y)
+-- NetworkKbps
+derive instance newtypeNetworkKbps :: Newtype NetworkKbps _
+derive instance genericNetworkKbps :: Generic NetworkKbps _
+instance showNetworkKbps :: Show NetworkKbps where show = genericShow
+instance eqNetworkKbps :: Eq NetworkKbps where eq = genericEq
+derive newtype instance readForeignNetworkKbps :: ReadForeign NetworkKbps
+derive newtype instance writeForeignNetworkKbps :: WriteForeign NetworkKbps
+instance ordNetworkKbps :: Ord NetworkKbps where
+  compare (NetworkKbps x) (NetworkKbps y) = compare x y
+instance semigroupNetworkKbps :: Semigroup NetworkKbps where
+  append (NetworkKbps x) (NetworkKbps y) = NetworkKbps (x + y)
 
 ------------------------------------------------------------------------------
 -- SpecInt
@@ -244,6 +257,8 @@ instance ordSpecInt :: Ord SpecInt where
 ------------------------------------------------------------------------------
 -- Percentage
 derive instance newtypePercentage :: Newtype Percentage _
+derive instance genericPercentage :: Generic Percentage _
+instance showPercentage :: Show Percentage where show = genericShow
 derive newtype instance readForeignPercentage :: ReadForeign Percentage
 derive newtype instance writeForeignPercentage :: WriteForeign Percentage
 derive newtype instance eqPercentage :: Eq Percentage

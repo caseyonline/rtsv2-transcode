@@ -21,6 +21,7 @@ import Kishimen (genericSumToVariant, variantToGenericSum)
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
 import Rtsv2.DataObject (class DataObjectRef)
 import Rtsv2.DataObject as DO
+import Shared.Rtsv2.Agent (SlotCharacteristics)
 import Shared.Rtsv2.Stream (ProfileName, SlotId, SlotRole)
 import Shared.Rtsv2.Types (PoPName, Server)
 import Simple.JSON (class ReadForeign, class WriteForeign, readImpl, writeImpl)
@@ -29,6 +30,7 @@ type CreateRelayPayload
   = { slotId :: SlotId
     , slotRole :: SlotRole
     , aggregator :: Server
+    , slotCharacteristics :: SlotCharacteristics
     }
 
 type CreateProxyPayload
