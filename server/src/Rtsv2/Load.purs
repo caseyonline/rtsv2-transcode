@@ -17,6 +17,7 @@ import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Erl.Atom (Atom)
 import Erl.Data.List (List, singleton)
+import Erl.Data.Tuple (Tuple2, uncurry2)
 import Logger (Logger)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
@@ -59,9 +60,19 @@ hasCapacityForWebRTCIngest :: AggregatorSerfPayload -> Server -> CurrentLoad -> 
 hasCapacityForWebRTCIngest serfPayload targetServer currentLoad {costs: LoadCosts {rtmpIngest: agentCosts}, limits} =
   hasCapacity serfPayload targetServer currentLoad agentCosts limits
 
+foreign import data CpuState :: Type
+foreign import cpuUtilInitImpl :: Effect CpuState
+foreign import cpuUtilImpl :: CpuState -> Effect (Tuple2 Number CpuState)
+
+foreign import data NetState :: Type
+foreign import networkUtilInitImpl :: Effect NetState
+foreign import networkUtilImpl :: NetState -> Effect (Tuple2 Int NetState)
+
 type State =
   {
     load :: Load
+  , cpuUtilState :: CpuState
+  , networkUtilState :: NetState
   }
 
 data Msg = Tick
@@ -86,16 +97,37 @@ init :: Unit -> Effect State
 init args = do
   logInfo "Load monitor starting" {}
   config <- Config.loadConfig
+  cpuUtilState <- cpuUtilInitImpl
+  networkUtilState <- networkUtilInitImpl
   void $ Timer.sendEvery serverName config.loadAnnounceMs Tick
-  pure $ {load: (wrap 0.0)}
+  pure $ { load: (wrap 0.0)
+         , cpuUtilState
+         , networkUtilState
+         }
 
 handleInfo :: Msg -> State -> Effect (CastResult State)
 handleInfo msg state@{load: currentLoad} =
   case msg of
     Tick ->
       do
+        {cpu, state: state2} <- getCurrentCpu state
+        {network, state: state3} <- getCurrentNetwork state2
         IntraPop.announceLoad currentLoad
-        pure $ CastNoReply state
+        pure $ CastNoReply state3
+
+getCurrentCpu :: State -> Effect { cpu :: Percentage
+                                 , state :: State }
+getCurrentCpu state@{cpuUtilState} = do
+  res <- cpuUtilImpl cpuUtilState
+  uncurry2 (\util cpuUtilState2 -> do
+               pure {cpu: wrap util, state: state{cpuUtilState = cpuUtilState2}}) res
+
+getCurrentNetwork :: State -> Effect { network :: NetworkBPS
+                                     , state :: State }
+getCurrentNetwork state@{networkUtilState} = do
+  res <- networkUtilImpl networkUtilState
+  uncurry2 (\util networkUtilState2 -> do
+               pure {network: wrap (util * 8), state: state{networkUtilState = networkUtilState2}}) res
 
 --------------------------------------------------------------------------------
 -- Internals

@@ -454,7 +454,10 @@ try_build_stream_desc(Req,
             }
         end,
 
-      EgestKey = (MakeEgestKey(SlotId))(SlotRole),
+      EgestKey = (MakeEgestKey(SlotId))(case SlotRole of
+                                          {primary} -> <<"primary">>;
+                                          {backup} -> <<"backup">>
+                                        end),
 
       %% NOTE: StartStream returns an effect, hence the extra invocation
       StartStreamResult =
