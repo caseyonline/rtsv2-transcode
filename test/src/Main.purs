@@ -25,7 +25,7 @@ main =
     ingestTests -- 2
     ingestEgestTests -- 3
     resilienceTests -- 4
-    -- webRTCTest -- 5
+    webRTCTest -- 5
     describe "Cleanup" do
       after_ F.stopSession do
         it "final cleanup" do
