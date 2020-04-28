@@ -19,8 +19,6 @@ throwSlowError e = do
   throwError $ Exception.error e
 
 
-
-
 -- | Debugging
 
 debug :: forall a b. String -> Either a b -> Aff (Either a b)
@@ -34,7 +32,6 @@ debugBody (Right r) = do
   let _ = spy "debugBody" text
   pure $ Right r
 debugBody (Left err) = let _ = spy "debugBodyErr" err in pure $ Left err
-
 
 -- | Logging
 
@@ -60,7 +57,6 @@ as' :: forall a. String -> a -> Aff Unit
 as' desc _ = do
   let _ = maybeLogStep "step" desc
   pure $ unit
-
 
 asT :: forall r s. String -> Either String r -> StateT s Aff Unit
 asT desc val =
