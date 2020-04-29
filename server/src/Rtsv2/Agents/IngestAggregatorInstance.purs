@@ -92,12 +92,12 @@ import Rtsv2.DataObject as DO
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Rtsv2.Agent as Agent
-import Shared.Rtsv2.LlnwApiTypes (SlotProfile(..), StreamDetails)
-import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrlAddr, makeWsUrl)
+import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.JsonLd as JsonLd
+import Shared.Rtsv2.LlnwApiTypes (SlotProfile(..), StreamDetails, slotDetailsToSlotCharacteristics)
+import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrlAddr, makeWsUrl)
 import Shared.Rtsv2.Stream (AggregatorKey(..), IngestKey(..), ProfileName, SlotId, SlotRole(..), ingestKeyToAggregatorKey)
 import Shared.Rtsv2.Types (DeliverTo, RelayServer, Server, ServerAddress, extractAddress)
-import Shared.Rtsv2.Agent.State as PublicState
 import Shared.UUID (UUID)
 import WsGun as WsGun
 
@@ -425,12 +425,12 @@ stopAction aggregatorKey _cachedState = do
   announceLocalAggregatorStopped aggregatorKey
 
 init :: StreamDetails -> StateServerName -> Effect State
-init streamDetails@{role: slotRole, slot: {id: slotId}} stateServerName = do
+init streamDetails@{role: slotRole, slot: slot@{id: slotId}} stateServerName = do
   logStart "Ingest Aggregator starting" {aggregatorKey, streamDetails}
   _ <- Erl.trapExit true
   config <- Config.ingestAggregatorAgentConfig
   thisServer <- PoPDefinition.getThisServer
-  announceLocalAggregatorIsAvailable aggregatorKey {numProfiles: 0, totalBitrate: 0} -- TODO - num stream etc here
+  announceLocalAggregatorIsAvailable aggregatorKey (slotDetailsToSlotCharacteristics slot)
   Gen.registerExternalMapping thisServerName (\m -> Workflow <$> workflowMessageMapperImpl m)
   Gen.registerExternalMapping thisServerName (\m -> Gun <$> (WsGun.messageMapper m))
   workflowHandleAndPidsAndSlotConfiguration <- startWorkflowImpl (unwrap streamDetails.slot.id) streamDetails.role $ mkKey <$> streamDetails.slot.profiles

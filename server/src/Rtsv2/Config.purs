@@ -56,6 +56,7 @@ import Simple.JSON (class ReadForeign, readImpl)
 
 type LoadConfig
   = { loadAnnounceMs :: Int
+    , monitorLoad :: Boolean
     , limits :: LoadTypes.LoadLimits
     , costs :: LoadTypes.LoadCosts
     }

@@ -33,6 +33,7 @@ module Rtsv2.Agents.IntraPoP
   , whereIsStreamRelay
   , whereIsEgest
   , getIdleServer
+  , selectCandidate
   , getCurrentTransPoPLeader
 
     -- Helper - not sure it's used... -- TODO
@@ -61,14 +62,13 @@ import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Newtype (class Newtype, unwrap, wrap)
 import Data.Set (Set)
 import Data.Set as Set
-import Data.Traversable (traverse_)
+import Data.Traversable (traverse, traverse_)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
-import Effect.Random (randomInt)
 import Ephemeral.Map (EMap)
 import Ephemeral.Map as EMap
 import Erl.Atom (Atom)
-import Erl.Data.List (List, head, index, length, nil, singleton, sortBy, take, uncons, (:))
+import Erl.Data.List (List, head, index, length, nil, singleton, sortBy, uncons, (:))
 import Erl.Data.Map (Map, alter, fromFoldable, values)
 import Erl.Data.Map as Map
 import Erl.Process (Process, spawnLink)
@@ -101,6 +101,7 @@ import Shared.Rtsv2.JsonLd (transPoPLeaderLocationNode)
 import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Rtsv2.Stream (AgentKey(..), AggregatorKey, EgestKey(..), RelayKey(..), agentKeyToAggregatorKey, aggregatorKeyToAgentKey)
 import Shared.Rtsv2.Types (CurrentLoad, Server(..), ServerAddress(..), ServerLoad(..), extractAddress, extractPoP, serverLoadToServer, toServerLoad, minLoad, maxLoad)
+import Shared.Utils (distinctRandomNumbers)
 
 type TestHelperPayload =
   { dropAgentMessages :: Boolean
@@ -313,36 +314,49 @@ whereIsWithLoad extractMap agentKey =
 getIdleServer :: ServerSelectionPredicate -> Effect (ResourceResp ServerLoad)
 getIdleServer pred = Gen.doCall serverName
   (\state@{thisServer, members, load} -> do
-      let thisServerLoad = toServerLoad thisServer load
-      if pred thisServerLoad == Green
+      let
+        thisServerLoad = toServerLoad thisServer load
+      if pred thisServerLoad < Red
       then pure $ CallReply (Right $ Local thisServerLoad) state
-      else
-        let n = 2
-            nMostIdleWithCapacity =
-              values members
-              # filterMap (\memberInfo ->
-                            let serverWithLoad = serverLoad memberInfo
-                            in if pred serverWithLoad == Green then Just serverWithLoad else Nothing)
-              # sortBy (\(ServerLoad sl1) (ServerLoad sl2) -> compare sl1.load sl2.load)
-              # take n
-            numServers = length nMostIdleWithCapacity
-        in do
-          resp <-
-            case numServers of
-              0 ->
-                pure $ Left NoCapacity
-              1 ->
-                case uncons nMostIdleWithCapacity of
-                  Just {head} -> pure $ Right $ Remote head
-                  Nothing -> pure $ Left NoCapacity
-              _ ->
-                do
-                  -- TODO - always seems to give the same answer!
-                  chosenIndex <- randomInt 0 (numServers - 1)
-                  pure $ maybe (Left NoCapacity) (Right <<< Remote) $ index nMostIdleWithCapacity chosenIndex
-          pure $ CallReply resp state
+      else do
+        _ <- logInfo "here with" {members: values members}
+        let
+          candidates = values members
+                       # filterMap (\memberInfo ->
+                                      let
+                                        serverWithLoad = serverLoad memberInfo
+                                        loadCheckResult = pred serverWithLoad
+                                      in
+                                        if loadCheckResult < Red then
+                                          Just (Tuple serverWithLoad loadCheckResult)
+                                        else
+                                           Nothing
+                                   )
+        resp <- selectCandidate candidates
+        pure $ CallReply resp state
   )
 
+selectCandidate :: List (Tuple ServerLoad LoadCheckResult) -> Effect (ResourceResp ServerLoad)
+selectCandidate candidates =
+  let
+    numCandidates = length candidates
+  in
+    case numCandidates of
+      0 ->
+        pure $ Left NoCapacity
+      1 ->
+        pure $ head candidates
+      _ -> do
+        indexes <- distinctRandomNumbers 1 (numCandidates - 1)
+        let
+          choices = traverse (\i -> index candidates i) indexes
+                    # fromMaybe nil
+                    # sortBy (\(Tuple _server1 loadCheckResult1) (Tuple _server2 loadCheckResult2) -> compare loadCheckResult1 loadCheckResult2)
+        pure $ head choices
+  where
+    head list = case uncons list of
+                  Just {head: (Tuple serverWithLoad _loadCheckResult)} -> Right $ Remote serverWithLoad
+                  Nothing -> Left NoCapacity
 
 getCurrentTransPoPLeader :: Effect (Maybe Server)
 getCurrentTransPoPLeader =

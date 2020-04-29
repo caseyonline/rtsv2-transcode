@@ -67,8 +67,8 @@ foreign import networkUtilInitImpl :: Effect NetState
 foreign import networkUtilImpl :: NetState -> Effect (Tuple2 Int NetState)
 
 type State =
-  {
-    load :: CurrentLoad
+  { config :: LoadConfig
+  , load :: CurrentLoad
   , cpuUtilState :: CpuState
   , networkUtilState :: NetState
   }
@@ -88,30 +88,40 @@ load =
 
 setLoad :: CurrentLoad -> Effect Unit
 setLoad newLoad = do
-  IntraPop.announceLoad newLoad
-  Gen.call serverName \state -> CallReply unit state{load = newLoad}
+  Gen.doCall serverName doSetLoad
+  where
+    doSetLoad state@{config: {monitorLoad}} | monitorLoad == false = do
+      IntraPop.announceLoad newLoad
+      pure $ CallReply unit state{load = newLoad}
+    doSetLoad state | otherwise =
+      pure $ CallReply unit state
 
 init :: Unit -> Effect State
 init args = do
   logInfo "Load monitor starting" {}
-  config <- Config.loadConfig
+  config@{loadAnnounceMs} <- Config.loadConfig
   cpuUtilState <- cpuUtilInitImpl
   networkUtilState <- networkUtilInitImpl
-  void $ Timer.sendEvery serverName config.loadAnnounceMs Tick
-  pure $ { load: minLoad
+  void $ Timer.sendEvery serverName loadAnnounceMs Tick
+  pure $ { config
+         , load: minLoad
          , cpuUtilState
          , networkUtilState
          }
 
 handleInfo :: Msg -> State -> Effect (CastResult State)
-handleInfo msg state@{load: currentLoad} =
+handleInfo msg state@{ load: currentLoad
+                     , config: {monitorLoad}} =
   case msg of
-    Tick ->
+    Tick | monitorLoad ->
       do
         {cpu, state: state2} <- getCurrentCpu state
         {network, state: state3} <- getCurrentNetwork state2
         IntraPop.announceLoad currentLoad
         pure $ CastNoReply state3
+    Tick | otherwise -> do
+        IntraPop.announceLoad currentLoad
+        pure $ CastNoReply state
 
 getCurrentCpu :: State -> Effect { cpu :: Percentage
                                  , state :: State }
@@ -130,6 +140,13 @@ getCurrentNetwork state@{networkUtilState} = do
 --------------------------------------------------------------------------------
 -- Internals
 --------------------------------------------------------------------------------
+maybeStartTimer :: LoadConfig -> Effect Unit
+maybeStartTimer {monitorLoad, loadAnnounceMs} | monitorLoad == true =
+  void $ Timer.sendEvery serverName loadAnnounceMs Tick
+
+maybeStartTimer {monitorLoad, loadAnnounceMs} | otherwise =
+  pure unit
+
 hasCapacity :: SlotCharacteristics -> ServerLoad -> LoadAgentCosts -> LoadLimits -> LoadCheckResult
 hasCapacity slotCharacteristics targetServer agentCosts limits =
   let
@@ -202,7 +219,6 @@ cpuUnitsToPercentage (SpecInt x) (SpecInt y) = Percentage (x * 100.0 / y)
 
 networkToPercentage :: NetworkKbps -> NetworkKbps -> Percentage
 networkToPercentage (NetworkKbps x) (NetworkKbps y) = Percentage ((toNumber x) * 100.0 / (toNumber y))
-
 
 --------------------------------------------------------------------------------
 -- Log helpers

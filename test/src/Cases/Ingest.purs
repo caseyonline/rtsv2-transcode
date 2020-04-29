@@ -56,7 +56,7 @@ ingestTests2 =
   it "2.2 2nd ingest doesn't start new aggregator since one is running" do
     HTTP.ingestStart E.p1n1 E.shortName1 E.low  >>= assertStatusCode 200 >>= as "create low ingest"
     E.waitForAsyncProfileStart                                           >>= as' "wait for async start of profile"
-    HTTP.setLoad E.p1n1 60.0                    >>= assertStatusCode 204 >>= as "set load on server"
+    HTTP.setLoad E.p1n1 95.0                    >>= assertStatusCode 204 >>= as "set load on server"
     HTTP.ingestStart E.p1n1 E.shortName1 E.high >>= assertStatusCode 200 >>= as "create high ingest"
     E.waitForAsyncProfileStart                                           >>= as' "wait for async start of profile"
     HTTP.getAggregatorStats E.p1n1 E.slot1      >>= assertStatusCode 200

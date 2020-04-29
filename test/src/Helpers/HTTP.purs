@@ -74,7 +74,7 @@ setLoad :: Node -> Number -> Aff (Either String ResWithBody)
 setLoad node load =
   fetch (M.URL $ makeUrlAndUnwrap node LoadE)
         { method: M.postMethod
-        , body: "{\"load\": " <> show load <> "}"
+        , body: "{\"currentCpu\": " <> show load <> ", \"currentNetwork\":0}"
         , headers: M.makeHeaders { "Content-Type": "application/json" }
         }
 

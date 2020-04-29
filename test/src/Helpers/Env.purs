@@ -96,7 +96,7 @@ waitForNodeStartDisseminate :: Aff Unit
 waitForNodeStartDisseminate = delayMs 1000.0
 
 waitForNodeFailureDisseminate :: Aff Unit
-waitForNodeFailureDisseminate = delayMs 750.0
+waitForNodeFailureDisseminate = delayMs 1000.0
 
 waitForTransPoPDisseminate :: Aff Unit
 waitForTransPoPDisseminate = delayMs 2000.0

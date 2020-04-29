@@ -52,11 +52,10 @@ import Rtsv2.Load as Load
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Common (Milliseconds)
-import Shared.Rtsv2.Agent (emptySlotCharacteristics)
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.JsonLd as JsonLd
-import Shared.Rtsv2.LlnwApiTypes (StreamDetails, StreamPublish(..))
+import Shared.Rtsv2.LlnwApiTypes (StreamDetails, StreamPublish(..), slotDetailsToSlotCharacteristics)
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl, makeWsUrl)
 import Shared.Rtsv2.Stream (AggregatorKey, IngestKey(..), ingestKeyToAggregatorKey)
 import Shared.Rtsv2.Types (CurrentLoad, Server, ServerLoad(..), extractAddress)
@@ -348,7 +347,7 @@ informAggregator state@{streamDetails, ingestKey: ingestKey@(IngestKey slotId sl
       void $ Timer.sendAfter (serverName ingestKey) (round $ unwrap aggregatorRetryTime) InformAggregator
       pure $ state
   where
-    slotCharacteristics = emptySlotCharacteristics -- TODO - num stream etc here
+    slotCharacteristics = slotDetailsToSlotCharacteristics streamDetails.slot
     addIngest :: Maybe Server -> Effect (Maybe WebSocket)
     addIngest Nothing = pure Nothing
     addIngest (Just aggregatorAddress) = do

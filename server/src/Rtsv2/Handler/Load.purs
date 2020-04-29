@@ -6,7 +6,7 @@ module Rtsv2.Handler.Load
 import Prelude
 
 import Data.Either (hush)
-import Data.Maybe (fromMaybe, isNothing)
+import Data.Maybe (isNothing, maybe)
 import Effect (Effect)
 import Erl.Cowboy.Req (ReadBodyResult(..), Req, method, readBody)
 import Erl.Data.Binary (Binary)
@@ -43,8 +43,8 @@ load =
           "POST" -> do
             body <- allBody req mempty
             let
-              state2 = hush $ readJSON $ (binaryToString body)
-            Rest.result (isNothing state2) req (fromMaybe state state2)
+              mLoad = hush $ readJSON $ binaryToString body
+            Rest.result (isNothing mLoad) req $ maybe state (\l -> state{load = l}) mLoad
           _ ->
             Rest.result false req state
 

@@ -21,13 +21,16 @@ module Shared.Rtsv2.LlnwApiTypes
        , HlsPushSpecFormat
        , HlsPushAuth
        , SlotLookupResult
+       , slotDetailsToSlotCharacteristics
        )
        where
 
 import Prelude
 
 import Control.Monad.Except (except)
+import Data.Array (length)
 import Data.Either (note)
+import Data.Foldable (foldl)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Eq (genericEq)
 import Data.Generic.Rep.Ord (genericCompare)
@@ -37,6 +40,7 @@ import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype)
 import Foreign (ForeignError(..), readString, unsafeToForeign)
 import Record (rename)
+import Shared.Rtsv2.Agent (SlotCharacteristics)
 import Shared.Rtsv2.Stream (ProfileName, RtmpShortName, RtmpStreamName, SlotId, SlotRole)
 import Simple.JSON (class ReadForeign, class WriteForeign, readImpl, writeImpl)
 import Type.Prelude (SProxy(..))
@@ -116,6 +120,12 @@ type StreamDetails =
 
 type SlotLookupResult =
   { id :: SlotId
+  }
+
+slotDetailsToSlotCharacteristics :: SlotDetails -> SlotCharacteristics
+slotDetailsToSlotCharacteristics {profiles} =
+  { numProfiles: length profiles
+  , totalBitrate: foldl (\acc (SlotProfile {bitrate}) -> acc + bitrate) 0 profiles
   }
 
 --------------------------------------------------------------------------------

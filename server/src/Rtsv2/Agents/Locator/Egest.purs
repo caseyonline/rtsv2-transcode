@@ -8,8 +8,10 @@ import Prelude
 import Control.Alt ((<|>))
 import Control.Monad.Except (ExceptT(..), runExceptT)
 import Data.Bifunctor (lmap)
-import Data.Either (Either(..), note)
+import Data.Either (Either(..), either, note)
+import Data.Filterable (filterMap)
 import Data.Maybe (Maybe(..))
+import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, filter, head, nil, (:))
@@ -20,7 +22,7 @@ import Rtsv2.Agents.EgestInstance (CreateEgestPayload)
 import Rtsv2.Agents.EgestInstance as EgestInstance
 import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
 import Rtsv2.Agents.IntraPoP as IntraPoP
-import Rtsv2.Agents.Locator.Types (FailureReason(..), LocalOrRemote(..), LocationResp)
+import Rtsv2.Agents.Locator.Types (FailureReason(..), LocalOrRemote(..), LocationResp, ResourceFailed, ResourceResp)
 import Rtsv2.Config (LoadConfig)
 import Rtsv2.Load as Load
 import Rtsv2.LoadTypes (LoadCheckResult(..))
@@ -29,8 +31,9 @@ import Shared.Rtsv2.Agent (SlotCharacteristics)
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Shared.Rtsv2.Stream (AggregatorKey(..), EgestKey(..), SlotId, SlotRole)
-import Shared.Rtsv2.Types (Server, serverLoadToServer)
+import Shared.Rtsv2.Types (Server, ServerLoad(..), serverLoadToServer)
 import SpudGun as SpudGun
+import Unsafe.Coerce (unsafeCoerce)
 
 type StartArgs = { slotId :: SlotId
                  , forServer :: Server
@@ -55,8 +58,21 @@ findEgest' slotId slotRole loadConfig thisServer slotCharacteristics aggregator 
       pure $ note NotFound $ (const (Local thisServer)) <$> local
 
     getRemote = do
-      mEgest <- pickCandidate <$> filter capacityForClient <$> IntraPoP.whereIsEgest egestKey
-      pure $ note NotFound $ (Remote <<< serverLoadToServer) <$> mEgest
+      egests <- IntraPoP.whereIsEgest egestKey
+      let
+        candidates = filterMap capacityForClient egests
+      eEgest <- IntraPoP.selectCandidate candidates
+      let
+        bar :: Either ResourceFailed (LocalOrRemote ServerLoad)
+        bar = eEgest
+
+        foo :: Either FailureReason (LocalOrRemote ServerLoad)
+        foo = lmap (\_ -> NotFound) bar
+
+      unsafeCoerce 1
+--      pure $ Left NotFound
+--      pure $ lmap (const NotFound) $ ((\(Remote serverWithLoad) -> Remote (serverLoadToServer serverWithLoad)) <$> eEgest)
+--      pure $ either (const $ Left NotFound) (\(Remote serverWithLoad) -> Right $ Remote (serverLoadToServer serverWithLoad)) eEgest
 
     createResourceAndRecurse = do
       eResourceResp <- getIdle
@@ -74,9 +90,16 @@ findEgest' slotId slotRole loadConfig thisServer slotCharacteristics aggregator 
       void <$> crashIfLeft =<< SpudGun.postJson (makeUrl remote EgestE) ({slotId, slotRole, aggregator, slotCharacteristics} :: CreateEgestPayload)
 
     egestKey = (EgestKey slotId slotRole)
-    pickCandidate = head
 
-    capacityForClient = ((==) Green) <<< Load.hasCapacityForEgestClient slotCharacteristics loadConfig
+    capacityForClient :: ServerLoad -> Maybe (Tuple ServerLoad LoadCheckResult)
+    capacityForClient serverLoad = --((<) Red) <<<
+      let
+        loadCheckResult = Load.hasCapacityForEgestClient slotCharacteristics loadConfig serverLoad
+      in
+       if loadCheckResult < Red then
+         Just (Tuple serverLoad loadCheckResult)
+       else
+         Nothing
 
     capacityForEgest = Load.hasCapacityForEgestInstance slotCharacteristics loadConfig
 
