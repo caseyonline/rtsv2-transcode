@@ -23,7 +23,7 @@ import Erl.Data.List (List, filter, head, nil, (:))
 import Erl.Data.Tuple (tuple2)
 import Rtsv2.Agents.IngestSup as IngestSup
 import Rtsv2.Handler.MimeType as MimeType
-import Shared.Rtsv2.LlnwApiTypes (AuthType, PublishCredentials, SlotPublishAuthType(..), StreamAuth, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamPublish, SlotLookupResult)
+import Shared.Rtsv2.LlnwApiTypes
 import Shared.Rtsv2.Stream (RtmpShortName, SlotRole(..))
 import Shared.UUID (fromString)
 import Shared.Utils (lazyCrashIfMissing)
@@ -74,9 +74,22 @@ db =
                                                rtmpStreamName: wrap "slot1_500",
                                                bitrate: 500000}
                                       ]
-                          , outputFormats : []
+                          , outputFormats : [ HlsOutput ]
                           }
-                 , push : []
+                 , push : [
+                    { protocol: HttpPut
+                    , formats: [ Hls ]
+                    , putBaseUrl: "example.com"
+                    , playbackBaseUrl: "example.com"
+                    , segmentDuration: 6
+                    , playlistDuration: 120
+                    , auth: 
+                      { type: "basic"
+                      , username: "user"
+                      , password: "password"
+                      }
+                    }
+                  ]
                  }
       }
 
