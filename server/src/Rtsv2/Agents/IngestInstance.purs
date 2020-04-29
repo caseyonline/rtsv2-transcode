@@ -19,11 +19,10 @@ module Rtsv2.Agents.IngestInstance
 import Prelude
 
 import Bus as Bus
-import Data.Either (Either(..), either, hush)
+import Data.Either (Either(..), hush)
 import Data.Int (round, toNumber)
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (unwrap, wrap)
-import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
@@ -40,28 +39,24 @@ import Pinto.Timer as Timer
 import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Agents.IngestAggregatorSup as IngestAggregatorSup
 import Rtsv2.Agents.IngestStats as IngestStats
-import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..), launchLocalOrRemoteGeneric)
+import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..))
 import Rtsv2.Agents.IntraPoP as IntraPoP
-import Rtsv2.Agents.Locator (extractServer)
-import Rtsv2.Agents.Locator.Types (LocalOrRemote(..), ResourceResp)
 import Rtsv2.Agents.StreamRelayTypes (AggregatorToIngestWsMessage(..), IngestToAggregatorWsMessage(..))
 import Rtsv2.Audit as Audit
 import Rtsv2.Config as Config
 import Rtsv2.DataObject as DO
-import Rtsv2.Load as Load
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Common (Milliseconds)
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.JsonLd as JsonLd
-import Shared.Rtsv2.LlnwApiTypes (StreamDetails, StreamPublish(..), slotDetailsToSlotCharacteristics)
-import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl, makeWsUrl)
+import Shared.Rtsv2.LlnwApiTypes (StreamDetails, StreamPublish(..))
+import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeWsUrl)
 import Shared.Rtsv2.Stream (AggregatorKey, IngestKey(..), ingestKeyToAggregatorKey)
-import Shared.Rtsv2.Types (CurrentLoad, Server, ServerLoad(..), extractAddress)
+import Shared.Rtsv2.Types (Server, LocalOrRemote(..), ResourceResp, fromLocalOrRemote, extractAddress)
 import Shared.Types.Media.Types.Rtmp (RtmpClientMetadata)
 import Shared.Types.Media.Types.SourceDetails (SourceInfo)
-import SpudGun as SpudGun
 import WsGun as WsGun
 
 serverName :: IngestKey -> ServerName State Msg
@@ -336,7 +331,7 @@ doStopIngest state@{ingestKey} = do
 informAggregator :: State -> Effect State
 informAggregator state@{streamDetails, ingestKey: ingestKey@(IngestKey slotId slotRole profileName), thisServer, aggregatorRetryTime, stateServerName, loadConfig} = do
   maybeAggregator <- hush <$> getAggregator
-  maybeIngestAdded <- addIngest $ (extractServer <$> maybeAggregator)
+  maybeIngestAdded <- addIngest $ (fromLocalOrRemote <$> maybeAggregator)
   case maybeIngestAdded of
     Just webSocket -> do
       logInfo "WebSocket connection started" {maybeAggregator}
@@ -347,7 +342,6 @@ informAggregator state@{streamDetails, ingestKey: ingestKey@(IngestKey slotId sl
       void $ Timer.sendAfter (serverName ingestKey) (round $ unwrap aggregatorRetryTime) InformAggregator
       pure $ state
   where
-    slotCharacteristics = slotDetailsToSlotCharacteristics streamDetails.slot
     addIngest :: Maybe Server -> Effect (Maybe WebSocket)
     addIngest Nothing = pure Nothing
     addIngest (Just aggregatorAddress) = do
@@ -363,20 +357,7 @@ informAggregator state@{streamDetails, ingestKey: ingestKey@(IngestKey slotId sl
         Just server ->
           pure $ Right $ Local server
         Nothing ->
-          launchLocalOrRemote
-
-    launchLocalOrRemote :: Effect (ResourceResp Server)
-    launchLocalOrRemote = do
-      launchLocalOrRemoteGeneric (Load.hasCapacityForAggregator slotCharacteristics loadConfig) launchLocal launchRemote
-      where
-        launchLocal :: ServerLoad -> Effect Boolean
-        launchLocal _ = do
-          void $ IngestAggregatorSup.startAggregator streamDetails
-          pure true
-        launchRemote idleServer = do
-          let
-            url = makeUrl idleServer IngestAggregatorsE
-          either (const false) (const true) <$> SpudGun.postJson url streamDetails
+          IngestAggregatorSup.startLocalOrRemoteAggregator loadConfig streamDetails
 
 handleAggregatorExit :: AggregatorKey -> Server -> State -> Effect State
 handleAggregatorExit exitedAggregatorKey exitedAggregatorAddr state@{ingestKey, aggregatorRetryTime, aggregatorWebSocket: mWebSocket}

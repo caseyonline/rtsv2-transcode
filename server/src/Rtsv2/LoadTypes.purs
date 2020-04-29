@@ -7,6 +7,7 @@ module Rtsv2.LoadTypes
  , LoadCosts(..)
  , LoadWatermarks(..)
  , HardwareFactor(..)
+ , ServerSelectionPredicate
  ) where
 
 import Prelude
@@ -14,8 +15,10 @@ import Prelude
 import Data.Maybe (Maybe)
 import Data.Newtype (class Newtype, unwrap, wrap)
 import Erl.Data.List (List)
-import Shared.Rtsv2.Types (NetworkKbps, Percentage, SpecInt)
+import Shared.Rtsv2.Types (NetworkKbps, Percentage, ServerLoad(..), SpecInt)
 import Simple.JSON (class ReadForeign)
+
+type ServerSelectionPredicate = ServerLoad -> LoadCheckResult
 
 data LoadCheckResult = Green
                      | Amber

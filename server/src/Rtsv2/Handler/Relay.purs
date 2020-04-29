@@ -24,9 +24,8 @@ import Erl.Process (Process(..))
 import Erl.Utils as Erl
 import Logger as Logger
 import Rtsv2.Agents.IntraPoP as IntraPoP
-import Rtsv2.Agents.Locator.Relay (findOrStart)
-import Rtsv2.Agents.Locator.Types (LocalOrRemote(..), ResourceFailed(..), ResourceResp, fromLocalOrRemote)
 import Rtsv2.Agents.StreamRelayInstance as StreamRelayInstance
+import Rtsv2.Agents.StreamRelaySup (findOrStart)
 import Rtsv2.Agents.StreamRelaySup as StreamRelaySup
 import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload, DownstreamWsMessage(..), EgestUpstreamWsMessage(..), RelayUpstreamWsMessage(..), WebSocketHandlerMessage(..))
 import Rtsv2.Config (LoadConfig)
@@ -37,7 +36,7 @@ import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Rtsv2.Agent.State (StreamRelay)
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Shared.Rtsv2.Stream (RelayKey(..), SlotId, SlotRole)
-import Shared.Rtsv2.Types (EgestServer(..), RelayServer(..), Server(..), ServerAddress, SourceRoute, extractAddress)
+import Shared.Rtsv2.Types (EgestServer(..), RelayServer(..), Server(..), ServerAddress, SourceRoute, LocalOrRemote(..), ResourceFailed(..), ResourceResp, extractAddress)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON as JSON
 import Stetson (HttpMethod(..), InnerStetsonHandler, StetsonHandler)
@@ -47,8 +46,8 @@ import StetsonHelper (GetHandler, PostHandler, allBody, binaryToString, jsonResp
 stats :: SlotId -> SlotRole -> GetHandler (StreamRelay List)
 stats slotId slotRole = jsonResponse $ Just <$> (StreamRelayInstance.status $ RelayKey slotId slotRole)
 
-startResource :: PostHandler CreateRelayPayload
-startResource = processPostPayload StreamRelaySup.startRelay
+startResource :: LoadConfig -> PostHandler CreateRelayPayload
+startResource loadConfig = processPostPayload $ StreamRelaySup.startLocalStreamRelay loadConfig
 
 newtype ProxyState
   = ProxyState { whereIsResp :: Maybe Server
@@ -66,7 +65,7 @@ proxiedStats slotId slotRole =
   where
     init req = do
       let relayKey = RelayKey slotId slotRole
-      whereIsResp <- (map fromLocalOrRemote) <$> IntraPoP.whereIsStreamRelay relayKey
+      whereIsResp <- IntraPoP.whereIsStreamRelay relayKey
       Rest.initResult req $
           ProxyState { whereIsResp
                      }

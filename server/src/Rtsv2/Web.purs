@@ -24,7 +24,6 @@ import Pinto.Gen as Gen
 import Rtsv2.Agents.EgestInstance as EgestInstance
 import Rtsv2.Agents.IngestWebRTCIngestHandler as IngestWebRTCIngestHandler
 import Rtsv2.Agents.Locator.Egest (findEgest)
-import Rtsv2.Agents.Locator.Types (LocationResp, RegistrationResp)
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
 import Rtsv2.Handler.Chaos as ChaosHandler
@@ -48,7 +47,7 @@ import Shared.Rtsv2.LlnwApiTypes (StreamDetails)
 import Shared.Rtsv2.Router.Endpoint (Canary)
 import Shared.Rtsv2.Router.Endpoint as Router
 import Shared.Rtsv2.Stream (EgestKey(..), IngestKey(..), ProfileName, SlotId, SlotIdAndProfileName(..), SlotRole(..))
-import Shared.Rtsv2.Types (Server, extractAddress)
+import Shared.Rtsv2.Types (Server, LocationResp, RegistrationResp, extractAddress)
 import Shared.UUID (UUID, fromString)
 import Shared.UUID as UUID
 import Stetson (RestResult, StaticAssetLocation(..))
@@ -102,7 +101,7 @@ init args = do
         , "IngestAggregatorActiveIngestsPlayerE"        : \(_ :: SlotId) (_ :: SlotRole) (_ :: ProfileName) -> PrivFile "rtsv2" "www/play.html"
         , "IngestAggregatorActiveIngestsPlayerJsE"      : \(_ :: SlotId) (_ :: SlotRole) (_ :: ProfileName) -> PrivDir "rtsv2" "www/assets/js"
         , "IngestAggregatorActiveIngestsPlayerControlE" : CowboyRoutePlaceholder
-        , "IngestAggregatorsE"                          : IngestAggregatorHandler.ingestAggregators
+        , "IngestAggregatorsE"                          : IngestAggregatorHandler.ingestAggregators loadConfig
         , "IngestInstancesMetricsE"                     : IngestHandler.ingestInstancesMetrics
         , "IngestInstanceE"                             : IngestHandler.ingestInstance
         , "ClientAppAssetsE"                            : PrivDir Config.appName "www/assets"
@@ -112,7 +111,7 @@ init args = do
         -- System
         , "TransPoPLeaderE"                             : IntraPoPHandler.leader
         , "EgestE"                                      : dummyHandler -- TODO write this - needed for a client to create a remote egest
-        , "RelayE"                                      : RelayHandler.startResource
+        , "RelayE"                                      : RelayHandler.startResource loadConfig
         , "RelayEnsureStartedE"                         : RelayHandler.ensureStarted loadConfig
         , "RelayRegisteredRelayWs"                      : RelayHandler.registeredRelayWs
         , "RelayRegisteredEgestWs"                      : RelayHandler.registeredEgestWs
@@ -192,11 +191,11 @@ init args = do
       --workflows
       : cowboyRoute ("/system/workflows") "id3as_workflows_resource" (unsafeToForeign unit)
       -- WorkflowGraphE String
-      : cowboyRoute ("/system/workflows" <> referenceBinding <> "/graph") "id3as_workflow_graph_resource" (unsafeToForeign (atom "graph"))
+      : cowboyRoute ("/system/workflows/" <> referenceBinding <> "/graph") "id3as_workflow_graph_resource" (unsafeToForeign (atom "graph"))
       -- WorkflowMetricsE String
-      : cowboyRoute ("/system/workflows" <> referenceBinding <> "/metrics") "id3as_workflow_graph_resource" (unsafeToForeign (atom "metrics"))
+      : cowboyRoute ("/system/workflows/" <> referenceBinding <> "/metrics") "id3as_workflow_graph_resource" (unsafeToForeign (atom "metrics"))
       -- WorkflowStructureE String
-      : cowboyRoute ("/system/workflows" <> referenceBinding <> "/structure") "id3as_workflow_graph_resource" (unsafeToForeign (atom "structure"))
+      : cowboyRoute ("/system/workflows/" <> referenceBinding <> "/structure") "id3as_workflow_graph_resource" (unsafeToForeign (atom "structure"))
 
       : nil
 

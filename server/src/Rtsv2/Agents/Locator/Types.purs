@@ -1,14 +1,13 @@
 module Rtsv2.Agents.Locator.Types
-       ( LocationResp
-       , FailureReason(..)
-       , LocalOrRemote(..)
-       , ResourceResp(..)
-       , ResourceFailed(..)
-       , RegistrationResp(..)
-       , ServerSelectionPredicate
-       , FindAndRegisterConfig
+       ( -- LocationResp
+       -- , FailureReason(..)
+       -- , LocalOrRemote(..)
+       -- , ResourceResp(..)
+       -- , ResourceFailed(..)
+       -- , RegistrationResp(..)
+          FindAndRegisterConfig
        , FindOrStartConfig
-       , fromLocalOrRemote
+--       , fromLocalOrRemote
        )
        where
 
@@ -18,13 +17,13 @@ import Data.Either (Either)
 import Data.Maybe (Maybe)
 import Effect (Effect)
 import Logger (Logger)
-import Rtsv2.LoadTypes (LoadCheckResult)
-import Shared.Rtsv2.Types (Server, ServerLoad)
+import Rtsv2.LoadTypes (ServerSelectionPredicate)
+import Shared.Rtsv2.Types (LocalOrRemote, Server)
 
-type FindOrStartConfig payload
-  = { findFun :: (payload -> Effect (Maybe (LocalOrRemote Server)))
+type FindOrStartConfig
+  = { findFun :: Effect (Maybe (LocalOrRemote Server))
     , handlerCreationPredicate :: ServerSelectionPredicate
-    , startLocalFun :: payload -> Effect Unit
+    , startLocalFun :: Effect Unit
     , logWarning :: forall a. Logger (Record a)
     }
 
@@ -33,35 +32,6 @@ type FindAndRegisterConfig payload
     , findFun :: (payload -> Effect (Maybe (LocalOrRemote Server)))
     , handlerCreationPredicate :: ServerSelectionPredicate
     , startLocalFun :: payload -> Effect Unit
-    , startRemoteFun :: ServerLoad -> payload -> Effect Unit
+    , startRemoteFun :: Server -> payload -> Effect Unit
     , logWarning :: forall a. Logger (Record a)
     }
-
-type ServerSelectionPredicate = ServerLoad -> LoadCheckResult
-
-data FailureReason
-  = NotFound
-  | NoResource
-instance semigroupFailureReason :: Semigroup FailureReason where
-  append lhs rhs = rhs
-
-data LocalOrRemote a
-  = Local a
-  | Remote a
-derive instance functorLocalOrRemoteF :: Functor LocalOrRemote
-
-type LocationResp = (Either FailureReason (LocalOrRemote Server))
-
-fromLocalOrRemote :: forall a. LocalOrRemote a -> a
-fromLocalOrRemote (Local a) = a
-fromLocalOrRemote (Remote a) = a
-
---------------------------------------------------------------------------------
--- API Types - maybe move me
---------------------------------------------------------------------------------
-type ResourceResp a = Either ResourceFailed (LocalOrRemote a)
-
-data ResourceFailed = NoCapacity
-                    | LaunchFailed
-
-type RegistrationResp = (Either FailureReason Unit)

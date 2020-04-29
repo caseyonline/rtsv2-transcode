@@ -19,7 +19,7 @@ module Rtsv2.Agents.EgestInstance
 import Prelude
 
 import Bus as Bus
-import Data.Either (Either(..), either, hush)
+import Data.Either (Either(..), hush)
 import Data.Foldable (foldl)
 import Data.Int (round, toNumber)
 import Data.Maybe (Maybe(..), fromMaybe, maybe')
@@ -43,19 +43,17 @@ import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Agents.EgestInstance.WebRTCTypes (WebRTCStreamServerStats, WebRTCSessionManagerStats)
-import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..), launchLocalOrRemoteGeneric)
+import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..))
 import Rtsv2.Agents.IntraPoP as IntraPoP
-import Rtsv2.Agents.Locator.Types (LocalOrRemote(..), RegistrationResp, ResourceResp)
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
-import Rtsv2.Agents.StreamRelaySup (startRelay) as StreamRelaySup
-import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload, DownstreamWsMessage(..), EgestUpstreamWsMessage(..), ActiveProfiles(..))
+import Rtsv2.Agents.StreamRelaySup as StreamRelaySup
+import Rtsv2.Agents.StreamRelayTypes (ActiveProfiles(..), DownstreamWsMessage(..), EgestUpstreamWsMessage(..))
 import Rtsv2.Audit as Audit
 import Rtsv2.Config (LoadConfig)
 import Rtsv2.Config as Config
 import Rtsv2.DataObject (ObjectBroadcastMessage(..))
 import Rtsv2.DataObject as DO
 import Rtsv2.DataObject as DataObject
-import Rtsv2.Load as Load
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Common (Milliseconds)
@@ -64,10 +62,9 @@ import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Rtsv2.LlnwApiTypes (StreamIngestProtocol(..))
-import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl, makeWsUrl)
+import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeWsUrl)
 import Shared.Rtsv2.Stream (AggregatorKey(..), EgestKey(..), ProfileName, RelayKey(..), SlotId, SlotRole)
-import Shared.Rtsv2.Types (EgestServer(..), RelayServer, Server, extractAddress)
-import SpudGun as SpudGun
+import Shared.Rtsv2.Types (EgestServer(..), RelayServer, Server, LocalOrRemote(..), RegistrationResp, ResourceResp, extractAddress)
 import WsGun as WsGun
 
 foreign import startEgestReceiverFFI :: EgestKey -> Boolean -> Effect Int
@@ -226,32 +223,32 @@ init payload@{slotId, slotRole, aggregator, slotCharacteristics} stateServerName
   loadConfig <- Config.loadConfig
 
   Gen.registerExternalMapping (serverName egestKey) (\m -> Gun <$> (WsGun.messageMapper m))
-  maybeRelay <- IntraPoP.whereIsStreamRelay relayKey
   let
-    state ={ egestKey
-           , aggregator
-           , slotCharacteristics
-           , loadConfig
-           , thisServer : toEgestServer thisServer
-           , clientCount : 0
-           , lingerTime : wrap $ toNumber lingerTimeMs
-           , relayCreationRetry : wrap $ toNumber relayCreationRetryMs
-           , stopRef : Nothing
-           , receivePortNumber
-           , lastEgestAuditTime: now
-           , stateServerName
-           , relayWebSocket: Nothing
-           , slotConfiguration: Nothing
-           , dataObject: Nothing
-           , lastOnFI: 0
-           , activeProfiles: nil
-           }
+    state = { egestKey
+            , aggregator
+            , slotCharacteristics
+            , loadConfig
+            , thisServer : toEgestServer thisServer
+            , clientCount : 0
+            , lingerTime : wrap $ toNumber lingerTimeMs
+            , relayCreationRetry : wrap $ toNumber relayCreationRetryMs
+            , stopRef : Nothing
+            , receivePortNumber
+            , lastEgestAuditTime: now
+            , stateServerName
+            , relayWebSocket: Nothing
+            , slotConfiguration: Nothing
+            , dataObject: Nothing
+            , lastOnFI: 0
+            , activeProfiles: nil
+            }
+  maybeRelay <- IntraPoP.whereIsStreamRelay relayKey
   case maybeRelay of
     Just relay ->
       pure state
     Nothing -> do
-      -- Launch
-      _ <- StreamRelaySup.startRelay {slotId, slotRole, aggregator, slotCharacteristics}
+      -- Optimistically attempt to launch a local relay - if it fails, our regular timer will sort it out
+      _ <- StreamRelaySup.startLocalStreamRelay loadConfig {slotId, slotRole, aggregator, slotCharacteristics}
       pure state
 
 handleInfo :: Msg -> State -> Effect (CastResult State)
@@ -459,22 +456,16 @@ initStreamRelay state@{relayCreationRetry, egestKey: egestKey@(EgestKey slotId s
 -- otherwise 404
 --------------------------------------------------------------------------------
 findOrStartRelayForStream :: State -> Effect (ResourceResp Server)
-findOrStartRelayForStream state@{egestKey: EgestKey slotId slotRole, thisServer} = do
-  mRelay <- IntraPoP.whereIsStreamRelay $ RelayKey slotId slotRole
-  maybe' (\_ -> launchLocalOrRemote state) (pure <<< Right) mRelay
-
-launchLocalOrRemote :: State -> Effect (ResourceResp Server)
-launchLocalOrRemote state@{egestKey: egestKey@(EgestKey slotId slotRole), aggregator, slotCharacteristics, loadConfig, thisServer} =
-  launchLocalOrRemoteGeneric (Load.hasCapacityForStreamRelay slotCharacteristics loadConfig) launchLocal launchRemote
+findOrStartRelayForStream state@{ egestKey: EgestKey slotId slotRole
+                                , thisServer
+                                , aggregator
+                                , slotCharacteristics
+                                , loadConfig} = do
+  mRelay <- IntraPoP.whereIsStreamRelayWithLocalOrRemote $ RelayKey slotId slotRole
+  maybe' (\_ -> StreamRelaySup.startLocalOrRemoteStreamRelay loadConfig payload) (pure <<< Right) mRelay
   where
-    payload = {slotId, slotRole, aggregator, slotCharacteristics} :: CreateRelayPayload
-    launchLocal _ = do
-      _ <- StreamRelaySup.startRelay payload
-      pure true
-    launchRemote idleServer = do
-      let
-        url = makeUrl idleServer RelayE
-      either (const false) (const true) <$> SpudGun.postJson url payload
+    payload = {slotId, slotRole, aggregator, slotCharacteristics}
+
 
 toRelayServer :: forall a b. Newtype a b => Newtype RelayServer b => a -> RelayServer
 toRelayServer = unwrap >>> wrap

@@ -31,13 +31,13 @@ module Rtsv2.Agents.IntraPoP
   , whereIsIngestAggregator
   , whereIsIngestAggregatorWithPayload
   , whereIsStreamRelay
-  , whereIsEgest
+  , whereIsStreamRelayWithLocalOrRemote
+  , whereIsEgestWithLoad
+
   , getIdleServer
+  , getThisIdleServer
   , selectCandidate
   , getCurrentTransPoPLeader
-
-    -- Helper - not sure it's used... -- TODO
-  , launchLocalOrRemoteGeneric
 
     -- Test helper
   , testHelper
@@ -85,11 +85,10 @@ import Pinto.Timer as Timer
 import PintoHelper (exposeState)
 import Prim.Row (class Nub, class Union)
 import Record as Record
-import Rtsv2.Agents.Locator.Types (LocalOrRemote(..), ResourceFailed(..), ServerSelectionPredicate, ResourceResp, fromLocalOrRemote)
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
 import Rtsv2.Health (Health, percentageToHealth)
-import Rtsv2.LoadTypes (LoadCheckResult(..))
+import Rtsv2.LoadTypes (LoadCheckResult(..), ServerSelectionPredicate)
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Serf (IpAndPort, LamportClock)
@@ -100,7 +99,7 @@ import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.JsonLd (transPoPLeaderLocationNode)
 import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Rtsv2.Stream (AgentKey(..), AggregatorKey, EgestKey(..), RelayKey(..), agentKeyToAggregatorKey, aggregatorKeyToAgentKey)
-import Shared.Rtsv2.Types (CurrentLoad, Server(..), ServerAddress(..), ServerLoad(..), extractAddress, extractPoP, serverLoadToServer, toServerLoad, minLoad, maxLoad)
+import Shared.Rtsv2.Types (CurrentLoad, Server(..), ServerAddress(..), ServerLoad, LocalOrRemote(..), ResourceFailed(..), ResourceResp, fromLocalOrRemote, extractAddress, extractPoP, maxLoad, minLoad, toServerLoad)
 import Shared.Utils (distinctRandomNumbers)
 
 type TestHelperPayload =
@@ -249,42 +248,59 @@ currentRemoteRef remoteServer = exposeState ((EMap.lookup remoteServer) <<<  _.s
 whereIsIngestAggregator :: AggregatorKey -> Effect (Maybe Server)
 whereIsIngestAggregator aggregatorKey = do
   mRes <- whereIs (_.aggregators) (aggregatorKeyToAgentKey aggregatorKey)
-  pure $ (_.servers >>> head) =<< mRes
+  pure $ head mRes
 
-whereIsIngestAggregatorWithPayload :: AggregatorKey -> Effect (Maybe { payload :: SlotCharacteristics
-                                                                     , server :: Server} )
+whereIsIngestAggregatorWithPayload :: AggregatorKey -> Effect (Maybe { payload :: SlotCharacteristics, server :: Server} )
 whereIsIngestAggregatorWithPayload aggregatorKey = do
-  mRes <- whereIs (_.aggregators) (aggregatorKeyToAgentKey aggregatorKey)
+  mRes <- whereIsWithPayload (_.aggregators) (aggregatorKeyToAgentKey aggregatorKey)
   pure $ (\{payload, servers} ->
            case head servers of
              Nothing -> Nothing
              Just server -> Just {payload, server}
          ) =<< mRes
 
-whereIs :: forall payload. (AgentLocations -> Locations payload) -> AgentKey -> Effect (Maybe { payload :: payload
-                                                                                              , servers :: (List Server)})
+whereIsStreamRelay :: RelayKey -> Effect (Maybe Server)
+whereIsStreamRelay (RelayKey slotId slotRole) = head <$> whereIs _.relays (AgentKey slotId slotRole)
+
+whereIsStreamRelayWithLocalOrRemote :: RelayKey -> Effect (Maybe (LocalOrRemote Server))
+whereIsStreamRelayWithLocalOrRemote (RelayKey slotId slotRole) = head <$> whereIsWithLocalOrRemote _.relays (AgentKey slotId slotRole)
+
+whereIsEgestWithLoad :: EgestKey -> Effect (List ServerLoad)
+whereIsEgestWithLoad egestKey = (map fromLocalOrRemote) <$> (whereIsWithLoad _.egests $ egestKeyToAgentKey egestKey)
+
+whereIs :: forall payload. (AgentLocations -> Locations payload) -> AgentKey -> Effect (List Server)
 whereIs extractMap agentKey =
   Gen.call serverName
   \state@{thisServer, members, agentLocations} ->
     let
       streamLocations = _.byAgentKey $ extractMap agentLocations
-      mLocations = Map.lookup agentKey streamLocations :: Maybe (AgentPayloadAndServers payload)
-      locations = (\{payload, servers} -> {payload, servers: Set.toUnfoldable servers}) <$> mLocations
+      mPayloadAndServers = Map.lookup agentKey streamLocations :: Maybe (AgentPayloadAndServers payload)
+      serverList = maybe nil (\{servers} -> Set.toUnfoldable servers) mPayloadAndServers
     in
-    CallReply locations state
+    CallReply serverList state
 
+whereIsWithLocalOrRemote :: forall payload. (AgentLocations -> Locations payload) -> AgentKey -> Effect (List (LocalOrRemote Server))
+whereIsWithLocalOrRemote extractMap agentKey =
+  Gen.call serverName
+  \state@{thisServer, members, agentLocations} ->
+    let
+      streamLocations = _.byAgentKey $ extractMap agentLocations
+      mPayloadAndServers = Map.lookup agentKey streamLocations :: Maybe (AgentPayloadAndServers payload)
+      serverList = maybe nil (\{servers} -> Set.toUnfoldable servers) mPayloadAndServers
+    in
+    CallReply ((toLocalOrRemote thisServer) <$> serverList) state
 
-whereIsStreamRelay :: RelayKey -> Effect (Maybe (LocalOrRemote Server))
-whereIsStreamRelay (RelayKey slotId slotRole)  = head <$> (map $ map serverLoadToServer) <$> whereIsStreamRelay' (AgentKey slotId slotRole)
+whereIsWithPayload :: forall payload. (AgentLocations -> Locations payload) -> AgentKey -> Effect (Maybe { payload :: payload, servers :: (List Server)})
+whereIsWithPayload extractMap agentKey =
+  Gen.call serverName
+  \state@{thisServer, members, agentLocations} ->
+    let
+      streamLocations = _.byAgentKey $ extractMap agentLocations
+      mPayloadAndServers = Map.lookup agentKey streamLocations :: Maybe (AgentPayloadAndServers payload)
+      mPayloadAndServers2 = (\{payload, servers} -> {payload, servers: Set.toUnfoldable servers}) <$> mPayloadAndServers
+    in
+    CallReply mPayloadAndServers2 state
 
-whereIsEgest :: EgestKey -> Effect (List ServerLoad)
-whereIsEgest egestKey = (map fromLocalOrRemote) <$> (whereIsEgest' $ egestKeyToAgentKey egestKey)
-
-whereIsStreamRelay' :: AgentKey -> Effect (List (LocalOrRemote ServerLoad))
-whereIsStreamRelay' = whereIsWithLoad _.relays
-
-whereIsEgest' :: AgentKey -> Effect (List (LocalOrRemote ServerLoad))
-whereIsEgest' = whereIsWithLoad _.egests
 
 whereIsWithLoad :: forall payload. (AgentLocations -> Locations payload) -> AgentKey -> Effect (List (LocalOrRemote ServerLoad))
 whereIsWithLoad extractMap agentKey =
@@ -292,43 +308,52 @@ whereIsWithLoad extractMap agentKey =
   \state@{thisServer, members, agentLocations} ->
     let
       streamLocations = _.byAgentKey $ extractMap agentLocations
-      withLoad (Server el) = serverLoad <$> Map.lookup el.address members
-      mLocations = Map.lookup agentKey streamLocations :: Maybe (AgentPayloadAndServers payload)
+      toServerLoad (Server el) = serverLoad <$> Map.lookup el.address members
+      mPayloadAndServers2 = Map.lookup agentKey streamLocations :: Maybe (AgentPayloadAndServers payload)
 
-      locations = maybe nil (_.servers >>> Set.toUnfoldable) mLocations
-      filtered = filterMap withLoad locations
+      serverList = maybe nil (_.servers >>> Set.toUnfoldable) mPayloadAndServers2
+      withLoad = filterMap toServerLoad serverList
     in
-    CallReply (toLocalOrRemote thisServer <$> filtered) state
-  where
-    toLocalOrRemote thisSever server =
-      if extractAddress thisSever == extractAddress server
-      then Local server
-      else Remote server
+    CallReply (toLocalOrRemote thisServer <$> withLoad) state
 
+toLocalOrRemote :: forall a b r1 r2. Newtype a { address :: ServerAddress | r1 } => Newtype b { address :: ServerAddress | r2 } => a -> b -> LocalOrRemote b
+toLocalOrRemote thisServer server =
+  if extractAddress thisServer == extractAddress server
+  then Local server
+  else Remote server
+
+getThisIdleServer :: ServerSelectionPredicate -> Effect (Either ResourceFailed Server)
+getThisIdleServer pred = Gen.call serverName
+  (\state@{thisServer, load} ->
+      let
+        thisServerLoad = toServerLoad thisServer load
+      in
+        if pred thisServerLoad < Red
+        then CallReply (Right $ thisServer) state
+        else CallReply (Left NoCapacity) state
+  )
 
 --------------------------------------------------------------------------------
--- TODO re-read Power of Two articles such as
+-- Using choice-of-two algorithm, as described in
 -- https://www.nginx.com/blog/nginx-power-of-two-choices-load-balancing-algorithm/
--- TODO - predicate should probable be ServerLoad -> Weighting
---------------------------------------------------------------------------------
-getIdleServer :: ServerSelectionPredicate -> Effect (ResourceResp ServerLoad)
+getIdleServer :: ServerSelectionPredicate -> Effect (ResourceResp Server)
 getIdleServer pred = Gen.doCall serverName
   (\state@{thisServer, members, load} -> do
       let
         thisServerLoad = toServerLoad thisServer load
       if pred thisServerLoad < Red
-      then pure $ CallReply (Right $ Local thisServerLoad) state
+      then pure $ CallReply (Right $ Local thisServer) state
       else do
         _ <- logInfo "here with" {members: values members}
         let
           candidates = values members
-                       # filterMap (\memberInfo ->
+                       # filterMap (\memberInfo@{server} ->
                                       let
                                         serverWithLoad = serverLoad memberInfo
                                         loadCheckResult = pred serverWithLoad
                                       in
                                         if loadCheckResult < Red then
-                                          Just (Tuple serverWithLoad loadCheckResult)
+                                          Just (Tuple server loadCheckResult)
                                         else
                                            Nothing
                                    )
@@ -336,7 +361,7 @@ getIdleServer pred = Gen.doCall serverName
         pure $ CallReply resp state
   )
 
-selectCandidate :: List (Tuple ServerLoad LoadCheckResult) -> Effect (ResourceResp ServerLoad)
+selectCandidate :: List (Tuple Server LoadCheckResult) -> Effect (ResourceResp Server)
 selectCandidate candidates =
   let
     numCandidates = length candidates
@@ -777,25 +802,6 @@ updateAgentLocation action lens agentKey server state@{agentLocations} =
     newAgentLocations = lens.set newLocations agentLocations
   in
     state { agentLocations = newAgentLocations }
-
-
---------------------------------------------------------------------------------
--- Helper for consistent behaivour around launching resources within a PoP
---------------------------------------------------------------------------------
-launchLocalOrRemoteGeneric :: ServerSelectionPredicate -> (ServerLoad -> Effect Boolean) -> (ServerLoad -> Effect Boolean) -> Effect (ResourceResp Server)
-launchLocalOrRemoteGeneric pred launchLocal launchRemote = do
-  idleServerResp <- getIdleServer pred
-  launchResp <- launch idleServerResp
-  pure $ (map serverLoadToServer) <$> launchResp
-  where
-    launch :: Either ResourceFailed (LocalOrRemote ServerLoad) -> Effect (ResourceResp ServerLoad)
-    launch (Left err) = pure (Left err)
-    launch (Right resource) = do
-      resp <- launch' resource
-      pure $ if resp then Right resource
-             else Left LaunchFailed
-    launch' (Local local) = launchLocal local
-    launch' (Remote remote) = launchRemote remote
 
 --------------------------------------------------------------------------------
 -- Gen Server methods

@@ -26,7 +26,6 @@ import Logger (Logger)
 import Logger as Logger
 import Rtsv2.Agents.EgestInstance as EgestInstance
 import Rtsv2.Agents.Locator.Egest (findEgest)
-import Rtsv2.Agents.Locator.Types (FailureReason(..), LocalOrRemote(..))
 import Rtsv2.Audit as Audit
 import Rtsv2.Config (LoadConfig)
 import Rtsv2.Handler.MimeType as MimeType
@@ -34,7 +33,7 @@ import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Utils (cryptoStrongToken)
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), Canary, makeUrl)
 import Shared.Rtsv2.Stream (EgestKey(..), SlotId, SlotRole)
-import Shared.Rtsv2.Types (Server, extractAddress)
+import Shared.Rtsv2.Types (Server, FailureReason(..), LocalOrRemote(..), extractAddress)
 import Stetson (HttpMethod(..), RestResult, StetsonHandler)
 import Stetson.Rest as Rest
 

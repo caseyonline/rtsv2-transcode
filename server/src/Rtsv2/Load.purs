@@ -6,11 +6,14 @@ module Rtsv2.Load
        , hasCapacityForEgestClient
        , hasCapacityForStreamRelay
        , hasCapacityForAggregator
+       , launchLocalGeneric
+       , launchLocalOrRemoteGeneric
        ) where
 
 import Prelude
 import Rtsv2.LoadTypes
 
+import Data.Either (Either(..))
 import Data.Foldable (foldl)
 import Data.Int (round, toNumber)
 import Data.Maybe (Maybe(..))
@@ -27,12 +30,40 @@ import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
+import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.IntraPoP as IntraPop
 import Rtsv2.Config (LoadConfig)
 import Rtsv2.Config as Config
 import Rtsv2.Names as Names
 import Shared.Rtsv2.Agent (SlotCharacteristics)
-import Shared.Rtsv2.Types (CurrentLoad(..), NetworkKbps(..), Percentage(..), ServerLoad(..), SpecInt(..), minLoad)
+import Shared.Rtsv2.Types (CurrentLoad(..), NetworkKbps(..), Percentage(..), Server(..), ServerLoad(..), SpecInt(..), LocalOrRemote(..), ResourceFailed(..), ResourceResp, minLoad)
+
+launchLocalGeneric :: ServerSelectionPredicate -> (Server -> Effect Boolean) -> Effect (ResourceResp Server)
+launchLocalGeneric pred launchLocal = do
+  idleServerResp <- IntraPoP.getThisIdleServer pred
+  launchResp <- launch idleServerResp
+  pure $ launchResp
+  where
+    launch (Left err) = pure (Left err)
+    launch (Right server) = do
+      resp <- launchLocal server
+      pure $ if resp then Right (Local server)
+             else Left LaunchFailed
+
+launchLocalOrRemoteGeneric :: ServerSelectionPredicate -> (Server -> Effect Boolean) -> (Server -> Effect Boolean) -> Effect (ResourceResp Server)
+launchLocalOrRemoteGeneric pred launchLocal launchRemote = do
+  idleServerResp <- IntraPoP.getIdleServer pred
+  launchResp <- launch idleServerResp
+  pure $ launchResp
+  where
+    launch :: Either ResourceFailed (LocalOrRemote Server) -> Effect (ResourceResp Server)
+    launch (Left err) = pure (Left err)
+    launch (Right resource) = do
+      resp <- launch' resource
+      pure $ if resp then Right resource
+             else Left LaunchFailed
+    launch' (Local local) = launchLocal local
+    launch' (Remote remote) = launchRemote remote
 
 hasCapacityForEgestInstance :: SlotCharacteristics -> LoadConfig -> ServerLoad -> LoadCheckResult
 hasCapacityForEgestInstance slotCharacteristics {costs: LoadCosts {egest: agentCosts}, limits} targetServer =

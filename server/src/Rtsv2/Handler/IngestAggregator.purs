@@ -17,13 +17,14 @@ import Erl.Utils as Erl
 import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
 import Rtsv2.Agents.IngestAggregatorSup as IngestAggregatorSup
 import Rtsv2.Agents.StreamRelayTypes (AggregatorBackupToPrimaryWsMessage, AggregatorPrimaryToBackupWsMessage, AggregatorToIngestWsMessage(..), DownstreamWsMessage(..), IngestToAggregatorWsMessage(..), RelayUpstreamWsMessage(..), WebSocketHandlerMessage(..))
+import Rtsv2.Config (LoadConfig)
 import Rtsv2.Handler.Helper (WebSocketHandlerResult(..), webSocketHandler)
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
+import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.LlnwApiTypes (StreamDetails)
 import Shared.Rtsv2.Stream (AggregatorKey(..), IngestKey(..), ProfileName, SlotId, SlotRole)
 import Shared.Rtsv2.Types (RelayServer(..), Server(..), ServerAddress)
-import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Utils (lazyCrashIfMissing)
 import Stetson (InnerStetsonHandler)
 import StetsonHelper (GetHandler, PostHandler, jsonResponse, processPostPayload)
@@ -31,8 +32,8 @@ import StetsonHelper (GetHandler, PostHandler, jsonResponse, processPostPayload)
 ingestAggregator :: SlotId -> SlotRole -> GetHandler (PublicState.IngestAggregator List)
 ingestAggregator slotId role = jsonResponse $ Just <$> (IngestAggregatorInstance.getState $ AggregatorKey slotId role)
 
-ingestAggregators :: PostHandler StreamDetails
-ingestAggregators = processPostPayload IngestAggregatorSup.startAggregator
+ingestAggregators :: LoadConfig -> PostHandler StreamDetails
+ingestAggregators loadConfig = processPostPayload (IngestAggregatorSup.startLocalAggregator loadConfig)
 
 type WsIngestState =
   { ingestKey :: IngestKey

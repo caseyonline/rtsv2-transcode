@@ -16,16 +16,13 @@ import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:), singleton)
 import Logger (Logger)
 import Logger as Logger
-import Rtsv2.Agents.Locator.Egest as EgestLocator
-import Rtsv2.Agents.Locator.Types (fromLocalOrRemote)
-import Rtsv2.Agents.Locator.Types as LocatorTypes
 import Rtsv2.Config as Config
-import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Utils (chainIntoEither)
 import Shared.Common (Url(Url))
 import Shared.Rtsv2.LlnwApiTypes (SlotLookupResult)
-import Shared.Rtsv2.Router.Endpoint (Canary, Endpoint(ClientPlayerControlE), makeUrl)
+import Shared.Rtsv2.Router.Endpoint (Canary)
 import Shared.Rtsv2.Stream (SlotId, SlotRole(..))
+import Shared.Rtsv2.Types (FailureReason)
 import SpudGun (bodyToJSON, JsonResponseError)
 import SpudGun as SpudGun
 import Stetson (StetsonHandler)
@@ -57,7 +54,7 @@ discover canary accountName streamName =
             pure $ Just urls
 
 
-    getSessionUrls :: SlotLookupResult -> Effect { slotId :: SlotId, urls :: List Url, errors :: List { error :: LocatorTypes.FailureReason, role :: SlotRole } }
+    getSessionUrls :: SlotLookupResult -> Effect { slotId :: SlotId, urls :: List Url, errors :: List { error :: FailureReason, role :: SlotRole } }
     getSessionUrls slot =
       let
         roles = Primary : Backup : nil
@@ -75,7 +72,7 @@ discover canary accountName streamName =
 
           pure { slotId: slot.id, errors, urls }
 
-    getSessionUrl :: SlotRole -> SlotLookupResult -> Effect (Either LocatorTypes.FailureReason Url)
+    getSessionUrl :: SlotRole -> SlotLookupResult -> Effect (Either FailureReason Url)
     getSessionUrl role slot =
       unsafeCoerce 1
       --todo PoPDefinition.getThisServer >>= EgestLocator.findEgest slot.id role <#> map ( fromLocalOrRemote >>> ((flip makeUrl) (ClientPlayerControlE canary slot.id role)))
