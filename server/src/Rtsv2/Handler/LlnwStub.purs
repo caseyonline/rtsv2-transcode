@@ -3,27 +3,37 @@ module Rtsv2.Handler.LlnwStub
        , streamAuth
        , streamPublish
        , slotLookup
+       , hlsPush
        , db
        , StubHost
        ) where
 
 import Prelude
+import Shared.Rtsv2.LlnwApiTypes
 
 import Data.Array as Array
-import Data.Either (hush)
+import Data.Either (either, hush)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Eq (genericEq)
 import Data.Maybe (Maybe(..), fromMaybe, fromMaybe', isNothing, isJust, fromJust)
 import Data.Newtype (unwrap, wrap)
+import Data.String (joinWith)
 import Effect (Effect)
+import Effect.Exception (throw)
+import Erl.Atom (Atom, atom)
 import Erl.Cowboy.Req (ReadBodyResult(..), Req, readBody, setBody)
 import Erl.Data.Binary (Binary)
 import Erl.Data.Binary.IOData (IOData, fromBinary, toBinary)
+import Erl.Data.Binary.IOData as IOData
 import Erl.Data.List (List, filter, head, nil, (:))
 import Erl.Data.Tuple (tuple2)
+import Erl.File as File
+import Erl.FileLib as FileLib
+import Logger (Logger)
+import Logger as Logger
+import Partial.Unsafe (unsafePartial)
 import Rtsv2.Agents.IngestSup as IngestSup
 import Rtsv2.Handler.MimeType as MimeType
-import Shared.Rtsv2.LlnwApiTypes (AuthType, PublishCredentials, SlotPublishAuthType(..), StreamAuth, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamPublish, SlotLookupResult)
 import Shared.Rtsv2.Stream (RtmpShortName, SlotRole(..))
 import Shared.UUID (fromString)
 import Shared.Utils (lazyCrashIfMissing)
@@ -31,7 +41,6 @@ import Simple.JSON (class ReadForeign, class WriteForeign, readJSON, writeJSON)
 import Stetson (HttpMethod(..), StetsonHandler)
 import Stetson.Rest as Rest
 import Unsafe.Coerce (unsafeCoerce)
-import Partial.Unsafe (unsafePartial)
 
 
 data StubHost = Any
@@ -74,9 +83,22 @@ db =
                                                rtmpStreamName: wrap "slot1_500",
                                                bitrate: 500000}
                                       ]
-                          , outputFormats : []
+                          , outputFormats : [ HlsOutput ]
                           }
-                 , push : []
+                 , push : [
+                    { protocol: HttpPut
+                    , formats: [ Hls ]
+                    , putBaseUrl: "http://172.16.171.1:3000/system/llnwstub/rts/v1/hls/test_slot_1/"
+                    , playbackBaseUrl: "example.com"
+                    , segmentDuration: 2
+                    , playlistDuration: 20
+                    , auth: 
+                      { type: "basic"
+                      , username: "user"
+                      , password: "password"
+                      }
+                    }
+                  ]
                  }
       }
 
@@ -266,6 +288,25 @@ postHelper lookupFun =
   --# Rest.preHook (preHookSpyState "LLNW:postHelper")
   # Rest.yeeha
 
+hlsPush :: Array String -> StetsonHandler Unit
+hlsPush path =
+  Rest.handler (\req -> Rest.initResult req unit)
+  # Rest.allowedMethods (Rest.result (PUT : nil))
+  # Rest.contentTypesProvided (\req state -> Rest.result (MimeType.any anyHandler : nil) req unit)
+  # Rest.contentTypesAccepted (\req state -> Rest.result (tuple2 "application/octet-stream" acceptPut : nil) req unit)
+  # Rest.yeeha
+
+  where
+  anyHandler req2 state2 = throw "this is not called"
+  acceptPut req state = do
+    logInfo "Got hls push" {path : joinWith "/" path}
+    body <- allBody req mempty
+    let fname = "/tmp/rtsv2_hls/" <> joinWith "/" path
+    _ <- FileLib.ensureDir fname
+    File.writeFile fname (IOData.fromBinary body) >>= 
+      either (const $ logInfo "Failed to write" {path : joinWith "/" path}) (const $ pure unit)
+    Rest.result true req state
+
 
 allBody :: Req -> IOData -> Effect Binary
 allBody req acc = do
@@ -276,3 +317,10 @@ allBody req acc = do
 
 binaryToString :: Binary -> String
 binaryToString = unsafeCoerce
+
+
+domain :: List Atom
+domain = atom <$> ("LlnwStub" : nil)
+
+logInfo :: forall a. Logger (Record a)
+logInfo = Logger.doLog domain Logger.info

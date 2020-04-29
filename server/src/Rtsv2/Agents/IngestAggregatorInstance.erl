@@ -9,6 +9,12 @@
 -include_lib("id3as_media/include/fun_processor.hrl").
 -include_lib("id3as_media/include/rtmp.hrl").
 -include_lib("id3as_rtc/include/rtp.hrl").
+
+-include_lib("id3as_media/include/ts.hrl").
+-include_lib("id3as_media/include/ts_encoder.hrl").
+-include_lib("id3as_media/include/ts_segment_generator.hrl").
+-include_lib("id3as_media/include/ts_akamai_writer.hrl").
+
 -ifdef(__RTC_FEAT_FEC).
 -include_lib("id3as_rtc/include/rtp_ulp_fec.hrl").
 -endif.
@@ -16,7 +22,7 @@
 -include("../../../../src/rtsv2_rtp.hrl").
 
 -export([
-         startWorkflowImpl/3,
+         startWorkflowImpl/4,
          stopWorkflowImpl/1,
          addLocalIngestImpl/2,
          addRemoteIngestImpl/3,
@@ -39,10 +45,8 @@
         }).
 
 
-startWorkflowImpl(SlotId, SlotRole, ProfileArray) ->
+startWorkflowImpl(SlotId, SlotRole, Profiles, PushDetails) ->
   fun() ->
-      Profiles = array:to_list(ProfileArray),
-
       {EnrichedProfiles, _NextProfileIndex} =
         lists:mapfoldl(fun({ IngestKey, StreamName, ProfileName }, ProfileIndex) ->
                            ProfileInfo =
@@ -64,7 +68,7 @@ startWorkflowImpl(SlotId, SlotRole, ProfileArray) ->
                        Profiles
                       ),
 
-        startWorkflow(SlotId, SlotRole, EnrichedProfiles)
+        startWorkflow(SlotId, SlotRole, EnrichedProfiles, PushDetails)
   end.
 
 stopWorkflowImpl(Handle) ->
@@ -117,7 +121,7 @@ workflowMessageMapperImpl(_) ->
 %%------------------------------------------------------------------------------
 %% Internal functions
 %%------------------------------------------------------------------------------
-startWorkflow(SlotId, SlotRole, Profiles) ->
+startWorkflow(SlotId, SlotRole, Profiles, PushDetails) ->
 
   SlotConfiguration = slot_configuration(SlotId, Profiles),
 
@@ -184,6 +188,9 @@ startWorkflow(SlotId, SlotRole, Profiles) ->
                                                subscribes_to = [{aggregate, ?audio_frames_with_source_id(ProfileName)},
                                                                 {aggregate, ?video_frames_with_source_id(ProfileName)}],
                                                processors = [
+                                                             ?include_if(PushDetails /= [], 
+                                                                  hls_processors(SlotId, PushDetails)),
+
                                                              #processor{name = audio_transcode,
                                                                         display_name = <<"Audio Transcode">>,
                                                                         subscribes_to = {outside_world, ?audio_frames},
@@ -311,6 +318,63 @@ startWorkflow(SlotId, SlotRole, Profiles) ->
   {ok, Handle} = id3as_workflow:workflow_handle(Pid),
 
   {Handle, Pids, SlotConfiguration}.
+
+hls_processors(_SlotId, [#{ segmentDuration := SegmentDuration, playlistDuration := PlaylistDuration, putBaseUrl := PutBaseUrl }]) ->
+  TsEncoderConfig = #ts_encoder_config{
+                       which_encoder = ts_simple_encoder,
+                       program_pid = 4096,
+                       pcr_pid = 256,
+                       streams = [
+                                  % #ts_stream {
+                                  %    pid = AudioPid,
+                                  %    index = 1,
+                                  %    pes_stream_type = ?STREAM_TYPE_AUDIO_AAC_ADTS,
+                                  %    pes_stream_id = ?PesAudioStreamId(1)
+                                  %   },
+                                  #ts_stream {
+                                     pid = 256,
+                                     index = 1,
+                                     pes_stream_type = ?STREAM_TYPE_VIDEO_H264,
+                                     pes_stream_id = ?PesVideoStreamId(1)
+                                    }
+                                 ]},
+
+  [
+    #processor{name = ts_mux,
+      display_name = <<"TS Mux">>,
+      subscribes_to = {outside_world, ?video_frames},
+      module = ts_encoder,
+      config = TsEncoderConfig
+      },
+
+
+    #processor{name = ts_segmenter,
+      display_name = <<"TS Segmenter">>,
+      subscribes_to = ?previous,
+      config = #ts_segment_generator_config {
+                  mode = video,
+                  segment_strategy = #ts_segment_generator_time_strategy {
+                                        minimum_duration = timer:seconds(SegmentDuration),
+                                        initial_sequence_number = 0
+                                      }
+                },
+      module = ts_segment_generator},
+
+
+    #processor{name = ts_writer_primary,
+      display_name = <<"TS Segment Writer">>,
+      subscribes_to = ?previous,
+      module = rtsv2_internal_hls_writer,
+      config =
+          #ts_akamai_writer_config{
+            post_url = PutBaseUrl,
+            max_playlist_length = PlaylistDuration div SegmentDuration,
+            target_segment_duration = SegmentDuration,
+            playlist_name = <<"stuff.m3u8">>,
+            version_string = <<"">> %% ?BUILD_VERSION_COMMIT
+          }
+    }
+  ].
 
 mux_to_rtp(#frame{ profile = #audio_profile{ codec = Codec } } = Frame, { AudioEgest, VideoEgest }) ->
   { NewAudioEgest, RTPs } = rtp_opus_egest:step(AudioEgest, Frame),

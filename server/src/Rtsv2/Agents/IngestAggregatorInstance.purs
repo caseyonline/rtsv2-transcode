@@ -68,6 +68,7 @@ import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
+import Erl.Data.List as List
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
 import Erl.Data.Tuple (Tuple3, toNested3, tuple3)
@@ -94,7 +95,7 @@ import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.JsonLd as JsonLd
-import Shared.Rtsv2.LlnwApiTypes (SlotProfile(..), StreamDetails, slotDetailsToSlotCharacteristics)
+import Shared.Rtsv2.LlnwApiTypes (SlotProfile(..), StreamDetails, HlsPushSpec, slotDetailsToSlotCharacteristics)
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrlAddr, makeWsUrl)
 import Shared.Rtsv2.Stream (AggregatorKey(..), IngestKey(..), ProfileName, SlotId, SlotRole(..), ingestKeyToAggregatorKey)
 import Shared.Rtsv2.Types (DeliverTo, RelayServer, Server, ServerAddress, extractAddress)
@@ -102,7 +103,7 @@ import Shared.UUID (UUID)
 import WsGun as WsGun
 
 foreign import data WorkflowHandle :: Type
-foreign import startWorkflowImpl :: UUID -> SlotRole -> Array (Tuple3 IngestKey String String) -> Effect (Tuple3 WorkflowHandle (List Pid) SlotConfiguration)
+foreign import startWorkflowImpl :: UUID -> SlotRole -> List (Tuple3 IngestKey String String) -> List HlsPushSpec -> Effect (Tuple3 WorkflowHandle (List Pid) SlotConfiguration)
 foreign import stopWorkflowImpl :: WorkflowHandle -> Effect Unit
 foreign import addLocalIngestImpl :: WorkflowHandle -> IngestKey -> Effect Unit
 foreign import addRemoteIngestImpl :: WorkflowHandle -> IngestKey -> String -> Effect Unit
@@ -433,7 +434,9 @@ init streamDetails@{role: slotRole, slot: slot@{id: slotId}} stateServerName = d
   announceLocalAggregatorIsAvailable aggregatorKey (slotDetailsToSlotCharacteristics slot)
   Gen.registerExternalMapping thisServerName (\m -> Workflow <$> workflowMessageMapperImpl m)
   Gen.registerExternalMapping thisServerName (\m -> Gun <$> (WsGun.messageMapper m))
-  workflowHandleAndPidsAndSlotConfiguration <- startWorkflowImpl (unwrap streamDetails.slot.id) streamDetails.role $ mkKey <$> streamDetails.slot.profiles
+  workflowHandleAndPidsAndSlotConfiguration <- startWorkflowImpl (unwrap streamDetails.slot.id) streamDetails.role
+                                                  (List.fromFoldable $ mkKey <$> streamDetails.slot.profiles)
+                                                  (List.fromFoldable $ streamDetails.push)
   Gen.registerTerminate thisServerName terminate
   void $ Bus.subscribe thisServerName IntraPoP.bus IntraPoPBus
   let

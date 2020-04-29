@@ -15,10 +15,11 @@ module Shared.Rtsv2.LlnwApiTypes
        , StreamPublish(..)
        , StreamDetails
        , SlotDetails
-       , StreamOutputFormat
+       , StreamOutputFormat(..)
        , HlsPushSpec
+       , HlsPushProtocol(..)
        , SlotProfile(..)
-       , HlsPushSpecFormat
+       , HlsPushSpecFormat(..)
        , HlsPushAuth
        , SlotLookupResult
        , slotDetailsToSlotCharacteristics
@@ -96,15 +97,22 @@ type SlotDetails =
   }
 
 type HlsPushAuth =
-  { username :: String
+  { type :: String
+  , username :: String
   , password :: String
   }
 
 data HlsPushSpecFormat = Hls
 
+data HlsPushProtocol = HttpPut
+
 type HlsPushSpec =
-  { format :: HlsPushSpecFormat
-  , baseUrl :: String
+  { protocol :: HlsPushProtocol
+  , formats :: Array HlsPushSpecFormat
+  , putBaseUrl :: String
+  , playbackBaseUrl :: String
+  , segmentDuration :: Int
+  , playlistDuration :: Int
   , auth :: HlsPushAuth
   }
 
@@ -195,6 +203,17 @@ instance compareSlotPublishAuthType :: Ord SlotPublishAuthType where
 instance showSlotPublishAuthType :: Show SlotPublishAuthType where
   show = genericShow
 
+derive instance genericHlsPushFormat :: Generic HlsPushSpecFormat _
+
+instance showHlsPushFormat :: Show HlsPushSpecFormat where
+  show Hls = "Hls"
+
+instance eqHlsPushFormat :: Eq HlsPushSpecFormat where
+  eq = genericEq
+
+instance compareHlsPushFormat :: Ord HlsPushSpecFormat where
+  compare = genericCompare
+
 instance readForeignHlsPushSpecFormat :: ReadForeign HlsPushSpecFormat where
   readImpl =
     readString >=> parseAgent
@@ -211,9 +230,30 @@ instance writeForeignHlsPushSpecFormat :: WriteForeign HlsPushSpecFormat where
     where
       toString Hls = "hls"
 
-derive instance eqHlsPushSpecFormat :: Eq HlsPushSpecFormat
-instance showHlsPushSpecFormat :: Show HlsPushSpecFormat where
-  show Hls = "HLS"
+derive instance genericHlsPushProtocol :: Generic HlsPushProtocol _
+
+instance showHlsPushProtocol :: Show HlsPushProtocol where
+  show = genericShow
+
+instance eqHlsPushProtocol :: Eq HlsPushProtocol where
+  eq = genericEq
+
+instance readForeignHlsPushProtocol :: ReadForeign HlsPushProtocol where
+  readImpl =
+    readString >=> parseAgent
+    where
+      error s = singleton (ForeignError (errorString s))
+      parseAgent s = except $ note (error s) (toType s)
+      toType "http_put" = pure HttpPut
+      toType unknown = Nothing
+      errorString s = "Unknown HlsPushSpecProtocol: " <> s
+
+instance writeForeignHlsPushProtocol :: WriteForeign HlsPushProtocol where
+  writeImpl =
+    toString >>> unsafeToForeign
+    where
+      toString HttpPut = "http_put"
+
 
 instance readForeignStreamOutputFormat :: ReadForeign StreamOutputFormat where
   readImpl =
@@ -240,6 +280,8 @@ instance showStreamOutputFormat :: Show StreamOutputFormat where
   show WebRTCOutput = "WebRtc"
   show RtmpOutput = "RTMP"
   show HlsOutput = "HLS"
+
+
 
 derive instance newtypeStreamAuth :: Newtype StreamAuth _
 derive instance genericStreamAuth :: Generic StreamAuth _
@@ -329,3 +371,4 @@ instance writeForeignStreamPublish :: WriteForeign StreamPublish where
         writeImpl
           $ rename (SProxy :: SProxy "rtmpShortName") (SProxy :: SProxy "shortname")
           $ rename (SProxy :: SProxy "rtmpStreamName") (SProxy :: SProxy "streamName") r
+

@@ -106,6 +106,7 @@ data Endpoint
   | StreamAuthE
   | StreamPublishE
   | SlotLookupE String String
+  | HlsPushE (Array String)
 
   | WorkflowsE
   | WorkflowGraphE String
@@ -193,6 +194,7 @@ endpoint = root $ sum
   , "StreamAuthTypeE"                                  : "system" / "llnwstub" / "rts" / "v1" / path "streamauthtype" noArgs
   , "StreamAuthE"                                      : "system" / "llnwstub" / "rts" / "v1" / path "streamauth" noArgs
   , "StreamPublishE"                                   : "system" / "llnwstub" / "rts" / "v1" / path "streampublish" noArgs
+  , "HlsPushE"                                         : "system" / "llnwstub" / "rts" / "v1" / "hls" / rest
 
   , "WorkflowsE"                                       : "system" / path "workflows" noArgs -- URL duplicated in Web.purs
   , "WorkflowGraphE"                                   : "system" / "workflows" / segment / "graph" -- URL duplicated in Web.purs
