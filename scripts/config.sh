@@ -19,6 +19,13 @@ case "${USER}" in
         ;;
     esac
     ;;
+  nicholaw)
+    MEDIA_FILE=$HOME/id3as/media_samples/video/stargate__h264-8bit-720x400pvariable_mp2-stereo_1h41m37s.ts
+    MEDIA_FILE_500=${MEDIA_FILE}
+    MEDIA_FILE_1000=${MEDIA_FILE}
+
+    ;;
+
   *)
     MEDIA_FILE=../../media_samples/video/stargate-no-bframes__h264-8bit-720x400pvariable_mp2-stereo_1h41m37s.ts
     MEDIA_FILE_500=${MEDIA_FILE}
