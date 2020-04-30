@@ -6,6 +6,7 @@ module Rtsv2.LoadTypes
  , LoadLimits(..)
  , LoadCosts(..)
  , LoadWatermarks(..)
+ , PredictedLoad(..)
  , HardwareFactor(..)
  , ServerSelectionPredicate
  , canLaunch
@@ -16,6 +17,7 @@ import Prelude
 import Data.Maybe (Maybe)
 import Data.Newtype (class Newtype, unwrap, wrap)
 import Erl.Data.List (List)
+import Shared.Common (Milliseconds)
 import Shared.Rtsv2.Types (NetworkKbps, Percentage, ServerLoad, SpecInt)
 import Simple.JSON (class ReadForeign)
 
@@ -60,6 +62,10 @@ newtype LoadCosts = LoadCosts { rtmpIngest :: LoadAgentCosts
                               , egestInstance :: LoadAgentCosts
                               , egestClient :: LoadAgentCosts
                               }
+
+newtype PredictedLoad = PredictedLoad { cost :: LoadFixedCost
+                                      , decayTime :: Milliseconds
+                                      }
 
 canLaunch :: LoadCheckResult -> Boolean
 canLaunch Red = false

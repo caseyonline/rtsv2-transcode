@@ -34,7 +34,7 @@ networkUtilInitImpl() ->
 
 networkUtilImpl(undefined) ->
   fun() ->
-      {{just, 0}, undefined}
+      {0, undefined}
   end;
 
 networkUtilImpl(Queue) ->
@@ -45,8 +45,8 @@ networkUtilImpl(Queue) ->
       Queue3 = expire_entries(Now - 10000, Queue2),
       RollingBitrate = bitrate(Queue3),
       {case RollingBitrate of
-         undefined -> {nothing};
-         _ -> {just, RollingBitrate}
+         undefined -> 0;
+         _ -> RollingBitrate
        end, Queue3}
   end.
 
