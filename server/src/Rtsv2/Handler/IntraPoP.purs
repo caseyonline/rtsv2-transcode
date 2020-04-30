@@ -7,7 +7,7 @@ module Rtsv2.Handler.IntraPoP
 
 import Prelude
 
-import Data.Either (hush)
+import Data.Either (Either(..), hush)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (unwrap)
 import Data.Traversable (traverse)
@@ -17,10 +17,10 @@ import Erl.Data.List (List, catMaybes, concat, nil, nub, null, (:))
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.IntraPoP as IntraPoPAgent
 import Shared.JsonLd as JsonLd
+import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl, makeUrlAddr)
 import Shared.Rtsv2.Stream (AggregatorKey(..), ProfileName, SlotId, SlotRole(..))
 import Shared.Rtsv2.Types (Server, ServerAddress, extractAddress)
-import Shared.Rtsv2.Agent.State as PublicState
 import Simple.JSON (class ReadForeign)
 import SpudGun as SpudGun
 import StetsonHelper (GetHandler, PostHandler, jsonResponse, processPostPayload, textResponse)
@@ -31,7 +31,7 @@ leader = textResponse do
   pure $ (unwrap <<< extractAddress <$> mLeader)
 
 testHelper :: PostHandler IntraPoP.TestHelperPayload
-testHelper =  processPostPayload IntraPoP.testHelper
+testHelper = processPostPayload $ IntraPoP.testHelper >>> (map (const (Right unit :: Either Unit Unit)))
 
 publicState :: GetHandler (PublicState.IntraPoP List)
 publicState = jsonResponse $ Just <$> IntraPoP.getPublicState

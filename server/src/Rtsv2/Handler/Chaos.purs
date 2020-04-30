@@ -4,6 +4,7 @@ module Rtsv2.Handler.Chaos
 
 import Prelude
 
+import Data.Either (Either(..))
 import Data.Newtype (unwrap)
 import Effect (Effect)
 import Erl.Atom (atom)
@@ -15,7 +16,7 @@ import StetsonHelper (PostHandler, processPostPayload)
 foreign import chaosImpl :: ChaosPayload -> Foreign -> Effect Unit
 
 chaos :: PostHandler ChaosPayload
-chaos = processPostPayload (\p@{name} -> chaosImpl p (chaosNameToErlang name))
+chaos = processPostPayload (\p@{name} -> (const $ (Right unit :: Either Unit Unit)) <$> chaosImpl p (chaosNameToErlang name))
 
 chaosNameToErlang :: ChaosName -> Foreign
 chaosNameToErlang (Local string) = unsafeToForeign string
