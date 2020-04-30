@@ -56,7 +56,7 @@ findOrStart loadConfig payload@{slotCharacteristics} = do
           pure $ Left err
 
         Right (Local server) -> do
-          _ <- startRelay { slotId: payload.slotId, slotRole: payload.slotRole, aggregator: payload.aggregator, slotCharacteristics}
+          _ <- startRelay payload
           pure $ Right $ Local server
 
         Right (Remote server) -> do
