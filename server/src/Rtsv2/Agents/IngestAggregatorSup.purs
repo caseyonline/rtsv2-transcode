@@ -9,12 +9,14 @@ module Rtsv2.Agents.IngestAggregatorSup
 import Prelude
 
 import Data.Either (either)
+import Data.Maybe (maybe)
 import Effect (Effect)
 import Erl.Data.List (nil, (:))
 import Pinto (StartChildResult, SupervisorName, isRegistered)
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStartTemplate, childType)
 import Pinto.Sup as Sup
+import Pinto.Types (startOkAS)
 import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
 import Rtsv2.Agents.IngestAggregatorInstanceSup as IngestAggregatorInstanceSup
@@ -43,8 +45,7 @@ startLocalAggregator loadConfig streamDetails =
     Load.launchLocalGeneric (Load.hasCapacityForAggregator slotCharacteristics loadConfig) launchLocal
   where
     launchLocal _ = do
-      void $ startAggregator streamDetails
-      pure true
+      (maybe false (const true) <<< startOkAS) <$> startAggregator streamDetails
 
 startLocalOrRemoteAggregator :: LoadConfig -> StreamDetails -> Effect (ResourceResp Server)
 startLocalOrRemoteAggregator loadConfig streamDetails =
@@ -54,12 +55,9 @@ startLocalOrRemoteAggregator loadConfig streamDetails =
     Load.launchLocalOrRemoteGeneric (Load.hasCapacityForAggregator slotCharacteristics loadConfig) launchLocal launchRemote
   where
     launchLocal _ = do
-      void $ startAggregator streamDetails
-      pure true
-    launchRemote idleServer = do
-      let
-        url = makeUrl idleServer IngestAggregatorsE
-      either (const false) (const true) <$> SpudGun.postJson url streamDetails
+      (maybe false (const true) <<< startOkAS) <$> startAggregator streamDetails
+    launchRemote idleServer =
+      either (const false) (const true) <$> SpudGun.postJson (makeUrl idleServer IngestAggregatorsE) streamDetails
 
 ------------------------------------------------------------------------------
 -- Supervisor callbacks

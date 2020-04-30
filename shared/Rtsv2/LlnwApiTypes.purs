@@ -133,7 +133,7 @@ type SlotLookupResult =
 slotDetailsToSlotCharacteristics :: SlotDetails -> SlotCharacteristics
 slotDetailsToSlotCharacteristics {profiles} =
   { numProfiles: length profiles
-  , totalBitrate: foldl (\acc (SlotProfile {bitrate}) -> acc + bitrate) 0 profiles
+  , totalBitrate: (foldl (\acc (SlotProfile {bitrate}) -> acc + bitrate) 0 profiles) / 1000
   }
 
 --------------------------------------------------------------------------------
@@ -371,4 +371,3 @@ instance writeForeignStreamPublish :: WriteForeign StreamPublish where
         writeImpl
           $ rename (SProxy :: SProxy "rtmpShortName") (SProxy :: SProxy "shortname")
           $ rename (SProxy :: SProxy "rtmpStreamName") (SProxy :: SProxy "streamName") r
-

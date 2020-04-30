@@ -88,7 +88,8 @@ import Record as Record
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
 import Rtsv2.Health (Health, percentageToHealth)
-import Rtsv2.LoadTypes (LoadCheckResult(..), ServerSelectionPredicate)
+import Rtsv2.LoadTypes as LoadTypes
+import Rtsv2.LoadTypes (LoadCheckResult, ServerSelectionPredicate)
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Serf (IpAndPort, LamportClock)
@@ -323,14 +324,14 @@ toLocalOrRemote thisServer server =
   else Remote server
 
 getThisIdleServer :: ServerSelectionPredicate -> Effect (Either ResourceFailed Server)
-getThisIdleServer pred = Gen.call serverName
-  (\state@{thisServer, load} ->
+getThisIdleServer pred = Gen.doCall serverName
+  (\state@{thisServer, load} -> do
       let
         thisServerLoad = toServerLoad thisServer load
-      in
-        if pred thisServerLoad < Red
-        then CallReply (Right $ thisServer) state
-        else CallReply (Left NoCapacity) state
+      _ <- logInfo "HERE WITH" {thisServer, load, pred: pred thisServerLoad}
+      pure $ if LoadTypes.canLaunch $ pred thisServerLoad
+             then CallReply (Right $ thisServer) state
+             else CallReply (Left NoCapacity) state
   )
 
 --------------------------------------------------------------------------------
@@ -341,7 +342,7 @@ getIdleServer pred = Gen.doCall serverName
   (\state@{thisServer, members, load} -> do
       let
         thisServerLoad = toServerLoad thisServer load
-      if pred thisServerLoad < Red
+      if LoadTypes.canLaunch $ pred thisServerLoad
       then pure $ CallReply (Right $ Local thisServer) state
       else do
         _ <- logInfo "here with" {members: values members}
@@ -352,7 +353,7 @@ getIdleServer pred = Gen.doCall serverName
                                         serverWithLoad = serverLoad memberInfo
                                         loadCheckResult = pred serverWithLoad
                                       in
-                                        if loadCheckResult < Red then
+                                        if LoadTypes.canLaunch loadCheckResult then
                                           Just (Tuple server loadCheckResult)
                                         else
                                            Nothing

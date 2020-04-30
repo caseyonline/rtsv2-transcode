@@ -8,6 +8,7 @@ module Rtsv2.LoadTypes
  , LoadWatermarks(..)
  , HardwareFactor(..)
  , ServerSelectionPredicate
+ , canLaunch
  ) where
 
 import Prelude
@@ -15,7 +16,7 @@ import Prelude
 import Data.Maybe (Maybe)
 import Data.Newtype (class Newtype, unwrap, wrap)
 import Erl.Data.List (List)
-import Shared.Rtsv2.Types (NetworkKbps, Percentage, ServerLoad(..), SpecInt)
+import Shared.Rtsv2.Types (NetworkKbps, Percentage, ServerLoad, SpecInt)
 import Simple.JSON (class ReadForeign)
 
 type ServerSelectionPredicate = ServerLoad -> LoadCheckResult
@@ -45,6 +46,7 @@ newtype LoadAgentCosts = LoadAgentCosts { fixed :: LoadFixedCost
                                         , perProfile :: LoadVariableCost
                                         , perKbps :: LoadVariableCost
                                         , hardwareFactors :: List HardwareFactor
+                                        , limitOverrides :: Maybe LoadLimits
                                         }
 
 newtype LoadLimits = LoadLimits { network :: LoadWatermarks
@@ -55,8 +57,13 @@ newtype LoadCosts = LoadCosts { rtmpIngest :: LoadAgentCosts
                               , webRTCIngest :: LoadAgentCosts
                               , ingestAggregator :: LoadAgentCosts
                               , streamRelay :: LoadAgentCosts
-                              , egest :: LoadAgentCosts
+                              , egestInstance :: LoadAgentCosts
+                              , egestClient :: LoadAgentCosts
                               }
+
+canLaunch :: LoadCheckResult -> Boolean
+canLaunch Red = false
+canLaunch _ = true
 
 ------------------------------------------------------------------------------
 -- Type classes

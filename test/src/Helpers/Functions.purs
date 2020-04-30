@@ -261,7 +261,7 @@ allNodesBar :: Node -> Array Node -> Array Node
 allNodesBar node nodes = delete node nodes
 
 maxOut :: Node -> Aff Unit
-maxOut server = HTTP.setLoad server 95.0 >>= A.assertStatusCode 204 >>= as ("set load on " <> toAddrFromNode server)
+maxOut server = HTTP.setLoad server 91.0 >>= A.assertStatusCode 204 >>= as ("set load on " <> toAddrFromNode server)
 
 aggregatorNotPresent :: SlotId -> Node -> Aff Unit
 aggregatorNotPresent slot server = HTTP.getAggregatorStats server slot >>= A.assertStatusCode 404 >>= as ("aggregator not on " <> toAddrFromNode server)

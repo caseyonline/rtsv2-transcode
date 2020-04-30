@@ -27,6 +27,7 @@ import Rtsv2.Agents.IngestInstance as IngestInstance
 import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
 import Rtsv2.Agents.IngestRtmpCrypto (AdobeContextParams, AdobePhase1Params, AdobePhase2Params, LlnwContextParams, LlnwPhase1Params, LlnwPhase2Params, Phase2Params(..), checkCredentials)
 import Rtsv2.Agents.IngestRtmpCrypto as IngestRtmpCrypto
+import Rtsv2.Config (LoadConfig)
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
 import Rtsv2.Names as Names
@@ -72,24 +73,25 @@ type State =
 init :: forall a. a -> Effect State
 init _ = do
   interfaceIp <- Env.publicInterfaceIp
+  loadConfig <- Config.loadConfig
   {port, nbAcceptors} <- Config.rtmpIngestConfig
   {streamAuthTypeUrl, streamAuthUrl, streamPublishUrl} <- Config.llnwApiConfig
   let
     callbacks :: Callbacks
-    callbacks = { init: mkFn3 onConnectCallback
+    callbacks = { init: mkFn3 (onConnectCallback loadConfig)
                 }
   crashIfLeft =<< startServerImpl Left (Right unit) interfaceIp port nbAcceptors callbacks
   pure $ {}
 
-onConnectCallback :: String -> String -> Foreign -> (Effect RtmpAuthResponse)
-onConnectCallback host rtmpShortName foreignQuery =
+onConnectCallback :: LoadConfig -> String -> String -> Foreign -> (Effect RtmpAuthResponse)
+onConnectCallback loadConfig host rtmpShortName foreignQuery =
   let
     authRequest = rtmpQueryToPurs foreignQuery
   in
-    processAuthRequest host rtmpShortName authRequest
+    processAuthRequest loadConfig host rtmpShortName authRequest
 
-onStreamCallback :: String -> String -> String -> String -> Int -> String -> Pid -> Foreign -> Effect Unit
-onStreamCallback host rtmpShortNameStr username remoteAddress remotePort rtmpStreamNameStr rtmpPid publishArgs = do
+onStreamCallback :: LoadConfig -> String -> String -> String -> String -> Int -> String -> Pid -> Foreign -> Effect Unit
+onStreamCallback loadConfig host rtmpShortNameStr username remoteAddress remotePort rtmpStreamNameStr rtmpPid publishArgs = do
   let
     rtmpShortName = wrap rtmpShortNameStr
     rtmpStreamName = wrap rtmpStreamNameStr
@@ -114,13 +116,14 @@ onStreamCallback host rtmpShortNameStr username remoteAddress remotePort rtmpStr
           let
             ingestKey = makeIngestKey profileName streamDetails
           self <- self
-          maybeStarted <- IngestInstanceSup.startIngest ingestKey streamPublish streamDetails remoteAddress remotePort self
+          maybeStarted <- IngestInstanceSup.startLocalRtmpIngest loadConfig ingestKey streamPublish streamDetails remoteAddress remotePort self
           case maybeStarted of
-            Just unit -> do
+            Right _ -> do
               startWorkflowAndBlock rtmpPid publishArgs ingestKey
               IngestInstance.stopIngest ingestKey
               pure unit
-            Nothing ->
+            Left error -> do
+              _ <- logWarning "Attempt to start local RTMP ingest failed" {error}
               pure unit
   where
     findProfile ingestStreamName streamDetails@{ slot: { profiles } } =
@@ -129,27 +132,27 @@ onStreamCallback host rtmpShortNameStr username remoteAddress remotePort rtmpStr
     makeIngestKey profileName {role, slot: {id: slotId}} =
       IngestKey slotId role profileName
 
-processAuthRequest :: String -> String -> RtmpAuthRequest -> Effect RtmpAuthResponse
-processAuthRequest host rtmpShortName Initial = do
+processAuthRequest :: LoadConfig -> String -> String -> RtmpAuthRequest -> Effect RtmpAuthResponse
+processAuthRequest _loadConfig host rtmpShortName Initial = do
   authType <- getStreamAuthType host rtmpShortName
   pure $ fromMaybe RejectRequest $ InitialResponse <$> authType
 
-processAuthRequest host rtmpShortName (AdobePhase1 {username}) = do
+processAuthRequest _loadConfig host rtmpShortName (AdobePhase1 {username}) = do
   context <- IngestRtmpCrypto.newAdobeContext username
   pure $ AdobePhase1Response username context
 
-processAuthRequest host rtmpShortName (LlnwPhase1 {username}) = do
+processAuthRequest _loadConfig host rtmpShortName (LlnwPhase1 {username}) = do
   context <- IngestRtmpCrypto.newLlnwContext username
   pure $ LlnwPhase1Response username context
 
-processAuthRequest host rtmpShortName (AdobePhase2 authParams@{username}) =
-  processPhase2Authentication host rtmpShortName username (AdobePhase2P authParams)
+processAuthRequest loadConfig host rtmpShortName (AdobePhase2 authParams@{username}) =
+  processPhase2Authentication loadConfig host rtmpShortName username (AdobePhase2P authParams)
 
-processAuthRequest host rtmpShortName (LlnwPhase2 authParams@{username}) =
-  processPhase2Authentication host rtmpShortName username (LlnwPhase2P authParams)
+processAuthRequest loadConfig host rtmpShortName (LlnwPhase2 authParams@{username}) =
+  processPhase2Authentication loadConfig host rtmpShortName username (LlnwPhase2P authParams)
 
-processPhase2Authentication :: String -> String -> String -> Phase2Params -> Effect RtmpAuthResponse
-processPhase2Authentication host rtmpShortName username authParams = do
+processPhase2Authentication :: LoadConfig -> String -> String -> String -> Phase2Params -> Effect RtmpAuthResponse
+processPhase2Authentication loadConfig host rtmpShortName username authParams = do
   let
     authType = case authParams of
                  AdobePhase2P _ -> Adobe
@@ -160,7 +163,7 @@ processPhase2Authentication host rtmpShortName username authParams = do
       pure RejectRequest
     Just publishCredentials -> do
       ok <- checkCredentials host rtmpShortName username publishCredentials authParams
-      if ok then pure $ AcceptRequest (mkFn5 (onStreamCallback host rtmpShortName username))
+      if ok then pure $ AcceptRequest (mkFn5 (onStreamCallback loadConfig host rtmpShortName username))
       else pure RejectRequest
 
 startWorkflowAndBlock :: Pid -> Foreign -> IngestKey -> Effect Unit
@@ -200,3 +203,6 @@ domain = atom <$> (show Agent.Ingest : "Instance" : nil)
 
 logInfo :: forall a. Logger (Record a)
 logInfo = Logger.doLog domain Logger.info
+
+logWarning :: forall a. Logger (Record a)
+logWarning = Logger.doLog domain Logger.warning

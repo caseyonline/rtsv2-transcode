@@ -6,17 +6,19 @@ module Rtsv2.Load
        , hasCapacityForEgestClient
        , hasCapacityForStreamRelay
        , hasCapacityForAggregator
+       , hasCapacityForRtmpIngest
+       , hasCapacityForWebRTCIngest
        , launchLocalGeneric
        , launchLocalOrRemoteGeneric
        ) where
 
 import Prelude
-import Rtsv2.LoadTypes
 
+import Data.Array (elemIndex)
 import Data.Either (Either(..))
 import Data.Foldable (foldl)
 import Data.Int (round, toNumber)
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (unwrap, wrap)
 import Data.Set (fromFoldable)
 import Data.Set as Set
@@ -24,7 +26,7 @@ import Effect (Effect)
 import Erl.Atom (Atom)
 import Erl.Data.List (List, singleton)
 import Erl.Data.Tuple (Tuple2, uncurry2)
-import Logger (Logger, spy)
+import Logger (Logger)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen (CallResult(..), CastResult(..))
@@ -34,9 +36,10 @@ import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.IntraPoP as IntraPop
 import Rtsv2.Config (LoadConfig)
 import Rtsv2.Config as Config
+import Rtsv2.LoadTypes (HardwareFactor(..), LoadAgentCosts(..), LoadCheckResult(..), LoadCosts(..), LoadFixedCost(..), LoadLimits(..), LoadVariableCost(..), LoadWatermarks(..), ServerSelectionPredicate)
 import Rtsv2.Names as Names
-import Shared.Rtsv2.Agent (SlotCharacteristics)
-import Shared.Rtsv2.Types (CurrentLoad(..), NetworkKbps(..), Percentage(..), Server(..), ServerLoad(..), SpecInt(..), LocalOrRemote(..), ResourceFailed(..), ResourceResp, minLoad)
+import Shared.Rtsv2.Agent (Agent(..), SlotCharacteristics)
+import Shared.Rtsv2.Types (CurrentLoad(..), LocalOrRemote(..), NetworkKbps(..), Percentage(..), ResourceFailed(..), ResourceResp, Server, ServerLoad(..), SpecInt(..), minLoad)
 
 launchLocalGeneric :: ServerSelectionPredicate -> (Server -> Effect Boolean) -> Effect (ResourceResp Server)
 launchLocalGeneric pred launchLocal = do
@@ -66,28 +69,28 @@ launchLocalOrRemoteGeneric pred launchLocal launchRemote = do
     launch' (Remote remote) = launchRemote remote
 
 hasCapacityForEgestInstance :: SlotCharacteristics -> LoadConfig -> ServerLoad -> LoadCheckResult
-hasCapacityForEgestInstance slotCharacteristics {costs: LoadCosts {egest: agentCosts}, limits} targetServer =
-  hasCapacity (spy "payload" slotCharacteristics) (spy "candidate" targetServer) agentCosts limits
+hasCapacityForEgestInstance =
+  hasCapacity _.egestInstance Egest
 
 hasCapacityForEgestClient :: SlotCharacteristics -> LoadConfig -> ServerLoad -> LoadCheckResult
-hasCapacityForEgestClient slotCharacteristics {costs: LoadCosts {egest: agentCosts}, limits} targetServer =
-  hasCapacity slotCharacteristics targetServer agentCosts limits
+hasCapacityForEgestClient =
+  hasCapacity _.egestClient Egest
 
 hasCapacityForStreamRelay :: SlotCharacteristics -> LoadConfig -> ServerLoad -> LoadCheckResult
-hasCapacityForStreamRelay slotCharacteristics {costs: LoadCosts {streamRelay: agentCosts}, limits} targetServer =
-  hasCapacity slotCharacteristics targetServer agentCosts limits
+hasCapacityForStreamRelay  =
+  hasCapacity _.streamRelay StreamRelay
 
 hasCapacityForAggregator :: SlotCharacteristics -> LoadConfig -> ServerLoad -> LoadCheckResult
-hasCapacityForAggregator slotCharacteristics {costs: LoadCosts {ingestAggregator: agentCosts}, limits} targetServer =
-  hasCapacity slotCharacteristics targetServer agentCosts limits
+hasCapacityForAggregator =
+  hasCapacity _.ingestAggregator IngestAggregator
 
 hasCapacityForRtmpIngest :: SlotCharacteristics -> LoadConfig -> ServerLoad -> LoadCheckResult
-hasCapacityForRtmpIngest slotCharacteristics {costs: LoadCosts {webRTCIngest: agentCosts}, limits} targetServer =
-  hasCapacity slotCharacteristics targetServer agentCosts limits
+hasCapacityForRtmpIngest =
+  hasCapacity _.rtmpIngest Ingest
 
 hasCapacityForWebRTCIngest :: SlotCharacteristics -> LoadConfig -> ServerLoad -> LoadCheckResult
-hasCapacityForWebRTCIngest slotCharacteristics {costs: LoadCosts {rtmpIngest: agentCosts}, limits} targetServer =
-  hasCapacity slotCharacteristics targetServer agentCosts limits
+hasCapacityForWebRTCIngest =
+  hasCapacity _.webRTCIngest Ingest
 
 foreign import data CpuState :: Type
 foreign import cpuUtilInitImpl :: Effect CpuState
@@ -178,20 +181,32 @@ maybeStartTimer {monitorLoad, loadAnnounceMs} | monitorLoad == true =
 maybeStartTimer {monitorLoad, loadAnnounceMs} | otherwise =
   pure unit
 
-hasCapacity :: SlotCharacteristics -> ServerLoad -> LoadAgentCosts -> LoadLimits -> LoadCheckResult
-hasCapacity slotCharacteristics targetServer agentCosts limits =
-  let
-    ServerLoad {maxCpuCapacity, maxNetworkCapacity, load} = targetServer
-    CurrentLoad {currentCpu, currentNetwork} = load
-    LoadLimits {cpu: cpuLimits, network: networkLimits} = limits
+hasCapacity :: ({ egestClient :: LoadAgentCosts
+                , egestInstance :: LoadAgentCosts
+                , ingestAggregator :: LoadAgentCosts
+                , rtmpIngest :: LoadAgentCosts
+                , streamRelay :: LoadAgentCosts
+                , webRTCIngest :: LoadAgentCosts
+                } -> LoadAgentCosts) -> Agent -> SlotCharacteristics -> LoadConfig -> ServerLoad -> LoadCheckResult
+hasCapacity extractor agent slotCharacteristics {limits: defaultLimits, costs: LoadCosts costs} targetServer@(ServerLoad {agents}) =
+  case elemIndex agent agents of
+    Just _ ->
+      let
+        agentCosts@(LoadAgentCosts {limitOverrides}) = extractor costs
+        limits = fromMaybe defaultLimits limitOverrides
+        ServerLoad {maxCpuCapacity, maxNetworkCapacity, load} = targetServer
+        CurrentLoad {currentCpu, currentNetwork} = load
+        LoadLimits {cpu: cpuLimits, network: networkLimits} = limits
 
-    LoadFixedCost {cpu: additionalCpu, network: additionalNetwork} = agentCostsToFixed slotCharacteristics targetServer agentCosts
-    proposedCpu = currentCpu <> (cpuUnitsToPercentage additionalCpu maxCpuCapacity)
-    proposedNetwork = networkToPercentage (currentNetwork <> additionalNetwork) maxNetworkCapacity
-    cpuResult = checkWatermark proposedCpu cpuLimits
-    networkResult = checkWatermark proposedNetwork networkLimits
-  in
-   spy "result" $ max cpuResult networkResult
+        LoadFixedCost {cpu: additionalCpu, network: additionalNetwork} = agentCostsToFixed slotCharacteristics targetServer agentCosts
+        proposedCpu = currentCpu <> (cpuUnitsToPercentage additionalCpu maxCpuCapacity)
+        proposedNetwork = networkToPercentage (currentNetwork <> additionalNetwork) maxNetworkCapacity
+        cpuResult = checkWatermark proposedCpu cpuLimits
+        networkResult = checkWatermark proposedNetwork networkLimits
+      in
+       max cpuResult networkResult
+    Nothing ->
+      Red
 
 agentCostsToFixed :: SlotCharacteristics -> ServerLoad -> LoadAgentCosts -> LoadFixedCost
 agentCostsToFixed slotCharacteristics@{numProfiles, totalBitrate} targetServer agentCosts =

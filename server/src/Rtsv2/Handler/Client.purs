@@ -25,7 +25,7 @@ import Gproc as Gproc
 import Logger (Logger)
 import Logger as Logger
 import Rtsv2.Agents.EgestInstance as EgestInstance
-import Rtsv2.Agents.Locator.Egest (findEgest)
+import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
 import Rtsv2.Audit as Audit
 import Rtsv2.Config (LoadConfig)
 import Rtsv2.Handler.MimeType as MimeType
@@ -55,7 +55,7 @@ clientStart loadConfig canary slotId slotRole =
     init req = do
       clientId <- replaceAll (Pattern "/") (Replacement "_") <$> cryptoStrongToken 4
       thisServer <- PoPDefinition.getThisServer
-      egestResp <- findEgest slotId slotRole loadConfig thisServer
+      egestResp <- EgestInstanceSup.findEgest slotId slotRole loadConfig thisServer
       let
         req2 = setHeader "x-servedby" (unwrap $ extractAddress thisServer) req
                # setHeader "x-client-id" clientId
@@ -162,69 +162,3 @@ logInfo = domainLog Logger.info
 
 domainLog :: forall a. Logger {domain :: List Atom, misc :: Record a} -> Logger (Record a)
 domainLog = Logger.doLog domains
-
-
-
-
---------------------------------------------------------------------------------
--- Do we have any EgestInstances in this pop that have capacity for another client?
--- Yes -> If this node is one of them -> Use it (TODO - maybe load concentrate?)
---                          Otherwise -> Redirect the client to one of those servers
---  No -> Is there a stream relay already running in the pop?
---          Yes -> Does anywhere have capacity to start a egest instance
---                   Yes -> Redirect to it
---                    No -> Fail request (out of resources)
---          No -> Try to find or create a relay for this stream and also put an egest handler on the same node
--- otherwise 404
---------------------------------------------------------------------------------
-
-
-
-  -- existingEgests <- IntraPoP.whereIsEgest slotId
-
-  -- let
-  --   thisAddress = extractAddress thisServer
-  --   egestsWithCapacity  =
-  --     List.filter (\(ServerLoad sl) ->
-  --                   sl.load < (wrap 76.323341)
-  --                 ) $ existingEgests
-  -- if any (\server ->  (extractAddress server) == thisAddress) egestsWithCapacity
-  -- then
-  --   do
-  --     _ <- EgestInstance.addClient slotId
-  --     pure $ Right Local
-  -- else
-  --  case pickInstance egestsWithCapacity of
-  --    Just egestServerAddress ->
-  --      pure $ Right $ Remote (spy "remote" egestServerAddress)
-
-  --    Nothing -> do
-  --       -- does the stream even exists
-  --       mAggregator <- IntraPoP.whereIsIngestAggregator slotId
-  --       case spy "mAggregator" mAggregator of
-  --         Nothing ->
-  --           pure $ Left NotFound
-
-  --         Just aggregator -> do
-  --           mIdleServer <- IntraPoP.getIdleServer (const true)
-  --           case mIdleServer of
-  --             Nothing ->
-  --               pure $ Left NoResource
-  --             Just idleServer ->
-  --               let payload = { slotId
-  --                             , aggregator} :: CreateEgestPayload
-  --               in
-  --                 if extractAddress idleServer == thisAddress
-  --                 then do
-  --                   _ <- EgestInstanceSup.maybeStartAndAddClient payload
-  --                   pure $ Right Local
-  --                 else do
-  --                   let
-  --                     url = makeUrl idleServer EgestE
-  --                     addr = extractAddress idleServer
-  --                   _ <- crashIfLeft =<< SpudGun.postJson url payload
-  --                   pure $ Right $ Remote addr
-
-  -- where
-  --   -- TODO not just head :)
-  --   pickInstance = map extractAddress <<< List.head

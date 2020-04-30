@@ -10,13 +10,14 @@ module Rtsv2.Agents.StreamRelaySup
 import Prelude
 
 import Data.Either (Either(..), either)
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe(..), maybe)
 import Effect (Effect)
 import Erl.Data.List (nil, (:))
 import Pinto (SupervisorName, isRegistered)
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStartTemplate, childType)
 import Pinto.Sup as Sup
+import Pinto.Types (startOkAS)
 import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.StreamRelayInstance as StreamRelayInstance
@@ -68,21 +69,17 @@ startLocalStreamRelay :: LoadConfig -> CreateRelayPayload -> Effect (ResourceRes
 startLocalStreamRelay loadConfig payload@{slotCharacteristics} =
   Load.launchLocalGeneric (Load.hasCapacityForStreamRelay slotCharacteristics loadConfig) launchLocal
   where
-    launchLocal _ = do
-      void $ startRelay payload
-      pure true
+    launchLocal _ =
+      (maybe false (const true) <<< startOkAS) <$> startRelay payload
 
 startLocalOrRemoteStreamRelay :: LoadConfig -> CreateRelayPayload -> Effect (ResourceResp Server)
 startLocalOrRemoteStreamRelay loadConfig payload@{slotCharacteristics} =
   Load.launchLocalOrRemoteGeneric (Load.hasCapacityForStreamRelay slotCharacteristics loadConfig) launchLocal launchRemote
   where
-    launchLocal _ = do
-      void $ startRelay payload
-      pure true
-    launchRemote idleServer = do
-      let
-        url = makeUrl idleServer RelayE
-      either (const false) (const true) <$> SpudGun.postJson url payload
+    launchLocal _ =
+      (maybe false (const true) <<< startOkAS) <$> startRelay payload
+    launchRemote idleServer =
+      either (const false) (const true) <$> SpudGun.postJson ( makeUrl idleServer RelayE) payload
 
 ------------------------------------------------------------------------------
 -- Supervisor callbacks

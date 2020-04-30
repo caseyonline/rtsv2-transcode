@@ -21,11 +21,13 @@ import Logger as Logger
 import Media.SourceDetails as SourceDetails
 import Rtsv2.Agents.IngestInstance as IngestInstance
 import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
+import Rtsv2.Config (LoadConfig)
 import Rtsv2.Config as Config
 import Rtsv2.DataObject as DO
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.LlnwApiTypes (PublishCredentials(..), SlotProfile(..), StreamAuth, StreamDetails, StreamIngestProtocol(..), StreamPublish(..))
 import Shared.Rtsv2.Stream (IngestKey(..), ProfileName, RtmpStreamName(..))
+import Shared.Rtsv2.Types (ResourceResp, Server(..))
 import SpudGun (JsonResponseError, bodyToJSON)
 import SpudGun as SpudGun
 
@@ -43,8 +45,8 @@ type StartStreamResult = { sourceInfo :: Foreign -> Effect Unit
                          , stopStream :: Effect Unit
                          }
 
-authenticate :: String -> StreamIngestProtocol -> String -> String -> String -> String -> String -> Int -> Effect (Maybe AuthenticateResult)
-authenticate host protocol account username password streamName remoteAddress remotePort = do
+authenticate :: LoadConfig -> String -> StreamIngestProtocol -> String -> String -> String -> String -> String -> Int -> Effect (Maybe AuthenticateResult)
+authenticate loadConfig host protocol account username password streamName remoteAddress remotePort = do
   publishCredentials <- getPublishCredentials host account username
 
   case publishCredentials of
@@ -81,7 +83,7 @@ authenticate host protocol account username password streamName remoteAddress re
                 maybeStartStream <- case protocol of
                                       WebRTC -> do
                                         self <- Erl.self
-                                        pure $ Just $ startStream ingestKey $ IngestInstanceSup.startIngest ingestKey streamPublish streamDetails remoteAddress remotePort self
+                                        pure $ Just $ startStream ingestKey $ IngestInstanceSup.startLocalWebRTCIngest loadConfig ingestKey streamPublish streamDetails remoteAddress remotePort self
                                       Rtmp ->
                                         pure Nothing
                 pure $ Just { streamDetails
@@ -105,16 +107,17 @@ authenticate host protocol account username password streamName remoteAddress re
       IngestKey slotId role profileName
 
 
-startStream :: IngestKey -> Effect (Maybe Unit) -> Effect (Maybe StartStreamResult)
+startStream :: IngestKey -> Effect (ResourceResp Server) -> Effect (Maybe StartStreamResult)
 startStream ingestKey startFn = do
   maybeStarted <- startFn
   case maybeStarted of
-    Just _ -> do
+    Right _ -> do
       workflowPid <- startWorkflow ingestKey
       pure $ Just { sourceInfo: sourceInfo
                   , stopStream: stopStream ingestKey
                   , workflowPid}
-    Nothing ->
+    Left error -> do
+      _ <- logWarning "Attempt to start local RTMP ingest failed" {error}
       pure Nothing
   where
     sourceInfo foreignSourceInfo = do
@@ -143,6 +146,9 @@ domain = atom <$> (show Agent.Ingest : "Instance" : nil)
 
 logInfo :: forall a. Logger (Record a)
 logInfo = Logger.doLog domain Logger.info
+
+logWarning :: forall a. Logger (Record a)
+logWarning = Logger.doLog domain Logger.warning
 
 startWorkflow :: IngestKey -> Effect Pid
 startWorkflow ingestKey =

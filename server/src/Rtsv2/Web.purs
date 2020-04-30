@@ -22,8 +22,8 @@ import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen as Gen
 import Rtsv2.Agents.EgestInstance as EgestInstance
+import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
 import Rtsv2.Agents.IngestWebRTCIngestHandler as IngestWebRTCIngestHandler
-import Rtsv2.Agents.Locator.Egest (findEgest)
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
 import Rtsv2.Handler.Chaos as ChaosHandler
@@ -125,7 +125,7 @@ init args = do
         , "LoadE"                                       : LoadHandler.load
         , "RelayProxiedStatsE"                          : RelayHandler.proxiedStats
 
-        , "IngestStartE"                                : IngestHandler.ingestStart
+        , "IngestStartE"                                : IngestHandler.ingestStart loadConfig
         , "IngestStopE"                                 : IngestHandler.ingestStop
         , "ClientStartE"                                : ClientHandler.clientStart loadConfig
         , "ClientStopE"                                 : ClientHandler.clientStop
@@ -186,7 +186,7 @@ init args = do
       -- ClientWebRTCIngestContorlE SlotId SlotRole
       : cowboyRoute ("/public/" <> canaryBinding <> "/ingest/" <> accountBinding <> "/" <> streamNameBinding <> "/session")
                     "rtsv2_webrtc_push_ingest_ws_resource"
-                    (unsafeToForeign { authenticate: mkFn7 $ IngestWebRTCIngestHandler.authenticate (unwrap $ extractAddress thisServer)
+                    (unsafeToForeign { authenticate: mkFn7 $ IngestWebRTCIngestHandler.authenticate loadConfig (unwrap $ extractAddress thisServer)
                                      })
 
       --workflows
@@ -240,7 +240,7 @@ init args = do
     startStream loadConfig (EgestKey slotId slotRole) =
       do
         thisServer <- PoPDefinition.getThisServer
-        findEgest slotId slotRole loadConfig thisServer
+        EgestInstanceSup.findEgest slotId slotRole loadConfig thisServer
 
     addClient :: Pid -> EgestKey -> Effect RegistrationResp
     addClient pid egestKey =

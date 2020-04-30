@@ -171,6 +171,11 @@ derive instance genericJsonLdContextType :: Generic JsonLdContextType _
 instance showJsonLdContextType :: Show JsonLdContextType where show = genericShow
 
 ------------------------------------------------------------------------------
+-- ResourceFailed
+derive instance genericResourceFailed :: Generic ResourceFailed _
+instance showResourceFailed :: Show ResourceFailed where show = genericShow
+
+------------------------------------------------------------------------------
 -- ServerAddress
 derive instance newtypeServerAddress :: Newtype ServerAddress _
 derive newtype instance eqServerAddress :: Eq ServerAddress

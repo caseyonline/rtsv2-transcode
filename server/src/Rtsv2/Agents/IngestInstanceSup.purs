@@ -1,52 +1,46 @@
- module Rtsv2.Agents.IngestInstanceSup
+module Rtsv2.Agents.IngestInstanceSup
   ( startLink
-  , startIngest
+  , startLocalRtmpIngest
+  , startLocalWebRTCIngest
   ) where
 
 import Prelude
 
-import Data.Maybe (Maybe(..))
+import Data.Maybe (maybe)
 import Effect (Effect)
 import Erl.Data.List (nil, (:))
 import Erl.Process.Raw (Pid)
-import Pinto (StartChildResult(..), SupervisorName)
+import Pinto (StartChildResult, SupervisorName)
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStartTemplate, childType)
 import Pinto.Sup as Sup
+import Pinto.Types (startOkAS)
 import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Agents.IngestInstance as IngestInstance
+import Rtsv2.Config (LoadConfig)
+import Rtsv2.Load as Load
+import Rtsv2.LoadTypes (LoadCheckResult)
 import Rtsv2.Names as Names
-import Shared.Rtsv2.LlnwApiTypes (StreamDetails, StreamPublish)
+import Shared.Rtsv2.Agent (SlotCharacteristics)
+import Shared.Rtsv2.LlnwApiTypes (StreamDetails, StreamPublish, slotDetailsToSlotCharacteristics)
 import Shared.Rtsv2.Stream (IngestKey)
+import Shared.Rtsv2.Types (ResourceResp, Server, ServerLoad)
 
-serverName :: SupervisorName
-serverName = Names.ingestInstanceSupName
-
+------------------------------------------------------------------------------
+-- API
+------------------------------------------------------------------------------
 startLink :: forall a. a -> Effect Pinto.StartLinkResult
 startLink _ = Sup.startLink serverName init
 
-startIngest :: IngestKey -> StreamPublish -> StreamDetails -> String -> Int -> Pid -> Effect (Maybe Unit)
-startIngest ingestKey streamPublish streamDetails remoteAddress remotePort handlerPid = do
-  let
-    startArgs = { streamPublish
-                , streamDetails
-                , ingestKey
-                , remoteAddress
-                , remotePort
-                , handlerPid
-                }
-  result <- Sup.startSimpleChild childTemplate serverName { childStartLink: IngestInstance.startLink startArgs
-                                                          , childStopAction: IngestInstance.stopAction ingestKey
-                                                          , serverName: Names.ingestInstanceStateName ingestKey
-                                                          , domain: IngestInstance.domain
-                                                          }
-  pure $ case result of
-           ChildStarted _ -> Just unit
-           ChildStartedWithInfo _ _ -> Just unit
-           ChildAlreadyStarted _ -> Nothing
-           ChildAlreadyPresent -> Nothing
-           ChildFailed _-> Nothing
+startLocalRtmpIngest :: LoadConfig -> IngestKey -> StreamPublish -> StreamDetails -> String -> Int -> Pid -> Effect (ResourceResp Server)
+startLocalRtmpIngest = startLocalIngest Load.hasCapacityForRtmpIngest
 
+startLocalWebRTCIngest :: LoadConfig -> IngestKey -> StreamPublish -> StreamDetails -> String -> Int -> Pid -> Effect (ResourceResp Server)
+startLocalWebRTCIngest = startLocalIngest Load.hasCapacityForWebRTCIngest
+
+------------------------------------------------------------------------------
+-- Supervisor callbacks
+------------------------------------------------------------------------------
 init :: Effect Sup.SupervisorSpec
 init = do
   pure $ Sup.buildSupervisor
@@ -60,6 +54,38 @@ init = do
           )
           : nil
         )
+
+------------------------------------------------------------------------------
+-- Internals
+------------------------------------------------------------------------------
+startLocalIngest :: (SlotCharacteristics -> LoadConfig -> ServerLoad -> LoadCheckResult) -> LoadConfig -> IngestKey -> StreamPublish -> StreamDetails -> String -> Int -> Pid -> Effect (ResourceResp Server)
+startLocalIngest capacityFun loadConfig ingestKey streamPublish streamDetails@{slot} remoteAddress remotePort handlerPid =
+  let
+    slotCharacteristics = slotDetailsToSlotCharacteristics slot
+  in
+    Load.launchLocalGeneric (capacityFun slotCharacteristics loadConfig) launchLocal
+  where
+    launchLocal _ =
+      (maybe false (const true) <<< startOkAS) <$> startIngest ingestKey streamPublish streamDetails remoteAddress remotePort handlerPid
+
+startIngest :: IngestKey -> StreamPublish -> StreamDetails -> String -> Int -> Pid -> Effect StartChildResult
+startIngest ingestKey streamPublish streamDetails remoteAddress remotePort handlerPid = do
+  let
+    startArgs = { streamPublish
+                , streamDetails
+                , ingestKey
+                , remoteAddress
+                , remotePort
+                , handlerPid
+                }
+  Sup.startSimpleChild childTemplate serverName { childStartLink: IngestInstance.startLink startArgs
+                                                , childStopAction: IngestInstance.stopAction ingestKey
+                                                , serverName: Names.ingestInstanceStateName ingestKey
+                                                , domain: IngestInstance.domain
+                                                  }
+
+serverName :: SupervisorName
+serverName = Names.ingestInstanceSupName
 
 childTemplate :: Pinto.ChildTemplate (CachedInstanceState.StartArgs IngestInstance.CachedState)
 childTemplate = Pinto.ChildTemplate (CachedInstanceState.startLink)
