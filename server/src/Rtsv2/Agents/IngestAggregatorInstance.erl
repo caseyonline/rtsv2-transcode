@@ -15,11 +15,15 @@
 -include_lib("id3as_media/include/ts_segment_generator.hrl").
 -include_lib("id3as_media/include/ts_akamai_writer.hrl").
 
+-include_lib("id3as_media/include/m3u8.hrl").
+
+
 -ifdef(__RTC_FEAT_FEC).
 -include_lib("id3as_rtc/include/rtp_ulp_fec.hrl").
 -endif.
 -include("../../../../src/rtsv2_slot_media_source_publish_processor.hrl").
 -include("../../../../src/rtsv2_rtp.hrl").
+-include("../../../../src/rtsv2_slot_profiles.hrl").
 
 -export([
          startWorkflowImpl/4,
@@ -36,23 +40,18 @@
                                                          spec = ?wildcard_by_name(frame)#frame{source_metadata = ?wildcard(#source_metadata{})#source_metadata{source_id = SourceId}}}).
 
 
--record(enriched_slot_profile,
-        { ingest_key :: term()
-        , stream_name :: binary_string()
-        , profile_name :: binary_string()
-        , audio_ssrc_start :: non_neg_integer()
-        , video_ssrc_start :: non_neg_integer()
-        }).
+
 
 
 startWorkflowImpl(SlotId, SlotRole, Profiles, PushDetails) ->
   fun() ->
       {EnrichedProfiles, _NextProfileIndex} =
-        lists:mapfoldl(fun({ IngestKey, StreamName, ProfileName }, ProfileIndex) ->
+        lists:mapfoldl(fun({ IngestKey, StreamName, ProfileName, Bitrate }, ProfileIndex) ->
                            ProfileInfo =
                              #enriched_slot_profile{ ingest_key = IngestKey
                                                    , stream_name = StreamName
                                                    , profile_name = ProfileName
+                                                   , bitrate = Bitrate
 
                                                      %% SSRCs are 32-bits, use the upper 16 bits to reflect
                                                      %% the profile to which the RTP stream belongs, the
@@ -173,7 +172,19 @@ startWorkflow(SlotId, SlotRole, Profiles, PushDetails) ->
                                          module = rtsv2_rtmp_ingest_aggregator_processor
                                         },
 
-                              lists:map(fun(#enriched_slot_profile{ ingest_key = IngestKey
+                              #processor{name = master_hls_playlists,
+                                         display_name = <<"Publish Master HLS Playlists">>,
+                                         subscribes_to = {aggregate, ?program_details_frames},%% who knows
+                                         module = rtsv2_hls_master_playlist_processor,
+                                         config = #hls_master_playlist_processor_config{
+                                           slot_id = SlotId,
+                                           profiles = Profiles,
+                                           push_details = PushDetails
+                                         }
+                                        },
+
+                              lists:map(fun(Profile =
+                                            #enriched_slot_profile{ ingest_key = IngestKey
                                                                   , stream_name = StreamName
                                                                   , profile_name = ProfileName
                                                                   , audio_ssrc_start = AudioSSRCStart
@@ -189,7 +200,7 @@ startWorkflow(SlotId, SlotRole, Profiles, PushDetails) ->
                                                                 {aggregate, ?video_frames_with_source_id(ProfileName)}],
                                                processors = [
                                                              ?include_if(PushDetails /= [], 
-                                                                  hls_processors(SlotId, PushDetails)),
+                                                                  hls_processors(SlotId, Profile, PushDetails)),
 
                                                              #processor{name = audio_transcode,
                                                                         display_name = <<"Audio Transcode">>,
@@ -319,7 +330,7 @@ startWorkflow(SlotId, SlotRole, Profiles, PushDetails) ->
 
   {Handle, Pids, SlotConfiguration}.
 
-hls_processors(_SlotId, [#{ segmentDuration := SegmentDuration, playlistDuration := PlaylistDuration, putBaseUrl := PutBaseUrl }]) ->
+hls_processors(_SlotId, #enriched_slot_profile{ profile_name = ProfileName }, [#{ segmentDuration := SegmentDuration, playlistDuration := PlaylistDuration, putBaseUrl := PutBaseUrl }]) ->
   TsEncoderConfig = #ts_encoder_config{
                        which_encoder = ts_simple_encoder,
                        program_pid = 4096,
@@ -367,14 +378,15 @@ hls_processors(_SlotId, [#{ segmentDuration := SegmentDuration, playlistDuration
       module = rtsv2_internal_hls_writer,
       config =
           #ts_akamai_writer_config{
-            post_url = PutBaseUrl,
+            post_url = <<PutBaseUrl/binary, ProfileName/binary, "/">>,
             max_playlist_length = PlaylistDuration div SegmentDuration,
             target_segment_duration = SegmentDuration,
-            playlist_name = <<"stuff.m3u8">>,
+            playlist_name = <<"playlist.m3u8">>,
             version_string = <<"">> %% ?BUILD_VERSION_COMMIT
           }
     }
   ].
+
 
 mux_to_rtp(#frame{ profile = #audio_profile{ codec = Codec } } = Frame, { AudioEgest, VideoEgest }) ->
   { NewAudioEgest, RTPs } = rtp_opus_egest:step(AudioEgest, Frame),
