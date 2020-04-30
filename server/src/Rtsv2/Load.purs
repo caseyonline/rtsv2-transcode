@@ -98,7 +98,7 @@ foreign import cpuUtilImpl :: CpuState -> Effect (Tuple2 Number CpuState)
 
 foreign import data NetState :: Type
 foreign import networkUtilInitImpl :: Effect NetState
-foreign import networkUtilImpl :: NetState -> Effect (Tuple2 Int NetState)
+foreign import networkUtilImpl :: NetState -> Effect (Tuple2 (Maybe Int) NetState)
 
 type State =
   { config :: LoadConfig
@@ -144,18 +144,22 @@ init args = do
          }
 
 handleInfo :: Msg -> State -> Effect (CastResult State)
-handleInfo msg state@{ load: currentLoad
+handleInfo msg state@{ load: currentLoad@(CurrentLoad {currentNetwork})
                      , config: {monitorLoad}} =
   case msg of
     Tick | monitorLoad ->
       do
-        {cpu, state: state2} <- getCurrentCpu state
-        {network, state: state3} <- getCurrentNetwork state2
-        IntraPop.announceLoad currentLoad
-        pure $ CastNoReply state3
+        {cpu: newCpu, state: state2} <- getCurrentCpu state
+        {network: newNetwork, state: state3} <- getCurrentNetwork state2
+        let
+          newLoad = CurrentLoad { currentCpu: newCpu
+                                , currentNetwork: fromMaybe currentNetwork newNetwork
+                                }
+        IntraPop.announceLoad newLoad
+        pure $ CastNoReply state3{load = newLoad}
     Tick | otherwise -> do
-        IntraPop.announceLoad currentLoad
-        pure $ CastNoReply state
+      IntraPop.announceLoad currentLoad
+      pure $ CastNoReply state
 
 getCurrentCpu :: State -> Effect { cpu :: Percentage
                                  , state :: State }
@@ -164,12 +168,12 @@ getCurrentCpu state@{cpuUtilState} = do
   uncurry2 (\util cpuUtilState2 -> do
                pure {cpu: wrap util, state: state{cpuUtilState = cpuUtilState2}}) res
 
-getCurrentNetwork :: State -> Effect { network :: NetworkKbps
+getCurrentNetwork :: State -> Effect { network :: Maybe NetworkKbps
                                      , state :: State }
 getCurrentNetwork state@{networkUtilState} = do
   res <- networkUtilImpl networkUtilState
-  uncurry2 (\util networkUtilState2 -> do
-               pure {network: wrap (util * 8), state: state{networkUtilState = networkUtilState2}}) res
+  uncurry2 (\mkbps networkUtilState2 -> do
+               pure {network: wrap <$> mkbps, state: state{networkUtilState = networkUtilState2}}) res
 
 --------------------------------------------------------------------------------
 -- Internals

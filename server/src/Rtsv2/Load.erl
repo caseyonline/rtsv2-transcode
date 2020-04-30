@@ -19,7 +19,7 @@ cpuUtilInitImpl() ->
 cpuUtilImpl(State) ->
   fun() ->
       Util = cpu_sup:util(),
-      {Util * 100, State}
+      {Util, State}
   end.
 
 networkUtilInitImpl() ->
@@ -34,17 +34,20 @@ networkUtilInitImpl() ->
 
 networkUtilImpl(undefined) ->
   fun() ->
-      {0, undefined}
+      {{just, 0}, undefined}
   end;
 
 networkUtilImpl(Queue) ->
   fun() ->
       {Receive, Transmit} = read_proc_dev_net(),
       Now = ?vm_now_ms,
-      Queue2 = queue:in({Receive, Transmit, Now}, Queue),
+      Queue2 = queue:in({Receive + Transmit, Now}, Queue),
       Queue3 = expire_entries(Now - 10000, Queue2),
       RollingBitrate = bitrate(Queue3),
-      {RollingBitrate, Queue3}
+      {case RollingBitrate of
+         undefined -> {nothing};
+         _ -> {just, RollingBitrate}
+       end, Queue3}
   end.
 
 schedUtilInitImpl() ->
@@ -121,4 +124,5 @@ bitrate(Queue) ->
       end;
     _ ->
       undefined
+
   end.
