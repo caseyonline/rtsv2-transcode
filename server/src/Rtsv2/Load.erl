@@ -9,6 +9,8 @@
          schedUtilImpl/1
         ]).
 
+-include_lib("id3as_common/include/common.hrl").
+
 cpuUtilInitImpl() ->
   fun() ->
       ok
@@ -22,12 +24,27 @@ cpuUtilImpl(State) ->
 
 networkUtilInitImpl() ->
   fun() ->
-      ok
+      case os:type() of
+        {unix, darwin} -> undefined;
+        _ ->
+          {Receive, Transmit} = read_proc_dev_net(),
+          queue:in({Receive + Transmit, ?vm_now_ms}, queue:new())
+      end
   end.
 
-networkUtilImpl(State) ->
+networkUtilImpl(undefined) ->
   fun() ->
-      {0, State}
+      {0, undefined}
+  end;
+
+networkUtilImpl(Queue) ->
+  fun() ->
+      {Receive, Transmit} = read_proc_dev_net(),
+      Now = ?vm_now_ms,
+      Queue2 = queue:in({Receive, Transmit, Now}, Queue),
+      Queue3 = expire_entries(Now - 10000, Queue2),
+      RollingBitrate = bitrate(Queue3),
+      {RollingBitrate, Queue3}
   end.
 
 schedUtilInitImpl() ->
@@ -59,4 +76,49 @@ schedUtilImpl({TsPrevious, CoreFactor}) ->
                            lists:zip(TsPrevious,TsNew)),
 
       {A * 100 / T * CoreFactor, TsNew}
+  end.
+
+read_proc_dev_net() ->
+  {ok, B} = file:read_file("/proc/net/dev"),
+  LinesWithHeader = binary:split(B, <<"\n">>, [global]),
+  Lines = tl(tl(LinesWithHeader)),
+  sum_lines(Lines, 0, 0).
+
+sum_lines([], Receive, Transmit) ->
+  {Receive, Transmit};
+
+sum_lines([H | T], Receive, Transmit) ->
+  case binary:split(H, <<" ">>, [global, trim_all]) of
+    [ IFace
+    , BytesReceived, _PacketsReceived, _ErrsReceived, _DropReceived, _FifoReceived, _FrameReceived, _CompressedReceived, _MulticastReceived
+    , BytesTransmit, _PacketsTransmit, _ErrsTransmit, _DropTransmit, _FifoTransmit, _CollsTransmit, _CarrierTransmit, _CompressedTransmit] ->
+
+      case IFace of
+        <<"lo:">> ->
+          sum_lines(T, Receive, Transmit);
+        _ ->
+          sum_lines(T, Receive + binary_to_integer(BytesReceived), Transmit + binary_to_integer(BytesTransmit))
+      end;
+
+    [] ->
+      sum_lines(T, Receive, Transmit)
+  end.
+
+expire_entries(Expiry, Queue) ->
+  case queue:out(Queue) of
+    {{value, {_Bitrate, When}}, Queue2} when When < Expiry -> expire_entries(Expiry, Queue2);
+    _ -> Queue
+  end.
+
+bitrate(Queue) ->
+  case queue:peek(Queue) of
+    {value, {OldestBytes, OldestTime}} ->
+      case queue:peek_r(Queue) of
+        {value, {NewestBytes, NewestTime}} when NewestTime > OldestTime ->
+          ((NewestBytes - OldestBytes) * 8) / (NewestTime - OldestTime);
+        _ ->
+          undefined
+      end;
+    _ ->
+      undefined
   end.
