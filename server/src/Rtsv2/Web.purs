@@ -37,6 +37,7 @@ import Rtsv2.Handler.JsonLd as JsonLd
 import Rtsv2.Handler.LlnwStub as LlnwStubHandler
 import Rtsv2.Handler.Load as LoadHandler
 import Rtsv2.Handler.PoPDefinition as PoPDefinitionHandler
+import Rtsv2.Handler.Relay as EgestHandler
 import Rtsv2.Handler.Relay as RelayHandler
 import Rtsv2.Handler.StreamDiscovery as StreamDiscoveryHandler
 import Rtsv2.Handler.TransPoP as TransPoPHandler
@@ -53,7 +54,6 @@ import Shared.UUID as UUID
 import Stetson (RestResult, StaticAssetLocation(..))
 import Stetson as Stetson
 import Stetson.Rest as Rest
-import Stetson.Routing (dummyHandler)
 import Stetson.Types (CowboyRoutePlaceholder(..))
 
 newtype State = State {}
@@ -106,11 +106,11 @@ init args = do
         , "IngestInstanceE"                             : IngestHandler.ingestInstance
         , "ClientAppAssetsE"                            : PrivDir Config.appName "www/assets"
         , "ClientAppRouteHTMLE"                         : PrivFile Config.appName "www/index.html"
-        , "StreamDiscoveryE"                            : StreamDiscoveryHandler.discover
+        , "StreamDiscoveryE"                            : StreamDiscoveryHandler.discover loadConfig
 
         -- System
         , "TransPoPLeaderE"                             : IntraPoPHandler.leader
-        , "EgestE"                                      : dummyHandler -- TODO write this - needed for a client to create a remote egest
+        , "EgestE"                                      : EgestHandler.startResource loadConfig
         , "RelayE"                                      : RelayHandler.startResource loadConfig
         , "RelayEnsureStartedE"                         : RelayHandler.ensureStarted loadConfig
         , "RelayRegisteredRelayWs"                      : RelayHandler.registeredRelayWs
@@ -235,12 +235,9 @@ init args = do
     slotIdStringToSlotId slotIdStr =
       wrap $ fromMaybe UUID.empty (fromString slotIdStr)
 
-    -- TODO: This code doesn't belong here
     startStream :: Config.LoadConfig -> EgestKey -> Effect LocationResp
     startStream loadConfig (EgestKey slotId slotRole) =
-      do
-        thisServer <- PoPDefinition.getThisServer
-        EgestInstanceSup.findEgest slotId slotRole loadConfig thisServer
+        EgestInstanceSup.findEgest loadConfig slotId slotRole
 
     addClient :: Pid -> EgestKey -> Effect RegistrationResp
     addClient pid egestKey =

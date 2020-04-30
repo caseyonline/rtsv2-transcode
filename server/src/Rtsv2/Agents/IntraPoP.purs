@@ -328,7 +328,6 @@ getThisIdleServer pred = Gen.doCall serverName
   (\state@{thisServer, load} -> do
       let
         thisServerLoad = toServerLoad thisServer load
-      _ <- logInfo "HERE WITH" {thisServer, load, pred: pred thisServerLoad}
       pure $ if LoadTypes.canLaunch $ pred thisServerLoad
              then CallReply (Right $ thisServer) state
              else CallReply (Left NoCapacity) state

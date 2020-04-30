@@ -14,7 +14,7 @@ import Pinto (StartChildResult, SupervisorName)
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStartTemplate, childType)
 import Pinto.Sup as Sup
-import Pinto.Types (startOkAS)
+import Pinto.Types (startOk)
 import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Agents.IngestInstance as IngestInstance
 import Rtsv2.Config (LoadConfig)
@@ -66,7 +66,7 @@ startLocalIngest capacityFun loadConfig ingestKey streamPublish streamDetails@{s
     Load.launchLocalGeneric (capacityFun slotCharacteristics loadConfig) launchLocal
   where
     launchLocal _ =
-      (maybe false (const true) <<< startOkAS) <$> startIngest ingestKey streamPublish streamDetails remoteAddress remotePort handlerPid
+      (maybe false (const true) <<< startOk) <$> startIngest ingestKey streamPublish streamDetails remoteAddress remotePort handlerPid
 
 startIngest :: IngestKey -> StreamPublish -> StreamDetails -> String -> Int -> Pid -> Effect StartChildResult
 startIngest ingestKey streamPublish streamDetails remoteAddress remotePort handlerPid = do

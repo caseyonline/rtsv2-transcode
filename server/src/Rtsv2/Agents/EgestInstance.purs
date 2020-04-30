@@ -54,6 +54,7 @@ import Rtsv2.Config as Config
 import Rtsv2.DataObject (ObjectBroadcastMessage(..))
 import Rtsv2.DataObject as DO
 import Rtsv2.DataObject as DataObject
+import Rtsv2.Load as Load
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Common (Milliseconds)
@@ -64,7 +65,7 @@ import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Rtsv2.LlnwApiTypes (StreamIngestProtocol(..))
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeWsUrl)
 import Shared.Rtsv2.Stream (AggregatorKey(..), EgestKey(..), ProfileName, RelayKey(..), SlotId, SlotRole)
-import Shared.Rtsv2.Types (EgestServer(..), RelayServer, Server, LocalOrRemote(..), RegistrationResp, ResourceResp, extractAddress)
+import Shared.Rtsv2.Types (EgestServer(..), FailureReason(..), LocalOrRemote(..), RegistrationResp, RelayServer, ResourceResp, Server, extractAddress)
 import WsGun as WsGun
 
 foreign import startEgestReceiverFFI :: EgestKey -> Boolean -> Effect Int
@@ -141,8 +142,17 @@ stopAction egestKey mCachedState = do
   pure unit
 
 pendingClient :: EgestKey -> Effect RegistrationResp
-pendingClient egestKey =
-  let
+pendingClient egestKey  =
+  Gen.doCall ourServerName \state@{slotCharacteristics, loadConfig} -> do
+    idleServerResp <- IntraPoP.getThisIdleServer $ Load.hasCapacityForEgestClient slotCharacteristics loadConfig
+    case idleServerResp of
+      Left _ ->
+        pure $ CallReply (Left NoResource) state
+      Right _ -> do
+        state2 <- maybeResetStopTimer state
+        pure $ CallReply (Right unit) state2
+
+  where
     ourServerName = serverName egestKey
     maybeResetStopTimer state@{clientCount: 0, lingerTime} = do
       ref <- makeRef
@@ -151,25 +161,25 @@ pendingClient egestKey =
                   }
     maybeResetStopTimer state =
       pure state
-  in
-   Gen.doCall ourServerName \state -> do
-                                state2 <- maybeResetStopTimer state
-                                pure $ CallReply (Right unit) state2
 
 addClient :: Pid -> EgestKey -> Effect RegistrationResp
 addClient handlerPid egestKey =
-  let
-    ourServerName = serverName egestKey
-  in
-   Gen.doCall ourServerName \state@{clientCount, dataObject, activeProfiles} -> do
-     logInfo "Add client" {newCount: clientCount + 1}
-     Gen.monitorPid ourServerName handlerPid (\_ -> HandlerDown)
-     maybeSend dataObject
-     (Process handlerPid) ! (EgestCurrentActiveProfiles activeProfiles)
-     pure $ CallReply (Right unit) state{ clientCount = clientCount + 1
-                                        , stopRef = Nothing
-                                        }
+  Gen.doCall ourServerName \state@{clientCount, dataObject, activeProfiles, slotCharacteristics, loadConfig} -> do
+
+    idleServerResp <- IntraPoP.getThisIdleServer $ Load.hasCapacityForEgestClient slotCharacteristics loadConfig
+    case idleServerResp of
+      Left _ ->
+        pure $ CallReply (Left NoResource) state
+      Right _ -> do
+        logInfo "Add client" {newCount: clientCount + 1}
+        Gen.monitorPid ourServerName handlerPid (\_ -> HandlerDown)
+        maybeSend dataObject
+        (Process handlerPid) ! (EgestCurrentActiveProfiles activeProfiles)
+        pure $ CallReply (Right unit) state{ clientCount = clientCount + 1
+                                           , stopRef = Nothing
+                                           }
   where
+    ourServerName = serverName egestKey
     maybeSend Nothing = pure unit
     maybeSend (Just dataObject) = (Process handlerPid) ! (EgestDataObjectBroadcast dataObject)
 

@@ -27,7 +27,7 @@ import Rtsv2.DataObject as DO
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.LlnwApiTypes (PublishCredentials(..), SlotProfile(..), StreamAuth, StreamDetails, StreamIngestProtocol(..), StreamPublish(..))
 import Shared.Rtsv2.Stream (IngestKey(..), ProfileName, RtmpStreamName(..))
-import Shared.Rtsv2.Types (ResourceResp, Server(..))
+import Shared.Rtsv2.Types (ResourceResp, Server)
 import SpudGun (JsonResponseError, bodyToJSON)
 import SpudGun as SpudGun
 

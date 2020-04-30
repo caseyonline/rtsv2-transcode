@@ -1,6 +1,7 @@
 module Rtsv2.Agents.EgestInstanceSup
        ( startLink
        , findEgest
+       , startLocalEgest
        , isAgentAvailable
        )
        where
@@ -33,11 +34,12 @@ import Rtsv2.Load as Load
 import Rtsv2.LoadTypes (LoadCheckResult)
 import Rtsv2.LoadTypes as LoadTypes
 import Rtsv2.Names as Names
+import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Utils (noprocToMaybe)
 import Shared.Rtsv2.Agent (SlotCharacteristics)
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Shared.Rtsv2.Stream (AggregatorKey(..), EgestKey(..), SlotId, SlotRole)
-import Shared.Rtsv2.Types (FailureReason(..), LocalOrRemote(..), LocationResp, Server, ServerLoad, serverLoadToServer)
+import Shared.Rtsv2.Types (FailureReason(..), LocalOrRemote(..), LocationResp, Server, ServerLoad, ResourceResp, serverLoadToServer)
 import SpudGun as SpudGun
 
 ------------------------------------------------------------------------------
@@ -49,12 +51,24 @@ isAgentAvailable = Pinto.isRegistered serverName
 startLink :: forall a. a -> Effect Pinto.StartLinkResult
 startLink _ = Sup.startLink serverName init
 
-findEgest :: SlotId -> SlotRole -> LoadConfig -> Server -> Effect LocationResp
-findEgest slotId slotRole loadConfig thisServer = do
+findEgest :: LoadConfig -> SlotId -> SlotRole -> Effect LocationResp
+findEgest loadConfig slotId slotRole = do
+  thisServer <- PoPDefinition.getThisServer
   mIngestAggregator <- IntraPoP.whereIsIngestAggregatorWithPayload (AggregatorKey slotId slotRole)
   case mIngestAggregator of
     Nothing ->  pure $ Left NotFound
-    Just {payload, server: aggregator} -> findEgest' slotId slotRole loadConfig thisServer payload aggregator
+    Just {payload: slotCharacteristics, server: aggregator} -> findEgest' loadConfig thisServer egestKey {slotId, slotRole, aggregator, slotCharacteristics}
+  where
+    egestKey = (EgestKey slotId slotRole)
+
+
+startLocalEgest :: LoadConfig -> CreateEgestPayload -> Effect (ResourceResp Server)
+startLocalEgest loadConfig payload@{slotCharacteristics} =
+  Load.launchLocalGeneric (Load.hasCapacityForEgestInstance slotCharacteristics loadConfig) launchLocal
+  where
+    launchLocal _ =
+      (maybe false (const true) <<< startOkAS) <$> startEgest payload
+
 
 ------------------------------------------------------------------------------
 -- Supervisor callbacks
@@ -84,8 +98,8 @@ childTemplate = Pinto.ChildTemplate (CachedInstanceState.startLink)
 serverName :: SupervisorName
 serverName = Names.egestInstanceSupName
 
-findEgest' :: SlotId -> SlotRole -> LoadConfig -> Server -> SlotCharacteristics -> Server -> Effect LocationResp
-findEgest' slotId slotRole loadConfig thisServer slotCharacteristics aggregator = runExceptT
+findEgest' :: LoadConfig -> Server -> EgestKey -> CreateEgestPayload -> Effect LocationResp
+findEgest' loadConfig thisServer egestKey payload@{slotCharacteristics} = runExceptT
   $ ExceptT getLocal
   <|> ExceptT getRemote
   <|> ExceptT createResourceAndRecurse
@@ -107,14 +121,13 @@ findEgest' slotId slotRole loadConfig thisServer slotCharacteristics aggregator 
       case eLaunchResp of
         Left error -> pure $ Left NoResource
         Right _ -> do
-          findEgest' slotId slotRole loadConfig thisServer slotCharacteristics aggregator
+          findEgest' loadConfig thisServer egestKey payload
       where
         launchLocal _ = do
-          (maybe false (const true) <<< startOkAS) <$> startEgest {slotId, slotRole, aggregator, slotCharacteristics}
+          (maybe false (const true) <<< startOkAS) <$> startEgest payload
         launchRemote remote =
-          either (const false) (const true) <$> SpudGun.postJson (makeUrl remote EgestE) ({slotId, slotRole, aggregator, slotCharacteristics} :: CreateEgestPayload)
-
-    egestKey = (EgestKey slotId slotRole)
+          -- todo - if remote then need to sleep before recurse to allow intra-pop disemination
+          either (const false) (const true) <$> SpudGun.postJson (makeUrl remote EgestE) payload
 
     capacityForClient :: ServerLoad -> Maybe (Tuple Server LoadCheckResult)
     capacityForClient serverLoad =

@@ -55,7 +55,7 @@ clientStart loadConfig canary slotId slotRole =
     init req = do
       clientId <- replaceAll (Pattern "/") (Replacement "_") <$> cryptoStrongToken 4
       thisServer <- PoPDefinition.getThisServer
-      egestResp <- EgestInstanceSup.findEgest slotId slotRole loadConfig thisServer
+      egestResp <- EgestInstanceSup.findEgest loadConfig slotId slotRole
       let
         req2 = setHeader "x-servedby" (unwrap $ extractAddress thisServer) req
                # setHeader "x-client-id" clientId

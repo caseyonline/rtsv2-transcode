@@ -16,21 +16,22 @@ import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:), singleton)
 import Logger (Logger)
 import Logger as Logger
+import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
+import Rtsv2.Config (LoadConfig)
 import Rtsv2.Config as Config
 import Rtsv2.Utils (chainIntoEither)
 import Shared.Common (Url(Url))
 import Shared.Rtsv2.LlnwApiTypes (SlotLookupResult)
-import Shared.Rtsv2.Router.Endpoint (Canary)
+import Shared.Rtsv2.Router.Endpoint (Canary, Endpoint(..), makeUrl)
 import Shared.Rtsv2.Stream (SlotId, SlotRole(..))
-import Shared.Rtsv2.Types (FailureReason)
+import Shared.Rtsv2.Types (FailureReason, fromLocalOrRemote)
 import SpudGun (bodyToJSON, JsonResponseError)
 import SpudGun as SpudGun
 import Stetson (StetsonHandler)
 import StetsonHelper (jsonResponse)
-import Unsafe.Coerce (unsafeCoerce)
 
-discover :: Canary -> String -> String -> StetsonHandler (Maybe (List Url))
-discover canary accountName streamName =
+discover :: LoadConfig -> Canary -> String -> String -> StetsonHandler (Maybe (List Url))
+discover loadConfig canary accountName streamName =
   jsonResponse getUrls
 
   where
@@ -74,8 +75,7 @@ discover canary accountName streamName =
 
     getSessionUrl :: SlotRole -> SlotLookupResult -> Effect (Either FailureReason Url)
     getSessionUrl role slot =
-      unsafeCoerce 1
-      --todo PoPDefinition.getThisServer >>= EgestLocator.findEgest slot.id role <#> map ( fromLocalOrRemote >>> ((flip makeUrl) (ClientPlayerControlE canary slot.id role)))
+      EgestInstanceSup.findEgest loadConfig slot.id role <#> map ( fromLocalOrRemote >>> ((flip makeUrl) (ClientPlayerControlE canary slot.id role)))
 
     getSlot :: Effect (Either JsonResponseError SlotLookupResult)
     getSlot = getSlotLookupUrl >>= SpudGun.getJson <#> bodyToJSON

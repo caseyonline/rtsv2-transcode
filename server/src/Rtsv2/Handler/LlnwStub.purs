@@ -92,7 +92,7 @@ db =
                     , playbackBaseUrl: "example.com"
                     , segmentDuration: 2
                     , playlistDuration: 20
-                    , auth: 
+                    , auth:
                       { type: "basic"
                       , username: "user"
                       , password: "password"
@@ -303,7 +303,7 @@ hlsPush path =
     body <- allBody req mempty
     let fname = "/tmp/rtsv2_hls/" <> joinWith "/" path
     _ <- FileLib.ensureDir fname
-    File.writeFile fname (IOData.fromBinary body) >>= 
+    File.writeFile fname (IOData.fromBinary body) >>=
       either (const $ logInfo "Failed to write" {path : joinWith "/" path}) (const $ pure unit)
     Rest.result true req state
 
