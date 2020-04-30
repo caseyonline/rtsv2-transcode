@@ -17,6 +17,7 @@ module Shared.Rtsv2.Stream
   , aggregatorKeyToAgentKey
   , ingestKeyToAggregatorKey
   , ingestKeyToProfileName
+  , egestKeyToAgentKey
 
   , toSlotId
   , toProfileName
@@ -78,6 +79,9 @@ agentKeyToAggregatorKey (AgentKey slotId slotRole) = AggregatorKey slotId slotRo
 
 ingestKeyToProfileName :: IngestKey -> ProfileName
 ingestKeyToProfileName (IngestKey slotId slotRole streamProfileName) = streamProfileName
+
+egestKeyToAgentKey :: EgestKey -> AgentKey
+egestKeyToAgentKey (EgestKey slotId slotRole) = AgentKey slotId slotRole
 
 toSlotId :: SlotIdAndProfileName -> SlotId
 toSlotId (SlotIdAndProfileName s _) = s

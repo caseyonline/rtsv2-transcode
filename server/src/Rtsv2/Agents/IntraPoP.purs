@@ -99,7 +99,7 @@ import Shared.Rtsv2.Agent (SlotCharacteristics, emptySlotCharacteristics)
 import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.JsonLd (transPoPLeaderLocationNode)
 import Shared.Rtsv2.JsonLd as JsonLd
-import Shared.Rtsv2.Stream (AgentKey(..), AggregatorKey, EgestKey(..), RelayKey(..), agentKeyToAggregatorKey, aggregatorKeyToAgentKey)
+import Shared.Rtsv2.Stream (AgentKey(..), AggregatorKey, EgestKey, RelayKey(..), agentKeyToAggregatorKey, aggregatorKeyToAgentKey, egestKeyToAgentKey)
 import Shared.Rtsv2.Types (CurrentLoad, Server(..), ServerAddress(..), ServerLoad, LocalOrRemote(..), ResourceFailed(..), ResourceResp, fromLocalOrRemote, extractAddress, extractPoP, maxLoad, minLoad, toServerLoad)
 import Shared.Utils (distinctRandomNumbers)
 
@@ -666,8 +666,6 @@ egestHandler
                     }
 
 
-egestKeyToAgentKey :: EgestKey -> AgentKey
-egestKeyToAgentKey (EgestKey slotId slotRole) = AgentKey slotId slotRole
 
 -- Called by EgestAgent to indicate egest on this node
 announceLocalEgestIsAvailable :: EgestKey -> Effect Unit

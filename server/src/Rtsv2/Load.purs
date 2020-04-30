@@ -10,6 +10,7 @@ module Rtsv2.Load
        , hasCapacityForAggregator
        , hasCapacityForRtmpIngest
        , hasCapacityForWebRTCIngest
+       , egestInstanceCost
        , launchLocalGeneric
        , launchLocalOrRemoteGeneric
        ) where
@@ -22,13 +23,13 @@ import Data.Foldable (foldl)
 import Data.FoldableWithIndex (foldlWithIndex) as Map
 import Data.Int (round, toNumber)
 import Data.Maybe (Maybe(..), fromMaybe)
-import Data.Newtype (unwrap, wrap)
+import Data.Newtype (class Newtype, unwrap, wrap)
 import Data.Set (fromFoldable)
 import Data.Set as Set
 import Effect (Effect)
 import Erl.Atom (Atom)
 import Erl.Data.List (List, singleton)
-import Erl.Data.Map as Map
+import Erl.Data.Map (Map, empty, insert) as Map
 import Erl.Data.Tuple (Tuple2, uncurry2)
 import Erl.Utils as Erl
 import Logger (Logger)
@@ -99,6 +100,10 @@ hasCapacityForRtmpIngest =
 hasCapacityForWebRTCIngest :: SlotCharacteristics -> LoadConfig -> ServerLoad -> LoadCheckResult
 hasCapacityForWebRTCIngest =
   hasCapacity _.webRTCIngest Ingest
+
+egestInstanceCost :: SlotCharacteristics -> LoadConfig -> Server -> LoadFixedCost
+egestInstanceCost slotCharacteristics {costs: LoadCosts {egestInstance: agentCosts}} targetServer =
+  agentCostsToFixed slotCharacteristics targetServer agentCosts
 
 foreign import data CpuState :: Type
 foreign import cpuUtilInitImpl :: Effect CpuState
@@ -251,7 +256,7 @@ hasCapacity extractor agent slotCharacteristics {limits: defaultLimits, costs: L
     Nothing ->
       Red
 
-agentCostsToFixed :: SlotCharacteristics -> ServerLoad -> LoadAgentCosts -> LoadFixedCost
+agentCostsToFixed :: forall server r. Newtype server {capabilityTags :: Array String | r} => SlotCharacteristics -> server -> LoadAgentCosts -> LoadFixedCost
 agentCostsToFixed slotCharacteristics@{numProfiles, totalBitrate} targetServer agentCosts =
   let
     LoadAgentCosts {fixed, perProfile, perKbps, hardwareFactors} = agentCosts
@@ -279,10 +284,11 @@ perBitrateToFixed variable bitrate =
                   , network: wrap $ (unwrap network) * bitrate
                   }
 
-adjustForHardwareCapabilites :: LoadFixedCost -> ServerLoad -> List HardwareFactor -> LoadFixedCost
-adjustForHardwareCapabilites initialCost (ServerLoad {capabilityTags}) hardwareFactors =
+adjustForHardwareCapabilites :: forall server r. Newtype server {capabilityTags :: Array String | r} => LoadFixedCost -> server -> List HardwareFactor -> LoadFixedCost
+adjustForHardwareCapabilites initialCost server hardwareFactors =
   foldl applyHardwareCapability initialCost hardwareFactors
   where
+    capabilityTags = (unwrap server).capabilityTags
     applyHardwareCapability cost (HardwareFactor {name, cpuFactor, networkFactor}) =
       case Set.member name serverSet of
         false -> cost

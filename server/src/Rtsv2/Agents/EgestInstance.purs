@@ -55,6 +55,7 @@ import Rtsv2.DataObject (ObjectBroadcastMessage(..))
 import Rtsv2.DataObject as DO
 import Rtsv2.DataObject as DataObject
 import Rtsv2.Load as Load
+import Rtsv2.LoadTypes (LoadFixedCost(..), PredictedLoad(..))
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Common (Milliseconds)
@@ -64,7 +65,7 @@ import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Rtsv2.LlnwApiTypes (StreamIngestProtocol(..))
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeWsUrl)
-import Shared.Rtsv2.Stream (AggregatorKey(..), EgestKey(..), ProfileName, RelayKey(..), SlotId, SlotRole)
+import Shared.Rtsv2.Stream (AggregatorKey(..), EgestKey(..), ProfileName, RelayKey(..), SlotId, SlotRole, egestKeyToAgentKey)
 import Shared.Rtsv2.Types (EgestServer(..), FailureReason(..), LocalOrRemote(..), RegistrationResp, RelayServer, ResourceResp, Server, extractAddress)
 import WsGun as WsGun
 
@@ -217,20 +218,36 @@ toEgestServer = unwrap >>> wrap
 
 init :: CreateEgestPayload -> StateServerName -> Effect State
 init payload@{slotId, slotRole, aggregator, slotCharacteristics} stateServerName = do
+  { eqLogIntervalMs
+    , lingerTimeMs
+    , relayCreationRetryMs
+    , reserveForPotentialNumClients
+    , decayReserveMs
+    } <- Config.egestAgentConfig
+  loadConfig <- Config.loadConfig
+  thisServer <- PoPDefinition.getThisServer
+
   let
     egestKey = payloadToEgestKey payload
     relayKey = RelayKey slotId slotRole
+    LoadFixedCost { cpu: cpuPerClient
+                  , network: networkPerClient} = Load.egestInstanceCost slotCharacteristics loadConfig thisServer
+    predictedLoad = PredictedLoad { cost: LoadFixedCost { cpu: wrap $ (unwrap cpuPerClient) * (toNumber reserveForPotentialNumClients)
+                                                        , network: wrap $ (unwrap networkPerClient) * reserveForPotentialNumClients
+                                                        }
+                                  , decayTime: wrap (toNumber decayReserveMs)}
+
   { useMediaGateway } <- Config.featureFlags
   receivePortNumber <- startEgestReceiverFFI egestKey useMediaGateway
   _ <- Bus.subscribe (serverName egestKey) IntraPoP.bus IntraPoPBus
   logStart "Egest starting" {payload, receivePortNumber}
-  {eqLogIntervalMs, lingerTimeMs, relayCreationRetryMs} <- Config.egestAgentConfig
+
   now <- systemTimeMs
-  thisServer <- PoPDefinition.getThisServer
   _ <- IntraPoP.announceLocalEgestIsAvailable egestKey
   _ <- Timer.sendAfter (serverName egestKey) 0 InitStreamRelays
   _ <- Timer.sendEvery (serverName egestKey) eqLogIntervalMs WriteEqLog
-  loadConfig <- Config.loadConfig
+
+  Load.addPredictedLoad (egestKeyToAgentKey egestKey) predictedLoad
 
   Gen.registerExternalMapping (serverName egestKey) (\m -> Gun <$> (WsGun.messageMapper m))
   let

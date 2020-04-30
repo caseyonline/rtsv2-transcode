@@ -95,6 +95,8 @@ type EgestAgentConfig
   = { eqLogIntervalMs :: Int
     , lingerTimeMs :: Int
     , relayCreationRetryMs :: Int
+    , reserveForPotentialNumClients :: Int
+    , decayReserveMs :: Int
     }
 
 type IntraPoPAgentConfig
