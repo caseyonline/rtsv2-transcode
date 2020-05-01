@@ -175,6 +175,10 @@ data Msg
   | IngestDown ProfileName ServerAddress Boolean
   | PrimaryHandlerDown
   | Workflow WorkflowMsg
+  | BackupMaybeCreateDataObject
+
+backupConnectionRetryPeriod :: Int
+backupConnectionRetryPeriod = 1000
 
 isInstanceAvailable :: AggregatorKey -> Effect Boolean
 isInstanceAvailable aggregatorKey = do
@@ -463,11 +467,21 @@ init streamDetails@{role: slotRole, slot: slot@{id: slotId}} stateServerName = d
   cachedState <- fromMaybe emptyCachedState <$> CachedInstanceState.getInstanceData stateServerName
   state2 <- applyCachedState initialState cachedState
   state3 <- attemptConnectionToBackup state2
+  maybeStartPrimaryTimeout state3
   pure state3
   where
     mkKey (SlotProfile p) = tuple3 (IngestKey streamDetails.slot.id streamDetails.role p.name) (unwrap p.rtmpStreamName) (unwrap p.name)
     aggregatorKey = streamDetailsToAggregatorKey streamDetails
     thisServerName = (serverName (aggregatorKey))
+
+maybeStartPrimaryTimeout state@{dataObjectState: Left _} = do
+  -- We are primary, nothing to do
+  pure unit
+
+maybeStartPrimaryTimeout state@{aggregatorKey, dataObjectState: Right _} = do
+  -- We are backup starting up.  If primary exists, it will detect us and connect and send us its data object
+  _ <- Timer.sendAfter (serverName aggregatorKey) (backupConnectionRetryPeriod * 3) BackupMaybeCreateDataObject
+  pure unit
 
 attemptConnectionToBackup :: State -> Effect State
 attemptConnectionToBackup state@{dataObjectState: Left {connectionToBackup: Just _}} = do
@@ -491,7 +505,7 @@ attemptConnectionToBackup state@{slotId, slotRole, dataObjectState: Left dos@{}}
       case mPeerWebSocket of
         Nothing -> do
           -- We have a peer but failed to connect - start timer to retry
-          _ <- Timer.sendAfter (serverName (AggregatorKey slotId slotRole)) 1000 AttemptConnectionToBackup
+          _ <- Timer.sendAfter (serverName (AggregatorKey slotId slotRole)) backupConnectionRetryPeriod AttemptConnectionToBackup
           pure state
         Just socket -> do
           -- We have a peer and have connected - it'll send us its data object...
@@ -528,6 +542,18 @@ handleInfo msg state@{aggregatorKey, slotId, stateServerName, workflowHandle, ma
     AttemptConnectionToBackup -> do
       state2 <- attemptConnectionToBackup state
       pure $ CastNoReply state2
+
+    BackupMaybeCreateDataObject | { dataObjectState: Right dos@{ dataObject: Nothing
+                                                               , connectionToPrimary: Nothing}} <- state -> do
+      -- We are backup with no object and no primary connection, and the startup timer just went off. We can create.
+      let
+        dataObject = DO.new
+      sendBroadcast state dataObject
+      pure $ CastNoReply state{dataObjectState = Right { dataObject: Just (OwnedByUs dataObject)
+                                                       , connectionToPrimary: Nothing }}
+
+    BackupMaybeCreateDataObject ->
+      pure $ CastNoReply state
 
     PrimaryHandlerDown | { dataObjectState: Right dos } <- state -> do
       pure $ CastNoReply state{ dataObjectState = Right dos {connectionToPrimary = Nothing } }
@@ -696,7 +722,7 @@ processGunMessage state@{slotId, slotRole, dataObjectState: Left dos@{connection
         pure $ CastNoReply state
 
       Right (WsGun.Frame B2P_SynchroniseNoObject) -> do
-        -- We are primary, but we have not object. Simples.
+        -- We are primary, backup is requesting sync, but we have no object. Simples, just create one
         let
           dataObject = DO.new
         sendToBackup dos (P2B_Latest dataObject)

@@ -35,4 +35,16 @@
 
 - Initial release of HLS playlist and segment generation and submission from Ingest Aggregator
 
-- 
+- Basic Authentication supported on the Limelight provisioning APIs.  To configure, add a ```useBasicAuth``` field to ```llnwApiConfig```:
+
+    ```
+    {llnwApiConfig, #{ streamAuthTypeUrl => <<"http://1.2.3.4/rts/v1/streamauthtype">>
+                     , streamAuthUrl => <<"http://1.2.3.4/rts/v1/streamauth">>
+                     , streamPublishUrl => <<"http://1.2.3.4/rts/v1/streampublish">>
+                     , slotLookupUrl => <<"http://1.2.3.4/rts/v1/slotid/{account}/{streamName}">>
+                     , useBasicAuth => <<"user:password">>
+                     }}
+    
+    ```
+
+    
