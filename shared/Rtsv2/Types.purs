@@ -77,8 +77,8 @@ type SourceRoute = Array PoPName
 
 newtype GeoLoc = GeoLoc String
 
-newtype CurrentLoad = CurrentLoad { currentCpu :: Percentage
-                                  , currentNetwork :: NetworkKbps
+newtype CurrentLoad = CurrentLoad { cpu :: Percentage
+                                  , network :: NetworkKbps
                                   }
 
 newtype ServerLocation = ServerLocation { pop :: PoPName
@@ -154,12 +154,12 @@ extractAddress :: forall r a. Newtype a { address :: ServerAddress | r } => a ->
 extractAddress = unwrap >>> _.address
 
 minLoad :: CurrentLoad
-minLoad = CurrentLoad { currentCpu: wrap 0.0
-                      , currentNetwork: wrap 0 }
+minLoad = CurrentLoad { cpu: wrap 0.0
+                      , network: wrap 0 }
 
 maxLoad :: CurrentLoad
-maxLoad = CurrentLoad { currentCpu: wrap 100.0
-                      , currentNetwork: wrap 2147483647 }
+maxLoad = CurrentLoad { cpu: wrap 100.0
+                      , network: wrap 2147483647 }
 
 
 ------------------------------------------------------------------------------

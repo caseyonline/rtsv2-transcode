@@ -21,7 +21,7 @@ import Helpers.Types (ResWithBody(..), Node(..), TestNode)
 import Milkis as M
 import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Rtsv2.Stream (SlotId, SlotNameAndProfileName(..), SlotRole(..))
-import Shared.Rtsv2.Types (ServerAddress(..), extractAddress)
+import Shared.Rtsv2.Types (CurrentLoad(..), ServerAddress(..), extractAddress)
 import Shared.Rtsv2.Agent.State as PublicState
 import Simple.JSON (class ReadForeign)
 import Simple.JSON as SimpleJSON
@@ -154,6 +154,28 @@ assertRelayCount requiredSlotId count = assertBodyFun $ predicate
                   ) []  (JsonLd.unwrapNode popState).relayLocations
       in
        length (sort serverAddressesForSlotId) == count
+
+assertLoadEqual :: CurrentLoad -> Either String ResWithBody -> Aff (Either String ResWithBody)
+assertLoadEqual = assertBodyFun <<< predicate
+  where
+    predicate :: CurrentLoad -> CurrentLoad -> Boolean
+    predicate assertLoad actualLoad =
+      assertLoad == actualLoad
+
+assertLoadGreaterThan :: CurrentLoad -> Either String ResWithBody -> Aff (Either String ResWithBody)
+assertLoadGreaterThan = assertBodyFun <<< predicate
+  where
+    predicate :: CurrentLoad -> CurrentLoad -> Boolean
+    predicate (CurrentLoad {cpu: assertCpu, network: assertNetwork}) (CurrentLoad {cpu: actualCpu, network: actualNetwork}) =
+      actualCpu > assertCpu && actualNetwork > assertNetwork
+
+assertLoadLessThan :: CurrentLoad -> Either String ResWithBody -> Aff (Either String ResWithBody)
+assertLoadLessThan = assertBodyFun <<< predicate
+  where
+    predicate :: CurrentLoad -> CurrentLoad -> Boolean
+    predicate (CurrentLoad {cpu: assertCpu, network: assertNetwork}) (CurrentLoad {cpu: actualCpu, network: actualNetwork}) =
+      actualCpu < assertCpu && actualNetwork < assertNetwork
+
 
 -- | Aggregator
 

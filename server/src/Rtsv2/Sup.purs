@@ -19,11 +19,13 @@ import Rtsv2.Web as Web
 startLink :: Effect Pinto.StartLinkResult
 startLink = Sup.startLink (Local (atom "rtsv2sup")) init
 
+foreign import traceDebugImpl :: Effect Unit
+
 init :: Effect SupervisorSpec
 init = do
   webConfig <- Config.webConfig
   popDefinitionConfig <- Config.popDefinitionConfig
-
+--  _ <- traceDebugImpl
   pure $ buildSupervisor
     # supervisorStrategy OneForOne
     # supervisorChildren

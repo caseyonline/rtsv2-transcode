@@ -113,6 +113,11 @@ waitForMoreThanLinger = delayMs 1500.0
 waitForMoreThanEgestLinger :: Aff Unit
 waitForMoreThanEgestLinger = delayMs 3000.0 -- TODO seems big
 
+waitForHalfLoadDecay :: Aff Unit
+waitForHalfLoadDecay = delayMs 5000.0
+
+waitForLoadTick :: Aff Unit
+waitForLoadTick = delayMs 2000.0
 
 currentTime :: Effect String
 currentTime = do

@@ -1,6 +1,6 @@
 module Rtsv2.Load
        ( startLink
-       , load
+       , getLoad
        , setLoad
        , addPredictedLoad
 
@@ -10,7 +10,7 @@ module Rtsv2.Load
        , hasCapacityForAggregator
        , hasCapacityForRtmpIngest
        , hasCapacityForWebRTCIngest
-       , egestInstanceCost
+       , egestClientCost
        , launchLocalGeneric
        , launchLocalOrRemoteGeneric
        ) where
@@ -31,7 +31,6 @@ import Erl.Atom (Atom)
 import Erl.Data.List (List, singleton)
 import Erl.Data.Map (Map, empty, insert) as Map
 import Erl.Data.Tuple (Tuple2, uncurry2)
-import Erl.Utils as Erl
 import Logger (Logger)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
@@ -101,8 +100,8 @@ hasCapacityForWebRTCIngest :: SlotCharacteristics -> LoadConfig -> ServerLoad ->
 hasCapacityForWebRTCIngest =
   hasCapacity _.webRTCIngest Ingest
 
-egestInstanceCost :: SlotCharacteristics -> LoadConfig -> Server -> LoadFixedCost
-egestInstanceCost slotCharacteristics {costs: LoadCosts {egestInstance: agentCosts}} targetServer =
+egestClientCost :: SlotCharacteristics -> LoadConfig -> Server -> LoadFixedCost
+egestClientCost slotCharacteristics {costs: LoadCosts {egestClient: agentCosts}} targetServer =
   agentCostsToFixed slotCharacteristics targetServer agentCosts
 
 foreign import data CpuState :: Type
@@ -122,7 +121,8 @@ type DecayingLoad = { currentAdditionalCpu :: Percentage
 type State =
   { config :: LoadConfig
   , thisServer :: Server
-  , load :: CurrentLoad
+  , currentMeasuredLoad :: CurrentLoad
+  , currentEffectiveLoad :: CurrentLoad
   , cpuUtilState :: CpuState
   , networkUtilState :: NetState
   , predictedLoads :: Map.Map AgentKey DecayingLoad
@@ -138,25 +138,27 @@ startLink :: Unit -> Effect StartLinkResult
 startLink args =
   Gen.startLink serverName (init args) handleInfo
 
-load :: Effect CurrentLoad
-load =
-  Gen.call serverName \state@{ load: currentLoad } -> CallReply currentLoad state
+getLoad :: Effect CurrentLoad
+getLoad =
+  Gen.call serverName \state@{currentEffectiveLoad} -> CallReply currentEffectiveLoad state
 
 setLoad :: CurrentLoad -> Effect Unit
 setLoad newLoad = do
   Gen.doCall serverName doSetLoad
   where
     doSetLoad state@{config: {monitorLoad}} | monitorLoad == false = do
-      IntraPop.announceLoad newLoad
-      pure $ CallReply unit state{load = newLoad}
+      let
+        state2 = calculateEffectiveLoad state{currentMeasuredLoad = newLoad}
+      IntraPop.announceLoad state2.currentEffectiveLoad
+      pure $ CallReply unit state2
     doSetLoad state | otherwise =
       pure $ CallReply unit state
 
 addPredictedLoad :: AgentKey -> PredictedLoad -> Effect Unit
 addPredictedLoad key (PredictedLoad {cost: (LoadFixedCost {cpu, network}), decayTime}) =
-  Gen.call serverName doAddPredictedLoad
+  Gen.doCall serverName doAddPredictedLoad
   where
-    doAddPredictedLoad state@{predictedLoads, tickTime, thisServer: Server {maxCpuCapacity}} =
+    doAddPredictedLoad state@{predictedLoads, tickTime, thisServer: Server {maxCpuCapacity}} = do
       let
         currentAdditionalCpu = cpuUnitsToPercentage cpu maxCpuCapacity
         newLoad = { currentAdditionalCpu
@@ -164,8 +166,11 @@ addPredictedLoad key (PredictedLoad {cost: (LoadFixedCost {cpu, network}), decay
                   , cpuDecayPerTick: wrap $ (unwrap currentAdditionalCpu) * (unwrap tickTime) / (unwrap decayTime)
                   , networkDecayPerTick: wrap $ (unwrap network) * ((round <<< unwrap) tickTime) / ((round <<< unwrap) decayTime)
                   }
-      in
-        CallReply unit state{predictedLoads = Map.insert key newLoad predictedLoads}
+        state2 = state{predictedLoads = Map.insert key newLoad predictedLoads}
+        state3 = calculateEffectiveLoad state2
+      logInfo "predictedLoad added" {newLoad, currentEffectiveLoad: state3.currentEffectiveLoad}
+      IntraPop.announceLoad state3.currentEffectiveLoad
+      pure $ CallReply unit state3
 
 init :: Unit -> Effect State
 init args = do
@@ -177,7 +182,8 @@ init args = do
   void $ Timer.sendEvery serverName loadAnnounceMs Tick
   pure $ { config
          , thisServer
-         , load: minLoad
+         , currentMeasuredLoad: minLoad
+         , currentEffectiveLoad: minLoad
          , cpuUtilState
          , networkUtilState
          , predictedLoads: Map.empty
@@ -185,39 +191,13 @@ init args = do
          }
 
 handleInfo :: Msg -> State -> Effect (CastResult State)
-handleInfo msg state@{ load: currentLoad@(CurrentLoad {currentNetwork})
-                     , config: {monitorLoad}} =
+handleInfo msg state =
   case msg of
-    Tick | monitorLoad ->
+    Tick ->
       do
-        now <- Erl.vmTimeMs
-        {cpu: newCpu, state: state2} <- getCurrentCpu state
-        {network: newNetwork, state: state3} <- getCurrentNetwork state2
-        let
-          newMeasuredLoad = CurrentLoad { currentCpu: newCpu
-                                        , currentNetwork: newNetwork
-                                        }
-          state4 = decayPredicted state3
-          newLoad = addPredicted newMeasuredLoad state4
-        IntraPop.announceLoad newLoad
-        pure $ CastNoReply state4{load = newLoad}
-    Tick | otherwise -> do
-      IntraPop.announceLoad currentLoad
-      pure $ CastNoReply state
-
-getCurrentCpu :: State -> Effect { cpu :: Percentage
-                                 , state :: State }
-getCurrentCpu state@{cpuUtilState} = do
-  res <- cpuUtilImpl cpuUtilState
-  uncurry2 (\util cpuUtilState2 -> do
-               pure {cpu: wrap util, state: state{cpuUtilState = cpuUtilState2}}) res
-
-getCurrentNetwork :: State -> Effect { network :: NetworkKbps
-                                     , state :: State }
-getCurrentNetwork state@{networkUtilState} = do
-  res <- networkUtilImpl networkUtilState
-  uncurry2 (\mkbps networkUtilState2 -> do
-               pure {network: wrap mkbps, state: state{networkUtilState = networkUtilState2}}) res
+        state2 <- (decayPredicted >>> calculateEffectiveLoad) <$> getNewLoad state
+        IntraPop.announceLoad state2.currentEffectiveLoad
+        pure $ CastNoReply state2
 
 --------------------------------------------------------------------------------
 -- Internals
@@ -243,7 +223,7 @@ hasCapacity extractor agent slotCharacteristics {limits: defaultLimits, costs: L
         agentCosts@(LoadAgentCosts {limitOverrides}) = extractor costs
         limits = fromMaybe defaultLimits limitOverrides
         ServerLoad {maxCpuCapacity, maxNetworkCapacity, load} = targetServer
-        CurrentLoad {currentCpu, currentNetwork} = load
+        CurrentLoad {cpu: currentCpu, network: currentNetwork} = load
         LoadLimits {cpu: cpuLimits, network: networkLimits} = limits
 
         LoadFixedCost {cpu: additionalCpu, network: additionalNetwork} = agentCostsToFixed slotCharacteristics targetServer agentCosts
@@ -315,6 +295,33 @@ cpuUnitsToPercentage (SpecInt x) (SpecInt y) = Percentage (x * 100.0 / y)
 networkToPercentage :: NetworkKbps -> NetworkKbps -> Percentage
 networkToPercentage (NetworkKbps x) (NetworkKbps y) = Percentage ((toNumber x) * 100.0 / (toNumber y))
 
+getNewLoad :: State -> Effect State
+getNewLoad state@{config: {monitorLoad}} | monitorLoad = do
+  {cpu: newCpu, state: state2} <- getCurrentCpu state
+  {network: newNetwork, state: state3} <- getCurrentNetwork state2
+  let
+    newMeasuredLoad = CurrentLoad { cpu: newCpu
+                                  , network: newNetwork
+                                  }
+  pure state{currentMeasuredLoad = newMeasuredLoad}
+
+getNewLoad state =
+  pure state
+
+getCurrentCpu :: State -> Effect { cpu :: Percentage
+                                 , state :: State }
+getCurrentCpu state@{cpuUtilState} = do
+  res <- cpuUtilImpl cpuUtilState
+  uncurry2 (\util cpuUtilState2 -> do
+               pure {cpu: wrap util, state: state{cpuUtilState = cpuUtilState2}}) res
+
+getCurrentNetwork :: State -> Effect { network :: NetworkKbps
+                                     , state :: State }
+getCurrentNetwork state@{networkUtilState} = do
+  res <- networkUtilImpl networkUtilState
+  uncurry2 (\mkbps networkUtilState2 -> do
+               pure {network: wrap mkbps, state: state{networkUtilState = networkUtilState2}}) res
+
 decayPredicted :: State -> State
 decayPredicted state@{predictedLoads} =
   state{predictedLoads = Map.foldlWithIndex decayPotential Map.empty predictedLoads}
@@ -332,13 +339,14 @@ decayPredicted state@{predictedLoads} =
         else Map.insert key predictedLoad{ currentAdditionalCpu = newCpu
                                          , currentAdditionalNetwork = newNetwork} acc
 
-addPredicted :: CurrentLoad -> State -> CurrentLoad
-addPredicted currentLoad state@{predictedLoads} =
-  foldl addPredicted' currentLoad predictedLoads
+calculateEffectiveLoad :: State -> State
+calculateEffectiveLoad state@{ predictedLoads
+                             , currentMeasuredLoad: currentLoad} =
+  state{currentEffectiveLoad = foldl addPredicted' currentLoad predictedLoads}
   where
-    addPredicted' (CurrentLoad {currentCpu, currentNetwork}) {currentAdditionalCpu, currentAdditionalNetwork} =
-      CurrentLoad { currentCpu: currentCpu <> currentAdditionalCpu
-                  , currentNetwork: currentNetwork <> currentAdditionalNetwork
+    addPredicted' (CurrentLoad {cpu: currentCpu, network: currentNetwork}) {currentAdditionalCpu, currentAdditionalNetwork} =
+      CurrentLoad { cpu: currentCpu <> currentAdditionalCpu
+                  , network: currentNetwork <> currentAdditionalNetwork
                   }
 
 --------------------------------------------------------------------------------

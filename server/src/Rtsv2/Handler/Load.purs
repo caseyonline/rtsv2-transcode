@@ -50,10 +50,8 @@ load =
 
     provideJson req state =
       do
-        currentLoad <- Load.load
-        let
-          result = {currentLoad}
-        Rest.result (JSON.writeJSON result) req state
+        currentLoad <- Load.getLoad
+        Rest.result (JSON.writeJSON currentLoad) req state
 
     acceptJson req state@{load: currentLoad} =
       do

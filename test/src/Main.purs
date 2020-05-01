@@ -7,6 +7,7 @@ import Cases.Startup (startupTests)
 import Cases.Ingest (ingestTests)
 import Cases.IngestEgest (ingestEgestTests)
 import Cases.Resilience (resilienceTests)
+import Cases.Load (loadTests)
 import Data.Identity (Identity(..))
 import Data.Maybe (Maybe(..))
 import Data.Newtype (un)
@@ -26,6 +27,7 @@ main =
     ingestEgestTests -- 3
     resilienceTests -- 4
     webRTCTest -- 5
+    loadTests -- 6
     describe "Cleanup" do
       after_ F.stopSession do
         it "final cleanup" do

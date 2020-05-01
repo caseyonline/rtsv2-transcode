@@ -3,7 +3,7 @@ module Helpers.HTTP where
 import Prelude
 
 import Data.Either (Either(..))
-import Data.Newtype (unwrap)
+import Data.Newtype (unwrap, wrap)
 import Effect.Aff (Aff, attempt)
 import Helpers.CreateString (makeUrlAndUnwrap)
 import Helpers.Types (Node, ResWithBody(..))
@@ -13,7 +13,7 @@ import Prim.Row (class Union)
 import Shared.Rtsv2.Chaos as Chaos
 import Shared.Rtsv2.Router.Endpoint (Canary(..), Endpoint(..), makeUrlAddr)
 import Shared.Rtsv2.Stream (RtmpShortName, SlotId, SlotNameAndProfileName(..), SlotRole(..))
-import Shared.Rtsv2.Types (ServerAddress(..))
+import Shared.Rtsv2.Types (CurrentLoad(..), ServerAddress(..))
 import Simple.JSON as SimpleJSON
 
 
@@ -70,11 +70,14 @@ killProcessServerAddr addr chaos =
         , headers: M.makeHeaders { "Content-Type": "application/json" }
         }
 
+getLoad :: Node -> Aff (Either String ResWithBody)
+getLoad node = get  (M.URL $ makeUrlAndUnwrap node LoadE)
+
 setLoad :: Node -> Number -> Aff (Either String ResWithBody)
 setLoad node load =
   fetch (M.URL $ makeUrlAndUnwrap node LoadE)
         { method: M.postMethod
-        , body: "{\"currentCpu\": " <> show load <> ", \"currentNetwork\":0}"
+        , body: SimpleJSON.writeJSON $ CurrentLoad {cpu: wrap load, network: wrap 0}
         , headers: M.makeHeaders { "Content-Type": "application/json" }
         }
 
