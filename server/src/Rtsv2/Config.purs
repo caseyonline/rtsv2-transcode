@@ -81,6 +81,8 @@ type PoPDefinitionConfig
 type IngestInstanceConfig
   = { eqLogIntervalMs :: Int
     , aggregatorRetryTimeMs :: Int
+    , qosPollIntervalMs :: Int
+    , abortIfNoMediaMs :: Int
     }
 
 type IngestAggregatorAgentConfig
