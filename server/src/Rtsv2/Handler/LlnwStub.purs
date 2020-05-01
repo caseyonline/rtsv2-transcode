@@ -6,6 +6,7 @@ module Rtsv2.Handler.LlnwStub
        , hlsPush
        , db
        , StubHost
+       , StubProtocol
        ) where
 
 import Prelude
@@ -45,15 +46,21 @@ import StetsonHelper (preHookSpyState)
 import Unsafe.Coerce (unsafeCoerce)
 
 
-data StubHost = Any
+data StubHost = AnyHost
               | SpecificHost String
 
 derive instance genericStubHost :: Generic StubHost _
 instance eqStubHost :: Eq StubHost where eq = genericEq
 
+data StubProtocol = AnyProtocol
+                  | SpecificProtocol StreamIngestProtocol
+
+derive instance genericStubProtocol :: Generic StubProtocol _
+instance eqStubProtocol :: Eq StubProtocol where eq = genericEq
+
 type SlotDbEntry =
   { auth :: { host :: StubHost
-            , protocol :: StreamIngestProtocol
+            , protocol :: StubProtocol
             , rtmpShortName :: RtmpShortName
             , authType :: SlotPublishAuthType
             , username :: String
@@ -68,8 +75,8 @@ db =
 
   where
     slotA =
-      { auth: { host: Any --"172.16.171.5"
-              , protocol: Rtmp
+      { auth: { host: AnyHost --"172.16.171.5"
+              , protocol: AnyProtocol
               , rtmpShortName: wrap "mmddev001"
               , authType: Adobe
               , username: "user"
@@ -105,8 +112,8 @@ db =
       }
 
     slotB =
-      { auth: { host: Any --"172.16.171.5"
-              , protocol: Rtmp
+      { auth: { host: AnyHost --"172.16.171.5"
+              , protocol: SpecificProtocol Rtmp
               , rtmpShortName: wrap "mmddev001"
               , authType: Llnw
               , username: "user"
@@ -129,9 +136,9 @@ db =
       }
 
     webRtcSlotA =
-      { auth: { host: Any --"172.16.171.5"
-              , protocol: WebRTC
-              , rtmpShortName: wrap "mmddev001"
+      { auth: { host: AnyHost --"172.16.171.5"
+              , protocol: SpecificProtocol WebRTC
+              , rtmpShortName: wrap "mmddev002"
               , authType: Adobe
               , username: "user"
               , password: "password" }
@@ -161,10 +168,10 @@ streamAuthType =
     lookup' Nothing = Nothing
     lookup' (Just {host, protocol, rtmpShortName}) =
       filter (\ {auth: { host: candidateHost
-                      , protocol: candidateProtocol
-                      , rtmpShortName: candidateShortName }} ->
-              ((candidateHost == Any) || (candidateHost == SpecificHost host))
-              && (candidateProtocol == protocol)
+                       , protocol: candidateProtocol
+                       , rtmpShortName: candidateShortName }} ->
+              ((candidateHost == AnyHost) || (candidateHost == SpecificHost host))
+              && ((candidateProtocol == AnyProtocol) || (candidateProtocol == SpecificProtocol protocol))
               && (candidateShortName == rtmpShortName))
       db
       # head
@@ -181,7 +188,7 @@ streamAuth =
       filter (\ {auth: { host: candidateHost
                       , rtmpShortName: candidateShortName
                       , username: candidateUsername }} ->
-              ((candidateHost == Any) || (candidateHost == SpecificHost host))
+              ((candidateHost == AnyHost) || (candidateHost == SpecificHost host))
               && (candidateShortName == rtmpShortName)
               && (candidateUsername == username))
               db
@@ -202,8 +209,8 @@ streamPublish =
                        , rtmpShortName: candidateShortName
                        , username: candidateUsername }
                , details: { slot: {profiles: candidateProfiles} }} ->
-              ((candidateHost == Any) || (candidateHost == SpecificHost host))
-              && (candidateProtocol == protocol)
+              ((candidateHost == AnyHost) || (candidateHost == SpecificHost host))
+              && ((candidateProtocol == AnyProtocol) || (candidateProtocol == SpecificProtocol protocol))
               && (candidateShortName == rtmpShortName)
               && not (Array.null (Array.filter (\candidateProfile ->
                                                   let
@@ -311,14 +318,14 @@ hlsPush path =
     File.writeFile fname (IOData.fromBinary body) >>=
       either (const $ logInfo "Failed to write" {path : joinWith "/" path}) (const $ pure unit)
     Rest.result true req state
-  
-  isAuth req state = 
-    let reply = case isAuthorized req of 
+
+  isAuth req state =
+    let reply = case isAuthorized req of
                   true -> Authorized
                   false -> NotAuthorized "Basic"
     in
     Rest.result reply req state
-      
+
 
 
 allBody :: Req -> IOData -> Effect Binary
