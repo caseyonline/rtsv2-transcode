@@ -94,6 +94,7 @@ process_input(Input = #frame{source_metadata = #source_metadata{source_id = Id,
                                                                 source_instance = Instance},
                              frame_metadata = #video_frame_metadata{is_idr_frame = true},
                              vm_capture_us = CaptureUs,
+                             pts = Pts,
                              dts = Dts},
               State = #?state{reference_stream = undefined,
                               pending_program_details = PendingProgramDetails}) ->
@@ -110,11 +111,15 @@ process_input(Input = #frame{source_metadata = #source_metadata{source_id = Id,
                                      last_iframe_utc = CaptureUs,
                                      last_iframe_dts = Dts},
 
+  DeltadFrame = Input#frame{pts = Pts + Delta,
+                            dts = Dts + Delta
+                           },
+
   Output = case maps:get(Id, PendingProgramDetails, undefined) of
              undefined ->
-               Input;
+               DeltadFrame;
              ProgramDetails ->
-               [ProgramDetails, Input]
+               [ProgramDetails#frame{pts = Dts + Delta, dts = Dts + Delta}, DeltadFrame]
            end,
 
   {ok, Output, State#?state{reference_stream = Key,
