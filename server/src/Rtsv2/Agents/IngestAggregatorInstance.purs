@@ -71,7 +71,7 @@ import Erl.Data.List (List, nil, (:))
 import Erl.Data.List as List
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
-import Erl.Data.Tuple (Tuple3, toNested3, tuple3)
+import Erl.Data.Tuple (Tuple3, Tuple4, toNested3, tuple3, tuple4)
 import Erl.Process (Process(..), (!))
 import Erl.Process.Raw (Pid)
 import Erl.Utils (Ref, shutdown)
@@ -103,7 +103,7 @@ import Shared.UUID (UUID)
 import WsGun as WsGun
 
 foreign import data WorkflowHandle :: Type
-foreign import startWorkflowImpl :: UUID -> SlotRole -> List (Tuple3 IngestKey String String) -> List HlsPushSpec -> Effect (Tuple3 WorkflowHandle (List Pid) SlotConfiguration)
+foreign import startWorkflowImpl :: UUID -> SlotRole -> List (Tuple4 IngestKey String String Int) -> List HlsPushSpec -> Effect (Tuple3 WorkflowHandle (List Pid) SlotConfiguration)
 foreign import stopWorkflowImpl :: WorkflowHandle -> Effect Unit
 foreign import addLocalIngestImpl :: WorkflowHandle -> IngestKey -> Effect Unit
 foreign import addRemoteIngestImpl :: WorkflowHandle -> IngestKey -> String -> Effect Unit
@@ -470,7 +470,7 @@ init streamDetails@{role: slotRole, slot: slot@{id: slotId}} stateServerName = d
   maybeStartPrimaryTimeout state3
   pure state3
   where
-    mkKey (SlotProfile p) = tuple3 (IngestKey streamDetails.slot.id streamDetails.role p.name) (unwrap p.rtmpStreamName) (unwrap p.name)
+    mkKey (SlotProfile p) = tuple4 (IngestKey streamDetails.slot.id streamDetails.role p.name) (unwrap p.rtmpStreamName) (unwrap p.name) p.bitrate
     aggregatorKey = streamDetailsToAggregatorKey streamDetails
     thisServerName = (serverName (aggregatorKey))
 

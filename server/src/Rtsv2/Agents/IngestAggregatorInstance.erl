@@ -13,13 +13,19 @@
 -include_lib("id3as_media/include/ts.hrl").
 -include_lib("id3as_media/include/ts_encoder.hrl").
 -include_lib("id3as_media/include/ts_segment_generator.hrl").
--include_lib("id3as_media/include/ts_akamai_writer.hrl").
+
+-include_lib("id3as_media/include/m3u8.hrl").
+
+-include_lib("id3as_media/include/stream_sync.hrl").
+
 
 -ifdef(__RTC_FEAT_FEC).
 -include_lib("id3as_rtc/include/rtp_ulp_fec.hrl").
 -endif.
 -include("../../../../src/rtsv2_slot_media_source_publish_processor.hrl").
 -include("../../../../src/rtsv2_rtp.hrl").
+-include("../../../../src/rtsv2_slot_profiles.hrl").
+-include("../../../../src/rtsv2_internal_hls_writer.hrl").
 
 -export([
          startWorkflowImpl/4,
@@ -36,23 +42,18 @@
                                                          spec = ?wildcard_by_name(frame)#frame{source_metadata = ?wildcard(#source_metadata{})#source_metadata{source_id = SourceId}}}).
 
 
--record(enriched_slot_profile,
-        { ingest_key :: term()
-        , stream_name :: binary_string()
-        , profile_name :: binary_string()
-        , audio_ssrc_start :: non_neg_integer()
-        , video_ssrc_start :: non_neg_integer()
-        }).
+
 
 
 startWorkflowImpl(SlotId, SlotRole, Profiles, PushDetails) ->
   fun() ->
       {EnrichedProfiles, _NextProfileIndex} =
-        lists:mapfoldl(fun({ IngestKey, StreamName, ProfileName }, ProfileIndex) ->
+        lists:mapfoldl(fun({ IngestKey, StreamName, ProfileName, Bitrate }, ProfileIndex) ->
                            ProfileInfo =
                              #enriched_slot_profile{ ingest_key = IngestKey
                                                    , stream_name = StreamName
                                                    , profile_name = ProfileName
+                                                   , bitrate = Bitrate
 
                                                      %% SSRCs are 32-bits, use the upper 16 bits to reflect
                                                      %% the profile to which the RTP stream belongs, the
@@ -150,7 +151,17 @@ startWorkflow(SlotId, SlotRole, Profiles, PushDetails) ->
                                                                          frame_size_ms = 20
                                                                         }
                                                 }
-                                }
+                                },
+                              #named_output{
+                                 profile_name = aac,
+                                 frame_spec = #frame_spec{
+                                                 profile = #audio_profile{
+                                                              codec = aac,
+                                                              sample_rate = 48000,
+                                                              sample_format = s16
+                                                             }
+                                                }
+                                }                           
                              ]
                   },
 
@@ -173,7 +184,20 @@ startWorkflow(SlotId, SlotRole, Profiles, PushDetails) ->
                                          module = rtsv2_rtmp_ingest_aggregator_processor
                                         },
 
-                              lists:map(fun(#enriched_slot_profile{ ingest_key = IngestKey
+
+                              #processor{name = master_hls_playlists,
+                                         display_name = <<"Publish Master HLS Playlists">>,
+                                         subscribes_to = {aggregate, ?program_details_frames},%% who knows
+                                         module = rtsv2_hls_master_playlist_processor,
+                                         config = #hls_master_playlist_processor_config{
+                                           slot_id = SlotId,
+                                           profiles = Profiles,
+                                           push_details = PushDetails
+                                         }
+                                        },
+
+                              lists:map(fun(Profile =
+                                            #enriched_slot_profile{ ingest_key = IngestKey
                                                                   , stream_name = StreamName
                                                                   , profile_name = ProfileName
                                                                   , audio_ssrc_start = AudioSSRCStart
@@ -188,12 +212,19 @@ startWorkflow(SlotId, SlotRole, Profiles, PushDetails) ->
                                                subscribes_to = [{aggregate, ?audio_frames_with_source_id(ProfileName)},
                                                                 {aggregate, ?video_frames_with_source_id(ProfileName)}],
                                                processors = [
+
+                                                            #processor{name = gop_numberer,
+                                                                display_name = <<"GoP Numberer">>,
+                                                                subscribes_to = ?previous,
+                                                                module = gop_numberer
+                                                              },
+
                                                              ?include_if(PushDetails /= [], 
-                                                                  hls_processors(SlotId, PushDetails)),
+                                                                  hls_processors(gop_numberer, audio_transcode, SlotId, Profile, PushDetails)),
 
                                                              #processor{name = audio_transcode,
                                                                         display_name = <<"Audio Transcode">>,
-                                                                        subscribes_to = {outside_world, ?audio_frames},
+                                                                        subscribes_to = {gop_numberer, ?audio_frames},
                                                                         module = audio_transcode,
                                                                         config = AudioConfig
                                                                        },
@@ -230,7 +261,7 @@ startWorkflow(SlotId, SlotRole, Profiles, PushDetails) ->
                                                              #processor{name = rtp,
                                                                         display_name = <<"WebRTC RTP Mux">>,
                                                                         module = fun_processor,
-                                                                        subscribes_to = [?previous, {outside_world, ?video_frames}],
+                                                                        subscribes_to = [{?previous, ?audio_frames_with_profile_name(opus)}, {outside_world, ?video_frames}],
                                                                         config = #fun_processor_config{ initial_state =
                                                                                                           { rtp_opus_egest:new(AudioSSRCStart, ?OPUS_ENCODING_ID)
                                                                                                           , rtp_h264_egest:new(VideoSSRCStart, ?H264_ENCODING_ID)
@@ -319,44 +350,53 @@ startWorkflow(SlotId, SlotRole, Profiles, PushDetails) ->
 
   {Handle, Pids, SlotConfiguration}.
 
-hls_processors(_SlotId, [#{ segmentDuration := SegmentDuration, playlistDuration := PlaylistDuration, putBaseUrl := PutBaseUrl }]) ->
+hls_processors(VideoSub, AudioSub, _SlotId, #enriched_slot_profile{ profile_name = ProfileName }, [#{ auth := #{username := Username, password := Password}, segmentDuration := SegmentDuration, playlistDuration := PlaylistDuration, putBaseUrl := PutBaseUrl }]) ->
   TsEncoderConfig = #ts_encoder_config{
                        which_encoder = ts_simple_encoder,
                        program_pid = 4096,
                        pcr_pid = 256,
                        streams = [
-                                  % #ts_stream {
-                                  %    pid = AudioPid,
-                                  %    index = 1,
-                                  %    pes_stream_type = ?STREAM_TYPE_AUDIO_AAC_ADTS,
-                                  %    pes_stream_id = ?PesAudioStreamId(1)
-                                  %   },
                                   #ts_stream {
                                      pid = 256,
                                      index = 1,
                                      pes_stream_type = ?STREAM_TYPE_VIDEO_H264,
                                      pes_stream_id = ?PesVideoStreamId(1)
+                                    },
+                                  #ts_stream {
+                                     pid = 257,
+                                     index = 2,
+                                     pes_stream_type = ?STREAM_TYPE_AUDIO_AAC_ADTS,
+                                     pes_stream_id = ?PesAudioStreamId(1)
                                     }
                                  ]},
 
   [
+    #processor{name = adts,
+      module = adts_encapsulator,
+      subscribes_to = { AudioSub, ?audio_frames_with_profile_name(aac) }
+      
+    },
+    #processor{
+      name = stream_sync,
+      module = stream_sync,
+      subscribes_to = [{VideoSub, ?video_frames}, ?previous],
+      config = #stream_sync_config{ num_streams = 2 }
+    },
     #processor{name = ts_mux,
       display_name = <<"TS Mux">>,
-      subscribes_to = {outside_world, ?video_frames},
+      subscribes_to = ?previous,
       module = ts_encoder,
       config = TsEncoderConfig
-      },
-
+    },
 
     #processor{name = ts_segmenter,
       display_name = <<"TS Segmenter">>,
       subscribes_to = ?previous,
       config = #ts_segment_generator_config {
                   mode = video,
-                  segment_strategy = #ts_segment_generator_time_strategy {
-                                        minimum_duration = timer:seconds(SegmentDuration),
-                                        initial_sequence_number = 0
-                                      }
+                  segment_strategy = #ts_segment_generator_gop_strategy {
+                    gops_per_segment = 2 %% TODO gop length is what?
+                  }
                 },
       module = ts_segment_generator},
 
@@ -366,15 +406,16 @@ hls_processors(_SlotId, [#{ segmentDuration := SegmentDuration, playlistDuration
       subscribes_to = ?previous,
       module = rtsv2_internal_hls_writer,
       config =
-          #ts_akamai_writer_config{
-            post_url = PutBaseUrl,
+          #rtsv2_internal_hls_writer_config{
+            post_url = <<PutBaseUrl/binary, ProfileName/binary, "/">>,
             max_playlist_length = PlaylistDuration div SegmentDuration,
             target_segment_duration = SegmentDuration,
-            playlist_name = <<"stuff.m3u8">>,
-            version_string = <<"">> %% ?BUILD_VERSION_COMMIT
+            playlist_name = <<"playlist.m3u8">>,
+            auth = {Username,Password}
           }
     }
   ].
+
 
 mux_to_rtp(#frame{ profile = #audio_profile{ codec = Codec } } = Frame, { AudioEgest, VideoEgest }) ->
   { NewAudioEgest, RTPs } = rtp_opus_egest:step(AudioEgest, Frame),
@@ -492,3 +533,4 @@ profile(#enriched_slot_profile{ profile_name = ProfileName, audio_ssrc_start = A
    , firstAudioSSRC => AudioSSRCStart
    , firstVideoSSRC => VideoSSRCStart
    }.
+
