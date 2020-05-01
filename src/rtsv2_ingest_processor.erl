@@ -21,8 +21,20 @@ ingest_processor(IngestKey, ProfileName, Subscriptions) ->
                consumes = ?all
               }
     , subscribes_to = Subscriptions
-    , processors = [ #processor{ name = set_source_id
-                               , subscribes_to = outside_world
+    , processors = [ #processor{ name = set_video_stream_id
+                               , subscribes_to = {outside_world, ?video_frames}
+                               , module = set_stream_id
+                               , config = 256
+                               }
+
+                   , #processor{ name = set_audio_stream_id
+                               , subscribes_to = {outside_world, ?audio_frames}
+                               , module = set_stream_id
+                               , config = 257
+                               }
+
+                   , #processor{ name = set_source_id
+                               , subscribes_to = [set_video_stream_id, set_audio_stream_id]
                                , module = set_source_id
                                , config = {ProfileName, make_ref()}
                                }
