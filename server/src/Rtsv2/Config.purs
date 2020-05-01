@@ -39,11 +39,13 @@ import Prelude
 import Control.Monad.Except (ExceptT, runExcept)
 import Data.Either (Either(..), hush)
 import Data.Identity (Identity)
-import Data.Maybe (Maybe, fromMaybe, fromMaybe')
+import Data.Maybe (Maybe(..), fromMaybe, fromMaybe')
 import Data.Traversable (traverse)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
-import Erl.Data.List (List)
+import Erl.Data.List (List, nil, (:))
+import Erl.Data.Tuple (Tuple2, tuple2)
+import Erl.Utils (base64Encode)
 import Foreign (F, Foreign, readString, unsafeReadTagged)
 import Logger as Logger
 import Partial.Unsafe (unsafeCrashWith)
@@ -154,6 +156,15 @@ type LlnwApiConfig
     , streamAuthUrl :: String
     , streamPublishUrl :: String
     , slotLookupUrl :: String
+    , headers :: List (Tuple2 String String)
+    }
+
+type LlnwApiConfigInternal
+  = { streamAuthTypeUrl :: String
+    , streamAuthUrl :: String
+    , streamPublishUrl :: String
+    , slotLookupUrl :: String
+    , useBasicAuth :: Maybe String
     }
 
 type HealthConfig
@@ -234,7 +245,25 @@ rtmpIngestConfig = do
 
 llnwApiConfig :: Effect LlnwApiConfig
 llnwApiConfig = do
-  getMandatoryRecord "llnwApiConfig"
+  (internal :: LlnwApiConfigInternal) <- getMandatoryRecord "llnwApiConfig"
+  let
+    { streamAuthTypeUrl
+    , streamAuthUrl
+    , streamPublishUrl
+    , slotLookupUrl
+    , useBasicAuth } = internal
+
+    external = { streamAuthTypeUrl
+               , streamAuthUrl
+               , streamPublishUrl
+               , slotLookupUrl
+               , headers : case useBasicAuth of
+                             Nothing -> nil
+                             Just auth ->
+                               let headerValue = "Basic " <> base64Encode auth
+                               in (tuple2 "Authorization" headerValue) : nil
+               }
+  pure external
 
 healthConfig :: Effect HealthConfig
 healthConfig = do

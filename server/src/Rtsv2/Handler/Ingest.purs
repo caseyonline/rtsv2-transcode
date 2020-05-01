@@ -35,6 +35,7 @@ import Rtsv2.Agents.IngestSup as IngestSup
 import Rtsv2.Config (LoadConfig)
 import Rtsv2.Config as Config
 import Rtsv2.Handler.MimeType as MimeType
+import Rtsv2.LlnwApi as LlnwApi
 import Shared.Rtsv2.Agent.State (IngestStats)
 import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.LlnwApiTypes (StreamIngestProtocol(..), StreamPublish, StreamDetails)
@@ -211,8 +212,8 @@ ingestStart loadConfig canary shortName slotNameAndProfileName@(SlotNameAndProfi
                                                         , username: "user"}
                           in
                            do
-                             {streamPublishUrl} <- Config.llnwApiConfig
-                             restResult <- bodyToJSON <$> SpudGun.postJson (wrap streamPublishUrl) streamPublishPayload
+                             config <- Config.llnwApiConfig
+                             restResult <- LlnwApi.streamPublish config streamPublishPayload
                              let
                                streamDetails = hush $ restResult
                              Rest.result (isJust streamDetails) req state{ streamDetails = streamDetails

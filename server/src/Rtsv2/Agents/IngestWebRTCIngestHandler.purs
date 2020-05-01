@@ -24,6 +24,7 @@ import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
 import Rtsv2.Config (LoadConfig)
 import Rtsv2.Config as Config
 import Rtsv2.DataObject as DO
+import Rtsv2.LlnwApi as LlnwApi
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.LlnwApiTypes (PublishCredentials(..), SlotProfile(..), StreamAuth, StreamDetails, StreamIngestProtocol(..), StreamPublish(..))
 import Shared.Rtsv2.Stream (IngestKey(..), ProfileName, RtmpStreamName(..))
@@ -129,17 +130,17 @@ stopStream ingestKey =
 
 getPublishCredentials :: String -> String -> String -> Effect (Either JsonResponseError PublishCredentials)
 getPublishCredentials host rtmpShortName username = do
-  {streamAuthUrl: url} <- Config.llnwApiConfig
-  restResult <- SpudGun.postJson (wrap url) (wrap { host
-                                                  , rtmpShortName: wrap rtmpShortName
-                                                  , username} :: StreamAuth)
-  pure $ bodyToJSON restResult
+  config <- Config.llnwApiConfig
+  restResult <- LlnwApi.streamAuth config (wrap { host
+                                                , rtmpShortName: wrap rtmpShortName
+                                                , username} :: StreamAuth)
+  pure restResult
 
 getStreamDetails :: StreamPublish -> Effect (Either JsonResponseError StreamDetails)
 getStreamDetails streamPublish@(StreamPublish {rtmpStreamName}) = do
-  {streamPublishUrl: url} <- Config.llnwApiConfig
-  restResult <- SpudGun.postJson (wrap url) streamPublish
-  pure $ bodyToJSON restResult
+  config <- Config.llnwApiConfig
+  restResult <- LlnwApi.streamPublish config streamPublish
+  pure restResult
 
 domain :: List Atom
 domain = atom <$> (show Agent.Ingest : "Instance" : nil)

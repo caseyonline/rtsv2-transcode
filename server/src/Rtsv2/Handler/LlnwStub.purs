@@ -40,6 +40,7 @@ import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (class ReadForeign, class WriteForeign, readJSON, writeJSON)
 import Stetson (HttpMethod(..), StetsonHandler)
 import Stetson.Rest as Rest
+import StetsonHelper (preHookSpyState)
 import Unsafe.Coerce (unsafeCoerce)
 
 
@@ -242,8 +243,9 @@ type PostHelper a b = StetsonHandler { payload :: Maybe a
                                      }
 postHelper :: forall a b. ReadForeign a => WriteForeign b =>  (Maybe a -> Maybe b) -> PostHelper a b
 postHelper lookupFun =
-  Rest.handler (\req -> Rest.initResult req { payload: Nothing
-                                            , output: Nothing })
+  Rest.handler (\req ->
+                 Rest.initResult req { payload: Nothing
+                                     , output: Nothing })
 
   # Rest.serviceAvailable (\req state -> do
                               isAgentAvailable <- IngestSup.isAgentAvailable

@@ -11,6 +11,7 @@ module Erl.Utils
        , monitor
        , mapExitReason
        , exitMessageMapper
+       , base64Encode
        , readTuple2
        , Ref
        , ExitReason(..)
@@ -111,6 +112,11 @@ mapExitReason = mapExitReasonImpl
 
 exitMessageMapper :: Foreign -> Maybe ExitMessage
 exitMessageMapper = exitMessageMapperImpl
+
+foreign import base64EncodeImpl :: String -> String
+
+base64Encode :: String -> String
+base64Encode = base64EncodeImpl
 
 exit :: Foreign -> Effect Unit
 exit = exitImpl

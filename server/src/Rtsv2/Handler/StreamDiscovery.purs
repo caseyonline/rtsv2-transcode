@@ -9,7 +9,6 @@ import Data.Bifunctor (lmap)
 import Data.Either (Either(..), either)
 import Data.Filterable (filterMap)
 import Data.Maybe (Maybe(..))
-import Data.String (replace, Replacement(..), Pattern(..))
 import Data.Traversable (traverse)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
@@ -19,14 +18,13 @@ import Logger as Logger
 import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
 import Rtsv2.Config (LoadConfig)
 import Rtsv2.Config as Config
+import Rtsv2.LlnwApi as LlnwApi
 import Rtsv2.Utils (chainIntoEither)
-import Shared.Common (Url(Url))
+import Shared.Common (Url)
 import Shared.Rtsv2.LlnwApiTypes (SlotLookupResult)
 import Shared.Rtsv2.Router.Endpoint (Canary, Endpoint(..), makeUrl)
 import Shared.Rtsv2.Stream (SlotId, SlotRole(..))
 import Shared.Rtsv2.Types (FailureReason, fromLocalOrRemote)
-import SpudGun (bodyToJSON, JsonResponseError)
-import SpudGun as SpudGun
 import Stetson (StetsonHandler)
 import StetsonHelper (jsonResponse)
 
@@ -37,7 +35,8 @@ discover loadConfig canary accountName streamName =
   where
     getUrls =
       do
-        result <- getSlot >>= chainIntoEither getSessionUrls
+        config <- Config.llnwApiConfig
+        result <- (LlnwApi.slotLookup config accountName streamName) >>= chainIntoEither getSessionUrls
 
         case result of
           Left lookupError ->
@@ -76,15 +75,6 @@ discover loadConfig canary accountName streamName =
     getSessionUrl :: SlotRole -> SlotLookupResult -> Effect (Either FailureReason Url)
     getSessionUrl role slot =
       EgestInstanceSup.findEgest loadConfig slot.id role <#> map ( fromLocalOrRemote >>> ((flip makeUrl) (ClientPlayerControlE canary slot.id role)))
-
-    getSlot :: Effect (Either JsonResponseError SlotLookupResult)
-    getSlot = getSlotLookupUrl >>= SpudGun.getJson <#> bodyToJSON
-
-    getSlotLookupUrl :: Effect Url
-    getSlotLookupUrl = Config.llnwApiConfig <#> _.slotLookupUrl <#> replaceAccount <#> replaceStreamName <#> Url
-
-    replaceAccount = replace (Pattern "{account}") (Replacement accountName)
-    replaceStreamName = replace (Pattern "{streamName}") (Replacement streamName)
 
 
 --------------------------------------------------------------------------------

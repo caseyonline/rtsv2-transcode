@@ -30,6 +30,7 @@ import Rtsv2.Agents.IngestRtmpCrypto as IngestRtmpCrypto
 import Rtsv2.Config (LoadConfig)
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
+import Rtsv2.LlnwApi as LlnwApi
 import Rtsv2.Names as Names
 import Rtsv2.Utils (crashIfLeft)
 import Serf (Ip)
@@ -75,7 +76,6 @@ init _ = do
   interfaceIp <- Env.publicInterfaceIp
   loadConfig <- Config.loadConfig
   {port, nbAcceptors} <- Config.rtmpIngestConfig
-  {streamAuthTypeUrl, streamAuthUrl, streamPublishUrl} <- Config.llnwApiConfig
   let
     callbacks :: Callbacks
     callbacks = { init: mkFn3 (onConnectCallback loadConfig)
@@ -178,25 +178,25 @@ startWorkflowAndBlock rtmpPid publishArgs ingestKey =
 
 getStreamAuthType :: String -> String -> Effect (Maybe AuthType)
 getStreamAuthType host rtmpShortName = do
-  {streamAuthTypeUrl: url} <- Config.llnwApiConfig
-  restResult <- SpudGun.postJson (wrap url) (wrap { host
-                                                  , protocol: Rtmp
-                                                  , rtmpShortName: wrap rtmpShortName} :: StreamConnection)
-  pure $ hush (bodyToJSON restResult)
+  config <- Config.llnwApiConfig
+  restResult <- LlnwApi.streamAuthType config (wrap { host
+                                                    , protocol: Rtmp
+                                                    , rtmpShortName: wrap rtmpShortName} :: StreamConnection)
+  pure $ hush restResult
 
 getPublishCredentials :: String -> String -> String -> Effect (Maybe PublishCredentials)
 getPublishCredentials host rtmpShortName username = do
-  {streamAuthUrl: url} <- Config.llnwApiConfig
-  restResult <- SpudGun.postJson (wrap url) (wrap { host
-                                                  , rtmpShortName: wrap rtmpShortName
-                                                  , username} :: StreamAuth)
-  pure $ hush $ bodyToJSON restResult
+  config <- Config.llnwApiConfig
+  restResult <- LlnwApi.streamAuth config (wrap { host
+                                                , rtmpShortName: wrap rtmpShortName
+                                                , username} :: StreamAuth)
+  pure $ hush restResult
 
 getStreamDetails :: StreamPublish -> Effect (Either JsonResponseError StreamDetails)
 getStreamDetails streamPublish = do
-  {streamPublishUrl: url} <- Config.llnwApiConfig
-  restResult <- SpudGun.postJson (wrap url) streamPublish
-  pure $ bodyToJSON restResult
+  config <- Config.llnwApiConfig
+  restResult <- LlnwApi.streamPublish config streamPublish
+  pure restResult
 
 domain :: List Atom
 domain = atom <$> (show Agent.Ingest : "Instance" : nil)

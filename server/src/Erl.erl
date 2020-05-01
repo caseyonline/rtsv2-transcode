@@ -16,6 +16,7 @@
         , stringToRefImpl/1
         , exitImpl/1
         , readTuple2Impl/1
+        , base64EncodeImpl/1
         ]).
 
 
@@ -107,3 +108,6 @@ readTuple2Impl({A, B}) ->
   {just, {A, B}};
 readTuple2Impl(_) ->
   {nothing}.
+
+base64EncodeImpl(String) ->
+  base64:encode(String).
