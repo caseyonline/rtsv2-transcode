@@ -47,4 +47,4 @@
     
     ```
 
-    
+* **RTSV2-61** Issue when switching between RTMP and WebRTC ingest resolved

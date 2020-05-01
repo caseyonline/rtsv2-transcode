@@ -1,4 +1,4 @@
--module(rtsv2_rtmp_ingest_generator).
+-module(rtsv2_ingest_generator).
 
 -behaviour(workflow_generator).
 

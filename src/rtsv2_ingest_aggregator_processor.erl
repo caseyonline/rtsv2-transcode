@@ -1,4 +1,4 @@
--module(rtsv2_rtmp_ingest_aggregator_processor).
+-module(rtsv2_ingest_aggregator_processor).
 
 -include_lib("id3as_media/include/id3as_workflow.hrl").
 -include_lib("id3as_media/include/frame.hrl").

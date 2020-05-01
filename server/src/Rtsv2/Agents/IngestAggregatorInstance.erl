@@ -161,19 +161,19 @@ startWorkflow(SlotId, SlotRole, Profiles, PushDetails) ->
                                                               sample_format = s16
                                                              }
                                                 }
-                                }                           
+                                }
                              ]
                   },
 
   Workflow = #workflow{
                 name = {ingest_aggregator_instance, SlotId},
-                display_name = <<"RTMP Ingest Aggregator">>,
+                display_name = <<"Ingest Aggregator">>,
                 tags = #{type => ingest_aggregator,
                          slot => SlotId},
                 generators = [
                               #generator{name = ingests,
                                          display_name = <<"Ingests">>,
-                                         module = rtsv2_rtmp_ingest_generator
+                                         module = rtsv2_ingest_generator
                                         }
                              ],
 
@@ -181,7 +181,7 @@ startWorkflow(SlotId, SlotRole, Profiles, PushDetails) ->
                               #processor{name = aggregate,
                                          display_name = <<"Gather Ingests">>,
                                          subscribes_to = ingests,
-                                         module = rtsv2_rtmp_ingest_aggregator_processor
+                                         module = rtsv2_ingest_aggregator_processor
                                         },
 
 
@@ -219,7 +219,7 @@ startWorkflow(SlotId, SlotRole, Profiles, PushDetails) ->
                                                                 module = gop_numberer
                                                               },
 
-                                                             ?include_if(PushDetails /= [], 
+                                                             ?include_if(PushDetails /= [],
                                                                   hls_processors(gop_numberer, audio_transcode, SlotId, Profile, PushDetails)),
 
                                                              #processor{name = audio_transcode,
@@ -374,7 +374,7 @@ hls_processors(VideoSub, AudioSub, _SlotId, #enriched_slot_profile{ profile_name
     #processor{name = adts,
       module = adts_encapsulator,
       subscribes_to = { AudioSub, ?audio_frames_with_profile_name(aac) }
-      
+
     },
     #processor{
       name = stream_sync,
@@ -533,4 +533,3 @@ profile(#enriched_slot_profile{ profile_name = ProfileName, audio_ssrc_start = A
    , firstAudioSSRC => AudioSSRCStart
    , firstVideoSSRC => VideoSSRCStart
    }.
-
