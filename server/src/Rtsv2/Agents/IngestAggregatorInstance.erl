@@ -13,7 +13,6 @@
 -include_lib("id3as_media/include/ts.hrl").
 -include_lib("id3as_media/include/ts_encoder.hrl").
 -include_lib("id3as_media/include/ts_segment_generator.hrl").
--include_lib("id3as_media/include/ts_akamai_writer.hrl").
 
 -include_lib("id3as_media/include/m3u8.hrl").
 
@@ -24,6 +23,7 @@
 -include("../../../../src/rtsv2_slot_media_source_publish_processor.hrl").
 -include("../../../../src/rtsv2_rtp.hrl").
 -include("../../../../src/rtsv2_slot_profiles.hrl").
+-include("../../../../src/rtsv2_internal_hls_writer.hrl").
 
 -export([
          startWorkflowImpl/4,
@@ -171,6 +171,8 @@ startWorkflow(SlotId, SlotRole, Profiles, PushDetails) ->
                                          subscribes_to = ingests,
                                          module = rtsv2_rtmp_ingest_aggregator_processor
                                         },
+
+                              %% gop numberer
 
                               #processor{name = master_hls_playlists,
                                          display_name = <<"Publish Master HLS Playlists">>,
@@ -330,14 +332,14 @@ startWorkflow(SlotId, SlotRole, Profiles, PushDetails) ->
 
   {Handle, Pids, SlotConfiguration}.
 
-hls_processors(_SlotId, #enriched_slot_profile{ profile_name = ProfileName }, [#{ segmentDuration := SegmentDuration, playlistDuration := PlaylistDuration, putBaseUrl := PutBaseUrl }]) ->
+hls_processors(_SlotId, #enriched_slot_profile{ profile_name = ProfileName }, [#{ auth := #{username := Username, password := Password}, segmentDuration := SegmentDuration, playlistDuration := PlaylistDuration, putBaseUrl := PutBaseUrl }]) ->
   TsEncoderConfig = #ts_encoder_config{
                        which_encoder = ts_simple_encoder,
                        program_pid = 4096,
                        pcr_pid = 256,
                        streams = [
                                   % #ts_stream {
-                                  %    pid = AudioPid,
+                                  %    pid = 257,
                                   %    index = 1,
                                   %    pes_stream_type = ?STREAM_TYPE_AUDIO_AAC_ADTS,
                                   %    pes_stream_id = ?PesAudioStreamId(1)
@@ -377,12 +379,12 @@ hls_processors(_SlotId, #enriched_slot_profile{ profile_name = ProfileName }, [#
       subscribes_to = ?previous,
       module = rtsv2_internal_hls_writer,
       config =
-          #ts_akamai_writer_config{
+          #rtsv2_internal_hls_writer_config{
             post_url = <<PutBaseUrl/binary, ProfileName/binary, "/">>,
             max_playlist_length = PlaylistDuration div SegmentDuration,
             target_segment_duration = SegmentDuration,
             playlist_name = <<"playlist.m3u8">>,
-            version_string = <<"">> %% ?BUILD_VERSION_COMMIT
+            auth = {Username,Password}
           }
     }
   ].
@@ -504,3 +506,4 @@ profile(#enriched_slot_profile{ profile_name = ProfileName, audio_ssrc_start = A
    , firstAudioSSRC => AudioSSRCStart
    , firstVideoSSRC => VideoSSRCStart
    }.
+

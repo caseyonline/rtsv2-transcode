@@ -32,7 +32,7 @@
   0},
  {<<"id3as_common">>,
   {git,"git@github.com:id3as/id3as.common.git",
-       {ref,"20d3fab764078ae147e82d729b7c2ca8e58e2f9b"}},
+       {ref,"28c884dfec64bdeb16bf931561d6ed2ec40007c1"}},
   0},
  {<<"id3as_media">>,
   {git,"git@github.com:id3as/id3as.media.git",

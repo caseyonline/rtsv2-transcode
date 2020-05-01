@@ -54,13 +54,14 @@ process_input(_Input, State) ->
 handle_info(publish_playlists, State = #?state{ config = #hls_master_playlist_processor_config{
                                            slot_id = SlotId,
                                            profiles = Profiles,
-                                           push_details = PushDetails = [ #{ putBaseUrl := PutBaseUrl }]
+                                           push_details = PushDetails = [ #{ putBaseUrl := PutBaseUrl, auth := #{ type := <<"basic">>, username := Username, password := Password } }]
                                          }}) ->
-  ?INFO("Building and sending playlists"),
+  ?INFO("Building and sending playlists, pushdetails = ~p", [PushDetails]),
+  
   Playlist = m3u8:master_playlist(build_playlists(rtsv2_types:uuid_to_string(SlotId), Profiles, PushDetails)),
   ?INFO("Master playlist:~n~s", [Playlist]),
 
-  rtsv2_internal_playlist_publish:send(PutBaseUrl, [{<<"master.m3u8">>, Playlist}], primary_playlists_published, <<"version">>),
+  rtsv2_internal_playlist_publish:send({Username, Password}, PutBaseUrl, [{<<"master.m3u8">>, Playlist}], primary_playlists_published, <<"version">>),
   {noreply, State};
 handle_info(primary_playlists_published, State = #?state{ config = #hls_master_playlist_processor_config{} }) ->
   ?INFO("Playlists published"),

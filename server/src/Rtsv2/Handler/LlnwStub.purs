@@ -32,13 +32,14 @@ import Erl.FileLib as FileLib
 import Logger (Logger)
 import Logger as Logger
 import Partial.Unsafe (unsafePartial)
+import Routing.Duplex.Parser (end)
 import Rtsv2.Agents.IngestSup as IngestSup
 import Rtsv2.Handler.MimeType as MimeType
 import Shared.Rtsv2.Stream (RtmpShortName, SlotRole(..))
 import Shared.UUID (fromString)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (class ReadForeign, class WriteForeign, readJSON, writeJSON)
-import Stetson (HttpMethod(..), StetsonHandler)
+import Stetson (Authorized(..), HttpMethod(..), StetsonHandler)
 import Stetson.Rest as Rest
 import StetsonHelper (preHookSpyState)
 import Unsafe.Coerce (unsafeCoerce)
@@ -95,8 +96,8 @@ db =
                     , playlistDuration: 20
                     , auth:
                       { type: "basic"
-                      , username: "user"
-                      , password: "password"
+                      , username: "id3as"
+                      , password: "id3as"
                       }
                     }
                   ]
@@ -290,24 +291,34 @@ postHelper lookupFun =
   --# Rest.preHook (preHookSpyState "LLNW:postHelper")
   # Rest.yeeha
 
+foreign import isAuthorized :: Req -> Boolean
+
 hlsPush :: Array String -> StetsonHandler Unit
 hlsPush path =
   Rest.handler (\req -> Rest.initResult req unit)
   # Rest.allowedMethods (Rest.result (PUT : nil))
   # Rest.contentTypesProvided (\req state -> Rest.result (MimeType.any anyHandler : nil) req unit)
   # Rest.contentTypesAccepted (\req state -> Rest.result (tuple2 "application/octet-stream" acceptPut : nil) req unit)
+  # Rest.isAuthorized isAuth
   # Rest.yeeha
 
   where
   anyHandler req2 state2 = throw "this is not called"
   acceptPut req state = do
-    logInfo "Got hls push" {path : joinWith "/" path}
     body <- allBody req mempty
     let fname = "/tmp/rtsv2_hls/" <> joinWith "/" path
     _ <- FileLib.ensureDir fname
     File.writeFile fname (IOData.fromBinary body) >>=
       either (const $ logInfo "Failed to write" {path : joinWith "/" path}) (const $ pure unit)
     Rest.result true req state
+  
+  isAuth req state = 
+    let reply = case isAuthorized req of 
+                  true -> Authorized
+                  false -> NotAuthorized "Basic"
+    in
+    Rest.result reply req state
+      
 
 
 allBody :: Req -> IOData -> Effect Binary

@@ -7,11 +7,12 @@
 % -include("../../include/ts_akamai_writer.hrl").
 
 -export([
-         send/4
+         send/5
         ]).
 
 -record(send_state, {
           base_url :: binary_string(),
+          auth :: {binary_string(), binary_string()},
           playlists :: list({binary_string(), binary_string()}),
           completion_msg :: term(),
           parent :: pid(),
@@ -21,12 +22,13 @@
           version_string :: binary_string()
          }).
 
-send(BaseUrl, Playlists, CompletionMsg, VersionString) ->
+send(Auth, BaseUrl, Playlists, CompletionMsg, VersionString) ->
   Self = self(),
   spawn_link(fun() ->
                  monitor(process, Self),
                  send_playlists(#send_state {
                                         base_url = BaseUrl,
+                                        auth = Auth,
                                         playlists = Playlists,
                                         completion_msg = CompletionMsg,
                                         version_string = VersionString,
@@ -52,6 +54,7 @@ send_playlists(State = #send_state {
 
 send_playlists(State = #send_state {
                           base_url = BaseUrl,
+                          auth = {Username, Password},
                           cached_ip = HostIp,
                           cached_hostname = Host,
                           playlists = [ { PlaylistName, PlaylistData } | Tail ],
@@ -60,13 +63,15 @@ send_playlists(State = #send_state {
                          }) ->
 
   Url = << BaseUrl/binary, PlaylistName/binary >>,
+  BasicAuth = base64:encode(<<Username/binary,":",Password/binary>>),
   SimpleRequest = spud_gun:url_to_request_record(Url, #spud_request {
                                                          method = put,
                                                          body = PlaylistData,
                                                          headers = [ { <<"host">>, Host },
                                                                     %  { <<"user-agent">>, ?AKAMAI_USER_AGENT(VersionString) },
                                                                      { <<"connection">>, <<"keep-alive">> },
-                                                                     { <<"content-type">>, <<"application/octet-stream">>}
+                                                                     { <<"content-type">>, <<"application/octet-stream">>},
+                                                                     { <<"authorization">>, <<"Basic ", BasicAuth/binary>>}
                                                                    ],
                                                          spud_pid = SpudPid
                                                         }),

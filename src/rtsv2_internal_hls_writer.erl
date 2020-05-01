@@ -16,8 +16,9 @@
 -include_lib("id3as_media/include/id3as_workflow.hrl").
 -include_lib("id3as_media/include/ts.hrl").
 -include_lib("id3as_media/include/ts_segment_generator.hrl").
--include_lib("id3as_media/include/ts_akamai_writer.hrl").
 -include_lib("id3as_media/include/m3u8.hrl").
+
+-include("./rtsv2_internal_hls_writer.hrl").
 
 %% Workflow API
 -export([
@@ -42,6 +43,7 @@
 -record(state, {
           directory_prefix :: binary_string(),
           post_url :: undefined | binary_string(),
+          auth :: {binary_string(), binary_string()},
           max_playlist_length :: integer(),
           segment_start_pts :: undefined | integer(),
           segment_start_timestamp :: undefined | milliseconds(),
@@ -63,7 +65,8 @@
           cached_host :: undefined | binary_string(),
           spud_pid :: undefined | pid(),
           current_job :: undefined | posting_job(),
-          version_string :: binary_string()
+          version_string :: binary_string(),
+          auth :: {binary_string(), binary_string()}
          }).
 
 -record(posting_job, {
@@ -89,15 +92,16 @@ spec(_Processor) ->
 initialise(Processor = #processor{config = Undefined}) when Undefined == [];
                                                             Undefined == undefined ->
 
-  initialise(Processor#processor{config = #ts_akamai_writer_config{}});
+  initialise(Processor#processor{config = #rtsv2_internal_hls_writer_config{}});
 
-initialise(#processor{config = #ts_akamai_writer_config{collision_protection_mode = ProtectionMode,
-                                                        post_url = PostUrl,
-                                                        target_segment_duration = TargetSegmentDuration,
-                                                        max_entries_per_directory = MaxEntriesPerDirectory,
-                                                        playlist_name = PlaylistName,
-                                                        max_playlist_length = MaxPlaylistLength,
-                                                        version_string = VersionString}}) ->
+initialise(#processor{config = #rtsv2_internal_hls_writer_config{collision_protection_mode = ProtectionMode,
+                                                                 post_url = PostUrl,
+                                                                 auth = Auth,
+                                                                 target_segment_duration = TargetSegmentDuration,
+                                                                 max_entries_per_directory = MaxEntriesPerDirectory,
+                                                                 playlist_name = PlaylistName,
+                                                                 max_playlist_length = MaxPlaylistLength,
+                                                                 version_string = VersionString}}) ->
 
   Prefix = case ProtectionMode of
              none -> <<>>;
@@ -106,11 +110,12 @@ initialise(#processor{config = #ts_akamai_writer_config{collision_protection_mod
 
   State = #state{directory_prefix = Prefix,
                  post_url = PostUrl,
+                 auth = Auth,
                  max_playlist_length = MaxPlaylistLength,
                  target_segment_duration = TargetSegmentDuration,
                  playlist_name = PlaylistName,
                  max_entries_per_directory = MaxEntriesPerDirectory,
-                 worker_pid = start_worker_loop(VersionString)
+                 worker_pid = start_worker_loop(VersionString, Auth)
                 },
 
   {ok, State#state{next_sequence_number = 1}}.
@@ -327,10 +332,10 @@ build_playlist_entry(EndPts, #state{directory_prefix = Prefix,
   PlaylistEntry.
 
 
-start_worker_loop(VersionString) ->
+start_worker_loop(VersionString, Auth) ->
   Self = self(),
   spawn_link(fun() ->
-                 worker_loop(#worker_state { parent = Self, version_string = VersionString })
+                 worker_loop(#worker_state { parent = Self, version_string = VersionString, auth = Auth })
              end).
 
 worker_loop(State = #worker_state { retry_count = RetryCount, current_job = #posting_job { job_identifier = JobId,
@@ -389,6 +394,7 @@ do_posting_work(State = #worker_state {
                            spud_pid = SpudPid,
                            cached_host = CachedHost,
                            cached_host_ip = CachedHostIp,
+                           auth = {Username, Password},
                            version_string = VersionString,
                            current_job = #posting_job {
                                             job_identifier = JobIdentifier,
@@ -404,13 +410,16 @@ do_posting_work(State = #worker_state {
     Retries >= 1 -> ?INFO("Retrying ~p post to ~s (~p/~p)", [ JobType, Url, Retries+1, MaxRetries ]);
     ?otherwise -> ok
   end,
-  ?INFO("Posting ~p to ~p", [JobType, Url]),
+  BasicAuth = base64:encode(<<Username/binary,":",Password/binary>>),
+
   case
     manual_post(SpudPid, Url,
                 CachedHostIp,
                 [ { <<"host">>, CachedHost },
                   { <<"connection">>, <<"keep-alive">> },
-                  { <<"content-type">>, <<"application/octet-stream">>}
+                  { <<"content-type">>, <<"application/octet-stream">>},
+                  { <<"authorization">>, <<"Basic ", BasicAuth/binary>>}
+
                   % { <<"user-agent">>, ?AKAMAI_USER_AGENT(VersionString) }
                 ],
                 Data
