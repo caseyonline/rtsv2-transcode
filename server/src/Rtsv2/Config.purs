@@ -1,5 +1,6 @@
 module Rtsv2.Config
   ( FeatureFlags
+  , MediaGatewayFlag(..)
   , GlobalConfig
   , IngestInstanceConfig
   , IngestAggregatorAgentConfig
@@ -36,9 +37,10 @@ module Rtsv2.Config
 
 import Prelude
 
-import Control.Monad.Except (ExceptT, runExcept)
-import Data.Either (Either(..), hush)
+import Control.Monad.Except (ExceptT, except, runExcept)
+import Data.Either (Either(..), hush, note)
 import Data.Identity (Identity)
+import Data.List.NonEmpty (singleton)
 import Data.Maybe (Maybe(..), fromMaybe, fromMaybe')
 import Data.Traversable (traverse)
 import Effect (Effect)
@@ -46,7 +48,7 @@ import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
 import Erl.Data.Tuple (Tuple2, tuple2)
 import Erl.Utils (base64Encode)
-import Foreign (F, Foreign, readString, unsafeReadTagged)
+import Foreign (F, Foreign, ForeignError(..), readString, unsafeReadTagged)
 import Logger as Logger
 import Partial.Unsafe (unsafeCrashWith)
 import Rtsv2.LoadTypes as LoadTypes
@@ -64,8 +66,25 @@ type LoadConfig
     }
 
 type FeatureFlags
-  = { useMediaGateway :: Boolean
+  = { mediaGateway :: MediaGatewayFlag
     }
+
+data MediaGatewayFlag
+  = Off
+  | On
+  | External
+
+instance readForeignMediaGatewayFlag :: ReadForeign MediaGatewayFlag where
+  readImpl =
+    readString >=> parse
+    where
+      error s = singleton (ForeignError (errorString s))
+      parse s = except $ note (error s) (toType s)
+      toType "off" = pure Off
+      toType "on" = pure On
+      toType "external" = pure External
+      toType unknown = Nothing
+      errorString s = "Unknown Media Gateway Flag: " <> s
 
 -- TODO - config should include BindIFace or BindIp
 type WebConfig = { port :: Int }

@@ -49,7 +49,7 @@ import Rtsv2.Agents.SlotTypes (SlotConfiguration)
 import Rtsv2.Agents.StreamRelaySup as StreamRelaySup
 import Rtsv2.Agents.StreamRelayTypes (ActiveProfiles(..), DownstreamWsMessage(..), EgestUpstreamWsMessage(..))
 import Rtsv2.Audit as Audit
-import Rtsv2.Config (LoadConfig)
+import Rtsv2.Config (LoadConfig, MediaGatewayFlag)
 import Rtsv2.Config as Config
 import Rtsv2.DataObject (ObjectBroadcastMessage(..))
 import Rtsv2.DataObject as DO
@@ -69,7 +69,7 @@ import Shared.Rtsv2.Stream (AggregatorKey(..), EgestKey(..), ProfileName, RelayK
 import Shared.Rtsv2.Types (EgestServer(..), FailureReason(..), LocalOrRemote(..), RegistrationResp, RelayServer, ResourceResp, Server, extractAddress)
 import WsGun as WsGun
 
-foreign import startEgestReceiverFFI :: EgestKey -> Boolean -> Effect Int
+foreign import startEgestReceiverFFI :: EgestKey -> MediaGatewayFlag -> Effect Int
 foreign import getStatsFFI :: EgestKey -> Effect (WebRTCStreamServerStats EgestKey)
 foreign import setSlotConfigurationFFI :: EgestKey -> SlotConfiguration -> Effect Unit
 foreign import getSlotConfigurationFFI :: EgestKey -> Effect (Maybe SlotConfiguration)
@@ -237,8 +237,8 @@ init payload@{slotId, slotRole, aggregator, slotCharacteristics} stateServerName
                                                         }
                                   , decayTime: wrap (toNumber decayReserveMs)}
 
-  { useMediaGateway } <- Config.featureFlags
-  receivePortNumber <- startEgestReceiverFFI egestKey useMediaGateway
+  { mediaGateway } <- Config.featureFlags
+  receivePortNumber <- startEgestReceiverFFI egestKey mediaGateway
   _ <- Bus.subscribe (serverName egestKey) IntraPoP.bus IntraPoPBus
   logStart "Egest starting" {payload, receivePortNumber}
 

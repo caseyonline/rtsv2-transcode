@@ -9,7 +9,7 @@
 -include("./rtsv2_rtp.hrl").
 
 
--export([ start_link/1
+-export([ start_link/2
         , add_egest/3
         , add_egest_client/4
         ]).
@@ -31,7 +31,7 @@
 
 -record(?state,
         { uds_path :: binary_string()
-        , server_port :: port()
+        , server_port :: undefined | port()
         , control_socket :: socket:socket()
         }).
 
@@ -39,8 +39,8 @@
 %%% ----------------------------------------------------------------------------
 %%% Public API
 %%% ----------------------------------------------------------------------------
-start_link(ThisServerAddress) ->
-  gen_server:start_link({local, ?SERVER}, ?MODULE, [ThisServerAddress], []).
+start_link(ThisServerAddress, MediaGatewayFlag) ->
+  gen_server:start_link({local, ?SERVER}, ?MODULE, [ThisServerAddress, MediaGatewayFlag], []).
 
 
 add_egest(SlotId, SlotRole, ReceiveSocket) ->
@@ -54,18 +54,25 @@ add_egest_client(SlotId, SlotRole, ClientId, EgestClientConfig) ->
 %%% ----------------------------------------------------------------------------
 %%% Gen Server Implementation
 %%% ----------------------------------------------------------------------------
-init([ThisServerAddress]) ->
+init([ThisServerAddress, MediaGatewayFlag]) ->
   process_flag(trap_exit, true),
 
-  Cmd = filename:join([code:priv_dir(rtsv2), "scripts", "runMediaGateway.sh"]),
-  UdsPath = <<"/tmp/rtsv2-media-gateway-", ThisServerAddress/binary, ".sock">>,
-
-  Port = erlang:open_port({spawn_executable, Cmd}, [exit_status, {args, [UdsPath]}]),
-
   State =
-    #?state{ uds_path = UdsPath
-           , server_port = Port
-           },
+    case MediaGatewayFlag of
+      {on} ->
+        Cmd = filename:join([code:priv_dir(rtsv2), "scripts", "runMediaGateway.sh"]),
+        UdsPath = <<"/tmp/rtsv2-media-gateway-", ThisServerAddress/binary, ".sock">>,
+        Port = erlang:open_port({spawn_executable, Cmd}, [exit_status, {args, [UdsPath]}]),
+
+        #?state{ uds_path = UdsPath
+               , server_port = Port
+               };
+
+      {external} ->
+        #?state{ uds_path = <<"/tmp/rtsv2-media-gateway.sock">>
+               , server_port = undefined
+               }
+    end,
 
   {ok, State}.
 

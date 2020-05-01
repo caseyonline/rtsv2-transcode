@@ -24,6 +24,7 @@ import Pinto.Gen as Gen
 import Rtsv2.Agents.EgestInstance as EgestInstance
 import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
 import Rtsv2.Agents.IngestWebRTCIngestHandler as IngestWebRTCIngestHandler
+import Rtsv2.Config (MediaGatewayFlag(Off))
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
 import Rtsv2.Handler.Chaos as ChaosHandler
@@ -155,14 +156,19 @@ init args = do
 
   where
     cowboyRoutes :: Server -> Config.FeatureFlags -> Config.LoadConfig -> List Path
-    cowboyRoutes thisServer { useMediaGateway } loadConfig =
+    cowboyRoutes thisServer { mediaGateway } loadConfig =
       -- Some duplication of URLs here from those in Endpoint.purs due to current inability to build cowboy-style bindings from stongly-typed parameters
       -- IngestAggregatorActiveIngestsPlayerControlE SlotId SlotRole ProfileName
       cowboyRoute ("/support/ingestAggregator/" <> slotIdBinding <> "/" <> slotRoleBinding <> "/activeIngests/" <> profileNameBinding <> "/control")
                   "rtsv2_player_ws_resource"
                   (unsafeToForeign { mode: (atom "ingest")
                                    , make_ingest_key: makeIngestKey
-                                   , use_media_gateway: useMediaGateway
+                                   , use_media_gateway:
+                                     case mediaGateway of
+                                       Off ->
+                                         false
+                                       _ ->
+                                         true
                                    })
 
       -- ClientPlayerControlE Canary SlotId
@@ -175,7 +181,12 @@ init args = do
                                      , get_slot_configuration: EgestInstance.getSlotConfiguration
                                      , data_object_send_message: EgestInstance.dataObjectSendMessage
                                      , data_object_update: EgestInstance.dataObjectUpdate
-                                     , use_media_gateway: useMediaGateway
+                                     , use_media_gateway:
+                                        case mediaGateway of
+                                          Off ->
+                                            false
+                                          _ ->
+                                            true
                                      })
 
       -- IngestInstanceLlwpE SlotId SlotRole ProfileName

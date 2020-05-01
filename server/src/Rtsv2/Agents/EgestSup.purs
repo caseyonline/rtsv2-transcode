@@ -18,6 +18,7 @@ import Pinto.Sup (SupervisorChildType(..), buildChild, childId, childStart, chil
 import Pinto.Sup as Sup
 import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
 import Rtsv2.Config as Config
+import Rtsv2.Config (MediaGatewayFlag(..))
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Rtsv2.Types (extractAddress)
@@ -46,14 +47,16 @@ init = do
                                 # childStart EgestInstanceSup.startLink unit
 
     mediaGateway = do
-      { useMediaGateway } <- Config.featureFlags
+      { mediaGateway: mediaGatewayFlag } <- Config.featureFlags
       thisServer <- PoPDefinition.getThisServer
-      pure $ if useMediaGateway then
-               let
-                 args = singleton $ unsafeToForeign $ extractAddress thisServer
-               in
-                 Just $ buildChild
-                        # childType (NativeWorker (NativeModuleName (atom "rtsv2_media_gateway_api")) (atom "start_link") args)
-                        # childId "mediaGateway"
-             else
-               Nothing
+      pure $
+        case mediaGatewayFlag of
+          Off ->
+            Nothing
+          _ ->
+            let
+              args = (unsafeToForeign $ extractAddress thisServer) : (unsafeToForeign mediaGatewayFlag) : nil
+            in
+              Just $ buildChild
+                    # childType (NativeWorker (NativeModuleName (atom "rtsv2_media_gateway_api")) (atom "start_link") args)
+                    # childId "mediaGateway"

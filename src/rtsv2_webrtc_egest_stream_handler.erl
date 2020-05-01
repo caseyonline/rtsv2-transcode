@@ -35,24 +35,25 @@ port_number(EgestKey) ->
   webrtc_stream_server:call_stream_handler(EgestKey, port_number).
 
 
-init(_Args = [ ParentPid, {egestKey, << SlotId:128/big-unsigned-integer >>, {SlotRole}} = EgestKey, UseMediaGateway ]) ->
+init(_Args = [ ParentPid, {egestKey, << SlotId:128/big-unsigned-integer >>, {SlotRole}} = EgestKey, MediaGateway ]) ->
 
   process_flag(trap_exit, true),
 
-  Socket = case UseMediaGateway of
-             true ->
-               %% NOTE: Erlang doesn't receive on this socket, that task is delegated to the
-               %% media gateway
-               {ok, ReceiveSocket} = gen_udp:open(0, [{recbuf, 100 * 1500}, {active, false}]),
+  ?INFO("Egest Stream Handler starting with MediaGateway = ~p", [MediaGateway]),
 
-               ok = rtsv2_media_gateway_api:add_egest(SlotId, SlotRole, ReceiveSocket),
+  %% NOTE: Erlang doesn't receive on this socket, that task is delegated to the
+  %% media gateway
+  Socket =
+    case MediaGateway of
+      {off} ->
+        {ok, ReceiveSocket} = gen_udp:open(0, [binary, {recbuf, 100 * 1500}]),
+        ReceiveSocket;
 
-               ReceiveSocket;
-
-             false ->
-               {ok, ReceiveSocket} = gen_udp:open(0, [binary, {recbuf, 100 * 1500}]),
-               ReceiveSocket
-           end,
+      _ ->
+        {ok, ReceiveSocket} = gen_udp:open(0, [{recbuf, 100 * 1500}, {active, false}]),
+        ok = rtsv2_media_gateway_api:add_egest(SlotId, SlotRole, ReceiveSocket),
+        ReceiveSocket
+    end,
 
   #?state{ parent_pid = ParentPid
          , egest_key = EgestKey
