@@ -22,6 +22,15 @@ let
       rev = "cb044716e048364a028f9fb17b06e12058d68c97";
     };
 
+
+  mozillaPackages =
+    builtins.fetchGit {
+      name = "nixpkgs-mozilla";
+      url = https://github.com/mozilla/nixpkgs-mozilla/;
+      # commit from: 2020-04-14
+      rev = "e912ed483e980dfb4666ae0ed17845c4220e5e7c";
+  };
+
   oxidizedPackages =
     builtins.fetchGit {
       name = "id3as-oxidized-packages";
@@ -36,8 +45,21 @@ let
         (import purerlReleases)
         (import id3asPackages)
         (import oxidizedPackages)
+        (import mozillaPackages)
       ];
     };
+
+
+  rust =
+    (nixpkgs.latest.rustChannels.stable.rust.override {
+      extensions = [
+        "rust-src"
+        "rls-preview"
+        "rust-analysis"
+        "rustfmt-preview"
+        "clippy-preview"
+      ];
+    });
 
 in
 
@@ -87,5 +109,11 @@ mkShell {
     # Needed by something purescript-y - hopefully A/S can pinpoint what...
     jq
     serfdom
+
+
+    # Rust stuff!
+    rust
+    rustracer
+
   ] ++ optionals stdenv.isLinux [ iproute ];
 }
