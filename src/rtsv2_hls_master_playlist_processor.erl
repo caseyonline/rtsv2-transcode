@@ -88,12 +88,13 @@ build_playlists(SlotId, Profiles = [#enriched_slot_profile{} |_], [PushDetail = 
 
 variant_stream(SlotId, #{ playbackBaseUrl := PlaybackBaseUrl }, Profile = #enriched_slot_profile{ bitrate = BitRate, profile_name = ProfileName}) ->
   VideoCodec = #h264_codec_descriptor { profile = main, level = 3.0 },
+  AudioCodec = #aac_codec_descriptor{ profile = main },
 
   ?INFO("making variant for slotid=~p with ~p", [SlotId, Profile]),
   #variant_stream {
      name = ProfileName,
      program_id = 1,
-     codecs = [ VideoCodec ],
+     codecs = [ VideoCodec, AudioCodec ],
      peak_bandwidth = BitRate,
      audio_rendition_group_id = <<"aac">>,
      uri = << PlaybackBaseUrl/binary,

@@ -158,7 +158,8 @@ startWorkflow(SlotId, SlotRole, Profiles, PushDetails) ->
                                                  profile = #audio_profile{
                                                               codec = aac,
                                                               sample_rate = 48000,
-                                                              sample_format = s16
+                                                              sample_format = s16,
+                                                              codec_profile_level = #codec_profile_level{profile = main, level = 3.0}
                                                              }
                                                 }
                                 }
