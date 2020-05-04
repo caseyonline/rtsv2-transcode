@@ -15,6 +15,7 @@ export HOSTNAME
 export PRIVATE_IFACE
 export PUBLIC_IFACE
 export DISK_LOG_ROOT
+export PATH=$PATH:$BINDIR
 
 mkdir -p $DISK_LOG_ROOT
 

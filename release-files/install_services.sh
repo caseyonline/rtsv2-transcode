@@ -23,7 +23,7 @@ After=network.target
 Type=simple
 User=id3as
 WorkingDirectory=$RootDir
-ExecStart=$BinDir/start_serf_nix.sh
+ExecStart=$BinDir/start_iserf.sh
 Restart=always
 
 [Install]
@@ -42,10 +42,10 @@ Requires=rtsv2-serf.service
 Type=simple
 User=id3as
 WorkingDirectory=$RootDir
-ExecStart=$BinDir/start_node_nix.sh
+ExecStart=$BinDir/start.sh
 ExecStop=$BinDir/rtsv2 stop
 Restart=always
-Environment=LD_LIBRARY_PATH=/id3as/rtsv2/lib/id3as_media-1/priv
+Environment=LD_LIBRARY_PATH=/id3as/rtsv2-release/lib/rtsv2-1.0/lib/id3as_media-1/priv
 
 [Install]
 WantedBy=multi-user.target

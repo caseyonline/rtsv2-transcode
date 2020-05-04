@@ -1,10 +1,10 @@
-# RTS-V2 release xxx
+# RTS-V2 release 88
 **What's new**
 
  - Load monitoring and capacity management implemented; benchmarking still to be done to put sane numbers into the configuration
 
  - **RTSV2-26 / RTSV2-52 / RTSV2-54** - Ingest instances monitor media flow and exit if nothing detected in last X.  Parameters are configurable in ingestInstanceConfig
- 
+
  - Workflow visualisation URLs are fixed.  HTML5 visualiser not yet integrated, but static visualisations can be generated:
 
     ```bash
@@ -44,7 +44,9 @@
                      , slotLookupUrl => <<"http://1.2.3.4/rts/v1/slotid/{account}/{streamName}">>
                      , useBasicAuth => <<"user:password">>
                      }}
-    
+
     ```
 
 * **RTSV2-61** Issue when switching between RTMP and WebRTC ingest resolved
+
+ - Release now running without dependency on NIX on the target host.

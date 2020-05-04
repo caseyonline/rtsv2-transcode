@@ -1,7 +1,13 @@
 #!/usr/bin/env bash
 set -e
 
-rebar3 release
+if [[ ! -f serf ]]
+then
+  echo "Require local serf; exiting"
+  exit 1
+fi
+
+rebar3 vir release
 
 nix-build release.nix
 
@@ -12,9 +18,12 @@ fi
 
 mkdir -p _etwas
 
+label=$(cat deployment/label)
+
 cd _etwas
 
-../etwas ../result rtsv2-release
+../etwas ../result rtsv2-release-$label
 
-tar -cavf rtsv2-release.tgz rtsv2-release
+cp ../serf rtsv2-release-$label/bin
 
+tar -cavf rtsv2-release-$label.tgz rtsv2-release-$label
