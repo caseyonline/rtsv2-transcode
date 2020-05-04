@@ -133,8 +133,7 @@ startWorkflow(SlotConfiguration = #{ slotId := SlotId
                                                  profile = #audio_profile{
                                                               codec = aac,
                                                               sample_rate = 48000,
-                                                              sample_format = s16,
-                                                              codec_profile_level = #codec_profile_level{profile = main, level = 3.0}
+                                                              sample_format = s16
                                                              }
                                                 }
                                 }
@@ -180,17 +179,21 @@ startWorkflow(SlotConfiguration = #{ slotId := SlotId
                                          module = gop_numberer
                                         },
 
-
-                              #processor{name = master_hls_playlists,
-                                         display_name = <<"Publish Master HLS Playlists">>,
-                                         subscribes_to = {gop_numberer, ?program_details_frames},%% who knows
-                                         module = rtsv2_hls_master_playlist_processor,
-                                         config = #hls_master_playlist_processor_config{
-                                           slot_id = SlotId,
-                                           profiles = Profiles,
-                                           push_details = PushDetails
-                                         }
-                                        },
+                              ?include_if(PushDetails /= [],
+                                #processor{name = master_hls_playlists,
+                                          display_name = <<"Publish Master HLS Playlists">>,
+                                          subscribes_to = [
+                                              {gop_numberer, ?audio_frames},
+                                              {gop_numberer, ?video_frames}
+                                          ],
+                                          module = rtsv2_hls_master_playlist_processor,
+                                          config = #hls_master_playlist_processor_config{
+                                              slot_id = SlotId,
+                                              profiles = Profiles,
+                                              push_details = PushDetails
+                                            }
+                                          } 
+                              ),
 
                               lists:map(fun(Profile = #{ ingestKey := IngestKey
                                                        , streamName := StreamName
