@@ -184,10 +184,30 @@ startWorkflow(SlotId, SlotRole, Profiles, PushDetails) ->
                                          module = rtsv2_ingest_aggregator_processor
                                         },
 
+                              #processor{name = set_video_profile_name,
+                                         subscribes_to = ?previous,
+                                         module = fun_processor,
+                                         config = #fun_processor_config{
+                                                                          function = fun(Frame = #frame{source_metadata = #source_metadata{source_id = ProfileName},
+                                                                                                        profile = Profile = #video_profile{}}, State) ->
+                                                                                           {Frame#frame{ profile = Profile#video_profile{ name = ProfileName }}, State};
+                                                                                        (Frame, State) -> {Frame, State}
+                                                                                     end,
+                                                                          spec = #processor_spec{ consumes = ?all }
+                                                                       }
+                                        },
+
+
+                              #processor{name = gop_numberer,
+                                         display_name = <<"GoP Numberer">>,
+                                         subscribes_to = ?previous,
+                                         module = gop_numberer
+                                        },
+
 
                               #processor{name = master_hls_playlists,
                                          display_name = <<"Publish Master HLS Playlists">>,
-                                         subscribes_to = {aggregate, ?program_details_frames},%% who knows
+                                         subscribes_to = {gop_numberer, ?program_details_frames},%% who knows
                                          module = rtsv2_hls_master_playlist_processor,
                                          config = #hls_master_playlist_processor_config{
                                            slot_id = SlotId,
@@ -209,22 +229,15 @@ startWorkflow(SlotId, SlotRole, Profiles, PushDetails) ->
                                                name = binary_to_atom(ProfileName, utf8),
                                                display_name = <<ProfileName/binary, " (receiving from ", StreamName/binary, ")">>,
                                                spec = #processor_spec{consumes = [?audio_frames, ?video_frames]},
-                                               subscribes_to = [{aggregate, ?audio_frames_with_source_id(ProfileName)},
-                                                                {aggregate, ?video_frames_with_source_id(ProfileName)}],
+                                               subscribes_to = [{gop_numberer, ?audio_frames_with_source_id(ProfileName)},
+                                                                {gop_numberer, ?video_frames_with_source_id(ProfileName)}],
                                                processors = [
-
-                                                            #processor{name = gop_numberer,
-                                                                display_name = <<"GoP Numberer">>,
-                                                                subscribes_to = ?previous,
-                                                                module = gop_numberer
-                                                              },
-
                                                              ?include_if(PushDetails /= [],
-                                                                  hls_processors(gop_numberer, audio_transcode, SlotId, Profile, PushDetails)),
+                                                                  hls_processors(outside_world, audio_transcode, SlotId, Profile, PushDetails)),
 
                                                              #processor{name = audio_transcode,
                                                                         display_name = <<"Audio Transcode">>,
-                                                                        subscribes_to = {gop_numberer, ?audio_frames},
+                                                                        subscribes_to = {outside_world, ?audio_frames},
                                                                         module = audio_transcode,
                                                                         config = AudioConfig
                                                                        },
@@ -351,6 +364,7 @@ startWorkflow(SlotId, SlotRole, Profiles, PushDetails) ->
   {Handle, Pids, SlotConfiguration}.
 
 hls_processors(VideoSub, AudioSub, _SlotId, #enriched_slot_profile{ profile_name = ProfileName }, [#{ auth := #{username := Username, password := Password}, segmentDuration := SegmentDuration, playlistDuration := PlaylistDuration, putBaseUrl := PutBaseUrl }]) ->
+  ?WARNING("Using ~p gops per segment (not ~ps segments)", [SegmentDuration, SegmentDuration]),
   TsEncoderConfig = #ts_encoder_config{
                        which_encoder = ts_simple_encoder,
                        program_pid = 4096,
@@ -395,7 +409,8 @@ hls_processors(VideoSub, AudioSub, _SlotId, #enriched_slot_profile{ profile_name
       config = #ts_segment_generator_config {
                   mode = video,
                   segment_strategy = #ts_segment_generator_gop_strategy {
-                    gops_per_segment = 2 %% TODO gop length is what?
+                    %% TODO Take this as a gop count not in seconds, for now
+                    gops_per_segment = SegmentDuration 
                   }
                 },
       module = ts_segment_generator},
