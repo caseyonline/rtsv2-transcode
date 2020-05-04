@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -e
+
+rebar3 release
+
+nix-build release.nix
+
+if [[ -e _etwas ]]
+then
+  rm -rf _etwas
+fi
+
+mkdir -p _etwas
+
+cd _etwas
+
+../etwas ../result rtsv2-release
+
+tar -cavf rtsv2-release.tgz rtsv2-release
+

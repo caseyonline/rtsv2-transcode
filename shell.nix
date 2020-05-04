@@ -19,9 +19,9 @@ let
     builtins.fetchGit {
       name = "id3as-packages";
       url = "git@github.com:id3as/nixpkgs-private.git";
-      rev = "cb044716e048364a028f9fb17b06e12058d68c97";
+      rev = "485fcb5e2dccbf2fa3d43fb6c2c45bb68babd601";
+      ref = "v2";
     };
-
 
   mozillaPackages =
     builtins.fetchGit {
@@ -48,7 +48,6 @@ let
         (import mozillaPackages)
       ];
     };
-
 
   rust =
     (nixpkgs.latest.rustChannels.stable.rust.override {
@@ -90,7 +89,9 @@ mkShell {
     nodePackages.webpack-cli
 
     # Our nativedeps environment
-    id3as.nd-env
+    (id3as.nd-env.override {
+      nd-quicksync-enabled = false;
+    })
 
     # The Media Gateway
     rtsv2-media-gateway
@@ -109,7 +110,6 @@ mkShell {
     # Needed by something purescript-y - hopefully A/S can pinpoint what...
     jq
     serfdom
-
 
     # Rust stuff!
     rust
