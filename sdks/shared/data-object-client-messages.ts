@@ -17,8 +17,8 @@ export interface DataObjectSendMessage {
 export interface DataObjectUpdateMessage {
   readonly type: "dataobject.update";
 
-  /** An opaque reference returned in the response. */
-  readonly senderRef: string;
+  /** An opaque reference returned in the response to allow responses to be correlated with requests. */
+  readonly requestResponseCorrelationId: string;
 
   /** The operation to perform. */
   readonly operation: DataObjectUpdateOperation;

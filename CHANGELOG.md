@@ -1,6 +1,10 @@
 # RTS-V2 release XXX
 **What's new**
 
+- **RTSV2-66** - handling of invalid data object messages from client fixed
+
+- Player SDK senderRef renamed to requestResponseCorrelationId in dataObjectUpdateMessagee
+
 # RTS-V2 release 93
 **What's new**
 
