@@ -32,6 +32,9 @@ startEgestReceiverFFI(EgestKey, UseMediaGateway) ->
         webrtc_stream_server:start_link(EgestKey,
                                         #{ stream_module => rtsv2_webrtc_egest_stream_handler
                                          , stream_module_args => [ self(), EgestKey, UseMediaGateway ]
+                                         , default_session_config =>
+                                             #{ generate_media_channel_ready_messages => true
+                                              }
                                          }
                                        ),
 

@@ -79,7 +79,7 @@ handle_media_frame(#rtp_engine_msg{message = _RTPEngineState}, State) ->
   %% Ignore PLIs et al
   {ok, State};
 
-handle_media_frame(#webrtc_channel_message{ message = #webrtc_channel_ready{ channel_type = audio, media_socket = Socket, egest_crypto = EgestCrypto } }, #?state{} = State) ->
+handle_media_frame(#webrtc_media_channel_message{ message = #webrtc_media_channel_ready{ channel_type = audio, media_socket = Socket, egest_crypto = EgestCrypto } }, #?state{} = State) ->
 
   NewState =
     State#?state{ audio_stream_element_config =
@@ -90,7 +90,7 @@ handle_media_frame(#webrtc_channel_message{ message = #webrtc_channel_ready{ cha
 
   maybe_add_to_media_gateway(NewState);
 
-handle_media_frame(#webrtc_channel_message{ message = #webrtc_channel_ready{ channel_type = video, media_socket = Socket, egest_crypto = EgestCrypto } }, #?state{} = State) ->
+handle_media_frame(#webrtc_media_channel_message{ message = #webrtc_media_channel_ready{ channel_type = video, media_socket = Socket, egest_crypto = EgestCrypto } }, #?state{} = State) ->
 
   NewState =
     State#?state{ video_stream_element_config =
