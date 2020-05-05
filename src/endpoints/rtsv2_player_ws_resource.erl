@@ -373,6 +373,9 @@ websocket_info({egestCurrentActiveProfiles, ActiveProfiles}, State) ->
 websocket_info(not_implemented, State) ->
   {ok, State}.
 
+websocket_handle(ping, State) ->
+  {ok, State};
+
 websocket_handle({ text, JSON }, State) ->
   try
     jsx:decode(JSON, [return_maps])

@@ -41,7 +41,6 @@ set +o history
 
 SESSION=rtsv2
 SYSCONFIG=${SYSCONFIG:-release-files/sys.config}
-export PATH=$MEDIA_GATEWAY_LOCATION:$PATH
 
 tmux -L "$SESSION" kill-session 2>/dev/null || true
 destroy_serfs
