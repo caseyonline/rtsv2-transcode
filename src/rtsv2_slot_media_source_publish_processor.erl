@@ -124,15 +124,22 @@ handle_info({udp_error, Socket, econnrefused}, State = #?state{ slot_id = SlotId
                                                               , stream_relays = StreamRelays
                                                               , stream_relays_by_socket = StreamRelaysBySocket }) ->
 
-  {RelayKey, NewStreamRelaysBySocket} = maps:take(Socket, StreamRelaysBySocket),
-  NewStreamRelays = maps:remove(RelayKey, StreamRelays),
+  case maps:take(Socket, StreamRelaysBySocket) of
+    error ->
+      ?SLOG_INFO("UPD error: socket not registered", #{ slot_id => SlotId
+                                                      , socket => Socket }),
+      {noreply, State};
 
-  ?SLOG_INFO("UDP error sending to StreamRelay", #{ slot_id => SlotId
-                                                  , stream_relay => RelayKey
-                                                  , reason => econnrefused}),
+    {RelayKey, NewStreamRelaysBySocket} ->
+      NewStreamRelays = maps:remove(RelayKey, StreamRelays),
 
-  {noreply, State#?state{ stream_relays = NewStreamRelays
-                        , stream_relays_by_socket = NewStreamRelaysBySocket}}.
+      ?SLOG_INFO("UDP error sending to StreamRelay", #{ slot_id => SlotId
+                                                      , stream_relay => RelayKey
+                                                      , reason => econnrefused}),
+
+      {noreply, State#?state{ stream_relays = NewStreamRelays
+                            , stream_relays_by_socket = NewStreamRelaysBySocket}}
+  end.
 
 ioctl(read_meter, State = #?state{slot_id = SlotId, publication_count = PublicationCount}) ->
 
