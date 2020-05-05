@@ -64,10 +64,11 @@ stdenv.mkDerivation rec {
     # The Media Gateway
     rtsv2-media-gateway
 
+    openssl
+
     # Remove these?
     jq
     serfdom
     iproute # NOTE: releases are Linux only, so no need for optional here
   ];
 }
-
