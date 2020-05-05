@@ -8,7 +8,7 @@
 
 -include_lib("id3as_common/include/common.hrl").
 
--include("./rtsv2_slot_profiles.hrl").
+-include("./rtsv2_master_playlist_processor.hrl").
 
 -include_lib("id3as_media/include/m3u8.hrl").
 
@@ -53,7 +53,6 @@ initialise(_Processor = #processor{ config = Config }) ->
 
 process_input(#frame{profile = Profile, source_metadata = #source_metadata {source_id = SourceId}, stream_metadata = #stream_metadata{ stream_id = StreamId }}, State = #?state{ profiles = Profiles, published_playlist = false }) ->
   Key = {SourceId, StreamId},
-  ?INFO("Got profile ~p for ~p", [Profile, Key]),
   Profiles2 = maps:put(Key, Profile, Profiles),
   State2 = State#?state{ profiles = Profiles2 },
   ProfilesReady = check_profiles_ready(State2),
@@ -120,7 +119,7 @@ build_playlists(SlotId, AvProfiles, Profiles, [PushDetail = #{}|_]) ->
   }.
 
 
-variant_stream(SlotId, AvProfiles, #{ playbackBaseUrl := PlaybackBaseUrl }, Profile = #{ bitrate = BitRate, profileName = ProfileName}) ->
+variant_stream(SlotId, AvProfiles, #{ playbackBaseUrl := PlaybackBaseUrl }, Profile = #{ bitrate := BitRate, profileName := ProfileName}) ->
   AvProfilesList = maps:to_list(AvProfiles),
   VideoProfiles = lists:filtermap(fun ({{P, _Pid}, Prof = #video_profile{}}) when P =:= ProfileName -> {true, Prof};
                                        (_) -> false

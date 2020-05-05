@@ -97,7 +97,7 @@ db =
                     , formats: [ Hls ]
                     , putBaseUrl: "http://172.16.171.1:3000/system/llnwstub/rts/v1/hls/test_slot_1/"
                     , playbackBaseUrl: "" -- ie relative
-                    , segmentDuration: 2
+                    , segmentDuration: 3
                     , playlistDuration: 20
                     , auth:
                       { type: "basic"
