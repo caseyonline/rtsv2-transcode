@@ -707,21 +707,21 @@ handle_data_object_send_message(#{ <<"msg">> := Message
                                                                            egest_key = Key
                                                                           , data_object_send_message = SendMessage
                                                                           } }) ->
-  PursMessageDestination = case Destination of
-                             #{ <<"tag">> := <<"publisher">> } -> {publisher};
-                             #{ <<"tag">> := <<"broadcast">> } -> {broadcast};
-                             #{ <<"tag">> := <<"private">>, <<"to">> :=  To } -> {private, To}
-                           end,
 
-  PursMessage = #{ sender => Id
-                 , destination => PursMessageDestination
-                 , msg => Message
-                 , ref => make_ref()
-                 },
+  try
+    PursMessage = endpoint_helpers:dataobject_message_to_purs(Id, Message, Destination),
 
-  ((SendMessage(Key))(PursMessage))(),
+    ((SendMessage(Key))(PursMessage))(),
 
-  {ok, State}.
+    {ok, State}
+  catch
+    _:_ ->
+      io:format(user, "Invalid Message: ~p ~p~n", [Message, Destination]),
+      { [ json_frame( <<"dataobject.message-failure">>,
+                      #{ } ) ]
+      , State
+      }
+  end.
 
 handle_data_object_update(#{ <<"operation">> := Operation,
                              <<"senderRef">> := SenderRef },

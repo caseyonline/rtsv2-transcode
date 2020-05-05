@@ -34,6 +34,9 @@ export default class Player extends EventEmitter implements IPlayer {
     this.session.on("data-object-message", (message) => {
       this.emit("data-object-message", message);
     });
+    this.session.on("data-object-message-failure", (message) => {
+      this.emit("data-object-message-failure", message);
+    });
     this.session.on("data-object-update-response", (response) => {
       this.emit("data-object-update-response", response);
     });

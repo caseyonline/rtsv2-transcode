@@ -3,6 +3,7 @@
 -export([ dataobject_to_ts/1
         , dataobject_operation_to_purs/1
         , dataobject_response_to_ts/1
+        , dataobject_message_to_purs/3
         ]).
 
 dataobject_response_to_ts(Response) ->
@@ -22,6 +23,24 @@ dataobject_to_ts(#{map := Map,
                    version := Version}) ->
   #{ <<"version">> => Version
    , <<"map">> => maps:map(fun(_Key, Value) -> dataobject_value_to_ts(Value) end, Map)
+   }.
+
+dataobject_message_to_purs(Id, Message, Destination) ->
+
+  PursMessageDestination = case Destination of
+                             #{ <<"tag">> := <<"publisher">> } ->
+                               {publisher};
+                             #{ <<"tag">> := <<"broadcast">> } ->
+                               {broadcast};
+                             #{ <<"tag">> := <<"private">>, <<"to">> :=  ToList } when is_list(ToList) ->
+                               true = lists:all(is_binary, ToList),
+                               {private, ToList}
+                           end,
+
+  #{ sender => Id
+   , destination => PursMessageDestination
+   , msg => Message
+   , ref => make_ref()
    }.
 
 dataobject_operation_to_purs(Operation) ->

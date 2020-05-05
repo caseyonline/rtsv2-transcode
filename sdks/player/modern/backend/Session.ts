@@ -281,6 +281,12 @@ export default class Session extends EventEmitter implements ISession {
         }
         break;
 
+      case "dataobject.message-failure":
+        {
+          this.emit("data-object-message-failure", message);
+        }
+        break;
+
       case "dataobject.update-response":
         {
           this.emit("data-object-update-response", message);

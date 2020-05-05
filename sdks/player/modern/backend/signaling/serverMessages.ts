@@ -4,6 +4,7 @@ import { SDPOfferResponseMessage
          , ICECandidateMessage } from "../../../../shared/rtc-server-messages"
 
 import { DataObjectReceiveMessage
+         , DataObjectSendMessageFailure
          , DataObjectUpdateResponseMessage
          , DataObjectBroadcastMessage
        } from "../../../../shared/data-object-server-messages";
@@ -18,6 +19,7 @@ export type Message
   | OnFIMessage
   | ActiveProfiles
   | DataObjectReceiveMessage
+  | DataObjectSendMessageFailure
   | DataObjectUpdateResponseMessage
   | DataObjectBroadcastMessage
 

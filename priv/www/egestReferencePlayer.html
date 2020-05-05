@@ -75,6 +75,9 @@
         player.on("data-object-message", (message) => {
           console.log("data-object-message", message);
         });
+        player.on("data-object-message-failure", () => {
+          console.log("data-object-message-failure");
+        });
         player.on("data-object-update-response", (response) => {
           console.log("data-object-update-response", response);
         });
