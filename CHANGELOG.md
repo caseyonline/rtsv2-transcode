@@ -1,3 +1,11 @@
+# RTS-V2 release XXX
+**What's new**
+
+# RTS-V2 release 93
+**What's new**
+
+- Added openssl to release package
+
 # RTS-V2 release 88
 **What's new**
 

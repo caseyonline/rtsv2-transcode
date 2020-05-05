@@ -19,7 +19,7 @@ let
     builtins.fetchGit {
       name = "id3as-packages";
       url = "git@github.com:id3as/nixpkgs-private.git";
-      rev = "485fcb5e2dccbf2fa3d43fb6c2c45bb68babd601";
+      rev = "e7b181ea5f1a0c7d630b7028d47eaa4636abfb77";
       ref = "v2";
     };
 
@@ -35,7 +35,8 @@ let
     builtins.fetchGit {
       name = "id3as-oxidized-packages";
       url = "git@github.com:id3as/oxidized.git";
-      rev = "22f64b587cae8bc620a73d0425252d084501cf24";
+      rev = "e0e806a97fa11b8c749e24a5507451670e93df0b";
+      ref = "rtcp";
     };
 
   nixpkgs =

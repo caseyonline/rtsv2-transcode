@@ -1,3 +1,2 @@
 export POP_DEFINITION=scripts/env/simple.data/popDefinition.json
 export SYSCONFIG=scripts/env/simple.data/sys.config
-export MEDIA_GATEWAY_LOCATION=$(realpath ../oxidized/target/debug)

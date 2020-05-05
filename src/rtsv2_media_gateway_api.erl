@@ -10,7 +10,7 @@
 
 
 -export([ start_link/2
-        , add_egest/3
+        , add_egest/5
         , add_egest_client/4
         ]).
 
@@ -43,8 +43,8 @@ start_link(ThisServerAddress, MediaGatewayFlag) ->
   gen_server:start_link({local, ?SERVER}, ?MODULE, [ThisServerAddress, MediaGatewayFlag], []).
 
 
-add_egest(SlotId, SlotRole, ReceiveSocket) ->
-  gen_server:call(?SERVER, {add_egest, SlotId, SlotRole, ReceiveSocket}).
+add_egest(SlotId, SlotRole, ReceiveSocket, AudioSSRC, VideoSSRC) ->
+  gen_server:call(?SERVER, {add_egest, SlotId, SlotRole, ReceiveSocket, AudioSSRC, VideoSSRC}).
 
 
 add_egest_client(SlotId, SlotRole, ClientId, EgestClientConfig) ->
@@ -77,7 +77,7 @@ init([ThisServerAddress, MediaGatewayFlag]) ->
   {ok, State}.
 
 
-handle_call({add_egest, SlotId, SlotRole, ReceiveSocket}, _From, State) ->
+handle_call({add_egest, SlotId, SlotRole, ReceiveSocket, AudioSSRC, VideoSSRC}, _From, State) ->
 
   NewState = ensure_control_socket(State),
 
@@ -85,7 +85,9 @@ handle_call({add_egest, SlotId, SlotRole, ReceiveSocket}, _From, State) ->
 
   Body = ?pack(#{ slot_key => slot_key(SlotId, SlotRole)
                 , audio_payload_type_id => ?OPUS_ENCODING_ID
+                , audio_output_ssrc => AudioSSRC
                 , video_payload_type_id => ?H264_ENCODING_ID
+                , video_output_ssrc => VideoSSRC
                 }),
 
   {ok, ReceiveFD} = inet:getfd(ReceiveSocket),
@@ -98,8 +100,8 @@ handle_call({ add_egest_client
             , SlotId
             , SlotRole
             , ClientId
-            , #media_gateway_egest_client_config{ audio = #media_gateway_stream_element_config{ media_socket = AudioSocket, egest_crypto = AudioEgestCrypto }
-                                                , video = #media_gateway_stream_element_config{ media_socket = VideoSocket, egest_crypto = VideoEgestCrypto }
+            , #media_gateway_egest_client_config{ audio = #media_gateway_stream_element_config{ media_socket = AudioSocket, egest_crypto = AudioEgestCrypto, cname = AudioCName }
+                                                , video = #media_gateway_stream_element_config{ media_socket = VideoSocket, egest_crypto = VideoEgestCrypto, cname = VideoCName }
                                                 }
             }
            , _From
@@ -113,7 +115,9 @@ handle_call({ add_egest_client
   Body = ?pack(#{ slot_key => slot_key(SlotId, SlotRole)
                 , client_id => ClientId
                 , audio_crypto_params => convert_crypto_params(AudioEgestCrypto)
+                , audio_cname => AudioCName
                 , video_crypto_params => convert_crypto_params(VideoEgestCrypto)
+                , video_cname => VideoCName
                 }),
 
   {ok, AudioSocketFd} = inet:getfd(AudioSocket),
