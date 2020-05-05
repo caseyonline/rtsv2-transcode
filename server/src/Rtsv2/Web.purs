@@ -5,9 +5,9 @@ module Rtsv2.Web
 
 import Prelude
 
-import Data.Function.Uncurried (mkFn2)
+import Data.Function.Uncurried (mkFn2, mkFn7)
 import Data.Maybe (fromMaybe)
-import Data.Newtype (wrap)
+import Data.Newtype (unwrap, wrap)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Cowboy.Req (Req)
@@ -22,8 +22,9 @@ import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen as Gen
 import Rtsv2.Agents.EgestInstance as EgestInstance
-import Rtsv2.Agents.Locator.Egest (findEgest)
-import Rtsv2.Agents.Locator.Types (LocationResp, RegistrationResp)
+import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
+import Rtsv2.Agents.IngestWebRTCIngestHandler as IngestWebRTCIngestHandler
+import Rtsv2.Config (MediaGatewayFlag(Off))
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
 import Rtsv2.Handler.Chaos as ChaosHandler
@@ -37,20 +38,23 @@ import Rtsv2.Handler.JsonLd as JsonLd
 import Rtsv2.Handler.LlnwStub as LlnwStubHandler
 import Rtsv2.Handler.Load as LoadHandler
 import Rtsv2.Handler.PoPDefinition as PoPDefinitionHandler
+import Rtsv2.Handler.Relay as EgestHandler
 import Rtsv2.Handler.Relay as RelayHandler
+import Rtsv2.Handler.StreamDiscovery as StreamDiscoveryHandler
 import Rtsv2.Handler.TransPoP as TransPoPHandler
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Serf (Ip(..))
-import Shared.Router.Endpoint (Canary)
-import Shared.Router.Endpoint as Router
-import Shared.Stream (EgestKey(..), IngestKey(..), ProfileName, SlotId, SlotIdAndProfileName(..), SlotRole(..))
+import Shared.Rtsv2.LlnwApiTypes (StreamDetails)
+import Shared.Rtsv2.Router.Endpoint (Canary)
+import Shared.Rtsv2.Router.Endpoint as Router
+import Shared.Rtsv2.Stream (EgestKey(..), IngestKey(..), ProfileName, SlotId, SlotIdAndProfileName(..), SlotRole(..))
+import Shared.Rtsv2.Types (Server, LocationResp, RegistrationResp, extractAddress)
 import Shared.UUID (UUID, fromString)
 import Shared.UUID as UUID
 import Stetson (RestResult, StaticAssetLocation(..))
 import Stetson as Stetson
 import Stetson.Rest as Rest
-import Stetson.Routing (dummyHandler)
 import Stetson.Types (CowboyRoutePlaceholder(..))
 
 newtype State = State {}
@@ -64,15 +68,22 @@ startLink args =
 
 init :: Config.WebConfig -> Effect State
 init args = do
+  featureFlags <- Config.featureFlags
+  loadConfig <- Config.loadConfig
   bindIp <- Env.privateInterfaceIp
+  thisServer <- PoPDefinition.getThisServer
   Stetson.configure
     # Stetson.routes
         Router.endpoint
         {
         -- Public
-          "ClientPlayerE"                               :  \(_ :: Canary) (_ :: SlotId) -> PrivFile "rtsv2" "www/egestReferencePlayer.html"
-        , "ClientPlayerJsE"                             : \(_ :: Canary) (_ :: SlotId) -> PrivDir "rtsv2" "www/assets/js"
+          "ClientPlayerE"                               : \(_ :: Canary) (_ :: SlotId) (_ :: SlotRole) -> PrivFile "rtsv2" "www/egestReferencePlayer.html"
+        , "ClientPlayerAssetsE"                         : \(_ :: Canary) (_ :: SlotId) (_ :: SlotRole) -> PrivDir "rtsv2" "www/assets"
         , "ClientPlayerControlE"                        : CowboyRoutePlaceholder
+
+        , "ClientWebRTCIngestE"                         : \(_ :: Canary) (_ :: String) (_ :: String) -> PrivFile "rtsv2" "www/referenceIngest.html"
+        , "ClientWebRTCIngestAssetsE"                   : \(_ :: Canary) (_ :: String) (_ :: String) -> PrivDir "rtsv2" "www/assets"
+        , "ClientWebRTCIngestControlE"                  : CowboyRoutePlaceholder
 
         -- Support
         , "VMMetricsE"                                  : HealthHandler.vmMetrics
@@ -91,39 +102,41 @@ init args = do
         , "IngestAggregatorActiveIngestsPlayerE"        : \(_ :: SlotId) (_ :: SlotRole) (_ :: ProfileName) -> PrivFile "rtsv2" "www/play.html"
         , "IngestAggregatorActiveIngestsPlayerJsE"      : \(_ :: SlotId) (_ :: SlotRole) (_ :: ProfileName) -> PrivDir "rtsv2" "www/assets/js"
         , "IngestAggregatorActiveIngestsPlayerControlE" : CowboyRoutePlaceholder
-        , "IngestAggregatorsE"                          : IngestAggregatorHandler.ingestAggregators
+        , "IngestAggregatorsE"                          : IngestAggregatorHandler.ingestAggregators loadConfig
         , "IngestInstancesMetricsE"                     : IngestHandler.ingestInstancesMetrics
         , "IngestInstanceE"                             : IngestHandler.ingestInstance
         , "ClientAppAssetsE"                            : PrivDir Config.appName "www/assets"
         , "ClientAppRouteHTMLE"                         : PrivFile Config.appName "www/index.html"
+        , "StreamDiscoveryE"                            : StreamDiscoveryHandler.discover loadConfig
 
         -- System
         , "TransPoPLeaderE"                             : IntraPoPHandler.leader
-        , "EgestE"                                      : dummyHandler -- TODO write this - needed for a client to create a remote egest
-        , "RelayE"                                      : RelayHandler.startResource
-        , "RelayEnsureStartedE"                         : RelayHandler.ensureStarted
-        , "RelayRegisterEgestE"                         : RelayHandler.registerEgest
-        , "RelayRegisterRelayE"                         : RelayHandler.registerRelay
-        , "RelaySlotConfigurationE"                     : RelayHandler.slotConfiguration
-        , "RelayRegisteredEgestE"                       : RelayHandler.deRegisterRelay
+        , "EgestE"                                      : EgestHandler.startResource loadConfig
+        , "RelayE"                                      : RelayHandler.startResource loadConfig
+        , "RelayEnsureStartedE"                         : RelayHandler.ensureStarted loadConfig
+        , "RelayRegisteredRelayWs"                      : RelayHandler.registeredRelayWs
+        , "RelayRegisteredEgestWs"                      : RelayHandler.registeredEgestWs
 
-        , "IngestAggregatorActiveIngestsE"              : IngestAggregatorHandler.ingestAggregatorsActiveIngest
-        , "IngestAggregatorSlotConfigurationE"          : IngestAggregatorHandler.slotConfiguration
-        , "IngestAggregatorRegisterRelayE"              : IngestAggregatorHandler.registerRelay
+        , "IngestAggregatorRegisteredIngestWs"          : IngestAggregatorHandler.registeredIngestWs
+        , "IngestAggregatorRegisteredRelayWs"           : IngestAggregatorHandler.registeredRelayWs
+        , "IngestAggregatorBackupWs"                    : IngestAggregatorHandler.backupWs
+
         , "IngestInstanceLlwpE"                         : CowboyRoutePlaceholder
         , "IntraPoPTestHelperE"                         : IntraPoPHandler.testHelper
         , "LoadE"                                       : LoadHandler.load
         , "RelayProxiedStatsE"                          : RelayHandler.proxiedStats
 
-        , "IngestStartE"                                : IngestHandler.ingestStart
+        , "IngestStartE"                                : IngestHandler.ingestStart loadConfig
         , "IngestStopE"                                 : IngestHandler.ingestStop
-        , "ClientStartE"                                : ClientHandler.clientStart
+        , "ClientStartE"                                : ClientHandler.clientStart loadConfig
         , "ClientStopE"                                 : ClientHandler.clientStop
         , "Chaos"                                       : ChaosHandler.chaos
 
         , "StreamAuthTypeE"                             : LlnwStubHandler.streamAuthType
         , "StreamAuthE"                                 : LlnwStubHandler.streamAuth
         , "StreamPublishE"                              : LlnwStubHandler.streamPublish
+        , "SlotLookupE"                                 : LlnwStubHandler.slotLookup
+        , "HlsPushE"                                    : LlnwStubHandler.hlsPush
 
         , "WorkflowsE"                                  : CowboyRoutePlaceholder -- id3as_workflows_resource
         , "WorkflowGraphE"                              : CowboyRoutePlaceholder -- id3as_workflow_graph_resource
@@ -135,58 +148,91 @@ init args = do
         , "UsersE"                                      : CowboyRoutePlaceholder
         , "ProfilesE"                                   : CowboyRoutePlaceholder
         }
-    # Stetson.cowboyRoutes cowboyRoutes
+    # Stetson.cowboyRoutes (cowboyRoutes thisServer featureFlags loadConfig)
     # Stetson.port args.port
     # (uncurry4 Stetson.bindTo) (ipToTuple bindIp)
     # Stetson.startClear "http_listener"
   pure $ State {}
 
   where
-    cowboyRoutes :: List Path
-    cowboyRoutes =
+    cowboyRoutes :: Server -> Config.FeatureFlags -> Config.LoadConfig -> List Path
+    cowboyRoutes thisServer { mediaGateway } loadConfig =
       -- Some duplication of URLs here from those in Endpoint.purs due to current inability to build cowboy-style bindings from stongly-typed parameters
       -- IngestAggregatorActiveIngestsPlayerControlE SlotId SlotRole ProfileName
       cowboyRoute ("/support/ingestAggregator/" <> slotIdBinding <> "/" <> slotRoleBinding <> "/activeIngests/" <> profileNameBinding <> "/control")
                   "rtsv2_player_ws_resource"
                   (unsafeToForeign { mode: (atom "ingest")
                                    , make_ingest_key: makeIngestKey
+                                   , use_media_gateway:
+                                     case mediaGateway of
+                                       Off ->
+                                         false
+                                       _ ->
+                                         true
                                    })
 
       -- ClientPlayerControlE Canary SlotId
-      : cowboyRoute ("/public/" <> canaryBinding <> "/client/" <> slotIdBinding <> "/session")
+      : cowboyRoute ("/public/" <> canaryBinding <> "/client/" <> slotIdBinding <> "/" <> slotRoleBinding <> "/session")
                     "rtsv2_player_ws_resource"
                     (unsafeToForeign { mode: (atom "egest")
-                                     , make_egest_key: EgestKey
-                                     , start_stream: startStream
+                                     , make_egest_key: makeEgestKey
+                                     , start_stream: startStream loadConfig
                                      , add_client: mkFn2 addClient
-                                     , get_slot_configuration: EgestInstance.slotConfiguration
+                                     , get_slot_configuration: EgestInstance.getSlotConfiguration
+                                     , data_object_send_message: EgestInstance.dataObjectSendMessage
+                                     , data_object_update: EgestInstance.dataObjectUpdate
+                                     , use_media_gateway:
+                                        case mediaGateway of
+                                          Off ->
+                                            false
+                                          _ ->
+                                            true
                                      })
 
       -- IngestInstanceLlwpE SlotId SlotRole ProfileName
-      : cowboyRoute ("/support/ingest/" <> slotIdBinding <> "/" <> slotRoleBinding <> "/" <> profileNameBinding <> "/llwp")
+      : cowboyRoute ("/system/ingest/" <> slotIdBinding <> "/" <> slotRoleBinding <> "/" <> profileNameBinding <> "/llwp")
                    "llwp_stream_resource"
                    ((unsafeToForeign) makeSlotIdAndProfileName)
 
-      --WorkflowsE
+      -- ClientWebRTCIngestContorlE SlotId SlotRole
+      : cowboyRoute ("/public/" <> canaryBinding <> "/ingest/" <> accountBinding <> "/" <> streamNameBinding <> "/session")
+                    "rtsv2_webrtc_push_ingest_ws_resource"
+                    (unsafeToForeign { authenticate: mkFn7 $ IngestWebRTCIngestHandler.authenticate loadConfig (unwrap $ extractAddress thisServer)
+                                     })
+
+      --workflows
       : cowboyRoute ("/system/workflows") "id3as_workflows_resource" (unsafeToForeign unit)
       -- WorkflowGraphE String
-      : cowboyRoute ("/system/workflows" <> referenceBinding <> "/graph") "id3as_workflow_graph_resource" (unsafeToForeign (atom "graph"))
+      : cowboyRoute ("/system/workflows/" <> referenceBinding <> "/graph") "id3as_workflow_graph_resource" (unsafeToForeign (atom "graph"))
       -- WorkflowMetricsE String
-      : cowboyRoute ("/system/workflows" <> referenceBinding <> "/metrics") "id3as_workflow_graph_resource" (unsafeToForeign (atom "metrics"))
+      : cowboyRoute ("/system/workflows/" <> referenceBinding <> "/metrics") "id3as_workflow_graph_resource" (unsafeToForeign (atom "metrics"))
       -- WorkflowStructureE String
-      : cowboyRoute ("/system/workflows" <> referenceBinding <> "/structure") "id3as_workflow_graph_resource" (unsafeToForeign (atom "structure"))
+      : cowboyRoute ("/system/workflows/" <> referenceBinding <> "/structure") "id3as_workflow_graph_resource" (unsafeToForeign (atom "structure"))
 
       : nil
 
 
     slotIdBinding = ":slot_id"
-    slotRoleBinding = ":slot"
+    slotRoleBinding = ":slot_role"
     profileNameBinding = ":profile_name"
+    serverAddressBinding = ":server_address"
+    portBinding = ":port"
+    sourceRouteBinding = ":source_route"
     canaryBinding = ":canary"
     referenceBinding = ":reference"
+    accountBinding = ":account"
+    streamNameBinding = ":stream_name"
 
     makeSlotIdAndProfileName :: String -> String -> SlotIdAndProfileName
     makeSlotIdAndProfileName slotId profileName = SlotIdAndProfileName (slotIdStringToSlotId slotId) (wrap profileName)
+
+    makeIngestKey2 :: StreamDetails -> ProfileName -> IngestKey
+    makeIngestKey2 { slot : { id }, role } profileName =
+      IngestKey id role profileName
+
+    makeEgestKey :: UUID -> SlotRole -> EgestKey
+    makeEgestKey slotId slotRole =
+      EgestKey (wrap slotId) slotRole
 
     makeIngestKey :: UUID -> String -> String -> IngestKey
     makeIngestKey slotId slotRole profileName =
@@ -200,16 +246,13 @@ init args = do
     slotIdStringToSlotId slotIdStr =
       wrap $ fromMaybe UUID.empty (fromString slotIdStr)
 
-    -- TODO: This code doesn't belong here
-    startStream :: UUID -> Effect LocationResp
-    startStream slotId =
-      do
-        thisServer <- PoPDefinition.getThisServer
-        findEgest (wrap slotId) thisServer
+    startStream :: Config.LoadConfig -> EgestKey -> Effect LocationResp
+    startStream loadConfig (EgestKey slotId slotRole) =
+        EgestInstanceSup.findEgest loadConfig slotId slotRole
 
-    addClient :: Pid -> UUID -> Effect RegistrationResp
-    addClient pid slotId =
-      EgestInstance.addClient pid (EgestKey (wrap slotId))
+    addClient :: Pid -> EgestKey -> Effect RegistrationResp
+    addClient pid egestKey =
+      EgestInstance.addClient pid egestKey
 
     cowboyRoute path moduleName initialState =
       Path (tuple3
@@ -234,11 +277,11 @@ textWriter text = tuple2 "text/plain" (\req state -> Rest.result text req state)
 domains :: List Atom
 domains = serverName # Names.toDomain # singleton
 
-logInfo :: forall a. Logger a
+logInfo :: forall a. Logger (Record a)
 logInfo = domainLog Logger.info
 
 --logWarning :: forall a. Logger a
 --logWarning = domainLog Logger.warning
 
-domainLog :: forall a. Logger {domain :: List Atom, misc :: a} -> Logger a
+domainLog :: forall a. Logger {domain :: List Atom, misc :: Record a} -> Logger (Record a)
 domainLog = Logger.doLog domains

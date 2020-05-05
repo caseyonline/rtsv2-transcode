@@ -16,7 +16,7 @@ import Prelude
 
 import Data.Either (Either(..))
 import Data.Foldable (foldl)
-import Data.Int (fromString, round)
+import Data.Int (fromString)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (wrap)
 import Data.String (Pattern(..), split)

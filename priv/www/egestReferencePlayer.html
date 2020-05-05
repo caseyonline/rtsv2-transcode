@@ -1,29 +1,124 @@
-<head>
-  <title>LLNW Egest Reference Player</title>
-  <link href=data:, rel=icon">
-</head>
-<body>
-  <video id="llnw-rts-subscriber" autoplay controls muted style="max-width: 100%">
-  </video>
-  <script src="js/llnwrtssdk-2.0.0.js"></script>
-  <script>
-    (function() {
-      const pathname = window.location.pathname;
-      const parent = pathname.substring(1, pathname.lastIndexOf("/"));
-
-      var config = {
-        account: "id3as-test-account",
-        streamName: "id3as-test-stream",
-        overrides: {
-          socketAuthority: window.location.host,
-          socketSecure: window.location.protocol === "https:",
-          socketPath: parent + "/session",
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title>LLNW Egest Reference Player</title>
+    <link href=data:, rel=icon">
+    <link rel="stylesheet" type="text/css" href="css/bootstrap.min.css">
+    <style>
+      body
+      {
+        padding-top: 60px;
+      }
+      @media (max-width: 980px)
+      {
+        body
+        {
+          padding-top: 0;
         }
-      };
+      }
+      video{
+        border-radius: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="row">
+        <div class="col-md">
+          <video id="llnw-rts-subscriber" autoplay controls muted style="max-width: 100%">
+          </video>
+        </div>
+        <div class="col-md">
+          <ul class="list-group">
+            <li class="list-group-item">Bytes received: <span id="bytesReceived"></span></li>
+            <li class="list-group-item">Frames: <span id="frames"></span></li>
+            <li class="list-group-item">Key Frames: <span id="keyFrames"></span></li>
+            <li class="list-group-item">Packets: <span id="packets"></span></li>
+            <li class="list-group-item">PLI: <span id="pli"></span></li>
+            <li class="list-group-item">Resolution: <span id="resolution"></span></li>
+          </ul>
+          <button id="stop" type="button" class="btn btn-primary" disabled>Stop</button>
+        </div>
+      </div>
+    </div>
+    <script src="js/llnwrtssdk-2.0.0.js"></script>
+    <script src="/support/assets/js/jquery-3.4.1.slim.min.js"></script>
+    <script src="/support/assets/js/bootstrap.bundle.min.js"></script>
+    <script>
+      (function() {
+        const pathname = window.location.pathname;
+        const parent = pathname.substring(1, pathname.lastIndexOf("/"));
 
-      var player = LimelightSDK.createPlayer(config);
+        var config = {
+          account: "id3as-test-account",
+          streamName: "id3as-test-stream",
+          overrides: {
+            socketAuthority: window.location.host,
+            socketSecure: window.location.protocol === "https:",
+            socketPath: parent + "/session",
+          }
+        };
 
-      window.player = player;
-    })();
-  </script>
-</body>
+        var player = LimelightSDK.createPlayer(config);
+
+        player.on("quality-change", (message) => {
+          console.log("quality-change", message);
+        });
+        player.on("on-fi", (message) => {
+          console.log("on-fi", message);
+        });
+        player.on("active-profiles", (profiles) => {
+          console.log("active-profiles", profiles);
+        });
+        player.on("data-object-message", (message) => {
+          console.log("data-object-message", message);
+        });
+        player.on("data-object-update-response", (response) => {
+          console.log("data-object-update-response", response);
+        });
+        player.on("data-object", (dataObject) => {
+          console.log("data-object", dataObject);
+        });
+        player.on("playback-active", () => {
+          $("#stop").prop("disabled", false);
+        });
+        player.on("playback-audio-stats", (stats) => {
+          //console.log("audio stats", Array.from(stats.values()));
+        });
+        player.on("playback-video-stats", (stats) => {
+          for (let stat of stats.values()) {
+            switch (stat.type) {
+              case "inbound-rtp":
+                {
+                  $("#frames").html(stat.framesDecoded);
+                  $("#keyFrames").html(stat.keyFramesDecoded);
+                  $("#packets").html(stat.packetsReceived);
+                  $("#pli").html(stat.pliCount);
+                }
+                break;
+              case "transport":
+                {
+                  $("#bytesReceived").html(stat.bytesReceived);
+                }
+                break;
+              case "track":
+                {
+                  $("#resolution").html(stat.frameWidth + "x" + stat.frameHeight);
+                }
+                break;
+            }
+          }
+          //console.log("video stats", Array.from(stats.values()));
+        });
+
+        $("#stop").on("click", (event) => {
+          player.stop();
+        });
+
+        window.player = player;
+      })();
+    </script>
+  </body>
+</html>

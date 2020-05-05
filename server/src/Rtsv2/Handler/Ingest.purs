@@ -7,33 +7,40 @@ module Rtsv2.Handler.Ingest
 
 import Prelude
 
-import Data.Either (hush)
+import Data.Either (Either(..), hush)
 import Data.Foldable (foldl)
 import Data.Maybe (Maybe(..), fromMaybe', isJust)
 import Data.Newtype (unwrap, wrap)
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
-import Erl.Atom (atom)
+import Erl.Atom (Atom, atom)
+import Erl.Cowboy.Req (StatusCode(..))
+import Erl.Cowboy.Req as Req
 import Erl.Data.List (List, nil, (:))
+import Erl.Data.List as List
+import Erl.Data.Map as Map
 import Erl.Data.Tuple (tuple2)
 import Erl.Process.Raw (Pid)
 import Erl.Process.Raw as Raw
 import Gproc as GProc
 import Gproc as Gproc
-import Logger (spy)
+import Logger (Logger)
+import Logger as Logger
 import Prometheus as Prometheus
 import Rtsv2.Agents.IngestInstance as IngestInstance
 import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
-import Rtsv2.Agents.IngestSup as IngestSup
 import Rtsv2.Agents.IngestStats as IngestStats
+import Rtsv2.Agents.IngestSup as IngestSup
+import Rtsv2.Config (LoadConfig)
 import Rtsv2.Config as Config
 import Rtsv2.Handler.MimeType as MimeType
-import Shared.LlnwApiTypes (StreamIngestProtocol(..), StreamPublish, StreamDetails)
-import Shared.Router.Endpoint (Canary)
-import Shared.Stream (IngestKey(..), ProfileName, RtmpShortName, SlotId, SlotNameAndProfileName(..), SlotRole)
-import Shared.Types.Agent.State (IngestStats)
-import Shared.Types.Agent.State as PublicState
+import Rtsv2.LlnwApi as LlnwApi
+import Shared.Rtsv2.Agent.State (IngestStats)
+import Shared.Rtsv2.Agent.State as PublicState
+import Shared.Rtsv2.LlnwApiTypes (StreamIngestProtocol(..), StreamPublish, StreamDetails)
+import Shared.Rtsv2.Router.Endpoint (Canary)
+import Shared.Rtsv2.Stream (IngestKey(..), ProfileName, RtmpShortName, SlotId, SlotNameAndProfileName(..), SlotRole)
 import Shared.Types.Workflow.Metrics.Commmon (Stream)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (writeJSON)
@@ -185,8 +192,8 @@ type IngestStartState = { streamDetails :: Maybe StreamDetails
                         , streamPublish :: Maybe StreamPublish
                         }
 
-ingestStart :: Canary -> RtmpShortName -> SlotNameAndProfileName -> StetsonHandler IngestStartState
-ingestStart canary shortName slotNameAndProfileName@(SlotNameAndProfileName slotName profileName) =
+ingestStart :: LoadConfig -> Canary -> RtmpShortName -> SlotNameAndProfileName -> StetsonHandler IngestStartState
+ingestStart loadConfig canary shortName slotNameAndProfileName@(SlotNameAndProfileName slotName profileName) =
   Rest.handler (\req ->
                  Rest.initResult req { streamDetails: Nothing
                                      , streamPublish: Nothing
@@ -205,14 +212,13 @@ ingestStart canary shortName slotNameAndProfileName@(SlotNameAndProfileName slot
                                                         , username: "user"}
                           in
                            do
-                             {streamPublishUrl} <- Config.llnwApiConfig
-                             restResult <- bodyToJSON <$> SpudGun.postJson (wrap streamPublishUrl) streamPublishPayload
+                             config <- Config.llnwApiConfig
+                             restResult <- LlnwApi.streamPublish config streamPublishPayload
                              let
                                streamDetails = hush $ restResult
                              Rest.result (isJust streamDetails) req state{ streamDetails = streamDetails
                                                                          , streamPublish = Just streamPublishPayload}
                           )
-  -- TODO - hideous spawn here, but ingestInstance needs to do a monitor... - ideally we sleep forever and kill it in ingestStop...
   # Rest.contentTypesProvided (\req state ->
                                   Rest.result (tuple2 "text/plain" (\req2 state2@{ streamDetails: maybeStreamDetails
                                                                                  , streamPublish: maybeStreamPublish
@@ -222,8 +228,15 @@ ingestStart canary shortName slotNameAndProfileName@(SlotNameAndProfileName slot
                                                                          streamPublish = fromMaybe' (lazyCrashIfMissing "stream_publish missing") maybeStreamPublish
                                                                          ingestKey = IngestKey streamDetails.slot.id streamDetails.role profileName
                                                                        pid <- startFakeIngest ingestKey
-                                                                       IngestInstanceSup.startIngest ingestKey streamPublish streamDetails "127.0.0.1" 0 pid
-                                                                       Rest.result "ingestStarted" req2 state2
+                                                                       maybeStarted <- IngestInstanceSup.startLocalRtmpIngest loadConfig ingestKey streamPublish streamDetails "127.0.0.1" 0 pid
+                                                                       _ <- logInfo "IngestInstanceSup returned" {maybeStarted}
+                                                                       case maybeStarted of
+                                                                         Right _ ->
+                                                                           Rest.result "ingestStarted" req2 state2
+                                                                         Left error -> do
+                                                                           -- No need to stop the fake ingest, since its gproc.register will have failed
+                                                                           req3 <- Req.reply (StatusCode 409) Map.empty ("ingestStartFailed" <> (show error)) req2
+                                                                           Rest.stop req3 state2
                                                                    ) : nil) req state)
   # Rest.yeeha
 
@@ -239,13 +252,13 @@ ingestStop canary slotId role profileName =
                             Rest.result isAgentAvailable req state)
 
   # Rest.resourceExists (\req state@{ingestKey} -> do
-                            isActive <- IngestInstance.isActive (spy "ingestKey" ingestKey)
-                            Rest.result (spy "isActive" isActive) req state
+                            stopFakeIngest state.ingestKey
+                            isActive <- IngestInstance.isActive ingestKey
+                            Rest.result isActive req state
                         )
   # Rest.contentTypesProvided (\req state ->
                                 Rest.result (tuple2 "text/plain" (\req2 state2 -> do
                                                                      stopFakeIngest state.ingestKey
-                                                                     --IngestInstance.stopIngest state.ingestKey
                                                                      Rest.result "ingestStopped" req2 state2
                                                                  ) : nil) req state)
   # Rest.yeeha
@@ -254,14 +267,35 @@ startFakeIngest :: IngestKey -> Effect Pid
 startFakeIngest ingestKey =
   let
     proc = do
+      _ <- logInfo "fake ingest running" {}
       _ <- GProc.register (tuple2 (atom "test_ingest_client") ingestKey)
-      _ <- Raw.receive
+      handlerLoop
+      _ <- logInfo "fake ingest stopping" {}
       pure unit
   in
     Raw.spawn proc
 
+handlerLoop :: Effect Unit
+handlerLoop = do
+  x <- Raw.receive
+  if (x == (atom "stop")) then pure unit
+    else handlerLoop
+
 stopFakeIngest :: IngestKey -> Effect Unit
 stopFakeIngest ingestKey = do
   pid <- Gproc.whereIs (tuple2 (atom "test_ingest_client") ingestKey)
+  _ <- logInfo "stopping fake ingest" {}
   _ <- traverse ((flip Raw.send) (atom "stop")) pid
   pure unit
+
+--------------------------------------------------------------------------------
+-- Log helpers
+--------------------------------------------------------------------------------
+domains :: List Atom
+domains = atom <$> ("Client" :  "Instance" : List.nil)
+
+logInfo :: forall a. Logger (Record a)
+logInfo = domainLog Logger.info
+
+domainLog :: forall a. Logger {domain :: List Atom, misc :: Record a} -> Logger (Record a)
+domainLog = Logger.doLog domains

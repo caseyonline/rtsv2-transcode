@@ -6,7 +6,7 @@ module Rtsv2.Handler.Load
 import Prelude
 
 import Data.Either (hush)
-import Data.Maybe (fromMaybe, isNothing)
+import Data.Maybe (isNothing, maybe)
 import Effect (Effect)
 import Erl.Cowboy.Req (ReadBodyResult(..), Req, method, readBody)
 import Erl.Data.Binary (Binary)
@@ -14,6 +14,7 @@ import Erl.Data.Binary.IOData (IOData, fromBinary, toBinary)
 import Erl.Data.List (nil, singleton, (:))
 import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.Load as Load
+import Shared.Rtsv2.Types (CurrentLoad, minLoad)
 import Simple.JSON (readJSON)
 import Simple.JSON as JSON
 import Stetson (HttpMethod(..), StetsonHandler)
@@ -22,7 +23,7 @@ import Unsafe.Coerce (unsafeCoerce)
 
 type State =
   {
-    load :: Number
+    load :: CurrentLoad
   }
 
 load :: StetsonHandler State
@@ -34,7 +35,7 @@ load =
   # Rest.contentTypesAccepted (\req state -> Rest.result (singleton $ MimeType.json acceptJson) req state)
   # Rest.yeeha
   where
-    init req = Rest.initResult req {load: 0.0}
+    init req = Rest.initResult req {load: minLoad}
 
     malformedRequest req state =
       do
@@ -42,17 +43,15 @@ load =
           "POST" -> do
             body <- allBody req mempty
             let
-              state2 = hush $ readJSON $ (binaryToString body)
-            Rest.result (isNothing state2) req (fromMaybe state state2)
+              mLoad = hush $ readJSON $ binaryToString body
+            Rest.result (isNothing mLoad) req $ maybe state (\l -> state{load = l}) mLoad
           _ ->
             Rest.result false req state
 
     provideJson req state =
       do
-        currentLoad <- Load.load
-        let
-          result = {currentLoad}
-        Rest.result (JSON.writeJSON result) req state
+        currentLoad <- Load.getLoad
+        Rest.result (JSON.writeJSON currentLoad) req state
 
     acceptJson req state@{load: currentLoad} =
       do

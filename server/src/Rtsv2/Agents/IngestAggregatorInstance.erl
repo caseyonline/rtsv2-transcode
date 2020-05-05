@@ -7,47 +7,53 @@
 -include_lib("id3as_media/include/audio_levels.hrl").
 -include_lib("id3as_media/include/send_to_bus_processor.hrl").
 -include_lib("id3as_media/include/fun_processor.hrl").
+-include_lib("id3as_media/include/rtmp.hrl").
 -include_lib("id3as_rtc/include/rtp.hrl").
+
+-include_lib("id3as_media/include/ts.hrl").
+-include_lib("id3as_media/include/ts_encoder.hrl").
+-include_lib("id3as_media/include/ts_segment_generator.hrl").
+
+-include_lib("id3as_media/include/m3u8.hrl").
+
+-include_lib("id3as_media/include/stream_sync.hrl").
+
+
 -ifdef(__RTC_FEAT_FEC).
 -include_lib("id3as_rtc/include/rtp_ulp_fec.hrl").
 -endif.
 -include("../../../../src/rtsv2_slot_media_source_publish_processor.hrl").
 -include("../../../../src/rtsv2_rtp.hrl").
+-include("../../../../src/rtsv2_slot_profiles.hrl").
+-include("../../../../src/rtsv2_internal_hls_writer.hrl").
 
 -export([
-         startWorkflowImpl/2,
+         startWorkflowImpl/4,
          stopWorkflowImpl/1,
          addLocalIngestImpl/2,
          addRemoteIngestImpl/3,
          removeIngestImpl/2,
          registerStreamRelayImpl/3,
          deRegisterStreamRelayImpl/3,
-         slotConfigurationImpl/1
+         workflowMessageMapperImpl/1
         ]).
 
 -define(frames_with_source_id(SourceId), #named_ets_spec{name = list_to_atom("frames_with_source_id: " ++ ??SourceId),
                                                          spec = ?wildcard_by_name(frame)#frame{source_metadata = ?wildcard(#source_metadata{})#source_metadata{source_id = SourceId}}}).
 
 
--record(enriched_slot_profile,
-        { ingest_key :: term()
-        , stream_name :: binary_string()
-        , profile_name :: binary_string()
-        , audio_ssrc_start :: non_neg_integer()
-        , video_ssrc_start :: non_neg_integer()
-        }).
 
 
-startWorkflowImpl(SlotId, ProfileArray) ->
+
+startWorkflowImpl(SlotId, SlotRole, Profiles, PushDetails) ->
   fun() ->
-      Profiles = array:to_list(ProfileArray),
-
       {EnrichedProfiles, _NextProfileIndex} =
-        lists:mapfoldl(fun({ IngestKey, StreamName, ProfileName }, ProfileIndex) ->
+        lists:mapfoldl(fun({ IngestKey, StreamName, ProfileName, Bitrate }, ProfileIndex) ->
                            ProfileInfo =
                              #enriched_slot_profile{ ingest_key = IngestKey
                                                    , stream_name = StreamName
                                                    , profile_name = ProfileName
+                                                   , bitrate = Bitrate
 
                                                      %% SSRCs are 32-bits, use the upper 16 bits to reflect
                                                      %% the profile to which the RTP stream belongs, the
@@ -63,7 +69,7 @@ startWorkflowImpl(SlotId, ProfileArray) ->
                        Profiles
                       ),
 
-        startWorkflow(SlotId, EnrichedProfiles)
+        startWorkflow(SlotId, SlotRole, EnrichedProfiles, PushDetails)
   end.
 
 stopWorkflowImpl(Handle) ->
@@ -100,21 +106,25 @@ deRegisterStreamRelayImpl(Handle, Host, Port) ->
       ok
   end.
 
-slotConfigurationImpl(SlotId) ->
-  fun() ->
-      case rtsv2_slot_media_source_publish_processor:maybe_slot_configuration(SlotId) of
-        undefined ->
-          {nothing};
+workflowMessageMapperImpl(#workflow_output{message = #workflow_data_msg{data = #frame{type = script,
+                                                                                      pts = Pts,
+                                                                                      frame_metadata = #rtmp_onfi_timestamp{
+                                                                                                          timestamp = Timestamp
+                                                                                                         }}}}) ->
+  {just, {rtmpOnFI, Timestamp, Pts}};
 
-        SlotConfiguration ->
-          {just, SlotConfiguration}
-      end
-  end.
+workflowMessageMapperImpl(#workflow_output{}) ->
+  {just, {noop}};
+
+workflowMessageMapperImpl(_) ->
+  {nothing}.
 
 %%------------------------------------------------------------------------------
 %% Internal functions
 %%------------------------------------------------------------------------------
-startWorkflow(SlotId, Profiles) ->
+startWorkflow(SlotId, SlotRole, Profiles, PushDetails) ->
+
+  SlotConfiguration = slot_configuration(SlotId, Profiles),
 
   Pids = lists:map(fun(IngestKey) ->
                        {ok, Pid} = webrtc_stream_server:start_link(IngestKey, #{stream_module => rtsv2_webrtc_ingest_preview_stream_handler,
@@ -141,19 +151,30 @@ startWorkflow(SlotId, Profiles) ->
                                                                          frame_size_ms = 20
                                                                         }
                                                 }
+                                },
+                              #named_output{
+                                 profile_name = aac,
+                                 frame_spec = #frame_spec{
+                                                 profile = #audio_profile{
+                                                              codec = aac,
+                                                              sample_rate = 48000,
+                                                              sample_format = s16,
+                                                              codec_profile_level = #codec_profile_level{profile = main, level = 3.0}
+                                                             }
+                                                }
                                 }
                              ]
                   },
 
   Workflow = #workflow{
                 name = {ingest_aggregator_instance, SlotId},
-                display_name = <<"RTMP Ingest Aggregator">>,
+                display_name = <<"Ingest Aggregator">>,
                 tags = #{type => ingest_aggregator,
                          slot => SlotId},
                 generators = [
                               #generator{name = ingests,
                                          display_name = <<"Ingests">>,
-                                         module = rtsv2_rtmp_ingest_generator
+                                         module = rtsv2_ingest_generator
                                         }
                              ],
 
@@ -161,10 +182,43 @@ startWorkflow(SlotId, Profiles) ->
                               #processor{name = aggregate,
                                          display_name = <<"Gather Ingests">>,
                                          subscribes_to = ingests,
-                                         module = rtsv2_rtmp_ingest_aggregator_processor
+                                         module = rtsv2_ingest_aggregator_processor
                                         },
 
-                              lists:map(fun(#enriched_slot_profile{ ingest_key = IngestKey
+                              #processor{name = set_video_profile_name,
+                                         subscribes_to = ?previous,
+                                         module = fun_processor,
+                                         config = #fun_processor_config{
+                                                                          function = fun(Frame = #frame{source_metadata = #source_metadata{source_id = ProfileName},
+                                                                                                        profile = Profile = #video_profile{}}, State) ->
+                                                                                           {Frame#frame{ profile = Profile#video_profile{ name = ProfileName }}, State};
+                                                                                        (Frame, State) -> {Frame, State}
+                                                                                     end,
+                                                                          spec = #processor_spec{ consumes = ?all }
+                                                                       }
+                                        },
+
+
+                              #processor{name = gop_numberer,
+                                         display_name = <<"GoP Numberer">>,
+                                         subscribes_to = ?previous,
+                                         module = gop_numberer
+                                        },
+
+
+                              #processor{name = master_hls_playlists,
+                                         display_name = <<"Publish Master HLS Playlists">>,
+                                         subscribes_to = {gop_numberer, ?program_details_frames},%% who knows
+                                         module = rtsv2_hls_master_playlist_processor,
+                                         config = #hls_master_playlist_processor_config{
+                                           slot_id = SlotId,
+                                           profiles = Profiles,
+                                           push_details = PushDetails
+                                         }
+                                        },
+
+                              lists:map(fun(Profile =
+                                            #enriched_slot_profile{ ingest_key = IngestKey
                                                                   , stream_name = StreamName
                                                                   , profile_name = ProfileName
                                                                   , audio_ssrc_start = AudioSSRCStart
@@ -175,42 +229,53 @@ startWorkflow(SlotId, Profiles) ->
                                             #compound_processor{
                                                name = binary_to_atom(ProfileName, utf8),
                                                display_name = <<ProfileName/binary, " (receiving from ", StreamName/binary, ")">>,
-                                               spec = #processor_spec{consumes = ?frames},
-                                               subscribes_to = {aggregate, ?frames_with_source_id(ProfileName)},
+                                               spec = #processor_spec{consumes = [?audio_frames, ?video_frames]},
+                                               subscribes_to = [{gop_numberer, ?audio_frames_with_source_id(ProfileName)},
+                                                                {gop_numberer, ?video_frames_with_source_id(ProfileName)}],
                                                processors = [
-                                                             #processor{name = audio_decode,
-                                                                        display_name = <<"Audio Decode">>,
-                                                                        subscribes_to = {outside_world, ?audio_frames},
-                                                                        module = fdk_aac_decoder
-                                                                       },
-
-                                                             #processor{name = audio_levels,
-                                                                        display_name = <<"dB Levels">>,
-                                                                        subscribes_to = ?previous,
-                                                                        module = audio_levels,
-                                                                        config = #audio_levels_config{mode = consumes,
-                                                                                                      tag = levels}
-                                                                       },
-
-                                                             #processor{name = levels_to_bus,
-                                                                        display_name = <<"Publish Levels">>,
-                                                                        subscribes_to = ?previous,
-                                                                        module = send_to_bus_processor,
-                                                                        config = #send_to_bus_processor_config{consumes = true,
-                                                                                                               bus_name = {audio_levels, IngestKey}}
-                                                                       },
+                                                             ?include_if(PushDetails /= [],
+                                                                  hls_processors(outside_world, audio_transcode, SlotId, Profile, PushDetails)),
 
                                                              #processor{name = audio_transcode,
                                                                         display_name = <<"Audio Transcode">>,
-                                                                        subscribes_to = audio_decode,
+                                                                        subscribes_to = {outside_world, ?audio_frames},
                                                                         module = audio_transcode,
                                                                         config = AudioConfig
                                                                        },
 
+                                                             %% #processor{name = audio_decode,
+                                                             %%            display_name = <<"Audio Decode">>,
+                                                             %%            subscribes_to = {outside_world, ?audio_frames},
+                                                             %%            module = fdk_aac_decoder
+                                                             %%           },
+
+                                                             %% #processor{name = audio_levels,
+                                                             %%            display_name = <<"dB Levels">>,
+                                                             %%            subscribes_to = ?previous,
+                                                             %%            module = audio_levels,
+                                                             %%            config = #audio_levels_config{mode = consumes,
+                                                             %%                                          tag = levels}
+                                                             %%           },
+
+                                                             %% #processor{name = levels_to_bus,
+                                                             %%            display_name = <<"Publish Levels">>,
+                                                             %%            subscribes_to = ?previous,
+                                                             %%            module = send_to_bus_processor,
+                                                             %%            config = #send_to_bus_processor_config{consumes = true,
+                                                             %%                                                   bus_name = {audio_levels, IngestKey}}
+                                                             %%           },
+
+                                                             %% #processor{name = audio_transcode,
+                                                             %%            display_name = <<"Audio Transcode">>,
+                                                             %%            subscribes_to = audio_decode,
+                                                             %%            module = audio_transcode,
+                                                             %%            config = AudioConfig
+                                                             %%           },
+
                                                              #processor{name = rtp,
                                                                         display_name = <<"WebRTC RTP Mux">>,
                                                                         module = fun_processor,
-                                                                        subscribes_to = [?previous, {outside_world, ?video_frames}],
+                                                                        subscribes_to = [{?previous, ?audio_frames_with_profile_name(opus)}, {outside_world, ?video_frames}],
                                                                         config = #fun_processor_config{ initial_state =
                                                                                                           { rtp_opus_egest:new(AudioSSRCStart, ?OPUS_ENCODING_ID)
                                                                                                           , rtp_h264_egest:new(VideoSSRCStart, ?H264_ENCODING_ID)
@@ -286,28 +351,10 @@ startWorkflow(SlotId, Profiles) ->
                                         , module = rtsv2_slot_media_source_publish_processor
                                         , config =
                                             #rtsv2_slot_media_source_publish_processor_config{ slot_name = SlotId
-                                                                                             , slot_configuration = slot_configuration(SlotId, Profiles)
+                                                                                             , slot_role = SlotRole
+                                                                                             , slot_configuration = SlotConfiguration
                                                                                              }
-                                        },
-
-                              %% lists:map(fun(#profile_info{ profile_name = ProfileName } ) ->
-                              %%               #processor{ name = binary_to_atom(<<ProfileName/binary, "null">>, utf8)
-                              %%                         , subscribes_to = binary_to_atom(ProfileName, utf8)
-                              %%                         , module = dev_null_processor
-                              %%                         }
-                              %%           end,
-                              %%           Profiles
-                              %%          ),
-
-                              %% TODO - remove once complete - shouldn't be getting stray output messages
-                              lists:map(fun(#enriched_slot_profile{ profile_name = ProfileName } ) ->
-                                            #processor{ name = binary_to_atom(<<"GC ", ProfileName/binary>>, utf8)
-                                                      , subscribes_to = binary_to_atom(ProfileName, utf8)
-                                                      , module = dev_null_processor
-                                                      }
-                                        end,
-                                        Profiles
-                                       )
+                                        }
                              ]
                },
 
@@ -315,7 +362,76 @@ startWorkflow(SlotId, Profiles) ->
 
   {ok, Handle} = id3as_workflow:workflow_handle(Pid),
 
-  {Handle, Pids}.
+  {Handle, Pids, SlotConfiguration}.
+
+hls_processors(VideoSub, AudioSub, _SlotId, #enriched_slot_profile{ profile_name = ProfileName }, [#{ auth := #{username := Username, password := Password}, segmentDuration := SegmentDuration, playlistDuration := PlaylistDuration, putBaseUrl := PutBaseUrl }]) ->
+  ?WARNING("Using ~p gops per segment (not ~ps segments)", [SegmentDuration, SegmentDuration]),
+  TsEncoderConfig = #ts_encoder_config{
+                       which_encoder = ts_simple_encoder,
+                       program_pid = 4096,
+                       pcr_pid = 256,
+                       streams = [
+                                  #ts_stream {
+                                     pid = 256,
+                                     index = 1,
+                                     pes_stream_type = ?STREAM_TYPE_VIDEO_H264,
+                                     pes_stream_id = ?PesVideoStreamId(1)
+                                    },
+                                  #ts_stream {
+                                     pid = 257,
+                                     index = 2,
+                                     pes_stream_type = ?STREAM_TYPE_AUDIO_AAC_ADTS,
+                                     pes_stream_id = ?PesAudioStreamId(1)
+                                    }
+                                 ]},
+
+  [
+    #processor{name = adts,
+      module = adts_encapsulator,
+      subscribes_to = { AudioSub, ?audio_frames_with_profile_name(aac) }
+
+    },
+    #processor{
+      name = stream_sync,
+      module = stream_sync,
+      subscribes_to = [{VideoSub, ?video_frames}, ?previous],
+      config = #stream_sync_config{ num_streams = 2 }
+    },
+    #processor{name = ts_mux,
+      display_name = <<"TS Mux">>,
+      subscribes_to = ?previous,
+      module = ts_encoder,
+      config = TsEncoderConfig
+    },
+
+    #processor{name = ts_segmenter,
+      display_name = <<"TS Segmenter">>,
+      subscribes_to = ?previous,
+      config = #ts_segment_generator_config {
+                  mode = video,
+                  segment_strategy = #ts_segment_generator_gop_strategy {
+                    %% TODO Take this as a gop count not in seconds, for now
+                    gops_per_segment = SegmentDuration 
+                  }
+                },
+      module = ts_segment_generator},
+
+
+    #processor{name = ts_writer_primary,
+      display_name = <<"TS Segment Writer">>,
+      subscribes_to = ?previous,
+      module = rtsv2_internal_hls_writer,
+      config =
+          #rtsv2_internal_hls_writer_config{
+            post_url = <<PutBaseUrl/binary, ProfileName/binary, "/">>,
+            max_playlist_length = PlaylistDuration div SegmentDuration,
+            target_segment_duration = SegmentDuration,
+            playlist_name = <<"playlist.m3u8">>,
+            auth = {Username,Password}
+          }
+    }
+  ].
+
 
 mux_to_rtp(#frame{ profile = #audio_profile{ codec = Codec } } = Frame, { AudioEgest, VideoEgest }) ->
   { NewAudioEgest, RTPs } = rtp_opus_egest:step(AudioEgest, Frame),

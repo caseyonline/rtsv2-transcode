@@ -33,7 +33,7 @@ import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
 import Erl.Process (spawnLink)
 import Erl.Utils (sleep, systemTimeMs, privDir)
-import Logger (Logger, spy)
+import Logger (Logger)
 import Logger as Logger
 import Network (Network, addEdge', bestPaths, emptyNetwork, pathsBetween)
 import Os (osCmd)
@@ -45,7 +45,7 @@ import Pinto.Timer as Timer
 import PintoHelper (exposeState)
 import Prim.Row (class Nub, class Union)
 import Record as Record
-import Rtsv2.Agents.IntraPoP (AgentClock, whereIsIngestAggregator)
+import Rtsv2.Agents.IntraPoP (AgentClock)
 import Rtsv2.Config (IntraPoPAgentApi, TransPoPAgentConfig)
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
@@ -57,11 +57,12 @@ import Rtsv2.PoPDefinition as PoPDefinition
 import Serf (IpAndPort, LamportClock, SerfCoordinate, calcRtt)
 import Serf as Serf
 import Shared.Common (Milliseconds)
-import Shared.Router.Endpoint (Endpoint(..), makeUrlAddr)
+import Shared.Rtsv2.Agent (SlotCharacteristics, emptySlotCharacteristics)
+import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.JsonLd as JsonLd
-import Shared.Stream (AgentKey)
-import Shared.Types (PoPName, Server, ServerAddress(..), extractAddress, extractPoP, toServer)
-import Shared.Types.Agent.State as PublicState
+import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrlAddr)
+import Shared.Rtsv2.Stream (AgentKey)
+import Shared.Rtsv2.Types (PoPName, Server, ServerAddress(..), extractAddress, extractPoP)
 import Shared.Utils (distinctRandomNumbers)
 import SpudGun (bodyToString)
 import SpudGun as SpudGun
@@ -98,7 +99,7 @@ data EventType
   = Available
   | Stopped
 
-data TransMessage = TMAggregatorState EventType AgentKey ServerAddress
+data TransMessage = TMAggregatorState EventType AgentKey ServerAddress SlotCharacteristics
 
 data Msg
   = LeaderTimeoutTick
@@ -176,8 +177,8 @@ health =
       allOtherPoPs <- PoPDefinition.getOtherPoPs
       pure $ Health.percentageToHealth healthConfig $ (Map.size members) * 100 / ((Map.size allOtherPoPs) + 1)
 
-announceAggregatorIsAvailable :: AgentKey -> Server -> Effect Unit
-announceAggregatorIsAvailable slotId server =
+announceAggregatorIsAvailable :: SlotCharacteristics -> AgentKey -> Server -> Effect Unit
+announceAggregatorIsAvailable slotCharacteristics agentKey server =
   Gen.doCast serverName ((map CastNoReply) <<< doAnnounceStreamIsAvailable)
   where
     doAnnounceStreamIsAvailable :: State -> Effect State
@@ -186,12 +187,12 @@ announceAggregatorIsAvailable slotId server =
     doAnnounceStreamIsAvailable state@{ thisServer
                                       , serfRpcAddress
                                       } = do
-      result <- Serf.event state.serfRpcAddress "streamAvailable" (TMAggregatorState Available slotId (extractAddress server)) false
+      result <- Serf.event state.serfRpcAddress "streamAvailable" (TMAggregatorState Available agentKey (extractAddress server) slotCharacteristics) false
       maybeLogError "Trans-PoP serf event failed" result {}
       pure state
 
 announceAggregatorStopped :: AgentKey -> Server -> Effect Unit
-announceAggregatorStopped slotId server =
+announceAggregatorStopped agentKey server =
   Gen.doCast serverName ((map CastNoReply) <<< doAnnounceStreamStopped)
   where
     doAnnounceStreamStopped :: State -> Effect State
@@ -205,7 +206,7 @@ announceAggregatorStopped slotId server =
       then do
             -- Message from our pop - distribute over trans-pop
             --logInfo "Local stream stopped being delivered to trans-pop" { slotId: slotId }
-            result <- Serf.event state.serfRpcAddress "streamStopped" (TMAggregatorState Stopped slotId (extractAddress server)) false
+            result <- Serf.event state.serfRpcAddress "streamStopped" (TMAggregatorState Stopped agentKey (extractAddress server) emptySlotCharacteristics) false
             maybeLogError "Trans-PoP serf event failed" result {}
             pure state
       else pure state
@@ -334,28 +335,28 @@ handleInfo msg state =
             unsafeCrashWith ("lost_serf_connection")
           Serf.UserEvent name ltime coalesce transMessage ->
             case transMessage of
-              TMAggregatorState eventType slotId msgOrigin -> do
-                handleAgentMessage ltime eventType slotId msgOrigin state
+              TMAggregatorState eventType slotId msgOrigin slotCharacteristics -> do
+                handleAgentMessage ltime eventType slotId msgOrigin slotCharacteristics state
 
 
 
 handleTransPoPMessage :: TransMessage -> State -> Effect State
-handleTransPoPMessage (TMAggregatorState Available agentKey address) state@{intraPoPApi} = do
+handleTransPoPMessage (TMAggregatorState Available agentKey address slotCharacteristics) state@{intraPoPApi} = do
   logInfo "Remote stream available" {agentKey, address}
-  mServerLocation <- PoPDefinition.whereIsServer address
-  case mServerLocation of
+  mServer <- PoPDefinition.whereIsServer address
+  case mServer of
     Nothing -> pure state
-    Just location -> do
-      intraPoPApi.announceOtherPoPAggregatorIsAvailable agentKey (toServer address location)
+    Just server -> do
+      intraPoPApi.announceOtherPoPAggregatorIsAvailable slotCharacteristics agentKey server
       pure state
 
-handleTransPoPMessage (TMAggregatorState Stopped agentKey address) state@{intraPoPApi} = do
+handleTransPoPMessage (TMAggregatorState Stopped agentKey address slotCharacteristics) state@{intraPoPApi} = do
   logInfo "Remote stream stopped" {agentKey, address}
-  mServerLocation <- PoPDefinition.whereIsServer address
-  case mServerLocation of
+  mServer <- PoPDefinition.whereIsServer address
+  case mServer of
     Nothing -> pure state
-    Just location -> do
-      intraPoPApi.announceOtherPoPAggregatorStopped agentKey (toServer address location)
+    Just server -> do
+      intraPoPApi.announceOtherPoPAggregatorStopped agentKey server
       pure state
 
 --------------------------------------------------------------------------------
@@ -585,16 +586,13 @@ joinAllSerf state@{ config: config@{rejoinEveryMs}, serfRpcAddress, members } =
       if length toJoin < (Map.size allOtherPoPs) / 2 then
         pure unit
       else
-        let _ = spy "toJoin" {toJoin} in
         traverse_ (\{ name, servers: serversInPoP } ->
                     do
                      indexes <- distinctRandomNumbers 1 ((length serversInPoP) - 1)
                      let
-                       _ = spy "indexes" {indexes}
                        servers :: List ServerAddress
-                       servers = traverse (\i -> index serversInPoP i) indexes
+                       servers = traverse (\i -> (unwrap >>> _.address) <$> index serversInPoP i) indexes
                                  # fromMaybe nil
-                       _ = spy "servers" {servers}
                      (spawnFun serverAddressToSerfAddress servers)
                   )
                   toJoin
@@ -607,7 +605,7 @@ joinAllSerf state@{ config: config@{rejoinEveryMs}, serfRpcAddress, members } =
                                      url = makeUrlAddr serverAddress TransPoPLeaderE
 
                                    restResult <- bodyToString <$> SpudGun.getText url
-                                   case spy "spawnFunrestResult" restResult of
+                                   case restResult of
                                      Left _ -> pure unit
                                      Right "" -> pure unit
                                      Right addr -> do
@@ -621,8 +619,8 @@ joinAllSerf state@{ config: config@{rejoinEveryMs}, serfRpcAddress, members } =
 
 
 
-handleAgentMessage :: LamportClock -> EventType -> AgentKey -> ServerAddress -> State -> Effect State
-handleAgentMessage msgLTime eventType agentKey msgServerAddress
+handleAgentMessage :: LamportClock -> EventType -> AgentKey -> ServerAddress -> SlotCharacteristics -> State -> Effect State
+handleAgentMessage msgLTime eventType agentKey msgServerAddress slotCharacteristics
                    state@{thisServer} = do
   -- let _ = spy "agentMessage" {name: agentMessageHandler.name, eventType, slotId, msgServerAddress}
   -- Make sure the message is from a known origin and does not have an expired Lamport clock
@@ -635,23 +633,22 @@ handleAgentMessage msgLTime eventType agentKey msgServerAddress
       pure state
     else do
       -- TODO - maybe cache the db for a while to prevent hot calls, or use ETS etc
-      mLocation <- PoPDefinition.whereIsServer msgServerAddress
-      case mLocation of
+      mServer <- PoPDefinition.whereIsServer msgServerAddress
+      case mServer of
         Nothing -> do
           logWarning "message from unknown server" {msgServerAddress}
           pure state
-        Just msgLocation
+        Just msgServer
           -- Opposite logic to IntraPoP - only forward things that are NOT from this pop
-          | extractPoP msgLocation == extractPoP state.thisServer ->
+          | extractPoP msgServer == extractPoP state.thisServer ->
             pure state
           | otherwise -> do
             let
-              msgServer = toServer msgServerAddress msgLocation
               newAgentClock = Map.insert (Tuple msgServerAddress agentKey) msgLTime agentClock
 
             case eventType of
               Available -> do
-                state.intraPoPApi.announceOtherPoPAggregatorIsAvailable agentKey msgServer
+                state.intraPoPApi.announceOtherPoPAggregatorIsAvailable slotCharacteristics agentKey msgServer
               Stopped -> do
                 state.intraPoPApi.announceOtherPoPAggregatorStopped agentKey msgServer
             pure $ state { agentClocks = {aggregatorClocks : newAgentClock} }
@@ -668,13 +665,13 @@ stopScript = privDir(atom "rtsv2") <> "/scripts/stopTransPoPAgent.sh"
 domains :: List Atom
 domains = serverName # Names.toDomain # singleton
 
-logInfo :: forall a. Logger a
+logInfo :: forall a. Logger (Record a)
 logInfo = domainLog Logger.info
 
-logWarning :: forall a. Logger a
+logWarning :: forall a. Logger (Record a)
 logWarning = domainLog Logger.warning
 
-domainLog :: forall a. Logger {domain :: List Atom, misc :: a} -> Logger a
+domainLog :: forall a. Logger {domain :: List Atom, misc :: Record a} -> Logger (Record a)
 domainLog = Logger.doLog domains
 
 maybeLogError :: forall r b c d e. Union b (error :: e) c => Nub c d => String -> Either e r -> Record b  -> Effect Unit

@@ -1,7 +1,7 @@
 module Shared.Common
        (
          Milliseconds(..)
-       , Url
+       , Url(..)
        ) where
 
 import Prelude

@@ -8,14 +8,13 @@ import Prelude
 
 import Effect (Effect)
 import Erl.Data.List (nil, (:))
-import Logger (spy)
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildType(..), SupervisorSpec, SupervisorStrategy(..))
 import Pinto.Sup as Sup
 import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
 import Rtsv2.Names as Names
-import Shared.LlnwApiTypes (StreamDetails)
-import Shared.Stream (AggregatorKey)
+import Shared.Rtsv2.LlnwApiTypes (StreamDetails)
+import Shared.Rtsv2.Stream (AggregatorKey)
 
 startLink :: AggregatorKey -> StreamDetails -> IngestAggregatorInstance.StateServerName -> Effect Pinto.StartLinkResult
 startLink aggregatorKey streamDetails stateServerName = Sup.startLink (Names.ingestAggregatorInstanceSupName aggregatorKey) (init aggregatorKey streamDetails stateServerName)

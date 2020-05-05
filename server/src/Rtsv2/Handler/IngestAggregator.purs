@@ -1,104 +1,139 @@
 module Rtsv2.Handler.IngestAggregator
        ( ingestAggregator
        , ingestAggregators
-       , ingestAggregatorsActiveIngest
-       , registerRelay
-       , slotConfiguration
+       , registeredIngestWs
+       , registeredRelayWs
+       , backupWs
        )
        where
 
 import Prelude
 
-import Data.Either (hush)
-import Data.Maybe (Maybe(..), fromMaybe', isNothing)
-import Erl.Cowboy.Req (method)
-import Erl.Data.List (List, nil, (:))
-import Erl.Data.Tuple (tuple2)
-import Rtsv2.Agents.IngestAggregatorInstance (RemoteIngestPayload)
+import Data.Maybe (Maybe(..), fromMaybe')
+import Effect (Effect)
+import Erl.Data.List (List)
+import Erl.Process (Process(..))
+import Erl.Utils as Erl
 import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
 import Rtsv2.Agents.IngestAggregatorSup as IngestAggregatorSup
-import Rtsv2.Agents.SlotTypes (SlotConfiguration)
-import Rtsv2.Agents.StreamRelayTypes (RegisterRelayPayload)
-import Shared.LlnwApiTypes (StreamDetails)
-import Shared.Stream (AggregatorKey(..), IngestKey(..), ProfileName, SlotId, SlotRole)
-import Shared.Types.Agent.State as PublicState
+import Rtsv2.Agents.StreamRelayTypes (AggregatorBackupToPrimaryWsMessage, AggregatorPrimaryToBackupWsMessage, AggregatorToIngestWsMessage(..), DownstreamWsMessage(..), IngestToAggregatorWsMessage(..), RelayUpstreamWsMessage(..), WebSocketHandlerMessage(..))
+import Rtsv2.Config (LoadConfig)
+import Rtsv2.Handler.Helper (WebSocketHandlerResult(..), webSocketHandler)
+import Rtsv2.Names as Names
+import Rtsv2.PoPDefinition as PoPDefinition
+import Shared.Rtsv2.Agent.State as PublicState
+import Shared.Rtsv2.LlnwApiTypes (StreamDetails)
+import Shared.Rtsv2.Stream (AggregatorKey(..), IngestKey(..), ProfileName, SlotId, SlotRole)
+import Shared.Rtsv2.Types (RelayServer(..), Server(..), ServerAddress)
 import Shared.Utils (lazyCrashIfMissing)
-import Simple.JSON (readJSON)
-import Stetson (HttpMethod(..), StetsonHandler)
-import Stetson.Rest as Rest
-import StetsonHelper (GetHandler, PostHandler, allBody, binaryToString, jsonResponse, processPostPayload)
+import Stetson (InnerStetsonHandler)
+import StetsonHelper (GetHandler, PostHandler, jsonResponse, processPostPayload)
 
 ingestAggregator :: SlotId -> SlotRole -> GetHandler (PublicState.IngestAggregator List)
 ingestAggregator slotId role = jsonResponse $ Just <$> (IngestAggregatorInstance.getState $ AggregatorKey slotId role)
 
-slotConfiguration :: SlotId -> SlotRole -> GetHandler SlotConfiguration
-slotConfiguration slotId role =
-  jsonResponse $ IngestAggregatorInstance.slotConfiguration (AggregatorKey slotId role)
+ingestAggregators :: LoadConfig -> PostHandler StreamDetails
+ingestAggregators loadConfig = processPostPayload (IngestAggregatorSup.startLocalAggregator loadConfig)
 
-ingestAggregators :: PostHandler StreamDetails
-ingestAggregators = processPostPayload IngestAggregatorSup.startAggregator
+type WsIngestState =
+  { ingestKey :: IngestKey
+  , aggregatorKey :: AggregatorKey
+  }
 
+registeredIngestWs :: SlotId -> SlotRole -> ProfileName -> ServerAddress -> InnerStetsonHandler (WebSocketHandlerMessage AggregatorToIngestWsMessage) WsIngestState
+registeredIngestWs slotId slotRole profileName ingestAddress =
+  webSocketHandler init wsInit handle info
+  where
+    init req =
+      pure { ingestKey: IngestKey slotId slotRole profileName
+           , aggregatorKey: AggregatorKey slotId slotRole
+           }
+    wsInit state@{aggregatorKey} = do
+      self <- Process <$> Erl.self :: Effect (Process (WebSocketHandlerMessage AggregatorToIngestWsMessage))
+      result <- IngestAggregatorInstance.registerIngest slotId slotRole profileName ingestAddress self
+      case result of
+        true -> do
+          Erl.monitor (Names.ingestAggregatorInstanceStateName aggregatorKey)
+          pure $ WebSocketNoReply state
+        false ->
+          pure $ WebSocketReply IngestStop state
 
-type IngestAggregatorsActiveIngestState = { ingestKey :: IngestKey
-                                          , aggregatorKey :: AggregatorKey
-                                          , payload :: Maybe RemoteIngestPayload
-                                          }
-ingestAggregatorsActiveIngest :: SlotId -> SlotRole -> ProfileName -> StetsonHandler IngestAggregatorsActiveIngestState
-ingestAggregatorsActiveIngest slotId slotRole profileName =
-  Rest.handler (\req ->
-                 Rest.initResult req { ingestKey: IngestKey slotId slotRole profileName
-                                     , aggregatorKey: AggregatorKey slotId slotRole
-                                     , payload: Nothing})
-  # Rest.serviceAvailable (\req state -> do
-                              isAgentAvailable <- IngestAggregatorSup.isAgentAvailable
-                              Rest.result isAgentAvailable req state)
-  # Rest.allowedMethods (Rest.result (DELETE : POST : nil))
-  # Rest.resourceExists (\req state@{aggregatorKey} -> do
-                          isAvailable <- IngestAggregatorInstance.isInstanceAvailable aggregatorKey
-                          Rest.result isAvailable req state
-                        )
-  # Rest.malformedRequest (\req state ->
-                            case method req of
-                              "DELETE" ->
-                                Rest.result false req state
-                              "POST" ->
-                                do
-                                  body <- allBody req mempty
-                                  let
-                                    maybePayload :: Maybe RemoteIngestPayload
-                                    maybePayload = hush $ readJSON $ binaryToString body
-                                  Rest.result (isNothing maybePayload) req state{payload = maybePayload}
-                              _ ->
-                                Rest.result false req state
+    handle :: WsIngestState -> IngestToAggregatorWsMessage -> Effect (WebSocketHandlerResult AggregatorToIngestWsMessage WsIngestState)
+    handle state@{aggregatorKey} (IngestToAggregatorDataObjectMessage msg) = do
+      IngestAggregatorInstance.dataObjectSendMessage aggregatorKey msg
+      pure $ WebSocketNoReply state
+    handle state@{aggregatorKey} (IngestToAggregatorDataObjectUpdateMessage msg) = do
+      IngestAggregatorInstance.dataObjectUpdate aggregatorKey msg
+      pure $ WebSocketNoReply state
 
-                          )
-  # Rest.contentTypesAccepted (\req state ->
-                                Rest.result ((tuple2 "application/json" (\req2 state2@{ ingestKey
-                                                                                      , payload: maybePayload} ->
-                                                                          let
-                                                                            payload = fromMaybe' (lazyCrashIfMissing "payload is nothing") maybePayload
-                                                                          in
-                                                                            do
-                                                                              result <- IngestAggregatorInstance.addRemoteIngest ingestKey payload
-                                                                              Rest.result result req2 state2
-                                                                        )) : nil)
-                                req state
-                              )
+    info state WsStop =
+      pure $ WebSocketStop state
+    info state (WsSend msg) =
+      pure $ WebSocketReply msg state
 
+type WsRelayState =
+  { relayServer :: RelayServer
+  , aggregatorKey :: AggregatorKey
+  }
 
-  # Rest.previouslyExisted (Rest.result false)
+registeredRelayWs :: SlotId -> SlotRole -> ServerAddress -> Int -> InnerStetsonHandler (WebSocketHandlerMessage DownstreamWsMessage)  WsRelayState
+registeredRelayWs slotId slotRole relayAddress relayPort =
+  webSocketHandler init wsInit handle info
+  where
+    init req = do
+      mServer <- PoPDefinition.whereIsServer relayAddress
+      let
+        Server server = fromMaybe' (lazyCrashIfMissing "unknown server") mServer
+      pure { relayServer: Relay server
+           , aggregatorKey: AggregatorKey slotId slotRole
+           }
 
-  # Rest.allowMissingPost (Rest.result false)
+    wsInit state@{relayServer, aggregatorKey} = do
+      self <- Process <$> Erl.self :: Effect (Process (WebSocketHandlerMessage DownstreamWsMessage))
+      Erl.monitor (Names.ingestAggregatorInstanceStateName aggregatorKey)
+      slotConfiguration <- IngestAggregatorInstance.registerRelay slotId slotRole {server: relayServer, port: relayPort} self
+      pure $ WebSocketReply (SlotConfig slotConfiguration) state
 
-  # Rest.deleteResource (\req state@{ingestKey} -> do
-                            IngestAggregatorInstance.removeRemoteIngest ingestKey
-                            Rest.result true req state
-                        )
+    handle :: WsRelayState -> RelayUpstreamWsMessage -> Effect (WebSocketHandlerResult DownstreamWsMessage WsRelayState)
+    handle state@{aggregatorKey} (RelayUpstreamDataObjectMessage msg) = do
+      IngestAggregatorInstance.dataObjectSendMessage aggregatorKey msg
+      pure $ WebSocketNoReply state
+    handle state@{aggregatorKey} (RelayUpstreamDataObjectUpdateMessage msg) = do
+      IngestAggregatorInstance.dataObjectUpdate aggregatorKey msg
+      pure $ WebSocketNoReply state
 
-  # Rest.contentTypesProvided (\req state -> Rest.result (tuple2 "application/json" (Rest.result ""): nil) req state)
-  -- # Rest.preHook (preHookSpyState "IngestAggregator:activeIngest")
-  # Rest.yeeha
+    info state WsStop =
+      pure $ WebSocketStop state
+    info state (WsSend msg) =
+      pure $ WebSocketReply msg state
 
+type WsBackupState =
+  { aggregatorKey :: AggregatorKey
+  }
 
-registerRelay :: PostHandler RegisterRelayPayload
-registerRelay = processPostPayload IngestAggregatorInstance.registerRelay
+backupWs :: SlotId -> SlotRole -> InnerStetsonHandler (WebSocketHandlerMessage AggregatorBackupToPrimaryWsMessage) WsBackupState
+backupWs slotId slotRole =
+  webSocketHandler init wsInit handle info
+  where
+    init req = do
+      pure { aggregatorKey: AggregatorKey slotId slotRole
+           }
+
+    wsInit state@{aggregatorKey} = do
+      self <- Process <$> Erl.self :: Effect (Process (WebSocketHandlerMessage AggregatorBackupToPrimaryWsMessage))
+      accepted <- IngestAggregatorInstance.registerPrimary slotId slotRole self
+      if accepted then do
+        Erl.monitor (Names.ingestAggregatorInstanceStateName aggregatorKey)
+        pure $ (WebSocketNoReply state)
+      else
+        pure $ (WebSocketStop state)
+
+    handle :: WsBackupState -> AggregatorPrimaryToBackupWsMessage -> Effect (WebSocketHandlerResult AggregatorBackupToPrimaryWsMessage WsBackupState)
+    handle state@{aggregatorKey} msg = do
+      IngestAggregatorInstance.processMessageFromPrimary aggregatorKey msg
+      pure $ WebSocketNoReply state
+
+    info state WsStop =
+      pure $ WebSocketStop state
+    info state (WsSend msg) =
+      pure $ WebSocketReply msg state

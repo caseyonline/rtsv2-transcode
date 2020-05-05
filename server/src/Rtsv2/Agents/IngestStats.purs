@@ -15,8 +15,8 @@ import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Rtsv2.Config as Config
 import Rtsv2.Names as Names
-import Shared.Stream (IngestKey)
-import Shared.Types.Agent.State (IngestStats)
+import Shared.Rtsv2.Stream (IngestKey)
+import Shared.Rtsv2.Agent.State (IngestStats)
 
 type IngestStats' = IngestStats List
 

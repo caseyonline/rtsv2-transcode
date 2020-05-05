@@ -10,7 +10,7 @@ import Effect (Effect)
 import Erl.Data.List (nil, (:))
 import Rtsv2.Handler.MimeType as MimeType
 import Shared.Rtsv2.JsonLd as JsonLd
-import Shared.Types (JsonLdContextType(..))
+import Shared.Rtsv2.Types (JsonLdContextType(..))
 import Simple.JSON (writeJSON)
 import StetsonHelper (GetHandler, multiMimeResponse)
 

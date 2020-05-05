@@ -12,7 +12,7 @@ module SpudGun
        , getJson
        , postJson
        , postJsonFollow
-       , JsonResponseError
+       , JsonResponseError(..)
        , SpudResult
        , SpudResponse(..)
        , SpudError(..)

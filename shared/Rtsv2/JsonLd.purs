@@ -103,10 +103,10 @@ import Shared.JsonLd ( Context
                      , _resource
                      ) as JsonLd
 import Shared.JsonLd (ContextDefinition(..))
-import Shared.LlnwApiTypes (StreamDetails)
-import Shared.Router.Endpoint (Endpoint(..), makePath, makeUrl, makeUrlAddr)
-import Shared.Stream (ProfileName, SlotId, SlotRole)
-import Shared.Types (DeliverTo, JsonLdContextType(..), PoPName, RelayServer, Server, ServerAddress)
+import Shared.Rtsv2.LlnwApiTypes (StreamDetails)
+import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makePath, makeUrl, makeUrlAddr)
+import Shared.Rtsv2.Stream (ProfileName, SlotId, SlotRole)
+import Shared.Rtsv2.Types (DeliverTo, JsonLdContextType(..), PoPName, RelayServer, Server, ServerAddress)
 import Shared.Types.Media.Types.Rtmp (RtmpClientMetadata)
 import Shared.Types.Media.Types.SourceDetails (SourceInfo)
 
@@ -238,10 +238,10 @@ timedRouteNeighbourNode server neighbour@{pop} =
 -- EgestServedLocation
 type EgestServedLocationNode = ServerAddressNode
 
-egestServedLocationNode :: SlotId -> ServerAddress -> EgestServedLocationNode
-egestServedLocationNode slotId serverAddress =
+egestServedLocationNode :: SlotId -> SlotRole -> ServerAddress -> EgestServedLocationNode
+egestServedLocationNode slotId slotRole serverAddress =
   wrap { resource: {address: serverAddress}
-       , "@id": Just $ makeUrlAddr serverAddress (EgestStatsE slotId)
+       , "@id": Just $ makeUrlAddr serverAddress (EgestStatsE slotId slotRole)
        , "@nodeType": Just "http://schema.rtsv2.llnw.com/EgestServedLocation"
        , "@context": Just $ ContextUrl $ makePath $ JsonLdContext ServerAddressContext
        }
@@ -284,12 +284,12 @@ relayLocationNode slotId slotRole server =
 
 ------------------------------------------------------------------------------
 -- EgestLocation
-type EgestLocationNode f =  LocationBySlotId f
+type EgestLocationNode f =  LocationBySlotIdAndSlotRole f
 
-egestLocationNode :: SlotId -> Server -> ServerNode
-egestLocationNode slotId server =
+egestLocationNode :: SlotId -> SlotRole -> Server -> ServerNode
+egestLocationNode slotId slotRole server =
   wrap { resource: server
-       , "@id": Just $ makeUrl server (EgestStatsE slotId)
+       , "@id": Just $ makeUrl server (EgestStatsE slotId slotRole)
        , "@nodeType": Just "http://types.rtsv2.llnw.com/EgestLocation"
        , "@context": Just $ ContextUrl $ makePath $ JsonLdContext ServerContext
        }
@@ -309,10 +309,10 @@ egestStatsContext = wrap { "@language": Nothing
                          , clientCount: JsonLd.Other "http://schema.rtsv2.llnw.com/Counter"
                          }
 
-egestStatsNode :: SlotId -> Server -> EgestStats -> EgestStatsNode
-egestStatsNode slotId server stats =
+egestStatsNode :: SlotId -> SlotRole -> Server -> EgestStats -> EgestStatsNode
+egestStatsNode slotId slotRole server stats =
   wrap { resource: stats
-       , "@id": Just $ makeUrl server (EgestStatsE slotId)
+       , "@id": Just $ makeUrl server (EgestStatsE slotId slotRole)
        , "@nodeType": Just "http://types.rtsv2.llnw.com/Egest"
        , "@context": Just $ ContextUrl $ makePath $ JsonLdContext EgestStatsContext
        }
@@ -381,7 +381,7 @@ ingestAggregatorStateNode slotId state@{role: slotRole} server =
   wrap { resource: state
        , "@id": Just $ makeUrl server (IngestAggregatorE slotId slotRole)
        , "@nodeType": Just "http://types.rtsv2.llnw.com/IngestAggregator"
-       , "@context": Just $ ContextUrl $ makePath $ JsonLdContext EgestStatsContext
+       , "@context": Just $ ContextUrl $ makePath $ JsonLdContext IngestAggregatorStateContext
        }
 
 ------------------------------------------------------------------------------
@@ -411,7 +411,7 @@ streamRelayStateNode :: forall f. SlotId -> StreamRelayState f -> Server -> Stre
 streamRelayStateNode slotId state@{role: slotRole} server =
   wrap { resource: state
        , "@id": Just $ makeUrl server (RelayStatsE slotId slotRole)
-       , "@nodeType": Just "http://types.rtsv2.llnw.com/IngestAggregator"
+       , "@nodeType": Just "http://types.rtsv2.llnw.com/StreamRelay"
        , "@context": Just $ ContextUrl $ makePath $ JsonLdContext StreamRelayStateContext
        }
 

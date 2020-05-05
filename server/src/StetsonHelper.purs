@@ -7,7 +7,7 @@ module StetsonHelper
 
        , processPostPayload
        , processPostPayloadWithResponse
-       , processPostPayloadWithResponseAndUrl
+       , processPostPayloadWithResponseAndLocationUrl
        , PostHandler
        , PostHandlerWithResponse
        , PostHandlerState
@@ -25,14 +25,16 @@ module StetsonHelper
 
 import Prelude
 
-import Data.Either (hush)
+import Data.Either (Either(..), hush)
 import Data.Maybe (Maybe(..), fromMaybe, fromMaybe', isJust, isNothing)
 import Data.Newtype (unwrap)
 import Effect (Effect)
-import Erl.Cowboy.Req (ReadBodyResult(..), Req, readBody, setHeader)
+import Erl.Cowboy.Req (ReadBodyResult(..), Req, StatusCode(..), readBody, setHeader)
+import Erl.Cowboy.Req as Req
 import Erl.Data.Binary (Binary)
 import Erl.Data.Binary.IOData (IOData, fromBinary, toBinary)
 import Erl.Data.List (List, singleton, (:))
+import Erl.Data.Map as Map
 import Erl.Data.Tuple (Tuple2, fst, snd, tuple2)
 import Logger (spy)
 import Rtsv2.Handler.MimeType as MimeType
@@ -87,16 +89,16 @@ type PostHandlerState a b = { mPayload :: Maybe a
 type PostHandler a = StetsonHandler (PostHandlerState a String)
 type PostHandlerWithResponse a b = StetsonHandler (PostHandlerState a b)
 
-processPostPayload :: forall a b. ReadForeign a => (a -> Effect b) -> PostHandler a
+processPostPayload :: forall a b e. Show e => ReadForeign a => (a -> Effect (Either e b)) -> PostHandler a
 processPostPayload proxiedFun =
-  processPostPayloadWithResponse $ (map (const (Just ""))) <<< proxiedFun
+  processPostPayloadWithResponse $ (map (map (const (Just "")))) <<< proxiedFun
 
-processPostPayloadWithResponse :: forall a b. ReadForeign a => WriteForeign b => (a -> Effect (Maybe b)) -> PostHandlerWithResponse a b
+processPostPayloadWithResponse :: forall a b e. Show e => ReadForeign a => WriteForeign b => (a -> Effect (Either e (Maybe b))) -> PostHandlerWithResponse a b
 processPostPayloadWithResponse proxiedFun =
-  processPostPayloadWithResponseAndUrl (\a -> ((<$>) (tuple2 Nothing)) <$> (proxiedFun a))
+  processPostPayloadWithResponseAndLocationUrl (\a -> (map (map (tuple2 Nothing))) <$> (proxiedFun a))
 
-processPostPayloadWithResponseAndUrl :: forall a b. ReadForeign a => WriteForeign b => (a -> Effect (Maybe (Tuple2 (Maybe Url) b))) -> PostHandlerWithResponse a b
-processPostPayloadWithResponseAndUrl proxiedFun =
+processPostPayloadWithResponseAndLocationUrl :: forall a b e. Show e => ReadForeign a => WriteForeign b => (a -> Effect (Either e (Maybe (Tuple2 (Maybe Url) b)))) -> PostHandlerWithResponse a b
+processPostPayloadWithResponseAndLocationUrl proxiedFun =
   Rest.handler init
   # Rest.allowedMethods (Rest.result (POST : mempty))
   # Rest.contentTypesAccepted (\req state -> Rest.result (singleton $ MimeType.json acceptJson) req state)
@@ -115,14 +117,20 @@ processPostPayloadWithResponseAndUrl proxiedFun =
     acceptJson req state@{mPayload} = do
       let
         payload = fromMaybe' (lazyCrashIfMissing "impossible noEgestPayload") mPayload
-      mResp <- proxiedFun payload
-      let
-        mUrl = join $ fst <$> mResp
-        mResponse = snd <$> mResp
-        req2 = fromMaybe req $ ((flip (setHeader "location") req) <$> unwrap <$> mUrl)
-      Rest.result true req2 state{ mUrl = mUrl
-                                 , mResponse = mResponse
-                                 }
+      eResp <- proxiedFun payload
+      case eResp of
+        Left error -> do
+          req2 <- Req.reply (StatusCode 409) Map.empty ("POST failed:" <> (show error)) req
+          Rest.stop req2 state
+        Right mResp ->
+          let
+            mUrl = join $ fst <$> mResp
+            mResponse = snd <$> mResp
+            req2 = fromMaybe req $ ((flip (setHeader "location") req) <$> unwrap <$> mUrl)
+          in
+            Rest.result true req2 state{ mUrl = mUrl
+                                       , mResponse = mResponse
+                                     }
 
     malformedRequest req state@{mPayload} =
       Rest.result (isNothing mPayload) req state

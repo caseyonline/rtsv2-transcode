@@ -39,7 +39,7 @@ makeRequestImpl(ReqError, RespError, RespSuccess, Method, Url, Options) ->
                                                             , options = #{follow_redirect => FollowRedirect}
                                                             }),
       case spud_gun:simple_request(Request) of
-        Response = {ok, StatusCode, Headers, RespBody} when StatusCode >= 200, StatusCode < 300 ->
+        {ok, StatusCode, Headers, RespBody} when StatusCode >= 200, StatusCode < 300 ->
           %% Gun lowercases response header names
           UnzippedBody = case proplists:lookup(<<"content-encoding">>, Headers) of
                            {_, <<"gzip">>} -> zlib:gunzip(RespBody);

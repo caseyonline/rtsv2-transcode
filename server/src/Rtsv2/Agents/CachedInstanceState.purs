@@ -17,14 +17,16 @@ import Erl.Atom (Atom, atom)
 import Erl.Data.List (List)
 import Erl.Data.Tuple (Tuple3, toNested3)
 import Erl.Process (Process(..), SpawnedProcessState, spawnLink, (!))
-import Erl.Process.Raw (Pid, receive)
-import Erl.Utils (ExitMessage(..), ExitReason(..))
+import Erl.Process.Raw (Pid)
+import Erl.Utils (ExitMessage(..), ExitReason(..), Ref)
 import Erl.Utils as Erl
 import Foreign (Foreign, unsafeToForeign)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult(..))
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
+
+foreign import receiveImpl :: Ref -> Effect Unit
 
 type StateServerName instanceData = ServerName (State instanceData) (Msg instanceData)
 
@@ -49,18 +51,16 @@ type State instanceData =
 startLink :: forall instanceData. StartArgs instanceData -> Effect StartLinkResult
 startLink startArgs@{serverName, domain} = do
   callerPid <- Erl.self
+  ref <- Erl.makeRef
   let
-    callerProcess = Process callerPid :: Process Atom
-  logInfo domain "XXX Performing startup" {}
-  startLinkResult <- Gen.startLink serverName (init callerProcess startArgs) handleInfo
+    callerProcess = Process callerPid :: Process Ref
+  startLinkResult <- Gen.startLink serverName (init callerProcess ref startArgs) handleInfo
   case startLinkResult of
     Ok _ -> do
-      _ <- receive
-      logInfo domain "XXX Startup completed" {}
-      pure unit
+      _ <- receiveImpl ref
+      pure startLinkResult
     _ ->
-      pure unit
-  pure startLinkResult
+      pure startLinkResult
 
 getInstanceData :: forall instanceData. StateServerName instanceData -> Effect (Maybe instanceData)
 getInstanceData serverName = do
@@ -78,8 +78,8 @@ recordInstanceData serverName instanceData = do
     doRecordInstanceData state =
       CallReply unit state{instanceData = Just instanceData}
 
-init :: forall instanceData. (Process Atom) -> StartArgs instanceData -> Effect (State instanceData)
-init caller {serverName, childStartLink, childStopAction, domain} = do
+init :: forall instanceData. (Process Ref) -> Ref -> StartArgs instanceData -> Effect (State instanceData)
+init caller ref {serverName, childStartLink, childStopAction, domain} = do
   _ <- Erl.trapExit true
   logInfo domain "Cached state starting child" {serverName}
   Gen.registerExternalMapping serverName ((map ChildDown) <<< Erl.exitMessageMapper)
@@ -91,20 +91,17 @@ init caller {serverName, childStartLink, childStopAction, domain} = do
        }
   where
     performInitialisation = do
-      logInfo domain "XXX about to spawnlink child helper" {}
       _ <- spawnLink launchChild
       pure unit
       where
         launchChild :: SpawnedProcessState (Tuple3 Atom Pid Foreign) -> Effect Unit
         launchChild {receive} = do
           _ <- Erl.trapExit true
-          logInfo domain "XXX about to spawnlink child" {}
           childResult <- childStartLink serverName
-          caller ! (atom "done")
+          caller ! ref
           case childResult of
             Ok pid -> do
               Tuple _ (Tuple _ (Tuple reason _)) <- toNested3 <$> receive
-              logInfo domain "XXX child exited" {reason}
               Erl.exit reason
               pure unit
             other -> do
@@ -142,8 +139,8 @@ handleInfo msg state@{ instanceData
 --------------------------------------------------------------------------------
 -- Log helpers
 --------------------------------------------------------------------------------
-logInfo :: forall a. List Atom -> String -> a -> Effect Unit
+logInfo :: forall a. List Atom -> String -> Record a -> Effect Unit
 logInfo domain msg misc = Logger.doLog domain Logger.info msg misc
 
-logError :: forall a. List Atom -> String -> a -> Effect Unit
+logError :: forall a. List Atom -> String -> Record a -> Effect Unit
 logError domain msg misc = Logger.doLog domain Logger.error msg misc

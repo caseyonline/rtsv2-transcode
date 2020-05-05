@@ -29,13 +29,15 @@ module Rtsv2.Agents.IntraPoP
   , currentRemoteRef
 
   , whereIsIngestAggregator
+  , whereIsIngestAggregatorWithPayload
   , whereIsStreamRelay
-  , whereIsEgest
-  , getIdleServer
-  , getCurrentTransPoPLeader
+  , whereIsStreamRelayWithLocalOrRemote
+  , whereIsEgestWithLoad
 
-    -- Helper - not sure it's used... -- TODO
-  , launchLocalOrRemoteGeneric
+  , getIdleServer
+  , getThisIdleServer
+  , selectCandidate
+  , getCurrentTransPoPLeader
 
     -- Test helper
   , testHelper
@@ -60,23 +62,22 @@ import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Newtype (class Newtype, unwrap, wrap)
 import Data.Set (Set)
 import Data.Set as Set
-import Data.Traversable (traverse_)
+import Data.Traversable (traverse, traverse_)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
-import Effect.Random (randomInt)
 import Ephemeral.Map (EMap)
 import Ephemeral.Map as EMap
 import Erl.Atom (Atom)
-import Erl.Data.List (List, head, index, length, nil, singleton, sortBy, take, uncons, (:))
+import Erl.Data.List (List, head, index, length, nil, singleton, sortBy, uncons, (:))
 import Erl.Data.Map (Map, alter, fromFoldable, values)
 import Erl.Data.Map as Map
 import Erl.Process (Process, spawnLink)
 import Erl.Utils (Ref, makeRef)
 import Erl.Utils as Erl
 import Heterogeneous.Folding (hfoldl)
-import Logger (Logger, spy)
+import Logger (Logger)
 import Logger as Logger
-import Partial.Unsafe (unsafeCrashWith, unsafePartial)
+import Partial.Unsafe (unsafeCrashWith)
 import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
@@ -84,21 +85,23 @@ import Pinto.Timer as Timer
 import PintoHelper (exposeState)
 import Prim.Row (class Nub, class Union)
 import Record as Record
-import Rtsv2.Agents.Locator.Types (LocalOrRemote(..), NoCapacity(..), ResourceResp, ServerSelectionPredicate, fromLocalOrRemote)
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
 import Rtsv2.Health (Health, percentageToHealth)
+import Rtsv2.LoadTypes as LoadTypes
+import Rtsv2.LoadTypes (LoadCheckResult, ServerSelectionPredicate)
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Serf (IpAndPort, LamportClock)
 import Serf as Serf
 import Shared.Common (Milliseconds)
+import Shared.Rtsv2.Agent (SlotCharacteristics, emptySlotCharacteristics)
+import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.JsonLd (transPoPLeaderLocationNode)
 import Shared.Rtsv2.JsonLd as JsonLd
-import Shared.Stream (AgentKey(..), AggregatorKey, EgestKey(..), RelayKey(..), SlotRole(..), agentKeyToAggregatorKey, aggregatorKeyToAgentKey)
-import Shared.Types (Load, Server(..), ServerAddress(..), ServerLoad(..), extractAddress, extractPoP, serverLoadToServer, toServer, toServerLoad)
-import Shared.Types.Agent.State as PublicState
-
+import Shared.Rtsv2.Stream (AgentKey(..), AggregatorKey, EgestKey, RelayKey(..), agentKeyToAggregatorKey, aggregatorKeyToAgentKey, egestKeyToAgentKey)
+import Shared.Rtsv2.Types (CurrentLoad, Server(..), ServerAddress(..), ServerLoad, LocalOrRemote(..), ResourceFailed(..), ResourceResp, fromLocalOrRemote, extractAddress, extractPoP, maxLoad, minLoad, toServerLoad)
+import Shared.Utils (distinctRandomNumbers)
 
 type TestHelperPayload =
   { dropAgentMessages :: Boolean
@@ -107,7 +110,7 @@ type TestHelperPayload =
 
 type MemberInfo =
   { serfMember :: Serf.SerfMember
-  , load :: Load
+  , load :: CurrentLoad
   , server :: Server
   }
 
@@ -119,23 +122,26 @@ type AgentClocks =
   , egestClocks      :: AgentClock
   , relayClocks      :: AgentClock
   }
+
 type ServerClocks =
   { loadClocks       :: ServerClock
   , popLeaderClocks  :: ServerClock
   , vmLivenessClocks :: ServerClock
   }
 
-
-type AgentLocations = { relays                :: Locations
-                      , aggregators           :: Locations
-                      , egests                :: Locations
+type AgentLocations = { relays                :: Locations Unit
+                      , aggregators           :: Locations SlotCharacteristics
+                      , egests                :: Locations Unit
                       }
 
+type AgentPayloadAndServers payload = { payload :: payload
+                                      , servers :: Set Server
+                                      }
 
-type Locations = { byAgentKey     :: Map AgentKey (Set Server)
-                 , byRemoteServer :: Map Server (Set AgentKey)
-                 , remoteTimeouts :: Map (Tuple AgentKey Server) Milliseconds
-                 }
+type Locations payload = { byAgentKey     :: Map AgentKey (AgentPayloadAndServers payload)
+                         , byRemoteServer :: Map Server (Set AgentKey)
+                         , remoteTimeouts :: Map (Tuple AgentKey Server) Milliseconds
+                         }
 
 type State
   = { config                :: Config.IntraPoPAgentConfig
@@ -150,7 +156,7 @@ type State
     , serverRefs            :: EMap Server Ref
 
     , thisServer            :: Server
-    , load                  :: Load
+    , load                  :: CurrentLoad
     , members               :: Map ServerAddress MemberInfo
     , agentClocks           :: AgentClocks
     , agentLocations        :: AgentLocations
@@ -162,24 +168,25 @@ data EventType
   | Stopped
 
 data IntraMessage
-  = IMAggregatorState EventType AgentKey ServerAddress
+  = IMAggregatorState EventType AgentKey ServerAddress SlotCharacteristics
   | IMEgestState EventType AgentKey ServerAddress
   | IMRelayState EventType AgentKey ServerAddress
 
-  | IMServerLoad ServerAddress Load
+  | IMServerLoad ServerAddress CurrentLoad
   | IMTransPoPLeader ServerAddress
   | IMVMLiveness ServerAddress Ref
 
-data Msg
+data Msg serfPayload
   = JoinAll
   | GarbageCollectVM
   | GarbageCollectAgents
   | IntraPoPSerfMsg (Serf.SerfMessage IntraMessage)
   | VMLiveness
-  | ReAnnounce AgentKey HandlerName
+  | ReAnnounce AgentKey (AgentHandler serfPayload) (State -> Effect Unit)
 
 data IntraPoPBusMessage
-  = IngestAggregatorExited AggregatorKey Server
+  = IngestAggregatorStarted AggregatorKey Server
+  | IngestAggregatorExited AggregatorKey Server
   | VmReset Server Ref (Maybe Ref)
 
 
@@ -194,7 +201,7 @@ health =
       currentHealth = percentageToHealth healthConfig $ (Map.size members) * 100 / ((length allOtherServers) + 1)
     pure $ CallReply currentHealth state
 
-bus :: Bus.Bus IntraPoPBusMessage
+bus :: Bus.Bus String IntraPoPBusMessage
 bus = Bus.bus "intrapop_bus"
 
 
@@ -210,24 +217,25 @@ getPublicState = exposeState publicState serverName
     publicState state@{agentLocations, currentTransPoPLeader, thisServer} =
       JsonLd.intraPoPStateNode (gatherState agentLocations currentTransPoPLeader) thisServer
     gatherState agentLocations currentTransPoPLeader =
-      { aggregatorLocations: toAggregatorLocation <$>  Map.toUnfoldable agentLocations.aggregators.byAgentKey
+      { aggregatorLocations: toAggregatorLocation <$> Map.toUnfoldable agentLocations.aggregators.byAgentKey
       , relayLocations: toRelayLocation <$>  Map.toUnfoldable agentLocations.relays.byAgentKey
       , egestLocations: toEgestLocation <$>  Map.toUnfoldable agentLocations.egests.byAgentKey
       , currentTransPoPLeader: transPoPLeaderLocationNode <$> currentTransPoPLeader
       }
-    toAggregatorLocation (Tuple (AgentKey slotId role) v) =
+    toAggregatorLocation (Tuple (AgentKey slotId role) {servers}) =
       { slotId
       , role
-      , servers: JsonLd.aggregatorLocationNode slotId role <$> Set.toUnfoldable v
+      , servers: JsonLd.aggregatorLocationNode slotId role <$> Set.toUnfoldable servers
       }
-    toRelayLocation (Tuple (AgentKey slotId role) v) =
+    toRelayLocation (Tuple (AgentKey slotId role) {servers}) =
       { slotId
       , role
-      , servers: JsonLd.relayLocationNode slotId role <$> Set.toUnfoldable v
+      , servers: JsonLd.relayLocationNode slotId role <$> Set.toUnfoldable servers
       }
-    toEgestLocation (Tuple (AgentKey slotId _role) v) =
+    toEgestLocation (Tuple (AgentKey slotId role) {servers}) =
       { slotId
-      , servers: JsonLd.egestLocationNode slotId <$> Set.toUnfoldable v
+      , role
+      , servers: JsonLd.egestLocationNode slotId role <$> Set.toUnfoldable servers
       }
 
 currentLocalRef :: Effect Ref
@@ -239,91 +247,141 @@ currentRemoteRef remoteServer = exposeState ((EMap.lookup remoteServer) <<<  _.s
 -- TODO - we should be calling the prime' versions and handling that there might, in fact be more than
 -- one instance of things we'd like to be singletons
 whereIsIngestAggregator :: AggregatorKey -> Effect (Maybe Server)
-whereIsIngestAggregator aggregatorKey = head <$> whereIs (_.aggregators) (aggregatorKeyToAgentKey aggregatorKey)
+whereIsIngestAggregator aggregatorKey = do
+  mRes <- whereIs (_.aggregators) (aggregatorKeyToAgentKey aggregatorKey)
+  pure $ head mRes
 
-whereIsStreamRelay :: RelayKey -> Effect (Maybe (LocalOrRemote Server))
-whereIsStreamRelay (RelayKey slotId slotRole)  = head <$> (map $ map serverLoadToServer) <$> whereIsStreamRelay' (AgentKey slotId slotRole)
+whereIsIngestAggregatorWithPayload :: AggregatorKey -> Effect (Maybe { payload :: SlotCharacteristics, server :: Server} )
+whereIsIngestAggregatorWithPayload aggregatorKey = do
+  mRes <- whereIsWithPayload (_.aggregators) (aggregatorKeyToAgentKey aggregatorKey)
+  pure $ (\{payload, servers} ->
+           case head servers of
+             Nothing -> Nothing
+             Just server -> Just {payload, server}
+         ) =<< mRes
 
-whereIsEgest :: EgestKey -> Effect (List ServerLoad)
-whereIsEgest egestKey = (map fromLocalOrRemote) <$> (whereIsEgest' $ egestKeyToAgentKey egestKey)
+whereIsStreamRelay :: RelayKey -> Effect (Maybe Server)
+whereIsStreamRelay (RelayKey slotId slotRole) = head <$> whereIs _.relays (AgentKey slotId slotRole)
 
-whereIsStreamRelay' :: AgentKey -> Effect (List (LocalOrRemote ServerLoad))
-whereIsStreamRelay' = whereIsWithLoad _.relays
+whereIsStreamRelayWithLocalOrRemote :: RelayKey -> Effect (Maybe (LocalOrRemote Server))
+whereIsStreamRelayWithLocalOrRemote (RelayKey slotId slotRole) = head <$> whereIsWithLocalOrRemote _.relays (AgentKey slotId slotRole)
 
-whereIsEgest' :: AgentKey -> Effect (List (LocalOrRemote ServerLoad))
-whereIsEgest' = whereIsWithLoad _.egests
+whereIsEgestWithLoad :: EgestKey -> Effect (List ServerLoad)
+whereIsEgestWithLoad egestKey = (map fromLocalOrRemote) <$> (whereIsWithLoad _.egests $ egestKeyToAgentKey egestKey)
 
-
-whereIs ::(AgentLocations -> Locations) -> AgentKey -> Effect (List Server)
+whereIs :: forall payload. (AgentLocations -> Locations payload) -> AgentKey -> Effect (List Server)
 whereIs extractMap agentKey =
   Gen.call serverName
   \state@{thisServer, members, agentLocations} ->
     let
       streamLocations = _.byAgentKey $ extractMap agentLocations
-      mLocations = Map.lookup agentKey streamLocations :: Maybe (Set Server)
-      locations = maybe nil Set.toUnfoldable mLocations
+      mPayloadAndServers = Map.lookup agentKey streamLocations :: Maybe (AgentPayloadAndServers payload)
+      serverList = maybe nil (\{servers} -> Set.toUnfoldable servers) mPayloadAndServers
     in
-    CallReply locations state
+    CallReply serverList state
+
+whereIsWithLocalOrRemote :: forall payload. (AgentLocations -> Locations payload) -> AgentKey -> Effect (List (LocalOrRemote Server))
+whereIsWithLocalOrRemote extractMap agentKey =
+  Gen.call serverName
+  \state@{thisServer, members, agentLocations} ->
+    let
+      streamLocations = _.byAgentKey $ extractMap agentLocations
+      mPayloadAndServers = Map.lookup agentKey streamLocations :: Maybe (AgentPayloadAndServers payload)
+      serverList = maybe nil (\{servers} -> Set.toUnfoldable servers) mPayloadAndServers
+    in
+    CallReply ((toLocalOrRemote thisServer) <$> serverList) state
+
+whereIsWithPayload :: forall payload. (AgentLocations -> Locations payload) -> AgentKey -> Effect (Maybe { payload :: payload, servers :: (List Server)})
+whereIsWithPayload extractMap agentKey =
+  Gen.call serverName
+  \state@{thisServer, members, agentLocations} ->
+    let
+      streamLocations = _.byAgentKey $ extractMap agentLocations
+      mPayloadAndServers = Map.lookup agentKey streamLocations :: Maybe (AgentPayloadAndServers payload)
+      mPayloadAndServers2 = (\{payload, servers} -> {payload, servers: Set.toUnfoldable servers}) <$> mPayloadAndServers
+    in
+    CallReply mPayloadAndServers2 state
 
 
-whereIsWithLoad ::(AgentLocations -> Locations) -> AgentKey -> Effect (List (LocalOrRemote ServerLoad))
+whereIsWithLoad :: forall payload. (AgentLocations -> Locations payload) -> AgentKey -> Effect (List (LocalOrRemote ServerLoad))
 whereIsWithLoad extractMap agentKey =
   Gen.call serverName
   \state@{thisServer, members, agentLocations} ->
     let
       streamLocations = _.byAgentKey $ extractMap agentLocations
-      withLoad (Server el) = serverLoad <$> Map.lookup el.address members
-      mLocations = Map.lookup agentKey streamLocations :: Maybe (Set Server)
+      toServerLoad (Server el) = serverLoad <$> Map.lookup el.address members
+      mPayloadAndServers2 = Map.lookup agentKey streamLocations :: Maybe (AgentPayloadAndServers payload)
 
-      locations = maybe nil Set.toUnfoldable mLocations
-      filtered = filterMap withLoad locations
+      serverList = maybe nil (_.servers >>> Set.toUnfoldable) mPayloadAndServers2
+      withLoad = filterMap toServerLoad serverList
     in
-    CallReply (toLocalOrRemote thisServer <$> filtered) state
-  where
-    toLocalOrRemote thisSever server =
-      if extractAddress thisSever == extractAddress server
-      then Local server
-      else Remote server
+    CallReply (toLocalOrRemote thisServer <$> withLoad) state
 
+toLocalOrRemote :: forall a b r1 r2. Newtype a { address :: ServerAddress | r1 } => Newtype b { address :: ServerAddress | r2 } => a -> b -> LocalOrRemote b
+toLocalOrRemote thisServer server =
+  if extractAddress thisServer == extractAddress server
+  then Local server
+  else Remote server
 
---------------------------------------------------------------------------------
--- TODO re-read Power of Two articles such as
--- https://www.nginx.com/blog/nginx-power-of-two-choices-load-balancing-algorithm/
--- TODO - predicate should probable be ServerLoad -> Weighting
---------------------------------------------------------------------------------
-getIdleServer :: ServerSelectionPredicate -> Effect (ResourceResp ServerLoad)
-getIdleServer pred = Gen.doCall serverName
-  (\state@{thisServer, members, load} -> do
-      let thisServerLoad = toServerLoad thisServer load
-      if pred thisServerLoad
-      then pure $ CallReply (Right $ Local thisServerLoad) state
-      else
-        let n = 2
-            nMostIdleWithCapacity =
-              values members
-              # filterMap (\memberInfo ->
-                            let serverWithLoad = serverLoad memberInfo
-                            in if pred serverWithLoad then Just serverWithLoad else Nothing)
-              # sortBy (\(ServerLoad sl1) (ServerLoad sl2) -> compare sl1.load sl2.load)
-              # take n
-            numServers = length nMostIdleWithCapacity
-        in do
-          resp <-
-            case numServers of
-              0 ->
-                pure $ Left NoCapacity
-              1 ->
-                case uncons nMostIdleWithCapacity of
-                  Just {head} -> pure $ Right $ Remote head
-                  Nothing -> pure $ Left NoCapacity
-              _ ->
-                do
-                  -- TODO - always seems to give the same answer!
-                  chosenIndex <- randomInt 0 (numServers - 1)
-                  pure $ maybe (Left NoCapacity) (Right <<< Remote) $ index nMostIdleWithCapacity chosenIndex
-          pure $ CallReply resp state
+getThisIdleServer :: ServerSelectionPredicate -> Effect (Either ResourceFailed Server)
+getThisIdleServer pred = Gen.doCall serverName
+  (\state@{thisServer, load} -> do
+      let
+        thisServerLoad = toServerLoad thisServer load
+      pure $ if LoadTypes.canLaunch $ pred thisServerLoad
+             then CallReply (Right $ thisServer) state
+             else CallReply (Left NoCapacity) state
   )
 
+--------------------------------------------------------------------------------
+-- Using choice-of-two algorithm, as described in
+-- https://www.nginx.com/blog/nginx-power-of-two-choices-load-balancing-algorithm/
+getIdleServer :: ServerSelectionPredicate -> Effect (ResourceResp Server)
+getIdleServer pred = Gen.doCall serverName
+  (\state@{thisServer, members, load} -> do
+      let
+        thisServerLoad = toServerLoad thisServer load
+      if LoadTypes.canLaunch $ pred thisServerLoad
+      then pure $ CallReply (Right $ Local thisServer) state
+      else do
+        _ <- logInfo "here with" {members: values members}
+        let
+          candidates = values members
+                       # filterMap (\memberInfo@{server} ->
+                                      let
+                                        serverWithLoad = serverLoad memberInfo
+                                        loadCheckResult = pred serverWithLoad
+                                      in
+                                        if LoadTypes.canLaunch loadCheckResult then
+                                          Just (Tuple server loadCheckResult)
+                                        else
+                                           Nothing
+                                   )
+        resp <- selectCandidate candidates
+        pure $ CallReply resp state
+  )
+
+selectCandidate :: List (Tuple Server LoadCheckResult) -> Effect (ResourceResp Server)
+selectCandidate candidates =
+  let
+    numCandidates = length candidates
+  in
+    case numCandidates of
+      0 ->
+        pure $ Left NoCapacity
+      1 ->
+        pure $ head candidates
+      _ -> do
+        indexes <- distinctRandomNumbers 1 (numCandidates - 1)
+        let
+          choices = traverse (\i -> index candidates i) indexes
+                    # fromMaybe nil
+                    # sortBy (\(Tuple _server1 loadCheckResult1) (Tuple _server2 loadCheckResult2) -> compare loadCheckResult1 loadCheckResult2)
+        pure $ head choices
+  where
+    head list = case uncons list of
+                  Just {head: (Tuple serverWithLoad _loadCheckResult)} -> Right $ Remote serverWithLoad
+                  Nothing -> Left NoCapacity
 
 getCurrentTransPoPLeader :: Effect (Maybe Server)
 getCurrentTransPoPLeader =
@@ -333,7 +391,7 @@ getCurrentTransPoPLeader =
     )
 
 -- Called by Load to indicate load on this node
-announceLoad :: Load -> Effect Unit
+announceLoad :: CurrentLoad -> Effect Unit
 announceLoad load =
   Gen.doCast serverName
     \state@{ thisServer, members } -> do
@@ -344,6 +402,7 @@ announceLoad load =
       pure $ Gen.CastNoReply state { members = newMembers , load = load}
 
 
+type AgentMessageHandlerWithSerfPayload a = State -> AgentKey -> Server -> a -> Effect Unit
 type AgentMessageHandler = State -> AgentKey -> Server -> Effect Unit
 
 type SetAgentClock = AgentClock -> AgentClocks -> AgentClocks
@@ -351,18 +410,18 @@ type AgentClockLens = { get :: AgentClocks -> AgentClock
                       , set :: AgentClock -> AgentClocks -> AgentClocks
                       }
 
-type AgentLocationLens = { get :: AgentLocations -> Locations
-                         , set :: Locations -> AgentLocations -> AgentLocations
-                         }
+type AgentLocationLens payload = { get :: AgentLocations -> Locations payload
+                                 , set :: Locations payload -> AgentLocations -> AgentLocations
+                                 }
 newtype HandlerName = HandlerName String
 derive instance newtypeHandlerName :: Newtype HandlerName _
 
-type AgentHandler =
+type AgentHandler payload =
   { name                     :: HandlerName
 
-  , availableLocal           :: AgentMessageHandler
-  , availableThisPoP         :: AgentMessageHandler
-  , availableOtherPoP        :: AgentMessageHandler
+  , availableLocal           :: AgentMessageHandlerWithSerfPayload payload
+  , availableThisPoP         :: AgentMessageHandlerWithSerfPayload payload
+  , availableOtherPoP        :: AgentMessageHandlerWithSerfPayload payload
   , stoppedLocal             :: AgentMessageHandler
   , stoppedThisPoP           :: AgentMessageHandler
   , stoppedOtherPoP_viaTrans :: AgentMessageHandler
@@ -371,7 +430,7 @@ type AgentHandler =
   , gcOtherPoP               :: AgentMessageHandler
 
   , clockLens                :: AgentClockLens
-  , locationLens             :: AgentLocationLens
+  , locationLens             :: AgentLocationLens payload
 
   , reannounceEveryMs        :: (State -> Milliseconds)
     -- TODO -- Maybe add isSingleton - to generate warnings if the sets have more than one entry?
@@ -428,7 +487,7 @@ popLeaderHandler =
       state.transPoPApi.handleRemoteLeaderAnnouncement server
       pure state{ currentTransPoPLeader = Just server }
 
-loadHandler :: Load -> ServerMessageHandler
+loadHandler :: CurrentLoad -> ServerMessageHandler
 loadHandler load =
   { name : HandlerName "load"
   , clockLens : clockLens
@@ -445,7 +504,7 @@ loadHandler load =
       pure state{ members = newMembers }
 
 
-aggregatorHandler :: AgentHandler
+aggregatorHandler :: AgentHandler SlotCharacteristics
 aggregatorHandler
   = { name                     : HandlerName "aggregator"
     , availableLocal           : availableLocal
@@ -464,26 +523,34 @@ aggregatorHandler
     , reannounceEveryMs        : _.config >>> _.reannounceAgentEveryMs >>> _.aggregator >>> toNumber >>> wrap
     }
   where
-    availableLocal :: AgentMessageHandler
-    availableLocal state agentKey server = do
-      sendToIntraSerfNetwork state "aggregatorAvailable" (IMAggregatorState Available agentKey (extractAddress server))
-      state.transPoPApi.announceAggregatorIsAvailable agentKey server
+    availableLocal :: AgentMessageHandlerWithSerfPayload SlotCharacteristics
+    availableLocal state agentKey server serfPayload = do
+      let
+        aggregatorKey = agentKeyToAggregatorKey agentKey
+      Bus.raise bus (IngestAggregatorStarted aggregatorKey server)
+      sendToIntraSerfNetwork state "aggregatorAvailable" $IMAggregatorState Available agentKey (extractAddress server) serfPayload
+      state.transPoPApi.announceAggregatorIsAvailable serfPayload agentKey server
 
-    availableThisPoP :: AgentMessageHandler
-    availableThisPoP state agentKey server = do
-      state.transPoPApi.announceAggregatorIsAvailable agentKey server
+    availableThisPoP :: AgentMessageHandlerWithSerfPayload SlotCharacteristics
+    availableThisPoP state agentKey server serfPayload = do
+      let
+        aggregatorKey = agentKeyToAggregatorKey agentKey
+      Bus.raise bus (IngestAggregatorStarted aggregatorKey server)
+      state.transPoPApi.announceAggregatorIsAvailable serfPayload agentKey server
 
-    availableOtherPoP :: AgentMessageHandler
-    availableOtherPoP state agentKey server = do
-      sendToIntraSerfNetwork state "aggregatorAvailable" (IMAggregatorState Available agentKey (extractAddress server))
-
+    availableOtherPoP :: AgentMessageHandlerWithSerfPayload SlotCharacteristics
+    availableOtherPoP state agentKey server serfPayload = do
+      let
+        aggregatorKey = agentKeyToAggregatorKey agentKey
+      Bus.raise bus (IngestAggregatorStarted aggregatorKey server)
+      sendToIntraSerfNetwork state "aggregatorAvailable" $ IMAggregatorState Available agentKey (extractAddress server) serfPayload
 
     stoppedLocal :: AgentMessageHandler
     stoppedLocal state agentKey server = do
       let
         aggregatorKey = agentKeyToAggregatorKey agentKey
       Bus.raise bus (IngestAggregatorExited aggregatorKey server)
-      sendToIntraSerfNetwork state "aggregatorStopped" $ IMAggregatorState Stopped agentKey $ extractAddress server
+      sendToIntraSerfNetwork state "aggregatorStopped" $ IMAggregatorState Stopped agentKey (extractAddress server) emptySlotCharacteristics
       state.transPoPApi.announceAggregatorStopped agentKey server
 
     stoppedThisPoP :: AgentMessageHandler
@@ -498,7 +565,7 @@ aggregatorHandler
     stoppedOtherPoP_viaTrans state agentKey server = do
       logInfo "Remote aggregator stopped in another PoP" {agentKey, server}
       Bus.raise bus (IngestAggregatorExited (agentKeyToAggregatorKey agentKey)  server)
-      sendToIntraSerfNetwork state "aggregatorStopped" (IMAggregatorState Stopped agentKey (extractAddress server))
+      sendToIntraSerfNetwork state "aggregatorStopped" $ IMAggregatorState Stopped agentKey (extractAddress server) emptySlotCharacteristics
 
     stoppedOtherPoP_viaIntra :: AgentMessageHandler
     stoppedOtherPoP_viaIntra state agentKey server = do
@@ -528,20 +595,20 @@ aggregatorHandler
                    }
 
 -- Called by IngestAggregator to indicate aggregator start / stop on this node
-announceLocalAggregatorIsAvailable :: AggregatorKey -> Effect Unit
-announceLocalAggregatorIsAvailable = announceAvailableLocal aggregatorHandler <<< aggregatorKeyToAgentKey
+announceLocalAggregatorIsAvailable :: AggregatorKey -> SlotCharacteristics -> Effect Unit
+announceLocalAggregatorIsAvailable key serfPayload = announceAvailableLocal aggregatorHandler serfPayload (aggregatorKeyToAgentKey key)
 
 announceLocalAggregatorStopped :: AggregatorKey -> Effect Unit
 announceLocalAggregatorStopped = announceStoppedLocal aggregatorHandler <<< aggregatorKeyToAgentKey
 
 -- -- Called by TransPoP to indicate aggregator start / stop on a node in another PoP
-announceOtherPoPAggregatorIsAvailable :: AgentKey -> Server -> Effect Unit
-announceOtherPoPAggregatorIsAvailable = announceAvailableOtherPoP aggregatorHandler
+announceOtherPoPAggregatorIsAvailable :: SlotCharacteristics -> AgentKey -> Server -> Effect Unit
+announceOtherPoPAggregatorIsAvailable serfPayload = announceAvailableOtherPoP aggregatorHandler serfPayload
 
 announceOtherPoPAggregatorStopped :: AgentKey -> Server -> Effect Unit
 announceOtherPoPAggregatorStopped = announceStoppedOtherPoP aggregatorHandler
 
-egestHandler :: AgentHandler
+egestHandler :: AgentHandler Unit
 egestHandler
   = { name                     : HandlerName "egest"
     , availableLocal           : availableLocal
@@ -561,14 +628,14 @@ egestHandler
 
     }
   where
-    availableLocal state agentKey server = do
+    availableLocal state agentKey server _ = do
       sendToIntraSerfNetwork state "egestAvailable" (IMEgestState Available agentKey $ extractAddress server)
 
-    availableThisPoP state agentKey server = do
+    availableThisPoP state agentKey server _ = do
       -- logInfo "New egest is avaiable in this PoP" {agentKey, server}
       pure unit
 
-    availableOtherPoP state agentKey server = do
+    availableOtherPoP state agentKey server _ = do
       -- Not expecting any of these
       logWarning "New egest is available in another PoP" {agentKey, server}
 
@@ -599,18 +666,15 @@ egestHandler
                     }
 
 
--- Egests do not have different instances for Primary and Backup, so model them all as Primary
-egestKeyToAgentKey :: EgestKey -> AgentKey
-egestKeyToAgentKey (EgestKey slotId) = AgentKey slotId Primary
 
 -- Called by EgestAgent to indicate egest on this node
 announceLocalEgestIsAvailable :: EgestKey -> Effect Unit
-announceLocalEgestIsAvailable = announceAvailableLocal egestHandler <<< egestKeyToAgentKey
+announceLocalEgestIsAvailable = announceAvailableLocal egestHandler unit <<< egestKeyToAgentKey
 
 announceLocalEgestStopped :: EgestKey -> Effect Unit
 announceLocalEgestStopped = announceStoppedLocal egestHandler <<< egestKeyToAgentKey
 
-relayHandler :: AgentHandler
+relayHandler :: AgentHandler Unit
 relayHandler
   = { name                     : HandlerName "relay"
     , availableLocal           : availableLocal
@@ -629,13 +693,13 @@ relayHandler
     , reannounceEveryMs        : _.config >>> _.reannounceAgentEveryMs >>> _.relay >>> toNumber >>> wrap
     }
   where
-    availableLocal state agentKey server = do
+    availableLocal state agentKey server _ = do
       sendToIntraSerfNetwork state "relayAvailable" (IMRelayState Available agentKey $ extractAddress server)
 
-    availableThisPoP state agentKey server = do
+    availableThisPoP state agentKey server _ = do
       pure unit
 
-    availableOtherPoP state agentKey server = do
+    availableOtherPoP state agentKey server _ = do
       -- Not expecting any of these
       logWarning "New relay is available in another PoP" {agentKey, server}
 
@@ -669,27 +733,27 @@ relayHandler
 -- Called by RelayAgent to indicate relay on this node
 announceLocalRelayIsAvailable :: RelayKey -> Effect Unit
 announceLocalRelayIsAvailable (RelayKey slotId slotRole) = do
-  announceAvailableLocal relayHandler (AgentKey slotId slotRole)
+  announceAvailableLocal relayHandler unit (AgentKey slotId slotRole)
 
 announceLocalRelayStopped :: RelayKey -> Effect Unit
 announceLocalRelayStopped (RelayKey slotId slotRole) = do
   announceStoppedLocal relayHandler (AgentKey slotId slotRole)
 
 -- Builds public API for events on this server
-announceAvailableLocal :: AgentHandler -> AgentKey -> Effect Unit
-announceAvailableLocal handler@{locationLens} agentKey =
+announceAvailableLocal :: forall payload. Ord payload => AgentHandler payload -> payload -> AgentKey -> Effect Unit
+announceAvailableLocal handler@{locationLens} serfPayload agentKey =
   Gen.doCast serverName
     \state@{thisServer} -> do
       --logInfo ("New " <> unwrap handler.name <> " is available on this node") {agentKey}
-      doAnnounceAvailableLocal handler agentKey state
-      pure $ Gen.CastNoReply $ updateAgentLocation recordLocalAgent locationLens agentKey thisServer state
+      doAnnounceAvailableLocal handler serfPayload agentKey state
+      pure $ Gen.CastNoReply $ updateAgentLocation (recordLocalAgent serfPayload) locationLens agentKey thisServer state
 
-doAnnounceAvailableLocal :: AgentHandler -> AgentKey -> State -> Effect Unit
-doAnnounceAvailableLocal handler@{locationLens} agentKey state@{thisServer, agentLocations} = do
-  handler.availableLocal state agentKey thisServer
-  void $ Timer.sendAfter serverName (round $ unwrap $ handler.reannounceEveryMs state) $ ReAnnounce agentKey handler.name
+doAnnounceAvailableLocal :: forall a. AgentHandler a -> a -> AgentKey -> State -> Effect Unit
+doAnnounceAvailableLocal handler serfPayload agentKey state@{thisServer, agentLocations} = do
+  handler.availableLocal state agentKey thisServer serfPayload
+  void $ Timer.sendAfter serverName (round $ unwrap $ handler.reannounceEveryMs state) $ ReAnnounce agentKey handler (doAnnounceAvailableLocal handler serfPayload agentKey)
 
-announceStoppedLocal :: AgentHandler -> AgentKey -> Effect Unit
+announceStoppedLocal :: forall a. AgentHandler a -> AgentKey -> Effect Unit
 announceStoppedLocal handler@{locationLens} agentKey = do
   Gen.doCast serverName
     \state@{ thisServer } -> do
@@ -699,18 +763,18 @@ announceStoppedLocal handler@{locationLens} agentKey = do
 
 
 -- Builds public API for message from other PoP
-announceAvailableOtherPoP :: AgentHandler -> AgentKey -> Server -> Effect Unit
-announceAvailableOtherPoP handler@{locationLens} agentKey msgServer =
+announceAvailableOtherPoP :: forall payload. Ord payload => AgentHandler payload -> payload ->  AgentKey -> Server -> Effect Unit
+announceAvailableOtherPoP handler@{locationLens} serfPayload agentKey msgServer =
   Gen.doCast serverName
     \state@{agentLocations, thisServer} -> do
       let
         locations = locationLens.get agentLocations
       timeout <- messageTimeout handler state
       logIfNewAgent handler locations thisServer agentKey msgServer
-      handler.availableOtherPoP state agentKey msgServer
-      pure $ Gen.CastNoReply $ updateAgentLocation (recordRemoteAgent timeout) locationLens agentKey msgServer state
+      handler.availableOtherPoP state agentKey msgServer serfPayload
+      pure $ Gen.CastNoReply $ updateAgentLocation (recordRemoteAgent timeout serfPayload) locationLens agentKey msgServer state
 
-announceStoppedOtherPoP :: AgentHandler -> AgentKey -> Server -> Effect Unit
+announceStoppedOtherPoP :: forall a. AgentHandler a -> AgentKey -> Server -> Effect Unit
 announceStoppedOtherPoP handler@{locationLens} agentKey server =
   Gen.doCast serverName
     \state -> do
@@ -728,7 +792,7 @@ announceTransPoPLeader =
       pure $ Gen.CastNoReply state{currentTransPoPLeader = Just thisServer}
 
 
-updateAgentLocation :: (AgentKey -> Server -> Locations -> Locations) -> AgentLocationLens -> AgentKey -> Server -> State -> State
+updateAgentLocation :: forall payload. (AgentKey -> Server -> Locations payload -> Locations payload) -> AgentLocationLens payload -> AgentKey -> Server -> State -> State
 updateAgentLocation action lens agentKey server state@{agentLocations} =
   let
     locations = lens.get agentLocations
@@ -736,24 +800,6 @@ updateAgentLocation action lens agentKey server state@{agentLocations} =
     newAgentLocations = lens.set newLocations agentLocations
   in
     state { agentLocations = newAgentLocations }
-
-
---------------------------------------------------------------------------------
--- Helper for consistent behaivour around launching resources within a PoP
---------------------------------------------------------------------------------
-launchLocalOrRemoteGeneric :: (ServerLoad -> Boolean) -> (ServerLoad -> Effect Unit) -> (ServerLoad -> Effect Unit) -> Effect (ResourceResp Server)
-launchLocalOrRemoteGeneric pred launchLocal launchRemote = do
-  idleServerResp <- getIdleServer pred
-  launchResp <-  -- TODO - currently unit - maybe allow some sort of check?
-    case idleServerResp of
-      Right (Local local) ->
-        launchLocal local
-      Right (Remote remote) ->
-        launchRemote remote
-      Left NoCapacity ->
-        pure unit
-  pure $ (map serverLoadToServer) <$> idleServerResp
-
 
 --------------------------------------------------------------------------------
 -- Gen Server methods
@@ -802,7 +848,7 @@ init { config
   thisServerRef <- makeRef
 
   let
-    busy = wrap 100.0 :: Load
+    emptyLocations :: forall payload. Locations payload
     emptyLocations = { byAgentKey       : Map.empty
                      , byRemoteServer   : Map.empty
                      , remoteTimeouts   : Map.empty
@@ -815,7 +861,7 @@ init { config
                               serverAddress = ServerAddress name
                               serverToMemberInfo server =
                                 { server: server
-                                , load: busy
+                                , load: maxLoad
                                 , serfMember: member
                                 }
                             in
@@ -835,7 +881,7 @@ init { config
     , serverRefs: EMap.empty
 
     , thisServer: thisServer
-    , load: wrap 0.0
+    , load: minLoad
     , members
     , agentClocks  : { aggregatorClocks: Map.empty
                      , egestClocks: Map.empty
@@ -852,7 +898,7 @@ init { config
                     }
     }
 
-handleInfo :: Msg -> State -> Effect (CastResult State)
+handleInfo :: forall serfPayload. Msg serfPayload -> State -> Effect (CastResult State)
 handleInfo msg state = case msg of
 
   IntraPoPSerfMsg imsg ->
@@ -872,29 +918,22 @@ handleInfo msg state = case msg of
     sendToIntraSerfNetwork state "vmLiveness" (IMVMLiveness (extractAddress state.thisServer) state.thisServerRef )
     pure $ CastNoReply state
 
-  ReAnnounce agentKey handlerName -> do
+  ReAnnounce agentKey handler announceFun -> do
     CastNoReply <$> maybeReannounce
     where
       maybeReannounce :: Effect State
       maybeReannounce = do
         let
-          handler = handlerFor handlerName
           -- Do we still know about the asset? If we do, rebroadcast its existence and set up another timer for next time
           locations = handler.locationLens.get state.agentLocations
         if mapSetMember agentKey state.thisServer locations.byAgentKey
         then do
-          doAnnounceAvailableLocal handler agentKey state
+          announceFun state
           pure state
         else
           pure state
 
-      handlerFor :: HandlerName -> AgentHandler
-      handlerFor (HandlerName name) = unsafePartial $
-        case name of
-          "aggregator" -> aggregatorHandler
-          "egest"      -> egestHandler
-          "relay"      -> relayHandler
-
+      mapSetMember key server mapSet = fromMaybe false $ Set.member server <$> _.servers <$> Map.lookup key mapSet
 
 
 
@@ -918,14 +957,14 @@ handleIntraPoPSerfMsg imsg state@{ transPoPApi: {handleRemoteLeaderAnnouncement}
 
     Serf.UserEvent name ltime coalesce intraMessage -> do
       case intraMessage of
-        IMAggregatorState eventType agentKey msgOrigin -> do
-          handleAgentMessage ltime eventType agentKey msgOrigin state aggregatorHandler
+        IMAggregatorState eventType agentKey msgOrigin serfPayload -> do
+          handleAgentMessage ltime eventType agentKey msgOrigin state aggregatorHandler serfPayload
 
         IMEgestState eventType agentKey msgOrigin -> do
-          handleAgentMessage ltime eventType agentKey msgOrigin state egestHandler
+          handleAgentMessage ltime eventType agentKey msgOrigin state egestHandler unit
 
         IMRelayState eventType agentKey msgOrigin -> do
-          handleAgentMessage ltime eventType agentKey msgOrigin state relayHandler
+          handleAgentMessage ltime eventType agentKey msgOrigin state relayHandler unit
 
         IMServerLoad msgOrigin load -> do
           handleServerMessage ltime msgOrigin state $ loadHandler load
@@ -952,23 +991,22 @@ handleServerMessage msgLTime msgServerAddress
       pure state
     else do
       -- TODO - maybe cache the db for a while to prevent hot calls, or use ETS etc
-      mLocation <- PoPDefinition.whereIsServer msgServerAddress
-      case mLocation of
+      mServer <- PoPDefinition.whereIsServer msgServerAddress
+      case mServer of
         Nothing -> do
           logWarning "message from unknown server" {msgServerAddress, msgType: serverMessageHandler.name}
           pure state
-        Just msgLocation -> do
+        Just msgServer -> do
           let
-            msgServer = toServer msgServerAddress msgLocation
             newServerClock = Map.insert msgServerAddress msgLTime serverClock
             newServerClocks = clockLens.set newServerClock state.serverClocks
-          handleMessage  msgServer state{ serverClocks = newServerClocks}
+          handleMessage msgServer state{ serverClocks = newServerClocks}
 
 
-handleAgentMessage :: LamportClock -> EventType -> AgentKey -> ServerAddress -> State -> AgentHandler -> Effect State
+handleAgentMessage :: forall payload. Ord payload => LamportClock -> EventType -> AgentKey -> ServerAddress -> State -> AgentHandler payload -> payload -> Effect State
 handleAgentMessage msgLTime eventType agentKey msgServerAddress
                   state@{thisServer, agentClocks, agentLocations}
-                  agentMessageHandler@{clockLens, locationLens} = do
+                  agentMessageHandler@{clockLens, locationLens} serfPayload = do
   -- let _ = spy "agentMessage" {name: agentMessageHandler.name, eventType, agentKey, msgServerAddress}
   -- Make sure the message is from a known origin and does not have an expired Lamport clock
   if msgServerAddress == extractAddress thisServer || state.testDropAgentMessages
@@ -980,15 +1018,14 @@ handleAgentMessage msgLTime eventType agentKey msgServerAddress
       pure state
     else do
       -- TODO - maybe cache the db for a while to prevent hot calls, or use ETS etc
-      mLocation <- PoPDefinition.whereIsServer msgServerAddress
-      case mLocation of
+      mServer <- PoPDefinition.whereIsServer msgServerAddress
+      case mServer of
         Nothing -> do
           logWarning "message from unknown server" {msgServerAddress, msgType: agentMessageHandler.name}
           pure state
-        Just msgLocation -> do
+        Just msgServer -> do
           let
-            fromThisPoP =  extractPoP msgLocation == extractPoP state.thisServer
-            msgServer = toServer msgServerAddress msgLocation
+            fromThisPoP = extractPoP msgServer == extractPoP state.thisServer
             newAgentClock = Map.insert (Tuple msgServerAddress agentKey) msgLTime agentClock
             newAgentClocks = clockLens.set newAgentClock state.agentClocks
             locations = locationLens.get agentLocations
@@ -998,9 +1035,9 @@ handleAgentMessage msgLTime eventType agentKey msgServerAddress
               timeout <- messageTimeout agentMessageHandler state
               logIfNewAgent agentMessageHandler locations thisServer agentKey msgServer
               let
-                newLocations = recordRemoteAgent timeout agentKey msgServer locations
+                newLocations = recordRemoteAgent timeout serfPayload agentKey msgServer locations
               if fromThisPoP
-              then agentMessageHandler.availableThisPoP state agentKey msgServer
+              then agentMessageHandler.availableThisPoP state agentKey msgServer serfPayload
               else pure unit
               pure $ state { agentClocks = newAgentClocks
                            , agentLocations = locationLens.set newLocations agentLocations
@@ -1017,7 +1054,7 @@ handleAgentMessage msgLTime eventType agentKey msgServerAddress
                            }
 
 
-messageTimeout :: AgentHandler -> State -> Effect Milliseconds
+messageTimeout :: forall a. AgentHandler a -> State -> Effect Milliseconds
 messageTimeout agentMessageHandler state = do
   now <- Erl.systemTimeMs
   pure $ now + ((agentMessageHandler.reannounceEveryMs state) * (wrap (toNumber state.config.missCountBeforeExpiry)))
@@ -1025,10 +1062,10 @@ messageTimeout agentMessageHandler state = do
 --------------------------------------------------------------------------------
 -- Internal functions
 --------------------------------------------------------------------------------
-serverName :: ServerName State Msg
+serverName :: forall serfPayload. ServerName State (Msg serfPayload)
 serverName = Names.intraPoPName
 
-logIfNewAgent :: AgentHandler -> Locations -> Server -> AgentKey -> Server -> Effect Unit
+logIfNewAgent :: forall payload. AgentHandler payload -> Locations payload -> Server -> AgentKey -> Server -> Effect Unit
 logIfNewAgent handler locations thisServer agentKey agentServer =
   if Map.member (Tuple agentKey agentServer) locations.remoteTimeouts
   then pure unit
@@ -1055,7 +1092,7 @@ membersAlive members state = do
     makeMemberInfo member@{ name } server =
       { serfMember: member
       , server: server
-      , load: wrap 100.0 :: Load
+      , load: maxLoad
       }
 
     newMembers
@@ -1097,7 +1134,7 @@ garbageCollectAgents state = do
   now <- Erl.systemTimeMs
   foldHandlers (gcAgent now) state
 
-gcAgent :: Milliseconds -> AgentHandler -> State -> Effect State
+gcAgent :: forall a. Milliseconds -> AgentHandler a -> State -> Effect State
 gcAgent now handler@{locationLens} state = do
   let
     thisPoP = extractPoP state.thisServer
@@ -1115,7 +1152,7 @@ gcAgent now handler@{locationLens} state = do
       pure $ updateAgentLocation removeRemoteAgent handler.locationLens agentKey server state'
 
 
-foldHandlers :: forall acc. (AgentHandler -> acc -> Effect acc) -> acc -> Effect acc
+foldHandlers :: forall acc. (forall a. AgentHandler a -> acc -> Effect acc) -> acc -> Effect acc
 foldHandlers perHandlerFun =
   perHandlerFun relayHandler >=> perHandlerFun aggregatorHandler >=> perHandlerFun egestHandler
 
@@ -1128,7 +1165,7 @@ garbageCollectServer state deadServer oldRef newRef = do
   Bus.raise bus (VmReset deadServer oldRef newRef)
   foldHandlers (gcServer deadServer) state
 
-gcServer :: Server -> AgentHandler -> State -> Effect State
+gcServer :: forall a. Server -> AgentHandler a -> State -> Effect State
 gcServer deadServer agentHandler@{locationLens, name, stoppedThisPoP} state@{agentLocations} = do
   let
     locations = locationLens.get agentLocations
@@ -1147,34 +1184,52 @@ gcServer deadServer agentHandler@{locationLens, name, stoppedThisPoP} state@{age
   where
     cleanUp acc agentKey = do
       stoppedThisPoP state agentKey deadServer
-      pure $ mapSetDelete agentKey deadServer acc
+      pure $ mapSetDeleteWithPayload agentKey deadServer acc
 
 
 
-recordLocalAgent :: AgentKey -> Server -> Locations -> Locations
-recordLocalAgent agentKey thisServer locations =
-  locations { byAgentKey = mapSetInsert agentKey thisServer locations.byAgentKey
+recordLocalAgent :: forall payload. Ord payload =>  payload-> AgentKey -> Server -> Locations payload -> Locations payload
+recordLocalAgent payload agentKey server locations =
+  locations { byAgentKey = mapSetInsertWithPayload agentKey payload server locations.byAgentKey
             }
 
-removeLocalAgent :: AgentKey -> Server -> Locations -> Locations
+removeLocalAgent :: forall payload. AgentKey -> Server -> Locations payload -> Locations payload
 removeLocalAgent agentKey thisServer locations =
-  locations { byAgentKey = mapSetDelete agentKey thisServer locations.byAgentKey
+  locations { byAgentKey = mapSetDeleteWithPayload agentKey thisServer locations.byAgentKey
             }
 
-
-recordRemoteAgent :: Milliseconds -> AgentKey -> Server -> Locations -> Locations
-recordRemoteAgent timeout agentKey server locations =
-  { byAgentKey     : mapSetInsert agentKey server locations.byAgentKey
+recordRemoteAgent :: forall payload. Ord payload => Milliseconds -> payload -> AgentKey -> Server -> Locations payload -> Locations payload
+recordRemoteAgent timeout payload agentKey server locations =
+  { byAgentKey     : mapSetInsertWithPayload agentKey payload server locations.byAgentKey
   , byRemoteServer : mapSetInsert server agentKey locations.byRemoteServer
   , remoteTimeouts : Map.insert (Tuple agentKey server) timeout locations.remoteTimeouts
   }
 
-removeRemoteAgent :: AgentKey -> Server -> Locations -> Locations
+removeRemoteAgent :: forall payload. AgentKey -> Server -> Locations payload -> Locations payload
 removeRemoteAgent agentKey server locations =
-  { byAgentKey     : mapSetDelete agentKey server locations.byAgentKey
+  { byAgentKey     : mapSetDeleteWithPayload agentKey server locations.byAgentKey
   , byRemoteServer : mapSetDelete server agentKey locations.byRemoteServer
   , remoteTimeouts : Map.delete(Tuple agentKey server) locations.remoteTimeouts
   }
+
+mapSetInsertWithPayload :: forall payload. AgentKey -> payload -> Server -> Map AgentKey (AgentPayloadAndServers payload) -> Map AgentKey (AgentPayloadAndServers payload)
+mapSetInsertWithPayload key payload server mapSet =
+  let
+    {servers} = fromMaybe {payload, servers: Set.empty} $ Map.lookup key mapSet
+  in
+    Map.insert key {payload, servers: Set.insert server servers} mapSet
+
+mapSetDeleteWithPayload :: forall payload. AgentKey -> Server -> Map AgentKey (AgentPayloadAndServers payload) -> Map AgentKey (AgentPayloadAndServers payload)
+mapSetDeleteWithPayload key server mapSet =
+  case Map.lookup key mapSet of
+    Nothing -> mapSet
+    Just {payload, servers} ->
+      let
+        newServers = Set.delete server servers
+      in
+       if Set.isEmpty newServers
+       then Map.delete key mapSet
+       else Map.insert key {payload, servers: newServers} mapSet
 
 mapSetInsert :: forall k v. Ord k => Ord v => k -> v -> Map k (Set v) -> Map k (Set v)
 mapSetInsert k v mapSet =
@@ -1195,10 +1250,6 @@ mapSetDelete k v mapSet =
        then Map.delete k mapSet
        else Map.insert k newSet mapSet
 
-mapSetMember :: forall k v. Ord k => Ord v => k -> v -> Map k (Set v) -> Boolean
-mapSetMember k v ms = fromMaybe false $ Set.member v <$> Map.lookup k ms
-
-
 joinAllSerf :: State -> Effect Unit
 joinAllSerf { config, serfRpcAddress, members } =
   let
@@ -1210,7 +1261,7 @@ joinAllSerf { config, serfRpcAddress, members } =
     do
       allOtherServers <- PoPDefinition.getOtherServersForThisPoP
       let
-        toJoin = Map.keys $ Map.difference (toMap allOtherServers) members
+        toJoin = Map.keys $ Map.difference (toMap (unwrap >>> _.address <$> allOtherServers)) members
       if length toJoin < (length allOtherServers) / 2 then
         -- We already know about more than 1/2 the network - no need to issue any joins
         pure unit
@@ -1233,20 +1284,19 @@ joinAllSerf { config, serfRpcAddress, members } =
 serverLoad :: MemberInfo -> ServerLoad
 serverLoad {server, load} = toServerLoad server load
 
-
 --------------------------------------------------------------------------------
 -- Log helpers
 --------------------------------------------------------------------------------
 domains :: List Atom
 domains = serverName # Names.toDomain # singleton
 
-logInfo :: forall a. Logger a
+logInfo :: forall a. Logger (Record a)
 logInfo = domainLog Logger.info
 
-logWarning :: forall a. Logger a
+logWarning :: forall a. Logger (Record a)
 logWarning = domainLog Logger.warning
 
-domainLog :: forall a. Logger {domain :: List Atom, misc :: a} -> Logger a
+domainLog :: forall a. Logger {domain :: List Atom, misc :: Record a} -> Logger (Record a)
 domainLog = Logger.doLog domains
 
 maybeLogError :: forall a b c d e. Union b (error :: e) c => Nub c d => String -> Either e a -> Record b  -> Effect Unit

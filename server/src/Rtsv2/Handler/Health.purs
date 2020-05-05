@@ -13,7 +13,7 @@ import Erl.Data.List (nil, (:))
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.TransPoP as TransPoP
 import Rtsv2.Handler.MimeType as MimeType
-import Shared.Types (extractAddress)
+import Shared.Rtsv2.Types (extractAddress)
 import Simple.JSON as JSON
 import Stetson (StetsonHandler)
 import Stetson.Rest as Rest

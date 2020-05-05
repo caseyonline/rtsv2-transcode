@@ -1,3 +1,4 @@
+
 -module(rtsv2_webrtc_session_handler).
 
 -behaviour(webrtc_session_handler).
@@ -13,7 +14,9 @@
 
 -include_lib("id3as_rtc/include/rtp.hrl").
 -include_lib("id3as_rtc/include/rtp_engine.hrl").
--include("./src/rtsv2_rtp.hrl").
+-include_lib("id3as_rtc/include/webrtc.hrl").
+-include("./rtsv2_rtp.hrl").
+-include("./rtsv2_media_gateway_api.hrl").
 
 -define(state, ?MODULE).
 
@@ -22,6 +25,7 @@
         , last_sequence = 16
         , last_timestamp
         , timestamp_delta = 0
+        , egest_ssrc
         }).
 
 -record(desired_state,
@@ -37,27 +41,65 @@
 
         , desired_state = undefined
 
-        , video_state = #egest_stream_state{}
-        , audio_state = #egest_stream_state{}
+        , video_state :: #egest_stream_state{}
+        , audio_state :: #egest_stream_state{}
+
+        , video_stream_element_config :: undefined | media_gateway_stream_element_config()
+        , audio_stream_element_config :: undefined | media_gateway_stream_element_config()
+
+        , use_media_gateway :: boolean()
         }).
 
 set_active_profile(ServerId, TraceId, ProfileName) ->
   webrtc_stream_server:cast_session(ServerId, TraceId, {set_active_profile, ProfileName}).
 
 
-init([ SessionId, [ #{ name := ActiveProfileName } | _ ] = Profiles, WebSocket ]) ->
+init([ SessionId, [ #{ name := ActiveProfileName } | _ ] = Profiles, WebSocket, AudioSSRC, VideoSSRC, UseMediaGateway ]) ->
   ?DEBUG("Session handler started for session ~p in profile ~p", [SessionId, ActiveProfileName]),
-  State1 = #?state{ session_id = SessionId, profiles = Profiles, web_socket = WebSocket },
+  State1 = #?state{ session_id = SessionId
+                  , profiles = Profiles
+                  , web_socket = WebSocket
+                  , audio_state = #egest_stream_state{ egest_ssrc = AudioSSRC }
+                  , video_state = #egest_stream_state{ egest_ssrc = VideoSSRC }
+                  , use_media_gateway = UseMediaGateway
+                  },
   State2 = set_active_profile_impl(ActiveProfileName, State1),
   State2.
 
-handle_media_frame(#rtp_engine_msg{message = _RTPEngineState}, State) ->
+handle_media_frame(_, State = #?state{use_media_gateway = false}) ->
+  {ok, State};
+
+handle_media_frame(#rtp_engine_msg{message = #rtp_engine_ready{}}, State) ->
+
   %% NOTE: we don't care whether the engine is ready or not, we're not receiving
   %%       media, and it will drop media we're sending if it isn't ready
   {ok, State};
 
-handle_media_frame(_Frame, #?state{} = State) ->
-  {ok, State}.
+handle_media_frame(#rtp_engine_msg{message = _RTPEngineState}, State) ->
+  %% Ignore PLIs et al
+  {ok, State};
+
+handle_media_frame(#webrtc_media_channel_message{ message = #webrtc_media_channel_ready{ channel_type = audio, media_socket = Socket, egest_crypto = EgestCrypto } }, #?state{} = State) ->
+
+  NewState =
+    State#?state{ audio_stream_element_config =
+                    #media_gateway_stream_element_config{ media_socket = Socket
+                                                        , egest_crypto = EgestCrypto
+                                                        }
+                },
+
+  maybe_add_to_media_gateway(NewState);
+
+handle_media_frame(#webrtc_media_channel_message{ message = #webrtc_media_channel_ready{ channel_type = video, media_socket = Socket, egest_crypto = EgestCrypto } }, #?state{} = State) ->
+
+  NewState =
+    State#?state{ video_stream_element_config =
+                    #media_gateway_stream_element_config{ media_socket = Socket
+                                                        , egest_crypto = EgestCrypto
+                                                        }
+                },
+
+  maybe_add_to_media_gateway(NewState).
 
 handle_info(#rtp_sequence{ type = audio } = Sequence, State) ->
   handle_audio_sequence(Sequence, State);
@@ -97,7 +139,7 @@ handle_cast(notify_socket_disconnect, State) ->
   {stop, normal, State}.
 
 handle_audio_sequence(#rtp_sequence{ type = audio } = Sequence, #?state{ audio_state = StreamState } = State) ->
-  case filter_and_renumber(Sequence, StreamState, ?EGEST_AUDIO_SSRC) of
+  case filter_and_renumber(Sequence, StreamState) of
     false ->
       { ok
       , State
@@ -111,7 +153,7 @@ handle_audio_sequence(#rtp_sequence{ type = audio } = Sequence, #?state{ audio_s
   end.
 
 handle_video_sequence(#rtp_sequence{ type = video } = Sequence, #?state{ video_state = StreamState } = State) ->
-  case filter_and_renumber(Sequence, StreamState, ?EGEST_VIDEO_SSRC) of
+  case filter_and_renumber(Sequence, StreamState) of
     false ->
       { ok
       , State
@@ -141,11 +183,11 @@ set_active_profile_impl(ProfileName, #?state{ profiles = Profiles } = State) ->
   end.
 
 
-filter_and_renumber(#rtp_sequence{ rtps = [] }, _StreamState, _EgestSSRC) ->
+filter_and_renumber(#rtp_sequence{ rtps = [] }, _StreamState) ->
   false;
 
-filter_and_renumber(#rtp_sequence{ rtps = RTPs } = Sequence, State, EgestSSRC) ->
-  case filter_and_renumber_prime(RTPs, [], State, EgestSSRC) of
+filter_and_renumber(#rtp_sequence{ rtps = RTPs } = Sequence, State) ->
+  case filter_and_renumber_prime(RTPs, [], State) of
     false ->
       false;
 
@@ -154,7 +196,7 @@ filter_and_renumber(#rtp_sequence{ rtps = RTPs } = Sequence, State, EgestSSRC) -
   end.
 
 
-filter_and_renumber_prime([], Acc, State, _EgestSSRC) ->
+filter_and_renumber_prime([], Acc, State) ->
   case Acc of
     [] ->
       false;
@@ -163,10 +205,10 @@ filter_and_renumber_prime([], Acc, State, _EgestSSRC) ->
       { lists:reverse(Acc), State }
   end;
 
-filter_and_renumber_prime([ #rtp{ ssrc = PacketSSRC } | Rest ], Acc, #egest_stream_state{ active_ssrc = ActiveSSRC } = State, EgestSSRC ) when PacketSSRC =/= ActiveSSRC ->
-  filter_and_renumber_prime(Rest, Acc, State, EgestSSRC);
+filter_and_renumber_prime([ #rtp{ ssrc = PacketSSRC } | Rest ], Acc, #egest_stream_state{ active_ssrc = ActiveSSRC } = State) when PacketSSRC =/= ActiveSSRC ->
+  filter_and_renumber_prime(Rest, Acc, State);
 
-filter_and_renumber_prime([ #rtp{ timestamp = RawTimestamp } = RTP | Rest ], Acc, #egest_stream_state{ last_sequence = LastSequence, last_timestamp = LastTimestamp, timestamp_delta = LastTimestampDelta } = State, EgestSSRC ) ->
+filter_and_renumber_prime([ #rtp{ timestamp = RawTimestamp } = RTP | Rest ], Acc, #egest_stream_state{ last_sequence = LastSequence, last_timestamp = LastTimestamp, timestamp_delta = LastTimestampDelta, egest_ssrc = EgestSSRC } = State ) ->
 
   %% TODO: rollover...
   %% TODO: foward jump...
@@ -194,7 +236,7 @@ filter_and_renumber_prime([ #rtp{ timestamp = RawTimestamp } = RTP | Rest ], Acc
                                      , timestamp_delta = TimestampDelta
                                      },
 
-  filter_and_renumber_prime(Rest, NewAcc, NewState, EgestSSRC).
+  filter_and_renumber_prime(Rest, NewAcc, NewState).
 
 
 is_valid_switch_point(DesiredVideoSSRC) ->
@@ -229,3 +271,23 @@ parse_single_time_aggregation_units_prime(<<>>, Results) ->
 
 parse_single_time_aggregation_units_prime(<<UnitSize:16/integer, Unit:UnitSize/binary, Remainder/binary>>, Results) ->
   parse_single_time_aggregation_units_prime(Remainder, [Unit | Results]).
+
+
+maybe_add_to_media_gateway(#?state{ audio_stream_element_config = undefined } = State) ->
+  {ok, State};
+
+maybe_add_to_media_gateway(#?state{ video_stream_element_config = undefined } = State) ->
+  {ok, State};
+
+maybe_add_to_media_gateway(#?state{ audio_stream_element_config = AudioStreamElementConfig
+                                  , video_stream_element_config = VideoStreamElementConfig
+                                  } = State) ->
+
+  Config =
+    #media_gateway_egest_client_config{ audio = AudioStreamElementConfig
+                                      , video = VideoStreamElementConfig
+                                      },
+
+  rtsv2_media_gateway_api:add_egest_client(1, primary, 0, Config),
+
+  {ok, State}.

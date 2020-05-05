@@ -1,65 +1,81 @@
 module Rtsv2.Agents.EgestInstanceSup
        ( startLink
-       , startEgest
-       , maybeStartAndAddClient
+       , findEgest
+       , startLocalEgest
        , isAgentAvailable
        )
        where
 
 import Prelude
 
+import Control.Alt ((<|>))
+import Control.Monad.Except (ExceptT(..), runExceptT)
+import Data.Bifunctor (lmap)
+import Data.Either (Either(..), either, note)
+import Data.Filterable (filterMap)
+import Data.Maybe (Maybe(..), maybe)
+import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Erl.Atom (Atom)
 import Erl.Data.List (List, nil, singleton, (:))
-import Erl.Process.Raw (Pid)
 import Logger (Logger)
 import Logger as Logger
 import Pinto (SupervisorName)
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStartTemplate, childType)
 import Pinto.Sup as Sup
+import Pinto.Types (startOkAS)
 import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Agents.EgestInstance (CreateEgestPayload)
 import Rtsv2.Agents.EgestInstance as EgestInstance
+import Rtsv2.Agents.IntraPoP as IntraPoP
+import Rtsv2.Config (LoadConfig)
+import Rtsv2.Load as Load
+import Rtsv2.LoadTypes (LoadCheckResult)
+import Rtsv2.LoadTypes as LoadTypes
 import Rtsv2.Names as Names
-import Shared.Stream (EgestKey(..))
+import Rtsv2.PoPDefinition as PoPDefinition
+import Rtsv2.Utils (noprocToMaybe)
+import Shared.Rtsv2.Agent (SlotCharacteristics)
+import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
+import Shared.Rtsv2.Stream (AggregatorKey(..), EgestKey(..), SlotId, SlotRole)
+import Shared.Rtsv2.Types (FailureReason(..), LocalOrRemote(..), LocationResp, Server, ServerLoad, ResourceResp, serverLoadToServer)
+import SpudGun as SpudGun
 
-serverName :: SupervisorName
-serverName = Names.egestInstanceSupName
-
+------------------------------------------------------------------------------
+-- API
+------------------------------------------------------------------------------
 isAgentAvailable :: Effect Boolean
 isAgentAvailable = Pinto.isRegistered serverName
 
 startLink :: forall a. a -> Effect Pinto.StartLinkResult
 startLink _ = Sup.startLink serverName init
 
-startEgest :: CreateEgestPayload -> Effect Pinto.StartChildResult
-startEgest payload@{slotId} =
-  let
-    egestKey = EgestKey slotId
-  in
-    Sup.startSimpleChild childTemplate serverName { childStartLink: EgestInstance.startLink payload
-                                                  , childStopAction: EgestInstance.stopAction egestKey
-                                                  , serverName: Names.egestInstanceStateName egestKey
-                                                  , domain: EgestInstance.domain
-                                                  }
+findEgest :: LoadConfig -> SlotId -> SlotRole -> Effect LocationResp
+findEgest loadConfig slotId slotRole = do
+  thisServer <- PoPDefinition.getThisServer
+  mIngestAggregator <- IntraPoP.whereIsIngestAggregatorWithPayload (AggregatorKey slotId slotRole)
+  case mIngestAggregator of
+    Nothing ->  pure $ Left NotFound
+    Just {payload: slotCharacteristics, server: aggregator} -> findEgest' loadConfig thisServer egestKey {slotId, slotRole, aggregator, slotCharacteristics}
+  where
+    egestKey = (EgestKey slotId slotRole)
 
-maybeStartAndAddClient :: Pid -> CreateEgestPayload -> Effect Unit
-maybeStartAndAddClient pid payload = do
-  let egestKey = (EgestKey payload.slotId)
-  isActive <- EgestInstance.isActive egestKey
-  case isActive of
-    false -> do
-      _ <- startEgest payload
-      maybeStartAndAddClient pid payload
-    true ->
-      do
-        _ <- EgestInstance.addClient pid egestKey
-        pure unit
 
+startLocalEgest :: LoadConfig -> CreateEgestPayload -> Effect (ResourceResp Server)
+startLocalEgest loadConfig payload@{slotCharacteristics} =
+  Load.launchLocalGeneric (Load.hasCapacityForEgestInstance slotCharacteristics loadConfig) launchLocal
+  where
+    launchLocal _ =
+      (maybe false (const true) <<< startOkAS) <$> startEgest payload
+
+
+------------------------------------------------------------------------------
+-- Supervisor callbacks
+------------------------------------------------------------------------------
 init :: Effect Sup.SupervisorSpec
 init = do
-  logInfo "Egest Supervisor starting" {}
+  logStart "Egest Supervisor starting" {}
   pure
     $ Sup.buildSupervisor
     # Sup.supervisorStrategy Sup.SimpleOneForOne
@@ -76,17 +92,75 @@ init = do
 childTemplate :: Pinto.ChildTemplate (CachedInstanceState.StartArgs EgestInstance.CachedState)
 childTemplate = Pinto.ChildTemplate (CachedInstanceState.startLink)
 
+------------------------------------------------------------------------------
+-- Internals
+------------------------------------------------------------------------------
+serverName :: SupervisorName
+serverName = Names.egestInstanceSupName
+
+findEgest' :: LoadConfig -> Server -> EgestKey -> CreateEgestPayload -> Effect LocationResp
+findEgest' loadConfig thisServer egestKey payload@{slotCharacteristics} = runExceptT
+  $ ExceptT getLocal
+  <|> ExceptT getRemote
+  <|> ExceptT createResourceAndRecurse
+  where
+    getLocal = do
+      local <- noprocToMaybe $ EgestInstance.pendingClient egestKey
+      pure $ note NotFound $ (const (Local thisServer)) <$> local
+
+    getRemote = do
+      egests <- IntraPoP.whereIsEgestWithLoad egestKey
+      let
+        candidates = filterMap capacityForClient egests
+      eEgest <- IntraPoP.selectCandidate candidates
+      pure $ lmap (\_ -> NotFound) eEgest
+
+    createResourceAndRecurse :: Effect LocationResp
+    createResourceAndRecurse = do
+      eLaunchResp <- Load.launchLocalOrRemoteGeneric (Load.hasCapacityForEgestInstance slotCharacteristics loadConfig) launchLocal launchRemote
+      case eLaunchResp of
+        Left error -> pure $ Left NoResource
+        Right _ -> do
+          findEgest' loadConfig thisServer egestKey payload
+      where
+        launchLocal _ = do
+          (maybe false (const true) <<< startOkAS) <$> startEgest payload
+        launchRemote remote =
+          -- todo - if remote then need to sleep before recurse to allow intra-pop disemination
+          either (const false) (const true) <$> SpudGun.postJson (makeUrl remote EgestE) payload
+
+    capacityForClient :: ServerLoad -> Maybe (Tuple Server LoadCheckResult)
+    capacityForClient serverLoad =
+      let
+        loadCheckResult = Load.hasCapacityForEgestClient slotCharacteristics loadConfig serverLoad
+      in
+       if LoadTypes.canLaunch loadCheckResult then
+         Just (Tuple (serverLoadToServer serverLoad) loadCheckResult)
+       else
+         Nothing
+
+startEgest :: CreateEgestPayload -> Effect Pinto.StartChildResult
+startEgest payload@{slotId, slotRole} =
+  let
+    egestKey = EgestKey slotId slotRole
+  in
+    Sup.startSimpleChild childTemplate serverName { childStartLink: EgestInstance.startLink payload
+                                                  , childStopAction: EgestInstance.stopAction egestKey
+                                                  , serverName: Names.egestInstanceStateName egestKey
+                                                  , domain: EgestInstance.domain
+                                                  }
+
 --------------------------------------------------------------------------------
 -- Log helpers
 --------------------------------------------------------------------------------
-domains :: List Atom
-domains = serverName # Names.toDomain # singleton
+domain :: List Atom
+domain = serverName # Names.toDomain # singleton
 
-logInfo :: forall a. Logger a
-logInfo = domainLog Logger.info
+logInfo :: forall a. Logger (Record a)
+logInfo = Logger.doLog domain Logger.info
 
-logWarning :: forall a. Logger a
-logWarning = domainLog Logger.warning
+logWarning :: forall a. Logger (Record a)
+logWarning = Logger.doLog domain Logger.warning
 
-domainLog :: forall a. Logger {domain :: List Atom, misc :: a} -> Logger a
-domainLog = Logger.doLog domains
+logStart :: forall a. Logger (Record a)
+logStart = Logger.doLogEvent domain Logger.Start Logger.info

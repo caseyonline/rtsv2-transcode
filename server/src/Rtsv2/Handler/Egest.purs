@@ -1,15 +1,12 @@
 module Rtsv2.Handler.Egest
-       ( resource
-       , relayResource
+       ( startResource
        ) where
 
 
 import Rtsv2.Agents.EgestInstance (CreateEgestPayload)
 import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
+import Rtsv2.Config (LoadConfig)
 import StetsonHelper (PostHandler, processPostPayload)
 
-resource :: PostHandler CreateEgestPayload
-resource = processPostPayload EgestInstanceSup.startEgest
-
-relayResource :: PostHandler CreateEgestPayload
-relayResource = processPostPayload EgestInstanceSup.startEgest
+startResource :: LoadConfig -> PostHandler CreateEgestPayload
+startResource loadConfig = processPostPayload (EgestInstanceSup.startLocalEgest loadConfig)

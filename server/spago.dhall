@@ -3,10 +3,8 @@ Welcome to a Spago project!
 You can edit this file as you like.
 -}
 
-{ name =
-    "rtsv2"
-, backend =
-    "purerl"
+{ name = "rtsv2"
+, backend = "purerl"
 , dependencies =
     [ "console"
     , "debug"
@@ -14,6 +12,7 @@ You can edit this file as you like.
     , "erl-atom"
     , "erl-binary"
     , "erl-cowboy"
+    , "erl-file"
     , "erl-lists"
     , "erl-maps"
     , "erl-pinto"
@@ -22,17 +21,16 @@ You can edit this file as you like.
     , "erl-tuples"
     , "generics-rep"
     , "heterogeneous"
-    , "record-prefix"
+    , "kishimen"
     , "partial"
-    , "psci-support"
     , "profunctor-lenses"
+    , "psci-support"
     , "random"
+    , "record-prefix"
     , "routing-duplex"
     , "simple-json"
     , "simple-json-generics"
     ]
-, packages =
-    ./packages.dhall
-, sources =
-    [ "src/**/*.purs" ]
+, packages = ./packages.dhall
+, sources = [ "src/**/*.purs" ]
 }

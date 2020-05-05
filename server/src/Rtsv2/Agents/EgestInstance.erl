@@ -8,7 +8,7 @@
 
 
 %% foreign exports
--export([ startEgestReceiverFFI/1
+-export([ startEgestReceiverFFI/2
         , getStatsFFI/1
         , setSlotConfigurationFFI/2
         , getSlotConfigurationFFI/1
@@ -25,13 +25,16 @@
         }).
 
 
-startEgestReceiverFFI(EgestKey) ->
+startEgestReceiverFFI(EgestKey, UseMediaGateway) ->
   fun() ->
 
       {ok, _StreamServerPid} =
         webrtc_stream_server:start_link(EgestKey,
                                         #{ stream_module => rtsv2_webrtc_egest_stream_handler
-                                         , stream_module_args => [ self(), EgestKey ]
+                                         , stream_module_args => [ self(), EgestKey, UseMediaGateway ]
+                                         , default_session_config =>
+                                             #{ generate_media_channel_ready_messages => true
+                                              }
                                          }
                                        ),
 

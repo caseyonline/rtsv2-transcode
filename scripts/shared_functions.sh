@@ -62,11 +62,11 @@ function destroy_net {
       ;;
 
     "Linux")
-      for name in $(ip -j link | jq --arg INTERFACE_PREFIX "$(interface_name_prefix)" -r '.[].ifname | select(. | startswith($INTERFACE_PREFIX))'); do
+      for name in $(ip link | grep "$(interface_name_prefix)"'[1-9][0-9][0-9]' | awk '{print $2}' | sed 's/://'); do
         sudo ip link delete "${name}"
       done
 
-      if [[ -n "$(ip -j link | jq -r '.[] | select(.ifname == "rtsv2-br") | .ifindex')" ]]; then
+      if [[ -n "$(ip link | grep "rtsv2-br" | awk '{print $2}' | sed 's/://')" ]]; then
         sudo ip link delete rtsv2-br
       fi
       ;;
@@ -95,6 +95,7 @@ function start_node {
   mkdir -p "logs/$nodeName"
   touch "logs/$nodeName/t-serf.log"
 
+
   tmux -L "$tmuxSession" send-keys " export HOSTNAME=$addr" C-m
   tmux -L "$tmuxSession" send-keys " serf agent -iface $iface -node $nodeName -bind $addr:7946 -rpc-addr $addr:7373 | tee -a logs/$nodeName/i-serf.log | grep -v 'Accepted client' | grep -v 'liveness' | grep -v 'transPoPLeader'" C-m
   tmux -L "$tmuxSession" split-window -h -p 80
@@ -107,6 +108,7 @@ function start_node {
   tmux -L "$tmuxSession" send-keys " export PRIVATE_IFACE=$iface" C-m
   tmux -L "$tmuxSession" send-keys " export PUBLIC_IFACE=$iface" C-m
   tmux -L "$tmuxSession" send-keys " export DISK_LOG_ROOT=$(pwd)/logs/$nodeName" C-m
+  tmux -L "$tmuxSession" send-keys " until \$(serf info --rpc-addr \$HOSTNAME:7373 >/dev/null 2>&1); do printf '.'; sleep 0.5; done" C-m
   tmux -L "$tmuxSession" send-keys " erl +sbwt none +sbwtdcpu none +sbwtdio none -pa _build/default/lib/*/ebin -config $sysConfig -rtsv2 id '\"rtsv2TestRunner$nodeName\"' -eval 'application:ensure_all_started(rtsv2).'" C-m
 }
 

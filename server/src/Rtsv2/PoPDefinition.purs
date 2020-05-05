@@ -21,6 +21,7 @@ import Data.Filterable (filter)
 import Data.Foldable (elem, foldl)
 import Data.List.NonEmpty as NonEmptyList
 import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Newtype (unwrap)
 import Data.String (joinWith)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
@@ -42,15 +43,16 @@ import PintoHelper (doExposeState, exposeState)
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
 import Rtsv2.Names as Names
-import Shared.Types (GeoLoc, PoPName, RegionName, Server(..), ServerAddress(..), ServerLocation(..), extractPoP, toServer)
-import Shared.Types.Agent.State as PublicState
+import Shared.Rtsv2.Agent (Agent)
+import Shared.Rtsv2.Types (GeoLoc, NetworkKbps, PoPName, RegionName, Server(..), ServerAddress(..), ServerLocation(..), SpecInt, extractPoP, toServerLocation)
+import Shared.Rtsv2.Agent.State as PublicState
 import Simple.JSON as JSON
 
 type PoPInfo =
   { regions :: Map RegionName Region
-  , servers :: Map ServerAddress ServerLocation
+  , servers :: Map ServerAddress Server
   , thisLocation :: ServerLocation
-  , otherServersInThisPoP :: List ServerAddress
+  , otherServersInThisPoP :: List Server
   , thisPoP :: PoP
   , otherPoPs :: List PoP
   , neighbourMap :: NeighbourMap
@@ -58,9 +60,9 @@ type PoPInfo =
 
 type State =  { config :: Config.PoPDefinitionConfig
               , regions :: Map RegionName Region
-              , servers :: Map ServerAddress ServerLocation
+              , servers :: Map ServerAddress Server
               , thisServer :: Server
-              , otherServersInThisPoP :: List ServerAddress
+              , otherServersInThisPoP :: List Server
               , otherPoPs :: Map PoPName PoP
               , neighbourMap :: NeighbourMap
               }
@@ -71,7 +73,7 @@ type Region = { name :: RegionName
 
 type PoP = { name :: PoPName
            , geoLoc :: List GeoLoc
-           , servers :: List ServerAddress
+           , servers :: List Server
            , neighbours :: List PoPName
            }
 
@@ -79,8 +81,15 @@ type NetworkJson = Map RegionName PoPJson
 
 type PoPJson =  Map PoPName PoPInfoJson
 
+type ServerJson = { address :: ServerAddress
+                  , maxCpuCapacity :: SpecInt
+                  , maxNetworkCapacity :: NetworkKbps
+                  , capabilityTags :: Array String
+                  , agents :: Array Agent
+                  }
+
 type PoPInfoJson = { geoLoc :: (List GeoLoc)
-                   , nodes :: (List ServerAddress)
+                   , nodes :: (List ServerJson)
                    }
 
 type NeighbourMap =  Map PoPName (List PoPName)
@@ -100,11 +109,15 @@ getPublicPoPDefinition =
   where
     publicPoPDefinition :: State -> PublicState.PoPDefinition List
     publicPoPDefinition state@{regions, neighbourMap: neighbours} =
-      { regions : (\{name, pops} -> {name, pops: Map.values pops}) <$> Map.values regions
+      { regions : (\{name: regionName, pops} -> {name: regionName
+                                    , pops: (\{name: popName, geoLoc, servers, neighbours: popNeighbours} ->
+                                              {name: popName, geoLoc, servers: (unwrap >>> _.address) <$> servers, neighbours: popNeighbours}
+                                            ) <$> Map.values pops
+                                    }) <$> Map.values regions
       , neighbourMap : (\(Tuple popName popNeighbours) -> {popName, neighbours: popNeighbours}) <$> toUnfoldable neighbours
       }
 
-getOtherServersForThisPoP :: Effect (List ServerAddress)
+getOtherServersForThisPoP :: Effect (List Server)
 getOtherServersForThisPoP = exposeState _.otherServersInThisPoP serverName
 
 getOtherPoPs :: Effect (Map PoPName PoP)
@@ -116,7 +129,7 @@ getOtherPoPNames = exposeState (Map.keys <<< _.otherPoPs) serverName
 getThisServer :: Effect Server
 getThisServer = exposeState _.thisServer serverName
 
-getRandomServerInPoP :: PoPName -> Effect (Maybe ServerAddress)
+getRandomServerInPoP :: PoPName -> Effect (Maybe Server)
 getRandomServerInPoP popName = doExposeState stateFn serverName
   where
     stateFn state = do
@@ -129,24 +142,23 @@ getRandomServerInPoP popName = doExposeState stateFn serverName
           pure $ index servers pos
 
 
-whereIsServer :: ServerAddress -> Effect (Maybe ServerLocation)
+whereIsServer :: ServerAddress -> Effect (Maybe Server)
 whereIsServer sa = Gen.doCall serverName
              \state -> pure $ CallReply (Map.lookup sa state.servers) state
 
 serversInThisPoPByAddress :: Effect (Map ServerAddress Server)
 serversInThisPoPByAddress =
-  -- TODO - this probasbly need to list which services each node offers as well
   Gen.doCall serverName
     \state@{thisServer} ->
       let
         thisPoP = extractPoP thisServer
         result
           = state.servers
-            # Map.mapMaybeWithKey (\address location ->
-                                    if extractPoP location == thisPoP then
-                                      Just $ (toServer address  location)
-                                    else
-                                      Nothing
+            # Map.mapMaybe (\server ->
+                             if extractPoP server == thisPoP then
+                               Just server
+                             else
+                               Nothing
                                   )
       in
       pure $ CallReply result state
@@ -156,32 +168,30 @@ init :: Config.PoPDefinitionConfig -> Effect State
 init config = do
   thisServerAddress <- ServerAddress <$> Env.hostname
   eNeighbourMap <- readNeighbourMap config
-  nMap <-  case eNeighbourMap of
+  nMap <- case eNeighbourMap of
     Left e -> do
-               _ <- logWarning "Failed to process WAN definition file" {misc: e}
-               unsafeCrashWith "invalid WAN definition file"
+      _ <- logWarning "Failed to process WAN definition file" {misc: e}
+      unsafeCrashWith "invalid WAN definition file"
     Right r -> pure r
 
   ePopInfo <- readAndProcessPoPDefinition config thisServerAddress nMap
-  popInfo <-  case ePopInfo of
+  Tuple thisServer popInfo <- case ePopInfo of
     Left e -> do
-               _ <- logWarning "Failed to process pop definition file" {misc: e}
-               unsafeCrashWith "invalid pop definition file"
+      _ <- logWarning "Failed to process pop definition file" {misc: e}
+      unsafeCrashWith "invalid pop definition file"
     Right r -> pure r
   let
-      thisServer' =  toServer thisServerAddress popInfo.thisLocation
       state =
         { config : config
         , regions : popInfo.regions
         , servers : popInfo.servers
-        , thisServer : thisServer'
+        , thisServer
         , otherPoPs : toMap popInfo.otherPoPs
         , otherServersInThisPoP : popInfo.otherServersInThisPoP
         , neighbourMap : popInfo.neighbourMap
         }
-
-  logInfo "PoPDefinition Starting" { thisServer : thisServer'
-                                        , otherServers : state.otherServersInThisPoP}
+  logInfo "PoPDefinition Starting" { thisServer
+                                   , otherServers : state.otherServersInThisPoP}
   _ <- Timer.sendAfter serverName 1000 Tick
   pure state
 
@@ -200,13 +210,13 @@ handleInfo msg state@{thisServer: (Server thisServer)}=
 
               Left e -> do _ <- logWarning "Failed to process pop definition file" {misc: e}
                            pure state
-              Right popInfo@{thisLocation : (ServerLocation newPoPLocation)}
+              Right (Tuple _thisServer popInfo@{thisLocation : (ServerLocation newPoPLocation)})
                 | newPoPLocation.pop == thisServer.pop  ->
                   pure $ (state { regions = popInfo.regions
-                               , servers = popInfo.servers
-                               , otherServersInThisPoP = popInfo.otherServersInThisPoP
-                               , otherPoPs = toMap popInfo.otherPoPs
-                               } :: State)
+                                , servers = popInfo.servers
+                                , otherServersInThisPoP = popInfo.otherServersInThisPoP
+                                , otherPoPs = toMap popInfo.otherPoPs
+                                } :: State)
                 | otherwise ->
                     do _ <- logWarning "This node seems to have changed pop - ignoring" { currentLocation: state.thisServer
                                                                                         , filePoP : newPoPLocation
@@ -224,7 +234,7 @@ readNeighbourMap config = do
   file <- readFile $ joinWith "/" [config.directory, config.wanDefinitionFile]
   pure $ JSON.readJSON =<< file
 
-readAndProcessPoPDefinition :: Config.PoPDefinitionConfig -> ServerAddress -> NeighbourMap -> Effect (Either MultipleErrors PoPInfo)
+readAndProcessPoPDefinition :: Config.PoPDefinitionConfig -> ServerAddress -> NeighbourMap -> Effect (Either MultipleErrors (Tuple Server PoPInfo))
 readAndProcessPoPDefinition config thisServerAddress nMap = do
   -- In Effect
   file <- readFile $ joinWith "/" [config.directory, config.popDefinitionFile]
@@ -250,23 +260,34 @@ filterNeighbours allPops nMap =
 
 mapRegionJson :: NeighbourMap -> NetworkJson -> Map RegionName Region
 mapRegionJson nMap nwMap =
-   Map.mapWithKey (\name pops -> {name : name, pops : mapPoPJson nMap pops}) nwMap
+   Map.mapWithKey (\name pops -> {name : name, pops : mapPoPJson name nMap pops}) nwMap
 
-mapPoPJson :: NeighbourMap -> PoPJson -> Map PoPName PoP
-mapPoPJson nMap popJson =
-  Map.mapWithKey (\name pop ->
-                   let neighbours = Map.lookup name nMap # fromMaybe nil
+mapPoPJson :: RegionName -> NeighbourMap -> PoPJson -> Map PoPName PoP
+mapPoPJson regionName nMap popJson =
+  Map.mapWithKey (\popName pop ->
+                   let neighbours = Map.lookup popName nMap # fromMaybe nil
                    in
-                    {name: name, geoLoc: pop.geoLoc ,servers: pop.nodes, neighbours}) popJson
+                    { name: popName
+                    , geoLoc: pop.geoLoc
+                    , servers: (\{address, maxCpuCapacity, maxNetworkCapacity, capabilityTags, agents} ->
+                                 Server {address
+                                        , pop: popName
+                                        , region: regionName
+                                        , maxCpuCapacity
+                                        , maxNetworkCapacity
+                                        , capabilityTags
+                                        , agents}
+                               ) <$> pop.nodes
+                    , neighbours}) popJson
 
-processPoPJson :: ServerAddress -> (Map RegionName Region) -> NeighbourMap -> Either MultipleErrors PoPInfo
+processPoPJson :: ServerAddress -> (Map RegionName Region) -> NeighbourMap -> Either MultipleErrors (Tuple Server PoPInfo)
 processPoPJson thisServerAddress regions nMap =
   let
-    servers :: Map ServerAddress ServerLocation
+    servers :: Map ServerAddress Server
     servers = foldl (\acc region ->
                       foldl (\innerAcc pop ->
-                              foldl (\innerInnerAcc server ->
-                                      Map.insert server (ServerLocation {pop: pop.name, region:  region.name}) innerInnerAcc
+                              foldl (\innerInnerAcc server@(Server {address}) ->
+                                      Map.insert address server innerInnerAcc
                                     )
                               innerAcc
                               pop.servers
@@ -277,14 +298,15 @@ processPoPJson thisServerAddress regions nMap =
               Map.empty
               regions
 
-    otherServers :: List ServerAddress
+    otherServers :: List Server
     otherServers = Map.lookup thisServerAddress servers
-                   >>= (\sl -> lookupPop regions sl)
+                   >>= (\server -> lookupPop regions (toServerLocation server))
                    <#> (\p -> p.servers)
-                   <#> filter (\s -> s /= thisServerAddress)
+                   <#> filter (\(Server {address}) -> address /= thisServerAddress)
                    # fromMaybe nil
 
-    maybeThisLocation = Map.lookup thisServerAddress servers
+    maybeThisServer :: Maybe Server
+    maybeThisServer = Map.lookup thisServerAddress servers
 
     partitionPoPs :: PoPName -> Tuple (Maybe PoP) (List PoP)
     partitionPoPs thisPoP' =
@@ -300,19 +322,19 @@ processPoPJson thisServerAddress regions nMap =
         regions
 
   in
-   case maybeThisLocation of
+   case maybeThisServer of
      Nothing -> Left $ NonEmptyList.singleton $ ForeignError "This node not present in any pop"
-     Just sl@(ServerLocation location) ->
-       case partitionPoPs location.pop of
+     Just thisServer@(Server {pop}) ->
+       case partitionPoPs  pop of
          (Tuple (Just thisPoP') otherPoPs) ->
-            Right { regions: regions
-                  , servers: servers
-                  , otherServersInThisPoP: otherServers
-                  , otherPoPs: otherPoPs
-                  , thisLocation: sl
-                  , thisPoP: thisPoP'
-                  , neighbourMap: nMap
-                  }
+           Right (Tuple thisServer { regions: regions
+                                   , servers: servers
+                                   , otherServersInThisPoP: otherServers
+                                   , otherPoPs: otherPoPs
+                                   , thisLocation: toServerLocation thisServer
+                                   , thisPoP: thisPoP'
+                                   , neighbourMap: nMap
+                                   })
          _ ->
            Left $ NonEmptyList.singleton $ ForeignError "This pop is not present in the neighbours map"
 
@@ -347,11 +369,11 @@ serverName = Names.popDefinitionName
 domains :: List Atom
 domains = serverName # Names.toDomain # singleton
 
-logInfo :: forall a. Logger a
+logInfo :: forall a. Logger (Record a)
 logInfo = domainLog Logger.info
 
-logWarning :: forall a. Logger a
+logWarning :: forall a. Logger (Record a)
 logWarning = domainLog Logger.warning
 
-domainLog :: forall a. Logger {domain :: List Atom, misc :: a} -> Logger a
+domainLog :: forall a. Logger {domain :: List Atom, misc :: Record a} -> Logger (Record a)
 domainLog = Logger.doLog domains

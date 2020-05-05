@@ -19,6 +19,7 @@
     uuid,
     msgpack,
     runtime_tools,
+    os_mon,
     prometheus_process_collector,
     prometheus
    ]},

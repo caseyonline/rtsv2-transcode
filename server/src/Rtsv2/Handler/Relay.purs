@@ -1,10 +1,8 @@
 module Rtsv2.Handler.Relay
        ( startResource
        , ensureStarted
-       , registerEgest
-       , registerRelay
-       , deRegisterRelay
-       , slotConfiguration
+       , registeredRelayWs
+       , registeredEgestWs
        , stats
        , proxiedStats
        , StartState
@@ -14,49 +12,42 @@ module Rtsv2.Handler.Relay
 import Prelude
 
 import Data.Either (Either(..), hush, isRight)
-import Data.Maybe (Maybe(..), isJust, isNothing, maybe)
+import Data.Maybe (Maybe(..), fromMaybe', isJust, isNothing, maybe)
 import Data.Newtype (unwrap)
+import Effect (Effect)
+import Erl.Atom (Atom)
 import Erl.Cowboy.Handlers.Rest (moved, notMoved)
 import Erl.Cowboy.Req (StatusCode(..), replyWithoutBody, setHeader)
 import Erl.Data.List (List, singleton, (:))
 import Erl.Data.Map as Map
+import Erl.Process (Process(..))
+import Erl.Utils as Erl
+import Logger as Logger
 import Rtsv2.Agents.IntraPoP as IntraPoP
-import Rtsv2.Agents.Locator.Relay (findOrStart)
-import Rtsv2.Agents.Locator.Types (LocalOrRemote(..), NoCapacity(..), ResourceResp, fromLocalOrRemote)
-import Rtsv2.Agents.SlotTypes (SlotConfiguration)
 import Rtsv2.Agents.StreamRelayInstance as StreamRelayInstance
+import Rtsv2.Agents.StreamRelaySup (findOrStart)
 import Rtsv2.Agents.StreamRelaySup as StreamRelaySup
-import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload, RegisterEgestPayload, RegisterRelayPayload)
+import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload, DownstreamWsMessage(..), EgestUpstreamWsMessage(..), RelayUpstreamWsMessage(..), WebSocketHandlerMessage(..))
+import Rtsv2.Config (LoadConfig)
+import Rtsv2.Handler.Helper (WebSocketHandlerResult(..), webSocketHandler)
 import Rtsv2.Handler.MimeType as MimeType
+import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
-import Shared.Router.Endpoint (Endpoint(..), makeUrl)
-import Shared.Stream (RelayKey(..), SlotId, SlotRole)
-import Shared.Types (Server, ServerAddress, extractAddress)
-import Shared.Types.Agent.State (StreamRelay)
+import Shared.Rtsv2.Agent.State (StreamRelay)
+import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
+import Shared.Rtsv2.Stream (RelayKey(..), SlotId, SlotRole)
+import Shared.Rtsv2.Types (EgestServer(..), RelayServer(..), Server(..), ServerAddress, SourceRoute, LocalOrRemote(..), ResourceFailed(..), ResourceResp, extractAddress)
+import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON as JSON
-import Stetson (HttpMethod(..), StetsonHandler)
+import Stetson (HttpMethod(..), InnerStetsonHandler, StetsonHandler)
 import Stetson.Rest as Rest
-import StetsonHelper (DeleteHandler, GetHandler, PostHandler, allBody, binaryToString, jsonResponse, preHookSpyState, processDelete, processPostPayload, processPostPayloadWithResponseAndUrl)
+import StetsonHelper (GetHandler, PostHandler, allBody, binaryToString, jsonResponse, processPostPayload)
 
 stats :: SlotId -> SlotRole -> GetHandler (StreamRelay List)
 stats slotId slotRole = jsonResponse $ Just <$> (StreamRelayInstance.status $ RelayKey slotId slotRole)
 
-startResource :: PostHandler CreateRelayPayload
-startResource = processPostPayload StreamRelaySup.startRelay
-
-registerEgest :: PostHandler RegisterEgestPayload
-registerEgest = processPostPayloadWithResponseAndUrl (((<$>) Just) <<< StreamRelayInstance.registerEgest)
-
-registerRelay :: PostHandler RegisterRelayPayload
-registerRelay = processPostPayload StreamRelayInstance.registerRelay
-
-deRegisterRelay :: SlotId -> SlotRole -> ServerAddress -> DeleteHandler
-deRegisterRelay slotId slotRole egestServerAddress =
-  processDelete (StreamRelayInstance.deRegisterEgest {slotId, slotRole, egestServerAddress})
-
-slotConfiguration :: SlotId -> SlotRole -> GetHandler (Maybe SlotConfiguration)
-slotConfiguration slotId role =
-  jsonResponse $ Just <$> (StreamRelayInstance.slotConfiguration (RelayKey slotId role))
+startResource :: LoadConfig -> PostHandler CreateRelayPayload
+startResource loadConfig = processPostPayload $ StreamRelaySup.startLocalStreamRelay loadConfig
 
 newtype ProxyState
   = ProxyState { whereIsResp :: Maybe Server
@@ -74,7 +65,7 @@ proxiedStats slotId slotRole =
   where
     init req = do
       let relayKey = RelayKey slotId slotRole
-      whereIsResp <- (map fromLocalOrRemote) <$> IntraPoP.whereIsStreamRelay relayKey
+      whereIsResp <- IntraPoP.whereIsStreamRelay relayKey
       Rest.initResult req $
           ProxyState { whereIsResp
                      }
@@ -101,8 +92,8 @@ newtype StartState = StartState { mPayload :: Maybe CreateRelayPayload
                                 , apiResp  :: ResourceResp Server
                                 }
 
-ensureStarted :: StetsonHandler StartState
-ensureStarted =
+ensureStarted :: LoadConfig -> StetsonHandler StartState
+ensureStarted loadConfig =
   Rest.handler init
   # Rest.allowedMethods (Rest.result (POST : mempty))
   # Rest.contentTypesAccepted (\req state -> Rest.result (singleton $ MimeType.json acceptJson) req state)
@@ -110,14 +101,14 @@ ensureStarted =
   # Rest.resourceExists resourceExists
   # Rest.previouslyExisted previouslyExisted
   # Rest.movedTemporarily movedTemporarily
-  --# Rest.preHook (preHookSpyState "Relay:ensureStarted")
+--  # Rest.preHook (preHookSpyState "Relay:ensureStarted")
   # Rest.yeeha
 
   where
     init req = do
       thisServer <- PoPDefinition.getThisServer
       mPayload <- (hush <$> JSON.readJSON <$> binaryToString <$> allBody req mempty)
-      apiResp <- maybe (pure $ Left NoCapacity) findOrStart mPayload
+      apiResp <- maybe (pure $ Left NoCapacity) (findOrStart loadConfig) mPayload
 
       let
         req2 = setHeader "x-servedby" (unwrap $ extractAddress thisServer) req
@@ -132,6 +123,10 @@ ensureStarted =
     resourceExists req state@(StartState {apiResp}) =
       case apiResp of
         Left NoCapacity -> do
+          --TODO - don't think this should be a 502
+          newReq <- replyWithoutBody (StatusCode 502) Map.empty req
+          Rest.stop newReq state
+        Left LaunchFailed -> do
           --TODO - don't think this should be a 502
           newReq <- replyWithoutBody (StatusCode 502) Map.empty req
           Rest.stop newReq state
@@ -153,69 +148,85 @@ ensureStarted =
         _ ->
           Rest.result notMoved req state
 
+type WsRelayState =
+  { relayServer :: RelayServer
+  , relayKey :: RelayKey
+  }
 
--- chainResource :: StetsonHandler ChainState
--- chainResource =
---   Rest.handler init
---   # Rest.allowedMethods (Rest.result (POST : mempty))
---   # Rest.contentTypesAccepted (\req state -> Rest.result (singleton $ MimeType.json acceptJson) req state)
---   # Rest.malformedRequest malformedRequest
---   # Rest.resourceExists resourceExists
---   # Rest.previouslyExisted previouslyExisted
---   # Rest.movedTemporarily movedTemporarily
---   # Rest.preHook (preHookSpyState "Relay:chainResource")
---   # Rest.yeeha
+registeredRelayWs :: SlotId -> SlotRole -> ServerAddress -> Int -> SourceRoute -> InnerStetsonHandler (WebSocketHandlerMessage DownstreamWsMessage) WsRelayState
+registeredRelayWs slotId slotRole relayAddress relayPort sourceRoute =
+  webSocketHandler init wsInit handle info
+  where
+    init req = do
+      mServerLocation <- PoPDefinition.whereIsServer relayAddress
+      let
+        Server server = fromMaybe' (lazyCrashIfMissing "unknown server") mServerLocation
+      pure { relayServer: Relay server
+           , relayKey: RelayKey slotId slotRole
+           }
 
---   where
---     init req = do
---       thisServer <- PoPDefinition.getThisServer
---       mPayload <- (hush <$> JSON.readJSON <$> binaryToString <$> allBody req mempty)
---       apiResp <- maybe (pure $ Left NoResource) findRelayAndRegisterForChain mPayload
+    wsInit state@{relayServer, relayKey} = do
+      self <- Process <$> Erl.self :: Effect (Process (WebSocketHandlerMessage DownstreamWsMessage))
+      Erl.monitor (Names.streamRelayInstanceStateName relayKey)
+      maybeSlotConfiguration <- StreamRelayInstance.registerRelay slotId slotRole relayServer relayPort sourceRoute self
+      pure $ case maybeSlotConfiguration of
+               Nothing -> WebSocketNoReply state
+               Just slotConfiguration -> WebSocketReply (SlotConfig slotConfiguration) state
 
---       let _ = spy "chainResource - init" {mPayload, apiResp}
+    handle :: WsRelayState -> RelayUpstreamWsMessage -> Effect (WebSocketHandlerResult DownstreamWsMessage WsRelayState)
+    handle state@{relayKey} (RelayUpstreamDataObjectMessage msg) = do
+      StreamRelayInstance.dataObjectSendMessage relayKey msg
+      pure $ WebSocketNoReply state
+    handle state@{relayKey} (RelayUpstreamDataObjectUpdateMessage msg) = do
+      StreamRelayInstance.dataObjectUpdateSendMessage relayKey msg
+      pure $ WebSocketNoReply state
 
---       let
---         req2 = setHeader "x-servedby" (unwrap $ extractAddress thisServer) req
---       -- the Left NoResource saves us having to deal with Maybe
---       -- it will have a real value in it before we ever need to look for real...
---       Rest.initResult req2 $ ChainState {mPayload, apiResp}
+    info state WsStop =
+      pure $ WebSocketStop state
+    info state (WsSend msg) =
+      pure $ WebSocketReply msg state
 
---     malformedRequest req state@(ChainState {mPayload}) =
---       let _ = spy "malformed" {mPayload} in
---       Rest.result (isNothing mPayload) req state
+type WsEgestState =
+  { egestServer :: EgestServer
+  , relayKey :: RelayKey
+  }
 
---     acceptJson req state =
---       let _ = spy "acceptJson" {state} in
---       Rest.result true req state
+registeredEgestWs :: SlotId -> SlotRole -> ServerAddress -> Int -> InnerStetsonHandler (WebSocketHandlerMessage DownstreamWsMessage) WsEgestState
+registeredEgestWs slotId slotRole egestAddress egestPort =
+  webSocketHandler init wsInit handle info
+  where
+    init req = do
+      mServerLocation <- PoPDefinition.whereIsServer egestAddress
+      let
+        Server server = fromMaybe' (lazyCrashIfMissing "unknown server") mServerLocation
+      pure { egestServer: Egest server
+           , relayKey: RelayKey slotId slotRole
+           }
 
---     resourceExists req state@(ChainState {apiResp}) =
---       let _ = spy "exists" {state} in
---       case apiResp of
---         Left NotFound ->
---           do
---             newReq <- replyWithoutBody (StatusCode 404) Map.empty req
---             Rest.stop newReq state
---         Left NoResource -> do
---           --TODO - don't think this should be a 502
---           newReq <- replyWithoutBody (StatusCode 502) Map.empty req
---           Rest.stop newReq state
---         Right (Local _)  ->
---           Rest.result true req state
---         Right (Remote _) ->
---           Rest.result false req state
+    wsInit state@{egestServer, relayKey} = do
+      self <- Process <$> Erl.self :: Effect (Process (WebSocketHandlerMessage DownstreamWsMessage))
+      Erl.monitor (Names.streamRelayInstanceStateName relayKey)
+      maybeSlotConfiguration <- StreamRelayInstance.registerEgest slotId slotRole egestServer egestPort self
+      pure $ case maybeSlotConfiguration of
+               Nothing -> WebSocketNoReply state
+               Just slotConfiguration -> WebSocketReply (SlotConfig slotConfiguration) state
 
---     previouslyExisted req state@(ChainState {apiResp}) =
---       let _ = spy "previouslyExisted" {state} in
---       Rest.result (isRight apiResp) req state
+    handle :: WsEgestState -> EgestUpstreamWsMessage -> Effect (WebSocketHandlerResult DownstreamWsMessage WsEgestState)
+    handle state@{relayKey} (EdgeToRelayDataObjectMessage msg) = do
+      StreamRelayInstance.dataObjectSendMessage relayKey msg
+      pure $ WebSocketNoReply state
+    handle state@{relayKey} (EdgeToRelayDataObjectUpdateMessage msg) = do
+      StreamRelayInstance.dataObjectUpdateSendMessage relayKey msg
+      pure $ WebSocketNoReply state
 
---     movedTemporarily req state@(ChainState {apiResp}) =
---       let _ = spy "movedTemporarily" {state} in
---       case apiResp of
---         Right (Remote server) ->
---           let
---             url = makeUrl server RelayChainE
---           in
---             let _ = spy "movedTemporarily - to " {url} in
---             Rest.result (moved $ unwrap url) req state
---         _ ->
---           Rest.result notMoved req state
+    info state WsStop = do
+      _ <- logInfo StreamRelayInstance.domain "Agent closed - closing websocket" {}
+      pure $ WebSocketStop state
+    info state (WsSend msg) =
+      pure $ WebSocketReply msg state
+
+--------------------------------------------------------------------------------
+-- Log helpers
+--------------------------------------------------------------------------------
+logInfo :: forall a. List Atom -> String -> Record a -> Effect Unit
+logInfo domain msg misc = Logger.doLog domain Logger.info msg misc

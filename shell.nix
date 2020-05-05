@@ -1,5 +1,5 @@
 let
-  erlangReleases = builtins.fetchTarball https://github.com/nixerl/nixpkgs-nixerl/archive/v1.0.2-devel.tar.gz;
+  erlangReleases = builtins.fetchTarball https://github.com/nixerl/nixpkgs-nixerl/archive/v1.0.4-devel.tar.gz;
 
   pinnedNix =
     builtins.fetchGit {
@@ -12,14 +12,30 @@ let
     builtins.fetchGit {
       url = "https://github.com/purerl/nixpkgs-purerl.git";
       ref = "master";
-      rev = "73897ce89970ed125c09bbc6217d30a3f72d33a1";
+      rev = "5da0a433bcefe607e0bd182b79b220af980a4c78";
     };
 
   id3asPackages =
     builtins.fetchGit {
       name = "id3as-packages";
       url = "git@github.com:id3as/nixpkgs-private.git";
-      rev = "086e2efca8bfd1699e7aeeda9a220b82f10fa866";
+      rev = "485fcb5e2dccbf2fa3d43fb6c2c45bb68babd601";
+      ref = "v2";
+    };
+
+  mozillaPackages =
+    builtins.fetchGit {
+      name = "nixpkgs-mozilla";
+      url = https://github.com/mozilla/nixpkgs-mozilla/;
+      # commit from: 2020-04-14
+      rev = "e912ed483e980dfb4666ae0ed17845c4220e5e7c";
+  };
+
+  oxidizedPackages =
+    builtins.fetchGit {
+      name = "id3as-oxidized-packages";
+      url = "git@github.com:id3as/oxidized.git";
+      rev = "22f64b587cae8bc620a73d0425252d084501cf24";
     };
 
   nixpkgs =
@@ -28,8 +44,21 @@ let
         (import erlangReleases)
         (import purerlReleases)
         (import id3asPackages)
+        (import oxidizedPackages)
+        (import mozillaPackages)
       ];
     };
+
+  rust =
+    (nixpkgs.latest.rustChannels.stable.rust.override {
+      extensions = [
+        "rust-src"
+        "rls-preview"
+        "rust-analysis"
+        "rustfmt-preview"
+        "clippy-preview"
+      ];
+    });
 
 in
 
@@ -51,8 +80,8 @@ mkShell {
 
     tmux
 
-    nixerl.erlang-22-1-8.erlang
-    nixerl.erlang-22-1-8.rebar3
+    nixerl.erlang-22-3.erlang
+    nixerl.erlang-22-3.rebar3
 
     # Needed for UI build
     nodejs
@@ -60,23 +89,31 @@ mkShell {
     nodePackages.webpack-cli
 
     # Our nativedeps environment
-    id3as.nd-env
+    (id3as.nd-env.override {
+      nd-quicksync-enabled = false;
+    })
+
+    # The Media Gateway
+    rtsv2-media-gateway
 
     # Purescript - we use a specific version rather than
     # whatever the latest is exposed via nixpkgs
-    id3as.purescript-0-13-5
+    id3as.purescript-0-13-6
 
     # Purescript extras
     id3as.spago-0-12-1-0
     id3as.dhall-json-1-5-0
 
     # Purerl backend for purescript
-    purerl.purerl-0-0-1
+    purerl.purerl-0-0-5
 
     # Needed by something purescript-y - hopefully A/S can pinpoint what...
     jq
     serfdom
-  ] ++ optionals stdenv.isLinux [ iproute
-                                ]
-;
+
+    # Rust stuff!
+    rust
+    rustracer
+
+  ] ++ optionals stdenv.isLinux [ iproute ];
 }

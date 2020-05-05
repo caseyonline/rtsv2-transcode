@@ -18,5 +18,4 @@ fi
 ln -s "$InstallName" rtsv2
 
 cd rtsv2/bin
-nix-shell --run "echo Nix setup complete"
 sudo ./install_services.sh

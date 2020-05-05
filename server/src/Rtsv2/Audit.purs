@@ -17,8 +17,8 @@ import Effect (Effect)
 import Erl.Atom (atom)
 import Erl.Data.List (List, nil, (:))
 import Logger as Logger
-import Shared.LlnwApiTypes (StreamIngestProtocol(..))
-import Shared.Stream (EgestKey(..), SlotId(..), SlotRole, RtmpShortName, RtmpStreamName)
+import Shared.Rtsv2.LlnwApiTypes (StreamIngestProtocol(..))
+import Shared.Rtsv2.Stream (EgestKey(..), SlotId(..), SlotRole, RtmpShortName, RtmpStreamName)
 import Shared.Common (Milliseconds)
 
 foreign import toList :: String -> List Char
@@ -73,15 +73,17 @@ egestStop line =
 clientStart :: SlotId -> Effect Unit
 clientStart (SlotId slotId) = do
   _ <- Logger.info "" { domain: (atom "audit") : (atom "client") : nil
-                      , event: toList "start"
+                      , auditEvent: toList "start"
                       , slotId: toList $ show slotId}
   pure unit
 
 clientStop :: EgestKey -> Effect Unit
-clientStop (EgestKey (SlotId slotId)) = do
+clientStop (EgestKey (SlotId slotId) slotRole) = do
   _ <- Logger.info "" { domain: (atom "audit") : (atom "client") : nil
-                      , event: toList "stop"
-                      , slotId: toList $ show slotId}
+                      , auditEvent: toList "stop"
+                      , slotId: toList $ show slotId
+                      , slotRole: toList $ show slotRole
+                      }
   pure unit
 
 
@@ -105,7 +107,7 @@ writeIngestLine reason { ingestIp
                        , lostPackets
                        } =
   Logger.info "" { domain: (atom "audit") : (atom "ingest") : nil
-                 , event: toList reason
+                 , auditEvent: toList reason
                  , ingestIp: toList ingestIp
                  , ingestPort: ingestPort
                  , userIp: toList userIp
@@ -138,7 +140,7 @@ writeEgestLine reason { egestIp
                       , lostPackets
                       } =
   Logger.info "" { domain: (atom "audit") : (atom "egest") : nil
-                 , event: toList reason
+                 , auditEvent: toList reason
                  , egestIp: toList egestIp
                  , egestPort: egestPort
                  , subscriberIp: toList subscriberIp

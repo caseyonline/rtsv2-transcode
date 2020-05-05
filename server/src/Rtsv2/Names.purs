@@ -1,6 +1,7 @@
 module Rtsv2.Names
        (
          agentSupName
+       , egestSupName
        , egestInstanceName
        , egestInstanceSupName
        , egestInstanceStateName
@@ -28,9 +29,12 @@ module Rtsv2.Names
        , streamRelayInstanceName
        , streamRelayDownstreamProxyName
 
+       , dataObjectName
        , transPoPName
        , webServerName
        , toDomain
+
+       , gprocName
        )
        where
 
@@ -41,12 +45,15 @@ import Erl.Data.Tuple (tuple2, tuple3, tuple4)
 import Erl.ModuleName (NativeModuleName(..))
 import Foreign (unsafeToForeign)
 import Pinto (ServerName(..), SupervisorName)
-import Shared.Agent (Agent(..))
-import Shared.Stream (AggregatorKey, EgestKey, IngestKey, RelayKey)
-import Shared.Types (PoPName)
+import Shared.Rtsv2.Agent (Agent(..))
+import Shared.Rtsv2.Stream (AggregatorKey, EgestKey, IngestKey, RelayKey)
+import Shared.Rtsv2.Types (PoPName)
 
 agentSupName :: SupervisorName
 agentSupName = Local (atom "AgentSup")
+
+egestSupName :: SupervisorName
+egestSupName = sup Egest
 
 egestInstanceName :: forall a b. EgestKey -> ServerName a b
 egestInstanceName = gprocName2 Egest
@@ -120,9 +127,11 @@ transPoPName = localName TransPoP
 webServerName :: forall a b. ServerName a b
 webServerName = Local (atom "Web")
 
+dataObjectName :: forall a b. ServerName a b
+dataObjectName = Local (atom "DataObject")
+
 toDomain :: forall a b. ServerName a b -> Atom
 toDomain (Local name) = name
-toDomain (Global name) = name
 toDomain _ = atom "gproc domain unknown"
 
 --------------------------------------------------------------------------------

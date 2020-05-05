@@ -1,5 +1,7 @@
 module Rtsv2.Config
-  ( GlobalConfig
+  ( FeatureFlags
+  , MediaGatewayFlag(..)
+  , GlobalConfig
   , IngestInstanceConfig
   , IngestAggregatorAgentConfig
   , IngestStatsConfig
@@ -7,51 +9,82 @@ module Rtsv2.Config
   , PoPDefinitionConfig
   , IntraPoPAgentConfig
   , TransPoPAgentConfig
+  , StreamRelayConfig
   , EgestAgentConfig
   , IntraPoPAgentApi
   , TransPoPAgentApi
   , LlnwApiConfig
-  , LoadMonitorConfig
   , HealthConfig
+  , LoadConfig
   , appName
+  , loadConfig
+  , featureFlags
   , webConfig
   , globalConfig
-  , nodeConfig
   , popDefinitionConfig
   , intraPoPAgentConfig
   , transPoPAgentConfig
   , ingestStatsConfig
   , ingestInstanceConfig
   , ingestAggregatorAgentConfig
+  , streamRelayConfig
   , egestAgentConfig
   , rtmpIngestConfig
   , llnwApiConfig
-  , loadMonitorConfig
   , healthConfig
   , mergeOverrides
   ) where
 
 import Prelude
 
-import Control.Monad.Except (ExceptT, runExcept)
-import Data.Either (Either(..), hush)
+import Control.Monad.Except (ExceptT, except, runExcept)
+import Data.Either (Either(..), hush, note)
 import Data.Identity (Identity)
-import Data.Maybe (Maybe, fromMaybe, fromMaybe')
+import Data.List.NonEmpty (singleton)
+import Data.Maybe (Maybe(..), fromMaybe, fromMaybe')
 import Data.Traversable (traverse)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
-import Erl.Data.List (List, singleton)
-import Foreign (F, Foreign, readString, unsafeReadTagged)
-import Logger (Logger)
+import Erl.Data.List (List, nil, (:))
+import Erl.Data.Tuple (Tuple2, tuple2)
+import Erl.Utils (base64Encode)
+import Foreign (F, Foreign, ForeignError(..), readString, unsafeReadTagged)
 import Logger as Logger
 import Partial.Unsafe (unsafeCrashWith)
-import Rtsv2.Node as Node
-import Shared.Agent (Agent, strToAgent)
-import Shared.Stream (AgentKey, AggregatorKey(..))
-import Shared.Types (Server)
+import Rtsv2.LoadTypes as LoadTypes
+import Shared.Rtsv2.Agent (Agent, SlotCharacteristics, strToAgent)
+import Shared.Rtsv2.Stream (AgentKey)
+import Shared.Rtsv2.Types (Server)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (class ReadForeign, readImpl)
 
+type LoadConfig
+  = { loadAnnounceMs :: Int
+    , monitorLoad :: Boolean
+    , limits :: LoadTypes.LoadLimits
+    , costs :: LoadTypes.LoadCosts
+    }
+
+type FeatureFlags
+  = { mediaGateway :: MediaGatewayFlag
+    }
+
+data MediaGatewayFlag
+  = Off
+  | On
+  | External
+
+instance readForeignMediaGatewayFlag :: ReadForeign MediaGatewayFlag where
+  readImpl =
+    readString >=> parse
+    where
+      error s = singleton (ForeignError (errorString s))
+      parse s = except $ note (error s) (toType s)
+      toType "off" = pure Off
+      toType "on" = pure On
+      toType "external" = pure External
+      toType unknown = Nothing
+      errorString s = "Unknown Media Gateway Flag: " <> s
 
 -- TODO - config should include BindIFace or BindIp
 type WebConfig = { port :: Int }
@@ -68,6 +101,9 @@ type PoPDefinitionConfig
 
 type IngestInstanceConfig
   = { eqLogIntervalMs :: Int
+    , aggregatorRetryTimeMs :: Int
+    , qosPollIntervalMs :: Int
+    , abortIfNoMediaMs :: Int
     }
 
 type IngestAggregatorAgentConfig
@@ -82,6 +118,8 @@ type EgestAgentConfig
   = { eqLogIntervalMs :: Int
     , lingerTimeMs :: Int
     , relayCreationRetryMs :: Int
+    , reserveForPotentialNumClients :: Int
+    , decayReserveMs :: Int
     }
 
 type IntraPoPAgentConfig
@@ -109,14 +147,19 @@ type TransPoPAgentConfig
     , replayMessagesOnJoin :: Boolean
     }
 
+type StreamRelayConfig
+  = { lingerTimeMs :: Int
+    , reApplyPlanTimeMs :: Int
+    }
+
 type IntraPoPAgentApi
-  = { announceOtherPoPAggregatorIsAvailable :: AgentKey -> Server -> Effect Unit
+  = { announceOtherPoPAggregatorIsAvailable :: SlotCharacteristics -> AgentKey -> Server -> Effect Unit
     , announceOtherPoPAggregatorStopped :: AgentKey -> Server -> Effect Unit
     , announceTransPoPLeader :: Effect Unit
     }
 
 type TransPoPAgentApi
-  = { announceAggregatorIsAvailable :: AgentKey -> Server -> Effect Unit
+  = { announceAggregatorIsAvailable :: SlotCharacteristics -> AgentKey -> Server -> Effect Unit
     , announceAggregatorStopped :: AgentKey -> Server -> Effect Unit
     , handleRemoteLeaderAnnouncement :: Server -> Effect Unit
     }
@@ -131,11 +174,17 @@ type LlnwApiConfig
   = { streamAuthTypeUrl :: String
     , streamAuthUrl :: String
     , streamPublishUrl :: String
+    , slotLookupUrl :: String
+    , headers :: List (Tuple2 String String)
     }
 
-type LoadMonitorConfig
-  = {loadAnnounceMs :: Int}
-
+type LlnwApiConfigInternal
+  = { streamAuthTypeUrl :: String
+    , streamAuthUrl :: String
+    , streamPublishUrl :: String
+    , slotLookupUrl :: String
+    , useBasicAuth :: Maybe String
+    }
 
 type HealthConfig
   = { thresholds :: { perfect :: Int
@@ -153,6 +202,14 @@ foreign import mergeOverrides :: Effect Foreign
 appName :: String
 appName = "rtsv2"
 
+loadConfig :: Effect LoadConfig
+loadConfig = do
+  getMandatoryRecord "loadConfig"
+
+featureFlags :: Effect FeatureFlags
+featureFlags = do
+  getMandatoryRecord "featureFlags"
+
 webConfig :: Effect WebConfig
 webConfig = do
   config <- getMandatory (unsafeReadTagged "map") "httpApiConfig"
@@ -167,10 +224,6 @@ configuredAgents :: Effect (List Agent)
 configuredAgents = do
   agentStrings <- getMandatory (readList >=> traverse readString) "agents"
   pure $ strToAgent <$> agentStrings
-
-nodeConfig :: Effect Node.Config
-nodeConfig = do
-  getMandatoryRecord "nodeConfig"
 
 popDefinitionConfig :: Effect PoPDefinitionConfig
 popDefinitionConfig = do
@@ -188,6 +241,10 @@ transPoPAgentConfig = do
 ingestAggregatorAgentConfig :: Effect IngestAggregatorAgentConfig
 ingestAggregatorAgentConfig = do
   getMandatoryRecord "ingestAggregatorConfig"
+
+streamRelayConfig :: Effect StreamRelayConfig
+streamRelayConfig = do
+  getMandatoryRecord "streamRelayConfig"
 
 ingestStatsConfig :: Effect IngestStatsConfig
 ingestStatsConfig = do
@@ -207,12 +264,25 @@ rtmpIngestConfig = do
 
 llnwApiConfig :: Effect LlnwApiConfig
 llnwApiConfig = do
-  getMandatoryRecord "llnwApiConfig"
+  (internal :: LlnwApiConfigInternal) <- getMandatoryRecord "llnwApiConfig"
+  let
+    { streamAuthTypeUrl
+    , streamAuthUrl
+    , streamPublishUrl
+    , slotLookupUrl
+    , useBasicAuth } = internal
 
-loadMonitorConfig :: Effect LoadMonitorConfig
-loadMonitorConfig = do
-  getMandatoryRecord "loadMonitorConfig"
-
+    external = { streamAuthTypeUrl
+               , streamAuthUrl
+               , streamPublishUrl
+               , slotLookupUrl
+               , headers : case useBasicAuth of
+                             Nothing -> nil
+                             Just auth ->
+                               let headerValue = "Basic " <> base64Encode auth
+                               in (tuple2 "Authorization" headerValue) : nil
+               }
+  pure external
 
 healthConfig :: Effect HealthConfig
 healthConfig = do
@@ -242,22 +312,3 @@ getMandatoryRecord v = do
         unsafeCrashWith ("invalid_config " <> v)
     Right ok ->
       pure $ ok
-
-
---------------------------------------------------------------------------------
--- Log helpers
---------------------------------------------------------------------------------
-domains :: List Atom
-domains = atom "Config" # singleton
-
---logInfo :: forall a. Logger a
---logInfo = domainLog Logger.info
-
---logWarning :: forall a. Logger a
---logWarning = domainLog Logger.warning
-
-logError :: forall a. Logger a
-logError = domainLog Logger.warning
-
-domainLog :: forall a. Logger {domain :: List Atom, misc :: a} -> Logger a
-domainLog = Logger.doLog domains

@@ -7,6 +7,7 @@
         , privDirImpl/1
         , eqRefImpl/2
         , selfImpl/0
+        , monitorImpl/1
         , trapExitImpl/1
         , mapExitReasonImpl/1
         , exitMessageMapperImpl/1
@@ -14,6 +15,8 @@
         , refToStringImpl/1
         , stringToRefImpl/1
         , exitImpl/1
+        , readTuple2Impl/1
+        , base64EncodeImpl/1
         ]).
 
 
@@ -47,6 +50,29 @@ trapExitImpl(Value) ->
       process_flag(trap_exit, Value)
   end.
 
+monitorImpl(ToMonitor) ->
+  fun() ->
+      Pid = case ToMonitor of
+              P when is_pid(P) ->
+                P;
+              {via, Module, Name} ->
+                Module:whereis_name(Name);
+              {global, Name} ->
+                global:whereis_name(Name);
+              Name when is_atom(Name) ->
+                whereis(Name)
+            end,
+
+      case Pid of
+        undefined ->
+          %% DOWN
+          Ref = make_ref(),
+          self() ! {'DOWN', Ref, process, undefined, noproc};
+        _ ->
+          erlang:monitor(process, Pid)
+      end
+  end.
+
 mapExitReasonImpl(normal) -> {normal};
 mapExitReasonImpl({shutdown, Term}) -> {shutdown, Term};
 mapExitReasonImpl(Other) -> {other, Other}.
@@ -77,3 +103,11 @@ exitImpl(Reason) ->
   fun() ->
       exit(Reason)
   end.
+
+readTuple2Impl({A, B}) ->
+  {just, {A, B}};
+readTuple2Impl(_) ->
+  {nothing}.
+
+base64EncodeImpl(String) ->
+  base64:encode(String).
