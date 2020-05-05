@@ -3,7 +3,7 @@
 
 -include_lib("id3as_common/include/common.hrl").
 
--type uuid() ::  <<_:16>>.
+-type uuid() ::  <<_:128>>.
 
 -type slot_id() :: uuid().
 
