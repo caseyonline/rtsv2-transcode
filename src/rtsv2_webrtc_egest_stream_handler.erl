@@ -50,8 +50,20 @@ init(_Args = [ ParentPid, {egestKey, << SlotId:128/big-unsigned-integer >>, {Slo
         ReceiveSocket;
 
       _ ->
+        { AudioSSRC, VideoSSRC } =
+          case SlotRole of
+            primary ->
+              { ?make_audio_ssrc(?PROFILE_INDEX_RESERVED_EGEST, 0)
+              , ?make_video_ssrc(?PROFILE_INDEX_RESERVED_EGEST, 0)
+              };
+            backup ->
+              { ?make_audio_ssrc(?PROFILE_INDEX_RESERVED_EGEST, 1)
+              , ?make_video_ssrc(?PROFILE_INDEX_RESERVED_EGEST, 1)
+              }
+          end,
+
         {ok, ReceiveSocket} = gen_udp:open(0, [{recbuf, 100 * 1500}, {active, false}]),
-        ok = rtsv2_media_gateway_api:add_egest(SlotId, SlotRole, ReceiveSocket),
+        ok = rtsv2_media_gateway_api:add_egest(SlotId, SlotRole, ReceiveSocket, AudioSSRC, VideoSSRC),
         ReceiveSocket
     end,
 

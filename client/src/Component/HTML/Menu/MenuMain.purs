@@ -16,7 +16,7 @@ import Rtsv2App.Component.HTML.Menu.MainHelper (MenuState, closeSecondaryMenu, i
 import Rtsv2App.Component.HTML.Utils (css_, safeHref)
 import Rtsv2App.Data.Profile (Profile)
 import Rtsv2App.Data.Route (Route(..))
-import Shared.Types (PoPName)
+import Shared.Rtsv2.Types (PoPName)
 
 -------------------------------------------------------------------------------
 -- Types

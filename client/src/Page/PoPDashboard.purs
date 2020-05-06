@@ -40,9 +40,9 @@ import Rtsv2App.Data.PoP (PoPDefEcharts, timedRoutedToChartOps, timedRoutedToCha
 import Rtsv2App.Data.Profile (Profile)
 import Rtsv2App.Data.Route (Route(..))
 import Rtsv2App.Env (PoPDefEnv, UrlEnv, UserEnv, changeHtmlClass)
-import Shared.Stream (SlotRole(..))
-import Shared.Types (PoPName(..), Server)
-import Shared.Types.Agent.State (AggregatorLocation, IngestAggregator, PoPDefinition)
+import Shared.Rtsv2.Stream (SlotRole(..))
+import Shared.Rtsv2.Types (PoPName(..), Server)
+import Shared.Rtsv2.Agent.State (AggregatorLocation, IngestAggregator, PoPDefinition)
 
 -------------------------------------------------------------------------------
 -- Types for Dashboard Page

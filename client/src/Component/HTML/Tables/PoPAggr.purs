@@ -21,9 +21,9 @@ import Rtsv2App.Capability.Navigate (class Navigate)
 import Rtsv2App.Component.HTML.Utils (css_, dataAttr)
 import Rtsv2App.Component.Utils (Notification(..), NotificationContent, NotificationMessage(..), PoPAggrSelectedInfo)
 import Rtsv2App.Env (PoPDefEnv)
-import Shared.Stream (SlotId(..), SlotRole(..))
-import Shared.Types (PoPName(..), RegionName(..), Server(..), ServerAddress(..))
-import Shared.Types.Agent.State (AggregatorLocation, PoPDefinition)
+import Shared.Rtsv2.Stream (SlotId(..), SlotRole(..))
+import Shared.Rtsv2.Types (PoPName(..), RegionName(..), Server(..), ServerAddress(..))
+import Shared.Rtsv2.Agent.State (AggregatorLocation, PoPDefinition)
 import Shared.UUID as UUID
 
 -------------------------------------------------------------------------------

@@ -8,6 +8,7 @@
 -include_lib("id3as_media/include/frame.hrl").
 -include("../rtsv2_types.hrl").
 -include("../rtsv2_rtp.hrl").
+-include("../rtsv2_webrtc.hrl").
 
 
 -export([ notify_profile_switched/2 ]).
@@ -706,21 +707,21 @@ handle_data_object_send_message(#{ <<"msg">> := Message
                                                                            egest_key = Key
                                                                           , data_object_send_message = SendMessage
                                                                           } }) ->
-  PursMessageDestination = case Destination of
-                             #{ <<"tag">> := <<"publisher">> } -> {publisher};
-                             #{ <<"tag">> := <<"broadcast">> } -> {broadcast};
-                             #{ <<"tag">> := <<"private">>, <<"to">> :=  To } -> {private, To}
-                           end,
 
-  PursMessage = #{ sender => Id
-                 , destination => PursMessageDestination
-                 , msg => Message
-                 , ref => make_ref()
-                 },
+  try
+    PursMessage = endpoint_helpers:dataobject_message_to_purs(Id, Message, Destination),
 
-  ((SendMessage(Key))(PursMessage))(),
+    ((SendMessage(Key))(PursMessage))(),
 
-  {ok, State}.
+    {ok, State}
+  catch
+    _:_ ->
+      io:format(user, "Invalid Message: ~p ~p~n", [Message, Destination]),
+      { [ json_frame( <<"dataobject.message-failure">>,
+                      #{ } ) ]
+      , State
+      }
+  end.
 
 handle_data_object_update(#{ <<"operation">> := Operation,
                              <<"senderRef">> := SenderRef },
@@ -845,7 +846,7 @@ this_server_ip(Req) ->
   IP.
 
 
-construct_start_options(TraceId, IP, [ SlotProfile ] = SlotProfiles, #stream_desc_ingest{ use_media_gateway = UseMediaGateway }) ->
+construct_start_options(TraceId, IP, [ SlotProfile ] = SlotProfiles, #stream_desc_ingest{ slot_id = SlotId, slot_role = SlotRole, use_media_gateway = UseMediaGateway }) ->
 
   #{ firstAudioSSRC := AudioSSRC
    , firstVideoSSRC := VideoSSRC
@@ -854,7 +855,16 @@ construct_start_options(TraceId, IP, [ SlotProfile ] = SlotProfiles, #stream_des
   #{ session_id => TraceId
    , local_address => IP
    , handler_module => rtsv2_webrtc_session_handler
-   , handler_args => [ TraceId, SlotProfiles, self(), AudioSSRC, VideoSSRC, UseMediaGateway ]
+   , handler_args =>
+       #rtsv2_webrtc_session_handler_config{ session_id = TraceId
+                                           , slot_id = SlotId
+                                           , slot_role = SlotRole
+                                           , profiles = SlotProfiles
+                                           , web_socket = self()
+                                           , audio_ssrc = AudioSSRC
+                                           , video_ssrc = VideoSSRC
+                                           , use_media_gateway = UseMediaGateway
+                                           }
 
      %% TODO: from config
    , ice_options => #{ resolution_disabled => false
@@ -878,14 +888,30 @@ construct_start_options(TraceId, IP, [ SlotProfile ] = SlotProfiles, #stream_des
        end
    };
 
-construct_start_options(TraceId, IP, SlotProfiles, #stream_desc_egest{ audio_ssrc = AudioSSRC
-                                                                     , video_ssrc = VideoSSRC
-                                                                     , use_media_gateway = UseMediaGateway }) ->
+construct_start_options(TraceId,
+                        IP,
+                        SlotProfiles,
+                        #stream_desc_egest{ slot_id = SlotId
+                                          , slot_role = SlotRole
+                                          , audio_ssrc = AudioSSRC
+                                          , video_ssrc = VideoSSRC
+                                          , use_media_gateway = UseMediaGateway
+                                          }
+                       ) ->
 
   #{ session_id => TraceId
    , local_address => IP
    , handler_module => rtsv2_webrtc_session_handler
-   , handler_args => [ TraceId, SlotProfiles, self(), AudioSSRC, VideoSSRC, UseMediaGateway ]
+   , handler_args =>
+       #rtsv2_webrtc_session_handler_config{ session_id = TraceId
+                                           , slot_id = SlotId
+                                           , slot_role = SlotRole
+                                           , profiles = SlotProfiles
+                                           , web_socket = self()
+                                           , audio_ssrc = AudioSSRC
+                                           , video_ssrc = VideoSSRC
+                                           , use_media_gateway = UseMediaGateway
+                                           }
 
      %% TODO: from config
    , ice_options => #{ resolution_disabled => false

@@ -1,4 +1,3 @@
-
 -module(rtsv2_webrtc_session_handler).
 
 -behaviour(webrtc_session_handler).
@@ -16,6 +15,8 @@
 -include_lib("id3as_rtc/include/rtp_engine.hrl").
 -include_lib("id3as_rtc/include/webrtc.hrl").
 -include("./rtsv2_rtp.hrl").
+-include("./rtsv2_types.hrl").
+-include("./rtsv2_webrtc.hrl").
 -include("./rtsv2_media_gateway_api.hrl").
 
 -define(state, ?MODULE).
@@ -38,6 +39,8 @@
         { session_id
         , profiles
         , web_socket
+        , slot_id :: slot_id()
+        , slot_role :: slot_role()
 
         , desired_state = undefined
 
@@ -54,9 +57,22 @@ set_active_profile(ServerId, TraceId, ProfileName) ->
   webrtc_stream_server:cast_session(ServerId, TraceId, {set_active_profile, ProfileName}).
 
 
-init([ SessionId, [ #{ name := ActiveProfileName } | _ ] = Profiles, WebSocket, AudioSSRC, VideoSSRC, UseMediaGateway ]) ->
+init(#rtsv2_webrtc_session_handler_config{ session_id = SessionId
+                                         , slot_id = SlotId
+                                         , slot_role = SlotRole
+                                         , profiles = [ #{ name := ActiveProfileName } | _ ] = Profiles
+                                         , web_socket = WebSocket
+                                         , audio_ssrc = AudioSSRC
+                                         , video_ssrc = VideoSSRC
+                                         , use_media_gateway = UseMediaGateway
+                                         }
+     ) ->
+
   ?DEBUG("Session handler started for session ~p in profile ~p", [SessionId, ActiveProfileName]),
+
   State1 = #?state{ session_id = SessionId
+                  , slot_id = SlotId
+                  , slot_role = SlotRole
                   , profiles = Profiles
                   , web_socket = WebSocket
                   , audio_state = #egest_stream_state{ egest_ssrc = AudioSSRC }
@@ -79,23 +95,29 @@ handle_media_frame(#rtp_engine_msg{message = _RTPEngineState}, State) ->
   %% Ignore PLIs et al
   {ok, State};
 
-handle_media_frame(#webrtc_media_channel_message{ message = #webrtc_media_channel_ready{ channel_type = audio, media_socket = Socket, egest_crypto = EgestCrypto } }, #?state{} = State) ->
+handle_media_frame(#webrtc_media_channel_message{ message = #webrtc_media_channel_ready{ channel_type = audio, media_socket = Socket, egest_crypto = EgestCrypto } },
+                   #?state{ session_id = SessionId } = State
+                  ) ->
 
   NewState =
     State#?state{ audio_stream_element_config =
                     #media_gateway_stream_element_config{ media_socket = Socket
                                                         , egest_crypto = EgestCrypto
+                                                        , cname = SessionId
                                                         }
                 },
 
   maybe_add_to_media_gateway(NewState);
 
-handle_media_frame(#webrtc_media_channel_message{ message = #webrtc_media_channel_ready{ channel_type = video, media_socket = Socket, egest_crypto = EgestCrypto } }, #?state{} = State) ->
+handle_media_frame(#webrtc_media_channel_message{ message = #webrtc_media_channel_ready{ channel_type = video, media_socket = Socket, egest_crypto = EgestCrypto } },
+                   #?state{ session_id = SessionId } = State
+                  ) ->
 
   NewState =
     State#?state{ video_stream_element_config =
                     #media_gateway_stream_element_config{ media_socket = Socket
                                                         , egest_crypto = EgestCrypto
+                                                        , cname = SessionId
                                                         }
                 },
 
@@ -279,7 +301,9 @@ maybe_add_to_media_gateway(#?state{ audio_stream_element_config = undefined } = 
 maybe_add_to_media_gateway(#?state{ video_stream_element_config = undefined } = State) ->
   {ok, State};
 
-maybe_add_to_media_gateway(#?state{ audio_stream_element_config = AudioStreamElementConfig
+maybe_add_to_media_gateway(#?state{ slot_id = <<SlotId:128/big-integer>>
+                                  , slot_role = { SlotRole }
+                                  , audio_stream_element_config = AudioStreamElementConfig
                                   , video_stream_element_config = VideoStreamElementConfig
                                   } = State) ->
 
@@ -288,6 +312,7 @@ maybe_add_to_media_gateway(#?state{ audio_stream_element_config = AudioStreamEle
                                       , video = VideoStreamElementConfig
                                       },
 
-  rtsv2_media_gateway_api:add_egest_client(1, primary, 0, Config),
+  %% TODO: we need a client id!
+  rtsv2_media_gateway_api:add_egest_client(SlotId, SlotRole, 0, Config),
 
   {ok, State}.

@@ -31,8 +31,8 @@ import Global (readFloat)
 import Rtsv2App.Capability.Resource.Api (class ManageApi, getServerState)
 import Rtsv2App.Env (PoPDefEnv)
 import Shared.JsonLd as JsonLd
-import Shared.Types (GeoLoc(..), LeaderGeoLoc, PoPName, Server(..), ServerAddress)
-import Shared.Types.Agent.State (AggregatorLocation, IntraPoP, PoP, PoPDefinition, TimedPoPRoutes)
+import Shared.Rtsv2.Types (GeoLoc(..), LeaderGeoLoc, PoPName, Server(..), ServerAddress)
+import Shared.Rtsv2.Agent.State (AggregatorLocation, IntraPoP, PoP, PoPDefinition, TimedPoPRoutes)
 
 
 type PoPDefEcharts =

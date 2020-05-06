@@ -344,7 +344,6 @@ getIdleServer pred = Gen.doCall serverName
       if LoadTypes.canLaunch $ pred thisServerLoad
       then pure $ CallReply (Right $ Local thisServer) state
       else do
-        _ <- logInfo "here with" {members: values members}
         let
           candidates = values members
                        # filterMap (\memberInfo@{server} ->

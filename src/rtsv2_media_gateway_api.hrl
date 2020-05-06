@@ -7,6 +7,7 @@
 -record(media_gateway_stream_element_config,
         { media_socket :: gen_udp:socket()
         , egest_crypto :: srtp_crypto_params()
+        , cname :: binary_string()
         }).
 -type media_gateway_stream_element_config() :: #media_gateway_stream_element_config{}.
 

@@ -17,7 +17,7 @@ import Rtsv2App.Component.HTML.Menu.MenuSecondary as MS
 import Rtsv2App.Data.Profile (Profile)
 import Rtsv2App.Data.Route (Route)
 import Rtsv2App.Env (PoPDefEnv)
-import Shared.Types (PoPName(..))
+import Shared.Rtsv2.Types (PoPName(..))
 
 -------------------------------------------------------------------------------
 -- Types

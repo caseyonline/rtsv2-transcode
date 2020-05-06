@@ -20,8 +20,13 @@ import Rtsv2App.Component.HTML.Utils (css_, safeHref)
 import Rtsv2App.Data.Profile (Profile)
 import Rtsv2App.Data.Route (Route(..))
 import Rtsv2App.Env (PoPDefEnv)
-import Shared.Types (PoPName(..), RegionName(..))
-import Shared.Types.Agent.State (PoPDefinition, PoP)
+import Shared.Rtsv2.Types (PoPName(..), RegionName(..))
+import Shared.Rtsv2.Agent.State (PoPDefinition, PoP)
+import Web.DOM.Element (className, setClassName) as DOM
+import Web.DOM.NonElementParentNode (getElementById) as DOM
+import Web.HTML (window) as HTML
+import Web.HTML.HTMLDocument (toNonElementParentNode) as HTML
+import Web.HTML.Window (document) as HTML
 
 data Action
   = LogUserOut

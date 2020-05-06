@@ -6,8 +6,8 @@ import Data.Either (Either)
 import Data.Maybe (Maybe)
 import Halogen (HalogenM, lift)
 import Rtsv2App.Component.Utils (SlotDetailsArgs, PoPAggrSelectedInfo)
-import Shared.Types (PoPName, ServerAddress)
-import Shared.Types.Agent.State (IntraPoP, PoPDefinition, TimedPoPRoutes, IngestAggregator)
+import Shared.Rtsv2.Types (PoPName, ServerAddress)
+import Shared.Rtsv2.Agent.State (IntraPoP, PoPDefinition, TimedPoPRoutes, IngestAggregator)
 
 class Monad m <= ManageApi m where
   getAggregatorDetails :: SlotDetailsArgs -> m (Either String (IngestAggregator Array))

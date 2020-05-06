@@ -36,8 +36,8 @@ import Rtsv2App.Data.PoP (PoPDefEcharts, updatePoPDefEnv)
 import Rtsv2App.Data.Profile (Profile)
 import Rtsv2App.Data.Route (Route(..))
 import Rtsv2App.Env (PoPDefEnv, UrlEnv, UserEnv, changeHtmlClass)
-import Shared.Types (Server)
-import Shared.Types.Agent.State (PoPDefinition, AggregatorLocation)
+import Shared.Rtsv2.Types (Server)
+import Shared.Rtsv2.Agent.State (PoPDefinition, AggregatorLocation)
 
 -------------------------------------------------------------------------------
 -- Types for Dashboard Page
