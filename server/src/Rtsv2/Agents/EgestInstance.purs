@@ -403,13 +403,14 @@ removeClient state@{clientCount} = do
 egestEqLines :: State -> Effect (Tuple Milliseconds (List Audit.EgestEqLine))
 egestEqLines state@{ egestKey: egestKey@(EgestKey slotId _slotRole)
                    , thisServer: (Egest {address: thisServerAddr})
-                   , lastEgestAuditTime: startMs} = do
+                   , lastEgestAuditTime: startMs
+                   , slotConfiguration} = do
   endMs <- systemTimeMs
   {sessionInfo} <- getStatsFFI egestKey
-  pure $ Tuple endMs ((egestEqLine slotId (unwrap thisServerAddr) startMs endMs) <$> values sessionInfo)
+  pure $ Tuple endMs ((egestEqLine slotId slotConfiguration (unwrap thisServerAddr) startMs endMs) <$> values sessionInfo)
 
-egestEqLine :: SlotId -> String -> Milliseconds -> Milliseconds -> WebRTCSessionManagerStats -> Audit.EgestEqLine
-egestEqLine slotId thisServerAddr startMs endMs {channels} =
+egestEqLine :: SlotId -> Maybe SlotConfiguration -> String -> Milliseconds -> Milliseconds -> WebRTCSessionManagerStats -> Audit.EgestEqLine
+egestEqLine slotId slotConfiguration thisServerAddr startMs endMs {channels} =
   let
     receiverAccumulate acc {lostTotal} = acc + lostTotal
 
@@ -423,12 +424,15 @@ egestEqLine slotId thisServerAddr startMs endMs {channels} =
       }
 
     {writtenAcc, readAcc, lostAcc, remoteAddress} = foldl channelAccumulate channelInitial (values channels)
+
+    shortName = fromMaybe (wrap "n/a") (_.rtmpShortName <$> slotConfiguration)
   in
 
   { egestIp: thisServerAddr
   , egestPort: -1
   , subscriberIp: remoteAddress
   , username: "n/a" -- TODO
+  , rtmpShortName: shortName
   , slotId
   , connectionType: WebRTC
   , startMs
