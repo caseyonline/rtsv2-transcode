@@ -95,3 +95,4 @@ exports.init_ = function() {
         e.currentTarget.closest('.notification').classList.add('is-hidden')
       })
     })
+};
