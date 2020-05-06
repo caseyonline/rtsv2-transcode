@@ -221,7 +221,6 @@ registerIngest slotId slotRole profileName ingestAddress handler@(Process handle
         Left unit ->
           pure $ CallReply false state
         Right state2 -> do
-          Gen.monitorPid thisServerName handlerPid (\_ -> IngestDown profileName ingestAddress isLocal)
           pure $ CallReply true state2
   )
   where
@@ -809,7 +808,7 @@ sendActiveProfiles state = do
   sendDownstream state (CurrentActiveProfiles activeProfiles)
 
 doAddLocalIngest :: ProfileName -> IngestProcess -> State -> Effect (Either Unit State)
-doAddLocalIngest profileName handler state@{thisServer, workflowHandle, slotId, slotRole} =
+doAddLocalIngest profileName handler@(Process handlerPid) state@{thisServer, workflowHandle, slotId, slotRole, aggregatorKey} =
   let
     isInactive = checkProfileInactive profileName state
   in
@@ -820,14 +819,16 @@ doAddLocalIngest profileName handler state@{thisServer, workflowHandle, slotId, 
       updateCachedState state2
       sendActiveProfiles state2
       addLocalIngestImpl workflowHandle (IngestKey slotId slotRole profileName)
+      Gen.monitorPid thisServerName handlerPid (\_ -> IngestDown profileName (extractAddress thisServer) true)
       pure $ Right state2
     else do
       logInfo "Local Ingest rejected due to existing ingest" {slotId, slotRole, profileName}
       pure $ Left unit
+  where
+    thisServerName = serverName aggregatorKey
 
 doAddRemoteIngest :: ProfileName -> IngestProcess -> ServerAddress -> State -> Effect (Either Unit State)
-doAddRemoteIngest profileName handler ingestAddress state@{slotId, slotRole, workflowHandle} =
-  -- todo - monitor ingest
+doAddRemoteIngest profileName handler@(Process handlerPid) ingestAddress state@{slotId, slotRole, aggregatorKey, workflowHandle} =
   let
     isInactive = checkProfileInactive profileName state
   in
@@ -839,10 +840,13 @@ doAddRemoteIngest profileName handler ingestAddress state@{slotId, slotRole, wor
       updateCachedState state2
       sendActiveProfiles state2
       addRemoteIngestImpl workflowHandle (IngestKey slotId slotRole profileName) (unwrap url)
+      Gen.monitorPid thisServerName handlerPid (\_ -> IngestDown profileName ingestAddress false)
       pure $ Right state2
     else do
       logInfo "Remote Ingest rejected due to existing ingest" {slotId, slotRole, profileName}
       pure $ Left unit
+  where
+    thisServerName = serverName aggregatorKey
 
 doRegisterRelay :: (DeliverTo RelayServer) -> RelayProcess -> State -> Effect State
 doRegisterRelay deliverTo@{server} handler@(Process handlerPid) state@{slotId, slotRole, workflowHandle} = do

@@ -33,8 +33,9 @@ import Erl.Data.List (List, nil, (:))
 import Erl.Data.Tuple (Tuple2, tuple2)
 import Erl.Utils (Ref, makeRef, privDir, self, sleep, systemTimeMs, trapExit, vmTimeMs) as Erl
 import Foreign (Foreign, MultipleErrors)
+import Logger (spy)
 import Prim.Row (class Union)
-import Shared.Common (Milliseconds,  Url)
+import Shared.Common (Milliseconds, Url)
 import Simple.JSON (class ReadForeign, class WriteForeign, writeJSON)
 import Simple.JSON as JSON
 
@@ -68,7 +69,7 @@ data SpudResponse = SpudResponse StatusCode Headers Body
 type SpudResult = Either SpudError SpudResponse
 
 data JsonResponseError = SpudError SpudError
-                       | JsonError MultipleErrors
+                       | JsonError String MultipleErrors
 
 type RequestErrorFun = Foreign -> SpudResult
 type ResponseErrorFun = Int -> Headers -> String -> SpudResult
@@ -161,7 +162,7 @@ bodyToString = map (\(SpudResponse _ _ b) -> unwrap b)
 
 bodyToJSON :: forall a. ReadForeign a => SpudResult -> Either JsonResponseError a
 bodyToJSON result =
-  (lmap JsonError <<< JSON.readJSON) =<< (toBody <$> (lmap SpudError result))
+  (\s -> (lmap (JsonError s)) $ JSON.readJSON s) =<< (toBody <$> (lmap SpudError result))
   where
     toBody (SpudResponse _ _ b) = unwrap b
 

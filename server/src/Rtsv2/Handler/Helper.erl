@@ -7,5 +7,5 @@
 webSocketMsgMapperImpl({'DOWN', _Ref, process, _, _Reason}) ->
   {just, {'wsStop'}};
 
-webSocketMsgMapperImpl(_) ->
+webSocketMsgMapperImpl(_Other) ->
   {nothing}.
