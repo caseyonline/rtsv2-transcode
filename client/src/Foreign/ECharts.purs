@@ -11,7 +11,7 @@ import Halogen as H
 import Prim.Row as Row
 import Record as Record
 import Rtsv2App.Data.PoP (PoPDefEcharts)
-import Shared.Types (PoPName, LeaderGeoLoc)
+import Shared.Rtsv2.Types (PoPName, LeaderGeoLoc)
 import Unsafe.Coerce (unsafeCoerce)
 import Web.DOM.ParentNode (QuerySelector(..), querySelector)
 import Web.HTML (HTMLElement, window)

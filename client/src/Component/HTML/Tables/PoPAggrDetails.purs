@@ -16,10 +16,10 @@ import Rtsv2App.Capability.Navigate (class Navigate)
 import Rtsv2App.Component.Utils (PoPAggrSelectedInfo)
 import Rtsv2App.Component.HTML.Utils (css_, dataAttr)
 import Rtsv2App.Env (PoPDefEnv)
-import Shared.LlnwApiTypes (SlotProfile(..))
+import Shared.Rtsv2.LlnwApiTypes (SlotProfile(..))
 import Shared.Rtsv2.JsonLd (unwrapNode)
-import Shared.Stream (ProfileName(..), RtmpStreamName(..))
-import Shared.Types.Agent.State (IngestAggregator)
+import Shared.Rtsv2.Stream (ProfileName(..), RtmpStreamName(..))
+import Shared.Rtsv2.Agent.State (IngestAggregator)
 
 -------------------------------------------------------------------------------
 -- Types

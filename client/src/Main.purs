@@ -24,8 +24,8 @@ import Rtsv2App.AppM (runAppM)
 import Rtsv2App.Component.Router as Router
 import Rtsv2App.Data.Route (routeCodec)
 import Rtsv2App.Env (AuthUrl(..), CurHostUrl(..), Env, LogLevel(..), UrlEnv, UserEnv, PoPDefEnv, getCurOrigin)
-import Shared.Router.Endpoint (Endpoint(..))
-import Shared.Types.Agent.State (PoPDefinition)
+import Shared.Rtsv2.Router.Endpoint (Endpoint(..))
+import Shared.Rtsv2.Agent.State (PoPDefinition)
 
 
 main :: Effect Unit
