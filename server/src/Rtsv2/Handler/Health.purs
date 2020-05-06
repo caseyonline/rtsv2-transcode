@@ -13,6 +13,7 @@ import Erl.Data.List (nil, (:))
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.TransPoP as TransPoP
 import Rtsv2.Handler.MimeType as MimeType
+import Rtsv2.Load as Load
 import Shared.Rtsv2.Types (extractAddress)
 import Simple.JSON as JSON
 import Stetson (StetsonHandler)
@@ -29,9 +30,11 @@ healthCheck =
       currentTransPoP <- IntraPoP.getCurrentTransPoPLeader
       intraPoPHealth <- IntraPoP.health
       transPoPHealth <- TransPoP.health
+      load <- Load.getLoad
       let
         result = {intraPoPHealth,
                   transPoPHealth,
+                  load,
                   currentTransPoP : maybe (wrap "") extractAddress currentTransPoP}
       Rest.result (JSON.writeJSON result) req state
 
