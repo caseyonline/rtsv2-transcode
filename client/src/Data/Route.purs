@@ -7,8 +7,8 @@ import Data.Generic.Rep.Show (genericShow)
 import Routing.Duplex (RouteDuplex', root, segment)
 import Routing.Duplex.Generic (noArgs, sum)
 import Routing.Duplex.Generic.Syntax ((/))
-import Shared.Router.Endpoint (popName)
-import Shared.Types (PoPName)
+import Shared.Rtsv2.Router.Endpoint (popName)
+import Shared.Rtsv2.Types (PoPName)
 
 
 -------------------------------------------------------------------------------

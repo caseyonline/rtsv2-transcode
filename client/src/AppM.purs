@@ -28,8 +28,8 @@ import Rtsv2App.Data.Log as Log
 import Rtsv2App.Data.Profile (ProfileEmailRes)
 import Rtsv2App.Data.Route as Route
 import Rtsv2App.Env (Env, LogLevel(..))
-import Shared.Router.Endpoint (Endpoint(..))
-import Shared.Types.Agent.State (IntraPoP, PoPDefinition, TimedPoPRoutes, IngestAggregator)
+import Shared.Rtsv2.Router.Endpoint (Endpoint(..))
+import Shared.Rtsv2.Agent.State (IntraPoP, PoPDefinition, TimedPoPRoutes, IngestAggregator)
 import Simple.JSON as JSON
 import Type.Equality (class TypeEquals, from)
 

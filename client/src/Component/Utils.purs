@@ -19,8 +19,8 @@ import Effect.Aff.Bus as Bus
 import Effect.Aff.Class (class MonadAff)
 import Halogen as H
 import Halogen.Query.EventSource as ES
-import Shared.Stream (SlotId, SlotRole)
-import Shared.Types (PoPName, ServerAddress)
+import Shared.Rtsv2.Stream (SlotId, SlotRole)
+import Shared.Rtsv2.Types (PoPName, ServerAddress)
 import Data.Maybe (Maybe)
 
 -------------------------------------------------------------------------------

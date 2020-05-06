@@ -18,7 +18,7 @@ import Rtsv2App.Capability.LogMessages (class LogMessages, logError)
 import Rtsv2App.Capability.Now (class Now)
 import Rtsv2App.Data.Profile (Profile)
 import Rtsv2App.Env (UrlEnv, UserEnv)
-import Shared.Types (ServerAddress)
+import Shared.Rtsv2.Types (ServerAddress)
 import Unsafe.Coerce (unsafeCoerce)
 
 

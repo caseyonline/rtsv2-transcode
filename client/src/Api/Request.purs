@@ -38,7 +38,7 @@ import Rtsv2App.Data.Email (Email)
 import Rtsv2App.Data.Profile (ProfileRep, Profile)
 import Rtsv2App.Data.Username (Username)
 import Rtsv2App.Env (UrlEnv)
-import Shared.Router.Endpoint (Endpoint(..), endpoint)
+import Shared.Rtsv2.Router.Endpoint (Endpoint(..), endpoint)
 import Simple.JSON (class ReadForeign, class WriteForeign)
 import Simple.JSON as JSON
 import Web.HTML (window)

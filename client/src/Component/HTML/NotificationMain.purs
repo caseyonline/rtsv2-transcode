@@ -5,15 +5,11 @@ import Prelude
 
 import Data.Array (deleteAt, mapWithIndex)
 import Data.Const (Const)
-import Data.Function (flip)
 import Data.Maybe (Maybe(..))
 import Data.Symbol (SProxy(..))
-import Debug.Trace (traceM)
 import Effect.Aff.Class (class MonadAff)
 import Halogen as H
 import Halogen.HTML as HH
-import Halogen.HTML.Events as HE
-import Halogen.HTML.Properties as HP
 import Rtsv2App.Component.Utils (Notification, NotificationContent, NotificationMessage(..))
 import Rtsv2App.Component.HTML.NotificationDialog (Message(..))
 import Rtsv2App.Component.HTML.NotificationDialog as ND
