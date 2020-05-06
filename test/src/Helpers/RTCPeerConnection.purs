@@ -1,4 +1,4 @@
-module RTCPeerConnection
+module Helpers.RTCPeerConnection
        ( getVideoStats
        , getAudioStats
        , VideoRTCPeerConnectionStats(..)
