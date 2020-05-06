@@ -24,8 +24,10 @@
 -endif.
 -include("../../../../src/rtsv2_slot_media_source_publish_processor.hrl").
 -include("../../../../src/rtsv2_rtp.hrl").
--include("../../../../src/rtsv2_slot_profiles.hrl").
--include("../../../../src/rtsv2_internal_hls_writer.hrl").
+-include("../../../../src/gop_measurer.hrl").
+-include("../../../../src/rtsv2_hls_segment_workflow.hrl").
+
+-include("../../../../src/rtsv2_master_playlist_processor.hrl").
 
 -export([
          startWorkflowImpl/2,
@@ -133,8 +135,7 @@ startWorkflow(SlotConfiguration = #{ slotId := SlotId
                                                  profile = #audio_profile{
                                                               codec = aac,
                                                               sample_rate = 48000,
-                                                              sample_format = s16,
-                                                              codec_profile_level = #codec_profile_level{profile = main, level = 3.0}
+                                                              sample_format = s16
                                                              }
                                                 }
                                 }
@@ -180,17 +181,26 @@ startWorkflow(SlotConfiguration = #{ slotId := SlotId
                                          module = gop_numberer
                                         },
 
-
-                              #processor{name = master_hls_playlists,
-                                         display_name = <<"Publish Master HLS Playlists">>,
-                                         subscribes_to = {gop_numberer, ?program_details_frames},%% who knows
-                                         module = rtsv2_hls_master_playlist_processor,
-                                         config = #hls_master_playlist_processor_config{
-                                           slot_id = SlotId,
-                                           profiles = Profiles,
-                                           push_details = PushDetails
-                                         }
+                              #processor{name = gop_measurer,
+                                        subscribes_to = ?previous,
+                                        module = gop_measurer
                                         },
+
+                              ?include_if(PushDetails /= [],
+                                #processor{name = master_hls_playlists,
+                                          display_name = <<"Publish Master HLS Playlists">>,
+                                          subscribes_to = [
+                                              {gop_numberer, ?audio_frames},
+                                              {gop_numberer, ?video_frames}
+                                          ],
+                                          module = rtsv2_hls_master_playlist_processor,
+                                          config = #hls_master_playlist_processor_config{
+                                              slot_id = SlotId,
+                                              profiles = Profiles,
+                                              push_details = PushDetails
+                                            }
+                                          }
+                              ),
 
                               lists:map(fun(Profile = #{ ingestKey := IngestKey
                                                        , streamName := StreamName
@@ -205,10 +215,27 @@ startWorkflow(SlotConfiguration = #{ slotId := SlotId
                                                display_name = <<ProfileName/binary, " (receiving from ", StreamName/binary, ")">>,
                                                spec = #processor_spec{consumes = [?audio_frames, ?video_frames]},
                                                subscribes_to = [{gop_numberer, ?audio_frames_with_source_id(ProfileName)},
-                                                                {gop_numberer, ?video_frames_with_source_id(ProfileName)}],
+                                                                {gop_numberer, ?video_frames_with_source_id(ProfileName)}]
+                                                                ++ case PushDetails of [] -> [];
+                                                                                       _  -> [ {gop_measurer, ?gop_measurements_with_sourceid(ProfileName)} ]
+                                                                   end,
+
                                                processors = [
                                                              ?include_if(PushDetails /= [],
-                                                                  hls_processors(outside_world, audio_transcode, SlotId, Profile, PushDetails)),
+                                                                #processor{name = hls_publish,
+                                                                           display_name = <<"HLS Publish">>,
+                                                                           subscribes_to = [
+                                                                             {outside_world, ?video_frames},
+                                                                             {audio_transcode, ?audio_frames_with_profile_name(aac)},
+                                                                             {outside_world, ?gop_measurements}
+                                                                           ],
+                                                                           module = rtsv2_hls_segment_workflow,
+                                                                           config = #rtsv2_hls_segment_workflow_config{
+                                                                             slot_id = SlotId,
+                                                                             slot_profile = Profile,
+                                                                             push_details = PushDetails
+                                                                           }
+                                                              }),
 
                                                              #processor{name = audio_transcode,
                                                                         display_name = <<"Audio Transcode">>,
@@ -336,75 +363,7 @@ startWorkflow(SlotConfiguration = #{ slotId := SlotId
 
   {ok, Handle} = id3as_workflow:workflow_handle(Pid),
 
-  {Handle, Pids, SlotConfiguration}.
-
-hls_processors(VideoSub, AudioSub, _SlotId, #{ profileName := ProfileName }, [#{ auth := #{username := Username, password := Password}, segmentDuration := SegmentDuration, playlistDuration := PlaylistDuration, putBaseUrl := PutBaseUrl }]) ->
-  ?WARNING("Using ~p gops per segment (not ~ps segments)", [SegmentDuration, SegmentDuration]),
-  TsEncoderConfig = #ts_encoder_config{
-                       which_encoder = ts_simple_encoder,
-                       program_pid = 4096,
-                       pcr_pid = 256,
-                       streams = [
-                                  #ts_stream {
-                                     pid = 256,
-                                     index = 1,
-                                     pes_stream_type = ?STREAM_TYPE_VIDEO_H264,
-                                     pes_stream_id = ?PesVideoStreamId(1)
-                                    },
-                                  #ts_stream {
-                                     pid = 257,
-                                     index = 2,
-                                     pes_stream_type = ?STREAM_TYPE_AUDIO_AAC_ADTS,
-                                     pes_stream_id = ?PesAudioStreamId(1)
-                                    }
-                                 ]},
-
-  [
-    #processor{name = adts,
-      module = adts_encapsulator,
-      subscribes_to = { AudioSub, ?audio_frames_with_profile_name(aac) }
-
-    },
-    #processor{
-      name = stream_sync,
-      module = stream_sync,
-      subscribes_to = [{VideoSub, ?video_frames}, ?previous],
-      config = #stream_sync_config{ num_streams = 2 }
-    },
-    #processor{name = ts_mux,
-      display_name = <<"TS Mux">>,
-      subscribes_to = ?previous,
-      module = ts_encoder,
-      config = TsEncoderConfig
-    },
-
-    #processor{name = ts_segmenter,
-      display_name = <<"TS Segmenter">>,
-      subscribes_to = ?previous,
-      config = #ts_segment_generator_config {
-                  mode = video,
-                  segment_strategy = #ts_segment_generator_gop_strategy {
-                    %% TODO Take this as a gop count not in seconds, for now
-                    gops_per_segment = SegmentDuration
-                  }
-                },
-      module = ts_segment_generator},
-
-
-    #processor{name = ts_writer_primary,
-      display_name = <<"TS Segment Writer">>,
-      subscribes_to = ?previous,
-      module = rtsv2_internal_hls_writer,
-      config =
-          #rtsv2_internal_hls_writer_config{
-            post_url = <<PutBaseUrl/binary, ProfileName/binary, "/">>,
-            max_playlist_length = PlaylistDuration div SegmentDuration,
-            target_segment_duration = SegmentDuration,
-            playlist_name = <<"playlist.m3u8">>,
-            auth = {Username,Password}
-          }
-    }
-  ].
+  {Handle, Pids}.
 
 
 mux_to_rtp(#frame{ profile = #audio_profile{ codec = Codec } } = Frame, { AudioEgest, VideoEgest }) ->

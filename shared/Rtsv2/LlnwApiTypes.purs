@@ -42,7 +42,6 @@ import Data.Newtype (class Newtype)
 import Effect.Unsafe (unsafePerformEffect)
 import Foreign (ForeignError(..), F, readString, unsafeToForeign)
 import Record (rename)
-import Rtsv2.Config as Config
 import Shared.Rtsv2.Agent (SlotCharacteristics)
 import Shared.Rtsv2.Stream (ProfileName, RtmpShortName, RtmpStreamName, SlotId, SlotRole)
 import Simple.JSON (class ReadForeign, class WriteForeign, readImpl, writeImpl)
@@ -108,13 +107,13 @@ data HlsPushSpecFormat = Hls
 
 data HlsPushProtocol = HttpPut
 
-newtype HlsPushSpec = HlsPushSpec
+type HlsPushSpec =
   { protocol :: HlsPushProtocol
   , formats :: Array HlsPushSpecFormat
   , putBaseUrl :: String
   , playbackBaseUrl :: String
-  , segmentDuration :: Int
-  , playlistDuration :: Int
+  , segmentDuration :: Maybe Int
+  , playlistDuration :: Maybe Int
   , auth :: HlsPushAuth
   }
 
@@ -282,49 +281,6 @@ instance showStreamOutputFormat :: Show StreamOutputFormat where
   show WebRTCOutput = "WebRtc"
   show RtmpOutput = "RTMP"
   show HlsOutput = "HLS"
-
-derive instance newtypeHlsPushSpec :: Newtype HlsPushSpec _
-derive instance genericHlsPushSpec :: Generic HlsPushSpec _
-instance eqHlsPushSpec :: Eq HlsPushSpec where eq = genericEq
-
-instance readForeignHlsPushSpec :: ReadForeign HlsPushSpec where
-  readImpl o = decode o
-    where
-    {defaultSegmentDurationMs
-    , defaultPlaylistDurationMs} = unsafePerformEffect Config.llnwApiConfig
-
-    decode s = do
-      parsed <- readImpl s :: F { protocol :: HlsPushProtocol
-                                , formats :: Array HlsPushSpecFormat
-                                , putBaseUrl :: String
-                                , playbackBaseUrl :: String
-                                , segmentDuration :: Maybe Int
-                                , playlistDuration :: Maybe Int
-                                , auth :: HlsPushAuth
-                                }
-      pure
-        $ HlsPushSpec $ (\{ protocol
-                          , formats
-                          , putBaseUrl
-                          , playbackBaseUrl
-                          , segmentDuration
-                          , playlistDuration
-                          , auth
-                          } -> { protocol
-                               , formats
-                               , putBaseUrl
-                               , playbackBaseUrl
-                               , segmentDuration: fromMaybe (defaultSegmentDurationMs / 1000) segmentDuration
-                               , playlistDuration: fromMaybe (defaultPlaylistDurationMs / 1000) playlistDuration
-                               , auth
-                               }) parsed
-
-instance writeForeignHlsPushSpec :: WriteForeign HlsPushSpec where
-  writeImpl = (unsafeToForeign <<< encode)
-    where
-      encode (HlsPushSpec r) = do
-        writeImpl r
-
 
 derive instance newtypeStreamAuth :: Newtype StreamAuth _
 derive instance genericStreamAuth :: Generic StreamAuth _

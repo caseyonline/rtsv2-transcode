@@ -6,6 +6,7 @@
 - Fix to IngestAggregator bug as reported by @hklingenberg on slack
 - Egest EQ logging now includes shortName.  It does not include streamName since that doesn't really make sense on egest
 - /support/healthCheck endpoint now returns load information
+- segmentDuration and playlistDuration in HlsPushSpec are now optional with default values coming from the llnwApiConfig section of the rtsv2_core.config file
 
 # RTS-V2 release 93
 **What's new**

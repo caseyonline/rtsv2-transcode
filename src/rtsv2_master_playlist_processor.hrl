@@ -1,5 +1,5 @@
--ifndef(rtsv2_slot_profiles_hrl).
--define(rtsv2_slot_profiles_hrl, 1).
+-ifndef(rtsv2_master_playlist_processor_hrl).
+-define(rtsv2_master_playlist_processor_hrl, 1).
 
 -include("./rtsv2_types.hrl").
 
