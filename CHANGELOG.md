@@ -1,4 +1,4 @@
-# RTS-V2 release XXX
+# RTS-V2 release 94
 **What's new**
 
 - **RTSV2-66** - handling of invalid data object messages from client fixed
