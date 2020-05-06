@@ -71,6 +71,11 @@ init([ThisServerAddress, MediaGatewayFlag]) ->
       {external} ->
         #?state{ uds_path = <<"/tmp/rtsv2-media-gateway.sock">>
                , server_port = undefined
+               };
+
+      {both} ->
+        #?state{ uds_path = <<"/tmp/rtsv2-media-gateway.sock">>
+               , server_port = undefined
                }
     end,
 
@@ -100,8 +105,16 @@ handle_call({ add_egest_client
             , SlotId
             , SlotRole
             , ClientId
-            , #media_gateway_egest_client_config{ audio = #media_gateway_stream_element_config{ media_socket = AudioSocket, egest_crypto = AudioEgestCrypto, cname = AudioCName }
-                                                , video = #media_gateway_stream_element_config{ media_socket = VideoSocket, egest_crypto = VideoEgestCrypto, cname = VideoCName }
+            , #media_gateway_egest_client_config{ audio = #media_gateway_stream_element_config{ media_socket = AudioSocket
+                                                                                              , egest_crypto = AudioEgestCrypto
+                                                                                              , cname = AudioCName
+                                                                                              , payload_type_id = AudioPayloadTypeId
+                                                                                              }
+                                                , video = #media_gateway_stream_element_config{ media_socket = VideoSocket
+                                                                                              , egest_crypto = VideoEgestCrypto
+                                                                                              , cname = VideoCName
+                                                                                              , payload_type_id = VideoPayloadTypeId
+                                                                                              }
                                                 }
             }
            , _From
@@ -116,8 +129,10 @@ handle_call({ add_egest_client
                 , client_id => ClientId
                 , audio_crypto_params => convert_crypto_params(AudioEgestCrypto)
                 , audio_cname => AudioCName
+                , audio_payload_type_id => AudioPayloadTypeId
                 , video_crypto_params => convert_crypto_params(VideoEgestCrypto)
                 , video_cname => VideoCName
+                , video_payload_type_id => VideoPayloadTypeId
                 }),
 
   {ok, AudioSocketFd} = inet:getfd(AudioSocket),

@@ -85,39 +85,48 @@ init(#rtsv2_webrtc_session_handler_config{ session_id = SessionId
 handle_media_frame(_, State = #?state{use_media_gateway = false}) ->
   {ok, State};
 
-handle_media_frame(#rtp_engine_msg{message = #rtp_engine_ready{}}, State) ->
-
-  %% NOTE: we don't care whether the engine is ready or not, we're not receiving
-  %%       media, and it will drop media we're sending if it isn't ready
-  {ok, State};
-
 handle_media_frame(#rtp_engine_msg{message = _RTPEngineState}, State) ->
-  %% Ignore PLIs et al
   {ok, State};
 
-handle_media_frame(#webrtc_media_channel_message{ message = #webrtc_media_channel_ready{ channel_type = audio, media_socket = Socket, egest_crypto = EgestCrypto } },
-                   #?state{ session_id = SessionId } = State
+handle_media_frame(#webrtc_media_channel_message{ message = #webrtc_media_channel_ready{ channel_type = audio
+                                                                                       , media_socket = Socket
+                                                                                       , egest_crypto = EgestCrypto
+                                                                                       , rtp_engine_snapshot = RTPEngineSnapshot
+                                                                                       }
+                                                },
+                   #?state{ session_id = SessionId} = State
                   ) ->
+
+  PayloadTypeId = rtp_engine_passthrough_encoding_id(RTPEngineSnapshot),
 
   NewState =
     State#?state{ audio_stream_element_config =
                     #media_gateway_stream_element_config{ media_socket = Socket
                                                         , egest_crypto = EgestCrypto
                                                         , cname = SessionId
+                                                        , payload_type_id = PayloadTypeId
                                                         }
                 },
 
   maybe_add_to_media_gateway(NewState);
 
-handle_media_frame(#webrtc_media_channel_message{ message = #webrtc_media_channel_ready{ channel_type = video, media_socket = Socket, egest_crypto = EgestCrypto } },
+handle_media_frame(#webrtc_media_channel_message{ message = #webrtc_media_channel_ready{ channel_type = video
+                                                                                       , media_socket = Socket
+                                                                                       , egest_crypto = EgestCrypto
+                                                                                       , rtp_engine_snapshot = RTPEngineSnapshot
+                                                                                       }
+                                                },
                    #?state{ session_id = SessionId } = State
                   ) ->
+
+  PayloadTypeId = rtp_engine_passthrough_encoding_id(RTPEngineSnapshot),
 
   NewState =
     State#?state{ video_stream_element_config =
                     #media_gateway_stream_element_config{ media_socket = Socket
                                                         , egest_crypto = EgestCrypto
                                                         , cname = SessionId
+                                                        , payload_type_id = PayloadTypeId
                                                         }
                 },
 
@@ -316,3 +325,8 @@ maybe_add_to_media_gateway(#?state{ slot_id = <<SlotId:128/big-integer>>
   rtsv2_media_gateway_api:add_egest_client(SlotId, SlotRole, 0, Config),
 
   {ok, State}.
+
+
+rtp_engine_passthrough_encoding_id(RTPEngine) ->
+  [ { _, { rtp_passthrough_egest, EgestHandlerState} } ] = maps:to_list(rtp_engine:egest_handlers(RTPEngine)),
+  rtp_passthrough_egest:encoding_id(EgestHandlerState).

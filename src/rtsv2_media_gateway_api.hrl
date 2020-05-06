@@ -8,6 +8,7 @@
         { media_socket :: gen_udp:socket()
         , egest_crypto :: srtp_crypto_params()
         , cname :: binary_string()
+        , payload_type_id :: rtp:encoding_id()
         }).
 -type media_gateway_stream_element_config() :: #media_gateway_stream_element_config{}.
 

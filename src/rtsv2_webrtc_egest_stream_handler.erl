@@ -27,6 +27,7 @@
         { parent_pid :: pid()
         , egest_key :: term()
         , receive_socket :: gen_udp:socket()
+        , forward_socket :: undefined | gen_udp:socket()
         , parse_info = rtsv2_rtp_util:build_parse_info()
         }).
 
@@ -43,7 +44,7 @@ init(_Args = [ ParentPid, {egestKey, << SlotId:128/big-unsigned-integer >>, {Slo
 
   %% NOTE: Erlang doesn't receive on this socket, that task is delegated to the
   %% media gateway
-  Socket =
+  Sockets =
     case MediaGateway of
       {off} ->
         {ok, ReceiveSocket} = gen_udp:open(0, [binary, {recbuf, 100 * 1500}]),
@@ -62,25 +63,61 @@ init(_Args = [ ParentPid, {egestKey, << SlotId:128/big-unsigned-integer >>, {Slo
               }
           end,
 
-        {ok, ReceiveSocket} = gen_udp:open(0, [{recbuf, 100 * 1500}, {active, false}]),
-        ok = rtsv2_media_gateway_api:add_egest(SlotId, SlotRole, ReceiveSocket, AudioSSRC, VideoSSRC),
-        ReceiveSocket
+        case MediaGateway of
+          {both} ->
+            {ok, OurReceiveSocket} = gen_udp:open(0, [binary, {recbuf, 100 * 1500}, {active, true}]),
+
+            {ok, MediaGatewayReceiveSocket} = gen_udp:open(0, [{recbuf, 100 * 1500}, {active, false}]),
+            {ok, MediaGatewayReceivePort} = inet:port(MediaGatewayReceiveSocket),
+
+            {ok, MediaGatewaySendSocket} = gen_udp:open(0, [{recbuf, 100 * 1500}, {active, false}]),
+            gen_udp:connect(MediaGatewaySendSocket, {127, 0, 0, 1}, MediaGatewayReceivePort),
+
+            ok = rtsv2_media_gateway_api:add_egest(SlotId, SlotRole, MediaGatewayReceiveSocket, AudioSSRC, VideoSSRC),
+            {OurReceiveSocket, MediaGatewaySendSocket};
+
+          _ ->
+            {ok, ReceiveSocket} = gen_udp:open(0, [{recbuf, 100 * 1500}, {active, false}]),
+            ok = rtsv2_media_gateway_api:add_egest(SlotId, SlotRole, ReceiveSocket, AudioSSRC, VideoSSRC),
+            ReceiveSocket
+        end
     end,
 
-  #?state{ parent_pid = ParentPid
-         , egest_key = EgestKey
-         , receive_socket = Socket
-         }.
+  case Sockets of
+    {TheReceiveSocket, ForwardSocket} ->
+      #?state{ parent_pid = ParentPid
+             , egest_key = EgestKey
+             , receive_socket = TheReceiveSocket
+             , forward_socket = ForwardSocket
+             };
+
+    TheReceiveSocket ->
+      #?state{ parent_pid = ParentPid
+             , egest_key = EgestKey
+             , receive_socket = TheReceiveSocket
+             }
+  end.
 
 handle_call(port_number, _From, #?state{ receive_socket = ReceiveSocket } = State) ->
   { ok, ReceivePort } = inet:port(ReceiveSocket),
   { reply, {ok, ReceivePort}, State }.
 
 handle_info({udp, ActualSocket, _SenderIP, _SenderPort, Data},
-             #?state{ parse_info = ParseInfo, receive_socket = ExpectedSocket } = State
+             #?state{ parse_info = ParseInfo
+                    , receive_socket = ExpectedSocket
+                    , forward_socket = ForwardSocket
+                    } = State
             )
    when
      ActualSocket =:= ExpectedSocket ->
+
+  case ForwardSocket of
+    undefined ->
+      ok;
+
+    _ ->
+      gen_udp:send(ForwardSocket, Data)
+  end,
 
    RTP = #rtp{ payload_type = #rtp_payload_type{ encoding_id = EncodingId } } = rtp:parse(avp, Data, ParseInfo),
 
