@@ -29,8 +29,7 @@ import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.LlnwApiTypes (PublishCredentials(..), SlotProfile(..), StreamAuth, StreamDetails, StreamIngestProtocol(..), StreamPublish(..))
 import Shared.Rtsv2.Stream (IngestKey(..), ProfileName, RtmpStreamName(..))
 import Shared.Rtsv2.Types (ResourceResp, Server)
-import SpudGun (JsonResponseError, bodyToJSON)
-import SpudGun as SpudGun
+import SpudGun (JsonResponseError)
 
 foreign import startWorkflowImpl :: IngestKey -> Effect Pid
 

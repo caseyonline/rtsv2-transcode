@@ -36,7 +36,6 @@ import Rtsv2.LoadTypes as LoadTypes
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Utils (noprocToMaybe)
-import Shared.Rtsv2.Agent (SlotCharacteristics)
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Shared.Rtsv2.Stream (AggregatorKey(..), EgestKey(..), SlotId, SlotRole)
 import Shared.Rtsv2.Types (FailureReason(..), LocalOrRemote(..), LocationResp, Server, ServerLoad, ResourceResp, serverLoadToServer)

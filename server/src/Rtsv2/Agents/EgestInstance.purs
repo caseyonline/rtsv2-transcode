@@ -34,7 +34,7 @@ import Erl.Data.Tuple (Tuple2, tuple2)
 import Erl.Process (Process(..), (!))
 import Erl.Process.Raw (Pid)
 import Erl.Utils (Ref, makeRef, systemTimeMs)
-import Logger (Logger, spy)
+import Logger (Logger)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
 import Pinto as Pinto
@@ -247,7 +247,7 @@ init payload@{slotId, slotRole, aggregator, slotCharacteristics} stateServerName
   _ <- Timer.sendAfter (serverName egestKey) 0 InitStreamRelays
   _ <- Timer.sendEvery (serverName egestKey) eqLogIntervalMs WriteEqLog
 
-  Load.addPredictedLoad (egestKeyToAgentKey egestKey) (spy "predictedLoad" predictedLoad)
+  Load.addPredictedLoad (egestKeyToAgentKey egestKey) predictedLoad
 
   Gen.registerExternalMapping (serverName egestKey) (\m -> Gun <$> (WsGun.messageMapper m))
   let

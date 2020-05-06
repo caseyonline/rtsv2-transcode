@@ -44,8 +44,6 @@ import Shared.Rtsv2.Stream (IngestKey(..), ProfileName, RtmpShortName, SlotId, S
 import Shared.Types.Workflow.Metrics.Commmon (Stream)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (writeJSON)
-import SpudGun (bodyToJSON)
-import SpudGun as SpudGun
 import Stetson (StetsonHandler)
 import Stetson.Rest as Rest
 import StetsonHelper (GetHandler, jsonResponse, multiMimeResponse)

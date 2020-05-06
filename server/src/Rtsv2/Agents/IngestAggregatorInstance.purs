@@ -71,7 +71,7 @@ import Erl.Data.List (List, nil, (:))
 import Erl.Data.List as List
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
-import Erl.Data.Tuple (Tuple3, Tuple4, toNested3, tuple3, tuple4)
+import Erl.Data.Tuple (Tuple3, Tuple4, toNested3, tuple4)
 import Erl.Process (Process(..), (!))
 import Erl.Process.Raw (Pid)
 import Erl.Utils (Ref, shutdown)
