@@ -1,15 +1,12 @@
-module Rtsv2App.Component.HTML.Menu.MainSecondary where
+module Rtsv2App.Component.HTML.Menu.MenuSecondary where
 
 import Prelude
 
 import Control.Monad.Reader (class MonadAsk, ask)
 import Data.Const (Const)
 import Data.Maybe (Maybe(..))
+import Data.Monoid (guard)
 import Data.Newtype (un)
-import Data.String (replace)
-import Data.String.Pattern (Pattern(..), Replacement(..))
-import Data.Traversable (for_)
-import Effect (Effect)
 import Effect.Aff.Class (class MonadAff)
 import Effect.Class (liftEffect)
 import Effect.Ref as Ref
@@ -18,6 +15,7 @@ import Halogen.HTML as HH
 import Halogen.HTML.Events as HE
 import Halogen.HTML.Properties as HP
 import Rtsv2App.Capability.Navigate (class Navigate, logout)
+import Rtsv2App.Component.HTML.Menu.MainHelper (MenuState, closeSecondaryMenu)
 import Rtsv2App.Component.HTML.Utils (css_, safeHref)
 import Rtsv2App.Data.Profile (Profile)
 import Rtsv2App.Data.Route (Route(..))
@@ -36,25 +34,29 @@ data Action
   | CloseSecondaryMenu
 
 type State =
-  { currentUser :: Maybe Profile
-  , route :: Route
-  , popDef :: Maybe (PoPDefinition Array)
+  { currentUser  :: Maybe Profile
+  , route        :: Route
+  , popDef       :: Maybe (PoPDefinition Array)
+  , isMenuClosed :: Boolean
+  , curPopName   :: Maybe PoPName
   }
 
 type Input =
-  { currentUser :: Maybe Profile
-  , route :: Route
+  { currentUser  :: Maybe Profile
+  , route        :: Route
+  , isMenuClosed :: Boolean
+  , curPopName   :: Maybe PoPName
   }
 
 type Slot
-  = H.Slot (Const Void) Void
+  = H.Slot (Const Void) MenuState
 
 component
   :: forall m r
    . MonadAff m
   => MonadAsk { popDefEnv :: PoPDefEnv | r } m
   => Navigate m
-  => H.Component HH.HTML (Const Void) Input Void m
+  => H.Component HH.HTML (Const Void) Input MenuState m
 component = H.mkComponent
   { initialState: initialState
   , render
@@ -65,12 +67,15 @@ component = H.mkComponent
   }
   where
   initialState :: Input -> State
-  initialState { currentUser, route } =
+  initialState { currentUser, route, isMenuClosed, curPopName } =
     { currentUser
     , route
     , popDef: Nothing
+    , isMenuClosed
+    , curPopName
     }
 
+  handleAction :: Action -> H.HalogenM State Action () MenuState m Unit
   handleAction = case _ of
     Receive s -> do
       { popDefEnv } <- ask
@@ -78,8 +83,9 @@ component = H.mkComponent
       H.put { currentUser: s.currentUser
             , route: s.route
             , popDef
+            , isMenuClosed: s.isMenuClosed
+            , curPopName: s.curPopName
             }
-
 
     LogUserOut -> logout
 
@@ -88,7 +94,7 @@ component = H.mkComponent
       pure unit
 
 
-  render state@{ currentUser, route, popDef } =
+  render state@{ currentUser, route, popDef, isMenuClosed } =
     HH.aside
     [ css_ "aside is-placed-left is-expanded is-secondary is-hidden"
     , HP.id_ "aside-secondary"
@@ -96,7 +102,7 @@ component = H.mkComponent
     [ topTitle
     , HH.div
       [ css_ "menu-container jb-has-perfect-scrollbar" ]
-      [ getPoPMenu route popDef ]
+      [ getPoPMenu state ]
     , HH.div
       []
       []
@@ -104,7 +110,7 @@ component = H.mkComponent
 
 
 -- |Top title
-topTitle :: forall p i. HH.HTML p i
+topTitle :: forall p. HH.HTML p Action
 topTitle =
   HH.div
   [ css_ "aside-tools has-icon" ]
@@ -120,15 +126,17 @@ topTitle =
       [ HH.text "PoPs" ]
     ]
   , HH.a
-    [ css_ "aside-close"]
+    [ css_ "aside-close"
+    , HE.onClick \_ -> Just CloseSecondaryMenu
+    ]
     [ HH.span
       [ css_ "mdi mdi-close default" ]
       []
     ]
   ]
 
-getPoPMenu :: forall p. Route -> Maybe (PoPDefinition Array) -> HH.HTML p Action
-getPoPMenu route popDef =
+getPoPMenu :: forall p. State -> HH.HTML p Action
+getPoPMenu state@{ route, popDef } =
    HH.div
    [ css_ "menu is-menu-main" ]
    case popDef of
@@ -140,19 +148,23 @@ getPoPMenu route popDef =
                    [ HH.text $ un RegionName r.name ]
                   , HH.ul
                     [ css_ "menu-list"]
-                    (getPoPLi r.pops)
+                    (getPoPLi state r.pops)
                   ]
                 ) <$> pf.regions
 
 
-getPoPLi :: forall p.  Array (PoP Array) -> Array (HH.HTML p Action)
-getPoPLi pop =
+getPoPLi :: forall p.  State -> Array (PoP Array) -> Array (HH.HTML p Action)
+getPoPLi state@{ isMenuClosed, route, curPopName } pop =
   (\p ->
     HH.li
     [ css_ "aside-secondary-li"]
     [ HH.a
       [ safeHref $ PoPDashboardR p.name
       , HE.onClick \_ -> Just CloseSecondaryMenu
+      , css_ (case curPopName of
+          Nothing    -> ""
+          Just pName -> "" <> (guard (route == PoPDashboardR p.name) " is-active")
+         )
       ]
       [ HH.span
         [ css_ "icon" ]
@@ -169,26 +181,3 @@ getPoPLi pop =
 
 
 
-closeSecondaryMenu :: Effect Unit
-closeSecondaryMenu = do
-  -- | setup parent container
-  document <- HTML.window >>= HTML.document
-  let parent = HTML.toNonElementParentNode document
-
-  -- | get the elements by id
-  mainContainer <- DOM.getElementById "aside-main" parent
-  secondaryContainer <- DOM.getElementById "aside-secondary" parent
-
-  -- | remove or add classes to specific elements
-  for_ mainContainer $ (\cont -> removeClass "has-secondary" cont)
-  for_ secondaryContainer (\cont -> addClass " is-hidden" cont)
-
-  where
-    addClass css cont = do
-      mainClass <- DOM.className cont
-      DOM.setClassName ( mainClass <> css ) cont
-
-    removeClass css cont = do
-      mainClass <- DOM.className cont
-      let newClass = replace (Pattern css) (Replacement "") mainClass
-      DOM.setClassName newClass cont

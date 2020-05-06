@@ -6,37 +6,52 @@ import Data.Const (Const)
 import Data.Maybe (Maybe(..))
 import Data.Monoid (guard)
 import Effect.Aff.Class (class MonadAff)
+import Effect.Class (liftEffect)
 import Halogen as H
 import Halogen.HTML as HH
 import Halogen.HTML.Events as HE
 import Halogen.HTML.Properties as HP
 import Rtsv2App.Capability.Navigate (class Navigate, logout)
+import Rtsv2App.Component.HTML.Menu.MainHelper (MenuState, closeSecondaryMenu, isSecondaryClosed, openSecondaryMenu)
 import Rtsv2App.Component.HTML.Utils (css_, safeHref)
 import Rtsv2App.Data.Profile (Profile)
 import Rtsv2App.Data.Route (Route(..))
+import Shared.Rtsv2.Types (PoPName)
 
+-------------------------------------------------------------------------------
+-- Types
+-------------------------------------------------------------------------------
 data Action
   = LogUserOut
   | Receive Input
+  | CloseSecondaryMenu
 
 type State =
-  { currentUser :: Maybe Profile
-  , route :: Route
+  { currentUser  :: Maybe Profile
+  , route        :: Route
+  , isMenuClosed :: Boolean
+  , curPopName   :: Maybe PoPName
   }
 
 type Input =
-  { currentUser :: Maybe Profile
-  , route :: Route
+  { currentUser  :: Maybe Profile
+  , route        :: Route
+  , isMenuClosed :: Boolean
+  , curPopName   :: Maybe PoPName
   }
 
 type Slot
-  = H.Slot (Const Void) Void
+  = H.Slot (Const Void) MenuState 
 
+
+-------------------------------------------------------------------------------
+-- Component
+-------------------------------------------------------------------------------
 component
   :: forall m
    . MonadAff m
   => Navigate m
-  => H.Component HH.HTML (Const Void) Input Void m
+  => H.Component HH.HTML (Const Void) Input MenuState m
 component = H.mkComponent
   { initialState: initialState
   , render
@@ -47,24 +62,46 @@ component = H.mkComponent
   }
   where
   initialState :: Input -> State
-  initialState { currentUser, route } =
+  initialState { currentUser, route, isMenuClosed, curPopName } =
     { currentUser
     , route
+    , isMenuClosed
+    , curPopName
     }
 
   handleAction = case _ of
-    Receive s -> do
-       H.put s
+    Receive { currentUser, route, isMenuClosed, curPopName } -> do
+      H.put { currentUser
+            , route
+            , isMenuClosed
+            , curPopName 
+            }
 
     LogUserOut -> logout
 
-  render state@{ currentUser, route } =
+    CloseSecondaryMenu -> do
+      maybeIsMenuClosed <- liftEffect $ isSecondaryClosed
+      case maybeIsMenuClosed of
+        Nothing           -> pure unit
+        Just isMenuClosed ->
+          if isMenuClosed
+            then do
+              H.modify_ _ { isMenuClosed = false }
+              _ <- liftEffect $ openSecondaryMenu
+              pure unit
+            else do
+              H.modify_ _ { isMenuClosed = true }
+              _ <- liftEffect $ closeSecondaryMenu
+              pure unit
+      
+
+  render state@{ currentUser, route, isMenuClosed, curPopName } =
     HH.aside
     [ css_ "aside is-placed-left is-expanded"
     , HP.id_ "aside-main"  
     ]
     [ topLogo
-    , menuItems route
+    , menuItems state
     , HH.div
       [ css_ "menu is-menu-bottom" ]
       [ HH.ul
@@ -90,7 +127,9 @@ component = H.mkComponent
       ]
     ]
 
--- | Logo Top title
+-------------------------------------------------------------------------------
+-- Logo Top title
+-------------------------------------------------------------------------------
 topLogo :: forall p i. HH.HTML p i
 topLogo =
   HH.div
@@ -112,9 +151,11 @@ topLogo =
     ]
   ]
 
--- | Menu items
-menuItems :: forall p i. Route -> HH.HTML p i
-menuItems route =
+-------------------------------------------------------------------------------
+-- Menu Items
+-------------------------------------------------------------------------------
+menuItems :: forall p. State -> HH.HTML p Action
+menuItems { route, isMenuClosed, curPopName } =
   HH.div
   [ css_ "menu-container jb-has-perfect-scrollbar" ]
   [ HH.div
@@ -127,7 +168,9 @@ menuItems route =
     [ css_ "menu-list" ]
     [ HH.li_
       [ HH.a
-        [ css_ ("has-icon" <> guard (route == DashboardR) " is-active")
+        [ if isMenuClosed
+             then css_ ("has-icon" <> guard (route == DashboardR) " is-active")
+             else css_ ("has-icon")
         , safeHref DashboardR
         ]
         [ HH.span
@@ -143,7 +186,15 @@ menuItems route =
       ]
     , HH.li_
       [ HH.a
-        [ css_ "has-icon has-submenu-icon jb-aside-secondary-toggle" ]
+        [ css_ ("has-icon has-submenu-icon jb-aside-secondary-toggle" <>
+          (if isMenuClosed
+             then case curPopName of
+                    Nothing    -> ""
+                    Just pName -> (guard (route == PoPDashboardR pName ) " is-active")
+             else " is-active"
+          ))
+        , HE.onClick \_ -> Just CloseSecondaryMenu
+        ]
         [ HH.span
           [ css_ "icon" ]
           [ HH.i

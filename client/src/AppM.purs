@@ -5,7 +5,6 @@ import Prelude
 import Control.Monad.Reader.Trans (class MonadAsk, ReaderT, ask, asks, runReaderT)
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
-import Debug.Trace (traceM)
 import Effect.Aff (Aff)
 import Effect.Aff.Bus as Bus
 import Effect.Aff.Class (class MonadAff, liftAff)

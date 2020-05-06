@@ -29,8 +29,7 @@ import Rtsv2App.Capability.Resource.User (class ManageUser)
 import Rtsv2App.Component.HTML.Breadcrumb as BG
 import Rtsv2App.Component.HTML.Footer (footer)
 import Rtsv2App.Component.HTML.Header as HD
-import Rtsv2App.Component.HTML.Menu.MainSecondary as MS
-import Rtsv2App.Component.HTML.Menu.MenuMain as MM
+import Rtsv2App.Component.HTML.Menu.MenuWrapper as MW
 import Rtsv2App.Component.HTML.Tile as TL
 import Rtsv2App.Component.HTML.Utils (css_)
 import Rtsv2App.Data.PoP (PoPDefEcharts, updatePoPDefEnv)
@@ -60,9 +59,8 @@ type State =
   }
 
 type ChildSlots =
-  ( menuMain      :: MM.Slot Unit
+  ( menuWrapper   :: MW.Slot Unit
   , header        :: HD.Slot Unit
-  , menuSecondary :: MS.Slot Unit
   )
 
 -------------------------------------------------------------------------------
@@ -144,8 +142,7 @@ component = H.mkComponent
     HH.div
       [ HP.id_ "app" ]
       [ HH.slot (SProxy :: _ "header") unit HD.component { currentUser, route: DashboardR } absurd
-      , HH.slot (SProxy :: _ "menuMain") unit MM.component { currentUser, route: DashboardR } absurd
-      , HH.slot (SProxy :: _ "menuSecondary") unit MS.component { currentUser, route: DashboardR } absurd
+      , HH.slot (SProxy :: _ "menuWrapper") unit MW.component { curPopName: Nothing, currentUser, route: DashboardR } absurd
       , BG.component
         [ HH.li_
           [ HH.text "Admin" ]
