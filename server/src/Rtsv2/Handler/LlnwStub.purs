@@ -93,18 +93,17 @@ db =
                           , outputFormats : [ HlsOutput ]
                           }
                  , push : [
-                    { protocol: HttpPut
-                    , formats: [ Hls ]
-                    , putBaseUrl: "http://172.16.171.1:3000/system/llnwstub/rts/v1/hls/test_slot_1/"
-                    , playbackBaseUrl: "" -- ie relative
-                    , segmentDuration: 2
-                    , playlistDuration: 20
-                    , auth:
-                      { type: "basic"
-                      , username: "id3as"
-                      , password: "id3as"
-                      }
-                    }
+                     HlsPushSpec { protocol: HttpPut
+                                 , formats: [ Hls ]
+                                 , putBaseUrl: "http://172.16.171.1:3000/system/llnwstub/rts/v1/hls/test_slot_1/"
+                                 , playbackBaseUrl: "" -- ie relative
+                                 , segmentDuration: 2
+                                 , playlistDuration: 20
+                                 , auth: { type: "basic"
+                                         , username: "id3as"
+                                         , password: "id3as"
+                                         }
+                                 }
                   ]
                  }
       }

@@ -176,6 +176,8 @@ type LlnwApiConfig
     , streamPublishUrl :: String
     , slotLookupUrl :: String
     , headers :: List (Tuple2 String String)
+    , defaultSegmentDurationMs :: Int
+    , defaultPlaylistDurationMs :: Int
     }
 
 type LlnwApiConfigInternal
@@ -184,6 +186,8 @@ type LlnwApiConfigInternal
     , streamPublishUrl :: String
     , slotLookupUrl :: String
     , useBasicAuth :: Maybe String
+    , defaultSegmentDurationMs :: Int
+    , defaultPlaylistDurationMs :: Int
     }
 
 type HealthConfig
@@ -270,7 +274,10 @@ llnwApiConfig = do
     , streamAuthUrl
     , streamPublishUrl
     , slotLookupUrl
-    , useBasicAuth } = internal
+    , useBasicAuth
+    , defaultSegmentDurationMs
+    , defaultPlaylistDurationMs
+    } = internal
 
     external = { streamAuthTypeUrl
                , streamAuthUrl
@@ -281,6 +288,8 @@ llnwApiConfig = do
                              Just auth ->
                                let headerValue = "Basic " <> base64Encode auth
                                in (tuple2 "Authorization" headerValue) : nil
+               , defaultSegmentDurationMs
+               , defaultPlaylistDurationMs
                }
   pure external
 
