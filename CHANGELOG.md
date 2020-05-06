@@ -2,8 +2,10 @@
 **What's new**
 
 - **RTSV2-66** - handling of invalid data object messages from client fixed
-
-- Player SDK senderRef renamed to requestResponseCorrelationId in dataObjectUpdateMessagee
+- Player SDK senderRef renamed to requestResponseCorrelationId in dataObjectUpdateMessage
+- Fix to IngestAggregator bug as reported by @hklingenberg on slack
+- Egest EQ logging now includes shortName.  It does not include streamName since that doesn't really make sense on egest
+- /support/healthCheck endpoint now returns load information
 
 # RTS-V2 release 93
 **What's new**
