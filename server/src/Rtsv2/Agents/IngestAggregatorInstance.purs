@@ -45,6 +45,7 @@ module Rtsv2.Agents.IngestAggregatorInstance
   , dataObjectUpdate
   , processMessageFromPrimary
   , CachedState
+  , CreateAggregatorPayload
   , RegisteredRelay
   , StateServerName
   , IngestProcess
@@ -87,6 +88,7 @@ import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..), announceLocalAggregatorIsAvailable, announceLocalAggregatorStopped)
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
+import Rtsv2.Agents.SlotTypes as SlotTypes
 import Rtsv2.Agents.StreamRelayTypes (ActiveProfiles(..), AggregatorBackupToPrimaryWsMessage(..), AggregatorPrimaryToBackupWsMessage(..), AggregatorToIngestWsMessage(..), DownstreamWsMessage(..), WebSocketHandlerMessage(..))
 import Rtsv2.Config as Config
 import Rtsv2.DataObject as DO
@@ -97,13 +99,14 @@ import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Rtsv2.LlnwApiTypes (SlotProfile(..), StreamDetails, HlsPushSpec, slotDetailsToSlotCharacteristics)
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrlAddr, makeWsUrl)
-import Shared.Rtsv2.Stream (AggregatorKey(..), IngestKey(..), ProfileName, SlotId, SlotRole(..), ingestKeyToAggregatorKey)
+import Shared.Rtsv2.Stream (AggregatorKey(..), IngestKey(..), ProfileName, RtmpShortName(..), SlotId, SlotRole(..), ingestKeyToAggregatorKey)
 import Shared.Rtsv2.Types (DeliverTo, RelayServer, Server, ServerAddress, extractAddress)
 import Shared.UUID (UUID)
 import WsGun as WsGun
 
 foreign import data WorkflowHandle :: Type
-foreign import startWorkflowImpl :: UUID -> SlotRole -> List (Tuple4 IngestKey String String Int) -> List HlsPushSpec -> Effect (Tuple3 WorkflowHandle (List Pid) SlotConfiguration)
+--foreign import startWorkflowImpl :: UUID -> SlotRole -> List (Tuple4 IngestKey String String Int) -> SlotConfiguration -> List HlsPushSpec -> Effect (Tuple3 WorkflowHandle (List Pid) SlotConfiguration)
+foreign import startWorkflowImpl :: SlotConfiguration -> List HlsPushSpec -> Effect (Tuple3 WorkflowHandle (List Pid) SlotConfiguration)
 foreign import stopWorkflowImpl :: WorkflowHandle -> Effect Unit
 foreign import addLocalIngestImpl :: WorkflowHandle -> IngestKey -> Effect Unit
 foreign import addRemoteIngestImpl :: WorkflowHandle -> IngestKey -> String -> Effect Unit
@@ -111,6 +114,11 @@ foreign import removeIngestImpl :: WorkflowHandle -> IngestKey -> Effect Unit
 foreign import registerStreamRelayImpl :: WorkflowHandle -> String -> Int -> Effect Unit
 foreign import deRegisterStreamRelayImpl :: WorkflowHandle -> String -> Int -> Effect Unit
 foreign import workflowMessageMapperImpl :: Foreign -> Maybe WorkflowMsg
+
+type CreateAggregatorPayload
+  = { shortName :: RtmpShortName
+    , streamDetails :: StreamDetails
+    }
 
 type PrimaryToBackupWebsocket = WsGun.WebSocket AggregatorPrimaryToBackupWsMessage AggregatorBackupToPrimaryWsMessage
 type BackupToPrimaryProcess = Process (WebSocketHandlerMessage AggregatorBackupToPrimaryWsMessage)
@@ -420,16 +428,16 @@ sendToIngests {cachedState: {localIngests, remoteIngests}} message = do
     doSend handler =
       handler ! WsSend message
 
-startLink :: AggregatorKey -> StreamDetails -> StateServerName -> Effect StartLinkResult
-startLink aggregatorKey streamDetails stateServerName = Gen.startLink (serverName aggregatorKey) (init streamDetails stateServerName) handleInfo
+startLink :: AggregatorKey -> CreateAggregatorPayload -> StateServerName -> Effect StartLinkResult
+startLink aggregatorKey payload stateServerName = Gen.startLink (serverName aggregatorKey) (init payload stateServerName) handleInfo
 
 stopAction :: AggregatorKey -> Maybe CachedState -> Effect Unit
 stopAction aggregatorKey _cachedState = do
   logStop "Ingest Aggregator stopping" {aggregatorKey}
   announceLocalAggregatorStopped aggregatorKey
 
-init :: StreamDetails -> StateServerName -> Effect State
-init streamDetails@{role: slotRole, slot: slot@{id: slotId}} stateServerName = do
+init :: CreateAggregatorPayload -> StateServerName -> Effect State
+init {shortName, streamDetails: streamDetails@{role: slotRole, slot: slot@{id: slotId}}} stateServerName = do
   logStart "Ingest Aggregator starting" {aggregatorKey, streamDetails}
   _ <- Erl.trapExit true
   config <- Config.ingestAggregatorAgentConfig
@@ -437,13 +445,18 @@ init streamDetails@{role: slotRole, slot: slot@{id: slotId}} stateServerName = d
   announceLocalAggregatorIsAvailable aggregatorKey (slotDetailsToSlotCharacteristics slot)
   Gen.registerExternalMapping thisServerName (\m -> Workflow <$> workflowMessageMapperImpl m)
   Gen.registerExternalMapping thisServerName (\m -> Gun <$> (WsGun.messageMapper m))
-  workflowHandleAndPidsAndSlotConfiguration <- startWorkflowImpl (unwrap streamDetails.slot.id) streamDetails.role
-                                                  (List.fromFoldable $ mkKey <$> streamDetails.slot.profiles)
+  -- workflowHandleAndPidsAndSlotConfiguration <- startWorkflowImpl (unwrap streamDetails.slot.id) streamDetails.role
+  --                                                 (List.fromFoldable $ mkKey <$> streamDetails.slot.profiles)
+  --                                                 slotConfiguration
+  --                                                 (List.fromFoldable $ streamDetails.push)
+  workflowHandleAndPidsAndSlotConfiguration <- startWorkflowImpl -- (unwrap streamDetails.slot.id) streamDetails.role
+--                                                  (List.fromFoldable $ mkKey <$> streamDetails.slot.profiles)
+                                                  slotConfiguration
                                                   (List.fromFoldable $ streamDetails.push)
   Gen.registerTerminate thisServerName terminate
   void $ Bus.subscribe thisServerName IntraPoP.bus IntraPoPBus
   let
-    Tuple workflowHandle (Tuple webRtcStreamServers (Tuple slotConfiguration _)) = toNested3 workflowHandleAndPidsAndSlotConfiguration
+    Tuple workflowHandle (Tuple webRtcStreamServers (Tuple _slotConfiguration _)) = toNested3 workflowHandleAndPidsAndSlotConfiguration
     initialState = { config : config
                    , slotId
                    , slotRole
@@ -472,7 +485,9 @@ init streamDetails@{role: slotRole, slot: slot@{id: slotId}} stateServerName = d
     mkKey (SlotProfile p) = tuple4 (IngestKey streamDetails.slot.id streamDetails.role p.name) (unwrap p.rtmpStreamName) (unwrap p.name) p.bitrate
     aggregatorKey = streamDetailsToAggregatorKey streamDetails
     thisServerName = (serverName (aggregatorKey))
+    slotConfiguration = SlotTypes.llnwStreamDetailsToSlotConfiguration shortName streamDetails
 
+maybeStartPrimaryTimeout :: State -> Effect Unit
 maybeStartPrimaryTimeout state@{dataObjectState: Left _} = do
   -- We are primary, nothing to do
   pure unit

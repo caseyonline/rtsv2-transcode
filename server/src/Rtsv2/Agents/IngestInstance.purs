@@ -329,7 +329,13 @@ doStopIngest state@{ingestKey} = do
   pure unit
 
 informAggregator :: State -> Effect State
-informAggregator state@{streamDetails, ingestKey: ingestKey@(IngestKey slotId slotRole profileName), thisServer, aggregatorRetryTime, stateServerName, loadConfig} = do
+informAggregator state@{ streamDetails
+                       , streamPublish: StreamPublish {rtmpShortName}
+                       , ingestKey: ingestKey@(IngestKey slotId slotRole profileName)
+                       , thisServer
+                       , aggregatorRetryTime
+                       , stateServerName
+                       , loadConfig} = do
   maybeAggregator <- hush <$> getAggregator
   maybeIngestAdded <- addIngest $ (fromLocalOrRemote <$> maybeAggregator)
   case maybeIngestAdded of
@@ -357,7 +363,7 @@ informAggregator state@{streamDetails, ingestKey: ingestKey@(IngestKey slotId sl
         Just server ->
           pure $ Right $ Local server
         Nothing ->
-          IngestAggregatorSup.startLocalOrRemoteAggregator loadConfig streamDetails
+          IngestAggregatorSup.startLocalOrRemoteAggregator loadConfig {shortName: rtmpShortName, streamDetails}
 
 handleAggregatorExit :: AggregatorKey -> Server -> State -> Effect State
 handleAggregatorExit exitedAggregatorKey exitedAggregatorAddr state@{ingestKey, aggregatorRetryTime, aggregatorWebSocket: mWebSocket}

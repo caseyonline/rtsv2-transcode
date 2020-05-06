@@ -564,7 +564,7 @@ get_slot_profiles(#stream_desc_ingest{ slot_id = SlotId, profile_name = IngestPr
   case rtsv2_slot_media_source_publish_processor:maybe_slot_configuration(SlotId) of
     #{ profiles := Profiles } ->
 
-      case [ Profile || Profile = #{ name := ConfigProfileName } <- Profiles, ConfigProfileName =:= IngestProfileName ] of
+      case [ Profile || Profile = #{ profileName := ConfigProfileName } <- Profiles, ConfigProfileName =:= IngestProfileName ] of
         [ MatchingProfile | _ ] ->
           [ MatchingProfile ];
 
@@ -586,7 +586,7 @@ get_slot_profiles(#stream_desc_egest{ egest_key = EgestKey, get_slot_configurati
   end.
 
 
-transition_to_running([ #{ name := ActiveProfileName } | _OtherProfiles ] = Profiles,
+transition_to_running([ #{ profileName := ActiveProfileName } | _OtherProfiles ] = Profiles,
                       #?state_initializing{ trace_id = TraceId
                                           , public_ip_string = PublicIPString
                                           , socket_url = SocketURL

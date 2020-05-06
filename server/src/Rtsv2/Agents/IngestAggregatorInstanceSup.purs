@@ -11,16 +11,16 @@ import Erl.Data.List (nil, (:))
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildType(..), SupervisorSpec, SupervisorStrategy(..))
 import Pinto.Sup as Sup
+import Rtsv2.Agents.IngestAggregatorInstance (CreateAggregatorPayload)
 import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
 import Rtsv2.Names as Names
-import Shared.Rtsv2.LlnwApiTypes (StreamDetails)
 import Shared.Rtsv2.Stream (AggregatorKey)
 
-startLink :: AggregatorKey -> StreamDetails -> IngestAggregatorInstance.StateServerName -> Effect Pinto.StartLinkResult
-startLink aggregatorKey streamDetails stateServerName = Sup.startLink (Names.ingestAggregatorInstanceSupName aggregatorKey) (init aggregatorKey streamDetails stateServerName)
+startLink :: AggregatorKey -> CreateAggregatorPayload -> IngestAggregatorInstance.StateServerName -> Effect Pinto.StartLinkResult
+startLink aggregatorKey payload stateServerName = Sup.startLink (Names.ingestAggregatorInstanceSupName aggregatorKey) (init aggregatorKey payload stateServerName)
 
-init :: AggregatorKey -> StreamDetails -> IngestAggregatorInstance.StateServerName -> Effect SupervisorSpec
-init aggregatorKey streamDetails stateServerName = do
+init :: AggregatorKey -> CreateAggregatorPayload -> IngestAggregatorInstance.StateServerName -> Effect SupervisorSpec
+init aggregatorKey payload stateServerName = do
   pure $ Sup.buildSupervisor
     # Sup.supervisorIntensity 50
     # Sup.supervisorStrategy OneForAll
@@ -31,6 +31,6 @@ init aggregatorKey streamDetails stateServerName = do
       ( Sup.buildChild
         # Sup.childType Worker
         # Sup.childId "ingestAggregatorInstance"
-        # Sup.childStart (IngestAggregatorInstance.startLink aggregatorKey streamDetails) stateServerName
+        # Sup.childStart (IngestAggregatorInstance.startLink aggregatorKey payload) stateServerName
       )
       : nil

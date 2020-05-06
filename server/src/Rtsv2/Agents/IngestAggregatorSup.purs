@@ -18,12 +18,13 @@ import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChil
 import Pinto.Sup as Sup
 import Pinto.Types (startOkAS)
 import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
+import Rtsv2.Agents.IngestAggregatorInstance (CreateAggregatorPayload)
 import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
 import Rtsv2.Agents.IngestAggregatorInstanceSup as IngestAggregatorInstanceSup
 import Rtsv2.Config (LoadConfig)
 import Rtsv2.Load as Load
 import Rtsv2.Names as Names
-import Shared.Rtsv2.LlnwApiTypes (StreamDetails, slotDetailsToSlotCharacteristics)
+import Shared.Rtsv2.LlnwApiTypes (slotDetailsToSlotCharacteristics)
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Shared.Rtsv2.Types (Server, ResourceResp)
 import SpudGun as SpudGun
@@ -37,27 +38,27 @@ isAgentAvailable = isRegistered serverName
 startLink :: forall a. a -> Effect Pinto.StartLinkResult
 startLink _ = Sup.startLink serverName init
 
-startLocalAggregator :: LoadConfig -> StreamDetails -> Effect (ResourceResp Server)
-startLocalAggregator loadConfig streamDetails =
+startLocalAggregator :: LoadConfig -> CreateAggregatorPayload -> Effect (ResourceResp Server)
+startLocalAggregator loadConfig payload@{streamDetails} =
   let
     slotCharacteristics = slotDetailsToSlotCharacteristics streamDetails.slot
   in
     Load.launchLocalGeneric (Load.hasCapacityForAggregator slotCharacteristics loadConfig) launchLocal
   where
     launchLocal _ = do
-      (maybe false (const true) <<< startOkAS) <$> startAggregator streamDetails
+      (maybe false (const true) <<< startOkAS) <$> startAggregator payload
 
-startLocalOrRemoteAggregator :: LoadConfig -> StreamDetails -> Effect (ResourceResp Server)
-startLocalOrRemoteAggregator loadConfig streamDetails =
+startLocalOrRemoteAggregator :: LoadConfig -> CreateAggregatorPayload -> Effect (ResourceResp Server)
+startLocalOrRemoteAggregator loadConfig payload@{streamDetails} =
   let
     slotCharacteristics = slotDetailsToSlotCharacteristics streamDetails.slot
   in
     Load.launchLocalOrRemoteGeneric (Load.hasCapacityForAggregator slotCharacteristics loadConfig) launchLocal launchRemote
   where
     launchLocal _ = do
-      (maybe false (const true) <<< startOkAS) <$> startAggregator streamDetails
+      (maybe false (const true) <<< startOkAS) <$> startAggregator payload
     launchRemote idleServer =
-      either (const false) (const true) <$> SpudGun.postJson (makeUrl idleServer IngestAggregatorsE) streamDetails
+      either (const false) (const true) <$> SpudGun.postJson (makeUrl idleServer IngestAggregatorsE) payload
 
 ------------------------------------------------------------------------------
 -- Supervisor callbacks
@@ -82,12 +83,12 @@ init = do
 serverName :: SupervisorName
 serverName = Names.ingestAggregatorSupName
 
-startAggregator :: StreamDetails -> Effect StartChildResult
-startAggregator streamDetails =
+startAggregator :: CreateAggregatorPayload -> Effect StartChildResult
+startAggregator payload@{streamDetails} =
   let
     aggregatorKey = IngestAggregatorInstance.streamDetailsToAggregatorKey streamDetails
   in
-   Sup.startSimpleChild childTemplate serverName { childStartLink: IngestAggregatorInstanceSup.startLink aggregatorKey streamDetails
+   Sup.startSimpleChild childTemplate serverName { childStartLink: IngestAggregatorInstanceSup.startLink aggregatorKey payload
                                                  , childStopAction: IngestAggregatorInstance.stopAction aggregatorKey
                                                  , serverName: Names.ingestAggregatorInstanceStateName aggregatorKey
                                                  , domain: IngestAggregatorInstance.domain

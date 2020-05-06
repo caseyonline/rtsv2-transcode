@@ -28,7 +28,7 @@
 -include("../../../../src/rtsv2_internal_hls_writer.hrl").
 
 -export([
-         startWorkflowImpl/4,
+         startWorkflowImpl/2,
          stopWorkflowImpl/1,
          addLocalIngestImpl/2,
          addRemoteIngestImpl/3,
@@ -42,34 +42,9 @@
                                                          spec = ?wildcard_by_name(frame)#frame{source_metadata = ?wildcard(#source_metadata{})#source_metadata{source_id = SourceId}}}).
 
 
-
-
-
-startWorkflowImpl(SlotId, SlotRole, Profiles, PushDetails) ->
+startWorkflowImpl(SlotConfiguration, PushDetails) ->
   fun() ->
-      {EnrichedProfiles, _NextProfileIndex} =
-        lists:mapfoldl(fun({ IngestKey, StreamName, ProfileName, Bitrate }, ProfileIndex) ->
-                           ProfileInfo =
-                             #enriched_slot_profile{ ingest_key = IngestKey
-                                                   , stream_name = StreamName
-                                                   , profile_name = ProfileName
-                                                   , bitrate = Bitrate
-
-                                                     %% SSRCs are 32-bits, use the upper 16 bits to reflect
-                                                     %% the profile to which the RTP stream belongs, the
-                                                     %% next 8 bits to provide a type, and leave the lower
-                                                     %% 8 bits incase we ever need multiple related SSRCs
-                                                     %% for a single RTP flow
-                                                   , audio_ssrc_start = ?make_audio_ssrc(ProfileIndex, 0)
-                                                   , video_ssrc_start = ?make_video_ssrc(ProfileIndex, 0)
-                                                   },
-                           { ProfileInfo, ProfileIndex + 1 }
-                       end,
-                       ?PROFILE_INDEX_STANDARD_OFFSET,
-                       Profiles
-                      ),
-
-        startWorkflow(SlotId, SlotRole, EnrichedProfiles, PushDetails)
+      startWorkflow(SlotConfiguration, PushDetails)
   end.
 
 stopWorkflowImpl(Handle) ->
@@ -122,16 +97,16 @@ workflowMessageMapperImpl(_) ->
 %%------------------------------------------------------------------------------
 %% Internal functions
 %%------------------------------------------------------------------------------
-startWorkflow(SlotId, SlotRole, Profiles, PushDetails) ->
-
-  SlotConfiguration = slot_configuration(SlotId, Profiles),
+startWorkflow(SlotConfiguration = #{ slotId := SlotId
+                                   , slotRole := SlotRole
+                                   , profiles := Profiles}, PushDetails) ->
 
   Pids = lists:map(fun(IngestKey) ->
                        {ok, Pid} = webrtc_stream_server:start_link(IngestKey, #{stream_module => rtsv2_webrtc_ingest_preview_stream_handler,
                                                                                 stream_module_args => [IngestKey]}),
                        Pid
                    end,
-                   [ IngestKey || #enriched_slot_profile{ ingest_key = IngestKey } <- Profiles ]),
+                   [ IngestKey || #{ ingestKey := IngestKey } <- Profiles ]),
 
   AudioConfig = #audio_transcode_config{
                    input = #frame_spec{
@@ -217,13 +192,12 @@ startWorkflow(SlotId, SlotRole, Profiles, PushDetails) ->
                                          }
                                         },
 
-                              lists:map(fun(Profile =
-                                            #enriched_slot_profile{ ingest_key = IngestKey
-                                                                  , stream_name = StreamName
-                                                                  , profile_name = ProfileName
-                                                                  , audio_ssrc_start = AudioSSRCStart
-                                                                  , video_ssrc_start = VideoSSRCStart
-                                                                  }
+                              lists:map(fun(Profile = #{ ingestKey := IngestKey
+                                                       , streamName := StreamName
+                                                       , profileName := ProfileName
+                                                       , firstAudioSSRC := AudioSSRCStart
+                                                       , firstVideoSSRC := VideoSSRCStart
+                                                       }
                                            ) ->
 
                                             #compound_processor{
@@ -347,7 +321,7 @@ startWorkflow(SlotId, SlotRole, Profiles, PushDetails) ->
                                        ),
 
                               #processor{ name = slot_media_source_publish
-                                        , subscribes_to = [ binary_to_atom(ProfileName, utf8) || #enriched_slot_profile{ profile_name = ProfileName } <- Profiles ]
+                                        , subscribes_to = [ binary_to_atom(ProfileName, utf8) || #{ profileName := ProfileName } <- Profiles ]
                                         , module = rtsv2_slot_media_source_publish_processor
                                         , config =
                                             #rtsv2_slot_media_source_publish_processor_config{ slot_name = SlotId
@@ -364,7 +338,7 @@ startWorkflow(SlotId, SlotRole, Profiles, PushDetails) ->
 
   {Handle, Pids, SlotConfiguration}.
 
-hls_processors(VideoSub, AudioSub, _SlotId, #enriched_slot_profile{ profile_name = ProfileName }, [#{ auth := #{username := Username, password := Password}, segmentDuration := SegmentDuration, playlistDuration := PlaylistDuration, putBaseUrl := PutBaseUrl }]) ->
+hls_processors(VideoSub, AudioSub, _SlotId, #{ profileName := ProfileName }, [#{ auth := #{username := Username, password := Password}, segmentDuration := SegmentDuration, playlistDuration := PlaylistDuration, putBaseUrl := PutBaseUrl }]) ->
   ?WARNING("Using ~p gops per segment (not ~ps segments)", [SegmentDuration, SegmentDuration]),
   TsEncoderConfig = #ts_encoder_config{
                        which_encoder = ts_simple_encoder,
@@ -411,7 +385,7 @@ hls_processors(VideoSub, AudioSub, _SlotId, #enriched_slot_profile{ profile_name
                   mode = video,
                   segment_strategy = #ts_segment_generator_gop_strategy {
                     %% TODO Take this as a gop count not in seconds, for now
-                    gops_per_segment = SegmentDuration 
+                    gops_per_segment = SegmentDuration
                   }
                 },
       module = ts_segment_generator},
@@ -535,17 +509,3 @@ make_fec(MediaRtps = [First = #rtp{sequence_number = FirstSeqNumber} | _], LastS
 make_fec(_MediaRtps, _LastSeqNumber, FecAcc) ->
   FecAcc.
 -endif.
-
-
--spec slot_configuration(binary_string(), list(#enriched_slot_profile{})) -> rtsv2_slot_configuration:configuration().
-slot_configuration(SlotId, Profiles) ->
-  #{ profiles => [ profile(Profile) || Profile <- Profiles ]
-   , name => SlotId
-   }.
-
-
-profile(#enriched_slot_profile{ profile_name = ProfileName, audio_ssrc_start = AudioSSRCStart, video_ssrc_start = VideoSSRCStart }) ->
-  #{ name => ProfileName
-   , firstAudioSSRC => AudioSSRCStart
-   , firstVideoSSRC => VideoSSRCStart
-   }.

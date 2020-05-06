@@ -60,7 +60,7 @@ set_active_profile(ServerId, TraceId, ProfileName) ->
 init(#rtsv2_webrtc_session_handler_config{ session_id = SessionId
                                          , slot_id = SlotId
                                          , slot_role = SlotRole
-                                         , profiles = [ #{ name := ActiveProfileName } | _ ] = Profiles
+                                         , profiles = [ #{ profileName := ActiveProfileName } | _ ] = Profiles
                                          , web_socket = WebSocket
                                          , audio_ssrc = AudioSSRC
                                          , video_ssrc = VideoSSRC
@@ -190,7 +190,7 @@ handle_video_sequence(#rtp_sequence{ type = video } = Sequence, #?state{ video_s
 
 
 set_active_profile_impl(ProfileName, #?state{ profiles = Profiles } = State) ->
-  MaybeMatchingProfile = lists:search(fun(#{ name := ActualProfileName }) -> ActualProfileName =:= ProfileName end, Profiles),
+  MaybeMatchingProfile = lists:search(fun(#{ profileName := ActualProfileName }) -> ActualProfileName =:= ProfileName end, Profiles),
 
   case MaybeMatchingProfile of
     {value, #{ firstAudioSSRC := AudioSSRC, firstVideoSSRC := VideoSSRC }} ->

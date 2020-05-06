@@ -57,7 +57,7 @@ handle_info(publish_playlists, State = #?state{ config = #hls_master_playlist_pr
                                            push_details = PushDetails = [ #{ putBaseUrl := PutBaseUrl, auth := #{ type := <<"basic">>, username := Username, password := Password } }]
                                          }}) ->
   ?INFO("Building and sending playlists, pushdetails = ~p", [PushDetails]),
-  
+
   Playlist = m3u8:master_playlist(build_playlists(rtsv2_types:uuid_to_string(SlotId), Profiles, PushDetails)),
   ?INFO("Master playlist:~n~s", [Playlist]),
 
@@ -78,7 +78,7 @@ ioctl(_, State) ->
 %%------------------------------------------------------------------------------
 
 
-build_playlists(SlotId, Profiles = [#enriched_slot_profile{} |_], [PushDetail = #{}|_]) ->
+build_playlists(SlotId, Profiles = [_ |_], [PushDetail = #{}|_]) ->
 
   #master_playlist {
      rendition_groups = [ ],
@@ -86,7 +86,7 @@ build_playlists(SlotId, Profiles = [#enriched_slot_profile{} |_], [PushDetail = 
     }.
 
 
-variant_stream(SlotId, #{ playbackBaseUrl := PlaybackBaseUrl }, Profile = #enriched_slot_profile{ bitrate = BitRate, profile_name = ProfileName}) ->
+variant_stream(SlotId, #{ playbackBaseUrl := PlaybackBaseUrl }, Profile = #{ bitrate := BitRate, profileName := ProfileName}) ->
   VideoCodec = #h264_codec_descriptor { profile = main, level = 3.0 },
   AudioCodec = #aac_codec_descriptor{ profile = main },
 
