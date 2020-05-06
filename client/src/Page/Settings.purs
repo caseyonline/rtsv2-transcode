@@ -2,7 +2,6 @@ module Rtsv2App.Page.Settings where
 
 import Prelude
 
-import Component.HOC.Connect as Connect
 import Control.Monad.Reader (class MonadAsk, ask)
 import Data.Const (Const)
 import Data.Maybe (Maybe(..))
@@ -18,12 +17,12 @@ import Halogen.HTML.Events as HE
 import Halogen.HTML.Properties as HP
 import Network.RemoteData (RemoteData(..), fromMaybe)
 import Rtsv2App.Capability.Navigate (class Navigate, logout)
-import Rtsv2App.Component.Utils (Notification, NotificationMessage)
 import Rtsv2App.Capability.Resource.User (class ManageUser, UpdateProfileFields, getCurrentUser, updateUser)
 import Rtsv2App.Component.HTML.Footer (footer)
 import Rtsv2App.Component.HTML.Header as HD
-import Rtsv2App.Component.HTML.Menu.MenuMain as MM
+import Rtsv2App.Component.HTML.Menu.MenuWrapper as MW
 import Rtsv2App.Component.HTML.Utils (css_)
+import Rtsv2App.Component.Utils (NotificationMessage)
 import Rtsv2App.Data.Avatar (Avatar)
 import Rtsv2App.Data.Avatar as Avatar
 import Rtsv2App.Data.Email (Email)
@@ -31,7 +30,7 @@ import Rtsv2App.Data.Profile (ProfileEmail, Profile)
 import Rtsv2App.Data.Route (Route(..))
 import Rtsv2App.Data.Username (Username)
 import Rtsv2App.Data.Username as Username
-import Rtsv2App.Env (UserEnv)
+import Rtsv2App.Env (UserEnv, PoPDefEnv)
 import Rtsv2App.Form.Field as Field
 import Rtsv2App.Form.Validation as V
 
@@ -63,9 +62,9 @@ type State =
   }
 
 type ChildSlots =
-  ( mainMenu :: MM.Slot Unit
-  , header :: MM.Slot Unit
-  , formless :: F.Slot SettingsForm (Const Void) () UpdateProfileFields Unit
+  ( menuWrapper :: MW.Slot Unit
+  , header      :: HD.Slot Unit
+  , formless    :: F.Slot SettingsForm (Const Void) () UpdateProfileFields Unit
   )
 
 -------------------------------------------------------------------------------
@@ -75,7 +74,7 @@ component
   :: forall m r
    . MonadAff m
   => Navigate m
-  => MonadAsk { userEnv :: UserEnv | r } m
+  => MonadAsk { userEnv :: UserEnv, popDefEnv :: PoPDefEnv | r } m
   => ManageUser m
   => H.Component HH.HTML (Const Void) Input NotificationMessage m
 component = H.mkComponent
@@ -132,7 +131,7 @@ component = H.mkComponent
     HH.div
       [ css_ "main" ]
       [ HH.slot (SProxy :: _ "header") unit HD.component { currentUser, route: SettingsR } absurd
-      , HH.slot (SProxy :: _ "mainMenu") unit MM.component { currentUser, route: SettingsR } absurd
+      , HH.slot (SProxy :: _ "menuWrapper") unit MW.component { curPopName: Nothing, currentUser, route: DashboardR } absurd
       , HH.div
         [ css_ "app-content content" ]
         [ HH.div
