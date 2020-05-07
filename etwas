@@ -339,6 +339,11 @@ patch_wrapped_program() {
 
   sed -i "${replace_expression}" "${outer_path}"
 
+  # The nix wrapper script wraps the variable expression in
+  # single quotes, change it to double quotes so we can
+  # use variable expansion
+  sed -i "s|='\([^\']*\)'|=\"\1\"|g" "${outer_path}"
+
   printf "Patching wrapped program %s with wrapper %s\n" "${inner_name}" "${outer_name}"
 }
 
