@@ -19,6 +19,8 @@ declare -r FALSE=1
 # ------------------------------------------------------------------------------
 # TODO: 32-bit interpreter?
 declare g_interpreter=/lib64/ld-linux-x86-64.so.2
+# TODO: custom store path
+declare g_store_path=/nix/store
 declare g_package=${1:-}
 declare g_result_name=${2:-}
 declare g_result_path=
@@ -149,7 +151,9 @@ process_dependency() {
   # Files in the nix store are immutable by default, so we need
   # to make them writable before patching
   chmod --recursive +w "${dependency_dir}"
+
   patch_executable_files "${dependency_dir}"
+  patch_wrapped_programs "${dependency_dir}"
 
   recursive_link "${dependency_dir}/bin" "${g_build_dir}/bin"
 }
@@ -199,7 +203,13 @@ patch_script_file() {
       temp=$(mktemp)
 
       {
-        echo "#!/usr/bin/env ${shell_name} ${args}"
+        if [[ -z "${args}" ]]
+        then
+          echo "#!/usr/bin/env ${shell_name}"
+        else
+          echo "#!/usr/bin/env -S ${shell_name} ${args}"
+        fi
+
         tail -n +2 "${file}"
       } > "${temp}"
 
@@ -269,6 +279,67 @@ patch_elf_file() {
   fi
 
   return
+}
+
+patch_wrapped_programs() {
+  local -r directory=${1}
+
+  while IFS= read -r file
+  do
+    patch_wrapped_program "${file}"
+  done < <(find "${directory}" -executable -a -type f -a -name ".*-wrapped")
+}
+
+patch_wrapped_program() {
+  local -r inner_path=${1}
+
+  local inner_dir=
+  inner_dir=$(dirname "${inner_path}")
+
+  local inner_name=
+  inner_name=$(basename "${inner_path}")
+
+  local outer_name=
+  # shellcheck disable=SC2001
+  outer_name=$(sed 's/^\.\(.*\)-wrapped$/\1/' <<< "${inner_name}")
+
+  local outer_path=${inner_dir}/${outer_name}
+
+  local -a replace_expressions=()
+
+  while IFS= read -r dependency_store_path
+  do
+    if ! has_dependency_been_processed "${dependency_store_path}"
+    then
+      printf "Wrapper %s depends on %s which isn't a dependency which has been processed\n" \
+        "${outer_name}" \
+        "${dependency_store_path}"
+
+      continue
+    fi
+
+    local dependency_name=
+    dependency_name=$(dependency_name "${dependency_store_path}")
+
+    local dependency_dir=${g_build_dir}/lib/${dependency_name}
+
+    local relative_path=
+    relative_path=$(realpath "${dependency_dir}" --relative-to "${inner_dir}")
+
+    # TODO: escape
+    local this_replace_expression="s|${dependency_store_path}|\$(dirname \"\$(readlink --canonicalize \"\${BASH_SOURCE[0]}\")\")/${relative_path}|g"
+
+    replace_expressions+=("${this_replace_expression}")
+
+  done < <(grep -o "${g_store_path}/[^/]*" "${outer_path}")
+
+  local replace_expression
+  printf -v replace_expression ';%s' "${replace_expressions[@]}"
+  replace_expression=${replace_expression:1}
+
+  sed -i "${replace_expression}" "${outer_path}"
+
+  printf "Patching wrapped program %s with wrapper %s\n" "${inner_name}" "${outer_name}"
 }
 
 # ------------------------------------------------------------------------------
@@ -377,7 +448,7 @@ recursive_link() {
 
   mkdir -p "${dst_path}"
 
-  local relative_path
+  local relative_path=
   relative_path=$(realpath "${src_path}" --relative-to "${dst_path}")
 
   local file_name=

@@ -48,28 +48,32 @@ stdenv.mkDerivation rec {
     fi
 
     cp -r ./* $out/
+
+    wrapProgram \
+      $out/bin/start_iserf.sh \
+      --prefix PATH : ${lib.makeBinPath [ serfdom ]}
   '';
 
   buildInputs = [
+
+    # Needed for wrapProgram
+    makeWrapper
 
     # Our nativedeps environment
     (id3as.nd-env.override {
       nd-quicksync-enabled = false;
     })
 
-    # Need to explcitly list dependencies
+    # Need to explicitly list dependencies
     # of erlang so that nix can find them
     # erlang itself isn't a dependency
-    ncurses
+    ncurses   # Ubuntu 18.04 has version 5, we need 6
+    openssl   # Ubuntu 18.04 has version 1.1.0, we need 1.1.1
 
     # The Media Gateway
     rtsv2-media-gateway
 
-    openssl
-
-    # Remove these?
-    jq
+    # Binaries we specifically want in the closure
     serfdom
-    iproute # NOTE: releases are Linux only, so no need for optional here
   ];
 }
