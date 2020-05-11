@@ -26,13 +26,27 @@
 -define(SERVER, ?MODULE).
 
 
--define(pack(What),                      msgpack:pack(What, [{pack_str, none}])).
+-define(pack(What), msgpack:pack(What, [{pack_str, none}])).
+-define(unpack(What), msgpack:unpack_stream(What, [{unpack_str, as_binary}])).
+
+-define(BLOCK_BODY_LEN_BYTES, 2).
+
+-record(read_block,
+        { remaining_len :: non_neg_integer()
+        , builder = [] :: list(binary())
+        }).
+
+-record(receive_sm,
+        { state = receiving_length :: receiving_length | receiving_body
+        , current_block = #read_block{ remaining_len = ?BLOCK_BODY_LEN_BYTES } :: #read_block{}
+        }).
 
 
 -record(?state,
         { uds_path :: binary_string()
         , server_port :: undefined | port()
         , control_socket :: socket:socket()
+        , receive_sm = #receive_sm{} :: #receive_sm{}
         }).
 
 
@@ -146,6 +160,13 @@ handle_cast(not_implemented, State) ->
   {noreply, State}.
 
 
+handle_info({'$socket', _Socket, select, _SelectRef}, #?state{} = State) ->
+  NewState = step_receive_sm_loop(State),
+  {noreply, NewState};
+
+handle_info({'$socket', _Socket, abort, _Info}, #?state{} = State) ->
+  {noreply, State};
+
 handle_info({Port, {exit_status, Status}}, #?state{ server_port = ServerPort } = State) when ServerPort =:= Port ->
   ?SLOG_NOTICE("A port exited.", #{ port => Port, status => Status }),
   {noreply, State}.
@@ -158,7 +179,9 @@ ensure_control_socket(State = #?state{ uds_path = UdsPath }) ->
   {ok, MediaGateway} = socket:open(local, stream),
   DBindAddress = #{ family => local, path => UdsPath },
   ok = socket:connect(MediaGateway, DBindAddress),
-  State#?state{ control_socket = MediaGateway }.
+  NewState1 = State#?state{ control_socket = MediaGateway },
+  {continue, NewState2} = step_receive_sm(NewState1),
+  NewState2.
 
 
 header(Type) ->
@@ -175,9 +198,6 @@ slot_key(SlotId, SlotRole) ->
 
 
 send_msg(Socket, Header, Body, Fds) ->
-  io:format(user, "Header: ~p~n", [Header]),
-  io:format(user, "Body: ~p~n", [Body]),
-
   MessageComponents = [ Header
                       , Body
                       ],
@@ -194,11 +214,9 @@ send_msg(Socket, Header, Body, Fds) ->
             , flags => []
             },
 
-  io:format("Sending on socket ~p", [Socket]),
-
   ok = socket:sendmsg(Socket, MsgHdr),
 
-  io:format("Sent on socket ~p", [Socket]).
+  ok.
 
 
 build_frame(Message) ->
@@ -212,3 +230,52 @@ convert_crypto_params(#srtp_crypto_params{ master_key = MasterKey, master_salt =
         , salt => MasterSalt
         }
    }.
+
+
+step_receive_sm_loop(State) ->
+  case step_receive_sm(State) of
+    { continue, NewState } ->
+      NewState;
+
+    { frame, FrameData, NewState } ->
+      {Header, BodyData} = ?unpack(FrameData),
+      {Body, <<>>} = ?unpack(BodyData),
+      ?DEBUG("Got message with header ~p and body ~p", [Header, Body]),
+      step_receive_sm_loop(NewState)
+  end.
+
+
+step_receive_sm(#?state{ control_socket = Socket
+                       , receive_sm = #receive_sm{ state = SMState, current_block = CurrentBlock } = SM
+                       } = State
+               ) ->
+
+  case {read_block(Socket, CurrentBlock), SMState} of
+    {{complete, <<BodyLen:16/big-integer>>}, receiving_length} ->
+      step_receive_sm(State#?state{ receive_sm = SM#receive_sm{ state = receiving_body, current_block = #read_block{ remaining_len = BodyLen } } });
+
+    {{complete, Data}, receiving_body} ->
+      { frame
+      , Data
+      , State#?state{ receive_sm = #receive_sm{} }
+      };
+
+    {{continue, UpdatedBlock}, _SMState} ->
+      { continue
+      , State#?state{ receive_sm = SM#receive_sm{ current_block = UpdatedBlock } }
+      }
+  end.
+
+
+read_block(Socket, #read_block{ remaining_len = RemainingLen, builder = Builder } = Block) ->
+  case socket:recv(Socket, RemainingLen, nowait) of
+    {ok, <<Data:RemainingLen/binary>>} ->
+      {complete, iolist_to_binary(lists:reverse([Data | Builder]))};
+
+    {select, _SelectInfo} ->
+      {continue, Block};
+
+    {ok, {PartialData, _SelectInfo}} ->
+      NewBlock = Block#read_block{ remaining_len = RemainingLen - byte_size(PartialData), builder = [ PartialData | Builder ] },
+      {continue, NewBlock}
+  end.
