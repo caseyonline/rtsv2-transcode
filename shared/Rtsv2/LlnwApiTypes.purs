@@ -111,7 +111,6 @@ type HlsPushSpec =
   { protocol :: HlsPushProtocol
   , formats :: Array HlsPushSpecFormat
   , putBaseUrl :: String
-  , playbackBaseUrl :: String
   , segmentDuration :: Maybe Int
   , playlistDuration :: Maybe Int
   , auth :: HlsPushAuth
