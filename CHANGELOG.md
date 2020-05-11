@@ -1,4 +1,14 @@
+# RTS-V2 release xx
+
+**What's new**
+
+* hlsPublish flag in ingest aggregator json to indicate if HLS publishing is active
+* CODE_LOADING_MODE set in start.sh, which will remove misleading error logs about missing NIFs on startup
+* playbackBaseUrl removed from HlsPushSpec
+* 
+
 # RTS-V2 release 94
+
 **What's new**
 
 - **RTSV2-66** - handling of invalid data object messages from client fixed

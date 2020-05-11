@@ -56,6 +56,7 @@ module Rtsv2.Agents.IngestAggregatorInstance
 import Prelude
 
 import Bus as Bus
+import Data.Array as Array
 import Data.Either (Either(..), either, hush)
 import Data.FoldableWithIndex (foldWithIndexM, foldlWithIndex)
 import Data.Lens (Lens', set, view)
@@ -309,6 +310,7 @@ getState aggregatorKey@(AggregatorKey slotId slotRole) = Gen.call (serverName ag
                       , streamDetails
                       , activeProfiles: (\(Tuple profileName ingestAddress) -> JsonLd.activeIngestLocationNode slotId slotRole profileName ingestAddress) <$> allProfiles
                       , downstreamRelays: foldlWithIndex (\server acc {port} -> (JsonLd.downstreamRelayLocationNode slotId slotRole {server, port}) : acc) nil relays
+                      , hlsPublish: (Array.length streamDetails.push) /= 0
                       }
         localProfiles outerAcc = foldlWithIndex (\profileName acc _handler -> (Tuple profileName (extractAddress thisServer)) : acc) outerAcc localIngests
         remoteProfiles outerAcc = foldlWithIndex (\profileName acc {ingestAddress} -> (Tuple profileName ingestAddress) : acc) outerAcc remoteIngests
