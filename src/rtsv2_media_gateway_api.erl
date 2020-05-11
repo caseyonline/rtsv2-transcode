@@ -5,6 +5,7 @@
 
 
 -include_lib("id3as_common/include/common.hrl").
+-include_lib("id3as_common/include/id3as_message_bus.hrl").
 -include("./rtsv2_media_gateway_api.hrl").
 -include("./rtsv2_rtp.hrl").
 
@@ -239,8 +240,8 @@ step_receive_sm_loop(State) ->
 
     { frame, FrameData, NewState } ->
       {Header, BodyData} = ?unpack(FrameData),
-      {Body, <<>>} = ?unpack(BodyData),
-      ?DEBUG("Got message with header ~p and body ~p", [Header, Body]),
+      {#{ <<"client_id">> := ServerScopedClientId } = Body, <<>>} = ?unpack(BodyData),
+      ?I_RAISE_BUS_MSG({media_gateway_event, ServerScopedClientId}, {media_gateway_event, {Header, Body}}),
       step_receive_sm_loop(NewState)
   end.
 

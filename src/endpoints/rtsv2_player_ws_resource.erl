@@ -384,6 +384,10 @@ websocket_info({egestCurrentActiveProfiles, ActiveProfiles}, State) ->
   , State
   };
 
+websocket_info({media_gateway_event, Event}, State) ->
+  ?DEBUG("Got event ~p", [Event]),
+  {ok, State};
+
 websocket_info(not_implemented, State) ->
   {ok, State}.
 
@@ -621,6 +625,7 @@ transition_to_running([ #{ profileName := ActiveProfileName } | _OtherProfiles ]
                       } ->
 
       ?I_SUBSCRIBE_BUS_MSGS({egestBus, {egestKey, SlotId, SlotRole}}),
+      ?I_SUBSCRIBE_BUS_MSGS({media_gateway_event, trace_id_to_media_gateway_id(TraceId)}),
       {right, unit} = (AddClient(self(), EgestKey))();
     _ ->
       ok
