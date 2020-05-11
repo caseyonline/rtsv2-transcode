@@ -45,13 +45,22 @@ process_input(#frame{gop_number = GopNumber,
               State = #?state{ current_gop = GopMap }) ->
   Key = {StreamId, ProfileName},
   {GopMap2, Frames} = case maps:get(Key, GopMap, undefined) of
-      undefined -> 
-        { maps:put(Key, {GopNumber, Pts}, GopMap), [] };
-      {GopNumber, _LastPts} -> { GopMap, [] };
-      {OldGopNumber, LastPts} when GopNumber =:= OldGopNumber + 1 ->
-        Output = #gop_measurement{ stream_id = StreamId, profile_name = ProfileName, source_id = SourceId, duration = Pts-LastPts },
-        { maps:put(Key, {GopNumber, Pts}, GopMap), [ Output ] }
-  end,
+                        undefined ->
+                          %% First frame for this key
+                          { maps:put(Key, {GopNumber, Pts}, GopMap), [] };
+
+                        {GopNumber, _LastPts} ->
+                          %% Same gop; shouldn't really see this but no need to take out the workflow
+                          { GopMap, [] };
+
+                        {OldGopNumber, LastPts} when GopNumber =:= OldGopNumber + 1 ->
+                          Output = #gop_measurement{ stream_id = StreamId, profile_name = ProfileName, source_id = SourceId, duration = Pts-LastPts },
+                          { maps:put(Key, {GopNumber, Pts}, GopMap), [ Output ] };
+
+                        {_OldGopNumber, _LastPts} ->
+                          %% Skipped some gops - that can happen if the ingest stopped and restarted
+                          { maps:put(Key, {GopNumber, Pts}, GopMap), [ ] }
+                      end,
 
   {ok, Frames, State#?state{ current_gop = GopMap2 }};
 

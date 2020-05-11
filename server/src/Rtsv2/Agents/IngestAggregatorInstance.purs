@@ -453,13 +453,13 @@ init {shortName, streamDetails: streamDetails@{role: slotRole, slot: slot@{id: s
   , defaultPlaylistDurationMs} <- Config.llnwApiConfig
 
   thisServer <- PoPDefinition.getThisServer
-  announceLocalAggregatorIsAvailable aggregatorKey (slotDetailsToSlotCharacteristics slot)
   Gen.registerExternalMapping thisServerName (\m -> Workflow <$> workflowMessageMapperImpl m)
   Gen.registerExternalMapping thisServerName (\m -> Gun <$> (WsGun.messageMapper m))
   workflowHandleAndPids <- startWorkflowImpl
                            slotConfiguration ((toHlsPush defaultSegmentDurationMs defaultPlaylistDurationMs) <$> (List.fromFoldable $ streamDetails.push))
   Gen.registerTerminate thisServerName terminate
   void $ Bus.subscribe thisServerName IntraPoP.bus IntraPoPBus
+  announceLocalAggregatorIsAvailable aggregatorKey (slotDetailsToSlotCharacteristics slot)
   let
     Tuple workflowHandle (Tuple webRtcStreamServers _) = toNested2 workflowHandleAndPids
     initialState = { config : config
