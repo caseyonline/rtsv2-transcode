@@ -36,9 +36,11 @@
         }).
 
 -record(?state,
-        { session_id
-        , profiles
-        , web_socket
+        { session_id :: binary_string()
+        , cname :: binary_string()
+        , media_gateway_client_id :: non_neg_integer()
+        , profiles :: list(rtsv2_slot_configuration:slot_profile())
+        , web_socket :: pid()
         , slot_id :: slot_id()
         , slot_role :: slot_role()
 
@@ -58,6 +60,8 @@ set_active_profile(ServerId, TraceId, ProfileName) ->
 
 
 init(#rtsv2_webrtc_session_handler_config{ session_id = SessionId
+                                         , cname = CName
+                                         , media_gateway_client_id = MediaGatewayClientId
                                          , slot_id = SlotId
                                          , slot_role = SlotRole
                                          , profiles = [ #{ profileName := ActiveProfileName } | _ ] = Profiles
@@ -71,6 +75,8 @@ init(#rtsv2_webrtc_session_handler_config{ session_id = SessionId
   ?DEBUG("Session handler started for session ~p in profile ~p", [SessionId, ActiveProfileName]),
 
   State1 = #?state{ session_id = SessionId
+                  , cname = CName
+                  , media_gateway_client_id = MediaGatewayClientId
                   , slot_id = SlotId
                   , slot_role = SlotRole
                   , profiles = Profiles
@@ -85,39 +91,48 @@ init(#rtsv2_webrtc_session_handler_config{ session_id = SessionId
 handle_media_frame(_, State = #?state{use_media_gateway = false}) ->
   {ok, State};
 
-handle_media_frame(#rtp_engine_msg{message = #rtp_engine_ready{}}, State) ->
-
-  %% NOTE: we don't care whether the engine is ready or not, we're not receiving
-  %%       media, and it will drop media we're sending if it isn't ready
-  {ok, State};
-
 handle_media_frame(#rtp_engine_msg{message = _RTPEngineState}, State) ->
-  %% Ignore PLIs et al
   {ok, State};
 
-handle_media_frame(#webrtc_media_channel_message{ message = #webrtc_media_channel_ready{ channel_type = audio, media_socket = Socket, egest_crypto = EgestCrypto } },
-                   #?state{ session_id = SessionId } = State
+handle_media_frame(#webrtc_media_channel_message{ message = #webrtc_media_channel_ready{ channel_type = audio
+                                                                                       , media_socket = Socket
+                                                                                       , egest_crypto = EgestCrypto
+                                                                                       , rtp_engine_snapshot = RTPEngineSnapshot
+                                                                                       }
+                                                },
+                   #?state{ cname = CName } = State
                   ) ->
+
+  PayloadTypeId = rtp_engine_passthrough_encoding_id(RTPEngineSnapshot),
 
   NewState =
     State#?state{ audio_stream_element_config =
                     #media_gateway_stream_element_config{ media_socket = Socket
                                                         , egest_crypto = EgestCrypto
-                                                        , cname = SessionId
+                                                        , cname = CName
+                                                        , payload_type_id = PayloadTypeId
                                                         }
                 },
 
   maybe_add_to_media_gateway(NewState);
 
-handle_media_frame(#webrtc_media_channel_message{ message = #webrtc_media_channel_ready{ channel_type = video, media_socket = Socket, egest_crypto = EgestCrypto } },
-                   #?state{ session_id = SessionId } = State
+handle_media_frame(#webrtc_media_channel_message{ message = #webrtc_media_channel_ready{ channel_type = video
+                                                                                       , media_socket = Socket
+                                                                                       , egest_crypto = EgestCrypto
+                                                                                       , rtp_engine_snapshot = RTPEngineSnapshot
+                                                                                       }
+                                                },
+                   #?state{ cname = CName } = State
                   ) ->
+
+  PayloadTypeId = rtp_engine_passthrough_encoding_id(RTPEngineSnapshot),
 
   NewState =
     State#?state{ video_stream_element_config =
                     #media_gateway_stream_element_config{ media_socket = Socket
                                                         , egest_crypto = EgestCrypto
-                                                        , cname = SessionId
+                                                        , cname = CName
+                                                        , payload_type_id = PayloadTypeId
                                                         }
                 },
 
@@ -301,7 +316,8 @@ maybe_add_to_media_gateway(#?state{ audio_stream_element_config = undefined } = 
 maybe_add_to_media_gateway(#?state{ video_stream_element_config = undefined } = State) ->
   {ok, State};
 
-maybe_add_to_media_gateway(#?state{ slot_id = <<SlotId:128/big-integer>>
+maybe_add_to_media_gateway(#?state{ media_gateway_client_id = ClientId
+                                  , slot_id = <<SlotId:128/big-integer>>
                                   , slot_role = { SlotRole }
                                   , audio_stream_element_config = AudioStreamElementConfig
                                   , video_stream_element_config = VideoStreamElementConfig
@@ -313,6 +329,11 @@ maybe_add_to_media_gateway(#?state{ slot_id = <<SlotId:128/big-integer>>
                                       },
 
   %% TODO: we need a client id!
-  rtsv2_media_gateway_api:add_egest_client(SlotId, SlotRole, 0, Config),
+  rtsv2_media_gateway_api:add_egest_client(SlotId, SlotRole, ClientId, Config),
 
   {ok, State}.
+
+
+rtp_engine_passthrough_encoding_id(RTPEngine) ->
+  [ { _, { rtp_passthrough_egest, EgestHandlerState} } ] = maps:to_list(rtp_engine:egest_handlers(RTPEngine)),
+  rtp_passthrough_egest:encoding_id(EgestHandlerState).

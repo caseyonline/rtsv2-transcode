@@ -73,6 +73,7 @@ data MediaGatewayFlag
   = Off
   | On
   | External
+  | Both
 
 instance readForeignMediaGatewayFlag :: ReadForeign MediaGatewayFlag where
   readImpl =
@@ -83,6 +84,7 @@ instance readForeignMediaGatewayFlag :: ReadForeign MediaGatewayFlag where
       toType "off" = pure Off
       toType "on" = pure On
       toType "external" = pure External
+      toType "both" = pure Both
       toType unknown = Nothing
       errorString s = "Unknown Media Gateway Flag: " <> s
 

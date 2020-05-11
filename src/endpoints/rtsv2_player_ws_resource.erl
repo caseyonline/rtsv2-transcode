@@ -29,9 +29,16 @@
 -define(state_running,      rtsv2_player_ws_resource_state_running).
 -define(state_failed,       rtsv2_player_ws_resource_state_failed).
 
+-define(TWO_POWER_16_MINUS_ONE, 65535).
+-define(TWO_POWER_48_MINUS_ONE, 281474976710655).
+
+-type trace_id() :: { server_id(), server_scoped_client_id() }.
+-type server_id() :: 0..?TWO_POWER_16_MINUS_ONE.
+-type server_scoped_client_id() :: 0..?TWO_POWER_48_MINUS_ONE.
 
 -record(?state_initializing,
-        { trace_id :: binary_string()
+        { trace_id :: trace_id()
+        , webrtc_session_id :: binary_string()
         , public_ip_string :: binary_string()
         , socket_url :: binary_string()
         , stream_desc :: stream_desc_ingest() | stream_desc_egest()
@@ -42,7 +49,8 @@
 
 
 -record(?state_running,
-        { trace_id :: binary_string()
+        { trace_id :: trace_id()
+        , webrtc_session_id :: binary_string()
         , public_ip_string :: binary_string()
         , socket_url :: binary_string()
         , stream_desc :: stream_desc_ingest() | stream_desc_egest()
@@ -138,15 +146,14 @@ init_prime(Req, StreamDesc) ->
   %% Needs to come from config!
   PublicIP = this_server_ip(Req),
   CookieDomainName = PublicIP,
-  ServerId = <<"p1n1">>,
-  ServerEpoch = <<"1">>,
+  ServerId = 1,
 
   TurnIP = PublicIP,
   TurnPort = 4000,
   TurnUsername = <<"username">>,
   TurnPassword = <<"password">>,
 
-  { TraceId, NewReq } = maybe_allocate_trace_id(ServerId, ServerEpoch, CookieDomainName, Req),
+  { TraceId, NewReq } = maybe_allocate_trace_id(ServerId, CookieDomainName, Req),
 
   case determine_stream_availability(StreamDesc) of
     available_nowhere ->
@@ -193,6 +200,7 @@ init_prime(Req, StreamDesc) ->
       { cowboy_websocket
       , NewReq
       , #?state_initializing{ trace_id = TraceId
+                            , webrtc_session_id = format_trace_id(TraceId)
                             , public_ip_string = PublicIPString
                             , socket_url = SocketURL
                             , stream_desc = StreamDesc
@@ -206,9 +214,9 @@ init_prime(Req, StreamDesc) ->
   end.
 
 
-terminate(Reason, _PartialReq, #?state_running{ server_id = ServerId, trace_id = TraceId }) ->
+terminate(Reason, _PartialReq, #?state_running{ server_id = ServerId, webrtc_session_id = SessionId }) ->
   ?SLOG_DEBUG("Terminating", #{ what => "close", reason => Reason }),
-  webrtc_stream_server:cast_session(ServerId, TraceId, notify_socket_disconnect),
+  webrtc_stream_server:cast_session(ServerId, SessionId, notify_socket_disconnect),
   ok;
 
 terminate(stop, _PartialReq, #?state_failed{}) ->
@@ -320,11 +328,13 @@ websocket_info({egestOnFI, Timestamp, Pts}, State) ->
 
 websocket_info({egestDataObjectMessage, #{ destination := Destination
                                          , msg := Msg
-                                         , sender := Sender }}, State = #?state_running{ trace_id = Id }) ->
+                                         , sender := Sender }}, State = #?state_running{ trace_id = TraceId }) ->
+
+  TraceIdString = format_trace_id(TraceId),
 
   OkToSend = case Destination of
                {broadcast} -> true;
-               {private, IdList} -> lists:member(Id, IdList)
+               {private, IdList} -> lists:member(TraceIdString, IdList)
              end,
 
   if
@@ -341,9 +351,12 @@ websocket_info({egestDataObjectMessage, #{ destination := Destination
 
 websocket_info({egestDataObjectUpdateResponse,#{response := Response,
                                                 senderRef := SenderRef,
-                                                to := To}}, State = #?state_running{ trace_id = Id }) ->
+                                                to := To}}, State = #?state_running{ trace_id = TraceId }) ->
+
+  TraceIdString = format_trace_id(TraceId),
+
   if
-    To == Id ->
+    To == TraceIdString ->
       { [ json_frame( <<"dataobject.update-response">>,
                       #{ <<"senderRef">> => SenderRef,
                          <<"response">> => endpoint_helpers:dataobject_response_to_ts(Response)
@@ -588,6 +601,7 @@ get_slot_profiles(#stream_desc_egest{ egest_key = EgestKey, get_slot_configurati
 
 transition_to_running([ #{ profileName := ActiveProfileName } | _OtherProfiles ] = Profiles,
                       #?state_initializing{ trace_id = TraceId
+                                          , webrtc_session_id = WebRTCSessionId
                                           , public_ip_string = PublicIPString
                                           , socket_url = SocketURL
                                           , stream_desc = StreamDesc
@@ -596,9 +610,9 @@ transition_to_running([ #{ profileName := ActiveProfileName } | _OtherProfiles ]
                                           }
                      ) ->
 
-  StartOptions = construct_start_options(TraceId, PublicIPString, Profiles, StreamDesc),
-  webrtc_stream_server:ensure_session(ServerId, TraceId, StartOptions),
-  webrtc_stream_server:subscribe_for_msgs(TraceId, #subscription_options{}),
+  StartOptions = construct_start_options(TraceId, WebRTCSessionId, PublicIPString, Profiles, StreamDesc),
+  webrtc_stream_server:ensure_session(ServerId, WebRTCSessionId, StartOptions),
+  webrtc_stream_server:subscribe_for_msgs(WebRTCSessionId, #subscription_options{}),
   case StreamDesc of
     #stream_desc_egest{ egest_key = EgestKey
                       , add_client = AddClient
@@ -614,6 +628,7 @@ transition_to_running([ #{ profileName := ActiveProfileName } | _OtherProfiles ]
 
   NewState =
     #?state_running{ trace_id = TraceId
+                   , webrtc_session_id = WebRTCSessionId
                    , public_ip_string = PublicIPString
                    , socket_url = SocketURL
                    , stream_desc = StreamDesc
@@ -624,7 +639,7 @@ transition_to_running([ #{ profileName := ActiveProfileName } | _OtherProfiles ]
 
   InitialMessage =
     #{ type => init
-     , traceId => TraceId
+     , traceId => format_trace_id(TraceId)
      , thisEdge =>
          #{ socketURL => SocketURL
           , iceServers => ICEServers
@@ -644,8 +659,8 @@ handle_ping(State) ->
   }.
 
 
-handle_sdp_offer(#{ <<"offer">> := SDP }, #?state_running{ server_id = ServerId, trace_id = TraceId, start_options = StartOptions } = State) ->
-  case webrtc_stream_server:handle_client_offer(ServerId, TraceId, StartOptions, SDP) of
+handle_sdp_offer(#{ <<"offer">> := SDP }, #?state_running{ server_id = ServerId, webrtc_session_id = WebRTCSessionId, start_options = StartOptions } = State) ->
+  case webrtc_stream_server:handle_client_offer(ServerId, WebRTCSessionId, StartOptions, SDP) of
     {ok, ResponseSDP} ->
       ?LOG_DEBUG(#{ what => "negotiation.offer-received", result => "ok", context => #{ offer => SDP } }),
       { [ json_frame( <<"sdp.offer-response">>, #{ <<"response">> => ResponseSDP } ) ]
@@ -666,8 +681,8 @@ handle_sdp_offer(BadMessage, State) ->
   }.
 
 
-handle_ice_gathering_candidate(#{ <<"candidate">> := Candidate, <<"index">> := MediaLineIndex }, #?state_running{ server_id = ServerId, trace_id = TraceId, start_options = StartOptions } = State) ->
-  case webrtc_stream_server:handle_ice_candidate(ServerId, TraceId, StartOptions, MediaLineIndex, Candidate) of
+handle_ice_gathering_candidate(#{ <<"candidate">> := Candidate, <<"index">> := MediaLineIndex }, #?state_running{ server_id = ServerId, webrtc_session_id = WebRTCSessionId, start_options = StartOptions } = State) ->
+  case webrtc_stream_server:handle_ice_candidate(ServerId, WebRTCSessionId, StartOptions, MediaLineIndex, Candidate) of
     ok ->
       ?LOG_DEBUG(#{ what => "negotiation.ice-candidate-received", result => "ok", candidate => Candidate, media_line_index => MediaLineIndex });
 
@@ -692,9 +707,9 @@ handle_ice_gathering_done(_Message, State) ->
   }.
 
 
-handle_set_quality_constraint_configuration(#{ <<"configuration">> := #{ <<"behavior">> := _Behavior, <<"variant">> := Variant } }, #?state_running{ server_id = ServerId, trace_id = TraceId } = State) ->
+handle_set_quality_constraint_configuration(#{ <<"configuration">> := #{ <<"behavior">> := _Behavior, <<"variant">> := Variant } }, #?state_running{ server_id = ServerId, webrtc_session_id = WebRTCSessionId } = State) ->
   %% TODO: PS: logging, actual abr
-  rtsv2_webrtc_session_handler:set_active_profile(ServerId, TraceId, Variant),
+  rtsv2_webrtc_session_handler:set_active_profile(ServerId, WebRTCSessionId, Variant),
   { []
   , State
   , hibernate
@@ -702,14 +717,14 @@ handle_set_quality_constraint_configuration(#{ <<"configuration">> := #{ <<"beha
 
 handle_data_object_send_message(#{ <<"msg">> := Message
                                  , <<"destination">> := Destination },
-                                State = #?state_running { trace_id = Id
+                                State = #?state_running { trace_id = TraceId
                                                         , stream_desc = #stream_desc_egest {
                                                                            egest_key = Key
                                                                           , data_object_send_message = SendMessage
                                                                           } }) ->
 
   try
-    PursMessage = endpoint_helpers:dataobject_message_to_purs(Id, Message, Destination),
+    PursMessage = endpoint_helpers:dataobject_message_to_purs(format_trace_id(TraceId), Message, Destination),
 
     ((SendMessage(Key))(PursMessage))(),
 
@@ -725,14 +740,14 @@ handle_data_object_send_message(#{ <<"msg">> := Message
 
 handle_data_object_update(#{ <<"operation">> := Operation,
                              <<"senderRef">> := SenderRef },
-                          State = #?state_running { trace_id = Id
+                          State = #?state_running { trace_id = TraceId
                                                   , stream_desc = #stream_desc_egest {
                                                                      egest_key = EgestKey
                                                                     , data_object_update = DataObjectUpdate
                                                                     } }) ->
   try
     PursOperation = endpoint_helpers:dataobject_operation_to_purs(Operation),
-    PursMessage = #{ sender => Id
+    PursMessage = #{ sender => format_trace_id(TraceId)
                    , senderRef => SenderRef
                    , operation => PursOperation
                    , ref => make_ref()
@@ -767,31 +782,71 @@ handle_data_object_update(Request, State) ->
   , State
   }.
 
-maybe_allocate_trace_id(ServerId, ServerEpoch, CookieDomainName, Req) ->
+
+maybe_allocate_trace_id(ServerId, CookieDomainName, Req) ->
   case cowboy_req:match_cookies([{tid, [], undefined}], Req) of
-    #{tid := TraceId} when TraceId =/= undefined ->
-      {TraceId, Req};
+    #{tid := TraceIdString} when TraceIdString =/= undefined ->
+
+      try
+        parse_trace_id(TraceIdString)
+      of
+        TraceId ->
+          {TraceId, Req}
+      catch
+        _C:_E ->
+          allocate_trace_id(ServerId, CookieDomainName, Req)
+      end;
 
     _ ->
-      TraceId = generate_trace_id(ServerId, ServerEpoch),
-      NewReq = cowboy_req:set_resp_cookie(<<"tid">>,
-                                          TraceId,
-                                          Req,
-                                          #{ http_only => true
-                                           , path => <<"/">>
-                                           , secure => true
-                                           , same_site => strict
-                                           , domain => CookieDomainName
-                                           }
-                                         ),
-      {TraceId, NewReq}
+      allocate_trace_id(ServerId, CookieDomainName, Req)
   end.
 
 
-generate_trace_id(ThisServerId, ThisServerEpoch) ->
-  %% TODO: the locally unique id needs to be non-guessable
-  LocallyUniqueId = integer_to_binary(erlang:unique_integer([positive])),
-  <<ThisServerId/binary, ".", ThisServerEpoch/binary, ".", LocallyUniqueId/binary>>.
+allocate_trace_id(ServerId, CookieDomainName, Req) ->
+  TraceId = generate_trace_id(ServerId),
+  TraceIdString = format_trace_id(TraceId),
+  NewReq = cowboy_req:set_resp_cookie(<<"tid">>,
+                                      TraceIdString,
+                                      Req,
+                                      #{ http_only => true
+                                       , path => <<"/">>
+                                       , secure => true
+                                       , same_site => strict
+                                       , domain => CookieDomainName
+                                       }
+                                     ),
+  {TraceId, NewReq}.
+
+
+generate_trace_id(ThisServerId) ->
+  << LocallyUniqueId:64/big-integer >> = crypto:strong_rand_bytes(8),
+  { ThisServerId, LocallyUniqueId }.
+
+
+format_trace_id({ServerId, ServerScopedClientId}) ->
+  <<(integer_to_binary(ServerId))/binary, ".",
+    (integer_to_binary(ServerScopedClientId))/binary
+  >>.
+
+
+parse_trace_id(TraceIdString) ->
+  [ServerIdString, ServerScopedClientIdString] = binary:split(TraceIdString, <<".">>, [global]),
+
+  TraceId =
+    { binary_to_integer(ServerIdString)
+    , binary_to_integer(ServerScopedClientIdString)
+    },
+
+  case TraceId of
+    { ServerId, ServerScopedClientId } when
+        (ServerId >= 0 andalso ServerId =< ?TWO_POWER_16_MINUS_ONE) andalso
+        (ServerScopedClientId >= 0 andalso ServerScopedClientId =< ?TWO_POWER_48_MINUS_ONE) ->
+      TraceId
+  end.
+
+
+trace_id_to_media_gateway_id({ServerId, ServerScopedClientId}) ->
+  (ServerId bsl 48) bor ServerScopedClientId.
 
 
 json_frame(Type) ->
@@ -846,17 +901,24 @@ this_server_ip(Req) ->
   IP.
 
 
-construct_start_options(TraceId, IP, [ SlotProfile ] = SlotProfiles, #stream_desc_ingest{ slot_id = SlotId, slot_role = SlotRole, use_media_gateway = UseMediaGateway }) ->
+construct_start_options(TraceId,
+                        WebRTCSessionId,
+                        IP,
+                        [ SlotProfile ] = SlotProfiles,
+                        #stream_desc_ingest{ slot_id = SlotId, slot_role = SlotRole, use_media_gateway = UseMediaGateway }
+                       ) ->
 
   #{ firstAudioSSRC := AudioSSRC
    , firstVideoSSRC := VideoSSRC
    } = SlotProfile,
 
-  #{ session_id => TraceId
+  #{ session_id => WebRTCSessionId
    , local_address => IP
    , handler_module => rtsv2_webrtc_session_handler
    , handler_args =>
-       #rtsv2_webrtc_session_handler_config{ session_id = TraceId
+       #rtsv2_webrtc_session_handler_config{ session_id = WebRTCSessionId
+                                           , cname = WebRTCSessionId
+                                           , media_gateway_client_id = trace_id_to_media_gateway_id(TraceId)
                                            , slot_id = SlotId
                                            , slot_role = SlotRole
                                            , profiles = SlotProfiles
@@ -889,6 +951,7 @@ construct_start_options(TraceId, IP, [ SlotProfile ] = SlotProfiles, #stream_des
    };
 
 construct_start_options(TraceId,
+                        WebRTCSessionId,
                         IP,
                         SlotProfiles,
                         #stream_desc_egest{ slot_id = SlotId
@@ -899,11 +962,13 @@ construct_start_options(TraceId,
                                           }
                        ) ->
 
-  #{ session_id => TraceId
+  #{ session_id => WebRTCSessionId
    , local_address => IP
    , handler_module => rtsv2_webrtc_session_handler
    , handler_args =>
-       #rtsv2_webrtc_session_handler_config{ session_id = TraceId
+       #rtsv2_webrtc_session_handler_config{ session_id = WebRTCSessionId
+                                           , cname = WebRTCSessionId
+                                           , media_gateway_client_id = trace_id_to_media_gateway_id(TraceId)
                                            , slot_id = SlotId
                                            , slot_role = SlotRole
                                            , profiles = SlotProfiles
