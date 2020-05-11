@@ -173,7 +173,6 @@ type HlsPush =
   { protocol :: HlsPushProtocol
   , formats :: Array HlsPushSpecFormat
   , putBaseUrl :: String
-  , playbackBaseUrl :: String
   , segmentDuration :: Int
   , playlistDuration :: Int
   , auth :: HlsPushAuth
@@ -494,7 +493,6 @@ init {shortName, streamDetails: streamDetails@{role: slotRole, slot: slot@{id: s
     toHlsPush defaultSegmentDurationMs defaultPlaylistDurationMs { protocol
                                                                  , formats
                                                                  , putBaseUrl
-                                                                 , playbackBaseUrl
                                                                  , segmentDuration
                                                                  , playlistDuration
                                                                  , auth
@@ -502,7 +500,6 @@ init {shortName, streamDetails: streamDetails@{role: slotRole, slot: slot@{id: s
       { protocol
       , formats
       , putBaseUrl
-      , playbackBaseUrl
       , segmentDuration: fromMaybe (defaultSegmentDurationMs / 1000) segmentDuration
       , playlistDuration: fromMaybe (defaultPlaylistDurationMs / 1000) playlistDuration
       , auth
