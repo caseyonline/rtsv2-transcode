@@ -124,11 +124,13 @@ handle_call({ add_egest_client
                                                                                               , egest_crypto = AudioEgestCrypto
                                                                                               , cname = AudioCName
                                                                                               , payload_type_id = AudioPayloadTypeId
+                                                                                              , input_ssrc = AudioSSRC
                                                                                               }
                                                 , video = #media_gateway_stream_element_config{ media_socket = VideoSocket
                                                                                               , egest_crypto = VideoEgestCrypto
                                                                                               , cname = VideoCName
                                                                                               , payload_type_id = VideoPayloadTypeId
+                                                                                              , input_ssrc = VideoSSRC
                                                                                               }
                                                 }
             }
@@ -145,9 +147,11 @@ handle_call({ add_egest_client
                 , audio_crypto_params => convert_crypto_params(AudioEgestCrypto)
                 , audio_cname => AudioCName
                 , audio_payload_type_id => AudioPayloadTypeId
+                , audio_input_ssrc => AudioSSRC
                 , video_crypto_params => convert_crypto_params(VideoEgestCrypto)
                 , video_cname => VideoCName
                 , video_payload_type_id => VideoPayloadTypeId
+                , video_input_ssrc => VideoSSRC
                 }),
 
   {ok, AudioSocketFd} = inet:getfd(AudioSocket),

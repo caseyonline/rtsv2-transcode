@@ -100,7 +100,9 @@ handle_media_frame(#webrtc_media_channel_message{ message = #webrtc_media_channe
                                                                                        , rtp_engine_snapshot = RTPEngineSnapshot
                                                                                        }
                                                 },
-                   #?state{ cname = CName } = State
+                   #?state{ cname = CName
+                          , desired_state = #desired_state{ desired_audio_ssrc = SSRC }
+                          } = State
                   ) ->
 
   PayloadTypeId = rtp_engine_passthrough_encoding_id(RTPEngineSnapshot),
@@ -111,6 +113,7 @@ handle_media_frame(#webrtc_media_channel_message{ message = #webrtc_media_channe
                                                         , egest_crypto = EgestCrypto
                                                         , cname = CName
                                                         , payload_type_id = PayloadTypeId
+                                                        , input_ssrc = SSRC
                                                         }
                 },
 
@@ -122,7 +125,9 @@ handle_media_frame(#webrtc_media_channel_message{ message = #webrtc_media_channe
                                                                                        , rtp_engine_snapshot = RTPEngineSnapshot
                                                                                        }
                                                 },
-                   #?state{ cname = CName } = State
+                   #?state{ cname = CName
+                          , desired_state = #desired_state{ desired_video_ssrc = SSRC }
+                          } = State
                   ) ->
 
   PayloadTypeId = rtp_engine_passthrough_encoding_id(RTPEngineSnapshot),
@@ -133,6 +138,7 @@ handle_media_frame(#webrtc_media_channel_message{ message = #webrtc_media_channe
                                                         , egest_crypto = EgestCrypto
                                                         , cname = CName
                                                         , payload_type_id = PayloadTypeId
+                                                        , input_ssrc = SSRC
                                                         }
                 },
 
@@ -328,7 +334,6 @@ maybe_add_to_media_gateway(#?state{ media_gateway_client_id = ClientId
                                       , video = VideoStreamElementConfig
                                       },
 
-  %% TODO: we need a client id!
   rtsv2_media_gateway_api:add_egest_client(SlotId, SlotRole, ClientId, Config),
 
   {ok, State}.
