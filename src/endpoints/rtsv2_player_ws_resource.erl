@@ -9,6 +9,7 @@
 -include("../rtsv2_types.hrl").
 -include("../rtsv2_rtp.hrl").
 -include("../rtsv2_webrtc.hrl").
+-include("../rtsv2_media_gateway_api.hrl").
 
 
 -export([ notify_profile_switched/2 ]).
@@ -384,9 +385,21 @@ websocket_info({egestCurrentActiveProfiles, ActiveProfiles}, State) ->
   , State
   };
 
-websocket_info({media_gateway_event, Event}, State) ->
-  ?DEBUG("Got event ~p", [Event]),
-  {ok, State};
+websocket_info(#media_gateway_event{ details = Event }, State) ->
+  case Event of
+    #media_gateway_client_synchronization_established_event{ rtp_timestamp = RTPTimestamp } ->
+      { [ json_frame( <<"time-zero">>,
+                      #{ <<"rtpTimestamp">> => RTPTimestamp
+                       }
+                    )
+        ]
+      , State
+      };
+
+    _Other ->
+      ?WARNING("Unhandled media gateway event: ~p", [Event]),
+      {ok, State}
+  end;
 
 websocket_info(not_implemented, State) ->
   {ok, State}.

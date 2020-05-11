@@ -299,6 +299,12 @@ export default class Session extends EventEmitter implements ISession {
         }
         break;
 
+      case "time-zero":
+        {
+          this.emit("time-zero", message);
+        }
+        break;
+
       default:
         this.unexpectedMessage(message);
     }

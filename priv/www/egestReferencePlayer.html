@@ -84,6 +84,9 @@
         player.on("data-object", (dataObject) => {
           console.log("data-object", dataObject);
         });
+        player.on("time-zero", (message) => {
+          console.log("time-zero", message);
+        });
         player.on("playback-active", () => {
           $("#stop").prop("disabled", false);
         });
