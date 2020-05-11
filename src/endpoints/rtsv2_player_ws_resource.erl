@@ -819,7 +819,7 @@ allocate_trace_id(ServerId, CookieDomainName, Req) ->
 
 
 generate_trace_id(ThisServerId) ->
-  << LocallyUniqueId:64/big-integer >> = crypto:strong_rand_bytes(8),
+  << LocallyUniqueId:48/big-integer >> = crypto:strong_rand_bytes(6),
   { ThisServerId, LocallyUniqueId }.
 
 
