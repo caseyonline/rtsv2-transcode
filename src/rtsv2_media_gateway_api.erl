@@ -241,7 +241,11 @@ step_receive_sm_loop(State) ->
     { frame, FrameData, NewState } ->
       {Header, BodyData} = ?unpack(FrameData),
       {#{ <<"client_id">> := ServerScopedClientId } = Body, <<>>} = ?unpack(BodyData),
-      ?I_RAISE_BUS_MSG({media_gateway_event, ServerScopedClientId}, {media_gateway_event, {Header, Body}}),
+      EventRecord = event_to_record(Header, Body),
+      ?I_RAISE_BUS_MSG(
+         {media_gateway_event, ServerScopedClientId},
+         #media_gateway_event{ details = EventRecord }
+        ),
       step_receive_sm_loop(NewState)
   end.
 
@@ -280,3 +284,6 @@ read_block(Socket, #read_block{ remaining_len = RemainingLen, builder = Builder 
       NewBlock = Block#read_block{ remaining_len = RemainingLen - byte_size(PartialData), builder = [ PartialData | Builder ] },
       {continue, NewBlock}
   end.
+
+event_to_record(#{ <<"kind">> := <<"synchronization_established">> }, #{ <<"rtp_timestamp">> := RTPTimestamp }) ->
+  #media_gateway_client_synchronization_established_event{ rtp_timestamp = RTPTimestamp }.

@@ -19,4 +19,16 @@
         }).
 -type media_gateway_egest_client_config() :: #media_gateway_egest_client_config{}.
 
+
+-record(media_gateway_event,
+        { details :: media_gateway_event_details()
+        }).
+
+-record(media_gateway_client_synchronization_established_event,
+        { rtp_timestamp :: non_neg_integer()
+        }).
+-type media_gateway_client_synchronization_established_event() :: #media_gateway_client_synchronization_established_event{}.
+
+-type media_gateway_event_details() :: media_gateway_client_synchronization_established_event().
+
 -endif.
