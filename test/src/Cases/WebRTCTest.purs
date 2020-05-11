@@ -29,42 +29,83 @@ import Test.Unit as Test
 import Test.Unit.Assert as Assert
 import Toppokki as T
 
-
+-------------------------------------------------------------------------------
+-- Vars
+-------------------------------------------------------------------------------
 launchArgs :: Array String
-launchArgs = [ "--vmodule=*/webrtc/*=3"
-             , "--no-sandbox"
-             , "--mute-audio=1"
-             , "--disable-features=WebRtcHideLocalIpsWithMdns"
-             , "--disable-setuid-sandbox"
-             , "--use-fake-ui-for-media-stream=1"
-             , "--use-fake-device-for-media-stream=1"
-             , "--allow-running-insecure-content"
-             , "--ignore-certificate-errors"
-             , "--unsafely-treat-insecure-origin-as-secure"
-             ]
+launchArgs =
+  [ "--allow-running-insecure-content"
+  , "--disable-features=WebRtcHideLocalIpsWithMdns"
+  , "--disable-infobars"
+  , "--disable-setuid-sandbox"
+  , "--disable-sync"
+  , "--disable-web-security"
+  , "--enable-media-stream"
+  , "--enable-translate-new-ux"
+  , "--ignore-certificate-errors"
+  , "--mute-audio=1"
+  , "--no-default-browser-check"
+  , "--no-sandbox"
+  , "--reduce-security-for-testing"
+  , "--use-fake-device-for-media-stream"
+  , "--use-fake-ui-for-media-stream"
+  , "--vmodule=*/webrtc/*=3"
+  ]
+
+-- This is used to for the webRtcIngest tests
+launchArgs2 :: Array String
+launchArgs2 =
+  [
+    "--disable-infobars"
+  , "--disable-sync"
+  , "--disable-web-security"
+  , "--enable-translate-new-ux"
+  , "--no-default-browser-check"
+  , "--no-sandbox"
+  , "--reduce-security-for-testing"
+  , "--unsafely-allow-protected-media-identifier-for-domain"
+  , "--unsafely-treat-insecure-origin-as-secure=http://172.16.169.1:3000"
+  , "--use-fake-ui-for-media-stream"
+  ]
+
 
 playerUrl :: Node -> String -> T.URL
-playerUrl node pb = T.URL $ "http:"
-              <> C.toAddrFromNode node
-              <> ":3000/public/canary/client/00000000-0000-0000-0000-000000000001/"
-              <> pb
-              <> "/player"
+playerUrl node pb =
+  T.URL $ "http:"
+  <> C.toAddrFromNode node
+  <> ":3000/public/canary/client/00000000-0000-0000-0000-000000000001/"
+  <> pb
+  <> "/player"
 
 ingestUrl :: Node -> String -> T.URL
-ingestUrl node slot = T.URL $ "http:"
-              <> C.toAddrFromNode node
-              <> ":3000/public/canary/ingest/mmddev001/"
-              <> slot
-              <> "/ingest"
+ingestUrl node slot =
+  T.URL $ "http:"
+  <> C.toAddrFromNode node
+  <> ":3000/public/canary/ingest/mmddev001/"
+  <> slot
+  <> "/ingest"
 
+options =
+  { headless: false
+  , args: launchArgs2
+  , devtools: true
+  }
+
+-------------------------------------------------------------------------------
+-- Runner
+-------------------------------------------------------------------------------
 webRTCTest :: forall m. Monad m => SpecT Aff Unit m Unit
 webRTCTest =
   describeOnly "WebRTC browser tests" do
     primaryStream
     backupStream
     ingestStream
+    webRtcIngest
 
 
+-------------------------------------------------------------------------------
+-- Tests
+-------------------------------------------------------------------------------
 primaryStream :: forall m. Monad m => SpecT Aff Unit m Unit
 primaryStream =
   describe "Primary Stream tests" do
@@ -72,10 +113,7 @@ primaryStream =
       after_ (F.stopSession *> F.stopSlot) do
         it "can check that a streaming video has started and is playing on Primary" do
           _ <- delay (Milliseconds 2000.00) >>= L.as' "wait for ingest to start fully"
-          browser <- T.launch { headless: false
-                              , args: launchArgs
-                              , devtools: true
-                              }
+          browser <- T.launch options
           page <- T.newPage browser
 
           -- inject JS into the page
@@ -109,10 +147,7 @@ backupStream =
       after_ (F.stopSession *> F.stopSlot) do
         it "can check that a streaming video has started and is playing on Backup" do
           _ <- delay (Milliseconds 2000.00) >>= L.as' "wait for ingest to start fully"
-          browser <- T.launch { headless: false
-                              , args: launchArgs
-                              , devtools: true
-                              }
+          browser <- T.launch options
           page <- T.newPage browser
 
           T.goto (playerUrl Env.p1n1 "backup") page
@@ -138,7 +173,7 @@ ingestNodes = [E.p1n1, E.p1n2, E.p1n3]
 
 ingestStream :: forall m. Monad m => SpecT Aff Unit m Unit
 ingestStream =
-  describeOnly "Backup Stream tests" do
+  describe "Ingest Stream tests" do
     before_ (F.startSession ingestNodes *> F.launch ingestNodes) do
       after_ (F.stopSession *> F.stopSlot) do
         it "ingest on different node removes itself from aggregator when stopped" do
@@ -147,10 +182,7 @@ ingestStream =
           F.startSlotHigh1000Backup (C.toAddrFromNode Env.p1n2) >>= L.as' "create high ingest"
           _ <- delay (Milliseconds 2000.00) >>= L.as' "wait for ingest to start fully"
 
-          browser <- T.launch { headless: false
-                              , args: launchArgs
-                              , devtools: true
-                              }
+          browser <- T.launch options
           page <- T.newPage browser
 
           T.goto (playerUrl Env.p1n1 "backup") page
@@ -173,35 +205,44 @@ ingestStream =
 
 webRtcIngest :: forall m. Monad m => SpecT Aff Unit m Unit
 webRtcIngest =
-  describe "Backup Stream tests" do
-    before_ (F.startSession [Env.p1n1] *> F.launch [Env.p1n1]) do
+  describeOnly "webRtc Ingest tests" do
+    before_ (F.startSession ingestNodes *> F.launch ingestNodes) do
       after_ (F.stopSession *> F.stopSlot) do
         it "can check that a streaming video has started and is playing on Backup" do
-          _ <- delay (Milliseconds 2000.00) >>= L.as' "wait for ingest to start fully"
-          browser <- T.launch { headless: false
-                              , args: launchArgs
-                              , devtools: true
-                              }
+          traverse_ F.maxOut (F.allNodesBar E.p1n1 ingestNodes) >>= L.as' "load up all servers bar one"
+          E.waitForIntraPoPDisseminate
+
+          browser <- T.launch options
           page <- T.newPage browser
+          T.goto (ingestUrl Env.p1n1 "slot1_1000") page
+          _ <- delay (Milliseconds 2000.00) >>= L.as' "wait for page to load"
 
-          T.goto (ingestUrl Env.p1n1 "backup") page
-          _ <- delay (Milliseconds 3000.00) >>= L.as' "wait for video to start"
+          T.click (T.Selector "#authenticate") page
+          _ <- delay (Milliseconds 500.00) >>= L.as' "wait for authentication"
 
-          frames1 <- getInnerText "#frames" page
-          packets1 <- getInnerText "#packets" page
+          T.click (T.Selector "#start-ingest") page
+          _ <- delay (Milliseconds 2000.00) >>= L.as' "let stream start"
 
-          _ <- delay (Milliseconds 3000.00) >>= L.as' "let video play for 3 seconds"
+          byteSent <- getInnerText "#bytesSent" page
+          Assert.assert "Bytes are being sent in the UI" ((stringToInt byteSent) > 10) >>= L.as' ("frames increased by: " <> byteSent)
 
-          frames2 <- getInnerText "#frames" page
-          packets2 <- getInnerText "#packets" page
 
-          let frameDiff = stringToInt frames2 - stringToInt frames1
+          HTTP.getAggregatorStats E.p1n2 E.slot1 >>= A.assertStatusCode 200
+                                                 >>= A.assertAggregator [E.high]
+                                                 >>= L.as "aggregator created on idle server"
+          (traverse_ (F.aggregatorNotPresent E.slot1)
+            $ F.allNodesBar E.p1n2 ingestNodes)  >>= L.as' "aggregator not on busy servers"
 
-          Assert.assert "frames aren't increasing" (frameDiff > 70) >>= L.as' ("frames increased by: " <> show frameDiff)
-          Assert.assert "packets aren't increasing" ((stringToInt packets1) < (stringToInt packets2)) >>= L.as' ("packets are increasing: " <> packets2 <> " > " <> packets1)
+          HTTP.ingestStop E.p1n1 E.slot1 E.low   >>= A.assertStatusCode 200 >>= L.as "stop low ingest"
+          E.waitForAsyncProfileStop                                         >>= L.as' "wait for async stop of profile"
+          HTTP.getAggregatorStats E.p1n2 E.slot1 >>= A.assertStatusCode 200
+                                                 >>= A.assertAggregator []  >>= L.as "aggregator has no profiles"
+
           T.close browser
 
-
+-------------------------------------------------------------------------------
+-- Functions
+-------------------------------------------------------------------------------
 getInnerText :: String -> T.Page -> Aff String
 getInnerText selector page = do
   innerTextF <- T.unsafePageEval

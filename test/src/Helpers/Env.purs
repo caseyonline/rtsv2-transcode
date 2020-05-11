@@ -31,13 +31,11 @@ p3n2 = Node 3 2
 p4n1 = Node 4 1
 p4n2 = Node 4 2
 
-
 sessionName:: String
 sessionName = "testSession"
 
 stop :: String
 stop = "stop"
-
 
 -- | Slot
 slot1 = wrap (fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000001"))
