@@ -70,7 +70,7 @@ export interface OnFIMessage {
   readonly type: "on-fi";
 
   /** The source encoder timestamp. */
-  readonly timestamp: number;
+  readonly payload: any;
 
   /** The corresponding video timestamp. */
   readonly pts: number;

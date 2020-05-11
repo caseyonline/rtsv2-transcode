@@ -5,7 +5,7 @@
 * hlsPublish flag in ingest aggregator json to indicate if HLS publishing is active
 * CODE_LOADING_MODE set in start.sh, which will remove misleading error logs about missing NIFs on startup
 * playbackBaseUrl removed from HlsPushSpec
-* 
+* ingest no longer attempts to parse on-fi messages, and instead passes the payload as a json object through to the client
 
 # RTS-V2 release 94
 

@@ -83,12 +83,14 @@ deRegisterStreamRelayImpl(Handle, Host, Port) ->
       ok
   end.
 
-workflowMessageMapperImpl(#workflow_output{message = #workflow_data_msg{data = #frame{type = script,
+workflowMessageMapperImpl(#workflow_output{message = #workflow_data_msg{data = #frame{type = script_frame,
                                                                                       pts = Pts,
-                                                                                      frame_metadata = #rtmp_onfi_timestamp{
-                                                                                                          timestamp = Timestamp
+                                                                                      frame_metadata = #rtmp_onfi_message{
+                                                                                                          amf = Amf
                                                                                                          }}}}) ->
-  {just, {rtmpOnFI, Timestamp, Pts}};
+  Json = amf:to_json(Amf),
+
+  {just, {rtmpOnFI, Json, Pts}};
 
 workflowMessageMapperImpl(#workflow_output{}) ->
   {just, {noop}};
@@ -182,8 +184,8 @@ startWorkflow(SlotConfiguration = #{ slotId := SlotId
                                         },
 
                               #processor{name = gop_measurer,
-                                        subscribes_to = ?previous,
-                                        module = gop_measurer
+                                         subscribes_to = [{?previous, ?audio_frames}, {?previous, ?video_frames}],
+                                         module = gop_measurer
                                         },
 
                               ?include_if(PushDetails /= [],

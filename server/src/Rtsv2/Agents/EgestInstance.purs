@@ -47,7 +47,7 @@ import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..))
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
 import Rtsv2.Agents.StreamRelaySup as StreamRelaySup
-import Rtsv2.Agents.StreamRelayTypes (ActiveProfiles(..), DownstreamWsMessage(..), EgestUpstreamWsMessage(..))
+import Rtsv2.Agents.StreamRelayTypes (ActiveProfiles(..), DownstreamWsMessage(..), EgestUpstreamWsMessage(..), NativeJson)
 import Rtsv2.Audit as Audit
 import Rtsv2.Config (LoadConfig, MediaGatewayFlag)
 import Rtsv2.Config as Config
@@ -110,7 +110,7 @@ type State
 payloadToEgestKey :: CreateEgestPayload -> EgestKey
 payloadToEgestKey payload = EgestKey payload.slotId payload.slotRole
 
-data EgestBusMsg = EgestOnFI Int Int
+data EgestBusMsg = EgestOnFI NativeJson Int
                  | EgestCurrentActiveProfiles (List ProfileName)
                  | EgestDataObjectMessage DO.Message
                  | EgestDataObjectUpdateResponse DO.ObjectUpdateResponseMessage
@@ -345,11 +345,11 @@ processGunMessage state@{relayWebSocket: Just socket, egestKey, lastOnFI} gunMsg
         | otherwise ->
           pure $ CastNoReply state
 
-      Right (WsGun.Frame (OnFI {timestamp, pts})) | timestamp > lastOnFI -> do
-        Bus.raise (bus egestKey) (EgestOnFI timestamp pts)
-        pure $ CastNoReply state{lastOnFI = timestamp}
+      Right (WsGun.Frame (OnFI {payload, pts})) | pts > lastOnFI -> do
+        Bus.raise (bus egestKey) (EgestOnFI payload pts)
+        pure $ CastNoReply state{lastOnFI = pts}
 
-      Right (WsGun.Frame (OnFI {timestamp, pts})) ->
+      Right (WsGun.Frame (OnFI {payload, pts})) ->
         pure $ CastNoReply state
 
       Right (WsGun.Frame (CurrentActiveProfiles activeProfiles@(ActiveProfiles {profiles}))) -> do

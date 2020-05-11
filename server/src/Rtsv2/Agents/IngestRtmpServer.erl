@@ -100,7 +100,7 @@ start_workflow(Rtmp, PublishArgs, Key = {ingestKey, SlotId, SlotRole, ProfileNam
                                         },
 
                               #processor{name = onfi_to_frame,
-                                         subscribes_to = [?previous, {rtmp_ingest, ?rtmp_onfi_timestamps}],
+                                         subscribes_to = [?previous, {rtmp_ingest, ?rtmp_onfi_messages}],
                                          module = rtmp_onfi_to_frame
                                         },
 

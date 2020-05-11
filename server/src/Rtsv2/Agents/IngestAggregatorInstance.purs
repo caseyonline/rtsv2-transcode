@@ -90,7 +90,7 @@ import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..), announceLocalAggregatorIsA
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
 import Rtsv2.Agents.SlotTypes as SlotTypes
-import Rtsv2.Agents.StreamRelayTypes (ActiveProfiles(..), AggregatorBackupToPrimaryWsMessage(..), AggregatorPrimaryToBackupWsMessage(..), AggregatorToIngestWsMessage(..), DownstreamWsMessage(..), WebSocketHandlerMessage(..))
+import Rtsv2.Agents.StreamRelayTypes (ActiveProfiles(..), AggregatorBackupToPrimaryWsMessage(..), AggregatorPrimaryToBackupWsMessage(..), AggregatorToIngestWsMessage(..), DownstreamWsMessage(..), NativeJson, WebSocketHandlerMessage(..))
 import Rtsv2.Config as Config
 import Rtsv2.DataObject as DO
 import Rtsv2.Names as Names
@@ -180,7 +180,7 @@ type HlsPush =
   }
 
 data WorkflowMsg = Noop
-                 | RtmpOnFI Int Int
+                 | RtmpOnFI NativeJson Int
 
 data Msg
   = IntraPoPBus IntraPoP.IntraPoPBusMessage
@@ -656,9 +656,9 @@ handleInfo msg state@{aggregatorKey, slotId, stateServerName, workflowHandle, ma
     Workflow Noop ->
       pure $ CastNoReply state
 
-    Workflow (RtmpOnFI timestamp pts) -> do
+    Workflow (RtmpOnFI payload pts) -> do
       let
-        send relay = relay ! (WsSend $ OnFI {timestamp, pts})
+        send relay = relay ! (WsSend $ OnFI {payload, pts})
       _ <- traverse send $ _.handler <$> Map.values state.cachedState.relays
       pure $ CastNoReply state
 

@@ -318,9 +318,9 @@ websocket_info({profile_switched, ProfileName}, State) ->
   , State
   };
 
-websocket_info({egestOnFI, Timestamp, Pts}, State) ->
+websocket_info({egestOnFI, Payload, Pts}, State) ->
   { [ json_frame( <<"on-fi">>,
-                  #{ <<"timestamp">> => Timestamp
+                  #{ <<"payload">> => Payload
                    , <<"pts">> => Pts }
                 ) ]
   , State

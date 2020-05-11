@@ -34,13 +34,13 @@ spec(_Processor) ->
 initialise(_Processor) ->
   {ok, #?state{}}.
 
-process_input(_Timestamp = #rtmp_onfi_timestamp{}, State = #?state{last_pts = undefined}) ->
+process_input(_Message = #rtmp_onfi_message{}, State = #?state{last_pts = undefined}) ->
   {ok, State};
 
-process_input(Timestamp = #rtmp_onfi_timestamp{}, State = #?state{last_pts = LastPts}) ->
+process_input(Message = #rtmp_onfi_message{}, State = #?state{last_pts = LastPts}) ->
 
-  Frame = #frame{type = script,
-                 frame_metadata = Timestamp,
+  Frame = #frame{type = script_frame,
+                 frame_metadata = Message,
                  pts = LastPts,
                  dts = LastPts
                 },
