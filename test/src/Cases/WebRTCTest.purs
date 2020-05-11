@@ -224,18 +224,20 @@ webRtcIngest =
           _ <- delay (Milliseconds 2000.00) >>= L.as' "let stream start"
 
           byteSent <- getInnerText "#bytesSent" page
+
+          _ <- delay (Milliseconds 2000.00) >>= L.as' "let stream start"
           Assert.assert "Bytes are being sent in the UI" ((stringToInt byteSent) > 10) >>= L.as' ("frames increased by: " <> byteSent)
 
-
-          HTTP.getAggregatorStats E.p1n2 E.slot1 >>= A.assertStatusCode 200
-                                                 >>= A.assertAggregator [E.high]
+          HTTP.getAggregatorStats E.p1n1 E.slot1 >>= A.assertStatusCode 200
+                                                 >>= A.assertAggregator [E.highProlfile]
                                                  >>= L.as "aggregator created on idle server"
-          (traverse_ (F.aggregatorNotPresent E.slot1)
-            $ F.allNodesBar E.p1n2 ingestNodes)  >>= L.as' "aggregator not on busy servers"
 
-          HTTP.ingestStop E.p1n1 E.slot1 E.low   >>= A.assertStatusCode 200 >>= L.as "stop low ingest"
-          E.waitForAsyncProfileStop                                         >>= L.as' "wait for async stop of profile"
-          HTTP.getAggregatorStats E.p1n2 E.slot1 >>= A.assertStatusCode 200
+          (traverse_ (F.aggregatorNotPresent E.slot1)
+            $ F.allNodesBar E.p1n1 ingestNodes)  >>= L.as' "aggregator not on busy servers"
+
+          T.click (T.Selector "#stop-ingest") page
+          E.waitForAsyncProfileStop
+          HTTP.getAggregatorStats E.p1n1 E.slot1 >>= A.assertStatusCode 200
                                                  >>= A.assertAggregator []  >>= L.as "aggregator has no profiles"
 
           T.close browser
@@ -251,7 +253,6 @@ getInnerText selector page = do
                 page
   let innerText = (unsafeFromForeign innerTextF) :: String
   pure innerText
-
 
 stringToInt :: String -> Int
 stringToInt s =

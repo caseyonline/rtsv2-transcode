@@ -43,8 +43,12 @@ slot1 = wrap (fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "000000
 shortName1 = wrap "mmddev001"
 
 low = SlotNameAndProfileName "slot1" (wrap "500")
-
 high = SlotNameAndProfileName "slot1" (wrap "1000")
+
+-- All the people doing asseragregator with lown and high should use bellow
+-- as that is what the aggregator should be returning.
+lowProfile = SlotNameAndProfileName "slot1" (wrap "low")
+highProlfile = SlotNameAndProfileName "slot1" (wrap "high")
 
 
 -- | Ingest
