@@ -215,15 +215,33 @@ set_active_profile_impl(ProfileName, #?state{ profiles = Profiles } = State) ->
 
   case MaybeMatchingProfile of
     {value, #{ firstAudioSSRC := AudioSSRC, firstVideoSSRC := VideoSSRC }} ->
-      State#?state{ desired_state =
-                      #desired_state{ desired_video_ssrc = VideoSSRC
-                                    , desired_audio_ssrc = AudioSSRC
-                                    , profile_name = ProfileName
-                                    }
-                  };
+      apply_desired_state(
+        #desired_state{ desired_video_ssrc = VideoSSRC
+                      , desired_audio_ssrc = AudioSSRC
+                      , profile_name = ProfileName
+                      },
+        State
+       );
     false->
       State
   end.
+
+
+apply_desired_state(DesiredState, #?state{ audio_stream_element_config = ASE, video_stream_element_config = VSE } = State)
+  when ASE =:= undefined orelse VSE =:= undefined ->
+
+  State#?state{ desired_state = DesiredState
+              };
+
+apply_desired_state( #desired_state{ desired_video_ssrc = VideoSSRC
+                                   , desired_audio_ssrc = AudioSSRC
+                                   },
+                     #?state{ media_gateway_client_id = ClientId } = State
+                   ) ->
+
+  rtsv2_media_gateway_api:update_egest_client_subscription(ClientId, AudioSSRC, VideoSSRC),
+
+  State.
 
 
 filter_and_renumber(#rtp_sequence{ rtps = [] }, _StreamState) ->
