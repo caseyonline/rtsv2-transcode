@@ -22,7 +22,7 @@ import Rtsv2.LlnwApi as LlnwApi
 import Rtsv2.Utils (chainIntoEither)
 import Shared.Common (Url)
 import Shared.Rtsv2.LlnwApiTypes (SlotLookupResult)
-import Shared.Rtsv2.Router.Endpoint (Canary, Endpoint(..), makeUrl)
+import Shared.Rtsv2.Router.Endpoint (Canary(..), Endpoint(..), makeUrl)
 import Shared.Rtsv2.Stream (SlotId, SlotRole(..))
 import Shared.Rtsv2.Types (FailureReason, fromLocalOrRemote)
 import Stetson (StetsonHandler)
@@ -74,7 +74,12 @@ discover loadConfig canary accountName streamName =
 
     getSessionUrl :: SlotRole -> SlotLookupResult -> Effect (Either FailureReason Url)
     getSessionUrl role slot =
-      EgestInstanceSup.findEgest loadConfig slot.id role <#> map ( fromLocalOrRemote >>> ((flip makeUrl) (ClientPlayerControlE canary slot.id role)))
+      let
+        endpoint = case canary of
+                     Live -> ClientPlayerControlE slot.id role
+                     Canary -> CanaryClientPlayerControlE slot.id role
+      in
+        EgestInstanceSup.findEgest loadConfig slot.id role <#> map ( fromLocalOrRemote >>> ((flip makeUrl) endpoint))
 
 
 --------------------------------------------------------------------------------

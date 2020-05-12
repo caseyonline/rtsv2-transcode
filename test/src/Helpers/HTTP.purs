@@ -40,7 +40,7 @@ get url = fetch url { method: M.getMethod }
 -- | Processes
 clientStart :: Node -> SlotId -> Aff (Either String ResWithBody)
 clientStart node slotId =
-  fetch (M.URL $ makeUrlAndUnwrap node (ClientStartE Live slotId Primary))
+  fetch (M.URL $ makeUrlAndUnwrap node (ClientStartE slotId Primary))
         { method: M.postMethod
         , body: "{}"
         , headers: M.makeHeaders { "Content-Type": "application/json" }
@@ -48,7 +48,7 @@ clientStart node slotId =
 
 clientStop :: String -> Node -> SlotId -> Aff (Either String ResWithBody)
 clientStop clientId node slotId  =
-  fetch (M.URL $ makeUrlAndUnwrap node (ClientStopE Live slotId Primary clientId))
+  fetch (M.URL $ makeUrlAndUnwrap node (ClientStopE slotId Primary clientId))
         { method: M.postMethod
         , body: "{}"
         , headers: M.makeHeaders { "Content-Type": "application/json" }
@@ -100,11 +100,11 @@ getEgestStats node slotId = getStats node (EgestStatsE slotId Primary)
 
 ingestStart :: Node -> RtmpShortName -> SlotNameAndProfileName -> Aff (Either String ResWithBody)
 ingestStart node shortName profileName =
-  get (M.URL $ makeUrlAndUnwrap node (IngestStartE Live shortName profileName))
+  get (M.URL $ makeUrlAndUnwrap node (IngestStartE shortName profileName))
 
 ingestStop :: Node -> SlotId -> SlotNameAndProfileName -> Aff (Either String ResWithBody)
 ingestStop node slotId (SlotNameAndProfileName _ profileName) =
-  get (M.URL $ makeUrlAndUnwrap node (IngestStopE Live slotId Primary profileName))
+  get (M.URL $ makeUrlAndUnwrap node (IngestStopE slotId Primary profileName))
 
 
 -- | Aggregators

@@ -31,7 +31,7 @@ import Rtsv2.Config (LoadConfig)
 import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Utils (cryptoStrongToken)
-import Shared.Rtsv2.Router.Endpoint (Endpoint(..), Canary, makeUrl)
+import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Shared.Rtsv2.Stream (EgestKey(..), SlotId, SlotRole)
 import Shared.Rtsv2.Types (Server, FailureReason(..), LocalOrRemote(..), extractAddress)
 import Stetson (HttpMethod(..), RestResult, StetsonHandler)
@@ -41,8 +41,8 @@ newtype ClientStartState = ClientStartState { clientId :: String
                                             , egestResp :: (Either FailureReason (LocalOrRemote Server))
                                             }
 
-clientStart :: LoadConfig -> Canary -> SlotId -> SlotRole -> StetsonHandler ClientStartState
-clientStart loadConfig canary slotId slotRole =
+clientStart :: LoadConfig -> SlotId -> SlotRole -> StetsonHandler ClientStartState
+clientStart loadConfig slotId slotRole =
   Rest.handler init
   # Rest.allowedMethods (Rest.result (POST : mempty))
   # Rest.contentTypesAccepted (\req state -> Rest.result (singleton $ MimeType.json acceptAny) req state)
@@ -92,7 +92,7 @@ clientStart loadConfig canary slotId slotRole =
       case egestResp of
         Right (Remote server) ->
           let
-            url = makeUrl server (ClientStartE canary slotId slotRole)
+            url = makeUrl server (ClientStartE slotId slotRole)
           in
             Rest.result (moved $ unwrap url) req state
         _ ->
@@ -100,8 +100,8 @@ clientStart loadConfig canary slotId slotRole =
 
 type ClientStopState = { egestKey :: EgestKey
                        }
-clientStop :: Canary -> SlotId -> SlotRole -> String -> StetsonHandler ClientStopState
-clientStop canary slotId slotRole clientId  =
+clientStop :: SlotId -> SlotRole -> String -> StetsonHandler ClientStopState
+clientStop slotId slotRole clientId  =
   Rest.handler init
   # Rest.allowedMethods (Rest.result (POST : mempty))
   # Rest.contentTypesAccepted (\req state -> Rest.result (singleton $ MimeType.json removeClient) req state)

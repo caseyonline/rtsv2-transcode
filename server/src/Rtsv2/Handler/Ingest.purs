@@ -39,7 +39,6 @@ import Rtsv2.LlnwApi as LlnwApi
 import Shared.Rtsv2.Agent.State (IngestStats)
 import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.LlnwApiTypes (StreamIngestProtocol(..), StreamPublish, StreamDetails)
-import Shared.Rtsv2.Router.Endpoint (Canary)
 import Shared.Rtsv2.Stream (IngestKey(..), ProfileName, RtmpShortName, SlotId, SlotNameAndProfileName(..), SlotRole)
 import Shared.Types.Workflow.Metrics.Commmon (Stream)
 import Shared.Utils (lazyCrashIfMissing)
@@ -190,8 +189,8 @@ type IngestStartState = { streamDetails :: Maybe StreamDetails
                         , streamPublish :: Maybe StreamPublish
                         }
 
-ingestStart :: LoadConfig -> Canary -> RtmpShortName -> SlotNameAndProfileName -> StetsonHandler IngestStartState
-ingestStart loadConfig canary shortName slotNameAndProfileName@(SlotNameAndProfileName slotName profileName) =
+ingestStart :: LoadConfig -> RtmpShortName -> SlotNameAndProfileName -> StetsonHandler IngestStartState
+ingestStart loadConfig shortName slotNameAndProfileName@(SlotNameAndProfileName slotName profileName) =
   Rest.handler (\req ->
                  Rest.initResult req { streamDetails: Nothing
                                      , streamPublish: Nothing
@@ -241,8 +240,8 @@ ingestStart loadConfig canary shortName slotNameAndProfileName@(SlotNameAndProfi
 
 type IngestStopState = { ingestKey :: IngestKey }
 
-ingestStop :: Canary -> SlotId -> SlotRole -> ProfileName -> StetsonHandler IngestStopState
-ingestStop canary slotId role profileName =
+ingestStop :: SlotId -> SlotRole -> ProfileName -> StetsonHandler IngestStopState
+ingestStop slotId role profileName =
   Rest.handler (\req -> Rest.initResult req {ingestKey: IngestKey slotId role profileName})
 
   # Rest.serviceAvailable (\req state -> do

@@ -33,7 +33,7 @@ dataobject_message_to_purs(Id, Message, Destination) ->
                              #{ <<"tag">> := <<"broadcast">> } ->
                                {broadcast};
                              #{ <<"tag">> := <<"private">>, <<"to">> :=  ToList } when is_list(ToList) ->
-                               true = lists:all(is_binary, ToList),
+                               true = lists:all(fun is_binary/1, ToList),
                                {private, ToList}
                            end,
 

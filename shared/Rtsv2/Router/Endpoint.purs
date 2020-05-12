@@ -48,14 +48,14 @@ instance showCanary :: Show Canary where
 data Endpoint
   =
   -- Public
-    ClientPlayerE Canary SlotId SlotRole
-  | ClientPlayerControlE Canary SlotId SlotRole
-  | ClientPlayerAssetsE Canary SlotId SlotRole (Array String)
-  | StreamDiscoveryE Canary String String
+    StreamDiscoveryE String String
+  | ClientPlayerE SlotId SlotRole
+  | ClientPlayerControlE SlotId SlotRole
+  | ClientPlayerAssetsE SlotId SlotRole (Array String)
 
-  | ClientWebRTCIngestE Canary String String
-  | ClientWebRTCIngestControlE Canary String String
-  | ClientWebRTCIngestAssetsE Canary String String (Array String)
+  | ClientWebRTCIngestE String String
+  | ClientWebRTCIngestControlE String String
+  | ClientWebRTCIngestAssetsE String String (Array String)
 
   -- Support
   | VMMetricsE
@@ -80,6 +80,15 @@ data Endpoint
   | ClientAppAssetsE (Array String)
   | ClientAppRouteHTMLE
 
+  | CanaryStreamDiscoveryE String String
+  | CanaryClientPlayerE SlotId SlotRole
+  | CanaryClientPlayerControlE SlotId SlotRole
+  | CanaryClientPlayerAssetsE SlotId SlotRole (Array String)
+
+  | CanaryClientWebRTCIngestE String String
+  | CanaryClientWebRTCIngestControlE String String
+  | CanaryClientWebRTCIngestAssetsE String String (Array String)
+
   -- System
   | TransPoPLeaderE
   | EgestE
@@ -96,11 +105,11 @@ data Endpoint
   | RelayProxiedStatsE SlotId SlotRole
   | Chaos
 
-  | IngestStartE Canary RtmpShortName SlotNameAndProfileName
-  | IngestStopE Canary SlotId SlotRole ProfileName
+  | IngestStartE RtmpShortName SlotNameAndProfileName
+  | IngestStopE SlotId SlotRole ProfileName
 
-  | ClientStartE Canary SlotId SlotRole
-  | ClientStopE Canary SlotId SlotRole String
+  | ClientStartE SlotId SlotRole
+  | ClientStopE SlotId SlotRole String
 
   | StreamAuthTypeE
   | StreamAuthE
@@ -129,15 +138,15 @@ endpoint :: RouteDuplex' Endpoint
 endpoint = root $ sum
   {
   -- Public
-    "StreamDiscoveryE"                                 : "public" / canary segment / "discovery" / "v1" / segment / segment
+    "StreamDiscoveryE"                                 : "public" / "discovery" / "v1" / segment / segment
 
-  , "ClientPlayerE"                                    : "public" / canary segment / "client" / slotId segment / slotRole segment / "player"
-  , "ClientPlayerControlE"                             : "public" / canary segment / "client" / slotId segment / slotRole segment / "session" -- URL duplicated in Web.purs
-  , "ClientPlayerAssetsE"                              : "public" / canary segment / "client" / slotId segment / slotRole segment / rest
+  , "ClientPlayerE"                                    : "public" / "client" / slotId segment / slotRole segment / "player"
+  , "ClientPlayerControlE"                             : "public" / "client" / slotId segment / slotRole segment / "session" -- URL duplicated in Web.purs
+  , "ClientPlayerAssetsE"                              : "public" / "client" / slotId segment / slotRole segment / rest
 
-  , "ClientWebRTCIngestE"                              : "public" / canary segment / "ingest" / segment / segment / "ingest"
-  , "ClientWebRTCIngestControlE"                       : "public" / canary segment / "ingest" / segment / segment / "session"
-  , "ClientWebRTCIngestAssetsE"                        : "public" / canary segment / "ingest" / segment / segment / rest
+  , "ClientWebRTCIngestE"                              : "public" / "ingest" / segment / segment / "ingest"
+  , "ClientWebRTCIngestControlE"                       : "public" / "ingest" / segment / segment / "session"
+  , "ClientWebRTCIngestAssetsE"                        : "public" / "ingest" / segment / segment / rest
 
   -- Support
   , "VMMetricsE"                                       : "support" / "vm" / path "metrics" noArgs
@@ -164,6 +173,16 @@ endpoint = root $ sum
   , "ClientAppAssetsE"                                 : "support" / "assets" / rest
   , "ClientAppRouteHTMLE"                              : "support" / noArgs
 
+  , "CanaryStreamDiscoveryE"                           : "support" / "canary" / "discovery" / "v1" / segment / segment
+
+  , "CanaryClientPlayerE"                              : "support" / "canary" / "client" / slotId segment / slotRole segment / "player"
+  , "CanaryClientPlayerControlE"                       : "support" / "canary" / "client" / slotId segment / slotRole segment / "session" -- URL duplicated in Web.purs
+  , "CanaryClientPlayerAssetsE"                        : "support" / "canary" / "client" / slotId segment / slotRole segment / rest
+
+  , "CanaryClientWebRTCIngestE"                        : "support" / "canary" / "ingest" / segment / segment / "ingest"
+  , "CanaryClientWebRTCIngestControlE"                 : "support" / "canary" / "ingest" / segment / segment / "session"
+  , "CanaryClientWebRTCIngestAssetsE"                  : "support" / "canary" / "ingest" / segment / segment / rest
+
   -- System
   , "TransPoPLeaderE"                                  : "system" / path "transPoPLeader" noArgs
 
@@ -185,10 +204,10 @@ endpoint = root $ sum
   , "RelayProxiedStatsE"                               : "system" / "test" / "proxied" / "relay" / slotId segment / slotRole segment
   , "Chaos"                                            : "system" / "test" / path "chaos" noArgs
 
-  , "IngestStartE"                                     : "system" / "test" / canary segment / "ingest" / shortName segment / slotNameAndProfile segment / "start"
-  , "IngestStopE"                                      : "system" / "test" / canary segment / "ingest" / slotId segment / slotRole segment / profileName segment / "stop"
-  , "ClientStartE"                                     : "system" / "test" / canary segment / "client" / slotId segment / slotRole segment / "start"
-  , "ClientStopE"                                      : "system" / "test" / canary segment / "client" / slotId segment / slotRole segment / "stop" / segment
+  , "IngestStartE"                                     : "system" / "test" / "ingest" / shortName segment / slotNameAndProfile segment / "start"
+  , "IngestStopE"                                      : "system" / "test" / "ingest" / slotId segment / slotRole segment / profileName segment / "stop"
+  , "ClientStartE"                                     : "system" / "test" / "client" / slotId segment / slotRole segment / "start"
+  , "ClientStopE"                                      : "system" / "test" / "client" / slotId segment / slotRole segment / "stop" / segment
 
   , "SlotLookupE"                                      : "system" / "llnwstub" / "rts" / "v1" / "slotid" / segment / segment
   , "StreamAuthTypeE"                                  : "system" / "llnwstub" / "rts" / "v1" / path "streamauthtype" noArgs
@@ -358,17 +377,6 @@ slotNameAndProfileToString :: SlotNameAndProfileName -> String
 slotNameAndProfileToString (SlotNameAndProfileName slotName (ProfileName str)) = slotName <> "_" <> str
 
 
--- | Canary
-parseCanary :: String -> Maybe Canary
-parseCanary "live"  = Just Live
-parseCanary "canary"  = Just Canary
-parseCanary _ = Nothing
-
-canaryToString :: Canary -> String
-canaryToString Live = "live"
-canaryToString Canary = "canary"
-
-
 -- | Username
 parseUsername :: String -> Maybe Username
 parseUsername "" = Nothing
@@ -416,10 +424,6 @@ popName = as poPNameToString (parsePoPName >>> note "Bad PoPName")
 -- | This combinator transforms a codec over `String` into one that operates on the `RtmpShortName` type.
 shortName :: RouteDuplex' String -> RouteDuplex' RtmpShortName
 shortName = as shortNameToString (parseRtmpShortName >>> note "Bad RtmpShortName")
-
--- | This combinator transforms a codec over `String` into one that operates on the `Canary` type.
-canary :: RouteDuplex' String -> RouteDuplex' Canary
-canary = as canaryToString (parseCanary >>> note "Bad CanaryId")
 
 uName :: RouteDuplex' String -> RouteDuplex' Username
 uName = as userNametoString (parseUsername >>> note "Bad username")

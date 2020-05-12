@@ -46,7 +46,7 @@ import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Serf (Ip(..))
 import Shared.Rtsv2.LlnwApiTypes (StreamDetails)
-import Shared.Rtsv2.Router.Endpoint (Canary)
+import Shared.Rtsv2.Router.Endpoint (Canary(..))
 import Shared.Rtsv2.Router.Endpoint as Router
 import Shared.Rtsv2.Stream (EgestKey(..), IngestKey(..), ProfileName, SlotId, SlotIdAndProfileName(..), SlotRole(..))
 import Shared.Rtsv2.Types (Server, LocationResp, RegistrationResp, extractAddress)
@@ -77,12 +77,13 @@ init args = do
         Router.endpoint
         {
         -- Public
-          "ClientPlayerE"                               : \(_ :: Canary) (_ :: SlotId) (_ :: SlotRole) -> PrivFile "rtsv2" "www/egestReferencePlayer.html"
-        , "ClientPlayerAssetsE"                         : \(_ :: Canary) (_ :: SlotId) (_ :: SlotRole) -> PrivDir "rtsv2" "www/assets"
+          "StreamDiscoveryE"                            : StreamDiscoveryHandler.discover loadConfig Live
+        , "ClientPlayerE"                               : \(_ :: SlotId) (_ :: SlotRole) -> PrivFile "rtsv2" "www/egestReferencePlayer.html"
+        , "ClientPlayerAssetsE"                         : \(_ :: SlotId) (_ :: SlotRole) -> PrivDir "rtsv2" "www/assets"
         , "ClientPlayerControlE"                        : CowboyRoutePlaceholder
 
-        , "ClientWebRTCIngestE"                         : \(_ :: Canary) (_ :: String) (_ :: String) -> PrivFile "rtsv2" "www/referenceIngest.html"
-        , "ClientWebRTCIngestAssetsE"                   : \(_ :: Canary) (_ :: String) (_ :: String) -> PrivDir "rtsv2" "www/assets"
+        , "ClientWebRTCIngestE"                         : \(_ :: String) (_ :: String) -> PrivFile "rtsv2" "www/referenceIngest.html"
+        , "ClientWebRTCIngestAssetsE"                   : \(_ :: String) (_ :: String) -> PrivDir "rtsv2" "www/assets"
         , "ClientWebRTCIngestControlE"                  : CowboyRoutePlaceholder
 
         -- Support
@@ -107,7 +108,15 @@ init args = do
         , "IngestInstanceE"                             : IngestHandler.ingestInstance
         , "ClientAppAssetsE"                            : PrivDir Config.appName "www/assets"
         , "ClientAppRouteHTMLE"                         : PrivFile Config.appName "www/index.html"
-        , "StreamDiscoveryE"                            : StreamDiscoveryHandler.discover loadConfig
+
+        , "CanaryStreamDiscoveryE"                      : StreamDiscoveryHandler.discover loadConfig Canary
+        , "CanaryClientPlayerE"                         : \(_ :: SlotId) (_ :: SlotRole) -> PrivFile "rtsv2" "www/egestReferencePlayer.html"
+        , "CanaryClientPlayerAssetsE"                   : \(_ :: SlotId) (_ :: SlotRole) -> PrivDir "rtsv2" "www/assets"
+        , "CanaryClientPlayerControlE"                  : CowboyRoutePlaceholder
+
+        , "CanaryClientWebRTCIngestE"                   : \(_ :: String) (_ :: String) -> PrivFile "rtsv2" "www/referenceIngest.html"
+        , "CanaryClientWebRTCIngestAssetsE"             : \(_ :: String) (_ :: String) -> PrivDir "rtsv2" "www/assets"
+        , "CanaryClientWebRTCIngestControlE"            : CowboyRoutePlaceholder
 
         -- System
         , "TransPoPLeaderE"                             : IntraPoPHandler.leader
@@ -172,33 +181,29 @@ init args = do
                                    })
 
       -- ClientPlayerControlE Canary SlotId
-      : cowboyRoute ("/public/" <> canaryBinding <> "/client/" <> slotIdBinding <> "/" <> slotRoleBinding <> "/session")
+      : cowboyRoute ("/public/client/" <> slotIdBinding <> "/" <> slotRoleBinding <> "/session")
                     "rtsv2_player_ws_resource"
-                    (unsafeToForeign { mode: (atom "egest")
-                                     , make_egest_key: makeEgestKey
-                                     , start_stream: startStream loadConfig
-                                     , add_client: mkFn2 addClient
-                                     , get_slot_configuration: EgestInstance.getSlotConfiguration
-                                     , data_object_send_message: EgestInstance.dataObjectSendMessage
-                                     , data_object_update: EgestInstance.dataObjectUpdate
-                                     , use_media_gateway:
-                                        case mediaGateway of
-                                          Off ->
-                                            false
-                                          _ ->
-                                            true
-                                     })
+                    (playerControlArgs loadConfig mediaGateway Live)
+
+      -- ClientWebRTCIngestContorlE SlotId SlotRole
+      : cowboyRoute ("/public/ingest/" <> accountBinding <> "/" <> streamNameBinding <> "/session")
+                    "rtsv2_webrtc_push_ingest_ws_resource"
+                    (ingestControlArgs thisServer loadConfig Live)
+
+      -- CanaryClientPlayerControlE Canary SlotId
+      : cowboyRoute ("/support/canary/client/" <> slotIdBinding <> "/" <> slotRoleBinding <> "/session")
+                    "rtsv2_player_ws_resource"
+                    (playerControlArgs loadConfig mediaGateway Canary)
+
+      -- CanaryClientWebRTCIngestContorlE SlotId SlotRole
+      : cowboyRoute ("/suport/canary/ingest/" <> accountBinding <> "/" <> streamNameBinding <> "/session")
+                    "rtsv2_webrtc_push_ingest_ws_resource"
+                    (ingestControlArgs thisServer loadConfig Canary)
 
       -- IngestInstanceLlwpE SlotId SlotRole ProfileName
       : cowboyRoute ("/system/ingest/" <> slotIdBinding <> "/" <> slotRoleBinding <> "/" <> profileNameBinding <> "/llwp")
                    "llwp_stream_resource"
                    ((unsafeToForeign) makeSlotIdAndProfileName)
-
-      -- ClientWebRTCIngestContorlE SlotId SlotRole
-      : cowboyRoute ("/public/" <> canaryBinding <> "/ingest/" <> accountBinding <> "/" <> streamNameBinding <> "/session")
-                    "rtsv2_webrtc_push_ingest_ws_resource"
-                    (unsafeToForeign { authenticate: mkFn7 $ IngestWebRTCIngestHandler.authenticate loadConfig (unwrap $ extractAddress thisServer)
-                                     })
 
       --workflows
       : cowboyRoute ("/system/workflows") "id3as_workflows_resource" (unsafeToForeign unit)
@@ -211,6 +216,25 @@ init args = do
 
       : nil
 
+    playerControlArgs loadConfig mediaGateway canary =
+      unsafeToForeign { mode: (atom "egest")
+                      , canary
+                      , make_egest_key: makeEgestKey
+                      , start_stream: startStream loadConfig
+                      , add_client: mkFn2 addClient
+                      , get_slot_configuration: EgestInstance.getSlotConfiguration
+                      , data_object_send_message: EgestInstance.dataObjectSendMessage
+                      , data_object_update: EgestInstance.dataObjectUpdate
+                      , use_media_gateway:
+                        case mediaGateway of
+                          Off -> false
+                          _ -> true
+                      }
+
+    ingestControlArgs thisServer loadConfig canary =
+      unsafeToForeign { canary
+                      , authenticate: mkFn7 $ IngestWebRTCIngestHandler.authenticate loadConfig (unwrap $ extractAddress thisServer)
+                      }
 
     slotIdBinding = ":slot_id"
     slotRoleBinding = ":slot_role"

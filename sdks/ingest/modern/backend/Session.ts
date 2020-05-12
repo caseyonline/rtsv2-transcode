@@ -93,10 +93,10 @@ export default class Session extends EventEmitter implements ISession {
     });
   }
 
-  sendUpdate(operation: DataObjectUpdateOperation, senderRef: string) {
+  sendUpdate(operation: DataObjectUpdateOperation, requestResponseCorrelationId: string) {
     this.sendToSocket({
       "type": "dataobject.update",
-      "senderRef": senderRef,
+      "requestResponseCorrelationId": requestResponseCorrelationId,
       "operation": operation
     })
   }
