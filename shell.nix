@@ -100,6 +100,9 @@ mkShell {
     # Our nativedeps environment
     (id3as.nd-env.override {
       nd-quicksync-enabled = false;
+      nd-bmd = null;
+      nd-x264 = null;
+      nd-x265 = null;
     })
 
     # The Media Gateway
