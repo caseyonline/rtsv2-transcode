@@ -23,15 +23,17 @@
           program_details :: program_details()
          }).
 
-init(Req, MakeSlotIdAndProfileName) ->
+init(Req, IngestKeyFun) ->
 
   SlotId = rtsv2_types:string_to_uuid(cowboy_req:binding(slot_id, Req)),
+  SlotRole = rtsv2_types:string_to_slot_role(cowboy_req:binding(slot_role, Req)),
   ProfileName = cowboy_req:binding(profile_name, Req),
+
 
   ?SLOG_INFO("LLWP Stream opening", #{slot_id => SlotId,
                                       profile_name => ProfileName}),
 
-  { cowboy_rest, Req, #state { bus_name = {ingest, (MakeSlotIdAndProfileName(SlotId))(ProfileName) }}}.
+  { cowboy_rest, Req, #state { bus_name = {ingest, ((IngestKeyFun(SlotId))(SlotRole))(ProfileName) }}}.
 
 service_available(Req, State = #state{bus_name = BusName}) ->
 

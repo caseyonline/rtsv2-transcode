@@ -203,7 +203,7 @@ init args = do
       -- IngestInstanceLlwpE SlotId SlotRole ProfileName
       : cowboyRoute ("/system/ingest/" <> slotIdBinding <> "/" <> slotRoleBinding <> "/" <> profileNameBinding <> "/llwp")
                    "llwp_stream_resource"
-                   ((unsafeToForeign) makeSlotIdAndProfileName)
+                   ((unsafeToForeign) IngestKey)
 
       --workflows
       : cowboyRoute ("/system/workflows") "id3as_workflows_resource" (unsafeToForeign unit)
@@ -246,9 +246,6 @@ init args = do
     referenceBinding = ":reference"
     accountBinding = ":account"
     streamNameBinding = ":stream_name"
-
-    makeSlotIdAndProfileName :: String -> String -> SlotIdAndProfileName
-    makeSlotIdAndProfileName slotId profileName = SlotIdAndProfileName (slotIdStringToSlotId slotId) (wrap profileName)
 
     makeIngestKey2 :: StreamDetails -> ProfileName -> IngestKey
     makeIngestKey2 { slot : { id }, role } profileName =

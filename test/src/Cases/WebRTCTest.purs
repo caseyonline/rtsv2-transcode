@@ -168,7 +168,7 @@ ingestStream =
   describe "5.3 Ingest Stream tests" do
     before_ (F.startSession ingestNodes *> F.launch ingestNodes) do
       after_ (F.stopSession *> F.stopSlot) do
-        it "5.3.1 ingest on different node removes itself from aggregator when stopped" do
+        it "5.3.1 webrtc ingest on different node to aggregator" do
           traverse_ F.maxOut (F.allNodesBar E.p1n1 ingestNodes) >>= L.as' "load up all servers bar one"
           E.waitForIntraPoPDisseminate
           F.startSlotHigh1000 (C.toAddrFromNode Env.p1n2) >>= L.as' "create high ingest"
