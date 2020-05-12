@@ -8,7 +8,7 @@ module Rtsv2.Handler.Ingest
 import Prelude
 
 import Data.Either (Either(..), hush)
-import Data.Foldable (foldl)
+import Data.Foldable (foldl, find)
 import Data.Maybe (Maybe(..), fromMaybe', isJust)
 import Data.Newtype (unwrap, wrap)
 import Data.Traversable (traverse)
@@ -38,8 +38,9 @@ import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.LlnwApi as LlnwApi
 import Shared.Rtsv2.Agent.State (IngestStats)
 import Shared.Rtsv2.Agent.State as PublicState
-import Shared.Rtsv2.LlnwApiTypes (StreamIngestProtocol(..), StreamPublish, StreamDetails)
-import Shared.Rtsv2.Stream (IngestKey(..), ProfileName, RtmpShortName, SlotId, SlotNameAndProfileName(..), SlotRole)
+import Shared.Rtsv2.LlnwApiTypes (StreamIngestProtocol(..), StreamPublish, StreamDetails, SlotProfile(..))
+import Shared.Rtsv2.Router.Endpoint (Canary)
+import Shared.Rtsv2.Stream (IngestKey(..), ProfileName, RtmpShortName, RtmpStreamName, SlotId, SlotRole)
 import Shared.Types.Workflow.Metrics.Commmon (Stream)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (writeJSON)
@@ -189,8 +190,8 @@ type IngestStartState = { streamDetails :: Maybe StreamDetails
                         , streamPublish :: Maybe StreamPublish
                         }
 
-ingestStart :: LoadConfig -> RtmpShortName -> SlotNameAndProfileName -> StetsonHandler IngestStartState
-ingestStart loadConfig shortName slotNameAndProfileName@(SlotNameAndProfileName slotName profileName) =
+ingestStart :: LoadConfig -> RtmpShortName -> RtmpStreamName -> StetsonHandler IngestStartState
+ingestStart loadConfig shortName streamName =
   Rest.handler (\req ->
                  Rest.initResult req { streamDetails: Nothing
                                      , streamPublish: Nothing
@@ -205,7 +206,7 @@ ingestStart loadConfig shortName slotNameAndProfileName@(SlotNameAndProfileName 
                             streamPublishPayload = wrap { host: "172.16.171.5"
                                                         , protocol: Rtmp
                                                         , rtmpShortName: shortName
-                                                        , rtmpStreamName: wrap $ slotName <> "_" <> (unwrap profileName)
+                                                        , rtmpStreamName: streamName
                                                         , username: "user"}
                           in
                            do
@@ -223,6 +224,8 @@ ingestStart loadConfig shortName slotNameAndProfileName@(SlotNameAndProfileName 
                                                                        let
                                                                          streamDetails = fromMaybe' (lazyCrashIfMissing "stream_details missing") maybeStreamDetails
                                                                          streamPublish = fromMaybe' (lazyCrashIfMissing "stream_publish missing") maybeStreamPublish
+                                                                         findProfile = fromMaybe' (lazyCrashIfMissing "profile_details missing") $ find (\ (SlotProfile { rtmpStreamName: profileStreamName }) -> profileStreamName == streamName) streamDetails.slot.profiles
+                                                                         (SlotProfile { name: profileName }) = findProfile
                                                                          ingestKey = IngestKey streamDetails.slot.id streamDetails.role profileName
                                                                        pid <- startFakeIngest ingestKey
                                                                        maybeStarted <- IngestInstanceSup.startLocalRtmpIngest loadConfig ingestKey streamPublish streamDetails "127.0.0.1" 0 pid

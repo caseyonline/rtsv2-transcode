@@ -10,7 +10,7 @@ let
     builtins.fetchGit {
       name = "id3as-packages";
       url = "git@github.com:id3as/nixpkgs-private.git";
-      rev = "485fcb5e2dccbf2fa3d43fb6c2c45bb68babd601";
+      rev = "b62ac1a4382826478a3e5e3293d42dc1c60e25c1";
       ref = "v2";
     };
 
@@ -18,7 +18,7 @@ let
     builtins.fetchGit {
       name = "id3as-oxidized-packages";
       url = "git@github.com:id3as/oxidized.git";
-      rev = "dde564bf9bea7f01802b4949271a970c8c805bd2";
+      rev = "a3edd871128d77af5c56b17e49c24f6f5350893d";
       ref = "rtcp";
     };
 
@@ -62,6 +62,9 @@ stdenv.mkDerivation rec {
     # Our nativedeps environment
     (id3as.nd-env.override {
       nd-quicksync-enabled = false;
+      nd-bmd = null;
+      nd-x264 = null;
+      nd-x265 = null;
     })
 
     # Need to explicitly list dependencies

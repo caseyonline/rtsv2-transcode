@@ -2,7 +2,7 @@ module Main where
 
 import Prelude
 
-import Browser.WebRTCTest (webRTCTest)
+import Cases.WebRTCTest (webRTCTest)
 import Cases.Startup (startupTests)
 import Cases.Ingest (ingestTests)
 import Cases.IngestEgest (ingestEgestTests)
@@ -33,4 +33,4 @@ main =
         it "final cleanup" do
           pure unit
   where
-    testConfig = { slow: Milliseconds 5000.0, timeout: Just (Milliseconds 25000.0), exit: false }
+    testConfig = { slow: Milliseconds 5000.0, timeout: Just (Milliseconds 30000.0), exit: false }

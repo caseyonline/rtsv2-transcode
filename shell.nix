@@ -19,7 +19,7 @@ let
     builtins.fetchGit {
       name = "id3as-packages";
       url = "git@github.com:id3as/nixpkgs-private.git";
-      rev = "e7b181ea5f1a0c7d630b7028d47eaa4636abfb77";
+      rev = "b62ac1a4382826478a3e5e3293d42dc1c60e25c1";
       ref = "v2";
     };
 
@@ -35,8 +35,15 @@ let
     builtins.fetchGit {
       name = "id3as-oxidized-packages";
       url = "git@github.com:id3as/oxidized.git";
-      rev = "dde564bf9bea7f01802b4949271a970c8c805bd2";
+      rev = "a3edd871128d77af5c56b17e49c24f6f5350893d";
       ref = "rtcp";
+    };
+
+  etwasPackages =
+    builtins.fetchGit {
+      name = "id3as-etwas-packages";
+      url = "https://github.com/id3as/etwas";
+      rev = "9690a86eae707d707f7969756aa7966b11f82254";
     };
 
   nixpkgs =
@@ -47,6 +54,7 @@ let
         (import id3asPackages)
         (import oxidizedPackages)
         (import mozillaPackages)
+        (import "${etwasPackages}/overlay.nix")
       ];
     };
 
@@ -92,6 +100,9 @@ mkShell {
     # Our nativedeps environment
     (id3as.nd-env.override {
       nd-quicksync-enabled = false;
+      nd-bmd = null;
+      nd-x264 = null;
+      nd-x265 = null;
     })
 
     # The Media Gateway
@@ -115,6 +126,9 @@ mkShell {
     # Rust stuff!
     rust
     rustracer
+
+    # Etwas - for de-nixification
+    etwas
 
   ] ++ optionals stdenv.isLinux [ iproute ];
 }

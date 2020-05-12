@@ -13,7 +13,7 @@ import Helpers.HTTP as HTTP
 import Helpers.Env as E
 import Helpers.Functions (startSession, launch, stopSession, launch', forceGetState, storeHeader, getStateValue)
 import Helpers.Log (as, as', asT)
-import Test.Spec (SpecT, after_, before_, describe, it, itOnly)
+import Test.Spec (SpecT, after_, before_, describe, it)
 
 
 
@@ -36,7 +36,7 @@ onePoPSetup = do
         it "3.1.1 client requests stream on ingest node" do
           HTTP.clientStart E.p1n1 E.slot1            >>= A.assertStatusCode 404 >>= as  "no egest prior to ingest"
           HTTP.getRelayStats E.p1n1 E.slot1          >>= A.assertStatusCode 404 >>= as  "no relay prior to ingest"
-          HTTP.ingestStart E.p1n1 E.shortName1 E.low >>= A.assertStatusCode 200 >>= as  "create ingest"
+          HTTP.ingestStart E.p1n1 E.shortName1 E.lowStreamName >>= A.assertStatusCode 200 >>= as  "create ingest"
           E.waitForAsyncProfileStart                                            >>= as' "wait for async start of profile"
           HTTP.clientStart E.p1n1 E.slot1            >>= A.assertStatusCode 204 >>= as  "egest available"
           E.waitForAsyncProfileStart                                            >>= as' "wait for async start of profile"
@@ -49,7 +49,7 @@ onePoPSetup = do
         it "3.1.2 client requests stream on non-ingest node" do
           HTTP.clientStart E.p1n2 E.slot1            >>= A.assertStatusCode 404 >>= as  "no egest prior to ingest"
           HTTP.getRelayStats E.p1n2 E.slot1          >>= A.assertStatusCode 404 >>= as  "no remote relay prior to ingest"
-          HTTP.ingestStart E.p1n1 E.shortName1 E.low >>= A.assertStatusCode 200 >>= as  "create ingest"
+          HTTP.ingestStart E.p1n1 E.shortName1 E.lowStreamName >>= A.assertStatusCode 200 >>= as  "create ingest"
           E.waitForIntraPoPDisseminate                                          >>= as' "allow intraPoP source avaialable to disseminate"
           HTTP.clientStart E.p1n2 E.slot1            >>= A.assertStatusCode 204 >>= as  "egest available"
           HTTP.getRelayStats E.p1n2 E.slot1          >>= A.assertStatusCode 200 >>= as  "remote relay exists"
@@ -60,7 +60,7 @@ onePoPSetup = do
           (flip evalStateT) Map.empty $ do
             lift $ HTTP.clientStart E.p1n2 E.slot1            >>= A.assertStatusCode 404 >>= as "no egest E.p1n2 prior to ingest"
             lift $ HTTP.clientStart E.p1n3 E.slot1            >>= A.assertStatusCode 404 >>= as "no egest E.p1n3 prior to ingest"
-            lift $ HTTP.ingestStart E.p1n1 E.shortName1 E.low >>= A.assertStatusCode 200 >>= as "create ingest"
+            lift $ HTTP.ingestStart E.p1n1 E.shortName1 E.lowStreamName >>= A.assertStatusCode 200 >>= as "create ingest"
             lift $ E.waitForIntraPoPDisseminate                                          >>= as' "allow intraPoP source avaialable to disseminate"
             (lift $ HTTP.clientStart E.p1n2 E.slot1           >>= A.assertStatusCode 204
                                                               >>= A.assertHeader (Tuple "x-servedby" "172.16.169.2"))
@@ -113,7 +113,7 @@ twoPoPSetup = do
     before_ (startSession nodes *> launch nodes) do
       after_ stopSession do
         it "3.2.1 aggregator presence is disseminated to all servers" do
-          HTTP.ingestStart E.p1n1 E.shortName1 E.low >>= A.assertStatusCode 200 >>= as  "create ingest"
+          HTTP.ingestStart E.p1n1 E.shortName1 E.lowStreamName >>= A.assertStatusCode 200 >>= as  "create ingest"
           E.waitForTransPoPDisseminate                                          >>= as' "wait for transPop disseminate"
           HTTP.getIntraPoPState E.p1n1               >>= A.assertAggregatorOn [E.p1n1] E.slot1
                                                                                 >>= as "E.p1n1 is aware of the ingest on E.p1n1"
@@ -126,7 +126,7 @@ twoPoPSetup = do
           HTTP.clientStart E.p2n1 E.slot1            >>= A.assertStatusCode 404 >>= as  "no egest prior to ingest"
           HTTP.getRelayStats E.p1n1 E.slot1          >>= A.assertStatusCode 404 >>= as  "no remote relay prior to ingest"
           HTTP.getRelayStats E.p2n1 E.slot1          >>= A.assertStatusCode 404 >>= as  "no local relay prior to ingest"
-          HTTP.ingestStart E.p1n1 E.shortName1 E.low >>= A.assertStatusCode 200 >>= as  "create ingest"
+          HTTP.ingestStart E.p1n1 E.shortName1 E.lowStreamName >>= A.assertStatusCode 200 >>= as  "create ingest"
           E.waitForTransPoPDisseminate                                          >>= as' "wait for transPop disseminate"
           HTTP.clientStart E.p2n1 E.slot1            >>= A.assertStatusCode 204 >>= as  "egest available"
           HTTP.getRelayStats E.p2n1 E.slot1          >>= A.assertStatusCode 200 >>= as  "local relay exists"
@@ -142,11 +142,11 @@ twoPoPSetup = do
         it "3.2.3 client ingest starts and stops" do
           HTTP.clientStart E.p1n2 E.slot1            >>= A.assertStatusCode 404 >>= as  "no local egest prior to ingest"
           HTTP.clientStart E.p2n1 E.slot1            >>= A.assertStatusCode 404 >>= as  "no remote egest prior to ingest"
-          HTTP.ingestStart E.p1n1 E.shortName1 E.low >>= A.assertStatusCode 200 >>= as  "create ingest"
+          HTTP.ingestStart E.p1n1 E.shortName1 E.lowStreamName >>= A.assertStatusCode 200 >>= as  "create ingest"
           E.waitForTransPoPDisseminate                                          >>= as' "wait for transPop disseminate"
           HTTP.clientStart E.p1n2 E.slot1            >>= A.assertStatusCode 204 >>= as  "local egest post ingest"
           HTTP.clientStart E.p2n1 E.slot1            >>= A.assertStatusCode 204 >>= as  "remote egest post ingest"
-          HTTP.ingestStop  E.p1n1 E.slot1 E.low      >>= A.assertStatusCode 200 >>= as  "stop the ingest"
+          HTTP.ingestStop  E.p1n1 E.slot1 E.lowProfileName      >>= A.assertStatusCode 200 >>= as  "stop the ingest"
           E.waitForTransPoPStopDisseminate                                      >>= as' "wait for transPop disseminate"
           HTTP.clientStart E.p1n2 E.slot1            >>= A.assertStatusCode 404 >>= as  "no same pop egest post stop"
           HTTP.clientStart E.p2n1 E.slot1            >>= A.assertStatusCode 404 >>= as  "no remote pop egest post stop"
@@ -162,7 +162,7 @@ nodeStartupOnePoP =
     before_ (startSession nodes *> launch' phase1Nodes sysconfig) do
       after_ stopSession do
         it "3.3.1 a node that starts late gets to see existing streams" do
-          HTTP.ingestStart E.p1n1 E.shortName1 E.low >>= A.assertStatusCode 200 >>= as  "create ingest"
+          HTTP.ingestStart E.p1n1 E.shortName1 E.lowStreamName >>= A.assertStatusCode 200 >>= as  "create ingest"
           E.waitForIntraPoPDisseminate                                          >>= as' "let ingest presence disseminate"
           launch' phase2Nodes sysconfig                                         >>= as' "start new node after ingest already running"
           E.waitForNodeStartDisseminate                                         >>= as' "let ingest presence disseminate"
@@ -179,7 +179,7 @@ packetLossOnePoP =
     before_ (startSession nodes *> launch' nodes sysconfig) do
       after_ stopSession do
         it "3.4.1 aggregator expired after extended packet loss" do
-          HTTP.ingestStart E.p1n1 E.shortName1 E.low >>= A.assertStatusCode 200 >>= as  "create ingest"
+          HTTP.ingestStart E.p1n1 E.shortName1 E.lowStreamName >>= A.assertStatusCode 200 >>= as  "create ingest"
           E.waitForIntraPoPDisseminate                                          >>= as' "let ingest presence disseminate"
           HTTP.clientStart E.p1n2 E.slot1            >>= A.assertStatusCode 204 >>= as  "local egest post ingest"
           HTTP.dropAgentMessages E.p1n2 true                                    >>= as  "Drop all agent messages"
@@ -207,7 +207,7 @@ fourPoPSetup = do
       after_ stopSession do
         it "3.5.1 lax -> fra sets up 2 non-overlapping relay chains" do
           E.waitForIntraPoPDisseminate                                          >>= as' "allow intraPoP to spread location of relay"
-          HTTP.ingestStart E.p3n1 E.shortName1 E.low >>= A.assertStatusCode 200 >>= as  "create ingest"
+          HTTP.ingestStart E.p3n1 E.shortName1 E.lowStreamName >>= A.assertStatusCode 200 >>= as  "create ingest"
           E.waitForTransPoPDisseminate                                          >>= as' "wait for transPop disseminate"
           HTTP.clientStart E.p4n1 E.slot1            >>= A.assertStatusCode 204 >>= as  "egest available in lax"
           HTTP.getRelayStats  E.p4n1 E.slot1         >>= A.assertStatusCode 200 >>= as  "local relay exists"
