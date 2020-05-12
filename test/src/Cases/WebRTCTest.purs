@@ -91,7 +91,7 @@ options =
 -------------------------------------------------------------------------------
 webRTCTest :: forall m. Monad m => SpecT Aff Unit m Unit
 webRTCTest =
-  describeOnly "WebRTC browser tests" do
+  describe "WebRTC browser tests" do
     primaryStream
     backupStream
     ingestStream
