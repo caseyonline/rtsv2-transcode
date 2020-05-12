@@ -13,6 +13,7 @@
 -export([ start_link/2
         , add_egest/5
         , add_egest_client/4
+        , update_egest_client_subscription/3
         ]).
 
 
@@ -64,6 +65,10 @@ add_egest(SlotId, SlotRole, ReceiveSocket, AudioSSRC, VideoSSRC) ->
 
 add_egest_client(SlotId, SlotRole, ClientId, EgestClientConfig) ->
   gen_server:call(?SERVER, {add_egest_client, SlotId, SlotRole, ClientId, EgestClientConfig}).
+
+
+update_egest_client_subscription(ClientId, AudioSSRC, VideoSSRC) ->
+  gen_server:call(?SERVER, {update_egest_client_subscription, ClientId, AudioSSRC, VideoSSRC}).
 
 
 %%% ----------------------------------------------------------------------------
@@ -159,7 +164,23 @@ handle_call({ add_egest_client
 
   send_msg(NewState#?state.control_socket, Header, Body, [AudioSocketFd, VideoSocketFd]),
 
+  {reply, ok, NewState};
+
+handle_call({update_egest_client_subscription, ClientId, AudioSSRC, VideoSSRC}, _From, State) ->
+
+  NewState = ensure_control_socket(State),
+
+  Header = header(update_egest_client_subscription),
+
+  Body = ?pack(#{ client_id => ClientId
+                , audio_input_ssrc => AudioSSRC
+                , video_input_ssrc => VideoSSRC
+                }),
+
+  send_msg(NewState#?state.control_socket, Header, Body, []),
+
   {reply, ok, NewState}.
+
 
 handle_cast(not_implemented, State) ->
   {noreply, State}.
