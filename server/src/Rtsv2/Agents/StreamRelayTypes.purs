@@ -10,10 +10,13 @@ module Rtsv2.Agents.StreamRelayTypes
   , DownstreamWsMessage(..)
   , WebSocketHandlerMessage(..)
   , ActiveProfiles(..)
+  , NativeJson
   ) where
 
 import Prelude
 
+import Control.Monad.Except (except)
+import Data.Either (Either(..))
 import Data.Generic.Rep (class Generic)
 import Erl.Data.List (List)
 import Erl.Utils (Ref)
@@ -25,6 +28,9 @@ import Shared.Rtsv2.Agent (SlotCharacteristics)
 import Shared.Rtsv2.Stream (ProfileName, SlotId, SlotRole)
 import Shared.Rtsv2.Types (PoPName, Server)
 import Simple.JSON (class ReadForeign, class WriteForeign, readImpl, writeImpl)
+import Unsafe.Coerce (unsafeCoerce)
+
+foreign import data NativeJson :: Type
 
 type CreateRelayPayload
   = { slotId :: SlotId
@@ -69,7 +75,7 @@ newtype ActiveProfiles = ActiveProfiles { profiles :: List ProfileName
                                         }
 
 data DownstreamWsMessage = SlotConfig SlotConfiguration
-                         | OnFI {timestamp:: Int, pts:: Int}
+                         | OnFI {payload :: NativeJson, pts :: Int}
                          | CurrentActiveProfiles ActiveProfiles
                          | DataObjectMessage DO.Message
                          | DataObjectUpdateResponse DO.ObjectUpdateResponseMessage
@@ -161,3 +167,11 @@ instance readForeignDownstreamWsMessage :: ReadForeign DownstreamWsMessage where
 
 instance writeForeignDownstreamWsMessage :: WriteForeign DownstreamWsMessage where
   writeImpl msg = writeImpl (genericSumToVariant msg)
+
+------------------------------------------------------------------------------
+-- NativeJson
+instance readForeignNativeJson :: ReadForeign NativeJson where
+  readImpl o = except (Right (unsafeCoerce o))
+
+instance writeForeignNativeJson :: WriteForeign NativeJson where
+  writeImpl = unsafeCoerce

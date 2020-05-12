@@ -265,7 +265,7 @@ export default class Session extends EventEmitter implements ISession {
 
       case "on-fi":
         {
-          this.emit("source-onfi", message);
+          this.emit("on-fi", message);
         }
         break;
 
@@ -296,6 +296,12 @@ export default class Session extends EventEmitter implements ISession {
       case "dataobject.broadcast":
         {
           this.emit("data-object", message.object);
+        }
+        break;
+
+      case "time-zero":
+        {
+          this.emit("time-zero", message);
         }
         break;
 

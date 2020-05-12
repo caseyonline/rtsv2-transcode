@@ -56,6 +56,7 @@ module Rtsv2.Agents.IngestAggregatorInstance
 import Prelude
 
 import Bus as Bus
+import Data.Array as Array
 import Data.Either (Either(..), either, hush)
 import Data.FoldableWithIndex (foldWithIndexM, foldlWithIndex)
 import Data.Lens (Lens', set, view)
@@ -72,7 +73,7 @@ import Erl.Data.List (List, nil, (:))
 import Erl.Data.List as List
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
-import Erl.Data.Tuple (Tuple3, Tuple4, toNested3, tuple4)
+import Erl.Data.Tuple (Tuple2, toNested2, tuple4)
 import Erl.Process (Process(..), (!))
 import Erl.Process.Raw (Pid)
 import Erl.Utils (Ref, shutdown)
@@ -89,7 +90,7 @@ import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..), announceLocalAggregatorIsA
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
 import Rtsv2.Agents.SlotTypes as SlotTypes
-import Rtsv2.Agents.StreamRelayTypes (ActiveProfiles(..), AggregatorBackupToPrimaryWsMessage(..), AggregatorPrimaryToBackupWsMessage(..), AggregatorToIngestWsMessage(..), DownstreamWsMessage(..), WebSocketHandlerMessage(..))
+import Rtsv2.Agents.StreamRelayTypes (ActiveProfiles(..), AggregatorBackupToPrimaryWsMessage(..), AggregatorPrimaryToBackupWsMessage(..), AggregatorToIngestWsMessage(..), DownstreamWsMessage(..), NativeJson, WebSocketHandlerMessage(..))
 import Rtsv2.Config as Config
 import Rtsv2.DataObject as DO
 import Rtsv2.Names as Names
@@ -97,16 +98,14 @@ import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.JsonLd as JsonLd
-import Shared.Rtsv2.LlnwApiTypes (SlotProfile(..), StreamDetails, HlsPushSpec, slotDetailsToSlotCharacteristics)
+import Shared.Rtsv2.LlnwApiTypes (HlsPushAuth, HlsPushProtocol, HlsPushSpecFormat, SlotProfile(..), StreamDetails, slotDetailsToSlotCharacteristics)
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrlAddr, makeWsUrl)
-import Shared.Rtsv2.Stream (AggregatorKey(..), IngestKey(..), ProfileName, RtmpShortName(..), SlotId, SlotRole(..), ingestKeyToAggregatorKey)
+import Shared.Rtsv2.Stream (AggregatorKey(..), IngestKey(..), ProfileName, RtmpShortName, SlotId, SlotRole(..), ingestKeyToAggregatorKey)
 import Shared.Rtsv2.Types (DeliverTo, RelayServer, Server, ServerAddress, extractAddress)
-import Shared.UUID (UUID)
 import WsGun as WsGun
 
 foreign import data WorkflowHandle :: Type
---foreign import startWorkflowImpl :: UUID -> SlotRole -> List (Tuple4 IngestKey String String Int) -> SlotConfiguration -> List HlsPushSpec -> Effect (Tuple3 WorkflowHandle (List Pid) SlotConfiguration)
-foreign import startWorkflowImpl :: SlotConfiguration -> List HlsPushSpec -> Effect (Tuple3 WorkflowHandle (List Pid) SlotConfiguration)
+foreign import startWorkflowImpl :: SlotConfiguration -> List HlsPush -> Effect (Tuple2 WorkflowHandle (List Pid))
 foreign import stopWorkflowImpl :: WorkflowHandle -> Effect Unit
 foreign import addLocalIngestImpl :: WorkflowHandle -> IngestKey -> Effect Unit
 foreign import addRemoteIngestImpl :: WorkflowHandle -> IngestKey -> String -> Effect Unit
@@ -171,8 +170,17 @@ type State
     , maybeStopRef :: Maybe Ref
     }
 
+type HlsPush =
+  { protocol :: HlsPushProtocol
+  , formats :: Array HlsPushSpecFormat
+  , putBaseUrl :: String
+  , segmentDuration :: Int
+  , playlistDuration :: Int
+  , auth :: HlsPushAuth
+  }
+
 data WorkflowMsg = Noop
-                 | RtmpOnFI Int Int
+                 | RtmpOnFI NativeJson Int
 
 data Msg
   = IntraPoPBus IntraPoP.IntraPoPBusMessage
@@ -302,6 +310,7 @@ getState aggregatorKey@(AggregatorKey slotId slotRole) = Gen.call (serverName ag
                       , streamDetails
                       , activeProfiles: (\(Tuple profileName ingestAddress) -> JsonLd.activeIngestLocationNode slotId slotRole profileName ingestAddress) <$> allProfiles
                       , downstreamRelays: foldlWithIndex (\server acc {port} -> (JsonLd.downstreamRelayLocationNode slotId slotRole {server, port}) : acc) nil relays
+                      , hlsPublish: (Array.length streamDetails.push) /= 0
                       }
         localProfiles outerAcc = foldlWithIndex (\profileName acc _handler -> (Tuple profileName (extractAddress thisServer)) : acc) outerAcc localIngests
         remoteProfiles outerAcc = foldlWithIndex (\profileName acc {ingestAddress} -> (Tuple profileName ingestAddress) : acc) outerAcc remoteIngests
@@ -441,22 +450,19 @@ init {shortName, streamDetails: streamDetails@{role: slotRole, slot: slot@{id: s
   logStart "Ingest Aggregator starting" {aggregatorKey, streamDetails}
   _ <- Erl.trapExit true
   config <- Config.ingestAggregatorAgentConfig
+  {defaultSegmentDurationMs
+  , defaultPlaylistDurationMs} <- Config.llnwApiConfig
+
   thisServer <- PoPDefinition.getThisServer
-  announceLocalAggregatorIsAvailable aggregatorKey (slotDetailsToSlotCharacteristics slot)
   Gen.registerExternalMapping thisServerName (\m -> Workflow <$> workflowMessageMapperImpl m)
   Gen.registerExternalMapping thisServerName (\m -> Gun <$> (WsGun.messageMapper m))
-  -- workflowHandleAndPidsAndSlotConfiguration <- startWorkflowImpl (unwrap streamDetails.slot.id) streamDetails.role
-  --                                                 (List.fromFoldable $ mkKey <$> streamDetails.slot.profiles)
-  --                                                 slotConfiguration
-  --                                                 (List.fromFoldable $ streamDetails.push)
-  workflowHandleAndPidsAndSlotConfiguration <- startWorkflowImpl -- (unwrap streamDetails.slot.id) streamDetails.role
---                                                  (List.fromFoldable $ mkKey <$> streamDetails.slot.profiles)
-                                                  slotConfiguration
-                                                  (List.fromFoldable $ streamDetails.push)
+  workflowHandleAndPids <- startWorkflowImpl
+                           slotConfiguration ((toHlsPush defaultSegmentDurationMs defaultPlaylistDurationMs) <$> (List.fromFoldable $ streamDetails.push))
   Gen.registerTerminate thisServerName terminate
   void $ Bus.subscribe thisServerName IntraPoP.bus IntraPoPBus
+  announceLocalAggregatorIsAvailable aggregatorKey (slotDetailsToSlotCharacteristics slot)
   let
-    Tuple workflowHandle (Tuple webRtcStreamServers (Tuple _slotConfiguration _)) = toNested3 workflowHandleAndPidsAndSlotConfiguration
+    Tuple workflowHandle (Tuple webRtcStreamServers _) = toNested2 workflowHandleAndPids
     initialState = { config : config
                    , slotId
                    , slotRole
@@ -486,6 +492,20 @@ init {shortName, streamDetails: streamDetails@{role: slotRole, slot: slot@{id: s
     aggregatorKey = streamDetailsToAggregatorKey streamDetails
     thisServerName = (serverName (aggregatorKey))
     slotConfiguration = SlotTypes.llnwStreamDetailsToSlotConfiguration shortName streamDetails
+    toHlsPush defaultSegmentDurationMs defaultPlaylistDurationMs { protocol
+                                                                 , formats
+                                                                 , putBaseUrl
+                                                                 , segmentDuration
+                                                                 , playlistDuration
+                                                                 , auth
+                                                                 } =
+      { protocol
+      , formats
+      , putBaseUrl
+      , segmentDuration: fromMaybe (defaultSegmentDurationMs / 1000) segmentDuration
+      , playlistDuration: fromMaybe (defaultPlaylistDurationMs / 1000) playlistDuration
+      , auth
+      }
 
 maybeStartPrimaryTimeout :: State -> Effect Unit
 maybeStartPrimaryTimeout state@{dataObjectState: Left _} = do
@@ -636,9 +656,9 @@ handleInfo msg state@{aggregatorKey, slotId, stateServerName, workflowHandle, ma
     Workflow Noop ->
       pure $ CastNoReply state
 
-    Workflow (RtmpOnFI timestamp pts) -> do
+    Workflow (RtmpOnFI payload pts) -> do
       let
-        send relay = relay ! (WsSend $ OnFI {timestamp, pts})
+        send relay = relay ! (WsSend $ OnFI {payload, pts})
       _ <- traverse send $ _.handler <$> Map.values state.cachedState.relays
       pure $ CastNoReply state
 

@@ -16,7 +16,7 @@ module Shared.Rtsv2.LlnwApiTypes
        , StreamDetails
        , SlotDetails
        , StreamOutputFormat(..)
-       , HlsPushSpec
+       , HlsPushSpec(..)
        , HlsPushProtocol(..)
        , SlotProfile(..)
        , HlsPushSpecFormat(..)
@@ -37,9 +37,10 @@ import Data.Generic.Rep.Eq (genericEq)
 import Data.Generic.Rep.Ord (genericCompare)
 import Data.Generic.Rep.Show (genericShow)
 import Data.List.NonEmpty (singleton)
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (class Newtype)
-import Foreign (ForeignError(..), readString, unsafeToForeign)
+import Effect.Unsafe (unsafePerformEffect)
+import Foreign (ForeignError(..), F, readString, unsafeToForeign)
 import Record (rename)
 import Shared.Rtsv2.Agent (SlotCharacteristics)
 import Shared.Rtsv2.Stream (ProfileName, RtmpShortName, RtmpStreamName, SlotId, SlotRole)
@@ -110,9 +111,8 @@ type HlsPushSpec =
   { protocol :: HlsPushProtocol
   , formats :: Array HlsPushSpecFormat
   , putBaseUrl :: String
-  , playbackBaseUrl :: String
-  , segmentDuration :: Int
-  , playlistDuration :: Int
+  , segmentDuration :: Maybe Int
+  , playlistDuration :: Maybe Int
   , auth :: HlsPushAuth
   }
 
@@ -280,8 +280,6 @@ instance showStreamOutputFormat :: Show StreamOutputFormat where
   show WebRTCOutput = "WebRtc"
   show RtmpOutput = "RTMP"
   show HlsOutput = "HLS"
-
-
 
 derive instance newtypeStreamAuth :: Newtype StreamAuth _
 derive instance genericStreamAuth :: Generic StreamAuth _

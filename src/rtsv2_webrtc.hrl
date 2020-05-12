@@ -5,9 +5,11 @@
 
 -record(rtsv2_webrtc_session_handler_config,
         { session_id :: binary_string()
+        , cname :: binary_string()
+        , media_gateway_client_id :: non_neg_integer()
         , slot_id :: slot_id()
         , slot_role :: slot_role()
-        , profiles :: rtsv2_slot_configuration:slot_profile()
+        , profiles :: list(rtsv2_slot_configuration:slot_profile())
         , web_socket :: pid()
         , audio_ssrc :: rtp:ssrc()
         , video_ssrc :: rtp:ssrc()

@@ -73,6 +73,7 @@ data MediaGatewayFlag
   = Off
   | On
   | External
+  | Both
 
 instance readForeignMediaGatewayFlag :: ReadForeign MediaGatewayFlag where
   readImpl =
@@ -83,6 +84,7 @@ instance readForeignMediaGatewayFlag :: ReadForeign MediaGatewayFlag where
       toType "off" = pure Off
       toType "on" = pure On
       toType "external" = pure External
+      toType "both" = pure Both
       toType unknown = Nothing
       errorString s = "Unknown Media Gateway Flag: " <> s
 
@@ -176,6 +178,8 @@ type LlnwApiConfig
     , streamPublishUrl :: String
     , slotLookupUrl :: String
     , headers :: List (Tuple2 String String)
+    , defaultSegmentDurationMs :: Int
+    , defaultPlaylistDurationMs :: Int
     }
 
 type LlnwApiConfigInternal
@@ -184,6 +188,8 @@ type LlnwApiConfigInternal
     , streamPublishUrl :: String
     , slotLookupUrl :: String
     , useBasicAuth :: Maybe String
+    , defaultSegmentDurationMs :: Int
+    , defaultPlaylistDurationMs :: Int
     }
 
 type HealthConfig
@@ -270,7 +276,10 @@ llnwApiConfig = do
     , streamAuthUrl
     , streamPublishUrl
     , slotLookupUrl
-    , useBasicAuth } = internal
+    , useBasicAuth
+    , defaultSegmentDurationMs
+    , defaultPlaylistDurationMs
+    } = internal
 
     external = { streamAuthTypeUrl
                , streamAuthUrl
@@ -281,6 +290,8 @@ llnwApiConfig = do
                              Just auth ->
                                let headerValue = "Basic " <> base64Encode auth
                                in (tuple2 "Authorization" headerValue) : nil
+               , defaultSegmentDurationMs
+               , defaultPlaylistDurationMs
                }
   pure external
 

@@ -33,8 +33,14 @@ ingest_processor(IngestKey, ProfileName, Subscriptions) ->
                                , config = 257
                                }
 
+                   , #processor{ name = set_script_stream_id
+                               , subscribes_to = {outside_world, ?script_frames}
+                               , module = set_stream_id
+                               , config = 258
+                               }
+
                    , #processor{ name = set_source_id
-                               , subscribes_to = [set_video_stream_id, set_audio_stream_id]
+                               , subscribes_to = [set_video_stream_id, set_audio_stream_id, set_script_stream_id]
                                , module = set_source_id
                                , config = {ProfileName, make_ref()}
                                }
@@ -57,7 +63,7 @@ ingest_processor(IngestKey, ProfileName, Subscriptions) ->
                                }
 
                    , #processor{ name = send_to_bus
-                               , subscribes_to = {?previous, ?frames}
+                               , subscribes_to = ?previous
                                , module = send_to_bus_processor
                                , config = #send_to_bus_processor_config{ consumes = true
                                                                        , bus_name = {ingest, IngestKey}}

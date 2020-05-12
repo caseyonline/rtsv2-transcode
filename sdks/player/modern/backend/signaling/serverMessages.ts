@@ -17,11 +17,12 @@ export type Message
   | SDPOfferResponseMessage
   | ICECandidateMessage
   | OnFIMessage
-  | ActiveProfiles
+  | ActiveProfilesMessage
   | DataObjectReceiveMessage
   | DataObjectSendMessageFailure
   | DataObjectUpdateResponseMessage
   | DataObjectBroadcastMessage
+  | TimeZeroMessage
 
 /** The data provided by an init event. */
 export interface InitMessage {
@@ -70,16 +71,24 @@ export interface OnFIMessage {
   readonly type: "on-fi";
 
   /** The source encoder timestamp. */
-  readonly timestamp: number;
+  readonly payload: any;
 
   /** The corresponding video timestamp. */
   readonly pts: number;
 }
 
 /** An active-profiles message originating from the ingest aggregator. */
-export interface ActiveProfiles {
+export interface ActiveProfilesMessage {
   readonly type: "active-profiles";
 
   /** The active profiles. */
   readonly activeProfiles: Array<string>;
+}
+
+/** The RTP timestamp corresponding to the first frame sent. */
+export interface TimeZeroMessage {
+  readonly type: "time-zero";
+
+  /** The RTP timestamp corresponding to the first frame sent. */
+  readonly rtpTimestamp: number;
 }

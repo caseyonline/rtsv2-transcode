@@ -357,12 +357,14 @@ type IngestAggregatorStateContextFields = ( role :: JsonLd.ContextValue
                                           , streamDetails :: JsonLd.ContextValue
                                           , activeProfiles :: JsonLd.ContextValue
                                           , downstreamRelays :: JsonLd.ContextValue
+                                          , hlsPublish :: JsonLd.ContextValue
                                           )
 type IngestAggregatorState f
    = { role :: SlotRole
      , streamDetails :: StreamDetails
      , activeProfiles :: f ActiveIngestLocationNode
      , downstreamRelays :: f DownstreamRelayLocationNode
+     , hlsPublish :: Boolean
      }
 
 type IngestAggregatorStateNode f = JsonLd.Node (IngestAggregatorState f) IngestAggregatorStateContextFields
@@ -375,6 +377,7 @@ ingestAggregatorStateContext = wrap { "@language": Nothing
                                     , streamDetails: JsonLd.Other "http://schema.rtsv2.llnw.com/Media/StreamDetails"
                                     , activeProfiles: JsonLd.Other "http://schema.rtsv2.llnw.com/Infrastructure/Locations/Ingest"
                                     , downstreamRelays: JsonLd.Other "http://schema.rtsv2.llnw.com/Infrastructure/Locations/Relay"
+                                    , hlsPublish: JsonLd.Other "http://schema.rtsv2.llnw.com/Boolean"
                                     }
 ingestAggregatorStateNode :: forall f. SlotId -> IngestAggregatorState f -> Server -> IngestAggregatorStateNode f
 ingestAggregatorStateNode slotId state@{role: slotRole} server =

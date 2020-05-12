@@ -10,7 +10,7 @@ let
     builtins.fetchGit {
       name = "id3as-packages";
       url = "git@github.com:id3as/nixpkgs-private.git";
-      rev = "485fcb5e2dccbf2fa3d43fb6c2c45bb68babd601";
+      rev = "e7b181ea5f1a0c7d630b7028d47eaa4636abfb77";
       ref = "v2";
     };
 
@@ -18,7 +18,8 @@ let
     builtins.fetchGit {
       name = "id3as-oxidized-packages";
       url = "git@github.com:id3as/oxidized.git";
-      rev = "22f64b587cae8bc620a73d0425252d084501cf24";
+      rev = "a3edd871128d77af5c56b17e49c24f6f5350893d";
+      ref = "rtcp";
     };
 
   nixpkgs =
@@ -47,28 +48,35 @@ stdenv.mkDerivation rec {
     fi
 
     cp -r ./* $out/
+
+    wrapProgram \
+      $out/bin/start_iserf.sh \
+      --prefix PATH : ${lib.makeBinPath [ serfdom ]}
   '';
 
   buildInputs = [
 
+    # Needed for wrapProgram
+    makeWrapper
+
     # Our nativedeps environment
     (id3as.nd-env.override {
       nd-quicksync-enabled = false;
+      nd-bmd = null;
+      nd-x264 = null;
+      nd-x265 = null;
     })
 
-    # Need to explcitly list dependencies
+    # Need to explicitly list dependencies
     # of erlang so that nix can find them
     # erlang itself isn't a dependency
-    ncurses
+    ncurses   # Ubuntu 18.04 has version 5, we need 6
+    openssl   # Ubuntu 18.04 has version 1.1.0, we need 1.1.1
 
     # The Media Gateway
     rtsv2-media-gateway
 
-    openssl
-
-    # Remove these?
-    jq
+    # Binaries we specifically want in the closure
     serfdom
-    iproute # NOTE: releases are Linux only, so no need for optional here
   ];
 }
