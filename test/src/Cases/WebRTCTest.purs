@@ -23,7 +23,7 @@ import Helpers.RTCPeerConnection (getVideoStats)
 import Helpers.Types (Node)
 import Node.Encoding (Encoding(..))
 import Node.FS.Aff (readTextFile)
-import Test.Spec (SpecT, describe, describeOnly, it, itOnly, before_, after_)
+import Test.Spec (SpecT, describe, it, before_, after_)
 import Test.Spec.Runner (Config)
 import Test.Unit as Test
 import Test.Unit.Assert as Assert
@@ -96,7 +96,7 @@ options =
 -------------------------------------------------------------------------------
 webRTCTest :: forall m. Monad m => SpecT Aff Unit m Unit
 webRTCTest =
-  describeOnly "WebRTC browser tests" do
+  describe "WebRTC browser tests" do
     primaryStream
     backupStream
     ingestStream
@@ -205,7 +205,7 @@ ingestStream =
 
 webRtcIngest :: forall m. Monad m => SpecT Aff Unit m Unit
 webRtcIngest =
-  describeOnly "webRtc Ingest tests" do
+  describe "webRtc Ingest tests" do
     before_ (F.startSession ingestNodes *> F.launch ingestNodes) do
       after_ (F.stopSession *> F.stopSlot) do
         it "can check that a streaming video has started and is playing on Backup" do
@@ -229,7 +229,7 @@ webRtcIngest =
           Assert.assert "Bytes are being sent in the UI" ((stringToInt byteSent) > 10) >>= L.as' ("frames increased by: " <> byteSent)
 
           HTTP.getAggregatorStats E.p1n1 E.slot1 >>= A.assertStatusCode 200
-                                                 >>= A.assertAggregator [E.highProlfile]
+                                                 >>= A.assertAggregator [E.highSlotAndProfileName]
                                                  >>= L.as "aggregator created on idle server"
 
           (traverse_ (F.aggregatorNotPresent E.slot1)

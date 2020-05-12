@@ -34,7 +34,7 @@ import Routing.Duplex (RouteDuplex', as, path, print, rest, root, segment)
 import Routing.Duplex.Generic (noArgs, sum)
 import Routing.Duplex.Generic.Syntax ((/))
 import Shared.Common (Url)
-import Shared.Rtsv2.Stream (ProfileName(..), RtmpShortName, SlotId, SlotIdAndProfileName(..), SlotNameAndProfileName(..), SlotRole(..))
+import Shared.Rtsv2.Stream (ProfileName(..), RtmpShortName, RtmpStreamName, SlotId, SlotIdAndProfileName(..), SlotNameAndProfileName(..), SlotRole(..))
 import Shared.Rtsv2.Types (JsonLdContextType(..), PoPName(..), ServerAddress(..), Username(..), SourceRoute, extractAddress)
 import Shared.UUID (fromString)
 
@@ -96,7 +96,7 @@ data Endpoint
   | RelayProxiedStatsE SlotId SlotRole
   | Chaos
 
-  | IngestStartE Canary RtmpShortName SlotNameAndProfileName
+  | IngestStartE Canary RtmpShortName RtmpStreamName
   | IngestStopE Canary SlotId SlotRole ProfileName
 
   | ClientStartE Canary SlotId SlotRole
@@ -185,7 +185,7 @@ endpoint = root $ sum
   , "RelayProxiedStatsE"                               : "system" / "test" / "proxied" / "relay" / slotId segment / slotRole segment
   , "Chaos"                                            : "system" / "test" / path "chaos" noArgs
 
-  , "IngestStartE"                                     : "system" / "test" / canary segment / "ingest" / shortName segment / slotNameAndProfile segment / "start"
+  , "IngestStartE"                                     : "system" / "test" / canary segment / "ingest" / shortName segment / streamName segment / "start"
   , "IngestStopE"                                      : "system" / "test" / canary segment / "ingest" / slotId segment / slotRole segment / profileName segment / "stop"
   , "ClientStartE"                                     : "system" / "test" / canary segment / "client" / slotId segment / slotRole segment / "start"
   , "ClientStopE"                                      : "system" / "test" / canary segment / "client" / slotId segment / slotRole segment / "stop" / segment
@@ -323,6 +323,15 @@ parseRtmpShortName = wrapParser
 shortNameToString :: RtmpShortName -> String
 shortNameToString = unwrap
 
+
+-- | RtmpStreamName
+parseRtmpStreamName :: String -> Maybe RtmpStreamName
+parseRtmpStreamName = wrapParser
+
+streamNameToString :: RtmpStreamName -> String
+streamNameToString = unwrap
+
+
 -- | Generic parser for newtypes
 wrapParser :: forall a. Newtype a String => String -> Maybe a
 wrapParser "" = Nothing
@@ -334,28 +343,6 @@ parsePoPName  = wrapParser
 
 poPNameToString :: PoPName -> String
 poPNameToString = unwrap
-
-
--- | SlotIdAndProfileName
-parseSlotIdAndProfileName :: String -> Maybe SlotIdAndProfileName
-parseSlotIdAndProfileName ""  = Nothing
-parseSlotIdAndProfileName str =
-  case split (Pattern "_") str !! 0 of
-    Just slotIdStr ->
-      case fromString slotIdStr of
-        Nothing -> Nothing
-        Just slotIdVal -> Just (SlotIdAndProfileName (wrap slotIdVal) (wrap str))
-    _ -> Nothing
-
-parseSlotNameAndProfileName :: String -> Maybe SlotNameAndProfileName
-parseSlotNameAndProfileName ""  = Nothing
-parseSlotNameAndProfileName str =
-  case split (Pattern "_") str of
-    [slotNameStr, profileNameStr] -> Just (SlotNameAndProfileName slotNameStr (wrap profileNameStr))
-    _ -> Nothing
-
-slotNameAndProfileToString :: SlotNameAndProfileName -> String
-slotNameAndProfileToString (SlotNameAndProfileName slotName (ProfileName str)) = slotName <> "_" <> str
 
 
 -- | Canary
@@ -405,13 +392,13 @@ port = as intToString (parseInt >>> note "Bad Port")
 sourceRoute :: RouteDuplex' String -> RouteDuplex' SourceRoute
 sourceRoute = as sourceRouteToString (parseSourceRoute >>> note "Bad SourceRoute")
 
--- | This combinator transforms a codec over `String` into one that operates on the `SlotNameAndProfileName` type.
-slotNameAndProfile :: RouteDuplex' String -> RouteDuplex' SlotNameAndProfileName
-slotNameAndProfile = as slotNameAndProfileToString (parseSlotNameAndProfileName >>> note "Bad SlotNameAndProfileName")
-
 -- | This combinator transforms a codec over `String` into one that operates on the `PoPName` type.
 popName :: RouteDuplex' String -> RouteDuplex' PoPName
 popName = as poPNameToString (parsePoPName >>> note "Bad PoPName")
+
+-- | This combinator transforms a codec over `String` into one that operates on the `RtmpStreamName` type.
+streamName :: RouteDuplex' String -> RouteDuplex' RtmpStreamName
+streamName = as streamNameToString (parseRtmpStreamName >>> note "Bad RtmpStreamName")
 
 -- | This combinator transforms a codec over `String` into one that operates on the `RtmpShortName` type.
 shortName :: RouteDuplex' String -> RouteDuplex' RtmpShortName

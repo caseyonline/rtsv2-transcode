@@ -16,7 +16,7 @@ import Effect.Now as Now
 import Helpers.Types (Node(..), TestNode)
 import Helpers.OsCmd (runProc)
 import Shared.Rtsv2.Chaos as Chaos
-import Shared.Rtsv2.Stream (ProfileName(..), SlotId, SlotRole(..), SlotNameAndProfileName(..))
+import Shared.Rtsv2.Stream (ProfileName(..), SlotId, SlotRole(..), SlotNameAndProfileName(..), RtmpStreamName)
 import Shared.UUID (fromString)
 import Shared.Utils (lazyCrashIfMissing)
 
@@ -42,14 +42,21 @@ slot1 = wrap (fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "000000
 
 shortName1 = wrap "mmddev001"
 
-low = SlotNameAndProfileName "slot1" (wrap "500")
-high = SlotNameAndProfileName "slot1" (wrap "1000")
+lowStreamName :: RtmpStreamName
+lowStreamName = wrap "slot1_500"
 
--- All the people doing asseragregator with lown and high should use bellow
--- as that is what the aggregator should be returning.
-lowProfile = SlotNameAndProfileName "slot1" (wrap "low")
-highProlfile = SlotNameAndProfileName "slot1" (wrap "high")
+highStreamName :: RtmpStreamName
+highStreamName = wrap "slot1_1000"
 
+
+lowSlotAndProfileName = SlotNameAndProfileName "slot1" (wrap "low")
+highSlotAndProfileName = SlotNameAndProfileName "slot1" (wrap "high")
+
+lowProfileName :: ProfileName
+lowProfileName = wrap "low"
+
+highProfileName :: ProfileName
+highProfileName = wrap "high"
 
 -- | Ingest
 ingestAggregatorName slotId role =
