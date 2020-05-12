@@ -12,7 +12,7 @@ import Milkis.Impl.Node (nodeFetch)
 import Prim.Row (class Union)
 import Shared.Rtsv2.Chaos as Chaos
 import Shared.Rtsv2.Router.Endpoint (Canary(..), Endpoint(..), makeUrlAddr)
-import Shared.Rtsv2.Stream (RtmpShortName, SlotId, SlotNameAndProfileName(..), SlotRole(..))
+import Shared.Rtsv2.Stream (RtmpShortName, SlotId, SlotNameAndProfileName(..), SlotRole(..), RtmpStreamName, ProfileName)
 import Shared.Rtsv2.Types (CurrentLoad(..), ServerAddress(..))
 import Simple.JSON as SimpleJSON
 
@@ -98,12 +98,12 @@ getStats node route = get (M.URL $ makeUrlAndUnwrap node route)
 getEgestStats :: Node -> SlotId -> Aff (Either String ResWithBody)
 getEgestStats node slotId = getStats node (EgestStatsE slotId Primary)
 
-ingestStart :: Node -> RtmpShortName -> SlotNameAndProfileName -> Aff (Either String ResWithBody)
-ingestStart node shortName profileName =
-  get (M.URL $ makeUrlAndUnwrap node (IngestStartE Live shortName profileName))
+ingestStart :: Node -> RtmpShortName -> RtmpStreamName -> Aff (Either String ResWithBody)
+ingestStart node shortName streamName =
+  get (M.URL $ makeUrlAndUnwrap node (IngestStartE Live shortName streamName))
 
-ingestStop :: Node -> SlotId -> SlotNameAndProfileName -> Aff (Either String ResWithBody)
-ingestStop node slotId (SlotNameAndProfileName _ profileName) =
+ingestStop :: Node -> SlotId -> ProfileName -> Aff (Either String ResWithBody)
+ingestStop node slotId profileName =
   get (M.URL $ makeUrlAndUnwrap node (IngestStopE Live slotId Primary profileName))
 
 

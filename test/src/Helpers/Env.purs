@@ -16,7 +16,7 @@ import Effect.Now as Now
 import Helpers.Types (Node(..), TestNode)
 import Helpers.OsCmd (runProc)
 import Shared.Rtsv2.Chaos as Chaos
-import Shared.Rtsv2.Stream (ProfileName(..), SlotId, SlotRole(..), SlotNameAndProfileName(..))
+import Shared.Rtsv2.Stream (ProfileName(..), SlotId, SlotRole(..), SlotNameAndProfileName(..), RtmpStreamName)
 import Shared.UUID (fromString)
 import Shared.Utils (lazyCrashIfMissing)
 
@@ -31,23 +31,32 @@ p3n2 = Node 3 2
 p4n1 = Node 4 1
 p4n2 = Node 4 2
 
-
 sessionName:: String
 sessionName = "testSession"
 
 stop :: String
 stop = "stop"
 
-
 -- | Slot
 slot1 = wrap (fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000001"))
 
 shortName1 = wrap "mmddev001"
 
-low = SlotNameAndProfileName "slot1" (wrap "500")
+lowStreamName :: RtmpStreamName
+lowStreamName = wrap "slot1_500"
 
-high = SlotNameAndProfileName "slot1" (wrap "1000")
+highStreamName :: RtmpStreamName
+highStreamName = wrap "slot1_1000"
 
+
+lowSlotAndProfileName = SlotNameAndProfileName "slot1" (wrap "low")
+highSlotAndProfileName = SlotNameAndProfileName "slot1" (wrap "high")
+
+lowProfileName :: ProfileName
+lowProfileName = wrap "low"
+
+highProfileName :: ProfileName
+highProfileName = wrap "high"
 
 -- | Ingest
 ingestAggregatorName slotId role =

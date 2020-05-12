@@ -2,7 +2,7 @@ module Main where
 
 import Prelude
 
-import Browser.WebRTCTest (webRTCTest)
+import Cases.WebRTCTest (webRTCTest)
 import Cases.Startup (startupTests)
 import Cases.Ingest (ingestTests)
 import Cases.IngestEgest (ingestEgestTests)
