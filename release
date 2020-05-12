@@ -16,6 +16,6 @@ label=$(cat deployment/label)
 
 cd _etwas
 
-../etwas result "rtsv2-release-$label"
+etwas result "rtsv2-release-$label"
 
 tar -cavf "rtsv2-release-$label.tgz" "rtsv2-release-$label"

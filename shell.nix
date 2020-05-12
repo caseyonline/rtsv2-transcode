@@ -39,6 +39,13 @@ let
       ref = "rtcp";
     };
 
+  etwasPackages =
+    builtins.fetchGit {
+      name = "id3as-etwas-packages";
+      url = "https://github.com/id3as/etwas";
+      rev = "9690a86eae707d707f7969756aa7966b11f82254";
+    };
+
   nixpkgs =
     import pinnedNix {
       overlays = [
@@ -47,6 +54,7 @@ let
         (import id3asPackages)
         (import oxidizedPackages)
         (import mozillaPackages)
+        (import "${etwasPackages}/overlay.nix")
       ];
     };
 
@@ -115,6 +123,9 @@ mkShell {
     # Rust stuff!
     rust
     rustracer
+
+    # Etwas - for de-nixification
+    etwas
 
   ] ++ optionals stdenv.isLinux [ iproute ];
 }
