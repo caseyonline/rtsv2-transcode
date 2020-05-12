@@ -103,10 +103,10 @@ webRTCTest =
 -------------------------------------------------------------------------------
 primaryStream :: forall m. Monad m => SpecT Aff Unit m Unit
 primaryStream =
-  describe "Primary Stream tests" do
+  describe "5.1 Primary Stream tests" do
     before_ (F.startSession [Env.p1n1] *> F.launch [Env.p1n1] *> F.startSlotHigh1000 (C.toAddrFromNode Env.p1n1)) do
       after_ (F.stopSession *> F.stopSlot) do
-        it "can check that a streaming video has started and is playing on Primary" do
+        it "5.1.1 can check that a streaming video has started and is playing on Primary" do
           _ <- delay (Milliseconds 2000.00) >>= L.as' "wait for ingest to start fully"
           browser <- T.launch options
           page <- T.newPage browser
@@ -135,10 +135,10 @@ primaryStream =
 
 backupStream :: forall m. Monad m => SpecT Aff Unit m Unit
 backupStream =
-  describe "Backup Stream tests" do
+  describe "5.2 Backup Stream tests" do
     before_ (F.startSession [Env.p1n1] *> F.launch [Env.p1n1] *> F.startSlotHigh1000Backup (C.toAddrFromNode Env.p1n1)) do
       after_ (F.stopSession *> F.stopSlot) do
-        it "can check that a streaming video has started and is playing on Backup" do
+        it "5.2.1 can check that a streaming video has started and is playing on Backup" do
           _ <- delay (Milliseconds 2000.00) >>= L.as' "wait for ingest to start fully"
           browser <- T.launch options
           page <- T.newPage browser
@@ -160,19 +160,18 @@ backupStream =
           Assert.assert "packets aren't increasing" ((stringToInt packets1) < (stringToInt packets2)) >>= L.as' ("packets are increasing: " <> packets2 <> " > " <> packets1)
           T.close browser
 
-
 ingestNodes :: Array Node
 ingestNodes = [E.p1n1, E.p1n2, E.p1n3]
 
 ingestStream :: forall m. Monad m => SpecT Aff Unit m Unit
 ingestStream =
-  describe "Ingest Stream tests" do
+  describe "5.3 Ingest Stream tests" do
     before_ (F.startSession ingestNodes *> F.launch ingestNodes) do
       after_ (F.stopSession *> F.stopSlot) do
-        it "ingest on different node removes itself from aggregator when stopped" do
+        it "5.3.1 ingest on different node removes itself from aggregator when stopped" do
           traverse_ F.maxOut (F.allNodesBar E.p1n1 ingestNodes) >>= L.as' "load up all servers bar one"
           E.waitForIntraPoPDisseminate
-          F.startSlotHigh1000Backup (C.toAddrFromNode Env.p1n2) >>= L.as' "create high ingest"
+          F.startSlotHigh1000 (C.toAddrFromNode Env.p1n2) >>= L.as' "create high ingest"
           _ <- delay (Milliseconds 2000.00) >>= L.as' "wait for ingest to start fully"
 
           browser <- T.launch options
@@ -198,10 +197,10 @@ ingestStream =
 
 webRtcIngest :: forall m. Monad m => SpecT Aff Unit m Unit
 webRtcIngest =
-  describe "webRtc Ingest tests" do
+  describe "5.4 webRtc Ingest tests" do
     before_ (F.startSession ingestNodes *> F.launch ingestNodes) do
       after_ (F.stopSession *> F.stopSlot) do
-        it "can check that a streaming video has started and is playing on Backup" do
+        it "5.4.1 can check that a streaming video has started and is playing on Backup" do
           traverse_ F.maxOut (F.allNodesBar E.p1n1 ingestNodes) >>= L.as' "load up all servers bar one"
           E.waitForIntraPoPDisseminate
 
