@@ -19,7 +19,7 @@ let
     builtins.fetchGit {
       name = "id3as-packages";
       url = "git@github.com:id3as/nixpkgs-private.git";
-      rev = "e7b181ea5f1a0c7d630b7028d47eaa4636abfb77";
+      rev = "b62ac1a4382826478a3e5e3293d42dc1c60e25c1";
       ref = "v2";
     };
 
