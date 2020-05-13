@@ -4,7 +4,7 @@ let upstream =
 let overrides =
       { erl-pinto =
           { dependencies = [ "erl-cowboy", "erl-process" ]
-          , repo = "ssh://git@github.com/id3as/purescript-erl-pinto.git"
+          , repo = "https://github.com/id3as/purescript-erl-pinto.git"
           , version = "b0270076d6739d874aa804b5e192b8cf3e6b97ad"
           }
       , simple-json =
@@ -37,13 +37,13 @@ let overrides =
       , simple-json-generics =
           { dependencies = [ "simple-json" ]
           , repo =
-              "ssh://git@github.com/justinwoo/purescript-simple-json-generics.git"
+              "https://github.com/justinwoo/purescript-simple-json-generics.git"
           , version = "f7127b94bd2da73b28e863c299edb72a42ee4bce"
           }
       , kishimen =
           { dependencies =
             [ "prelude", "generics-rep", "variant", "typelevel-prelude" ]
-          , repo = "ssh://git@github.com/justinwoo/purescript-kishimen.git"
+          , repo = "https://github.com/justinwoo/purescript-kishimen.git"
           , version = "8a9b11f9bcdaf4ff63c2e572def3d0b2a4e2c870"
           }
       }

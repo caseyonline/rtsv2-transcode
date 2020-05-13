@@ -15,10 +15,8 @@ let additions =
                 , "prelude"
                 ]
               : List Text
-          , repo =
-              "ssh://git@github.com/justinwoo/purescript-toppokki.git"
-          , version =
-              "v2.2.0"
+          , repo = "https://github.com/justinwoo/purescript-toppokki.git"
+          , version = "v2.2.0"
           }
       , milkis =
           { dependencies =
@@ -29,20 +27,16 @@ let additions =
                 , "arraybuffer-types"
                 ]
               : List Text
-          , devDependencies =
-              [ "purescript-spec" ] : List Text
-          , repo =
-              "ssh://git@github.com/justinwoo/purescript-milkis.git"
-          , version =
-              "v7.4.0"
+          , devDependencies = [ "purescript-spec" ] : List Text
+          , repo = "https://github.com/justinwoo/purescript-milkis.git"
+          , version = "v7.4.0"
           }
       , record-prefix =
           { dependencies =
-              [ "prelude", "heterogeneous", "console", "typelevel-prelude" ]
+            [ "prelude", "heterogeneous", "console", "typelevel-prelude" ]
           , repo =
-              "ssh://git@github.com/dariooddenino/purescript-record-prefix.git"
-          , version =
-              "v1.0.0"
+              "https://github.com/dariooddenino/purescript-record-prefix.git"
+          , version = "v1.0.0"
           }
       }
 
