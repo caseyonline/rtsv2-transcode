@@ -48,7 +48,7 @@ import Serf (Ip(..))
 import Shared.Rtsv2.LlnwApiTypes (StreamDetails)
 import Shared.Rtsv2.Router.Endpoint (Canary(..))
 import Shared.Rtsv2.Router.Endpoint as Router
-import Shared.Rtsv2.Stream (EgestKey(..), IngestKey(..), ProfileName, SlotId, SlotIdAndProfileName(..), SlotRole(..))
+import Shared.Rtsv2.Stream (EgestKey(..), IngestKey(..), ProfileName, RtmpShortName, RtmpStreamName, SlotId, SlotRole(..))
 import Shared.Rtsv2.Types (Server, LocationResp, RegistrationResp, extractAddress)
 import Shared.UUID (UUID, fromString)
 import Shared.UUID as UUID
@@ -82,8 +82,8 @@ init args = do
         , "ClientPlayerAssetsE"                         : \(_ :: SlotId) (_ :: SlotRole) -> PrivDir "rtsv2" "www/assets"
         , "ClientPlayerControlE"                        : CowboyRoutePlaceholder
 
-        , "ClientWebRTCIngestE"                         : \(_ :: String) (_ :: String) -> PrivFile "rtsv2" "www/referenceIngest.html"
-        , "ClientWebRTCIngestAssetsE"                   : \(_ :: String) (_ :: String) -> PrivDir "rtsv2" "www/assets"
+        , "ClientWebRTCIngestE"                         : \(_ :: RtmpShortName) (_ :: RtmpStreamName) -> PrivFile "rtsv2" "www/referenceIngest.html"
+        , "ClientWebRTCIngestAssetsE"                   : \(_ :: RtmpShortName) (_ :: RtmpStreamName) -> PrivDir "rtsv2" "www/assets"
         , "ClientWebRTCIngestControlE"                  : CowboyRoutePlaceholder
 
         -- Support
@@ -114,8 +114,8 @@ init args = do
         , "CanaryClientPlayerAssetsE"                   : \(_ :: SlotId) (_ :: SlotRole) -> PrivDir "rtsv2" "www/assets"
         , "CanaryClientPlayerControlE"                  : CowboyRoutePlaceholder
 
-        , "CanaryClientWebRTCIngestE"                   : \(_ :: String) (_ :: String) -> PrivFile "rtsv2" "www/referenceIngest.html"
-        , "CanaryClientWebRTCIngestAssetsE"             : \(_ :: String) (_ :: String) -> PrivDir "rtsv2" "www/assets"
+        , "CanaryClientWebRTCIngestE"                   : \(_ :: RtmpShortName) (_ :: RtmpStreamName) -> PrivFile "rtsv2" "www/referenceIngest.html"
+        , "CanaryClientWebRTCIngestAssetsE"             : \(_ :: RtmpShortName) (_ :: RtmpStreamName) -> PrivDir "rtsv2" "www/assets"
         , "CanaryClientWebRTCIngestControlE"            : CowboyRoutePlaceholder
 
         -- System

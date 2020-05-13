@@ -22,7 +22,7 @@ module Shared.Rtsv2.Router.Endpoint
 
 import Prelude hiding ((/))
 
-import Data.Array (intercalate, (!!))
+import Data.Array (intercalate)
 import Data.Either (note)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show (genericShow)
@@ -34,7 +34,7 @@ import Routing.Duplex (RouteDuplex', as, path, print, rest, root, segment)
 import Routing.Duplex.Generic (noArgs, sum)
 import Routing.Duplex.Generic.Syntax ((/))
 import Shared.Common (Url)
-import Shared.Rtsv2.Stream (ProfileName(..), RtmpShortName, RtmpStreamName, SlotId, SlotIdAndProfileName(..), SlotNameAndProfileName(..), SlotRole(..))
+import Shared.Rtsv2.Stream (ProfileName, RtmpShortName, RtmpStreamName, SlotId, SlotRole(..))
 import Shared.Rtsv2.Types (JsonLdContextType(..), PoPName(..), ServerAddress(..), Username(..), SourceRoute, extractAddress)
 import Shared.UUID (fromString)
 
@@ -53,9 +53,9 @@ data Endpoint
   | ClientPlayerControlE SlotId SlotRole
   | ClientPlayerAssetsE SlotId SlotRole (Array String)
 
-  | ClientWebRTCIngestE String String
-  | ClientWebRTCIngestControlE String String
-  | ClientWebRTCIngestAssetsE String String (Array String)
+  | ClientWebRTCIngestE RtmpShortName RtmpStreamName
+  | ClientWebRTCIngestControlE RtmpShortName RtmpStreamName
+  | ClientWebRTCIngestAssetsE RtmpShortName RtmpStreamName (Array String)
 
   -- Support
   | VMMetricsE
@@ -85,9 +85,9 @@ data Endpoint
   | CanaryClientPlayerControlE SlotId SlotRole
   | CanaryClientPlayerAssetsE SlotId SlotRole (Array String)
 
-  | CanaryClientWebRTCIngestE String String
-  | CanaryClientWebRTCIngestControlE String String
-  | CanaryClientWebRTCIngestAssetsE String String (Array String)
+  | CanaryClientWebRTCIngestE RtmpShortName RtmpStreamName
+  | CanaryClientWebRTCIngestControlE RtmpShortName RtmpStreamName
+  | CanaryClientWebRTCIngestAssetsE RtmpShortName RtmpStreamName (Array String)
 
   -- System
   | TransPoPLeaderE
@@ -144,9 +144,9 @@ endpoint = root $ sum
   , "ClientPlayerControlE"                             : "public" / "client" / slotId segment / slotRole segment / "session" -- URL duplicated in Web.purs
   , "ClientPlayerAssetsE"                              : "public" / "client" / slotId segment / slotRole segment / rest
 
-  , "ClientWebRTCIngestE"                              : "public" / "ingest" / segment / segment / "ingest"
-  , "ClientWebRTCIngestControlE"                       : "public" / "ingest" / segment / segment / "session"
-  , "ClientWebRTCIngestAssetsE"                        : "public" / "ingest" / segment / segment / rest
+  , "ClientWebRTCIngestE"                              : "public" / "ingest" / shortName segment / streamName segment / "ingest"
+  , "ClientWebRTCIngestControlE"                       : "public" / "ingest" / shortName segment / streamName segment / "session"
+  , "ClientWebRTCIngestAssetsE"                        : "public" / "ingest" / shortName segment / streamName segment / rest
 
   -- Support
   , "VMMetricsE"                                       : "support" / "vm" / path "metrics" noArgs
@@ -179,9 +179,9 @@ endpoint = root $ sum
   , "CanaryClientPlayerControlE"                       : "support" / "canary" / "client" / slotId segment / slotRole segment / "session" -- URL duplicated in Web.purs
   , "CanaryClientPlayerAssetsE"                        : "support" / "canary" / "client" / slotId segment / slotRole segment / rest
 
-  , "CanaryClientWebRTCIngestE"                        : "support" / "canary" / "ingest" / segment / segment / "ingest"
-  , "CanaryClientWebRTCIngestControlE"                 : "support" / "canary" / "ingest" / segment / segment / "session"
-  , "CanaryClientWebRTCIngestAssetsE"                  : "support" / "canary" / "ingest" / segment / segment / rest
+  , "CanaryClientWebRTCIngestE"                        : "support" / "canary" / "ingest" / shortName segment / streamName segment / "ingest"
+  , "CanaryClientWebRTCIngestControlE"                 : "support" / "canary" / "ingest" / shortName segment / streamName segment / "session"
+  , "CanaryClientWebRTCIngestAssetsE"                  : "support" / "canary" / "ingest" / shortName segment / streamName segment / rest
 
   -- System
   , "TransPoPLeaderE"                                  : "system" / path "transPoPLeader" noArgs

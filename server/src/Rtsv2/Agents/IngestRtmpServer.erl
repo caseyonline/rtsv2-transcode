@@ -7,7 +7,7 @@
 -include_lib("id3as_media/include/send_to_bus_processor.hrl").
 -include_lib("id3as_avp/include/avp_ingest_source_details_extractor.hrl").
 
--export([ startServerImpl/6
+-export([ startServerImpl/9
         , rtmpQueryToPurs/1
         , startWorkflowImpl/5
         ]).
@@ -16,17 +16,27 @@
 %% API
 %%------------------------------------------------------------------------------
 
-startServerImpl(Left, Right, {ipv4, O1, O2, O3, O4}, Port, NbAcceptors, Callbacks) ->
+startServerImpl(Left, Right, PublicIp, Port, Callbacks, PrivateIp, CanaryPort, CanaryCallbacks, NbAcceptors) ->
   fun() ->
-      case rtmp_server:start_listener({rtmp_listener, Port},
-                                      NbAcceptors,
-                                      [{ip, {O1, O2, O3, O4}}, {port, Port}],
-                                      [{dispatch, [{'*', rtsv2_rtmp_ingest_handler, [Callbacks]}]},
-                                       {config, #rtmp_server_config{}}]) of
-        {ok, _} -> Right;
-        {error, {alread_started, _}} -> Right;
-        Error -> Left(Error)
+      case start_rtmp_server(PublicIp, Port, NbAcceptors, Callbacks) of
+        ok ->
+          case start_rtmp_server(PrivateIp, CanaryPort, NbAcceptors, CanaryCallbacks) of
+            ok -> Right;
+            {error, Error} -> Left(Error)
+          end;
+        {error, Error} -> Left(Error)
       end
+  end.
+
+start_rtmp_server({ipv4, O1, O2, O3, O4}, Port, NbAcceptors, Callbacks) ->
+  case rtmp_server:start_listener({rtmp_listener, Port},
+                                  NbAcceptors,
+                                  [{ip, {O1, O2, O3, O4}}, {port, Port}],
+                                  [{dispatch, [{'*', rtsv2_rtmp_ingest_handler, [Callbacks]}]},
+                                   {config, #rtmp_server_config{}}]) of
+    {ok, _} -> ok;
+    {error, {alread_started, _}} -> ok;
+    Error -> {error, Error}
   end.
 
 startWorkflowImpl(Rtmp, PublishArgs, IngestKey, ClientMetadataFn, SourceInfoFn) ->

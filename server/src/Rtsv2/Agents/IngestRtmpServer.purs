@@ -36,11 +36,12 @@ import Rtsv2.Utils (crashIfLeft)
 import Serf (Ip)
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.LlnwApiTypes (AuthType, PublishCredentials, SlotProfile(..), SlotPublishAuthType(..), StreamAuth, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamPublish)
+import Shared.Rtsv2.Router.Endpoint (Canary(..))
 import Shared.Rtsv2.Stream (IngestKey(..))
 import SpudGun (JsonResponseError)
 import Stetson.WebSocketHandler (self)
 
-foreign import startServerImpl :: (Foreign -> Either Foreign Unit) -> Either Foreign Unit -> Ip -> Int -> Int -> Callbacks -> Effect (Either Foreign Unit)
+foreign import startServerImpl :: (Foreign -> Either Foreign Unit) -> Either Foreign Unit -> Ip -> Int -> Callbacks -> Ip -> Int -> Callbacks -> Int -> Effect (Either Foreign Unit)
 foreign import rtmpQueryToPurs :: Foreign -> RtmpAuthRequest
 foreign import startWorkflowImpl :: Pid -> Foreign -> IngestKey -> (Foreign -> (Effect Unit)) -> (Foreign -> (Effect Unit)) -> Effect Unit
 
@@ -72,18 +73,22 @@ type State =
 
 init :: forall a. a -> Effect State
 init _ = do
-  interfaceIp <- Env.publicInterfaceIp
+  publicInterfaceIp <- Env.publicInterfaceIp
+  privateInterfaceIp <- Env.privateInterfaceIp
   loadConfig <- Config.loadConfig
-  {port, nbAcceptors} <- Config.rtmpIngestConfig
+  {port, canaryPort, nbAcceptors} <- Config.rtmpIngestConfig
   let
     callbacks :: Callbacks
-    callbacks = { init: mkFn3 (onConnectCallback loadConfig)
+    callbacks = { init: mkFn3 (onConnectCallback loadConfig Live)
                 }
-  crashIfLeft =<< startServerImpl Left (Right unit) interfaceIp port nbAcceptors callbacks
+    canaryCallbacks :: Callbacks
+    canaryCallbacks = { init: mkFn3 (onConnectCallback loadConfig Canary)
+                      }
+  crashIfLeft =<< startServerImpl Left (Right unit) publicInterfaceIp port callbacks privateInterfaceIp canaryPort canaryCallbacks nbAcceptors
   pure $ {}
 
-onConnectCallback :: LoadConfig -> String -> String -> Foreign -> (Effect RtmpAuthResponse)
-onConnectCallback loadConfig host rtmpShortName foreignQuery =
+onConnectCallback :: LoadConfig -> Canary -> String -> String -> Foreign -> (Effect RtmpAuthResponse)
+onConnectCallback loadConfig canary host rtmpShortName foreignQuery =
   let
     authRequest = rtmpQueryToPurs foreignQuery
   in
