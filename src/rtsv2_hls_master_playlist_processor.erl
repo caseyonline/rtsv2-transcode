@@ -65,10 +65,10 @@ process_input(#frame{profile = Profile, source_metadata = #source_metadata {sour
         State2
     end,
   {ok, State3};
-process_input(_, State = #?state{ published_playlist = true }) -> 
+process_input(_, State = #?state{ published_playlist = true }) ->
   {ok, State}.
 
-handle_info(publish_playlists, State = #?state{ 
+handle_info(publish_playlists, State = #?state{
                                           config = #hls_master_playlist_processor_config{
                                            slot_id = SlotId,
                                            profiles = Profiles,
@@ -96,18 +96,18 @@ ioctl(_, State) ->
 %%------------------------------------------------------------------------------
 %% Internal functions
 %%------------------------------------------------------------------------------
-check_profiles_ready(_State = #?state{ profiles = FoundProfiles, 
+check_profiles_ready(_State = #?state{ profiles = FoundProfiles,
                                        config = #hls_master_playlist_processor_config{
                                                    profiles = ConfigProfiles
 
                                       }
                                     }) ->
   case {length(ConfigProfiles) * 2, maps:size(FoundProfiles)} of
-    {N, N} -> 
+    {N, N} ->
       ?INFO("Profiles are ready!~n~p", [FoundProfiles]),
       true;
     {Expected, Actual} when Expected > Actual -> false;
-    {Expected, Actual} when Expected < Actual -> 
+    {Expected, Actual} when Expected < Actual ->
       ?ERROR("Found ~p A/V profiles when only expecting ~p", [Actual, Expected]),
       false
   end.
@@ -119,7 +119,7 @@ build_playlists(SlotId, AvProfiles, Profiles, [PushDetail = #{}|_]) ->
   }.
 
 
-variant_stream(SlotId, AvProfiles, #{ playbackBaseUrl := PlaybackBaseUrl }, Profile = #{ bitrate := BitRate, profileName := ProfileName}) ->
+variant_stream(SlotId, AvProfiles, _PushDetail, Profile = #{ bitrate := BitRate, profileName := ProfileName}) ->
   AvProfilesList = maps:to_list(AvProfiles),
   VideoProfiles = lists:filtermap(fun ({{P, _Pid}, Prof = #video_profile{}}) when P =:= ProfileName -> {true, Prof};
                                        (_) -> false
@@ -142,14 +142,13 @@ variant_stream(SlotId, AvProfiles, #{ playbackBaseUrl := PlaybackBaseUrl }, Prof
       {true, #variant_stream {
         name = ProfileName,
         program_id = 1,
-        codecs = [ 
+        codecs = [
           video_profile_to_codec_descriptor(VideoProfile),
           audio_profile_to_codec_descriptor(AudioProfile)
         ],
         peak_bandwidth = BitRate,
         resolution = { Width, Height },
-        uri = << PlaybackBaseUrl/binary,
-                  ProfileName/binary, "/playlist.m3u8" >>
+        uri = << ProfileName/binary, "/playlist.m3u8" >>
         }
       }
   end.
