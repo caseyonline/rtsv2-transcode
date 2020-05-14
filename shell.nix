@@ -43,7 +43,7 @@ let
     builtins.fetchGit {
       name = "id3as-etwas-packages";
       url = "https://github.com/id3as/etwas";
-      rev = "9690a86eae707d707f7969756aa7966b11f82254";
+      rev = "46c7f30ddfdfe2394885942b1eb5b19297d72a79";
     };
 
   nixpkgs =
