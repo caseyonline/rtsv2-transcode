@@ -7,20 +7,93 @@
     <link href=data:, rel=icon">
     <link rel="stylesheet" type="text/css" href="css/bootstrap.min.css">
     <style>
-      body
-      {
-        padding-top: 60px;
+      body {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+        font-size: 16px;
+        padding-top: 30px;
       }
-      @media (max-width: 980px)
-      {
-        body
-        {
+
+      @media (max-width: 980px) {
+        body {
           padding-top: 0;
         }
       }
       video{
         border-radius: 10px;
       }
+      .container {
+        padding-top: 20px;
+      }
+      .content {
+        margin-top: 1rem;
+        box-shadow: rgba(156, 172, 172, 0.2) 0px 1px 9px, rgba(156, 172, 172, 0.2) 0px 4px 4px, rgba(156, 172, 172, 0.2) 0px 8px 8px, rgba(156, 172, 172, 0.2) 0px 16px 16px, rgba(156, 172, 172, 0.2) 0px 32px 32px, rgba(156, 172, 172, 0.2) 0px 64px 64px;
+        border-radius: 3px;
+        display: flex;
+        flex-direction: column;
+        height: 50vh;
+        max-height: 600px;
+        width: 150vw;
+        max-width: 600px;
+      }
+      .messages {
+        flex-grow: 1;
+        padding: 20px 30px;
+        overflow: auto;
+      }
+      .message {
+        display: flex;
+        flex-direction: column;
+      }
+      .message--mine {
+        align-items: flex-end;
+      }
+      .message--theirs {
+        align-items: flex-start;
+      }
+      .message__name {
+        padding: 10px 0;
+      }
+      .message__bubble {
+        padding: 20px;
+        border-radius: 3px;
+      }
+      .message--theirs .message__bubble {
+        background: #6363bf;
+        color: white;
+      }
+      .message--mine .message__bubble {
+        background: rgba(156, 172, 172, 0.2);
+      }
+      .footer {
+        line-height: 76px;
+        border-top: 1px solid rgba(156, 172, 172, 0.2);
+        display: flex;
+        flex-shrink: 0;
+      }
+      input {
+        height: 76px;
+        border: none;
+        flex-grow: 1;
+        padding: 0 30px;
+        font-size: 16px;
+        background: transparent;
+      }
+      #stop {
+        margin-bottom: 20px;
+        margin-top: 10px;
+      }
+      button {
+        border: none;
+        background: transparent;
+        padding: 0 30px;
+        font-size: 16px;
+        cursor: pointer;
+    }
+  </style>
     </style>
   </head>
   <body>
@@ -42,6 +115,23 @@
           <button id="stop" type="button" class="btn btn-primary" disabled>Stop</button>
         </div>
       </div>
+      <div>
+          Sender: <span id="traceId"></span>
+      </div>
+      <div class="content">
+        <div class="messages">
+        </div>
+        <form class="footer" onsubmit="return false;">
+          <input type="text" placeholder="Your message..">
+          <button type="submit">Send</button>
+        </form>
+        <template data-template="message">
+          <div class="message">
+            <div class="message__name"></div>
+            <div class="message__bubble"></div>
+          </div>
+        </template>
+      </div>
     </div>
     <script src="js/llnwrtssdk-2.0.0.js"></script>
     <script src="/support/assets/js/jquery-3.4.1.slim.min.js"></script>
@@ -50,6 +140,7 @@
       (function() {
         const pathname = window.location.pathname;
         const parent = pathname.substring(1, pathname.lastIndexOf("/"));
+        const form = document.querySelector('form');
 
         var config = {
           account: "id3as-test-account",
@@ -63,7 +154,38 @@
 
         var player = LimelightSDK.createPlayer(config);
 
+        form.addEventListener('submit', () => {
+          const input = document.querySelector('input[type="text"]');
+          const msg = input.value;
+          input.value = '';
+
+          player.sendBroadcastMessage(msg)
+
+        });
+
+        function insertMessageToDOM(message, isFromMe) {
+          const template = document.querySelector('template[data-template="message"]');
+          const nameEl = template.content.querySelector('.message__name');
+
+          nameEl.innerText = message.sender;
+
+          template.content.querySelector('.message__bubble').innerText = message.msg;
+          const clone = document.importNode(template.content, true);
+          const messageEl = clone.querySelector('.message');
+          if (isFromMe) {
+            messageEl.classList.add('message--mine');
+          } else {
+            messageEl.classList.add('message--theirs');
+          }
+
+          const messagesEl = document.querySelector('.messages');
+          messagesEl.appendChild(clone);
+
+          // Scroll to bottom
+          messagesEl.scrollTop = messagesEl.scrollHeight - messagesEl.clientHeight;
+        }
         player.on("quality-change", (message) => {
+          $("#traceId").html(player.session.traceId)
           console.log("quality-change", message);
         });
         player.on("on-fi", (message) => {
@@ -73,6 +195,7 @@
           console.log("active-profiles", profiles);
         });
         player.on("data-object-message", (message) => {
+          insertMessageToDOM(message, (message.sender == player.session.traceId));
           console.log("data-object-message", message);
         });
         player.on("data-object-message-failure", () => {

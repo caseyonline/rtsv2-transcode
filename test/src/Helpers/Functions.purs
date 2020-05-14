@@ -7,6 +7,7 @@ import Control.Monad.State.Class (class MonadState, gets, modify)
 import Data.Array (sortBy, delete)
 import Data.Bifunctor (lmap)
 import Data.Either (Either(..))
+import Data.Int (fromString)
 import Data.Lens (_Just, firstOf, over, set, traversed)
 import Data.Map as Map
 import Data.Maybe (Maybe(..), fromMaybe)
@@ -16,9 +17,10 @@ import Data.Time.Duration (Milliseconds(..))
 import Data.Traversable (traverse, traverse_)
 import Debug.Trace (spy)
 import Effect.Aff (Aff, delay)
+import Foreign (unsafeFromForeign)
 import Foreign.Object as Object
 import Helpers.Assert as A
-import Helpers.CreateString (mkPoPJsonString, toAddrFromNode, toIfaceIndexString)
+import Helpers.CreateString (mkPoPJsonString, toAddrFromNode, toIfaceIndexString, mkServerAddress)
 import Helpers.Env (sessionName)
 import Helpers.HTTP as HTTP
 import Helpers.Log (throwSlowError, as)
@@ -27,15 +29,17 @@ import Helpers.Types (Node, PoPInfo, ResWithBody, TestNode, ToRecord)
 import Node.Encoding (Encoding(..))
 import Node.FS.Aff (writeTextFile)
 import Partial.Unsafe (unsafePartial)
-import Shared.Rtsv2.Chaos as Chaos
 import Shared.Common (Url)
-import Shared.Rtsv2.JsonLd as JsonLd
-import Shared.Rtsv2.Stream (SlotId, SlotRole)
-import Shared.Rtsv2.Types (ServerAddress(..))
 import Shared.Rtsv2.Agent.State as PublicState
+import Shared.Rtsv2.Chaos as Chaos
+import Shared.Rtsv2.JsonLd as JsonLd
+import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
+import Shared.Rtsv2.Stream (RtmpShortName(..), RtmpStreamName(..), SlotId, SlotRole)
+import Shared.Rtsv2.Types (ServerAddress(..))
 import Simple.JSON (class ReadForeign)
 import Simple.JSON as SimpleJSON
 import Text.Parsing.Parser (runParser)
+import Toppokki as T
 import URI as URI
 import URI.Authority (Authority(..))
 import URI.HierarchicalPart (HierarchicalPart(..))
@@ -65,6 +69,30 @@ launch' nodesToStart sysconfig = do
     traverse_ (\tn -> runProc "./scripts/waitForNode.sh"
                       [ tn.addr
                       ]) nodes
+
+-------------------------------------------------------------------------------
+-- Browser
+-------------------------------------------------------------------------------
+getInnerText :: String -> T.Page -> Aff String
+getInnerText selector page = do
+  innerTextF <- T.unsafePageEval
+                (T.Selector selector)
+                "el => el.innerText"
+                page
+  let innerText = (unsafeFromForeign innerTextF) :: String
+  pure innerText
+
+stringToInt :: String -> Int
+stringToInt s =
+  fromMaybe 0 $ fromString s
+
+mkPlayerUrl :: Node -> SlotId -> SlotRole -> T.URL
+mkPlayerUrl node slotId slotRole =
+  T.URL $ unwrap $ makeUrl (mkServerAddress node) $ ClientPlayerE slotId slotRole
+
+mkIngestUrl :: Node -> RtmpShortName -> RtmpStreamName -> T.URL
+mkIngestUrl node shortName streamName =
+  T.URL $ unwrap $ makeUrl (mkServerAddress node) $ ClientWebRTCIngestE (unwrap shortName) (unwrap streamName)
 
 -------------------------------------------------------------------------------
 -- Node

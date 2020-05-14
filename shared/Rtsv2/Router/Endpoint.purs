@@ -22,7 +22,7 @@ module Shared.Rtsv2.Router.Endpoint
 
 import Prelude hiding ((/))
 
-import Data.Array (intercalate, (!!))
+import Data.Array (intercalate)
 import Data.Either (note)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show (genericShow)
@@ -34,7 +34,7 @@ import Routing.Duplex (RouteDuplex', as, path, print, rest, root, segment)
 import Routing.Duplex.Generic (noArgs, sum)
 import Routing.Duplex.Generic.Syntax ((/))
 import Shared.Common (Url)
-import Shared.Rtsv2.Stream (ProfileName(..), RtmpShortName, RtmpStreamName, SlotId, SlotIdAndProfileName(..), SlotNameAndProfileName(..), SlotRole(..))
+import Shared.Rtsv2.Stream (ProfileName, RtmpShortName, RtmpStreamName, SlotId, SlotRole(..))
 import Shared.Rtsv2.Types (JsonLdContextType(..), PoPName(..), ServerAddress(..), Username(..), SourceRoute, extractAddress)
 import Shared.UUID (fromString)
 
