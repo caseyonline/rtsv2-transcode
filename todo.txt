@@ -16,6 +16,12 @@
 [ ] - Proper Serf messages codec (not just binary to term)
 [ ] - possibly announcing presence of stream in ingest aggregator too quickly - webrtc tests currently need a small sleep to get reliable playback
 
+Tests:
+[ ] data object messaging
+[ ] data object store
+[ ] discovery API
+[ ]	multi-bitrate ingest
+[ ] ingest prometheus stats
 
 [x] - Egest needs to know model primary and backup
 [x] - HLS Egest from Aggregator

@@ -29,7 +29,7 @@ playerUrl node slotId slotRole =
 
 ingestUrl :: Node -> RtmpShortName -> RtmpStreamName -> T.URL
 ingestUrl node shortName streamName =
-  T.URL $ unwrap $ makeUrl (C.mkServerAddress node) $ ClientWebRTCIngestE (unwrap shortName) (unwrap streamName)
+  T.URL $ unwrap $ makeUrl (C.mkServerAddress node) $ ClientWebRTCIngestE shortName streamName
 
 options =
   { headless: false

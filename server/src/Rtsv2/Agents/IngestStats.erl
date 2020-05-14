@@ -18,9 +18,8 @@ getStatsImpl() ->
       Refs = ets:select(id3as_workflows, WorkflowSpec),
 
       lists:filtermap(fun({Ref, IngestKey}) ->
-                          MetricsSpec = [{#workflow_node_status{id =
-                                                                  #workflow_node_id{ref = Ref,
-                                                                                    path = ['$1', {rtmp_ingest_handler, {ingestKey,'_','_','_'}}]},
+                          MetricsSpec = [{#workflow_node_status{id = #workflow_node_id{ref = Ref,
+                                                                                       path = ['$1' | '_']},
                                                                 status = '$2',
                                                                 _ = '_'},
                                           [{'orelse',

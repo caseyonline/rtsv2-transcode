@@ -53,9 +53,9 @@ data Endpoint
   | ClientPlayerControlE SlotId SlotRole
   | ClientPlayerAssetsE SlotId SlotRole (Array String)
 
-  | ClientWebRTCIngestE String String
-  | ClientWebRTCIngestControlE String String
-  | ClientWebRTCIngestAssetsE String String (Array String)
+  | ClientWebRTCIngestE RtmpShortName RtmpStreamName
+  | ClientWebRTCIngestControlE RtmpShortName RtmpStreamName
+  | ClientWebRTCIngestAssetsE RtmpShortName RtmpStreamName (Array String)
 
   -- Support
   | VMMetricsE
@@ -85,9 +85,9 @@ data Endpoint
   | CanaryClientPlayerControlE SlotId SlotRole
   | CanaryClientPlayerAssetsE SlotId SlotRole (Array String)
 
-  | CanaryClientWebRTCIngestE String String
-  | CanaryClientWebRTCIngestControlE String String
-  | CanaryClientWebRTCIngestAssetsE String String (Array String)
+  | CanaryClientWebRTCIngestE RtmpShortName RtmpStreamName
+  | CanaryClientWebRTCIngestControlE RtmpShortName RtmpStreamName
+  | CanaryClientWebRTCIngestAssetsE RtmpShortName RtmpStreamName (Array String)
 
   -- System
   | TransPoPLeaderE
@@ -144,9 +144,9 @@ endpoint = root $ sum
   , "ClientPlayerControlE"                             : "public" / "client" / slotId segment / slotRole segment / "session" -- URL duplicated in Web.purs
   , "ClientPlayerAssetsE"                              : "public" / "client" / slotId segment / slotRole segment / rest
 
-  , "ClientWebRTCIngestE"                              : "public" / "ingest" / segment / segment / "ingest"
-  , "ClientWebRTCIngestControlE"                       : "public" / "ingest" / segment / segment / "session"
-  , "ClientWebRTCIngestAssetsE"                        : "public" / "ingest" / segment / segment / rest
+  , "ClientWebRTCIngestE"                              : "public" / "ingest" / shortName segment / streamName segment / "ingest"
+  , "ClientWebRTCIngestControlE"                       : "public" / "ingest" / shortName segment / streamName segment / "session"
+  , "ClientWebRTCIngestAssetsE"                        : "public" / "ingest" / shortName segment / streamName segment / rest
 
   -- Support
   , "VMMetricsE"                                       : "support" / "vm" / path "metrics" noArgs
@@ -179,9 +179,9 @@ endpoint = root $ sum
   , "CanaryClientPlayerControlE"                       : "support" / "canary" / "client" / slotId segment / slotRole segment / "session" -- URL duplicated in Web.purs
   , "CanaryClientPlayerAssetsE"                        : "support" / "canary" / "client" / slotId segment / slotRole segment / rest
 
-  , "CanaryClientWebRTCIngestE"                        : "support" / "canary" / "ingest" / segment / segment / "ingest"
-  , "CanaryClientWebRTCIngestControlE"                 : "support" / "canary" / "ingest" / segment / segment / "session"
-  , "CanaryClientWebRTCIngestAssetsE"                  : "support" / "canary" / "ingest" / segment / segment / rest
+  , "CanaryClientWebRTCIngestE"                        : "support" / "canary" / "ingest" / shortName segment / streamName segment / "ingest"
+  , "CanaryClientWebRTCIngestControlE"                 : "support" / "canary" / "ingest" / shortName segment / streamName segment / "session"
+  , "CanaryClientWebRTCIngestAssetsE"                  : "support" / "canary" / "ingest" / shortName segment / streamName segment / rest
 
   -- System
   , "TransPoPLeaderE"                                  : "system" / path "transPoPLeader" noArgs
