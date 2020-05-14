@@ -1,4 +1,4 @@
-# RTS-V2 release xx
+# RTS-V2 release 96
 
 **What's new**
 
@@ -7,6 +7,8 @@
 * playbackBaseUrl removed from HlsPushSpec
 * ingest no longer attempts to parse on-fi messages, and instead passes the payload as a json object through to the client
 * Prometheus Ingest stats endpoint fixed
+* Initial changes for Canary mode 
+  * **BREAKING CHANGE** as discussed in a recent status call, canary mode is now being handled by having the ingest endpoints available on a different port rather than via a segment in the URL; this being simpler to secure to prevent public access.  As such, all the public URLs have now had the canary segment removed.
 
 # RTS-V2 release 94
 
