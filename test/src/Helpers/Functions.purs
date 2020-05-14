@@ -92,7 +92,7 @@ mkPlayerUrl node slotId slotRole =
 
 mkIngestUrl :: Node -> RtmpShortName -> RtmpStreamName -> T.URL
 mkIngestUrl node shortName streamName =
-  T.URL $ unwrap $ makeUrl (mkServerAddress node) $ ClientWebRTCIngestE (unwrap shortName) (unwrap streamName)
+  T.URL $ unwrap $ makeUrl (mkServerAddress node) $ ClientWebRTCIngestE shortName streamName
 
 -------------------------------------------------------------------------------
 -- Node
