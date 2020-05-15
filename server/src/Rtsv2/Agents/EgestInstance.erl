@@ -9,6 +9,7 @@
 
 %% foreign exports
 -export([ startEgestReceiverFFI/2
+        , stopEgestFFI/1
         , getStatsFFI/1
         , setSlotConfigurationFFI/2
         , getSlotConfigurationFFI/1
@@ -41,6 +42,11 @@ startEgestReceiverFFI(EgestKey, UseMediaGateway) ->
       {ok, PortNumber} = rtsv2_webrtc_egest_stream_handler:port_number(EgestKey),
 
       PortNumber
+  end.
+
+stopEgestFFI(EgestKey) ->
+  fun() ->
+      _ = webrtc_stream_server:stop(EgestKey)
   end.
 
 getStatsFFI(EgestKey) ->
