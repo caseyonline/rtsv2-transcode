@@ -12,7 +12,9 @@
 
 -export([ start_link/2
         , add_egest/5
+        , remove_egest/2
         , add_egest_client/4
+        , remove_egest_client/1
         , update_egest_client_subscription/3
         ]).
 
@@ -62,10 +64,14 @@ start_link(ThisServerAddress, MediaGatewayFlag) ->
 add_egest(SlotId, SlotRole, ReceiveSocket, AudioSSRC, VideoSSRC) ->
   gen_server:call(?SERVER, {add_egest, SlotId, SlotRole, ReceiveSocket, AudioSSRC, VideoSSRC}).
 
+remove_egest(SlotId, SlotRole) ->
+  gen_server:call(?SERVER, {remove_egest, SlotId, SlotRole}).
 
 add_egest_client(SlotId, SlotRole, ClientId, EgestClientConfig) ->
   gen_server:call(?SERVER, {add_egest_client, SlotId, SlotRole, ClientId, EgestClientConfig}).
 
+remove_egest_client(ClientId) ->
+  gen_server:call(?SERVER, {remove_egest_client, ClientId}).
 
 update_egest_client_subscription(ClientId, AudioSSRC, VideoSSRC) ->
   gen_server:call(?SERVER, {update_egest_client_subscription, ClientId, AudioSSRC, VideoSSRC}).
@@ -121,6 +127,19 @@ handle_call({add_egest, SlotId, SlotRole, ReceiveSocket, AudioSSRC, VideoSSRC}, 
 
   {reply, ok, NewState};
 
+handle_call({remove_egest, SlotId, SlotRole}, _From, State) ->
+
+  NewState = ensure_control_socket(State),
+
+  Header = header(remove_egest),
+
+  Body = ?pack(#{ slot_key => slot_key(SlotId, SlotRole)
+                }),
+
+  send_msg(NewState#?state.control_socket, Header, Body, []),
+
+  {reply, ok, NewState};
+
 handle_call({ add_egest_client
             , SlotId
             , SlotRole
@@ -163,6 +182,18 @@ handle_call({ add_egest_client
   {ok, VideoSocketFd} = inet:getfd(VideoSocket),
 
   send_msg(NewState#?state.control_socket, Header, Body, [AudioSocketFd, VideoSocketFd]),
+
+  {reply, ok, NewState};
+
+handle_call({remove_egest_client, ClientId}, _From, State) ->
+
+  NewState = ensure_control_socket(State),
+
+  Header = header(remove_egest_client),
+
+  Body = ?pack(#{ client_id => ClientId }),
+
+  send_msg(NewState#?state.control_socket, Header, Body, []),
 
   {reply, ok, NewState};
 

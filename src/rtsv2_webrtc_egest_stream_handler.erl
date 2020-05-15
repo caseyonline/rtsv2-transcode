@@ -11,6 +11,7 @@
 -export([ init/1
         , handle_info/2
         , handle_call/3
+        , terminate/2
         ]).
 
 
@@ -24,11 +25,14 @@
 -define(state, ?MODULE).
 
 -record(?state,
-        { parent_pid :: pid()
+        { slot_id :: non_neg_integer()
+        , slot_role :: primary | backup
+        , parent_pid :: pid()
         , egest_key :: term()
         , receive_socket :: gen_udp:socket()
         , forward_socket :: undefined | gen_udp:socket()
         , parse_info = rtsv2_rtp_util:build_parse_info()
+        , using_media_gateway :: boolean()
         }).
 
 
@@ -44,11 +48,11 @@ init(_Args = [ ParentPid, {egestKey, << SlotId:128/big-unsigned-integer >>, {Slo
 
   %% NOTE: Erlang doesn't receive on this socket, that task is delegated to the
   %% media gateway
-  Sockets =
+  {Sockets, UsingMediaGateway} =
     case MediaGateway of
       {off} ->
         {ok, ReceiveSocket} = gen_udp:open(0, [binary, {recbuf, 100 * 1500}]),
-        ReceiveSocket;
+        {ReceiveSocket, false};
 
       _ ->
         { AudioSSRC, VideoSSRC } =
@@ -74,27 +78,37 @@ init(_Args = [ ParentPid, {egestKey, << SlotId:128/big-unsigned-integer >>, {Slo
             gen_udp:connect(MediaGatewaySendSocket, {127, 0, 0, 1}, MediaGatewayReceivePort),
 
             ok = rtsv2_media_gateway_api:add_egest(SlotId, SlotRole, MediaGatewayReceiveSocket, AudioSSRC, VideoSSRC),
-            {OurReceiveSocket, MediaGatewaySendSocket};
+            { {OurReceiveSocket, MediaGatewaySendSocket}
+            , true
+            };
 
           _ ->
             {ok, ReceiveSocket} = gen_udp:open(0, [{recbuf, 100 * 1500}, {active, false}]),
             ok = rtsv2_media_gateway_api:add_egest(SlotId, SlotRole, ReceiveSocket, AudioSSRC, VideoSSRC),
-            ReceiveSocket
+            { ReceiveSocket
+            , true
+            }
         end
     end,
 
   case Sockets of
     {TheReceiveSocket, ForwardSocket} ->
-      #?state{ parent_pid = ParentPid
+      #?state{ slot_id = SlotId
+             , slot_role = SlotRole
+             , parent_pid = ParentPid
              , egest_key = EgestKey
              , receive_socket = TheReceiveSocket
              , forward_socket = ForwardSocket
+             , using_media_gateway = UsingMediaGateway
              };
 
     TheReceiveSocket ->
-      #?state{ parent_pid = ParentPid
+      #?state{ slot_id = SlotId
+             , slot_role = SlotRole
+             , parent_pid = ParentPid
              , egest_key = EgestKey
              , receive_socket = TheReceiveSocket
+             , using_media_gateway = UsingMediaGateway
              }
   end.
 
@@ -139,3 +153,17 @@ handle_info({udp, ActualSocket, _SenderIP, _SenderPort, Data},
 
 handle_info({'EXIT', MaybeParentPid, _Reason }, #?state{ parent_pid = ParentPid } = State) when MaybeParentPid =:= ParentPid ->
   { stop, State }.
+
+
+terminate(Reason, #?state{ slot_id = SlotId, slot_role = SlotRole, using_media_gateway = UsingMediaGateway }) ->
+  ?INFO("Egest Stream Handler stopping with reason ~p.", [Reason]),
+
+  case UsingMediaGateway of
+    true ->
+      ok = rtsv2_media_gateway_api:remove_egest(SlotId, SlotRole),
+      ok;
+    false ->
+      ok
+  end,
+
+  ok.

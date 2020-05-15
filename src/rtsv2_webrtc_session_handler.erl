@@ -179,7 +179,8 @@ handle_cast({set_active_profile, Profile}, State) ->
   {noreply, NewState};
 
 handle_cast(notify_socket_disconnect, State) ->
-  {stop, normal, State}.
+  NewState = maybe_remove_from_media_gateway(State),
+  {stop, normal, NewState}.
 
 handle_audio_sequence(#rtp_sequence{ type = audio } = Sequence, #?state{ audio_state = StreamState } = State) ->
   case filter_and_renumber(Sequence, StreamState) of
@@ -355,6 +356,18 @@ maybe_add_to_media_gateway(#?state{ media_gateway_client_id = ClientId
   rtsv2_media_gateway_api:add_egest_client(SlotId, SlotRole, ClientId, Config),
 
   {ok, State}.
+
+
+maybe_remove_from_media_gateway(#?state{ audio_stream_element_config = undefined } = State) ->
+  {ok, State};
+
+maybe_remove_from_media_gateway(#?state{ video_stream_element_config = undefined } = State) ->
+  {ok, State};
+
+maybe_remove_from_media_gateway(#?state{ media_gateway_client_id = ClientId
+                                       } = State) ->
+  rtsv2_media_gateway_api:remove_egest_client(ClientId),
+  State.
 
 
 rtp_engine_passthrough_encoding_id(RTPEngine) ->

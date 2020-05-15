@@ -70,6 +70,7 @@ import Shared.Rtsv2.Types (EgestServer(..), FailureReason(..), LocalOrRemote(..)
 import WsGun as WsGun
 
 foreign import startEgestReceiverFFI :: EgestKey -> MediaGatewayFlag -> Effect Int
+foreign import stopEgestFFI :: EgestKey -> Effect Unit
 foreign import getStatsFFI :: EgestKey -> Effect (WebRTCStreamServerStats EgestKey)
 foreign import setSlotConfigurationFFI :: EgestKey -> SlotConfiguration -> Effect Unit
 foreign import getSlotConfigurationFFI :: EgestKey -> Effect (Maybe SlotConfiguration)
@@ -140,6 +141,7 @@ stopAction egestKey mCachedState = do
   logStop "Egest stopping" {egestKey}
   IntraPoP.announceLocalEgestStopped egestKey
   fromMaybe (pure unit) $ WsGun.closeWebSocket <$> mCachedState
+  stopEgestFFI egestKey
   pure unit
 
 pendingClient :: EgestKey -> Effect RegistrationResp
