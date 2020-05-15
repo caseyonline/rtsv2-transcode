@@ -201,6 +201,7 @@ instance showCanary :: Show Canary where
   show Canary = "canary"
 
 derive instance genericCanary :: Generic Canary _
+instance eqCanary :: Eq Canary where eq = genericEq
 instance readForeignCanary :: ReadForeign Canary where
   readImpl = readString >=> parseString
     where

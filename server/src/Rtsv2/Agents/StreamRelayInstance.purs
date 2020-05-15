@@ -78,7 +78,7 @@ import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl, makeWsUrl, makeWsUrlAddr)
 import Shared.Rtsv2.Stream (AggregatorKey(..), ProfileName, RelayKey(..), SlotId(..), SlotRole)
-import Shared.Rtsv2.Types (Canary, DeliverTo, EgestServer, PoPName, RelayServer, Server, ServerAddress(..), SourceRoute, extractAddress, extractPoP)
+import Shared.Rtsv2.Types (DeliverTo, EgestServer, PoPName, RelayServer, Server, ServerAddress(..), SourceRoute, extractAddress, extractPoP)
 import Shared.UUID (UUID)
 import SpudGun (SpudResponse(..), StatusCode(..))
 import SpudGun as SpudGun
@@ -116,7 +116,6 @@ type CommonStateData =
   { relayKey :: RelayKey
   , thisServer :: Server
   , ingestAggregator :: Server
-  , canary :: Canary
   , slotCharacteristics :: SlotCharacteristics
   , loadConfig :: LoadConfig
   , stateServerName :: StateServerName
@@ -417,7 +416,6 @@ applyOriginRunResult commonStateData@{ relayKey: relayKey@(RelayKey slotId slotR
 applyDownstreamRunResult :: CommonStateData -> DownstreamStreamRelayApplyResult -> DownstreamStreamRelayRunState -> Effect DownstreamStreamRelayRunState
 applyDownstreamRunResult commonStateData@{ relayKey: relayKey@(RelayKey slotId slotRole)
                                          , thisServer
-                                         , canary
                                          , ingestAggregator
                                          , slotCharacteristics
                                          , loadConfig } applyResult runState =
@@ -476,7 +474,7 @@ applyDownstreamRunResult commonStateData@{ relayKey: relayKey@(RelayKey slotId s
 
           Just randomServerInPoP ->
             let
-              payload = { slotId, slotRole, aggregator: ingestAggregator, slotCharacteristics, canary } :: CreateRelayPayload
+              payload = { slotId, slotRole, aggregator: ingestAggregator, slotCharacteristics } :: CreateRelayPayload
               url = makeUrl randomServerInPoP RelayEnsureStartedE
             in
               do
@@ -580,7 +578,7 @@ stopAction relayKey@(RelayKey slotId slotRole) cachedState = do
       pure unit
 
 init :: RelayKey -> CreateRelayPayload -> StateServerName -> Effect State
-init relayKey payload@{slotId, slotRole, aggregator, slotCharacteristics, canary} stateServerName =
+init relayKey payload@{slotId, slotRole, aggregator, slotCharacteristics} stateServerName =
   do
     Gen.registerExternalMapping (serverName relayKey) (\m -> Gun <$> (WsGun.messageMapper m))
     thisServer <- PoPDefinition.getThisServer
@@ -598,7 +596,6 @@ init relayKey payload@{slotId, slotRole, aggregator, slotCharacteristics, canary
         , thisServer
         , slotCharacteristics
         , loadConfig
-        , canary
         , ingestAggregator: aggregator
         , stateServerName
         , config: streamRelayConfig

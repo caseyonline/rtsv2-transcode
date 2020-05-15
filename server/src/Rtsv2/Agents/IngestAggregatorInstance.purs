@@ -117,7 +117,6 @@ foreign import workflowMessageMapperImpl :: Foreign -> Maybe WorkflowMsg
 type CreateAggregatorPayload
   = { shortName :: RtmpShortName
     , streamDetails :: StreamDetails
-    , canary :: Canary
     }
 
 type PrimaryToBackupWebsocket = WsGun.WebSocket AggregatorPrimaryToBackupWsMessage AggregatorBackupToPrimaryWsMessage

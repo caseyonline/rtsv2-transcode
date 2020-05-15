@@ -41,21 +41,21 @@ startLink :: forall a. a -> Effect Pinto.StartLinkResult
 startLink _ = Sup.startLink serverName init
 
 startLocalAggregator :: LoadConfig -> CreateAggregatorPayload -> Effect (ResourceResp Server)
-startLocalAggregator loadConfig payload@{streamDetails, canary} =
+startLocalAggregator loadConfig payload@{streamDetails} =
   let
     slotCharacteristics = slotDetailsToSlotCharacteristics streamDetails.slot
   in
-    NodeManager.launchLocalAgent IngestAggregator canary (Load.hasCapacityForAggregator slotCharacteristics loadConfig) launchLocal
+    NodeManager.launchLocalAgent IngestAggregator (Load.hasCapacityForAggregator slotCharacteristics loadConfig) launchLocal
   where
     launchLocal _ = do
       (note unit <<< startOkAS) <$> startAggregator payload
 
 startLocalOrRemoteAggregator :: LoadConfig -> CreateAggregatorPayload -> Effect (ResourceResp Server)
-startLocalOrRemoteAggregator loadConfig payload@{streamDetails, canary} =
+startLocalOrRemoteAggregator loadConfig payload@{streamDetails} =
   let
     slotCharacteristics = slotDetailsToSlotCharacteristics streamDetails.slot
   in
-    NodeManager.launchLocalOrRemoteAgent IngestAggregator canary (Load.hasCapacityForAggregator slotCharacteristics loadConfig) launchLocal launchRemote
+    NodeManager.launchLocalOrRemoteAgent IngestAggregator (Load.hasCapacityForAggregator slotCharacteristics loadConfig) launchLocal launchRemote
   where
     launchLocal _ = do
       (note unit <<< startOkAS) <$> startAggregator payload

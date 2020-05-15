@@ -30,7 +30,7 @@ import Rtsv2.NodeManager as NodeManager
 import Shared.Rtsv2.Agent (Agent(..))
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Shared.Rtsv2.Stream (RelayKey(..))
-import Shared.Rtsv2.Types (Canary(..), LocalOrRemote(..), ResourceResp, Server)
+import Shared.Rtsv2.Types (LocalOrRemote(..), ResourceResp, Server)
 import SpudGun as SpudGun
 
 ------------------------------------------------------------------------------
@@ -68,15 +68,15 @@ findOrStart loadConfig payload@{slotCharacteristics} = do
     relayKey = RelayKey payload.slotId payload.slotRole
 
 startLocalStreamRelay :: LoadConfig -> CreateRelayPayload -> Effect (ResourceResp Server)
-startLocalStreamRelay loadConfig payload@{canary, slotCharacteristics} =
-  NodeManager.launchLocalAgent StreamRelay canary (Load.hasCapacityForStreamRelay slotCharacteristics loadConfig) launchLocal
+startLocalStreamRelay loadConfig payload@{slotCharacteristics} =
+  NodeManager.launchLocalAgent StreamRelay (Load.hasCapacityForStreamRelay slotCharacteristics loadConfig) launchLocal
   where
     launchLocal _ =
       (note unit <<< startOkAS) <$> startRelay payload
 
 startLocalOrRemoteStreamRelay :: LoadConfig -> CreateRelayPayload -> Effect (ResourceResp Server)
-startLocalOrRemoteStreamRelay loadConfig payload@{canary, slotCharacteristics} =
-  NodeManager.launchLocalOrRemoteAgent StreamRelay canary (Load.hasCapacityForStreamRelay slotCharacteristics loadConfig) launchLocal launchRemote
+startLocalOrRemoteStreamRelay loadConfig payload@{slotCharacteristics} =
+  NodeManager.launchLocalOrRemoteAgent StreamRelay (Load.hasCapacityForStreamRelay slotCharacteristics loadConfig) launchLocal launchRemote
   where
     launchLocal _ =
       (note unit <<< startOkAS) <$> startRelay payload

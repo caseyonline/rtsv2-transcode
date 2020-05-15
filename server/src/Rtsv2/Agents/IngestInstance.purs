@@ -84,7 +84,6 @@ type StateServerName = CachedInstanceState.StateServerName CachedState
 
 type State
   = { thisServer :: Server
-    , canary :: Canary
     , aggregatorRetryTime :: Milliseconds
     , ingestKey :: IngestKey
     , loadConfig :: Config.LoadConfig
@@ -181,7 +180,6 @@ dataObjectUpdate ingestKey updateMsg =
 init :: StartArgs -> StateServerName -> Effect State
 init { streamPublish
      , streamDetails
-     , canary
      , ingestKey
      , remoteAddress
      , remotePort
@@ -203,7 +201,6 @@ init { streamPublish
   pure { thisServer
        , streamPublish
        , streamDetails
-       , canary
        , loadConfig
        , ingestKey
        , aggregatorRetryTime: wrap $ toNumber aggregatorRetryTimeMs
@@ -336,7 +333,6 @@ informAggregator :: State -> Effect State
 informAggregator state@{ streamDetails
                        , streamPublish: StreamPublish {rtmpShortName}
                        , ingestKey: ingestKey@(IngestKey slotId slotRole profileName)
-                       , canary
                        , thisServer
                        , aggregatorRetryTime
                        , stateServerName
@@ -368,7 +364,7 @@ informAggregator state@{ streamDetails
         Just server ->
           pure $ Right $ Local server
         Nothing ->
-          IngestAggregatorSup.startLocalOrRemoteAggregator loadConfig {shortName: rtmpShortName, streamDetails, canary}
+          IngestAggregatorSup.startLocalOrRemoteAggregator loadConfig {shortName: rtmpShortName, streamDetails}
 
 handleAggregatorExit :: AggregatorKey -> Server -> State -> Effect State
 handleAggregatorExit exitedAggregatorKey exitedAggregatorAddr state@{ingestKey, aggregatorRetryTime, aggregatorWebSocket: mWebSocket}

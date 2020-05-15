@@ -34,7 +34,6 @@ foreign import data NativeJson :: Type
 type CreateRelayPayload
   = { slotId :: SlotId
     , slotRole :: SlotRole
-    , canary :: Canary
     , aggregator :: Server
     , slotCharacteristics :: SlotCharacteristics
     }

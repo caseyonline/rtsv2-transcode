@@ -108,7 +108,6 @@ type TestHelperPayload =
   { dropAgentMessages :: Boolean
   }
 
-
 type MemberInfo =
   { serfMember :: Serf.SerfMember
   , load :: CurrentLoad
@@ -148,6 +147,7 @@ type Locations payload = { byAgentKey     :: Map AgentKey (AgentPayloadAndServer
 
 type State
   = { config                :: Config.IntraPoPAgentConfig
+    , canary                :: Canary
     , healthConfig          :: Config.HealthConfig
     , transPoPApi           :: Config.TransPoPAgentApi
     , serfRpcAddress        :: IpAndPort
@@ -161,7 +161,6 @@ type State
     , thisServer            :: Server
     , load                  :: CurrentLoad
     , acceptingRequests     :: AcceptingRequests
-    , canary                :: Canary
     , members               :: Map ServerAddress MemberInfo
     , agentClocks           :: AgentClocks
     , agentLocations        :: AgentLocations
@@ -831,12 +830,18 @@ updateAgentLocation action lens agentKey server state@{agentLocations} =
 --------------------------------------------------------------------------------
 -- Gen Server methods
 --------------------------------------------------------------------------------
-startLink :: {config :: Config.IntraPoPAgentConfig, transPoPApi :: Config.TransPoPAgentApi} -> Effect StartLinkResult
+type StartArgs =
+  { config :: Config.IntraPoPAgentConfig
+  , transPoPApi :: Config.TransPoPAgentApi
+  , canary :: Canary}
+
+startLink :: StartArgs -> Effect StartLinkResult
 startLink args = Gen.startLink serverName (init args) handleInfo
 
-init :: {config :: Config.IntraPoPAgentConfig, transPoPApi :: Config.TransPoPAgentApi} -> Effect State
+init :: StartArgs -> Effect State
 init { config
      , transPoPApi
+     , canary
      } = do
 
   logInfo "Intra-PoP Agent Starting" {config: config}
@@ -845,7 +850,7 @@ init { config
 
   let
     garbageCollectVMInterval = config.vmLivenessIntervalMs / 2
-    garbageollectAgentInterval = ( hfoldl (min :: Int -> Int -> Int) config.reannounceAgentEveryMs.aggregator
+    garbageCollectAgentInterval = ( hfoldl (min :: Int -> Int -> Int) config.reannounceAgentEveryMs.aggregator
                                      config.reannounceAgentEveryMs
                                  ) / 2
 
@@ -853,7 +858,7 @@ init { config
   void $ Timer.sendEvery serverName config.rejoinEveryMs JoinAll
   void $ Timer.sendEvery serverName config.vmLivenessIntervalMs VMLiveness
   void $ Timer.sendEvery serverName garbageCollectVMInterval GarbageCollectVM
-  void $ Timer.sendEvery serverName garbageollectAgentInterval GarbageCollectAgents
+  void $ Timer.sendEvery serverName garbageCollectAgentInterval GarbageCollectAgents
   rpcBindIp <- Env.privateInterfaceIp
   thisServer <- PoPDefinition.getThisServer
   let
@@ -912,7 +917,7 @@ init { config
     , thisServer: thisServer
     , load: minLoad
     , acceptingRequests: wrap false
-    , canary: Canary
+    , canary
     , members
     , agentClocks  : { aggregatorClocks: Map.empty
                      , egestClocks: Map.empty
