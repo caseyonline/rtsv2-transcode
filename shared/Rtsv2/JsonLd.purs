@@ -75,6 +75,18 @@ module Shared.Rtsv2.JsonLd
        , ingestStateContext
        , ingestStateNode
 
+       , NodeManagerStateContextFields
+       , NodeManagerState
+       , NodeManagerStateNode
+       , nodeManagerStateContext
+       , nodeManagerStateNode
+
+       , HealthContextFields
+       , Health
+       , HealthNode
+       , healthContext
+       , healthNode
+
        , _downstreamRelays
        , _activeProfiles
        , _profileName
@@ -92,21 +104,14 @@ import Data.Maybe (Maybe(..))
 import Data.Newtype (wrap)
 import Data.Symbol (SProxy(..))
 import Shared.Common (Milliseconds)
-import Shared.JsonLd ( Context
-                     , ContextValue(..)
-                     , ExpandedTermDefinition
-                     , Node(..)
-                     , NodeMetadata
-                     , unwrapNode
-                     , _unwrappedNode
-                     , _id
-                     , _resource
-                     ) as JsonLd
+import Shared.JsonLd (Context, ContextValue(..), ExpandedTermDefinition, Node(..), NodeMetadata, unwrapNode, _unwrappedNode, _id, _resource) as JsonLd
 import Shared.JsonLd (ContextDefinition(..))
+import Shared.Rtsv2.Agent (Agent)
 import Shared.Rtsv2.LlnwApiTypes (StreamDetails)
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makePath, makeUrl, makeUrlAddr)
 import Shared.Rtsv2.Stream (ProfileName, SlotId, SlotRole)
-import Shared.Rtsv2.Types (DeliverTo, JsonLdContextType(..), PoPName, RelayServer, Server, ServerAddress)
+import Shared.Rtsv2.Types (Canary, CurrentLoad, DeliverTo, JsonLdContextType(..), PoPName, RelayServer, RunState, Server, ServerAddress)
+import Shared.Rtsv2.Types as Types
 import Shared.Types.Media.Types.Rtmp (RtmpClientMetadata)
 import Shared.Types.Media.Types.SourceDetails (SourceInfo)
 
@@ -454,6 +459,85 @@ ingestStateNode slotId slotRole profileName state server =
        , "@id": Just $ makeUrl server (IngestInstanceE slotId slotRole profileName)
        , "@nodeType": Just "http://types.rtsv2.llnw.com/Ingest"
        , "@context": Just $ ContextUrl $ makePath $ JsonLdContext IngestStateContext
+       }
+
+--------------------------------------------------------------------------------
+-- NodeManager
+type NodeManagerStateContextFields = ( runState :: JsonLd.ContextValue
+                                     , canaryState :: JsonLd.ContextValue
+                                     , ingests :: JsonLd.ContextValue
+                                     , ingestAggregators :: JsonLd.ContextValue
+                                     , streamRelays :: JsonLd.ContextValue
+                                     , egests :: JsonLd.ContextValue
+                                     )
+
+type NodeManagerState
+  = { runState :: RunState
+    , canaryState :: Canary
+    , ingests :: Int
+    , ingestAggregators :: Int
+    , streamRelays :: Int
+    , egests :: Int
+    }
+
+type NodeManagerStateNode = JsonLd.Node NodeManagerState NodeManagerStateContextFields
+
+nodeManagerStateContext :: JsonLd.Context NodeManagerStateContextFields
+nodeManagerStateContext = wrap { "@language": Nothing
+                               , "@base": Nothing
+                               , "@vocab": Nothing
+                               , runState: JsonLd.Other "http://schema.rtsv2.llnw.com/RunState"
+                               , canaryState: JsonLd.Other "http://schema.rtsv2.llnw.com/CanaryState"
+                               , ingests: JsonLd.Other "http://schema.rtsv2.llnw.com/AgentCount"
+                               , ingestAggregators: JsonLd.Other "http://schema.rtsv2.llnw.com/AgentCount"
+                               , streamRelays: JsonLd.Other "http://schema.rtsv2.llnw.com/AgentCount"
+                               , egests: JsonLd.Other "http://schema.rtsv2.llnw.com/AgentCount"
+                               }
+
+nodeManagerStateNode :: NodeManagerState -> Server -> NodeManagerStateNode
+nodeManagerStateNode state server =
+  wrap { resource: state
+       , "@id": Nothing -- TODO Just $ makeUrl server (IngestInstanceE slotId slotRole profileName)
+       , "@nodeType": Just "http://types.rtsv2.llnw.com/NodeManager"
+       , "@context": Just $ ContextUrl $ makePath $ JsonLdContext NodeManagerStateContext
+       }
+
+--------------------------------------------------------------------------------
+-- Health
+type HealthContextFields = ( intraPoPHealth :: JsonLd.ContextValue
+                           , transPoPHealth :: JsonLd.ContextValue
+                           , currentTransPoP :: JsonLd.ContextValue
+                           , load :: JsonLd.ContextValue
+                           , nodeManager :: JsonLd.ContextValue
+                           )
+
+type Health
+  = { intraPoPHealth :: Types.Health
+    , transPoPHealth :: Types.Health
+    , currentTransPoP :: Maybe ServerAddress
+    , load :: CurrentLoad
+    , nodeManager :: NodeManagerStateNode
+    }
+
+type HealthNode = JsonLd.Node Health HealthContextFields
+
+healthContext :: JsonLd.Context HealthContextFields
+healthContext = wrap { "@language": Nothing
+                     , "@base": Nothing
+                     , "@vocab": Nothing
+                     , intraPoPHealth: JsonLd.Other "http://schema.rtsv2.llnw.com/Health"
+                     , transPoPHealth: JsonLd.Other "http://schema.rtsv2.llnw.com/Health"
+                     , currentTransPoP: JsonLd.Other "http://schema.rtsv2.llnw.com/Infrastructure/Locations/TransPoP"
+                     , load: JsonLd.Other "http://schema.rtsv2.llnw.com/Load"
+                     , nodeManager: JsonLd.Other "http://schema.rtsv2.llnw.com/NodeManager"
+                     }
+
+healthNode :: Health -> Server -> HealthNode
+healthNode state server =
+  wrap { resource: state
+       , "@id": Just $ makeUrl server HealthCheckE
+       , "@nodeType": Just "http://types.rtsv2.llnw.com/Health"
+       , "@context": Just $ ContextUrl $ makePath $ JsonLdContext HealthContext
        }
 
 --------------------------------------------------------------------------------

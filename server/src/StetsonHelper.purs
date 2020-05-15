@@ -104,6 +104,7 @@ processPostPayloadWithResponseAndLocationUrl proxiedFun =
   # Rest.contentTypesAccepted (\req state -> Rest.result (singleton $ MimeType.json acceptJson) req state)
   # Rest.malformedRequest malformedRequest
   # Rest.contentTypesProvided (\req state -> Rest.result (singleton $ MimeType.json provideJson) req state)
+  --# Rest.preHook (preHookSpyState "StetsonHelper:ProcessPost")
   # Rest.yeeha
   where
     init req =

@@ -16,8 +16,10 @@ module Rtsv2.Config
   , LlnwApiConfig
   , HealthConfig
   , LoadConfig
+  , NodeManagerConfig
   , appName
   , loadConfig
+  , nodeManagerConfig
   , featureFlags
   , webConfig
   , globalConfig
@@ -54,7 +56,7 @@ import Partial.Unsafe (unsafeCrashWith)
 import Rtsv2.LoadTypes as LoadTypes
 import Shared.Rtsv2.Agent (Agent, SlotCharacteristics, strToAgent)
 import Shared.Rtsv2.Stream (AgentKey)
-import Shared.Rtsv2.Types (Server)
+import Shared.Rtsv2.Types (Canary(..), RunState, Server)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (class ReadForeign, readImpl)
 
@@ -63,6 +65,11 @@ type LoadConfig
     , monitorLoad :: Boolean
     , limits :: LoadTypes.LoadLimits
     , costs :: LoadTypes.LoadCosts
+    }
+
+type NodeManagerConfig
+  = { initialRunState :: RunState
+    , initialCanaryState :: Canary
     }
 
 type FeatureFlags
@@ -212,6 +219,10 @@ appName = "rtsv2"
 loadConfig :: Effect LoadConfig
 loadConfig = do
   getMandatoryRecord "loadConfig"
+
+nodeManagerConfig :: Effect NodeManagerConfig
+nodeManagerConfig = do
+  getMandatoryRecord "nodeManagerConfig"
 
 featureFlags :: Effect FeatureFlags
 featureFlags = do

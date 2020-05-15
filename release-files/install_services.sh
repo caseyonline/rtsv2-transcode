@@ -45,7 +45,6 @@ WorkingDirectory=$RootDir
 ExecStart=$BinDir/start.sh
 ExecStop=$BinDir/rtsv2 stop
 Restart=always
-Environment=LD_LIBRARY_PATH=/id3as/rtsv2-release/lib/rtsv2-1.0/lib/id3as_media-1/priv
 
 [Install]
 WantedBy=multi-user.target

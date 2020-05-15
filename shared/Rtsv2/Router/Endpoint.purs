@@ -1,6 +1,5 @@
 module Shared.Rtsv2.Router.Endpoint
        ( Endpoint(..)
-       , Canary(..)
        , endpoint
        , makePath
        , makeUrl
@@ -38,13 +37,6 @@ import Shared.Rtsv2.Stream (ProfileName, RtmpShortName, RtmpStreamName, SlotId, 
 import Shared.Rtsv2.Types (JsonLdContextType(..), PoPName(..), ServerAddress(..), Username(..), SourceRoute, extractAddress)
 import Shared.UUID (fromString)
 
-data Canary = Live
-            | Canary
-
-instance showCanary :: Show Canary where
-  show Live   = "live"
-  show Canary = "canary"
-
 data Endpoint
   =
   -- Public
@@ -62,6 +54,8 @@ data Endpoint
   | TimedRoutesE
   | TimedRoutesForPoPE PoPName
   | HealthCheckE
+  | CanaryE
+  | RunStateE
   | ServerStateE
   | SlotStateE SlotId
   | PoPDefinitionE
@@ -153,6 +147,8 @@ endpoint = root $ sum
   , "TimedRoutesE"                                     : "support" / path "timedRoutes" noArgs
   , "TimedRoutesForPoPE"                               : "support" / "timedRoutes" / popName segment
   , "HealthCheckE"                                     : "support" / path "healthCheck" noArgs
+  , "CanaryE"                                          : "support" / path "canary" noArgs
+  , "RunStateE"                                        : "support" / path "runState" noArgs
   , "ServerStateE"                                     : "support" / path "state" noArgs
   , "SlotStateE"                                       : "support" / "state" / "slot" / slotId segment
   , "PoPDefinitionE"                                   : "support" / path "popDefinition" noArgs
@@ -276,6 +272,8 @@ contextTypeToString IntraPoPStateContext = "intraPoPState"
 contextTypeToString IngestAggregatorStateContext = "ingestAggregatorState"
 contextTypeToString StreamRelayStateContext = "streamRelayState"
 contextTypeToString IngestStateContext = "ingestState"
+contextTypeToString NodeManagerStateContext = "nodeManagerState"
+contextTypeToString HealthContext = "healthContext"
 
 parseContextType :: String -> Maybe JsonLdContextType
 parseContextType "server" = Just ServerContext
@@ -288,6 +286,8 @@ parseContextType "intraPoPState" = Just IntraPoPStateContext
 parseContextType "ingestAggregatorState" = Just IngestAggregatorStateContext
 parseContextType "streamRelayState" = Just StreamRelayStateContext
 parseContextType "ingestState" = Just IngestStateContext
+parseContextType "nodeManagerState" = Just NodeManagerStateContext
+parseContextType "healthContext" = Just HealthContext
 parseContextType _ = Nothing
 
 -- | Int

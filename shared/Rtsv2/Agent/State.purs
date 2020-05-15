@@ -15,7 +15,8 @@ module Shared.Rtsv2.Agent.State
        , TimedPoPStep
        , TimedPoPRoute
        , TimedPoPRoutes
-
+       , NodeManager
+       , Health
        ) where
 
 import Prelude
@@ -47,6 +48,10 @@ type TimedPoPStep
     , to :: PoPName
     , rtt :: Int
     }
+
+type Health = JsonLd.HealthNode
+
+type NodeManager = JsonLd.NodeManagerStateNode
 
 type Ingest f = JsonLd.IngestStateNode f
 

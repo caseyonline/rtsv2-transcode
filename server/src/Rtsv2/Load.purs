@@ -11,8 +11,6 @@ module Rtsv2.Load
        , hasCapacityForRtmpIngest
        , hasCapacityForWebRTCIngest
        , egestClientCost
-       , launchLocalGeneric
-       , launchLocalOrRemoteGeneric
        ) where
 
 import Prelude
@@ -48,33 +46,6 @@ import Shared.Common (Milliseconds)
 import Shared.Rtsv2.Agent (Agent(..), SlotCharacteristics)
 import Shared.Rtsv2.Stream (AgentKey)
 import Shared.Rtsv2.Types (CurrentLoad(..), LocalOrRemote(..), NetworkKbps(..), Percentage(..), ResourceFailed(..), ResourceResp, Server(..), ServerLoad(..), SpecInt(..), minLoad)
-
-launchLocalGeneric :: ServerSelectionPredicate -> (Server -> Effect Boolean) -> Effect (ResourceResp Server)
-launchLocalGeneric pred launchLocal = do
-  idleServerResp <- IntraPoP.getThisIdleServer pred
-  launchResp <- launch idleServerResp
-  pure $ launchResp
-  where
-    launch (Left err) = pure (Left err)
-    launch (Right server) = do
-      resp <- launchLocal server
-      pure $ if resp then Right (Local server)
-             else Left LaunchFailed
-
-launchLocalOrRemoteGeneric :: ServerSelectionPredicate -> (Server -> Effect Boolean) -> (Server -> Effect Boolean) -> Effect (ResourceResp Server)
-launchLocalOrRemoteGeneric pred launchLocal launchRemote = do
-  idleServerResp <- IntraPoP.getIdleServer pred
-  launchResp <- launch idleServerResp
-  pure $ launchResp
-  where
-    launch :: Either ResourceFailed (LocalOrRemote Server) -> Effect (ResourceResp Server)
-    launch (Left err) = pure (Left err)
-    launch (Right resource) = do
-      resp <- launch' resource
-      pure $ if resp then Right resource
-             else Left LaunchFailed
-    launch' (Local local) = launchLocal local
-    launch' (Remote remote) = launchRemote remote
 
 hasCapacityForEgestInstance :: SlotCharacteristics -> LoadConfig -> ServerLoad -> LoadCheckResult
 hasCapacityForEgestInstance =

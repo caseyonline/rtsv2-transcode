@@ -22,9 +22,9 @@ import Rtsv2.LlnwApi as LlnwApi
 import Rtsv2.Utils (chainIntoEither)
 import Shared.Common (Url)
 import Shared.Rtsv2.LlnwApiTypes (SlotLookupResult)
-import Shared.Rtsv2.Router.Endpoint (Canary(..), Endpoint(..), makeUrl)
+import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Shared.Rtsv2.Stream (SlotId, SlotRole(..))
-import Shared.Rtsv2.Types (FailureReason, fromLocalOrRemote)
+import Shared.Rtsv2.Types (Canary(..), FailureReason, fromLocalOrRemote)
 import Stetson (StetsonHandler)
 import StetsonHelper (jsonResponse)
 

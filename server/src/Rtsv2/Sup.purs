@@ -14,6 +14,7 @@ import Rtsv2.Config as Config
 import Rtsv2.DataObject as DataObject
 import Rtsv2.Load as Load
 import Rtsv2.PoPDefinition as PoPDefinition
+import Rtsv2.NodeManager as NodeManager
 import Rtsv2.Web as Web
 
 startLink :: Effect Pinto.StartLinkResult
@@ -30,6 +31,7 @@ init = do
     # supervisorStrategy OneForOne
     # supervisorChildren
         ( popDefinition popDefinitionConfig
+          : nodeManager
           : agentSup
           : load
           : dataObject
@@ -54,6 +56,12 @@ init = do
       # childType Worker
       # childId "load"
       # childStart Load.startLink unit
+
+    nodeManager =
+      buildChild
+      # childType Worker
+      # childId "nodeManager"
+      # childStart NodeManager.startLink unit
 
     dataObject =
       buildChild

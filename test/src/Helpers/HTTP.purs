@@ -11,9 +11,9 @@ import Milkis as M
 import Milkis.Impl.Node (nodeFetch)
 import Prim.Row (class Union)
 import Shared.Rtsv2.Chaos as Chaos
-import Shared.Rtsv2.Router.Endpoint (Canary(..), Endpoint(..), makeUrlAddr)
+import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrlAddr)
 import Shared.Rtsv2.Stream (RtmpShortName, SlotId, SlotNameAndProfileName(..), SlotRole(..), RtmpStreamName, ProfileName)
-import Shared.Rtsv2.Types (CurrentLoad(..), ServerAddress(..))
+import Shared.Rtsv2.Types (Canary(..), CurrentLoad(..), ServerAddress(..))
 import Simple.JSON as SimpleJSON
 
 

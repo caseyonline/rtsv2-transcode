@@ -36,8 +36,8 @@ import Rtsv2.Utils (crashIfLeft)
 import Serf (Ip)
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.LlnwApiTypes (AuthType, PublishCredentials, SlotProfile(..), SlotPublishAuthType(..), StreamAuth, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamPublish)
-import Shared.Rtsv2.Router.Endpoint (Canary(..))
 import Shared.Rtsv2.Stream (IngestKey(..))
+import Shared.Rtsv2.Types (Canary(..))
 import SpudGun (JsonResponseError)
 import Stetson.WebSocketHandler (self)
 

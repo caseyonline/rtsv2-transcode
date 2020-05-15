@@ -14,6 +14,10 @@ import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.TransPoP as TransPoP
 import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.Load as Load
+import Rtsv2.NodeManager as NodeManager
+import Rtsv2.PoPDefinition as PoPDefinition
+import Shared.JsonLd as JsonLd
+import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Rtsv2.Types (extractAddress)
 import Simple.JSON as JSON
 import Stetson (StetsonHandler)
@@ -27,16 +31,21 @@ healthCheck =
   # Rest.yeeha
   where
     jsonHandler req state = do
+      thisServer <- PoPDefinition.getThisServer
       currentTransPoP <- IntraPoP.getCurrentTransPoPLeader
       intraPoPHealth <- IntraPoP.health
       transPoPHealth <- TransPoP.health
       load <- Load.getLoad
+      nodeManager <- NodeManager.getState
       let
-        result = {intraPoPHealth,
-                  transPoPHealth,
-                  load,
-                  currentTransPoP : maybe (wrap "") extractAddress currentTransPoP}
-      Rest.result (JSON.writeJSON result) req state
+        health = { intraPoPHealth
+                 , transPoPHealth
+                 , load
+                 , nodeManager
+                 , currentTransPoP : extractAddress <$> currentTransPoP}
+        node = JsonLd.healthNode health thisServer
+
+      Rest.result (JSON.writeJSON node) req state
 
 foreign import vmMetricsImpl :: Effect String
 

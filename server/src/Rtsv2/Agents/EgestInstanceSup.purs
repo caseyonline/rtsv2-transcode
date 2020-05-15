@@ -34,8 +34,10 @@ import Rtsv2.Load as Load
 import Rtsv2.LoadTypes (LoadCheckResult)
 import Rtsv2.LoadTypes as LoadTypes
 import Rtsv2.Names as Names
+import Rtsv2.NodeManager as NodeManager
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Utils (noprocToMaybe)
+import Shared.Rtsv2.Agent (Agent(..))
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Shared.Rtsv2.Stream (AggregatorKey(..), EgestKey(..), SlotId, SlotRole)
 import Shared.Rtsv2.Types (FailureReason(..), LocalOrRemote(..), LocationResp, Server, ServerLoad, ResourceResp, serverLoadToServer)
@@ -60,14 +62,12 @@ findEgest loadConfig slotId slotRole = do
   where
     egestKey = (EgestKey slotId slotRole)
 
-
 startLocalEgest :: LoadConfig -> CreateEgestPayload -> Effect (ResourceResp Server)
 startLocalEgest loadConfig payload@{slotCharacteristics} =
-  Load.launchLocalGeneric (Load.hasCapacityForEgestInstance slotCharacteristics loadConfig) launchLocal
+  NodeManager.launchLocalAgent Egest (Load.hasCapacityForEgestInstance slotCharacteristics loadConfig) launchLocal
   where
     launchLocal _ =
-      (maybe false (const true) <<< startOkAS) <$> startEgest payload
-
+      (note unit <<< startOkAS) <$> startEgest payload
 
 ------------------------------------------------------------------------------
 -- Supervisor callbacks
@@ -116,14 +116,14 @@ findEgest' loadConfig thisServer egestKey payload@{slotCharacteristics} = runExc
 
     createResourceAndRecurse :: Effect LocationResp
     createResourceAndRecurse = do
-      eLaunchResp <- Load.launchLocalOrRemoteGeneric (Load.hasCapacityForEgestInstance slotCharacteristics loadConfig) launchLocal launchRemote
+      eLaunchResp <- NodeManager.launchLocalOrRemoteAgent Egest (Load.hasCapacityForEgestInstance slotCharacteristics loadConfig) launchLocal launchRemote
       case eLaunchResp of
         Left error -> pure $ Left NoResource
         Right _ -> do
           findEgest' loadConfig thisServer egestKey payload
       where
         launchLocal _ = do
-          (maybe false (const true) <<< startOkAS) <$> startEgest payload
+          (note unit <<< startOkAS) <$> startEgest payload
         launchRemote remote =
           -- todo - if remote then need to sleep before recurse to allow intra-pop disemination
           either (const false) (const true) <$> SpudGun.postJson (makeUrl remote EgestE) payload

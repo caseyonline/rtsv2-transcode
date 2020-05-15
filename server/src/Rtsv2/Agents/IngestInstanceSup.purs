@@ -6,6 +6,7 @@ module Rtsv2.Agents.IngestInstanceSup
 
 import Prelude
 
+import Data.Either (note)
 import Data.Maybe (maybe)
 import Effect (Effect)
 import Erl.Data.List (nil, (:))
@@ -21,7 +22,8 @@ import Rtsv2.Config (LoadConfig)
 import Rtsv2.Load as Load
 import Rtsv2.LoadTypes (LoadCheckResult)
 import Rtsv2.Names as Names
-import Shared.Rtsv2.Agent (SlotCharacteristics)
+import Rtsv2.NodeManager as NodeManager
+import Shared.Rtsv2.Agent (Agent(..), SlotCharacteristics)
 import Shared.Rtsv2.LlnwApiTypes (StreamDetails, StreamPublish, slotDetailsToSlotCharacteristics)
 import Shared.Rtsv2.Stream (IngestKey)
 import Shared.Rtsv2.Types (ResourceResp, Server, ServerLoad)
@@ -63,10 +65,10 @@ startLocalIngest capacityFun loadConfig ingestKey streamPublish streamDetails@{s
   let
     slotCharacteristics = slotDetailsToSlotCharacteristics slot
   in
-    Load.launchLocalGeneric (capacityFun slotCharacteristics loadConfig) launchLocal
+    NodeManager.launchLocalAgent Ingest (capacityFun slotCharacteristics loadConfig) launchLocal
   where
     launchLocal _ =
-      (maybe false (const true) <<< startOk) <$> startIngest ingestKey streamPublish streamDetails remoteAddress remotePort handlerPid
+      (note unit <<< startOk) <$> startIngest ingestKey streamPublish streamDetails remoteAddress remotePort handlerPid
 
 startIngest :: IngestKey -> StreamPublish -> StreamDetails -> String -> Int -> Pid -> Effect StartChildResult
 startIngest ingestKey streamPublish streamDetails remoteAddress remotePort handlerPid = do

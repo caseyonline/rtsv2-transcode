@@ -8,7 +8,7 @@ module Rtsv2.Agents.IngestAggregatorSup
 
 import Prelude
 
-import Data.Either (either)
+import Data.Either (either, note)
 import Data.Maybe (maybe)
 import Effect (Effect)
 import Erl.Data.List (nil, (:))
@@ -24,6 +24,8 @@ import Rtsv2.Agents.IngestAggregatorInstanceSup as IngestAggregatorInstanceSup
 import Rtsv2.Config (LoadConfig)
 import Rtsv2.Load as Load
 import Rtsv2.Names as Names
+import Rtsv2.NodeManager as NodeManager
+import Shared.Rtsv2.Agent (Agent(..))
 import Shared.Rtsv2.LlnwApiTypes (slotDetailsToSlotCharacteristics)
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Shared.Rtsv2.Types (Server, ResourceResp)
@@ -43,20 +45,20 @@ startLocalAggregator loadConfig payload@{streamDetails} =
   let
     slotCharacteristics = slotDetailsToSlotCharacteristics streamDetails.slot
   in
-    Load.launchLocalGeneric (Load.hasCapacityForAggregator slotCharacteristics loadConfig) launchLocal
+    NodeManager.launchLocalAgent IngestAggregator (Load.hasCapacityForAggregator slotCharacteristics loadConfig) launchLocal
   where
     launchLocal _ = do
-      (maybe false (const true) <<< startOkAS) <$> startAggregator payload
+      (note unit <<< startOkAS) <$> startAggregator payload
 
 startLocalOrRemoteAggregator :: LoadConfig -> CreateAggregatorPayload -> Effect (ResourceResp Server)
 startLocalOrRemoteAggregator loadConfig payload@{streamDetails} =
   let
     slotCharacteristics = slotDetailsToSlotCharacteristics streamDetails.slot
   in
-    Load.launchLocalOrRemoteGeneric (Load.hasCapacityForAggregator slotCharacteristics loadConfig) launchLocal launchRemote
+    NodeManager.launchLocalOrRemoteAgent IngestAggregator (Load.hasCapacityForAggregator slotCharacteristics loadConfig) launchLocal launchRemote
   where
     launchLocal _ = do
-      (maybe false (const true) <<< startOkAS) <$> startAggregator payload
+      (note unit <<< startOkAS) <$> startAggregator payload
     launchRemote idleServer =
       either (const false) (const true) <$> SpudGun.postJson (makeUrl idleServer IngestAggregatorsE) payload
 

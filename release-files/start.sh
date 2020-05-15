@@ -17,6 +17,7 @@ export PUBLIC_IFACE
 export DISK_LOG_ROOT
 export CODE_LOADING_MODE=interactive
 export PATH=$PATH:$BINDIR
+export LD_LIBRARY_PATH=$LIBDIR/rtsv2-1.0/lib/id3as_media-1/priv
 
 mkdir -p $DISK_LOG_ROOT
 

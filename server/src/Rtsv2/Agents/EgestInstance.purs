@@ -269,14 +269,7 @@ init payload@{slotId, slotRole, aggregator, slotCharacteristics} stateServerName
             , lastOnFI: 0
             , activeProfiles: nil
             }
-  maybeRelay <- IntraPoP.whereIsStreamRelay relayKey
-  case maybeRelay of
-    Just relay ->
-      pure state
-    Nothing -> do
-      -- Optimistically attempt to launch a local relay - if it fails, our regular timer will sort it out
-      _ <- StreamRelaySup.startLocalStreamRelay loadConfig {slotId, slotRole, aggregator, slotCharacteristics}
-      pure state
+  pure state
 
 handleInfo :: Msg -> State -> Effect (CastResult State)
 handleInfo msg state@{egestKey: egestKey@(EgestKey slotId slotRole)} =

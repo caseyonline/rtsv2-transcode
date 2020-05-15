@@ -39,7 +39,6 @@ import Rtsv2.LlnwApi as LlnwApi
 import Shared.Rtsv2.Agent.State (IngestStats)
 import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.LlnwApiTypes (StreamIngestProtocol(..), StreamPublish, StreamDetails, SlotProfile(..))
-import Shared.Rtsv2.Router.Endpoint (Canary)
 import Shared.Rtsv2.Stream (IngestKey(..), ProfileName, RtmpShortName, RtmpStreamName, SlotId, SlotRole)
 import Shared.Types.Workflow.Metrics.Commmon (Stream)
 import Shared.Utils (lazyCrashIfMissing)
