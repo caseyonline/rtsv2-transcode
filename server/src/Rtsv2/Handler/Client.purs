@@ -33,7 +33,7 @@ import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Utils (cryptoStrongToken)
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Shared.Rtsv2.Stream (EgestKey(..), SlotId, SlotRole)
-import Shared.Rtsv2.Types (Server, FailureReason(..), LocalOrRemote(..), extractAddress)
+import Shared.Rtsv2.Types (Canary, FailureReason(..), LocalOrRemote(..), Server, extractAddress)
 import Stetson (HttpMethod(..), RestResult, StetsonHandler)
 import Stetson.Rest as Rest
 
@@ -41,8 +41,8 @@ newtype ClientStartState = ClientStartState { clientId :: String
                                             , egestResp :: (Either FailureReason (LocalOrRemote Server))
                                             }
 
-clientStart :: LoadConfig -> SlotId -> SlotRole -> StetsonHandler ClientStartState
-clientStart loadConfig slotId slotRole =
+clientStart :: LoadConfig -> Canary -> SlotId -> SlotRole -> StetsonHandler ClientStartState
+clientStart loadConfig canary slotId slotRole =
   Rest.handler init
   # Rest.allowedMethods (Rest.result (POST : mempty))
   # Rest.contentTypesAccepted (\req state -> Rest.result (singleton $ MimeType.json acceptAny) req state)
@@ -55,7 +55,7 @@ clientStart loadConfig slotId slotRole =
     init req = do
       clientId <- replaceAll (Pattern "/") (Replacement "_") <$> cryptoStrongToken 4
       thisServer <- PoPDefinition.getThisServer
-      egestResp <- EgestInstanceSup.findEgest loadConfig slotId slotRole
+      egestResp <- EgestInstanceSup.findEgest loadConfig canary slotId slotRole
       let
         req2 = setHeader "x-servedby" (unwrap $ extractAddress thisServer) req
                # setHeader "x-client-id" clientId
@@ -92,7 +92,7 @@ clientStart loadConfig slotId slotRole =
       case egestResp of
         Right (Remote server) ->
           let
-            url = makeUrl server (ClientStartE slotId slotRole)
+            url = makeUrl server (ClientStartE canary slotId slotRole)
           in
             Rest.result (moved $ unwrap url) req state
         _ ->

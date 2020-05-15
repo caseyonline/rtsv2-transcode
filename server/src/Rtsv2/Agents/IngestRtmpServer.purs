@@ -92,10 +92,10 @@ onConnectCallback loadConfig canary host rtmpShortName foreignQuery =
   let
     authRequest = rtmpQueryToPurs foreignQuery
   in
-    processAuthRequest loadConfig host rtmpShortName authRequest
+    processAuthRequest loadConfig canary host rtmpShortName authRequest
 
-onStreamCallback :: LoadConfig -> String -> String -> String -> String -> Int -> String -> Pid -> Foreign -> Effect Unit
-onStreamCallback loadConfig host rtmpShortNameStr username remoteAddress remotePort rtmpStreamNameStr rtmpPid publishArgs = do
+onStreamCallback :: LoadConfig -> Canary -> String -> String -> String -> String -> Int -> String -> Pid -> Foreign -> Effect Unit
+onStreamCallback loadConfig canary host rtmpShortNameStr username remoteAddress remotePort rtmpStreamNameStr rtmpPid publishArgs = do
   let
     rtmpShortName = wrap rtmpShortNameStr
     rtmpStreamName = wrap rtmpStreamNameStr
@@ -120,7 +120,7 @@ onStreamCallback loadConfig host rtmpShortNameStr username remoteAddress remoteP
           let
             ingestKey = makeIngestKey profileName streamDetails
           self <- self
-          maybeStarted <- IngestInstanceSup.startLocalRtmpIngest loadConfig ingestKey streamPublish streamDetails remoteAddress remotePort self
+          maybeStarted <- IngestInstanceSup.startLocalRtmpIngest loadConfig canary ingestKey streamPublish streamDetails remoteAddress remotePort self
           case maybeStarted of
             Right _ -> do
               startWorkflowAndBlock rtmpPid publishArgs ingestKey
@@ -136,27 +136,27 @@ onStreamCallback loadConfig host rtmpShortNameStr username remoteAddress remoteP
     makeIngestKey profileName {role, slot: {id: slotId}} =
       IngestKey slotId role profileName
 
-processAuthRequest :: LoadConfig -> String -> String -> RtmpAuthRequest -> Effect RtmpAuthResponse
-processAuthRequest _loadConfig host rtmpShortName Initial = do
+processAuthRequest :: LoadConfig -> Canary -> String -> String -> RtmpAuthRequest -> Effect RtmpAuthResponse
+processAuthRequest _loadConfig _canary host rtmpShortName Initial = do
   authType <- getStreamAuthType host rtmpShortName
   pure $ fromMaybe RejectRequest $ InitialResponse <$> authType
 
-processAuthRequest _loadConfig host rtmpShortName (AdobePhase1 {username}) = do
+processAuthRequest _loadConfig _canary host rtmpShortName (AdobePhase1 {username}) = do
   context <- IngestRtmpCrypto.newAdobeContext username
   pure $ AdobePhase1Response username context
 
-processAuthRequest _loadConfig host rtmpShortName (LlnwPhase1 {username}) = do
+processAuthRequest _loadConfig _canary host rtmpShortName (LlnwPhase1 {username}) = do
   context <- IngestRtmpCrypto.newLlnwContext username
   pure $ LlnwPhase1Response username context
 
-processAuthRequest loadConfig host rtmpShortName (AdobePhase2 authParams@{username}) =
-  processPhase2Authentication loadConfig host rtmpShortName username (AdobePhase2P authParams)
+processAuthRequest loadConfig canary host rtmpShortName (AdobePhase2 authParams@{username}) =
+  processPhase2Authentication loadConfig canary host rtmpShortName username (AdobePhase2P authParams)
 
-processAuthRequest loadConfig host rtmpShortName (LlnwPhase2 authParams@{username}) =
-  processPhase2Authentication loadConfig host rtmpShortName username (LlnwPhase2P authParams)
+processAuthRequest loadConfig canary host rtmpShortName (LlnwPhase2 authParams@{username}) =
+  processPhase2Authentication loadConfig canary host rtmpShortName username (LlnwPhase2P authParams)
 
-processPhase2Authentication :: LoadConfig -> String -> String -> String -> Phase2Params -> Effect RtmpAuthResponse
-processPhase2Authentication loadConfig host rtmpShortName username authParams = do
+processPhase2Authentication :: LoadConfig -> Canary -> String -> String -> String -> Phase2Params -> Effect RtmpAuthResponse
+processPhase2Authentication loadConfig canary host rtmpShortName username authParams = do
   let
     authType = case authParams of
                  AdobePhase2P _ -> Adobe
@@ -167,7 +167,7 @@ processPhase2Authentication loadConfig host rtmpShortName username authParams = 
       pure RejectRequest
     Just publishCredentials -> do
       ok <- checkCredentials host rtmpShortName username publishCredentials authParams
-      if ok then pure $ AcceptRequest (mkFn5 (onStreamCallback loadConfig host rtmpShortName username))
+      if ok then pure $ AcceptRequest (mkFn5 (onStreamCallback loadConfig canary host rtmpShortName username))
       else pure RejectRequest
 
 startWorkflowAndBlock :: Pid -> Foreign -> IngestKey -> Effect Unit

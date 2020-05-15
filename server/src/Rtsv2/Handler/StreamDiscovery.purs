@@ -79,7 +79,7 @@ discover loadConfig canary accountName streamName =
                      Live -> ClientPlayerControlE slot.id role
                      Canary -> CanaryClientPlayerControlE slot.id role
       in
-        EgestInstanceSup.findEgest loadConfig slot.id role <#> map ( fromLocalOrRemote >>> ((flip makeUrl) endpoint))
+        EgestInstanceSup.findEgest loadConfig canary slot.id role <#> map ( fromLocalOrRemote >>> ((flip makeUrl) endpoint))
 
 
 --------------------------------------------------------------------------------

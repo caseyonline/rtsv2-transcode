@@ -66,7 +66,7 @@ import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Rtsv2.LlnwApiTypes (StreamIngestProtocol(..))
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeWsUrl)
 import Shared.Rtsv2.Stream (AggregatorKey(..), EgestKey(..), ProfileName, RelayKey(..), SlotId, SlotRole, egestKeyToAgentKey)
-import Shared.Rtsv2.Types (EgestServer(..), FailureReason(..), LocalOrRemote(..), RegistrationResp, RelayServer, ResourceResp, Server, extractAddress)
+import Shared.Rtsv2.Types (Canary(..), EgestServer(..), FailureReason(..), LocalOrRemote(..), RegistrationResp, RelayServer, ResourceResp, Server, extractAddress)
 import WsGun as WsGun
 
 foreign import startEgestReceiverFFI :: EgestKey -> MediaGatewayFlag -> Effect Int
@@ -78,6 +78,7 @@ foreign import getSlotConfigurationFFI :: EgestKey -> Effect (Maybe SlotConfigur
 type CreateEgestPayload
   = { slotId :: SlotId
     , slotRole :: SlotRole
+    , canary :: Canary
     , aggregator :: Server
     , slotCharacteristics :: SlotCharacteristics
     }
@@ -90,6 +91,7 @@ type CachedState = WebSocket
 
 type State
   = { egestKey :: EgestKey
+    , canary :: Canary
     , aggregator :: Server
     , slotCharacteristics :: SlotCharacteristics
     , loadConfig :: LoadConfig
@@ -219,7 +221,7 @@ toEgestServer :: Server -> EgestServer
 toEgestServer = unwrap >>> wrap
 
 init :: CreateEgestPayload -> StateServerName -> Effect State
-init payload@{slotId, slotRole, aggregator, slotCharacteristics} stateServerName = do
+init payload@{slotId, slotRole, canary, aggregator, slotCharacteristics} stateServerName = do
   { eqLogIntervalMs
     , lingerTimeMs
     , relayCreationRetryMs
@@ -254,6 +256,7 @@ init payload@{slotId, slotRole, aggregator, slotCharacteristics} stateServerName
   Gen.registerExternalMapping (serverName egestKey) (\m -> Gun <$> (WsGun.messageMapper m))
   let
     state = { egestKey
+            , canary
             , aggregator
             , slotCharacteristics
             , loadConfig
@@ -485,13 +488,13 @@ findOrStartRelayForStream :: State -> Effect (ResourceResp Server)
 findOrStartRelayForStream state@{ egestKey: EgestKey slotId slotRole
                                 , thisServer
                                 , aggregator
+                                , canary
                                 , slotCharacteristics
                                 , loadConfig} = do
   mRelay <- IntraPoP.whereIsStreamRelayWithLocalOrRemote $ RelayKey slotId slotRole
   maybe' (\_ -> StreamRelaySup.startLocalOrRemoteStreamRelay loadConfig payload) (pure <<< Right) mRelay
   where
-    payload = {slotId, slotRole, aggregator, slotCharacteristics}
-
+    payload = {slotId, slotRole, canary, aggregator, slotCharacteristics}
 
 toRelayServer :: forall a b. Newtype a b => Newtype RelayServer b => a -> RelayServer
 toRelayServer = unwrap >>> wrap

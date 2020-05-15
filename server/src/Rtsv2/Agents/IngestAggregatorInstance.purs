@@ -101,7 +101,7 @@ import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Rtsv2.LlnwApiTypes (HlsPushAuth, HlsPushProtocol, HlsPushSpecFormat, SlotProfile(..), StreamDetails, slotDetailsToSlotCharacteristics)
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrlAddr, makeWsUrl)
 import Shared.Rtsv2.Stream (AggregatorKey(..), IngestKey(..), ProfileName, RtmpShortName, SlotId, SlotRole(..), ingestKeyToAggregatorKey)
-import Shared.Rtsv2.Types (DeliverTo, RelayServer, Server, ServerAddress, extractAddress)
+import Shared.Rtsv2.Types (Canary(..), DeliverTo, RelayServer, Server, ServerAddress, extractAddress)
 import WsGun as WsGun
 
 foreign import data WorkflowHandle :: Type
@@ -117,6 +117,7 @@ foreign import workflowMessageMapperImpl :: Foreign -> Maybe WorkflowMsg
 type CreateAggregatorPayload
   = { shortName :: RtmpShortName
     , streamDetails :: StreamDetails
+    , canary :: Canary
     }
 
 type PrimaryToBackupWebsocket = WsGun.WebSocket AggregatorPrimaryToBackupWsMessage AggregatorBackupToPrimaryWsMessage

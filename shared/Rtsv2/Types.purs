@@ -158,6 +158,7 @@ type ResourceResp a = Either ResourceFailed (LocalOrRemote a)
 
 data ResourceFailed = NoCapacity
                     | LaunchFailed
+                    | InvalidCanaryState
 
 type RegistrationResp = (Either FailureReason Unit)
 

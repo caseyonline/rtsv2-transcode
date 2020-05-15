@@ -17,9 +17,8 @@ import Helpers.Functions as F
 import Helpers.HTTP as HTTP
 import Helpers.Log (as, as', asT, asT')
 import Shared.Rtsv2.Stream (SlotRole(..))
-import Shared.Rtsv2.Types (CurrentLoad(..))
+import Shared.Rtsv2.Types (CurrentLoad(..), Canary(..))
 import Test.Spec (SpecT, after_, before_, describe, it)
-
 
 -------------------------------------------------------------------------------
 -- Main
@@ -43,12 +42,12 @@ nodes = [E.p1n1]
 loadTest1 :: forall m. Monad m => SpecT Aff Unit m Unit
 loadTest1 =
   it "6.1 Launch ingest, launch egest, observe load decay on egest node" do
-    HTTP.ingestStart E.p1n1 E.shortName1 E.lowStreamName >>= A.assertStatusCode 200 >>= as  "create ingest"
+    HTTP.ingestStart E.p1n1 Live E.shortName1 E.lowStreamName >>= A.assertStatusCode 200 >>= as  "create ingest"
     E.waitForAsyncProfileStart                                            >>= as' "wait for async start of profile"
     HTTP.getLoad E.p1n1                        >>= A.assertStatusCode 200
                                                >>= A.assertLoadEqual (CurrentLoad {cpu: wrap 0.0, network: wrap 0})
                                                                           >>= as "check load is zero"
-    HTTP.clientStart E.p1n1 E.slot1            >>= A.assertStatusCode 204 >>= as  "start egest"
+    HTTP.clientStart E.p1n1 Live E.slot1       >>= A.assertStatusCode 204 >>= as  "start egest"
     E.waitForAsyncProfileStart                                            >>= as' "wait for async start of profile"
     HTTP.getLoad E.p1n1                        >>= A.assertStatusCode 200
                                                >>= A.assertLoadGreaterThan (CurrentLoad {cpu: wrap 0.3, network: wrap 100000})

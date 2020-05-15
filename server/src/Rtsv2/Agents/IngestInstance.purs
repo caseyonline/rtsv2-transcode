@@ -54,7 +54,7 @@ import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Rtsv2.LlnwApiTypes (StreamDetails, StreamPublish(..))
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeWsUrl)
 import Shared.Rtsv2.Stream (AggregatorKey, IngestKey(..), ingestKeyToAggregatorKey)
-import Shared.Rtsv2.Types (Server, LocalOrRemote(..), ResourceResp, fromLocalOrRemote, extractAddress)
+import Shared.Rtsv2.Types (Canary, LocalOrRemote(..), ResourceResp, Server, extractAddress, fromLocalOrRemote)
 import Shared.Types.Media.Types.Rtmp (RtmpClientMetadata)
 import Shared.Types.Media.Types.SourceDetails (SourceInfo)
 import WsGun as WsGun
@@ -84,6 +84,7 @@ type StateServerName = CachedInstanceState.StateServerName CachedState
 
 type State
   = { thisServer :: Server
+    , canary :: Canary
     , aggregatorRetryTime :: Milliseconds
     , ingestKey :: IngestKey
     , loadConfig :: Config.LoadConfig
@@ -104,6 +105,7 @@ type StartArgs
   = { streamPublish :: StreamPublish
     , streamDetails :: StreamDetails
     , ingestKey :: IngestKey
+    , canary :: Canary
     , remoteAddress :: String
     , remotePort :: Int
     , handlerPid :: Pid
@@ -179,6 +181,7 @@ dataObjectUpdate ingestKey updateMsg =
 init :: StartArgs -> StateServerName -> Effect State
 init { streamPublish
      , streamDetails
+     , canary
      , ingestKey
      , remoteAddress
      , remotePort
@@ -200,6 +203,7 @@ init { streamPublish
   pure { thisServer
        , streamPublish
        , streamDetails
+       , canary
        , loadConfig
        , ingestKey
        , aggregatorRetryTime: wrap $ toNumber aggregatorRetryTimeMs
@@ -332,6 +336,7 @@ informAggregator :: State -> Effect State
 informAggregator state@{ streamDetails
                        , streamPublish: StreamPublish {rtmpShortName}
                        , ingestKey: ingestKey@(IngestKey slotId slotRole profileName)
+                       , canary
                        , thisServer
                        , aggregatorRetryTime
                        , stateServerName
@@ -363,7 +368,7 @@ informAggregator state@{ streamDetails
         Just server ->
           pure $ Right $ Local server
         Nothing ->
-          IngestAggregatorSup.startLocalOrRemoteAggregator loadConfig {shortName: rtmpShortName, streamDetails}
+          IngestAggregatorSup.startLocalOrRemoteAggregator loadConfig {shortName: rtmpShortName, streamDetails, canary}
 
 handleAggregatorExit :: AggregatorKey -> Server -> State -> Effect State
 handleAggregatorExit exitedAggregatorKey exitedAggregatorAddr state@{ingestKey, aggregatorRetryTime, aggregatorWebSocket: mWebSocket}

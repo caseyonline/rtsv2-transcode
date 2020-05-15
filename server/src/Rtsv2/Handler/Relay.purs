@@ -130,6 +130,9 @@ ensureStarted loadConfig =
           --TODO - don't think this should be a 502
           newReq <- replyWithoutBody (StatusCode 502) Map.empty req
           Rest.stop newReq state
+        Left InvalidCanaryState -> do
+          newReq <- replyWithoutBody (StatusCode 409) Map.empty req
+          Rest.stop newReq state
         Right (Local _)  ->
           Rest.result true req state
         Right (Remote _) ->

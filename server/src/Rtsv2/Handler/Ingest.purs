@@ -40,6 +40,7 @@ import Shared.Rtsv2.Agent.State (IngestStats)
 import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.LlnwApiTypes (StreamIngestProtocol(..), StreamPublish, StreamDetails, SlotProfile(..))
 import Shared.Rtsv2.Stream (IngestKey(..), ProfileName, RtmpShortName, RtmpStreamName, SlotId, SlotRole)
+import Shared.Rtsv2.Types (Canary(..))
 import Shared.Types.Workflow.Metrics.Commmon (Stream)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (writeJSON)
@@ -189,8 +190,8 @@ type IngestStartState = { streamDetails :: Maybe StreamDetails
                         , streamPublish :: Maybe StreamPublish
                         }
 
-ingestStart :: LoadConfig -> RtmpShortName -> RtmpStreamName -> StetsonHandler IngestStartState
-ingestStart loadConfig shortName streamName =
+ingestStart :: LoadConfig -> Canary -> RtmpShortName -> RtmpStreamName -> StetsonHandler IngestStartState
+ingestStart loadConfig canary shortName streamName =
   Rest.handler (\req ->
                  Rest.initResult req { streamDetails: Nothing
                                      , streamPublish: Nothing
@@ -227,7 +228,7 @@ ingestStart loadConfig shortName streamName =
                                                                          (SlotProfile { name: profileName }) = findProfile
                                                                          ingestKey = IngestKey streamDetails.slot.id streamDetails.role profileName
                                                                        pid <- startFakeIngest ingestKey
-                                                                       maybeStarted <- IngestInstanceSup.startLocalRtmpIngest loadConfig ingestKey streamPublish streamDetails "127.0.0.1" 0 pid
+                                                                       maybeStarted <- IngestInstanceSup.startLocalRtmpIngest loadConfig canary ingestKey streamPublish streamDetails "127.0.0.1" 0 pid
                                                                        _ <- logInfo "IngestInstanceSup returned" {maybeStarted}
                                                                        case maybeStarted of
                                                                          Right _ ->

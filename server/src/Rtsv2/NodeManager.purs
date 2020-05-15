@@ -97,17 +97,18 @@ changeRunState newRunState =
       IntraPoP.announceAcceptingRequests $ acceptingRequests state
       pure $ CallReply (Right unit) state2
 
-launchLocalAgent :: Agent -> ServerSelectionPredicate -> (Server -> Effect (Either Unit Pid)) -> Effect (ResourceResp Server)
-launchLocalAgent agent pred launchLocalFun = do
+launchLocalAgent :: Agent -> Canary -> ServerSelectionPredicate -> (Server -> Effect (Either Unit Pid)) -> Effect (ResourceResp Server)
+launchLocalAgent agent canary pred launchLocalFun = do
   idleServerResp <- IntraPoP.getThisIdleServer pred
-  chainEither (launchAndUpdateState agent launchLocalFun) idleServerResp
+  chainEither (launchAndUpdateState agent canary launchLocalFun) idleServerResp
 
-launchLocalOrRemoteAgent :: Agent -> ServerSelectionPredicate -> (Server -> Effect (Either Unit Pid)) -> (Server -> Effect Boolean) -> Effect (ResourceResp Server)
-launchLocalOrRemoteAgent agent pred launchLocalFun launchRemoteFun = do
+launchLocalOrRemoteAgent :: Agent -> Canary -> ServerSelectionPredicate -> (Server -> Effect (Either Unit Pid)) -> (Server -> Effect Boolean) -> Effect (ResourceResp Server)
+launchLocalOrRemoteAgent agent Canary pred launchLocalFun launchRemoteFun = launchLocalAgent agent Canary pred launchLocalFun
+launchLocalOrRemoteAgent agent Live pred launchLocalFun launchRemoteFun = do
   idleServerResp <- IntraPoP.getIdleServer pred
   chainEither launch idleServerResp
   where
-    launch (Local thisServer) = launchAndUpdateState agent launchLocalFun thisServer
+    launch (Local thisServer) = launchAndUpdateState agent Live launchLocalFun thisServer
     launch (Remote remote) = do
       resp <- launchRemoteFun remote
       pure $ if resp then Right (Remote remote)
@@ -152,8 +153,8 @@ acceptingRequests :: State -> AcceptingRequests
 acceptingRequests { currentRunState } =
   wrap $ currentRunState == Active
 
-launchAndUpdateState :: Agent -> (Server -> Effect (Either Unit Pid)) -> Server -> Effect (ResourceResp Server)
-launchAndUpdateState agent launchFun thisServer =
+launchAndUpdateState :: Agent -> Canary -> (Server -> Effect (Either Unit Pid)) -> Server -> Effect (ResourceResp Server)
+launchAndUpdateState agent canary launchFun thisServer =
   Gen.doCall serverName
   (\state@{agentCounts} ->  do
       launchResp <- launchFun thisServer

@@ -223,7 +223,7 @@ init args = do
       unsafeToForeign { mode: (atom "egest")
                       , canary
                       , make_egest_key: makeEgestKey
-                      , start_stream: startStream loadConfig
+                      , start_stream: startStream loadConfig canary
                       , add_client: mkFn2 addClient
                       , get_slot_configuration: EgestInstance.getSlotConfiguration
                       , data_object_send_message: EgestInstance.dataObjectSendMessage
@@ -235,8 +235,7 @@ init args = do
                       }
 
     ingestControlArgs thisServer loadConfig canary =
-      unsafeToForeign { canary
-                      , authenticate: mkFn7 $ IngestWebRTCIngestHandler.authenticate loadConfig (unwrap $ extractAddress thisServer)
+      unsafeToForeign { authenticate: mkFn7 $ IngestWebRTCIngestHandler.authenticate loadConfig canary (unwrap $ extractAddress thisServer)
                       }
 
     slotIdBinding = ":slot_id"
@@ -270,9 +269,9 @@ init args = do
     slotIdStringToSlotId slotIdStr =
       wrap $ fromMaybe UUID.empty (fromString slotIdStr)
 
-    startStream :: Config.LoadConfig -> EgestKey -> Effect LocationResp
-    startStream loadConfig (EgestKey slotId slotRole) =
-        EgestInstanceSup.findEgest loadConfig slotId slotRole
+    startStream :: Config.LoadConfig -> Canary -> EgestKey -> Effect LocationResp
+    startStream loadConfig canary (EgestKey slotId slotRole) =
+        EgestInstanceSup.findEgest loadConfig canary slotId slotRole
 
     addClient :: Pid -> EgestKey -> Effect RegistrationResp
     addClient pid egestKey =
