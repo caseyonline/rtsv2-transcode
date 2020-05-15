@@ -46,7 +46,14 @@ startEgestReceiverFFI(EgestKey, UseMediaGateway) ->
 
 stopEgestFFI(EgestKey) ->
   fun() ->
-      _ = webrtc_stream_server:stop(EgestKey)
+      try
+        _ = webrtc_stream_server:stop(EgestKey)
+      catch
+        C:R ->
+          ?SLOG_INFO("Error when closing webrtc_stream_server", #{class => C
+                                                                 , reason => R})
+      end,
+      unit
   end.
 
 getStatsFFI(EgestKey) ->

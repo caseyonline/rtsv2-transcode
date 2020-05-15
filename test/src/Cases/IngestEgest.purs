@@ -13,7 +13,7 @@ import Helpers.HTTP as HTTP
 import Helpers.Env as E
 import Helpers.Functions (startSession, launch, stopSession, launch', forceGetState, storeHeader, getStateValue)
 import Helpers.Log (as, as', asT)
-import Test.Spec (SpecT, after_, before_, describe, it)
+import Test.Spec (SpecT, after_, before_, describe, it, itOnly)
 
 
 
@@ -77,11 +77,11 @@ onePoPSetup = do
             (lift $ HTTP.clientStart E.p1n2 E.slot1           >>= A.assertStatusCode 204
                                                               >>= A.assertHeader (Tuple "x-servedby" "172.16.169.2"))
                                                               >>= storeHeader "x-client-id" "clientId3"
-                                                              >>= asT "E.p1n2 stays on node2"
+                                                              >>= asT "egest stays on node2"
             (lift $ HTTP.clientStart E.p1n3 E.slot1           >>= A.assertStatusCode 204
                                                               >>= A.assertHeader (Tuple "x-servedby" "172.16.169.2"))
                                                               >>= storeHeader "x-client-id" "clientId4"
-                                                              >>= asT "E.p1n3 egest still redirects to E.p1n2"
+                                                              >>= asT "egest still redirects to E.p1n2"
             lift $ HTTP.getEgestStats E.p1n2 E.slot1          >>= A.assertStatusCode 200
                                                               >>= A.assertEgestClients 4 >>= as "agent now has 4 clients"
             lift $ HTTP.getEgestStats   E.p1n3 E.slot1        >>= A.assertStatusCode 404 >>= as "still no egest on node3"
