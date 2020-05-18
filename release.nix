@@ -18,7 +18,7 @@ let
     builtins.fetchGit {
       name = "id3as-oxidized-packages";
       url = "git@github.com:id3as/oxidized.git";
-      rev = "1004b96c85a740ea6dc8c0b4f9201fa8bcdfd3a2";
+      rev = "ea8549ad974a34e20f704e76d8d6551b03125cf6";
     };
 
   nixpkgs =
@@ -51,6 +51,10 @@ stdenv.mkDerivation rec {
     wrapProgram \
       $out/bin/start_iserf.sh \
       --prefix PATH : ${lib.makeBinPath [ serfdom ]}
+
+    wrapProgram \
+      $out/lib/rtsv2-*/priv/scripts/runMediaGateway.sh \
+      --prefix PATH : ${lib.makeBinPath [ rtsv2-media-gateway ]}
   '';
 
   buildInputs = [
