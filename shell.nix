@@ -35,7 +35,7 @@ let
     builtins.fetchGit {
       name = "id3as-oxidized-packages";
       url = "git@github.com:id3as/oxidized.git";
-      rev = "67cb7fa6b61cc0d0e1fa17f0ffb3c2aafe351a94";
+      rev = "1004b96c85a740ea6dc8c0b4f9201fa8bcdfd3a2";
     };
 
   etwasPackages =

@@ -342,4 +342,19 @@ read_block(Socket, #read_block{ remaining_len = RemainingLen, builder = Builder 
   end.
 
 event_to_record(#{ <<"kind">> := <<"synchronization_established">> }, #{ <<"rtp_timestamp">> := RTPTimestamp }) ->
-  #media_gateway_client_synchronization_established_event{ rtp_timestamp = RTPTimestamp }.
+  #media_gateway_client_synchronization_established_event{ rtp_timestamp = RTPTimestamp };
+
+event_to_record(#{ <<"kind">> := <<"subscription_switched">> }, #{ <<"audio_ssrc">> := AudioSSRC, <<"video_ssrc">> := VideoSSRC }) ->
+  #media_gateway_client_subscription_switched_event{ audio_ssrc = AudioSSRC, video_ssrc = VideoSSRC };
+
+event_to_record(#{ <<"kind">> := <<"statistics_updated">> },
+                #{ <<"audio_packets_sent">> := AudioPacketsSent
+                 , <<"audio_octets_sent">> := AudioOctetsSent
+                 , <<"video_packets_sent">> := VideoPacketsSent
+                 , <<"video_octets_sent">> := VideoOctetsSent
+                 }) ->
+  #media_gateway_client_statistics_updated_event{ audio_packets_sent = AudioPacketsSent
+                                                , audio_octets_sent = AudioOctetsSent
+                                                , video_packets_sent = VideoPacketsSent
+                                                , video_octets_sent = VideoOctetsSent
+                                                }.

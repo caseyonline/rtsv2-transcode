@@ -59,6 +59,9 @@
 
         , start_options :: webrtc_stream_server:start_options()
         , profiles :: list(rtsv2_slot_configuration:slot_profile())
+
+        , last_stats_event :: undefined | media_gateway_client_statistics_updated_event()
+        , last_stats_received_at :: undefined | non_neg_integer()
         }).
 
 
@@ -385,7 +388,7 @@ websocket_info({egestCurrentActiveProfiles, ActiveProfiles}, State) ->
   , State
   };
 
-websocket_info(#media_gateway_event{ details = Event }, State) ->
+websocket_info(#media_gateway_event{ details = Event }, #?state_running{ profiles = Profiles } = State) ->
   case Event of
     #media_gateway_client_synchronization_established_event{ rtp_timestamp = RTPTimestamp } ->
       { [ json_frame( <<"time-zero">>,
@@ -394,6 +397,36 @@ websocket_info(#media_gateway_event{ details = Event }, State) ->
                     )
         ]
       , State
+      };
+
+    #media_gateway_client_subscription_switched_event{ audio_ssrc = AudioSSRC, video_ssrc = VideoSSRC } ->
+
+      MatchingProfile = lists:search(fun(#{ firstAudioSSRC := AudioSSRCMatch, firstVideoSSRC := VideoSSRCMatch}) ->
+                                         AudioSSRC =:= AudioSSRCMatch andalso
+                                           VideoSSRC =:= VideoSSRCMatch
+                                     end,
+                                     Profiles
+                                    ),
+
+      case MatchingProfile of
+        false ->
+          ?ERROR("Received notice of switch to profile with audio SSRC ~p and video SSRC ~p, but no matching profile was found.", [AudioSSRC, VideoSSRC]),
+          {ok, State};
+
+        {value, #{ profileName := ProfileName }} ->
+
+          { [ json_frame( <<"quality-change">>,
+                          #{ <<"activeVariant">> => ProfileName }
+                        ) ]
+          , State
+          }
+      end;
+
+    #media_gateway_client_statistics_updated_event{} = Stats ->
+      { ok
+      , State#?state_running{ last_stats_event = Stats
+                            , last_stats_received_at = ?vm_now_ms
+                            }
       };
 
     _Other ->

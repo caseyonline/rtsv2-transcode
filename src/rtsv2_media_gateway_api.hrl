@@ -30,6 +30,23 @@
         }).
 -type media_gateway_client_synchronization_established_event() :: #media_gateway_client_synchronization_established_event{}.
 
--type media_gateway_event_details() :: media_gateway_client_synchronization_established_event().
+-record(media_gateway_client_subscription_switched_event,
+        { audio_ssrc :: rtp:ssrc()
+        , video_ssrc :: rtp:ssrc()
+        }).
+-type media_gateway_client_subscription_switched_event() :: #media_gateway_client_subscription_switched_event{}.
+
+-record(media_gateway_client_statistics_updated_event,
+        { audio_packets_sent :: non_neg_integer()
+        , audio_octets_sent :: non_neg_integer()
+        , video_packets_sent :: non_neg_integer()
+        , video_octets_sent :: non_neg_integer()
+        }).
+-type media_gateway_client_statistics_updated_event() :: #media_gateway_client_statistics_updated_event{}.
+
+-type media_gateway_event_details() ::
+        media_gateway_client_synchronization_established_event()
+      | media_gateway_client_subscription_switched_event()
+      | media_gateway_client_statistics_updated_event().
 
 -endif.
