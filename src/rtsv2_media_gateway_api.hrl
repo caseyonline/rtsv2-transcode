@@ -30,6 +30,12 @@
         }).
 -type media_gateway_client_synchronization_established_event() :: #media_gateway_client_synchronization_established_event{}.
 
--type media_gateway_event_details() :: media_gateway_client_synchronization_established_event().
+-record(media_gateway_client_subscription_switched_event,
+        { audio_ssrc :: rtp:ssrc()
+        , video_ssrc :: rtp:ssrc()
+        }).
+-type media_gateway_client_subscription_switched_event() :: #media_gateway_client_subscription_switched_event{}.
+
+-type media_gateway_event_details() :: media_gateway_client_synchronization_established_event() | media_gateway_client_subscription_switched_event().
 
 -endif.

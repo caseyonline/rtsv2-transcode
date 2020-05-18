@@ -385,7 +385,7 @@ websocket_info({egestCurrentActiveProfiles, ActiveProfiles}, State) ->
   , State
   };
 
-websocket_info(#media_gateway_event{ details = Event }, State) ->
+websocket_info(#media_gateway_event{ details = Event }, #?state_running{ profiles = Profiles } = State) ->
   case Event of
     #media_gateway_client_synchronization_established_event{ rtp_timestamp = RTPTimestamp } ->
       { [ json_frame( <<"time-zero">>,
@@ -395,6 +395,29 @@ websocket_info(#media_gateway_event{ details = Event }, State) ->
         ]
       , State
       };
+
+    #media_gateway_client_subscription_switched_event{ audio_ssrc = AudioSSRC, video_ssrc = VideoSSRC } ->
+
+      MatchingProfile = lists:search(fun(#{ firstAudioSSRC := AudioSSRCMatch, firstVideoSSRC := VideoSSRCMatch}) ->
+                                         AudioSSRC =:= AudioSSRCMatch andalso
+                                           VideoSSRC =:= VideoSSRCMatch
+                                     end,
+                                     Profiles
+                                    ),
+
+      case MatchingProfile of
+        false ->
+          ?ERROR("Received notice of switch to profile with audio SSRC ~p and video SSRC ~p, but no matching profile was found.", [AudioSSRC, VideoSSRC]),
+          {ok, State};
+
+        {value, #{ profileName := ProfileName }} ->
+
+          { [ json_frame( <<"quality-change">>,
+                          #{ <<"activeVariant">> => ProfileName }
+                        ) ]
+          , State
+          }
+      end;
 
     _Other ->
       ?WARNING("Unhandled media gateway event: ~p", [Event]),
