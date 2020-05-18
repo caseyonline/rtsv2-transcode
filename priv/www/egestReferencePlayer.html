@@ -48,24 +48,24 @@
         display: flex;
         flex-direction: column;
       }
-      .message--mine {
+      .msg_sent {
         align-items: flex-end;
       }
-      .message--theirs {
+      .msg_received {
         align-items: flex-start;
       }
-      .message__name {
+      .msg_name {
         padding: 10px 0;
       }
-      .message__bubble {
+      .msg_bubble {
         padding: 20px;
         border-radius: 3px;
       }
-      .message--theirs .message__bubble {
+      .msg_received .msg_bubble {
         background: #6363bf;
         color: white;
       }
-      .message--mine .message__bubble {
+      .msg_sent .msg_bubble {
         background: rgba(156, 172, 172, 0.2);
       }
       .footer {
@@ -127,8 +127,8 @@
         </form>
         <template data-template="message">
           <div class="message">
-            <div class="message__name"></div>
-            <div class="message__bubble"></div>
+            <div class="msg_name"></div>
+            <div class="msg_bubble"></div>
           </div>
         </template>
       </div>
@@ -165,17 +165,17 @@
 
         function insertMessageToDOM(message, isFromMe) {
           const template = document.querySelector('template[data-template="message"]');
-          const nameEl = template.content.querySelector('.message__name');
+          const nameEl = template.content.querySelector('.msg_name');
 
           nameEl.innerText = message.sender;
 
-          template.content.querySelector('.message__bubble').innerText = message.msg;
+          template.content.querySelector('.msg_bubble').innerText = message.msg;
           const clone = document.importNode(template.content, true);
           const messageEl = clone.querySelector('.message');
           if (isFromMe) {
-            messageEl.classList.add('message--mine');
+            messageEl.classList.add('msg_sent');
           } else {
-            messageEl.classList.add('message--theirs');
+            messageEl.classList.add('msg_received');
           }
 
           const messagesEl = document.querySelector('.messages');

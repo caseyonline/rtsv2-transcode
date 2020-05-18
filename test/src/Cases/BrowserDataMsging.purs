@@ -15,7 +15,7 @@ import Helpers.Log as L
 import Helpers.Types (Node)
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Shared.Rtsv2.Stream (SlotRole(..), RtmpShortName, RtmpStreamName, SlotId)
-import Test.Spec (SpecT, describe, describeOnly, it, before_, after_)
+import Test.Spec (SpecT, describe, it, before_, after_)
 import Test.Unit.Assert as Assert
 import Toppokki as T
 
@@ -34,7 +34,7 @@ options =
 -------------------------------------------------------------------------------
 browserDataMsging :: forall m. Monad m => SpecT Aff Unit m Unit
 browserDataMsging =
-  describeOnly "WebRTC browser tests" do
+  describe "WebRTC browser tests" do
     ingestStream -- 5.3
 
 -------------------------------------------------------------------------------
@@ -61,21 +61,26 @@ ingestStream =
 
           T.goto (F.mkPlayerUrl Env.p1n1 E.slot1 Primary) page1
           T.goto (F.mkPlayerUrl Env.p1n2 E.slot1 Primary) page2
-          _ <- delay (Milliseconds 1000.00) >>= L.as' "wait for webRTC connection"
+          _ <- delay (Milliseconds 3000.00) >>= L.as' "wait for webRTC connection"
 
-          traceId1 <- F.getInnerText "#traceId" page1
-          traceId2 <- F.getInnerText "#traceId" page2
+          -- traceIds aren't showing on UI in tests
+          -- traceId1 <- F.getInnerText "#traceId" page1
+          -- traceId2 <- F.getInnerText "#traceId" page2
 
+          T.focus (T.Selector "input#msginput") page2
+          T.keyboardSendCharacter "Hello World" page2
+          T.click (T.Selector "button#msgsend") page2
+
+          _ <- delay (Milliseconds 250.00) >>= L.as' "wait message to send"
+          -- need to change page
+          T.bringToFront page1
           T.focus (T.Selector "input#msginput") page1
-          T.keyboardSendCharacter "Hello World" page1
-
+          T.keyboardSendCharacter "Oh hi World" page1
           T.click (T.Selector "button#msgsend") page1
 
-          frames2 <- F.getInnerText "#frames" page1
-          packets2 <- F.getInnerText "#packets" page1
+          msgSentTraceId <- F.getInnerText "div.message.msg_sent > div.msg_name" page2
+          msgReceivedTraceId <- F.getInnerText "div.message.msg_received > div.msg_name" page1
 
-          let frameDiff = F.stringToInt frames2
 
-          Assert.assert "frames aren't increasing" (frameDiff > 70) >>= L.as' ("frames increased by: " <> show frameDiff)
-          Assert.assert "packets aren't increasing" (9 < 10) >>= L.as' ("packets are increasing: " <> packets2 <> " > ")
+          Assert.assert "Same sent and received TraceIds" (msgSentTraceId == msgReceivedTraceId) >>= L.as' ("Sent: " <> show msgSentTraceId <> " Received: " <> msgReceivedTraceId )
           T.close browser1
