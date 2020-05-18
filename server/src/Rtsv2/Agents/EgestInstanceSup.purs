@@ -13,7 +13,7 @@ import Control.Monad.Except (ExceptT(..), runExceptT)
 import Data.Bifunctor (lmap)
 import Data.Either (Either(..), either, note)
 import Data.Filterable (filterMap)
-import Data.Maybe (Maybe(..), maybe)
+import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Erl.Atom (Atom)
@@ -34,11 +34,13 @@ import Rtsv2.Load as Load
 import Rtsv2.LoadTypes (LoadCheckResult)
 import Rtsv2.LoadTypes as LoadTypes
 import Rtsv2.Names as Names
+import Rtsv2.NodeManager as NodeManager
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Utils (noprocToMaybe)
+import Shared.Rtsv2.Agent (Agent(..))
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Shared.Rtsv2.Stream (AggregatorKey(..), EgestKey(..), SlotId, SlotRole)
-import Shared.Rtsv2.Types (FailureReason(..), LocalOrRemote(..), LocationResp, Server, ServerLoad, ResourceResp, serverLoadToServer)
+import Shared.Rtsv2.Types (Canary(..), FailureReason(..), LocalOrRemote(..), LocationResp, ResourceResp, Server, ServerLoad, serverLoadToServer)
 import SpudGun as SpudGun
 
 ------------------------------------------------------------------------------
@@ -50,24 +52,29 @@ isAgentAvailable = Pinto.isRegistered serverName
 startLink :: forall a. a -> Effect Pinto.StartLinkResult
 startLink _ = Sup.startLink serverName init
 
-findEgest :: LoadConfig -> SlotId -> SlotRole -> Effect LocationResp
-findEgest loadConfig slotId slotRole = do
-  thisServer <- PoPDefinition.getThisServer
-  mIngestAggregator <- IntraPoP.whereIsIngestAggregatorWithPayload (AggregatorKey slotId slotRole)
-  case mIngestAggregator of
-    Nothing ->  pure $ Left NotFound
-    Just {payload: slotCharacteristics, server: aggregator} -> findEgest' loadConfig thisServer egestKey {slotId, slotRole, aggregator, slotCharacteristics}
+findEgest :: LoadConfig -> Canary -> SlotId -> SlotRole -> Effect LocationResp
+findEgest loadConfig canary slotId slotRole =
+  mapResponse
+  <$> (NodeManager.runIfValidCanaryState canary $ do
+        thisServer <- PoPDefinition.getThisServer
+        mIngestAggregator <- IntraPoP.whereIsIngestAggregatorWithPayload (AggregatorKey slotId slotRole)
+        case mIngestAggregator of
+          Nothing ->  pure $ Left NotFound
+          Just {payload: slotCharacteristics, server: aggregator} -> findEgest' loadConfig thisServer egestKey {slotId, slotRole, aggregator, slotCharacteristics}
+      )
   where
     egestKey = (EgestKey slotId slotRole)
-
+    mapResponse (Left err) = Left NoResource
+    mapResponse (Right err@(Left _)) = err
+    mapResponse (Right ok@(Right _)) = ok
 
 startLocalEgest :: LoadConfig -> CreateEgestPayload -> Effect (ResourceResp Server)
 startLocalEgest loadConfig payload@{slotCharacteristics} =
-  Load.launchLocalGeneric (Load.hasCapacityForEgestInstance slotCharacteristics loadConfig) launchLocal
+  NodeManager.launchIfValidCanaryState Live $
+    NodeManager.launchLocalAgent Egest (Load.hasCapacityForEgestInstance slotCharacteristics loadConfig) launchLocal
   where
     launchLocal _ =
-      (maybe false (const true) <<< startOkAS) <$> startEgest payload
-
+      (note unit <<< startOkAS) <$> startEgest payload
 
 ------------------------------------------------------------------------------
 -- Supervisor callbacks
@@ -116,14 +123,14 @@ findEgest' loadConfig thisServer egestKey payload@{slotCharacteristics} = runExc
 
     createResourceAndRecurse :: Effect LocationResp
     createResourceAndRecurse = do
-      eLaunchResp <- Load.launchLocalOrRemoteGeneric (Load.hasCapacityForEgestInstance slotCharacteristics loadConfig) launchLocal launchRemote
+      eLaunchResp <- NodeManager.launchLocalOrRemoteAgent Egest (Load.hasCapacityForEgestInstance slotCharacteristics loadConfig) launchLocal launchRemote
       case eLaunchResp of
         Left error -> pure $ Left NoResource
         Right _ -> do
           findEgest' loadConfig thisServer egestKey payload
       where
         launchLocal _ = do
-          (maybe false (const true) <<< startOkAS) <$> startEgest payload
+          (note unit <<< startOkAS) <$> startEgest payload
         launchRemote remote =
           -- todo - if remote then need to sleep before recurse to allow intra-pop disemination
           either (const false) (const true) <$> SpudGun.postJson (makeUrl remote EgestE) payload

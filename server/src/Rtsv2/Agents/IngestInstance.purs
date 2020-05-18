@@ -54,7 +54,7 @@ import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Rtsv2.LlnwApiTypes (StreamDetails, StreamPublish(..))
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeWsUrl)
 import Shared.Rtsv2.Stream (AggregatorKey, IngestKey(..), ingestKeyToAggregatorKey)
-import Shared.Rtsv2.Types (Server, LocalOrRemote(..), ResourceResp, fromLocalOrRemote, extractAddress)
+import Shared.Rtsv2.Types (Canary, LocalOrRemote(..), ResourceResp, Server, extractAddress, fromLocalOrRemote)
 import Shared.Types.Media.Types.Rtmp (RtmpClientMetadata)
 import Shared.Types.Media.Types.SourceDetails (SourceInfo)
 import WsGun as WsGun
@@ -104,6 +104,7 @@ type StartArgs
   = { streamPublish :: StreamPublish
     , streamDetails :: StreamDetails
     , ingestKey :: IngestKey
+    , canary :: Canary
     , remoteAddress :: String
     , remotePort :: Int
     , handlerPid :: Pid

@@ -70,6 +70,7 @@ import Shared.Rtsv2.Types (EgestServer(..), FailureReason(..), LocalOrRemote(..)
 import WsGun as WsGun
 
 foreign import startEgestReceiverFFI :: EgestKey -> MediaGatewayFlag -> Effect Int
+foreign import stopEgestFFI :: EgestKey -> Effect Unit
 foreign import getStatsFFI :: EgestKey -> Effect (WebRTCStreamServerStats EgestKey)
 foreign import setSlotConfigurationFFI :: EgestKey -> SlotConfiguration -> Effect Unit
 foreign import getSlotConfigurationFFI :: EgestKey -> Effect (Maybe SlotConfiguration)
@@ -140,6 +141,7 @@ stopAction egestKey mCachedState = do
   logStop "Egest stopping" {egestKey}
   IntraPoP.announceLocalEgestStopped egestKey
   fromMaybe (pure unit) $ WsGun.closeWebSocket <$> mCachedState
+  stopEgestFFI egestKey
   pure unit
 
 pendingClient :: EgestKey -> Effect RegistrationResp
@@ -269,14 +271,7 @@ init payload@{slotId, slotRole, aggregator, slotCharacteristics} stateServerName
             , lastOnFI: 0
             , activeProfiles: nil
             }
-  maybeRelay <- IntraPoP.whereIsStreamRelay relayKey
-  case maybeRelay of
-    Just relay ->
-      pure state
-    Nothing -> do
-      -- Optimistically attempt to launch a local relay - if it fails, our regular timer will sort it out
-      _ <- StreamRelaySup.startLocalStreamRelay loadConfig {slotId, slotRole, aggregator, slotCharacteristics}
-      pure state
+  pure state
 
 handleInfo :: Msg -> State -> Effect (CastResult State)
 handleInfo msg state@{egestKey: egestKey@(EgestKey slotId slotRole)} =
@@ -496,7 +491,6 @@ findOrStartRelayForStream state@{ egestKey: EgestKey slotId slotRole
   maybe' (\_ -> StreamRelaySup.startLocalOrRemoteStreamRelay loadConfig payload) (pure <<< Right) mRelay
   where
     payload = {slotId, slotRole, aggregator, slotCharacteristics}
-
 
 toRelayServer :: forall a b. Newtype a b => Newtype RelayServer b => a -> RelayServer
 toRelayServer = unwrap >>> wrap

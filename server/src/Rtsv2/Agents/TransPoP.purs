@@ -49,7 +49,6 @@ import Rtsv2.Agents.IntraPoP (AgentClock)
 import Rtsv2.Config (IntraPoPAgentApi, TransPoPAgentConfig)
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
-import Rtsv2.Health (Health)
 import Rtsv2.Health as Health
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition (PoP)
@@ -62,7 +61,7 @@ import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrlAddr)
 import Shared.Rtsv2.Stream (AgentKey)
-import Shared.Rtsv2.Types (PoPName, Server, ServerAddress(..), extractAddress, extractPoP)
+import Shared.Rtsv2.Types (Canary(..), Health(..), PoPName, Server, ServerAddress(..), extractAddress, extractPoP)
 import Shared.Utils (distinctRandomNumbers)
 import SpudGun (bodyToString)
 import SpudGun as SpudGun
@@ -74,6 +73,11 @@ type ViaPoPs = List PoPName
 
 type PoPRoutes = List (List PoPName)
 
+type StartArgs =
+  { config :: TransPoPAgentConfig
+  , intraPoPApi :: IntraPoPAgentApi
+  , canary :: Canary
+  }
 
 type LamportClocks =
   { aggregatorClocks :: AgentClock
@@ -172,7 +176,7 @@ health =
     currentHealth <- getHealth state
     pure $ CallReply currentHealth state
   where
-    getHealth {weAreLeader: false} = pure Health.NA
+    getHealth {weAreLeader: false} = pure NA
     getHealth {members, healthConfig} = do
       allOtherPoPs <- PoPDefinition.getOtherPoPs
       pure $ Health.percentageToHealth healthConfig $ (Map.size members) * 100 / ((Map.size allOtherPoPs) + 1)
@@ -254,10 +258,10 @@ handleRemoteLeaderAnnouncement server =
       now <- systemTimeMs
       pure $ state { lastLeaderAnnouncement = now }
 
-startLink :: {config :: TransPoPAgentConfig, intraPoPApi :: IntraPoPAgentApi} -> Effect StartLinkResult
+startLink :: StartArgs -> Effect StartLinkResult
 startLink args = Gen.startLink serverName (init args) handleInfo
 
-init :: {config :: TransPoPAgentConfig, intraPoPApi :: IntraPoPAgentApi} -> Effect State
+init :: StartArgs -> Effect State
 init { config: config@{ leaderTimeoutMs
                       , leaderAnnounceMs
                       , rttRefreshMs

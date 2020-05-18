@@ -1,6 +1,5 @@
 module Shared.Rtsv2.Router.Endpoint
        ( Endpoint(..)
-       , Canary(..)
        , endpoint
        , makePath
        , makeUrl
@@ -35,15 +34,8 @@ import Routing.Duplex.Generic (noArgs, sum)
 import Routing.Duplex.Generic.Syntax ((/))
 import Shared.Common (Url)
 import Shared.Rtsv2.Stream (ProfileName, RtmpShortName, RtmpStreamName, SlotId, SlotRole(..))
-import Shared.Rtsv2.Types (JsonLdContextType(..), PoPName(..), ServerAddress(..), Username(..), SourceRoute, extractAddress)
+import Shared.Rtsv2.Types (Canary(..), JsonLdContextType(..), PoPName(..), ServerAddress(..), SourceRoute, Username(..), extractAddress)
 import Shared.UUID (fromString)
-
-data Canary = Live
-            | Canary
-
-instance showCanary :: Show Canary where
-  show Live   = "live"
-  show Canary = "canary"
 
 data Endpoint
   =
@@ -62,6 +54,8 @@ data Endpoint
   | TimedRoutesE
   | TimedRoutesForPoPE PoPName
   | HealthCheckE
+  | CanaryE
+  | RunStateE
   | ServerStateE
   | SlotStateE SlotId
   | PoPDefinitionE
@@ -105,10 +99,10 @@ data Endpoint
   | RelayProxiedStatsE SlotId SlotRole
   | Chaos
 
-  | IngestStartE RtmpShortName RtmpStreamName
+  | IngestStartE Canary RtmpShortName RtmpStreamName
   | IngestStopE SlotId SlotRole ProfileName
 
-  | ClientStartE SlotId SlotRole
+  | ClientStartE Canary SlotId SlotRole
   | ClientStopE SlotId SlotRole String
 
   | StreamAuthTypeE
@@ -153,6 +147,8 @@ endpoint = root $ sum
   , "TimedRoutesE"                                     : "support" / path "timedRoutes" noArgs
   , "TimedRoutesForPoPE"                               : "support" / "timedRoutes" / popName segment
   , "HealthCheckE"                                     : "support" / path "healthCheck" noArgs
+  , "CanaryE"                                          : "support" / path "canary" noArgs
+  , "RunStateE"                                        : "support" / path "runState" noArgs
   , "ServerStateE"                                     : "support" / path "state" noArgs
   , "SlotStateE"                                       : "support" / "state" / "slot" / slotId segment
   , "PoPDefinitionE"                                   : "support" / path "popDefinition" noArgs
@@ -204,9 +200,9 @@ endpoint = root $ sum
   , "RelayProxiedStatsE"                               : "system" / "test" / "proxied" / "relay" / slotId segment / slotRole segment
   , "Chaos"                                            : "system" / "test" / path "chaos" noArgs
 
-  , "IngestStartE"                                     : "system" / "test" / "ingest" / shortName segment / streamName segment / "start"
+  , "IngestStartE"                                     : "system" / "test" / "ingest" / canary segment / shortName segment / streamName segment / "start"
   , "IngestStopE"                                      : "system" / "test" / "ingest" / slotId segment / slotRole segment / profileName segment / "stop"
-  , "ClientStartE"                                     : "system" / "test" / "client" / slotId segment / slotRole segment / "start"
+  , "ClientStartE"                                     : "system" / "test" / "client" / canary segment / slotId segment / slotRole segment / "start"
   , "ClientStopE"                                      : "system" / "test" / "client" / slotId segment / slotRole segment / "stop" / segment
 
   , "SlotLookupE"                                      : "system" / "llnwstub" / "rts" / "v1" / "slotid" / segment / segment
@@ -276,6 +272,8 @@ contextTypeToString IntraPoPStateContext = "intraPoPState"
 contextTypeToString IngestAggregatorStateContext = "ingestAggregatorState"
 contextTypeToString StreamRelayStateContext = "streamRelayState"
 contextTypeToString IngestStateContext = "ingestState"
+contextTypeToString NodeManagerStateContext = "nodeManagerState"
+contextTypeToString HealthContext = "healthContext"
 
 parseContextType :: String -> Maybe JsonLdContextType
 parseContextType "server" = Just ServerContext
@@ -288,6 +286,8 @@ parseContextType "intraPoPState" = Just IntraPoPStateContext
 parseContextType "ingestAggregatorState" = Just IngestAggregatorStateContext
 parseContextType "streamRelayState" = Just StreamRelayStateContext
 parseContextType "ingestState" = Just IngestStateContext
+parseContextType "nodeManagerState" = Just NodeManagerStateContext
+parseContextType "healthContext" = Just HealthContext
 parseContextType _ = Nothing
 
 -- | Int
@@ -371,6 +371,16 @@ parseUsername str = Just (Username str)
 userNametoString :: Username -> String
 userNametoString (Username str) = str
 
+-- | Canary
+parseCanary :: String -> Maybe Canary
+parseCanary "live"  = Just Live
+parseCanary "canary"  = Just Canary
+parseCanary _ = Nothing
+
+canaryToString :: Canary -> String
+canaryToString Live = "live"
+canaryToString Canary = "canary"
+
 -- | This combinator transforms a codec over `String` into one that operates on the `ContextType` type.
 contextType :: RouteDuplex' String -> RouteDuplex' JsonLdContextType
 contextType = as contextTypeToString (parseContextType >>> note "Bad ContextType")
@@ -410,6 +420,10 @@ streamName = as streamNameToString (parseRtmpStreamName >>> note "Bad RtmpStream
 -- | This combinator transforms a codec over `String` into one that operates on the `RtmpShortName` type.
 shortName :: RouteDuplex' String -> RouteDuplex' RtmpShortName
 shortName = as shortNameToString (parseRtmpShortName >>> note "Bad RtmpShortName")
+
+-- | This combinator transforms a codec over `String` into one that operates on the `Canary` type.
+canary :: RouteDuplex' String -> RouteDuplex' Canary
+canary = as canaryToString (parseCanary >>> note "Bad CanaryId")
 
 uName :: RouteDuplex' String -> RouteDuplex' Username
 uName = as userNametoString (parseUsername >>> note "Bad username")

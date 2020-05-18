@@ -1,8 +1,11 @@
 module Shared.Rtsv2.Types
        ( DeliverTo(..)
+       , Canary(..)
+       , RunState(..)
        , GeoLoc(..)
        , LeaderGeoLoc(..)
        , CurrentLoad(..)
+       , AcceptingRequests(..)
        , PoPName(..)
        , SourceRoute
        , RegionName(..)
@@ -10,6 +13,7 @@ module Shared.Rtsv2.Types
        , ServerAddress(..)
        , ServerLoad(..)
        , ServerLocation(..)
+       , Health(..)
        , ServerRec
        , RelayServer(..)
        , EgestServer(..)
@@ -40,17 +44,21 @@ module Shared.Rtsv2.Types
 
 import Prelude
 
-import Data.Either (Either)
+import Control.Monad.Except (except)
+import Data.Either (Either, note)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Eq (genericEq)
 import Data.Generic.Rep.Show (genericShow)
+import Data.List.NonEmpty (singleton)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype, unwrap, wrap)
 import Data.Symbol (SProxy(..))
+import Foreign (ForeignError(..), readString, unsafeToForeign)
+import Kishimen (genericSumToVariant, variantToGenericSum)
 import Record as Record
 import Shared.Rtsv2.Agent (Agent)
 import Shared.Rtsv2.Stream (SlotId)
-import Simple.JSON (class ReadForeign, class WriteForeign)
+import Simple.JSON (class ReadForeign, class WriteForeign, readImpl, writeImpl)
 
 newtype NetworkKbps = NetworkKbps Int
 newtype SpecInt = SpecInt Number
@@ -66,6 +74,23 @@ data JsonLdContextType = ServerContext
                        | IngestAggregatorStateContext
                        | StreamRelayStateContext
                        | IngestStateContext
+                       | NodeManagerStateContext
+                       | HealthContext
+
+data Canary = Live
+            | Canary
+
+data RunState = Active
+              | PassiveDrain
+              | ForceDrain
+              | OutOfOperation
+
+data Health = Perfect
+            | Excellent
+            | Good
+            | Poor
+            | Critical
+            | NA
 
 newtype ServerAddress = ServerAddress String
 
@@ -80,6 +105,8 @@ newtype GeoLoc = GeoLoc String
 newtype CurrentLoad = CurrentLoad { cpu :: Percentage
                                   , network :: NetworkKbps
                                   }
+
+newtype AcceptingRequests = AcceptingRequests Boolean
 
 newtype ServerLocation = ServerLocation { pop :: PoPName
                                         , region :: RegionName
@@ -104,7 +131,7 @@ type DeliverTo serverType
     , port :: Int
     }
 
-newtype ServerLoad = ServerLoad (ServerRec (load :: CurrentLoad))
+newtype ServerLoad = ServerLoad (ServerRec (load :: CurrentLoad, acceptingRequests :: AcceptingRequests))
 
 data FailureReason
   = NotFound
@@ -131,13 +158,14 @@ type ResourceResp a = Either ResourceFailed (LocalOrRemote a)
 
 data ResourceFailed = NoCapacity
                     | LaunchFailed
+                    | InvalidCanaryState
 
 type RegistrationResp = (Either FailureReason Unit)
 
 
-toServerLoad :: Server -> CurrentLoad -> ServerLoad
-toServerLoad  (Server ls) load =
-  ServerLoad $ Record.insert load_ load ls
+toServerLoad :: Server -> CurrentLoad -> AcceptingRequests -> ServerLoad
+toServerLoad  (Server ls) load acceptingRequests =
+  ServerLoad $ Record.insert acceptingRequests_ acceptingRequests $ Record.insert load_ load ls
 
 toServerLocation :: forall r a. Newtype a { pop :: PoPName
                                           , region :: RegionName | r } => a -> ServerLocation
@@ -145,7 +173,7 @@ toServerLocation = unwrap >>> (\{pop, region} -> ServerLocation {pop, region})
 
 serverLoadToServer :: ServerLoad -> Server
 serverLoadToServer (ServerLoad sl) =
-  Server $ Record.delete load_ sl
+  Server $ Record.delete acceptingRequests_ $ Record.delete load_ sl
 
 extractPoP :: forall r a. Newtype a { pop :: PoPName | r } => a -> PoPName
 extractPoP = unwrap >>> _.pop
@@ -165,6 +193,55 @@ maxLoad = CurrentLoad { cpu: wrap 100.0
 ------------------------------------------------------------------------------
 -- Type class derivations
 ------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------
+-- Canary
+instance showCanary :: Show Canary where
+  show Live   = "live"
+  show Canary = "canary"
+
+derive instance genericCanary :: Generic Canary _
+instance eqCanary :: Eq Canary where eq = genericEq
+instance readForeignCanary :: ReadForeign Canary where
+  readImpl = readString >=> parseString
+    where
+      error s = singleton (ForeignError (errorString s))
+      parseString s = except $ note (error s) (toType s)
+      toType "live" = pure Live
+      toType "canary" = pure Canary
+      toType unknown = Nothing
+      errorString s = "Unknown Canary: " <> s
+
+instance writeForeignCanary :: WriteForeign Canary where
+  writeImpl = toString >>> unsafeToForeign
+    where
+      toString Live = "live"
+      toString Canary = "canary"
+
+------------------------------------------------------------------------------
+-- RunState
+derive instance genericRunState :: Generic RunState _
+instance eqRunState :: Eq RunState where eq = genericEq
+instance readForeignRunState :: ReadForeign RunState where
+  readImpl = readString >=> parseString
+    where
+      error s = singleton (ForeignError (errorString s))
+      parseString s = except $ note (error s) (toType s)
+      toType "active" = pure Active
+      toType "passiveDrain" = pure PassiveDrain
+      toType "forceDrain" = pure ForceDrain
+      toType "outOfOperation" = pure OutOfOperation
+      toType unknown = Nothing
+      errorString s = "Unknown RunState: " <> s
+
+instance writeForeignRunState :: WriteForeign RunState where
+  writeImpl = toString >>> unsafeToForeign
+    where
+      toString Active = "active"
+      toString PassiveDrain = "passiveDrain"
+      toString ForceDrain = "forceDrain"
+      toString OutOfOperation = "outOfOperation"
+
 ------------------------------------------------------------------------------
 -- JsonLdContextType
 derive instance genericJsonLdContextType :: Generic JsonLdContextType _
@@ -220,13 +297,22 @@ derive newtype instance readForeignGeoLoc :: ReadForeign GeoLoc
 derive newtype instance writeForeignGeoLoc :: WriteForeign GeoLoc
 
 ------------------------------------------------------------------------------
--- Load
-derive instance newtypeLoad :: Newtype CurrentLoad _
-derive newtype instance eqLoad :: Eq CurrentLoad
-derive newtype instance ordLoad :: Ord CurrentLoad
-derive newtype instance showLoad :: Show CurrentLoad
-derive newtype instance readForeignLoad :: ReadForeign CurrentLoad
-derive newtype instance writeForeignLoad :: WriteForeign CurrentLoad
+-- AcceptingRequests
+derive instance newtypeAcceptingRequests :: Newtype AcceptingRequests _
+derive newtype instance eqAcceptingRequests :: Eq AcceptingRequests
+derive newtype instance ordAcceptingRequests :: Ord AcceptingRequests
+derive newtype instance showAcceptingRequests :: Show AcceptingRequests
+derive newtype instance readForeignAcceptingRequests :: ReadForeign AcceptingRequests
+derive newtype instance writeForeignAcceptingRequests :: WriteForeign AcceptingRequests
+
+------------------------------------------------------------------------------
+-- CurrentLoad
+derive instance newtypeCurrentLoad :: Newtype CurrentLoad _
+derive newtype instance eqCurrentLoad :: Eq CurrentLoad
+derive newtype instance ordCurrentLoad :: Ord CurrentLoad
+derive newtype instance showCurrentLoad :: Show CurrentLoad
+derive newtype instance readForeignCurrentLoad :: ReadForeign CurrentLoad
+derive newtype instance writeForeignCurrentLoad :: WriteForeign CurrentLoad
 
 ------------------------------------------------------------------------------
 -- ServerLocation
@@ -309,6 +395,13 @@ derive newtype instance ordPercentage :: Ord Percentage
 instance semigroupPercentage :: Semigroup Percentage where
   append (Percentage x) (Percentage y) = Percentage (x + y)
 
+------------------------------------------------------------------------------
+-- Health
+derive instance genericHealth :: Generic Health _
+instance eqAgent :: Eq Health where eq = genericEq
+instance showAgent :: Show Health where show = genericShow
+instance foreignHealth :: WriteForeign Health where
+  writeImpl = unsafeToForeign <<< show
 
 ------------------------------------------------------------------------------
 -- FrontEnd Specific Types
@@ -414,4 +507,5 @@ instance showUsername :: Show Username where
 -- internal
 --------------------------------------------------------------------------------
 load_ = SProxy :: SProxy "load"
+acceptingRequests_ = SProxy :: SProxy "acceptingRequests"
 address_ = SProxy :: SProxy "address"

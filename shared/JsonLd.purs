@@ -34,7 +34,6 @@ import Record as Record
 import Shared.Common (Url)
 import Simple.JSON (class ReadForeign, class WriteForeign, readImpl, writeImpl)
 
--- TODO - filter 'undefined' out of json in Json.erl - matches javascript implementation
 -- TODO - should be able to do magic rename stuff on ContextFields - will need typeclass similar to record-diff
 -- TODO - should be able to assert via type class that fields in ContextFields exist in outer resource
 

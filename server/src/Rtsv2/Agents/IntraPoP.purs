@@ -18,8 +18,9 @@ module Rtsv2.Agents.IntraPoP
   , announceLocalRelayStopped
 
   , announceLoad
+  , announceAcceptingRequests
+  , announceCanaryState
   , announceTransPoPLeader
-
 
     -- State queries
 
@@ -87,9 +88,9 @@ import Prim.Row (class Nub, class Union)
 import Record as Record
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
-import Rtsv2.Health (Health, percentageToHealth)
-import Rtsv2.LoadTypes as LoadTypes
+import Rtsv2.Health (percentageToHealth)
 import Rtsv2.LoadTypes (LoadCheckResult, ServerSelectionPredicate)
+import Rtsv2.LoadTypes as LoadTypes
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Serf (IpAndPort, LamportClock)
@@ -100,17 +101,18 @@ import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.JsonLd (transPoPLeaderLocationNode)
 import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Rtsv2.Stream (AgentKey(..), AggregatorKey, EgestKey, RelayKey(..), agentKeyToAggregatorKey, aggregatorKeyToAgentKey, egestKeyToAgentKey)
-import Shared.Rtsv2.Types (CurrentLoad, Server(..), ServerAddress(..), ServerLoad, LocalOrRemote(..), ResourceFailed(..), ResourceResp, fromLocalOrRemote, extractAddress, extractPoP, maxLoad, minLoad, toServerLoad)
+import Shared.Rtsv2.Types (AcceptingRequests, Canary(..), CurrentLoad, LocalOrRemote(..), Health, ResourceFailed(..), ResourceResp, Server(..), ServerAddress(..), ServerLoad, extractAddress, extractPoP, fromLocalOrRemote, maxLoad, minLoad, toServerLoad)
 import Shared.Utils (distinctRandomNumbers)
 
 type TestHelperPayload =
   { dropAgentMessages :: Boolean
   }
 
-
 type MemberInfo =
   { serfMember :: Serf.SerfMember
   , load :: CurrentLoad
+  , acceptingRequests :: AcceptingRequests
+  , canary :: Canary
   , server :: Server
   }
 
@@ -145,6 +147,7 @@ type Locations payload = { byAgentKey     :: Map AgentKey (AgentPayloadAndServer
 
 type State
   = { config                :: Config.IntraPoPAgentConfig
+    , canary                :: Canary
     , healthConfig          :: Config.HealthConfig
     , transPoPApi           :: Config.TransPoPAgentApi
     , serfRpcAddress        :: IpAndPort
@@ -157,6 +160,7 @@ type State
 
     , thisServer            :: Server
     , load                  :: CurrentLoad
+    , acceptingRequests     :: AcceptingRequests
     , members               :: Map ServerAddress MemberInfo
     , agentClocks           :: AgentClocks
     , agentLocations        :: AgentLocations
@@ -172,7 +176,7 @@ data IntraMessage
   | IMEgestState EventType AgentKey ServerAddress
   | IMRelayState EventType AgentKey ServerAddress
 
-  | IMServerLoad ServerAddress CurrentLoad
+  | IMServerLoad ServerAddress CurrentLoad AcceptingRequests Canary
   | IMTransPoPLeader ServerAddress
   | IMVMLiveness ServerAddress Ref
 
@@ -325,9 +329,9 @@ toLocalOrRemote thisServer server =
 
 getThisIdleServer :: ServerSelectionPredicate -> Effect (Either ResourceFailed Server)
 getThisIdleServer pred = Gen.doCall serverName
-  (\state@{thisServer, load} -> do
+  (\state@{thisServer, load, acceptingRequests} -> do
       let
-        thisServerLoad = toServerLoad thisServer load
+        thisServerLoad = toServerLoad thisServer load acceptingRequests
       pure $ if LoadTypes.canLaunch $ pred thisServerLoad
              then CallReply (Right $ thisServer) state
              else CallReply (Left NoCapacity) state
@@ -338,9 +342,9 @@ getThisIdleServer pred = Gen.doCall serverName
 -- https://www.nginx.com/blog/nginx-power-of-two-choices-load-balancing-algorithm/
 getIdleServer :: ServerSelectionPredicate -> Effect (ResourceResp Server)
 getIdleServer pred = Gen.doCall serverName
-  (\state@{thisServer, members, load} -> do
+  (\state@{thisServer, members, load, acceptingRequests} -> do
       let
-        thisServerLoad = toServerLoad thisServer load
+        thisServerLoad = toServerLoad thisServer load acceptingRequests
       if LoadTypes.canLaunch $ pred thisServerLoad
       then pure $ CallReply (Right $ Local thisServer) state
       else do
@@ -393,13 +397,34 @@ getCurrentTransPoPLeader =
 announceLoad :: CurrentLoad -> Effect Unit
 announceLoad load =
   Gen.doCast serverName
-    \state@{ thisServer, members } -> do
+    \state@{ thisServer, members, acceptingRequests, canary } -> do
       let
         thisNodeAddress = extractAddress thisServer
         newMembers = alter (map (\ memberInfo -> memberInfo { load = load })) thisNodeAddress members
-      sendToIntraSerfNetwork state "loadUpdate" (IMServerLoad thisNodeAddress load)
+      sendToIntraSerfNetwork state "loadUpdate" (IMServerLoad thisNodeAddress load acceptingRequests canary)
       pure $ Gen.CastNoReply state { members = newMembers , load = load}
 
+-- Called by RunState to indicate runState on this node
+announceAcceptingRequests :: AcceptingRequests -> Effect Unit
+announceAcceptingRequests acceptingRequests =
+  Gen.doCast serverName
+    \state@{ thisServer, members, load, canary } -> do
+      let
+        thisNodeAddress = extractAddress thisServer
+        newMembers = alter (map (\ memberInfo -> memberInfo { acceptingRequests = acceptingRequests })) thisNodeAddress members
+      sendToIntraSerfNetwork state "loadUpdate" (IMServerLoad thisNodeAddress load acceptingRequests canary)
+      pure $ Gen.CastNoReply state { members = newMembers , acceptingRequests = acceptingRequests}
+
+-- Called by RunState to indicate canaryState on this node
+announceCanaryState :: Canary -> Effect Unit
+announceCanaryState canary =
+  Gen.doCast serverName
+    \state@{ thisServer, members, load, acceptingRequests } -> do
+      let
+        thisNodeAddress = extractAddress thisServer
+        newMembers = alter (map (\ memberInfo -> memberInfo { canary = canary })) thisNodeAddress members
+      sendToIntraSerfNetwork state "loadUpdate" (IMServerLoad thisNodeAddress load acceptingRequests canary)
+      pure $ Gen.CastNoReply state { members = newMembers , canary = canary}
 
 type AgentMessageHandlerWithSerfPayload a = State -> AgentKey -> Server -> a -> Effect Unit
 type AgentMessageHandler = State -> AgentKey -> Server -> Effect Unit
@@ -486,8 +511,8 @@ popLeaderHandler =
       state.transPoPApi.handleRemoteLeaderAnnouncement server
       pure state{ currentTransPoPLeader = Just server }
 
-loadHandler :: CurrentLoad -> ServerMessageHandler
-loadHandler load =
+loadHandler :: CurrentLoad -> AcceptingRequests -> Canary -> ServerMessageHandler
+loadHandler load acceptingRequests canary =
   { name : HandlerName "load"
   , clockLens : clockLens
   , handleMessage : handleMessage
@@ -499,7 +524,9 @@ loadHandler load =
 
     handleMessage server state = do
       let
-        newMembers = alter (map (\ memberInfo -> memberInfo { load = load })) (extractAddress server) state.members
+        newMembers = alter (map (\ memberInfo -> memberInfo { load = load
+                                                            , acceptingRequests = acceptingRequests
+                                                            , canary = canary })) (extractAddress server) state.members
       pure state{ members = newMembers }
 
 
@@ -803,12 +830,18 @@ updateAgentLocation action lens agentKey server state@{agentLocations} =
 --------------------------------------------------------------------------------
 -- Gen Server methods
 --------------------------------------------------------------------------------
-startLink :: {config :: Config.IntraPoPAgentConfig, transPoPApi :: Config.TransPoPAgentApi} -> Effect StartLinkResult
+type StartArgs =
+  { config :: Config.IntraPoPAgentConfig
+  , transPoPApi :: Config.TransPoPAgentApi
+  , canary :: Canary}
+
+startLink :: StartArgs -> Effect StartLinkResult
 startLink args = Gen.startLink serverName (init args) handleInfo
 
-init :: {config :: Config.IntraPoPAgentConfig, transPoPApi :: Config.TransPoPAgentApi} -> Effect State
+init :: StartArgs -> Effect State
 init { config
      , transPoPApi
+     , canary
      } = do
 
   logInfo "Intra-PoP Agent Starting" {config: config}
@@ -817,7 +850,7 @@ init { config
 
   let
     garbageCollectVMInterval = config.vmLivenessIntervalMs / 2
-    garbageollectAgentInterval = ( hfoldl (min :: Int -> Int -> Int) config.reannounceAgentEveryMs.aggregator
+    garbageCollectAgentInterval = ( hfoldl (min :: Int -> Int -> Int) config.reannounceAgentEveryMs.aggregator
                                      config.reannounceAgentEveryMs
                                  ) / 2
 
@@ -825,7 +858,7 @@ init { config
   void $ Timer.sendEvery serverName config.rejoinEveryMs JoinAll
   void $ Timer.sendEvery serverName config.vmLivenessIntervalMs VMLiveness
   void $ Timer.sendEvery serverName garbageCollectVMInterval GarbageCollectVM
-  void $ Timer.sendEvery serverName garbageollectAgentInterval GarbageCollectAgents
+  void $ Timer.sendEvery serverName garbageCollectAgentInterval GarbageCollectAgents
   rpcBindIp <- Env.privateInterfaceIp
   thisServer <- PoPDefinition.getThisServer
   let
@@ -861,6 +894,8 @@ init { config
                               serverToMemberInfo server =
                                 { server: server
                                 , load: maxLoad
+                                , acceptingRequests: wrap false
+                                , canary: Canary
                                 , serfMember: member
                                 }
                             in
@@ -881,6 +916,8 @@ init { config
 
     , thisServer: thisServer
     , load: minLoad
+    , acceptingRequests: wrap false
+    , canary
     , members
     , agentClocks  : { aggregatorClocks: Map.empty
                      , egestClocks: Map.empty
@@ -965,8 +1002,8 @@ handleIntraPoPSerfMsg imsg state@{ transPoPApi: {handleRemoteLeaderAnnouncement}
         IMRelayState eventType agentKey msgOrigin -> do
           handleAgentMessage ltime eventType agentKey msgOrigin state relayHandler unit
 
-        IMServerLoad msgOrigin load -> do
-          handleServerMessage ltime msgOrigin state $ loadHandler load
+        IMServerLoad msgOrigin load acceptingRequests canary -> do
+          handleServerMessage ltime msgOrigin state $ loadHandler load acceptingRequests canary
 
         IMTransPoPLeader msgOrigin -> do
           handleServerMessage ltime msgOrigin state popLeaderHandler
@@ -1092,6 +1129,8 @@ membersAlive members state = do
       { serfMember: member
       , server: server
       , load: maxLoad
+      , acceptingRequests: wrap false
+      , canary: Canary
       }
 
     newMembers
@@ -1281,7 +1320,7 @@ joinAllSerf { config, serfRpcAddress, members } =
   toMap list = foldl (\acc item -> Map.insert item unit acc) Map.empty list
 
 serverLoad :: MemberInfo -> ServerLoad
-serverLoad {server, load} = toServerLoad server load
+serverLoad {server, load, acceptingRequests} = toServerLoad server load acceptingRequests
 
 --------------------------------------------------------------------------------
 -- Log helpers

@@ -29,3 +29,5 @@ getContextJson contextType =
     doGetContextJson IngestAggregatorStateContext = pure $ writeJSON JsonLd.ingestAggregatorStateContext
     doGetContextJson StreamRelayStateContext = pure $ writeJSON JsonLd.streamRelayStateContext
     doGetContextJson IngestStateContext = pure $ writeJSON JsonLd.ingestStateContext
+    doGetContextJson NodeManagerStateContext = pure $ writeJSON JsonLd.nodeManagerStateContext
+    doGetContextJson HealthContext = pure $ writeJSON JsonLd.healthContext

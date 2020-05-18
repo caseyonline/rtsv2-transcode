@@ -1,3 +1,9 @@
+# RTS-V2 release XX
+
+**What's new**
+
+* 
+
 # RTS-V2 release 96
 
 **What's new**

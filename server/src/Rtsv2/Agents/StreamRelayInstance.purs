@@ -414,7 +414,11 @@ applyOriginRunResult commonStateData@{ relayKey: relayKey@(RelayKey slotId slotR
                pure runStateIn
 
 applyDownstreamRunResult :: CommonStateData -> DownstreamStreamRelayApplyResult -> DownstreamStreamRelayRunState -> Effect DownstreamStreamRelayRunState
-applyDownstreamRunResult commonStateData@{ relayKey: relayKey@(RelayKey slotId slotRole), thisServer, ingestAggregator, slotCharacteristics, loadConfig } applyResult runState =
+applyDownstreamRunResult commonStateData@{ relayKey: relayKey@(RelayKey slotId slotRole)
+                                         , thisServer
+                                         , ingestAggregator
+                                         , slotCharacteristics
+                                         , loadConfig } applyResult runState =
   (pure runState)
     <#> mergeDownstreamApplyResult applyResult
     >>= maybeTryRegisterUpstreamRelays

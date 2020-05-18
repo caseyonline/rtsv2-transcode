@@ -11,9 +11,9 @@ import Milkis as M
 import Milkis.Impl.Node (nodeFetch)
 import Prim.Row (class Union)
 import Shared.Rtsv2.Chaos as Chaos
-import Shared.Rtsv2.Router.Endpoint (Canary(..), Endpoint(..), makeUrlAddr)
+import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrlAddr)
 import Shared.Rtsv2.Stream (RtmpShortName, SlotId, SlotNameAndProfileName(..), SlotRole(..), RtmpStreamName, ProfileName)
-import Shared.Rtsv2.Types (CurrentLoad(..), ServerAddress(..))
+import Shared.Rtsv2.Types (Canary(..), CurrentLoad(..), ServerAddress(..))
 import Simple.JSON as SimpleJSON
 
 
@@ -38,9 +38,9 @@ get :: M.URL -> Aff (Either String ResWithBody)
 get url = fetch url { method: M.getMethod }
 
 -- | Processes
-clientStart :: Node -> SlotId -> Aff (Either String ResWithBody)
-clientStart node slotId =
-  fetch (M.URL $ makeUrlAndUnwrap node (ClientStartE slotId Primary))
+clientStart :: Node -> Canary -> SlotId -> Aff (Either String ResWithBody)
+clientStart node canary slotId =
+  fetch (M.URL $ makeUrlAndUnwrap node (ClientStartE canary slotId Primary))
         { method: M.postMethod
         , body: "{}"
         , headers: M.makeHeaders { "Content-Type": "application/json" }
@@ -98,9 +98,9 @@ getStats node route = get (M.URL $ makeUrlAndUnwrap node route)
 getEgestStats :: Node -> SlotId -> Aff (Either String ResWithBody)
 getEgestStats node slotId = getStats node (EgestStatsE slotId Primary)
 
-ingestStart :: Node -> RtmpShortName -> RtmpStreamName -> Aff (Either String ResWithBody)
-ingestStart node shortName streamName =
-  get (M.URL $ makeUrlAndUnwrap node (IngestStartE shortName streamName))
+ingestStart :: Node -> Canary -> RtmpShortName -> RtmpStreamName -> Aff (Either String ResWithBody)
+ingestStart node canary shortName streamName =
+  get (M.URL $ makeUrlAndUnwrap node (IngestStartE canary shortName streamName))
 
 ingestStop :: Node -> SlotId -> ProfileName -> Aff (Either String ResWithBody)
 ingestStop node slotId profileName =

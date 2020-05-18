@@ -28,7 +28,7 @@ import Rtsv2.LlnwApi as LlnwApi
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.LlnwApiTypes (PublishCredentials(..), SlotProfile(..), StreamAuth, StreamDetails, StreamIngestProtocol(..), StreamPublish(..))
 import Shared.Rtsv2.Stream (IngestKey(..), ProfileName, RtmpStreamName(..))
-import Shared.Rtsv2.Types (ResourceResp, Server)
+import Shared.Rtsv2.Types (Canary(..), ResourceResp, Server)
 import SpudGun (JsonResponseError)
 
 foreign import startWorkflowImpl :: IngestKey -> Effect Pid
@@ -45,8 +45,8 @@ type StartStreamResult = { sourceInfo :: Foreign -> Effect Unit
                          , stopStream :: Effect Unit
                          }
 
-authenticate :: LoadConfig -> String -> StreamIngestProtocol -> String -> String -> String -> String -> String -> Int -> Effect (Maybe AuthenticateResult)
-authenticate loadConfig host protocol account username password streamName remoteAddress remotePort = do
+authenticate :: LoadConfig -> Canary -> String -> StreamIngestProtocol -> String -> String -> String -> String -> String -> Int -> Effect (Maybe AuthenticateResult)
+authenticate loadConfig canary host protocol account username password streamName remoteAddress remotePort = do
   publishCredentials <- getPublishCredentials host account username
 
   case publishCredentials of
@@ -83,7 +83,7 @@ authenticate loadConfig host protocol account username password streamName remot
                 maybeStartStream <- case protocol of
                                       WebRTC -> do
                                         self <- Erl.self
-                                        pure $ Just $ startStream ingestKey $ IngestInstanceSup.startLocalWebRTCIngest loadConfig ingestKey streamPublish streamDetails remoteAddress remotePort self
+                                        pure $ Just $ startStream ingestKey $ IngestInstanceSup.startLocalWebRTCIngest loadConfig canary ingestKey streamPublish streamDetails remoteAddress remotePort self
                                       Rtmp ->
                                         pure Nothing
                 pure $ Just { streamDetails

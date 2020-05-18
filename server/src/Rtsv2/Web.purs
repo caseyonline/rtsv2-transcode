@@ -31,6 +31,8 @@ import Rtsv2.Handler.Chaos as ChaosHandler
 import Rtsv2.Handler.Client as ClientHandler
 import Rtsv2.Handler.EgestStats as EgestStatsHandler
 import Rtsv2.Handler.Health as HealthHandler
+import Rtsv2.Handler.Canary as CanaryHandler
+import Rtsv2.Handler.RunState as RunStateHandler
 import Rtsv2.Handler.Ingest as IngestHandler
 import Rtsv2.Handler.IngestAggregator as IngestAggregatorHandler
 import Rtsv2.Handler.IntraPoP as IntraPoPHandler
@@ -46,10 +48,9 @@ import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Serf (Ip(..))
 import Shared.Rtsv2.LlnwApiTypes (StreamDetails)
-import Shared.Rtsv2.Router.Endpoint (Canary(..))
 import Shared.Rtsv2.Router.Endpoint as Router
 import Shared.Rtsv2.Stream (EgestKey(..), IngestKey(..), ProfileName, RtmpShortName, RtmpStreamName, SlotId, SlotRole(..))
-import Shared.Rtsv2.Types (Server, LocationResp, RegistrationResp, extractAddress)
+import Shared.Rtsv2.Types (Canary(..), Server, LocationResp, RegistrationResp, extractAddress)
 import Shared.UUID (UUID, fromString)
 import Shared.UUID as UUID
 import Stetson (RestResult, StaticAssetLocation(..))
@@ -91,6 +92,8 @@ init args = do
         , "TimedRoutesE"                                : TransPoPHandler.timedRoutes
         , "TimedRoutesForPoPE"                          : TransPoPHandler.timedRoutesForPoP
         , "HealthCheckE"                                : HealthHandler.healthCheck
+        , "CanaryE"                                     : CanaryHandler.setCanary
+        , "RunStateE"                                   : RunStateHandler.setRunState
         , "ServerStateE"                                : IntraPoPHandler.publicState
         , "SlotStateE"                                  : IntraPoPHandler.slotState
         , "PoPDefinitionE"                              : PoPDefinitionHandler.popDefinition
@@ -220,7 +223,7 @@ init args = do
       unsafeToForeign { mode: (atom "egest")
                       , canary
                       , make_egest_key: makeEgestKey
-                      , start_stream: startStream loadConfig
+                      , start_stream: startStream loadConfig canary
                       , add_client: mkFn2 addClient
                       , get_slot_configuration: EgestInstance.getSlotConfiguration
                       , data_object_send_message: EgestInstance.dataObjectSendMessage
@@ -232,8 +235,7 @@ init args = do
                       }
 
     ingestControlArgs thisServer loadConfig canary =
-      unsafeToForeign { canary
-                      , authenticate: mkFn7 $ IngestWebRTCIngestHandler.authenticate loadConfig (unwrap $ extractAddress thisServer)
+      unsafeToForeign { authenticate: mkFn7 $ IngestWebRTCIngestHandler.authenticate loadConfig canary (unwrap $ extractAddress thisServer)
                       }
 
     slotIdBinding = ":slot_id"
@@ -267,9 +269,9 @@ init args = do
     slotIdStringToSlotId slotIdStr =
       wrap $ fromMaybe UUID.empty (fromString slotIdStr)
 
-    startStream :: Config.LoadConfig -> EgestKey -> Effect LocationResp
-    startStream loadConfig (EgestKey slotId slotRole) =
-        EgestInstanceSup.findEgest loadConfig slotId slotRole
+    startStream :: Config.LoadConfig -> Canary -> EgestKey -> Effect LocationResp
+    startStream loadConfig canary (EgestKey slotId slotRole) =
+        EgestInstanceSup.findEgest loadConfig canary slotId slotRole
 
     addClient :: Pid -> EgestKey -> Effect RegistrationResp
     addClient pid egestKey =

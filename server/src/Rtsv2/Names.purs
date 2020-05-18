@@ -21,6 +21,7 @@ module Rtsv2.Names
        , ingestSupName
        , intraPoPName
        , loadServerName
+       , nodeManagerServerName
        , popDefinitionName
 
        , streamRelaySupName
@@ -102,6 +103,9 @@ intraPoPName = localName IntraPoP
 
 loadServerName :: forall a b. ServerName a b
 loadServerName = Local (atom "Load")
+
+nodeManagerServerName :: forall a b. ServerName a b
+nodeManagerServerName = Local (atom "NodeManager")
 
 popDefinitionName :: forall a b. ServerName a b
 popDefinitionName = Local (atom "PoPDefinition")
