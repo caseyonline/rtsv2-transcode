@@ -15,7 +15,7 @@ import Helpers.Log as L
 import Helpers.Types (Node)
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Shared.Rtsv2.Stream (SlotRole(..), RtmpShortName, RtmpStreamName, SlotId)
-import Test.Spec (SpecT, describe, it, before_, after_)
+import Test.Spec (SpecT, describe, describeOnly, it, before_, after_)
 import Test.Unit.Assert as Assert
 import Toppokki as T
 
@@ -34,11 +34,8 @@ options =
 -------------------------------------------------------------------------------
 browserDataMsging :: forall m. Monad m => SpecT Aff Unit m Unit
 browserDataMsging =
-  describe "WebRTC browser tests" do
-    primaryStream -- 5.1
-    backupStream -- 5.2
+  describeOnly "WebRTC browser tests" do
     ingestStream -- 5.3
-    webRtcIngest -- 5.4
 
 -------------------------------------------------------------------------------
 -- Tests
@@ -58,22 +55,24 @@ ingestStream =
           F.startSlotHigh1000 (C.toAddrFromNode Env.p1n2) >>= L.as' "create high ingest"
           _ <- delay (Milliseconds 2000.00) >>= L.as' "wait for ingest to start fully"
 
-          browser <- T.launch options
-          page <- T.newPage browser
+          browser1 <- T.launch options
+          page1 <- T.newPage browser1
+          page2 <- T.newPage browser1
 
-          T.goto (F.mkPlayerUrl Env.p1n1 E.slot1 Primary) page
+          T.goto (F.mkPlayerUrl Env.p1n1 E.slot1 Primary) page1
+          T.goto (F.mkPlayerUrl Env.p1n2 E.slot1 Primary) page2
           _ <- delay (Milliseconds 3000.00) >>= L.as' "wait for video to start"
 
-          frames1 <- F.getInnerText "#frames" page
-          packets1 <- F.getInnerText "#packets" page
+          frames1 <- F.getInnerText "#frames" page1
+          packets1 <- F.getInnerText "#packets" page1
 
           _ <- delay (Milliseconds 3000.00) >>= L.as' "let video play for 3 seconds"
 
-          frames2 <- F.getInnerText "#frames" page
-          packets2 <- F.getInnerText "#packets" page
+          frames2 <- F.getInnerText "#frames" page1
+          packets2 <- F.getInnerText "#packets" page1
 
           let frameDiff = F.stringToInt frames2 - F.stringToInt frames1
 
           Assert.assert "frames aren't increasing" (frameDiff > 70) >>= L.as' ("frames increased by: " <> show frameDiff)
           Assert.assert "packets aren't increasing" ((F.stringToInt packets1) < (F.stringToInt packets2)) >>= L.as' ("packets are increasing: " <> packets2 <> " > " <> packets1)
-          T.close browser
+          T.close browser1
