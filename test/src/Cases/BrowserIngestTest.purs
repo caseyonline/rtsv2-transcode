@@ -1,16 +1,10 @@
-module Cases.WebRTCTest where
+module Cases.BrowserIngestTest where
 
 import Prelude
 
-import Data.Either
-import Data.Identity (Identity(..))
-import Data.Int (fromString)
-import Data.Maybe (Maybe(..), fromMaybe, fromMaybe')
-import Data.Newtype (un, wrap, unwrap)
+import Data.Newtype (unwrap)
 import Data.Traversable (traverse_)
-import Effect (Effect)
 import Effect.Aff (Aff, Milliseconds(..), delay)
-import Foreign (readString, unsafeFromForeign)
 import Helpers.Assert as A
 import Helpers.CreateString as C
 import Helpers.Env as E
@@ -18,60 +12,17 @@ import Helpers.Env as Env
 import Helpers.Functions as F
 import Helpers.HTTP as HTTP
 import Helpers.Log as L
-import Helpers.OsCmd (runProc)
-import Helpers.RTCPeerConnection (getVideoStats)
 import Helpers.Types (Node)
-import Node.Encoding (Encoding(..))
-import Node.FS.Aff (readTextFile)
-import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl, makeUrlAddr)
+import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Shared.Rtsv2.Stream (SlotRole(..), RtmpShortName, RtmpStreamName, SlotId)
-import Shared.Utils (lazyCrashIfMissing)
-import Shared.UUID as UUID
-import Test.Spec (SpecT, describe, describeOnly, it, itOnly, before_, after_)
-import Test.Spec.Runner (Config)
-import Test.Unit as Test
+import Test.Spec (SpecT, describe, it, before_, after_)
 import Test.Unit.Assert as Assert
 import Toppokki as T
+
 
 -------------------------------------------------------------------------------
 -- Vars
 -------------------------------------------------------------------------------
-launchArgs :: Array String
-launchArgs =
-  [ "--allow-running-insecure-content"
-  , "--disable-features=WebRtcHideLocalIpsWithMdns"
-  , "--disable-infobars"
-  , "--disable-setuid-sandbox"
-  , "--disable-sync"
-  , "--disable-web-security"
-  , "--enable-media-stream"
-  , "--enable-translate-new-ux"
-  , "--ignore-certificate-errors"
-  , "--mute-audio=1"
-  , "--no-default-browser-check"
-  , "--no-sandbox"
-  , "--reduce-security-for-testing"
-  , "--use-fake-device-for-media-stream"
-  , "--use-fake-ui-for-media-stream"
-  , "--vmodule=*/webrtc/*=3"
-  ]
-
--- This is used to for the webRtcIngest tests
-launchArgs2 :: Array String
-launchArgs2 =
-  [
-    "--disable-infobars"
-  , "--disable-sync"
-  , "--disable-web-security"
-  , "--enable-translate-new-ux"
-  , "--no-default-browser-check"
-  , "--no-sandbox"
-  , "--reduce-security-for-testing"
-  , "--unsafely-allow-protected-media-identifier-for-domain"
-  , "--unsafely-treat-insecure-origin-as-secure=http://172.16.169.1:3000"
-  , "--use-fake-ui-for-media-stream"
-  ]
-
 playerUrl :: Node -> SlotId -> SlotRole -> T.URL
 playerUrl node slotId slotRole =
   T.URL $ unwrap $ makeUrl (C.mkServerAddress node) $ ClientPlayerE slotId slotRole
@@ -82,21 +33,20 @@ ingestUrl node shortName streamName =
 
 options =
   { headless: false
-  , args: launchArgs2
+  , args: E.browserLaunchArgsIng
   , devtools: true
   }
 
 -------------------------------------------------------------------------------
 -- Runner
 -------------------------------------------------------------------------------
-webRTCTest :: forall m. Monad m => SpecT Aff Unit m Unit
-webRTCTest =
+browserIngestTest :: forall m. Monad m => SpecT Aff Unit m Unit
+browserIngestTest =
   describe "WebRTC browser tests" do
-    primaryStream
-    backupStream
-    ingestStream
-    webRtcIngest
-
+    primaryStream -- 5.1
+    backupStream -- 5.2
+    ingestStream -- 5.3
+    webRtcIngest -- 5.4
 
 -------------------------------------------------------------------------------
 -- Tests
@@ -118,20 +68,19 @@ primaryStream =
           T.goto (playerUrl Env.p1n1 E.slot1 Primary) page
           _ <- delay (Milliseconds 4000.00) >>= L.as' "wait for video to start"
 
-          frames1 <- getInnerText "#frames" page
-          packets1 <- getInnerText "#packets" page
+          frames1 <- F.getInnerText "#frames" page
+          packets1 <- F.getInnerText "#packets" page
 
           _ <- delay (Milliseconds 3000.00) >>= L.as' "let video play for 3 seconds"
 
-          frames2 <- getInnerText "#frames" page
-          packets2 <- getInnerText "#packets" page
+          frames2 <- F.getInnerText "#frames" page
+          packets2 <- F.getInnerText "#packets" page
 
-          let frameDiff = stringToInt frames2 - stringToInt frames1
+          let frameDiff = F.stringToInt frames2 - F.stringToInt frames1
 
           Assert.assert "frames aren't increasing" (frameDiff > 70) >>= L.as' ("frames increased by: " <> show frameDiff)
-          Assert.assert "packets aren't increasing" ((stringToInt packets1) < (stringToInt packets2)) >>= L.as' ("packets are increasing: " <> packets2 <> " > " <> packets1)
+          Assert.assert "packets aren't increasing" ((F.stringToInt packets1) < (F.stringToInt packets2)) >>= L.as' ("packets are increasing: " <> packets2 <> " > " <> packets1)
           T.close browser
-
 
 backupStream :: forall m. Monad m => SpecT Aff Unit m Unit
 backupStream =
@@ -146,18 +95,18 @@ backupStream =
           T.goto (playerUrl Env.p1n1 E.slot1 Backup) page
           _ <- delay (Milliseconds 3000.00) >>= L.as' "wait for video to start"
 
-          frames1 <- getInnerText "#frames" page
-          packets1 <- getInnerText "#packets" page
+          frames1 <- F.getInnerText "#frames" page
+          packets1 <- F.getInnerText "#packets" page
 
           _ <- delay (Milliseconds 3000.00) >>= L.as' "let video play for 3 seconds"
 
-          frames2 <- getInnerText "#frames" page
-          packets2 <- getInnerText "#packets" page
+          frames2 <- F.getInnerText "#frames" page
+          packets2 <- F.getInnerText "#packets" page
 
-          let frameDiff = stringToInt frames2 - stringToInt frames1
+          let frameDiff = F.stringToInt frames2 - F.stringToInt frames1
 
           Assert.assert "frames aren't increasing" (frameDiff > 70) >>= L.as' ("frames increased by: " <> show frameDiff)
-          Assert.assert "packets aren't increasing" ((stringToInt packets1) < (stringToInt packets2)) >>= L.as' ("packets are increasing: " <> packets2 <> " > " <> packets1)
+          Assert.assert "packets aren't increasing" ((F.stringToInt packets1) < (F.stringToInt packets2)) >>= L.as' ("packets are increasing: " <> packets2 <> " > " <> packets1)
           T.close browser
 
 ingestNodes :: Array Node
@@ -180,18 +129,18 @@ ingestStream =
           T.goto (playerUrl Env.p1n1 E.slot1 Primary) page
           _ <- delay (Milliseconds 3000.00) >>= L.as' "wait for video to start"
 
-          frames1 <- getInnerText "#frames" page
-          packets1 <- getInnerText "#packets" page
+          frames1 <- F.getInnerText "#frames" page
+          packets1 <- F.getInnerText "#packets" page
 
           _ <- delay (Milliseconds 3000.00) >>= L.as' "let video play for 3 seconds"
 
-          frames2 <- getInnerText "#frames" page
-          packets2 <- getInnerText "#packets" page
+          frames2 <- F.getInnerText "#frames" page
+          packets2 <- F.getInnerText "#packets" page
 
-          let frameDiff = stringToInt frames2 - stringToInt frames1
+          let frameDiff = F.stringToInt frames2 - F.stringToInt frames1
 
           Assert.assert "frames aren't increasing" (frameDiff > 70) >>= L.as' ("frames increased by: " <> show frameDiff)
-          Assert.assert "packets aren't increasing" ((stringToInt packets1) < (stringToInt packets2)) >>= L.as' ("packets are increasing: " <> packets2 <> " > " <> packets1)
+          Assert.assert "packets aren't increasing" ((F.stringToInt packets1) < (F.stringToInt packets2)) >>= L.as' ("packets are increasing: " <> packets2 <> " > " <> packets1)
           T.close browser
 
 
@@ -215,10 +164,10 @@ webRtcIngest =
           T.click (T.Selector "#start-ingest") page
           _ <- delay (Milliseconds 2000.00) >>= L.as' "let stream start"
 
-          byteSent <- getInnerText "#bytesSent" page
+          byteSent <- F.getInnerText "#bytesSent" page
 
           _ <- delay (Milliseconds 2000.00) >>= L.as' "let stream start"
-          Assert.assert "Bytes are being sent in the UI" ((stringToInt byteSent) > 10) >>= L.as' ("frames increased by: " <> byteSent)
+          Assert.assert "Bytes are being sent in the UI" ((F.stringToInt byteSent) > 10) >>= L.as' ("frames increased by: " <> byteSent)
 
           HTTP.getAggregatorStats E.p1n1 E.slot1 >>= A.assertStatusCode 200
                                                  >>= A.assertAggregator [E.highSlotAndProfileName]
@@ -233,19 +182,3 @@ webRtcIngest =
                                                  >>= A.assertAggregator []  >>= L.as "aggregator has no profiles"
 
           T.close browser
-
--------------------------------------------------------------------------------
--- Functions
--------------------------------------------------------------------------------
-getInnerText :: String -> T.Page -> Aff String
-getInnerText selector page = do
-  innerTextF <- T.unsafePageEval
-                (T.Selector selector)
-                "el => el.innerText"
-                page
-  let innerText = (unsafeFromForeign innerTextF) :: String
-  pure innerText
-
-stringToInt :: String -> Int
-stringToInt s =
-  fromMaybe 0 $ fromString s

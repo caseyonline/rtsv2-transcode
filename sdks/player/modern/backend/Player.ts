@@ -88,68 +88,68 @@ export default class Player extends EventEmitter implements IPlayer {
 
   dataObjectInc(keys: string[], increment: number, requestResponseCorrelationId: string, createIfKeyMissing: boolean) {
     this.session.sendUpdate({ tag: "inc"
-                              , keys: keys
-                              , increment: increment
-                              , createIfKeyMissing: createIfKeyMissing
+                            , keys: keys
+                            , increment: increment
+                            , createIfKeyMissing: createIfKeyMissing
                             }, requestResponseCorrelationId);
   }
 
   dataObjectDec(keys: string[], decrement: number, requestResponseCorrelationId: string, createIfKeyMissing: boolean) {
     this.session.sendUpdate({ tag: "dec"
-                              , keys: keys
-                              , decrement: decrement
-                              , createIfKeyMissing: createIfKeyMissing
+                            , keys: keys
+                            , decrement: decrement
+                            , createIfKeyMissing: createIfKeyMissing
                             }, requestResponseCorrelationId);
   }
 
   dataObjectCAS(keys: string[], compare: any, swap: any, createIfKeyMissing: boolean, requestResponseCorrelationId: string) {
     this.session.sendUpdate({ tag: "cas"
-                              , keys: keys
-                              , compare: compare
-                              , swap: swap
-                              , createIfKeyMissing: createIfKeyMissing
+                            , keys: keys
+                            , compare: compare
+                            , swap: swap
+                            , createIfKeyMissing: createIfKeyMissing
                             }, requestResponseCorrelationId);
   }
 
   dataObjectAdd(keys: string[], value: any, failIfKeyPresent: boolean, requestResponseCorrelationId: string) {
     this.session.sendUpdate({ tag: "add"
-                              , keys: keys
-                              , value: value
-                              , failIfKeyPresent: failIfKeyPresent
+                            , keys: keys
+                            , value: value
+                            , failIfKeyPresent: failIfKeyPresent
                             }, requestResponseCorrelationId);
   }
 
 
   dataObjectUpdate(keys: string[], value: any, createIfKeyMissing: boolean, requestResponseCorrelationId: string) {
     this.session.sendUpdate({ tag: "update"
-                              , keys: keys
-                              , value: value
-                              , createIfKeyMissing: createIfKeyMissing
+                            , keys: keys
+                            , value: value
+                            , createIfKeyMissing: createIfKeyMissing
                             }, requestResponseCorrelationId);
   }
 
   dataObjectDelete(keys: string[], failIfKeyMissing: boolean, requestResponseCorrelationId: string) {
     this.session.sendUpdate({ tag: "delete"
-                              , keys: keys
-                              , failIfKeyMissing: failIfKeyMissing
+                            , keys: keys
+                            , failIfKeyMissing: failIfKeyMissing
                             }, requestResponseCorrelationId);
   }
 
   dataObjectListInsert(keys: string[], value: any, createIfKeyMissing: boolean, failIfValuePresent: boolean, requestResponseCorrelationId: string) {
     this.session.sendUpdate({ tag: "list.insert"
-                              , keys: keys
-                              , value: value
-                              , createIfKeyMissing: createIfKeyMissing
-                              , failIfValuePresent: failIfValuePresent
+                            , keys: keys
+                            , value: value
+                            , createIfKeyMissing: createIfKeyMissing
+                            , failIfValuePresent: failIfValuePresent
                             }, requestResponseCorrelationId);
   }
 
   dataObjectListRemove(keys: string[], value: any, failIfKeyMissing: boolean, failIfValueMissing: boolean, requestResponseCorrelationId: string) {
     this.session.sendUpdate({ tag: "list.remove"
-                              , keys: keys
-                              , value: value
-                              , failIfKeyMissing: failIfKeyMissing
-                              , failIfValueMissing: failIfValueMissing
+                            , keys: keys
+                            , value: value
+                            , failIfKeyMissing: failIfKeyMissing
+                            , failIfValueMissing: failIfValueMissing
                             }, requestResponseCorrelationId);
   }
 }
