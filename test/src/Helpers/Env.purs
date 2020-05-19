@@ -37,6 +37,44 @@ sessionName = "testSession"
 stop :: String
 stop = "stop"
 
+-- | Chrome launch arguments
+browserLaunchArgs :: Array String
+browserLaunchArgs =
+  [ "--allow-running-insecure-content"
+  , "--disable-features=WebRtcHideLocalIpsWithMdns"
+  , "--disable-infobars"
+  , "--disable-setuid-sandbox"
+  , "--disable-sync"
+  , "--disable-web-security"
+  , "--enable-media-stream"
+  , "--enable-translate-new-ux"
+  , "--ignore-certificate-errors"
+  , "--mute-audio=1"
+  , "--no-default-browser-check"
+  , "--no-sandbox"
+  , "--reduce-security-for-testing"
+  , "--use-fake-device-for-media-stream"
+  , "--use-fake-ui-for-media-stream"
+  , "--vmodule=*/webrtc/*=3"
+  ]
+
+-- This is used to for the webRtcIngest tests
+browserLaunchArgsIng :: Array String
+browserLaunchArgsIng =
+  [
+    "--disable-infobars"
+  , "--disable-sync"
+  , "--disable-web-security"
+  , "--enable-translate-new-ux"
+  , "--no-default-browser-check"
+  , "--no-sandbox"
+  , "--reduce-security-for-testing"
+  , "--unsafely-allow-protected-media-identifier-for-domain"
+  , "--unsafely-treat-insecure-origin-as-secure=http://172.16.169.1:3000"
+  , "--use-fake-ui-for-media-stream"
+  ]
+
+
 -- | Slot
 slot1 :: SlotId
 slot1 = wrap (fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000001"))

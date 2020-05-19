@@ -159,7 +159,9 @@ process_input(Input = #frame{source_metadata = #source_metadata{source_id = Id,
       case FrameMetadata of
         #video_frame_metadata{is_idr_frame = true} ->
           #active_stream_state{last_iframe_utc = ReferenceCaptureUs,
-                               last_iframe_dts = ReferenceDts} = maps:get(ReferenceStream, Streams),
+                               last_iframe_dts = ReferenceDts,
+                               delta = ReferenceDelta
+                              } = maps:get(ReferenceStream, Streams),
 
           %% We have two streams and a capture and dts for both
           %% If the capture and dts are sufficiently similar, then no delta needed - we assume that it's two synchronous streams from a single encoder
@@ -168,14 +170,14 @@ process_input(Input = #frame{source_metadata = #source_metadata{source_id = Id,
           UsDelta = CaptureUs - ReferenceCaptureUs,
           DtsDelta = Dts - ReferenceDts,
 
-          StreamDelta = if
-                          abs(UsDelta) < (PermissibleDelta * 1000) andalso abs(DtsDelta) < (PermissibleDelta * 90) ->
-                            %% These iframes are close enough - no delta needed
-                            0;
-                          ?otherwise ->
-                            IdealDts = ReferenceDts + trunc(UsDelta * 0.09),
-                            IdealDts - Dts
-                        end,
+          StreamDelta = ReferenceDelta + if
+                                           abs(UsDelta) < (PermissibleDelta * 1000) andalso abs(DtsDelta) < (PermissibleDelta * 90) ->
+                                             %% These iframes are close enough - no delta needed
+                                             0;
+                                           ?otherwise ->
+                                             IdealDts = ReferenceDts + trunc(UsDelta * 0.09),
+                                             IdealDts - Dts
+                                         end,
 
           ?SLOG_INFO("Applying delta for stream", #{stream => Id,
                                                     reference => ReferenceStream,

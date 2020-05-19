@@ -25,7 +25,7 @@ import Test.Spec (SpecT, after_, before_, describe, it)
 -------------------------------------------------------------------------------
 loadTests :: forall m. Monad m => SpecT Aff Unit m Unit
 loadTests = do
-  describe "6 load" do
+  describe "7 load" do
     before_ (F.startSession nodes *> F.launch nodes) do
       after_ F.stopSession do
         loadTest1
@@ -41,7 +41,7 @@ nodes = [E.p1n1]
 -------------------------------------------------------------------------------
 loadTest1 :: forall m. Monad m => SpecT Aff Unit m Unit
 loadTest1 =
-  it "6.1 Launch ingest, launch egest, observe load decay on egest node" do
+  it "7.1 Launch ingest, launch egest, observe load decay on egest node" do
     HTTP.ingestStart E.p1n1 Live E.shortName1 E.lowStreamName >>= A.assertStatusCode 200 >>= as  "create ingest"
     E.waitForAsyncProfileStart                                            >>= as' "wait for async start of profile"
     HTTP.getLoad E.p1n1                        >>= A.assertStatusCode 200

@@ -2,7 +2,8 @@ module Main where
 
 import Prelude
 
-import Cases.WebRTCTest (webRTCTest)
+import Cases.BrowserIngestTest (browserIngestTest)
+import Cases.BrowserDataMsging (browserDataMsging)
 import Cases.Startup (startupTests)
 import Cases.Ingest (ingestTests)
 import Cases.IngestEgest (ingestEgestTests)
@@ -27,9 +28,10 @@ main =
     ingestTests -- 2
     ingestEgestTests -- 3
     resilienceTests -- 4
-    webRTCTest -- 5
-    loadTests -- 6
-    canaryTests -- 7
+    browserIngestTest -- 5
+    browserDataMsging -- 6
+    loadTests -- 7
+    canaryTests -- 8
     describe "Cleanup" do
       after_ F.stopSession do
         it "final cleanup" do

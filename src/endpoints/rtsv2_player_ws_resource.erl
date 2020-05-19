@@ -59,6 +59,9 @@
 
         , start_options :: webrtc_stream_server:start_options()
         , profiles :: list(rtsv2_slot_configuration:slot_profile())
+
+        , last_stats_event :: undefined | media_gateway_client_statistics_updated_event()
+        , last_stats_received_at :: undefined | non_neg_integer()
         }).
 
 
@@ -418,6 +421,13 @@ websocket_info(#media_gateway_event{ details = Event }, #?state_running{ profile
           , State
           }
       end;
+
+    #media_gateway_client_statistics_updated_event{} = Stats ->
+      { ok
+      , State#?state_running{ last_stats_event = Stats
+                            , last_stats_received_at = ?vm_now_ms
+                            }
+      };
 
     _Other ->
       ?WARNING("Unhandled media gateway event: ~p", [Event]),

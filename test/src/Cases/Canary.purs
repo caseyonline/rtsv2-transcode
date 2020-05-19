@@ -2,7 +2,6 @@ module Cases.Canary where
 
 import Prelude
 
-import Cases.WebRTCTest as WebRTC
 import Control.Monad.State (evalStateT, lift)
 import Data.Array (delete)
 import Data.Map as Map
@@ -37,7 +36,7 @@ canaryTests = do
 
 canaryWhenLiveTests :: forall m. Monad m => SpecT Aff Unit m Unit
 canaryWhenLiveTests = do
-  describe "7.1 Canary when Live" do
+  describe "8.1 Canary when Live" do
     before_ (F.startSession nodes *> F.launch nodes) do
       after_ F.stopSession do
         canaryWhenLiveTest1
@@ -50,7 +49,7 @@ canaryWhenLiveTests = do
 
 canaryWhenCanaryTests :: forall m. Monad m => SpecT Aff Unit m Unit
 canaryWhenCanaryTests = do
-  describe "7.2 Canary when Canary" do
+  describe "8.2 Canary when Canary" do
     before_ (F.startSession nodes *> F.launch' nodes "test/config/canary/sys.config") do
       after_ (F.stopSession *> F.stopSlot) do
         canaryWhenCanary1
@@ -63,6 +62,12 @@ canaryWhenCanaryTests = do
 nodes :: Array Node
 nodes = [E.p1n1, E.p1n2]
 
+options =
+  { headless: false
+  , args: E.browserLaunchArgsIng
+  , devtools: true
+  }
+
 -------------------------------------------------------------------------------
 -- Tests
 -------------------------------------------------------------------------------
@@ -71,15 +76,15 @@ nodes = [E.p1n1, E.p1n2]
 -- In live mode...
 canaryWhenLiveTest1 :: forall m. Monad m => SpecT Aff Unit m Unit
 canaryWhenLiveTest1 =
-  it "7.1.1 Heathcheck endpoint returns correct canary state" do
+  it "8.1.1 Heathcheck endpoint returns correct canary state" do
     HTTP.healthCheck E.p1n1 >>= A.assertStatusCode 200
                             >>= A.assertBodyFun ((==) Live <<< healthNodeToCanaryState)
-                            >>= as "canary statee is live"
+                            >>= as "canary state is live"
     pure unit
 
 canaryWhenLiveTest2 :: forall m. Monad m => SpecT Aff Unit m Unit
 canaryWhenLiveTest2 =
-  it "7.1.2 Cannot perform RTMP ingest against canary port" do
+  it "8.1.2 Cannot perform RTMP ingest against canary port" do
     F.startSlotHigh1000Canary (C.toAddrFromNode E.p1n1) >>= L.as' "attempt to create high ingest"
     E.waitForIntraPoPDisseminate
     HTTP.getAggregatorStats E.p1n1 E.slot1 >>= A.assertStatusCode 404 >>= as "no aggregator running"
@@ -87,8 +92,8 @@ canaryWhenLiveTest2 =
 
 canaryWhenLiveTest3 :: forall m. Monad m => SpecT Aff Unit m Unit
 canaryWhenLiveTest3 =
-  it "7.1.3 Cannot perform WebRTC ingest against canary path" do
-    browser <- T.launch WebRTC.options
+  it "8.1.3 Cannot perform WebRTC ingest against canary path" do
+    browser <- T.launch options
     page <- T.newPage browser
     T.goto (HTTP.canaryIngestUrl E.p1n1 E.shortName1 E.highStreamName) page
     _ <- delay (Milliseconds 2000.00) >>= L.as' "wait for page to load"
@@ -105,7 +110,7 @@ canaryWhenLiveTest3 =
 
 canaryWhenLiveTest4 :: forall m. Monad m => SpecT Aff Unit m Unit
 canaryWhenLiveTest4 =
-  it "7.1.4 Cannot perform egest against canary path" do
+  it "8.1.4 Cannot perform egest against canary path" do
     F.startSlotHigh1000 (C.toAddrFromNode E.p1n1) >>= L.as' "create high ingest"
     E.waitForIntraPoPDisseminate
     HTTP.getAggregatorStats E.p1n1 E.slot1 >>= A.assertStatusCode 200 >>= as "aggregator running"
@@ -114,13 +119,13 @@ canaryWhenLiveTest4 =
 
 canaryWhenLiveTest5 :: forall m. Monad m => SpecT Aff Unit m Unit
 canaryWhenLiveTest5 =
-  it "7.1.5 Cannot transistion to live mode when live" do
+  it "8.1.5 Cannot transistion to live mode when live" do
     HTTP.changeCanaryState E.p1n1 Live >>= A.assertStatusCode 409 >>= as "conflict returned"
     pure unit
 
 canaryWhenLiveTest6 :: forall m. Monad m => SpecT Aff Unit m Unit
 canaryWhenLiveTest6 =
-  it "7.1.6 Cannot transistion to canary mode when there are active agents" do
+  it "8.1.6 Cannot transistion to canary mode when there are active agents" do
     HTTP.ingestStart E.p1n1 Live E.shortName1 E.lowStreamName
                                        >>= A.assertStatusCode 200 >>= as "create low ingest"
     E.waitForAsyncProfileStart
@@ -133,7 +138,7 @@ canaryWhenLiveTest6 =
 
 canaryWhenLiveTest7 :: forall m. Monad m => SpecT Aff Unit m Unit
 canaryWhenLiveTest7 =
-  it "7.1.7 After transistion to canary, can ingest and egest a canary stream" do
+  it "8.1.7 After transistion to canary, can ingest and egest a canary stream" do
     (flip evalStateT) Map.empty $ do
       lift $ HTTP.ingestStart E.p1n1 Canary E.shortName1 E.lowStreamName
                                                >>= A.assertStatusCode 409 >>= as "create low ingest"
@@ -180,7 +185,7 @@ canaryWhenLiveTest7 =
 -- In canary mode...
 canaryWhenCanary1 :: forall m. Monad m => SpecT Aff Unit m Unit
 canaryWhenCanary1 =
-  it "7.2.1 Heathcheck endpoint returns correct canary state" do
+  it "8.2.1 Heathcheck endpoint returns correct canary state" do
     HTTP.healthCheck E.p1n1 >>= A.assertStatusCode 200
                             >>= A.assertBodyFun ((==) Canary <<< healthNodeToCanaryState)
                             >>= as "canary state is canary"
@@ -188,7 +193,7 @@ canaryWhenCanary1 =
 
 canaryWhenCanary2 :: forall m. Monad m => SpecT Aff Unit m Unit
 canaryWhenCanary2 =
-  it "7.2.2 Cannot perform RTMP ingest against live port" do
+  it "8.2.2 Cannot perform RTMP ingest against live port" do
     F.startSlotHigh1000 (C.toAddrFromNode E.p1n1) >>= L.as' "attempt to create high ingest"
     E.waitForIntraPoPDisseminate
     HTTP.getAggregatorStats E.p1n1 E.slot1 >>= A.assertStatusCode 404 >>= as "no aggregator running"
@@ -196,8 +201,8 @@ canaryWhenCanary2 =
 
 canaryWhenCanary3 :: forall m. Monad m => SpecT Aff Unit m Unit
 canaryWhenCanary3 =
-  it "7.2.3 Cannot perform WebRTC ingest against live path" do
-    browser <- T.launch WebRTC.options
+  it "8.2.3 Cannot perform WebRTC ingest against live path" do
+    browser <- T.launch options
     page <- T.newPage browser
     T.goto (HTTP.ingestUrl E.p1n1 E.shortName1 E.highStreamName) page
     _ <- delay (Milliseconds 2000.00) >>= L.as' "wait for page to load"
@@ -214,7 +219,7 @@ canaryWhenCanary3 =
 
 canaryWhenCanary4 :: forall m. Monad m => SpecT Aff Unit m Unit
 canaryWhenCanary4 =
-  it "7.2.4 Cannot perform egest ingest against live path" do
+  it "8.2.4 Cannot perform egest ingest against live path" do
     F.startSlotHigh1000Canary (C.toAddrFromNode E.p1n1) >>= L.as' "create high ingest"
     E.waitForIntraPoPDisseminate
     HTTP.getAggregatorStats E.p1n1 E.slot1 >>= A.assertStatusCode 200 >>= as "aggregator running"
