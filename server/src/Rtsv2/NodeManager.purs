@@ -1,8 +1,8 @@
 module Rtsv2.NodeManager
        ( startLink
        , getState
-       , runIfValidCanaryState
-       , launchIfValidCanaryState
+       , runIfValidState
+       , launchIfValidState
        , changeCanaryState
        , changeRunState
        , launchLocalAgent
@@ -94,16 +94,16 @@ getCanaryState :: Effect Canary
 getCanaryState =
   Gen.call serverName (\state@{currentCanaryState} -> CallReply currentCanaryState state)
 
-launchIfValidCanaryState :: forall a. Canary -> Effect (ResourceResp a) -> Effect (ResourceResp a)
-launchIfValidCanaryState canary launch =
-  foo <$> runIfValidCanaryState canary launch
+launchIfValidState :: forall a. Canary -> Effect (ResourceResp a) -> Effect (ResourceResp a)
+launchIfValidState canary launch =
+  foo <$> runIfValidState canary launch
   where
     foo (Left err) = Left err
     foo (Right err@(Left _)) = err
     foo (Right ok@(Right _)) = ok
 
-runIfValidCanaryState :: forall a. Canary -> Effect a -> Effect (Either ResourceFailed a)
-runIfValidCanaryState canary launch = do
+runIfValidState :: forall a. Canary -> Effect a -> Effect (Either ResourceFailed a)
+runIfValidState canary launch = do
   currentCanary <- getCanaryState
   if canary == currentCanary then
     Right <$> launch

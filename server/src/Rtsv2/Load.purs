@@ -45,7 +45,7 @@ import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Common (Milliseconds)
 import Shared.Rtsv2.Agent (Agent(..), SlotCharacteristics)
 import Shared.Rtsv2.Stream (AgentKey)
-import Shared.Rtsv2.Types (CurrentLoad(..), LocalOrRemote(..), NetworkKbps(..), Percentage(..), ResourceFailed(..), ResourceResp, Server(..), ServerLoad(..), SpecInt(..), minLoad)
+import Shared.Rtsv2.Types (AcceptingRequests(..), CurrentLoad(..), LocalOrRemote(..), NetworkKbps(..), Percentage(..), ResourceFailed(..), ResourceResp, Server(..), ServerLoad(..), SpecInt(..), minLoad)
 
 hasCapacityForEgestInstance :: SlotCharacteristics -> LoadConfig -> ServerLoad -> LoadCheckResult
 hasCapacityForEgestInstance =
@@ -187,6 +187,8 @@ hasCapacity :: ({ egestClient :: LoadAgentCosts
                 , streamRelay :: LoadAgentCosts
                 , webRTCIngest :: LoadAgentCosts
                 } -> LoadAgentCosts) -> Agent -> SlotCharacteristics -> LoadConfig -> ServerLoad -> LoadCheckResult
+hasCapacity extractor agent slotCharacteristics {limits: defaultLimits, costs: LoadCosts costs} targetServer@(ServerLoad {acceptingRequests: (AcceptingRequests false)}) =
+  Red
 hasCapacity extractor agent slotCharacteristics {limits: defaultLimits, costs: LoadCosts costs} targetServer@(ServerLoad {agents}) =
   case elemIndex agent agents of
     Just _ ->

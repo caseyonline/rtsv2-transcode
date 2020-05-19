@@ -28,7 +28,7 @@ import Rtsv2.LlnwApi as LlnwApi
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.LlnwApiTypes (PublishCredentials(..), SlotProfile(..), StreamAuth, StreamDetails, StreamIngestProtocol(..), StreamPublish(..))
 import Shared.Rtsv2.Stream (IngestKey(..), ProfileName, RtmpStreamName(..))
-import Shared.Rtsv2.Types (Canary(..), ResourceResp, Server)
+import Shared.Rtsv2.Types (Canary, ResourceResp, Server)
 import SpudGun (JsonResponseError)
 
 foreign import startWorkflowImpl :: IngestKey -> Effect Pid

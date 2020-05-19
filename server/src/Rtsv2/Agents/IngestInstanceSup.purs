@@ -64,7 +64,7 @@ startLocalIngest capacityFun loadConfig canary ingestKey streamPublish streamDet
   let
     slotCharacteristics = slotDetailsToSlotCharacteristics slot
   in
-   NodeManager.launchIfValidCanaryState canary $ NodeManager.launchLocalAgent Ingest (capacityFun slotCharacteristics loadConfig) launchLocal
+   NodeManager.launchIfValidState canary $ NodeManager.launchLocalAgent Ingest (capacityFun slotCharacteristics loadConfig) launchLocal
   where
     launchLocal _ =
       (note AlreadyRunning <<< startOk) <$> startIngest ingestKey streamPublish streamDetails canary remoteAddress remotePort handlerPid

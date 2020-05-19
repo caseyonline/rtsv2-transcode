@@ -55,7 +55,7 @@ startLink _ = Sup.startLink serverName init
 findEgest :: LoadConfig -> Canary -> SlotId -> SlotRole -> Effect LocationResp
 findEgest loadConfig canary slotId slotRole =
   mapResponse
-  <$> (NodeManager.runIfValidCanaryState canary $ do
+  <$> (NodeManager.runIfValidState canary $ do
         thisServer <- PoPDefinition.getThisServer
         mIngestAggregator <- IntraPoP.whereIsIngestAggregatorWithPayload (AggregatorKey slotId slotRole)
         case mIngestAggregator of
@@ -70,7 +70,7 @@ findEgest loadConfig canary slotId slotRole =
 
 startLocalEgest :: LoadConfig -> CreateEgestPayload -> Effect (ResourceResp Server)
 startLocalEgest loadConfig payload@{slotCharacteristics} =
-  NodeManager.launchIfValidCanaryState Live $
+  NodeManager.launchIfValidState Live $
     NodeManager.launchLocalAgent Egest (Load.hasCapacityForEgestInstance slotCharacteristics loadConfig) launchLocal
   where
     launchLocal _ =
