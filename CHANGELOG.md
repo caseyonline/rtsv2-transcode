@@ -14,14 +14,16 @@
 
   * canary state can be changed with a POST to /support/canary:
 
-    ```curl -v -X POST -H "content-type: application/json" --data '"canary"' http://172.16.171.3:3000/support/canary```
-
-    Post body is either "canary" or "live"
-
-  * canary mode **cannot** be changed if the node has any active agents
-
-    * current agent count is also returned from the healthCheck endpoint
-
+    ```bash
+curl -v -X POST -H "content-type: application/json" --data '"canary"' http://172.16.171.3:3000/support/canary
+    ```
+    
+Post body is either "canary" or "live"
+    
+* canary mode **cannot** be changed if the node has any active agents
+  
+  * current agent count is also returned from the healthCheck endpoint
+  
 * Prometheus endpoint for egest stats on ```/support/egests/metrics``
 
 * Initial release of media-gateway to give improved edge scalability
