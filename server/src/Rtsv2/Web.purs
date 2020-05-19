@@ -5,7 +5,7 @@ module Rtsv2.Web
 
 import Prelude
 
-import Data.Function.Uncurried (mkFn2, mkFn7)
+import Data.Function.Uncurried (mkFn2, mkFn3, mkFn7)
 import Data.Maybe (fromMaybe)
 import Data.Newtype (unwrap, wrap)
 import Effect (Effect)
@@ -27,12 +27,12 @@ import Rtsv2.Agents.IngestWebRTCIngestHandler as IngestWebRTCIngestHandler
 import Rtsv2.Config (MediaGatewayFlag(Off))
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
+import Rtsv2.Handler.Canary as CanaryHandler
 import Rtsv2.Handler.Chaos as ChaosHandler
 import Rtsv2.Handler.Client as ClientHandler
+import Rtsv2.Handler.Egest as EgestHandler
 import Rtsv2.Handler.EgestStats as EgestStatsHandler
 import Rtsv2.Handler.Health as HealthHandler
-import Rtsv2.Handler.Canary as CanaryHandler
-import Rtsv2.Handler.RunState as RunStateHandler
 import Rtsv2.Handler.Ingest as IngestHandler
 import Rtsv2.Handler.IngestAggregator as IngestAggregatorHandler
 import Rtsv2.Handler.IntraPoP as IntraPoPHandler
@@ -40,8 +40,8 @@ import Rtsv2.Handler.JsonLd as JsonLd
 import Rtsv2.Handler.LlnwStub as LlnwStubHandler
 import Rtsv2.Handler.Load as LoadHandler
 import Rtsv2.Handler.PoPDefinition as PoPDefinitionHandler
-import Rtsv2.Handler.Relay as EgestHandler
 import Rtsv2.Handler.Relay as RelayHandler
+import Rtsv2.Handler.RunState as RunStateHandler
 import Rtsv2.Handler.StreamDiscovery as StreamDiscoveryHandler
 import Rtsv2.Handler.TransPoP as TransPoPHandler
 import Rtsv2.Names as Names
@@ -98,7 +98,8 @@ init args = do
         , "SlotStateE"                                  : IntraPoPHandler.slotState
         , "PoPDefinitionE"                              : PoPDefinitionHandler.popDefinition
         , "JsonLdContext"                               : JsonLd.getContextJson
-        , "EgestStatsE"                                 : EgestStatsHandler.stats
+        , "EgestStatsE"                                 : EgestStatsHandler.stats thisServer
+        , "EgestInstancesMetricsE"                      : EgestHandler.egestInstancesMetrics thisServer
         , "RelayStatsE"                                 : RelayHandler.stats
         , "IngestAggregatorE"                           : IngestAggregatorHandler.ingestAggregator
         , "IngestAggregatorPlayerE"                     : \(_ :: SlotId) (_ :: SlotRole) -> PrivFile "rtsv2" "www/aggregatorPlayer.html"
@@ -224,10 +225,11 @@ init args = do
                       , canary
                       , make_egest_key: makeEgestKey
                       , start_stream: startStream loadConfig canary
-                      , add_client: mkFn2 addClient
+                      , add_client: mkFn3 addClient
                       , get_slot_configuration: EgestInstance.getSlotConfiguration
                       , data_object_send_message: EgestInstance.dataObjectSendMessage
                       , data_object_update: EgestInstance.dataObjectUpdate
+                      , stats_update: mkFn2 EgestInstance.statsUpdate
                       , use_media_gateway:
                         case mediaGateway of
                           Off -> false
@@ -273,9 +275,9 @@ init args = do
     startStream loadConfig canary (EgestKey slotId slotRole) =
         EgestInstanceSup.findEgest loadConfig canary slotId slotRole
 
-    addClient :: Pid -> EgestKey -> Effect RegistrationResp
-    addClient pid egestKey =
-      EgestInstance.addClient pid egestKey
+    addClient :: Pid -> EgestKey -> String -> Effect RegistrationResp
+    addClient pid egestKey sessionId =
+      EgestInstance.addClient pid egestKey sessionId
 
     cowboyRoute path moduleName initialState =
       Path (tuple3

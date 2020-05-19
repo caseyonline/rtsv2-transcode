@@ -59,7 +59,7 @@ type IngestAggregator f = JsonLd.IngestAggregatorStateNode f
 
 type StreamRelay f = JsonLd.StreamRelayStateNode f
 
-type Egest = JsonLd.EgestStatsNode
+type Egest f = JsonLd.EgestStatsNode f
 
 type IntraPoP f = JsonLd.IntraPoPStateNode f
 
@@ -67,7 +67,7 @@ type SlotState f = { aggregators :: f (IngestAggregator f)
                    , ingests :: f (Ingest f)
                    , originRelays :: f (StreamRelay f)
                    , downstreamRelays :: f (StreamRelay f)
-                   , egests :: f Egest
+                   , egests :: f (Egest f)
                    }
 
 type AgentLocation f = { agentKey :: AgentKey

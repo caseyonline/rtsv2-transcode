@@ -228,8 +228,25 @@ instance writeForeignSlotRole :: WriteForeign SlotRole where
 
 ------------------------------------------------------------------------------
 -- EgestKey
+derive instance genericEgestKey :: Generic EgestKey _
 derive instance eqEgestKey :: Eq EgestKey
 derive instance ordEgestKey :: Ord EgestKey
+instance showEgestKey :: Show EgestKey where show = genericShow
+
+type EgestKeyJson = { slotId :: SlotId
+                    , role :: SlotRole
+                    }
+
+instance readForeignEgestKey :: ReadForeign EgestKey where
+  readImpl f =
+    mapper <$> readImpl f
+    where
+      mapper :: EgestKeyJson -> EgestKey
+      mapper {slotId, role: slotRole} = EgestKey slotId slotRole
+
+instance writeForeignEgestKey :: WriteForeign EgestKey where
+  writeImpl (EgestKey slotId slotRole) = writeImpl { slotId: slotId
+                                                   , role: slotRole}
 
 ------------------------------------------------------------------------------
 -- AggregatorKey

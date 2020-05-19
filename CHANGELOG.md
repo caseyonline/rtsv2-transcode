@@ -2,9 +2,37 @@
 
 **What's new**
 
-* **RTSV2-78** AAC-HE and AAC-HE2 now supported for ingest
-* TimeZero message being sent to player to indicate video timestamp of first frame
 * 
+
+# RTS-V2 release 98
+
+**What's new**
+
+* **RTSV2-78** AAC-HE and AAC-HE2 now supported for ingest
+
+* TimeZero message being sent to player to indicate video timestamp of first frame
+
+* Initial support for Canary mode
+
+  * initial canary state currently defined in rtsv2_core.config
+
+  * current state is visible from the healthCheck endpoint
+
+  * canary state can be changed with a POST to /support/canary:
+
+    ```bash
+curl -v -X POST -H "content-type: application/json" --data '"canary"' http://172.16.171.3:3000/support/canary
+    ```
+    
+Post body is either "canary" or "live"
+    
+* canary mode **cannot** be changed if the node has any active agents
+  
+  * current agent count is also returned from the healthCheck endpoint
+  
+* Prometheus endpoint for egest stats on ```/support/egests/metrics``
+
+* Initial release of media-gateway to give improved edge scalability
 
 # RTS-V2 release 96
 

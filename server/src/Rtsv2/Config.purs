@@ -5,6 +5,7 @@ module Rtsv2.Config
   , IngestInstanceConfig
   , IngestAggregatorAgentConfig
   , IngestStatsConfig
+  , EgestStatsConfig
   , WebConfig
   , PoPDefinitionConfig
   , IntraPoPAgentConfig
@@ -27,6 +28,7 @@ module Rtsv2.Config
   , intraPoPAgentConfig
   , transPoPAgentConfig
   , ingestStatsConfig
+  , egestStatsConfig
   , ingestInstanceConfig
   , ingestAggregatorAgentConfig
   , streamRelayConfig
@@ -56,7 +58,7 @@ import Partial.Unsafe (unsafeCrashWith)
 import Rtsv2.LoadTypes as LoadTypes
 import Shared.Rtsv2.Agent (Agent, SlotCharacteristics, strToAgent)
 import Shared.Rtsv2.Stream (AgentKey)
-import Shared.Rtsv2.Types (Canary(..), RunState, Server)
+import Shared.Rtsv2.Types (Canary, RunState, Server)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (class ReadForeign, readImpl)
 
@@ -120,6 +122,10 @@ type IngestAggregatorAgentConfig
     }
 
 type IngestStatsConfig
+  = { pollPeriodMs :: Int
+    }
+
+type EgestStatsConfig
   = { pollPeriodMs :: Int
     }
 
@@ -267,6 +273,10 @@ streamRelayConfig = do
 ingestStatsConfig :: Effect IngestStatsConfig
 ingestStatsConfig = do
   getMandatoryRecord "ingestStatsConfig"
+
+egestStatsConfig :: Effect EgestStatsConfig
+egestStatsConfig = do
+  getMandatoryRecord "egestStatsConfig"
 
 ingestInstanceConfig :: Effect IngestInstanceConfig
 ingestInstanceConfig = do

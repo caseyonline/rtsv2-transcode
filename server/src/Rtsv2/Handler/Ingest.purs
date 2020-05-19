@@ -101,8 +101,6 @@ metrics = { name: "ingest_frame_count"
           } :
           nil
 
--- TODO - rtmpStats
--- TODO - include streamAndVariant in labels
 statsToPrometheus :: List (PublicState.IngestStats List) -> String
 statsToPrometheus stats =
   foldl (\page { timestamp

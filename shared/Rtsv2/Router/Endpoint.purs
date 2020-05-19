@@ -61,6 +61,7 @@ data Endpoint
   | PoPDefinitionE
   | JsonLdContext JsonLdContextType
   | EgestStatsE SlotId SlotRole
+  | EgestInstancesMetricsE
   | RelayStatsE SlotId SlotRole
   | IngestAggregatorE SlotId SlotRole
   | IngestAggregatorPlayerE SlotId SlotRole
@@ -154,6 +155,7 @@ endpoint = root $ sum
   , "PoPDefinitionE"                                   : "support" / path "popDefinition" noArgs
   , "JsonLdContext"                                    : "support" / "jsonld" / contextType segment
   , "EgestStatsE"                                      : "support" / "egest" / slotId segment / slotRole segment
+  , "EgestInstancesMetricsE"                           : "support" / "egest" / path "metrics" noArgs
   , "RelayStatsE"                                      : "support" / "relay" / slotId segment / slotRole segment  -- TODO - stats vs status
   , "IngestAggregatorE"                                : "support" / "ingestAggregator" / slotId segment / slotRole segment
 

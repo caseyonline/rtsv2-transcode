@@ -236,7 +236,7 @@ assertEgestClients
   -> Aff (Either String ResWithBody)
 assertEgestClients = assertBodyFun <<< predicate
   where
-    predicate :: Int -> PublicState.Egest -> Boolean
+    predicate :: Int -> (PublicState.Egest Array) -> Boolean
     predicate count egestStats = count == (JsonLd.unwrapNode egestStats).clientCount
 
 compareSlotState preFilter predicate either@(Left _) = pure either
