@@ -2,7 +2,7 @@ import IPlayer from "../frontend/IPlayer";
 
 import Session from "./Session";
 import { QualityConstraintBehavior } from "./signaling/types";
-import EventEmitter from "../../../shared/util/EventEmitter.ts";
+import EventEmitter from "../../../shared/util/EventEmitter";
 
 export default class Player extends EventEmitter implements IPlayer {
   private account: string;
@@ -51,6 +51,12 @@ export default class Player extends EventEmitter implements IPlayer {
     });
     this.session.on("playback-video-stats", (stats) => {
       this.emit("playback-video-stats", stats);
+    });
+    this.session.on("playback-audio-sync-sources", (stats) => {
+      this.emit("playback-audio-sync-sources", stats);
+    });
+    this.session.on("playback-video-sync-sources", (stats) => {
+      this.emit("playback-video-sync-sources", stats);
     });
     this.session.on("time-zero", (message) => {
       this.emit("time-zero", message);
