@@ -22,7 +22,9 @@
 
     * current agent count is also returned from the healthCheck endpoint
 
-* Prometheus endpoint for egest stats on ```/support/egests/metrics```
+* Prometheus endpoint for egest stats on ```/support/egests/metrics``
+
+* Initial release of media-gateway to give improved edge scalability
 
 # RTS-V2 release 96
 
