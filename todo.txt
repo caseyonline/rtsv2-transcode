@@ -18,12 +18,12 @@
 [ ] - servers need a 16-bit id adding to them
 
 Tests:
-[ ] data object messaging
-[ ] data object store
-[ ] discovery API
-[ ]	multi-bitrate ingest
-[ ] ingest prometheus stats
+[ ] - data object store
+[ ] - discovery API
+[ ]	- multi-bitrate ingest
+[ ] - ingest prometheus stats
 
+[x] - data object messaging
 [x] - Egest needs to know model primary and backup
 [x] - HLS Egest from Aggregator
 [x] - ingest to timeout and exit if not media seen for X seconds - https://jira.atlas.llnw.com/browse/RTSV2-54

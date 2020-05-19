@@ -25,7 +25,7 @@ import Rtsv2.NodeManager as NodeManager
 import Shared.Rtsv2.Agent (Agent(..), SlotCharacteristics)
 import Shared.Rtsv2.LlnwApiTypes (StreamDetails, StreamPublish, slotDetailsToSlotCharacteristics)
 import Shared.Rtsv2.Stream (IngestKey)
-import Shared.Rtsv2.Types (Canary, ResourceResp, Server, ServerLoad)
+import Shared.Rtsv2.Types (Canary, ResourceFailed(..), ResourceResp, Server, ServerLoad)
 
 ------------------------------------------------------------------------------
 -- API
@@ -67,7 +67,7 @@ startLocalIngest capacityFun loadConfig canary ingestKey streamPublish streamDet
    NodeManager.launchIfValidCanaryState canary $ NodeManager.launchLocalAgent Ingest (capacityFun slotCharacteristics loadConfig) launchLocal
   where
     launchLocal _ =
-      (note unit <<< startOk) <$> startIngest ingestKey streamPublish streamDetails canary remoteAddress remotePort handlerPid
+      (note AlreadyRunning <<< startOk) <$> startIngest ingestKey streamPublish streamDetails canary remoteAddress remotePort handlerPid
 
 startIngest :: IngestKey -> StreamPublish -> StreamDetails -> Canary -> String -> Int -> Pid -> Effect StartChildResult
 startIngest ingestKey streamPublish streamDetails canary remoteAddress remotePort handlerPid = do

@@ -35,7 +35,7 @@ start_rtmp_server({ipv4, O1, O2, O3, O4}, Port, NbAcceptors, Callbacks) ->
                                   [{dispatch, [{'*', rtsv2_rtmp_ingest_handler, [Callbacks]}]},
                                    {config, #rtmp_server_config{}}]) of
     {ok, _} -> ok;
-    {error, {alread_started, _}} -> ok;
+    {error, {already_started, _}} -> ok;
     Error -> {error, Error}
   end.
 

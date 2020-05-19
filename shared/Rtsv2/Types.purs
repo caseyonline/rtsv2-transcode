@@ -1,6 +1,7 @@
 module Shared.Rtsv2.Types
        ( DeliverTo(..)
        , Canary(..)
+       , CanaryStateChangeFailure(..)
        , RunState(..)
        , GeoLoc(..)
        , LeaderGeoLoc(..)
@@ -53,12 +54,11 @@ import Data.List.NonEmpty (singleton)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype, unwrap, wrap)
 import Data.Symbol (SProxy(..))
-import Foreign (ForeignError(..), readString, unsafeToForeign)
-import Kishimen (genericSumToVariant, variantToGenericSum)
+import Foreign (Foreign, ForeignError(..), readString, unsafeToForeign)
 import Record as Record
 import Shared.Rtsv2.Agent (Agent)
 import Shared.Rtsv2.Stream (SlotId)
-import Simple.JSON (class ReadForeign, class WriteForeign, readImpl, writeImpl)
+import Simple.JSON (class ReadForeign, class WriteForeign)
 
 newtype NetworkKbps = NetworkKbps Int
 newtype SpecInt = SpecInt Number
@@ -80,6 +80,8 @@ data JsonLdContextType = ServerContext
 data Canary = Live
             | Canary
 
+data CanaryStateChangeFailure = InvalidStateTransition
+                              | ActiveAgents
 data RunState = Active
               | PassiveDrain
               | ForceDrain
@@ -159,6 +161,7 @@ type ResourceResp a = Either ResourceFailed (LocalOrRemote a)
 data ResourceFailed = NoCapacity
                     | LaunchFailed
                     | InvalidCanaryState
+                    | AlreadyRunning
 
 type RegistrationResp = (Either FailureReason Unit)
 
@@ -219,9 +222,15 @@ instance writeForeignCanary :: WriteForeign Canary where
       toString Canary = "canary"
 
 ------------------------------------------------------------------------------
+-- CanaryStateChangeFailure
+derive instance genericCanaryStateChangeFailure :: Generic CanaryStateChangeFailure _
+instance showCanaryStateChangeFailure :: Show CanaryStateChangeFailure where show = genericShow
+
+------------------------------------------------------------------------------
 -- RunState
 derive instance genericRunState :: Generic RunState _
 instance eqRunState :: Eq RunState where eq = genericEq
+instance showRunState :: Show RunState where show = genericShow
 instance readForeignRunState :: ReadForeign RunState where
   readImpl = readString >=> parseString
     where
@@ -400,8 +409,22 @@ instance semigroupPercentage :: Semigroup Percentage where
 derive instance genericHealth :: Generic Health _
 instance eqAgent :: Eq Health where eq = genericEq
 instance showAgent :: Show Health where show = genericShow
-instance foreignHealth :: WriteForeign Health where
+instance writeForeignHealth :: WriteForeign Health where
   writeImpl = unsafeToForeign <<< show
+instance readForeignHealth :: ReadForeign Health where
+  readImpl = readString >=> parseString
+    where
+      error s = singleton (ForeignError (errorString s))
+      parseString s = except $ note (error s) (toType s)
+      toType "Perfect" = pure Perfect
+      toType "Excellent" = pure Excellent
+      toType "Good" = pure Good
+      toType "Poor" = pure Poor
+      toType "Critical" = pure Critical
+      toType "NA" = pure NA
+      toType unknown = Nothing
+      errorString s = "Unknown Health: " <> s
+
 
 ------------------------------------------------------------------------------
 -- FrontEnd Specific Types

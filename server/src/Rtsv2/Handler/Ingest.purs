@@ -23,6 +23,7 @@ import Erl.Data.Map as Map
 import Erl.Data.Tuple (tuple2)
 import Erl.Process.Raw (Pid)
 import Erl.Process.Raw as Raw
+import Erl.Utils (self)
 import Gproc as GProc
 import Gproc as Gproc
 import Logger (Logger)
@@ -36,11 +37,12 @@ import Rtsv2.Config (LoadConfig)
 import Rtsv2.Config as Config
 import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.LlnwApi as LlnwApi
+import Rtsv2.Utils (badargToMaybe)
 import Shared.Rtsv2.Agent.State (IngestStats)
 import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.LlnwApiTypes (StreamIngestProtocol(..), StreamPublish, StreamDetails, SlotProfile(..))
 import Shared.Rtsv2.Stream (IngestKey(..), ProfileName, RtmpShortName, RtmpStreamName, SlotId, SlotRole)
-import Shared.Rtsv2.Types (Canary(..))
+import Shared.Rtsv2.Types (Canary, ResourceFailed(..))
 import Shared.Types.Workflow.Metrics.Commmon (Stream)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (writeJSON)
@@ -234,7 +236,12 @@ ingestStart loadConfig canary shortName streamName =
                                                                          Right _ ->
                                                                            Rest.result "ingestStarted" req2 state2
                                                                          Left error -> do
-                                                                           -- No need to stop the fake ingest, since its gproc.register will have failed
+                                                                           case error of
+                                                                             AlreadyRunning ->
+                                                                               pure unit
+                                                                             _ ->
+                                                                                -- No need to stop the fake ingest, since its gproc.register will have failed
+                                                                                stopFakeIngest ingestKey
                                                                            req3 <- Req.reply (StatusCode 409) Map.empty ("ingestStartFailed" <> (show error)) req2
                                                                            Rest.stop req3 state2
                                                                    ) : nil) req state)
@@ -252,8 +259,8 @@ ingestStop slotId role profileName =
                             Rest.result isAgentAvailable req state)
 
   # Rest.resourceExists (\req state@{ingestKey} -> do
-                            stopFakeIngest state.ingestKey
                             isActive <- IngestInstance.isActive ingestKey
+                            stopFakeIngest state.ingestKey
                             Rest.result isActive req state
                         )
   # Rest.contentTypesProvided (\req state ->
@@ -264,27 +271,35 @@ ingestStop slotId role profileName =
   # Rest.yeeha
 
 startFakeIngest :: IngestKey -> Effect Pid
-startFakeIngest ingestKey =
+startFakeIngest ingestKey = do
   let
-    proc = do
-      _ <- logInfo "fake ingest running" {}
-      _ <- GProc.register (tuple2 (atom "test_ingest_client") ingestKey)
-      handlerLoop
-      _ <- logInfo "fake ingest stopping" {}
-      pure unit
-  in
-    Raw.spawn proc
+    proc parent = do
+      self <- self
+      _ <- logInfo "fake ingest running" {ingestKey, self}
+      registerRes <- badargToMaybe $ GProc.register (tuple2 (atom "test_ingest_client") ingestKey)
+      Raw.send parent (atom "running")
+      case registerRes of
+        Nothing -> pure unit
+        Just _ -> do
+          handlerLoop ingestKey
+          _ <- logInfo "fake ingest stopped" {}
+          pure unit
+  parent <- self
+  child <- Raw.spawn (proc parent)
+  _ <- Raw.receive
+  pure child
 
-handlerLoop :: Effect Unit
-handlerLoop = do
+handlerLoop :: IngestKey -> Effect Unit
+handlerLoop ingestKey = do
   x <- Raw.receive
-  if (x == (atom "stop")) then pure unit
-    else handlerLoop
+  if (x == (atom "stop"))
+    then pure unit
+    else handlerLoop ingestKey
 
 stopFakeIngest :: IngestKey -> Effect Unit
 stopFakeIngest ingestKey = do
   pid <- Gproc.whereIs (tuple2 (atom "test_ingest_client") ingestKey)
-  _ <- logInfo "stopping fake ingest" {}
+  _ <- logInfo "stopping fake ingest" {ingestKey, pid}
   _ <- traverse ((flip Raw.send) (atom "stop")) pid
   pure unit
 

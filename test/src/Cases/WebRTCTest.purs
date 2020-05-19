@@ -72,14 +72,6 @@ launchArgs2 =
   , "--use-fake-ui-for-media-stream"
   ]
 
-playerUrl :: Node -> SlotId -> SlotRole -> T.URL
-playerUrl node slotId slotRole =
-  T.URL $ unwrap $ makeUrl (C.mkServerAddress node) $ ClientPlayerE slotId slotRole
-
-ingestUrl :: Node -> RtmpShortName -> RtmpStreamName -> T.URL
-ingestUrl node shortName streamName =
-  T.URL $ unwrap $ makeUrl (C.mkServerAddress node) $ ClientWebRTCIngestE shortName streamName
-
 options =
   { headless: false
   , args: launchArgs2
@@ -115,7 +107,7 @@ primaryStream =
           -- jsFile <- readTextFile UTF8 "./scripts/injectWebRTC.js"
           -- _ <- T.unsafeEvaluateOnNewDocument jsFile page
 
-          T.goto (playerUrl Env.p1n1 E.slot1 Primary) page
+          T.goto (HTTP.playerUrl Env.p1n1 E.slot1 Primary) page
           _ <- delay (Milliseconds 4000.00) >>= L.as' "wait for video to start"
 
           frames1 <- getInnerText "#frames" page
@@ -128,7 +120,7 @@ primaryStream =
 
           let frameDiff = stringToInt frames2 - stringToInt frames1
 
-          Assert.assert "frames aren't increasing" (frameDiff > 70) >>= L.as' ("frames increased by: " <> show frameDiff)
+          Assert.assert "frames aren't increasing" (frameDiff > 65) >>= L.as' ("frames increased by: " <> show frameDiff)
           Assert.assert "packets aren't increasing" ((stringToInt packets1) < (stringToInt packets2)) >>= L.as' ("packets are increasing: " <> packets2 <> " > " <> packets1)
           T.close browser
 
@@ -143,7 +135,7 @@ backupStream =
           browser <- T.launch options
           page <- T.newPage browser
 
-          T.goto (playerUrl Env.p1n1 E.slot1 Backup) page
+          T.goto (HTTP.playerUrl Env.p1n1 E.slot1 Backup) page
           _ <- delay (Milliseconds 3000.00) >>= L.as' "wait for video to start"
 
           frames1 <- getInnerText "#frames" page
@@ -156,7 +148,7 @@ backupStream =
 
           let frameDiff = stringToInt frames2 - stringToInt frames1
 
-          Assert.assert "frames aren't increasing" (frameDiff > 70) >>= L.as' ("frames increased by: " <> show frameDiff)
+          Assert.assert ("frames aren't increasing: " <> show frameDiff) (frameDiff > 65) >>= L.as' ("frames increased by: " <> show frameDiff)
           Assert.assert "packets aren't increasing" ((stringToInt packets1) < (stringToInt packets2)) >>= L.as' ("packets are increasing: " <> packets2 <> " > " <> packets1)
           T.close browser
 
@@ -177,7 +169,7 @@ ingestStream =
           browser <- T.launch options
           page <- T.newPage browser
 
-          T.goto (playerUrl Env.p1n1 E.slot1 Primary) page
+          T.goto (HTTP.playerUrl Env.p1n1 E.slot1 Primary) page
           _ <- delay (Milliseconds 3000.00) >>= L.as' "wait for video to start"
 
           frames1 <- getInnerText "#frames" page
@@ -190,7 +182,7 @@ ingestStream =
 
           let frameDiff = stringToInt frames2 - stringToInt frames1
 
-          Assert.assert "frames aren't increasing" (frameDiff > 70) >>= L.as' ("frames increased by: " <> show frameDiff)
+          Assert.assert "frames aren't increasing" (frameDiff > 65) >>= L.as' ("frames increased by: " <> show frameDiff)
           Assert.assert "packets aren't increasing" ((stringToInt packets1) < (stringToInt packets2)) >>= L.as' ("packets are increasing: " <> packets2 <> " > " <> packets1)
           T.close browser
 
@@ -206,7 +198,7 @@ webRtcIngest =
 
           browser <- T.launch options
           page <- T.newPage browser
-          T.goto (ingestUrl Env.p1n1 E.shortName1 E.highStreamName) page
+          T.goto (HTTP.ingestUrl Env.p1n1 E.shortName1 E.highStreamName) page
           _ <- delay (Milliseconds 2000.00) >>= L.as' "wait for page to load"
 
           T.click (T.Selector "#authenticate") page

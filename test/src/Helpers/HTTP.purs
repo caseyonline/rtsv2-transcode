@@ -5,17 +5,35 @@ import Prelude
 import Data.Either (Either(..))
 import Data.Newtype (unwrap, wrap)
 import Effect.Aff (Aff, attempt)
+import Helpers.CreateString as C
 import Helpers.CreateString (makeUrlAndUnwrap)
 import Helpers.Types (Node, ResWithBody(..))
 import Milkis as M
 import Milkis.Impl.Node (nodeFetch)
 import Prim.Row (class Union)
 import Shared.Rtsv2.Chaos as Chaos
-import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrlAddr)
+import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrlAddr, makeUrl)
 import Shared.Rtsv2.Stream (RtmpShortName, SlotId, SlotNameAndProfileName(..), SlotRole(..), RtmpStreamName, ProfileName)
 import Shared.Rtsv2.Types (Canary(..), CurrentLoad(..), ServerAddress(..))
 import Simple.JSON as SimpleJSON
+import Toppokki as T
 
+
+playerUrl :: Node -> SlotId -> SlotRole -> T.URL
+playerUrl node slotId slotRole =
+  T.URL $ unwrap $ makeUrl (C.mkServerAddress node) $ ClientPlayerE slotId slotRole
+
+ingestUrl :: Node -> RtmpShortName -> RtmpStreamName -> T.URL
+ingestUrl node shortName streamName =
+  T.URL $ unwrap $ makeUrl (C.mkServerAddress node) $ ClientWebRTCIngestE shortName streamName
+
+canaryPlayerUrl :: Node -> SlotId -> SlotRole -> T.URL
+canaryPlayerUrl node slotId slotRole =
+  T.URL $ unwrap $ makeUrl (C.mkServerAddress node) $ CanaryClientPlayerE slotId slotRole
+
+canaryIngestUrl :: Node -> RtmpShortName -> RtmpStreamName -> T.URL
+canaryIngestUrl node shortName streamName =
+  T.URL $ unwrap $ makeUrl (C.mkServerAddress node) $ CanaryClientWebRTCIngestE shortName streamName
 
 fetch
   :: forall options trash.
@@ -38,6 +56,18 @@ get :: M.URL -> Aff (Either String ResWithBody)
 get url = fetch url { method: M.getMethod }
 
 -- | Processes
+healthCheck :: Node -> Aff (Either String ResWithBody)
+healthCheck node =
+  get (M.URL $ makeUrlAndUnwrap node HealthCheckE)
+
+changeCanaryState :: Node -> Canary -> Aff (Either String ResWithBody)
+changeCanaryState node canary =
+  fetch (M.URL $ makeUrlAndUnwrap node CanaryE)
+        { method: M.postMethod
+        , body: SimpleJSON.writeJSON canary
+        , headers: M.makeHeaders { "Content-Type": "application/json" }
+        }
+
 clientStart :: Node -> Canary -> SlotId -> Aff (Either String ResWithBody)
 clientStart node canary slotId =
   fetch (M.URL $ makeUrlAndUnwrap node (ClientStartE canary slotId Primary))

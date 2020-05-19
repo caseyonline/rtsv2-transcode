@@ -104,6 +104,11 @@ startSlotHigh1000Backup ip = do
   _ <- delay (Milliseconds 8000.0)
   runProc "./scripts/run_slot1b_1000.sh" [ip]
 
+startSlotHigh1000Canary :: String -> Aff Unit
+startSlotHigh1000Canary ip = do
+  _ <- delay (Milliseconds 8000.0)
+  runProc "./scripts/run_slot1_1000.sh" [ip, "1936"]
+
 stopSlot :: Aff Unit
 stopSlot = do
   runProc "./scripts/stopSlot.sh" []

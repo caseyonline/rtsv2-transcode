@@ -4,6 +4,7 @@
 
 -export([ init/1
         , handle_info/2
+        , terminate/2
         ]).
 
 
@@ -53,3 +54,6 @@ handle_info({statistics, Stats}, State = #?state{stats_gatherer = StatsGatherer}
   StatsGatherer ! {webrtc_stats, Id, maps:put(message_queue_len, Len, Stats)},
 
   { noreply, State}.
+
+terminate(_Reason, _State) ->
+  ok.

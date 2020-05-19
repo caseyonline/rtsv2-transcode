@@ -461,6 +461,8 @@ init {shortName, streamDetails: streamDetails@{role: slotRole, slot: slot@{id: s
   Gen.registerTerminate thisServerName terminate
   void $ Bus.subscribe thisServerName IntraPoP.bus IntraPoPBus
   announceLocalAggregatorIsAvailable aggregatorKey (slotDetailsToSlotCharacteristics slot)
+  ref <- Erl.makeRef
+--  void $ Timer.sendAfter (serverName aggregatorKey) config.shutdownLingerTimeMs (MaybeStop ref)
   let
     Tuple workflowHandle (Tuple webRtcStreamServers _) = toNested2 workflowHandleAndPids
     initialState = { config : config
@@ -480,7 +482,7 @@ init {shortName, streamDetails: streamDetails@{role: slotRole, slot: slot@{id: s
                                                         , connectionToBackup: Nothing }
                                         Backup -> Right { dataObject: Nothing
                                                         , connectionToPrimary: Nothing }
-                   , maybeStopRef: Nothing
+                   , maybeStopRef: Nothing -- Just ref
                    }
   cachedState <- fromMaybe emptyCachedState <$> CachedInstanceState.getInstanceData stateServerName
   state2 <- applyCachedState initialState cachedState
@@ -672,7 +674,7 @@ handleInfo msg state@{aggregatorKey, slotId, stateServerName, workflowHandle, ma
     MaybeStop ref
       | Just ref == maybeStopRef
       , not hasIngests state -> do
-        logInfo "Ingest Aggregator stopping" {aggregatorKey}
+        logInfo "Ingest Aggregator stopping" {aggregatorKey, maybeStopRef}
         pure $ CastStop state
       | otherwise -> pure $ CastNoReply state
 
@@ -910,6 +912,7 @@ doRemoveIngest profileName cachedStateRemoveFun state@{aggregatorKey, workflowHa
   if not hasIngests state2 then do
     ref <- Erl.makeRef
     void $ Timer.sendAfter (serverName aggregatorKey) shutdownLingerTimeMs (MaybeStop ref)
+    _ <- logInfo "Starting linger timer" {ref}
     pure state2{maybeStopRef = Just ref}
   else
     pure state2

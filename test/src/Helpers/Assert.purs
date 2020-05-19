@@ -211,6 +211,25 @@ assertAggregatorOn nodes requiredSlotId =
       in
        (sort $ (ServerAddress <<< toAddrFromNode) <$> nodes) == sort serverAddressesForSlotId
 
+assertAggregatorCount
+  :: SlotId
+  -> Int
+  -> Either String ResWithBody
+  -> Aff (Either String ResWithBody)
+assertAggregatorCount requiredSlotId count = assertBodyFun $ predicate
+  where
+    predicate :: (PublicState.IntraPoP Array) -> Boolean
+    predicate popState =
+      let nodeAddresses = toAddrFromNode
+          serverAddressesForSlotId =
+            foldl (\acc {slotId, servers} ->
+                    if slotId == requiredSlotId
+                    then acc <> (extractAddress <<< JsonLd.unwrapNode <$> servers)
+                    else acc
+                  ) []  (JsonLd.unwrapNode popState).aggregatorLocations
+      in
+       length (sort serverAddressesForSlotId) == count
+
 assertEgestClients
   :: Int
   -> Either String ResWithBody

@@ -10,7 +10,7 @@ module Rtsv2.Agents.StreamRelaySup
 import Prelude
 
 import Data.Either (Either(..), either, note)
-import Data.Maybe (Maybe(..), maybe)
+import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Erl.Data.List (nil, (:))
 import Pinto (SupervisorName, isRegistered)
@@ -30,7 +30,7 @@ import Rtsv2.NodeManager as NodeManager
 import Shared.Rtsv2.Agent (Agent(..))
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Shared.Rtsv2.Stream (RelayKey(..))
-import Shared.Rtsv2.Types (LocalOrRemote(..), ResourceResp, Server)
+import Shared.Rtsv2.Types (LocalOrRemote(..), ResourceFailed(..), ResourceResp, Server)
 import SpudGun as SpudGun
 
 ------------------------------------------------------------------------------
@@ -72,14 +72,14 @@ startLocalStreamRelay loadConfig payload@{slotCharacteristics} =
   NodeManager.launchLocalAgent StreamRelay (Load.hasCapacityForStreamRelay slotCharacteristics loadConfig) launchLocal
   where
     launchLocal _ =
-      (note unit <<< startOkAS) <$> startRelay payload
+      (note LaunchFailed <<< startOkAS) <$> startRelay payload
 
 startLocalOrRemoteStreamRelay :: LoadConfig -> CreateRelayPayload -> Effect (ResourceResp Server)
 startLocalOrRemoteStreamRelay loadConfig payload@{slotCharacteristics} =
   NodeManager.launchLocalOrRemoteAgent StreamRelay (Load.hasCapacityForStreamRelay slotCharacteristics loadConfig) launchLocal launchRemote
   where
     launchLocal _ =
-      (note unit <<< startOkAS) <$> startRelay payload
+      (note LaunchFailed <<< startOkAS) <$> startRelay payload
     launchRemote idleServer =
       either (const false) (const true) <$> SpudGun.postJson ( makeUrl idleServer RelayE) payload
 

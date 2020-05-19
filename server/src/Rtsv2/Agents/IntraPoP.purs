@@ -19,7 +19,6 @@ module Rtsv2.Agents.IntraPoP
 
   , announceLoad
   , announceAcceptingRequests
-  , announceCanaryState
   , announceTransPoPLeader
 
     -- State queries
@@ -414,17 +413,6 @@ announceAcceptingRequests acceptingRequests =
         newMembers = alter (map (\ memberInfo -> memberInfo { acceptingRequests = acceptingRequests })) thisNodeAddress members
       sendToIntraSerfNetwork state "loadUpdate" (IMServerLoad thisNodeAddress load acceptingRequests canary)
       pure $ Gen.CastNoReply state { members = newMembers , acceptingRequests = acceptingRequests}
-
--- Called by RunState to indicate canaryState on this node
-announceCanaryState :: Canary -> Effect Unit
-announceCanaryState canary =
-  Gen.doCast serverName
-    \state@{ thisServer, members, load, acceptingRequests } -> do
-      let
-        thisNodeAddress = extractAddress thisServer
-        newMembers = alter (map (\ memberInfo -> memberInfo { canary = canary })) thisNodeAddress members
-      sendToIntraSerfNetwork state "loadUpdate" (IMServerLoad thisNodeAddress load acceptingRequests canary)
-      pure $ Gen.CastNoReply state { members = newMembers , canary = canary}
 
 type AgentMessageHandlerWithSerfPayload a = State -> AgentKey -> Server -> a -> Effect Unit
 type AgentMessageHandler = State -> AgentKey -> Server -> Effect Unit
@@ -1113,6 +1101,7 @@ logIfNewAgent handler locations thisServer agentKey agentServer =
     logInfo ("New " <> unwrap handler.name <> " is available " <> scope) {agentKey, agentServer}
 
 sendToIntraSerfNetwork :: State -> String -> IntraMessage -> Effect Unit
+sendToIntraSerfNetwork {canary: Canary} _name _msg = pure unit
 sendToIntraSerfNetwork state name msg = do
   result <- Serf.event state.serfRpcAddress name msg false
   maybeLogError "Intra-PoP serf event failed" result {name, msg}

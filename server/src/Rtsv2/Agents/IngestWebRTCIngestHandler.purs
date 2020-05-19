@@ -80,6 +80,7 @@ authenticate loadConfig canary host protocol account username password streamNam
               Just (SlotProfile { name: profileName }) -> do
                 let
                   ingestKey = makeIngestKey profileName streamDetails
+                _ <- logInfo "Starting WEBRTC" {canary}
                 maybeStartStream <- case protocol of
                                       WebRTC -> do
                                         self <- Erl.self

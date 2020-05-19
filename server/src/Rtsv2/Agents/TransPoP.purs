@@ -85,6 +85,7 @@ type LamportClocks =
 
 type State
   = { intraPoPApi :: IntraPoPAgentApi
+    , canary :: Canary
     , currentLeader :: Maybe Server
     , weAreLeader :: Boolean
     , lastLeaderAnnouncement :: Milliseconds
@@ -191,8 +192,7 @@ announceAggregatorIsAvailable slotCharacteristics agentKey server =
     doAnnounceStreamIsAvailable state@{ thisServer
                                       , serfRpcAddress
                                       } = do
-      result <- Serf.event state.serfRpcAddress "streamAvailable" (TMAggregatorState Available agentKey (extractAddress server) slotCharacteristics) false
-      maybeLogError "Trans-PoP serf event failed" result {}
+      sendToTransSerfNetwork state "streamAvailable" (TMAggregatorState Available agentKey (extractAddress server) slotCharacteristics)
       pure state
 
 announceAggregatorStopped :: AgentKey -> Server -> Effect Unit
@@ -210,8 +210,7 @@ announceAggregatorStopped agentKey server =
       then do
             -- Message from our pop - distribute over trans-pop
             --logInfo "Local stream stopped being delivered to trans-pop" { slotId: slotId }
-            result <- Serf.event state.serfRpcAddress "streamStopped" (TMAggregatorState Stopped agentKey (extractAddress server) emptySlotCharacteristics) false
-            maybeLogError "Trans-PoP serf event failed" result {}
+            sendToTransSerfNetwork state "streamStopped" (TMAggregatorState Stopped agentKey (extractAddress server) emptySlotCharacteristics)
             pure state
       else pure state
 
@@ -269,7 +268,8 @@ init { config: config@{ leaderTimeoutMs
                       , rpcPort
                       , defaultRttMs
                       }
-     , intraPoPApi} = do
+     , intraPoPApi
+     , canary} = do
   logInfo "Trans-PoP Agent Starting" {config: config}
   healthConfig <- Config.healthConfig
   -- Stop any agent that might be running (in case we crashed)
@@ -295,6 +295,7 @@ init { config: config@{ leaderTimeoutMs
 
   pure
     $ { intraPoPApi
+      , canary
       , config
       , healthConfig
       , currentLeader: Nothing
@@ -662,6 +663,12 @@ startScript =  privDir(atom "rtsv2") <> "/scripts/startTransPoPAgent.sh"
 
 stopScript :: String
 stopScript = privDir(atom "rtsv2") <> "/scripts/stopTransPoPAgent.sh"
+
+sendToTransSerfNetwork :: State -> String -> TransMessage -> Effect Unit
+sendToTransSerfNetwork {canary: Canary} _name _msg = pure unit
+sendToTransSerfNetwork state name msg = do
+  result <- Serf.event state.serfRpcAddress name msg false
+  maybeLogError "Trans-PoP serf event failed" result {name, msg}
 
 --------------------------------------------------------------------------------
 -- Log helpers

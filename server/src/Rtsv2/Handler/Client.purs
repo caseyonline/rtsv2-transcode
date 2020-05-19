@@ -70,8 +70,7 @@ clientStart loadConfig canary slotId slotRole =
             newReq <- replyWithoutBody (StatusCode 404) Map.empty req
             Rest.stop newReq state
         Left NoResource -> do
-          --TODO - don't think this should be a 502
-          newReq <- replyWithoutBody (StatusCode 502) Map.empty req
+          newReq <- replyWithoutBody (StatusCode 503) Map.empty req
           Rest.stop newReq state
         Right (Local _)  -> do
           handlerPid <- startHandler clientId

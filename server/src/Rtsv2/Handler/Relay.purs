@@ -123,14 +123,16 @@ ensureStarted loadConfig =
     resourceExists req state@(StartState {apiResp}) =
       case apiResp of
         Left NoCapacity -> do
-          --TODO - don't think this should be a 502
-          newReq <- replyWithoutBody (StatusCode 502) Map.empty req
+          newReq <- replyWithoutBody (StatusCode 503) Map.empty req
           Rest.stop newReq state
         Left LaunchFailed -> do
-          --TODO - don't think this should be a 502
-          newReq <- replyWithoutBody (StatusCode 502) Map.empty req
+          newReq <- replyWithoutBody (StatusCode 503) Map.empty req
           Rest.stop newReq state
         Left InvalidCanaryState -> do
+          newReq <- replyWithoutBody (StatusCode 409) Map.empty req
+          Rest.stop newReq state
+        Left AlreadyRunning -> do
+          -- Wouldn't actually get this for a relay, but need to handle all the options
           newReq <- replyWithoutBody (StatusCode 409) Map.empty req
           Rest.stop newReq state
         Right (Local _)  ->

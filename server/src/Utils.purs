@@ -1,6 +1,7 @@
 module Rtsv2.Utils
   ( member
   , noprocToMaybe
+  , badargToMaybe
   , crashIfLeft
   , undefined
   , cryptoStrongBytes
@@ -24,9 +25,13 @@ member :: forall a. Eq a => a -> List a -> Boolean
 member a as = fromMaybe false $ const true <$> findIndex ((==) a) as
 
 foreign import noprocToMaybeImpl :: forall a. Maybe a -> (a -> Maybe a) -> Effect a -> Effect (Maybe a)
+foreign import badargToMaybeImpl :: forall a. Maybe a -> (a -> Maybe a) -> Effect a -> Effect (Maybe a)
 
 noprocToMaybe :: forall a. Effect a -> Effect (Maybe a)
 noprocToMaybe = noprocToMaybeImpl Nothing Just
+
+badargToMaybe :: forall a. Effect a -> Effect (Maybe a)
+badargToMaybe = badargToMaybeImpl Nothing Just
 
 crashIfLeft :: forall e a m. Monad m => Either e a -> m a
 crashIfLeft either = unsafePartial $

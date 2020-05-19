@@ -9,7 +9,6 @@ module Rtsv2.Agents.IngestAggregatorSup
 import Prelude
 
 import Data.Either (either, note)
-import Data.Maybe (maybe)
 import Effect (Effect)
 import Erl.Data.List (nil, (:))
 import Pinto (StartChildResult, SupervisorName, isRegistered)
@@ -28,7 +27,7 @@ import Rtsv2.NodeManager as NodeManager
 import Shared.Rtsv2.Agent (Agent(..))
 import Shared.Rtsv2.LlnwApiTypes (slotDetailsToSlotCharacteristics)
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
-import Shared.Rtsv2.Types (Canary(..), ResourceResp, Server)
+import Shared.Rtsv2.Types (ResourceFailed(..), ResourceResp, Server)
 import SpudGun as SpudGun
 
 ------------------------------------------------------------------------------
@@ -48,7 +47,7 @@ startLocalAggregator loadConfig payload@{streamDetails} =
     NodeManager.launchLocalAgent IngestAggregator (Load.hasCapacityForAggregator slotCharacteristics loadConfig) launchLocal
   where
     launchLocal _ = do
-      (note unit <<< startOkAS) <$> startAggregator payload
+      (note LaunchFailed <<< startOkAS) <$> startAggregator payload
 
 startLocalOrRemoteAggregator :: LoadConfig -> CreateAggregatorPayload -> Effect (ResourceResp Server)
 startLocalOrRemoteAggregator loadConfig payload@{streamDetails} =
@@ -58,7 +57,7 @@ startLocalOrRemoteAggregator loadConfig payload@{streamDetails} =
     NodeManager.launchLocalOrRemoteAgent IngestAggregator (Load.hasCapacityForAggregator slotCharacteristics loadConfig) launchLocal launchRemote
   where
     launchLocal _ = do
-      (note unit <<< startOkAS) <$> startAggregator payload
+      (note LaunchFailed <<< startOkAS) <$> startAggregator payload
     launchRemote idleServer =
       either (const false) (const true) <$> SpudGun.postJson (makeUrl idleServer IngestAggregatorsE) payload
 
