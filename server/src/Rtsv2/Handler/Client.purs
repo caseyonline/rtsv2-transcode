@@ -74,7 +74,7 @@ clientStart loadConfig canary slotId slotRole =
           Rest.stop newReq state
         Right (Local _)  -> do
           handlerPid <- startHandler clientId
-          _ <- EgestInstance.addClient handlerPid (EgestKey slotId slotRole)
+          _ <- EgestInstance.addClient handlerPid (EgestKey slotId slotRole) clientId
           Rest.result true req state
         Right (Remote _) -> do
           Rest.result false req state

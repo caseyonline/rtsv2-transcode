@@ -11,7 +11,7 @@ import Data.Int (fromString)
 import Data.Lens (_Just, firstOf, over, set, traversed)
 import Data.Map as Map
 import Data.Maybe (Maybe(..), fromMaybe)
-import Data.Newtype (unwrap)
+import Data.Newtype (wrap, unwrap)
 import Data.These (These(..))
 import Data.Time.Duration (Milliseconds(..))
 import Data.Traversable (traverse, traverse_)
@@ -235,6 +235,15 @@ excludePorts { aggregators
       over (JsonLd._unwrappedNode <<< JsonLd._resource <<< JsonLd._relaysServed <<< traversed) clearPort
     clearPort  =
       set (JsonLd._unwrappedNode <<< JsonLd._resource <<< JsonLd._port) 0
+
+excludeTimestamps :: PublicState.SlotState Array -> PublicState.SlotState Array
+excludeTimestamps state@{ egests } =
+  state{egests = excludeEgestTimestamps <$> egests}
+  where
+    excludeEgestTimestamps =
+      over (JsonLd._unwrappedNode <<< JsonLd._resource) clearTimestamp
+    clearTimestamp =
+      set JsonLd._timestamp (wrap 0.0)
 
 -------------------------------------------------------------------------------
 -- Others

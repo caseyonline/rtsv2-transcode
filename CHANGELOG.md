@@ -22,6 +22,8 @@
 
     * current agent count is also returned from the healthCheck endpoint
 
+* Prometheus endpoint for egest stats on ```/support/egests/metrics```
+
 # RTS-V2 release 96
 
 **What's new**

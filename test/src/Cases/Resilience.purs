@@ -127,7 +127,7 @@ resilienceTest5 =
       lift $ E.waitForAsyncProfileStart                                   >>= as' "wait for recovery"
       (lift $ HTTP.getSlotState E.p1n1 E.slot1 >>= (F.bodyToRecord :: ToRecord (PublicState.SlotState Array))
        <#> ((<$>) F.canonicaliseSlotState))
-        >>= A.compareSlotState F.excludePorts (==)
+        >>= A.compareSlotState (F.excludeTimestamps <<< F.excludePorts) (==)
         >>= A.compareSlotState identity (/=)
         >>= asT "compare state"
 
@@ -141,12 +141,12 @@ resilienceTest6 =
       lift $ HTTP.clientStart E.p2n1 Live E.slot1   >>= A.assertStatusCode 204 >>= as  "egest available"
       lift $ E.waitForTransPoPDisseminate                                 >>= as' "wait for async start of egest"
       (lift $ HTTP.getSlotState E.p1n1 E.slot1 >>= (F.bodyToRecord :: ToRecord (PublicState.SlotState Array))
-       <#> ((<$>) (F.excludePorts <<< F.canonicaliseSlotState)))
+       <#> ((<$>) (F.excludeTimestamps <<< F.excludePorts <<< F.canonicaliseSlotState)))
                                                >>= F.storeSlotState       >>= asT "stored state"
       F.killDownstreamRelay E.slot1 Primary                               >>= asT' "kill downstream relay"
       lift $ E.waitForAsyncProfileStart                                   >>= as' "wait for recovery"
       (lift $ HTTP.getSlotState E.p1n1 E.slot1 >>= (F.bodyToRecord :: ToRecord (PublicState.SlotState Array))
        <#> ((<$>) F.canonicaliseSlotState))
-              >>= A.compareSlotState F.excludePorts (==)
+              >>= A.compareSlotState (F.excludeTimestamps <<< F.excludePorts) (==)
               >>= A.compareSlotState identity (/=)
               >>= asT "compare state"
