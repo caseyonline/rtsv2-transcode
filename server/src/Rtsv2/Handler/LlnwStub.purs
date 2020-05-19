@@ -134,7 +134,7 @@ db =
 
     webRtcSlotA =
       { auth: { host: AnyHost --"172.16.171.5"
-              , protocol: SpecificProtocol WebRTC
+              , protocol: AnyProtocol
               , rtmpShortName: wrap "mmddev002"
               , authType: Adobe
               , username: "user"
