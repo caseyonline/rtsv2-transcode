@@ -2,6 +2,12 @@
 
 **What's new**
 
+* 
+
+# RTS-V2 release 98
+
+**What's new**
+
 * **RTSV2-78** AAC-HE and AAC-HE2 now supported for ingest
 
 * TimeZero message being sent to player to indicate video timestamp of first frame
