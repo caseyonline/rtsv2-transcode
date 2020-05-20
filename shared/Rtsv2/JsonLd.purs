@@ -47,6 +47,7 @@ module Shared.Rtsv2.JsonLd
 
        , EgestStatsContextFields
        , EgestStats
+       , EgestSessionStats
        , EgestStatsNode
        , egestStatsContext
        , egestStatsNode
@@ -92,6 +93,8 @@ module Shared.Rtsv2.JsonLd
        , _profileName
        , _relaysServed
        , _port
+       , _timestamp
+       , _sessions
 
        , module JsonLd
        ) where
@@ -106,10 +109,9 @@ import Data.Symbol (SProxy(..))
 import Shared.Common (Milliseconds)
 import Shared.JsonLd (Context, ContextValue(..), ExpandedTermDefinition, Node(..), NodeMetadata, unwrapNode, _unwrappedNode, _id, _resource) as JsonLd
 import Shared.JsonLd (ContextDefinition(..))
-import Shared.Rtsv2.Agent (Agent)
 import Shared.Rtsv2.LlnwApiTypes (StreamDetails)
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makePath, makeUrl, makeUrlAddr)
-import Shared.Rtsv2.Stream (ProfileName, SlotId, SlotRole)
+import Shared.Rtsv2.Stream (EgestKey, ProfileName, SlotId, SlotRole)
 import Shared.Rtsv2.Types (Canary, CurrentLoad, DeliverTo, JsonLdContextType(..), PoPName, RelayServer, RunState, Server, ServerAddress)
 import Shared.Rtsv2.Types as Types
 import Shared.Types.Media.Types.Rtmp (RtmpClientMetadata)
@@ -301,20 +303,38 @@ egestLocationNode slotId slotRole server =
 
 ------------------------------------------------------------------------------
 -- EgestStats
-type EgestStatsContextFields = ( clientCount :: JsonLd.ContextValue )
+type EgestStatsContextFields = ( timestamp :: JsonLd.ContextValue
+                               , egestKey :: JsonLd.ContextValue
+                               , clientCount :: JsonLd.ContextValue
+                               , sessions :: JsonLd.ContextValue
+                               )
 
-type EgestStats = { clientCount :: Int }
+type EgestSessionStats = { sessionId :: String
+                         , audioPacketsSent :: Int
+                         , audioOctetsSent :: Int
+                         , videoPacketsSent :: Int
+                         , videoOctetsSent :: Int
+                         }
 
-type EgestStatsNode = JsonLd.Node EgestStats EgestStatsContextFields
+type EgestStats f = { timestamp :: Milliseconds
+                    , egestKey :: EgestKey
+                    , clientCount :: Int
+                    , sessions :: f EgestSessionStats
+                    }
+
+type EgestStatsNode f = JsonLd.Node (EgestStats f) EgestStatsContextFields
 
 egestStatsContext :: JsonLd.Context EgestStatsContextFields
 egestStatsContext = wrap { "@language": Nothing
                          , "@base": Nothing
                          , "@vocab": Nothing
+                         , timestamp: JsonLd.Other "http://schema.rtsv2.llnw.com/UTCTimestamp"
+                         , egestKey: JsonLd.Other "http://schema.rtsv2.llnw.com/EgestKey"
                          , clientCount: JsonLd.Other "http://schema.rtsv2.llnw.com/Counter"
+                         , sessions: JsonLd.Other "http://schema.rtsv2.llnw.com/EgestSessions"
                          }
 
-egestStatsNode :: SlotId -> SlotRole -> Server -> EgestStats -> EgestStatsNode
+egestStatsNode :: forall f. SlotId -> SlotRole -> Server -> EgestStats f -> EgestStatsNode f
 egestStatsNode slotId slotRole server stats =
   wrap { resource: stats
        , "@id": Just $ makeUrl server (EgestStatsE slotId slotRole)
@@ -557,6 +577,12 @@ _relaysServed = prop (SProxy :: SProxy "relaysServed")
 
 _port :: forall a b. Lens' {port :: a | b} a
 _port = prop (SProxy :: SProxy "port")
+
+_timestamp :: forall a b. Lens' {timestamp :: a | b} a
+_timestamp = prop (SProxy :: SProxy "timestamp")
+
+_sessions :: forall a b. Lens' {sessions :: a | b} a
+_sessions = prop (SProxy :: SProxy "sessions")
 
 -- foo :: forall resourceType otherFields newtypeType. Newtype newtypeType { resource :: resourceType | otherFields } => newtypeType -> resourceType
 -- foo = _.resource <<< unwrap

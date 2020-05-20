@@ -1,16 +1,16 @@
 import ISession from "./ISession";
 
-import EventEmitter from "../../../shared/util/EventEmitter.ts";
+import EventEmitter from "../../../shared/util/EventEmitter";
 
-import { WebSocketProtocolStatusCode } from "../../../shared/util/WebSocketUtil.ts";
+import { WebSocketProtocolStatusCode } from "../../../shared/util/WebSocketUtil";
 
-import { IQualityConstraintConfiguration } from "./signaling/types.ts";
+import { IQualityConstraintConfiguration } from "./signaling/types";
 
 import { MessageDestination
-         , DataObjectUpdateOperation} from "../../../shared/data-object-types.ts";
+         , DataObjectUpdateOperation} from "../../../shared/data-object-types";
 
-import * as ClientMessages from "./signaling/clientMessages.ts";
-import * as ServerMessages from "./signaling/serverMessages.ts";
+import * as ClientMessages from "./signaling/clientMessages";
+import * as ServerMessages from "./signaling/serverMessages";
 
 enum SessionState {
   Opening = 1000,
@@ -320,11 +320,16 @@ export default class Session extends EventEmitter implements ISession {
       });
   }
 
-  reportStats() {
+  async reportStats() {
     if (this.state == SessionState.Negotiating) {
-      this.peer.getReceivers().forEach((receiver) => receiver.getStats().then((stats) => {
+      this.peer.getReceivers().forEach(async (receiver) => {
+        const stats = await receiver.getStats();
         this.emit("playback-" + receiver.track.kind + "-stats", stats);
-      }))
+
+        const syncSources = receiver.getSynchronizationSources();
+        this.emit("playback-" + receiver.track.kind + "-sync-sources", syncSources);
+      });
+
       setTimeout(() => { this.reportStats() }, 1000);
     }
   }

@@ -18,6 +18,7 @@ module Rtsv2.Names
        , ingestRtmpCryptoName
 
        , ingestStatsName
+       , egestStatsName
        , ingestSupName
        , intraPoPName
        , loadServerName
@@ -94,6 +95,9 @@ ingestRtmpCryptoName = withSuffix "RtmpCrypto" Ingest
 
 ingestStatsName :: forall a b. ServerName a b
 ingestStatsName = withSuffix "Stats" Ingest
+
+egestStatsName :: forall a b. ServerName a b
+egestStatsName = withSuffix "Stats" Egest
 
 ingestSupName :: SupervisorName
 ingestSupName = sup Ingest

@@ -111,6 +111,8 @@
             <li class="list-group-item">Packets: <span id="packets"></span></li>
             <li class="list-group-item">PLI: <span id="pli"></span></li>
             <li class="list-group-item">Resolution: <span id="resolution"></span></li>
+            <li class="list-group-item">Last Audio Timestamp: <span id="audio-timestamp"></span></li>
+            <li class="list-group-item">Last Video Timestamp: <span id="video-timestamp"></span></li>
           </ul>
           <button id="stop" type="button" class="btn btn-primary" disabled>Stop</button>
         </div>
@@ -241,6 +243,16 @@
           }
           //console.log("video stats", Array.from(stats.values()));
         });
+        player.on("playback-audio-sync-sources", (syncSources) => {
+          if (syncSources.length > 0) {
+            $("#audio-timestamp").html(syncSources[0].rtpTimestamp);
+          }
+        });
+        player.on("playback-video-sync-sources", (syncSources) => {
+          if (syncSources.length > 0) {
+            $("#video-timestamp").html(syncSources[0].rtpTimestamp);
+          }
+        })
 
         $("#stop").on("click", (event) => {
           player.stop();

@@ -105,6 +105,7 @@
         , get_slot_configuration :: fun()
         , data_object_send_message :: fun()
         , data_object_update :: fun()
+        , stats_update :: fun()
         , add_client :: fun()
         , audio_ssrc :: rtp:ssrc()
         , video_ssrc :: rtp:ssrc()
@@ -388,7 +389,10 @@ websocket_info({egestCurrentActiveProfiles, ActiveProfiles}, State) ->
   , State
   };
 
-websocket_info(#media_gateway_event{ details = Event }, #?state_running{ profiles = Profiles } = State) ->
+websocket_info(#media_gateway_event{ details = Event }, #?state_running{ profiles = Profiles
+                                                                       , webrtc_session_id = SessionId
+                                                                       , stream_desc = #stream_desc_egest{ egest_key = Key
+                                                                                                         , stats_update = StatsUpdate }} = State) ->
   case Event of
     #media_gateway_client_synchronization_established_event{ rtp_timestamp = RTPTimestamp } ->
       { [ json_frame( <<"time-zero">>,
@@ -422,7 +426,17 @@ websocket_info(#media_gateway_event{ details = Event }, #?state_running{ profile
           }
       end;
 
-    #media_gateway_client_statistics_updated_event{} = Stats ->
+    #media_gateway_client_statistics_updated_event{ audio_packets_sent = AudioPacketsSent
+                                                  , audio_octets_sent = AudioOctetsSent
+                                                  , video_packets_sent = VideoPacketsSent
+                                                  , video_octets_sent = VideoOctetsSent
+                                                  } = Stats ->
+
+      (StatsUpdate(Key, #{ sessionId => SessionId
+                         , audioPacketsSent => AudioPacketsSent
+                         , audioOctetsSent => AudioOctetsSent
+                         , videoPacketsSent => VideoPacketsSent
+                         , videoOctetsSent => VideoOctetsSent}))(),
       { ok
       , State#?state_running{ last_stats_event = Stats
                             , last_stats_received_at = ?vm_now_ms
@@ -497,6 +511,7 @@ try_build_stream_desc(Req,
                        , get_slot_configuration := GetSlotConfiguration
                        , data_object_send_message := DataObjectSendMessage
                        , data_object_update := DataObjectUpdate
+                       , stats_update := StatsUpdate
                        , add_client := AddClient
                        , use_media_gateway := UseMediaGateway
                        }
@@ -537,6 +552,7 @@ try_build_stream_desc(Req,
                           , get_slot_configuration = GetSlotConfiguration
                           , data_object_send_message = DataObjectSendMessage
                           , data_object_update = DataObjectUpdate
+                          , stats_update = StatsUpdate
                           , add_client = AddClient
                           , audio_ssrc = AudioSSRC
                           , video_ssrc = VideoSSRC
@@ -672,7 +688,7 @@ transition_to_running([ #{ profileName := ActiveProfileName } | _OtherProfiles ]
 
       ?I_SUBSCRIBE_BUS_MSGS({egestBus, {egestKey, SlotId, SlotRole}}),
       ?I_SUBSCRIBE_BUS_MSGS({media_gateway_event, trace_id_to_media_gateway_id(TraceId)}),
-      {right, unit} = (AddClient(self(), EgestKey))();
+      {right, unit} = (AddClient(self(), EgestKey, WebRTCSessionId))();
     _ ->
       ok
   end,

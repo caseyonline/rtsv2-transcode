@@ -8,6 +8,7 @@ module Rtsv2.Agents.EgestInstance
   , getSlotConfiguration
   , dataObjectSendMessage
   , dataObjectUpdate
+  , statsUpdate
   , CreateEgestPayload
 
   , CachedState
@@ -29,11 +30,13 @@ import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, singleton)
-import Erl.Data.Map (values)
+import Erl.Data.Map (Map, values)
+import Erl.Data.Map as Map
 import Erl.Data.Tuple (Tuple2, tuple2)
 import Erl.Process (Process(..), (!))
 import Erl.Process.Raw (Pid)
 import Erl.Utils (Ref, makeRef, systemTimeMs)
+import Erl.Utils as Erl
 import Logger (Logger)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
@@ -61,8 +64,7 @@ import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Common (Milliseconds)
 import Shared.Rtsv2.Agent (SlotCharacteristics)
 import Shared.Rtsv2.Agent as Agent
-import Shared.Rtsv2.Agent.State as PublicState
-import Shared.Rtsv2.JsonLd as JsonLd
+import Shared.Rtsv2.JsonLd (EgestStats, EgestSessionStats)
 import Shared.Rtsv2.LlnwApiTypes (StreamIngestProtocol(..))
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeWsUrl)
 import Shared.Rtsv2.Stream (AggregatorKey(..), EgestKey(..), ProfileName, RelayKey(..), SlotId, SlotRole, egestKeyToAgentKey)
@@ -95,6 +97,7 @@ type State
     , loadConfig :: LoadConfig
     , thisServer :: EgestServer
     , clientCount :: Int
+    , clientStats :: Map String EgestSessionStats
     , lingerTime :: Milliseconds
     , relayCreationRetry :: Milliseconds
     , stopRef :: Maybe Ref
@@ -106,6 +109,15 @@ type State
     , lastOnFI :: Int
     , dataObject :: Maybe DO.Object
     , activeProfiles :: List ProfileName
+    }
+
+emptySessionStats :: String -> EgestSessionStats
+emptySessionStats sessionId
+  = { sessionId
+    , audioPacketsSent: 0
+    , audioOctetsSent: 0
+    , videoPacketsSent: 0
+    , videoOctetsSent: 0
     }
 
 payloadToEgestKey :: CreateEgestPayload -> EgestKey
@@ -121,7 +133,7 @@ bus :: EgestKey -> Bus.Bus (Tuple2 Atom EgestKey) EgestBusMsg
 bus egestKey = Bus.bus (tuple2 (atom "egestBus") egestKey)
 
 data Msg = WriteEqLog
-         | HandlerDown
+         | HandlerDown String
          | InitStreamRelays
          | MaybeStop Ref
          | IntraPoPBus IntraPoP.IntraPoPBusMessage
@@ -165,9 +177,9 @@ pendingClient egestKey  =
     maybeResetStopTimer state =
       pure state
 
-addClient :: Pid -> EgestKey -> Effect RegistrationResp
-addClient handlerPid egestKey =
-  Gen.doCall ourServerName \state@{clientCount, dataObject, activeProfiles, slotCharacteristics, loadConfig} -> do
+addClient :: Pid -> EgestKey -> String -> Effect RegistrationResp
+addClient handlerPid egestKey sessionId =
+  Gen.doCall ourServerName \state@{clientCount, clientStats, dataObject, activeProfiles, slotCharacteristics, loadConfig} -> do
 
     idleServerResp <- IntraPoP.getThisIdleServer $ Load.hasCapacityForEgestClient slotCharacteristics loadConfig
     case idleServerResp of
@@ -175,10 +187,11 @@ addClient handlerPid egestKey =
         pure $ CallReply (Left NoResource) state
       Right _ -> do
         logInfo "Add client" {newCount: clientCount + 1}
-        Gen.monitorPid ourServerName handlerPid (\_ -> HandlerDown)
+        Gen.monitorPid ourServerName handlerPid (\_ -> (HandlerDown sessionId))
         maybeSend dataObject
         (Process handlerPid) ! (EgestCurrentActiveProfiles activeProfiles)
         pure $ CallReply (Right unit) state{ clientCount = clientCount + 1
+                                           , clientStats = Map.insert sessionId (emptySessionStats sessionId) clientStats
                                            , stopRef = Nothing
                                            }
   where
@@ -210,10 +223,22 @@ dataObjectUpdate egestKey updateMsg =
     pure $ CallReply unit state
   )
 
-currentStats :: EgestKey -> Effect PublicState.Egest
+statsUpdate :: EgestKey -> EgestSessionStats -> Effect Unit
+statsUpdate egestKey stats@{sessionId} = do
+  Gen.call (serverName egestKey) \state@{clientStats} ->
+    CallReply unit state{clientStats = Map.insert sessionId stats clientStats}
+
+currentStats :: EgestKey -> Effect (EgestStats List)
 currentStats egestKey@(EgestKey slotId slotRole) =
-  Gen.call (serverName egestKey) \state@{thisServer, clientCount} ->
-    CallReply (JsonLd.egestStatsNode slotId slotRole (wrap (unwrap thisServer)) {clientCount}) state
+  Gen.doCall (serverName egestKey) \state@{thisServer, clientCount, clientStats} -> do
+    now <- Erl.systemTimeMs
+    let
+      stats = { egestKey
+              , timestamp: now
+              , clientCount
+              , sessions: Map.values clientStats
+              }
+    pure $ CallReply stats state
 
 toEgestServer :: Server -> EgestServer
 toEgestServer = unwrap >>> wrap
@@ -259,6 +284,7 @@ init payload@{slotId, slotRole, aggregator, slotCharacteristics} stateServerName
             , loadConfig
             , thisServer : toEgestServer thisServer
             , clientCount : 0
+            , clientStats : Map.empty
             , lingerTime : wrap $ toNumber lingerTimeMs
             , relayCreationRetry : wrap $ toNumber relayCreationRetryMs
             , stopRef : Nothing
@@ -281,9 +307,9 @@ handleInfo msg state@{egestKey: egestKey@(EgestKey slotId slotRole)} =
       _ <- traverse Audit.egestUpdate eqLines
       pure $ CastNoReply state{lastEgestAuditTime = endMs}
 
-    HandlerDown -> do
+    HandlerDown sessionId -> do
       _ <- logInfo "client down!" {}
-      state2 <- removeClient state
+      state2 <- removeClient sessionId state
       pure $ CastNoReply state2
 
     InitStreamRelays -> CastNoReply <$> initStreamRelay state
@@ -378,22 +404,24 @@ processGunMessage state@{relayWebSocket: Just socket, egestKey, lastOnFI} gunMsg
   else
     pure $ CastNoReply state
 
-removeClient :: State -> Effect State
-removeClient state@{clientCount: 0} = do
+removeClient :: String -> State -> Effect State
+removeClient sessionId state@{clientCount: 0} = do
   logInfo "Remove client - already zero" {}
   pure $ state
 
-removeClient state@{clientCount: 1, lingerTime, egestKey} = do
+removeClient sessionId state@{clientCount: 1, lingerTime, egestKey} = do
   ref <- makeRef
   logInfo "Last client gone, start stop timer" {}
   _ <- Timer.sendAfter (serverName egestKey) (round $ unwrap lingerTime) (MaybeStop ref)
   pure $ state{ clientCount = 0
+              , clientStats = (Map.empty :: Map String EgestSessionStats)
               , stopRef = Just ref
               }
 
-removeClient state@{clientCount} = do
+removeClient sessionId state@{clientCount, clientStats} = do
   logInfo "Remove client" { newCount: clientCount - 1 }
-  pure $ state{ clientCount = clientCount - 1 }
+  pure $ state{ clientCount = clientCount - 1
+              , clientStats = Map.delete sessionId clientStats}
 
 egestEqLines :: State -> Effect (Tuple Milliseconds (List Audit.EgestEqLine))
 egestEqLines state@{ egestKey: egestKey@(EgestKey slotId _slotRole)
