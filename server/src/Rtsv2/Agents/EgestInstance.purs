@@ -66,7 +66,7 @@ import Shared.Rtsv2.Agent (SlotCharacteristics)
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.JsonLd (EgestStats, EgestSessionStats)
 import Shared.Rtsv2.LlnwApiTypes (StreamIngestProtocol(..))
-import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeWsUrl)
+import Shared.Rtsv2.Router.Endpoint.System as System
 import Shared.Rtsv2.Stream (AggregatorKey(..), EgestKey(..), ProfileName, RelayKey(..), SlotId, SlotRole, egestKeyToAgentKey)
 import Shared.Rtsv2.Types (EgestServer(..), FailureReason(..), LocalOrRemote(..), RegistrationResp, RelayServer, ResourceResp, Server, extractAddress)
 import WsGun as WsGun
@@ -494,7 +494,7 @@ initStreamRelay state@{relayCreationRetry, egestKey: egestKey@(EgestKey slotId s
     tryConfigureAndRegister relayServer =
       do
         let
-          wsUrl = makeWsUrl relayServer $ RelayRegisteredEgestWs slotId slotRole (extractAddress thisServer) state.receivePortNumber
+          wsUrl = System.makeWsUrl relayServer $ System.RelayRegisteredEgestWs slotId slotRole (extractAddress thisServer) state.receivePortNumber
         maybeWebSocket <- hush <$> WsGun.openWebSocket wsUrl
         case maybeWebSocket of
           Just webSocket -> do

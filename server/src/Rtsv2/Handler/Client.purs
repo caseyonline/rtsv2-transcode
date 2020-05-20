@@ -31,7 +31,7 @@ import Rtsv2.Config (LoadConfig)
 import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Utils (cryptoStrongToken)
-import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
+import Shared.Rtsv2.Router.Endpoint.System as System
 import Shared.Rtsv2.Stream (EgestKey(..), SlotId, SlotRole)
 import Shared.Rtsv2.Types (Canary, FailureReason(..), LocalOrRemote(..), Server, extractAddress)
 import Stetson (HttpMethod(..), RestResult, StetsonHandler)
@@ -91,7 +91,7 @@ clientStart loadConfig canary slotId slotRole =
       case egestResp of
         Right (Remote server) ->
           let
-            url = makeUrl server (ClientStartE canary slotId slotRole)
+            url = System.makeUrl server (System.ClientStartE canary slotId slotRole)
           in
             Rest.result (moved $ unwrap url) req state
         _ ->

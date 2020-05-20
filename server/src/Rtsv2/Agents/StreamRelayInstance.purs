@@ -76,7 +76,8 @@ import Shared.Rtsv2.Agent (SlotCharacteristics)
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.JsonLd as JsonLd
-import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl, makeWsUrl, makeWsUrlAddr)
+import Shared.Rtsv2.Router.Endpoint.System as Support
+import Shared.Rtsv2.Router.Endpoint.System as System
 import Shared.Rtsv2.Stream (AggregatorKey(..), ProfileName, RelayKey(..), SlotId(..), SlotRole)
 import Shared.Rtsv2.Types (DeliverTo, EgestServer, PoPName, RelayServer, Server, ServerAddress(..), SourceRoute, extractAddress, extractPoP)
 import Shared.UUID (UUID)
@@ -395,7 +396,7 @@ applyOriginRunResult commonStateData@{ relayKey: relayKey@(RelayKey slotId slotR
     maybeTryRegisterIngestAggregator runStateIn@{ ingestAggregatorState: IngestAggregatorStateRegistered _ _} = pure runStateIn
     maybeTryRegisterIngestAggregator runStateIn@{ ingestAggregatorState: IngestAggregatorStatePendingRegistration portNumber } =
       let
-        wsUrl = makeWsUrl ingestAggregator $ IngestAggregatorRegisteredRelayWs slotId slotRole (extractAddress thisServer) portNumber
+        wsUrl = Support.makeWsUrl ingestAggregator $ Support.IngestAggregatorRegisteredRelayWs slotId slotRole (extractAddress thisServer) portNumber
       in
         do
            response <-  WsGun.openWebSocket wsUrl
@@ -475,7 +476,7 @@ applyDownstreamRunResult commonStateData@{ relayKey: relayKey@(RelayKey slotId s
           Just randomServerInPoP ->
             let
               payload = { slotId, slotRole, aggregator: ingestAggregator, slotCharacteristics } :: CreateRelayPayload
-              url = makeUrl randomServerInPoP RelayEnsureStartedE
+              url = System.makeUrl randomServerInPoP System.RelayEnsureStartedE
             in
               do
                 eitherResponse <- SpudGun.postJsonFollow url payload
@@ -489,7 +490,7 @@ applyDownstreamRunResult commonStateData@{ relayKey: relayKey@(RelayKey slotId s
 
     registerWithSpecificRelay portNumber chosenRelay remainingRoute =
       let
-        wsUrl = makeWsUrlAddr chosenRelay $ RelayRegisteredRelayWs slotId slotRole (extractAddress thisServer) portNumber remainingRoute
+        wsUrl = System.makeWsUrlAddr chosenRelay $ System.RelayRegisteredRelayWs slotId slotRole (extractAddress thisServer) portNumber remainingRoute
       in
         do
           webSocket <- WsGun.openWebSocket wsUrl

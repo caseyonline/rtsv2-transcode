@@ -99,9 +99,9 @@ import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Rtsv2.LlnwApiTypes (HlsPushAuth, HlsPushProtocol, HlsPushSpecFormat, SlotProfile(..), StreamDetails, slotDetailsToSlotCharacteristics)
-import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrlAddr, makeWsUrl)
+import Shared.Rtsv2.Router.Endpoint.System as System
 import Shared.Rtsv2.Stream (AggregatorKey(..), IngestKey(..), ProfileName, RtmpShortName, SlotId, SlotRole(..), ingestKeyToAggregatorKey)
-import Shared.Rtsv2.Types (Canary(..), DeliverTo, RelayServer, Server, ServerAddress, extractAddress)
+import Shared.Rtsv2.Types (DeliverTo, RelayServer, Server, ServerAddress, extractAddress)
 import WsGun as WsGun
 
 foreign import data WorkflowHandle :: Type
@@ -536,7 +536,7 @@ attemptConnectionToBackup state@{slotId, slotRole, dataObjectState: Left dos@{}}
 
     Just peerAggregator -> do
       let
-        peerWsUrl = makeWsUrl peerAggregator $ IngestAggregatorBackupWs slotId Backup
+        peerWsUrl = System.makeWsUrl peerAggregator $ System.IngestAggregatorBackupWs slotId Backup
       mPeerWebSocket <- hush <$> WsGun.openWebSocket peerWsUrl
       case mPeerWebSocket of
         Nothing -> do
@@ -873,7 +873,7 @@ doAddRemoteIngest profileName handler@(Process handlerPid) ingestAddress state@{
       logInfo "Remote ingest added" {slotId, slotRole, profileName, ingestAddress}
       let
         state2 = addRemoteIngestToCachedState profileName handler ingestAddress state
-        url = makeUrlAddr ingestAddress (IngestInstanceLlwpE slotId slotRole profileName)
+        url = System.makeUrlAddr ingestAddress (System.IngestInstanceLlwpE slotId slotRole profileName)
       updateCachedState state2
       sendActiveProfiles state2
       addRemoteIngestImpl workflowHandle (IngestKey slotId slotRole profileName) (unwrap url)

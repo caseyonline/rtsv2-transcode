@@ -18,7 +18,7 @@ import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.IntraPoP as IntraPoPAgent
 import Shared.JsonLd as JsonLd
 import Shared.Rtsv2.Agent.State as PublicState
-import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl, makeUrlAddr)
+import Shared.Rtsv2.Router.Endpoint.Support as Support
 import Shared.Rtsv2.Stream (AggregatorKey(..), ProfileName, SlotId, SlotRole(..))
 import Shared.Rtsv2.Types (Server, ServerAddress, extractAddress)
 import Simple.JSON (class ReadForeign)
@@ -67,7 +67,7 @@ getAggregators slotId servers =
   catMaybes <$> traverse (\(Tuple role server) -> getAggregator slotId role server) servers
 
 getAggregator :: SlotId -> SlotRole -> Server -> Effect (Maybe (IngestAggregatorL))
-getAggregator slotId slotRole server = getJson server (IngestAggregatorE slotId slotRole)
+getAggregator slotId slotRole server = getJson server (Support.IngestAggregatorE slotId slotRole)
 
 getIngests :: SlotId -> List (IngestAggregatorL) -> Effect (List IngestL)
 getIngests slotId aggregators =
@@ -81,7 +81,7 @@ getIngests slotId aggregators =
                                     ) (JsonLd.unwrapNode <$> aggregators)
 
 getIngest :: SlotId -> SlotRole -> ProfileName -> ServerAddress -> Effect (Maybe (IngestL))
-getIngest slotId slotRole profileName server = getJson' server (IngestInstanceE slotId slotRole profileName)
+getIngest slotId slotRole profileName server = getJson' server (Support.IngestInstanceE slotId slotRole profileName)
 
 getOriginRelays :: SlotId -> List (IngestAggregatorL) -> Effect (List StreamRelayL)
 getOriginRelays slotId aggregators =
@@ -113,7 +113,7 @@ getDownstreamRelays slotId upstreamRelays = do
     pure $ downStreamRelays <> nextLevel
 
 getRelay :: SlotId -> SlotRole -> ServerAddress -> Effect (Maybe (StreamRelayL))
-getRelay slotId slotRole address = getJson' address (RelayStatsE slotId slotRole)
+getRelay slotId slotRole address = getJson' address (Support.RelayStatsE slotId slotRole)
 
 getEgests :: SlotId -> List SlotRole -> List (StreamRelayL) -> Effect (List (PublicState.Egest List))
 getEgests slotId roles relays =
@@ -127,12 +127,12 @@ getEgests slotId roles relays =
                                     ) (JsonLd.unwrapNode <$> relays)
 
 getEgest :: SlotId -> SlotRole -> ServerAddress -> Effect (Maybe (PublicState.Egest List))
-getEgest slotId slotRole address = getJson' address (EgestStatsE slotId slotRole)
+getEgest slotId slotRole address = getJson' address (Support.EgestStatsE slotId slotRole)
 
-getJson :: forall a. ReadForeign a => Server -> Endpoint -> Effect (Maybe a)
+getJson :: forall a. ReadForeign a => Server -> Support.Endpoint -> Effect (Maybe a)
 getJson server endpoint =
-  hush <$> SpudGun.bodyToJSON <$> SpudGun.getJson (makeUrl server endpoint)
+  hush <$> SpudGun.bodyToJSON <$> SpudGun.getJson (Support.makeUrl server endpoint)
 
-getJson' :: forall a. ReadForeign a => ServerAddress -> Endpoint -> Effect (Maybe a)
+getJson' :: forall a. ReadForeign a => ServerAddress -> Support.Endpoint -> Effect (Maybe a)
 getJson' address endpoint =
-  hush <$> SpudGun.bodyToJSON <$> SpudGun.getJson (makeUrlAddr address endpoint)
+  hush <$> SpudGun.bodyToJSON <$> SpudGun.getJson (Support.makeUrlAddr address endpoint)

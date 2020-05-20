@@ -1,23 +1,4 @@
-module Shared.Rtsv2.Router.Endpoint
-       ( Endpoint(..)
-       , endpoint
-       , makePath
-       , makeUrl
-       , makeUrlWithPath
-       , makeUrlAddr
-       , makeUrlAddrWithPath
-       , makeWsUrl
-       , makeWsUrlWithPath
-       , makeWsUrlAddr
-       , makeWsUrlAddrWithPath
-       , parseSlotId
-       , parseSlotRole
-       , parseServerAddress
-       , parseSourceRoute
-       , parseInt
-       , uName
-       , popName
-       ) where
+module Shared.Rtsv2.Router.Endpoint.System where
 
 import Prelude hiding ((/))
 
@@ -39,53 +20,8 @@ import Shared.UUID (fromString)
 
 data Endpoint
   =
-  -- Public
-    StreamDiscoveryE String String
-  | ClientPlayerE SlotId SlotRole
-  | ClientPlayerControlE SlotId SlotRole
-  | ClientPlayerAssetsE SlotId SlotRole (Array String)
-
-  | ClientWebRTCIngestE RtmpShortName RtmpStreamName
-  | ClientWebRTCIngestControlE RtmpShortName RtmpStreamName
-  | ClientWebRTCIngestAssetsE RtmpShortName RtmpStreamName (Array String)
-
-  -- Support
-  | VMMetricsE
-  | TimedRoutesE
-  | TimedRoutesForPoPE PoPName
-  | HealthCheckE
-  | CanaryE
-  | RunStateE
-  | ServerStateE
-  | SlotStateE SlotId
-  | PoPDefinitionE
-  | JsonLdContext JsonLdContextType
-  | EgestStatsE SlotId SlotRole
-  | EgestInstancesMetricsE
-  | RelayStatsE SlotId SlotRole
-  | IngestAggregatorE SlotId SlotRole
-  | IngestAggregatorPlayerE SlotId SlotRole
-  | IngestAggregatorPlayerJsE SlotId SlotRole (Array String)
-  | IngestAggregatorActiveIngestsPlayerE SlotId SlotRole ProfileName
-  | IngestAggregatorActiveIngestsPlayerJsE SlotId SlotRole ProfileName (Array String)
-  | IngestAggregatorActiveIngestsPlayerControlE SlotId SlotRole ProfileName
-  | IngestAggregatorsE
-  | IngestInstancesMetricsE
-  | IngestInstanceE SlotId SlotRole ProfileName
-  | ClientAppAssetsE (Array String)
-  | ClientAppRouteHTMLE
-
-  | CanaryStreamDiscoveryE String String
-  | CanaryClientPlayerE SlotId SlotRole
-  | CanaryClientPlayerControlE SlotId SlotRole
-  | CanaryClientPlayerAssetsE SlotId SlotRole (Array String)
-
-  | CanaryClientWebRTCIngestE RtmpShortName RtmpStreamName
-  | CanaryClientWebRTCIngestControlE RtmpShortName RtmpStreamName
-  | CanaryClientWebRTCIngestAssetsE RtmpShortName RtmpStreamName (Array String)
-
   -- System
-  | TransPoPLeaderE
+    TransPoPLeaderE
   | EgestE
   | RelayE
   | RelayEnsureStartedE
@@ -117,12 +53,6 @@ data Endpoint
   | WorkflowMetricsE String
   | WorkflowStructureE String
 
-  -- | FrontEnd specific
-  | LoginE
-  | UserE
-  | UsersE
-  | ProfilesE Username
-
 derive instance genericEndpoint :: Generic Endpoint _
 
 instance showEndpoint :: Show Endpoint where
@@ -132,57 +62,8 @@ instance showEndpoint :: Show Endpoint where
 endpoint :: RouteDuplex' Endpoint
 endpoint = root $ sum
   {
-  -- Public
-    "StreamDiscoveryE"                                 : "public" / "discovery" / "v1" / segment / segment
-
-  , "ClientPlayerE"                                    : "public" / "client" / slotId segment / slotRole segment / "player"
-  , "ClientPlayerControlE"                             : "public" / "client" / slotId segment / slotRole segment / "session" -- URL duplicated in Web.purs
-  , "ClientPlayerAssetsE"                              : "public" / "client" / slotId segment / slotRole segment / rest
-
-  , "ClientWebRTCIngestE"                              : "public" / "ingest" / shortName segment / streamName segment / "ingest"
-  , "ClientWebRTCIngestControlE"                       : "public" / "ingest" / shortName segment / streamName segment / "session"
-  , "ClientWebRTCIngestAssetsE"                        : "public" / "ingest" / shortName segment / streamName segment / rest
-
-  -- Support
-  , "VMMetricsE"                                       : "support" / "vm" / path "metrics" noArgs
-  , "TimedRoutesE"                                     : "support" / path "timedRoutes" noArgs
-  , "TimedRoutesForPoPE"                               : "support" / "timedRoutes" / popName segment
-  , "HealthCheckE"                                     : "support" / path "healthCheck" noArgs
-  , "CanaryE"                                          : "support" / path "canary" noArgs
-  , "RunStateE"                                        : "support" / path "runState" noArgs
-  , "ServerStateE"                                     : "support" / path "state" noArgs
-  , "SlotStateE"                                       : "support" / "state" / "slot" / slotId segment
-  , "PoPDefinitionE"                                   : "support" / path "popDefinition" noArgs
-  , "JsonLdContext"                                    : "support" / "jsonld" / contextType segment
-  , "EgestStatsE"                                      : "support" / "egest" / slotId segment / slotRole segment
-  , "EgestInstancesMetricsE"                           : "support" / "egest" / path "metrics" noArgs
-  , "RelayStatsE"                                      : "support" / "relay" / slotId segment / slotRole segment  -- TODO - stats vs status
-  , "IngestAggregatorE"                                : "support" / "ingestAggregator" / slotId segment / slotRole segment
-
-  , "IngestAggregatorPlayerE"                          : "support" / "ingestAggregator" / slotId segment / slotRole segment / "player"
-  , "IngestAggregatorPlayerJsE"                        : "support" / "ingestAggregator" / slotId segment / slotRole segment / "js" / rest
-  , "IngestAggregatorActiveIngestsPlayerE"             : "support" / "ingestAggregator" / slotId segment / slotRole segment / "activeIngests" / profileName segment / "player"
-  , "IngestAggregatorActiveIngestsPlayerJsE"           : "support" / "ingestAggregator" / slotId segment / slotRole segment / "activeIngests" / profileName segment / "js" / rest
-  , "IngestAggregatorActiveIngestsPlayerControlE"      : "support" / "ingestAggregator" / slotId segment / slotRole segment / "activeIngests" / profileName segment / "control" -- URL duplicated in Web.purs
-  , "IngestAggregatorsE"                               : "support" / path "ingestAggregator" noArgs
-  , "IngestInstancesMetricsE"                          : "support" / "ingest" / path "metrics" noArgs
-  , "IngestInstanceE"                                  : "support" / "ingest" / slotId segment / slotRole segment / profileName segment
-
-  , "ClientAppAssetsE"                                 : "support" / "assets" / rest
-  , "ClientAppRouteHTMLE"                              : "support" / noArgs
-
-  , "CanaryStreamDiscoveryE"                           : "support" / "canary" / "discovery" / "v1" / segment / segment
-
-  , "CanaryClientPlayerE"                              : "support" / "canary" / "client" / slotId segment / slotRole segment / "player"
-  , "CanaryClientPlayerControlE"                       : "support" / "canary" / "client" / slotId segment / slotRole segment / "session" -- URL duplicated in Web.purs
-  , "CanaryClientPlayerAssetsE"                        : "support" / "canary" / "client" / slotId segment / slotRole segment / rest
-
-  , "CanaryClientWebRTCIngestE"                        : "support" / "canary" / "ingest" / shortName segment / streamName segment / "ingest"
-  , "CanaryClientWebRTCIngestControlE"                 : "support" / "canary" / "ingest" / shortName segment / streamName segment / "session"
-  , "CanaryClientWebRTCIngestAssetsE"                  : "support" / "canary" / "ingest" / shortName segment / streamName segment / rest
-
   -- System
-  , "TransPoPLeaderE"                                  : "system" / path "transPoPLeader" noArgs
+    "TransPoPLeaderE"                                  : "system" / path "transPoPLeader" noArgs
 
   , "EgestE"                                           : "system" / path "egest"  noArgs
 
@@ -217,13 +98,6 @@ endpoint = root $ sum
   , "WorkflowGraphE"                                   : "system" / "workflows" / segment / "graph" -- URL duplicated in Web.purs
   , "WorkflowMetricsE"                                 : "system" / "workflows" / segment / "metrics" -- URL duplicated in Web.purs
   , "WorkflowStructureE"                               : "system" / "workflows" / segment / "structure" -- URL duplicated in Web.purs
-
-  -- Support UI URLs - TODO - to be deleted and moved to client
-  , "LoginE"                                           : "api" / "users" / "login" / noArgs
-  , "UserE"                                            : "api" / "user" / noArgs
-  , "UsersE"                                           : "api" / "users" / noArgs
-  , "ProfilesE"                                        : "api" / "profile" / uName segment
-
 }
 
 makePath :: Endpoint -> String
@@ -429,3 +303,5 @@ canary = as canaryToString (parseCanary >>> note "Bad CanaryId")
 
 uName :: RouteDuplex' String -> RouteDuplex' Username
 uName = as userNametoString (parseUsername >>> note "Bad username")
+
+

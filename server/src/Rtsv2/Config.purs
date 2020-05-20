@@ -97,8 +97,11 @@ instance readForeignMediaGatewayFlag :: ReadForeign MediaGatewayFlag where
       toType unknown = Nothing
       errorString s = "Unknown Media Gateway Flag: " <> s
 
--- TODO - config should include BindIFace or BindIp
-type WebConfig = { port :: Int }
+type WebConfig =
+  { systemPort :: Int
+  , supportPort :: Int
+  , publicPort :: Int
+  }
 
 type GlobalConfig
   = { intraPoPLatencyMs :: Int

@@ -19,13 +19,15 @@ import Halogen.VDom.Driver (runUI)
 import Milkis as M
 import Routing.Duplex (parse)
 import Routing.Hash (matchesWith)
+import Rtsv2App.Api.Endpoint.Auth as Auth
 import Rtsv2App.Api.Request (ProfileJson, RequestMethod(..), fetchReq, printUrl, readToken, withResponse)
 import Rtsv2App.AppM (runAppM)
 import Rtsv2App.Component.Router as Router
 import Rtsv2App.Data.Route (routeCodec)
 import Rtsv2App.Env (AuthUrl(..), CurHostUrl(..), Env, LogLevel(..), UrlEnv, UserEnv, PoPDefEnv, getCurOrigin)
-import Shared.Rtsv2.Router.Endpoint (Endpoint(..))
 import Shared.Rtsv2.Agent.State (PoPDefinition)
+import Shared.Rtsv2.Router.Endpoint.Public as Public
+import Shared.Rtsv2.Router.Endpoint.Support as Support
 
 
 main :: Effect Unit
@@ -52,7 +54,7 @@ main = HA.runHalogenAff do
   userBus <- liftEffect Bus.make
 
   liftEffect readToken >>= traverse_ \token -> do
-    response <- liftAff $ Aff.attempt $ fetchReq (M.URL $ printUrl (CurHostUrl curHostUrl) PoPDefinitionE) Nothing Get
+    response <- liftAff $ Aff.attempt $ fetchReq (M.URL $ printUrl (CurHostUrl curHostUrl) Support.PoPDefinitionE) Nothing Get
     popDef <- withResponse response \(result :: PoPDefinition Array) -> result
     case popDef of
       Left err -> traceM err -- need to do some proper error handling here
@@ -62,7 +64,7 @@ main = HA.runHalogenAff do
   -- local storage (if there is one). Read the token, request the user's profile if it can, and
   -- if it gets a valid result, write it to our mutable reference.
   liftEffect readToken >>= traverse_ \token -> do
-    response <- liftAff $ Aff.attempt $ fetchReq (M.URL $ printUrl authUrl UserE) (Just token) Get
+    response <- liftAff $ Aff.attempt $ fetchReq (M.URL $ printUrl authUrl Auth.UserE) (Just token) Get
     user <- withResponse response \(result :: ProfileJson) -> result.user
     case user of
       Left err -> traceM err -- need to do some proper error handling here

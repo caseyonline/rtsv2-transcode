@@ -18,6 +18,7 @@ import Rtsv2App.Capability.LogMessages (class LogMessages, logError)
 import Rtsv2App.Capability.Now (class Now)
 import Rtsv2App.Data.Profile (Profile)
 import Rtsv2App.Env (UrlEnv, UserEnv)
+import Shared.Rtsv2.Router.Endpoint.Class (class RoutedEndpoint)
 import Shared.Rtsv2.Types (ServerAddress)
 import Unsafe.Coerce (unsafeCoerce)
 
@@ -26,10 +27,11 @@ import Unsafe.Coerce (unsafeCoerce)
 -- Request Helpers
 -------------------------------------------------------------------------------
 mkRequest
-  :: forall m r
+  :: forall m r e
    . MonadAff m
   => MonadAsk { urlEnv :: UrlEnv | r } m
-  => OptionMethod
+  => RoutedEndpoint e
+  => OptionMethod e
   -> m (Either String String)
 mkRequest opts@{ endpoint, method } = do
   { urlEnv } <- ask
@@ -39,11 +41,12 @@ mkRequest opts@{ endpoint, method } = do
     Right res -> handleResponse res
 
 mkOriginRequest
-  :: forall m r
+  :: forall m r e
    . MonadAff m
   => MonadAsk { urlEnv :: UrlEnv | r } m
+  => RoutedEndpoint e
   => ServerAddress
-  -> OptionMethod
+  -> OptionMethod e
   -> m (Either String String)
 mkOriginRequest serverAdd opts@{ endpoint, method } = do
   response <- liftAff $ Aff.attempt $ fetchReq (M.URL $ printOriginUrl serverAdd endpoint) Nothing method
@@ -52,10 +55,11 @@ mkOriginRequest serverAdd opts@{ endpoint, method } = do
     Right res -> handleResponse res
 
 mkAuthRequest
-  :: forall m r
+  :: forall m r e
    . MonadAff m
   => MonadAsk { urlEnv :: UrlEnv | r } m
-  => OptionMethod
+  => RoutedEndpoint e
+  => OptionMethod e
   -> m (Either String String)
 mkAuthRequest opts@{ endpoint, method } = do
   { urlEnv } <- ask

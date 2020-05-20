@@ -52,7 +52,7 @@ import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Rtsv2.LlnwApiTypes (StreamDetails, StreamPublish(..))
-import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeWsUrl)
+import Shared.Rtsv2.Router.Endpoint.System as System
 import Shared.Rtsv2.Stream (AggregatorKey, IngestKey(..), ingestKeyToAggregatorKey)
 import Shared.Rtsv2.Types (Canary, LocalOrRemote(..), ResourceResp, Server, extractAddress, fromLocalOrRemote)
 import Shared.Types.Media.Types.Rtmp (RtmpClientMetadata)
@@ -353,7 +353,7 @@ informAggregator state@{ streamDetails
     addIngest Nothing = pure Nothing
     addIngest (Just aggregatorAddress) = do
         let
-          wsUrl = makeWsUrl aggregatorAddress $ IngestAggregatorRegisteredIngestWs slotId slotRole profileName (extractAddress thisServer)
+          wsUrl = System.makeWsUrl aggregatorAddress $ System.IngestAggregatorRegisteredIngestWs slotId slotRole profileName (extractAddress thisServer)
         webSocket <- WsGun.openWebSocket wsUrl
         pure $ hush webSocket
 

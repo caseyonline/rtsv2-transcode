@@ -38,7 +38,7 @@ import Rtsv2.NodeManager as NodeManager
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Utils (noprocToMaybe)
 import Shared.Rtsv2.Agent (Agent(..))
-import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
+import Shared.Rtsv2.Router.Endpoint.System as System
 import Shared.Rtsv2.Stream (AggregatorKey(..), EgestKey(..), SlotId, SlotRole)
 import Shared.Rtsv2.Types (Canary(..), FailureReason(..), LocalOrRemote(..), LocationResp, ResourceFailed(..), ResourceResp, Server, ServerLoad, serverLoadToServer)
 import SpudGun as SpudGun
@@ -133,7 +133,7 @@ findEgest' loadConfig thisServer egestKey payload@{slotCharacteristics} = runExc
           (note LaunchFailed <<< startOkAS) <$> startEgest payload
         launchRemote remote =
           -- todo - if remote then need to sleep before recurse to allow intra-pop disemination
-          either (const false) (const true) <$> SpudGun.postJson (makeUrl remote EgestE) payload
+          either (const false) (const true) <$> SpudGun.postJson (System.makeUrl remote System.EgestE) payload
 
     capacityForClient :: ServerLoad -> Maybe (Tuple Server LoadCheckResult)
     capacityForClient serverLoad =

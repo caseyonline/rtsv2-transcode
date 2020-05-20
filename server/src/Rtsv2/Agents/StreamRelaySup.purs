@@ -28,7 +28,7 @@ import Rtsv2.Load as Load
 import Rtsv2.Names as Names
 import Rtsv2.NodeManager as NodeManager
 import Shared.Rtsv2.Agent (Agent(..))
-import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
+import Shared.Rtsv2.Router.Endpoint.System as System
 import Shared.Rtsv2.Stream (RelayKey(..))
 import Shared.Rtsv2.Types (LocalOrRemote(..), ResourceFailed(..), ResourceResp, Server)
 import SpudGun as SpudGun
@@ -81,7 +81,7 @@ startLocalOrRemoteStreamRelay loadConfig payload@{slotCharacteristics} =
     launchLocal _ =
       (note LaunchFailed <<< startOkAS) <$> startRelay payload
     launchRemote idleServer =
-      either (const false) (const true) <$> SpudGun.postJson ( makeUrl idleServer RelayE) payload
+      either (const false) (const true) <$> SpudGun.postJson (System.makeUrl idleServer System.RelayE) payload
 
 ------------------------------------------------------------------------------
 -- Supervisor callbacks

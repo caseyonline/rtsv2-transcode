@@ -48,7 +48,9 @@ import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Serf (Ip(..))
 import Shared.Rtsv2.LlnwApiTypes (StreamDetails)
-import Shared.Rtsv2.Router.Endpoint as Router
+import Shared.Rtsv2.Router.Endpoint.Public as Public
+import Shared.Rtsv2.Router.Endpoint.Support as Support
+import Shared.Rtsv2.Router.Endpoint.System as System
 import Shared.Rtsv2.Stream (EgestKey(..), IngestKey(..), ProfileName, RtmpShortName, RtmpStreamName, SlotId, SlotRole(..))
 import Shared.Rtsv2.Types (Canary(..), Server, LocationResp, RegistrationResp, extractAddress)
 import Shared.UUID (UUID, fromString)
@@ -71,105 +73,120 @@ init :: Config.WebConfig -> Effect State
 init args = do
   featureFlags <- Config.featureFlags
   loadConfig <- Config.loadConfig
-  bindIp <- Env.privateInterfaceIp
+  publicBindIp <- Env.publicInterfaceIp
+  privateBindIp <- Env.privateInterfaceIp
   thisServer <- PoPDefinition.getThisServer
-  Stetson.configure
-    # Stetson.routes
-        Router.endpoint
-        {
-        -- Public
-          "StreamDiscoveryE"                            : StreamDiscoveryHandler.discover loadConfig Live
-        , "ClientPlayerE"                               : \(_ :: SlotId) (_ :: SlotRole) -> PrivFile "rtsv2" "www/egestReferencePlayer.html"
-        , "ClientPlayerAssetsE"                         : \(_ :: SlotId) (_ :: SlotRole) -> PrivDir "rtsv2" "www/assets"
-        , "ClientPlayerControlE"                        : CowboyRoutePlaceholder
+  
+  public <-
+        Stetson.configure
+      # Stetson.routes
+          Public.endpoint
+          { "StreamDiscoveryE"                            : StreamDiscoveryHandler.discover loadConfig Live
+          , "ClientPlayerE"                               : \(_ :: SlotId) (_ :: SlotRole) -> PrivFile "rtsv2" "www/egestReferencePlayer.html"
+          , "ClientPlayerAssetsE"                         : \(_ :: SlotId) (_ :: SlotRole) -> PrivDir "rtsv2" "www/assets"
+          , "ClientPlayerControlE"                        : CowboyRoutePlaceholder
 
-        , "ClientWebRTCIngestE"                         : \(_ :: RtmpShortName) (_ :: RtmpStreamName) -> PrivFile "rtsv2" "www/referenceIngest.html"
-        , "ClientWebRTCIngestAssetsE"                   : \(_ :: RtmpShortName) (_ :: RtmpStreamName) -> PrivDir "rtsv2" "www/assets"
-        , "ClientWebRTCIngestControlE"                  : CowboyRoutePlaceholder
+          , "ClientWebRTCIngestE"                         : \(_ :: RtmpShortName) (_ :: RtmpStreamName) -> PrivFile "rtsv2" "www/referenceIngest.html"
+          , "ClientWebRTCIngestAssetsE"                   : \(_ :: RtmpShortName) (_ :: RtmpStreamName) -> PrivDir "rtsv2" "www/assets"
+          , "ClientWebRTCIngestControlE"                  : CowboyRoutePlaceholder
+          }
+      # Stetson.cowboyRoutes (publicRoutes thisServer featureFlags loadConfig)
+      # Stetson.port args.publicPort
+      # (uncurry4 Stetson.bindTo) (ipToTuple publicBindIp)
+      # Stetson.startClear "public_http"
 
-        -- Support
-        , "VMMetricsE"                                  : HealthHandler.vmMetrics
-        , "TimedRoutesE"                                : TransPoPHandler.timedRoutes
-        , "TimedRoutesForPoPE"                          : TransPoPHandler.timedRoutesForPoP
-        , "HealthCheckE"                                : HealthHandler.healthCheck
-        , "CanaryE"                                     : CanaryHandler.setCanary
-        , "RunStateE"                                   : RunStateHandler.setRunState
-        , "ServerStateE"                                : IntraPoPHandler.publicState
-        , "SlotStateE"                                  : IntraPoPHandler.slotState
-        , "PoPDefinitionE"                              : PoPDefinitionHandler.popDefinition
-        , "JsonLdContext"                               : JsonLd.getContextJson
-        , "EgestStatsE"                                 : EgestStatsHandler.stats thisServer
-        , "EgestInstancesMetricsE"                      : EgestHandler.egestInstancesMetrics thisServer
-        , "RelayStatsE"                                 : RelayHandler.stats
-        , "IngestAggregatorE"                           : IngestAggregatorHandler.ingestAggregator
-        , "IngestAggregatorPlayerE"                     : \(_ :: SlotId) (_ :: SlotRole) -> PrivFile "rtsv2" "www/aggregatorPlayer.html"
-        , "IngestAggregatorPlayerJsE"                   : \(_ :: SlotId) (_ :: SlotRole) -> PrivDir "rtsv2" "www/assets/js"
-        , "IngestAggregatorActiveIngestsPlayerE"        : \(_ :: SlotId) (_ :: SlotRole) (_ :: ProfileName) -> PrivFile "rtsv2" "www/play.html"
-        , "IngestAggregatorActiveIngestsPlayerJsE"      : \(_ :: SlotId) (_ :: SlotRole) (_ :: ProfileName) -> PrivDir "rtsv2" "www/assets/js"
-        , "IngestAggregatorActiveIngestsPlayerControlE" : CowboyRoutePlaceholder
-        , "IngestAggregatorsE"                          : IngestAggregatorHandler.ingestAggregators loadConfig
-        , "IngestInstancesMetricsE"                     : IngestHandler.ingestInstancesMetrics
-        , "IngestInstanceE"                             : IngestHandler.ingestInstance
-        , "ClientAppAssetsE"                            : PrivDir Config.appName "www/assets"
-        , "ClientAppRouteHTMLE"                         : PrivFile Config.appName "www/index.html"
+  support <-
+     Stetson.configure
+      # Stetson.routes
+          Support.endpoint
+          { "VMMetricsE"                                  : HealthHandler.vmMetrics
+          , "TimedRoutesE"                                : TransPoPHandler.timedRoutes
+          , "TimedRoutesForPoPE"                          : TransPoPHandler.timedRoutesForPoP
+          , "HealthCheckE"                                : HealthHandler.healthCheck
+          , "CanaryE"                                     : CanaryHandler.setCanary
+          , "RunStateE"                                   : RunStateHandler.setRunState
+          , "ServerStateE"                                : IntraPoPHandler.publicState
+          , "SlotStateE"                                  : IntraPoPHandler.slotState
+          , "PoPDefinitionE"                              : PoPDefinitionHandler.popDefinition
+          , "JsonLdContext"                               : JsonLd.getContextJson
+          , "EgestStatsE"                                 : EgestStatsHandler.stats thisServer
+          , "EgestInstancesMetricsE"                      : EgestHandler.egestInstancesMetrics thisServer
+          , "RelayStatsE"                                 : RelayHandler.stats
+          , "IngestAggregatorE"                           : IngestAggregatorHandler.ingestAggregator
+          , "IngestAggregatorPlayerE"                     : \(_ :: SlotId) (_ :: SlotRole) -> PrivFile "rtsv2" "www/aggregatorPlayer.html"
+          , "IngestAggregatorPlayerJsE"                   : \(_ :: SlotId) (_ :: SlotRole) -> PrivDir "rtsv2" "www/assets/js"
+          , "IngestAggregatorActiveIngestsPlayerE"        : \(_ :: SlotId) (_ :: SlotRole) (_ :: ProfileName) -> PrivFile "rtsv2" "www/play.html"
+          , "IngestAggregatorActiveIngestsPlayerJsE"      : \(_ :: SlotId) (_ :: SlotRole) (_ :: ProfileName) -> PrivDir "rtsv2" "www/assets/js"
+          , "IngestAggregatorActiveIngestsPlayerControlE" : CowboyRoutePlaceholder
+          , "IngestAggregatorsE"                          : IngestAggregatorHandler.ingestAggregators loadConfig
+          , "IngestInstancesMetricsE"                     : IngestHandler.ingestInstancesMetrics
+          , "IngestInstanceE"                             : IngestHandler.ingestInstance
+          , "ClientAppAssetsE"                            : PrivDir Config.appName "www/assets"
+          , "ClientAppRouteHTMLE"                         : PrivFile Config.appName "www/index.html"
 
-        , "CanaryStreamDiscoveryE"                      : StreamDiscoveryHandler.discover loadConfig Canary
-        , "CanaryClientPlayerE"                         : \(_ :: SlotId) (_ :: SlotRole) -> PrivFile "rtsv2" "www/egestReferencePlayer.html"
-        , "CanaryClientPlayerAssetsE"                   : \(_ :: SlotId) (_ :: SlotRole) -> PrivDir "rtsv2" "www/assets"
-        , "CanaryClientPlayerControlE"                  : CowboyRoutePlaceholder
+          , "CanaryStreamDiscoveryE"                      : StreamDiscoveryHandler.discover loadConfig Canary
+          , "CanaryClientPlayerE"                         : \(_ :: SlotId) (_ :: SlotRole) -> PrivFile "rtsv2" "www/egestReferencePlayer.html"
+          , "CanaryClientPlayerAssetsE"                   : \(_ :: SlotId) (_ :: SlotRole) -> PrivDir "rtsv2" "www/assets"
+          , "CanaryClientPlayerControlE"                  : CowboyRoutePlaceholder
 
-        , "CanaryClientWebRTCIngestE"                   : \(_ :: RtmpShortName) (_ :: RtmpStreamName) -> PrivFile "rtsv2" "www/referenceIngest.html"
-        , "CanaryClientWebRTCIngestAssetsE"             : \(_ :: RtmpShortName) (_ :: RtmpStreamName) -> PrivDir "rtsv2" "www/assets"
-        , "CanaryClientWebRTCIngestControlE"            : CowboyRoutePlaceholder
+          , "CanaryClientWebRTCIngestE"                   : \(_ :: RtmpShortName) (_ :: RtmpStreamName) -> PrivFile "rtsv2" "www/referenceIngest.html"
+          , "CanaryClientWebRTCIngestAssetsE"             : \(_ :: RtmpShortName) (_ :: RtmpStreamName) -> PrivDir "rtsv2" "www/assets"
+          , "CanaryClientWebRTCIngestControlE"            : CowboyRoutePlaceholder
 
-        -- System
-        , "TransPoPLeaderE"                             : IntraPoPHandler.leader
-        , "EgestE"                                      : EgestHandler.startResource loadConfig
-        , "RelayE"                                      : RelayHandler.startResource loadConfig
-        , "RelayEnsureStartedE"                         : RelayHandler.ensureStarted loadConfig
-        , "RelayRegisteredRelayWs"                      : RelayHandler.registeredRelayWs
-        , "RelayRegisteredEgestWs"                      : RelayHandler.registeredEgestWs
+          }
+      # Stetson.cowboyRoutes (supportRoutes thisServer featureFlags loadConfig)
+      # Stetson.port args.supportPort
+      # (uncurry4 Stetson.bindTo) (ipToTuple privateBindIp)
+      # Stetson.startClear "support_http"
 
-        , "IngestAggregatorRegisteredIngestWs"          : IngestAggregatorHandler.registeredIngestWs
-        , "IngestAggregatorRegisteredRelayWs"           : IngestAggregatorHandler.registeredRelayWs
-        , "IngestAggregatorBackupWs"                    : IngestAggregatorHandler.backupWs
+  system <-
+    Stetson.configure
+      # Stetson.routes
+          System.endpoint
+          { "TransPoPLeaderE"                             : IntraPoPHandler.leader
+          , "EgestE"                                      : EgestHandler.startResource loadConfig
+          , "RelayE"                                      : RelayHandler.startResource loadConfig
+          , "RelayEnsureStartedE"                         : RelayHandler.ensureStarted loadConfig
+          , "RelayRegisteredRelayWs"                      : RelayHandler.registeredRelayWs
+          , "RelayRegisteredEgestWs"                      : RelayHandler.registeredEgestWs
 
-        , "IngestInstanceLlwpE"                         : CowboyRoutePlaceholder
-        , "IntraPoPTestHelperE"                         : IntraPoPHandler.testHelper
-        , "LoadE"                                       : LoadHandler.load
-        , "RelayProxiedStatsE"                          : RelayHandler.proxiedStats
+          , "IngestAggregatorRegisteredIngestWs"          : IngestAggregatorHandler.registeredIngestWs
+          , "IngestAggregatorRegisteredRelayWs"           : IngestAggregatorHandler.registeredRelayWs
+          , "IngestAggregatorBackupWs"                    : IngestAggregatorHandler.backupWs
 
-        , "IngestStartE"                                : IngestHandler.ingestStart loadConfig
-        , "IngestStopE"                                 : IngestHandler.ingestStop
-        , "ClientStartE"                                : ClientHandler.clientStart loadConfig
-        , "ClientStopE"                                 : ClientHandler.clientStop
-        , "Chaos"                                       : ChaosHandler.chaos
+          , "IngestInstanceLlwpE"                         : CowboyRoutePlaceholder
+          , "IntraPoPTestHelperE"                         : IntraPoPHandler.testHelper
+          , "LoadE"                                       : LoadHandler.load
+          , "RelayProxiedStatsE"                          : RelayHandler.proxiedStats
 
-        , "StreamAuthTypeE"                             : LlnwStubHandler.streamAuthType
-        , "StreamAuthE"                                 : LlnwStubHandler.streamAuth
-        , "StreamPublishE"                              : LlnwStubHandler.streamPublish
-        , "SlotLookupE"                                 : LlnwStubHandler.slotLookup
-        , "HlsPushE"                                    : LlnwStubHandler.hlsPush
+          , "IngestStartE"                                : IngestHandler.ingestStart loadConfig
+          , "IngestStopE"                                 : IngestHandler.ingestStop
+          , "ClientStartE"                                : ClientHandler.clientStart loadConfig
+          , "ClientStopE"                                 : ClientHandler.clientStop
+          , "Chaos"                                       : ChaosHandler.chaos
 
-        , "WorkflowsE"                                  : CowboyRoutePlaceholder -- id3as_workflows_resource
-        , "WorkflowGraphE"                              : CowboyRoutePlaceholder -- id3as_workflow_graph_resource
-        , "WorkflowMetricsE"                            : CowboyRoutePlaceholder --id3as_workflow_graph_resource
-        , "WorkflowStructureE"                          : CowboyRoutePlaceholder -- id3as_workflow_graph_resource
+          , "StreamAuthTypeE"                             : LlnwStubHandler.streamAuthType
+          , "StreamAuthE"                                 : LlnwStubHandler.streamAuth
+          , "StreamPublishE"                              : LlnwStubHandler.streamPublish
+          , "SlotLookupE"                                 : LlnwStubHandler.slotLookup
+          , "HlsPushE"                                    : LlnwStubHandler.hlsPush
 
-        , "LoginE"                                      : CowboyRoutePlaceholder
-        , "UserE"                                       : CowboyRoutePlaceholder
-        , "UsersE"                                      : CowboyRoutePlaceholder
-        , "ProfilesE"                                   : CowboyRoutePlaceholder
-        }
-    # Stetson.cowboyRoutes (cowboyRoutes thisServer featureFlags loadConfig)
-    # Stetson.port args.port
-    # (uncurry4 Stetson.bindTo) (ipToTuple bindIp)
-    # Stetson.startClear "http_listener"
+          , "WorkflowsE"                                  : CowboyRoutePlaceholder -- id3as_workflows_resource
+          , "WorkflowGraphE"                              : CowboyRoutePlaceholder -- id3as_workflow_graph_resource
+          , "WorkflowMetricsE"                            : CowboyRoutePlaceholder --id3as_workflow_graph_resource
+          , "WorkflowStructureE"                          : CowboyRoutePlaceholder -- id3as_workflow_graph_resource
+          }
+      # Stetson.cowboyRoutes (systemRoutes thisServer featureFlags loadConfig)
+      # Stetson.port args.systemPort
+      # (uncurry4 Stetson.bindTo) (ipToTuple privateBindIp)
+      # Stetson.startClear "system_http"
+
   pure $ State {}
 
   where
-    cowboyRoutes :: Server -> Config.FeatureFlags -> Config.LoadConfig -> List Path
-    cowboyRoutes thisServer { mediaGateway } loadConfig =
+    
+    supportRoutes :: Server -> Config.FeatureFlags -> Config.LoadConfig -> List Path
+    supportRoutes thisServer { mediaGateway } loadConfig =
       -- Some duplication of URLs here from those in Endpoint.purs due to current inability to build cowboy-style bindings from stongly-typed parameters
       -- IngestAggregatorActiveIngestsPlayerControlE SlotId SlotRole ProfileName
       cowboyRoute ("/support/ingestAggregator/" <> slotIdBinding <> "/" <> slotRoleBinding <> "/activeIngests/" <> profileNameBinding <> "/control")
@@ -183,17 +200,7 @@ init args = do
                                        _ ->
                                          true
                                    })
-
-      -- ClientPlayerControlE Canary SlotId
-      : cowboyRoute ("/public/client/" <> slotIdBinding <> "/" <> slotRoleBinding <> "/session")
-                    "rtsv2_player_ws_resource"
-                    (playerControlArgs loadConfig mediaGateway Live)
-
-      -- ClientWebRTCIngestContorlE SlotId SlotRole
-      : cowboyRoute ("/public/ingest/" <> accountBinding <> "/" <> streamNameBinding <> "/session")
-                    "rtsv2_webrtc_push_ingest_ws_resource"
-                    (ingestControlArgs thisServer loadConfig Live)
-
+      
       -- CanaryClientPlayerControlE Canary SlotId
       : cowboyRoute ("/support/canary/client/" <> slotIdBinding <> "/" <> slotRoleBinding <> "/session")
                     "rtsv2_player_ws_resource"
@@ -204,8 +211,12 @@ init args = do
                     "rtsv2_webrtc_push_ingest_ws_resource"
                     (ingestControlArgs thisServer loadConfig Canary)
 
-      -- IngestInstanceLlwpE SlotId SlotRole ProfileName
-      : cowboyRoute ("/system/ingest/" <> slotIdBinding <> "/" <> slotRoleBinding <> "/" <> profileNameBinding <> "/llwp")
+      : nil
+
+    systemRoutes :: Server -> Config.FeatureFlags -> Config.LoadConfig -> List Path
+    systemRoutes thisServer { mediaGateway } loadConfig =
+      -- Some duplication of URLs here from those in Endpoint.purs due to current inability to build cowboy-style bindings from stongly-typed parameters
+        cowboyRoute ("/system/ingest/" <> slotIdBinding <> "/" <> slotRoleBinding <> "/" <> profileNameBinding <> "/llwp")
                    "llwp_stream_resource"
                    ((unsafeToForeign) IngestKey)
 
@@ -217,6 +228,21 @@ init args = do
       : cowboyRoute ("/system/workflows/" <> referenceBinding <> "/metrics") "id3as_workflow_graph_resource" (unsafeToForeign (atom "metrics"))
       -- WorkflowStructureE String
       : cowboyRoute ("/system/workflows/" <> referenceBinding <> "/structure") "id3as_workflow_graph_resource" (unsafeToForeign (atom "structure"))
+
+      : nil
+
+    publicRoutes :: Server -> Config.FeatureFlags -> Config.LoadConfig -> List Path
+    publicRoutes thisServer { mediaGateway } loadConfig =
+      -- Some duplication of URLs here from those in Endpoint.purs due to current inability to build cowboy-style bindings from stongly-typed parameters
+      -- ClientPlayerControlE Canary SlotId
+        cowboyRoute ("/public/client/" <> slotIdBinding <> "/" <> slotRoleBinding <> "/session")
+                    "rtsv2_player_ws_resource"
+                    (playerControlArgs loadConfig mediaGateway Live)
+
+      -- ClientWebRTCIngestContorlE SlotId SlotRole
+      : cowboyRoute ("/public/ingest/" <> accountBinding <> "/" <> streamNameBinding <> "/session")
+                    "rtsv2_webrtc_push_ingest_ws_resource"
+                    (ingestControlArgs thisServer loadConfig Live)
 
       : nil
 

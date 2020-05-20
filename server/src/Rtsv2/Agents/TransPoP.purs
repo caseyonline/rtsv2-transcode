@@ -59,7 +59,7 @@ import Shared.Common (Milliseconds)
 import Shared.Rtsv2.Agent (SlotCharacteristics, emptySlotCharacteristics)
 import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.JsonLd as JsonLd
-import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrlAddr)
+import Shared.Rtsv2.Router.Endpoint.System as System
 import Shared.Rtsv2.Stream (AgentKey)
 import Shared.Rtsv2.Types (Canary(..), Health(..), PoPName, Server, ServerAddress(..), extractAddress, extractPoP)
 import Shared.Utils (distinctRandomNumbers)
@@ -607,7 +607,7 @@ joinAllSerf state@{ config: config@{rejoinEveryMs}, serfRpcAddress, members } =
                              foldl
                                ( \iAcc serverAddress  -> do
                                    let
-                                     url = makeUrlAddr serverAddress TransPoPLeaderE
+                                     url = System.makeUrlAddr serverAddress System.TransPoPLeaderE
 
                                    restResult <- bodyToString <$> SpudGun.getText url
                                    case restResult of
