@@ -178,6 +178,12 @@ killRelay slotId slotRole relays =
       _ ->
         throwSlowError $ "No relays or missing id"
 
+killMediaGateway :: Node -> Aff Unit
+killMediaGateway node =
+  do
+    _ <- HTTP.killProcessNode (spy "kill" node) (Chaos.defaultKill $ (Chaos.Local "rtsv2_media_gateway_api"))
+    pure unit
+
 relayName :: SlotId -> SlotRole -> Chaos.ChaosName
 relayName slotId role =
   Chaos.Gproc (Chaos.GprocTuple2

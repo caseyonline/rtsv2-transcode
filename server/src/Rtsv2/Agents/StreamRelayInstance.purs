@@ -57,7 +57,7 @@ import Logger (Logger)
 import Logger as Logger
 import Partial.Unsafe as Unsafe
 import Pinto (ServerName, StartLinkResult, isRegistered)
-import Pinto.Gen (CallResult(..), CastResult(..))
+import Pinto.Gen (CallResult(..), CastResult(..), TerminateReason)
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import PintoHelper (exposeState)
@@ -914,7 +914,7 @@ handleInfo msg state =
         Right (WsGun.Frame dataObjectMsg@(DataObject _msg)) -> do
           send dataObjectMsg
 
-terminate :: Foreign -> State -> Effect Unit
+terminate :: TerminateReason -> State -> Effect Unit
 terminate reason state = do
   logInfo "Stream Relay terminating" {reason}
   stopWorkflow state

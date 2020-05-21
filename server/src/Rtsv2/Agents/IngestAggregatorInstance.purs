@@ -82,7 +82,7 @@ import Foreign (Foreign)
 import Logger (Logger)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult, isRegistered)
-import Pinto.Gen (CallResult(..), CastResult(..))
+import Pinto.Gen (CallResult(..), CastResult(..), TerminateReason)
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
@@ -551,7 +551,7 @@ attemptConnectionToBackup state = do
   -- No need to attempt connection since are backup!
   pure $ state
 
-terminate :: Foreign -> State -> Effect Unit
+terminate :: TerminateReason -> State -> Effect Unit
 terminate reason state@{workflowHandle, webRtcStreamServers} = do
   logInfo "Ingest aggregator terminating" {reason}
   stopWorkflowImpl workflowHandle
