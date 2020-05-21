@@ -215,30 +215,33 @@ testHelper payload =
 
 
 getPublicState :: Effect (PublicState.IntraPoP List)
-getPublicState = exposeState publicState serverName
+getPublicState = do
+  webConfig <- Config.webConfig
+  exposeState (publicState webConfig.publicPort) serverName
   where
-    publicState state@{agentLocations, currentTransPoPLeader, thisServer} =
-      JsonLd.intraPoPStateNode (gatherState agentLocations currentTransPoPLeader) thisServer
-    gatherState agentLocations currentTransPoPLeader =
-      { aggregatorLocations: toAggregatorLocation <$> Map.toUnfoldable agentLocations.aggregators.byAgentKey
-      , relayLocations: toRelayLocation <$>  Map.toUnfoldable agentLocations.relays.byAgentKey
-      , egestLocations: toEgestLocation <$>  Map.toUnfoldable agentLocations.egests.byAgentKey
+    publicState portInt state@{agentLocations, currentTransPoPLeader, thisServer} =
+      JsonLd.intraPoPStateNode (gatherState portInt agentLocations currentTransPoPLeader) portInt thisServer
+
+    gatherState portInt agentLocations currentTransPoPLeader =
+      { aggregatorLocations: (toAggregatorLocation portInt) <$> Map.toUnfoldable agentLocations.aggregators.byAgentKey
+      , relayLocations: toRelayLocation portInt <$>  Map.toUnfoldable agentLocations.relays.byAgentKey
+      , egestLocations: (toEgestLocation portInt) <$>  Map.toUnfoldable agentLocations.egests.byAgentKey
       , currentTransPoPLeader: transPoPLeaderLocationNode <$> currentTransPoPLeader
       }
-    toAggregatorLocation (Tuple (AgentKey slotId role) {servers}) =
+    toAggregatorLocation portInt (Tuple (AgentKey slotId role) {servers}) =
       { slotId
       , role
-      , servers: JsonLd.aggregatorLocationNode slotId role <$> Set.toUnfoldable servers
+      , servers: JsonLd.aggregatorLocationNode portInt slotId role <$> Set.toUnfoldable servers
       }
-    toRelayLocation (Tuple (AgentKey slotId role) {servers}) =
+    toRelayLocation portInt (Tuple (AgentKey slotId role) {servers}) =
       { slotId
       , role
-      , servers: JsonLd.relayLocationNode slotId role <$> Set.toUnfoldable servers
+      , servers: (\s -> JsonLd.relayLocationNode portInt slotId role s) <$> Set.toUnfoldable servers
       }
-    toEgestLocation (Tuple (AgentKey slotId role) {servers}) =
+    toEgestLocation portInt (Tuple (AgentKey slotId role) {servers}) =
       { slotId
       , role
-      , servers: JsonLd.egestLocationNode slotId role <$> Set.toUnfoldable servers
+      , servers: JsonLd.egestLocationNode portInt slotId role <$> Set.toUnfoldable servers
       }
 
 currentLocalRef :: Effect Ref

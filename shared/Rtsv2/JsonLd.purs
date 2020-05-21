@@ -109,6 +109,7 @@ import Data.Symbol (SProxy(..))
 import Shared.Common (Milliseconds)
 import Shared.JsonLd (Context, ContextValue(..), ExpandedTermDefinition, Node(..), NodeMetadata, unwrapNode, _unwrappedNode, _id, _resource) as JsonLd
 import Shared.JsonLd (ContextDefinition(..))
+import Rtsv2.Config as Config
 import Shared.Rtsv2.LlnwApiTypes (StreamDetails)
 import Shared.Rtsv2.Router.Endpoint.Support as Support
 import Shared.Rtsv2.Stream (EgestKey, ProfileName, SlotId, SlotRole)
@@ -196,11 +197,11 @@ activeIngestLocationContext =
        , serverAddress: JsonLd.Other "http://schema.rtsv2.llnw.com/Infrastructure/ServerAddress"
        }
 
-activeIngestLocationNode :: SlotId -> SlotRole -> ProfileName -> ServerAddress -> ActiveIngestLocationNode
-activeIngestLocationNode slotId slotRole profileName serverAddress =
+activeIngestLocationNode :: Config.PortInt -> SlotId -> SlotRole -> ProfileName -> ServerAddress -> ActiveIngestLocationNode
+activeIngestLocationNode portInt slotId slotRole profileName serverAddress =
   wrap { resource: { profileName
                    , serverAddress}
-       , "@id": Just $ Support.makeUrlAddr serverAddress (Support.IngestInstanceE slotId slotRole profileName)
+       , "@id": Just $ Support.makeUrlAddr serverAddress portInt (Support.IngestInstanceE slotId slotRole profileName)
        , "@nodeType": Just "http://schema.rtsv2.llnw.com/ActiveIngestLocation"
        , "@context": Just $ ContextUrl $ Support.makePath $ Support.JsonLdContext ActiveIngestLocationContext
        }
@@ -209,10 +210,10 @@ activeIngestLocationNode slotId slotRole profileName serverAddress =
 -- TransPoPLeaderLocation
 type TransPoPLeaderLocationNode = ServerNode
 
-transPoPLeaderLocationNode :: Server -> TransPoPLeaderLocationNode
-transPoPLeaderLocationNode server =
+transPoPLeaderLocationNode :: Server -> Config.PortInt -> TransPoPLeaderLocationNode
+transPoPLeaderLocationNode server portInt =
   wrap { resource: server
-       , "@id": Just $ Support.makeUrl server (Support.TimedRoutesE)
+       , "@id": Just $ Support.makeUrl server portInt (Support.TimedRoutesE)
        , "@nodeType": Just "http://schema.rtsv2.llnw.com/TransPoPLocation"
        , "@context": Just $ ContextUrl $ Support.makePath $ Support.JsonLdContext ServerContext
        }
@@ -233,10 +234,10 @@ timedRouteNeighbourContext = wrap { "@language": Nothing
                                   , pop: JsonLd.Other "http://schema.rtsv2.llnw.com/Infrastructure/PoP"
                                   }
 
-timedRouteNeighbourNode :: forall f. Server -> TimedRouteNeighbour f -> TimedRouteNeighbourNode f
-timedRouteNeighbourNode server neighbour@{pop} =
+timedRouteNeighbourNode :: forall f. Server -> Config.PortInt -> TimedRouteNeighbour f -> TimedRouteNeighbourNode f
+timedRouteNeighbourNode server portInt neighbour@{pop} =
   wrap { resource: neighbour
-       , "@id": Just $ Support.makeUrl server (Support.TimedRoutesForPoPE pop)
+       , "@id": Just $ Support.makeUrl server portInt (Support.TimedRoutesForPoPE pop)
        , "@nodeType": Just "http://schema.rtsv2.llnw.com/TimedRouteNeighbour"
        , "@context": Just $ ContextUrl $ Support.makePath $ Support.JsonLdContext TimedRouteNeighbourContext
        }
@@ -245,10 +246,10 @@ timedRouteNeighbourNode server neighbour@{pop} =
 -- EgestServedLocation
 type EgestServedLocationNode = ServerAddressNode
 
-egestServedLocationNode :: SlotId -> SlotRole -> ServerAddress -> EgestServedLocationNode
-egestServedLocationNode slotId slotRole serverAddress =
+egestServedLocationNode :: Config.PortInt -> SlotId -> SlotRole -> ServerAddress -> EgestServedLocationNode
+egestServedLocationNode portInt slotId slotRole serverAddress =
   wrap { resource: {address: serverAddress}
-       , "@id": Just $ Support.makeUrlAddr serverAddress (Support.EgestStatsE slotId slotRole)
+       , "@id": Just $ Support.makeUrlAddr serverAddress portInt (Support.EgestStatsE slotId slotRole)
        , "@nodeType": Just "http://schema.rtsv2.llnw.com/EgestServedLocation"
        , "@context": Just $ ContextUrl $ Support.makePath $ Support.JsonLdContext ServerAddressContext
        }
@@ -257,10 +258,10 @@ egestServedLocationNode slotId slotRole serverAddress =
 -- DownstreamRelayLocation
 type DownstreamRelayLocationNode = DeliverToNode RelayServer
 
-downstreamRelayLocationNode :: SlotId -> SlotRole -> DeliverTo RelayServer -> DownstreamRelayLocationNode
-downstreamRelayLocationNode slotId slotRole relay@{server} =
+downstreamRelayLocationNode :: Config.PortInt -> SlotId -> SlotRole -> DeliverTo RelayServer -> DownstreamRelayLocationNode
+downstreamRelayLocationNode portInt slotId slotRole relay@{server} =
   wrap { resource: relay
-       , "@id": Just $ Support.makeUrl server (Support.RelayStatsE slotId slotRole)
+       , "@id": Just $ Support.makeUrl server portInt (Support.RelayStatsE slotId slotRole)
        , "@nodeType": Just "http://types.rtsv2.llnw.com/DownstreamRelayLocation"
        , "@context": Just $ ContextUrl $ Support.makePath $ Support.JsonLdContext DeliverToContext
        }
@@ -269,10 +270,10 @@ downstreamRelayLocationNode slotId slotRole relay@{server} =
 -- AggregatorLocation
 type AggregatorLocationNode f =  LocationBySlotIdAndSlotRole f
 
-aggregatorLocationNode :: SlotId -> SlotRole -> Server -> ServerNode
-aggregatorLocationNode slotId slotRole server =
+aggregatorLocationNode :: Config.PortInt -> SlotId -> SlotRole -> Server -> ServerNode
+aggregatorLocationNode portInt slotId slotRole server =
   wrap { resource: server
-       , "@id": Just $ Support.makeUrl server (Support.IngestAggregatorE slotId slotRole)
+       , "@id": Just $ Support.makeUrl server portInt (Support.IngestAggregatorE slotId slotRole)
        , "@nodeType": Just "http://types.rtsv2.llnw.com/AggregatorLocation"
        , "@context": Just $ ContextUrl $ Support.makePath $ Support.JsonLdContext ServerContext
        }
@@ -281,10 +282,10 @@ aggregatorLocationNode slotId slotRole server =
 -- RelayLocation
 type RelayLocationNode f =  LocationBySlotIdAndSlotRole f
 
-relayLocationNode :: SlotId -> SlotRole -> Server -> ServerNode
-relayLocationNode slotId slotRole server =
+relayLocationNode :: Config.PortInt -> SlotId ->  SlotRole -> Server -> ServerNode
+relayLocationNode portInt slotId slotRole server =
   wrap { resource: server
-       , "@id": Just $ Support.makeUrl server (Support.RelayStatsE slotId slotRole)
+       , "@id": Just $ Support.makeUrl server portInt (Support.RelayStatsE slotId slotRole)
        , "@nodeType": Just "http://types.rtsv2.llnw.com/RelayLocation"
        , "@context": Just $ ContextUrl $ Support.makePath $ Support.JsonLdContext ServerContext
        }
@@ -293,10 +294,10 @@ relayLocationNode slotId slotRole server =
 -- EgestLocation
 type EgestLocationNode f =  LocationBySlotIdAndSlotRole f
 
-egestLocationNode :: SlotId -> SlotRole -> Server -> ServerNode
-egestLocationNode slotId slotRole server =
+egestLocationNode :: Config.PortInt -> SlotId -> SlotRole -> Server -> ServerNode
+egestLocationNode portInt slotId slotRole server =
   wrap { resource: server
-       , "@id": Just $ Support.makeUrl server (Support.EgestStatsE slotId slotRole)
+       , "@id": Just $ Support.makeUrl server portInt (Support.EgestStatsE slotId slotRole)
        , "@nodeType": Just "http://types.rtsv2.llnw.com/EgestLocation"
        , "@context": Just $ ContextUrl $ Support.makePath $ Support.JsonLdContext ServerContext
        }
@@ -334,10 +335,10 @@ egestStatsContext = wrap { "@language": Nothing
                          , sessions: JsonLd.Other "http://schema.rtsv2.llnw.com/EgestSessions"
                          }
 
-egestStatsNode :: forall f. SlotId -> SlotRole -> Server -> EgestStats f -> EgestStatsNode f
-egestStatsNode slotId slotRole server stats =
+egestStatsNode :: forall f. Config.PortInt -> SlotId -> SlotRole -> Server -> EgestStats f -> EgestStatsNode f
+egestStatsNode portInt slotId slotRole server stats =
   wrap { resource: stats
-       , "@id": Just $ Support.makeUrl server (Support.EgestStatsE slotId slotRole)
+       , "@id": Just $ Support.makeUrl server portInt (Support.EgestStatsE slotId slotRole)
        , "@nodeType": Just "http://types.rtsv2.llnw.com/Egest"
        , "@context": Just $ ContextUrl $ Support.makePath $ Support.JsonLdContext EgestStatsContext
        }
@@ -368,10 +369,10 @@ intraPoPStateContext = wrap { "@language": Nothing
                             , currentTransPoPLeader: JsonLd.Other "http://schema.rtsv2.llnw.com/Infrastructure/Locations/TransPoPLeader"
                             }
 
-intraPoPStateNode :: forall f. IntraPoPState f -> Server -> IntraPoPStateNode f
-intraPoPStateNode state server =
+intraPoPStateNode :: forall f. IntraPoPState f -> Config.PortInt -> Server -> IntraPoPStateNode f
+intraPoPStateNode state server portInt =
   wrap { resource: state
-       , "@id": Just $ Support.makeUrl server Support.ServerStateE
+       , "@id": Just $ Support.makeUrl portInt server Support.ServerStateE
        , "@nodeType": Just "http://types.rtsv2.llnw.com/IntraPoP"
        , "@context": Just $ ContextUrl $ Support.makePath $ Support.JsonLdContext EgestStatsContext
        }
@@ -404,10 +405,10 @@ ingestAggregatorStateContext = wrap { "@language": Nothing
                                     , downstreamRelays: JsonLd.Other "http://schema.rtsv2.llnw.com/Infrastructure/Locations/Relay"
                                     , hlsPublish: JsonLd.Other "http://schema.rtsv2.llnw.com/Boolean"
                                     }
-ingestAggregatorStateNode :: forall f. SlotId -> IngestAggregatorState f -> Server -> IngestAggregatorStateNode f
-ingestAggregatorStateNode slotId state@{role: slotRole} server =
+ingestAggregatorStateNode :: forall f. Config.PortInt -> SlotId -> IngestAggregatorState f -> Server -> IngestAggregatorStateNode f
+ingestAggregatorStateNode portInt slotId state@{role: slotRole} server =
   wrap { resource: state
-       , "@id": Just $ Support.makeUrl server (Support.IngestAggregatorE slotId slotRole)
+       , "@id": Just $ Support.makeUrl server portInt (Support.IngestAggregatorE slotId slotRole)
        , "@nodeType": Just "http://types.rtsv2.llnw.com/IngestAggregator"
        , "@context": Just $ ContextUrl $ Support.makePath $ Support.JsonLdContext IngestAggregatorStateContext
        }
@@ -435,10 +436,10 @@ streamRelayStateContext = wrap { "@language": Nothing
                                , relaysServed: JsonLd.Other "http://schema.rtsv2.llnw.com/Infrastructure/Locations/Relay"
                                }
 
-streamRelayStateNode :: forall f. SlotId -> StreamRelayState f -> Server -> StreamRelayStateNode f
-streamRelayStateNode slotId state@{role: slotRole} server =
+streamRelayStateNode :: forall f. SlotId -> Config.PortInt -> StreamRelayState f -> Server -> StreamRelayStateNode f
+streamRelayStateNode slotId portInt state@{role: slotRole} server =
   wrap { resource: state
-       , "@id": Just $ Support.makeUrl server (Support.RelayStatsE slotId slotRole)
+       , "@id": Just $ Support.makeUrl server portInt (Support.RelayStatsE slotId slotRole)
        , "@nodeType": Just "http://types.rtsv2.llnw.com/StreamRelay"
        , "@context": Just $ ContextUrl $ Support.makePath $ Support.JsonLdContext StreamRelayStateContext
        }
@@ -473,10 +474,10 @@ ingestStateContext = wrap { "@language": Nothing
                           , sourceInfo: JsonLd.Other "http://schema.rtsv2.llnw.com/Media/SourceInfo"
                           }
 
-ingestStateNode :: forall f. SlotId -> SlotRole -> ProfileName -> IngestState f -> Server -> IngestStateNode f
-ingestStateNode slotId slotRole profileName state server =
+ingestStateNode :: forall f. Config.PortInt -> SlotId -> SlotRole -> ProfileName -> IngestState f -> Server -> IngestStateNode f
+ingestStateNode portInt slotId slotRole profileName state server =
   wrap { resource: state
-       , "@id": Just $ Support.makeUrl server (Support.IngestInstanceE slotId slotRole profileName)
+       , "@id": Just $ Support.makeUrl server portInt (Support.IngestInstanceE slotId slotRole profileName)
        , "@nodeType": Just "http://types.rtsv2.llnw.com/Ingest"
        , "@context": Just $ ContextUrl $ Support.makePath $ Support.JsonLdContext IngestStateContext
        }
@@ -552,10 +553,10 @@ healthContext = wrap { "@language": Nothing
                      , nodeManager: JsonLd.Other "http://schema.rtsv2.llnw.com/NodeManager"
                      }
 
-healthNode :: Health -> Server -> HealthNode
-healthNode state server =
+healthNode :: Health -> Server -> Config.PortInt -> HealthNode
+healthNode state server portInt =
   wrap { resource: state
-       , "@id": Just $ Support.makeUrl server Support.HealthCheckE
+       , "@id": Just $ Support.makeUrl server portInt Support.HealthCheckE
        , "@nodeType": Just "http://types.rtsv2.llnw.com/Health"
        , "@context": Just $ ContextUrl $ Support.makePath $ Support.JsonLdContext HealthContext
        }

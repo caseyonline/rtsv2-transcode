@@ -8,6 +8,7 @@ module Rtsv2.Config
   , EgestStatsConfig
   , WebConfig
   , PoPDefinitionConfig
+  , PortInt
   , IntraPoPAgentConfig
   , TransPoPAgentConfig
   , StreamRelayConfig
@@ -60,7 +61,8 @@ import Shared.Rtsv2.Agent (Agent, SlotCharacteristics, strToAgent)
 import Shared.Rtsv2.Stream (AgentKey)
 import Shared.Rtsv2.Types (Canary, RunState, Server)
 import Shared.Utils (lazyCrashIfMissing)
-import Simple.JSON (class ReadForeign, readImpl)
+import Simple.JSON (class ReadForeign, class WriteForeign, readImpl)
+import Data.Newtype (class Newtype)
 
 type LoadConfig
   = { loadAnnounceMs :: Int
@@ -98,10 +100,19 @@ instance readForeignMediaGatewayFlag :: ReadForeign MediaGatewayFlag where
       errorString s = "Unknown Media Gateway Flag: " <> s
 
 type WebConfig =
-  { systemPort :: Int
-  , supportPort :: Int
-  , publicPort :: Int
+  { systemPort :: PortInt
+  , supportPort :: PortInt
+  , publicPort :: PortInt
   }
+
+newtype PortInt = PortInt Int
+derive instance newtypePortInt :: Newtype PortInt _
+derive newtype instance eqPortInt :: Eq PortInt
+derive newtype instance ordPortInt :: Ord PortInt
+derive newtype instance showPortInt :: Show PortInt
+derive newtype instance readForeignPortInt :: ReadForeign PortInt
+derive newtype instance writeForeignPortInt :: WriteForeign PortInt
+
 
 type GlobalConfig
   = { intraPoPLatencyMs :: Int

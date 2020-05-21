@@ -7,7 +7,9 @@ import Data.Map as Map
 import Data.Maybe
 import Data.Newtype (unwrap)
 import Helpers.Types (Node(..), NodeAddress(..), PoPInfo)
-import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl, makeUrlAddr)
+import Shared.Rtsv2.Router.Endpoint.Support as Support
+import Shared.Rtsv2.Router.Endpoint.Public as Public
+import Shared.Rtsv2.Router.Endpoint.System as System
 import Shared.Rtsv2.Types (ServerAddress(..))
 
 -------------------------------------------------------------------------------
@@ -82,8 +84,14 @@ mkPoPJsonString nodes =
 mkServerAddress :: Node -> NodeAddress
 mkServerAddress node = NodeAddress {address: ServerAddress $ toAddrFromNode node}
 
-makeUrlAndUnwrap :: Node -> Endpoint -> String
-makeUrlAndUnwrap node path = unwrap $ makeUrl (mkServerAddress node) path
+makeUrlAndUnwrapSupport :: Node -> Support.Endpoint -> String
+makeUrlAndUnwrapSupport node path = unwrap $ Support.makeUrl (mkServerAddress node) path
+
+makeUrlAndUnwrapSystem :: Node -> System.Endpoint -> String
+makeUrlAndUnwrapSystem node path = unwrap $ System.makeUrl (mkServerAddress node) path
+
+makeUrlAndUnwrapPublic :: Node -> Public.Endpoint -> String
+makeUrlAndUnwrapPublic node path = unwrap $ Public.makeUrl (mkServerAddress node) path
 
 toIfaceIndexString :: Node -> String
 toIfaceIndexString (Node popNum nodeNum) = show (popNum * 10) <> show nodeNum

@@ -65,11 +65,11 @@ newtype State = State {}
 serverName :: ServerName State Unit
 serverName = Names.webServerName
 
-startLink :: Config.WebConfig -> Effect StartLinkResult
+startLink :: Config.PortInt -> Effect StartLinkResult
 startLink args =
   Gen.startLink serverName (init args) Gen.defaultHandleInfo
 
-init :: Config.WebConfig -> Effect State
+init :: Config.PortInt -> Effect State
 init args = do
   featureFlags <- Config.featureFlags
   loadConfig <- Config.loadConfig

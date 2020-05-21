@@ -13,6 +13,7 @@ import Data.String (Pattern(..), split)
 import Routing.Duplex (RouteDuplex', as, path, print, rest, root, segment)
 import Routing.Duplex.Generic (noArgs, sum)
 import Routing.Duplex.Generic.Syntax ((/))
+import Rtsv2.Config as Config
 import Shared.Common (Url)
 import Shared.Rtsv2.Stream (ProfileName, RtmpShortName, RtmpStreamName, SlotId, SlotRole(..))
 import Shared.Rtsv2.Types (Canary(..), JsonLdContextType(..), PoPName(..), ServerAddress(..), SourceRoute, Username(..), extractAddress)
@@ -103,38 +104,52 @@ endpoint = root $ sum
 makePath :: Endpoint -> String
 makePath ep = print endpoint ep
 
-makeUrl :: forall r a. Newtype a { address :: ServerAddress | r }
-        => a -> Endpoint -> Url
-makeUrl server ep = makeUrlAddr (extractAddress server) ep
+makeUrl
+  :: forall r a. Newtype a { address :: ServerAddress | r }
+  => a
+  -> Config.PortInt
+  -> Endpoint
+  -> Url
+makeUrl server = makeUrlAddr (extractAddress server)
 
-makeUrlWithPath :: forall r a. Newtype a { address :: ServerAddress | r }
-        => a -> String -> Url
-makeUrlWithPath server path = makeUrlAddrWithPath (extractAddress server) path
+makeUrlWithPath
+  :: forall r a. Newtype a { address :: ServerAddress | r }
+  => a
+  -> Config.PortInt
+  -> String
+  -> Url
+makeUrlWithPath server = makeUrlAddrWithPath (extractAddress server)
 
-makeUrlAddr :: ServerAddress -> Endpoint -> Url
-makeUrlAddr serverAddr ep =
-  makeUrlAddrWithPath serverAddr (makePath ep)
+makeUrlAddr :: ServerAddress -> Config.PortInt -> Endpoint -> Url
+makeUrlAddr serverAddr portInt ep =
+  makeUrlAddrWithPath serverAddr portInt (makePath ep)
 
-makeUrlAddrWithPath :: ServerAddress -> String -> Url
-makeUrlAddrWithPath (ServerAddress host) path =
-  wrap $ "http://" <> host <> ":3000" <> path
+makeUrlAddrWithPath :: ServerAddress -> Config.PortInt -> String -> Url
+makeUrlAddrWithPath (ServerAddress host) portInt path = do
+  wrap $ "http://" <> host <> (show portInt) <> path
 
+makeWsUrl
+  :: forall r a. Newtype a { address :: ServerAddress | r }
+  => a
+  -> Config.PortInt
+  -> Endpoint -> Url
+makeWsUrl server portInt ep = makeWsUrlAddr (extractAddress server) portInt ep
 
-makeWsUrl :: forall r a. Newtype a { address :: ServerAddress | r }
-        => a -> Endpoint -> Url
-makeWsUrl server ep = makeWsUrlAddr (extractAddress server) ep
+makeWsUrlWithPath
+  :: forall r a. Newtype a { address :: ServerAddress | r }
+  => a
+  -> Config.PortInt
+  -> String
+  -> Url
+makeWsUrlWithPath server = makeWsUrlAddrWithPath (extractAddress server)
 
-makeWsUrlWithPath :: forall r a. Newtype a { address :: ServerAddress | r }
-        => a -> String -> Url
-makeWsUrlWithPath server path = makeWsUrlAddrWithPath (extractAddress server) path
+makeWsUrlAddr :: ServerAddress -> Config.PortInt -> Endpoint -> Url
+makeWsUrlAddr serverAddr portInt ep = do
+  makeWsUrlAddrWithPath serverAddr portInt (makePath ep)
 
-makeWsUrlAddr :: ServerAddress -> Endpoint -> Url
-makeWsUrlAddr serverAddr ep =
-  makeWsUrlAddrWithPath serverAddr (makePath ep)
-
-makeWsUrlAddrWithPath :: ServerAddress -> String -> Url
-makeWsUrlAddrWithPath (ServerAddress host) path =
-  wrap $ "ws://" <> host <> ":3000" <> path
+makeWsUrlAddrWithPath :: ServerAddress -> Config.PortInt -> String -> Url
+makeWsUrlAddrWithPath (ServerAddress host) portInt path = do
+  wrap $ "ws://" <> host <> (show portInt) <> path
 
 -- | JsonLd Context Type
 contextTypeToString :: JsonLdContextType -> String
@@ -303,5 +318,3 @@ canary = as canaryToString (parseCanary >>> note "Bad CanaryId")
 
 uName :: RouteDuplex' String -> RouteDuplex' Username
 uName = as userNametoString (parseUsername >>> note "Bad username")
-
-

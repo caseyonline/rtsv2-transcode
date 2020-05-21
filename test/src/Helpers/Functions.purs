@@ -33,7 +33,7 @@ import Shared.Common (Url)
 import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.Chaos as Chaos
 import Shared.Rtsv2.JsonLd as JsonLd
-import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
+import Shared.Rtsv2.Router.Endpoint.Public as Public
 import Shared.Rtsv2.Stream (RtmpShortName(..), RtmpStreamName(..), SlotId, SlotRole)
 import Shared.Rtsv2.Types (ServerAddress(..))
 import Simple.JSON (class ReadForeign)
@@ -88,11 +88,11 @@ stringToInt s =
 
 mkPlayerUrl :: Node -> SlotId -> SlotRole -> T.URL
 mkPlayerUrl node slotId slotRole =
-  T.URL $ unwrap $ makeUrl (mkServerAddress node) $ ClientPlayerE slotId slotRole
+  T.URL $ unwrap $ Public.makeUrl (mkServerAddress node) $ Public.ClientPlayerE slotId slotRole
 
 mkIngestUrl :: Node -> RtmpShortName -> RtmpStreamName -> T.URL
 mkIngestUrl node shortName streamName =
-  T.URL $ unwrap $ makeUrl (mkServerAddress node) $ ClientWebRTCIngestE shortName streamName
+  T.URL $ unwrap $ Public.makeUrl (mkServerAddress node) $ Public.ClientWebRTCIngestE shortName streamName
 
 -------------------------------------------------------------------------------
 -- Node
