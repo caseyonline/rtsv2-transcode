@@ -100,7 +100,7 @@ import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.JsonLd (transPoPLeaderLocationNode)
 import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Rtsv2.Stream (AgentKey(..), AggregatorKey, EgestKey, RelayKey(..), agentKeyToAggregatorKey, aggregatorKeyToAgentKey, egestKeyToAgentKey)
-import Shared.Rtsv2.Types (AcceptingRequests, Canary(..), CurrentLoad, LocalOrRemote(..), Health, ResourceFailed(..), ResourceResp, Server(..), ServerAddress(..), ServerLoad, extractAddress, extractPoP, fromLocalOrRemote, maxLoad, minLoad, toServerLoad)
+import Shared.Rtsv2.Types (AcceptingRequests, CanaryState(..), CurrentLoad, LocalOrRemote(..), Health, ResourceFailed(..), ResourceResp, Server(..), ServerAddress(..), ServerLoad, extractAddress, extractPoP, fromLocalOrRemote, maxLoad, minLoad, toServerLoad)
 import Shared.Utils (distinctRandomNumbers)
 
 type TestHelperPayload =
@@ -111,7 +111,7 @@ type MemberInfo =
   { serfMember :: Serf.SerfMember
   , load :: CurrentLoad
   , acceptingRequests :: AcceptingRequests
-  , canary :: Canary
+  , canary :: CanaryState
   , server :: Server
   }
 
@@ -146,7 +146,7 @@ type Locations payload = { byAgentKey     :: Map AgentKey (AgentPayloadAndServer
 
 type State
   = { config                :: Config.IntraPoPAgentConfig
-    , canary                :: Canary
+    , canary                :: CanaryState
     , healthConfig          :: Config.HealthConfig
     , transPoPApi           :: Config.TransPoPAgentApi
     , serfRpcAddress        :: IpAndPort
@@ -175,7 +175,7 @@ data IntraMessage
   | IMEgestState EventType AgentKey ServerAddress
   | IMRelayState EventType AgentKey ServerAddress
 
-  | IMServerLoad ServerAddress CurrentLoad AcceptingRequests Canary
+  | IMServerLoad ServerAddress CurrentLoad AcceptingRequests CanaryState
   | IMTransPoPLeader ServerAddress
   | IMVMLiveness ServerAddress Ref
 
@@ -499,7 +499,7 @@ popLeaderHandler =
       state.transPoPApi.handleRemoteLeaderAnnouncement server
       pure state{ currentTransPoPLeader = Just server }
 
-loadHandler :: CurrentLoad -> AcceptingRequests -> Canary -> ServerMessageHandler
+loadHandler :: CurrentLoad -> AcceptingRequests -> CanaryState -> ServerMessageHandler
 loadHandler load acceptingRequests canary =
   { name : HandlerName "load"
   , clockLens : clockLens
@@ -821,7 +821,7 @@ updateAgentLocation action lens agentKey server state@{agentLocations} =
 type StartArgs =
   { config :: Config.IntraPoPAgentConfig
   , transPoPApi :: Config.TransPoPAgentApi
-  , canary :: Canary}
+  , canary :: CanaryState}
 
 startLink :: StartArgs -> Effect StartLinkResult
 startLink args = Gen.startLink serverName (init args) handleInfo

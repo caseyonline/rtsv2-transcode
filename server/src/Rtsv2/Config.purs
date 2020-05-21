@@ -58,7 +58,7 @@ import Partial.Unsafe (unsafeCrashWith)
 import Rtsv2.LoadTypes as LoadTypes
 import Shared.Rtsv2.Agent (Agent, SlotCharacteristics, strToAgent)
 import Shared.Rtsv2.Stream (AgentKey)
-import Shared.Rtsv2.Types (Canary, RunState, Server)
+import Shared.Rtsv2.Types (CanaryState, RunState, Server)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (class ReadForeign, readImpl)
 
@@ -71,7 +71,7 @@ type LoadConfig
 
 type NodeManagerConfig
   = { initialRunState :: RunState
-    , initialCanaryState :: Canary
+    , initialCanaryState :: CanaryState
     }
 
 type FeatureFlags

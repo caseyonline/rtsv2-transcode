@@ -19,12 +19,12 @@ import Rtsv2.Config as Config
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Rtsv2.Agent (Agent(..))
-import Shared.Rtsv2.Types (Canary, Server(..))
+import Shared.Rtsv2.Types (CanaryState, Server(..))
 
-startLink :: Canary -> Effect Pinto.StartLinkResult
+startLink :: CanaryState -> Effect Pinto.StartLinkResult
 startLink canary = Sup.startLink Names.agentSupName (init canary)
 
-init :: Canary -> Effect SupervisorSpec
+init :: CanaryState -> Effect SupervisorSpec
 init canary = do
   (Server {agents}) <- PoPDefinition.getThisServer
   agentSpecs <- sequence $ (makeSpec <$> (IntraPoP : (toUnfoldable agents)))

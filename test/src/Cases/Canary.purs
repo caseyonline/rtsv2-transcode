@@ -18,7 +18,7 @@ import Helpers.HTTP as HTTP
 import Helpers.Log as L
 import Helpers.Log (as, as', asT, asT')
 import Shared.Rtsv2.Stream (SlotRole(..))
-import Shared.Rtsv2.Types (Canary(..))
+import Shared.Rtsv2.Types (CanaryState(..))
 import Shared.Rtsv2.Chaos as Chaos
 import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Rtsv2.Agent.State as PublicState
@@ -229,6 +229,6 @@ canaryWhenCanary4 =
 -------------------------------------------------------------------------------
 -- Helpers
 -------------------------------------------------------------------------------
-healthNodeToCanaryState :: JsonLd.HealthNode -> Canary
+healthNodeToCanaryState :: JsonLd.HealthNode -> CanaryState
 healthNodeToCanaryState =
   _.canaryState <<< JsonLd.unwrapNode <<< _.nodeManager <<< JsonLd.unwrapNode

@@ -1,8 +1,6 @@
 module Rtsv2.NodeManager
        ( startLink
        , getState
-       , runIfValidState
-       , launchIfValidState
        , changeCanaryState
        , changeRunState
        , launchLocalAgent
@@ -22,8 +20,6 @@ import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
 import Erl.Process.Raw (Pid)
 import Erl.Utils as ErlUtils
-import Foreign (Foreign)
-import Logger (spy)
 import Pinto (ServerName, StartLinkResult, ok')
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
@@ -36,7 +32,7 @@ import Rtsv2.Utils (chainEither)
 import Shared.Rtsv2.Agent (Agent(..))
 import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.JsonLd as JsonLd
-import Shared.Rtsv2.Types (AcceptingRequests, Canary(..), CanaryStateChangeFailure(..), LocalOrRemote(..), ResourceFailed(..), ResourceResp, RunState(..), Server)
+import Shared.Rtsv2.Types (class CanaryType, AcceptingRequests, CanaryState(..), CanaryStateChangeFailure(..), LocalOrRemote(..), OnBehalfOf, ResourceFailed(..), ResourceResp, RunState(..), Server, canary)
 
 data Msg =
   AgentDown Agent
@@ -45,16 +41,19 @@ type State =
   { args :: StartArgs
   , thisServer :: Server
   , currentRunState :: RunState
-  , currentCanaryState :: Canary
+  , currentCanaryState :: CanaryState
   , agentCounts :: Map Agent Int
   , activeSupPid :: Pid
   }
+
+data RequestType = CanaryRequest CanaryState
+                 | OnBehalfOfRequest OnBehalfOf
 
 --------------------------------------------------------------------------------
 -- API
 --------------------------------------------------------------------------------
 type StartArgs =
-  { activeSupStartLink :: Canary -> Effect StartLinkResult
+  { activeSupStartLink :: CanaryState -> Effect StartLinkResult
   }
 
 startLink :: StartArgs -> Effect StartLinkResult
@@ -90,27 +89,11 @@ getState =
     CallReply (JsonLd.nodeManagerStateNode publicState thisServer) state
   )
 
-getCanaryState :: Effect Canary
+getCanaryState :: Effect CanaryState
 getCanaryState =
   Gen.call serverName (\state@{currentCanaryState} -> CallReply currentCanaryState state)
 
-launchIfValidState :: forall a. Canary -> Effect (ResourceResp a) -> Effect (ResourceResp a)
-launchIfValidState canary launch =
-  foo <$> runIfValidState canary launch
-  where
-    foo (Left err) = Left err
-    foo (Right err@(Left _)) = err
-    foo (Right ok@(Right _)) = ok
-
-runIfValidState :: forall a. Canary -> Effect a -> Effect (Either ResourceFailed a)
-runIfValidState canary launch = do
-  currentCanary <- getCanaryState
-  if canary == currentCanary then
-    Right <$> launch
-  else
-    pure $ Left InvalidCanaryState
-
-changeCanaryState :: Canary -> Effect (Either CanaryStateChangeFailure Unit)
+changeCanaryState :: CanaryState -> Effect (Either CanaryStateChangeFailure Unit)
 changeCanaryState newCanary =
   Gen.doCall serverName doChange
   where
@@ -127,6 +110,7 @@ changeCanaryState newCanary =
         else do
           ErlUtils.shutdown activeSupPid
           newActiveSupPid <- (ok' =<< (activeSupStartLink newCanary))
+          IntraPoP.announceAcceptingRequests $ acceptingRequests state
           pure $ CallReply (Right unit) state{ currentCanaryState = newCanary
                                              , activeSupPid = newActiveSupPid }
 
@@ -140,21 +124,21 @@ changeRunState newRunState =
       IntraPoP.announceAcceptingRequests $ acceptingRequests state
       pure $ CallReply (Right unit) state2
 
-launchLocalAgent :: Agent -> ServerSelectionPredicate -> (Server -> Effect (Either ResourceFailed Pid)) -> Effect (ResourceResp Server)
-launchLocalAgent agent pred launchLocalFun = do
+launchLocalAgent :: forall canary. CanaryType canary => Agent -> canary -> ServerSelectionPredicate -> (Server -> Effect (Either ResourceFailed Pid)) -> Effect (ResourceResp Server)
+launchLocalAgent agent canaryStream pred launchLocalFun = do
   idleServerResp <- IntraPoP.getThisIdleServer pred
-  chainEither (launchAndUpdateState agent launchLocalFun) idleServerResp
+  chainEither (launchAndUpdateState agent canaryStream launchLocalFun) idleServerResp
 
-launchLocalOrRemoteAgent :: Agent -> ServerSelectionPredicate -> (Server -> Effect (Either ResourceFailed Pid)) -> (Server -> Effect Boolean) -> Effect (ResourceResp Server)
-launchLocalOrRemoteAgent agent pred launchLocalFun launchRemoteFun = do
+launchLocalOrRemoteAgent :: forall canary. CanaryType canary => Agent -> canary -> ServerSelectionPredicate -> (Server -> Effect (Either ResourceFailed Pid)) -> (Server -> Effect Boolean) -> Effect (ResourceResp Server)
+launchLocalOrRemoteAgent agent canaryStream pred launchLocalFun launchRemoteFun = do
   canary <- getCanaryState
   case canary of
-    Canary -> launchLocalAgent agent pred launchLocalFun
+    Canary -> launchLocalAgent agent canaryStream pred launchLocalFun
     Live -> do
       idleServerResp <- IntraPoP.getIdleServer pred
       chainEither launch idleServerResp
       where
-        launch (Local thisServer) = launchAndUpdateState agent launchLocalFun thisServer
+        launch (Local thisServer) = launchAndUpdateState agent canaryStream launchLocalFun thisServer
         launch (Remote remote) = do
           resp <- launchRemoteFun remote
           pure $ if resp then Right (Remote remote)
@@ -202,14 +186,17 @@ acceptingRequests :: State -> AcceptingRequests
 acceptingRequests { currentRunState } =
   wrap $ currentRunState == Active
 
-launchAndUpdateState :: Agent -> (Server -> Effect (Either ResourceFailed Pid)) -> Server -> Effect (ResourceResp Server)
-launchAndUpdateState agent launchFun thisServer =
-  Gen.doCall serverName
-  (\state@{agentCounts} ->  do
+launchAndUpdateState :: forall canary. CanaryType canary => Agent -> canary -> (Server -> Effect (Either ResourceFailed Pid)) -> Server -> Effect (ResourceResp Server)
+launchAndUpdateState agent canaryStream launchFun thisServer =
+  Gen.doCall serverName doLaunchAndUpdateState
+  where
+    doLaunchAndUpdateState state@{currentCanaryState} | currentCanaryState /= canary currentCanaryState canaryStream =
+      pure $ CallReply (Left InvalidCanaryState) state
+
+    doLaunchAndUpdateState state@{agentCounts} = do
       launchResp <- launchFun thisServer
       either (failure state) (success state) launchResp
-  )
-  where
+
     success state@{agentCounts} pid = do
       Gen.monitorPid serverName pid (\_ -> AgentDown agent)
       pure $ CallReply (Right (Local thisServer)) state{agentCounts = Map.alter incrementAgentCount agent agentCounts}

@@ -37,7 +37,7 @@ import Serf (Ip)
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.LlnwApiTypes (AuthType, PublishCredentials, SlotProfile(..), SlotPublishAuthType(..), StreamAuth, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamPublish)
 import Shared.Rtsv2.Stream (IngestKey(..))
-import Shared.Rtsv2.Types (Canary(..))
+import Shared.Rtsv2.Types (CanaryState(..))
 import SpudGun (JsonResponseError)
 import Stetson.WebSocketHandler (self)
 
@@ -87,14 +87,14 @@ init _ = do
   crashIfLeft =<< startServerImpl Left (Right unit) publicInterfaceIp port callbacks privateInterfaceIp canaryPort canaryCallbacks nbAcceptors
   pure $ {}
 
-onConnectCallback :: LoadConfig -> Canary -> String -> String -> Foreign -> (Effect RtmpAuthResponse)
+onConnectCallback :: LoadConfig -> CanaryState -> String -> String -> Foreign -> (Effect RtmpAuthResponse)
 onConnectCallback loadConfig canary host rtmpShortName foreignQuery =
   let
     authRequest = rtmpQueryToPurs foreignQuery
   in
     processAuthRequest loadConfig canary host rtmpShortName authRequest
 
-onStreamCallback :: LoadConfig -> Canary -> String -> String -> String -> String -> Int -> String -> Pid -> Foreign -> Effect Unit
+onStreamCallback :: LoadConfig -> CanaryState -> String -> String -> String -> String -> Int -> String -> Pid -> Foreign -> Effect Unit
 onStreamCallback loadConfig canary host rtmpShortNameStr username remoteAddress remotePort rtmpStreamNameStr rtmpPid publishArgs = do
   let
     rtmpShortName = wrap rtmpShortNameStr
@@ -136,7 +136,7 @@ onStreamCallback loadConfig canary host rtmpShortNameStr username remoteAddress 
     makeIngestKey profileName {role, slot: {id: slotId}} =
       IngestKey slotId role profileName
 
-processAuthRequest :: LoadConfig -> Canary -> String -> String -> RtmpAuthRequest -> Effect RtmpAuthResponse
+processAuthRequest :: LoadConfig -> CanaryState -> String -> String -> RtmpAuthRequest -> Effect RtmpAuthResponse
 processAuthRequest _loadConfig _canary host rtmpShortName Initial = do
   authType <- getStreamAuthType host rtmpShortName
   pure $ fromMaybe RejectRequest $ InitialResponse <$> authType
@@ -155,7 +155,7 @@ processAuthRequest loadConfig canary host rtmpShortName (AdobePhase2 authParams@
 processAuthRequest loadConfig canary host rtmpShortName (LlnwPhase2 authParams@{username}) =
   processPhase2Authentication loadConfig canary host rtmpShortName username (LlnwPhase2P authParams)
 
-processPhase2Authentication :: LoadConfig -> Canary -> String -> String -> String -> Phase2Params -> Effect RtmpAuthResponse
+processPhase2Authentication :: LoadConfig -> CanaryState -> String -> String -> String -> Phase2Params -> Effect RtmpAuthResponse
 processPhase2Authentication loadConfig canary host rtmpShortName username authParams = do
   let
     authType = case authParams of

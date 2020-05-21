@@ -42,7 +42,7 @@ import Shared.Rtsv2.Agent.State (IngestStats)
 import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.LlnwApiTypes (StreamIngestProtocol(..), StreamPublish, StreamDetails, SlotProfile(..))
 import Shared.Rtsv2.Stream (IngestKey(..), ProfileName, RtmpShortName, RtmpStreamName, SlotId, SlotRole)
-import Shared.Rtsv2.Types (Canary, ResourceFailed(..))
+import Shared.Rtsv2.Types (CanaryState, ResourceFailed(..))
 import Shared.Types.Workflow.Metrics.Commmon (Stream)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (writeJSON)
@@ -190,7 +190,7 @@ type IngestStartState = { streamDetails :: Maybe StreamDetails
                         , streamPublish :: Maybe StreamPublish
                         }
 
-ingestStart :: LoadConfig -> Canary -> RtmpShortName -> RtmpStreamName -> StetsonHandler IngestStartState
+ingestStart :: LoadConfig -> CanaryState -> RtmpShortName -> RtmpStreamName -> StetsonHandler IngestStartState
 ingestStart loadConfig canary shortName streamName =
   Rest.handler (\req ->
                  Rest.initResult req { streamDetails: Nothing

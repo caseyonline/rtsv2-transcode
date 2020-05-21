@@ -18,6 +18,7 @@ import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Erl.Atom (Atom)
 import Erl.Data.List (List, nil, singleton, (:))
+import Erl.Process.Raw (Pid)
 import Logger (Logger)
 import Logger as Logger
 import Pinto (SupervisorName)
@@ -40,7 +41,7 @@ import Rtsv2.Utils (noprocToMaybe)
 import Shared.Rtsv2.Agent (Agent(..))
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Shared.Rtsv2.Stream (AggregatorKey(..), EgestKey(..), SlotId, SlotRole)
-import Shared.Rtsv2.Types (Canary(..), FailureReason(..), LocalOrRemote(..), LocationResp, ResourceFailed(..), ResourceResp, Server, ServerLoad, serverLoadToServer)
+import Shared.Rtsv2.Types (CanaryState, FailureReason(..), LocalOrRemote(..), LocationResp, OnBehalfOf, ResourceFailed(..), ResourceResp, Server, ServerLoad, serverLoadToServer)
 import SpudGun as SpudGun
 
 ------------------------------------------------------------------------------
@@ -52,29 +53,25 @@ isAgentAvailable = Pinto.isRegistered serverName
 startLink :: forall a. a -> Effect Pinto.StartLinkResult
 startLink _ = Sup.startLink serverName init
 
-findEgest :: LoadConfig -> Canary -> SlotId -> SlotRole -> Effect LocationResp
-findEgest loadConfig canary slotId slotRole =
-  mapResponse
-  <$> (NodeManager.runIfValidState canary $ do
-        thisServer <- PoPDefinition.getThisServer
-        mIngestAggregator <- IntraPoP.whereIsIngestAggregatorWithPayload (AggregatorKey slotId slotRole)
-        case mIngestAggregator of
-          Nothing ->  pure $ Left NotFound
-          Just {payload: slotCharacteristics, server: aggregator} -> findEgest' loadConfig thisServer egestKey {slotId, slotRole, aggregator, slotCharacteristics}
-      )
+findEgest :: LoadConfig -> CanaryState -> SlotId -> SlotRole -> Effect LocationResp
+findEgest loadConfig canary slotId slotRole = do
+  thisServer <- PoPDefinition.getThisServer
+  mIngestAggregator <- IntraPoP.whereIsIngestAggregatorWithPayload (AggregatorKey slotId slotRole)
+  case mIngestAggregator of
+    Nothing ->  pure $ Left NotFound
+    Just {payload: slotCharacteristics, server: aggregator} ->
+      let
+        payload = {slotId, slotRole, aggregator, slotCharacteristics}
+      in
+       findEgest' loadConfig canary thisServer egestKey payload
   where
     egestKey = (EgestKey slotId slotRole)
-    mapResponse (Left err) = Left NoResource
-    mapResponse (Right err@(Left _)) = err
-    mapResponse (Right ok@(Right _)) = ok
 
-startLocalEgest :: LoadConfig -> CreateEgestPayload -> Effect (ResourceResp Server)
-startLocalEgest loadConfig payload@{slotCharacteristics} =
-  NodeManager.launchIfValidState Live $
-    NodeManager.launchLocalAgent Egest (Load.hasCapacityForEgestInstance slotCharacteristics loadConfig) launchLocal
+startLocalEgest :: LoadConfig -> OnBehalfOf -> CreateEgestPayload -> Effect (ResourceResp Server)
+startLocalEgest loadConfig onBehalfOf payload@{slotCharacteristics} =
+  NodeManager.launchLocalAgent Egest onBehalfOf (Load.hasCapacityForEgestInstance slotCharacteristics loadConfig) launchLocal
   where
-    launchLocal _ =
-      (note LaunchFailed <<< startOkAS) <$> startEgest payload
+    launchLocal _ = startEgest payload
 
 ------------------------------------------------------------------------------
 -- Supervisor callbacks
@@ -104,8 +101,8 @@ childTemplate = Pinto.ChildTemplate (CachedInstanceState.startLink)
 serverName :: SupervisorName
 serverName = Names.egestInstanceSupName
 
-findEgest' :: LoadConfig -> Server -> EgestKey -> CreateEgestPayload -> Effect LocationResp
-findEgest' loadConfig thisServer egestKey payload@{slotCharacteristics} = runExceptT
+findEgest' :: LoadConfig -> CanaryState -> Server -> EgestKey -> CreateEgestPayload -> Effect LocationResp
+findEgest' loadConfig canary thisServer egestKey payload@{slotCharacteristics} = runExceptT
   $ ExceptT getLocal
   <|> ExceptT getRemote
   <|> ExceptT createResourceAndRecurse
@@ -123,14 +120,13 @@ findEgest' loadConfig thisServer egestKey payload@{slotCharacteristics} = runExc
 
     createResourceAndRecurse :: Effect LocationResp
     createResourceAndRecurse = do
-      eLaunchResp <- NodeManager.launchLocalOrRemoteAgent Egest (Load.hasCapacityForEgestInstance slotCharacteristics loadConfig) launchLocal launchRemote
+      eLaunchResp <- NodeManager.launchLocalOrRemoteAgent Egest canary (Load.hasCapacityForEgestInstance slotCharacteristics loadConfig) launchLocal launchRemote
       case eLaunchResp of
         Left error -> pure $ Left NoResource
         Right _ -> do
-          findEgest' loadConfig thisServer egestKey payload
+          findEgest' loadConfig canary thisServer egestKey payload
       where
-        launchLocal _ = do
-          (note LaunchFailed <<< startOkAS) <$> startEgest payload
+        launchLocal _ = startEgest payload
         launchRemote remote =
           -- todo - if remote then need to sleep before recurse to allow intra-pop disemination
           either (const false) (const true) <$> SpudGun.postJson (makeUrl remote EgestE) payload
@@ -145,11 +141,12 @@ findEgest' loadConfig thisServer egestKey payload@{slotCharacteristics} = runExc
        else
          Nothing
 
-startEgest :: CreateEgestPayload -> Effect Pinto.StartChildResult
+startEgest :: CreateEgestPayload -> Effect (Either ResourceFailed Pid)
 startEgest payload@{slotId, slotRole} =
   let
     egestKey = EgestKey slotId slotRole
   in
+    (note LaunchFailed <<< startOkAS) <$>
     Sup.startSimpleChild childTemplate serverName { childStartLink: EgestInstance.startLink payload
                                                   , childStopAction: EgestInstance.stopAction egestKey
                                                   , serverName: Names.egestInstanceStateName egestKey

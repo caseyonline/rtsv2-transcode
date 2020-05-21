@@ -28,7 +28,7 @@ import Rtsv2.LlnwApi as LlnwApi
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.LlnwApiTypes (PublishCredentials(..), SlotProfile(..), StreamAuth, StreamDetails, StreamIngestProtocol(..), StreamPublish(..))
 import Shared.Rtsv2.Stream (IngestKey(..), ProfileName, RtmpStreamName(..))
-import Shared.Rtsv2.Types (Canary, ResourceResp, Server)
+import Shared.Rtsv2.Types (CanaryState, ResourceResp, Server)
 import SpudGun (JsonResponseError)
 
 foreign import startWorkflowImpl :: IngestKey -> Effect Pid
@@ -45,7 +45,7 @@ type StartStreamResult = { sourceInfo :: Foreign -> Effect Unit
                          , stopStream :: Effect Unit
                          }
 
-authenticate :: LoadConfig -> Canary -> String -> StreamIngestProtocol -> String -> String -> String -> String -> String -> Int -> Effect (Maybe AuthenticateResult)
+authenticate :: LoadConfig -> CanaryState -> String -> StreamIngestProtocol -> String -> String -> String -> String -> String -> Int -> Effect (Maybe AuthenticateResult)
 authenticate loadConfig canary host protocol account username password streamName remoteAddress remotePort = do
   publishCredentials <- getPublishCredentials host account username
 

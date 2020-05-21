@@ -34,7 +34,7 @@ import Routing.Duplex.Generic (noArgs, sum)
 import Routing.Duplex.Generic.Syntax ((/))
 import Shared.Common (Url)
 import Shared.Rtsv2.Stream (ProfileName, RtmpShortName, RtmpStreamName, SlotId, SlotRole(..))
-import Shared.Rtsv2.Types (Canary(..), JsonLdContextType(..), PoPName(..), ServerAddress(..), SourceRoute, Username(..), extractAddress)
+import Shared.Rtsv2.Types (CanaryState(..), JsonLdContextType(..), PoPName(..), ServerAddress(..), SourceRoute, Username(..), extractAddress)
 import Shared.UUID (fromString)
 
 data Endpoint
@@ -100,10 +100,10 @@ data Endpoint
   | RelayProxiedStatsE SlotId SlotRole
   | Chaos
 
-  | IngestStartE Canary RtmpShortName RtmpStreamName
+  | IngestStartE CanaryState RtmpShortName RtmpStreamName
   | IngestStopE SlotId SlotRole ProfileName
 
-  | ClientStartE Canary SlotId SlotRole
+  | ClientStartE CanaryState SlotId SlotRole
   | ClientStopE SlotId SlotRole String
 
   | StreamAuthTypeE
@@ -198,13 +198,14 @@ endpoint = root $ sum
   , "IngestInstanceLlwpE"                              : "system" / "ingest" / slotId segment / slotRole segment / profileName segment / "llwp" -- URL duplicated in Web.purs
 
   , "IntraPoPTestHelperE"                              : "system" / "test" / path "intraPoP" noArgs
-  , "LoadE"                                            : "system" / "test" / path "load" noArgs
-  , "RelayProxiedStatsE"                               : "system" / "test" / "proxied" / "relay" / slotId segment / slotRole segment
-  , "Chaos"                                            : "system" / "test" / path "chaos" noArgs
 
-  , "IngestStartE"                                     : "system" / "test" / "ingest" / canary segment / shortName segment / streamName segment / "start"
+  , "RelayProxiedStatsE"                               : "system" / "test" / "proxied" / "relay" / slotId segment / slotRole segment
+
+  , "Chaos"                                            : "system" / "test" / path "chaos" noArgs
+  , "LoadE"                                            : "system" / "test" / path "load" noArgs
+  , "IngestStartE"                                     : "system" / "test" / "ingest" / canaryState segment / shortName segment / streamName segment / "start"
   , "IngestStopE"                                      : "system" / "test" / "ingest" / slotId segment / slotRole segment / profileName segment / "stop"
-  , "ClientStartE"                                     : "system" / "test" / "client" / canary segment / slotId segment / slotRole segment / "start"
+  , "ClientStartE"                                     : "system" / "test" / "client" / canaryState segment / slotId segment / slotRole segment / "start"
   , "ClientStopE"                                      : "system" / "test" / "client" / slotId segment / slotRole segment / "stop" / segment
 
   , "SlotLookupE"                                      : "system" / "llnwstub" / "rts" / "v1" / "slotid" / segment / segment
@@ -373,15 +374,15 @@ parseUsername str = Just (Username str)
 userNametoString :: Username -> String
 userNametoString (Username str) = str
 
--- | Canary
-parseCanary :: String -> Maybe Canary
-parseCanary "live"  = Just Live
-parseCanary "canary"  = Just Canary
-parseCanary _ = Nothing
+-- | CanaryState
+parseCanaryState :: String -> Maybe CanaryState
+parseCanaryState "live"  = Just Live
+parseCanaryState "canary"  = Just Canary
+parseCanaryState _ = Nothing
 
-canaryToString :: Canary -> String
-canaryToString Live = "live"
-canaryToString Canary = "canary"
+canaryStateToString :: CanaryState -> String
+canaryStateToString Live = "live"
+canaryStateToString Canary = "canary"
 
 -- | This combinator transforms a codec over `String` into one that operates on the `ContextType` type.
 contextType :: RouteDuplex' String -> RouteDuplex' JsonLdContextType
@@ -423,9 +424,9 @@ streamName = as streamNameToString (parseRtmpStreamName >>> note "Bad RtmpStream
 shortName :: RouteDuplex' String -> RouteDuplex' RtmpShortName
 shortName = as shortNameToString (parseRtmpShortName >>> note "Bad RtmpShortName")
 
--- | This combinator transforms a codec over `String` into one that operates on the `Canary` type.
-canary :: RouteDuplex' String -> RouteDuplex' Canary
-canary = as canaryToString (parseCanary >>> note "Bad CanaryId")
+-- | This combinator transforms a codec over `String` into one that operates on the `CanaryState` type.
+canaryState :: RouteDuplex' String -> RouteDuplex' CanaryState
+canaryState = as canaryStateToString (parseCanaryState >>> note "Bad CanaryId")
 
 uName :: RouteDuplex' String -> RouteDuplex' Username
 uName = as userNametoString (parseUsername >>> note "Bad username")

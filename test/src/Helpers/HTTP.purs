@@ -14,7 +14,7 @@ import Prim.Row (class Union)
 import Shared.Rtsv2.Chaos as Chaos
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrlAddr, makeUrl)
 import Shared.Rtsv2.Stream (RtmpShortName, SlotId, SlotNameAndProfileName(..), SlotRole(..), RtmpStreamName, ProfileName)
-import Shared.Rtsv2.Types (Canary(..), CurrentLoad(..), ServerAddress(..))
+import Shared.Rtsv2.Types (CanaryState(..), CurrentLoad(..), ServerAddress(..))
 import Simple.JSON as SimpleJSON
 import Toppokki as T
 
@@ -60,7 +60,7 @@ healthCheck :: Node -> Aff (Either String ResWithBody)
 healthCheck node =
   get (M.URL $ makeUrlAndUnwrap node HealthCheckE)
 
-changeCanaryState :: Node -> Canary -> Aff (Either String ResWithBody)
+changeCanaryState :: Node -> CanaryState -> Aff (Either String ResWithBody)
 changeCanaryState node canary =
   fetch (M.URL $ makeUrlAndUnwrap node CanaryE)
         { method: M.postMethod
@@ -68,7 +68,7 @@ changeCanaryState node canary =
         , headers: M.makeHeaders { "Content-Type": "application/json" }
         }
 
-clientStart :: Node -> Canary -> SlotId -> Aff (Either String ResWithBody)
+clientStart :: Node -> CanaryState -> SlotId -> Aff (Either String ResWithBody)
 clientStart node canary slotId =
   fetch (M.URL $ makeUrlAndUnwrap node (ClientStartE canary slotId Primary))
         { method: M.postMethod
@@ -128,7 +128,7 @@ getStats node route = get (M.URL $ makeUrlAndUnwrap node route)
 getEgestStats :: Node -> SlotId -> Aff (Either String ResWithBody)
 getEgestStats node slotId = getStats node (EgestStatsE slotId Primary)
 
-ingestStart :: Node -> Canary -> RtmpShortName -> RtmpStreamName -> Aff (Either String ResWithBody)
+ingestStart :: Node -> CanaryState -> RtmpShortName -> RtmpStreamName -> Aff (Either String ResWithBody)
 ingestStart node canary shortName streamName =
   get (M.URL $ makeUrlAndUnwrap node (IngestStartE canary shortName streamName))
 

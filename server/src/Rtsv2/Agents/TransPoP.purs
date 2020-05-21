@@ -61,7 +61,7 @@ import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrlAddr)
 import Shared.Rtsv2.Stream (AgentKey)
-import Shared.Rtsv2.Types (Canary(..), Health(..), PoPName, Server, ServerAddress(..), extractAddress, extractPoP)
+import Shared.Rtsv2.Types (CanaryState(..), Health(..), PoPName, Server, ServerAddress(..), extractAddress, extractPoP)
 import Shared.Utils (distinctRandomNumbers)
 import SpudGun (bodyToString)
 import SpudGun as SpudGun
@@ -76,7 +76,7 @@ type PoPRoutes = List (List PoPName)
 type StartArgs =
   { config :: TransPoPAgentConfig
   , intraPoPApi :: IntraPoPAgentApi
-  , canary :: Canary
+  , canary :: CanaryState
   }
 
 type LamportClocks =
@@ -85,7 +85,7 @@ type LamportClocks =
 
 type State
   = { intraPoPApi :: IntraPoPAgentApi
-    , canary :: Canary
+    , canary :: CanaryState
     , currentLeader :: Maybe Server
     , weAreLeader :: Boolean
     , lastLeaderAnnouncement :: Milliseconds

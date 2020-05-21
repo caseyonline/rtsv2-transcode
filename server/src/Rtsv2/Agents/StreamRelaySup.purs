@@ -13,6 +13,7 @@ import Data.Either (Either(..), either, note)
 import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Erl.Data.List (nil, (:))
+import Erl.Process.Raw (Pid)
 import Pinto (SupervisorName, isRegistered)
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStartTemplate, childType)
@@ -30,7 +31,7 @@ import Rtsv2.NodeManager as NodeManager
 import Shared.Rtsv2.Agent (Agent(..))
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Shared.Rtsv2.Stream (RelayKey(..))
-import Shared.Rtsv2.Types (LocalOrRemote(..), ResourceFailed(..), ResourceResp, Server)
+import Shared.Rtsv2.Types (OnBehalfOf, ResourceFailed(..), ResourceResp, Server)
 import SpudGun as SpudGun
 
 ------------------------------------------------------------------------------
@@ -46,40 +47,28 @@ startLink _ = Sup.startLink serverName init
 -- If there isn't, then find an idle server
 -- If that server is local, then start the agent instance
 -- If that server is remote, then return the remote server to allow the caller to redirect
-findOrStart :: LoadConfig -> CreateRelayPayload -> Effect (ResourceResp Server)
-findOrStart loadConfig payload@{slotCharacteristics} = do
+findOrStart :: LoadConfig -> OnBehalfOf -> CreateRelayPayload -> Effect (ResourceResp Server)
+findOrStart loadConfig onBehalfOf payload@{slotCharacteristics} = do
   mExisting <- IntraPoP.whereIsStreamRelayWithLocalOrRemote relayKey
   case mExisting of
     Just existing ->
       pure $ Right existing
-    Nothing -> do
-      newResourceResp <- IntraPoP.getIdleServer $ Load.hasCapacityForStreamRelay slotCharacteristics loadConfig
-      case newResourceResp of
-        Left err -> do
-          pure $ Left err
-
-        Right (Local server) -> do
-          _ <- startRelay payload
-          pure $ Right $ Local server
-
-        Right (Remote server) -> do
-          pure $ Right $ Remote server
+    Nothing ->
+      startLocalOrRemoteStreamRelay loadConfig onBehalfOf payload
   where
     relayKey = RelayKey payload.slotId payload.slotRole
 
-startLocalStreamRelay :: LoadConfig -> CreateRelayPayload -> Effect (ResourceResp Server)
-startLocalStreamRelay loadConfig payload@{slotCharacteristics} =
-  NodeManager.launchLocalAgent StreamRelay (Load.hasCapacityForStreamRelay slotCharacteristics loadConfig) launchLocal
+startLocalStreamRelay :: LoadConfig -> OnBehalfOf -> CreateRelayPayload -> Effect (ResourceResp Server)
+startLocalStreamRelay loadConfig onBehalfOf payload@{slotCharacteristics} =
+  NodeManager.launchLocalAgent StreamRelay onBehalfOf (Load.hasCapacityForStreamRelay slotCharacteristics loadConfig) launchLocal
   where
-    launchLocal _ =
-      (note LaunchFailed <<< startOkAS) <$> startRelay payload
+    launchLocal _ = startRelay payload
 
-startLocalOrRemoteStreamRelay :: LoadConfig -> CreateRelayPayload -> Effect (ResourceResp Server)
-startLocalOrRemoteStreamRelay loadConfig payload@{slotCharacteristics} =
-  NodeManager.launchLocalOrRemoteAgent StreamRelay (Load.hasCapacityForStreamRelay slotCharacteristics loadConfig) launchLocal launchRemote
+startLocalOrRemoteStreamRelay :: LoadConfig -> OnBehalfOf -> CreateRelayPayload -> Effect (ResourceResp Server)
+startLocalOrRemoteStreamRelay loadConfig onBehalfOf payload@{slotCharacteristics} =
+  NodeManager.launchLocalOrRemoteAgent StreamRelay onBehalfOf (Load.hasCapacityForStreamRelay slotCharacteristics loadConfig) launchLocal launchRemote
   where
-    launchLocal _ =
-      (note LaunchFailed <<< startOkAS) <$> startRelay payload
+    launchLocal _ = startRelay payload
     launchRemote idleServer =
       either (const false) (const true) <$> SpudGun.postJson ( makeUrl idleServer RelayE) payload
 
@@ -106,12 +95,13 @@ init = do
 serverName :: SupervisorName
 serverName = Names.streamRelaySupName
 
-startRelay :: CreateRelayPayload -> Effect Pinto.StartChildResult
+startRelay :: CreateRelayPayload -> Effect (Either ResourceFailed Pid)
 startRelay createPayload =
   let
     relayKey = StreamRelayInstance.payloadToRelayKey createPayload
   in
-   Sup.startSimpleChild childTemplate serverName { childStartLink: StreamRelayInstanceSup.startLink relayKey createPayload
+  (note LaunchFailed <<< startOkAS) <$>
+  Sup.startSimpleChild childTemplate serverName { childStartLink: StreamRelayInstanceSup.startLink relayKey createPayload
                                                  , childStopAction: StreamRelayInstance.stopAction relayKey
                                                  , serverName: Names.streamRelayInstanceStateName relayKey
                                                  , domain: StreamRelayInstance.domain

@@ -25,7 +25,7 @@ import Rtsv2.DataObject (class DataObjectRef)
 import Rtsv2.DataObject as DO
 import Shared.Rtsv2.Agent (SlotCharacteristics)
 import Shared.Rtsv2.Stream (ProfileName, SlotId, SlotRole)
-import Shared.Rtsv2.Types (Canary, Server)
+import Shared.Rtsv2.Types (Server)
 import Simple.JSON (class ReadForeign, class WriteForeign, readImpl, writeImpl)
 import Unsafe.Coerce (unsafeCoerce)
 

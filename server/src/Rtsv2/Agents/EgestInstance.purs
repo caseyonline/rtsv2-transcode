@@ -68,7 +68,7 @@ import Shared.Rtsv2.JsonLd (EgestStats, EgestSessionStats)
 import Shared.Rtsv2.LlnwApiTypes (StreamIngestProtocol(..))
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeWsUrl)
 import Shared.Rtsv2.Stream (AggregatorKey(..), EgestKey(..), ProfileName, RelayKey(..), SlotId, SlotRole, egestKeyToAgentKey)
-import Shared.Rtsv2.Types (EgestServer(..), FailureReason(..), LocalOrRemote(..), RegistrationResp, RelayServer, ResourceResp, Server, extractAddress)
+import Shared.Rtsv2.Types (EgestServer(..), FailureReason(..), LocalOrRemote(..), OnBehalfOf(..), RegistrationResp, RelayServer, ResourceResp, Server, extractAddress)
 import WsGun as WsGun
 
 foreign import startEgestReceiverFFI :: EgestKey -> MediaGatewayFlag -> Effect Int
@@ -516,7 +516,7 @@ findOrStartRelayForStream state@{ egestKey: EgestKey slotId slotRole
                                 , slotCharacteristics
                                 , loadConfig} = do
   mRelay <- IntraPoP.whereIsStreamRelayWithLocalOrRemote $ RelayKey slotId slotRole
-  maybe' (\_ -> StreamRelaySup.startLocalOrRemoteStreamRelay loadConfig payload) (pure <<< Right) mRelay
+  maybe' (\_ -> StreamRelaySup.startLocalOrRemoteStreamRelay loadConfig LocalAgent payload) (pure <<< Right) mRelay
   where
     payload = {slotId, slotRole, aggregator, slotCharacteristics}
 

@@ -10,7 +10,7 @@ import Helpers.HTTP as HTTP
 import Helpers.Env as E
 import Helpers.Functions (startSession, launch, stopSession, stopNode, maxOut, allNodesBar, aggregatorNotPresent)
 import Helpers.Types (Node)
-import Shared.Rtsv2.Types (Canary(..))
+import Shared.Rtsv2.Types (CanaryState(..))
 import Test.Spec (SpecT, after_, before_, describe, it, itOnly)
 
 -------------------------------------------------------------------------------

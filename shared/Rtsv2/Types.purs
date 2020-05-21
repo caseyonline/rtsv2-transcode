@@ -1,7 +1,10 @@
 module Shared.Rtsv2.Types
        ( DeliverTo(..)
-       , Canary(..)
+       , CanaryState(..)
+       , class CanaryType
+       , canary
        , CanaryStateChangeFailure(..)
+       , OnBehalfOf(..)
        , RunState(..)
        , GeoLoc(..)
        , LeaderGeoLoc(..)
@@ -54,7 +57,7 @@ import Data.List.NonEmpty (singleton)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype, unwrap, wrap)
 import Data.Symbol (SProxy(..))
-import Foreign (Foreign, ForeignError(..), readString, unsafeToForeign)
+import Foreign (ForeignError(..), readString, unsafeToForeign)
 import Record as Record
 import Shared.Rtsv2.Agent (Agent)
 import Shared.Rtsv2.Stream (SlotId)
@@ -77,8 +80,13 @@ data JsonLdContextType = ServerContext
                        | NodeManagerStateContext
                        | HealthContext
 
-data Canary = Live
-            | Canary
+class CanaryType a where
+  canary :: CanaryState -> a -> CanaryState
+
+data CanaryState = Live
+                 | Canary
+
+instance canaryCanaryType :: CanaryType CanaryState where canary _ x = x
 
 data CanaryStateChangeFailure = InvalidStateTransition
                               | ActiveAgents
@@ -93,6 +101,14 @@ data Health = Perfect
             | Poor
             | Critical
             | NA
+
+data OnBehalfOf = LocalAgent
+                | RemoteAgent
+
+instance onBehalfOfCanaryType :: CanaryType OnBehalfOf
+  where
+    canary currentCanaryState LocalAgent = currentCanaryState
+    canary _currentCanaryState RemoteAgent = Live
 
 newtype ServerAddress = ServerAddress String
 
@@ -198,14 +214,14 @@ maxLoad = CurrentLoad { cpu: wrap 100.0
 ------------------------------------------------------------------------------
 
 ------------------------------------------------------------------------------
--- Canary
-instance showCanary :: Show Canary where
+-- CanaryState
+instance showCanary :: Show CanaryState where
   show Live   = "live"
   show Canary = "canary"
 
-derive instance genericCanary :: Generic Canary _
-instance eqCanary :: Eq Canary where eq = genericEq
-instance readForeignCanary :: ReadForeign Canary where
+derive instance genericCanaryState :: Generic CanaryState _
+instance eqCanaryState :: Eq CanaryState where eq = genericEq
+instance readForeignCanaryState :: ReadForeign CanaryState where
   readImpl = readString >=> parseString
     where
       error s = singleton (ForeignError (errorString s))
@@ -215,7 +231,7 @@ instance readForeignCanary :: ReadForeign Canary where
       toType unknown = Nothing
       errorString s = "Unknown Canary: " <> s
 
-instance writeForeignCanary :: WriteForeign Canary where
+instance writeForeignCanaryState :: WriteForeign CanaryState where
   writeImpl = toString >>> unsafeToForeign
     where
       toString Live = "live"

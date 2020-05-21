@@ -24,11 +24,11 @@ import Shared.Common (Url)
 import Shared.Rtsv2.LlnwApiTypes (SlotLookupResult)
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Shared.Rtsv2.Stream (SlotId, SlotRole(..))
-import Shared.Rtsv2.Types (Canary(..), FailureReason, fromLocalOrRemote)
+import Shared.Rtsv2.Types (CanaryState(..), FailureReason, fromLocalOrRemote)
 import Stetson (StetsonHandler)
 import StetsonHelper (jsonResponse)
 
-discover :: LoadConfig -> Canary -> String -> String -> StetsonHandler (Maybe (List Url))
+discover :: LoadConfig -> CanaryState -> String -> String -> StetsonHandler (Maybe (List Url))
 discover loadConfig canary accountName streamName =
   jsonResponse getUrls
 

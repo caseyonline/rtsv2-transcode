@@ -24,7 +24,7 @@ import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.Stream (AggregatorKey(..), IngestKey(..), ProfileName, SlotId, SlotRole)
-import Shared.Rtsv2.Types (RelayServer(..), Server(..), ServerAddress)
+import Shared.Rtsv2.Types (OnBehalfOf(..), RelayServer(..), Server(..), ServerAddress)
 import Shared.Utils (lazyCrashIfMissing)
 import Stetson (InnerStetsonHandler)
 import StetsonHelper (GetHandler, PostHandler, jsonResponse, processPostPayload)
@@ -33,7 +33,7 @@ ingestAggregator :: SlotId -> SlotRole -> GetHandler (PublicState.IngestAggregat
 ingestAggregator slotId role = jsonResponse $ Just <$> (IngestAggregatorInstance.getState $ AggregatorKey slotId role)
 
 ingestAggregators :: LoadConfig -> PostHandler CreateAggregatorPayload
-ingestAggregators loadConfig = processPostPayload (IngestAggregatorSup.startLocalAggregator loadConfig)
+ingestAggregators loadConfig = processPostPayload (IngestAggregatorSup.startLocalAggregator loadConfig RemoteAgent)
 
 type WsIngestState =
   { ingestKey :: IngestKey

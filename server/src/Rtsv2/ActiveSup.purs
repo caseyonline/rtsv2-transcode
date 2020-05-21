@@ -11,12 +11,12 @@ import Pinto.Sup (SupervisorChildType(..), SupervisorSpec, SupervisorStrategy(..
 import Pinto.Sup as Sup
 import Rtsv2.Agents.AgentSup as AgentSup
 import Rtsv2.DataObject as DataObject
-import Shared.Rtsv2.Types (Canary)
+import Shared.Rtsv2.Types (CanaryState)
 
-startLink :: Canary -> Effect Pinto.StartLinkResult
+startLink :: CanaryState -> Effect Pinto.StartLinkResult
 startLink args = Sup.startLink (Local (atom "rtsv2ActiveSup")) (init args)
 
-init :: Canary -> Effect SupervisorSpec
+init :: CanaryState -> Effect SupervisorSpec
 init canary = do
   pure $ buildSupervisor
     # supervisorStrategy OneForOne
