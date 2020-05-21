@@ -111,7 +111,6 @@ type MemberInfo =
   { serfMember :: Serf.SerfMember
   , load :: CurrentLoad
   , acceptingRequests :: AcceptingRequests
-  , canary :: CanaryState
   , server :: Server
   }
 
@@ -175,7 +174,7 @@ data IntraMessage
   | IMEgestState EventType AgentKey ServerAddress
   | IMRelayState EventType AgentKey ServerAddress
 
-  | IMServerLoad ServerAddress CurrentLoad AcceptingRequests CanaryState
+  | IMServerLoad ServerAddress CurrentLoad AcceptingRequests
   | IMTransPoPLeader ServerAddress
   | IMVMLiveness ServerAddress Ref
 
@@ -396,22 +395,22 @@ getCurrentTransPoPLeader =
 announceLoad :: CurrentLoad -> Effect Unit
 announceLoad load =
   Gen.doCast serverName
-    \state@{ thisServer, members, acceptingRequests, canary } -> do
+    \state@{ thisServer, members, acceptingRequests } -> do
       let
         thisNodeAddress = extractAddress thisServer
         newMembers = alter (map (\ memberInfo -> memberInfo { load = load })) thisNodeAddress members
-      sendToIntraSerfNetwork state "loadUpdate" (IMServerLoad thisNodeAddress load acceptingRequests canary)
+      sendToIntraSerfNetwork state "loadUpdate" (IMServerLoad thisNodeAddress load acceptingRequests)
       pure $ Gen.CastNoReply state { members = newMembers , load = load}
 
 -- Called by RunState to indicate runState on this node
 announceAcceptingRequests :: AcceptingRequests -> Effect Unit
 announceAcceptingRequests acceptingRequests =
   Gen.doCast serverName
-    \state@{ thisServer, members, load, canary } -> do
+    \state@{ thisServer, members, load } -> do
       let
         thisNodeAddress = extractAddress thisServer
         newMembers = alter (map (\ memberInfo -> memberInfo { acceptingRequests = acceptingRequests })) thisNodeAddress members
-      sendToIntraSerfNetwork state "loadUpdate" (IMServerLoad thisNodeAddress load acceptingRequests canary)
+      sendToIntraSerfNetwork state "loadUpdate" (IMServerLoad thisNodeAddress load acceptingRequests)
       pure $ Gen.CastNoReply state { members = newMembers , acceptingRequests = acceptingRequests}
 
 type AgentMessageHandlerWithSerfPayload a = State -> AgentKey -> Server -> a -> Effect Unit
@@ -499,8 +498,8 @@ popLeaderHandler =
       state.transPoPApi.handleRemoteLeaderAnnouncement server
       pure state{ currentTransPoPLeader = Just server }
 
-loadHandler :: CurrentLoad -> AcceptingRequests -> CanaryState -> ServerMessageHandler
-loadHandler load acceptingRequests canary =
+loadHandler :: CurrentLoad -> AcceptingRequests -> ServerMessageHandler
+loadHandler load acceptingRequests =
   { name : HandlerName "load"
   , clockLens : clockLens
   , handleMessage : handleMessage
@@ -514,7 +513,7 @@ loadHandler load acceptingRequests canary =
       let
         newMembers = alter (map (\ memberInfo -> memberInfo { load = load
                                                             , acceptingRequests = acceptingRequests
-                                                            , canary = canary })) (extractAddress server) state.members
+                                                            })) (extractAddress server) state.members
       pure state{ members = newMembers }
 
 
@@ -883,7 +882,6 @@ init { config
                                 { server: server
                                 , load: maxLoad
                                 , acceptingRequests: wrap false
-                                , canary: Canary
                                 , serfMember: member
                                 }
                             in
@@ -990,8 +988,8 @@ handleIntraPoPSerfMsg imsg state@{ transPoPApi: {handleRemoteLeaderAnnouncement}
         IMRelayState eventType agentKey msgOrigin -> do
           handleAgentMessage ltime eventType agentKey msgOrigin state relayHandler unit
 
-        IMServerLoad msgOrigin load acceptingRequests canary -> do
-          handleServerMessage ltime msgOrigin state $ loadHandler load acceptingRequests canary
+        IMServerLoad msgOrigin load acceptingRequests -> do
+          handleServerMessage ltime msgOrigin state $ loadHandler load acceptingRequests
 
         IMTransPoPLeader msgOrigin -> do
           handleServerMessage ltime msgOrigin state popLeaderHandler
@@ -1119,7 +1117,6 @@ membersAlive members state = do
       , server: server
       , load: maxLoad
       , acceptingRequests: wrap false
-      , canary: Canary
       }
 
     newMembers
