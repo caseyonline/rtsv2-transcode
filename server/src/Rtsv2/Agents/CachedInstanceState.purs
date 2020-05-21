@@ -23,7 +23,7 @@ import Erl.Utils as Erl
 import Foreign (Foreign, unsafeToForeign)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult(..))
-import Pinto.Gen (CallResult(..), CastResult(..))
+import Pinto.Gen (CallResult(..), CastResult(..), TerminateReason)
 import Pinto.Gen as Gen
 
 foreign import receiveImpl :: Ref -> Effect Unit
@@ -55,6 +55,7 @@ startLink startArgs@{serverName, domain} = do
   let
     callerProcess = Process callerPid :: Process Ref
   startLinkResult <- Gen.startLink serverName (init callerProcess ref startArgs) handleInfo
+  Gen.registerTerminate serverName terminate
   case startLinkResult of
     Ok _ -> do
       _ <- receiveImpl ref
@@ -136,11 +137,25 @@ handleInfo msg state@{ instanceData
       childStopAction instanceData
       pure $ CastStop state
 
+terminate :: forall instanceData. TerminateReason -> State instanceData -> Effect Unit
+terminate reason state@{ domain, instanceData, childStopAction } =
+  case reason of
+    Gen.Normal ->
+      pure unit
+    _ ->
+      do
+        logWarning domain "Cached instance state terminating" {reason}
+        childStopAction instanceData
+        pure unit
+
 --------------------------------------------------------------------------------
 -- Log helpers
 --------------------------------------------------------------------------------
 logInfo :: forall a. List Atom -> String -> Record a -> Effect Unit
 logInfo domain msg misc = Logger.doLog domain Logger.info msg misc
+
+logWarning :: forall a. List Atom -> String -> Record a -> Effect Unit
+logWarning domain msg misc = Logger.doLog domain Logger.warning msg misc
 
 logError :: forall a. List Atom -> String -> Record a -> Effect Unit
 logError domain msg misc = Logger.doLog domain Logger.error msg misc

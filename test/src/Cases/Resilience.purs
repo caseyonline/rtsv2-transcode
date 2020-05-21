@@ -26,7 +26,7 @@ import Test.Spec (SpecT, after_, before_, describe, describeOnly, it, itOnly)
 -------------------------------------------------------------------------------
 resilienceTests :: forall m. Monad m => SpecT Aff Unit m Unit
 resilienceTests = do
-  describeOnly "4 resilience" do
+  describe "4 resilience" do
     before_ (F.startSession nodes *> F.launch' nodes "test/config/partial_nodes/sys.config") do
       after_ F.stopSession do
         resilienceTest1
@@ -154,7 +154,7 @@ resilienceTest6 =
 
 resilienceTest7 :: forall m. Monad m => SpecT Aff Unit m Unit
 resilienceTest7 =
-  itOnly "4.7 Launch ingest and egest, kill egest sup (via stats), assert slot state is still valid" do
+  it "4.7 Launch ingest and egest, trigger egest sup children restart (via media gateway), assert slot state is still valid" do
     (flip evalStateT) Map.empty $ do
       lift $ HTTP.ingestStart E.p1n1 Live E.shortName1 E.lowStreamName
                                                >>= A.assertStatusCode 200 >>= as  "create ingest"
@@ -164,6 +164,6 @@ resilienceTest7 =
       (lift $ HTTP.getSlotState E.p1n1 E.slot1 >>= (F.bodyToRecord :: ToRecord (PublicState.SlotState Array))
        <#> ((<$>) (F.excludeTimestamps <<< F.excludePorts <<< F.canonicaliseSlotState)))
                                                >>= F.storeSlotState       >>= asT "stored state"
-      lift $ F.killStatsNode E.p2n1                                       >>= as' "kill stats node"
+      lift $ F.killMediaGateway E.p2n1                                    >>= as' "kill media gateway"
       lift $ E.waitForSupervisorRecovery                                  >>= as' "wait for recovery"
       lift $ HTTP.clientStart E.p2n1 Live E.slot1   >>= A.assertStatusCode 204 >>= as  "egest available"

@@ -178,10 +178,10 @@ killRelay slotId slotRole relays =
       _ ->
         throwSlowError $ "No relays or missing id"
 
-killStatsNode :: Node -> Aff Unit
-killStatsNode node =
+killMediaGateway :: Node -> Aff Unit
+killMediaGateway node =
   do
-    _ <- HTTP.killProcessNode (spy "kill" node) (Chaos.defaultKill $ (Chaos.Local "EgestStats"))
+    _ <- HTTP.killProcessNode (spy "kill" node) (Chaos.defaultKill $ (Chaos.Local "rtsv2_media_gateway_api"))
     pure unit
 
 relayName :: SlotId -> SlotRole -> Chaos.ChaosName
