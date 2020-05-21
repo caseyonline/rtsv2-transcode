@@ -261,16 +261,21 @@ send_msg(Socket, Header, Body, Fds) ->
 
   WireMessage = build_frame(MessageComponents),
 
-  CmsgHdr = #{ level => socket
-             , type => rights
-             , data => iolist_to_binary([ <<Fd:32/little-signed-integer>> || Fd <- Fds ])
-             },
-
-  MsgHdr = #{ iov => WireMessage
-            , ctrl => [CmsgHdr]
-            , flags => []
-            },
-
+  MsgHdr = case Fds of
+             [] ->
+               #{ iov => WireMessage
+                , flags => []
+                };
+             _ ->
+               CMsgHdr = #{ level => socket
+                          , type => rights
+                          , data => iolist_to_binary([ <<Fd:32/little-signed-integer>> || Fd <- Fds ])
+                          },
+               #{ iov => WireMessage
+                , ctrl => [CMsgHdr]
+                , flags => []
+                }
+           end,
   ok = socket:sendmsg(Socket, MsgHdr),
 
   ok.
