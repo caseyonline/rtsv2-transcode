@@ -16,7 +16,7 @@ function main {
   local -r vlan=$3
   local -r addr=$4
   local -r sysConfig=$5
-
+  #echo $(date): start node $2
   tmux -L "$session" new-window -n "$nodeName"
   start_node "$session" "$nodeName" "$vlan" "$addr" "$sysConfig"
 }

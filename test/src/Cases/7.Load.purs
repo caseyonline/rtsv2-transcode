@@ -18,7 +18,7 @@ import Helpers.HTTP as HTTP
 import Helpers.Log (as, as', asT, asT')
 import Shared.Rtsv2.Stream (SlotRole(..))
 import Shared.Rtsv2.Types (CurrentLoad(..), CanaryState(..))
-import Test.Spec (SpecT, after_, before_, describe, it)
+import Test.Spec (SpecT, after_, before_, describe, it, itOnly)
 
 -------------------------------------------------------------------------------
 -- Main

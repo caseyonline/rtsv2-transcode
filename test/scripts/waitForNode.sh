@@ -36,8 +36,9 @@ function wait_for_server {
 
 function main {
   local -r addr=$1
+  #echo $(date): waiting for node $addr
   wait_for_server "$addr"
-  #echo $addr is ready
+  #echo $(date): node ready $addr
 }
 
 main "$@"

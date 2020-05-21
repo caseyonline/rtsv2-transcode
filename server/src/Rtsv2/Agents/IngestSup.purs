@@ -1,4 +1,4 @@
- module Rtsv2.Agents.IngestSup
+module Rtsv2.Agents.IngestSup
   ( isAgentAvailable
   , startLink
   ) where
@@ -12,9 +12,8 @@ import Pinto as Pinto
 import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStart, childType)
 import Pinto.Sup as Sup
 import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
-import Rtsv2.Agents.IngestRtmpCrypto as IngestRtmpCrypto
+import Rtsv2.Agents.IngestOneForOneSup as IngestOneForOneSup
 import Rtsv2.Agents.IngestRtmpServer as IngestRtmpServer
-import Rtsv2.Agents.IngestStats as IngestStats
 import Rtsv2.Names as Names
 
 isAgentAvailable :: Effect Boolean
@@ -33,20 +32,14 @@ init = do
     # Sup.supervisorChildren
         ( ( buildChild
               # childType Worker
-              # childId "ingestRtmpCrypto"
-              # childStart IngestRtmpCrypto.startLink unit
-              # childRestart Transient
-          )
-          : ( buildChild
-              # childType Worker
               # childId "ingestRtmpServer"
               # childStart IngestRtmpServer.startLink unit
               # childRestart Transient
             )
           : ( buildChild
-              # childType Worker
-              # childId "ingestStatsServer"
-              # childStart IngestStats.startLink unit
+              # childType Supervisor
+              # childId "ingestOneForOne"
+              # childStart IngestOneForOneSup.startLink unit
               # childRestart Transient
           )
           : ( buildChild

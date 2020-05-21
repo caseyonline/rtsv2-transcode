@@ -53,8 +53,8 @@ launch nodes = launch' nodes "test/config/sys.config"
 
 launch' :: Array Node -> String -> Aff Unit
 launch' nodesToStart sysconfig = do
-  nodesToStart <#> mkNode  sysconfig # launchNodes
-  delay (Milliseconds 1000.0)
+  nodesToStart <#> mkNode sysconfig # launchNodes
+  pure unit
   where
   launchNodes :: Array TestNode -> Aff Unit
   launchNodes nodes = do
