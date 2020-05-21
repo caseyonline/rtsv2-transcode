@@ -76,7 +76,7 @@ type PoPRoutes = List (List PoPName)
 type StartArgs =
   { config :: TransPoPAgentConfig
   , intraPoPApi :: IntraPoPAgentApi
-  , canary :: CanaryState
+  , canaryState :: CanaryState
   }
 
 type LamportClocks =
@@ -269,7 +269,7 @@ init { config: config@{ leaderTimeoutMs
                       , defaultRttMs
                       }
      , intraPoPApi
-     , canary} = do
+     , canaryState} = do
   logInfo "Trans-PoP Agent Starting" {config: config}
   healthConfig <- Config.healthConfig
   -- Stop any agent that might be running (in case we crashed)
@@ -295,7 +295,7 @@ init { config: config@{ leaderTimeoutMs
 
   pure
     $ { intraPoPApi
-      , canary
+      , canary: canaryState
       , config
       , healthConfig
       , currentLeader: Nothing

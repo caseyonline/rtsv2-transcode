@@ -19,13 +19,13 @@ import Rtsv2.Config as Config
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Rtsv2.Agent (Agent(..))
-import Shared.Rtsv2.Types (CanaryState, Server(..))
+import Shared.Rtsv2.Types (AgentSupStartArgs, Server(..))
 
-startLink :: CanaryState -> Effect Pinto.StartLinkResult
-startLink canary = Sup.startLink Names.agentSupName (init canary)
+startLink :: AgentSupStartArgs -> Effect Pinto.StartLinkResult
+startLink args = Sup.startLink Names.agentSupName (init args)
 
-init :: CanaryState -> Effect SupervisorSpec
-init canary = do
+init :: AgentSupStartArgs -> Effect SupervisorSpec
+init {canaryState, acceptingRequestsFun} = do
   (Server {agents}) <- PoPDefinition.getThisServer
   agentSpecs <- sequence $ (makeSpec <$> (IntraPoP : (toUnfoldable agents)))
   pure $ Sup.buildSupervisor
@@ -72,7 +72,8 @@ init canary = do
                                                            , announceAggregatorStopped: TransPoP.announceAggregatorStopped
                                                            , handleRemoteLeaderAnnouncement: TransPoP.handleRemoteLeaderAnnouncement
                                                            }
-                                            , canary
+                                            , canaryState
+                                            , acceptingRequestsFun
                                             }
         # pure
 
@@ -86,6 +87,6 @@ init canary = do
                                                            , announceOtherPoPAggregatorStopped: IntraPoP.announceOtherPoPAggregatorStopped
                                                            , announceTransPoPLeader: IntraPoP.announceTransPoPLeader
                                                            }
-                                            , canary
+                                            , canaryState
                                             }
         # pure

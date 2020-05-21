@@ -18,14 +18,14 @@ import Shared.Rtsv2.JsonLd as JsonLd
 import Test.Spec (SpecT, after_, before_, describe, describeOnly, it, itOnly)
 import Toppokki as T
 
-
 -------------------------------------------------------------------------------
 -- Main
 -------------------------------------------------------------------------------
 canaryTests :: forall m. Monad m => SpecT Aff Unit m Unit
-canaryTests = do
-  canaryWhenLiveTests
-  canaryWhenCanaryTests
+canaryTests =
+  describe "8 Canary Tests" do
+    canaryWhenLiveTests
+    canaryWhenCanaryTests
 
 canaryWhenLiveTests :: forall m. Monad m => SpecT Aff Unit m Unit
 canaryWhenLiveTests = do

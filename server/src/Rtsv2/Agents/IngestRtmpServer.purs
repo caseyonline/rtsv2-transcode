@@ -8,9 +8,9 @@ import Prelude
 
 import Data.Either (Either(..), hush)
 import Data.Foldable (find)
-import Data.Function.Uncurried (Fn3, Fn5, mkFn3, mkFn5)
+import Data.Function.Uncurried (Fn2, Fn5, mkFn2, mkFn5)
 import Data.Maybe (Maybe(..), fromMaybe)
-import Data.Newtype (wrap)
+import Data.Newtype (unwrap, wrap)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
@@ -32,12 +32,13 @@ import Rtsv2.Config as Config
 import Rtsv2.Env as Env
 import Rtsv2.LlnwApi as LlnwApi
 import Rtsv2.Names as Names
+import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Utils (crashIfLeft)
 import Serf (Ip)
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.LlnwApiTypes (AuthType, PublishCredentials, SlotProfile(..), SlotPublishAuthType(..), StreamAuth, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamPublish)
 import Shared.Rtsv2.Stream (IngestKey(..))
-import Shared.Rtsv2.Types (CanaryState(..))
+import Shared.Rtsv2.Types (CanaryState(..), extractAddress)
 import SpudGun (JsonResponseError)
 import Stetson.WebSocketHandler (self)
 
@@ -58,7 +59,7 @@ data RtmpAuthResponse = InitialResponse AuthType
                       | AcceptRequest (Fn5 String Int String Pid Foreign (Effect Unit))
 
 type Callbacks
-  = { init :: Fn3 String String Foreign (Effect RtmpAuthResponse)
+  = { init :: Fn2 String Foreign (Effect RtmpAuthResponse)
     }
 
 serverName :: ServerName State Unit
@@ -77,12 +78,14 @@ init _ = do
   privateInterfaceIp <- Env.privateInterfaceIp
   loadConfig <- Config.loadConfig
   {port, canaryPort, nbAcceptors} <- Config.rtmpIngestConfig
+  thisServer <- PoPDefinition.getThisServer
   let
+    host = unwrap $ extractAddress thisServer
     callbacks :: Callbacks
-    callbacks = { init: mkFn3 (onConnectCallback loadConfig Live)
+    callbacks = { init: mkFn2 (onConnectCallback loadConfig Live host)
                 }
     canaryCallbacks :: Callbacks
-    canaryCallbacks = { init: mkFn3 (onConnectCallback loadConfig Canary)
+    canaryCallbacks = { init: mkFn2 (onConnectCallback loadConfig Canary host)
                       }
   crashIfLeft =<< startServerImpl Left (Right unit) publicInterfaceIp port callbacks privateInterfaceIp canaryPort canaryCallbacks nbAcceptors
   pure $ {}

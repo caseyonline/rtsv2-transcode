@@ -1,5 +1,6 @@
 module Shared.Rtsv2.Types
-       ( DeliverTo(..)
+       ( AgentSupStartArgs
+       , DeliverTo(..)
        , CanaryState(..)
        , class CanaryType
        , canary
@@ -57,6 +58,7 @@ import Data.List.NonEmpty (singleton)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype, unwrap, wrap)
 import Data.Symbol (SProxy(..))
+import Effect (Effect)
 import Foreign (ForeignError(..), readString, unsafeToForeign)
 import Record as Record
 import Shared.Rtsv2.Agent (Agent)
@@ -125,6 +127,11 @@ newtype CurrentLoad = CurrentLoad { cpu :: Percentage
                                   }
 
 newtype AcceptingRequests = AcceptingRequests Boolean
+
+type AgentSupStartArgs =
+  { canaryState :: CanaryState
+  , acceptingRequestsFun :: Effect AcceptingRequests
+  }
 
 newtype ServerLocation = ServerLocation { pop :: PoPName
                                         , region :: RegionName

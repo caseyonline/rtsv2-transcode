@@ -10,6 +10,7 @@ import Cases.IngestEgest (ingestEgestTests)
 import Cases.Resilience (resilienceTests)
 import Cases.Canary (canaryTests)
 import Cases.Load (loadTests)
+import Cases.Drain (drainTests)
 import Data.Identity (Identity(..))
 import Data.Maybe (Maybe(..))
 import Data.Newtype (un)
@@ -24,14 +25,15 @@ import Test.Spec.Runner (runSpecT)
 main :: Effect Unit
 main =
   launchAff_ $ un Identity $ runSpecT testConfig [consoleReporter] do
-    startupTests -- 1
-    ingestTests -- 2
-    ingestEgestTests -- 3
-    resilienceTests -- 4
+    startupTests      -- 1
+    ingestTests       -- 2
+    ingestEgestTests  -- 3
+    resilienceTests   -- 4
     browserIngestTest -- 5
     browserDataMsging -- 6
-    loadTests -- 7
-    canaryTests -- 8
+    loadTests         -- 7
+    canaryTests       -- 8
+    drainTests        -- 9
     describe "Cleanup" do
       after_ F.stopSession do
         it "final cleanup" do

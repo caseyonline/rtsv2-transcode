@@ -180,6 +180,7 @@ data IntraMessage
 
 data Msg serfPayload
   = JoinAll
+  | GetAcceptingRequests (Effect AcceptingRequests)
   | GarbageCollectVM
   | GarbageCollectAgents
   | IntraPoPSerfMsg (Serf.SerfMessage IntraMessage)
@@ -820,7 +821,9 @@ updateAgentLocation action lens agentKey server state@{agentLocations} =
 type StartArgs =
   { config :: Config.IntraPoPAgentConfig
   , transPoPApi :: Config.TransPoPAgentApi
-  , canary :: CanaryState}
+  , canaryState :: CanaryState
+  , acceptingRequestsFun :: Effect AcceptingRequests
+  }
 
 startLink :: StartArgs -> Effect StartLinkResult
 startLink args = Gen.startLink serverName (init args) handleInfo
@@ -828,7 +831,8 @@ startLink args = Gen.startLink serverName (init args) handleInfo
 init :: StartArgs -> Effect State
 init { config
      , transPoPApi
-     , canary
+     , canaryState
+     , acceptingRequestsFun
      } = do
 
   logInfo "Intra-PoP Agent Starting" {config: config}
@@ -841,6 +845,7 @@ init { config
                                      config.reannounceAgentEveryMs
                                  ) / 2
 
+  void $ Timer.sendAfter serverName 0 (GetAcceptingRequests acceptingRequestsFun)
   void $ Timer.sendAfter serverName 0 JoinAll
   void $ Timer.sendEvery serverName config.rejoinEveryMs JoinAll
   void $ Timer.sendEvery serverName config.vmLivenessIntervalMs VMLiveness
@@ -903,7 +908,7 @@ init { config
     , thisServer: thisServer
     , load: minLoad
     , acceptingRequests: wrap false
-    , canary
+    , canary: canaryState
     , members
     , agentClocks  : { aggregatorClocks: Map.empty
                      , egestClocks: Map.empty
@@ -925,6 +930,10 @@ handleInfo msg state = case msg of
 
   IntraPoPSerfMsg imsg ->
     CastNoReply <$> handleIntraPoPSerfMsg imsg state
+
+  GetAcceptingRequests acceptingRequestsFun -> do
+    acceptingRequests <- acceptingRequestsFun
+    pure $ CastNoReply state{acceptingRequests = acceptingRequests}
 
   JoinAll -> do
     joinAllSerf state

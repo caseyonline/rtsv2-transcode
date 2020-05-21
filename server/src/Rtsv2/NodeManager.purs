@@ -1,6 +1,7 @@
 module Rtsv2.NodeManager
        ( startLink
        , getState
+       , getAcceptingRequests
        , changeCanaryState
        , changeRunState
        , launchLocalAgent
@@ -32,7 +33,7 @@ import Rtsv2.Utils (chainEither)
 import Shared.Rtsv2.Agent (Agent(..))
 import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.JsonLd as JsonLd
-import Shared.Rtsv2.Types (class CanaryType, AcceptingRequests, CanaryState(..), CanaryStateChangeFailure(..), LocalOrRemote(..), OnBehalfOf, ResourceFailed(..), ResourceResp, RunState(..), Server, canary)
+import Shared.Rtsv2.Types (class CanaryType, AcceptingRequests, CanaryState(..), CanaryStateChangeFailure(..), LocalOrRemote(..), OnBehalfOf, ResourceFailed(..), ResourceResp, RunState(..), Server, AgentSupStartArgs, canary)
 
 data Msg =
   AgentDown Agent
@@ -53,7 +54,7 @@ data RequestType = CanaryRequest CanaryState
 -- API
 --------------------------------------------------------------------------------
 type StartArgs =
-  { activeSupStartLink :: CanaryState -> Effect StartLinkResult
+  { activeSupStartLink :: AgentSupStartArgs -> Effect StartLinkResult
   }
 
 startLink :: StartArgs -> Effect StartLinkResult
@@ -89,6 +90,10 @@ getState =
     CallReply (JsonLd.nodeManagerStateNode publicState thisServer) state
   )
 
+getAcceptingRequests :: Effect AcceptingRequests
+getAcceptingRequests =
+  Gen.call serverName (\state -> CallReply (acceptingRequests state) state)
+
 getCanaryState :: Effect CanaryState
 getCanaryState =
   Gen.call serverName (\state@{currentCanaryState} -> CallReply currentCanaryState state)
@@ -109,7 +114,7 @@ changeCanaryState newCanary =
             pure $ CallReply (Left ActiveAgents) state
         else do
           ErlUtils.shutdown activeSupPid
-          newActiveSupPid <- (ok' =<< (activeSupStartLink newCanary))
+          newActiveSupPid <- (ok' =<< (activeSupStartLink {canaryState: newCanary, acceptingRequestsFun: getAcceptingRequests}))
           IntraPoP.announceAcceptingRequests $ acceptingRequests state
           pure $ CallReply (Right unit) state{ currentCanaryState = newCanary
                                              , activeSupPid = newActiveSupPid }
@@ -152,7 +157,7 @@ init args@{activeSupStartLink} = do
   { initialRunState
   , initialCanaryState } <- Config.nodeManagerConfig
   thisServer <- PoPDefinition.getThisServer
-  activeSupPid <- (ok' =<< (activeSupStartLink initialCanaryState))
+  activeSupPid <- (ok' =<< (activeSupStartLink {canaryState: initialCanaryState, acceptingRequestsFun: getAcceptingRequests}))
 
   let
     state = { args
