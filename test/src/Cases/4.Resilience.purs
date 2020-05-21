@@ -3,14 +3,12 @@ module Cases.Resilience where
 import Prelude
 
 import Control.Monad.State (evalStateT, lift)
-import Data.Array (delete)
 import Data.Map as Map
 import Data.Traversable (traverse_)
 import Effect.Aff (Aff)
 import Helpers.Types (Node, ToRecord)
 import Shared.Rtsv2.Agent.State as PublicState
 import Helpers.Assert as A
-import Helpers.CreateString (toAddrFromNode)
 import Helpers.Env as E
 import Helpers.Functions as F
 import Helpers.HTTP as HTTP

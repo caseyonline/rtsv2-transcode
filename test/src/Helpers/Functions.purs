@@ -14,7 +14,7 @@ import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (wrap, unwrap)
 import Data.These (These(..))
 import Data.Time.Duration (Milliseconds(..))
-import Data.Traversable (traverse, traverse_)
+import Data.Traversable (traverse_)
 import Debug.Trace (spy)
 import Effect.Aff (Aff, delay)
 import Foreign (unsafeFromForeign)
@@ -34,7 +34,7 @@ import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.Chaos as Chaos
 import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
-import Shared.Rtsv2.Stream (RtmpShortName(..), RtmpStreamName(..), SlotId, SlotRole)
+import Shared.Rtsv2.Stream (RtmpShortName, RtmpStreamName, SlotId, SlotRole)
 import Shared.Rtsv2.Types (ServerAddress(..))
 import Simple.JSON (class ReadForeign)
 import Simple.JSON as SimpleJSON
@@ -203,6 +203,7 @@ makePoPInfo n i = {name: n, number: i, x: 0.0, y: 0.0}
 -------------------------------------------------------------------------------
 -- Slot
 -------------------------------------------------------------------------------
+storeSlotState :: forall e a v. Applicative a => Bind a => MonadState (Map.Map String v) a => Either e v -> a (Either e v)
 storeSlotState either@(Left _) = pure either
 storeSlotState either@(Right slotState) = do
   _ <- modify (Map.insert "slotState" slotState)

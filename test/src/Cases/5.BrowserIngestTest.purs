@@ -2,19 +2,16 @@ module Cases.BrowserIngestTest where
 
 import Prelude
 
-import Data.Newtype (unwrap)
 import Data.Traversable (traverse_)
 import Effect.Aff (Aff, Milliseconds(..), delay)
 import Helpers.Assert as A
 import Helpers.CreateString as C
 import Helpers.Env as E
-import Helpers.Env as Env
 import Helpers.Functions as F
 import Helpers.HTTP as HTTP
 import Helpers.Log as L
 import Helpers.Types (Node)
-import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
-import Shared.Rtsv2.Stream (SlotRole(..), RtmpShortName, RtmpStreamName, SlotId)
+import Shared.Rtsv2.Stream (SlotRole(..))
 import Test.Spec (SpecT, describe, it, before_, after_)
 import Test.Unit.Assert as Assert
 import Toppokki as T
@@ -47,7 +44,7 @@ browserIngestTest =
 primaryStream :: forall m. Monad m => SpecT Aff Unit m Unit
 primaryStream =
   describe "5.1 Primary Stream tests" do
-    before_ (F.startSession [Env.p1n1] *> F.launch [Env.p1n1] *> F.startSlotHigh1000 (C.toAddrFromNode Env.p1n1)) do
+    before_ (F.startSession [E.p1n1] *> F.launch [E.p1n1] *> F.startSlotHigh1000 (C.toAddrFromNode E.p1n1)) do
       after_ (F.stopSession *> F.stopSlot) do
         it "5.1.1 can check that a streaming video has started and is playing on Primary" do
           _ <- delay (Milliseconds 2000.00) >>= L.as' "wait for ingest to start fully"
@@ -58,7 +55,7 @@ primaryStream =
           -- jsFile <- readTextFile UTF8 "./scripts/injectWebRTC.js"
           -- _ <- T.unsafeEvaluateOnNewDocument jsFile page
 
-          T.goto (HTTP.playerUrl Env.p1n1 E.slot1 Primary) page
+          T.goto (HTTP.playerUrl E.p1n1 E.slot1 Primary) page
           _ <- delay (Milliseconds 4000.00) >>= L.as' "wait for video to start"
 
           frames1 <- F.getInnerText "#frames" page
@@ -78,14 +75,14 @@ primaryStream =
 backupStream :: forall m. Monad m => SpecT Aff Unit m Unit
 backupStream =
   describe "5.2 Backup Stream tests" do
-    before_ (F.startSession [Env.p1n1] *> F.launch [Env.p1n1] *> F.startSlotHigh1000Backup (C.toAddrFromNode Env.p1n1)) do
+    before_ (F.startSession [E.p1n1] *> F.launch [E.p1n1] *> F.startSlotHigh1000Backup (C.toAddrFromNode E.p1n1)) do
       after_ (F.stopSession *> F.stopSlot) do
         it "5.2.1 can check that a streaming video has started and is playing on Backup" do
           _ <- delay (Milliseconds 2000.00) >>= L.as' "wait for ingest to start fully"
           browser <- T.launch options
           page <- T.newPage browser
 
-          T.goto (HTTP.playerUrl Env.p1n1 E.slot1 Backup) page
+          T.goto (HTTP.playerUrl E.p1n1 E.slot1 Backup) page
           _ <- delay (Milliseconds 3000.00) >>= L.as' "wait for video to start"
 
           frames1 <- F.getInnerText "#frames" page
@@ -113,13 +110,13 @@ ingestStream =
         it "5.3.1 webrtc ingest on different node to aggregator" do
           traverse_ F.maxOut (F.allNodesBar E.p1n1 ingestNodes) >>= L.as' "load up all servers bar one"
           E.waitForIntraPoPDisseminate
-          F.startSlotHigh1000 (C.toAddrFromNode Env.p1n2) >>= L.as' "create high ingest"
+          F.startSlotHigh1000 (C.toAddrFromNode E.p1n2) >>= L.as' "create high ingest"
           _ <- delay (Milliseconds 2000.00) >>= L.as' "wait for ingest to start fully"
 
           browser <- T.launch options
           page <- T.newPage browser
 
-          T.goto (HTTP.playerUrl Env.p1n1 E.slot1 Primary) page
+          T.goto (HTTP.playerUrl E.p1n1 E.slot1 Primary) page
           _ <- delay (Milliseconds 3000.00) >>= L.as' "wait for video to start"
 
           frames1 <- F.getInnerText "#frames" page
@@ -148,7 +145,7 @@ webRtcIngest =
 
           browser <- T.launch options
           page <- T.newPage browser
-          T.goto (HTTP.ingestUrl Env.p1n1 E.shortName1 E.highStreamName) page
+          T.goto (HTTP.ingestUrl E.p1n1 E.shortName1 E.highStreamName) page
           _ <- delay (Milliseconds 2000.00) >>= L.as' "wait for page to load"
 
           T.click (T.Selector "#authenticate") page
