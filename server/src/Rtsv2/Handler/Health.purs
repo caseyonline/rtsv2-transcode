@@ -6,8 +6,7 @@ module Rtsv2.Handler.Health
 
 import Prelude
 
-import Data.Maybe (Maybe(..), maybe)
-import Data.Newtype (wrap)
+import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Erl.Data.List (nil, (:))
 import Rtsv2.Agents.IntraPoP as IntraPoP
@@ -16,7 +15,6 @@ import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.Load as Load
 import Rtsv2.NodeManager as NodeManager
 import Rtsv2.PoPDefinition as PoPDefinition
-import Shared.JsonLd as JsonLd
 import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Rtsv2.Types (extractAddress)
 import Simple.JSON as JSON
@@ -43,7 +41,7 @@ healthCheck =
                  , load
                  , nodeManager
                  , currentTransPoP : extractAddress <$> currentTransPoP}
-        node = JsonLd.healthNode health thisServer
+      node <- JsonLd.healthNode health thisServer
 
       Rest.result (JSON.writeJSON node) req state
 

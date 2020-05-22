@@ -27,6 +27,7 @@ import SpudGun as SpudGun
 import StetsonHelper (GetHandler, PostHandler, jsonResponse, processPostPayload, textResponse)
 
 
+
 leader :: GetHandler String
 leader = textResponse do
   mLeader <- IntraPoPAgent.getCurrentTransPoPLeader
@@ -38,7 +39,7 @@ testHelper = processPostPayload $ IntraPoP.testHelper >>> (map (const (Right uni
 publicState :: GetHandler (PublicState.IntraPoP List)
 publicState = jsonResponse $ Just <$> ( do
                                           webConfig <- Config.webConfig
-                                          IntraPoP.getPublicState webConfig.supportPort
+                                          IntraPoP.getPublicState
                                       )
 
 type IngestAggregatorL = PublicState.IngestAggregator List
@@ -135,9 +136,11 @@ getEgest :: SlotId -> SlotRole -> ServerAddress -> Effect (Maybe (PublicState.Eg
 getEgest slotId slotRole address = getJson' address (Support.EgestStatsE slotId slotRole)
 
 getJson :: forall a. ReadForeign a => Server -> Support.Endpoint -> Effect (Maybe a)
-getJson server endpoint =
-  hush <$> SpudGun.bodyToJSON <$> SpudGun.getJson (Support.makeUrl server endpoint)
+getJson server endpoint = do
+  url <- Support.makeUrl server endpoint
+  hush <$> SpudGun.bodyToJSON <$> SpudGun.getJson url
 
 getJson' :: forall a. ReadForeign a => ServerAddress -> Support.Endpoint -> Effect (Maybe a)
-getJson' address endpoint =
-  hush <$> SpudGun.bodyToJSON <$> SpudGun.getJson (Support.makeUrlAddr address endpoint)
+getJson' address endpoint = do
+  url <- Support.makeUrlAddr address endpoint
+  hush <$> SpudGun.bodyToJSON <$> SpudGun.getJson url

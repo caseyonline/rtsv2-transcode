@@ -60,7 +60,6 @@ import Pinto (ServerName, StartLinkResult, isRegistered)
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
-import PintoHelper (exposeState)
 import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..))
 import Rtsv2.Agents.IntraPoP as IntraPoP
@@ -394,25 +393,20 @@ applyOriginRunResult commonStateData@{ relayKey: relayKey@(RelayKey slotId slotR
   where
     maybeTryRegisterIngestAggregator runStateIn@{ ingestAggregatorState: IngestAggregatorStateDisabled } = pure runStateIn
     maybeTryRegisterIngestAggregator runStateIn@{ ingestAggregatorState: IngestAggregatorStateRegistered _ _} = pure runStateIn
-    maybeTryRegisterIngestAggregator runStateIn@{ ingestAggregatorState: IngestAggregatorStatePendingRegistration portNumber } =
-      let
-        wsUrl = Support.makeWsUrl ingestAggregator $ Support.IngestAggregatorRegisteredRelayWs slotId slotRole (extractAddress thisServer) portNumber
-      in
-        do
-           response <-  WsGun.openWebSocket wsUrl
+    maybeTryRegisterIngestAggregator runStateIn@{ ingestAggregatorState: IngestAggregatorStatePendingRegistration portNumber } = do
+      wsUrl <- Support.makeWsUrl ingestAggregator $ Support.IngestAggregatorRegisteredRelayWs slotId slotRole (extractAddress thisServer) portNumber
+      response <-  WsGun.openWebSocket wsUrl
+      logInfo "Attempted registration with ingest aggregator." { slotId
+                                                               , slotRole
+                                                               , ingestAggregator
+                                                               , portNumber
+                                                               , wsUrl }
+      case response of
+        Right socket -> do
+          pure runStateIn{ ingestAggregatorState = IngestAggregatorStateRegistered portNumber socket }
 
-           logInfo "Attempted registration with ingest aggregator." { slotId
-                                                                    , slotRole
-                                                                    , ingestAggregator
-                                                                    , portNumber
-                                                                    , wsUrl }
-
-           case response of
-             Right socket -> do
-               pure runStateIn{ ingestAggregatorState = IngestAggregatorStateRegistered portNumber socket }
-
-             _other -> do
-               pure runStateIn
+        _other -> do
+          pure runStateIn
 
 applyDownstreamRunResult :: CommonStateData -> DownstreamStreamRelayApplyResult -> DownstreamStreamRelayRunState -> Effect DownstreamStreamRelayRunState
 applyDownstreamRunResult commonStateData@{ relayKey: relayKey@(RelayKey slotId slotRole)
@@ -473,52 +467,54 @@ applyDownstreamRunResult commonStateData@{ relayKey: relayKey@(RelayKey slotId s
           Nothing ->
             pure Nothing
 
-          Just randomServerInPoP ->
-            let
-              payload = { slotId, slotRole, aggregator: ingestAggregator, slotCharacteristics } :: CreateRelayPayload
-              url = System.makeUrl randomServerInPoP System.RelayEnsureStartedE
-            in
-              do
-                eitherResponse <- SpudGun.postJsonFollow url payload
+          Just randomServerInPoP -> do
+            let payload = { slotId, slotRole, aggregator: ingestAggregator, slotCharacteristics } :: CreateRelayPayload
+            url <- System.makeUrl randomServerInPoP System.RelayEnsureStartedE
+            eitherResponse <- SpudGun.postJsonFollow url payload
 
-                case eitherResponse of
-                  Right response@(SpudResponse (StatusCode statusCode) _headers _body) | statusCode >= 200 && statusCode < 300 ->
-                    pure $ extractServedByHeader response
+            case eitherResponse of
+              Right response@(SpudResponse (StatusCode statusCode) _headers _body) | statusCode >= 200 && statusCode < 300 ->
+                pure $ extractServedByHeader response
 
-                  _other ->
-                    pure $ Nothing
+              _other ->
+                pure $ Nothing
 
-    registerWithSpecificRelay portNumber chosenRelay remainingRoute =
-      let
-        wsUrl = System.makeWsUrlAddr chosenRelay $ System.RelayRegisteredRelayWs slotId slotRole (extractAddress thisServer) portNumber remainingRoute
-      in
-        do
-          webSocket <- WsGun.openWebSocket wsUrl
-          pure $ hush webSocket
+    registerWithSpecificRelay portNumber chosenRelay remainingRoute = do
+      wsUrl <- System.makeWsUrlAddr chosenRelay $ System.RelayRegisteredRelayWs slotId slotRole (extractAddress thisServer) portNumber remainingRoute
+      webSocket <- WsGun.openWebSocket wsUrl
+      pure $ hush webSocket
 
 isInstanceAvailable :: RelayKey -> Effect Boolean
 isInstanceAvailable relayKey = isRegistered (serverName relayKey)
 
 status :: RelayKey -> Effect (PublicState.StreamRelay List)
-status =
-  exposeState mkStatus <<< serverName
+status rk =
+  Gen.doCall (serverName rk) mkStatus
   where
-    mkStatus (StateOrigin {relayKey: RelayKey slotId slotRole, thisServer} originStateData) =
-      JsonLd.streamRelayStateNode slotId publicState thisServer
+    mkStatus state@(StateOrigin {relayKey: RelayKey slotId slotRole, thisServer} originStateData) = do
+      newState <- publicState
+      json <- JsonLd.streamRelayStateNode slotId newState thisServer
+      pure $ Gen.CallReply json state
       where
-        publicState =
-          { role : slotRole
-          , egestsServed : JsonLd.egestServedLocationNode slotId slotRole <$> Map.keys originStateData.config.egests
-          , relaysServed : JsonLd.downstreamRelayLocationNode slotId slotRole <$> _.deliverTo <$> Map.values originStateData.config.downstreamRelays
-          }
-    mkStatus (StateDownstream {relayKey: RelayKey slotId slotRole, thisServer} downstreamStateData) =
-      JsonLd.streamRelayStateNode slotId publicState thisServer
+        publicState = do
+          es <- traverse (JsonLd.egestServedLocationNode slotId slotRole) $ Map.keys originStateData.config.egests
+          rs <- traverse (JsonLd.downstreamRelayLocationNode slotId slotRole <$> _.deliverTo) $ Map.values originStateData.config.downstreamRelays
+          pure { role : slotRole
+               , egestsServed : es
+               , relaysServed : rs
+               }
+    mkStatus state@(StateDownstream {relayKey: RelayKey slotId slotRole, thisServer} downstreamStateData) = do
+      newState <- publicState
+      json <- JsonLd.streamRelayStateNode slotId newState thisServer
+      pure $ Gen.CallReply json state
       where
-        publicState =
-          { role : slotRole
-          , egestsServed : JsonLd.egestServedLocationNode slotId slotRole <$> Map.keys downstreamStateData.config.egests
-          , relaysServed : JsonLd.downstreamRelayLocationNode slotId slotRole <$> _.deliverTo <$> _.deliverToWithSource <$> Map.values downstreamStateData.config.downstreamRelays
-          }
+        publicState = do
+          es <- traverse (JsonLd.egestServedLocationNode slotId slotRole) $ Map.keys downstreamStateData.config.egests
+          rs <- traverse (JsonLd.downstreamRelayLocationNode slotId slotRole <$> _.deliverTo <$> _.deliverToWithSource)$ Map.values downstreamStateData.config.downstreamRelays
+          pure { role : slotRole
+               , egestsServed : es
+               , relaysServed : rs
+               }
 
 -- -----------------------------------------------------------------------------
 -- gen Server Implementation
@@ -793,19 +789,19 @@ handleInfo msg state =
 
     sendMessageToDownstreams :: forall r1 r2 r3 egestKey relayKey. DownstreamWsMessage -> { egests :: Map egestKey { handler :: Process (WebSocketHandlerMessage DownstreamWsMessage) | r1 }
                                                                                     , downstreamRelays :: Map relayKey { handler :: Process (WebSocketHandlerMessage DownstreamWsMessage) | r2 } | r3 } -> Effect Unit
-    sendMessageToDownstreams msg {egests, downstreamRelays} = do
+    sendMessageToDownstreams msg' {egests, downstreamRelays} = do
       let
         egestPids = Map.values egests <#> _.handler
         relayPids = Map.values downstreamRelays <#> _.handler
-      _ <- traverse (sendMessageToDownstream msg) (egestPids <> relayPids)
+      _ <- traverse (sendMessageToDownstream msg') (egestPids <> relayPids)
       pure unit
 
-    processGunMessage state@(StateOrigin common@{config: {reApplyPlanTimeMs}} origin@{config, run: run@{ingestAggregatorState}}) gunMsg = do
+    processGunMessage stateOrigin@(StateOrigin common@{config: {reApplyPlanTimeMs}} origin@{config, run: run@{ingestAggregatorState}}) gunMsg = do
       case findAggregatorSocket gunMsg ingestAggregatorState of
         Just {portNumber, socket} -> do
           let
             noop =
-              pure state
+              pure stateOrigin
 
             down = do
               _ <- logInfo "Aggregator down, scheduling replay" {reApplyPlanTimeMs}
@@ -819,31 +815,31 @@ handleInfo msg state =
                 sendMessageToDownstreams (SlotConfig slotConfiguration) config
                 pure $ StateOrigin common origin{ run = run { slotConfiguration = Just slotConfiguration }}
               | otherwise =
-                pure state
+                pure stateOrigin
 
-            send msg@(DataObject (DO.ObjectBroadcastMessage {object})) = do
-              sendMessageToDownstreams msg config
+            send msgD@(DataObject (DO.ObjectBroadcastMessage {object})) = do
+              sendMessageToDownstreams msgD config
               pure $ StateOrigin common{dataObject = Just object} origin
 
-            send msg@(CurrentActiveProfiles (ActiveProfiles {profiles})) = do
-              sendMessageToDownstreams msg config
+            send msgC@(CurrentActiveProfiles (ActiveProfiles {profiles})) = do
+              sendMessageToDownstreams msgC config
               pure $ StateOrigin common{activeProfiles = profiles} origin
 
-            send msg = do
-              sendMessageToDownstreams msg config
-              pure state
+            send msg' = do
+              sendMessageToDownstreams msg' config
+              pure stateOrigin
 
           CastNoReply <$> processGunMessage' noop down slotConfig send socket gunMsg
 
         Nothing ->
-          pure $ CastNoReply state
+          pure $ CastNoReply stateOrigin
 
-    processGunMessage state@(StateDownstream common@{config: {reApplyPlanTimeMs}} downstream@{config, run: run@{upstreamRelayStates}}) gunMsg =
+    processGunMessage stateDownStream@(StateDownstream common@{config: {reApplyPlanTimeMs}} downstream@{config, run: run@{upstreamRelayStates}}) gunMsg =
       case findUpstreamSocket gunMsg upstreamRelayStates of
         Just {upstreamRelay, socket, portNumber} -> do
           let
             noop =
-              pure state
+              pure stateDownStream
 
             down = do
               _ <- logInfo "Upstream Relay down, scheduling replay" {upstreamRelay, reApplyPlanTimeMs}
@@ -859,24 +855,24 @@ handleInfo msg state =
                 sendMessageToDownstreams (SlotConfig slotConfiguration) config
                 pure $ StateDownstream common downstream{run = run{ slotConfiguration = Just slotConfiguration }}
               | otherwise =
-                pure state
+                pure stateDownStream
 
-            send msg@(DataObject (DO.ObjectBroadcastMessage {object})) = do
-              sendMessageToDownstreams msg config
+            send msgD@(DataObject (DO.ObjectBroadcastMessage {object})) = do
+              sendMessageToDownstreams msgD config
               pure $ StateDownstream common{dataObject = Just object} downstream
 
-            send msg@(CurrentActiveProfiles (ActiveProfiles {profiles})) = do
-              sendMessageToDownstreams msg config
+            send msgC@(CurrentActiveProfiles (ActiveProfiles {profiles})) = do
+              sendMessageToDownstreams msgC config
               pure $ StateDownstream common{activeProfiles = profiles} downstream
 
-            send msg = do
-              sendMessageToDownstreams msg config
-              pure state
+            send msg' = do
+              sendMessageToDownstreams msg' config
+              pure stateDownStream
 
           CastNoReply <$> processGunMessage' noop down slotConfig send socket gunMsg
 
         Nothing ->
-          pure $ CastNoReply state
+          pure $ CastNoReply stateDownStream
 
     processGunMessage' :: forall a. Effect a -> Effect a -> (SlotConfiguration -> Effect a) -> (DownstreamWsMessage -> Effect a) -> WebSocket -> WsGun.GunMsg -> Effect a
     processGunMessage' noop down slotConfig send socket gunMsg = do

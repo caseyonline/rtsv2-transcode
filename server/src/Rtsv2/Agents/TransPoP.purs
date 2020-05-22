@@ -606,9 +606,7 @@ joinAllSerf state@{ config: config@{rejoinEveryMs}, serfRpcAddress, members } =
   spawnFun addressMapper popsToJoin = void $ spawnLink (\_ -> do
                              foldl
                                ( \iAcc serverAddress  -> do
-                                   let
-                                     url = System.makeUrlAddr serverAddress System.TransPoPLeaderE
-
+                                   url <- System.makeUrlAddr serverAddress System.TransPoPLeaderE
                                    restResult <- bodyToString <$> SpudGun.getText url
                                    case restResult of
                                      Left _ -> pure unit

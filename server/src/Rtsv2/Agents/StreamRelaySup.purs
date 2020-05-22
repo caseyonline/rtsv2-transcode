@@ -80,8 +80,9 @@ startLocalOrRemoteStreamRelay loadConfig payload@{slotCharacteristics} =
   where
     launchLocal _ =
       (note LaunchFailed <<< startOkAS) <$> startRelay payload
-    launchRemote idleServer =
-      either (const false) (const true) <$> SpudGun.postJson (System.makeUrl idleServer System.RelayE) payload
+    launchRemote idleServer = do
+      url <- System.makeUrl idleServer System.RelayE
+      either (const false) (const true) <$> SpudGun.postJson url payload
 
 ------------------------------------------------------------------------------
 -- Supervisor callbacks

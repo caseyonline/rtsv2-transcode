@@ -146,16 +146,15 @@ getPublicState ingestKey@(IngestKey slotId slotRole profileName) =
                                            , sourceInfo
                                            , remoteAddress
                                            , remotePort
-                                           , ingestStartedTime} ->
+                                           , ingestStartedTime} -> do
     let
       publicState = { rtmpClientMetadata: clientMetadata
                     , sourceInfo
                     , remoteAddress
                     , remotePort
                     , ingestStartedTime }
-      node = JsonLd.ingestStateNode slotId slotRole profileName publicState thisServer
-    in
-     pure $ CallReply node state
+    node <- JsonLd.ingestStateNode slotId slotRole profileName publicState thisServer
+    pure $ CallReply node state
 
 dataObjectSendMessage :: IngestKey -> DO.Message -> Effect Unit
 dataObjectSendMessage ingestKey msg =
@@ -352,8 +351,7 @@ informAggregator state@{ streamDetails
     addIngest :: Maybe Server -> Effect (Maybe WebSocket)
     addIngest Nothing = pure Nothing
     addIngest (Just aggregatorAddress) = do
-        let
-          wsUrl = System.makeWsUrl aggregatorAddress $ System.IngestAggregatorRegisteredIngestWs slotId slotRole profileName (extractAddress thisServer)
+        wsUrl <- System.makeWsUrl aggregatorAddress $ System.IngestAggregatorRegisteredIngestWs slotId slotRole profileName (extractAddress thisServer)
         webSocket <- WsGun.openWebSocket wsUrl
         pure $ hush webSocket
 

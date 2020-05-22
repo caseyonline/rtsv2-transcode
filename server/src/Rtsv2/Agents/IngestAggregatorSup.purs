@@ -58,8 +58,9 @@ startLocalOrRemoteAggregator loadConfig payload@{streamDetails} =
   where
     launchLocal _ = do
       (note LaunchFailed <<< startOkAS) <$> startAggregator payload
-    launchRemote idleServer =
-      either (const false) (const true) <$> SpudGun.postJson (Support.makeUrl idleServer Support.IngestAggregatorsE) payload
+    launchRemote idleServer = do
+      url <- Support.makeUrl idleServer Support.IngestAggregatorsE
+      either (const false) (const true) <$> SpudGun.postJson url payload
 
 ------------------------------------------------------------------------------
 -- Supervisor callbacks
