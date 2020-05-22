@@ -303,7 +303,8 @@ checkProfileInactive profileName {cachedState: {localIngests, remoteIngests}} =
 getState :: AggregatorKey -> Effect (PublicState.IngestAggregator List)
 getState aggregatorKey@(AggregatorKey slotId slotRole) = Gen.call (serverName aggregatorKey) getState'
   where
-    getState' state@{streamDetails, cachedState: {localIngests, remoteIngests, relays}, thisServer} =
+    getState' state@{streamDetails, cachedState: {localIngests, remoteIngests, relays}, thisServer} = do
+
       CallReply (JsonLd.ingestAggregatorStateNode slotId gatherState thisServer) state
       where
         gatherState = { role: slotRole

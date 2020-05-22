@@ -16,6 +16,7 @@ import Effect (Effect)
 import Erl.Data.List (List, catMaybes, concat, nil, nub, null, (:))
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.IntraPoP as IntraPoPAgent
+import Rtsv2.Config as Config
 import Shared.JsonLd as JsonLd
 import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.Router.Endpoint.Support as Support
@@ -24,6 +25,7 @@ import Shared.Rtsv2.Types (Server, ServerAddress, extractAddress)
 import Simple.JSON (class ReadForeign)
 import SpudGun as SpudGun
 import StetsonHelper (GetHandler, PostHandler, jsonResponse, processPostPayload, textResponse)
+
 
 leader :: GetHandler String
 leader = textResponse do
@@ -34,7 +36,10 @@ testHelper :: PostHandler IntraPoP.TestHelperPayload
 testHelper = processPostPayload $ IntraPoP.testHelper >>> (map (const (Right unit :: Either Unit Unit)))
 
 publicState :: GetHandler (PublicState.IntraPoP List)
-publicState = jsonResponse $ Just <$> IntraPoP.getPublicState
+publicState = jsonResponse $ Just <$> ( do
+                                          webConfig <- Config.webConfig
+                                          IntraPoP.getPublicState webConfig.supportPort
+                                      )
 
 type IngestAggregatorL = PublicState.IngestAggregator List
 type IngestL = PublicState.Ingest List

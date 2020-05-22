@@ -3,26 +3,19 @@ module Cases.Canary where
 import Prelude
 
 import Control.Monad.State (evalStateT, lift)
-import Data.Array (delete)
 import Data.Map as Map
-import Data.Traversable (traverse_)
 import Effect.Aff (Aff, delay, Milliseconds(..))
-import Helpers.Types (Node, ToRecord)
-import Shared.Rtsv2.Agent.State as PublicState
 import Helpers.Assert as A
-import Helpers.CreateString (toAddrFromNode)
 import Helpers.CreateString as C
 import Helpers.Env as E
 import Helpers.Functions as F
 import Helpers.HTTP as HTTP
+import Helpers.Log (as, as', asT)
 import Helpers.Log as L
-import Helpers.Log (as, as', asT, asT')
-import Shared.Rtsv2.Stream (SlotRole(..))
-import Shared.Rtsv2.Types (Canary(..))
-import Shared.Rtsv2.Chaos as Chaos
+import Helpers.Types (Node)
 import Shared.Rtsv2.JsonLd as JsonLd
-import Shared.Rtsv2.Agent.State as PublicState
-import Test.Spec (SpecT, after_, before_, describe, describeOnly, it, itOnly)
+import Shared.Rtsv2.Types (Canary(..))
+import Test.Spec (SpecT, after_, before_, describe, it)
 import Toppokki as T
 
 

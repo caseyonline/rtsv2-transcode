@@ -13,7 +13,6 @@ import Helpers.Functions as F
 import Helpers.HTTP as HTTP
 import Helpers.Log as L
 import Helpers.Types (Node)
-import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Shared.Rtsv2.Stream (SlotRole(..), RtmpShortName, RtmpStreamName, SlotId)
 import Test.Spec (SpecT, describe, it, before_, after_)
 import Test.Unit.Assert as Assert

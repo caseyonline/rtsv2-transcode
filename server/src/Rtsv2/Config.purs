@@ -8,7 +8,6 @@ module Rtsv2.Config
   , EgestStatsConfig
   , WebConfig
   , PoPDefinitionConfig
-  , PortInt
   , IntraPoPAgentConfig
   , TransPoPAgentConfig
   , StreamRelayConfig
@@ -100,19 +99,10 @@ instance readForeignMediaGatewayFlag :: ReadForeign MediaGatewayFlag where
       errorString s = "Unknown Media Gateway Flag: " <> s
 
 type WebConfig =
-  { systemPort :: PortInt
-  , supportPort :: PortInt
-  , publicPort :: PortInt
+  { systemPort :: Int
+  , supportPort :: Int
+  , publicPort :: Int
   }
-
-newtype PortInt = PortInt Int
-derive instance newtypePortInt :: Newtype PortInt _
-derive newtype instance eqPortInt :: Eq PortInt
-derive newtype instance ordPortInt :: Ord PortInt
-derive newtype instance showPortInt :: Show PortInt
-derive newtype instance readForeignPortInt :: ReadForeign PortInt
-derive newtype instance writeForeignPortInt :: WriteForeign PortInt
-
 
 type GlobalConfig
   = { intraPoPLatencyMs :: Int

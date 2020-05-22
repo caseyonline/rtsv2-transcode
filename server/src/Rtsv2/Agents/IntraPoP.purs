@@ -65,6 +65,7 @@ import Data.Set as Set
 import Data.Traversable (traverse, traverse_)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
+import Effect.Class (liftEffect)
 import Ephemeral.Map (EMap)
 import Ephemeral.Map as EMap
 import Erl.Atom (Atom)
@@ -97,11 +98,12 @@ import Serf as Serf
 import Shared.Common (Milliseconds)
 import Shared.Rtsv2.Agent (SlotCharacteristics, emptySlotCharacteristics)
 import Shared.Rtsv2.Agent.State as PublicState
-import Shared.Rtsv2.JsonLd (transPoPLeaderLocationNode)
+import Shared.Rtsv2.JsonLd (IntraPoPStateContextFields, transPoPLeaderLocationNode)
 import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Rtsv2.Stream (AgentKey(..), AggregatorKey, EgestKey, RelayKey(..), agentKeyToAggregatorKey, aggregatorKeyToAgentKey, egestKeyToAgentKey)
 import Shared.Rtsv2.Types (AcceptingRequests, Canary(..), CurrentLoad, LocalOrRemote(..), Health, ResourceFailed(..), ResourceResp, Server(..), ServerAddress(..), ServerLoad, extractAddress, extractPoP, fromLocalOrRemote, maxLoad, minLoad, toServerLoad)
 import Shared.Utils (distinctRandomNumbers)
+import Unsafe.Coerce (unsafeCoerce)
 
 type TestHelperPayload =
   { dropAgentMessages :: Boolean
@@ -213,36 +215,45 @@ testHelper payload =
   Gen.doCall serverName \state -> do
     pure $ CallReply unit state {testDropAgentMessages = payload.dropAgentMessages}
 
-
 getPublicState :: Effect (PublicState.IntraPoP List)
-getPublicState = do
-  webConfig <- Config.webConfig
-  exposeState (publicState webConfig.publicPort) serverName
+getPublicState = Gen.doCall serverName publicState
   where
-    publicState portInt state@{agentLocations, currentTransPoPLeader, thisServer} =
-      JsonLd.intraPoPStateNode (gatherState portInt agentLocations currentTransPoPLeader) portInt thisServer
+    publicState state@{agentLocations, currentTransPoPLeader, thisServer} = do
+      ps <- gatherState agentLocations currentTransPoPLeader
+      json <- JsonLd.intraPoPStateNode ps thisServer
+      pure $ CallReply json state
 
-    gatherState portInt agentLocations currentTransPoPLeader =
-      { aggregatorLocations: (toAggregatorLocation portInt) <$> Map.toUnfoldable agentLocations.aggregators.byAgentKey
-      , relayLocations: toRelayLocation portInt <$>  Map.toUnfoldable agentLocations.relays.byAgentKey
-      , egestLocations: (toEgestLocation portInt) <$>  Map.toUnfoldable agentLocations.egests.byAgentKey
-      , currentTransPoPLeader: transPoPLeaderLocationNode <$> currentTransPoPLeader
+    gatherState agentLocations currentTransPoPLeader = do
+      a <- traverse toAggregatorLocation $ Map.toUnfoldable agentLocations.aggregators.byAgentKey
+      r <- traverse toRelayLocation $ Map.toUnfoldable agentLocations.relays.byAgentKey
+      e <- traverse toEgestLocation $ Map.toUnfoldable agentLocations.egests.byAgentKey
+      c <- traverse transPoPLeaderLocationNode currentTransPoPLeader
+      pure $ { aggregatorLocations: a
+             , relayLocations: r
+             , egestLocations: e
+             , currentTransPoPLeader: c
       }
-    toAggregatorLocation portInt (Tuple (AgentKey slotId role) {servers}) =
-      { slotId
-      , role
-      , servers: JsonLd.aggregatorLocationNode portInt slotId role <$> Set.toUnfoldable servers
-      }
-    toRelayLocation portInt (Tuple (AgentKey slotId role) {servers}) =
-      { slotId
-      , role
-      , servers: (\s -> JsonLd.relayLocationNode portInt slotId role s) <$> Set.toUnfoldable servers
-      }
-    toEgestLocation portInt (Tuple (AgentKey slotId role) {servers}) =
-      { slotId
-      , role
-      , servers: JsonLd.egestLocationNode portInt slotId role <$> Set.toUnfoldable servers
-      }
+
+    toAggregatorLocation (Tuple (AgentKey slotId role) {servers}) = do
+      servers' <- traverse (JsonLd.aggregatorLocationNode slotId role) $ Set.toUnfoldable servers
+      pure $ { slotId
+             , role
+             , servers: servers'
+             }
+
+    toRelayLocation (Tuple (AgentKey slotId role) {servers}) = do
+      servers' <- traverse (JsonLd.relayLocationNode slotId role) $ Set.toUnfoldable servers
+      pure $ { slotId
+             , role
+             , servers: servers'
+             }
+
+    toEgestLocation (Tuple (AgentKey slotId role) {servers}) = do
+      servers' <- traverse (JsonLd.egestLocationNode slotId role) $ Set.toUnfoldable servers
+      pure $ { slotId
+             , role
+             , servers: servers'
+             }
 
 currentLocalRef :: Effect Ref
 currentLocalRef = exposeState _.thisServerRef serverName

@@ -5,6 +5,7 @@ import Prelude hiding ((/))
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show (genericShow)
 import Data.Newtype (class Newtype, wrap)
+import Effect (Effect)
 import Routing.Duplex (RouteDuplex', print, rest, root, segment)
 import Routing.Duplex.Generic (noArgs, sum)
 import Routing.Duplex.Generic.Syntax ((/))
@@ -53,47 +54,38 @@ makePath ep = print endpoint ep
 
 makeUrl
   :: forall r a. Newtype a { address :: ServerAddress | r }
-  => a
-  -> Config.PortInt
-  -> Endpoint
-  -> Url
+  => a -> Endpoint -> Effect Url
 makeUrl server = makeUrlAddr (extractAddress server)
 
 makeUrlWithPath
   :: forall r a. Newtype a { address :: ServerAddress | r }
-  => a
-  -> Config.PortInt
-  -> String
-  -> Url
+  => a -> String -> Effect Url
 makeUrlWithPath server = makeUrlAddrWithPath (extractAddress server)
 
-makeUrlAddr :: ServerAddress -> Config.PortInt -> Endpoint -> Url
-makeUrlAddr serverAddr portInt ep =
-  makeUrlAddrWithPath serverAddr portInt (makePath ep)
+makeUrlAddr :: ServerAddress -> Endpoint -> Effect Url
+makeUrlAddr serverAddr ep =
+  makeUrlAddrWithPath serverAddr (makePath ep)
 
-makeUrlAddrWithPath :: ServerAddress -> Config.PortInt -> String -> Url
-makeUrlAddrWithPath (ServerAddress host) portInt path = do
-  wrap $ "http://" <> host <> (show portInt) <> path
+makeUrlAddrWithPath :: ServerAddress -> String -> Effect Url
+makeUrlAddrWithPath (ServerAddress host) path = do
+  webC <- Config.webConfig
+  pure $ wrap $ "http://" <> host <> (show webC.publicPort) <> path
 
 makeWsUrl
   :: forall r a. Newtype a { address :: ServerAddress | r }
-  => a
-  -> Config.PortInt
-  -> Endpoint -> Url
-makeWsUrl server portInt ep = makeWsUrlAddr (extractAddress server) portInt ep
+  => a -> Endpoint -> Effect Url
+makeWsUrl server ep = makeWsUrlAddr (extractAddress server) ep
 
 makeWsUrlWithPath
   :: forall r a. Newtype a { address :: ServerAddress | r }
-  => a
-  -> Config.PortInt
-  -> String
-  -> Url
+  => a -> String -> Effect Url
 makeWsUrlWithPath server = makeWsUrlAddrWithPath (extractAddress server)
 
-makeWsUrlAddr :: ServerAddress -> Config.PortInt -> Endpoint -> Url
-makeWsUrlAddr serverAddr portInt ep = do
-  makeWsUrlAddrWithPath serverAddr portInt (makePath ep)
+makeWsUrlAddr :: ServerAddress -> Endpoint -> Effect Url
+makeWsUrlAddr serverAddr ep = do
+  makeWsUrlAddrWithPath serverAddr (makePath ep)
 
-makeWsUrlAddrWithPath :: ServerAddress -> Config.PortInt -> String -> Url
-makeWsUrlAddrWithPath (ServerAddress host) portInt path = do
-  wrap $ "ws://" <> host <> (show portInt) <> path
+makeWsUrlAddrWithPath :: ServerAddress -> String -> Effect Url
+makeWsUrlAddrWithPath (ServerAddress host) path = do
+  webC <- Config.webConfig
+  pure $ wrap $ "ws://" <> host <> (show webC.publicPort) <> path

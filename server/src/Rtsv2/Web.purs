@@ -65,18 +65,18 @@ newtype State = State {}
 serverName :: ServerName State Unit
 serverName = Names.webServerName
 
-startLink :: Config.PortInt -> Effect StartLinkResult
+startLink :: Effect StartLinkResult
 startLink args =
   Gen.startLink serverName (init args) Gen.defaultHandleInfo
 
-init :: Config.PortInt -> Effect State
+init :: Effect State
 init args = do
   featureFlags <- Config.featureFlags
   loadConfig <- Config.loadConfig
   publicBindIp <- Env.publicInterfaceIp
   privateBindIp <- Env.privateInterfaceIp
   thisServer <- PoPDefinition.getThisServer
-  
+
   public <-
         Stetson.configure
       # Stetson.routes
@@ -184,7 +184,7 @@ init args = do
   pure $ State {}
 
   where
-    
+
     supportRoutes :: Server -> Config.FeatureFlags -> Config.LoadConfig -> List Path
     supportRoutes thisServer { mediaGateway } loadConfig =
       -- Some duplication of URLs here from those in Endpoint.purs due to current inability to build cowboy-style bindings from stongly-typed parameters
@@ -200,7 +200,7 @@ init args = do
                                        _ ->
                                          true
                                    })
-      
+
       -- CanaryClientPlayerControlE Canary SlotId
       : cowboyRoute ("/support/canary/client/" <> slotIdBinding <> "/" <> slotRoleBinding <> "/session")
                     "rtsv2_player_ws_resource"
