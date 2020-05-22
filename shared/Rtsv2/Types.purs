@@ -5,6 +5,7 @@ module Shared.Rtsv2.Types
        , class CanaryType
        , canary
        , CanaryStateChangeFailure(..)
+       , RunStateChangeFailure(..)
        , OnBehalfOf(..)
        , RunState(..)
        , GeoLoc(..)
@@ -90,12 +91,15 @@ data CanaryState = Live
 
 instance canaryCanaryType :: CanaryType CanaryState where canary _ x = x
 
-data CanaryStateChangeFailure = InvalidStateTransition
+data CanaryStateChangeFailure = InvalidCanaryStateTransition
                               | ActiveAgents
+
 data RunState = Active
               | PassiveDrain
               | ForceDrain
               | OutOfService
+
+data RunStateChangeFailure = InvalidRunStateTransition
 
 data Health = Perfect
             | Excellent
@@ -249,6 +253,11 @@ instance writeForeignCanaryState :: WriteForeign CanaryState where
 -- CanaryStateChangeFailure
 derive instance genericCanaryStateChangeFailure :: Generic CanaryStateChangeFailure _
 instance showCanaryStateChangeFailure :: Show CanaryStateChangeFailure where show = genericShow
+
+------------------------------------------------------------------------------
+-- RunStateChangeFailure
+derive instance genericRunStateChangeFailure :: Generic RunStateChangeFailure _
+instance showRunStateChangeFailure :: Show RunStateChangeFailure where show = genericShow
 
 ------------------------------------------------------------------------------
 -- RunState

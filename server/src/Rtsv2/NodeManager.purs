@@ -37,7 +37,7 @@ import Rtsv2.Utils (chainEither)
 import Shared.Rtsv2.Agent (Agent(..))
 import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.JsonLd as JsonLd
-import Shared.Rtsv2.Types (class CanaryType, AcceptingRequests, AgentSupStartArgs, CanaryState(..), CanaryStateChangeFailure(..), LocalOrRemote(..), OnBehalfOf, ResourceFailed(..), ResourceResp, RunState(..), Server, canary)
+import Shared.Rtsv2.Types (class CanaryType, AcceptingRequests, AgentSupStartArgs, CanaryState(..), CanaryStateChangeFailure(..), LocalOrRemote(..), OnBehalfOf, ResourceFailed(..), ResourceResp, RunState(..), RunStateChangeFailure(..), Server, canary)
 
 data Msg =
   AgentDown Agent
@@ -107,7 +107,7 @@ changeCanaryState newCanary =
   Gen.doCall serverName doChange
   where
     doChange state@{currentCanaryState} | currentCanaryState == newCanary =
-      pure $ CallReply (Left InvalidStateTransition) state
+      pure $ CallReply (Left InvalidCanaryStateTransition) state
 
     doChange state@{agentCounts, activeSupPid, args: {activeSupStartLink}} =
       let
@@ -124,10 +124,12 @@ changeCanaryState newCanary =
           pure $ CallReply (Right unit) state{ currentCanaryState = newCanary
                                              , activeSupPid = newActiveSupPid }
 
-changeRunState :: RunState -> Effect (Either Unit Unit)
+changeRunState :: RunState -> Effect (Either RunStateChangeFailure Unit)
 changeRunState newRunState =
   Gen.doCall serverName doChange
   where
+    doChange state@{currentRunState} | currentRunState == OutOfService, newRunState == PassiveDrain = pure $ CallReply (Left InvalidRunStateTransition) state
+    doChange state@{currentRunState} | currentRunState == OutOfService, newRunState == ForceDrain = pure $ CallReply (Left InvalidRunStateTransition) state
     doChange state = do
       let
         state2 = state{ currentRunState = newRunState }
