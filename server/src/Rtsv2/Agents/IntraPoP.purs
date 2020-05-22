@@ -49,7 +49,6 @@ module Rtsv2.Agents.IntraPoP
   , TestHelperPayload
   ) where
 
-
 import Prelude
 
 import Bus as Bus
@@ -92,6 +91,7 @@ import Rtsv2.LoadTypes (LoadCheckResult, ServerSelectionPredicate)
 import Rtsv2.LoadTypes as LoadTypes
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
+import Rtsv2.Types (LocalOrRemote(..), ResourceFailed(..), ResourceResp)
 import Serf (IpAndPort, LamportClock)
 import Serf as Serf
 import Shared.Common (Milliseconds)
@@ -100,7 +100,7 @@ import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.JsonLd (transPoPLeaderLocationNode)
 import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Rtsv2.Stream (AgentKey(..), AggregatorKey, EgestKey, RelayKey(..), agentKeyToAggregatorKey, aggregatorKeyToAgentKey, egestKeyToAgentKey)
-import Shared.Rtsv2.Types (AcceptingRequests, CanaryState(..), CurrentLoad, LocalOrRemote(..), Health, ResourceFailed(..), ResourceResp, Server(..), ServerAddress(..), ServerLoad, extractAddress, extractPoP, fromLocalOrRemote, maxLoad, minLoad, toServerLoad)
+import Shared.Rtsv2.Types (AcceptingRequests, CanaryState(..), CurrentLoad, Health, Server(..), ServerAddress(..), ServerLoad, extractAddress, extractPoP, maxLoad, minLoad, toServerLoad)
 import Shared.Utils (distinctRandomNumbers)
 
 type TestHelperPayload =
@@ -270,7 +270,7 @@ whereIsStreamRelayWithLocalOrRemote :: RelayKey -> Effect (Maybe (LocalOrRemote 
 whereIsStreamRelayWithLocalOrRemote (RelayKey slotId slotRole) = head <$> whereIsWithLocalOrRemote _.relays (AgentKey slotId slotRole)
 
 whereIsEgestWithLoad :: EgestKey -> Effect (List ServerLoad)
-whereIsEgestWithLoad egestKey = (map fromLocalOrRemote) <$> (whereIsWithLoad _.egests $ egestKeyToAgentKey egestKey)
+whereIsEgestWithLoad egestKey = whereIsWithLoad _.egests $ egestKeyToAgentKey egestKey
 
 whereIs :: forall payload. (AgentLocations -> Locations payload) -> AgentKey -> Effect (List Server)
 whereIs extractMap agentKey =
@@ -306,7 +306,7 @@ whereIsWithPayload extractMap agentKey =
     CallReply mPayloadAndServers2 state
 
 
-whereIsWithLoad :: forall payload. (AgentLocations -> Locations payload) -> AgentKey -> Effect (List (LocalOrRemote ServerLoad))
+whereIsWithLoad :: forall payload. (AgentLocations -> Locations payload) -> AgentKey -> Effect (List ServerLoad)
 whereIsWithLoad extractMap agentKey =
   Gen.call serverName
   \state@{thisServer, members, agentLocations} ->
@@ -318,7 +318,7 @@ whereIsWithLoad extractMap agentKey =
       serverList = maybe nil (_.servers >>> Set.toUnfoldable) mPayloadAndServers2
       withLoad = filterMap toServerLoad serverList
     in
-    CallReply (toLocalOrRemote thisServer <$> withLoad) state
+    CallReply withLoad state
 
 toLocalOrRemote :: forall a b r1 r2. Newtype a { address :: ServerAddress | r1 } => Newtype b { address :: ServerAddress | r2 } => a -> b -> LocalOrRemote b
 toLocalOrRemote thisServer server =

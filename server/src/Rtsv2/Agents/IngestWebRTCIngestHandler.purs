@@ -25,10 +25,11 @@ import Rtsv2.Config (LoadConfig)
 import Rtsv2.Config as Config
 import Rtsv2.DataObject as DO
 import Rtsv2.LlnwApi as LlnwApi
+import Rtsv2.Types (ResourceResp, LocalResourceResp)
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.LlnwApiTypes (PublishCredentials(..), SlotProfile(..), StreamAuth, StreamDetails, StreamIngestProtocol(..), StreamPublish(..))
 import Shared.Rtsv2.Stream (IngestKey(..), ProfileName, RtmpStreamName(..))
-import Shared.Rtsv2.Types (CanaryState, ResourceResp, Server)
+import Shared.Rtsv2.Types (CanaryState, Server)
 import SpudGun (JsonResponseError)
 
 foreign import startWorkflowImpl :: IngestKey -> Effect Pid
@@ -107,8 +108,7 @@ authenticate loadConfig canary host protocol account username password streamNam
     makeIngestKey profileName {role, slot: {id: slotId}} =
       IngestKey slotId role profileName
 
-
-startStream :: IngestKey -> Effect (ResourceResp Server) -> Effect (Maybe StartStreamResult)
+startStream :: IngestKey -> Effect (LocalResourceResp Server) -> Effect (Maybe StartStreamResult)
 startStream ingestKey startFn = do
   maybeStarted <- startFn
   case maybeStarted of

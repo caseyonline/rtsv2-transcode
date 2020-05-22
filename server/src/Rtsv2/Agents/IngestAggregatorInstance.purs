@@ -524,7 +524,7 @@ attemptConnectionToBackup state@{dataObjectState: Left {connectionToBackup: Just
   -- No need to attempt connection since we have a connection
   pure $ state
 
-attemptConnectionToBackup state@{slotId, slotRole, dataObjectState: Left dos@{}} = do
+attemptConnectionToBackup state@{slotId, slotRole, aggregatorKey, dataObjectState: Left dos@{}} = do
   let
     peerKey = AggregatorKey slotId Backup
   mPeerAggregator <- IntraPoP.whereIsIngestAggregator peerKey
@@ -537,7 +537,7 @@ attemptConnectionToBackup state@{slotId, slotRole, dataObjectState: Left dos@{}}
     Just peerAggregator -> do
       let
         peerWsUrl = makeWsUrl peerAggregator $ IngestAggregatorBackupWs slotId Backup
-      mPeerWebSocket <- hush <$> WsGun.openWebSocket peerWsUrl
+      mPeerWebSocket <- hush <$> WsGun.openWebSocket (serverName aggregatorKey) Gun peerWsUrl
       case mPeerWebSocket of
         Nothing -> do
           -- We have a peer but failed to connect - start timer to retry

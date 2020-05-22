@@ -29,6 +29,7 @@ import Erl.Data.List (List, nil, (:))
 import Erl.Data.Tuple (Tuple2, tuple2)
 import Erl.Process.Raw (Pid)
 import Erl.Utils (systemTimeMs)
+import Erl.Utils as Erl
 import Logger (Logger)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
@@ -47,6 +48,7 @@ import Rtsv2.Config as Config
 import Rtsv2.DataObject as DO
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
+import Rtsv2.Types (LocalOrRemote(..), ResourceResp, fromLocalOrRemote)
 import Shared.Common (Milliseconds)
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.Agent.State as PublicState
@@ -54,7 +56,7 @@ import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Rtsv2.LlnwApiTypes (StreamDetails, StreamPublish(..))
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeWsUrl)
 import Shared.Rtsv2.Stream (AggregatorKey, IngestKey(..), ingestKeyToAggregatorKey)
-import Shared.Rtsv2.Types (LocalOrRemote(..), OnBehalfOf(..), ResourceResp, Server, extractAddress, fromLocalOrRemote)
+import Shared.Rtsv2.Types (OnBehalfOf(..), Server, extractAddress)
 import Shared.Types.Media.Types.Rtmp (RtmpClientMetadata)
 import Shared.Types.Media.Types.SourceDetails (SourceInfo)
 import WsGun as WsGun
@@ -183,7 +185,6 @@ init { streamPublish
      , remoteAddress
      , remotePort
      , handlerPid} stateServerName = do
-
   logStart "Ingest starting" {ingestKey, handlerPid}
   loadConfig <- Config.loadConfig
   thisServer <- PoPDefinition.getThisServer
@@ -234,8 +235,7 @@ handleInfo msg state@{ingestKey} = case msg of
     pure $ CastNoReply state
 
   IntraPoPBus (IngestAggregatorExited aggregatorKey serverAddress) -> do
-    state2 <- handleAggregatorExit aggregatorKey serverAddress state
-    pure $ CastNoReply state2
+    pure $ CastNoReply state
 
   HandlerDown -> do
     logInfo "Ingest Handler has exited" {ingestKey}
@@ -353,7 +353,7 @@ informAggregator state@{ streamDetails
     addIngest (Just aggregatorAddress) = do
         let
           wsUrl = makeWsUrl aggregatorAddress $ IngestAggregatorRegisteredIngestWs slotId slotRole profileName (extractAddress thisServer)
-        webSocket <- WsGun.openWebSocket wsUrl
+        webSocket <- WsGun.openWebSocket (serverName ingestKey) Gun wsUrl
         pure $ hush webSocket
 
     getAggregator :: Effect (ResourceResp Server)
@@ -365,15 +365,15 @@ informAggregator state@{ streamDetails
         Nothing ->
           IngestAggregatorSup.startLocalOrRemoteAggregator loadConfig LocalAgent {shortName: rtmpShortName, streamDetails}
 
-handleAggregatorExit :: AggregatorKey -> Server -> State -> Effect State
-handleAggregatorExit exitedAggregatorKey exitedAggregatorAddr state@{ingestKey, aggregatorRetryTime, aggregatorWebSocket: mWebSocket}
-  | exitedAggregatorKey == (ingestKeyToAggregatorKey ingestKey) = do
-      logInfo "Aggregator has exited" {exitedAggregatorKey, exitedAggregatorAddr, ingestKey: state.ingestKey}
-      fromMaybe (pure unit) $ WsGun.closeWebSocket <$> mWebSocket
-      void $ Timer.sendAfter (serverName ingestKey) 0 InformAggregator
-      pure state
-  | otherwise =
-      pure state
+-- handleAggregatorExit :: AggregatorKey -> Server -> State -> Effect State
+-- handleAggregatorExit exitedAggregatorKey exitedAggregatorAddr state@{ingestKey, aggregatorRetryTime, aggregatorWebSocket: mWebSocket}
+--   | exitedAggregatorKey == (ingestKeyToAggregatorKey ingestKey) = do
+--       logInfo "Aggregator has exited" {exitedAggregatorKey, exitedAggregatorAddr, ingestKey: state.ingestKey}
+--       fromMaybe (pure unit) $ WsGun.closeWebSocket <$> mWebSocket
+--       void $ Timer.sendAfter (serverName ingestKey) 0 InformAggregator
+--       pure state
+--   | otherwise =
+--       pure state
 
 --------------------------------------------------------------------------------
 -- Log helpers

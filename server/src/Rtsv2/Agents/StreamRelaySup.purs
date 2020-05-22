@@ -28,10 +28,11 @@ import Rtsv2.Config (LoadConfig)
 import Rtsv2.Load as Load
 import Rtsv2.Names as Names
 import Rtsv2.NodeManager as NodeManager
+import Rtsv2.Types (ResourceFailed(..), ResourceResp, LocalResourceResp)
 import Shared.Rtsv2.Agent (Agent(..))
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Shared.Rtsv2.Stream (RelayKey(..))
-import Shared.Rtsv2.Types (OnBehalfOf, ResourceFailed(..), ResourceResp, Server)
+import Shared.Rtsv2.Types (OnBehalfOf, Server)
 import SpudGun as SpudGun
 
 ------------------------------------------------------------------------------
@@ -58,7 +59,7 @@ findOrStart loadConfig onBehalfOf payload@{slotCharacteristics} = do
   where
     relayKey = RelayKey payload.slotId payload.slotRole
 
-startLocalStreamRelay :: LoadConfig -> OnBehalfOf -> CreateRelayPayload -> Effect (ResourceResp Server)
+startLocalStreamRelay :: LoadConfig -> OnBehalfOf -> CreateRelayPayload -> Effect (LocalResourceResp Server)
 startLocalStreamRelay loadConfig onBehalfOf payload@{slotCharacteristics} =
   NodeManager.launchLocalAgent StreamRelay onBehalfOf (Load.hasCapacityForStreamRelay slotCharacteristics loadConfig) launchLocal
   where

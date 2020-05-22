@@ -61,6 +61,7 @@ import Rtsv2.Load as Load
 import Rtsv2.LoadTypes (LoadFixedCost(..), PredictedLoad(..))
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
+import Rtsv2.Types (LocalOrRemote(..), RegistrationResp, ResourceResp)
 import Shared.Common (Milliseconds)
 import Shared.Rtsv2.Agent (SlotCharacteristics)
 import Shared.Rtsv2.Agent as Agent
@@ -68,7 +69,7 @@ import Shared.Rtsv2.JsonLd (EgestStats, EgestSessionStats)
 import Shared.Rtsv2.LlnwApiTypes (StreamIngestProtocol(..))
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeWsUrl)
 import Shared.Rtsv2.Stream (AggregatorKey(..), EgestKey(..), ProfileName, RelayKey(..), SlotId, SlotRole, egestKeyToAgentKey)
-import Shared.Rtsv2.Types (EgestServer(..), FailureReason(..), LocalOrRemote(..), OnBehalfOf(..), PoPName, RegistrationResp, RelayServer, ResourceResp, Server, extractAddress)
+import Shared.Rtsv2.Types (EgestServer(..), FailureReason(..), OnBehalfOf(..), PoPName, RelayServer, Server, extractAddress)
 import WsGun as WsGun
 
 foreign import startEgestReceiverFFI :: EgestKey -> MediaGatewayFlag -> Effect Int
@@ -320,7 +321,7 @@ handleInfo msg state@{egestKey: egestKey@(EgestKey slotId slotRole)} =
       pure $ CastNoReply state
 
     IntraPoPBus (IngestAggregatorExited (AggregatorKey exitedSlotId exitedSlotRole) serverAddress)
-      | exitedSlotId == slotId && exitedSlotRole == slotRole -> doStop state
+-- SS TODO     | exitedSlotId == slotId && exitedSlotRole == slotRole -> doStop state
       | otherwise -> pure $ CastNoReply state
 
     IntraPoPBus (VmReset _ _ _) ->
@@ -495,7 +496,7 @@ initStreamRelay state@{relayCreationRetry, egestKey: egestKey@(EgestKey slotId s
       do
         let
           wsUrl = makeWsUrl relayServer $ RelayRegisteredEgestWs slotId slotRole (extractAddress thisServer) state.receivePortNumber
-        maybeWebSocket <- hush <$> WsGun.openWebSocket wsUrl
+        maybeWebSocket <- hush <$> WsGun.openWebSocket (serverName egestKey) Gun wsUrl
         case maybeWebSocket of
           Just webSocket -> do
             CachedInstanceState.recordInstanceData stateServerName webSocket

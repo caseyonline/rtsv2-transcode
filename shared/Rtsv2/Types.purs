@@ -29,14 +29,8 @@ module Shared.Rtsv2.Types
        , SpecInt(..)
        , NetworkKbps(..)
        , Percentage(..)
-       , LocationResp
        , FailureReason(..)
-       , LocalOrRemote(..)
-       , ResourceResp(..)
-       , ResourceFailed(..)
-       , RegistrationResp(..)
 
-       , fromLocalOrRemote
        , toServerLoad
        , toServerLocation
        , serverLoadToServer
@@ -51,7 +45,7 @@ module Shared.Rtsv2.Types
 import Prelude
 
 import Control.Monad.Except (except)
-import Data.Either (Either, note)
+import Data.Either (note)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Eq (genericEq)
 import Data.Generic.Rep.Show (genericShow)
@@ -169,30 +163,10 @@ data FailureReason
 instance semigroupFailureReason :: Semigroup FailureReason where
   append lhs rhs = rhs
 
-data LocalOrRemote a
-  = Local a
-  | Remote a
-derive instance functorLocalOrRemoteF :: Functor LocalOrRemote
-
-type LocationResp = (Either FailureReason (LocalOrRemote Server))
-
-fromLocalOrRemote :: forall a. LocalOrRemote a -> a
-fromLocalOrRemote (Local a) = a
-fromLocalOrRemote (Remote a) = a
 
 --------------------------------------------------------------------------------
 -- API Types - maybe move me
 --------------------------------------------------------------------------------
-type ResourceResp a = Either ResourceFailed (LocalOrRemote a)
-
-data ResourceFailed = NoCapacity
-                    | LaunchFailed
-                    | InvalidCanaryState
-                    | InvalidRunState
-                    | AlreadyRunning
-
-type RegistrationResp = (Either FailureReason Unit)
-
 
 toServerLoad :: Server -> CurrentLoad -> AcceptingRequests -> ServerLoad
 toServerLoad  (Server ls) load acceptingRequests =
@@ -288,11 +262,6 @@ instance writeForeignRunState :: WriteForeign RunState where
 -- JsonLdContextType
 derive instance genericJsonLdContextType :: Generic JsonLdContextType _
 instance showJsonLdContextType :: Show JsonLdContextType where show = genericShow
-
-------------------------------------------------------------------------------
--- ResourceFailed
-derive instance genericResourceFailed :: Generic ResourceFailed _
-instance showResourceFailed :: Show ResourceFailed where show = genericShow
 
 ------------------------------------------------------------------------------
 -- ServerAddress

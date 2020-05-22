@@ -9,7 +9,7 @@
 
 -export([ startServerImpl/9
         , rtmpQueryToPurs/1
-        , startWorkflowImpl/5
+        , startWorkflowImpl/6
         ]).
 
 %%------------------------------------------------------------------------------
@@ -39,12 +39,14 @@ start_rtmp_server({ipv4, O1, O2, O3, O4}, Port, NbAcceptors, Callbacks) ->
     Error -> {error, Error}
   end.
 
-startWorkflowImpl(Rtmp, PublishArgs, IngestKey, ClientMetadataFn, SourceInfoFn) ->
+startWorkflowImpl(Rtmp, IngestPid, PublishArgs, IngestKey, ClientMetadataFn, SourceInfoFn) ->
   fun() ->
+      MRef = erlang:monitor(process, IngestPid),
+
       {ok, _WorkflowPid} = start_workflow(Rtmp, PublishArgs, IngestKey),
 
       %% Stream is now connected - we block in here, when we return the rtmp_server instance will close
-      workflow_loop(ClientMetadataFn, SourceInfoFn)
+      workflow_loop(MRef, ClientMetadataFn, SourceInfoFn)
   end.
 
 rtmpQueryToPurs(#{<<"authmod">> := <<"adobe">>,
@@ -122,7 +124,7 @@ start_workflow(Rtmp, PublishArgs, Key = {ingestKey, SlotId, SlotRole, ProfileNam
 
   {ok, WorkflowPid}.
 
-workflow_loop(ClientMetadataFn, SourceInfoFn) ->
+workflow_loop(IngestMRef, ClientMetadataFn, SourceInfoFn) ->
   %% the workflow is dealing with the RTMP, so just wait until it says we are done
   receive
     #workflow_output{message = #no_active_generators_msg{}} ->
@@ -131,13 +133,17 @@ workflow_loop(ClientMetadataFn, SourceInfoFn) ->
 
     #workflow_output{message = #workflow_data_msg{data = #rtmp_client_metadata{metadata = Metadata}}} ->
       unit = (ClientMetadataFn(Metadata))(),
-      workflow_loop(ClientMetadataFn, SourceInfoFn);
+      workflow_loop(IngestMRef, ClientMetadataFn, SourceInfoFn);
 
     #workflow_output{message = #workflow_data_msg{data = SourceInfo = #source_info{}}} ->
       unit = (SourceInfoFn(SourceInfo))(),
-      workflow_loop(ClientMetadataFn, SourceInfoFn);
+      workflow_loop(IngestMRef, ClientMetadataFn, SourceInfoFn);
+
+    {'DOWN', IngestMRef, _Type, _Object, Info} ->
+      ?SLOG_WARNING("Ingest instance has exited", #{info => Info}),
+      ok;
 
     Other ->
       ?SLOG_WARNING("Unexpected workflow output", #{output => Other}),
-      workflow_loop(ClientMetadataFn, SourceInfoFn)
+      workflow_loop(IngestMRef, ClientMetadataFn, SourceInfoFn)
   end.

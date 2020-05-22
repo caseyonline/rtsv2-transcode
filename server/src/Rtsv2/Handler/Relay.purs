@@ -33,10 +33,11 @@ import Rtsv2.Handler.Helper (WebSocketHandlerResult(..), webSocketHandler)
 import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
+import Rtsv2.Types (LocalOrRemote(..), ResourceFailed(..), ResourceResp)
 import Shared.Rtsv2.Agent.State (StreamRelay)
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Shared.Rtsv2.Stream (RelayKey(..), SlotId, SlotRole)
-import Shared.Rtsv2.Types (EgestServer(..), LocalOrRemote(..), OnBehalfOf(..), RelayServer(..), ResourceFailed(..), ResourceResp, Server(..), ServerAddress, SourceRoute, extractAddress)
+import Shared.Rtsv2.Types (EgestServer(..), OnBehalfOf(..), RelayServer(..), Server(..), ServerAddress, SourceRoute, extractAddress)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON as JSON
 import Stetson (HttpMethod(..), InnerStetsonHandler, StetsonHandler)

@@ -33,11 +33,12 @@ import Rtsv2.Config as Config
 import Rtsv2.LoadTypes (ServerSelectionPredicate)
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
+import Rtsv2.Types (LocalOrRemote(..), LocalResource(..), LocalResourceResp, ResourceFailed(..), ResourceResp)
 import Rtsv2.Utils (chainEither)
 import Shared.Rtsv2.Agent (Agent(..))
 import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.JsonLd as JsonLd
-import Shared.Rtsv2.Types (class CanaryType, AcceptingRequests, AgentSupStartArgs, CanaryState(..), CanaryStateChangeFailure(..), LocalOrRemote(..), OnBehalfOf, ResourceFailed(..), ResourceResp, RunState(..), RunStateChangeFailure(..), Server, canary)
+import Shared.Rtsv2.Types (class CanaryType, AcceptingRequests, AgentSupStartArgs, CanaryState(..), CanaryStateChangeFailure(..), OnBehalfOf, RunState(..), RunStateChangeFailure(..), Server, canary)
 
 data Msg =
   AgentDown Agent
@@ -138,7 +139,7 @@ changeRunState newRunState =
       IntraPoP.announceAcceptingRequests $ acceptingRequests newRunState
       pure $ CallReply (Right unit) state2
 
-launchLocalAgent :: forall canary. CanaryType canary => Agent -> canary -> ServerSelectionPredicate -> (Server -> Effect (Either ResourceFailed Pid)) -> Effect (ResourceResp Server)
+launchLocalAgent :: forall canary. CanaryType canary => Agent -> canary -> ServerSelectionPredicate -> (Server -> Effect (Either ResourceFailed Pid)) -> Effect (LocalResourceResp Server)
 launchLocalAgent agent canaryStream pred launchLocalFun = do
   idleServerResp <- IntraPoP.getThisIdleServer pred
   chainEither (launchAndUpdateState agent canaryStream launchLocalFun) idleServerResp
@@ -147,17 +148,19 @@ launchLocalOrRemoteAgent :: forall canary. CanaryType canary => Agent -> canary 
 launchLocalOrRemoteAgent agent canaryStream pred launchLocalFun launchRemoteFun = do
   canary <- getCanaryState
   case canary of
-    Canary -> launchLocalAgent agent canaryStream pred launchLocalFun
+    Canary -> (map toLocalAndRemote) <$> launchLocalAgent agent canaryStream pred launchLocalFun
     Live -> do
       idleServerResp <- IntraPoP.getIdleServer pred
       chainEither launch idleServerResp
       where
-        launch (Local thisServer) = launchAndUpdateState agent canaryStream launchLocalFun thisServer
+        launch :: LocalOrRemote Server -> Effect (ResourceResp Server)
+        launch (Local thisServer) = (map toLocalAndRemote) <$> launchAndUpdateState agent canaryStream launchLocalFun thisServer
         launch (Remote remote) = do
           resp <- launchRemoteFun remote
           pure $ if resp then Right (Remote remote)
                  else Left LaunchFailed
-
+  where
+    toLocalAndRemote (LocalResource _pid a) = Local a
 --------------------------------------------------------------------------------
 -- Gen-server callbacks
 --------------------------------------------------------------------------------
@@ -210,7 +213,7 @@ acceptingRequests :: RunState -> AcceptingRequests
 acceptingRequests currentRunState =
   wrap $ currentRunState == Active
 
-launchAndUpdateState :: forall canary. CanaryType canary => Agent -> canary -> (Server -> Effect (Either ResourceFailed Pid)) -> Server -> Effect (ResourceResp Server)
+launchAndUpdateState :: forall canary. CanaryType canary => Agent -> canary -> (Server -> Effect (Either ResourceFailed Pid)) -> Server -> Effect (LocalResourceResp Server)
 launchAndUpdateState agent canaryStream launchFun thisServer =
   Gen.doCall serverName doLaunchAndUpdateState
   where
@@ -226,7 +229,7 @@ launchAndUpdateState agent canaryStream launchFun thisServer =
 
     success state@{agentCounts} pid = do
       Gen.monitorPid serverName pid (\_ -> AgentDown agent)
-      pure $ CallReply (Right (Local thisServer)) state{agentCounts = Map.alter incrementAgentCount agent agentCounts}
+      pure $ CallReply (Right (LocalResource pid thisServer)) state{agentCounts = Map.alter incrementAgentCount agent agentCounts}
     failure state reason =
       pure $ CallReply (Left reason) state
     incrementAgentCount Nothing = Just 1

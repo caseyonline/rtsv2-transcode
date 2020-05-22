@@ -1,11 +1,19 @@
 -module(wsGun@foreign).
 
+-include_lib("id3as_common/include/common.hrl").
+
 -export([ openImpl/1
         , closeImpl/1
         , upgradeImpl/2
         , sendImpl/2
         , messageMapperImpl/1
+        , '$handle_undefined_function'/2
         ]).
+
+'$handle_undefined_function'(Function, Args) ->
+  ?SLOG_INFO("HERE", #{ '_function' => Function
+                      , args => Args}),
+  ok.
 
 openImpl(Url) ->
   fun() ->
@@ -19,6 +27,7 @@ openImpl(Url) ->
                                  , ws_opts => #{ compress => true
                                                , silence_pings => true
                                                }
+                                 %%, event_handler => {'wsGun@foreign', ok}
                                  }) of
         {ok, ConnPid} ->
           {right, {ConnPid, Path ++ Query}};
@@ -47,30 +56,33 @@ upgradeImpl(ConnPid, Path) ->
       Ref
   end.
 
-messageMapperImpl({gun_up, ConnPid, Protocol}) ->
+messageMapperImpl(X) ->
+  messageMapperImpl_(X).
+
+messageMapperImpl_({gun_up, ConnPid, Protocol}) ->
   {just, {gunUp, ConnPid, map_protocol(Protocol)}};
 
 %% gun 2.0 clause
-messageMapperImpl({gun_down, ConnPid, Protocol, Reason, KilledStreams}) ->
+messageMapperImpl_({gun_down, ConnPid, Protocol, Reason, KilledStreams}) ->
   {just, {gunDown, ConnPid, map_protocol(Protocol), Reason, KilledStreams, []}};
 
 %% pre-gun 2.0 clause
-messageMapperImpl({gun_down, ConnPid, Protocol, Reason, KilledStreams, UnprocessedStreams}) ->
+messageMapperImpl_({gun_down, ConnPid, Protocol, Reason, KilledStreams, UnprocessedStreams}) ->
   {just, {gunDown, ConnPid, map_protocol(Protocol), Reason, KilledStreams, UnprocessedStreams}};
 
-messageMapperImpl({gun_upgrade, ConnPid, StreamRef, _Protocols, Headers}) ->
+messageMapperImpl_({gun_upgrade, ConnPid, StreamRef, _Protocols, Headers}) ->
   {just, {gunUpgrade, ConnPid, StreamRef, Headers}};
 
-messageMapperImpl({gun_ws, ConnPid, StreamRef, Frame}) ->
+messageMapperImpl_({gun_ws, ConnPid, StreamRef, Frame}) ->
   {just, {gunWsFrame, ConnPid, StreamRef, map_frame(Frame)}};
 
-messageMapperImpl({gun_error, ConnPid, Reason}) ->
+messageMapperImpl_({gun_error, ConnPid, Reason}) ->
   {just, {gunWsConnectionError, ConnPid, Reason}};
 
-messageMapperImpl({gun_error, ConnPid, StreamRef, Reason}) ->
+messageMapperImpl_({gun_error, ConnPid, StreamRef, Reason}) ->
   {just, {gunWsStreamError, ConnPid, StreamRef, Reason}};
 
-messageMapperImpl(_) ->
+messageMapperImpl_(_Other) ->
   {nothing}.
 
 map_frame(close) ->

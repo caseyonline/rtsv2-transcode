@@ -37,11 +37,12 @@ import Rtsv2.LoadTypes as LoadTypes
 import Rtsv2.Names as Names
 import Rtsv2.NodeManager as NodeManager
 import Rtsv2.PoPDefinition as PoPDefinition
+import Rtsv2.Types (LocalOrRemote(..), LocalResourceResp, LocationResp, ResourceFailed(..))
 import Rtsv2.Utils (noprocToMaybe)
 import Shared.Rtsv2.Agent (Agent(..))
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Shared.Rtsv2.Stream (AggregatorKey(..), EgestKey(..), SlotId, SlotRole)
-import Shared.Rtsv2.Types (CanaryState, FailureReason(..), LocalOrRemote(..), LocationResp, OnBehalfOf, ResourceFailed(..), ResourceResp, Server, ServerLoad, extractPoP, serverLoadToServer)
+import Shared.Rtsv2.Types (CanaryState, FailureReason(..), OnBehalfOf, Server, ServerLoad, extractPoP, serverLoadToServer)
 import SpudGun as SpudGun
 
 ------------------------------------------------------------------------------
@@ -67,7 +68,7 @@ findEgest loadConfig canary slotId slotRole = do
   where
     egestKey = (EgestKey slotId slotRole)
 
-startLocalEgest :: LoadConfig -> OnBehalfOf -> CreateEgestPayload -> Effect (ResourceResp Server)
+startLocalEgest :: LoadConfig -> OnBehalfOf -> CreateEgestPayload -> Effect (LocalResourceResp Server)
 startLocalEgest loadConfig onBehalfOf payload@{slotCharacteristics} =
   NodeManager.launchLocalAgent Egest onBehalfOf (Load.hasCapacityForEgestInstance slotCharacteristics loadConfig) launchLocal
   where

@@ -81,7 +81,6 @@ import Shared.Rtsv2.Types (DeliverTo, EgestServer, PoPName, RelayServer, Server,
 import Shared.UUID (UUID)
 import SpudGun (SpudResponse(..), StatusCode(..))
 import SpudGun as SpudGun
-import Unsafe.Coerce (unsafeCoerce)
 import WsGun as WsGun
 
 -- -----------------------------------------------------------------------------
@@ -400,13 +399,14 @@ applyOriginRunResult commonStateData@{ relayKey: relayKey@(RelayKey slotId slotR
         wsUrl = makeWsUrl ingestAggregator $ IngestAggregatorRegisteredRelayWs slotId slotRole (extractAddress thisServer) portNumber
       in
         do
-           response <-  WsGun.openWebSocket wsUrl
+           response <-  WsGun.openWebSocket (serverName relayKey) Gun wsUrl
 
            logInfo "Attempted registration with ingest aggregator." { slotId
                                                                     , slotRole
                                                                     , ingestAggregator
                                                                     , portNumber
-                                                                    , wsUrl }
+                                                                    , wsUrl
+                                                                    , response }
 
            case response of
              Right socket -> do
@@ -494,7 +494,7 @@ applyDownstreamRunResult commonStateData@{ relayKey: relayKey@(RelayKey slotId s
         wsUrl = makeWsUrlAddr chosenRelay $ RelayRegisteredRelayWs slotId slotRole (extractAddress thisServer) portNumber remainingRoute
       in
         do
-          webSocket <- WsGun.openWebSocket wsUrl
+          webSocket <- WsGun.openWebSocket (serverName relayKey) Gun wsUrl
           pure $ hush webSocket
 
 isInstanceAvailable :: RelayKey -> Effect Boolean
@@ -715,8 +715,7 @@ handleInfo msg state =
       pure $ CastNoReply state
 
     IntraPoPBus (IngestAggregatorExited (AggregatorKey slotId slotRole) serverAddress)
-     -- TODO - PRIMARY BACKUP
-      | slotId == ourSlotId -> pure $ CastStop state
+--  SS TODO    | slotId == ourSlotId && slotRole == ourSlotRole -> pure $ CastStop state
       | otherwise -> pure $ CastNoReply state
 
     IntraPoPBus (VmReset _ _ _) ->
@@ -739,7 +738,7 @@ handleInfo msg state =
 
   where
     relayKey = relayKeyFromState state
-    (RelayKey ourSlotId _) = relayKey
+    (RelayKey ourSlotId ourSlotRole) = relayKey
 
     fireStopTimer (StateOrigin commonState runState) = do
       commonState2 <- fireStopTimer' commonState

@@ -27,6 +27,8 @@ import Erl.Data.Tuple (Tuple2, fst, snd)
 import Erl.Process.Raw (Pid)
 import Erl.Utils (Ref)
 import Foreign (Foreign)
+import Pinto (ServerName)
+import Pinto.Gen as Gen
 import Shared.Common (Url)
 import Simple.JSON (class ReadForeign, class WriteForeign, readJSON, writeJSON)
 
@@ -52,6 +54,7 @@ data GunMsg = GunUp ConnPid Protocol
             | GunWsFrame ConnPid StreamRef WsFrame
             | GunWsConnectionError ConnPid Reason
             | GunWsStreamError ConnPid StreamRef Reason
+            | GunExit ConnPid
 
 data WebSocket clientMsg serverMsg = Connection ConnPid String
 
@@ -73,10 +76,18 @@ foreign import upgradeImpl :: Pid -> String -> Effect StreamRef
 foreign import messageMapperImpl :: Foreign -> Maybe GunMsg
 foreign import sendImpl :: String -> Pid -> Effect Unit
 
-openWebSocket :: forall clientMsg serverMsg. Url -> Effect (Either Foreign (WebSocket clientMsg serverMsg))
-openWebSocket url = do
+openWebSocket :: forall state msg clientMsg serverMsg. ServerName state msg -> (GunMsg -> msg) -> Url -> Effect (Either Foreign (WebSocket clientMsg serverMsg))
+openWebSocket serverName mapper url = do
   res <- openImpl url
-  pure $ (\tuple -> Connection (fst tuple) (snd tuple)) <$> res
+  case res of
+    Left err ->
+      pure $ Left err
+    Right tuple -> do
+      let
+        pid = fst tuple
+        path = snd tuple
+      Gen.monitorPid serverName pid (\_ -> mapper $ GunExit pid)
+      pure $ Right $ Connection (fst tuple) (snd tuple)
 
 closeWebSocket :: forall clientMsg serverMsg. WebSocket clientMsg serverMsg -> Effect Unit
 closeWebSocket (Connection connPid _path) =
@@ -88,6 +99,9 @@ processMessage _socket@(Connection _connPid path)  gunMsg@(GunUp connPid _protoc
   pure $ Right $ Internal gunMsg
 
 processMessage _socket gunMsg@(GunDown _connPid _protocol _reason _killedStreams _unprocessedStreams) =
+  pure $ Right WebSocketDown
+
+processMessage _socket gunMsg@(GunExit _connPid) =
   pure $ Right WebSocketDown
 
 processMessage _socket gunMsg@(GunUpgrade _connPid _streamRef _headers) =
@@ -137,3 +151,4 @@ getConnPid (GunUpgrade connPid _streamRef _headers) = connPid
 getConnPid (GunWsConnectionError connPid _reason) = connPid
 getConnPid (GunWsStreamError connPid _streamRef _reason) = connPid
 getConnPid (GunWsFrame connPid _streamRef _frame) = connPid
+getConnPid (GunExit connPid) = connPid

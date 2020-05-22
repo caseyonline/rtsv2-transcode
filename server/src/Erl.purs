@@ -9,6 +9,7 @@ module Erl.Utils
        , trapExit
        , exit
        , monitor
+       , link
        , mapExitReason
        , exitMessageMapper
        , base64Encode
@@ -54,6 +55,7 @@ foreign import exitMessageMapperImpl :: Foreign -> Maybe ExitMessage
 foreign import refToStringImpl :: Ref -> Foreign
 foreign import stringToRefImpl :: Foreign -> Maybe Ref
 foreign import monitorImpl :: Foreign -> Effect Unit
+foreign import linkImpl :: Pid -> Effect Unit
 
 data ExitReason = Normal
                 | Shutdown Foreign
@@ -98,6 +100,9 @@ monitor :: forall a b. ServerName a b -> Effect Unit
 monitor (Local name) = monitorImpl $ unsafeToForeign $ name
 monitor (Global name) = monitorImpl $ unsafeToForeign $ tuple2 (atom "global") name
 monitor (Via (NativeModuleName m) name) = monitorImpl $ unsafeToForeign $ tuple3 (atom "via") m name
+
+link :: Pid -> Effect Unit
+link = linkImpl
 
 shutdown :: Pid -> Effect Unit
 shutdown = shutdownImpl

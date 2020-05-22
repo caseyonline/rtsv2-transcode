@@ -33,7 +33,8 @@ import Rtsv2.Env as Env
 import Rtsv2.LlnwApi as LlnwApi
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
-import Rtsv2.Utils (crashIfLeft)
+import Rtsv2.Types (LocalResource(..))
+import Rtsv2.Utils (crashIfLeft, noprocToMaybe)
 import Serf (Ip)
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.LlnwApiTypes (AuthType, PublishCredentials, SlotProfile(..), SlotPublishAuthType(..), StreamAuth, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamPublish)
@@ -44,7 +45,7 @@ import Stetson.WebSocketHandler (self)
 
 foreign import startServerImpl :: (Foreign -> Either Foreign Unit) -> Either Foreign Unit -> Ip -> Int -> Callbacks -> Ip -> Int -> Callbacks -> Int -> Effect (Either Foreign Unit)
 foreign import rtmpQueryToPurs :: Foreign -> RtmpAuthRequest
-foreign import startWorkflowImpl :: Pid -> Foreign -> IngestKey -> (Foreign -> (Effect Unit)) -> (Foreign -> (Effect Unit)) -> Effect Unit
+foreign import startWorkflowImpl :: Pid -> Pid -> Foreign -> IngestKey -> (Foreign -> (Effect Unit)) -> (Foreign -> (Effect Unit)) -> Effect Unit
 
 data RtmpAuthRequest = Initial
                      | AdobePhase1 AdobePhase1Params
@@ -125,9 +126,9 @@ onStreamCallback loadConfig canary host rtmpShortNameStr username remoteAddress 
           self <- self
           maybeStarted <- IngestInstanceSup.startLocalRtmpIngest loadConfig canary ingestKey streamPublish streamDetails remoteAddress remotePort self
           case maybeStarted of
-            Right _ -> do
-              startWorkflowAndBlock rtmpPid publishArgs ingestKey
-              IngestInstance.stopIngest ingestKey
+            Right (LocalResource ingestPid _server) -> do
+              startWorkflowAndBlock rtmpPid ingestPid publishArgs ingestKey
+              _ <- noprocToMaybe $ IngestInstance.stopIngest ingestKey
               pure unit
             Left error -> do
               _ <- logWarning "Attempt to start local RTMP ingest failed" {error}
@@ -173,9 +174,9 @@ processPhase2Authentication loadConfig canary host rtmpShortName username authPa
       if ok then pure $ AcceptRequest (mkFn5 (onStreamCallback loadConfig canary host rtmpShortName username))
       else pure RejectRequest
 
-startWorkflowAndBlock :: Pid -> Foreign -> IngestKey -> Effect Unit
-startWorkflowAndBlock rtmpPid publishArgs ingestKey =
-  startWorkflowImpl rtmpPid publishArgs ingestKey clientMetadata sourceInfo
+startWorkflowAndBlock :: Pid -> Pid -> Foreign -> IngestKey -> Effect Unit
+startWorkflowAndBlock rtmpPid ingestPid publishArgs ingestKey =
+  startWorkflowImpl rtmpPid ingestPid publishArgs ingestKey clientMetadata sourceInfo
   where
     clientMetadata foreignMetadata = do
       IngestInstance.setClientMetadata ingestKey (Rtmp.foreignToMetadata foreignMetadata)

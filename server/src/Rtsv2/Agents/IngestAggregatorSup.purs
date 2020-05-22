@@ -24,10 +24,11 @@ import Rtsv2.Config (LoadConfig)
 import Rtsv2.Load as Load
 import Rtsv2.Names as Names
 import Rtsv2.NodeManager as NodeManager
+import Rtsv2.Types (ResourceFailed(..), ResourceResp, LocalResourceResp)
 import Shared.Rtsv2.Agent (Agent(..))
 import Shared.Rtsv2.LlnwApiTypes (slotDetailsToSlotCharacteristics)
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
-import Shared.Rtsv2.Types (OnBehalfOf, ResourceFailed(..), ResourceResp, Server)
+import Shared.Rtsv2.Types (OnBehalfOf, Server)
 import SpudGun as SpudGun
 
 ------------------------------------------------------------------------------
@@ -39,7 +40,7 @@ isAgentAvailable = isRegistered serverName
 startLink :: forall a. a -> Effect Pinto.StartLinkResult
 startLink _ = Sup.startLink serverName init
 
-startLocalAggregator :: LoadConfig -> OnBehalfOf -> CreateAggregatorPayload -> Effect (ResourceResp Server)
+startLocalAggregator :: LoadConfig -> OnBehalfOf -> CreateAggregatorPayload -> Effect (LocalResourceResp Server)
 startLocalAggregator loadConfig onBehalfOf payload@{streamDetails} =
   let
     slotCharacteristics = slotDetailsToSlotCharacteristics streamDetails.slot

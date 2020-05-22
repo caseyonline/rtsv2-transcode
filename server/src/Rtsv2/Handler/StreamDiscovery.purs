@@ -19,12 +19,13 @@ import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
 import Rtsv2.Config (LoadConfig)
 import Rtsv2.Config as Config
 import Rtsv2.LlnwApi as LlnwApi
+import Rtsv2.Types (fromLocalOrRemote)
 import Rtsv2.Utils (chainIntoEither)
 import Shared.Common (Url)
 import Shared.Rtsv2.LlnwApiTypes (SlotLookupResult)
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Shared.Rtsv2.Stream (SlotId, SlotRole(..))
-import Shared.Rtsv2.Types (CanaryState(..), FailureReason, fromLocalOrRemote)
+import Shared.Rtsv2.Types (CanaryState(..), FailureReason)
 import Stetson (StetsonHandler)
 import StetsonHelper (jsonResponse)
 
