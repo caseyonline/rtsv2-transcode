@@ -131,6 +131,9 @@ ensureStarted loadConfig =
         Left InvalidCanaryState -> do
           newReq <- replyWithoutBody (StatusCode 409) Map.empty req
           Rest.stop newReq state
+        Left InvalidRunState -> do
+          newReq <- replyWithoutBody (StatusCode 409) Map.empty req
+          Rest.stop newReq state
         Left AlreadyRunning -> do
           -- Wouldn't actually get this for a relay, but need to handle all the options
           newReq <- replyWithoutBody (StatusCode 409) Map.empty req

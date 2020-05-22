@@ -17,10 +17,14 @@ import Data.FoldableWithIndex (foldlWithIndex)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (wrap)
 import Effect (Effect)
+import Erl.Atom (Atom)
+import Erl.Data.List (List, singleton)
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
 import Erl.Process.Raw (Pid)
 import Erl.Utils as ErlUtils
+import Logger (Logger)
+import Logger as Logger
 import Pinto (ServerName, StartLinkResult, ok')
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
@@ -33,7 +37,7 @@ import Rtsv2.Utils (chainEither)
 import Shared.Rtsv2.Agent (Agent(..))
 import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.JsonLd as JsonLd
-import Shared.Rtsv2.Types (class CanaryType, AcceptingRequests, CanaryState(..), CanaryStateChangeFailure(..), LocalOrRemote(..), OnBehalfOf, ResourceFailed(..), ResourceResp, RunState(..), Server, AgentSupStartArgs, canary)
+import Shared.Rtsv2.Types (class CanaryType, AcceptingRequests, AgentSupStartArgs, CanaryState(..), CanaryStateChangeFailure(..), LocalOrRemote(..), OnBehalfOf, ResourceFailed(..), ResourceResp, RunState(..), Server, canary)
 
 data Msg =
   AgentDown Agent
@@ -92,7 +96,7 @@ getState =
 
 getAcceptingRequests :: Effect AcceptingRequests
 getAcceptingRequests =
-  Gen.call serverName (\state -> CallReply (acceptingRequests state) state)
+  Gen.call serverName (\state -> CallReply (acceptingRequests state.currentRunState) state)
 
 getCanaryState :: Effect CanaryState
 getCanaryState =
@@ -113,9 +117,10 @@ changeCanaryState newCanary =
           totalAgents > 0 then
             pure $ CallReply (Left ActiveAgents) state
         else do
+          _ <- logInfo "CanaryState changed" { old: state.currentCanaryState
+                                             , new: newCanary}
           ErlUtils.shutdown activeSupPid
           newActiveSupPid <- (ok' =<< (activeSupStartLink {canaryState: newCanary, acceptingRequestsFun: getAcceptingRequests}))
-          IntraPoP.announceAcceptingRequests $ acceptingRequests state
           pure $ CallReply (Right unit) state{ currentCanaryState = newCanary
                                              , activeSupPid = newActiveSupPid }
 
@@ -126,7 +131,9 @@ changeRunState newRunState =
     doChange state = do
       let
         state2 = state{ currentRunState = newRunState }
-      IntraPoP.announceAcceptingRequests $ acceptingRequests state
+      _ <- logInfo "RunState changed" { old: state.currentRunState
+                                      , new: newRunState}
+      IntraPoP.announceAcceptingRequests $ acceptingRequests newRunState
       pure $ CallReply (Right unit) state2
 
 launchLocalAgent :: forall canary. CanaryType canary => Agent -> canary -> ServerSelectionPredicate -> (Server -> Effect (Either ResourceFailed Pid)) -> Effect (ResourceResp Server)
@@ -167,15 +174,25 @@ init args@{activeSupStartLink} = do
             , agentCounts: Map.empty
             , activeSupPid
             }
-  IntraPoP.announceAcceptingRequests $ acceptingRequests state
+  IntraPoP.announceAcceptingRequests $ acceptingRequests initialRunState
 
   pure state
 
 handleInfo :: Msg -> State -> Effect (CastResult State)
-handleInfo msg state@{agentCounts} =
+handleInfo msg state@{agentCounts, currentRunState} =
   case msg of
-    AgentDown agent ->
-      pure $ CastNoReply state{agentCounts = Map.alter decrementAgentCount agent agentCounts}
+    AgentDown agent -> do
+      let
+        newAgentCounts = Map.alter decrementAgentCount agent agentCounts
+      newRunState <- if (Map.size newAgentCounts) == 0 && (currentRunState == PassiveDrain || currentRunState == ForceDrain) then do
+                      _ <- logInfo "RunState changed" { old: state.currentRunState
+                                                      , new: OutOfService}
+                      IntraPoP.announceAcceptingRequests $ acceptingRequests OutOfService
+                      pure OutOfService
+                    else
+                      pure currentRunState
+      pure $ CastNoReply state{ agentCounts = newAgentCounts
+                              , currentRunState = newRunState}
   where
     decrementAgentCount Nothing = Nothing
     decrementAgentCount (Just 1) = Nothing
@@ -187,14 +204,17 @@ handleInfo msg state@{agentCounts} =
 serverName :: ServerName State Msg
 serverName = Names.nodeManagerServerName
 
-acceptingRequests :: State -> AcceptingRequests
-acceptingRequests { currentRunState } =
+acceptingRequests :: RunState -> AcceptingRequests
+acceptingRequests currentRunState =
   wrap $ currentRunState == Active
 
 launchAndUpdateState :: forall canary. CanaryType canary => Agent -> canary -> (Server -> Effect (Either ResourceFailed Pid)) -> Server -> Effect (ResourceResp Server)
 launchAndUpdateState agent canaryStream launchFun thisServer =
   Gen.doCall serverName doLaunchAndUpdateState
   where
+    doLaunchAndUpdateState state@{currentRunState} | currentRunState /= Active =
+      pure $ CallReply (Left InvalidRunState) state
+
     doLaunchAndUpdateState state@{currentCanaryState} | currentCanaryState /= canary currentCanaryState canaryStream =
       pure $ CallReply (Left InvalidCanaryState) state
 
@@ -209,3 +229,9 @@ launchAndUpdateState agent canaryStream launchFun thisServer =
       pure $ CallReply (Left reason) state
     incrementAgentCount Nothing = Just 1
     incrementAgentCount (Just n) = Just (n + 1)
+
+domains :: List Atom
+domains = serverName # Names.toDomain # singleton
+
+logInfo :: forall a. Logger (Record a)
+logInfo = Logger.doLog domains Logger.info

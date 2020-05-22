@@ -95,7 +95,7 @@ data CanaryStateChangeFailure = InvalidStateTransition
 data RunState = Active
               | PassiveDrain
               | ForceDrain
-              | OutOfOperation
+              | OutOfService
 
 data Health = Perfect
             | Excellent
@@ -184,6 +184,7 @@ type ResourceResp a = Either ResourceFailed (LocalOrRemote a)
 data ResourceFailed = NoCapacity
                     | LaunchFailed
                     | InvalidCanaryState
+                    | InvalidRunState
                     | AlreadyRunning
 
 type RegistrationResp = (Either FailureReason Unit)
@@ -262,7 +263,7 @@ instance readForeignRunState :: ReadForeign RunState where
       toType "active" = pure Active
       toType "passiveDrain" = pure PassiveDrain
       toType "forceDrain" = pure ForceDrain
-      toType "outOfOperation" = pure OutOfOperation
+      toType "outOfService" = pure OutOfService
       toType unknown = Nothing
       errorString s = "Unknown RunState: " <> s
 
@@ -272,7 +273,7 @@ instance writeForeignRunState :: WriteForeign RunState where
       toString Active = "active"
       toString PassiveDrain = "passiveDrain"
       toString ForceDrain = "forceDrain"
-      toString OutOfOperation = "outOfOperation"
+      toString OutOfService = "outOfService"
 
 ------------------------------------------------------------------------------
 -- JsonLdContextType

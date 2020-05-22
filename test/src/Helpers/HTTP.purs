@@ -14,7 +14,7 @@ import Prim.Row (class Union)
 import Shared.Rtsv2.Chaos as Chaos
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrlAddr, makeUrl)
 import Shared.Rtsv2.Stream (RtmpShortName, SlotId, SlotNameAndProfileName(..), SlotRole(..), RtmpStreamName, ProfileName)
-import Shared.Rtsv2.Types (CanaryState(..), CurrentLoad(..), ServerAddress(..))
+import Shared.Rtsv2.Types (CanaryState(..), RunState(..), CurrentLoad(..), ServerAddress(..))
 import Simple.JSON as SimpleJSON
 import Toppokki as T
 
@@ -65,6 +65,14 @@ changeCanaryState node canary =
   fetch (M.URL $ makeUrlAndUnwrap node CanaryE)
         { method: M.postMethod
         , body: SimpleJSON.writeJSON canary
+        , headers: M.makeHeaders { "Content-Type": "application/json" }
+        }
+
+changeRunState :: Node -> RunState -> Aff (Either String ResWithBody)
+changeRunState node runState =
+  fetch (M.URL $ makeUrlAndUnwrap node RunStateE)
+        { method: M.postMethod
+        , body: SimpleJSON.writeJSON runState
         , headers: M.makeHeaders { "Content-Type": "application/json" }
         }
 
