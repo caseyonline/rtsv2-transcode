@@ -68,7 +68,7 @@ import Shared.Rtsv2.JsonLd (EgestStats, EgestSessionStats)
 import Shared.Rtsv2.LlnwApiTypes (StreamIngestProtocol(..))
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeWsUrl)
 import Shared.Rtsv2.Stream (AggregatorKey(..), EgestKey(..), ProfileName, RelayKey(..), SlotId, SlotRole, egestKeyToAgentKey)
-import Shared.Rtsv2.Types (EgestServer(..), FailureReason(..), LocalOrRemote(..), OnBehalfOf(..), RegistrationResp, RelayServer, ResourceResp, Server, extractAddress)
+import Shared.Rtsv2.Types (EgestServer(..), FailureReason(..), LocalOrRemote(..), OnBehalfOf(..), PoPName, RegistrationResp, RelayServer, ResourceResp, Server, extractAddress)
 import WsGun as WsGun
 
 foreign import startEgestReceiverFFI :: EgestKey -> MediaGatewayFlag -> Effect Int
@@ -80,7 +80,7 @@ foreign import getSlotConfigurationFFI :: EgestKey -> Effect (Maybe SlotConfigur
 type CreateEgestPayload
   = { slotId :: SlotId
     , slotRole :: SlotRole
-    , aggregator :: Server
+    , aggregatorPoP :: PoPName
     , slotCharacteristics :: SlotCharacteristics
     }
 
@@ -92,7 +92,7 @@ type CachedState = WebSocket
 
 type State
   = { egestKey :: EgestKey
-    , aggregator :: Server
+    , aggregatorPoP :: PoPName
     , slotCharacteristics :: SlotCharacteristics
     , loadConfig :: LoadConfig
     , thisServer :: EgestServer
@@ -244,7 +244,7 @@ toEgestServer :: Server -> EgestServer
 toEgestServer = unwrap >>> wrap
 
 init :: CreateEgestPayload -> StateServerName -> Effect State
-init payload@{slotId, slotRole, aggregator, slotCharacteristics} stateServerName = do
+init payload@{slotId, slotRole, aggregatorPoP, slotCharacteristics} stateServerName = do
   { eqLogIntervalMs
     , lingerTimeMs
     , relayCreationRetryMs
@@ -279,7 +279,7 @@ init payload@{slotId, slotRole, aggregator, slotCharacteristics} stateServerName
   Gen.registerExternalMapping (serverName egestKey) (\m -> Gun <$> (WsGun.messageMapper m))
   let
     state = { egestKey
-            , aggregator
+            , aggregatorPoP
             , slotCharacteristics
             , loadConfig
             , thisServer : toEgestServer thisServer
@@ -471,7 +471,7 @@ doStop state@{egestKey} = do
   pure $ CastStop state
 
 initStreamRelay :: State -> Effect State
-initStreamRelay state@{relayCreationRetry, egestKey: egestKey@(EgestKey slotId slotRole), aggregator, thisServer, stateServerName, slotConfiguration: mSlotConfig} = do
+initStreamRelay state@{relayCreationRetry, egestKey: egestKey@(EgestKey slotId slotRole), aggregatorPoP, thisServer, stateServerName, slotConfiguration: mSlotConfig} = do
   case mSlotConfig of
     Nothing -> do
       relayResp <- findOrStartRelayForStream state
@@ -511,14 +511,14 @@ initStreamRelay state@{relayCreationRetry, egestKey: egestKey@(EgestKey slotId s
 --------------------------------------------------------------------------------
 findOrStartRelayForStream :: State -> Effect (ResourceResp Server)
 findOrStartRelayForStream state@{ egestKey: EgestKey slotId slotRole
+                                , aggregatorPoP
                                 , thisServer
-                                , aggregator
                                 , slotCharacteristics
                                 , loadConfig} = do
   mRelay <- IntraPoP.whereIsStreamRelayWithLocalOrRemote $ RelayKey slotId slotRole
   maybe' (\_ -> StreamRelaySup.startLocalOrRemoteStreamRelay loadConfig LocalAgent payload) (pure <<< Right) mRelay
   where
-    payload = {slotId, slotRole, aggregator, slotCharacteristics}
+    payload = {slotId, slotRole, aggregatorPoP, slotCharacteristics}
 
 toRelayServer :: forall a b. Newtype a b => Newtype RelayServer b => a -> RelayServer
 toRelayServer = unwrap >>> wrap

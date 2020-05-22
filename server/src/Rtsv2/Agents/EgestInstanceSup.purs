@@ -41,7 +41,7 @@ import Rtsv2.Utils (noprocToMaybe)
 import Shared.Rtsv2.Agent (Agent(..))
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Shared.Rtsv2.Stream (AggregatorKey(..), EgestKey(..), SlotId, SlotRole)
-import Shared.Rtsv2.Types (CanaryState, FailureReason(..), LocalOrRemote(..), LocationResp, OnBehalfOf, ResourceFailed(..), ResourceResp, Server, ServerLoad, serverLoadToServer)
+import Shared.Rtsv2.Types (CanaryState, FailureReason(..), LocalOrRemote(..), LocationResp, OnBehalfOf, ResourceFailed(..), ResourceResp, Server, ServerLoad, extractPoP, serverLoadToServer)
 import SpudGun as SpudGun
 
 ------------------------------------------------------------------------------
@@ -61,7 +61,7 @@ findEgest loadConfig canary slotId slotRole = do
     Nothing ->  pure $ Left NotFound
     Just {payload: slotCharacteristics, server: aggregator} ->
       let
-        payload = {slotId, slotRole, aggregator, slotCharacteristics}
+        payload = {slotId, slotRole, aggregatorPoP: extractPoP aggregator, slotCharacteristics}
       in
        findEgest' loadConfig canary thisServer egestKey payload
   where

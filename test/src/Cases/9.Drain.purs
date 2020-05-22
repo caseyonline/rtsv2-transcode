@@ -115,7 +115,7 @@ passiveDrainTest3 =
 
 passiveDrainTest4 :: forall m. Monad m => SpecT Aff Unit m Unit
 passiveDrainTest4 =
-  itOnly "9.1.3 Test valid and invalid transistions" do
+  it "9.1.3 Test valid and invalid transistions" do
     HTTP.healthCheck E.p1n1 >>= A.assertStatusCode 200
                             >>= A.assertBodyFun ((==) Active <<< healthNodeToRunState)
                             >>= as "run state is active"
@@ -189,6 +189,10 @@ passiveDrainTest4 =
     HTTP.healthCheck E.p1n1 >>= A.assertStatusCode 200
                             >>= A.assertBodyFun ((==) OutOfService <<< healthNodeToRunState)
                             >>= as "run state is out-of-service"
+
+
+-- Move to out-of-service to close all existing agents
+
 -------------------------------------------------------------------------------
 -- Helpers
 -------------------------------------------------------------------------------
