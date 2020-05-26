@@ -816,6 +816,9 @@ handleInfo msg state =
               _ <- Timer.sendAfter (serverName relayKey) reApplyPlanTimeMs ReApplyPlan
               pure $ StateOrigin common origin{ run = run { ingestAggregatorState = IngestAggregatorStatePendingRegistration portNumber} }
 
+            updateSocket newSocket = do
+              pure $ StateOrigin common origin{ run = run { ingestAggregatorState = IngestAggregatorStateRegistered portNumber newSocket} }
+
             slotConfig slotConfiguration
               | Nothing <- run.slotConfiguration = do
                 _ <- logInfo "Received slot configuration" {slotConfiguration}
@@ -837,7 +840,7 @@ handleInfo msg state =
               sendMessageToDownstreams msg config
               pure state
 
-          CastNoReply <$> processGunMessage' noop down slotConfig send socket gunMsg
+          CastNoReply <$> processGunMessage' noop down updateSocket slotConfig send socket gunMsg
 
         Nothing ->
           pure $ CastNoReply state
@@ -854,6 +857,15 @@ handleInfo msg state =
               _ <- Timer.sendAfter (serverName relayKey) reApplyPlanTimeMs ReApplyPlan
               let
                 newRelayStates = Map.insert upstreamRelay (UpstreamRelayStatePendingRegistration portNumber) upstreamRelayStates
+              pure $ StateDownstream common downstream{run = run{ upstreamRelayStates = newRelayStates } }
+
+            updateSocket newSocket = do
+              let
+                updateSocket' x@(UpstreamRelayStatePendingRegistration _portNumber) = Just x
+                updateSocket' x@(UpstreamRelayStateRegistered portNumber serverAddress _socket) = Just $ UpstreamRelayStateRegistered portNumber serverAddress newSocket
+                updateSocket' x@(UpstreamRelayStatePendingDeregistration portNumber serverAddress _socket) = Just $ UpstreamRelayStatePendingDeregistration portNumber serverAddress newSocket
+                updateSocket' x@(UpstreamRelayStateDeregistered _portNumber) = Just x
+                newRelayStates = Map.update updateSocket' upstreamRelay upstreamRelayStates
               pure $ StateDownstream common downstream{run = run{ upstreamRelayStates = newRelayStates } }
 
             slotConfig slotConfiguration
@@ -877,13 +889,13 @@ handleInfo msg state =
               sendMessageToDownstreams msg config
               pure state
 
-          CastNoReply <$> processGunMessage' noop down slotConfig send socket gunMsg
+          CastNoReply <$> processGunMessage' noop down updateSocket slotConfig send socket gunMsg
 
         Nothing ->
           pure $ CastNoReply state
 
-    processGunMessage' :: forall a. Effect a -> Effect a -> (SlotConfiguration -> Effect a) -> (DownstreamWsMessage -> Effect a) -> WebSocket -> WsGun.GunMsg -> Effect a
-    processGunMessage' noop down slotConfig send socket gunMsg = do
+    processGunMessage' :: forall a. Effect a -> Effect a -> (WebSocket -> Effect a) -> (SlotConfiguration -> Effect a) -> (DownstreamWsMessage -> Effect a) -> WebSocket -> WsGun.GunMsg -> Effect a
+    processGunMessage' noop down updateSocket slotConfig send socket gunMsg = do
       processResponse <- WsGun.processMessage socket gunMsg
       case processResponse of
         Left error -> do
@@ -895,6 +907,9 @@ handleInfo msg state =
 
         Right WsGun.WebSocketUp -> do
           noop
+
+        Right (WsGun.WebSocketUpdate newSocket) ->
+          updateSocket newSocket
 
         Right WsGun.WebSocketDown -> do
           -- todo - kick off timer?  If websocket doesn't recover, attempt to launch new relay?

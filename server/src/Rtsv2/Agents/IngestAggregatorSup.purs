@@ -11,6 +11,7 @@ import Prelude
 import Data.Either (either, note)
 import Effect (Effect)
 import Erl.Data.List (nil, (:))
+import Logger (spy)
 import Pinto (StartChildResult, SupervisorName, isRegistered)
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStartTemplate, childType)
@@ -58,9 +59,9 @@ startLocalOrRemoteAggregator loadConfig onBehalfOf payload@{streamDetails} =
     NodeManager.launchLocalOrRemoteAgent IngestAggregator onBehalfOf (Load.hasCapacityForAggregator slotCharacteristics loadConfig) launchLocal launchRemote
   where
     launchLocal _ = do
-      (note LaunchFailed <<< startOkAS) <$> startAggregator payload
+      (note LaunchFailed <<< startOkAS) <$> startAggregator (spy "startLocal" payload)
     launchRemote idleServer =
-      either (const false) (const true) <$> SpudGun.postJson (makeUrl idleServer IngestAggregatorsE) payload
+      either (const false) (const true) <$> SpudGun.postJson (spy "remoteurl" (makeUrl idleServer IngestAggregatorsE)) (spy "startremote" payload)
 
 ------------------------------------------------------------------------------
 -- Supervisor callbacks
