@@ -89,11 +89,9 @@ clientStart loadConfig canary slotId slotRole =
     movedTemporarily :: Req -> ClientStartState -> Effect (RestResult MovedResult ClientStartState)
     movedTemporarily req state@(ClientStartState { egestResp}) =
       case egestResp of
-        Right (Remote server) ->
-          let
-            url = System.makeUrl server (System.ClientStartE canary slotId slotRole)
-          in
-            Rest.result (moved $ unwrap url) req state
+        Right (Remote server) -> do
+          url <- System.makeUrl server (System.ClientStartE canary slotId slotRole)
+          Rest.result (moved $ unwrap url) req state
         _ ->
           Rest.result notMoved req state
 

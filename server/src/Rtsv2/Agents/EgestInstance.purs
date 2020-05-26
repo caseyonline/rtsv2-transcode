@@ -491,18 +491,16 @@ initStreamRelay state@{relayCreationRetry, egestKey: egestKey@(EgestKey slotId s
       pure state
 
   where
-    tryConfigureAndRegister relayServer =
-      do
-        let
-          wsUrl = System.makeWsUrl relayServer $ System.RelayRegisteredEgestWs slotId slotRole (extractAddress thisServer) state.receivePortNumber
-        maybeWebSocket <- hush <$> WsGun.openWebSocket wsUrl
-        case maybeWebSocket of
-          Just webSocket -> do
-            CachedInstanceState.recordInstanceData stateServerName webSocket
-            pure state{ relayWebSocket = Just webSocket}
-          Nothing -> do
-            _ <- Timer.sendAfter (serverName egestKey) (round $ unwrap relayCreationRetry) InitStreamRelays
-            pure state
+    tryConfigureAndRegister relayServer = do
+      wsUrl <- System.makeWsUrl relayServer $ System.RelayRegisteredEgestWs slotId slotRole (extractAddress thisServer) state.receivePortNumber
+      maybeWebSocket <- hush <$> WsGun.openWebSocket wsUrl
+      case maybeWebSocket of
+        Just webSocket -> do
+          CachedInstanceState.recordInstanceData stateServerName webSocket
+          pure state{ relayWebSocket = Just webSocket}
+        Nothing -> do
+          _ <- Timer.sendAfter (serverName egestKey) (round $ unwrap relayCreationRetry) InitStreamRelays
+          pure state
 
 --------------------------------------------------------------------------------
 -- Do we have a relay in this pop - yes -> use it

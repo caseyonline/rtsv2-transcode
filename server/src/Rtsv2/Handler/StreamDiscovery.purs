@@ -5,7 +5,7 @@ module Rtsv2.Handler.StreamDiscovery
 
 import Prelude
 
-import Data.Bifunctor (lmap)
+import Data.Bifunctor (bimap, lmap)
 import Data.Either (Either(..), either)
 import Data.Filterable (filterMap)
 import Data.Maybe (Maybe(..))
@@ -25,7 +25,7 @@ import Shared.Rtsv2.LlnwApiTypes (SlotLookupResult)
 import Shared.Rtsv2.Router.Endpoint.Public as Public
 import Shared.Rtsv2.Router.Endpoint.Support as Support
 import Shared.Rtsv2.Stream (SlotId, SlotRole(..))
-import Shared.Rtsv2.Types (Canary(..), FailureReason, fromLocalOrRemote)
+import Shared.Rtsv2.Types (Canary(..), FailureReason, Server(..), fromLocalOrRemote)
 import Stetson (StetsonHandler)
 import StetsonHelper (jsonResponse)
 
@@ -74,14 +74,15 @@ discover loadConfig canary accountName streamName =
           pure { slotId: slot.id, errors, urls }
 
     getSessionUrl :: SlotRole -> SlotLookupResult -> Effect (Either FailureReason Url)
-    getSessionUrl role slot =
-      let
-        url = case canary of
-                Live -> flip Public.makeUrl $ Public.ClientPlayerControlE slot.id role
-                Canary -> flip Support.makeUrl $ Support.CanaryClientPlayerControlE slot.id role
-      in
-        EgestInstanceSup.findEgest loadConfig canary slot.id role <#> map (fromLocalOrRemote >>> url)
+    getSessionUrl role slot = do
+      locationResp <- EgestInstanceSup.findEgest loadConfig canary slot.id role
+      traverse (url <<< fromLocalOrRemote) locationResp
 
+      where
+        url :: Server -> Effect Url
+        url = case canary of
+          Live -> flip Public.makeUrl $ Public.ClientPlayerControlE slot.id role
+          Canary -> flip Support.makeUrl $ Support.CanaryClientPlayerControlE slot.id role
 
 --------------------------------------------------------------------------------
 -- Log helpers

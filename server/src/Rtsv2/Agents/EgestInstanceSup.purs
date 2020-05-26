@@ -131,9 +131,10 @@ findEgest' loadConfig thisServer egestKey payload@{slotCharacteristics} = runExc
       where
         launchLocal _ = do
           (note LaunchFailed <<< startOkAS) <$> startEgest payload
-        launchRemote remote =
+        launchRemote remote = do
+          url <- System.makeUrl remote System.EgestE
           -- todo - if remote then need to sleep before recurse to allow intra-pop disemination
-          either (const false) (const true) <$> SpudGun.postJson (System.makeUrl remote System.EgestE) payload
+          either (const false) (const true) <$> SpudGun.postJson url payload
 
     capacityForClient :: ServerLoad -> Maybe (Tuple Server LoadCheckResult)
     capacityForClient serverLoad =

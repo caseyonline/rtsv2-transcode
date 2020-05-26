@@ -79,11 +79,9 @@ proxiedStats slotId slotRole =
 
     movedTemporarily req state@(ProxyState {whereIsResp}) =
       case whereIsResp of
-        Just server ->
-          let
-            url = Support.makeUrl server (Support.RelayStatsE slotId slotRole)
-          in
-            Rest.result (moved $ unwrap url) req state
+        Just server -> do
+          url <- Support.makeUrl server (Support.RelayStatsE slotId slotRole)
+          Rest.result (moved $ unwrap url) req state
         _ ->
           Rest.result notMoved req state
 
@@ -146,11 +144,9 @@ ensureStarted loadConfig =
 
     movedTemporarily req state@(StartState {apiResp}) =
       case apiResp of
-        Right (Remote server) ->
-          let
-            url = System.makeUrl server System.RelayEnsureStartedE
-          in
-            Rest.result (moved $ unwrap url) req state
+        Right (Remote server) -> do
+          url <- System.makeUrl server System.RelayEnsureStartedE
+          Rest.result (moved $ unwrap url) req state
         _ ->
           Rest.result notMoved req state
 
