@@ -16,7 +16,6 @@ module Rtsv2.Load
 import Prelude
 
 import Data.Array (elemIndex)
-import Data.Either (Either(..))
 import Data.Foldable (foldl)
 import Data.FoldableWithIndex (foldlWithIndex) as Map
 import Data.Int (round, toNumber)
@@ -35,17 +34,16 @@ import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
-import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.IntraPoP as IntraPop
 import Rtsv2.Config (LoadConfig)
 import Rtsv2.Config as Config
-import Rtsv2.LoadTypes (HardwareFactor(..), LoadAgentCosts(..), LoadCheckResult(..), LoadCosts(..), LoadFixedCost(..), LoadLimits(..), PredictedLoad(..), LoadVariableCost(..), LoadWatermarks(..), ServerSelectionPredicate)
+import Rtsv2.LoadTypes (HardwareFactor(..), LoadAgentCosts(..), LoadCheckResult(..), LoadCosts(..), LoadFixedCost(..), LoadLimits(..), LoadVariableCost(..), LoadWatermarks(..), PredictedLoad(..))
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Shared.Common (Milliseconds)
 import Shared.Rtsv2.Agent (Agent(..), SlotCharacteristics)
 import Shared.Rtsv2.Stream (AgentKey)
-import Shared.Rtsv2.Types (CurrentLoad(..), LocalOrRemote(..), NetworkKbps(..), Percentage(..), ResourceFailed(..), ResourceResp, Server(..), ServerLoad(..), SpecInt(..), minLoad)
+import Shared.Rtsv2.Types (AcceptingRequests(..), CurrentLoad(..), NetworkKbps(..), Percentage(..), Server(..), ServerLoad(..), SpecInt(..), minLoad)
 
 hasCapacityForEgestInstance :: SlotCharacteristics -> LoadConfig -> ServerLoad -> LoadCheckResult
 hasCapacityForEgestInstance =
@@ -187,6 +185,8 @@ hasCapacity :: ({ egestClient :: LoadAgentCosts
                 , streamRelay :: LoadAgentCosts
                 , webRTCIngest :: LoadAgentCosts
                 } -> LoadAgentCosts) -> Agent -> SlotCharacteristics -> LoadConfig -> ServerLoad -> LoadCheckResult
+hasCapacity extractor agent slotCharacteristics {limits: defaultLimits, costs: LoadCosts costs} targetServer@(ServerLoad {acceptingRequests: (AcceptingRequests false)}) =
+  Red
 hasCapacity extractor agent slotCharacteristics {limits: defaultLimits, costs: LoadCosts costs} targetServer@(ServerLoad {agents}) =
   case elemIndex agent agents of
     Just _ ->

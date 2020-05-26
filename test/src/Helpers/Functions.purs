@@ -14,7 +14,7 @@ import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (wrap, unwrap)
 import Data.These (These(..))
 import Data.Time.Duration (Milliseconds(..))
-import Data.Traversable (traverse, traverse_)
+import Data.Traversable (traverse_)
 import Debug.Trace (spy)
 import Effect.Aff (Aff, delay)
 import Foreign (unsafeFromForeign)
@@ -53,8 +53,8 @@ launch nodes = launch' nodes "test/config/sys.config"
 
 launch' :: Array Node -> String -> Aff Unit
 launch' nodesToStart sysconfig = do
-  nodesToStart <#> mkNode  sysconfig # launchNodes
-  delay (Milliseconds 1000.0)
+  nodesToStart <#> mkNode sysconfig # launchNodes
+  pure unit
   where
   launchNodes :: Array TestNode -> Aff Unit
   launchNodes nodes = do
@@ -178,6 +178,12 @@ killRelay slotId slotRole relays =
       _ ->
         throwSlowError $ "No relays or missing id"
 
+killMediaGateway :: Node -> Aff Unit
+killMediaGateway node =
+  do
+    _ <- HTTP.killProcessNode (spy "kill" node) (Chaos.defaultKill $ (Chaos.Local "rtsv2_media_gateway_api"))
+    pure unit
+
 relayName :: SlotId -> SlotRole -> Chaos.ChaosName
 relayName slotId role =
   Chaos.Gproc (Chaos.GprocTuple2
@@ -197,6 +203,7 @@ makePoPInfo n i = {name: n, number: i, x: 0.0, y: 0.0}
 -------------------------------------------------------------------------------
 -- Slot
 -------------------------------------------------------------------------------
+storeSlotState :: forall e a v. Applicative a => Bind a => MonadState (Map.Map String v) a => Either e v -> a (Either e v)
 storeSlotState either@(Left _) = pure either
 storeSlotState either@(Right slotState) = do
   _ <- modify (Map.insert "slotState" slotState)

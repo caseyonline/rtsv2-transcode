@@ -5,7 +5,7 @@ module Rtsv2.Handler.StreamDiscovery
 
 import Prelude
 
-import Data.Bifunctor (bimap, lmap)
+import Data.Bifunctor (lmap)
 import Data.Either (Either(..), either)
 import Data.Filterable (filterMap)
 import Data.Maybe (Maybe(..))
@@ -19,17 +19,18 @@ import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
 import Rtsv2.Config (LoadConfig)
 import Rtsv2.Config as Config
 import Rtsv2.LlnwApi as LlnwApi
+import Rtsv2.Types (fromLocalOrRemote)
 import Rtsv2.Utils (chainIntoEither)
 import Shared.Common (Url)
 import Shared.Rtsv2.LlnwApiTypes (SlotLookupResult)
 import Shared.Rtsv2.Router.Endpoint.Public as Public
 import Shared.Rtsv2.Router.Endpoint.Support as Support
 import Shared.Rtsv2.Stream (SlotId, SlotRole(..))
-import Shared.Rtsv2.Types (Canary(..), FailureReason, Server(..), fromLocalOrRemote)
+import Shared.Rtsv2.Types (CanaryState(..), FailureReason, Server)
 import Stetson (StetsonHandler)
 import StetsonHelper (jsonResponse)
 
-discover :: LoadConfig -> Canary -> String -> String -> StetsonHandler (Maybe (List Url))
+discover :: LoadConfig -> CanaryState -> String -> String -> StetsonHandler (Maybe (List Url))
 discover loadConfig canary accountName streamName =
   jsonResponse getUrls
 

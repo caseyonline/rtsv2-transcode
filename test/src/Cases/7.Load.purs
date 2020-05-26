@@ -2,23 +2,16 @@ module Cases.Load where
 
 import Prelude
 
-import Control.Monad.State (evalStateT, lift)
-import Data.Array (delete)
-import Data.Map as Map
 import Data.Newtype (wrap)
-import Data.Traversable (traverse_)
 import Effect.Aff (Aff)
-import Helpers.Types (Node, ToRecord)
-import Shared.Rtsv2.Agent.State as PublicState
+import Helpers.Types (Node)
 import Helpers.Assert as A
-import Helpers.CreateString (toAddrFromNode)
 import Helpers.Env as E
 import Helpers.Functions as F
 import Helpers.HTTP as HTTP
-import Helpers.Log (as, as', asT, asT')
-import Shared.Rtsv2.Stream (SlotRole(..))
-import Shared.Rtsv2.Types (CurrentLoad(..), Canary(..))
-import Test.Spec (SpecT, after_, before_, describe, it)
+import Helpers.Log (as, as')
+import Shared.Rtsv2.Types (CurrentLoad(..), CanaryState(..))
+import Test.Spec (SpecT, after_, before_, describe, it, itOnly)
 
 -------------------------------------------------------------------------------
 -- Main

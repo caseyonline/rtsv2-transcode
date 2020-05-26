@@ -24,10 +24,11 @@ import Rtsv2.Config (LoadConfig)
 import Rtsv2.Load as Load
 import Rtsv2.Names as Names
 import Rtsv2.NodeManager as NodeManager
+import Rtsv2.Types (ResourceFailed(..), ResourceResp, LocalResourceResp)
 import Shared.Rtsv2.Agent (Agent(..))
+import Shared.Rtsv2.Types (OnBehalfOf, Server)
 import Shared.Rtsv2.LlnwApiTypes (slotDetailsToSlotCharacteristics)
 import Shared.Rtsv2.Router.Endpoint.Support as Support
-import Shared.Rtsv2.Types (ResourceFailed(..), ResourceResp, Server)
 import SpudGun as SpudGun
 
 ------------------------------------------------------------------------------
@@ -39,22 +40,22 @@ isAgentAvailable = isRegistered serverName
 startLink :: forall a. a -> Effect Pinto.StartLinkResult
 startLink _ = Sup.startLink serverName init
 
-startLocalAggregator :: LoadConfig -> CreateAggregatorPayload -> Effect (ResourceResp Server)
-startLocalAggregator loadConfig payload@{streamDetails} =
+startLocalAggregator :: LoadConfig -> OnBehalfOf -> CreateAggregatorPayload -> Effect (LocalResourceResp Server)
+startLocalAggregator loadConfig onBehalfOf payload@{streamDetails} =
   let
     slotCharacteristics = slotDetailsToSlotCharacteristics streamDetails.slot
   in
-    NodeManager.launchLocalAgent IngestAggregator (Load.hasCapacityForAggregator slotCharacteristics loadConfig) launchLocal
+    NodeManager.launchLocalAgent IngestAggregator onBehalfOf (Load.hasCapacityForAggregator slotCharacteristics loadConfig) launchLocal
   where
     launchLocal _ = do
       (note LaunchFailed <<< startOkAS) <$> startAggregator payload
 
-startLocalOrRemoteAggregator :: LoadConfig -> CreateAggregatorPayload -> Effect (ResourceResp Server)
-startLocalOrRemoteAggregator loadConfig payload@{streamDetails} =
+startLocalOrRemoteAggregator :: LoadConfig -> OnBehalfOf -> CreateAggregatorPayload -> Effect (ResourceResp Server)
+startLocalOrRemoteAggregator loadConfig onBehalfOf payload@{streamDetails} =
   let
     slotCharacteristics = slotDetailsToSlotCharacteristics streamDetails.slot
   in
-    NodeManager.launchLocalOrRemoteAgent IngestAggregator (Load.hasCapacityForAggregator slotCharacteristics loadConfig) launchLocal launchRemote
+    NodeManager.launchLocalOrRemoteAgent IngestAggregator onBehalfOf (Load.hasCapacityForAggregator slotCharacteristics loadConfig) launchLocal launchRemote
   where
     launchLocal _ = do
       (note LaunchFailed <<< startOkAS) <$> startAggregator payload

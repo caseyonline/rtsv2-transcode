@@ -1,8 +1,7 @@
 module Rtsv2.NodeManager
        ( startLink
        , getState
-       , runIfValidCanaryState
-       , launchIfValidCanaryState
+       , getAcceptingRequests
        , changeCanaryState
        , changeRunState
        , launchLocalAgent
@@ -18,12 +17,14 @@ import Data.FoldableWithIndex (foldlWithIndex)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (wrap)
 import Effect (Effect)
+import Erl.Atom (Atom)
+import Erl.Data.List (List, singleton)
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
 import Erl.Process.Raw (Pid)
 import Erl.Utils as ErlUtils
-import Foreign (Foreign)
-import Logger (spy)
+import Logger (Logger)
+import Logger as Logger
 import Pinto (ServerName, StartLinkResult, ok')
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
@@ -32,11 +33,12 @@ import Rtsv2.Config as Config
 import Rtsv2.LoadTypes (ServerSelectionPredicate)
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
+import Rtsv2.Types (LocalOrRemote(..), LocalResource(..), LocalResourceResp, ResourceFailed(..), ResourceResp)
 import Rtsv2.Utils (chainEither)
 import Shared.Rtsv2.Agent (Agent(..))
 import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.JsonLd as JsonLd
-import Shared.Rtsv2.Types (AcceptingRequests, Canary(..), CanaryStateChangeFailure(..), LocalOrRemote(..), ResourceFailed(..), ResourceResp, RunState(..), Server)
+import Shared.Rtsv2.Types (class CanaryType, AcceptingRequests, AgentSupStartArgs, CanaryState(..), CanaryStateChangeFailure(..), OnBehalfOf, RunState(..), RunStateChangeFailure(..), Server, canary)
 
 data Msg =
   AgentDown Agent
@@ -45,16 +47,19 @@ type State =
   { args :: StartArgs
   , thisServer :: Server
   , currentRunState :: RunState
-  , currentCanaryState :: Canary
+  , currentCanaryState :: CanaryState
   , agentCounts :: Map Agent Int
   , activeSupPid :: Pid
   }
+
+data RequestType = CanaryRequest CanaryState
+                 | OnBehalfOfRequest OnBehalfOf
 
 --------------------------------------------------------------------------------
 -- API
 --------------------------------------------------------------------------------
 type StartArgs =
-  { activeSupStartLink :: Canary -> Effect StartLinkResult
+  { activeSupStartLink :: AgentSupStartArgs -> Effect StartLinkResult
   }
 
 startLink :: StartArgs -> Effect StartLinkResult
@@ -90,32 +95,20 @@ getState =
     CallReply (JsonLd.nodeManagerStateNode publicState thisServer) state
   )
 
-getCanaryState :: Effect Canary
+getAcceptingRequests :: Effect AcceptingRequests
+getAcceptingRequests =
+  Gen.call serverName (\state -> CallReply (acceptingRequests state.currentRunState) state)
+
+getCanaryState :: Effect CanaryState
 getCanaryState =
   Gen.call serverName (\state@{currentCanaryState} -> CallReply currentCanaryState state)
 
-launchIfValidCanaryState :: forall a. Canary -> Effect (ResourceResp a) -> Effect (ResourceResp a)
-launchIfValidCanaryState canary launch =
-  foo <$> runIfValidCanaryState canary launch
-  where
-    foo (Left err) = Left err
-    foo (Right err@(Left _)) = err
-    foo (Right ok@(Right _)) = ok
-
-runIfValidCanaryState :: forall a. Canary -> Effect a -> Effect (Either ResourceFailed a)
-runIfValidCanaryState canary launch = do
-  currentCanary <- getCanaryState
-  if canary == currentCanary then
-    Right <$> launch
-  else
-    pure $ Left InvalidCanaryState
-
-changeCanaryState :: Canary -> Effect (Either CanaryStateChangeFailure Unit)
+changeCanaryState :: CanaryState -> Effect (Either CanaryStateChangeFailure Unit)
 changeCanaryState newCanary =
   Gen.doCall serverName doChange
   where
     doChange state@{currentCanaryState} | currentCanaryState == newCanary =
-      pure $ CallReply (Left InvalidStateTransition) state
+      pure $ CallReply (Left InvalidCanaryStateTransition) state
 
     doChange state@{agentCounts, activeSupPid, args: {activeSupStartLink}} =
       let
@@ -125,41 +118,49 @@ changeCanaryState newCanary =
           totalAgents > 0 then
             pure $ CallReply (Left ActiveAgents) state
         else do
+          _ <- logInfo "CanaryState changed" { old: state.currentCanaryState
+                                             , new: newCanary}
           ErlUtils.shutdown activeSupPid
-          newActiveSupPid <- (ok' =<< (activeSupStartLink newCanary))
+          newActiveSupPid <- (ok' =<< (activeSupStartLink {canaryState: newCanary, acceptingRequestsFun: getAcceptingRequests}))
           pure $ CallReply (Right unit) state{ currentCanaryState = newCanary
                                              , activeSupPid = newActiveSupPid }
 
-changeRunState :: RunState -> Effect (Either Unit Unit)
+changeRunState :: RunState -> Effect (Either RunStateChangeFailure Unit)
 changeRunState newRunState =
   Gen.doCall serverName doChange
   where
+    doChange state@{currentRunState} | currentRunState == OutOfService, newRunState == PassiveDrain = pure $ CallReply (Left InvalidRunStateTransition) state
+    doChange state@{currentRunState} | currentRunState == OutOfService, newRunState == ForceDrain = pure $ CallReply (Left InvalidRunStateTransition) state
     doChange state = do
       let
         state2 = state{ currentRunState = newRunState }
-      IntraPoP.announceAcceptingRequests $ acceptingRequests state
+      _ <- logInfo "RunState changed" { old: state.currentRunState
+                                      , new: newRunState}
+      IntraPoP.announceAcceptingRequests $ acceptingRequests newRunState
       pure $ CallReply (Right unit) state2
 
-launchLocalAgent :: Agent -> ServerSelectionPredicate -> (Server -> Effect (Either ResourceFailed Pid)) -> Effect (ResourceResp Server)
-launchLocalAgent agent pred launchLocalFun = do
+launchLocalAgent :: forall canary. CanaryType canary => Agent -> canary -> ServerSelectionPredicate -> (Server -> Effect (Either ResourceFailed Pid)) -> Effect (LocalResourceResp Server)
+launchLocalAgent agent canaryStream pred launchLocalFun = do
   idleServerResp <- IntraPoP.getThisIdleServer pred
-  chainEither (launchAndUpdateState agent launchLocalFun) idleServerResp
+  chainEither (launchAndUpdateState agent canaryStream launchLocalFun) idleServerResp
 
-launchLocalOrRemoteAgent :: Agent -> ServerSelectionPredicate -> (Server -> Effect (Either ResourceFailed Pid)) -> (Server -> Effect Boolean) -> Effect (ResourceResp Server)
-launchLocalOrRemoteAgent agent pred launchLocalFun launchRemoteFun = do
+launchLocalOrRemoteAgent :: forall canary. CanaryType canary => Agent -> canary -> ServerSelectionPredicate -> (Server -> Effect (Either ResourceFailed Pid)) -> (Server -> Effect Boolean) -> Effect (ResourceResp Server)
+launchLocalOrRemoteAgent agent canaryStream pred launchLocalFun launchRemoteFun = do
   canary <- getCanaryState
   case canary of
-    Canary -> launchLocalAgent agent pred launchLocalFun
+    Canary -> (map toLocalAndRemote) <$> launchLocalAgent agent canaryStream pred launchLocalFun
     Live -> do
       idleServerResp <- IntraPoP.getIdleServer pred
       chainEither launch idleServerResp
       where
-        launch (Local thisServer) = launchAndUpdateState agent launchLocalFun thisServer
+        launch :: LocalOrRemote Server -> Effect (ResourceResp Server)
+        launch (Local thisServer) = (map toLocalAndRemote) <$> launchAndUpdateState agent canaryStream launchLocalFun thisServer
         launch (Remote remote) = do
           resp <- launchRemoteFun remote
           pure $ if resp then Right (Remote remote)
                  else Left LaunchFailed
-
+  where
+    toLocalAndRemote (LocalResource _pid a) = Local a
 --------------------------------------------------------------------------------
 -- Gen-server callbacks
 --------------------------------------------------------------------------------
@@ -168,7 +169,7 @@ init args@{activeSupStartLink} = do
   { initialRunState
   , initialCanaryState } <- Config.nodeManagerConfig
   thisServer <- PoPDefinition.getThisServer
-  activeSupPid <- (ok' =<< (activeSupStartLink initialCanaryState))
+  activeSupPid <- (ok' =<< (activeSupStartLink {canaryState: initialCanaryState, acceptingRequestsFun: getAcceptingRequests}))
 
   let
     state = { args
@@ -178,15 +179,25 @@ init args@{activeSupStartLink} = do
             , agentCounts: Map.empty
             , activeSupPid
             }
-  IntraPoP.announceAcceptingRequests $ acceptingRequests state
+  IntraPoP.announceAcceptingRequests $ acceptingRequests initialRunState
 
   pure state
 
 handleInfo :: Msg -> State -> Effect (CastResult State)
-handleInfo msg state@{agentCounts} =
+handleInfo msg state@{agentCounts, currentRunState} =
   case msg of
-    AgentDown agent ->
-      pure $ CastNoReply state{agentCounts = Map.alter decrementAgentCount agent agentCounts}
+    AgentDown agent -> do
+      let
+        newAgentCounts = Map.alter decrementAgentCount agent agentCounts
+      newRunState <- if (Map.size newAgentCounts) == 0 && (currentRunState == PassiveDrain || currentRunState == ForceDrain) then do
+                      _ <- logInfo "RunState changed" { old: state.currentRunState
+                                                      , new: OutOfService}
+                      IntraPoP.announceAcceptingRequests $ acceptingRequests OutOfService
+                      pure OutOfService
+                    else
+                      pure currentRunState
+      pure $ CastNoReply state{ agentCounts = newAgentCounts
+                              , currentRunState = newRunState}
   where
     decrementAgentCount Nothing = Nothing
     decrementAgentCount (Just 1) = Nothing
@@ -198,22 +209,34 @@ handleInfo msg state@{agentCounts} =
 serverName :: ServerName State Msg
 serverName = Names.nodeManagerServerName
 
-acceptingRequests :: State -> AcceptingRequests
-acceptingRequests { currentRunState } =
+acceptingRequests :: RunState -> AcceptingRequests
+acceptingRequests currentRunState =
   wrap $ currentRunState == Active
 
-launchAndUpdateState :: Agent -> (Server -> Effect (Either ResourceFailed Pid)) -> Server -> Effect (ResourceResp Server)
-launchAndUpdateState agent launchFun thisServer =
-  Gen.doCall serverName
-  (\state@{agentCounts} ->  do
+launchAndUpdateState :: forall canary. CanaryType canary => Agent -> canary -> (Server -> Effect (Either ResourceFailed Pid)) -> Server -> Effect (LocalResourceResp Server)
+launchAndUpdateState agent canaryStream launchFun thisServer =
+  Gen.doCall serverName doLaunchAndUpdateState
+  where
+    doLaunchAndUpdateState state@{currentRunState} | currentRunState /= Active =
+      pure $ CallReply (Left InvalidRunState) state
+
+    doLaunchAndUpdateState state@{currentCanaryState} | currentCanaryState /= canary currentCanaryState canaryStream =
+      pure $ CallReply (Left InvalidCanaryState) state
+
+    doLaunchAndUpdateState state@{agentCounts} = do
       launchResp <- launchFun thisServer
       either (failure state) (success state) launchResp
-  )
-  where
+
     success state@{agentCounts} pid = do
       Gen.monitorPid serverName pid (\_ -> AgentDown agent)
-      pure $ CallReply (Right (Local thisServer)) state{agentCounts = Map.alter incrementAgentCount agent agentCounts}
+      pure $ CallReply (Right (LocalResource pid thisServer)) state{agentCounts = Map.alter incrementAgentCount agent agentCounts}
     failure state reason =
       pure $ CallReply (Left reason) state
     incrementAgentCount Nothing = Just 1
     incrementAgentCount (Just n) = Just (n + 1)
+
+domains :: List Atom
+domains = serverName # Names.toDomain # singleton
+
+logInfo :: forall a. Logger (Record a)
+logInfo = Logger.doLog domains Logger.info

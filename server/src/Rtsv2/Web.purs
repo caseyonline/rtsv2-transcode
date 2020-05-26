@@ -46,13 +46,14 @@ import Rtsv2.Handler.StreamDiscovery as StreamDiscoveryHandler
 import Rtsv2.Handler.TransPoP as TransPoPHandler
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
+import Rtsv2.Types (LocationResp, RegistrationResp)
 import Serf (Ip(..))
 import Shared.Rtsv2.LlnwApiTypes (StreamDetails)
 import Shared.Rtsv2.Router.Endpoint.Public as Public
 import Shared.Rtsv2.Router.Endpoint.Support as Support
 import Shared.Rtsv2.Router.Endpoint.System as System
 import Shared.Rtsv2.Stream (EgestKey(..), IngestKey(..), ProfileName, RtmpShortName, RtmpStreamName, SlotId, SlotRole(..))
-import Shared.Rtsv2.Types (Canary(..), Server, LocationResp, RegistrationResp, extractAddress)
+import Shared.Rtsv2.Types (CanaryState(..), Server, extractAddress)
 import Shared.UUID (UUID, fromString)
 import Shared.UUID as UUID
 import Stetson (RestResult, StaticAssetLocation(..))
@@ -201,7 +202,17 @@ init args = do
                                          true
                                    })
 
-      -- CanaryClientPlayerControlE Canary SlotId
+      -- ClientPlayerControlE Canary SlotId
+      : cowboyRoute ("/public/client/" <> slotIdBinding <> "/" <> slotRoleBinding <> "/session")
+                    "rtsv2_player_ws_resource"
+                    (playerControlArgs loadConfig mediaGateway Live)
+
+      -- ClientWebRTCIngestContorlE SlotId SlotRole
+      : cowboyRoute ("/public/ingest/" <> accountBinding <> "/" <> streamNameBinding <> "/session")
+                    "rtsv2_webrtc_push_ingest_ws_resource"
+                    (ingestControlArgs thisServer loadConfig Live)
+
+      -- CanaryClientPlayerControlE SlotId SlotRole
       : cowboyRoute ("/support/canary/client/" <> slotIdBinding <> "/" <> slotRoleBinding <> "/session")
                     "rtsv2_player_ws_resource"
                     (playerControlArgs loadConfig mediaGateway Canary)
@@ -297,7 +308,7 @@ init args = do
     slotIdStringToSlotId slotIdStr =
       wrap $ fromMaybe UUID.empty (fromString slotIdStr)
 
-    startStream :: Config.LoadConfig -> Canary -> EgestKey -> Effect LocationResp
+    startStream :: Config.LoadConfig -> CanaryState -> EgestKey -> Effect LocationResp
     startStream loadConfig canary (EgestKey slotId slotRole) =
         EgestInstanceSup.findEgest loadConfig canary slotId slotRole
 

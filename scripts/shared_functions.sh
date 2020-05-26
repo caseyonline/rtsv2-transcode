@@ -95,7 +95,6 @@ function start_node {
   mkdir -p "logs/$nodeName"
   touch "logs/$nodeName/t-serf.log"
 
-
   tmux -L "$tmuxSession" send-keys " export HOSTNAME=$addr" C-m
   tmux -L "$tmuxSession" send-keys " serf agent -iface $iface -node $nodeName -bind $addr:7946 -rpc-addr $addr:7373 | tee -a logs/$nodeName/i-serf.log | grep -v 'Accepted client' | grep -v 'liveness' | grep -v 'transPoPLeader'" C-m
   tmux -L "$tmuxSession" split-window -h -p 80
@@ -104,12 +103,13 @@ function start_node {
   tmux -L "$tmuxSession" split-window -h -p 50
   tmux -L "$tmuxSession" send-keys " export HOSTNAME=$addr" C-m
   tmux -L "$tmuxSession" split-window -h -p 50
+  tmux -L "$tmuxSession" send-keys " export PS1='> '" C-m
   tmux -L "$tmuxSession" send-keys " export HOSTNAME=$addr" C-m
   tmux -L "$tmuxSession" send-keys " export PRIVATE_IFACE=$iface" C-m
   tmux -L "$tmuxSession" send-keys " export PUBLIC_IFACE=$iface" C-m
   tmux -L "$tmuxSession" send-keys " export DISK_LOG_ROOT=$(pwd)/logs/$nodeName" C-m
   tmux -L "$tmuxSession" send-keys " export LD_LIBRARY_PATH=$(pwd)/_build/default/lib/id3as_media/priv" C-m
-  tmux -L "$tmuxSession" send-keys " until \$(serf info --rpc-addr \$HOSTNAME:7373 >/dev/null 2>&1); do printf '.'; sleep 0.5; done" C-m
+  tmux -L "$tmuxSession" send-keys " until (serf info --rpc-addr \$HOSTNAME:7373); do printf '.'; sleep 0.5; done" C-m
   tmux -L "$tmuxSession" send-keys " erl +sbwt none +sbwtdcpu none +sbwtdio none -pa _build/default/lib/*/ebin -config $sysConfig -rtsv2 id '\"rtsv2TestRunner$nodeName\"' -eval 'application:ensure_all_started(rtsv2).'" C-m
 }
 

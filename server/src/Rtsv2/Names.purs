@@ -20,6 +20,7 @@ module Rtsv2.Names
        , ingestStatsName
        , egestStatsName
        , ingestSupName
+       , ingestOneForOneSupName
        , intraPoPName
        , loadServerName
        , nodeManagerServerName
@@ -102,6 +103,9 @@ egestStatsName = withSuffix "Stats" Egest
 ingestSupName :: SupervisorName
 ingestSupName = sup Ingest
 
+ingestOneForOneSupName :: SupervisorName
+ingestOneForOneSupName = supWithSuffix "OneForOne" Ingest
+
 intraPoPName :: forall a b. ServerName a b
 intraPoPName = localName IntraPoP
 
@@ -159,6 +163,9 @@ gprocInstanceSup t = gprocName <<< tuple2 ((show t) <> "InstanceSup")
 
 sup :: forall a. Show a => a -> SupervisorName
 sup = withSuffix "Sup"
+
+supWithSuffix :: forall a. Show a => String -> a -> SupervisorName
+supWithSuffix suffix = withSuffix (suffix <> "Sup")
 
 gprocName :: forall t a b. t -> ServerName a b
 gprocName term =

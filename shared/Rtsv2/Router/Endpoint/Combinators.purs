@@ -10,7 +10,7 @@ import Data.Newtype (class Newtype, unwrap, wrap)
 import Data.String (Pattern(..), split)
 import Routing.Duplex (RouteDuplex', as)
 import Shared.Rtsv2.Stream (ProfileName, RtmpShortName, RtmpStreamName, SlotId, SlotRole(..))
-import Shared.Rtsv2.Types (Canary(..), JsonLdContextType(..), PoPName(..), ServerAddress, SourceRoute, Username(..))
+import Shared.Rtsv2.Types (CanaryState(..), JsonLdContextType(..), PoPName(..), ServerAddress, SourceRoute, Username(..))
 import Shared.UUID (fromString)
 
 
@@ -125,15 +125,15 @@ parseUsername str = Just (Username str)
 userNametoString :: Username -> String
 userNametoString (Username str) = str
 
--- | Canary
-parseCanary :: String -> Maybe Canary
-parseCanary "live"  = Just Live
-parseCanary "canary"  = Just Canary
-parseCanary _ = Nothing
+-- | CanaryState
+parseCanaryState :: String -> Maybe CanaryState
+parseCanaryState "live"  = Just Live
+parseCanaryState "canary"  = Just Canary
+parseCanaryState _ = Nothing
 
-canaryToString :: Canary -> String
-canaryToString Live = "live"
-canaryToString Canary = "canary"
+canaryStateToString :: CanaryState -> String
+canaryStateToString Live = "live"
+canaryStateToString Canary = "canary"
 
 -- | This combinator transforms a codec over `String` into one that operates on the `ContextType` type.
 contextType :: RouteDuplex' String -> RouteDuplex' JsonLdContextType
@@ -176,8 +176,8 @@ shortName :: RouteDuplex' String -> RouteDuplex' RtmpShortName
 shortName = as shortNameToString (parseRtmpShortName >>> note "Bad RtmpShortName")
 
 -- | This combinator transforms a codec over `String` into one that operates on the `Canary` type.
-canary :: RouteDuplex' String -> RouteDuplex' Canary
-canary = as canaryToString (parseCanary >>> note "Bad CanaryId")
+canary :: RouteDuplex' String -> RouteDuplex' CanaryState
+canary = as canaryStateToString (parseCanaryState >>> note "Bad CanaryId")
 
 uName :: RouteDuplex' String -> RouteDuplex' Username
 uName = as userNametoString (parseUsername >>> note "Bad username")

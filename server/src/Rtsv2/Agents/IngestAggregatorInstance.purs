@@ -82,7 +82,7 @@ import Foreign (Foreign)
 import Logger (Logger)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult, isRegistered)
-import Pinto.Gen (CallResult(..), CastResult(..))
+import Pinto.Gen (CallResult(..), CastResult(..), TerminateReason)
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
@@ -537,7 +537,7 @@ attemptConnectionToBackup state@{dataObjectState: Left {connectionToBackup: Just
   -- No need to attempt connection since we have a connection
   pure $ state
 
-attemptConnectionToBackup state@{slotId, slotRole, dataObjectState: Left dos@{}} = do
+attemptConnectionToBackup state@{slotId, slotRole, aggregatorKey, dataObjectState: Left dos@{}} = do
   let
     peerKey = AggregatorKey slotId Backup
   mPeerAggregator <- IntraPoP.whereIsIngestAggregator peerKey
@@ -549,7 +549,7 @@ attemptConnectionToBackup state@{slotId, slotRole, dataObjectState: Left dos@{}}
 
     Just peerAggregator -> do
       peerWsUrl <- System.makeWsUrl peerAggregator $ System.IngestAggregatorBackupWs slotId Backup
-      mPeerWebSocket <- hush <$> WsGun.openWebSocket peerWsUrl
+      mPeerWebSocket <- hush <$> WsGun.openWebSocket (serverName aggregatorKey) Gun peerWsUrl
       case mPeerWebSocket of
         Nothing -> do
           -- We have a peer but failed to connect - start timer to retry
@@ -563,7 +563,7 @@ attemptConnectionToBackup state = do
   -- No need to attempt connection since are backup!
   pure $ state
 
-terminate :: Foreign -> State -> Effect Unit
+terminate :: TerminateReason -> State -> Effect Unit
 terminate reason state@{workflowHandle, webRtcStreamServers} = do
   logInfo "Ingest aggregator terminating" {reason}
   stopWorkflowImpl workflowHandle

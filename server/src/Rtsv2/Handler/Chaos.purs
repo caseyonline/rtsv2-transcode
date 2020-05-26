@@ -19,7 +19,7 @@ chaos :: PostHandler ChaosPayload
 chaos = processPostPayload (\p@{name} -> (const $ (Right unit :: Either Unit Unit)) <$> chaosImpl p (chaosNameToErlang name))
 
 chaosNameToErlang :: ChaosName -> Foreign
-chaosNameToErlang (Local string) = unsafeToForeign string
+chaosNameToErlang (Local string) = unsafeToForeign (atom string)
 chaosNameToErlang (Gproc gprocName) = unsafeToForeign $ tuple3 (atom "n") (atom "l") (chaosGprocNameToErlang gprocName)
 
 chaosGprocNameToErlang :: ChaosGprocName -> Foreign

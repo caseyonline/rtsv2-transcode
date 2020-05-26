@@ -18,19 +18,16 @@
 
 init(Rtmp, ConnectArgs, [#{ init := OnConnectCallback  }]) ->
 
-  {_, TcUrl} = lists:keyfind("tcUrl", 1, ConnectArgs),
+  {_, AppArg} = lists:keyfind("app", 1, ConnectArgs),
 
-  #rtmp_parsed_url{
-     connection_config = #rtmp_connection_config{
-                            host = Host
-                           },
-     app_config = #rtmp_app_config{
-                     application = ShortName
-                    },
-     query = Query
-    } = rtmp_utils:parse_url(TcUrl),
+  [ShortName | Rem] = string:split(AppArg, "?"),
 
-  Response = (OnConnectCallback(Host, ShortName, Query))(),
+  Query = case Rem of
+            [] -> #{};
+            [QueryString] -> maps:from_list(rtmp_utils:parse_qs(list_to_binary(QueryString)))
+          end,
+
+  Response = (OnConnectCallback(list_to_binary(ShortName), Query))(),
 
   case Response of
     {rejectRequest} ->

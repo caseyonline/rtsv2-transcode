@@ -113,7 +113,7 @@ import Shared.JsonLd (ContextDefinition(..))
 import Shared.Rtsv2.LlnwApiTypes (StreamDetails)
 import Shared.Rtsv2.Router.Endpoint.Support as Support
 import Shared.Rtsv2.Stream (EgestKey, ProfileName, SlotId, SlotRole)
-import Shared.Rtsv2.Types (Canary, CurrentLoad, DeliverTo, JsonLdContextType(..), PoPName, RelayServer, RunState, Server, ServerAddress)
+import Shared.Rtsv2.Types (CanaryState, CurrentLoad, DeliverTo, JsonLdContextType(..), PoPName, RelayServer, RunState, Server, ServerAddress)
 import Shared.Rtsv2.Types as Types
 import Shared.Types.Media.Types.Rtmp (RtmpClientMetadata)
 import Shared.Types.Media.Types.SourceDetails (SourceInfo)
@@ -507,7 +507,7 @@ type NodeManagerStateContextFields = ( runState :: JsonLd.ContextValue
 
 type NodeManagerState
   = { runState :: RunState
-    , canaryState :: Canary
+    , canaryState :: CanaryState
     , ingests :: Int
     , ingestAggregators :: Int
     , streamRelays :: Int

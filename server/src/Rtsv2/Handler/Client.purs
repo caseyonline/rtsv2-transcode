@@ -30,10 +30,11 @@ import Rtsv2.Audit as Audit
 import Rtsv2.Config (LoadConfig)
 import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.PoPDefinition as PoPDefinition
+import Rtsv2.Types (LocalOrRemote(..))
 import Rtsv2.Utils (cryptoStrongToken)
 import Shared.Rtsv2.Router.Endpoint.System as System
 import Shared.Rtsv2.Stream (EgestKey(..), SlotId, SlotRole)
-import Shared.Rtsv2.Types (Canary, FailureReason(..), LocalOrRemote(..), Server, extractAddress)
+import Shared.Rtsv2.Types (CanaryState, FailureReason(..), Server, extractAddress)
 import Stetson (HttpMethod(..), RestResult, StetsonHandler)
 import Stetson.Rest as Rest
 
@@ -41,7 +42,7 @@ newtype ClientStartState = ClientStartState { clientId :: String
                                             , egestResp :: (Either FailureReason (LocalOrRemote Server))
                                             }
 
-clientStart :: LoadConfig -> Canary -> SlotId -> SlotRole -> StetsonHandler ClientStartState
+clientStart :: LoadConfig -> CanaryState -> SlotId -> SlotRole -> StetsonHandler ClientStartState
 clientStart loadConfig canary slotId slotRole =
   Rest.handler init
   # Rest.allowedMethods (Rest.result (POST : mempty))

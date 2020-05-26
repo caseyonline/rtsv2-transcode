@@ -16,7 +16,7 @@ import Shared.Rtsv2.Router.Endpoint.Support as Support
 import Shared.Rtsv2.Router.Endpoint.Public as Public
 import Shared.Rtsv2.Router.Endpoint.System as System
 import Shared.Rtsv2.Stream (RtmpShortName, SlotId, SlotNameAndProfileName(..), SlotRole(..), RtmpStreamName, ProfileName)
-import Shared.Rtsv2.Types (Canary(..), CurrentLoad(..), ServerAddress(..))
+import Shared.Rtsv2.Types (CanaryState(..), RunState(..), CurrentLoad(..), ServerAddress(..))
 import Simple.JSON as SimpleJSON
 import Toppokki as T
 
@@ -61,7 +61,7 @@ healthCheck :: Node -> Aff (Either String ResWithBody)
 healthCheck node =
   get (M.URL $ C.makeUrlAndUnwrapSupport node Support.HealthCheckE)
 
-changeCanaryState :: Node -> Canary -> Aff (Either String ResWithBody)
+changeCanaryState :: Node -> CanaryState -> Aff (Either String ResWithBody)
 changeCanaryState node canary =
   fetch (M.URL $ C.makeUrlAndUnwrapSupport node Support.CanaryE)
         { method: M.postMethod
@@ -69,7 +69,15 @@ changeCanaryState node canary =
         , headers: M.makeHeaders { "Content-Type": "application/json" }
         }
 
-clientStart :: Node -> Canary -> SlotId -> Aff (Either String ResWithBody)
+changeRunState :: Node -> RunState -> Aff (Either String ResWithBody)
+changeRunState node runState =
+  fetch (M.URL $ makeUrlAndUnwrap node RunStateE)
+        { method: M.postMethod
+        , body: SimpleJSON.writeJSON runState
+        , headers: M.makeHeaders { "Content-Type": "application/json" }
+        }
+
+clientStart :: Node -> CanaryState -> SlotId -> Aff (Either String ResWithBody)
 clientStart node canary slotId =
   fetch (M.URL $ C.makeUrlAndUnwrapSystem node (System.ClientStartE canary slotId Primary))
         { method: M.postMethod
@@ -131,7 +139,7 @@ getStatsSystem node route = get (M.URL $ C.makeUrlAndUnwrapSystem node route)
 getEgestStats :: Node -> SlotId -> Aff (Either String ResWithBody)
 getEgestStats node slotId = getStats node (Support.EgestStatsE slotId Primary)
 
-ingestStart :: Node -> Canary -> RtmpShortName -> RtmpStreamName -> Aff (Either String ResWithBody)
+ingestStart :: Node -> CanaryState -> RtmpShortName -> RtmpStreamName -> Aff (Either String ResWithBody)
 ingestStart node canary shortName streamName =
   get (M.URL $ C.makeUrlAndUnwrapSystem node (System.IngestStartE canary shortName streamName))
 

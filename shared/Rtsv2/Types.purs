@@ -1,7 +1,12 @@
 module Shared.Rtsv2.Types
-       ( DeliverTo(..)
-       , Canary(..)
+       ( AgentSupStartArgs
+       , DeliverTo(..)
+       , CanaryState(..)
+       , class CanaryType
+       , canary
        , CanaryStateChangeFailure(..)
+       , RunStateChangeFailure(..)
+       , OnBehalfOf(..)
        , RunState(..)
        , GeoLoc(..)
        , LeaderGeoLoc(..)
@@ -24,14 +29,8 @@ module Shared.Rtsv2.Types
        , SpecInt(..)
        , NetworkKbps(..)
        , Percentage(..)
-       , LocationResp
        , FailureReason(..)
-       , LocalOrRemote(..)
-       , ResourceResp(..)
-       , ResourceFailed(..)
-       , RegistrationResp(..)
 
-       , fromLocalOrRemote
        , toServerLoad
        , toServerLocation
        , serverLoadToServer
@@ -46,7 +45,7 @@ module Shared.Rtsv2.Types
 import Prelude
 
 import Control.Monad.Except (except)
-import Data.Either (Either, note)
+import Data.Either (note)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Eq (genericEq)
 import Data.Generic.Rep.Show (genericShow)
@@ -54,7 +53,8 @@ import Data.List.NonEmpty (singleton)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype, unwrap, wrap)
 import Data.Symbol (SProxy(..))
-import Foreign (Foreign, ForeignError(..), readString, unsafeToForeign)
+import Effect (Effect)
+import Foreign (ForeignError(..), readString, unsafeToForeign)
 import Record as Record
 import Shared.Rtsv2.Agent (Agent)
 import Shared.Rtsv2.Stream (SlotId)
@@ -77,15 +77,23 @@ data JsonLdContextType = ServerContext
                        | NodeManagerStateContext
                        | HealthContext
 
-data Canary = Live
-            | Canary
+class CanaryType a where
+  canary :: CanaryState -> a -> CanaryState
 
-data CanaryStateChangeFailure = InvalidStateTransition
+data CanaryState = Live
+                 | Canary
+
+instance canaryCanaryType :: CanaryType CanaryState where canary _ x = x
+
+data CanaryStateChangeFailure = InvalidCanaryStateTransition
                               | ActiveAgents
+
 data RunState = Active
               | PassiveDrain
               | ForceDrain
-              | OutOfOperation
+              | OutOfService
+
+data RunStateChangeFailure = InvalidRunStateTransition
 
 data Health = Perfect
             | Excellent
@@ -93,6 +101,14 @@ data Health = Perfect
             | Poor
             | Critical
             | NA
+
+data OnBehalfOf = LocalAgent
+                | RemoteAgent
+
+instance onBehalfOfCanaryType :: CanaryType OnBehalfOf
+  where
+    canary currentCanaryState LocalAgent = currentCanaryState
+    canary _currentCanaryState RemoteAgent = Live
 
 newtype ServerAddress = ServerAddress String
 
@@ -109,6 +125,11 @@ newtype CurrentLoad = CurrentLoad { cpu :: Percentage
                                   }
 
 newtype AcceptingRequests = AcceptingRequests Boolean
+
+type AgentSupStartArgs =
+  { canaryState :: CanaryState
+  , acceptingRequestsFun :: Effect AcceptingRequests
+  }
 
 newtype ServerLocation = ServerLocation { pop :: PoPName
                                         , region :: RegionName
@@ -142,29 +163,10 @@ data FailureReason
 instance semigroupFailureReason :: Semigroup FailureReason where
   append lhs rhs = rhs
 
-data LocalOrRemote a
-  = Local a
-  | Remote a
-derive instance functorLocalOrRemoteF :: Functor LocalOrRemote
-
-type LocationResp = (Either FailureReason (LocalOrRemote Server))
-
-fromLocalOrRemote :: forall a. LocalOrRemote a -> a
-fromLocalOrRemote (Local a) = a
-fromLocalOrRemote (Remote a) = a
 
 --------------------------------------------------------------------------------
 -- API Types - maybe move me
 --------------------------------------------------------------------------------
-type ResourceResp a = Either ResourceFailed (LocalOrRemote a)
-
-data ResourceFailed = NoCapacity
-                    | LaunchFailed
-                    | InvalidCanaryState
-                    | AlreadyRunning
-
-type RegistrationResp = (Either FailureReason Unit)
-
 
 toServerLoad :: Server -> CurrentLoad -> AcceptingRequests -> ServerLoad
 toServerLoad  (Server ls) load acceptingRequests =
@@ -198,14 +200,14 @@ maxLoad = CurrentLoad { cpu: wrap 100.0
 ------------------------------------------------------------------------------
 
 ------------------------------------------------------------------------------
--- Canary
-instance showCanary :: Show Canary where
+-- CanaryState
+instance showCanary :: Show CanaryState where
   show Live   = "live"
   show Canary = "canary"
 
-derive instance genericCanary :: Generic Canary _
-instance eqCanary :: Eq Canary where eq = genericEq
-instance readForeignCanary :: ReadForeign Canary where
+derive instance genericCanaryState :: Generic CanaryState _
+instance eqCanaryState :: Eq CanaryState where eq = genericEq
+instance readForeignCanaryState :: ReadForeign CanaryState where
   readImpl = readString >=> parseString
     where
       error s = singleton (ForeignError (errorString s))
@@ -215,7 +217,7 @@ instance readForeignCanary :: ReadForeign Canary where
       toType unknown = Nothing
       errorString s = "Unknown Canary: " <> s
 
-instance writeForeignCanary :: WriteForeign Canary where
+instance writeForeignCanaryState :: WriteForeign CanaryState where
   writeImpl = toString >>> unsafeToForeign
     where
       toString Live = "live"
@@ -225,6 +227,11 @@ instance writeForeignCanary :: WriteForeign Canary where
 -- CanaryStateChangeFailure
 derive instance genericCanaryStateChangeFailure :: Generic CanaryStateChangeFailure _
 instance showCanaryStateChangeFailure :: Show CanaryStateChangeFailure where show = genericShow
+
+------------------------------------------------------------------------------
+-- RunStateChangeFailure
+derive instance genericRunStateChangeFailure :: Generic RunStateChangeFailure _
+instance showRunStateChangeFailure :: Show RunStateChangeFailure where show = genericShow
 
 ------------------------------------------------------------------------------
 -- RunState
@@ -239,7 +246,7 @@ instance readForeignRunState :: ReadForeign RunState where
       toType "active" = pure Active
       toType "passiveDrain" = pure PassiveDrain
       toType "forceDrain" = pure ForceDrain
-      toType "outOfOperation" = pure OutOfOperation
+      toType "outOfService" = pure OutOfService
       toType unknown = Nothing
       errorString s = "Unknown RunState: " <> s
 
@@ -249,17 +256,12 @@ instance writeForeignRunState :: WriteForeign RunState where
       toString Active = "active"
       toString PassiveDrain = "passiveDrain"
       toString ForceDrain = "forceDrain"
-      toString OutOfOperation = "outOfOperation"
+      toString OutOfService = "outOfService"
 
 ------------------------------------------------------------------------------
 -- JsonLdContextType
 derive instance genericJsonLdContextType :: Generic JsonLdContextType _
 instance showJsonLdContextType :: Show JsonLdContextType where show = genericShow
-
-------------------------------------------------------------------------------
--- ResourceFailed
-derive instance genericResourceFailed :: Generic ResourceFailed _
-instance showResourceFailed :: Show ResourceFailed where show = genericShow
 
 ------------------------------------------------------------------------------
 -- ServerAddress

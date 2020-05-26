@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -e
 
+find . -name "*.beam" | xargs rm
+rm -rf server/output
+rm -rf server/compiled_ps
+rebar3 compile
 rebar3 vir "${@}" release
 
 if [[ -e _etwas ]]

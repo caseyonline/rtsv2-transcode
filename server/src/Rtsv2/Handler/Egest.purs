@@ -21,12 +21,12 @@ import Rtsv2.Handler.MimeType as MimeType
 import Shared.Rtsv2.JsonLd (EgestStats, EgestSessionStats)
 import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Rtsv2.Stream (EgestKey(..), SlotId, SlotRole)
-import Shared.Rtsv2.Types (Server)
+import Shared.Rtsv2.Types (OnBehalfOf(..), Server)
 import Simple.JSON (writeJSON)
 import StetsonHelper (GetHandler, PostHandler, multiMimeResponse, processPostPayload)
 
 startResource :: LoadConfig -> PostHandler CreateEgestPayload
-startResource loadConfig = processPostPayload (EgestInstanceSup.startLocalEgest loadConfig)
+startResource loadConfig = processPostPayload (EgestInstanceSup.startLocalEgest loadConfig RemoteAgent)
 
 -- TODO: Vince - needed to return an Effect when calling statsToJson
 egestInstancesMetrics :: Server -> GetHandler (List (EgestStats List))

@@ -1,6 +1,5 @@
-module Rtsv2.Agents.IngestSup
-  ( isAgentAvailable
-  , startLink
+module Rtsv2.Agents.IngestOneForOneSup
+  ( startLink
   ) where
 
 import Prelude
@@ -11,16 +10,15 @@ import Pinto (SupervisorName)
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStart, childType)
 import Pinto.Sup as Sup
-import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
-import Rtsv2.Agents.IngestOneForOneSup as IngestOneForOneSup
-import Rtsv2.Agents.IngestRtmpServer as IngestRtmpServer
+import Rtsv2.Agents.IngestRtmpCrypto as IngestRtmpCrypto
+import Rtsv2.Agents.IngestStats as IngestStats
 import Rtsv2.Names as Names
 
 isAgentAvailable :: Effect Boolean
 isAgentAvailable = Pinto.isRegistered serverName
 
 serverName :: SupervisorName
-serverName = Names.ingestSupName
+serverName = Names.ingestOneForOneSupName
 
 startLink :: forall a. a -> Effect Pinto.StartLinkResult
 startLink _ = Sup.startLink serverName init
@@ -32,20 +30,14 @@ init = do
     # Sup.supervisorChildren
         ( ( buildChild
               # childType Worker
-              # childId "ingestRtmpServer"
-              # childStart IngestRtmpServer.startLink unit
-              # childRestart Transient
-            )
-          : ( buildChild
-              # childType Supervisor
-              # childId "ingestOneForOne"
-              # childStart IngestOneForOneSup.startLink unit
+              # childId "ingestRtmpCrypto"
+              # childStart IngestRtmpCrypto.startLink unit
               # childRestart Transient
           )
           : ( buildChild
-              # childType Supervisor
-              # childId "ingestAgentInstance"
-              # childStart IngestInstanceSup.startLink unit
+              # childType Worker
+              # childId "ingestStatsServer"
+              # childStart IngestStats.startLink unit
               # childRestart Transient
           )
             : nil
