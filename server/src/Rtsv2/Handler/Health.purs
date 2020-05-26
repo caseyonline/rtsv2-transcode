@@ -48,4 +48,4 @@ healthCheck =
 foreign import vmMetricsImpl :: Effect String
 
 vmMetrics  :: GetHandler String
-vmMetrics = multiMimeResponse (MimeType.openmetrics identity : nil) (Just <$> vmMetricsImpl)
+vmMetrics = multiMimeResponse (MimeType.openmetrics (pure <<< identity) : nil) (Just <$> vmMetricsImpl)

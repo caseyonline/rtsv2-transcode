@@ -31,16 +31,16 @@ startResource loadConfig = processPostPayload (EgestInstanceSup.startLocalEgest 
 -- TODO: Vince - needed to return an Effect when calling statsToJson
 egestInstancesMetrics :: Server -> GetHandler (List (EgestStats List))
 egestInstancesMetrics thisServer = do
-  multiMimeResponse ((MimeType.openmetrics statsToPrometheus) : (MimeType.json $ statsToJson thisServer) : nil) (Just <$> EgestStats.getStats)
+  multiMimeResponse ((MimeType.openmetrics (pure <<< statsToPrometheus)) : (MimeType.json $ statsToJson thisServer) : nil) (Just <$> EgestStats.getStats)
 
-statsToJson :: Server -> List (EgestStats List) -> String
+
+statsToJson :: Server -> List (EgestStats List) -> Effect String
 statsToJson server statsList = do
-  let stats = traverse
-            (\stats@{egestKey : EgestKey slotId slotRole} -> do
-              JsonLd.egestStatsNode slotId slotRole server stats
-            ) statsList
-  "sb"
-  -- pure $ writeJSON stats
+  stats <- traverse
+           (\stats@{egestKey : EgestKey slotId slotRole} -> do
+               JsonLd.egestStatsNode slotId slotRole server stats
+           ) statsList
+  pure $ writeJSON stats
 
 statsToPrometheus :: List (EgestStats List) -> String
 statsToPrometheus stats =
