@@ -21,7 +21,7 @@ import Prelude
 import Bus as Bus
 import Data.Either (Either(..), hush)
 import Data.Int (round, toNumber)
-import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Newtype (unwrap, wrap)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
@@ -47,7 +47,7 @@ import Rtsv2.Config as Config
 import Rtsv2.DataObject as DO
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
-import Rtsv2.Types (ResourceFailed, fromLocalOrRemote)
+import Rtsv2.Types (fromLocalOrRemote)
 import Shared.Common (Milliseconds)
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.Agent.State as PublicState
@@ -96,6 +96,7 @@ type State
     , remotePort :: Int
     , localPort :: Int
     , aggregatorWebSocket :: Maybe WebSocket
+    , aggregatorServer :: Maybe Server
     , clientMetadata :: Maybe (RtmpClientMetadata List)
     , sourceInfo :: Maybe (SourceInfo List)
     , stateServerName :: StateServerName
@@ -204,6 +205,7 @@ init { streamPublish
        , ingestKey
        , aggregatorRetryTime: wrap $ toNumber aggregatorRetryTimeMs
        , aggregatorWebSocket: Nothing
+       , aggregatorServer: Nothing
        , clientMetadata: Nothing
        , sourceInfo: Nothing
        , remoteAddress
@@ -236,6 +238,18 @@ handleInfo msg state@{ingestKey} = case msg of
   IntraPoPBus (IngestAggregatorExited aggregatorKey serverAddress) -> do
     state2 <- handleAggregatorExit aggregatorKey serverAddress state
     pure $ CastNoReply state2
+
+  IntraPoPBus (StreamRelayStarted _ _) ->
+    pure $ CastNoReply state
+
+  IntraPoPBus (StreamRelayExited _ _) ->
+    pure $ CastNoReply state
+
+  IntraPoPBus (EgestStarted _ _) ->
+    pure $ CastNoReply state
+
+  IntraPoPBus (EgestExited _ _) ->
+    pure $ CastNoReply state
 
   HandlerDown -> do
     logInfo "Ingest Handler has exited" {ingestKey}
@@ -339,46 +353,58 @@ informAggregator state@{ streamDetails
                        , aggregatorRetryTime
                        , stateServerName
                        , loadConfig} = do
-  maybeAggregator <- hush <$> getAggregator
-  maybeIngestAdded <- addIngest maybeAggregator
-  case maybeIngestAdded of
-    Just webSocket -> do
-      logInfo "WebSocket connection started" {maybeAggregator}
-      CachedInstanceState.recordInstanceData stateServerName webSocket
-      pure $ state{aggregatorWebSocket = Just webSocket}
-    Nothing -> do
-      logInfo "WebSocket attempt failed; retrying" {maybeAggregator, aggregatorRetryTime}
+  join $ maybe failure success <$> (addIngest =<< getAggregator)
+
+  where
+    success {aggregator, socket} = do
+      logInfo "WebSocket connection started" {aggregator}
+      CachedInstanceState.recordInstanceData stateServerName socket
+      pure $ state{ aggregatorWebSocket = Just socket
+                  , aggregatorServer = Just aggregator}
+
+    failure = do
+      logInfo "WebSocket attempt failed; retrying" {aggregatorRetryTime}
       void $ Timer.sendAfter (serverName ingestKey) (round $ unwrap aggregatorRetryTime) InformAggregator
       pure $ state
-  where
-    addIngest :: Maybe Server -> Effect (Maybe WebSocket)
-    addIngest Nothing = pure Nothing
-    addIngest (Just aggregatorAddress) = do
-        let
-          wsUrl = makeWsUrl aggregatorAddress $ IngestAggregatorRegisteredIngestWs slotId slotRole profileName (extractAddress thisServer)
-        webSocket <- WsGun.openWebSocket (serverName ingestKey) Gun wsUrl
-        pure $ hush webSocket
 
-    getAggregator :: Effect (Either ResourceFailed Server)
     getAggregator = do
       maybeAggregator <- IntraPoP.whereIsIngestAggregator (ingestKeyToAggregatorKey ingestKey)
       case maybeAggregator of
-        Just server -> do
-          _ <- logInfo "Have a local agg" {server}
-          pure $ Right server
+        Just server ->
+          pure $ Just server
         Nothing -> do
-          _ <- logInfo "Request new agg" {}
-          (map fromLocalOrRemote) <$> IngestAggregatorSup.startLocalOrRemoteAggregator loadConfig LocalAgent {shortName: rtmpShortName, streamDetails}
+          let
+            payload = { shortName: rtmpShortName
+                      , streamDetails
+                      , dataObject: Nothing}
+          (map fromLocalOrRemote) <$> hush <$> IngestAggregatorSup.startLocalOrRemoteAggregator loadConfig LocalAgent payload
+
+    addIngest Nothing = pure Nothing
+    addIngest (Just aggregator) = do
+        let
+          wsUrl = makeWsUrl aggregator $ IngestAggregatorRegisteredIngestWs slotId slotRole profileName (extractAddress thisServer)
+        webSocket <- WsGun.openWebSocket (serverName ingestKey) Gun wsUrl
+        pure $ {aggregator, socket: _} <$> hush webSocket
+
 
 handleAggregatorExit :: AggregatorKey -> Server -> State -> Effect State
-handleAggregatorExit exitedAggregatorKey exitedAggregatorAddr state@{ingestKey, aggregatorRetryTime, aggregatorWebSocket: mWebSocket}
-  | exitedAggregatorKey == (ingestKeyToAggregatorKey ingestKey) = do
-      logInfo "Aggregator has exited" {exitedAggregatorKey, exitedAggregatorAddr, ingestKey: state.ingestKey}
-      fromMaybe (pure unit) $ WsGun.closeWebSocket <$> mWebSocket
-      void $ Timer.sendAfter (serverName ingestKey) 0 InformAggregator
-      pure state{aggregatorWebSocket = Nothing}
-  | otherwise =
-      pure state
+handleAggregatorExit exitedAggregatorKey exitedAggregator state@{ ingestKey
+                                                                , aggregatorWebSocket: mWebSocket
+                                                                , aggregatorServer: mAggregatorServer
+                                                                , aggregatorRetryTime}
+
+  | exitedAggregatorKey == (ingestKeyToAggregatorKey ingestKey) && Just exitedAggregator == mAggregatorServer = do
+    logInfo "Aggregator has exited" {exitedAggregatorKey, exitedAggregator, ingestKey: state.ingestKey}
+    fromMaybe (pure unit) $ WsGun.closeWebSocket <$> mWebSocket
+    void $ Timer.sendAfter (serverName ingestKey) (round $ unwrap aggregatorRetryTime) InformAggregator
+    pure state{ aggregatorWebSocket = Nothing
+              , aggregatorServer = Nothing}
+  | otherwise = do
+    logInfo "Some other aggregator gone" { exitedAggregatorKey
+                                         , exitedAggregator
+                                         , ingestKey
+                                         , mAggregatorServer}
+    pure state
 
 --------------------------------------------------------------------------------
 -- Log helpers

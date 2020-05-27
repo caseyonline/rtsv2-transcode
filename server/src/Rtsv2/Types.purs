@@ -1,9 +1,10 @@
 module Rtsv2.Types
        (
-         LocalOrRemote(..)
-       , LocationResp
-       , LocalResourceResp(..)
+         AgentSupStartArgs
+       , LocalOrRemote(..)
        , LocalResource(..)
+       , LocalResourceResp(..)
+       , LocationResp
        , RegistrationResp(..)
        , ResourceFailed(..)
        , ResourceResp(..)
@@ -15,8 +16,11 @@ import Prelude
 import Data.Either (Either)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show (genericShow)
+import Effect (Effect)
 import Erl.Process.Raw (Pid)
-import Shared.Rtsv2.Types (FailureReason, Server)
+import Rtsv2.LoadTypes (ServerSelectionPredicate)
+import Shared.Rtsv2.Agent (Agent)
+import Shared.Rtsv2.Types (AcceptingRequests, CanaryState, FailureReason, Server)
 
 data LocalOrRemote a
   = Local a
@@ -41,6 +45,11 @@ data ResourceFailed = NoCapacity
                     | AlreadyRunning
 
 type RegistrationResp = (Either FailureReason Unit)
+
+type AgentSupStartArgs =
+  { canaryState :: CanaryState
+  , acceptingRequestsFun :: Effect AcceptingRequests
+  }
 
 ------------------------------------------------------------------------------
 -- ResourceFailed

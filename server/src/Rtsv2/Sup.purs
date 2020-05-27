@@ -55,4 +55,5 @@ init = do
       buildChild
       # childType Worker
       # childId "nodeManager"
-      # childStart NodeManager.startLink {activeSupStartLink: ActiveSup.startLink}
+      # childStart NodeManager.startLink { activeSupStartLink: ActiveSup.startLink
+                                         }

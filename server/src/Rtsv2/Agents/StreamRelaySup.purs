@@ -100,9 +100,12 @@ startRelay :: CreateRelayPayload -> Effect (Either ResourceFailed Pid)
 startRelay createPayload =
   let
     relayKey = StreamRelayInstance.payloadToRelayKey createPayload
+    parentCallbacks =
+      { startLocalOrRemoteStreamRelay
+      }
   in
   (note LaunchFailed <<< startOkAS) <$>
-  Sup.startSimpleChild childTemplate serverName { childStartLink: StreamRelayInstanceSup.startLink relayKey createPayload
+  Sup.startSimpleChild childTemplate serverName { childStartLink: StreamRelayInstanceSup.startLink relayKey parentCallbacks createPayload
                                                  , childStopAction: StreamRelayInstance.stopAction relayKey
                                                  , serverName: Names.streamRelayInstanceStateName relayKey
                                                  , domain: StreamRelayInstance.domain

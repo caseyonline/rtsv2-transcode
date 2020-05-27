@@ -13,17 +13,18 @@ import Logger as Logger
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildType(..), SupervisorStrategy(..), buildChild, childId, childStart, childType)
 import Pinto.Sup as Sup
+import Rtsv2.Agents.StreamRelayInstance (ParentCallbacks)
 import Rtsv2.Agents.StreamRelayInstance as StreamRelayInstance
 import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload)
 import Rtsv2.Names as Names
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.Stream (RelayKey)
 
-startLink :: RelayKey -> CreateRelayPayload -> StreamRelayInstance.StateServerName -> Effect Pinto.StartLinkResult
-startLink relayKey payload stateServerName = Sup.startLink (Names.streamRelayInstanceSupName relayKey) (init relayKey payload stateServerName)
+startLink :: RelayKey -> ParentCallbacks -> CreateRelayPayload -> StreamRelayInstance.StateServerName -> Effect Pinto.StartLinkResult
+startLink relayKey parentCallbacks payload stateServerName = Sup.startLink (Names.streamRelayInstanceSupName relayKey) (init relayKey parentCallbacks payload stateServerName)
 
-init :: RelayKey -> CreateRelayPayload -> StreamRelayInstance.StateServerName -> Effect Sup.SupervisorSpec
-init relayKey payload stateServerName = do
+init :: RelayKey -> ParentCallbacks -> CreateRelayPayload -> StreamRelayInstance.StateServerName -> Effect Sup.SupervisorSpec
+init relayKey parentCallbacks payload stateServerName = do
   logInfo "StreamRelay Supervisor starting" {}
   pure $ Sup.buildSupervisor
     # Sup.supervisorIntensity 50
@@ -32,7 +33,7 @@ init relayKey payload stateServerName = do
         ( ( buildChild
               # childType Worker
               # childId "streamRelayAgentInstance"
-              # childStart (StreamRelayInstance.startLink relayKey payload) stateServerName
+              # childStart (StreamRelayInstance.startLink relayKey parentCallbacks payload) stateServerName
           )
             : nil
         )

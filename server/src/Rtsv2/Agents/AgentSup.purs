@@ -18,8 +18,9 @@ import Rtsv2.Agents.TransPoP as TransPoP
 import Rtsv2.Config as Config
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
+import Rtsv2.Types (AgentSupStartArgs)
 import Shared.Rtsv2.Agent (Agent(..))
-import Shared.Rtsv2.Types (AgentSupStartArgs, Server(..))
+import Shared.Rtsv2.Types (Server(..))
 
 startLink :: AgentSupStartArgs -> Effect Pinto.StartLinkResult
 startLink args = Sup.startLink Names.agentSupName (init args)

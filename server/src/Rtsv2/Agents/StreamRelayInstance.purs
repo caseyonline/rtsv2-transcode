@@ -12,20 +12,22 @@
 --     A relay that is in the same PoP as the Ingest Aggregator.
 --
 module Rtsv2.Agents.StreamRelayInstance
-       ( startLink
-       , stopAction
-       , isInstanceAvailable
-       , status
-       , registerEgest
-       , registerRelay
+       (
+         startLink
        , dataObjectSendMessage
        , dataObjectUpdateSendMessage
-       , init
-       , State
-
-       , payloadToRelayKey
        , domain
+       , forceDrain
+       , init
+       , isInstanceAvailable
+       , payloadToRelayKey
+       , registerEgest
+       , registerRelay
+       , status
+       , stopAction
        , CachedState
+       , ParentCallbacks
+       , State
        , StateServerName
        ) where
 
@@ -71,13 +73,14 @@ import Rtsv2.Config as Config
 import Rtsv2.DataObject as DO
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
+import Rtsv2.Types (ResourceResp)
 import Shared.Rtsv2.Agent (SlotCharacteristics)
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl, makeWsUrl, makeWsUrlAddr)
 import Shared.Rtsv2.Stream (AggregatorKey(..), ProfileName, RelayKey(..), SlotId(..), SlotRole, relayKeyToAggregatorKey)
-import Shared.Rtsv2.Types (DeliverTo, EgestServer, PoPName, RelayServer, Server, ServerAddress(..), SourceRoute, extractAddress)
+import Shared.Rtsv2.Types (DeliverTo, EgestServer, OnBehalfOf(..), PoPName, RelayServer, Server, ServerAddress(..), SourceRoute, extractAddress)
 import Shared.UUID (UUID)
 import SpudGun (SpudResponse(..), StatusCode(..))
 import SpudGun as SpudGun
@@ -99,6 +102,10 @@ foreign import getSlotConfigurationFFI :: RelayKey -> Effect (Maybe SlotConfigur
 
 foreign import stopWorkflowFFI :: WorkflowHandle -> Effect Unit
 
+type ParentCallbacks
+  = { startLocalOrRemoteStreamRelay :: LoadConfig -> OnBehalfOf -> CreateRelayPayload -> Effect (ResourceResp Server)
+    }
+
 -- -----------------------------------------------------------------------------
 -- Gen Server State
 -- -----------------------------------------------------------------------------
@@ -113,6 +120,7 @@ data State
 
 type CommonStateData =
   { relayKey :: RelayKey
+  , parentCallbacks :: ParentCallbacks
   , thisServer :: Server
   , aggregatorPoP :: PoPName
   , slotCharacteristics :: SlotCharacteristics
@@ -122,6 +130,8 @@ type CommonStateData =
   , stopRef :: Maybe Ref
   , dataObject :: Maybe DO.Object
   , activeProfiles :: List ProfileName
+  , forceDrain :: Boolean
+  , aggregatorExitTimerRef :: Maybe Ref
   }
 
 type OriginStreamRelayStateData =
@@ -355,6 +365,28 @@ dataObjectUpdateSendMessage relayKey msg =
     pure $ CallReply unit state
   )
 
+forceDrain :: RelayKey -> Effect Unit
+forceDrain relayKey =
+  Gen.doCast (serverName relayKey) doForceDrain
+  where
+    doForceDrain (StateOrigin commonState runState) = do
+      commonState2 <- doForceDrain' commonState
+      pure $ CastNoReply $ StateOrigin commonState2 runState
+    doForceDrain (StateDownstream commonState runState) = do
+      commonState2 <- doForceDrain' commonState
+      pure $ CastNoReply $ StateDownstream commonState2 runState
+
+    doForceDrain' commonState@{relayKey: RelayKey slotId slotRole
+                              , aggregatorPoP
+                              , slotCharacteristics
+                              , config: {forceDrainTimeoutMs}
+                              , parentCallbacks: { startLocalOrRemoteStreamRelay }
+                              , loadConfig} = do
+      logInfo "Stream Relay entering force-drain mode" {relayKey}
+      void $ Timer.sendAfter (serverName relayKey) forceDrainTimeoutMs ForceDrainTimeout
+      void $ startLocalOrRemoteStreamRelay loadConfig LocalAgent {slotId, slotRole, aggregatorPoP, slotCharacteristics}
+      pure commonState{forceDrain = true}
+
 applyOriginPlan :: CommonStateData -> OriginStreamRelayStateData -> Effect State
 
 applyOriginPlan commonStateData@{relayKey, stateServerName, config: {reApplyPlanTimeMs}} originStateData@{ config, plan: Nothing } = do
@@ -530,6 +562,8 @@ data Msg = IntraPoPBus IntraPoP.IntraPoPBusMessage
          | RelayDown ServerAddress
          | MaybeStop Ref
          | ReApplyPlan
+         | ForceDrainTimeout
+         | AggregatorExitTimer Ref
 
 payloadToRelayKey :: forall r. { slotId :: SlotId, slotRole :: SlotRole | r } -> RelayKey
 payloadToRelayKey payload = RelayKey payload.slotId payload.slotRole
@@ -537,9 +571,9 @@ payloadToRelayKey payload = RelayKey payload.slotId payload.slotRole
 serverName :: RelayKey -> ServerName State Msg
 serverName = Names.streamRelayInstanceName
 
-startLink :: RelayKey ->  CreateRelayPayload -> StateServerName -> Effect StartLinkResult
-startLink relayKey payload stateServerName =
-  Gen.startLink (serverName relayKey) (init relayKey payload stateServerName) handleInfo
+startLink :: RelayKey -> ParentCallbacks -> CreateRelayPayload -> StateServerName -> Effect StartLinkResult
+startLink relayKey parentCallbacks payload stateServerName =
+  Gen.startLink (serverName relayKey) (init relayKey parentCallbacks payload stateServerName) handleInfo
 
 stopAction :: RelayKey -> Maybe CachedState -> Effect Unit
 stopAction relayKey@(RelayKey slotId slotRole) cachedState = do
@@ -579,8 +613,8 @@ stopAction relayKey@(RelayKey slotId slotRole) cachedState = do
     deRegisterUpstream _ =
       pure unit
 
-init :: RelayKey -> CreateRelayPayload -> StateServerName -> Effect State
-init relayKey payload@{slotId, slotRole, aggregatorPoP, slotCharacteristics} stateServerName =
+init :: RelayKey -> ParentCallbacks -> CreateRelayPayload -> StateServerName -> Effect State
+init relayKey parentCallbacks payload@{slotId, slotRole, aggregatorPoP, slotCharacteristics} stateServerName =
   do
     Gen.registerExternalMapping (serverName relayKey) (\m -> Gun <$> (WsGun.messageMapper m))
     thisServer <- PoPDefinition.getThisServer
@@ -596,6 +630,7 @@ init relayKey payload@{slotId, slotRole, aggregatorPoP, slotCharacteristics} sta
       commonStateData =
         { relayKey
         , thisServer
+        , parentCallbacks
         , slotCharacteristics
         , loadConfig
         , aggregatorPoP
@@ -604,6 +639,8 @@ init relayKey payload@{slotId, slotRole, aggregatorPoP, slotCharacteristics} sta
         , stopRef: Nothing
         , dataObject: Nothing
         , activeProfiles: nil
+        , forceDrain: false
+        , aggregatorExitTimerRef: Nothing
         }
 
     if egestSourceRoutes == List.nil then
@@ -715,11 +752,60 @@ handleInfo msg state =
       pure $ CastNoReply state
 
     IntraPoPBus (IngestAggregatorExited (AggregatorKey slotId slotRole) serverAddress)
---  SS TODO    | slotId == ourSlotId && slotRole == ourSlotRole -> pure $ CastStop state
+      | slotId == ourSlotId && slotRole == ourSlotRole -> do
+        ref <- Erl.makeRef
+        case state of
+          StateDownstream common@{config: {aggregatorExitLingerTimeMs}} runState -> do
+            void $ Timer.sendAfter (serverName relayKey) aggregatorExitLingerTimeMs (AggregatorExitTimer ref)
+            pure $ CastNoReply $ StateDownstream common{aggregatorExitTimerRef = Just ref} runState
+          StateOrigin common@{config: {aggregatorExitLingerTimeMs}} runState -> do
+            void $ Timer.sendAfter (serverName relayKey) aggregatorExitLingerTimeMs (AggregatorExitTimer ref)
+            pure $ CastNoReply $ StateOrigin common{aggregatorExitTimerRef = Just ref} runState
       | otherwise -> pure $ CastNoReply state
+
+    IntraPoPBus (StreamRelayStarted (RelayKey startedId startedRole) startedServer) | startedId == ourSlotId
+                                                                                      && startedRole == ourSlotRole
+                                                                                      && startedServer /= thisServer ->
+      -- A twin just started on another server
+      if isForceDrain state then do
+        logInfo "ForceDrain mode: Twin just started; announcing that we have stopped" {relayKey}
+        IntraPoP.announceLocalRelayStopped relayKey
+        pure $ CastNoReply state
+      else do
+        -- Normal to have multiple relays
+        pure $ CastNoReply state
+
+    IntraPoPBus (StreamRelayStarted _ _) ->
+      pure $ CastNoReply state
+
+    IntraPoPBus (StreamRelayExited (RelayKey exitedId exitedRole) exitedServer) | exitedId == ourSlotId
+                                                                                  && exitedRole == ourSlotRole
+                                                                                  && exitedServer == thisServer ->
+      -- We just exited!  Only makes sense in forceDrain mode where we announce stop prior to stopping
+      if isForceDrain state then do
+        logInfo "ForceDrain mode: Announcement of our exit; stopping" {relayKey}
+        pure $ CastStop state
+      else do
+        logInfo "Normal mode: Unexpected announcement of our exit" {relayKey}
+        pure $ CastNoReply state
+
+    IntraPoPBus (StreamRelayExited _ _) ->
+      pure $ CastNoReply state
+
+    IntraPoPBus (EgestStarted _ _) ->
+      pure $ CastNoReply state
+
+    IntraPoPBus (EgestExited _ _) ->
+      pure $ CastNoReply state
 
     IntraPoPBus (VmReset _ _ _) ->
       pure $ CastNoReply state
+
+    ForceDrainTimeout -> do
+      logInfo "Ingest Aggregator stopping due to force drain timeout" {relayKey}
+      pure $ CastStop state
+
+    AggregatorExitTimer ref -> maybeAggregatorStop state ref
 
     MaybeStop ref -> maybeStop state ref
 
@@ -737,6 +823,14 @@ handleInfo msg state =
       CastNoReply <$> deRegisterRelay relayAddress state2
 
   where
+    isForceDrain (StateOrigin {forceDrain: true} _) = true
+    isForceDrain (StateDownstream {forceDrain: true} _) = true
+    isForceDrain _ = false
+
+    thisServer = case state of
+                   (StateOrigin { thisServer: this } _) -> this
+                   (StateDownstream { thisServer: this } _) -> this
+
     relayKey = relayKeyFromState state
     (RelayKey ourSlotId ourSlotRole) = relayKey
 
@@ -751,6 +845,22 @@ handleInfo msg state =
       ref <- makeRef
       _ <- Timer.sendAfter (serverName relayKey) lingerTimeMs (MaybeStop ref)
       pure commonState{stopRef = Just ref}
+
+    maybeAggregatorStop (StateOrigin {aggregatorExitTimerRef} runState) ref
+      | aggregatorExitTimerRef == Just ref = do
+        mAggregator <- IntraPoP.whereIsIngestAggregator (relayKeyToAggregatorKey relayKey)
+        case mAggregator of
+          Nothing -> pure $ CastStop state
+          Just _ -> pure $ CastNoReply state
+      | otherwise = pure $ CastNoReply state
+
+    maybeAggregatorStop (StateDownstream {aggregatorExitTimerRef} runState) ref
+      | aggregatorExitTimerRef == Just ref = do
+        mAggregator <- IntraPoP.whereIsIngestAggregator (relayKeyToAggregatorKey relayKey)
+        case mAggregator of
+          Nothing -> pure $ CastStop state
+          Just _ -> pure $ CastNoReply state
+      | otherwise = pure $ CastNoReply state
 
     maybeStop (StateOrigin {stopRef} {config: {downstreamRelays, egests}}) ref
       | (Map.isEmpty downstreamRelays) && (Map.isEmpty egests) && (Just ref == stopRef) = pure $ CastStop state

@@ -1,45 +1,46 @@
 module Shared.Rtsv2.Types
-       ( AgentSupStartArgs
-       , DeliverTo(..)
-       , CanaryState(..)
-       , class CanaryType
-       , canary
-       , CanaryStateChangeFailure(..)
-       , RunStateChangeFailure(..)
-       , OnBehalfOf(..)
-       , RunState(..)
-       , GeoLoc(..)
-       , LeaderGeoLoc(..)
-       , CurrentLoad(..)
+       (
+
+         DeliverTo(..)
        , AcceptingRequests(..)
+       , CanaryState(..)
+       , CanaryStateChangeFailure(..)
+       , CheckBoxState(..)
+       , CurrentLoad(..)
+       , EgestServer(..)
+       , FailureReason(..)
+       , GeoLoc(..)
+       , Health(..)
+       , JsonLdContextType(..)
+       , LeaderGeoLoc(..)
+       , NetworkKbps(..)
+       , OnBehalfOf(..)
+       , Percentage(..)
        , PoPName(..)
-       , SourceRoute
        , RegionName(..)
+       , RelayServer(..)
+       , RunState(..)
+       , RunStateChangeFailure(..)
        , Server(..)
        , ServerAddress(..)
        , ServerLoad(..)
        , ServerLocation(..)
-       , Health(..)
        , ServerRec
-       , RelayServer(..)
-       , EgestServer(..)
-       , Username(..)
-       , CheckBoxState(..)
-       , JsonLdContextType(..)
+       , SourceRoute
        , SpecInt(..)
-       , NetworkKbps(..)
-       , Percentage(..)
-       , FailureReason(..)
+       , Username(..)
 
-       , toServerLoad
-       , toServerLocation
-       , serverLoadToServer
+       , canary
+       , class CanaryType
        , extractAddress
        , extractPoP
-       , toStringPname
-       , parsePname
-       , minLoad
        , maxLoad
+       , minLoad
+       , parsePname
+       , serverLoadToServer
+       , toServerLoad
+       , toServerLocation
+       , toStringPname
        ) where
 
 import Prelude
@@ -53,7 +54,6 @@ import Data.List.NonEmpty (singleton)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype, unwrap, wrap)
 import Data.Symbol (SProxy(..))
-import Effect (Effect)
 import Foreign (ForeignError(..), readString, unsafeToForeign)
 import Record as Record
 import Shared.Rtsv2.Agent (Agent)
@@ -125,11 +125,6 @@ newtype CurrentLoad = CurrentLoad { cpu :: Percentage
                                   }
 
 newtype AcceptingRequests = AcceptingRequests Boolean
-
-type AgentSupStartArgs =
-  { canaryState :: CanaryState
-  , acceptingRequestsFun :: Effect AcceptingRequests
-  }
 
 newtype ServerLocation = ServerLocation { pop :: PoPName
                                         , region :: RegionName

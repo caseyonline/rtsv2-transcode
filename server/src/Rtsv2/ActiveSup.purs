@@ -11,7 +11,7 @@ import Pinto.Sup (SupervisorChildType(..), SupervisorSpec, SupervisorStrategy(..
 import Pinto.Sup as Sup
 import Rtsv2.Agents.AgentSup as AgentSup
 import Rtsv2.DataObject as DataObject
-import Shared.Rtsv2.Types (AgentSupStartArgs)
+import Rtsv2.Types (AgentSupStartArgs)
 
 startLink :: AgentSupStartArgs -> Effect Pinto.StartLinkResult
 startLink args = Sup.startLink (Local (atom "rtsv2ActiveSup")) (init args)

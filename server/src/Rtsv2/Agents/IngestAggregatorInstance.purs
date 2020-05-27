@@ -44,8 +44,10 @@ module Rtsv2.Agents.IngestAggregatorInstance
   , dataObjectSendMessage
   , dataObjectUpdate
   , processMessageFromPrimary
+  , forceDrain
   , CachedState
   , CreateAggregatorPayload
+  , ParentCallbacks
   , RegisteredRelay
   , StateServerName
   , IngestProcess
@@ -91,17 +93,19 @@ import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
 import Rtsv2.Agents.SlotTypes as SlotTypes
 import Rtsv2.Agents.StreamRelayTypes (ActiveProfiles(..), AggregatorBackupToPrimaryWsMessage(..), AggregatorPrimaryToBackupWsMessage(..), AggregatorToIngestWsMessage(..), DownstreamWsMessage(..), NativeJson, WebSocketHandlerMessage(..))
+import Rtsv2.Config (LoadConfig)
 import Rtsv2.Config as Config
 import Rtsv2.DataObject as DO
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
+import Rtsv2.Types (ResourceResp)
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Rtsv2.LlnwApiTypes (HlsPushAuth, HlsPushProtocol, HlsPushSpecFormat, SlotProfile(..), StreamDetails, slotDetailsToSlotCharacteristics)
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrlAddr, makeWsUrl)
 import Shared.Rtsv2.Stream (AggregatorKey(..), IngestKey(..), ProfileName, RtmpShortName, SlotId, SlotRole(..), ingestKeyToAggregatorKey)
-import Shared.Rtsv2.Types (DeliverTo, RelayServer, Server, ServerAddress, extractAddress)
+import Shared.Rtsv2.Types (DeliverTo, OnBehalfOf(..), RelayServer, Server, ServerAddress, extractAddress)
 import WsGun as WsGun
 
 foreign import data WorkflowHandle :: Type
@@ -117,6 +121,11 @@ foreign import workflowMessageMapperImpl :: Foreign -> Maybe WorkflowMsg
 type CreateAggregatorPayload
   = { shortName :: RtmpShortName
     , streamDetails :: StreamDetails
+    , dataObject :: Maybe DO.Object
+    }
+
+type ParentCallbacks
+  = { startLocalOrRemoteAggregator :: LoadConfig -> OnBehalfOf -> CreateAggregatorPayload -> Effect (ResourceResp Server)
     }
 
 type PrimaryToBackupWebsocket = WsGun.WebSocket AggregatorPrimaryToBackupWsMessage AggregatorBackupToPrimaryWsMessage
@@ -155,12 +164,14 @@ type BackupDOState
 
 type State
   = { config :: Config.IngestAggregatorAgentConfig
+    , parentCallbacks :: ParentCallbacks
     , slotId :: SlotId
     , slotRole :: SlotRole
     , peerRole :: SlotRole
     , cachedState :: CachedState
     , thisServer :: Server
     , aggregatorKey :: AggregatorKey
+    , shortName :: RtmpShortName
     , streamDetails :: StreamDetails
     , workflowHandle :: WorkflowHandle
     , webRtcStreamServers :: List Pid
@@ -168,6 +179,7 @@ type State
     , slotConfiguration :: SlotConfiguration
     , dataObjectState :: Either PrimaryDOState BackupDOState
     , maybeStopRef :: Maybe Ref
+    , forceDrain :: Boolean
     }
 
 type HlsPush =
@@ -192,6 +204,7 @@ data Msg
   | PrimaryHandlerDown
   | Workflow WorkflowMsg
   | BackupMaybeCreateDataObject
+  | ForceDrainTimeout
 
 backupConnectionRetryPeriod :: Int
 backupConnectionRetryPeriod = 1000
@@ -245,8 +258,8 @@ registerIngest slotId slotRole profileName ingestAddress handler@(Process handle
 registerRelay :: SlotId -> SlotRole -> DeliverTo RelayServer -> RelayProcess -> Effect SlotConfiguration
 registerRelay slotId slotRole deliverTo handler =
   Gen.doCall (serverName $ key)
-  (\state@{thisServer, slotConfiguration, dataObjectState} -> do
-      case getDataObject dataObjectState of
+  (\state@{thisServer, slotConfiguration} -> do
+      case getDataObject state of
         Just dataObject -> do
           ref <- Erl.makeRef
           handler ! (WsSend $ DataObject $ DO.ObjectBroadcastMessage { object: dataObject
@@ -259,12 +272,6 @@ registerRelay slotId slotRole deliverTo handler =
   )
   where
     key = AggregatorKey slotId slotRole
-    getDataObject (Left {dataObject: Nothing}) = Nothing
-    getDataObject (Left {dataObject: Just dataObject}) = Just dataObject
-    getDataObject (Right {dataObject: Nothing}) = Nothing
-    getDataObject (Right {dataObject: Just (OwnedByUs dataObject)}) = Just dataObject
-    getDataObject (Right {dataObject: Just (OwnedByPrimary dataObject)}) = Just dataObject
-    getDataObject (Right {dataObject: Just (Synchronising dataObject)}) = Nothing
 
 processMessageFromPrimary :: AggregatorKey -> AggregatorPrimaryToBackupWsMessage -> Effect Unit
 processMessageFromPrimary aggregatorKey msg =
@@ -273,7 +280,7 @@ processMessageFromPrimary aggregatorKey msg =
     doProcessMessage state@{dataObjectState: Right dos@{dataObject: mDataObject}} =
       case msg of
         P2B_Synchronise -> do
-          sendToPrimary dos (maybe B2P_SynchroniseNoObject (B2P_SynchroniseObject <<< getDataObject) mDataObject)
+          sendToPrimary dos (maybe B2P_SynchroniseNoObject (B2P_SynchroniseObject <<< getDataObject') mDataObject)
           pure $ CallReply unit state
 
         P2B_Latest latestObject -> do
@@ -292,9 +299,25 @@ processMessageFromPrimary aggregatorKey msg =
       -- We are primary, who the heck called us!
      pure $ CallReply unit state
 
-    getDataObject (OwnedByUs dataObject) = dataObject
-    getDataObject (OwnedByPrimary dataObject) = dataObject
-    getDataObject (Synchronising dataObject) = dataObject
+    getDataObject' (OwnedByUs dataObject) = dataObject
+    getDataObject' (OwnedByPrimary dataObject) = dataObject
+    getDataObject' (Synchronising dataObject) = dataObject
+
+forceDrain :: AggregatorKey -> Effect Unit
+forceDrain aggregatorKey =
+  Gen.doCast (serverName aggregatorKey) doForceDrain
+  where
+    doForceDrain state@{ parentCallbacks: {startLocalOrRemoteAggregator}
+                       , shortName
+                       , streamDetails
+                       , config: { forceDrainTimeoutMs }} = do
+      loadConfig <- Config.loadConfig
+      logInfo "Ingest Aggregator entering force-drain mode" {aggregatorKey}
+
+      void $ Timer.sendAfter (serverName aggregatorKey) forceDrainTimeoutMs ForceDrainTimeout
+      void $ startLocalOrRemoteAggregator loadConfig LocalAgent {shortName, streamDetails, dataObject: getDataObject state}
+
+      pure $ CastNoReply state{forceDrain = true}
 
 checkProfileInactive :: ProfileName -> State -> Boolean
 checkProfileInactive profileName {cachedState: {localIngests, remoteIngests}} =
@@ -437,16 +460,16 @@ sendToIngests {cachedState: {localIngests, remoteIngests}} message = do
     doSend handler =
       handler ! WsSend message
 
-startLink :: AggregatorKey -> CreateAggregatorPayload -> StateServerName -> Effect StartLinkResult
-startLink aggregatorKey payload stateServerName = Gen.startLink (serverName aggregatorKey) (init payload stateServerName) handleInfo
+startLink :: AggregatorKey -> ParentCallbacks -> CreateAggregatorPayload -> StateServerName -> Effect StartLinkResult
+startLink aggregatorKey callbacks payload stateServerName = Gen.startLink (serverName aggregatorKey) (init callbacks payload stateServerName) handleInfo
 
 stopAction :: AggregatorKey -> Maybe CachedState -> Effect Unit
 stopAction aggregatorKey _cachedState = do
   logStop "Ingest Aggregator stopping" {aggregatorKey}
   announceLocalAggregatorStopped aggregatorKey
 
-init :: CreateAggregatorPayload -> StateServerName -> Effect State
-init {shortName, streamDetails: streamDetails@{role: slotRole, slot: slot@{id: slotId}}} stateServerName = do
+init :: ParentCallbacks -> CreateAggregatorPayload -> StateServerName -> Effect State
+init parentCallbacks {shortName, streamDetails: streamDetails@{role: slotRole, slot: slot@{id: slotId}}, dataObject: initialDataObject} stateServerName = do
   logStart "Ingest Aggregator starting" {aggregatorKey, streamDetails}
   _ <- Erl.trapExit true
   config <- Config.ingestAggregatorAgentConfig
@@ -462,15 +485,17 @@ init {shortName, streamDetails: streamDetails@{role: slotRole, slot: slot@{id: s
   void $ Bus.subscribe thisServerName IntraPoP.bus IntraPoPBus
   announceLocalAggregatorIsAvailable aggregatorKey (slotDetailsToSlotCharacteristics slot)
   ref <- Erl.makeRef
---  void $ Timer.sendAfter (serverName aggregatorKey) config.shutdownLingerTimeMs (MaybeStop ref)
+  void $ Timer.sendAfter (serverName aggregatorKey) config.shutdownLingerTimeMs (MaybeStop ref)
   let
     Tuple workflowHandle (Tuple webRtcStreamServers _) = toNested2 workflowHandleAndPids
     initialState = { config : config
                    , slotId
                    , slotRole
+                   , parentCallbacks
                    , peerRole: if slotRole == Primary then Backup else Primary
                    , thisServer
                    , aggregatorKey
+                   , shortName
                    , streamDetails
                    , workflowHandle
                    , webRtcStreamServers
@@ -478,11 +503,12 @@ init {shortName, streamDetails: streamDetails@{role: slotRole, slot: slot@{id: s
                    , stateServerName
                    , slotConfiguration
                    , dataObjectState: case slotRole of
-                                        Primary -> Left { dataObject: Nothing
+                                        Primary -> Left { dataObject: initialDataObject
                                                         , connectionToBackup: Nothing }
-                                        Backup -> Right { dataObject: Nothing
+                                        Backup -> Right { dataObject: Synchronising <$> initialDataObject
                                                         , connectionToPrimary: Nothing }
-                   , maybeStopRef: Nothing -- Just ref
+                   , maybeStopRef: Just ref
+                   , forceDrain: false
                    }
   cachedState <- fromMaybe emptyCachedState <$> CachedInstanceState.getInstanceData stateServerName
   state2 <- applyCachedState initialState cachedState
@@ -573,7 +599,7 @@ streamDetailsToAggregatorKey streamDetails =
   AggregatorKey streamDetails.slot.id streamDetails.role
 
 handleInfo :: Msg -> State -> Effect (CastResult State)
-handleInfo msg state@{aggregatorKey, slotId, stateServerName, workflowHandle, maybeStopRef} =
+handleInfo msg state@{aggregatorKey, slotId, slotRole, stateServerName, workflowHandle, maybeStopRef, thisServer} =
   case msg of
     AttemptConnectionToBackup -> do
       state2 <- attemptConnectionToBackup state
@@ -604,10 +630,34 @@ handleInfo msg state@{aggregatorKey, slotId, stateServerName, workflowHandle, ma
     IntraPoPBus (VmReset server oldRef newRef) -> do
       pure $ CastNoReply state
 
+    IntraPoPBus (IngestAggregatorStarted (AggregatorKey startedId startedRole) startedServer) | startedId == slotId
+                                                                                                && startedRole == slotRole
+                                                                                                && startedServer /= thisServer ->
+      -- A twin just started on another server
+      if state.forceDrain then do
+        logInfo "ForceDrain mode: Twin just started; announcing that we have stopped" {aggregatorKey}
+        announceLocalAggregatorStopped aggregatorKey
+        pure $ CastNoReply state
+      else do
+        logInfo "Normal mode: Twin just started; there can be only one" {aggregatorKey}
+        -- TODO - one of us needs to exit
+        pure $ CastNoReply state
+
     IntraPoPBus (IngestAggregatorStarted (AggregatorKey startedId Backup) _) | startedId == slotId -> do
       -- We are primary and backup just started.  Attempt a connection
       state2 <- attemptConnectionToBackup state
       pure $ CastNoReply state2
+
+    IntraPoPBus (IngestAggregatorExited (AggregatorKey exitedId exitedRole) exitedServer) | exitedId == slotId
+                                                                                            && exitedRole == slotRole
+                                                                                            && exitedServer == thisServer ->
+      -- We just exited!  Only makes sense in forceDrain mode where we announce stop prior to stopping
+      if state.forceDrain then do
+        logInfo "ForceDrain mode: Announcement of our exit; stopping" {aggregatorKey}
+        pure $ CastStop state
+      else do
+        logInfo "Normal mode: Unexpected announcement of our exit" {aggregatorKey}
+        pure $ CastNoReply state
 
     IntraPoPBus (IngestAggregatorExited (AggregatorKey exitedId Backup) _) | exitedId == slotId -> do
       CastNoReply <$> case state of
@@ -621,10 +671,6 @@ handleInfo msg state@{aggregatorKey, slotId, stateServerName, workflowHandle, ma
                         _ ->
                           -- We are primary and we have an object.  Nothing to do
                           pure state
-
-    IntraPoPBus (IngestAggregatorStarted (AggregatorKey startedId Primary) _) | startedId == slotId -> do
-      -- We are backup and primary just started.  Nothing to do.
-      pure $ CastNoReply state
 
     IntraPoPBus (IngestAggregatorExited (AggregatorKey exitedId Primary) _) | exitedId == slotId -> do
       CastNoReply <$> case state of
@@ -655,6 +701,18 @@ handleInfo msg state@{aggregatorKey, slotId, stateServerName, workflowHandle, ma
     IntraPoPBus (IngestAggregatorExited _ _) ->
       pure $ CastNoReply state
 
+    IntraPoPBus (StreamRelayStarted _ _) ->
+      pure $ CastNoReply state
+
+    IntraPoPBus (StreamRelayExited _ _) ->
+      pure $ CastNoReply state
+
+    IntraPoPBus (EgestStarted _ _) ->
+      pure $ CastNoReply state
+
+    IntraPoPBus (EgestExited _ _) ->
+      pure $ CastNoReply state
+
     Workflow Noop ->
       pure $ CastNoReply state
 
@@ -670,6 +728,10 @@ handleInfo msg state@{aggregatorKey, slotId, stateServerName, workflowHandle, ma
         maybeExistingPort = view (_relays <<< (at relayServer)) state
       fromMaybe (pure unit) $ deRegisterStreamRelayImpl workflowHandle serverAddress <$> _.port <$> maybeExistingPort
       pure $ CastNoReply (removeRelayFromCachedState relayServer state)
+
+    ForceDrainTimeout -> do
+        logInfo "Ingest Aggregator stopping due to force drain timeout" {aggregatorKey}
+        pure $ CastStop state
 
     MaybeStop ref
       | Just ref == maybeStopRef
@@ -919,6 +981,14 @@ doRemoveIngest profileName cachedStateRemoveFun state@{aggregatorKey, workflowHa
     pure state2{maybeStopRef = Just ref}
   else
     pure state2
+
+getDataObject :: State -> Maybe DO.Object
+getDataObject { dataObjectState: (Left {dataObject: Nothing}) } = Nothing
+getDataObject { dataObjectState: (Left {dataObject: Just dataObject}) } = Just dataObject
+getDataObject { dataObjectState: (Right {dataObject: Nothing}) } = Nothing
+getDataObject { dataObjectState: (Right {dataObject: Just (OwnedByUs dataObject)}) } = Just dataObject
+getDataObject { dataObjectState: (Right {dataObject: Just (OwnedByPrimary dataObject)}) } = Just dataObject
+getDataObject { dataObjectState: (Right {dataObject: Just (Synchronising dataObject)}) } = Nothing
 
 --------------------------------------------------------------------------------
 -- Lenses

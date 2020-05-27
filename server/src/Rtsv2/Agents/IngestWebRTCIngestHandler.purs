@@ -25,7 +25,7 @@ import Rtsv2.Config (LoadConfig)
 import Rtsv2.Config as Config
 import Rtsv2.DataObject as DO
 import Rtsv2.LlnwApi as LlnwApi
-import Rtsv2.Types (ResourceResp, LocalResourceResp)
+import Rtsv2.Types (LocalResourceResp)
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.LlnwApiTypes (PublishCredentials(..), SlotProfile(..), StreamAuth, StreamDetails, StreamIngestProtocol(..), StreamPublish(..))
 import Shared.Rtsv2.Stream (IngestKey(..), ProfileName, RtmpStreamName(..))

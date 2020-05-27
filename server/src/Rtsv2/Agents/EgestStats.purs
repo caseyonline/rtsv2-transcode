@@ -19,13 +19,11 @@ import Rtsv2.Agents.EgestInstance as EgestInstance
 import Rtsv2.Config (EgestStatsConfig)
 import Rtsv2.Config as Config
 import Rtsv2.Names as Names
+import Rtsv2.NodeManager (getEgestKeys)
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.JsonLd (EgestStats)
-import Shared.Rtsv2.Stream (EgestKey)
 
 type EgestStats' = EgestStats List
-
-foreign import getEgestKeys :: Effect (List EgestKey)
 
 data Msg = Tick
 

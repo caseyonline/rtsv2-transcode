@@ -22,6 +22,7 @@ import Rtsv2.Config (LoadConfig)
 import Rtsv2.Handler.Helper (WebSocketHandlerResult(..), webSocketHandler)
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
+import Rtsv2.Utils (noprocToMaybe)
 import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.Stream (AggregatorKey(..), IngestKey(..), ProfileName, SlotId, SlotRole)
 import Shared.Rtsv2.Types (OnBehalfOf(..), RelayServer(..), Server(..), ServerAddress)
@@ -50,12 +51,14 @@ registeredIngestWs slotId slotRole profileName ingestAddress =
            }
     wsInit state@{aggregatorKey} = do
       self <- Process <$> Erl.self :: Effect (Process (WebSocketHandlerMessage AggregatorToIngestWsMessage))
-      result <- IngestAggregatorInstance.registerIngest slotId slotRole profileName ingestAddress self
+      result <- noprocToMaybe $ IngestAggregatorInstance.registerIngest slotId slotRole profileName ingestAddress self
       case result of
-        true -> do
+        Nothing ->
+          pure $ WebSocketStop state
+        Just true -> do
           Erl.monitor (Names.ingestAggregatorInstanceStateName aggregatorKey)
           pure $ WebSocketNoReply state
-        false ->
+        Just false ->
           pure $ WebSocketReply IngestStop state
 
     handle :: WsIngestState -> IngestToAggregatorWsMessage -> Effect (WebSocketHandlerResult AggregatorToIngestWsMessage WsIngestState)

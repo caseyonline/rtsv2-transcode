@@ -9,9 +9,11 @@ module Rtsv2.Agents.EgestInstance
   , dataObjectSendMessage
   , dataObjectUpdate
   , statsUpdate
+  , forceDrain
   , CreateEgestPayload
 
   , CachedState
+  , ParentCallbacks
   , WebSocket
   , StateServerName
   , domain
@@ -46,11 +48,10 @@ import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Agents.EgestInstance.WebRTCTypes (WebRTCStreamServerStats, WebRTCSessionManagerStats)
-import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..))
+import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..), announceLocalEgestStopped)
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
-import Rtsv2.Agents.StreamRelaySup as StreamRelaySup
-import Rtsv2.Agents.StreamRelayTypes (ActiveProfiles(..), DownstreamWsMessage(..), EgestUpstreamWsMessage(..), NativeJson)
+import Rtsv2.Agents.StreamRelayTypes (ActiveProfiles(..), DownstreamWsMessage(..), EgestUpstreamWsMessage(..), NativeJson, CreateRelayPayload)
 import Rtsv2.Audit as Audit
 import Rtsv2.Config (LoadConfig, MediaGatewayFlag)
 import Rtsv2.Config as Config
@@ -68,8 +69,8 @@ import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.JsonLd (EgestStats, EgestSessionStats)
 import Shared.Rtsv2.LlnwApiTypes (StreamIngestProtocol(..))
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeWsUrl)
-import Shared.Rtsv2.Stream (AggregatorKey(..), EgestKey(..), ProfileName, RelayKey(..), SlotId, SlotRole, egestKeyToAgentKey)
-import Shared.Rtsv2.Types (EgestServer(..), FailureReason(..), OnBehalfOf(..), PoPName, RelayServer, Server, extractAddress)
+import Shared.Rtsv2.Stream (AggregatorKey(..), EgestKey(..), ProfileName, RelayKey(..), SlotId, SlotRole, egestKeyToAgentKey, egestKeyToAggregatorKey)
+import Shared.Rtsv2.Types (EgestServer, FailureReason(..), OnBehalfOf(..), PoPName, RelayServer, Server(..), extractAddress)
 import WsGun as WsGun
 
 foreign import startEgestReceiverFFI :: EgestKey -> MediaGatewayFlag -> Effect Int
@@ -85,6 +86,11 @@ type CreateEgestPayload
     , slotCharacteristics :: SlotCharacteristics
     }
 
+type ParentCallbacks
+  = { startLocalOrRemoteStreamRelay :: LoadConfig -> OnBehalfOf -> CreateRelayPayload -> Effect (ResourceResp Server)
+    , startLocalOrRemoteEgest :: LoadConfig -> OnBehalfOf -> CreateEgestPayload -> Effect (ResourceResp Server)
+    }
+
 type StateServerName = CachedInstanceState.StateServerName CachedState
 
 type WebSocket = WsGun.WebSocket EgestUpstreamWsMessage DownstreamWsMessage
@@ -94,13 +100,16 @@ type CachedState = WebSocket
 type State
   = { egestKey :: EgestKey
     , aggregatorPoP :: PoPName
+    , parentCallbacks :: ParentCallbacks
     , slotCharacteristics :: SlotCharacteristics
     , loadConfig :: LoadConfig
-    , thisServer :: EgestServer
+    , thisServer :: Server
     , clientCount :: Int
     , clientStats :: Map String EgestSessionStats
     , lingerTime :: Milliseconds
     , relayCreationRetry :: Milliseconds
+    , forceDrainTimeout :: Milliseconds
+    , aggregatorExitLingerTime :: Milliseconds
     , stopRef :: Maybe Ref
     , receivePortNumber :: Int
     , lastEgestAuditTime :: Milliseconds
@@ -110,6 +119,8 @@ type State
     , lastOnFI :: Int
     , dataObject :: Maybe DO.Object
     , activeProfiles :: List ProfileName
+    , forceDrain :: Boolean
+    , aggregatorExitTimerRef :: Maybe Ref
     }
 
 emptySessionStats :: String -> EgestSessionStats
@@ -139,6 +150,8 @@ data Msg = WriteEqLog
          | MaybeStop Ref
          | IntraPoPBus IntraPoP.IntraPoPBusMessage
          | Gun WsGun.GunMsg
+         | ForceDrainTimeout
+         | AggregatorExitTimer Ref
 
 serverName :: EgestKey -> ServerName State Msg
 serverName egestKey = Names.egestInstanceName egestKey
@@ -146,8 +159,9 @@ serverName egestKey = Names.egestInstanceName egestKey
 isActive :: EgestKey -> Effect Boolean
 isActive egestKey = Pinto.isRegistered (serverName egestKey)
 
-startLink :: CreateEgestPayload -> StateServerName -> Effect StartLinkResult
-startLink payload stateServerName = Gen.startLink (serverName $ payloadToEgestKey payload) (init payload stateServerName) handleInfo
+startLink :: ParentCallbacks -> CreateEgestPayload -> StateServerName -> Effect StartLinkResult
+startLink parentCallbacks payload stateServerName =
+  Gen.startLink (serverName $ payloadToEgestKey payload) (init parentCallbacks payload stateServerName) handleInfo
 
 stopAction :: EgestKey -> Maybe CachedState -> Effect Unit
 stopAction egestKey mCachedState = do
@@ -229,9 +243,26 @@ statsUpdate egestKey stats@{sessionId} = do
   Gen.call (serverName egestKey) \state@{clientStats} ->
     CallReply unit state{clientStats = Map.insert sessionId stats clientStats}
 
+forceDrain :: EgestKey -> Effect Unit
+forceDrain egestKey =
+  Gen.doCast (serverName egestKey) doForceDrain
+  where
+    doForceDrain state@{ egestKey: EgestKey slotId slotRole
+                       , aggregatorPoP
+                       , slotCharacteristics
+                       , loadConfig
+                       , forceDrainTimeout
+                       , parentCallbacks: { startLocalOrRemoteEgest } } = do
+      logInfo "Egest entering force-drain mode" {egestKey}
+
+      void $ Timer.sendAfter (serverName egestKey) (round $ unwrap forceDrainTimeout) ForceDrainTimeout
+      void $ startLocalOrRemoteEgest loadConfig LocalAgent {slotId, slotRole, aggregatorPoP, slotCharacteristics}
+
+      pure $ CastNoReply state{forceDrain = true}
+
 currentStats :: EgestKey -> Effect (EgestStats List)
 currentStats egestKey@(EgestKey slotId slotRole) =
-  Gen.doCall (serverName egestKey) \state@{thisServer, clientCount, clientStats} -> do
+  Gen.doCall (serverName egestKey) \state@{clientCount, clientStats} -> do
     now <- Erl.systemTimeMs
     let
       stats = { egestKey
@@ -244,14 +275,16 @@ currentStats egestKey@(EgestKey slotId slotRole) =
 toEgestServer :: Server -> EgestServer
 toEgestServer = unwrap >>> wrap
 
-init :: CreateEgestPayload -> StateServerName -> Effect State
-init payload@{slotId, slotRole, aggregatorPoP, slotCharacteristics} stateServerName = do
+init :: ParentCallbacks -> CreateEgestPayload -> StateServerName -> Effect State
+init parentCallbacks payload@{slotId, slotRole, aggregatorPoP, slotCharacteristics} stateServerName = do
   { eqLogIntervalMs
-    , lingerTimeMs
-    , relayCreationRetryMs
-    , reserveForPotentialNumClients
-    , decayReserveMs
-    } <- Config.egestAgentConfig
+  , lingerTimeMs
+  , relayCreationRetryMs
+  , reserveForPotentialNumClients
+  , decayReserveMs
+  , forceDrainTimeoutMs
+  , aggregatorExitLingerTimeMs
+  } <- Config.egestAgentConfig
   loadConfig <- Config.loadConfig
   thisServer <- PoPDefinition.getThisServer
 
@@ -281,13 +314,16 @@ init payload@{slotId, slotRole, aggregatorPoP, slotCharacteristics} stateServerN
   let
     state = { egestKey
             , aggregatorPoP
+            , parentCallbacks
             , slotCharacteristics
             , loadConfig
-            , thisServer : toEgestServer thisServer
+            , thisServer
             , clientCount : 0
             , clientStats : Map.empty
             , lingerTime : wrap $ toNumber lingerTimeMs
             , relayCreationRetry : wrap $ toNumber relayCreationRetryMs
+            , forceDrainTimeout : wrap $ toNumber forceDrainTimeoutMs
+            , aggregatorExitLingerTime : wrap $ toNumber aggregatorExitLingerTimeMs
             , stopRef : Nothing
             , receivePortNumber
             , lastEgestAuditTime: now
@@ -297,11 +333,13 @@ init payload@{slotId, slotRole, aggregatorPoP, slotCharacteristics} stateServerN
             , dataObject: Nothing
             , lastOnFI: 0
             , activeProfiles: nil
+            , forceDrain: false
+            , aggregatorExitTimerRef: Nothing
             }
   pure state
 
 handleInfo :: Msg -> State -> Effect (CastResult State)
-handleInfo msg state@{egestKey: egestKey@(EgestKey slotId slotRole)} =
+handleInfo msg state@{egestKey: egestKey@(EgestKey slotId slotRole), thisServer} =
   case msg of
     WriteEqLog -> do
       Tuple endMs eqLines <- egestEqLines state
@@ -321,11 +359,60 @@ handleInfo msg state@{egestKey: egestKey@(EgestKey slotId slotRole)} =
       pure $ CastNoReply state
 
     IntraPoPBus (IngestAggregatorExited (AggregatorKey exitedSlotId exitedSlotRole) serverAddress)
--- SS TODO     | exitedSlotId == slotId && exitedSlotRole == slotRole -> doStop state
+      | exitedSlotId == slotId && exitedSlotRole == slotRole -> do
+        ref <- Erl.makeRef
+        void $ Timer.sendAfter (serverName egestKey) (round $ unwrap state.aggregatorExitLingerTime) (AggregatorExitTimer ref)
+        pure $ CastNoReply $ state{aggregatorExitTimerRef = Just ref}
       | otherwise -> pure $ CastNoReply state
+
+    IntraPoPBus (StreamRelayStarted _ _) ->
+      pure $ CastNoReply state
+
+    IntraPoPBus (StreamRelayExited _ _) ->
+      pure $ CastNoReply state
+
+    IntraPoPBus (EgestStarted startedEgestKey startedServer) | startedEgestKey == egestKey
+                                                               && startedServer /= thisServer ->
+      -- A twin just started on another server
+      if state.forceDrain then do
+        logInfo "ForceDrain mode: Twin just started; announcing that we have stopped" {egestKey}
+        announceLocalEgestStopped egestKey
+        pure $ CastNoReply state
+      else do
+        -- Multiple egest instances is normal
+        pure $ CastNoReply state
+
+    IntraPoPBus (EgestStarted _ _) ->
+      pure $ CastNoReply state
+
+    IntraPoPBus (EgestExited exitedKey exitedServer) | exitedKey == egestKey
+                                                       && exitedServer == thisServer ->
+      -- We just exited!  Only makes sense in forceDrain mode where we announce stop prior to stopping
+      if state.forceDrain then do
+        logInfo "ForceDrain mode: Announcement of our exit" {egestKey}
+        pure $ CastStop state
+      else do
+        logInfo "Normal mode: Unexpected announcement of our exit" {egestKey}
+        pure $ CastNoReply state
+
+    IntraPoPBus (EgestExited _ _) ->
+      pure $ CastNoReply state
 
     IntraPoPBus (VmReset _ _ _) ->
       pure $ CastNoReply state
+
+    ForceDrainTimeout -> do
+        logInfo "Egest stopping due to force drain timeout" {egestKey}
+        pure $ CastStop state
+
+    AggregatorExitTimer ref
+      | Just ref == state.aggregatorExitTimerRef -> do
+        mAggregator <- IntraPoP.whereIsIngestAggregator (egestKeyToAggregatorKey egestKey)
+        case mAggregator of
+          Nothing -> pure $ CastStop state
+          Just _ -> pure $ CastNoReply state
+      | otherwise ->
+        pure $ CastNoReply state
 
     Gun gunMsg ->
       processGunMessage state gunMsg
@@ -429,7 +516,7 @@ removeClient sessionId state@{clientCount, clientStats} = do
 
 egestEqLines :: State -> Effect (Tuple Milliseconds (List Audit.EgestEqLine))
 egestEqLines state@{ egestKey: egestKey@(EgestKey slotId _slotRole)
-                   , thisServer: (Egest {address: thisServerAddr})
+                   , thisServer: (Server {address: thisServerAddr})
                    , lastEgestAuditTime: startMs
                    , slotConfiguration} = do
   endMs <- systemTimeMs
@@ -516,11 +603,11 @@ initStreamRelay state@{relayCreationRetry, egestKey: egestKey@(EgestKey slotId s
 findOrStartRelayForStream :: State -> Effect (ResourceResp Server)
 findOrStartRelayForStream state@{ egestKey: EgestKey slotId slotRole
                                 , aggregatorPoP
-                                , thisServer
                                 , slotCharacteristics
+                                , parentCallbacks: { startLocalOrRemoteStreamRelay }
                                 , loadConfig} = do
   mRelay <- IntraPoP.whereIsStreamRelayWithLocalOrRemote $ RelayKey slotId slotRole
-  maybe' (\_ -> StreamRelaySup.startLocalOrRemoteStreamRelay loadConfig LocalAgent payload) (pure <<< Right) mRelay
+  maybe' (\_ -> startLocalOrRemoteStreamRelay loadConfig LocalAgent payload) (pure <<< Right) mRelay
   where
     payload = {slotId, slotRole, aggregatorPoP, slotCharacteristics}
 

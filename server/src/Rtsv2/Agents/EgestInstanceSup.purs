@@ -2,6 +2,7 @@ module Rtsv2.Agents.EgestInstanceSup
        ( startLink
        , findEgest
        , startLocalEgest
+       , startLocalOrRemoteEgest
        , isAgentAvailable
        )
        where
@@ -30,6 +31,7 @@ import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Agents.EgestInstance (CreateEgestPayload)
 import Rtsv2.Agents.EgestInstance as EgestInstance
 import Rtsv2.Agents.IntraPoP as IntraPoP
+import Rtsv2.Agents.StreamRelaySup as StreamRelayInstance
 import Rtsv2.Config (LoadConfig)
 import Rtsv2.Load as Load
 import Rtsv2.LoadTypes (LoadCheckResult)
@@ -37,7 +39,7 @@ import Rtsv2.LoadTypes as LoadTypes
 import Rtsv2.Names as Names
 import Rtsv2.NodeManager as NodeManager
 import Rtsv2.PoPDefinition as PoPDefinition
-import Rtsv2.Types (LocalOrRemote(..), LocalResourceResp, LocationResp, ResourceFailed(..))
+import Rtsv2.Types (LocalOrRemote(..), LocalResourceResp, LocationResp, ResourceFailed(..), ResourceResp)
 import Rtsv2.Utils (noprocToMaybe)
 import Shared.Rtsv2.Agent (Agent(..))
 import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
@@ -73,6 +75,14 @@ startLocalEgest loadConfig onBehalfOf payload@{slotCharacteristics} =
   NodeManager.launchLocalAgent Egest onBehalfOf (Load.hasCapacityForEgestInstance slotCharacteristics loadConfig) launchLocal
   where
     launchLocal _ = startEgest payload
+
+startLocalOrRemoteEgest :: LoadConfig -> OnBehalfOf -> CreateEgestPayload -> Effect (ResourceResp Server)
+startLocalOrRemoteEgest loadConfig onBehalfOf payload@{slotCharacteristics} =
+ NodeManager.launchLocalOrRemoteAgent Egest onBehalfOf (Load.hasCapacityForEgestInstance slotCharacteristics loadConfig) launchLocal launchRemote
+ where
+   launchLocal _ = startEgest payload
+   launchRemote remote =
+     either (const false) (const true) <$> SpudGun.postJson (makeUrl remote EgestE) payload
 
 ------------------------------------------------------------------------------
 -- Supervisor callbacks
@@ -146,9 +156,13 @@ startEgest :: CreateEgestPayload -> Effect (Either ResourceFailed Pid)
 startEgest payload@{slotId, slotRole} =
   let
     egestKey = EgestKey slotId slotRole
+    parentCallbacks =
+      { startLocalOrRemoteStreamRelay: StreamRelayInstance.startLocalOrRemoteStreamRelay
+      , startLocalOrRemoteEgest
+      }
   in
     (note LaunchFailed <<< startOkAS) <$>
-    Sup.startSimpleChild childTemplate serverName { childStartLink: EgestInstance.startLink payload
+    Sup.startSimpleChild childTemplate serverName { childStartLink: EgestInstance.startLink parentCallbacks payload
                                                   , childStopAction: EgestInstance.stopAction egestKey
                                                   , serverName: Names.egestInstanceStateName egestKey
                                                   , domain: EgestInstance.domain

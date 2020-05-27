@@ -11,7 +11,6 @@ import Prelude
 import Data.Either (either, note)
 import Effect (Effect)
 import Erl.Data.List (nil, (:))
-import Logger (spy)
 import Pinto (StartChildResult, SupervisorName, isRegistered)
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStartTemplate, childType)
@@ -59,9 +58,9 @@ startLocalOrRemoteAggregator loadConfig onBehalfOf payload@{streamDetails} =
     NodeManager.launchLocalOrRemoteAgent IngestAggregator onBehalfOf (Load.hasCapacityForAggregator slotCharacteristics loadConfig) launchLocal launchRemote
   where
     launchLocal _ = do
-      (note LaunchFailed <<< startOkAS) <$> startAggregator (spy "startLocal" payload)
+      (note LaunchFailed <<< startOkAS) <$> startAggregator payload
     launchRemote idleServer =
-      either (const false) (const true) <$> SpudGun.postJson (spy "remoteurl" (makeUrl idleServer IngestAggregatorsE)) (spy "startremote" payload)
+      either (const false) (const true) <$> SpudGun.postJson (makeUrl idleServer IngestAggregatorsE) payload
 
 ------------------------------------------------------------------------------
 -- Supervisor callbacks
@@ -90,8 +89,10 @@ startAggregator :: CreateAggregatorPayload -> Effect StartChildResult
 startAggregator payload@{streamDetails} =
   let
     aggregatorKey = IngestAggregatorInstance.streamDetailsToAggregatorKey streamDetails
+    parentCallbacks = { startLocalOrRemoteAggregator: startLocalOrRemoteAggregator
+                      }
   in
-   Sup.startSimpleChild childTemplate serverName { childStartLink: IngestAggregatorInstanceSup.startLink aggregatorKey payload
+   Sup.startSimpleChild childTemplate serverName { childStartLink: IngestAggregatorInstanceSup.startLink aggregatorKey parentCallbacks payload
                                                  , childStopAction: IngestAggregatorInstance.stopAction aggregatorKey
                                                  , serverName: Names.ingestAggregatorInstanceStateName aggregatorKey
                                                  , domain: IngestAggregatorInstance.domain

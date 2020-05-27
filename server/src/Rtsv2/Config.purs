@@ -72,6 +72,7 @@ type LoadConfig
 type NodeManagerConfig
   = { initialRunState :: RunState
     , initialCanaryState :: CanaryState
+    , forceDrainTimeoutMs :: Int
     }
 
 type FeatureFlags
@@ -119,6 +120,7 @@ type IngestInstanceConfig
 
 type IngestAggregatorAgentConfig
   = { shutdownLingerTimeMs :: Int
+    , forceDrainTimeoutMs :: Int
     }
 
 type IngestStatsConfig
@@ -135,6 +137,8 @@ type EgestAgentConfig
     , relayCreationRetryMs :: Int
     , reserveForPotentialNumClients :: Int
     , decayReserveMs :: Int
+    , forceDrainTimeoutMs :: Int
+    , aggregatorExitLingerTimeMs :: Int
     }
 
 type IntraPoPAgentConfig
@@ -165,6 +169,8 @@ type TransPoPAgentConfig
 type StreamRelayConfig
   = { lingerTimeMs :: Int
     , reApplyPlanTimeMs :: Int
+    , forceDrainTimeoutMs :: Int
+    , aggregatorExitLingerTimeMs :: Int
     }
 
 type IntraPoPAgentApi

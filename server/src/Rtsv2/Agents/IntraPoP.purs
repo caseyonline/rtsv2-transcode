@@ -99,7 +99,7 @@ import Shared.Rtsv2.Agent (SlotCharacteristics, emptySlotCharacteristics)
 import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.JsonLd (transPoPLeaderLocationNode)
 import Shared.Rtsv2.JsonLd as JsonLd
-import Shared.Rtsv2.Stream (AgentKey(..), AggregatorKey, EgestKey, RelayKey(..), agentKeyToAggregatorKey, aggregatorKeyToAgentKey, egestKeyToAgentKey)
+import Shared.Rtsv2.Stream (AgentKey(..), AggregatorKey, EgestKey, RelayKey(..), agentKeyToAggregatorKey, agentKeyToEgestKey, agentKeyToRelayKey, aggregatorKeyToAgentKey, egestKeyToAgentKey)
 import Shared.Rtsv2.Types (AcceptingRequests, CanaryState(..), CurrentLoad, Health, Server(..), ServerAddress(..), ServerLoad, extractAddress, extractPoP, maxLoad, minLoad, toServerLoad)
 import Shared.Utils (distinctRandomNumbers)
 
@@ -190,6 +190,10 @@ data Msg serfPayload
 data IntraPoPBusMessage
   = IngestAggregatorStarted AggregatorKey Server
   | IngestAggregatorExited AggregatorKey Server
+  | StreamRelayStarted RelayKey Server
+  | StreamRelayExited RelayKey Server
+  | EgestStarted EgestKey Server
+  | EgestExited EgestKey Server
   | VmReset Server Ref (Maybe Ref)
 
 
@@ -643,10 +647,16 @@ egestHandler
     }
   where
     availableLocal state agentKey server _ = do
+      let
+        egestKey = agentKeyToEgestKey agentKey
+      Bus.raise bus (EgestStarted egestKey server)
       sendToIntraSerfNetwork state "egestAvailable" (IMEgestState Available agentKey $ extractAddress server)
 
     availableThisPoP state agentKey server _ = do
       -- logInfo "New egest is avaiable in this PoP" {agentKey, server}
+      let
+        egestKey = agentKeyToEgestKey agentKey
+      Bus.raise bus (EgestStarted egestKey server)
       pure unit
 
     availableOtherPoP state agentKey server _ = do
@@ -655,9 +665,15 @@ egestHandler
 
     stoppedLocal state agentKey server = do
       logInfo "Local egest stopped" {agentKey}
+      let
+        egestKey = agentKeyToEgestKey agentKey
+      Bus.raise bus (EgestExited egestKey server)
       sendToIntraSerfNetwork state "egestStopped" $ IMEgestState Stopped agentKey $ extractAddress server
 
     stoppedThisPoP state agentKey server = do
+      let
+        egestKey = agentKeyToEgestKey agentKey
+      Bus.raise bus (EgestExited egestKey server)
       logInfo "Remote egest stopped" {agentKey, server}
 
     stoppedOtherPoP state agentKey server = do
@@ -708,9 +724,15 @@ relayHandler
     }
   where
     availableLocal state agentKey server _ = do
+      let
+        relayKey = agentKeyToRelayKey agentKey
+      Bus.raise bus (StreamRelayStarted relayKey server)
       sendToIntraSerfNetwork state "relayAvailable" (IMRelayState Available agentKey $ extractAddress server)
 
     availableThisPoP state agentKey server _ = do
+      let
+        relayKey = agentKeyToRelayKey agentKey
+      Bus.raise bus (StreamRelayStarted relayKey server)
       pure unit
 
     availableOtherPoP state agentKey server _ = do
@@ -719,9 +741,15 @@ relayHandler
 
     stoppedLocal state agentKey server = do
       logInfo "Local relay stopped" {agentKey}
+      let
+        relayKey = agentKeyToRelayKey agentKey
+      Bus.raise bus (StreamRelayExited relayKey server)
       sendToIntraSerfNetwork state "relayStopped" $ IMRelayState Stopped agentKey $ extractAddress server
 
     stoppedThisPoP state agentKey server = do
+      let
+        relayKey = agentKeyToRelayKey agentKey
+      Bus.raise bus (StreamRelayExited relayKey server)
       logInfo "Remote relay stopped" {agentKey, server}
 
     stoppedOtherPoP state agentKey server = do
