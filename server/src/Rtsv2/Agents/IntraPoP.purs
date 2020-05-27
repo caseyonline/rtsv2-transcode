@@ -1204,13 +1204,15 @@ foldHandlers perHandlerFun =
   perHandlerFun relayHandler >=> perHandlerFun aggregatorHandler >=> perHandlerFun egestHandler
 
 garbageCollectServer :: State -> Server -> Ref -> Maybe Ref -> Effect State
-garbageCollectServer state deadServer oldRef newRef = do
+garbageCollectServer state@{members} deadServer oldRef newRef = do
   -- TODO - add a server decomissioning message to do this cleanly
   logWarning "server liveness timeout" { server: deadServer
                                        , oldRef
                                        , newRef}
   Bus.raise bus (VmReset deadServer oldRef newRef)
-  foldHandlers (gcServer deadServer) state
+  let
+    newMembers = alter (map (\ memberInfo -> memberInfo { acceptingRequests = wrap false })) (extractAddress deadServer) members
+  foldHandlers (gcServer deadServer) state{members = newMembers}
 
 gcServer :: forall a. Server -> AgentHandler a -> State -> Effect State
 gcServer deadServer agentHandler@{locationLens, name, stoppedThisPoP} state@{agentLocations} = do

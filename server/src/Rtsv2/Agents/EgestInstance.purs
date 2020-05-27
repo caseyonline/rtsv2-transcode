@@ -350,6 +350,9 @@ processGunMessage state@{relayWebSocket: Just socket, egestKey, lastOnFI} gunMsg
       Right (WsGun.Internal _) ->
         pure $ CastNoReply state
 
+      Right (WsGun.WebSocketUpdate newSocket) ->
+        pure $ CastNoReply state{relayWebSocket = Just newSocket}
+
       Right WsGun.WebSocketUp -> do
         _ <- logInfo "Relay WebSocket up" {}
         pure $ CastNoReply state

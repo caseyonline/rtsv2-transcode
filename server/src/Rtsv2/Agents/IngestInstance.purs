@@ -29,7 +29,6 @@ import Erl.Data.List (List, nil, (:))
 import Erl.Data.Tuple (Tuple2, tuple2)
 import Erl.Process.Raw (Pid)
 import Erl.Utils (systemTimeMs)
-import Erl.Utils as Erl
 import Logger (Logger)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
@@ -48,7 +47,7 @@ import Rtsv2.Config as Config
 import Rtsv2.DataObject as DO
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
-import Rtsv2.Types (LocalOrRemote(..), ResourceResp, fromLocalOrRemote)
+import Rtsv2.Types (ResourceFailed, fromLocalOrRemote)
 import Shared.Common (Milliseconds)
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.Agent.State as PublicState
@@ -234,7 +233,8 @@ handleInfo msg state@{ingestKey} = case msg of
     pure $ CastNoReply state
 
   IntraPoPBus (IngestAggregatorExited aggregatorKey serverAddress) -> do
-    pure $ CastNoReply state
+    state2 <- handleAggregatorExit aggregatorKey serverAddress state
+    pure $ CastNoReply state2
 
   HandlerDown -> do
     logInfo "Ingest Handler has exited" {ingestKey}
@@ -258,6 +258,9 @@ processGunMessage state@{aggregatorWebSocket: Just socket, ingestKey} gunMsg =
 
       Right (WsGun.Internal _) ->
         pure $ CastNoReply state
+
+      Right (WsGun.WebSocketUpdate newSocket) ->
+        pure $ CastNoReply state{aggregatorWebSocket = Just newSocket}
 
       Right WsGun.WebSocketUp -> do
         _ <- logInfo "Aggregator WebSocket up" {}
@@ -336,7 +339,7 @@ informAggregator state@{ streamDetails
                        , stateServerName
                        , loadConfig} = do
   maybeAggregator <- hush <$> getAggregator
-  maybeIngestAdded <- addIngest $ (fromLocalOrRemote <$> maybeAggregator)
+  maybeIngestAdded <- addIngest maybeAggregator
   case maybeIngestAdded of
     Just webSocket -> do
       logInfo "WebSocket connection started" {maybeAggregator}
@@ -356,24 +359,26 @@ informAggregator state@{ streamDetails
       webSocket <- WsGun.openWebSocket (serverName ingestKey) Gun wsUrl
       pure $ hush webSocket
 
-    getAggregator :: Effect (ResourceResp Server)
+    getAggregator :: Effect (Either ResourceFailed Server)
     getAggregator = do
       maybeAggregator <- IntraPoP.whereIsIngestAggregator (ingestKeyToAggregatorKey ingestKey)
       case maybeAggregator of
-        Just server ->
-          pure $ Right $ Local server
-        Nothing ->
-          IngestAggregatorSup.startLocalOrRemoteAggregator loadConfig LocalAgent {shortName: rtmpShortName, streamDetails}
+        Just server -> do
+          _ <- logInfo "Have a local agg" {server}
+          pure $ Right server
+        Nothing -> do
+          _ <- logInfo "Request new agg" {}
+          (map fromLocalOrRemote) <$> IngestAggregatorSup.startLocalOrRemoteAggregator loadConfig LocalAgent {shortName: rtmpShortName, streamDetails}
 
--- handleAggregatorExit :: AggregatorKey -> Server -> State -> Effect State
--- handleAggregatorExit exitedAggregatorKey exitedAggregatorAddr state@{ingestKey, aggregatorRetryTime, aggregatorWebSocket: mWebSocket}
---   | exitedAggregatorKey == (ingestKeyToAggregatorKey ingestKey) = do
---       logInfo "Aggregator has exited" {exitedAggregatorKey, exitedAggregatorAddr, ingestKey: state.ingestKey}
---       fromMaybe (pure unit) $ WsGun.closeWebSocket <$> mWebSocket
---       void $ Timer.sendAfter (serverName ingestKey) 0 InformAggregator
---       pure state
---   | otherwise =
---       pure state
+handleAggregatorExit :: AggregatorKey -> Server -> State -> Effect State
+handleAggregatorExit exitedAggregatorKey exitedAggregatorAddr state@{ingestKey, aggregatorRetryTime, aggregatorWebSocket: mWebSocket}
+  | exitedAggregatorKey == (ingestKeyToAggregatorKey ingestKey) = do
+      logInfo "Aggregator has exited" {exitedAggregatorKey, exitedAggregatorAddr, ingestKey: state.ingestKey}
+      fromMaybe (pure unit) $ WsGun.closeWebSocket <$> mWebSocket
+      void $ Timer.sendAfter (serverName ingestKey) 0 InformAggregator
+      pure state{aggregatorWebSocket = Nothing}
+  | otherwise =
+      pure state
 
 --------------------------------------------------------------------------------
 -- Log helpers

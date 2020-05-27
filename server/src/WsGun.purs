@@ -19,17 +19,22 @@ module WsGun
 import Prelude
 
 import Data.Either (Either(..))
+import Data.Int (round)
 import Data.Maybe (Maybe)
+import Data.Newtype (unwrap)
 import Effect (Effect)
 import Erl.Data.Binary (Binary)
 import Erl.Data.List (List)
 import Erl.Data.Tuple (Tuple2, fst, snd)
 import Erl.Process.Raw (Pid)
 import Erl.Utils (Ref)
+import Erl.Utils as Erl
 import Foreign (Foreign)
+import Logger (spy)
 import Pinto (ServerName)
 import Pinto.Gen as Gen
-import Shared.Common (Url)
+import Pinto.Timer as Timer
+import Shared.Common (Milliseconds(..), Url)
 import Simple.JSON (class ReadForeign, class WriteForeign, readJSON, writeJSON)
 
 data Protocol = HTTP
@@ -55,30 +60,38 @@ data GunMsg = GunUp ConnPid Protocol
             | GunWsConnectionError ConnPid Reason
             | GunWsStreamError ConnPid StreamRef Reason
             | GunExit ConnPid
+            | KeepAliveCheck ConnPid
 
-data WebSocket clientMsg serverMsg = Connection ConnPid String
+data WebSocket clientMsg serverMsg = Connection ConnPid String Milliseconds
 
 data GunProtocolError = StreamError
                       | ConnectionError
                       | ParseError
 
-data ProcessResponse serverMsg = Internal GunMsg
-                               | WebSocketUp
-                               | WebSocketDown
-                               | Frame serverMsg
+data ProcessResponse clientMsg serverMsg = Internal GunMsg
+                                         | WebSocketUp
+                                         | WebSocketDown
+                                         | WebSocketUpdate (WebSocket clientMsg serverMsg)
+                                         | Frame serverMsg
 
 data ProcessError errorMsg = Error errorMsg
                            | UnknownSocket
 
-foreign import openImpl :: Url -> Effect (Either Foreign (Tuple2 ConnPid String))
+foreign import openImpl :: Url -> Int -> Effect (Either Foreign (Tuple2 ConnPid String))
 foreign import closeImpl :: ConnPid -> Effect Unit
 foreign import upgradeImpl :: Pid -> String -> Effect StreamRef
 foreign import messageMapperImpl :: Foreign -> Maybe GunMsg
 foreign import sendImpl :: String -> Pid -> Effect Unit
 
+keepalive :: Int
+keepalive = 5000
+
+numMissingKeepalives :: Int
+numMissingKeepalives = 3
+
 openWebSocket :: forall state msg clientMsg serverMsg. ServerName state msg -> (GunMsg -> msg) -> Url -> Effect (Either Foreign (WebSocket clientMsg serverMsg))
 openWebSocket serverName mapper url = do
-  res <- openImpl url
+  res <- openImpl url keepalive
   case res of
     Left err ->
       pure $ Left err
@@ -86,15 +99,17 @@ openWebSocket serverName mapper url = do
       let
         pid = fst tuple
         path = snd tuple
+      now <- Erl.systemTimeMs
       Gen.monitorPid serverName pid (\_ -> mapper $ GunExit pid)
-      pure $ Right $ Connection (fst tuple) (snd tuple)
+      _ <- Timer.sendEvery serverName keepalive (mapper (KeepAliveCheck pid))
+      pure $ Right $ Connection (fst tuple) (snd tuple) now
 
 closeWebSocket :: forall clientMsg serverMsg. WebSocket clientMsg serverMsg -> Effect Unit
-closeWebSocket (Connection connPid _path) =
+closeWebSocket (Connection connPid _path _) =
   closeImpl connPid
 
-processMessage :: forall clientMsg serverMsg. ReadForeign serverMsg => WebSocket clientMsg serverMsg -> GunMsg -> Effect (Either GunProtocolError (ProcessResponse serverMsg))
-processMessage _socket@(Connection _connPid path)  gunMsg@(GunUp connPid _protocol) = do
+processMessage :: forall clientMsg serverMsg. ReadForeign serverMsg => WebSocket clientMsg serverMsg -> GunMsg -> Effect (Either GunProtocolError (ProcessResponse clientMsg serverMsg))
+processMessage _socket@(Connection _connPid path _)  gunMsg@(GunUp connPid _protocol) = do
   _ <- upgradeImpl connPid path
   pure $ Right $ Internal gunMsg
 
@@ -119,8 +134,9 @@ processMessage _socket gunMsg@(GunWsFrame _connPid _streamRef (Close _int _str))
 processMessage _socket gunMsg@(GunWsFrame _connPid _streamRef (Ping str)) = do
   pure $ Right $ Internal gunMsg
 
-processMessage _socket gunMsg@(GunWsFrame _connPid _streamRef (Pong str)) = do
-  pure $ Right $ Internal gunMsg
+processMessage _socket@(Connection pid path _lastKeepalive) gunMsg@(GunWsFrame _connPid _streamRef (Pong str)) = do
+  now <- Erl.systemTimeMs
+  pure $ Right $ WebSocketUpdate $ Connection pid path now
 
 processMessage _socket gunMsg@(GunWsFrame _connPid _streamRef (Binary bin)) = do
   pure $ Right $ Internal gunMsg
@@ -130,12 +146,20 @@ processMessage _socket gunMsg@(GunWsFrame _connPid _streamRef (Text str)) =
     Left _ -> Left ParseError
     Right frame -> Right $ Frame frame
 
+processMessage socket@(Connection connPid path lastKeepalive) gunMsg@(KeepAliveCheck _connPid) = do
+  now <- Erl.systemTimeMs
+  if (round $ unwrap now) - (round $ unwrap lastKeepalive) > keepalive * numMissingKeepalives then do
+    closeImpl connPid
+    pure $ Right WebSocketDown
+  else
+    pure $ Right $ Internal gunMsg
+
 send :: forall clientMsg serverMsg. WriteForeign clientMsg => WebSocket clientMsg serverMsg -> clientMsg -> Effect Unit
-send (Connection connPid _) msg =
+send (Connection connPid _ _) msg =
   sendImpl (writeJSON msg) connPid
 
 isSocketForMessage :: forall clientMsg serverMsg. GunMsg -> WebSocket clientMsg serverMsg -> Boolean
-isSocketForMessage msg (Connection connPid _) =
+isSocketForMessage msg (Connection connPid _ _) =
   getConnPid msg == connPid
 
 messageMapper :: Foreign -> Maybe GunMsg
@@ -152,3 +176,4 @@ getConnPid (GunWsConnectionError connPid _reason) = connPid
 getConnPid (GunWsStreamError connPid _streamRef _reason) = connPid
 getConnPid (GunWsFrame connPid _streamRef _frame) = connPid
 getConnPid (GunExit connPid) = connPid
+getConnPid (KeepAliveCheck connPid) = connPid

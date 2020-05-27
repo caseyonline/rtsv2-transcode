@@ -2,7 +2,7 @@
 
 -include_lib("id3as_common/include/common.hrl").
 
--export([ openImpl/1
+-export([ openImpl/2
         , closeImpl/1
         , upgradeImpl/2
         , sendImpl/2
@@ -15,7 +15,7 @@
                       , args => Args}),
   ok.
 
-openImpl(Url) ->
+openImpl(Url, KeepAlive) ->
   fun() ->
       {ok, {_Scheme, _UserInfo, Host, Port, Path, Query}} = http_uri:parse(binary_to_list(Url)),
 
@@ -25,7 +25,8 @@ openImpl(Url) ->
                                  , retry => 0
                                  %%, supervise => false
                                  , ws_opts => #{ compress => true
-                                               , silence_pings => true
+                                               , silence_pings => false
+                                               , keepalive => KeepAlive
                                                }
                                  %%, event_handler => {'wsGun@foreign', ok}
                                  }) of

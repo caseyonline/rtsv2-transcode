@@ -65,6 +65,7 @@ process_input(#rtp_sequence{ rtps = RTPs }, State = #?state{ destinations = Dest
   {ok, State #?state{ publication_count = PublicationCount + 1 }};
 
 process_input(#rtp{} = RTP, State = #?state{ destinations = Destinations, publication_count = PublicationCount }) ->
+
   Packet = rtp:unparse(avp, RTP),
 
   _ =

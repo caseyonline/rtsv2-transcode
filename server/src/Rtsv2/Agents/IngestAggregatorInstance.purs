@@ -692,11 +692,11 @@ handleInfo msg state@{aggregatorKey, slotId, stateServerName, workflowHandle, ma
 
     IngestDown profileName ingestAddress isLocal
       | isLocal -> do
-        logInfo "Ingest down" {aggregatorKey, profileName}
+        logInfo "Local Ingest down" {aggregatorKey, profileName}
         state2 <- doRemoveIngest profileName removeLocalIngestFromCachedState state
         pure $ CastNoReply state2
       | otherwise -> do
-        logInfo "Ingest down" {aggregatorKey, profileName}
+        logInfo "Remote Ingest down" {aggregatorKey, profileName}
         state2 <- doRemoveIngest profileName removeRemoteIngestFromCachedState state
         pure $ CastNoReply state2
 
@@ -711,6 +711,9 @@ processGunMessage state@{slotId, slotRole, dataObjectState: Left dos@{connection
 
       Right (WsGun.Internal _) ->
         pure $ CastNoReply state
+
+      Right (WsGun.WebSocketUpdate newSocket) ->
+        pure $ CastNoReply state{dataObjectState = Left dos{connectionToBackup = Just newSocket}}
 
       Right WsGun.WebSocketUp -> do
         _ <- logInfo "Backup WebSocket up" {slotId}
