@@ -4,7 +4,7 @@
 cd ${0%/*}
 
 source ./config.sh
-
+which ffmpeg
 ffmpeg \
   -re \
   -i \

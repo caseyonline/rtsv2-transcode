@@ -15,5 +15,7 @@ import Shared.Rtsv2.Types (Server)
 import StetsonHelper (GetHandler, jsonResponse)
 
 stats :: Server -> SlotId -> SlotRole -> GetHandler (PublicState.Egest List)
-stats server slotId slotRole =
-  jsonResponse $ (map Just) <$> (map (JsonLd.egestStatsNode slotId slotRole server)) <$> EgestInstance.currentStats $ EgestKey slotId slotRole
+stats server slotId slotRole = do
+  let curStats = EgestInstance.currentStats $ EgestKey slotId slotRole
+      egestStats = JsonLd.egestStatsNode slotId slotRole server =<< curStats
+  jsonResponse $ Just <$> egestStats

@@ -53,7 +53,7 @@ import StetsonHelper (GetHandler, jsonResponse, multiMimeResponse)
 
 ingestInstancesMetrics :: GetHandler (List (IngestStats List))
 ingestInstancesMetrics =
-  multiMimeResponse ((MimeType.openmetrics statsToPrometheus) : (MimeType.json writeJSON) : nil) (Just <$> IngestStats.getStats)
+  multiMimeResponse ((MimeType.openmetrics (pure <<< statsToPrometheus)) : (MimeType.json (pure <<< writeJSON)) : nil) (Just <$> IngestStats.getStats)
 
 metrics :: List Prometheus.PrometheusMetric
 metrics = { name: "ingest_frame_count"

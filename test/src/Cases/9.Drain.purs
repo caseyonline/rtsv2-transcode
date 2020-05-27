@@ -2,22 +2,16 @@ module Cases.Drain where
 
 import Prelude
 
-import Control.Monad.State (evalStateT, lift)
-import Data.Map as Map
-import Debug.Trace (spy)
-import Effect.Aff (Aff, delay, Milliseconds(..))
+import Effect.Aff (Aff)
 import Helpers.Types (Node)
 import Helpers.Assert as A
-import Helpers.CreateString as C
 import Helpers.Env as E
 import Helpers.Functions as F
 import Helpers.HTTP as HTTP
-import Helpers.Log as L
-import Helpers.Log (as, as', asT)
+import Helpers.Log (as, as')
 import Shared.Rtsv2.Types (CanaryState(..), RunState(..))
 import Shared.Rtsv2.JsonLd as JsonLd
-import Test.Spec (SpecT, after_, before_, describe, describeOnly, it, itOnly)
-import Toppokki as T
+import Test.Spec (SpecT, after_, before_, describe, it)
 
 -------------------------------------------------------------------------------
 -- Main
@@ -44,11 +38,8 @@ nodes :: Array Node
 nodes = [E.p1n1, E.p1n2]
 
 -------------------------------------------------------------------------------
--- Tests
+-- PassiveDrainTests.
 -------------------------------------------------------------------------------
-
--------------------------------------------------------------------------------
--- passiveDrainTests...
 passiveDrainTest1 :: forall m. Monad m => SpecT Aff Unit m Unit
 passiveDrainTest1 =
   it "9.1.1 Heathcheck endpoint returns correct run state" do

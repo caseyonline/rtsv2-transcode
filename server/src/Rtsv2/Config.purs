@@ -6,7 +6,6 @@ module Rtsv2.Config
   , IngestAggregatorAgentConfig
   , IngestStatsConfig
   , EgestStatsConfig
-  , WebConfig
   , PoPDefinitionConfig
   , IntraPoPAgentConfig
   , TransPoPAgentConfig
@@ -58,9 +57,10 @@ import Partial.Unsafe (unsafeCrashWith)
 import Rtsv2.LoadTypes as LoadTypes
 import Shared.Rtsv2.Agent (Agent, SlotCharacteristics, strToAgent)
 import Shared.Rtsv2.Stream (AgentKey)
-import Shared.Rtsv2.Types (CanaryState, RunState, Server)
+import Shared.Rtsv2.Types (CanaryState, RunState, Server, WebConfig)
 import Shared.Utils (lazyCrashIfMissing)
-import Simple.JSON (class ReadForeign, readImpl)
+import Simple.JSON (class ReadForeign, class WriteForeign, readImpl)
+import Data.Newtype (class Newtype)
 
 type LoadConfig
   = { loadAnnounceMs :: Int
@@ -96,9 +96,6 @@ instance readForeignMediaGatewayFlag :: ReadForeign MediaGatewayFlag where
       toType "both" = pure Both
       toType unknown = Nothing
       errorString s = "Unknown Media Gateway Flag: " <> s
-
--- TODO - config should include BindIFace or BindIp
-type WebConfig = { port :: Int }
 
 type GlobalConfig
   = { intraPoPLatencyMs :: Int

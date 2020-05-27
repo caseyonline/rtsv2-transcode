@@ -12,7 +12,7 @@ import Helpers.HTTP as HTTP
 import Helpers.Log as L
 import Helpers.Types (Node)
 import Shared.Rtsv2.Stream (SlotRole(..))
-import Test.Spec (SpecT, describe, it, itOnly, before_, after_)
+import Test.Spec (SpecT, after_, before_, describe, it)
 import Test.Unit.Assert as Assert
 import Toppokki as T
 

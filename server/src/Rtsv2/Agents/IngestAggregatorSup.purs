@@ -11,7 +11,6 @@ import Prelude
 import Data.Either (either, note)
 import Effect (Effect)
 import Erl.Data.List (nil, (:))
-import Logger (spy)
 import Pinto (StartChildResult, SupervisorName, isRegistered)
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStartTemplate, childType)
@@ -27,9 +26,9 @@ import Rtsv2.Names as Names
 import Rtsv2.NodeManager as NodeManager
 import Rtsv2.Types (ResourceFailed(..), ResourceResp, LocalResourceResp)
 import Shared.Rtsv2.Agent (Agent(..))
-import Shared.Rtsv2.LlnwApiTypes (slotDetailsToSlotCharacteristics)
-import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Shared.Rtsv2.Types (OnBehalfOf, Server)
+import Shared.Rtsv2.LlnwApiTypes (slotDetailsToSlotCharacteristics)
+import Shared.Rtsv2.Router.Endpoint.Support as Support
 import SpudGun as SpudGun
 
 ------------------------------------------------------------------------------
@@ -59,9 +58,10 @@ startLocalOrRemoteAggregator loadConfig onBehalfOf payload@{streamDetails} =
     NodeManager.launchLocalOrRemoteAgent IngestAggregator onBehalfOf (Load.hasCapacityForAggregator slotCharacteristics loadConfig) launchLocal launchRemote
   where
     launchLocal _ = do
-      (note LaunchFailed <<< startOkAS) <$> startAggregator (spy "startLocal" payload)
-    launchRemote idleServer =
-      either (const false) (const true) <$> SpudGun.postJson (spy "remoteurl" (makeUrl idleServer IngestAggregatorsE)) (spy "startremote" payload)
+      (note LaunchFailed <<< startOkAS) <$> startAggregator payload
+    launchRemote idleServer = do
+      url <- Support.makeUrl idleServer Support.IngestAggregatorsE
+      either (const false) (const true) <$> SpudGun.postJson url payload
 
 ------------------------------------------------------------------------------
 -- Supervisor callbacks
