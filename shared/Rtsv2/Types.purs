@@ -30,6 +30,7 @@ module Shared.Rtsv2.Types
        , NetworkKbps(..)
        , Percentage(..)
        , FailureReason(..)
+       , WebConfig(..)
 
        , toServerLoad
        , toServerLocation
@@ -163,6 +164,11 @@ data FailureReason
 instance semigroupFailureReason :: Semigroup FailureReason where
   append lhs rhs = rhs
 
+type WebConfig =
+  { systemPort :: Int
+  , supportPort :: Int
+  , publicPort :: Int
+  }
 
 --------------------------------------------------------------------------------
 -- API Types - maybe move me

@@ -10,11 +10,7 @@ import Helpers.Env as E
 import Helpers.Functions as F
 import Helpers.Log as L
 import Helpers.Types (Node)
-<<<<<<< HEAD:test/src/Cases/BrowserDataMsging.purs
 import Shared.Rtsv2.Stream (SlotRole(..), RtmpShortName, RtmpStreamName, SlotId)
-=======
-import Shared.Rtsv2.Stream (SlotRole(..))
->>>>>>> master:test/src/Cases/6.BrowserDataMsging.purs
 import Test.Spec (SpecT, describe, it, before_, after_)
 import Test.Unit.Assert as Assert
 import Toppokki as T

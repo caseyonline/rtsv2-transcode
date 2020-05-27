@@ -123,7 +123,7 @@ makeUrlAddr serverAddr ep =
 makeUrlAddrWithPath :: ServerAddress -> String -> Effect Url
 makeUrlAddrWithPath (ServerAddress host) path = do
   webC <- Config.webConfig
-  pure $ wrap $ "http://" <> host <> (show webC.systemPort) <> path
+  pure $ wrap $ "http://" <> host <> ":" <> (show webC.systemPort) <> path
 
 makeWsUrl
   :: forall r a. Newtype a { address :: ServerAddress | r }
@@ -142,7 +142,7 @@ makeWsUrlAddr serverAddr ep = do
 makeWsUrlAddrWithPath :: ServerAddress -> String -> Effect Url
 makeWsUrlAddrWithPath (ServerAddress host) path = do
   webC <- Config.webConfig
-  pure $ wrap $ "ws://" <> host <> (show webC.systemPort) <> path
+  pure $ wrap $ "ws://" <> host <> ":" <> (show webC.systemPort) <> path
 
 -- | JsonLd Context Type
 contextTypeToString :: JsonLdContextType -> String

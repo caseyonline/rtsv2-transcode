@@ -16,11 +16,13 @@ import Data.These (These(..))
 import Data.Time.Duration (Milliseconds(..))
 import Data.Traversable (traverse_)
 import Debug.Trace (spy)
+import Effect (Effect)
 import Effect.Aff (Aff, delay)
+import Effect.Unsafe (unsafePerformEffect)
 import Foreign (unsafeFromForeign)
 import Foreign.Object as Object
 import Helpers.Assert as A
-import Helpers.CreateString (mkPoPJsonString, toAddrFromNode, toIfaceIndexString, mkServerAddress)
+import Helpers.CreateString (mkPoPJsonString, toAddrFromNode, toIfaceIndexString, mkServerAddress, unwrapEffect)
 import Helpers.Env (sessionName)
 import Helpers.HTTP as HTTP
 import Helpers.Log (throwSlowError, as)
@@ -88,11 +90,11 @@ stringToInt s =
 
 mkPlayerUrl :: Node -> SlotId -> SlotRole -> T.URL
 mkPlayerUrl node slotId slotRole =
-  T.URL $ unwrap $ Public.makeUrl (mkServerAddress node) $ Public.ClientPlayerE slotId slotRole
+  T.URL $ unwrapEffect $ Public.makeUrl (mkServerAddress node) $ Public.ClientPlayerE slotId slotRole
 
 mkIngestUrl :: Node -> RtmpShortName -> RtmpStreamName -> T.URL
 mkIngestUrl node shortName streamName =
-  T.URL $ unwrap $ Public.makeUrl (mkServerAddress node) $ Public.ClientWebRTCIngestE shortName streamName
+  T.URL $ unwrapEffect $ Public.makeUrl (mkServerAddress node) $ Public.ClientWebRTCIngestE shortName streamName
 
 -------------------------------------------------------------------------------
 -- Node

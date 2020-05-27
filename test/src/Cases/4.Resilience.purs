@@ -16,11 +16,7 @@ import Helpers.Log (as, as', asT, asT')
 import Shared.Rtsv2.Stream (SlotRole(..))
 import Shared.Rtsv2.Types (CanaryState(..))
 import Shared.Rtsv2.Chaos as Chaos
-<<<<<<< HEAD:test/src/Cases/Resilience.purs
 import Test.Spec (SpecT, after_, before_, describe, it)
-=======
-import Test.Spec (SpecT, after_, before_, describe, describeOnly, it, itOnly)
->>>>>>> master:test/src/Cases/4.Resilience.purs
 
 
 -------------------------------------------------------------------------------

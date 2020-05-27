@@ -11,13 +11,8 @@ import Helpers.Functions as F
 import Helpers.HTTP as HTTP
 import Helpers.Log as L
 import Helpers.Types (Node)
-<<<<<<< HEAD:test/src/Cases/BrowserIngestTest.purs
-import Shared.Rtsv2.Stream (SlotRole(..), RtmpShortName, RtmpStreamName, SlotId)
-import Test.Spec (SpecT, describe, it, before_, after_)
-=======
 import Shared.Rtsv2.Stream (SlotRole(..))
-import Test.Spec (SpecT, describe, it, itOnly, before_, after_)
->>>>>>> master:test/src/Cases/5.BrowserIngestTest.purs
+import Test.Spec (SpecT, after_, before_, describe, it)
 import Test.Unit.Assert as Assert
 import Toppokki as T
 

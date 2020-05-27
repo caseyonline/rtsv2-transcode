@@ -2,18 +2,19 @@ module Helpers.HTTP where
 
 import Prelude
 
-import Debug.Trace (spy)
 import Data.Either (Either(..))
 import Data.Newtype (unwrap, wrap)
+import Debug.Trace (spy)
 import Effect.Aff (Aff, attempt)
+import Effect.Unsafe (unsafePerformEffect)
 import Helpers.CreateString as C
 import Helpers.Types (Node, ResWithBody(..))
 import Milkis as M
 import Milkis.Impl.Node (nodeFetch)
 import Prim.Row (class Union)
 import Shared.Rtsv2.Chaos as Chaos
-import Shared.Rtsv2.Router.Endpoint.Support as Support
 import Shared.Rtsv2.Router.Endpoint.Public as Public
+import Shared.Rtsv2.Router.Endpoint.Support as Support
 import Shared.Rtsv2.Router.Endpoint.System as System
 import Shared.Rtsv2.Stream (RtmpShortName, SlotId, SlotNameAndProfileName(..), SlotRole(..), RtmpStreamName, ProfileName)
 import Shared.Rtsv2.Types (CanaryState(..), RunState(..), CurrentLoad(..), ServerAddress(..))
@@ -22,19 +23,19 @@ import Toppokki as T
 
 playerUrl :: Node -> SlotId -> SlotRole -> T.URL
 playerUrl node slotId slotRole =
-  T.URL $ unwrap $ Public.makeUrl (C.mkServerAddress node) $ Public.ClientPlayerE slotId slotRole
+  T.URL $ C.unwrapEffect $ Public.makeUrl (C.mkServerAddress node) $ Public.ClientPlayerE slotId slotRole
 
 ingestUrl :: Node -> RtmpShortName -> RtmpStreamName -> T.URL
 ingestUrl node shortName streamName =
-  T.URL $ unwrap $ Public.makeUrl (C.mkServerAddress node) $ Public.ClientWebRTCIngestE shortName streamName
+  T.URL $ C.unwrapEffect $ Public.makeUrl (C.mkServerAddress node) $ Public.ClientWebRTCIngestE shortName streamName
 
 canaryPlayerUrl :: Node -> SlotId -> SlotRole -> T.URL
 canaryPlayerUrl node slotId slotRole =
-  T.URL $ unwrap $ Support.makeUrl (C.mkServerAddress node) $ Support.CanaryClientPlayerE slotId slotRole
+  T.URL $ C.unwrapEffect $ Support.makeUrl (C.mkServerAddress node) $ Support.CanaryClientPlayerE slotId slotRole
 
 canaryIngestUrl :: Node -> RtmpShortName -> RtmpStreamName -> T.URL
 canaryIngestUrl node shortName streamName =
-  T.URL $ unwrap $ Support.makeUrl (C.mkServerAddress node) $ Support.CanaryClientWebRTCIngestE shortName streamName
+  T.URL $ C.unwrapEffect $ Support.makeUrl (C.mkServerAddress node) $ Support.CanaryClientWebRTCIngestE shortName streamName
 
 fetch
   :: forall options trash.
@@ -71,7 +72,7 @@ changeCanaryState node canary =
 
 changeRunState :: Node -> RunState -> Aff (Either String ResWithBody)
 changeRunState node runState =
-  fetch (M.URL $ makeUrlAndUnwrap node RunStateE)
+  fetch (M.URL $ C.makeUrlAndUnwrapSupport node Support.RunStateE)
         { method: M.postMethod
         , body: SimpleJSON.writeJSON runState
         , headers: M.makeHeaders { "Content-Type": "application/json" }
@@ -103,7 +104,7 @@ killProcessNode node chaos =
 
 killProcessServerAddr :: ServerAddress -> Chaos.ChaosPayload -> Aff (Either String ResWithBody)
 killProcessServerAddr addr chaos =
-  fetch (M.URL $ unwrap $ System.makeUrlAddr addr (System.Chaos))
+  fetch (M.URL $ C.unwrapEffect $ System.makeUrlAddr addr (System.Chaos))
         { method: M.postMethod
         , body: SimpleJSON.writeJSON (chaos :: Chaos.ChaosPayload)
         , headers: M.makeHeaders { "Content-Type": "application/json" }
@@ -162,7 +163,7 @@ getProxiedRelayStats node slotId = getStatsSystem node (System.RelayProxiedStats
 
 -- | PoP
 getIntraPoPState :: Node -> Aff (Either String ResWithBody)
-getIntraPoPState node = get (spy "getIntraPoPState:" $ M.URL $ C.makeUrlAndUnwrapSupport node Support.ServerStateE)
+getIntraPoPState node = get (M.URL $ C.makeUrlAndUnwrapSupport node Support.ServerStateE)
 
 
 -- | Slot

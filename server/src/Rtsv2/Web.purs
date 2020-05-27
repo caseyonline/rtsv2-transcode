@@ -53,7 +53,7 @@ import Shared.Rtsv2.Router.Endpoint.Public as Public
 import Shared.Rtsv2.Router.Endpoint.Support as Support
 import Shared.Rtsv2.Router.Endpoint.System as System
 import Shared.Rtsv2.Stream (EgestKey(..), IngestKey(..), ProfileName, RtmpShortName, RtmpStreamName, SlotId, SlotRole(..))
-import Shared.Rtsv2.Types (CanaryState(..), Server, extractAddress)
+import Shared.Rtsv2.Types (CanaryState(..), Server, WebConfig, extractAddress)
 import Shared.UUID (UUID, fromString)
 import Shared.UUID as UUID
 import Stetson (RestResult, StaticAssetLocation(..))
@@ -66,11 +66,11 @@ newtype State = State {}
 serverName :: ServerName State Unit
 serverName = Names.webServerName
 
-startLink :: Config.WebConfig -> Effect StartLinkResult
+startLink :: WebConfig -> Effect StartLinkResult
 startLink args =
   Gen.startLink serverName (init args) Gen.defaultHandleInfo
 
-init :: Config.WebConfig -> Effect State
+init :: WebConfig -> Effect State
 init args = do
   featureFlags <- Config.featureFlags
   loadConfig <- Config.loadConfig
