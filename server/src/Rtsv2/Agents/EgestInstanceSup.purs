@@ -42,7 +42,7 @@ import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Types (LocalOrRemote(..), LocalResourceResp, LocationResp, ResourceFailed(..), ResourceResp)
 import Rtsv2.Utils (noprocToMaybe)
 import Shared.Rtsv2.Agent (Agent(..))
-import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
+import Shared.Rtsv2.Router.Endpoint.System as System
 import Shared.Rtsv2.Stream (AggregatorKey(..), EgestKey(..), SlotId, SlotRole)
 import Shared.Rtsv2.Types (CanaryState, FailureReason(..), OnBehalfOf, Server, ServerLoad, extractPoP, serverLoadToServer)
 import SpudGun as SpudGun
@@ -81,8 +81,9 @@ startLocalOrRemoteEgest loadConfig onBehalfOf payload@{slotCharacteristics} =
  NodeManager.launchLocalOrRemoteAgent Egest onBehalfOf (Load.hasCapacityForEgestInstance slotCharacteristics loadConfig) launchLocal launchRemote
  where
    launchLocal _ = startEgest payload
-   launchRemote remote =
-     either (const false) (const true) <$> SpudGun.postJson (makeUrl remote EgestE) payload
+   launchRemote remote = do
+     url <- System.makeUrl remote System.EgestE
+     either (const false) (const true) <$> SpudGun.postJson url payload
 
 ------------------------------------------------------------------------------
 -- Supervisor callbacks
@@ -138,9 +139,10 @@ findEgest' loadConfig canary thisServer egestKey payload@{slotCharacteristics} =
           findEgest' loadConfig canary thisServer egestKey payload
       where
         launchLocal _ = startEgest payload
-        launchRemote remote =
+        launchRemote remote = do
+          url <- System.makeUrl remote System.EgestE
           -- todo - if remote then need to sleep before recurse to allow intra-pop disemination
-          either (const false) (const true) <$> SpudGun.postJson (makeUrl remote EgestE) payload
+          either (const false) (const true) <$> SpudGun.postJson url payload
 
     capacityForClient :: ServerLoad -> Maybe (Tuple Server LoadCheckResult)
     capacityForClient serverLoad =

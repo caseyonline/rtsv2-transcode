@@ -53,7 +53,7 @@ import StetsonHelper (GetHandler, jsonResponse, multiMimeResponse)
 
 ingestInstancesMetrics :: GetHandler (List (IngestStats List))
 ingestInstancesMetrics =
-  multiMimeResponse ((MimeType.openmetrics statsToPrometheus) : (MimeType.json writeJSON) : nil) (Just <$> IngestStats.getStats)
+  multiMimeResponse ((MimeType.openmetrics (pure <<< statsToPrometheus)) : (MimeType.json (pure <<< writeJSON)) : nil) (Just <$> IngestStats.getStats)
 
 metrics :: List Prometheus.PrometheusMetric
 metrics = { name: "ingest_frame_count"
@@ -230,7 +230,7 @@ ingestStart loadConfig canary shortName streamName =
                                                                          ingestKey = IngestKey streamDetails.slot.id streamDetails.role profileName
                                                                        pid <- startFakeIngest ingestKey
                                                                        maybeStarted <- IngestInstanceSup.startLocalRtmpIngest loadConfig canary ingestKey streamPublish streamDetails "127.0.0.1" 0 pid
-                                                                       _ <- logInfo "IngestInstanceSup returned" {maybeStarted}
+                                                                       _ <- logInfo "IngestInstanceSup returned" {maybeStarted, canary}
                                                                        case maybeStarted of
                                                                          Right _ ->
                                                                            Rest.result "ingestStarted" req2 state2

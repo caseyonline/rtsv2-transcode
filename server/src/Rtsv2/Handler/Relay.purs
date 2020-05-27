@@ -35,7 +35,8 @@ import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Types (LocalOrRemote(..), ResourceFailed(..), ResourceResp)
 import Shared.Rtsv2.Agent.State (StreamRelay)
-import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
+import Shared.Rtsv2.Router.Endpoint.Support as Support
+import Shared.Rtsv2.Router.Endpoint.System as System
 import Shared.Rtsv2.Stream (RelayKey(..), SlotId, SlotRole)
 import Shared.Rtsv2.Types (EgestServer(..), OnBehalfOf(..), RelayServer(..), Server(..), ServerAddress, SourceRoute, extractAddress)
 import Shared.Utils (lazyCrashIfMissing)
@@ -79,11 +80,9 @@ proxiedStats slotId slotRole =
 
     movedTemporarily req state@(ProxyState {whereIsResp}) =
       case whereIsResp of
-        Just server ->
-          let
-            url = makeUrl server (RelayStatsE slotId slotRole)
-          in
-            Rest.result (moved $ unwrap url) req state
+        Just server -> do
+          url <- Support.makeUrl server (Support.RelayStatsE slotId slotRole)
+          Rest.result (moved $ unwrap url) req state
         _ ->
           Rest.result notMoved req state
 
@@ -149,11 +148,9 @@ ensureStarted loadConfig =
 
     movedTemporarily req state@(StartState {apiResp}) =
       case apiResp of
-        Right (Remote server) ->
-          let
-            url = makeUrl server RelayEnsureStartedE
-          in
-            Rest.result (moved $ unwrap url) req state
+        Right (Remote server) -> do
+          url <- System.makeUrl server System.RelayEnsureStartedE
+          Rest.result (moved $ unwrap url) req state
         _ ->
           Rest.result notMoved req state
 

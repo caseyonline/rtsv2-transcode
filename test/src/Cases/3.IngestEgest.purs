@@ -14,7 +14,7 @@ import Helpers.Env as E
 import Helpers.Functions (startSession, launch, stopSession, launch', forceGetState, storeHeader, getStateValue)
 import Helpers.Log (as, as', asT)
 import Shared.Rtsv2.Types (CanaryState(..))
-import Test.Spec (SpecT, after_, before_, describe, it, itOnly)
+import Test.Spec (SpecT, after_, before_, describe, it)
 
 
 ingestEgestTests :: forall m. Monad m => SpecT Aff Unit m Unit

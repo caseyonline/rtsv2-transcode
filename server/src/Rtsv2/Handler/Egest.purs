@@ -8,7 +8,9 @@ import Prelude
 import Data.Foldable (foldl)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (unwrap)
+import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..))
+import Effect (Effect)
 import Erl.Data.List (List, nil, (:))
 import Prometheus as Prometheus
 import Rtsv2.Agents.EgestInstance (CreateEgestPayload)
@@ -26,15 +28,19 @@ import StetsonHelper (GetHandler, PostHandler, multiMimeResponse, processPostPay
 startResource :: LoadConfig -> PostHandler CreateEgestPayload
 startResource loadConfig = processPostPayload (EgestInstanceSup.startLocalEgest loadConfig RemoteAgent)
 
+-- TODO: Vince - needed to return an Effect when calling statsToJson
 egestInstancesMetrics :: Server -> GetHandler (List (EgestStats List))
 egestInstancesMetrics thisServer = do
-  multiMimeResponse ((MimeType.openmetrics statsToPrometheus) : (MimeType.json (statsToJson thisServer)) : nil) (Just <$> EgestStats.getStats)
+  multiMimeResponse ((MimeType.openmetrics (pure <<< statsToPrometheus)) : (MimeType.json $ statsToJson thisServer) : nil) (Just <$> EgestStats.getStats)
 
-statsToJson :: Server -> List (EgestStats List) -> String
-statsToJson server statsList =
-  writeJSON $ (\stats@{egestKey : EgestKey slotId slotRole} ->
-                JsonLd.egestStatsNode slotId slotRole server stats
-              ) <$> statsList
+
+statsToJson :: Server -> List (EgestStats List) -> Effect String
+statsToJson server statsList = do
+  stats <- traverse
+           (\stats@{egestKey : EgestKey slotId slotRole} -> do
+               JsonLd.egestStatsNode slotId slotRole server stats
+           ) statsList
+  pure $ writeJSON stats
 
 statsToPrometheus :: List (EgestStats List) -> String
 statsToPrometheus stats =

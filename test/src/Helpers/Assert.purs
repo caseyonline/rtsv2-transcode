@@ -15,7 +15,7 @@ import Data.Tuple (Tuple(..))
 import Debug.Trace (spy)
 import Effect.Aff (Aff)
 import Foreign.Object as Object
-import Helpers.CreateString (toAddrFromNode, mkServerAddress, makeUrlAndUnwrap)
+import Helpers.CreateString (toAddrFromNode, mkServerAddress)
 import Helpers.HTTP as HTTP
 import Helpers.Types (ResWithBody(..), Node(..), TestNode)
 import Milkis as M

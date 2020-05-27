@@ -53,7 +53,7 @@ import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Rtsv2.LlnwApiTypes (StreamDetails, StreamPublish(..))
-import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeWsUrl)
+import Shared.Rtsv2.Router.Endpoint.System as System
 import Shared.Rtsv2.Stream (AggregatorKey, IngestKey(..), ingestKeyToAggregatorKey)
 import Shared.Rtsv2.Types (OnBehalfOf(..), Server, extractAddress)
 import Shared.Types.Media.Types.Rtmp (RtmpClientMetadata)
@@ -147,16 +147,15 @@ getPublicState ingestKey@(IngestKey slotId slotRole profileName) =
                                            , sourceInfo
                                            , remoteAddress
                                            , remotePort
-                                           , ingestStartedTime} ->
+                                           , ingestStartedTime} -> do
     let
       publicState = { rtmpClientMetadata: clientMetadata
                     , sourceInfo
                     , remoteAddress
                     , remotePort
                     , ingestStartedTime }
-      node = JsonLd.ingestStateNode slotId slotRole profileName publicState thisServer
-    in
-     pure $ CallReply node state
+    node <- JsonLd.ingestStateNode slotId slotRole profileName publicState thisServer
+    pure $ CallReply node state
 
 dataObjectSendMessage :: IngestKey -> DO.Message -> Effect Unit
 dataObjectSendMessage ingestKey msg =
@@ -352,7 +351,7 @@ informAggregator state@{ streamDetails
                        , thisServer
                        , aggregatorRetryTime
                        , stateServerName
-                       , loadConfig} = do
+                       , loadConfig} =
   join $ maybe failure success <$> (addIngest =<< getAggregator)
 
   where
@@ -367,6 +366,12 @@ informAggregator state@{ streamDetails
       void $ Timer.sendAfter (serverName ingestKey) (round $ unwrap aggregatorRetryTime) InformAggregator
       pure $ state
 
+    addIngest Nothing = pure Nothing
+    addIngest (Just aggregator) = do
+      wsUrl <- System.makeWsUrl aggregator $ System.IngestAggregatorRegisteredIngestWs slotId slotRole profileName (extractAddress thisServer)
+      webSocket <- WsGun.openWebSocket (serverName ingestKey) Gun wsUrl
+      pure $ {aggregator, socket: _} <$> hush webSocket
+
     getAggregator = do
       maybeAggregator <- IntraPoP.whereIsIngestAggregator (ingestKeyToAggregatorKey ingestKey)
       case maybeAggregator of
@@ -378,14 +383,6 @@ informAggregator state@{ streamDetails
                       , streamDetails
                       , dataObject: Nothing}
           (map fromLocalOrRemote) <$> hush <$> IngestAggregatorSup.startLocalOrRemoteAggregator loadConfig LocalAgent payload
-
-    addIngest Nothing = pure Nothing
-    addIngest (Just aggregator) = do
-        let
-          wsUrl = makeWsUrl aggregator $ IngestAggregatorRegisteredIngestWs slotId slotRole profileName (extractAddress thisServer)
-        webSocket <- WsGun.openWebSocket (serverName ingestKey) Gun wsUrl
-        pure $ {aggregator, socket: _} <$> hush webSocket
-
 
 handleAggregatorExit :: AggregatorKey -> Server -> State -> Effect State
 handleAggregatorExit exitedAggregatorKey exitedAggregator state@{ ingestKey

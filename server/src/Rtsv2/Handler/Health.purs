@@ -41,11 +41,11 @@ healthCheck =
                  , load
                  , nodeManager
                  , currentTransPoP : extractAddress <$> currentTransPoP}
-        node = JsonLd.healthNode health thisServer
+      node <- JsonLd.healthNode health thisServer
 
       Rest.result (JSON.writeJSON node) req state
 
 foreign import vmMetricsImpl :: Effect String
 
 vmMetrics  :: GetHandler String
-vmMetrics = multiMimeResponse (MimeType.openmetrics identity : nil) (Just <$> vmMetricsImpl)
+vmMetrics = multiMimeResponse (MimeType.openmetrics (pure <<< identity) : nil) (Just <$> vmMetricsImpl)

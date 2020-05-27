@@ -33,7 +33,6 @@ import Erl.Data.List (List, nil, (:))
 import Erl.Data.Tuple (Tuple2, tuple2)
 import Erl.Utils (Ref, makeRef, privDir, self, sleep, systemTimeMs, trapExit, vmTimeMs) as Erl
 import Foreign (Foreign, MultipleErrors)
-import Logger (spy)
 import Prim.Row (class Union)
 import Shared.Common (Milliseconds, Url)
 import Simple.JSON (class ReadForeign, class WriteForeign, writeJSON)

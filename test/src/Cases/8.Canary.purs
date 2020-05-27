@@ -11,11 +11,12 @@ import Helpers.CreateString as C
 import Helpers.Env as E
 import Helpers.Functions as F
 import Helpers.HTTP as HTTP
-import Helpers.Log as L
 import Helpers.Log (as, as', asT)
-import Shared.Rtsv2.Types (CanaryState(..))
+import Helpers.Log as L
+import Helpers.Types (Node)
 import Shared.Rtsv2.JsonLd as JsonLd
-import Test.Spec (SpecT, after_, before_, describe, describeOnly, it, itOnly)
+import Shared.Rtsv2.Types (CanaryState(..))
+import Test.Spec (SpecT, after_, before_, describe, it, itOnly)
 import Toppokki as T
 
 -------------------------------------------------------------------------------
@@ -134,7 +135,7 @@ canaryWhenLiveTest7 =
   it "8.1.7 After transistion to canary, can ingest and egest a canary stream" do
     (flip evalStateT) Map.empty $ do
       lift $ HTTP.ingestStart E.p1n1 Canary E.shortName1 E.lowStreamName
-                                               >>= A.assertStatusCode 409 >>= as "create low ingest"
+                                               >>= A.assertStatusCode 409 >>= as "fail to create low canary ingest"
       lift $ E.waitForIntraPoPDisseminate
 
       lift $ HTTP.getAggregatorStats E.p1n1 E.slot1 >>= A.assertStatusCode 404 >>= as "aggregator not running"
@@ -142,7 +143,7 @@ canaryWhenLiveTest7 =
       lift $ HTTP.changeCanaryState E.p1n1 Canary >>= A.assertStatusCode 204 >>= as "canary state changed"
 
       lift $ HTTP.ingestStart E.p1n1 Canary E.shortName1 E.lowStreamName
-                                               >>= A.assertStatusCode 200 >>= as "create low ingest"
+                                               >>= A.assertStatusCode 200 >>= as "create low canary ingest"
 
       lift $ E.waitForIntraPoPDisseminate
 

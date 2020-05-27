@@ -29,7 +29,10 @@ module Shared.Rtsv2.Types
        , SourceRoute
        , SpecInt(..)
        , Username(..)
-
+       , NetworkKbps(..)
+       , Percentage(..)
+       , FailureReason(..)
+       , WebConfig(..)
        , canary
        , class CanaryType
        , extractAddress
@@ -158,6 +161,11 @@ data FailureReason
 instance semigroupFailureReason :: Semigroup FailureReason where
   append lhs rhs = rhs
 
+type WebConfig =
+  { systemPort :: Int
+  , supportPort :: Int
+  , publicPort :: Int
+  }
 
 --------------------------------------------------------------------------------
 -- API Types - maybe move me

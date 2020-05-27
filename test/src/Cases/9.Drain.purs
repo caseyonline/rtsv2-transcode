@@ -2,22 +2,16 @@ module Cases.Drain where
 
 import Prelude
 
-import Control.Monad.State (evalStateT, lift)
-import Data.Map as Map
-import Debug.Trace (spy)
-import Effect.Aff (Aff, delay, Milliseconds(..))
+import Effect.Aff (Aff)
 import Helpers.Types (Node)
 import Helpers.Assert as A
-import Helpers.CreateString as C
 import Helpers.Env as E
 import Helpers.Functions as F
 import Helpers.HTTP as HTTP
-import Helpers.Log as L
-import Helpers.Log (as, as', asT)
+import Helpers.Log (as, as')
 import Shared.Rtsv2.Types (CanaryState(..), RunState(..))
 import Shared.Rtsv2.JsonLd as JsonLd
-import Test.Spec (SpecT, after_, before_, describe, describeOnly, it, itOnly)
-import Toppokki as T
+import Test.Spec (SpecT, after_, before_, describe, it, itOnly)
 
 -------------------------------------------------------------------------------
 -- Main
@@ -44,11 +38,8 @@ nodes :: Array Node
 nodes = [E.p1n1, E.p1n2]
 
 -------------------------------------------------------------------------------
--- Tests
+-- PassiveDrainTests.
 -------------------------------------------------------------------------------
-
--------------------------------------------------------------------------------
--- passiveDrainTests...
 passiveDrainTest1 :: forall m. Monad m => SpecT Aff Unit m Unit
 passiveDrainTest1 =
   it "9.1.1 Heathcheck endpoint returns correct run state" do
@@ -115,7 +106,7 @@ passiveDrainTest3 =
 
 passiveDrainTest4 :: forall m. Monad m => SpecT Aff Unit m Unit
 passiveDrainTest4 =
-  it "9.1.3 Test valid and invalid transistions" do
+  it "9.1.4 Test valid and invalid transistions" do
     HTTP.healthCheck E.p1n1 >>= A.assertStatusCode 200
                             >>= A.assertBodyFun ((==) Active <<< healthNodeToRunState)
                             >>= as "run state is active"
@@ -129,8 +120,8 @@ passiveDrainTest4 =
     HTTP.changeRunState E.p1n1 ForceDrain >>= A.assertStatusCode 204 >>= as "switch to force drain"
 
     HTTP.healthCheck E.p1n1 >>= A.assertStatusCode 200
-                            >>= A.assertBodyFun ((==) ForceDrain <<< healthNodeToRunState)
-                            >>= as "run state is forceDrain"
+                            >>= A.assertBodyFun ((==) OutOfService <<< healthNodeToRunState)
+                            >>= as "run state is outOfService (post forceDrain)"
 
     HTTP.changeRunState E.p1n1 Active >>= A.assertStatusCode 204 >>= as "switch to active"
 
@@ -141,14 +132,8 @@ passiveDrainTest4 =
     HTTP.changeRunState E.p1n1 ForceDrain >>= A.assertStatusCode 204 >>= as "switch to force drain"
 
     HTTP.healthCheck E.p1n1 >>= A.assertStatusCode 200
-                            >>= A.assertBodyFun ((==) ForceDrain <<< healthNodeToRunState)
-                            >>= as "run state is forceDrain"
-
-    HTTP.changeRunState E.p1n1 PassiveDrain >>= A.assertStatusCode 204 >>= as "switch to passive drain"
-
-    HTTP.healthCheck E.p1n1 >>= A.assertStatusCode 200
-                            >>= A.assertBodyFun ((==) PassiveDrain <<< healthNodeToRunState)
-                            >>= as "run state is passiveDrain"
+                            >>= A.assertBodyFun ((==) OutOfService <<< healthNodeToRunState)
+                            >>= as "run state is outOfService (post forceDrain)"
 
     HTTP.changeRunState E.p1n1 Active >>= A.assertStatusCode 204 >>= as "switch to active"
 
@@ -179,17 +164,6 @@ passiveDrainTest4 =
     HTTP.healthCheck E.p1n1 >>= A.assertStatusCode 200
                             >>= A.assertBodyFun ((==) OutOfService <<< healthNodeToRunState)
                             >>= as "run state is out-of-service"
-
-    HTTP.changeRunState E.p1n1 Active >>= A.assertStatusCode 204 >>= as "switch to active"
-
-    HTTP.changeRunState E.p1n1 ForceDrain >>= A.assertStatusCode 204 >>= as "switch to force drain"
-
-    HTTP.changeRunState E.p1n1 OutOfService >>= A.assertStatusCode 204 >>= as "switch to out-of-service"
-
-    HTTP.healthCheck E.p1n1 >>= A.assertStatusCode 200
-                            >>= A.assertBodyFun ((==) OutOfService <<< healthNodeToRunState)
-                            >>= as "run state is out-of-service"
-
 
 -- Move to out-of-service to close all existing agents
 

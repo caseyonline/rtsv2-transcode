@@ -103,7 +103,7 @@ import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Rtsv2.LlnwApiTypes (HlsPushAuth, HlsPushProtocol, HlsPushSpecFormat, SlotProfile(..), StreamDetails, slotDetailsToSlotCharacteristics)
-import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrlAddr, makeWsUrl)
+import Shared.Rtsv2.Router.Endpoint.System as System
 import Shared.Rtsv2.Stream (AggregatorKey(..), IngestKey(..), ProfileName, RtmpShortName, SlotId, SlotRole(..), ingestKeyToAggregatorKey)
 import Shared.Rtsv2.Types (DeliverTo, OnBehalfOf(..), RelayServer, Server, ServerAddress, extractAddress)
 import WsGun as WsGun
@@ -319,22 +319,35 @@ forceDrain aggregatorKey =
 
       pure $ CastNoReply state{forceDrain = true}
 
+
 checkProfileInactive :: ProfileName -> State -> Boolean
 checkProfileInactive profileName {cachedState: {localIngests, remoteIngests}} =
   not (Map.member profileName localIngests) && not (Map.member profileName remoteIngests)
 
+
 getState :: AggregatorKey -> Effect (PublicState.IngestAggregator List)
-getState aggregatorKey@(AggregatorKey slotId slotRole) = Gen.call (serverName aggregatorKey) getState'
+getState aggregatorKey@(AggregatorKey slotId slotRole) = Gen.doCall (serverName aggregatorKey) getState'
   where
-    getState' state@{streamDetails, cachedState: {localIngests, remoteIngests, relays}, thisServer} =
-      CallReply (JsonLd.ingestAggregatorStateNode slotId gatherState thisServer) state
+    getState' state@{streamDetails, cachedState: {localIngests, remoteIngests, relays}, thisServer} = do
+      newState <- gatherState
+      json <- JsonLd.ingestAggregatorStateNode slotId newState thisServer
+      pure $ CallReply json state
       where
-        gatherState = { role: slotRole
-                      , streamDetails
-                      , activeProfiles: (\(Tuple profileName ingestAddress) -> JsonLd.activeIngestLocationNode slotId slotRole profileName ingestAddress) <$> allProfiles
-                      , downstreamRelays: foldlWithIndex (\server acc {port} -> (JsonLd.downstreamRelayLocationNode slotId slotRole {server, port}) : acc) nil relays
-                      , hlsPublish: (Array.length streamDetails.push) /= 0
-                      }
+        gatherState = do
+          dsr <- foldWithIndexM (\server acc {port} -> do
+                                    json <- (JsonLd.downstreamRelayLocationNode slotId slotRole {server, port})
+                                    pure $ json : acc
+                                ) nil relays
+          activeP <- traverse (\(Tuple profileName ingestAddress) -> do
+                                     json <- JsonLd.activeIngestLocationNode slotId slotRole profileName ingestAddress
+                                     pure json
+                                 ) allProfiles
+          pure { role: slotRole
+               , streamDetails
+               , activeProfiles: activeP
+               , downstreamRelays: dsr
+               , hlsPublish: (Array.length streamDetails.push) /= 0
+               }
         localProfiles outerAcc = foldlWithIndex (\profileName acc _handler -> (Tuple profileName (extractAddress thisServer)) : acc) outerAcc localIngests
         remoteProfiles outerAcc = foldlWithIndex (\profileName acc {ingestAddress} -> (Tuple profileName ingestAddress) : acc) outerAcc remoteIngests
         allProfiles = remoteProfiles $ localProfiles nil
@@ -561,8 +574,7 @@ attemptConnectionToBackup state@{slotId, slotRole, aggregatorKey, dataObjectStat
       pure state{dataObjectState = Left dos{ dataObject = Just DO.new }}
 
     Just peerAggregator -> do
-      let
-        peerWsUrl = makeWsUrl peerAggregator $ IngestAggregatorBackupWs slotId Backup
+      peerWsUrl <- System.makeWsUrl peerAggregator $ System.IngestAggregatorBackupWs slotId Backup
       mPeerWebSocket <- hush <$> WsGun.openWebSocket (serverName aggregatorKey) Gun peerWsUrl
       case mPeerWebSocket of
         Nothing -> do
@@ -936,9 +948,8 @@ doAddRemoteIngest profileName handler@(Process handlerPid) ingestAddress state@{
   in
     if isInactive then do
       logInfo "Remote ingest added" {slotId, slotRole, profileName, ingestAddress}
-      let
-        state2 = addRemoteIngestToCachedState profileName handler ingestAddress state
-        url = makeUrlAddr ingestAddress (IngestInstanceLlwpE slotId slotRole profileName)
+      let state2 = addRemoteIngestToCachedState profileName handler ingestAddress state
+      url <- System.makeUrlAddr ingestAddress (System.IngestInstanceLlwpE slotId slotRole profileName)
       updateCachedState state2
       sendActiveProfiles state2
       addRemoteIngestImpl workflowHandle (IngestKey slotId slotRole profileName) (unwrap url)

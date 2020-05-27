@@ -150,7 +150,7 @@ changeCanaryState newCanary =
                                         , new: newCanary}
           let
             state2 = state{ currentCanaryState = newCanary }
-          (CallReply (Right unit)) <$> restartActiveSup state
+          (CallReply (Right unit)) <$> restartActiveSup state2
 
 changeRunState :: RunState -> Effect (Either RunStateChangeFailure Unit)
 changeRunState newRunState =
@@ -275,7 +275,8 @@ launchAndUpdateState agent canaryStream launchFun thisServer =
     doLaunchAndUpdateState state@{currentRunState} | currentRunState /= Active =
       pure $ CallReply (Left InvalidRunState) state
 
-    doLaunchAndUpdateState state@{currentCanaryState} | currentCanaryState /= canary currentCanaryState canaryStream =
+    doLaunchAndUpdateState state@{currentCanaryState} | currentCanaryState /= canary currentCanaryState canaryStream = do
+      logInfo "FAIL STREAM" {currentCanaryState, canary}
       pure $ CallReply (Left InvalidCanaryState) state
 
     doLaunchAndUpdateState state@{agentCounts} = do

@@ -34,11 +34,12 @@ import Effect.Aff.Class (class MonadAff, liftAff)
 import Milkis as M
 import Milkis.Impl.Window as MW
 import Routing.Duplex (print)
+import Rtsv2App.Api.Endpoint.Auth as Auth
 import Rtsv2App.Data.Email (Email)
 import Rtsv2App.Data.Profile (ProfileRep, Profile)
 import Rtsv2App.Data.Username (Username)
 import Rtsv2App.Env (UrlEnv)
-import Shared.Rtsv2.Router.Endpoint (Endpoint(..), endpoint)
+import Shared.Rtsv2.Router.Endpoint.Class (class RoutedEndpoint, getRoute)
 import Simple.JSON (class ReadForeign, class WriteForeign)
 import Simple.JSON as JSON
 import Web.HTML (window)
@@ -74,8 +75,8 @@ data RequestMethod
   | Put (Maybe String)
   | Delete
 
-type OptionMethod =
-  { endpoint :: Endpoint
+type OptionMethod endpoint =
+  { endpoint :: endpoint
   , method   :: RequestMethod
   }
 
@@ -130,7 +131,7 @@ setHeader = case _ of
 -------------------------------------------------------------------------------
 -- User Request functions
 -------------------------------------------------------------------------------
-requestUser :: forall m. MonadAff m => UrlEnv -> OptionMethod -> m (Either String (Tuple Token Profile))
+requestUser :: forall m e. MonadAff m => RoutedEndpoint e => UrlEnv -> OptionMethod e -> m (Either String (Tuple Token Profile))
 requestUser url opts@{ endpoint, method } = do
   response <- liftAff $ Aff.attempt $ fetchReq (M.URL $ printUrl url.authUrl endpoint) Nothing method
   withResponse response \(result :: ProfileTokenJson) -> do
@@ -143,12 +144,12 @@ requestUser url opts@{ endpoint, method } = do
 login :: forall m. MonadAff m => UrlEnv -> LoginFields -> m (Either String (Tuple Token Profile))
 login urlEnv fields =
   let method = Post (Just (JSON.writeJSON { user: fields }))
-   in requestUser urlEnv { endpoint: LoginE, method }
+   in requestUser urlEnv { endpoint: Auth.LoginE, method }
 
 register :: forall m. MonadAff m => UrlEnv -> RegisterFields -> m (Either String (Tuple Token Profile))
 register urlEnv fields =
   let method = Post (Just (JSON.writeJSON { user: fields }))
-   in requestUser urlEnv { endpoint: UsersE, method }
+   in requestUser urlEnv { endpoint: Auth.UsersE, method }
 
 withResponse
   :: forall a b m
@@ -172,11 +173,11 @@ withDecoded json action = case JSON.readJSON json of
 -------------------------------------------------------------------------------
 -- Print URL helper
 -------------------------------------------------------------------------------
-printUrl :: forall a. Newtype a String => a -> Endpoint -> String
-printUrl url endP = (unwrap url) <> (print endpoint endP)
+printUrl :: forall a b. Newtype a String => RoutedEndpoint b => a -> b -> String
+printUrl url endP = unwrap url <> print (getRoute endP) endP
 
-printOriginUrl :: forall a. Newtype a String => a -> Endpoint -> String
-printOriginUrl url endP = "http://" <> (unwrap url) <> ":3000" <> (print endpoint endP)
+printOriginUrl  :: forall a b. Newtype a String => RoutedEndpoint b => a -> b -> String
+printOriginUrl url endP = "http://" <> unwrap url <> ":3002" <> print (getRoute endP) endP
 
 -------------------------------------------------------------------------------
 -- LocalStorage Token actions
