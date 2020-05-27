@@ -49,6 +49,7 @@ data Endpoint
   | StreamPublishE
   | SlotLookupE String String
   | HlsPushE (Array String)
+  | ValidationE String
 
   | WorkflowsE
   | WorkflowGraphE String
@@ -96,6 +97,7 @@ endpoint = root $ sum
   , "StreamAuthE"                                      : "system" / "llnwstub" / "rts" / "v1" / path "streamauth" noArgs
   , "StreamPublishE"                                   : "system" / "llnwstub" / "rts" / "v1" / path "streampublish" noArgs
   , "HlsPushE"                                         : "system" / "llnwstub" / "rts" / "v1" / "hls" / rest
+  , "ValidationE"                                      : "system" / "llnwstub" / "rts" / "v1" / "validation" / segment
 
   , "WorkflowsE"                                       : "system" / path "workflows" noArgs -- URL duplicated in Web.purs
   , "WorkflowGraphE"                                   : "system" / "workflows" / segment / "graph" -- URL duplicated in Web.purs
@@ -144,7 +146,7 @@ makeWsUrlAddrWithPath (ServerAddress host) path = do
   webC <- Config.webConfig
   pure $ wrap $ "ws://" <> host <> ":" <> (show webC.systemPort) <> path
 
--- | JsonLd Context Type
+-- | JsonLd Context Type 
 contextTypeToString :: JsonLdContextType -> String
 contextTypeToString ServerContext = "server"
 contextTypeToString ServerAddressContext = "serverAddress"

@@ -82,15 +82,7 @@ init(Req, #{ authenticate := Authenticate }) ->
   TurnUsername = <<"username">>,
   TurnPassword = <<"password">>,
 
-  {RemoteHost, RemotePort} = case cowboy_req:header(<<"x-forwarded-for">>, Req) of
-                               undefined ->
-                                 { cowboy_req:host(Req)
-                                 , cowboy_req:port(Req)};
-
-                               RHost ->
-                                 {RHost
-                                 , cowboy_req:header(<<"x-forwarded-port">>, Req, 0)}
-                             end,
+  {RemoteHost, RemotePort} = endpoint_helpers:client_address(Req),
 
   Account = cowboy_req:binding(account, Req),
   StreamName = cowboy_req:binding(stream_name, Req),

@@ -17,3 +17,12 @@ export interface IQualityConstraintConfiguration {
   /** The variant to use in conjunction with the behavior property to control which variant(s) the player will received */
   readonly variant : string;
 }
+
+const enum RTSStatusCode {
+  MessageNotImplemented = 4000,
+  MessageBad = 4001,
+  InvalidSDP = 4002,
+  StreamNotFound = 4003,
+  StreamNotReadyRetryLater = 4004,
+  AuthenticationFailed = 4005
+}

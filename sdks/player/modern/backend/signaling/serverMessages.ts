@@ -42,6 +42,9 @@ export interface InitMessage {
 
   /** A session-unique identifier that can be used for correlating traces */
   readonly traceId: string;
+
+  /** Media Vault validation cookie */
+  readonly validationCookie: string;
 }
 
 /** The data provided by a bye event. */
@@ -56,6 +59,7 @@ export interface ByeMessage {
 /** The data provided by a pong event - these occur in response to application-level pings from the client. */
 export interface PongMessage {
   readonly type: "pong";
+  readonly validationCookie?: string;
 }
 
 /** The data provided by a quality change event - these occur when the server makes abr decisions. */
