@@ -157,7 +157,7 @@ tags_to_stream(Tags) ->
                   Acc#{frameType => {case FrameType of
                                        video -> 'video';
                                        audio -> 'audio';
-                                       script -> 'script';
+                                       script_frame -> 'script';
                                        subtitles -> 'subtitles';
                                        program_details -> 'programDetails';
                                        pcr -> 'pCR'

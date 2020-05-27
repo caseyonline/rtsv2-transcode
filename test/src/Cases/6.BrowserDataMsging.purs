@@ -2,18 +2,14 @@ module Cases.BrowserDataMsging where
 
 import Prelude
 
-import Data.Newtype (unwrap)
 import Data.Traversable (traverse_)
 import Effect.Aff (Aff, Milliseconds(..), delay)
 import Helpers.Assert as A
 import Helpers.CreateString as C
 import Helpers.Env as E
-import Helpers.Env as Env
 import Helpers.Functions as F
-import Helpers.HTTP as HTTP
 import Helpers.Log as L
 import Helpers.Types (Node)
-import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
 import Shared.Rtsv2.Stream (SlotRole(..), RtmpShortName, RtmpStreamName, SlotId)
 import Test.Spec (SpecT, describe, describeOnly, it, before_, after_)
 import Test.Unit.Assert as Assert
@@ -51,9 +47,9 @@ ingestStream =
       after_ (F.stopSession *> F.stopSlot) do
         it "5.3.1 webrtc ingest on different node to aggregator" do
 
-          F.startSlotHigh1000 (C.toAddrFromNode Env.p1n1) >>= L.as' "create high ingest on 1"
-          F.startSlotHigh1000Backup (C.toAddrFromNode Env.p1n1) >>= L.as' "create high backup on 1"
-          F.start2SlotHigh1000 (C.toAddrFromNode Env.p2n1) >>= L.as' "create high ingest on 2"
+          F.startSlotHigh1000 (C.toAddrFromNode E.p1n1) >>= L.as' "create high ingest on 1"
+          F.startSlotHigh1000Backup (C.toAddrFromNode E.p1n1) >>= L.as' "create high backup on 1"
+          F.start2SlotHigh1000 (C.toAddrFromNode E.p2n1) >>= L.as' "create high ingest on 2"
 
           _ <- delay (Milliseconds 5000.00) >>= L.as' "wait for ingest to start fully"
 
@@ -64,10 +60,10 @@ ingestStream =
           tab3 <- T.newPage browser1
           tab4 <- T.newPage browser1
 
-          T.goto (F.mkPlayerUrl Env.p1n1 E.slot1 Primary) tab1
-          T.goto (F.mkPlayerUrl Env.p1n2 E.slot1 Primary) tab2
-          T.goto (F.mkPlayerUrl Env.p2n1 E.slot2 Primary) tab3
-          T.goto (HTTP.ingestUrl Env.p1n1 E.shortName1 E.highStreamName) tab4
+          T.goto (F.mkPlayerUrl E.p1n1 E.slot1 Primary) tab1
+          T.goto (F.mkPlayerUrl E.p1n2 E.slot1 Primary) tab2
+          T.goto (F.mkPlayerUrl E.p2n1 E.slot2 Primary) tab3
+          T.goto (HTTP.ingestUrl E.p1n1 E.shortName1 E.highStreamName) tab4
 
           _ <- delay (Milliseconds 2000.00) >>= L.as' "wait for tabs to load"
           traceId1 <- F.getInnerText "#traceId" tab1

@@ -8,9 +8,9 @@ import Prelude
 
 import Data.Either (Either(..), hush)
 import Data.Foldable (find)
-import Data.Function.Uncurried (Fn3, Fn5, mkFn3, mkFn5)
+import Data.Function.Uncurried (Fn2, Fn5, mkFn2, mkFn5)
 import Data.Maybe (Maybe(..), fromMaybe)
-import Data.Newtype (wrap)
+import Data.Newtype (unwrap, wrap)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
@@ -32,18 +32,20 @@ import Rtsv2.Config as Config
 import Rtsv2.Env as Env
 import Rtsv2.LlnwApi as LlnwApi
 import Rtsv2.Names as Names
-import Rtsv2.Utils (crashIfLeft)
+import Rtsv2.PoPDefinition as PoPDefinition
+import Rtsv2.Types (LocalResource(..))
+import Rtsv2.Utils (crashIfLeft, noprocToMaybe)
 import Serf (Ip)
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.LlnwApiTypes (AuthType, PublishCredentials, SlotProfile(..), SlotPublishAuthType(..), StreamAuth, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamPublish)
 import Shared.Rtsv2.Stream (IngestKey(..))
-import Shared.Rtsv2.Types (Canary(..))
+import Shared.Rtsv2.Types (CanaryState(..), extractAddress)
 import SpudGun (JsonResponseError)
 import Stetson.WebSocketHandler (self)
 
 foreign import startServerImpl :: (Foreign -> Either Foreign Unit) -> Either Foreign Unit -> Ip -> Int -> Callbacks -> Ip -> Int -> Callbacks -> Int -> Effect (Either Foreign Unit)
 foreign import rtmpQueryToPurs :: Foreign -> RtmpAuthRequest
-foreign import startWorkflowImpl :: Pid -> Foreign -> IngestKey -> (Foreign -> (Effect Unit)) -> (Foreign -> (Effect Unit)) -> Effect Unit
+foreign import startWorkflowImpl :: Pid -> Pid -> Foreign -> IngestKey -> (Foreign -> (Effect Unit)) -> (Foreign -> (Effect Unit)) -> Effect Unit
 
 data RtmpAuthRequest = Initial
                      | AdobePhase1 AdobePhase1Params
@@ -58,7 +60,7 @@ data RtmpAuthResponse = InitialResponse AuthType
                       | AcceptRequest (Fn5 String Int String Pid Foreign (Effect Unit))
 
 type Callbacks
-  = { init :: Fn3 String String Foreign (Effect RtmpAuthResponse)
+  = { init :: Fn2 String Foreign (Effect RtmpAuthResponse)
     }
 
 serverName :: ServerName State Unit
@@ -77,24 +79,26 @@ init _ = do
   privateInterfaceIp <- Env.privateInterfaceIp
   loadConfig <- Config.loadConfig
   {port, canaryPort, nbAcceptors} <- Config.rtmpIngestConfig
+  thisServer <- PoPDefinition.getThisServer
   let
+    host = unwrap $ extractAddress thisServer
     callbacks :: Callbacks
-    callbacks = { init: mkFn3 (onConnectCallback loadConfig Live)
+    callbacks = { init: mkFn2 (onConnectCallback loadConfig Live host)
                 }
     canaryCallbacks :: Callbacks
-    canaryCallbacks = { init: mkFn3 (onConnectCallback loadConfig Canary)
+    canaryCallbacks = { init: mkFn2 (onConnectCallback loadConfig Canary host)
                       }
   crashIfLeft =<< startServerImpl Left (Right unit) publicInterfaceIp port callbacks privateInterfaceIp canaryPort canaryCallbacks nbAcceptors
   pure $ {}
 
-onConnectCallback :: LoadConfig -> Canary -> String -> String -> Foreign -> (Effect RtmpAuthResponse)
+onConnectCallback :: LoadConfig -> CanaryState -> String -> String -> Foreign -> (Effect RtmpAuthResponse)
 onConnectCallback loadConfig canary host rtmpShortName foreignQuery =
   let
     authRequest = rtmpQueryToPurs foreignQuery
   in
     processAuthRequest loadConfig canary host rtmpShortName authRequest
 
-onStreamCallback :: LoadConfig -> Canary -> String -> String -> String -> String -> Int -> String -> Pid -> Foreign -> Effect Unit
+onStreamCallback :: LoadConfig -> CanaryState -> String -> String -> String -> String -> Int -> String -> Pid -> Foreign -> Effect Unit
 onStreamCallback loadConfig canary host rtmpShortNameStr username remoteAddress remotePort rtmpStreamNameStr rtmpPid publishArgs = do
   let
     rtmpShortName = wrap rtmpShortNameStr
@@ -122,9 +126,9 @@ onStreamCallback loadConfig canary host rtmpShortNameStr username remoteAddress 
           self <- self
           maybeStarted <- IngestInstanceSup.startLocalRtmpIngest loadConfig canary ingestKey streamPublish streamDetails remoteAddress remotePort self
           case maybeStarted of
-            Right _ -> do
-              startWorkflowAndBlock rtmpPid publishArgs ingestKey
-              IngestInstance.stopIngest ingestKey
+            Right (LocalResource ingestPid _server) -> do
+              startWorkflowAndBlock rtmpPid ingestPid publishArgs ingestKey
+              _ <- noprocToMaybe $ IngestInstance.stopIngest ingestKey
               pure unit
             Left error -> do
               _ <- logWarning "Attempt to start local RTMP ingest failed" {error}
@@ -136,7 +140,7 @@ onStreamCallback loadConfig canary host rtmpShortNameStr username remoteAddress 
     makeIngestKey profileName {role, slot: {id: slotId}} =
       IngestKey slotId role profileName
 
-processAuthRequest :: LoadConfig -> Canary -> String -> String -> RtmpAuthRequest -> Effect RtmpAuthResponse
+processAuthRequest :: LoadConfig -> CanaryState -> String -> String -> RtmpAuthRequest -> Effect RtmpAuthResponse
 processAuthRequest _loadConfig _canary host rtmpShortName Initial = do
   authType <- getStreamAuthType host rtmpShortName
   pure $ fromMaybe RejectRequest $ InitialResponse <$> authType
@@ -155,7 +159,7 @@ processAuthRequest loadConfig canary host rtmpShortName (AdobePhase2 authParams@
 processAuthRequest loadConfig canary host rtmpShortName (LlnwPhase2 authParams@{username}) =
   processPhase2Authentication loadConfig canary host rtmpShortName username (LlnwPhase2P authParams)
 
-processPhase2Authentication :: LoadConfig -> Canary -> String -> String -> String -> Phase2Params -> Effect RtmpAuthResponse
+processPhase2Authentication :: LoadConfig -> CanaryState -> String -> String -> String -> Phase2Params -> Effect RtmpAuthResponse
 processPhase2Authentication loadConfig canary host rtmpShortName username authParams = do
   let
     authType = case authParams of
@@ -170,9 +174,9 @@ processPhase2Authentication loadConfig canary host rtmpShortName username authPa
       if ok then pure $ AcceptRequest (mkFn5 (onStreamCallback loadConfig canary host rtmpShortName username))
       else pure RejectRequest
 
-startWorkflowAndBlock :: Pid -> Foreign -> IngestKey -> Effect Unit
-startWorkflowAndBlock rtmpPid publishArgs ingestKey =
-  startWorkflowImpl rtmpPid publishArgs ingestKey clientMetadata sourceInfo
+startWorkflowAndBlock :: Pid -> Pid -> Foreign -> IngestKey -> Effect Unit
+startWorkflowAndBlock rtmpPid ingestPid publishArgs ingestKey =
+  startWorkflowImpl rtmpPid ingestPid publishArgs ingestKey clientMetadata sourceInfo
   where
     clientMetadata foreignMetadata = do
       IngestInstance.setClientMetadata ingestKey (Rtmp.foreignToMetadata foreignMetadata)

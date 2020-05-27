@@ -15,6 +15,7 @@ import Effect.Ref as Ref
 import Record.Extra (sequenceRecord)
 import Routing.Duplex (print)
 import Routing.Hash (setHash)
+import Rtsv2App.Api.Endpoint.Auth as Auth
 import Rtsv2App.Api.Request (RequestMethod(..))
 import Rtsv2App.Api.Request as Request
 import Rtsv2App.Api.Utils (authenticate, mkAuthRequest, mkOriginRequest, mkRequest)
@@ -27,8 +28,9 @@ import Rtsv2App.Data.Log as Log
 import Rtsv2App.Data.Profile (ProfileEmailRes)
 import Rtsv2App.Data.Route as Route
 import Rtsv2App.Env (Env, LogLevel(..))
-import Shared.Rtsv2.Router.Endpoint (Endpoint(..))
 import Shared.Rtsv2.Agent.State (IntraPoP, PoPDefinition, TimedPoPRoutes, IngestAggregator)
+import Shared.Rtsv2.Router.Endpoint.Public as Public
+import Shared.Rtsv2.Router.Endpoint.Support as Support
 import Simple.JSON as JSON
 import Type.Equality (class TypeEquals, from)
 
@@ -95,7 +97,7 @@ instance manageUserAppM :: ManageUser AppM where
     authenticate Request.register
 
   getCurrentUser = do
-    response <- mkAuthRequest { endpoint: UserE, method: Get }
+    response <- mkAuthRequest { endpoint: Auth.UserE, method: Get }
     case response of
       Left e -> pure Nothing
       Right res ->
@@ -105,7 +107,7 @@ instance manageUserAppM :: ManageUser AppM where
             pure $ Just r.user
 
   updateUser fields =
-    void $ mkAuthRequest { endpoint: UserE, method: Put (Just (JSON.writeJSON fields)) }
+    void $ mkAuthRequest { endpoint: Auth.UserE, method: Put (Just (JSON.writeJSON fields)) }
 
 -- | all api stats related requests
 instance manageAPIAppM :: ManageApi AppM where
@@ -114,7 +116,7 @@ instance manageAPIAppM :: ManageApi AppM where
     case sequenceRecord sInfo of
       Nothing -> pure $ Left "SPoPInfo not present"
       Just s@{ selectedSlotId, selectedAddress } -> do
-        response <- mkOriginRequest selectedAddress { endpoint: TimedRoutesForPoPE curPopName, method: Get }
+        response <- mkOriginRequest selectedAddress { endpoint: Support.TimedRoutesForPoPE curPopName, method: Get }
         case response of
           Left e -> pure $ Left e
           Right res ->
@@ -124,7 +126,7 @@ instance manageAPIAppM :: ManageApi AppM where
                 pure $ Right r
 
   getAggregatorDetails { slotId, slotRole, serverAddress } = do
-    response <- mkOriginRequest serverAddress { endpoint: IngestAggregatorE slotId slotRole, method: Get }
+    response <- mkOriginRequest serverAddress { endpoint: Support.IngestAggregatorE slotId slotRole, method: Get }
     case response of
           Left e -> pure $ Left e
           Right res ->
@@ -134,7 +136,7 @@ instance manageAPIAppM :: ManageApi AppM where
                 pure $ Right r
 
   getPoPdefinition = do
-    response <- mkRequest { endpoint: PoPDefinitionE, method: Get }
+    response <- mkRequest { endpoint: Support.PoPDefinitionE, method: Get }
     case response of
           Left e -> pure $ Left e
           Right res ->
@@ -147,7 +149,7 @@ instance manageAPIAppM :: ManageApi AppM where
     case serverAddress of
       Nothing -> pure $ Left "No server address given"
       Just sa -> do
-        response <- mkOriginRequest sa { endpoint: ServerStateE, method: Get }
+        response <- mkOriginRequest sa { endpoint: Support.ServerStateE, method: Get }
         case response of
           Left e -> pure $ Left e
           Right res ->

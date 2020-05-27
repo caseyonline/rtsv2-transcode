@@ -30,10 +30,11 @@ import Rtsv2.Audit as Audit
 import Rtsv2.Config (LoadConfig)
 import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.PoPDefinition as PoPDefinition
+import Rtsv2.Types (LocalOrRemote(..))
 import Rtsv2.Utils (cryptoStrongToken)
-import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
+import Shared.Rtsv2.Router.Endpoint.System as System
 import Shared.Rtsv2.Stream (EgestKey(..), SlotId, SlotRole)
-import Shared.Rtsv2.Types (Canary, FailureReason(..), LocalOrRemote(..), Server, extractAddress)
+import Shared.Rtsv2.Types (CanaryState, FailureReason(..), Server, extractAddress)
 import Stetson (HttpMethod(..), RestResult, StetsonHandler)
 import Stetson.Rest as Rest
 
@@ -41,7 +42,7 @@ newtype ClientStartState = ClientStartState { clientId :: String
                                             , egestResp :: (Either FailureReason (LocalOrRemote Server))
                                             }
 
-clientStart :: LoadConfig -> Canary -> SlotId -> SlotRole -> StetsonHandler ClientStartState
+clientStart :: LoadConfig -> CanaryState -> SlotId -> SlotRole -> StetsonHandler ClientStartState
 clientStart loadConfig canary slotId slotRole =
   Rest.handler init
   # Rest.allowedMethods (Rest.result (POST : mempty))
@@ -89,11 +90,9 @@ clientStart loadConfig canary slotId slotRole =
     movedTemporarily :: Req -> ClientStartState -> Effect (RestResult MovedResult ClientStartState)
     movedTemporarily req state@(ClientStartState { egestResp}) =
       case egestResp of
-        Right (Remote server) ->
-          let
-            url = makeUrl server (ClientStartE canary slotId slotRole)
-          in
-            Rest.result (moved $ unwrap url) req state
+        Right (Remote server) -> do
+          url <- System.makeUrl server (System.ClientStartE canary slotId slotRole)
+          Rest.result (moved $ unwrap url) req state
         _ ->
           Rest.result notMoved req state
 

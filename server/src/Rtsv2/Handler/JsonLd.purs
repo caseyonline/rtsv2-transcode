@@ -16,7 +16,7 @@ import StetsonHelper (GetHandler, multiMimeResponse)
 
 getContextJson :: JsonLdContextType -> GetHandler (String)
 getContextJson contextType =
-  multiMimeResponse ((MimeType.json identity) : nil) (Just <$> (doGetContextJson contextType))
+  multiMimeResponse ((MimeType.json (pure <<< identity)) : nil) (Just <$> (doGetContextJson contextType))
   where
     doGetContextJson :: JsonLdContextType -> Effect String
     doGetContextJson ServerContext = pure $ writeJSON JsonLd.serverContext

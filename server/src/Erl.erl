@@ -17,8 +17,13 @@
         , exitImpl/1
         , readTuple2Impl/1
         , base64EncodeImpl/1
+        , linkImpl/1
         ]).
 
+linkImpl(Pid) ->
+  fun() ->
+      link(Pid)
+  end.
 
 systemTimeImpl(TimeUnit) ->
   fun() ->

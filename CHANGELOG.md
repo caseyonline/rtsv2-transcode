@@ -1,8 +1,12 @@
-# RTS-V2 release XX
+# RTS-V2 release 99
 
 **What's new**
 
-* 
+* Just a bug-fix release, no new or changed function:
+  * Bug fix for incorrect handling on onFI frames in the ingest stats collection (which was in turn causing other ingests to fail)
+  * Change to supervision structure for ingest so that any future issues in stats collection have minimal impact
+  * Bug fix when handling a failure of the media gateway
+  * Bug fix that could have allowed a non-canary stream relay to get created on a canary node
 
 # RTS-V2 release 98
 

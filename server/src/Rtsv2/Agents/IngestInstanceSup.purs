@@ -22,10 +22,11 @@ import Rtsv2.Load as Load
 import Rtsv2.LoadTypes (LoadCheckResult)
 import Rtsv2.Names as Names
 import Rtsv2.NodeManager as NodeManager
+import Rtsv2.Types (LocalResourceResp, ResourceFailed(..))
 import Shared.Rtsv2.Agent (Agent(..), SlotCharacteristics)
 import Shared.Rtsv2.LlnwApiTypes (StreamDetails, StreamPublish, slotDetailsToSlotCharacteristics)
 import Shared.Rtsv2.Stream (IngestKey)
-import Shared.Rtsv2.Types (Canary, ResourceFailed(..), ResourceResp, Server, ServerLoad)
+import Shared.Rtsv2.Types (CanaryState, Server, ServerLoad)
 
 ------------------------------------------------------------------------------
 -- API
@@ -33,10 +34,10 @@ import Shared.Rtsv2.Types (Canary, ResourceFailed(..), ResourceResp, Server, Ser
 startLink :: forall a. a -> Effect Pinto.StartLinkResult
 startLink _ = Sup.startLink serverName init
 
-startLocalRtmpIngest :: LoadConfig -> Canary -> IngestKey -> StreamPublish -> StreamDetails -> String -> Int -> Pid -> Effect (ResourceResp Server)
+startLocalRtmpIngest :: LoadConfig -> CanaryState -> IngestKey -> StreamPublish -> StreamDetails -> String -> Int -> Pid -> Effect (LocalResourceResp Server)
 startLocalRtmpIngest = startLocalIngest Load.hasCapacityForRtmpIngest
 
-startLocalWebRTCIngest :: LoadConfig -> Canary -> IngestKey -> StreamPublish -> StreamDetails -> String -> Int -> Pid -> Effect (ResourceResp Server)
+startLocalWebRTCIngest :: LoadConfig -> CanaryState -> IngestKey -> StreamPublish -> StreamDetails -> String -> Int -> Pid -> Effect (LocalResourceResp Server)
 startLocalWebRTCIngest = startLocalIngest Load.hasCapacityForWebRTCIngest
 
 ------------------------------------------------------------------------------
@@ -59,22 +60,21 @@ init = do
 ------------------------------------------------------------------------------
 -- Internals
 ------------------------------------------------------------------------------
-startLocalIngest :: (SlotCharacteristics -> LoadConfig -> ServerLoad -> LoadCheckResult) -> LoadConfig -> Canary -> IngestKey -> StreamPublish -> StreamDetails -> String -> Int -> Pid -> Effect (ResourceResp Server)
+startLocalIngest :: (SlotCharacteristics -> LoadConfig -> ServerLoad -> LoadCheckResult) -> LoadConfig -> CanaryState -> IngestKey -> StreamPublish -> StreamDetails -> String -> Int -> Pid -> Effect (LocalResourceResp Server)
 startLocalIngest capacityFun loadConfig canary ingestKey streamPublish streamDetails@{slot} remoteAddress remotePort handlerPid =
   let
     slotCharacteristics = slotDetailsToSlotCharacteristics slot
   in
-   NodeManager.launchIfValidCanaryState canary $ NodeManager.launchLocalAgent Ingest (capacityFun slotCharacteristics loadConfig) launchLocal
+   NodeManager.launchLocalAgent Ingest canary (capacityFun slotCharacteristics loadConfig) launchLocal
   where
     launchLocal _ =
-      (note AlreadyRunning <<< startOk) <$> startIngest ingestKey streamPublish streamDetails canary remoteAddress remotePort handlerPid
+      (note AlreadyRunning <<< startOk) <$> startIngest ingestKey streamPublish streamDetails remoteAddress remotePort handlerPid
 
-startIngest :: IngestKey -> StreamPublish -> StreamDetails -> Canary -> String -> Int -> Pid -> Effect StartChildResult
-startIngest ingestKey streamPublish streamDetails canary remoteAddress remotePort handlerPid = do
+startIngest :: IngestKey -> StreamPublish -> StreamDetails -> String -> Int -> Pid -> Effect StartChildResult
+startIngest ingestKey streamPublish streamDetails remoteAddress remotePort handlerPid = do
   let
     startArgs = { streamPublish
                 , streamDetails
-                , canary
                 , ingestKey
                 , remoteAddress
                 , remotePort

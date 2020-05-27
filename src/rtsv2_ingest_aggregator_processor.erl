@@ -1,5 +1,6 @@
 -module(rtsv2_ingest_aggregator_processor).
 
+-include_lib("id3as_common/include/common.hrl").
 -include_lib("id3as_media/include/id3as_workflow.hrl").
 -include_lib("id3as_media/include/frame.hrl").
 
@@ -210,7 +211,6 @@ process_input(Input = #frame{source_metadata = #source_metadata{source_id = Id,
 
       Output = Input#frame{pts = Pts + Delta,
                            dts = Dts + Delta},
-
       State2 = case FrameMetadata of
                  #video_frame_metadata{is_idr_frame = true} ->
                    StreamState2 = StreamState#active_stream_state{last_iframe_utc = CaptureUs,

@@ -37,12 +37,13 @@ import Rtsv2.Config (LoadConfig)
 import Rtsv2.Config as Config
 import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.LlnwApi as LlnwApi
+import Rtsv2.Types (ResourceFailed(..))
 import Rtsv2.Utils (badargToMaybe)
 import Shared.Rtsv2.Agent.State (IngestStats)
 import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.LlnwApiTypes (StreamIngestProtocol(..), StreamPublish, StreamDetails, SlotProfile(..))
 import Shared.Rtsv2.Stream (IngestKey(..), ProfileName, RtmpShortName, RtmpStreamName, SlotId, SlotRole)
-import Shared.Rtsv2.Types (Canary, ResourceFailed(..))
+import Shared.Rtsv2.Types (CanaryState)
 import Shared.Types.Workflow.Metrics.Commmon (Stream)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (writeJSON)
@@ -52,7 +53,7 @@ import StetsonHelper (GetHandler, jsonResponse, multiMimeResponse)
 
 ingestInstancesMetrics :: GetHandler (List (IngestStats List))
 ingestInstancesMetrics =
-  multiMimeResponse ((MimeType.openmetrics statsToPrometheus) : (MimeType.json writeJSON) : nil) (Just <$> IngestStats.getStats)
+  multiMimeResponse ((MimeType.openmetrics (pure <<< statsToPrometheus)) : (MimeType.json (pure <<< writeJSON)) : nil) (Just <$> IngestStats.getStats)
 
 metrics :: List Prometheus.PrometheusMetric
 metrics = { name: "ingest_frame_count"
@@ -190,7 +191,7 @@ type IngestStartState = { streamDetails :: Maybe StreamDetails
                         , streamPublish :: Maybe StreamPublish
                         }
 
-ingestStart :: LoadConfig -> Canary -> RtmpShortName -> RtmpStreamName -> StetsonHandler IngestStartState
+ingestStart :: LoadConfig -> CanaryState -> RtmpShortName -> RtmpStreamName -> StetsonHandler IngestStartState
 ingestStart loadConfig canary shortName streamName =
   Rest.handler (\req ->
                  Rest.initResult req { streamDetails: Nothing

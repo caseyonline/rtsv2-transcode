@@ -33,10 +33,12 @@ import Rtsv2.Handler.Helper (WebSocketHandlerResult(..), webSocketHandler)
 import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
+import Rtsv2.Types (LocalOrRemote(..), ResourceFailed(..), ResourceResp)
 import Shared.Rtsv2.Agent.State (StreamRelay)
-import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
+import Shared.Rtsv2.Router.Endpoint.Support as Support
+import Shared.Rtsv2.Router.Endpoint.System as System
 import Shared.Rtsv2.Stream (RelayKey(..), SlotId, SlotRole)
-import Shared.Rtsv2.Types (EgestServer(..), RelayServer(..), Server(..), ServerAddress, SourceRoute, LocalOrRemote(..), ResourceFailed(..), ResourceResp, extractAddress)
+import Shared.Rtsv2.Types (EgestServer(..), OnBehalfOf(..), RelayServer(..), Server(..), ServerAddress, SourceRoute, extractAddress)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON as JSON
 import Stetson (HttpMethod(..), InnerStetsonHandler, StetsonHandler)
@@ -47,7 +49,7 @@ stats :: SlotId -> SlotRole -> GetHandler (StreamRelay List)
 stats slotId slotRole = jsonResponse $ Just <$> (StreamRelayInstance.status $ RelayKey slotId slotRole)
 
 startResource :: LoadConfig -> PostHandler CreateRelayPayload
-startResource loadConfig = processPostPayload $ StreamRelaySup.startLocalStreamRelay loadConfig
+startResource loadConfig = processPostPayload $ StreamRelaySup.startLocalStreamRelay loadConfig RemoteAgent
 
 newtype ProxyState
   = ProxyState { whereIsResp :: Maybe Server
@@ -78,11 +80,9 @@ proxiedStats slotId slotRole =
 
     movedTemporarily req state@(ProxyState {whereIsResp}) =
       case whereIsResp of
-        Just server ->
-          let
-            url = makeUrl server (RelayStatsE slotId slotRole)
-          in
-            Rest.result (moved $ unwrap url) req state
+        Just server -> do
+          url <- Support.makeUrl server (Support.RelayStatsE slotId slotRole)
+          Rest.result (moved $ unwrap url) req state
         _ ->
           Rest.result notMoved req state
 
@@ -108,7 +108,7 @@ ensureStarted loadConfig =
     init req = do
       thisServer <- PoPDefinition.getThisServer
       mPayload <- (hush <$> JSON.readJSON <$> binaryToString <$> allBody req mempty)
-      apiResp <- maybe (pure $ Left NoCapacity) (findOrStart loadConfig) mPayload
+      apiResp <- maybe (pure $ Left NoCapacity) (findOrStart loadConfig RemoteAgent) mPayload
 
       let
         req2 = setHeader "x-servedby" (unwrap $ extractAddress thisServer) req
@@ -131,6 +131,9 @@ ensureStarted loadConfig =
         Left InvalidCanaryState -> do
           newReq <- replyWithoutBody (StatusCode 409) Map.empty req
           Rest.stop newReq state
+        Left InvalidRunState -> do
+          newReq <- replyWithoutBody (StatusCode 409) Map.empty req
+          Rest.stop newReq state
         Left AlreadyRunning -> do
           -- Wouldn't actually get this for a relay, but need to handle all the options
           newReq <- replyWithoutBody (StatusCode 409) Map.empty req
@@ -145,11 +148,9 @@ ensureStarted loadConfig =
 
     movedTemporarily req state@(StartState {apiResp}) =
       case apiResp of
-        Right (Remote server) ->
-          let
-            url = makeUrl server RelayEnsureStartedE
-          in
-            Rest.result (moved $ unwrap url) req state
+        Right (Remote server) -> do
+          url <- System.makeUrl server System.RelayEnsureStartedE
+          Rest.result (moved $ unwrap url) req state
         _ ->
           Rest.result notMoved req state
 

@@ -14,13 +14,15 @@ import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (wrap, unwrap)
 import Data.These (These(..))
 import Data.Time.Duration (Milliseconds(..))
-import Data.Traversable (traverse, traverse_)
+import Data.Traversable (traverse_)
 import Debug.Trace (spy)
+import Effect (Effect)
 import Effect.Aff (Aff, delay)
+import Effect.Unsafe (unsafePerformEffect)
 import Foreign (unsafeFromForeign)
 import Foreign.Object as Object
 import Helpers.Assert as A
-import Helpers.CreateString (mkPoPJsonString, toAddrFromNode, toIfaceIndexString, mkServerAddress)
+import Helpers.CreateString (mkPoPJsonString, toAddrFromNode, toIfaceIndexString, mkServerAddress, unwrapEffect)
 import Helpers.Env (sessionName)
 import Helpers.HTTP as HTTP
 import Helpers.Log (throwSlowError, as)
@@ -33,7 +35,7 @@ import Shared.Common (Url)
 import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.Chaos as Chaos
 import Shared.Rtsv2.JsonLd as JsonLd
-import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
+import Shared.Rtsv2.Router.Endpoint.Public as Public
 import Shared.Rtsv2.Stream (RtmpShortName(..), RtmpStreamName(..), SlotId, SlotRole)
 import Shared.Rtsv2.Types (ServerAddress(..))
 import Simple.JSON (class ReadForeign)
@@ -53,8 +55,8 @@ launch nodes = launch' nodes "test/config/sys.config"
 
 launch' :: Array Node -> String -> Aff Unit
 launch' nodesToStart sysconfig = do
-  nodesToStart <#> mkNode  sysconfig # launchNodes
-  delay (Milliseconds 1000.0)
+  nodesToStart <#> mkNode sysconfig # launchNodes
+  pure unit
   where
   launchNodes :: Array TestNode -> Aff Unit
   launchNodes nodes = do
@@ -88,11 +90,11 @@ stringToInt s =
 
 mkPlayerUrl :: Node -> SlotId -> SlotRole -> T.URL
 mkPlayerUrl node slotId slotRole =
-  T.URL $ unwrap $ makeUrl (mkServerAddress node) $ ClientPlayerE slotId slotRole
+  T.URL $ unwrapEffect $ Public.makeUrl (mkServerAddress node) $ Public.ClientPlayerE slotId slotRole
 
 mkIngestUrl :: Node -> RtmpShortName -> RtmpStreamName -> T.URL
 mkIngestUrl node shortName streamName =
-  T.URL $ unwrap $ makeUrl (mkServerAddress node) $ ClientWebRTCIngestE shortName streamName
+  T.URL $ unwrapEffect $ Public.makeUrl (mkServerAddress node) $ Public.ClientWebRTCIngestE shortName streamName
 
 -------------------------------------------------------------------------------
 -- Node
@@ -181,6 +183,12 @@ killRelay slotId slotRole relays =
       _ ->
         throwSlowError $ "No relays or missing id"
 
+killMediaGateway :: Node -> Aff Unit
+killMediaGateway node =
+  do
+    _ <- HTTP.killProcessNode (spy "kill" node) (Chaos.defaultKill $ (Chaos.Local "rtsv2_media_gateway_api"))
+    pure unit
+
 relayName :: SlotId -> SlotRole -> Chaos.ChaosName
 relayName slotId role =
   Chaos.Gproc (Chaos.GprocTuple2
@@ -200,6 +208,7 @@ makePoPInfo n i = {name: n, number: i, x: 0.0, y: 0.0}
 -------------------------------------------------------------------------------
 -- Slot
 -------------------------------------------------------------------------------
+storeSlotState :: forall e a v. Applicative a => Bind a => MonadState (Map.Map String v) a => Either e v -> a (Either e v)
 storeSlotState either@(Left _) = pure either
 storeSlotState either@(Right slotState) = do
   _ <- modify (Map.insert "slotState" slotState)

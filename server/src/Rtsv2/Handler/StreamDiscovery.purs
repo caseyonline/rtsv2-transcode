@@ -19,16 +19,18 @@ import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
 import Rtsv2.Config (LoadConfig)
 import Rtsv2.Config as Config
 import Rtsv2.LlnwApi as LlnwApi
+import Rtsv2.Types (fromLocalOrRemote)
 import Rtsv2.Utils (chainIntoEither)
 import Shared.Common (Url)
 import Shared.Rtsv2.LlnwApiTypes (SlotLookupResult)
-import Shared.Rtsv2.Router.Endpoint (Endpoint(..), makeUrl)
+import Shared.Rtsv2.Router.Endpoint.Public as Public
+import Shared.Rtsv2.Router.Endpoint.Support as Support
 import Shared.Rtsv2.Stream (SlotId, SlotRole(..))
-import Shared.Rtsv2.Types (Canary(..), FailureReason, fromLocalOrRemote)
+import Shared.Rtsv2.Types (CanaryState(..), FailureReason, Server)
 import Stetson (StetsonHandler)
 import StetsonHelper (jsonResponse)
 
-discover :: LoadConfig -> Canary -> String -> String -> StetsonHandler (Maybe (List Url))
+discover :: LoadConfig -> CanaryState -> String -> String -> StetsonHandler (Maybe (List Url))
 discover loadConfig canary accountName streamName =
   jsonResponse getUrls
 
@@ -73,14 +75,15 @@ discover loadConfig canary accountName streamName =
           pure { slotId: slot.id, errors, urls }
 
     getSessionUrl :: SlotRole -> SlotLookupResult -> Effect (Either FailureReason Url)
-    getSessionUrl role slot =
-      let
-        endpoint = case canary of
-                     Live -> ClientPlayerControlE slot.id role
-                     Canary -> CanaryClientPlayerControlE slot.id role
-      in
-        EgestInstanceSup.findEgest loadConfig canary slot.id role <#> map ( fromLocalOrRemote >>> ((flip makeUrl) endpoint))
+    getSessionUrl role slot = do
+      locationResp <- EgestInstanceSup.findEgest loadConfig canary slot.id role
+      traverse (url <<< fromLocalOrRemote) locationResp
 
+      where
+        url :: Server -> Effect Url
+        url = case canary of
+          Live -> flip Public.makeUrl $ Public.ClientPlayerControlE slot.id role
+          Canary -> flip Support.makeUrl $ Support.CanaryClientPlayerControlE slot.id role
 
 --------------------------------------------------------------------------------
 -- Log helpers

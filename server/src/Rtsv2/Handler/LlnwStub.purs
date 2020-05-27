@@ -10,7 +10,8 @@ module Rtsv2.Handler.LlnwStub
        ) where
 
 import Prelude
-import Shared.Rtsv2.LlnwApiTypes
+
+import Shared.Rtsv2.LlnwApiTypes (AuthType, HlsPushProtocol(..), HlsPushSpecFormat(..), PublishCredentials, SlotLookupResult, SlotPublishAuthType(..), StreamAuth, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamOutputFormat(..), StreamPublish)
 
 import Data.Array as Array
 import Data.Either (either, hush)
@@ -95,6 +96,7 @@ db =
                  , push : [
                     { protocol: HttpPut
                     , formats: [ Hls ]
+                      -- TODO: make this come from Config
                     , putBaseUrl: "http://172.16.171.1:3000/system/llnwstub/rts/v1/hls/test_slot_1/"
                     , segmentDuration: Just 3
                     , playlistDuration: Just 20

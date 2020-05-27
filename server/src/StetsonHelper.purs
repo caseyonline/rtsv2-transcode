@@ -54,13 +54,13 @@ type GetHandler a = StetsonHandler (Maybe a)
 
 jsonResponse :: forall a. WriteForeign a => Effect (Maybe a) -> GetHandler a
 jsonResponse =
-  multiMimeResponse (singleton $ MimeType.json writeJSON)
+  multiMimeResponse (singleton $ MimeType.json (pure <<< writeJSON))
 
 textResponse :: Effect (Maybe String) -> GetHandler String
 textResponse =
-  multiMimeResponse (singleton $ MimeType.text identity)
+  multiMimeResponse (singleton $ MimeType.text (pure <<< identity))
 
-multiMimeResponse :: forall a. List (Tuple2 String (a -> String)) -> Effect (Maybe a) -> GetHandler a
+multiMimeResponse :: forall a. List (Tuple2 String (a -> Effect String)) -> Effect (Maybe a) -> GetHandler a
 multiMimeResponse mimeFormatters getData =
   Rest.handler init
   # Rest.allowedMethods (Rest.result (GET : mempty))
@@ -75,9 +75,11 @@ multiMimeResponse mimeFormatters getData =
   # Rest.yeeha
   where
     init req = Rest.initResult (setHeader "access-control-allow-origin" "*" req) Nothing
-    provideContent :: (a -> String) -> Req -> Maybe a -> Effect (RestResult String (Maybe a))
+    provideContent :: (a -> Effect String) -> Req -> Maybe a -> Effect (RestResult String (Maybe a))
     provideContent mimeFormatter req Nothing = Rest.result "" req Nothing
-    provideContent mimeFormatter req state@(Just theData) = Rest.result (mimeFormatter theData) req state
+    provideContent mimeFormatter req state@(Just theData) = do
+      res <- mimeFormatter theData
+      Rest.result res req state
 
 ------------------------------------------------------------------------------
 -- POST helpers
