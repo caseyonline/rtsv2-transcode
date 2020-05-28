@@ -161,7 +161,9 @@ init(Req, Params) ->
       end
   end.
 
-init_validation(Req, #stream_desc_egest{ get_slot_configuration = GetSlotConfiguration, egest_key = EgestKey }) ->
+init_validation(Req, #stream_desc_egest{ get_slot_configuration = GetSlotConfiguration
+                                       , egest_key = EgestKey
+                                       , start_stream_result = { right, { local, _ } } }) ->
   case (GetSlotConfiguration(EgestKey))() of
     {just, #{ subscribeValidation := true } } ->
       ClientIP = client_ip(Req),
@@ -177,7 +179,10 @@ init_validation(Req, #stream_desc_egest{ get_slot_configuration = GetSlotConfigu
                      }
       end;
     _ -> no_validation
-  end.
+  end;
+
+init_validation(_Req, _StreamDesc) ->
+  no_validation.
 
 init_validation_fail(Req) ->
   cowboy_req:reply(403, Req),
@@ -224,12 +229,12 @@ init_prime(Req, StreamDesc, Validation) ->
 
     { available_elsewhere, [ Alternate | _ ] } ->
 
-      %% TODO: PS: select wss/ws appropriately
       Port = case StreamDesc of
                #stream_desc_egest{public_port = Val} -> Val;
                #stream_desc_ingest{support_port = Val} -> Val
              end,
-      AlternateSocketPath = <<"ws://", Alternate/binary, ":", (integer_to_binary(Port))/binary, Path/binary>>,
+
+      AlternateSocketPath = endpoint_helpers:make_ws_url(Alternate, Port, Path),
 
       ?LOG_INFO(#{ what => "session.redirect", reason => "egest available elsewhere", context => #{ target_uri => AlternateSocketPath }}),
 
@@ -243,7 +248,11 @@ init_prime(Req, StreamDesc, Validation) ->
 
     available_here ->
       PublicIPString = i_convert:convert(PublicIP, binary_string),
-      SocketURL = <<"wss://", PublicIPString/binary, (cowboy_req:path(Req))/binary>>,
+      Port = case StreamDesc of
+               #stream_desc_egest{public_port = Val} -> Val;
+               #stream_desc_ingest{support_port = Val} -> Val
+             end,
+      SocketURL = endpoint_helpers:make_ws_url(PublicIPString, Port, Path),
 
       { cowboy_websocket
       , NewReq
@@ -382,7 +391,7 @@ websocket_info({egestDrain, Phase, NumPhases, Alternates}, State = #?state_runni
   when ClientId rem NumPhases == Phase ->
 
   OtherEdges = [begin
-                  AlternateSocketPath = <<"ws://", Alternate/binary, ":", (integer_to_binary(Port))/binary, Path/binary>>,
+                  AlternateSocketPath = endpoint_helpers:make_ws_url(Alternate, Port, Path),
                   #{ socketURL => AlternateSocketPath, iceServers => [] }
                 end || Alternate <- Alternates],
 
@@ -689,15 +698,12 @@ determine_stream_availability(#stream_desc_egest{ start_stream_result = { left, 
   %% TODO: PS: redirect to a different PoP?
   available_nowhere;
 
-determine_stream_availability(#stream_desc_egest{ start_stream_result = { right, { remote, #{ address := HostName } } }
-                                                , public_port = PublicPort}) ->
+determine_stream_availability(#stream_desc_egest{ start_stream_result = { right, { remote, #{ address := HostName } } } }) ->
 
-  Authority = << HostName/binary, ":", (integer_to_binary(PublicPort))/binary >>,
-  {available_elsewhere, [ Authority ]};
+  {available_elsewhere, [ HostName ]};
 
 determine_stream_availability(#stream_desc_egest{}) ->
   available_here.
-
 
 try_initialize(#?state_initializing{ stream_desc = StreamDesc } = State) ->
   case get_slot_profiles(StreamDesc) of

@@ -5,6 +5,7 @@
         , dataobject_response_to_ts/1
         , dataobject_message_to_purs/3
         , client_address/1
+        , make_ws_url/3
         ]).
 
 dataobject_response_to_ts(Response) ->
@@ -174,4 +175,10 @@ client_address(Req) ->
     RHost ->
       {RHost
       , cowboy_req:header(<<"x-forwarded-port">>, Req, 0)}
+  end.
+
+make_ws_url(Host, Port, Path) ->
+  case os:getenv("IS_PROXIED") of
+    "true" -> <<"wss://", Host/binary, Path/binary>>;
+    "false" -> <<"ws://", Host/binary, ":", (integer_to_binary(Port))/binary, Path/binary>>
   end.

@@ -105,8 +105,10 @@ function start_node {
   tmux -L "$tmuxSession" split-window -h -p 50
   tmux -L "$tmuxSession" send-keys " export PS1='> '" C-m
   tmux -L "$tmuxSession" send-keys " export HOSTNAME=$addr" C-m
-  tmux -L "$tmuxSession" send-keys " export PRIVATE_IFACE=$iface" C-m
   tmux -L "$tmuxSession" send-keys " export PUBLIC_IFACE=$iface" C-m
+  tmux -L "$tmuxSession" send-keys " export SUPPORT_IFACE=$iface" C-m
+  tmux -L "$tmuxSession" send-keys " export SYSTEM_IFACE=$iface" C-m
+  tmux -L "$tmuxSession" send-keys " export IS_PROXIED=false" C-m
   tmux -L "$tmuxSession" send-keys " export DISK_LOG_ROOT=$(pwd)/logs/$nodeName" C-m
   tmux -L "$tmuxSession" send-keys " export LD_LIBRARY_PATH=$(pwd)/_build/default/lib/id3as_media/priv" C-m
   tmux -L "$tmuxSession" send-keys " until (serf info --rpc-addr \$HOSTNAME:7373); do printf '.'; sleep 0.5; done" C-m

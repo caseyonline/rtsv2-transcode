@@ -76,7 +76,7 @@ type State =
 init :: forall a. a -> Effect State
 init _ = do
   publicInterfaceIp <- Env.publicInterfaceIp
-  privateInterfaceIp <- Env.privateInterfaceIp
+  supportInterfaceIp <- Env.supportInterfaceIp
   loadConfig <- Config.loadConfig
   {port, canaryPort, nbAcceptors} <- Config.rtmpIngestConfig
   thisServer <- PoPDefinition.getThisServer
@@ -88,7 +88,7 @@ init _ = do
     canaryCallbacks :: Callbacks
     canaryCallbacks = { init: mkFn2 (onConnectCallback loadConfig Canary host)
                       }
-  crashIfLeft =<< startServerImpl Left (Right unit) publicInterfaceIp port callbacks privateInterfaceIp canaryPort canaryCallbacks nbAcceptors
+  crashIfLeft =<< startServerImpl Left (Right unit) publicInterfaceIp port callbacks supportInterfaceIp canaryPort canaryCallbacks nbAcceptors
   pure $ {}
 
 onConnectCallback :: LoadConfig -> CanaryState -> String -> String -> Foreign -> (Effect RtmpAuthResponse)

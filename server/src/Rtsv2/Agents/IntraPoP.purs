@@ -65,7 +65,6 @@ import Data.Set as Set
 import Data.Traversable (traverse, traverse_)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
-import Effect.Class (liftEffect)
 import Ephemeral.Map (EMap)
 import Ephemeral.Map as EMap
 import Erl.Atom (Atom)
@@ -99,7 +98,7 @@ import Serf as Serf
 import Shared.Common (Milliseconds)
 import Shared.Rtsv2.Agent (SlotCharacteristics, emptySlotCharacteristics)
 import Shared.Rtsv2.Agent.State as PublicState
-import Shared.Rtsv2.JsonLd (IntraPoPStateContextFields, transPoPLeaderLocationNode)
+import Shared.Rtsv2.JsonLd (transPoPLeaderLocationNode)
 import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Rtsv2.Stream (AgentKey(..), AggregatorKey, EgestKey, RelayKey(..), agentKeyToAggregatorKey, agentKeyToEgestKey, agentKeyToRelayKey, aggregatorKeyToAgentKey, egestKeyToAgentKey)
 import Shared.Rtsv2.Types (AcceptingRequests, CanaryState(..), CurrentLoad, Health, Server(..), ServerAddress(..), ServerLoad, extractAddress, extractPoP, maxLoad, minLoad, toServerLoad)
@@ -897,7 +896,7 @@ init { config
   void $ Timer.sendEvery serverName config.vmLivenessIntervalMs VMLiveness
   void $ Timer.sendEvery serverName garbageCollectVMInterval GarbageCollectVM
   void $ Timer.sendEvery serverName garbageCollectAgentInterval GarbageCollectAgents
-  rpcBindIp <- Env.privateInterfaceIp
+  rpcBindIp <- Env.systemInterfaceIp
   thisServer <- PoPDefinition.getThisServer
   let
     serfRpcAddress =

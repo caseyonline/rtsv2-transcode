@@ -76,7 +76,8 @@ init args = do
   loadConfig <- Config.loadConfig
   webConfig <- Config.webConfig
   publicBindIp <- Env.publicInterfaceIp
-  privateBindIp <- Env.privateInterfaceIp
+  supportBindIp <- Env.supportInterfaceIp
+  systemBindIp <- Env.systemInterfaceIp
   thisServer <- PoPDefinition.getThisServer
 
   public <-
@@ -138,7 +139,7 @@ init args = do
           }
       # Stetson.cowboyRoutes (supportRoutes thisServer featureFlags loadConfig webConfig)
       # Stetson.port args.supportPort
-      # (uncurry4 Stetson.bindTo) (ipToTuple privateBindIp)
+      # (uncurry4 Stetson.bindTo) (ipToTuple supportBindIp)
       # Stetson.startClear "support_http"
 
   system <-
@@ -181,7 +182,7 @@ init args = do
           }
       # Stetson.cowboyRoutes (systemRoutes thisServer featureFlags loadConfig)
       # Stetson.port args.systemPort
-      # (uncurry4 Stetson.bindTo) (ipToTuple privateBindIp)
+      # (uncurry4 Stetson.bindTo) (ipToTuple systemBindIp)
       # Stetson.startClear "system_http"
 
   pure $ State {}

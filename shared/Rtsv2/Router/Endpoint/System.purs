@@ -16,6 +16,7 @@ import Routing.Duplex.Generic (noArgs, sum)
 import Routing.Duplex.Generic.Syntax ((/))
 import Rtsv2.Config as Config
 import Shared.Common (Url)
+import Shared.Rtsv2.Router.Endpoint.Utils as Utils
 import Shared.Rtsv2.Stream (ProfileName, RtmpShortName, RtmpStreamName, SlotId, SlotRole(..))
 import Shared.Rtsv2.Types (CanaryState(..), JsonLdContextType(..), PoPName(..), ServerAddress(..), SourceRoute, Username(..), extractAddress)
 import Shared.UUID (fromString)
@@ -125,7 +126,7 @@ makeUrlAddr serverAddr ep =
 makeUrlAddrWithPath :: ServerAddress -> String -> Effect Url
 makeUrlAddrWithPath (ServerAddress host) path = do
   webC <- Config.webConfig
-  pure $ wrap $ "http://" <> host <> ":" <> (show webC.systemPort) <> path
+  Utils.makeUrl host webC.systemPort path
 
 makeWsUrl
   :: forall r a. Newtype a { address :: ServerAddress | r }
@@ -144,9 +145,9 @@ makeWsUrlAddr serverAddr ep = do
 makeWsUrlAddrWithPath :: ServerAddress -> String -> Effect Url
 makeWsUrlAddrWithPath (ServerAddress host) path = do
   webC <- Config.webConfig
-  pure $ wrap $ "ws://" <> host <> ":" <> (show webC.systemPort) <> path
+  Utils.makeWsUrl host webC.systemPort path
 
--- | JsonLd Context Type 
+-- | JsonLd Context Type
 contextTypeToString :: JsonLdContextType -> String
 contextTypeToString ServerContext = "server"
 contextTypeToString ServerAddressContext = "serverAddress"

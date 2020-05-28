@@ -2,14 +2,16 @@ module Rtsv2.Env
   ( hostname
   , publicInterfaceName
   , publicInterfaceIp
-  , privateInterfaceName
-  , privateInterfaceIp
+  , supportInterfaceName
+  , supportInterfaceIp
+  , systemInterfaceName
+  , systemInterfaceIp
+  , isProxied
   ) where
 
 import Prelude
 
-import Data.Int (fromString)
-import Data.Maybe (Maybe, fromMaybe')
+import Data.Maybe (Maybe(..), fromMaybe')
 import Effect (Effect)
 import Ip as Ip
 import Os (getEnv)
@@ -17,41 +19,44 @@ import Serf (Ip)
 import Shared.Utils (lazyCrashIfMissing)
 
 hostname :: Effect String
-hostname =
-  do
-    maybeHostName <- getEnv "HOSTNAME"
-    pure $ fromMaybe' (lazyCrashIfMissing "No Hostname available") maybeHostName
+hostname = mandatoryOsEnv "HOSTNAME"
 
 publicInterfaceName :: Effect String
-publicInterfaceName =
-  do
-    maybeIface <- getEnv "PUBLIC_IFACE"
-    pure $ fromMaybe' (lazyCrashIfMissing ("Invalid Public Interface Name: " <> (show maybeIface))) maybeIface
+publicInterfaceName = mandatoryOsEnv "PUBLIC_IFACE"
+
+supportInterfaceName :: Effect String
+supportInterfaceName = mandatoryOsEnv "SUPPORT_IFACE"
+
+systemInterfaceName :: Effect String
+systemInterfaceName = mandatoryOsEnv "SYSTEM_IFACE"
 
 publicInterfaceIp :: Effect Ip
-publicInterfaceIp =
-  do
-    name <- publicInterfaceName
-    maybeIfaceIp <- getIp name
+publicInterfaceIp = mandatoryInterfaceIp =<< publicInterfaceName
 
-    pure $ fromMaybe' (lazyCrashIfMissing ("Invalid Public Interface Name: " <> name)) maybeIfaceIp
+supportInterfaceIp :: Effect Ip
+supportInterfaceIp = mandatoryInterfaceIp =<< supportInterfaceName
+
+systemInterfaceIp :: Effect Ip
+systemInterfaceIp = mandatoryInterfaceIp =<< systemInterfaceName
+
+isProxied :: Effect Boolean
+isProxied = fromMaybe' (lazyCrashIfMissing ("Invalid isProxied environment variable")) <$> parse <$> mandatoryOsEnv "IS_PROXIED"
   where
-    getIp :: String -> Effect (Maybe Ip)
-    getIp str = Ip.getInterfaceIp str
+    parse "true" = Just true
+    parse "false" = Just false
+    parse _ = Nothing
 
-privateInterfaceName :: Effect String
-privateInterfaceName =
-  do
-    maybeIface <- getEnv "PRIVATE_IFACE"
-    pure $ fromMaybe' (lazyCrashIfMissing ("Invalid Private Interface Name: " <> (show maybeIface))) maybeIface
+mandatoryOsEnv :: String -> Effect String
+mandatoryOsEnv env = do
+  maybeValue <- getEnv env
+  pure $ fromMaybe' (lazyCrashIfMissing ("Missing environment variable: " <> env)) maybeValue
 
-privateInterfaceIp :: Effect Ip
-privateInterfaceIp =
+mandatoryInterfaceIp :: String -> Effect Ip
+mandatoryInterfaceIp name =
   do
-    name <- privateInterfaceName
     maybeIfaceIp <- getIp name
 
-    pure $ fromMaybe' (lazyCrashIfMissing ("Invalid Private Interface Name: " <> name)) maybeIfaceIp
+    pure $ fromMaybe' (lazyCrashIfMissing ("Invalid Interface Name: " <> name)) maybeIfaceIp
   where
     getIp :: String -> Effect (Maybe Ip)
     getIp str = Ip.getInterfaceIp str

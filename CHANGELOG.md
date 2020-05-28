@@ -1,3 +1,31 @@
+# RTS-V2 release xx
+
+**What's new**
+
+* Initial release of RunState functionality - passiveDrain and forceDrain
+
+  * initial run state currently defined in rtsv2_core.config
+
+  * current state is visible from the healthCheck endpoint
+
+  * run state can be changed with a POST to /support/runState:
+
+    ```bash
+    curl -v -X POST -H "content-type: application/json" --data '"passiveDrain"' http://172.16.171.3:3000/support/runState
+    ```
+
+* Initial release of Media Vault integration
+
+* HTTP endpoints now broken out to 3 different ports for public / support / system
+
+* rtsv2_environment now supports different interfaces for public / support / system (previously was just public / private)
+
+* rtsv2_environment now supports 'any' for an interface name, which results in bindings to 0.0.0.0
+
+* 
+
+
+
 # RTS-V2 release 99
 
 **What's new**
@@ -27,13 +55,13 @@
     ```bash
 curl -v -X POST -H "content-type: application/json" --data '"canary"' http://172.16.171.3:3000/support/canary
     ```
-    
+
 Post body is either "canary" or "live"
-    
+
 * canary mode **cannot** be changed if the node has any active agents
-  
+
   * current agent count is also returned from the healthCheck endpoint
-  
+
 * Prometheus endpoint for egest stats on ```/support/egests/metrics``
 
 * Initial release of media-gateway to give improved edge scalability
@@ -47,7 +75,7 @@ Post body is either "canary" or "live"
 * playbackBaseUrl removed from HlsPushSpec
 * ingest no longer attempts to parse on-fi messages, and instead passes the payload as a json object through to the client
 * Prometheus Ingest stats endpoint fixed
-* Initial changes for Canary mode 
+* Initial changes for Canary mode
   * **BREAKING CHANGE** as discussed in a recent status call, canary mode is now being handled by having the ingest endpoints available on a different port rather than via a segment in the URL; this being simpler to secure to prevent public access.  As such, all the public URLs have now had the canary segment removed.
 
 # RTS-V2 release 94
