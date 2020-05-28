@@ -68,7 +68,9 @@ mkPoPJsonString nodes =
       "{"
       <> "\"address\":" <> ((quote <<< toAddrFromNode) node)
       <> ", \"maxCpuCapacity\": 1000"
-      <> ", \"maxNetworkCapacity\": 1000000000"
+      <> ", \"maxNetworkCapacity\": 1000000"
+      <> ", \"receiveQueueCount\": 4"
+      <> ", \"transmitQueueCount\": 4"
       <> ", \"capabilityTags\": []"
       <> ", \"agents\": [\"TransPoP\", \"Ingest\", \"IngestAggregator\", \"StreamRelay\", \"Egest\"]"
       <> "}"

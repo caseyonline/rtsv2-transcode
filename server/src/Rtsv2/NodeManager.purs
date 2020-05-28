@@ -30,7 +30,7 @@ import Erl.Process.Raw (Pid)
 import Erl.Utils (Ref)
 import Erl.Utils as Erl
 import Erl.Utils as ErlUtils
-import Logger (Logger)
+import Logger (Logger, spy)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult, ok')
 import Pinto.Gen (CallResult(..), CastResult(..))
@@ -181,7 +181,7 @@ launchLocalOrRemoteAgent agent canaryStream pred launchLocalFun launchRemoteFun 
     Canary -> (map toLocalAndRemote) <$> launchLocalAgent agent canaryStream pred launchLocalFun
     Live -> do
       idleServerResp <- IntraPoP.getIdleServer pred
-      chainEither launch idleServerResp
+      chainEither launch (spy "launch" idleServerResp)
       where
         launch :: LocalOrRemote Server -> Effect (ResourceResp Server)
         launch (Local thisServer) = (map toLocalAndRemote) <$> launchAndUpdateState agent canaryStream launchLocalFun thisServer

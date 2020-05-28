@@ -85,7 +85,7 @@ db =
       , details: { role: Primary
                  , slot : { id: wrap $ fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000001")
                           , name: "slot1"
-                          , subscribeValidation: true
+                          , subscribeValidation: false
                           , profiles: [ wrap { name: wrap "high",
                                                rtmpStreamName: wrap "slot1_1000",
                                                bitrate: 1000000}
@@ -137,7 +137,7 @@ db =
 
     webRtcSlotA =
       { auth: { host: AnyHost --"172.16.171.5"
-              , protocol: AnyProtocol
+              , protocol: SpecificProtocol WebRTC
               , rtmpShortName: wrap "mmddev002"
               , authType: Adobe
               , username: "user"

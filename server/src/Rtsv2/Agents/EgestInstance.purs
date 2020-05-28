@@ -40,7 +40,7 @@ import Erl.Process (Process(..), (!))
 import Erl.Process.Raw (Pid)
 import Erl.Utils (Ref, makeRef, systemTimeMs)
 import Erl.Utils as Erl
-import Logger (Logger, spy)
+import Logger (Logger)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
 import Pinto as Pinto
@@ -333,7 +333,7 @@ init parentCallbacks payload@{slotId, slotRole, aggregatorPoP, slotCharacteristi
             , lingerTime : wrap $ toNumber lingerTimeMs
             , relayCreationRetry : wrap $ toNumber relayCreationRetryMs
             , forceDrainTimeout : wrap $ toNumber forceDrainTimeoutMs
-            , forceDrainPhaseTimeout : wrap $ toNumber (forceDrainTimeoutMs / (numForceDrainPhases + 1))
+            , forceDrainPhaseTimeout : wrap $ toNumber ((forceDrainTimeoutMs - intraPoPLatencyMs) / (numForceDrainPhases + 1))
             , numForceDrainPhases
             , intraPoPLatency : wrap $ toNumber intraPoPLatencyMs
             , aggregatorExitLingerTime : wrap $ toNumber aggregatorExitLingerTimeMs
@@ -516,7 +516,7 @@ drainClients :: State -> Int -> Effect (CastResult State)
 drainClients state@{clientCount: 0} _phase =
   pure $ CastStop state
 
-drainClients state@{numForceDrainPhases} phase | phase == numForceDrainPhases =
+drainClients state@{numForceDrainPhases} phase | phase > numForceDrainPhases =
   pure $ CastStop state
 
 drainClients state@{egestKey, forceDrainPhaseTimeout, numForceDrainPhases, thisServer} phase = do
@@ -524,7 +524,12 @@ drainClients state@{egestKey, forceDrainPhaseTimeout, numForceDrainPhases, thisS
   logInfo "Draining clients" { phase
                              , numPhases: numForceDrainPhases
                              , alternates: egests}
-  Bus.raise (bus egestKey) (EgestDrain phase numForceDrainPhases egests)
+  let
+    phase' = if phase == numForceDrainPhases then 0
+             else phase
+    numForceDrainPhases' = if phase == numForceDrainPhases then 1
+                           else numForceDrainPhases
+  Bus.raise (bus egestKey) (EgestDrain phase' numForceDrainPhases' egests)
   void $ Timer.sendAfter (serverName egestKey) (round $ (unwrap forceDrainPhaseTimeout)) (ForceDrainPhase (phase + 1))
   pure $ CastNoReply state
 

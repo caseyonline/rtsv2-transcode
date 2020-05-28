@@ -119,28 +119,27 @@ startSession allNodes = do
 
 stopSession :: Aff Unit
 stopSession = do
-  _ <- delay (Milliseconds 200.0)
   runProc "./scripts/stopSession.sh" [sessionName]
 
 startSlotHigh1000 :: String -> Aff Unit
 startSlotHigh1000 ip = do
-  _ <- delay (Milliseconds 5000.0)
   runProc "./scripts/run_slot1_1000.sh" [ip]
+  delay (Milliseconds 5000.0)
 
 start2SlotHigh1000 :: String -> Aff Unit
 start2SlotHigh1000 ip = do
-  _ <- delay (Milliseconds 5000.0)
   runProc "./scripts/run2_slot1_1000.sh" [ip]
+  delay (Milliseconds 5000.0)
 
 startSlotHigh1000Backup :: String -> Aff Unit
 startSlotHigh1000Backup ip = do
-  _ <- delay (Milliseconds 5000.0)
   runProc "./scripts/run_slot1b_1000.sh" [ip]
+  delay (Milliseconds 5000.0)
 
 startSlotHigh1000Canary :: String -> Aff Unit
 startSlotHigh1000Canary ip = do
-  _ <- delay (Milliseconds 5000.0)
   runProc "./scripts/run_slot1_1000.sh" [ip, "1936"]
+  delay (Milliseconds 5000.0)
 
 stopSlot :: Aff Unit
 stopSlot = do
@@ -316,6 +315,9 @@ allNodesBar node nodes = delete node nodes
 
 maxOut :: Node -> Aff Unit
 maxOut server = HTTP.setLoad server 91.0 >>= A.assertStatusCode 204 >>= as ("set load on " <> toAddrFromNode server)
+
+freeUp :: Node -> Aff Unit
+freeUp server = HTTP.setLoad server 0.0 >>= A.assertStatusCode 204 >>= as ("clear load on " <> toAddrFromNode server)
 
 aggregatorNotPresent :: SlotId -> Node -> Aff Unit
 aggregatorNotPresent slot server = HTTP.getAggregatorStats server slot >>= A.assertStatusCode 404 >>= as ("aggregator not on " <> toAddrFromNode server)

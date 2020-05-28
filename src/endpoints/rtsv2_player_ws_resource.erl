@@ -155,20 +155,25 @@ init(Req, Params) ->
       };
 
     StreamDesc ->
-      case init_validation(Req, StreamDesc)  of
+      case init_validation(Req, StreamDesc, 0)  of
         failed -> init_validation_fail(Req);
         Validation -> init_prime(Req, StreamDesc, Validation)
       end
   end.
 
-init_validation(Req, #stream_desc_egest{ get_slot_configuration = GetSlotConfiguration
-                                       , egest_key = EgestKey
-                                       , start_stream_result = { right, { local, _ } } }) ->
+init_validation(_Req, _StreamDesc, N) when N > 10 ->
+  ?SLOG_DEBUG("Egest never received slot configuration"),
+  failed;
+
+init_validation(Req, StreamDesc = #stream_desc_egest{ get_slot_configuration = GetSlotConfiguration
+                                                    , egest_key = EgestKey
+                                                    , start_stream_result = { right, { local, _ } } }, N) ->
   case (GetSlotConfiguration(EgestKey))() of
     {just, #{ subscribeValidation := true } } ->
       ClientIP = client_ip(Req),
       #{ validation_url := ValidationUrl
-      , validation_cookie := ValidationCookie } = cowboy_req:match_qs([validation_url, {validation_cookie, [], undefined}], Req),
+       , validation_cookie := ValidationCookie } = cowboy_req:match_qs([ {validation_url, [], undefined},
+                                                                         {validation_cookie, [], undefined}], Req),
       case perform_validation(ClientIP, ValidationUrl, ValidationCookie) of
         failed -> failed;
         {error, _Error } -> failed;
@@ -178,10 +183,18 @@ init_validation(Req, #stream_desc_egest{ get_slot_configuration = GetSlotConfigu
                      , url = ValidationUrl
                      }
       end;
-    _ -> no_validation
+
+    {just, #{ subscribeValidation := false } } ->
+      no_validation;
+
+    {nothing} ->
+      ?SLOG_DEBUG("No slot configuration available"),
+      timer:sleep(100),
+      init_validation(Req, StreamDesc, N + 1)
+
   end;
 
-init_validation(_Req, _StreamDesc) ->
+init_validation(_Req, _StreamDesc, _N) ->
   no_validation.
 
 init_validation_fail(Req) ->
@@ -629,8 +642,6 @@ try_build_stream_desc(Req,
       StartStreamResult =
         (StartStream(EgestKey))(),
 
-      io:format(user, "START STREAM RESULT: ~p -> ~p~n~n", [EgestKey, StartStreamResult]),
-
       StreamDesc =
         #stream_desc_egest{ slot_id =  SlotId
                           , slot_role = SlotRole
@@ -837,6 +848,8 @@ handle_ping(_, State) ->
   , State
   }.
 
+perform_validation(_IP, undefined, _MaybeCookie) ->
+  failed;
 perform_validation(IP, URL, MaybeCookie) when is_tuple(IP) ->
   perform_validation(i_convert:convert(IP, binary_string), URL, MaybeCookie);
 perform_validation(IP, URL, MaybeCookie) ->
@@ -848,8 +861,9 @@ perform_validation(IP, URL, MaybeCookie) ->
                     <<"172.16.171.1">> -> true;
                     _ -> false
                   end;
-                Parsed ->
-                  io:format(user, "invalid url: ~p~n", [Parsed]),
+                Error ->
+                  ?SLOG_DEBUG("invalid url", #{url => URL,
+                                               error => Error}),
                   invalid_url
               end,
 
@@ -857,11 +871,13 @@ perform_validation(IP, URL, MaybeCookie) ->
     false -> { error, bad_host };
     invalid_url -> { error, invalid_url };
     true ->
+
       Res = spud_gun:get(URL, [{<<"X-LLNW-Auth-IP">>, IP}]
                                 ++ case MaybeCookie of
                                     undefined -> [];
                                     ExistingCookie -> [{"cookie", ExistingCookie}]
                                   end),
+
       case Res of
         {ok, 200, RespHeaders, _Body} ->
           case lists:keyfind(<<"set-cookie">>, 1, RespHeaders) of
@@ -872,15 +888,15 @@ perform_validation(IP, URL, MaybeCookie) ->
                 [ Cookie | _ ] ->
                   { ok, Cookie };
                 _ ->
-                  io:format(user, "bad cookie~n", []),
+                  ?SLOG_DEBUG("bad cookie~n", #{}),
                   { error, bad_cookie }
               end
           end;
         {ok, 400, _RespHeaders, _Body} ->
-          io:format(user, "cookie rejected - 400 response from ~p~n", [URL]),
+          ?SLOG_DEBUG("cookie rejected - 400 response", #{url => URL}),
           failed;
         Response ->
-          io:format(user, "non 200 response: ~p~n", [Response]),
+          ?SLOG_DEBUG("non 200 response", #{response => Response}),
           {error, {response, Response}}
       end
   end.
@@ -958,7 +974,6 @@ handle_data_object_send_message(#{ <<"msg">> := Message
     {ok, State}
   catch
     _:_ ->
-      io:format(user, "Invalid Message: ~p ~p~n", [Message, Destination]),
       { [ json_frame( <<"dataobject.message-failure">>,
                       #{ } ) ]
       , State
@@ -985,7 +1000,6 @@ handle_data_object_update(#{ <<"operation">> := Operation,
     {ok, State}
   catch
     _Class:_Reason ->
-      io:format(user, "Invalid Request: ~p: ~p~n", [Operation, {_Class, _Reason}]),
       { [ json_frame( <<"dataobject.update-response">>,
                       #{ <<"senderRef">> => SenderRef,
                          <<"response">> => <<"invalidRequest">>} ) ]
@@ -993,16 +1007,14 @@ handle_data_object_update(#{ <<"operation">> := Operation,
       }
   end;
 
-handle_data_object_update(Request = #{ <<"senderRef">> := SenderRef }, State) ->
-  io:format(user, "Invalid Request: ~p~n", [Request]),
+handle_data_object_update(_Request = #{ <<"senderRef">> := SenderRef }, State) ->
   { [ json_frame( <<"dataobject.update-response">>,
                   #{ <<"senderRef">> => SenderRef,
                      <<"response">> => <<"invalidRequest">>} ) ]
   , State
   };
 
-handle_data_object_update(Request, State) ->
-  io:format(user, "Invalid Request: ~p~n", [Request]),
+handle_data_object_update(_Request, State) ->
   { [ json_frame( <<"dataobject.update-response">>,
                   #{ <<"senderRef">> => <<"unknown">>,
                      <<"response">> => <<"invalidRequest">>} ) ]
