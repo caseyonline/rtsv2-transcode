@@ -4,6 +4,7 @@
         , dataobject_operation_to_purs/1
         , dataobject_response_to_ts/1
         , dataobject_message_to_purs/3
+        , client_address/1
         ]).
 
 dataobject_response_to_ts(Response) ->
@@ -161,3 +162,16 @@ dataobject_value_to_purs(Map) when is_map(Map) ->
                      dataobject_value_to_purs(Value)
                  end,
                  Map)}.
+
+%% Get the peer or (if present) proxied client IP and (original) destination port
+client_address(Req) ->
+  case cowboy_req:header(<<"x-forwarded-for">>, Req) of
+    undefined ->
+      { ClientAddr, _ClientPort } = cowboy_req:peer(Req),
+      { ClientAddr
+      , cowboy_req:port(Req)};
+
+    RHost ->
+      {RHost
+      , cowboy_req:header(<<"x-forwarded-port">>, Req, 0)}
+  end.

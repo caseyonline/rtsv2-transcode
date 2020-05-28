@@ -172,6 +172,7 @@ init args = do
           , "StreamPublishE"                              : LlnwStubHandler.streamPublish
           , "SlotLookupE"                                 : LlnwStubHandler.slotLookup
           , "HlsPushE"                                    : LlnwStubHandler.hlsPush
+          , "ValidationE"                                 : LlnwStubHandler.validation
 
           , "WorkflowsE"                                  : CowboyRoutePlaceholder -- id3as_workflows_resource
           , "WorkflowGraphE"                              : CowboyRoutePlaceholder -- id3as_workflow_graph_resource

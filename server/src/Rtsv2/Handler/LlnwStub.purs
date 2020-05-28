@@ -4,6 +4,7 @@ module Rtsv2.Handler.LlnwStub
        , streamPublish
        , slotLookup
        , hlsPush
+       , validation
        , db
        , StubHost
        , StubProtocol
@@ -22,7 +23,7 @@ import Effect (Effect)
 import Effect.Exception (throw)
 import Effect.Unsafe (unsafePerformEffect)
 import Erl.Atom (Atom, atom)
-import Erl.Cowboy.Req (ReadBodyResult(..), Req, readBody, setBody)
+import Erl.Cowboy.Req (ReadBodyResult(..), Req, readBody, setBody, setHeader)
 import Erl.Data.Binary (Binary)
 import Erl.Data.Binary.IOData (IOData, fromBinary, toBinary)
 import Erl.Data.Binary.IOData as IOData
@@ -84,7 +85,7 @@ db =
       , details: { role: Primary
                  , slot : { id: wrap $ fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000001")
                           , name: "slot1"
-                          , subscribeValidation: false
+                          , subscribeValidation: true
                           , profiles: [ wrap { name: wrap "high",
                                                rtmpStreamName: wrap "slot1_1000",
                                                bitrate: 1000000}
@@ -325,6 +326,26 @@ hlsPush path =
     in
     Rest.result reply req state
 
+-- response: valid / invalid / nocookie
+validation :: String -> StetsonHandler Unit
+validation response =
+  Rest.handler (\req -> Rest.initResult req unit)
+  # Rest.allowedMethods (Rest.result (GET : nil))
+  # Rest.contentTypesProvided (\req state -> Rest.result (MimeType.text handler : nil) req unit)
+  # Rest.malformedRequest malformedRequest
+  # Rest.yeeha
+
+  where
+  -- Validation endpoint returns 400 for not validated url/ip for some reason
+  malformedRequest req state =
+    Rest.result (response == "invalid") req unit
+
+  handler req state =
+    let req2 = case response of
+                "nocookie" -> req
+                _ -> setHeader "Set-Cookie" "__llnw_hashsecret=cf=1600000000&cd=100&e=1590484166&h=491c0fd5ae77d0991d8d48d73e70ec49; HttpOnly; Secure" req
+    in
+    Rest.result "" req2 state
 
 
 allBody :: Req -> IOData -> Effect Binary

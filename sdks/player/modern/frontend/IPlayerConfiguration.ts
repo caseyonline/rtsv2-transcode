@@ -30,6 +30,9 @@ export default interface IPlayerConfiguration {
    */
   readonly autoLayoutOrientation?: boolean;
 
+  /** Media vault validation URL */
+  readonly validationURL: string;
+
   // Overrides. Not for end-user usage.
   // TOOD: remove from release builds?
   readonly overrides?: IPlayerOverrides;

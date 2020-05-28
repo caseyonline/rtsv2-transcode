@@ -4,6 +4,7 @@ export function withDefaults(configuration: IPlayerConfiguration): IPlayerConfig
   return {
     account: defaultValue(configuration.account, null),
     streamName: defaultValue(configuration.streamName, null),
+    validationURL: defaultValue(configuration.validationURL, null),
     videoElementId: defaultValue(configuration.videoElementId, "llnw-rts-subscriber"),
     autoLayoutOrientation: defaultValue(configuration.autoLayoutOrientation, true),
     overrides: defaultOverrides(defaultValue(configuration.overrides, {})),
