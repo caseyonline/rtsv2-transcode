@@ -100,18 +100,14 @@
           const input = document.querySelector('input[type="text"]');
           const msg = input.value;
           const s = $('#msgType option').filter(':selected').text();
-      console.log(s)
           input.value = '';
           if (s == "broadcast") {
-            console.log("broadcast")
             player.sendBroadcastMessage(msg)
           }
           if (s == "private") {
-            console.log("private")
             player.sendPrivateMessage(msg)
           }
           if (s == "pusblisher") {
-            console.log("publisher")
             player.sendPublisherMessage(msg)
           }
 
