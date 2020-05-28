@@ -10,13 +10,14 @@ ffmpeg \
   -i \
   "${MEDIA_FILE_1000}" \
   -ar 48000 \
--acodec aac \
--profile:a aac_he_v2 \
+  -b:a 128k \
+  -acodec aac \
+  -profile:a aac_he_v2 \
   -vcodec "${VIDEO_CODEC}" \
   -profile:v baseline \
   -g 25 \
   -preset "${VIDEO_PRESET}" \
-  -b 1m \
+  -b:v 1M \
   -vf drawtext="fontfile=monofonto.ttf: fontsize=80: box=1: boxcolor=black@0.75: boxborderw=5: fontcolor=white: x=(w-text_w)/2: y=((h-text_h)/2)+((h-text_h)/4): text='HIGH A %{gmtime\:%H\\\\\:%M\\\\\:%S}'" \
   -bf 0 \
   -tune zerolatency \
