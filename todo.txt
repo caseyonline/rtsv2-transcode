@@ -8,7 +8,6 @@
 [ ] - audio only - needs change to StreamDetails to indicate no video, since aggregator is currently waiting for iframe to sync multiple streams
 [ ] - Mediavault API integration
 [ ] - RTMP Egest - from edge
-[ ] - Canary / startup / migrating clients away etc
 [ ] - egest / client merging when load drops
 [ ] - relay merging when multiple instances start
 [ ] - Port Data.Int53 or Data.Long to purescript, and then change Milliseconds type
@@ -21,7 +20,9 @@ Tests:
 [ ] - discovery API
 [ ]	- multi-bitrate ingest
 [ ] - ingest prometheus stats
+[ ] - egest prometheus stats
 
+[x] - Canary / startup / migrating clients away etc
 [x] - data object messaging
 [x] - Egest needs to know model primary and backup
 [x] - HLS Egest from Aggregator

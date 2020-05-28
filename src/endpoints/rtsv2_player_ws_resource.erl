@@ -1,6 +1,5 @@
 -module(rtsv2_player_ws_resource).
 
-
 -include_lib("kernel/include/inet.hrl").
 -include_lib("id3as_common/include/common.hrl").
 -include_lib("id3as_common/include/id3as_message_bus.hrl").
@@ -42,6 +41,7 @@
         , webrtc_session_id :: binary_string()
         , public_ip_string :: binary_string()
         , socket_url :: binary_string()
+        , path :: binary_string()
         , stream_desc :: stream_desc_ingest() | stream_desc_egest()
         , server_id :: term()
 
@@ -56,6 +56,7 @@
         , socket_url :: binary_string()
         , stream_desc :: stream_desc_ingest() | stream_desc_egest()
         , server_id :: term()
+        , path :: binary_string()
 
         , start_options :: webrtc_stream_server:start_options()
         , profiles :: list(rtsv2_slot_configuration:slot_profile())
@@ -93,6 +94,7 @@
         , slot_role :: slot_role()
         , ingest_key :: term()
         , use_media_gateway :: boolean()
+        , support_port :: non_neg_integer()
         }).
 -type stream_desc_ingest() :: #stream_desc_ingest{}.
 
@@ -110,6 +112,7 @@
         , audio_ssrc :: rtp:ssrc()
         , video_ssrc :: rtp:ssrc()
         , use_media_gateway :: boolean()
+        , public_port :: non_neg_integer()
         }).
 -type stream_desc_egest() :: #stream_desc_egest{}.
 
@@ -158,6 +161,8 @@ init_prime(Req, StreamDesc) ->
   TurnUsername = <<"username">>,
   TurnPassword = <<"password">>,
 
+  Path = cowboy_req:path(Req),
+
   { TraceId, NewReq } = maybe_allocate_trace_id(ServerId, CookieDomainName, Req),
 
   case determine_stream_availability(StreamDesc) of
@@ -186,7 +191,11 @@ init_prime(Req, StreamDesc) ->
     { available_elsewhere, [ Alternate | _ ] } ->
 
       %% TODO: PS: select wss/ws appropriately
-      AlternateSocketPath = <<"ws://", Alternate/binary, (cowboy_req:path(Req))/binary>>,
+      Port = case StreamDesc of
+               #stream_desc_egest{public_port = Val} -> Val;
+               #stream_desc_ingest{support_port = Val} -> Val
+             end,
+      AlternateSocketPath = <<"ws://", Alternate/binary, ":", (integer_to_binary(Port))/binary, Path/binary>>,
 
       ?LOG_INFO(#{ what => "session.redirect", reason => "egest available elsewhere", context => #{ target_uri => AlternateSocketPath }}),
 
@@ -207,6 +216,7 @@ init_prime(Req, StreamDesc) ->
       , #?state_initializing{ trace_id = TraceId
                             , webrtc_session_id = format_trace_id(TraceId)
                             , public_ip_string = PublicIPString
+                            , path = Path
                             , socket_url = SocketURL
                             , stream_desc = StreamDesc
                             , server_id = construct_server_id(StreamDesc)
@@ -331,6 +341,30 @@ websocket_info({egestOnFI, Payload, Pts}, State) ->
   , State
   };
 
+websocket_info({egestDrain, Phase, NumPhases, Alternates}, State = #?state_running{ trace_id = {_ServerId, ClientId}
+                                                                                  , stream_desc = #stream_desc_egest{public_port = Port}
+                                                                                  , path = Path})
+  when ClientId rem NumPhases == Phase ->
+
+  OtherEdges = [begin
+                  AlternateSocketPath = <<"ws://", Alternate/binary, ":", (integer_to_binary(Port))/binary, Path/binary>>,
+                  #{ socketURL => AlternateSocketPath, iceServers => [] }
+                end || Alternate <- Alternates],
+
+  ByeMessage =
+    #{ type => bye
+     , otherEdges => OtherEdges
+     },
+
+  { [ {text, jsx:encode(ByeMessage)}
+    , close_frame(?WebSocketStatusCode_GoingAway)
+    ]
+  , State
+  };
+
+websocket_info({egestDrain, _Phase, _NumPhases, _Alternates}, State) ->
+  {ok, State};
+
 websocket_info({egestDataObjectMessage, #{ destination := Destination
                                          , msg := Msg
                                          , sender := Sender }}, State = #?state_running{ trace_id = TraceId }) ->
@@ -354,9 +388,9 @@ websocket_info({egestDataObjectMessage, #{ destination := Destination
       {ok, State}
   end;
 
-websocket_info({egestDataObjectUpdateResponse,#{response := Response,
-                                                senderRef := SenderRef,
-                                                to := To}}, State = #?state_running{ trace_id = TraceId }) ->
+websocket_info({egestDataObjectUpdateResponse,#{ response := Response
+                                               , senderRef := SenderRef
+                                               , to := To}}, State = #?state_running{ trace_id = TraceId }) ->
 
   TraceIdString = format_trace_id(TraceId),
 
@@ -514,6 +548,7 @@ try_build_stream_desc(Req,
                        , stats_update := StatsUpdate
                        , add_client := AddClient
                        , use_media_gateway := UseMediaGateway
+                       , public_port := PublicPort
                        }
                      ) ->
 
@@ -557,6 +592,7 @@ try_build_stream_desc(Req,
                           , audio_ssrc = AudioSSRC
                           , video_ssrc = VideoSSRC
                           , use_media_gateway = UseMediaGateway
+                          , public_port = PublicPort
                           },
 
       StreamDesc
@@ -618,10 +654,10 @@ determine_stream_availability(#stream_desc_egest{ start_stream_result = { left, 
   %% TODO: PS: redirect to a different PoP?
   available_nowhere;
 
-determine_stream_availability(#stream_desc_egest{ start_stream_result = { right, { remote, #{ address := HostName } } } }) ->
+determine_stream_availability(#stream_desc_egest{ start_stream_result = { right, { remote, #{ address := HostName } } }
+                                                , public_port = PublicPort}) ->
 
-  %% TODO: PS: proper determination of port - config?
-  Authority = << HostName/binary, ":3000" >>,
+  Authority = << HostName/binary, ":", (integer_to_binary(PublicPort))/binary >>,
   {available_elsewhere, [ Authority ]};
 
 determine_stream_availability(#stream_desc_egest{}) ->
@@ -667,6 +703,7 @@ get_slot_profiles(#stream_desc_egest{ egest_key = EgestKey, get_slot_configurati
 
 transition_to_running([ #{ profileName := ActiveProfileName } | _OtherProfiles ] = Profiles,
                       #?state_initializing{ trace_id = TraceId
+                                          , path = Path
                                           , webrtc_session_id = WebRTCSessionId
                                           , public_ip_string = PublicIPString
                                           , socket_url = SocketURL
@@ -697,6 +734,7 @@ transition_to_running([ #{ profileName := ActiveProfileName } | _OtherProfiles ]
     #?state_running{ trace_id = TraceId
                    , webrtc_session_id = WebRTCSessionId
                    , public_ip_string = PublicIPString
+                   , path = Path
                    , socket_url = SocketURL
                    , stream_desc = StreamDesc
                    , server_id = ServerId

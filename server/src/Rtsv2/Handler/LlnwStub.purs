@@ -11,8 +11,6 @@ module Rtsv2.Handler.LlnwStub
 
 import Prelude
 
-import Shared.Rtsv2.LlnwApiTypes (AuthType, HlsPushProtocol(..), HlsPushSpecFormat(..), PublishCredentials, SlotLookupResult, SlotPublishAuthType(..), StreamAuth, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamOutputFormat(..), StreamPublish)
-
 import Data.Array as Array
 import Data.Either (either, hush)
 import Data.Generic.Rep (class Generic)
@@ -22,6 +20,7 @@ import Data.Newtype (unwrap, wrap)
 import Data.String (joinWith)
 import Effect (Effect)
 import Effect.Exception (throw)
+import Effect.Unsafe (unsafePerformEffect)
 import Erl.Atom (Atom, atom)
 import Erl.Cowboy.Req (ReadBodyResult(..), Req, readBody, setBody)
 import Erl.Data.Binary (Binary)
@@ -36,6 +35,8 @@ import Logger as Logger
 import Partial.Unsafe (unsafePartial)
 import Rtsv2.Agents.IngestSup as IngestSup
 import Rtsv2.Handler.MimeType as MimeType
+import Shared.Rtsv2.LlnwApiTypes (AuthType, HlsPushProtocol(..), HlsPushSpecFormat(..), PublishCredentials, SlotLookupResult, SlotPublishAuthType(..), StreamAuth, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamOutputFormat(..), StreamPublish)
+import Shared.Rtsv2.Router.Endpoint.System as System
 import Shared.Rtsv2.Stream (RtmpShortName, SlotRole(..))
 import Shared.UUID (fromString)
 import Shared.Utils (lazyCrashIfMissing)
@@ -96,8 +97,7 @@ db =
                  , push : [
                     { protocol: HttpPut
                     , formats: [ Hls ]
-                      -- TODO: make this come from Config
-                    , putBaseUrl: "http://172.16.171.1:3000/system/llnwstub/rts/v1/hls/test_slot_1/"
+                    , putBaseUrl: unwrap $ unsafePerformEffect $ System.makeUrlAddr (wrap "172.16.171.1") (System.HlsPushE ["test_slot_1"])
                     , segmentDuration: Just 3
                     , playlistDuration: Just 20
                     , auth:

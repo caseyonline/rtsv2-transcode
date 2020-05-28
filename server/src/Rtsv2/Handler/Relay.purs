@@ -34,6 +34,7 @@ import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Types (LocalOrRemote(..), ResourceFailed(..), ResourceResp)
+import Rtsv2.Utils (noprocToMaybe)
 import Shared.Rtsv2.Agent.State (StreamRelay)
 import Shared.Rtsv2.Router.Endpoint.Support as Support
 import Shared.Rtsv2.Router.Endpoint.System as System
@@ -174,10 +175,11 @@ registeredRelayWs slotId slotRole relayAddress relayPort sourceRoute =
     wsInit state@{relayServer, relayKey} = do
       self <- Process <$> Erl.self :: Effect (Process (WebSocketHandlerMessage DownstreamWsMessage))
       Erl.monitor (Names.streamRelayInstanceStateName relayKey)
-      maybeSlotConfiguration <- StreamRelayInstance.registerRelay slotId slotRole relayServer relayPort sourceRoute self
+      maybeSlotConfiguration <- noprocToMaybe $ StreamRelayInstance.registerRelay slotId slotRole relayServer relayPort sourceRoute self
       pure $ case maybeSlotConfiguration of
-               Nothing -> WebSocketNoReply state
-               Just slotConfiguration -> WebSocketReply (SlotConfig slotConfiguration) state
+               Nothing -> WebSocketStop state
+               Just Nothing -> WebSocketNoReply state
+               Just (Just slotConfiguration) -> WebSocketReply (SlotConfig slotConfiguration) state
 
     handle :: WsRelayState -> RelayUpstreamWsMessage -> Effect (WebSocketHandlerResult DownstreamWsMessage WsRelayState)
     handle state@{relayKey} (RelayUpstreamDataObjectMessage msg) = do
@@ -212,10 +214,11 @@ registeredEgestWs slotId slotRole egestAddress egestPort =
     wsInit state@{egestServer, relayKey} = do
       self <- Process <$> Erl.self :: Effect (Process (WebSocketHandlerMessage DownstreamWsMessage))
       Erl.monitor (Names.streamRelayInstanceStateName relayKey)
-      maybeSlotConfiguration <- StreamRelayInstance.registerEgest slotId slotRole egestServer egestPort self
+      maybeSlotConfiguration <- noprocToMaybe $ StreamRelayInstance.registerEgest slotId slotRole egestServer egestPort self
       pure $ case maybeSlotConfiguration of
-               Nothing -> WebSocketNoReply state
-               Just slotConfiguration -> WebSocketReply (SlotConfig slotConfiguration) state
+               Nothing -> WebSocketStop state
+               Just Nothing -> WebSocketNoReply state
+               Just (Just slotConfiguration) -> WebSocketReply (SlotConfig slotConfiguration) state
 
     handle :: WsEgestState -> EgestUpstreamWsMessage -> Effect (WebSocketHandlerResult DownstreamWsMessage WsEgestState)
     handle state@{relayKey} (EdgeToRelayDataObjectMessage msg) = do

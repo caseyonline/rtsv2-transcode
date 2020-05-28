@@ -238,6 +238,19 @@ export default class Session extends EventEmitter implements ISession {
       case "pong":
         break;
 
+      case "bye":
+        {
+          if (message.otherEdges.length > 0) {
+            this.socketURL = message.otherEdges[0].socketURL;
+            console.log(`Rejected by server, we're being redirected to ${this.socketURL}.`);
+            this.createSocket();
+          }
+          else {
+            console.log(`Rejected by server, no alternatives were provided.`);
+          }
+        }
+        break;
+
       case "sdp.offer-response":
         {
           console.debug("Remote description obtained.", message.response);

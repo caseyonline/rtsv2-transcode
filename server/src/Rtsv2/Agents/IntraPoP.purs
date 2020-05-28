@@ -32,6 +32,7 @@ module Rtsv2.Agents.IntraPoP
   , whereIsIngestAggregatorWithPayload
   , whereIsStreamRelay
   , whereIsStreamRelayWithLocalOrRemote
+  , whereIsEgest
   , whereIsEgestWithLoad
 
   , getIdleServer
@@ -286,6 +287,9 @@ whereIsStreamRelay (RelayKey slotId slotRole) = head <$> whereIs _.relays (Agent
 
 whereIsStreamRelayWithLocalOrRemote :: RelayKey -> Effect (Maybe (LocalOrRemote Server))
 whereIsStreamRelayWithLocalOrRemote (RelayKey slotId slotRole) = head <$> whereIsWithLocalOrRemote _.relays (AgentKey slotId slotRole)
+
+whereIsEgest :: EgestKey -> Effect (List Server)
+whereIsEgest egestKey = whereIs _.egests $ egestKeyToAgentKey egestKey
 
 whereIsEgestWithLoad :: EgestKey -> Effect (List ServerLoad)
 whereIsEgestWithLoad egestKey = whereIsWithLoad _.egests $ egestKeyToAgentKey egestKey

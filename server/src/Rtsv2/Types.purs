@@ -18,8 +18,6 @@ import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show (genericShow)
 import Effect (Effect)
 import Erl.Process.Raw (Pid)
-import Rtsv2.LoadTypes (ServerSelectionPredicate)
-import Shared.Rtsv2.Agent (Agent)
 import Shared.Rtsv2.Types (AcceptingRequests, CanaryState, FailureReason, Server)
 
 data LocalOrRemote a

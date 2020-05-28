@@ -74,6 +74,7 @@ init :: WebConfig -> Effect State
 init args = do
   featureFlags <- Config.featureFlags
   loadConfig <- Config.loadConfig
+  webConfig <- Config.webConfig
   publicBindIp <- Env.publicInterfaceIp
   privateBindIp <- Env.privateInterfaceIp
   thisServer <- PoPDefinition.getThisServer
@@ -91,7 +92,7 @@ init args = do
           , "ClientWebRTCIngestAssetsE"                   : \(_ :: RtmpShortName) (_ :: RtmpStreamName) -> PrivDir "rtsv2" "www/assets"
           , "ClientWebRTCIngestControlE"                  : CowboyRoutePlaceholder
           }
-      # Stetson.cowboyRoutes (publicRoutes thisServer featureFlags loadConfig)
+      # Stetson.cowboyRoutes (publicRoutes thisServer featureFlags loadConfig webConfig)
       # Stetson.port args.publicPort
       # (uncurry4 Stetson.bindTo) (ipToTuple publicBindIp)
       # Stetson.startClear "public_http"
@@ -135,7 +136,7 @@ init args = do
           , "CanaryClientWebRTCIngestControlE"            : CowboyRoutePlaceholder
 
           }
-      # Stetson.cowboyRoutes (supportRoutes thisServer featureFlags loadConfig)
+      # Stetson.cowboyRoutes (supportRoutes thisServer featureFlags loadConfig webConfig)
       # Stetson.port args.supportPort
       # (uncurry4 Stetson.bindTo) (ipToTuple privateBindIp)
       # Stetson.startClear "support_http"
@@ -186,8 +187,8 @@ init args = do
 
   where
 
-    supportRoutes :: Server -> Config.FeatureFlags -> Config.LoadConfig -> List Path
-    supportRoutes thisServer { mediaGateway } loadConfig =
+    supportRoutes :: Server -> Config.FeatureFlags -> Config.LoadConfig -> WebConfig -> List Path
+    supportRoutes thisServer { mediaGateway } loadConfig webConfig =
       -- Some duplication of URLs here from those in Endpoint.purs due to current inability to build cowboy-style bindings from stongly-typed parameters
       -- IngestAggregatorActiveIngestsPlayerControlE SlotId SlotRole ProfileName
       cowboyRoute ("/support/ingestAggregator/" <> slotIdBinding <> "/" <> slotRoleBinding <> "/activeIngests/" <> profileNameBinding <> "/control")
@@ -205,7 +206,7 @@ init args = do
       -- ClientPlayerControlE Canary SlotId
       : cowboyRoute ("/public/client/" <> slotIdBinding <> "/" <> slotRoleBinding <> "/session")
                     "rtsv2_player_ws_resource"
-                    (playerControlArgs loadConfig mediaGateway Live)
+                    (playerControlArgs loadConfig webConfig mediaGateway Live)
 
       -- ClientWebRTCIngestContorlE SlotId SlotRole
       : cowboyRoute ("/public/ingest/" <> accountBinding <> "/" <> streamNameBinding <> "/session")
@@ -215,7 +216,7 @@ init args = do
       -- CanaryClientPlayerControlE SlotId SlotRole
       : cowboyRoute ("/support/canary/client/" <> slotIdBinding <> "/" <> slotRoleBinding <> "/session")
                     "rtsv2_player_ws_resource"
-                    (playerControlArgs loadConfig mediaGateway Canary)
+                    (playerControlArgs loadConfig webConfig mediaGateway Canary)
 
       -- CanaryClientWebRTCIngestContorlE SlotId SlotRole
       : cowboyRoute ("/suport/canary/ingest/" <> accountBinding <> "/" <> streamNameBinding <> "/session")
@@ -242,13 +243,13 @@ init args = do
 
       : nil
 
-    publicRoutes :: Server -> Config.FeatureFlags -> Config.LoadConfig -> List Path
-    publicRoutes thisServer { mediaGateway } loadConfig =
+    publicRoutes :: Server -> Config.FeatureFlags -> Config.LoadConfig -> WebConfig -> List Path
+    publicRoutes thisServer { mediaGateway } loadConfig webConfig =
       -- Some duplication of URLs here from those in Endpoint.purs due to current inability to build cowboy-style bindings from stongly-typed parameters
       -- ClientPlayerControlE Canary SlotId
         cowboyRoute ("/public/client/" <> slotIdBinding <> "/" <> slotRoleBinding <> "/session")
                     "rtsv2_player_ws_resource"
-                    (playerControlArgs loadConfig mediaGateway Live)
+                    (playerControlArgs loadConfig webConfig mediaGateway Live)
 
       -- ClientWebRTCIngestContorlE SlotId SlotRole
       : cowboyRoute ("/public/ingest/" <> accountBinding <> "/" <> streamNameBinding <> "/session")
@@ -257,7 +258,7 @@ init args = do
 
       : nil
 
-    playerControlArgs loadConfig mediaGateway canary =
+    playerControlArgs loadConfig webConfig mediaGateway canary =
       unsafeToForeign { mode: (atom "egest")
                       , canary
                       , make_egest_key: makeEgestKey
@@ -267,6 +268,8 @@ init args = do
                       , data_object_send_message: EgestInstance.dataObjectSendMessage
                       , data_object_update: EgestInstance.dataObjectUpdate
                       , stats_update: mkFn2 EgestInstance.statsUpdate
+                      , public_port: webConfig.publicPort
+                      , support_port: webConfig.supportPort
                       , use_media_gateway:
                         case mediaGateway of
                           Off -> false

@@ -32,6 +32,7 @@ import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, singleton)
+import Erl.Data.List as List
 import Erl.Data.Map (Map, values)
 import Erl.Data.Map as Map
 import Erl.Data.Tuple (Tuple2, tuple2)
@@ -39,7 +40,7 @@ import Erl.Process (Process(..), (!))
 import Erl.Process.Raw (Pid)
 import Erl.Utils (Ref, makeRef, systemTimeMs)
 import Erl.Utils as Erl
-import Logger (Logger)
+import Logger (Logger, spy)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
 import Pinto as Pinto
@@ -108,7 +109,10 @@ type State
     , clientStats :: Map String EgestSessionStats
     , lingerTime :: Milliseconds
     , relayCreationRetry :: Milliseconds
+    , numForceDrainPhases :: Int
     , forceDrainTimeout :: Milliseconds
+    , forceDrainPhaseTimeout :: Milliseconds
+    , intraPoPLatency :: Milliseconds
     , aggregatorExitLingerTime :: Milliseconds
     , stopRef :: Maybe Ref
     , receivePortNumber :: Int
@@ -140,6 +144,7 @@ data EgestBusMsg = EgestOnFI NativeJson Int
                  | EgestDataObjectMessage DO.Message
                  | EgestDataObjectUpdateResponse DO.ObjectUpdateResponseMessage
                  | EgestDataObjectBroadcast DO.Object
+                 | EgestDrain Int Int (List String)
 
 bus :: EgestKey -> Bus.Bus (Tuple2 Atom EgestKey) EgestBusMsg
 bus egestKey = Bus.bus (tuple2 (atom "egestBus") egestKey)
@@ -150,6 +155,7 @@ data Msg = WriteEqLog
          | MaybeStop Ref
          | IntraPoPBus IntraPoP.IntraPoPBusMessage
          | Gun WsGun.GunMsg
+         | ForceDrainPhase Int
          | ForceDrainTimeout
          | AggregatorExitTimer Ref
 
@@ -252,10 +258,12 @@ forceDrain egestKey =
                        , slotCharacteristics
                        , loadConfig
                        , forceDrainTimeout
+                       , intraPoPLatency
                        , parentCallbacks: { startLocalOrRemoteEgest } } = do
       logInfo "Egest entering force-drain mode" {egestKey}
 
       void $ Timer.sendAfter (serverName egestKey) (round $ unwrap forceDrainTimeout) ForceDrainTimeout
+      void $ Timer.sendAfter (serverName egestKey) (round $ unwrap intraPoPLatency) (ForceDrainPhase 0)
       void $ startLocalOrRemoteEgest loadConfig LocalAgent {slotId, slotRole, aggregatorPoP, slotCharacteristics}
 
       pure $ CastNoReply state{forceDrain = true}
@@ -283,8 +291,10 @@ init parentCallbacks payload@{slotId, slotRole, aggregatorPoP, slotCharacteristi
   , reserveForPotentialNumClients
   , decayReserveMs
   , forceDrainTimeoutMs
+  , numForceDrainPhases
   , aggregatorExitLingerTimeMs
   } <- Config.egestAgentConfig
+  { intraPoPLatencyMs } <- Config.globalConfig
   loadConfig <- Config.loadConfig
   thisServer <- PoPDefinition.getThisServer
 
@@ -323,6 +333,9 @@ init parentCallbacks payload@{slotId, slotRole, aggregatorPoP, slotCharacteristi
             , lingerTime : wrap $ toNumber lingerTimeMs
             , relayCreationRetry : wrap $ toNumber relayCreationRetryMs
             , forceDrainTimeout : wrap $ toNumber forceDrainTimeoutMs
+            , forceDrainPhaseTimeout : wrap $ toNumber (forceDrainTimeoutMs / (numForceDrainPhases + 1))
+            , numForceDrainPhases
+            , intraPoPLatency : wrap $ toNumber intraPoPLatencyMs
             , aggregatorExitLingerTime : wrap $ toNumber aggregatorExitLingerTimeMs
             , stopRef : Nothing
             , receivePortNumber
@@ -390,7 +403,7 @@ handleInfo msg state@{egestKey: egestKey@(EgestKey slotId slotRole), thisServer}
       -- We just exited!  Only makes sense in forceDrain mode where we announce stop prior to stopping
       if state.forceDrain then do
         logInfo "ForceDrain mode: Announcement of our exit" {egestKey}
-        pure $ CastStop state
+        pure $ CastNoReply state
       else do
         logInfo "Normal mode: Unexpected announcement of our exit" {egestKey}
         pure $ CastNoReply state
@@ -400,6 +413,10 @@ handleInfo msg state@{egestKey: egestKey@(EgestKey slotId slotRole), thisServer}
 
     IntraPoPBus (VmReset _ _ _) ->
       pure $ CastNoReply state
+
+    ForceDrainPhase n  -> do
+        logInfo "Egest draining clients" {phase: n}
+        drainClients state n
 
     ForceDrainTimeout -> do
         logInfo "Egest stopping due to force drain timeout" {egestKey}
@@ -495,6 +512,22 @@ processGunMessage state@{relayWebSocket: Just socket, egestKey, lastOnFI} gunMsg
   else
     pure $ CastNoReply state
 
+drainClients :: State -> Int -> Effect (CastResult State)
+drainClients state@{clientCount: 0} _phase =
+  pure $ CastStop state
+
+drainClients state@{numForceDrainPhases} phase | phase == numForceDrainPhases =
+  pure $ CastStop state
+
+drainClients state@{egestKey, forceDrainPhaseTimeout, numForceDrainPhases, thisServer} phase = do
+  egests <- (map (unwrap <<< extractAddress)) <$> List.filter ((/=) thisServer) <$> IntraPoP.whereIsEgest egestKey
+  logInfo "Draining clients" { phase
+                             , numPhases: numForceDrainPhases
+                             , alternates: egests}
+  Bus.raise (bus egestKey) (EgestDrain phase numForceDrainPhases egests)
+  void $ Timer.sendAfter (serverName egestKey) (round $ (unwrap forceDrainPhaseTimeout)) (ForceDrainPhase (phase + 1))
+  pure $ CastNoReply state
+
 removeClient :: String -> State -> Effect State
 removeClient sessionId state@{clientCount: 0} = do
   logInfo "Remove client - already zero" {}
@@ -562,24 +595,20 @@ doStop state@{egestKey} = do
   pure $ CastStop state
 
 initStreamRelay :: State -> Effect State
-initStreamRelay state@{relayCreationRetry, egestKey: egestKey@(EgestKey slotId slotRole), aggregatorPoP, thisServer, stateServerName, slotConfiguration: mSlotConfig} = do
-  case mSlotConfig of
-    Nothing -> do
-      relayResp <- findOrStartRelayForStream state
+initStreamRelay state@{relayCreationRetry, egestKey: egestKey@(EgestKey slotId slotRole), aggregatorPoP, thisServer, stateServerName} = do
+  relayResp <- findOrStartRelayForStream state
+  logInfo "From findOrStartRelayForStream" {relayResp}
+  case relayResp of
+    Left _ ->
+      do
+        _ <- Timer.sendAfter (serverName egestKey) (round $ unwrap relayCreationRetry) InitStreamRelays
+        pure state
 
-      case relayResp of
-        Left _ ->
-          do
-            _ <- Timer.sendAfter (serverName egestKey) (round $ unwrap relayCreationRetry) InitStreamRelays
-            pure state
+    Right (Local local) ->
+      tryConfigureAndRegister local
 
-        Right (Local local) ->
-          tryConfigureAndRegister local
-
-        Right (Remote remote) ->
-          tryConfigureAndRegister remote
-    Just _ ->
-      pure state
+    Right (Remote remote) ->
+      tryConfigureAndRegister remote
 
   where
     tryConfigureAndRegister relayServer = do

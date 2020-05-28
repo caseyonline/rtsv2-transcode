@@ -59,8 +59,8 @@ import Shared.Rtsv2.Agent (Agent, SlotCharacteristics, strToAgent)
 import Shared.Rtsv2.Stream (AgentKey)
 import Shared.Rtsv2.Types (CanaryState, RunState, Server, WebConfig)
 import Shared.Utils (lazyCrashIfMissing)
-import Simple.JSON (class ReadForeign, class WriteForeign, readImpl)
-import Data.Newtype (class Newtype)
+import Simple.JSON (class ReadForeign, readImpl)
+
 
 type LoadConfig
   = { loadAnnounceMs :: Int
@@ -135,6 +135,7 @@ type EgestAgentConfig
     , reserveForPotentialNumClients :: Int
     , decayReserveMs :: Int
     , forceDrainTimeoutMs :: Int
+    , numForceDrainPhases :: Int
     , aggregatorExitLingerTimeMs :: Int
     }
 
