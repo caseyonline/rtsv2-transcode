@@ -79,6 +79,9 @@ browserLaunchArgsIng =
 slot1 :: SlotId
 slot1 = wrap (fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000001"))
 
+slot2 :: SlotId
+slot2 = wrap (fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000002"))
+
 shortName1 :: RtmpShortName
 shortName1 = wrap "mmddev001"
 

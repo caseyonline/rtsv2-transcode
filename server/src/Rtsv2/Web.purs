@@ -89,7 +89,7 @@ init args = do
           , "ClientPlayerAssetsE"                         : \(_ :: SlotId) (_ :: SlotRole) -> PrivDir "rtsv2" "www/assets"
           , "ClientPlayerControlE"                        : CowboyRoutePlaceholder
 
-          , "ClientWebRTCIngestE"                         : \(_ :: RtmpShortName) (_ :: RtmpStreamName) -> PrivFile "rtsv2" "www/referenceIngest.html"
+          , "ClientWebRTCIngestE"                         : \(_ :: RtmpShortName) (_ :: RtmpStreamName) -> PrivFile "rtsv2" "www/ingestReferencePlayer.html"
           , "ClientWebRTCIngestAssetsE"                   : \(_ :: RtmpShortName) (_ :: RtmpStreamName) -> PrivDir "rtsv2" "www/assets"
           , "ClientWebRTCIngestControlE"                  : CowboyRoutePlaceholder
           }
@@ -132,7 +132,7 @@ init args = do
           , "CanaryClientPlayerAssetsE"                   : \(_ :: SlotId) (_ :: SlotRole) -> PrivDir "rtsv2" "www/assets"
           , "CanaryClientPlayerControlE"                  : CowboyRoutePlaceholder
 
-          , "CanaryClientWebRTCIngestE"                   : \(_ :: RtmpShortName) (_ :: RtmpStreamName) -> PrivFile "rtsv2" "www/referenceIngest.html"
+          , "CanaryClientWebRTCIngestE"                   : \(_ :: RtmpShortName) (_ :: RtmpStreamName) -> PrivFile "rtsv2" "www/ingestReferencePlayer.html"
           , "CanaryClientWebRTCIngestAssetsE"             : \(_ :: RtmpShortName) (_ :: RtmpStreamName) -> PrivDir "rtsv2" "www/assets"
           , "CanaryClientWebRTCIngestControlE"            : CowboyRoutePlaceholder
 
