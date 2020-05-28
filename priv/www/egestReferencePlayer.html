@@ -6,6 +6,7 @@
     <title>LLNW Egest Reference Player</title>
     <link href=data:, rel=icon">
     <link rel="stylesheet" type="text/css" href="css/bootstrap.min.css">
+    <link rel="stylesheet" type="text/css" href="css/referencepages.css">
     <style>
       body {
         display: flex;
@@ -28,72 +29,6 @@
       .container {
         padding-top: 20px;
       }
-      .content {
-        margin-top: 1rem;
-        box-shadow: rgba(156, 172, 172, 0.2) 0px 1px 9px, rgba(156, 172, 172, 0.2) 0px 4px 4px, rgba(156, 172, 172, 0.2) 0px 8px 8px, rgba(156, 172, 172, 0.2) 0px 16px 16px, rgba(156, 172, 172, 0.2) 0px 32px 32px, rgba(156, 172, 172, 0.2) 0px 64px 64px;
-        border-radius: 3px;
-        display: flex;
-        flex-direction: column;
-        height: 50vh;
-        max-height: 600px;
-        width: 150vw;
-        max-width: 600px;
-      }
-      .messages {
-        flex-grow: 1;
-        padding: 20px 30px;
-        overflow: auto;
-      }
-      .message {
-        display: flex;
-        flex-direction: column;
-      }
-      .msg_sent {
-        align-items: flex-end;
-      }
-      .msg_received {
-        align-items: flex-start;
-      }
-      .msg_name {
-        padding: 10px 0;
-      }
-      .msg_bubble {
-        padding: 20px;
-        border-radius: 3px;
-      }
-      .msg_received .msg_bubble {
-        background: #6363bf;
-        color: white;
-      }
-      .msg_sent .msg_bubble {
-        background: rgba(156, 172, 172, 0.2);
-      }
-      .footer {
-        line-height: 76px;
-        border-top: 1px solid rgba(156, 172, 172, 0.2);
-        display: flex;
-        flex-shrink: 0;
-      }
-      input {
-        height: 76px;
-        border: none;
-        flex-grow: 1;
-        padding: 0 30px;
-        font-size: 16px;
-        background: transparent;
-      }
-      #stop {
-        margin-bottom: 20px;
-        margin-top: 10px;
-      }
-      button {
-        border: none;
-        background: transparent;
-        padding: 0 30px;
-        font-size: 16px;
-        cursor: pointer;
-    }
-  </style>
     </style>
   </head>
   <body>
@@ -118,7 +53,7 @@
         </div>
       </div>
       <div>
-          Sender: <span id="traceId"></span>
+          TraceId: <span id="traceId"></span>
       </div>
       <div class="content">
         <div class="messages">
@@ -126,6 +61,11 @@
         <form class="footer" onsubmit="return false;">
           <input id="msginput" type="text" placeholder="Your message..">
           <button id="msgsend" type="submit">Send</button>
+          <select name="msgType" id="msgType">
+            <option value="broadcast">broadcast</option>
+            <option value="private">private</option>
+            <option value="publisher">pusblisher</option>
+          </select>
         </form>
         <template data-template="message">
           <div class="message">
@@ -156,12 +96,24 @@
 
         var player = LimelightSDK.createPlayer(config);
 
-        form.addEventListener('submit', () => {
+        form.addEventListener('submit', (form) => {
           const input = document.querySelector('input[type="text"]');
           const msg = input.value;
+          const s = $('#msgType option').filter(':selected').text();
+      console.log(s)
           input.value = '';
-
-          player.sendBroadcastMessage(msg)
+          if (s == "broadcast") {
+            console.log("broadcast")
+            player.sendBroadcastMessage(msg)
+          }
+          if (s == "private") {
+            console.log("private")
+            player.sendPrivateMessage(msg)
+          }
+          if (s == "pusblisher") {
+            console.log("publisher")
+            player.sendPublisherMessage(msg)
+          }
 
         });
 
@@ -197,8 +149,8 @@
           console.log("active-profiles", profiles);
         });
         player.on("data-object-message", (message) => {
+           console.log("data-object-message", message);
           insertMessageToDOM(message, (message.sender == player.session.traceId));
-          console.log("data-object-message", message);
         });
         player.on("data-object-message-failure", () => {
           console.log("data-object-message-failure");
