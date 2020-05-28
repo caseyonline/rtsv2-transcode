@@ -67,7 +67,11 @@ setSlotConfigurationFFI(EgestKey, SlotConfiguration) ->
   fun() ->
       _ = gproc:add_local_property({metadata, EgestKey},
                                    #?metadata{ slot_configuration = SlotConfiguration }
-                                  )
+                                  ),
+
+      ok = rtsv2_webrtc_egest_stream_handler:set_slot_configuration(EgestKey, SlotConfiguration),
+
+      ok
   end.
 
 
