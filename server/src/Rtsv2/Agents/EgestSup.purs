@@ -7,6 +7,7 @@ import Prelude
 
 import Data.Maybe (Maybe(..))
 import Data.Traversable (sequence)
+import Data.Newtype (unwrap)
 import Effect (Effect)
 import Erl.Atom (atom)
 import Erl.Data.List (catMaybes, nil, (:))
@@ -62,7 +63,19 @@ init = do
             Nothing
           _ ->
             let
-              args = (unsafeToForeign $ extractAddress thisServer) : (unsafeToForeign mediaGatewayFlag) : nil
+              serverAddress = (unwrap $ extractAddress thisServer) :: String
+              networkCapacityBitsPerSecond = 1000 * (unwrap $ (unwrap thisServer).maxNetworkCapacity)
+              transmitQueueCount = ((unwrap thisServer).transmitQueueCount) :: Int
+              receiveQueueCount = ((unwrap thisServer).receiveQueueCount) :: Int
+              maxTransmitQueueCapacity = networkCapacityBitsPerSecond / transmitQueueCount
+              transmitQueueCapacityLessHeadroom = (maxTransmitQueueCapacity * 80) / 100
+              args
+                = (unsafeToForeign $ serverAddress)
+                : (unsafeToForeign $ transmitQueueCount)
+                : (unsafeToForeign $ receiveQueueCount)
+                : (unsafeToForeign $ transmitQueueCapacityLessHeadroom)
+                : (unsafeToForeign mediaGatewayFlag)
+                : nil
             in
               Just $ buildChild
                     # childType (NativeWorker (NativeModuleName (atom "rtsv2_media_gateway_api")) (atom "start_link") args)

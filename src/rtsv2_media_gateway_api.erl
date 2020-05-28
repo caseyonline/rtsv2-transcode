@@ -10,7 +10,7 @@
 -include("./rtsv2_rtp.hrl").
 
 
--export([ start_link/2
+-export([ start_link/5
         , add_egest/5
         , remove_egest/2
         , add_egest_client/4
@@ -57,8 +57,8 @@
 %%% ----------------------------------------------------------------------------
 %%% Public API
 %%% ----------------------------------------------------------------------------
-start_link(ThisServerAddress, MediaGatewayFlag) ->
-  gen_server:start_link({local, ?SERVER}, ?MODULE, [ThisServerAddress, MediaGatewayFlag], []).
+start_link(ThisServerAddress, TransmitQueueCount, ReceiveQueueCount, TransmitQueueCapacity, MediaGatewayFlag) ->
+  gen_server:start_link({local, ?SERVER}, ?MODULE, [ThisServerAddress, TransmitQueueCount, ReceiveQueueCount, TransmitQueueCapacity, MediaGatewayFlag], []).
 
 
 add_egest(SlotId, SlotRole, ReceiveSocket, AudioSSRC, VideoSSRC) ->
@@ -80,15 +80,20 @@ update_egest_client_subscription(ClientId, AudioSSRC, VideoSSRC) ->
 %%% ----------------------------------------------------------------------------
 %%% Gen Server Implementation
 %%% ----------------------------------------------------------------------------
-init([ThisServerAddress, MediaGatewayFlag]) ->
+init([ThisServerAddress, TransmitQueueCount, ReceiveQueueCount, TransmitQueueCapacity, MediaGatewayFlag]) ->
   process_flag(trap_exit, true),
 
   State =
     case MediaGatewayFlag of
       {on} ->
         Cmd = filename:join([code:priv_dir(rtsv2), "scripts", "runMediaGateway.sh"]),
-        UdsPath = <<"/tmp/rtsv2-media-gateway-", ThisServerAddress/binary, ".sock">>,
-        Port = erlang:open_port({spawn_executable, Cmd}, [exit_status, {args, [UdsPath]}]),
+        UdsPath = <<"/tmp/rtsv2-media-gateway/", ThisServerAddress/binary, ".sock">>,
+        Args = [ UdsPath
+               , integer_to_binary(TransmitQueueCount)
+               , integer_to_binary(ReceiveQueueCount)
+               , integer_to_binary(TransmitQueueCapacity)
+               ],
+        Port = erlang:open_port({spawn_executable, Cmd}, [exit_status, {args, Args}]),
 
         #?state{ uds_path = UdsPath
                , server_port = Port
