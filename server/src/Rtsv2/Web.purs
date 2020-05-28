@@ -75,6 +75,7 @@ init args = do
   featureFlags <- Config.featureFlags
   loadConfig <- Config.loadConfig
   webConfig <- Config.webConfig
+  llnwApiConfig <- Config.llnwApiConfig
   publicBindIp <- Env.publicInterfaceIp
   supportBindIp <- Env.supportInterfaceIp
   systemBindIp <- Env.systemInterfaceIp
@@ -93,7 +94,7 @@ init args = do
           , "ClientWebRTCIngestAssetsE"                   : \(_ :: RtmpShortName) (_ :: RtmpStreamName) -> PrivDir "rtsv2" "www/assets"
           , "ClientWebRTCIngestControlE"                  : CowboyRoutePlaceholder
           }
-      # Stetson.cowboyRoutes (publicRoutes thisServer featureFlags loadConfig webConfig)
+      # Stetson.cowboyRoutes (publicRoutes thisServer featureFlags loadConfig webConfig llnwApiConfig.validationUrlWhitelist)
       # Stetson.port args.publicPort
       # (uncurry4 Stetson.bindTo) (ipToTuple publicBindIp)
       # Stetson.startClear "public_http"
@@ -137,7 +138,7 @@ init args = do
           , "CanaryClientWebRTCIngestControlE"            : CowboyRoutePlaceholder
 
           }
-      # Stetson.cowboyRoutes (supportRoutes thisServer featureFlags loadConfig webConfig)
+      # Stetson.cowboyRoutes (supportRoutes thisServer featureFlags loadConfig webConfig llnwApiConfig.validationUrlWhitelist)
       # Stetson.port args.supportPort
       # (uncurry4 Stetson.bindTo) (ipToTuple supportBindIp)
       # Stetson.startClear "support_http"
@@ -189,8 +190,8 @@ init args = do
 
   where
 
-    supportRoutes :: Server -> Config.FeatureFlags -> Config.LoadConfig -> WebConfig -> List Path
-    supportRoutes thisServer { mediaGateway } loadConfig webConfig =
+    supportRoutes :: Server -> Config.FeatureFlags -> Config.LoadConfig -> WebConfig -> List String -> List Path
+    supportRoutes thisServer { mediaGateway } loadConfig webConfig validationUrlWhitelist =
       -- Some duplication of URLs here from those in Endpoint.purs due to current inability to build cowboy-style bindings from stongly-typed parameters
       -- IngestAggregatorActiveIngestsPlayerControlE SlotId SlotRole ProfileName
       cowboyRoute ("/support/ingestAggregator/" <> slotIdBinding <> "/" <> slotRoleBinding <> "/activeIngests/" <> profileNameBinding <> "/control")
@@ -208,7 +209,7 @@ init args = do
       -- ClientPlayerControlE Canary SlotId
       : cowboyRoute ("/public/client/" <> slotIdBinding <> "/" <> slotRoleBinding <> "/session")
                     "rtsv2_player_ws_resource"
-                    (playerControlArgs loadConfig webConfig mediaGateway Live)
+                    (playerControlArgs loadConfig webConfig mediaGateway Live validationUrlWhitelist)
 
       -- ClientWebRTCIngestContorlE SlotId SlotRole
       : cowboyRoute ("/public/ingest/" <> accountBinding <> "/" <> streamNameBinding <> "/session")
@@ -218,7 +219,7 @@ init args = do
       -- CanaryClientPlayerControlE SlotId SlotRole
       : cowboyRoute ("/support/canary/client/" <> slotIdBinding <> "/" <> slotRoleBinding <> "/session")
                     "rtsv2_player_ws_resource"
-                    (playerControlArgs loadConfig webConfig mediaGateway Canary)
+                    (playerControlArgs loadConfig webConfig mediaGateway Canary validationUrlWhitelist)
 
       -- CanaryClientWebRTCIngestContorlE SlotId SlotRole
       : cowboyRoute ("/suport/canary/ingest/" <> accountBinding <> "/" <> streamNameBinding <> "/session")
@@ -245,13 +246,13 @@ init args = do
 
       : nil
 
-    publicRoutes :: Server -> Config.FeatureFlags -> Config.LoadConfig -> WebConfig -> List Path
-    publicRoutes thisServer { mediaGateway } loadConfig webConfig =
+    publicRoutes :: Server -> Config.FeatureFlags -> Config.LoadConfig -> WebConfig -> List String -> List Path
+    publicRoutes thisServer { mediaGateway } loadConfig webConfig validationUrlWhitelist =
       -- Some duplication of URLs here from those in Endpoint.purs due to current inability to build cowboy-style bindings from stongly-typed parameters
       -- ClientPlayerControlE Canary SlotId
         cowboyRoute ("/public/client/" <> slotIdBinding <> "/" <> slotRoleBinding <> "/session")
                     "rtsv2_player_ws_resource"
-                    (playerControlArgs loadConfig webConfig mediaGateway Live)
+                    (playerControlArgs loadConfig webConfig mediaGateway Live validationUrlWhitelist)
 
       -- ClientWebRTCIngestContorlE SlotId SlotRole
       : cowboyRoute ("/public/ingest/" <> accountBinding <> "/" <> streamNameBinding <> "/session")
@@ -260,7 +261,7 @@ init args = do
 
       : nil
 
-    playerControlArgs loadConfig webConfig mediaGateway canary =
+    playerControlArgs loadConfig webConfig mediaGateway canary validationUrlWhitelist =
       unsafeToForeign { mode: (atom "egest")
                       , canary
                       , make_egest_key: makeEgestKey
@@ -272,6 +273,7 @@ init args = do
                       , stats_update: mkFn2 EgestInstance.statsUpdate
                       , public_port: webConfig.publicPort
                       , support_port: webConfig.supportPort
+                      , validation_url_whitelist: validationUrlWhitelist
                       , use_media_gateway:
                         case mediaGateway of
                           Off -> false
