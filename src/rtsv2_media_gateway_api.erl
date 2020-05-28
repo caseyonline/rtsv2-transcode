@@ -10,8 +10,8 @@
 -include("./rtsv2_rtp.hrl").
 
 
--export([ start_link/2
-        , add_egest/5
+-export([ start_link/5
+        , add_egest/6
         , remove_egest/2
         , add_egest_client/4
         , remove_egest_client/1
@@ -57,12 +57,12 @@
 %%% ----------------------------------------------------------------------------
 %%% Public API
 %%% ----------------------------------------------------------------------------
-start_link(ThisServerAddress, MediaGatewayFlag) ->
-  gen_server:start_link({local, ?SERVER}, ?MODULE, [ThisServerAddress, MediaGatewayFlag], []).
+start_link(ThisServerAddress, TransmitQueueCount, ReceiveQueueCount, TransmitQueueCapacity, MediaGatewayFlag) ->
+  gen_server:start_link({local, ?SERVER}, ?MODULE, [ThisServerAddress, TransmitQueueCount, ReceiveQueueCount, TransmitQueueCapacity, MediaGatewayFlag], []).
 
 
-add_egest(SlotId, SlotRole, ReceiveSocket, AudioSSRC, VideoSSRC) ->
-  gen_server:call(?SERVER, {add_egest, SlotId, SlotRole, ReceiveSocket, AudioSSRC, VideoSSRC}).
+add_egest(SlotId, SlotRole, ReceiveSocket, MaxBitsPerSecond, AudioSSRC, VideoSSRC) ->
+  gen_server:call(?SERVER, {add_egest, SlotId, SlotRole, ReceiveSocket, MaxBitsPerSecond, AudioSSRC, VideoSSRC}).
 
 remove_egest(SlotId, SlotRole) ->
   gen_server:call(?SERVER, {remove_egest, SlotId, SlotRole}).
@@ -80,15 +80,20 @@ update_egest_client_subscription(ClientId, AudioSSRC, VideoSSRC) ->
 %%% ----------------------------------------------------------------------------
 %%% Gen Server Implementation
 %%% ----------------------------------------------------------------------------
-init([ThisServerAddress, MediaGatewayFlag]) ->
+init([ThisServerAddress, TransmitQueueCount, ReceiveQueueCount, TransmitQueueCapacity, MediaGatewayFlag]) ->
   process_flag(trap_exit, true),
 
   State =
     case MediaGatewayFlag of
       {on} ->
         Cmd = filename:join([code:priv_dir(rtsv2), "scripts", "runMediaGateway.sh"]),
-        UdsPath = <<"/tmp/rtsv2-media-gateway-", ThisServerAddress/binary, ".sock">>,
-        Port = erlang:open_port({spawn_executable, Cmd}, [exit_status, {args, [UdsPath]}]),
+        UdsPath = <<"/tmp/rtsv2-media-gateway/", ThisServerAddress/binary, ".sock">>,
+        Args = [ UdsPath
+               , integer_to_binary(TransmitQueueCount)
+               , integer_to_binary(ReceiveQueueCount)
+               , integer_to_binary(TransmitQueueCapacity)
+               ],
+        Port = erlang:open_port({spawn_executable, Cmd}, [exit_status, {args, Args}]),
 
         #?state{ uds_path = UdsPath
                , server_port = Port
@@ -108,13 +113,15 @@ init([ThisServerAddress, MediaGatewayFlag]) ->
   {ok, State}.
 
 
-handle_call({add_egest, SlotId, SlotRole, ReceiveSocket, AudioSSRC, VideoSSRC}, _From, State) ->
+handle_call({add_egest, SlotId, SlotRole, ReceiveSocket, MaxBitsPerSecond, AudioSSRC, VideoSSRC}, _From, State) ->
 
   NewState = ensure_control_socket(State),
 
   Header = header(add_egest),
 
+  %% TODO: bit rate should come from slot profile information
   Body = ?pack(#{ slot_key => slot_key(SlotId, SlotRole)
+                , max_bits_per_second => MaxBitsPerSecond
                 , audio_payload_type_id => ?OPUS_ENCODING_ID
                 , audio_output_ssrc => AudioSSRC
                 , video_payload_type_id => ?H264_ENCODING_ID
@@ -362,4 +369,7 @@ event_to_record(#{ <<"kind">> := <<"statistics_updated">> },
                                                 , audio_octets_sent = AudioOctetsSent
                                                 , video_packets_sent = VideoPacketsSent
                                                 , video_octets_sent = VideoOctetsSent
-                                                }.
+                                                };
+
+event_to_record(#{ <<"kind">> := <<"client_add_failed">> }, #{ <<"reason">> := Reason }) ->
+  #media_gateway_client_add_failed_event{ reason = binary_to_atom(Reason, utf8) }.

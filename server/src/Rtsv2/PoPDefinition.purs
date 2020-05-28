@@ -84,6 +84,8 @@ type PoPJson =  Map PoPName PoPInfoJson
 type ServerJson = { address :: ServerAddress
                   , maxCpuCapacity :: SpecInt
                   , maxNetworkCapacity :: NetworkKbps
+                  , receiveQueueCount :: Int
+                  , transmitQueueCount :: Int
                   , capabilityTags :: Array String
                   , agents :: Array Agent
                   }
@@ -269,12 +271,21 @@ mapPoPJson regionName nMap popJson =
                    in
                     { name: popName
                     , geoLoc: pop.geoLoc
-                    , servers: (\{address, maxCpuCapacity, maxNetworkCapacity, capabilityTags, agents} ->
+                    , servers: (\{ address
+                                 , maxCpuCapacity
+                                 , maxNetworkCapacity
+                                 , receiveQueueCount
+                                 , transmitQueueCount
+                                 , capabilityTags
+                                 , agents
+                                 } ->
                                  Server {address
                                         , pop: popName
                                         , region: regionName
                                         , maxCpuCapacity
                                         , maxNetworkCapacity
+                                        , receiveQueueCount
+                                        , transmitQueueCount
                                         , capabilityTags
                                         , agents}
                                ) <$> pop.nodes

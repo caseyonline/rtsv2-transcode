@@ -5,6 +5,7 @@
 
 
 -export([ port_number/1
+        , set_slot_configuration/2
         ]).
 
 
@@ -30,31 +31,66 @@
         , parent_pid :: pid()
         , egest_key :: term()
         , receive_socket :: gen_udp:socket()
-        , forward_socket :: undefined | gen_udp:socket()
         , parse_info = rtsv2_rtp_util:build_parse_info()
-        , using_media_gateway :: boolean()
+        , media_gateway :: not_in_use | pending_initialization | active
         }).
 
 
 port_number(EgestKey) ->
   webrtc_stream_server:call_stream_handler(EgestKey, port_number).
 
+set_slot_configuration(EgestKey, SlotConfiguration) ->
+  webrtc_stream_server:call_stream_handler(EgestKey, {set_slot_configuration, SlotConfiguration}).
 
-init(_Args = [ ParentPid, {egestKey, << SlotId:128/big-unsigned-integer >>, {SlotRole}} = EgestKey, MediaGateway ]) ->
+init([ ParentPid
+     , {egestKey, << SlotId:128/big-unsigned-integer >>, {SlotRole}} = EgestKey
+     , MediaGatewayFlag
+     ]) ->
 
   process_flag(trap_exit, true),
 
-  ?INFO("Egest Stream Handler starting with MediaGateway = ~p", [MediaGateway]),
+  ?INFO("Egest Stream Handler starting with MediaGateway = ~p", [MediaGatewayFlag]),
 
   %% NOTE: Erlang doesn't receive on this socket, that task is delegated to the
   %% media gateway
-  {Sockets, UsingMediaGateway} =
-    case MediaGateway of
+  {TheReceiveSocket, MediaGatewayState} =
+    case MediaGatewayFlag of
       {off} ->
         {ok, ReceiveSocket} = gen_udp:open(0, [binary, {recbuf, 100 * 1500}]),
-        {ReceiveSocket, false};
+        {ReceiveSocket, not_in_use};
 
-      _ ->
+      _OnOrExternal ->
+        {ok, ReceiveSocket} = gen_udp:open(0, [{recbuf, 100 * 1500}, {active, false}]),
+        {ReceiveSocket, pending_initialization}
+    end,
+
+  #?state{ slot_id = SlotId
+         , slot_role = SlotRole
+         , parent_pid = ParentPid
+         , egest_key = EgestKey
+         , receive_socket = TheReceiveSocket
+         , media_gateway = MediaGatewayState
+         }.
+
+handle_call(port_number, _From, #?state{ receive_socket = ReceiveSocket } = State) ->
+  { ok, ReceivePort } = inet:port(ReceiveSocket),
+  { reply, {ok, ReceivePort}, State };
+
+handle_call({set_slot_configuration, _SlotConfiguration}, _From, #?state{ media_gateway = not_in_use } = State) ->
+  { reply, ok, State };
+
+handle_call({set_slot_configuration, _SlotConfiguration}, _From, #?state{ media_gateway = active } = State) ->
+  { reply, ok, State };
+
+handle_call({set_slot_configuration, #{ profiles := Profiles } = _SlotConfiguration},
+            _From,
+            #?state{ media_gateway = pending_initialization
+                   , slot_id = SlotId
+                   , slot_role = SlotRole
+                   , receive_socket = ReceiveSocket
+                   } = State) ->
+
+  ?INFO("Egest Stream Handler received slot configuration for the first time", []),
         { AudioSSRC, VideoSSRC } =
           case SlotRole of
             primary ->
@@ -67,71 +103,19 @@ init(_Args = [ ParentPid, {egestKey, << SlotId:128/big-unsigned-integer >>, {Slo
               }
           end,
 
-        case MediaGateway of
-          {both} ->
-            {ok, OurReceiveSocket} = gen_udp:open(0, [binary, {recbuf, 100 * 1500}, {active, true}]),
+  MaxBitrate = lists:max([Bitrate || #{ bitrate := Bitrate } <- Profiles]),
 
-            {ok, MediaGatewayReceiveSocket} = gen_udp:open(0, [{recbuf, 100 * 1500}, {active, false}]),
-            {ok, MediaGatewayReceivePort} = inet:port(MediaGatewayReceiveSocket),
+  ok = rtsv2_media_gateway_api:add_egest(SlotId, SlotRole, ReceiveSocket, MaxBitrate, AudioSSRC, VideoSSRC),
 
-            {ok, MediaGatewaySendSocket} = gen_udp:open(0, [{recbuf, 100 * 1500}, {active, false}]),
-            gen_udp:connect(MediaGatewaySendSocket, {127, 0, 0, 1}, MediaGatewayReceivePort),
-
-            ok = rtsv2_media_gateway_api:add_egest(SlotId, SlotRole, MediaGatewayReceiveSocket, AudioSSRC, VideoSSRC),
-            { {OurReceiveSocket, MediaGatewaySendSocket}
-            , true
-            };
-
-          _ ->
-            {ok, ReceiveSocket} = gen_udp:open(0, [{recbuf, 100 * 1500}, {active, false}]),
-            ok = rtsv2_media_gateway_api:add_egest(SlotId, SlotRole, ReceiveSocket, AudioSSRC, VideoSSRC),
-            { ReceiveSocket
-            , true
-            }
-        end
-    end,
-
-  case Sockets of
-    {TheReceiveSocket, ForwardSocket} ->
-      #?state{ slot_id = SlotId
-             , slot_role = SlotRole
-             , parent_pid = ParentPid
-             , egest_key = EgestKey
-             , receive_socket = TheReceiveSocket
-             , forward_socket = ForwardSocket
-             , using_media_gateway = UsingMediaGateway
-             };
-
-    TheReceiveSocket ->
-      #?state{ slot_id = SlotId
-             , slot_role = SlotRole
-             , parent_pid = ParentPid
-             , egest_key = EgestKey
-             , receive_socket = TheReceiveSocket
-             , using_media_gateway = UsingMediaGateway
-             }
-  end.
-
-handle_call(port_number, _From, #?state{ receive_socket = ReceiveSocket } = State) ->
-  { ok, ReceivePort } = inet:port(ReceiveSocket),
-  { reply, {ok, ReceivePort}, State }.
+  { reply, ok, State#?state{ media_gateway = active } }.
 
 handle_info({udp, ActualSocket, _SenderIP, _SenderPort, Data},
              #?state{ parse_info = ParseInfo
                     , receive_socket = ExpectedSocket
-                    , forward_socket = ForwardSocket
                     } = State
             )
    when
      ActualSocket =:= ExpectedSocket ->
-
-  case ForwardSocket of
-    undefined ->
-      ok;
-
-    _ ->
-      gen_udp:send(ForwardSocket, Data)
-  end,
 
    RTP = #rtp{ payload_type = #rtp_payload_type{ encoding_id = EncodingId } } = rtp:parse(avp, Data, ParseInfo),
 
@@ -155,14 +139,14 @@ handle_info({'EXIT', MaybeParentPid, _Reason }, #?state{ parent_pid = ParentPid 
   { stop, State }.
 
 
-terminate(Reason, #?state{ slot_id = SlotId, slot_role = SlotRole, using_media_gateway = UsingMediaGateway }) ->
+terminate(Reason, #?state{ slot_id = SlotId, slot_role = SlotRole, media_gateway = MediaGatewayState }) ->
   ?INFO("Egest Stream Handler stopping with reason ~p.", [Reason]),
 
-  case UsingMediaGateway of
-    true ->
+  case MediaGatewayState of
+    active ->
       ok = rtsv2_media_gateway_api:remove_egest(SlotId, SlotRole),
       ok;
-    false ->
+    _ ->
       ok
   end,
 

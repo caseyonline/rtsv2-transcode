@@ -1,4 +1,4 @@
-# RTS-V2 release xx
+# RTS-V2 release 103
 
 **What's new**
 
@@ -21,10 +21,6 @@
 * rtsv2_environment now supports different interfaces for public / support / system (previously was just public / private)
 
 * rtsv2_environment now supports 'any' for an interface name, which results in bindings to 0.0.0.0
-
-* 
-
-
 
 # RTS-V2 release 99
 

@@ -138,6 +138,8 @@ type ServerRec l = { address :: ServerAddress
                    , region :: RegionName
                    , maxCpuCapacity :: SpecInt
                    , maxNetworkCapacity :: NetworkKbps
+                   , receiveQueueCount :: Int
+                   , transmitQueueCount :: Int
                    , capabilityTags :: Array String
                    , agents :: Array Agent
                      | l

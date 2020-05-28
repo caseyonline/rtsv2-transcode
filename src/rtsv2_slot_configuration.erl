@@ -15,6 +15,7 @@
         #{ name := binary_string()
          , firstAudioSSRC := non_neg_integer()
          , firstVideoSSRC := non_neg_integer()
+         , bitrate := non_neg_integer()
          }.
 
 
