@@ -115,6 +115,7 @@
         , video_ssrc :: rtp:ssrc()
         , use_media_gateway :: boolean()
         , public_port :: non_neg_integer()
+        , validation_url_whitelist :: list(binary_string())
         }).
 -type stream_desc_egest() :: #stream_desc_egest{}.
 
@@ -167,6 +168,7 @@ init_validation(_Req, _StreamDesc, N) when N > 10 ->
 
 init_validation(Req, StreamDesc = #stream_desc_egest{ get_slot_configuration = GetSlotConfiguration
                                                     , egest_key = EgestKey
+                                                    , validation_url_whitelist = UrlWhitelist
                                                     , start_stream_result = { right, { local, _ } } }, N) ->
   case (GetSlotConfiguration(EgestKey))() of
     {just, #{ subscribeValidation := true } } ->
@@ -174,14 +176,21 @@ init_validation(Req, StreamDesc = #stream_desc_egest{ get_slot_configuration = G
       #{ validation_url := ValidationUrl
        , validation_cookie := ValidationCookie } = cowboy_req:match_qs([ {validation_url, [], undefined},
                                                                          {validation_cookie, [], undefined}], Req),
-      case perform_validation(ClientIP, ValidationUrl, ValidationCookie) of
-        failed -> failed;
-        {error, _Error } -> failed;
-        { ok, NewCookie } ->
-          #validation{ initial_cookie = NewCookie
-                     , client_ip_string = i_convert:convert(ClientIP, binary_string)
-                     , url = ValidationUrl
-                     }
+      ValidHost = valid_host(ValidationUrl, UrlWhitelist),
+
+      if
+        not ValidHost ->
+          failed;
+        ?otherwise ->
+          case perform_validation(ClientIP, ValidationUrl, ValidationCookie) of
+            failed -> failed;
+            {error, _Error } -> failed;
+            { ok, NewCookie } ->
+              #validation{ initial_cookie = NewCookie
+                         , client_ip_string = i_convert:convert(ClientIP, binary_string)
+                         , url = ValidationUrl
+                         }
+          end
       end;
 
     {just, #{ subscribeValidation := false } } ->
@@ -200,6 +209,27 @@ init_validation(_Req, _StreamDesc, _N) ->
 init_validation_fail(Req) ->
   cowboy_req:reply(403, Req),
   {ok, Req, ignored}.
+
+valid_host(ValidationUrl, UrlWhitelist) ->
+  case ValidationUrl of
+    undefined ->
+      ?SLOG_WARNING("no validation_url present on query string"),
+      false;
+    _ ->
+      case http_uri:parse(ValidationUrl) of
+        {ok, {_Scheme, _UserInfo, Host, _Port, _Path, _Query}} ->
+          case lists:any(fun (H) -> Host =:= H end, UrlWhitelist) of
+            true ->
+              true;
+            false ->
+              ?SLOG_WARNING("failed to match url against whitelisted hosts", #{ url => ValidationUrl
+                                                                              , whiteList => UrlWhitelist}),
+              false
+          end;
+        _ ->
+          false
+      end
+  end.
 
 init_prime(Req, StreamDesc, Validation) ->
 
@@ -614,6 +644,7 @@ try_build_stream_desc(Req,
                        , add_client := AddClient
                        , use_media_gateway := UseMediaGateway
                        , public_port := PublicPort
+                       , validation_url_whitelist := UrlWhitelist
                        }
                      ) ->
 
@@ -656,6 +687,7 @@ try_build_stream_desc(Req,
                           , video_ssrc = VideoSSRC
                           , use_media_gateway = UseMediaGateway
                           , public_port = PublicPort
+                          , validation_url_whitelist = UrlWhitelist
                           },
 
       StreamDesc
@@ -848,59 +880,36 @@ handle_ping(_, State) ->
   , State
   }.
 
-perform_validation(_IP, undefined, _MaybeCookie) ->
-  failed;
 perform_validation(IP, URL, MaybeCookie) when is_tuple(IP) ->
   perform_validation(i_convert:convert(IP, binary_string), URL, MaybeCookie);
 perform_validation(IP, URL, MaybeCookie) ->
-  ValidHost = case http_uri:parse(URL) of
-                {ok, {_Scheme, _UserInfo, Host, _Port, _Path, _Query}} ->
-                  %% TODO take from config
-                  case Host of
-                    <<"subscribe-validator.rts.llnwi.net">> -> true;
-                    <<"172.16.171.1">> -> true;
-                    _ -> false
-                  end;
-                Error ->
-                  ?SLOG_DEBUG("invalid url", #{url => URL,
-                                               error => Error}),
-                  invalid_url
-              end,
-
-  case ValidHost of
-    false -> { error, bad_host };
-    invalid_url -> { error, invalid_url };
-    true ->
-
-      Res = spud_gun:get(URL, [{<<"X-LLNW-Auth-IP">>, IP}]
-                                ++ case MaybeCookie of
-                                    undefined -> [];
-                                    ExistingCookie -> [{"cookie", ExistingCookie}]
-                                  end),
-
-      case Res of
-        {ok, 200, RespHeaders, _Body} ->
-          case lists:keyfind(<<"set-cookie">>, 1, RespHeaders) of
-            false ->
-              { ok, undefined };
-            {_, CookieValue} ->
-              case string:split(CookieValue, ";", all) of
-                [ Cookie | _ ] ->
-                  { ok, Cookie };
-                _ ->
-                  ?SLOG_DEBUG("bad cookie~n", #{}),
-                  { error, bad_cookie }
-              end
-          end;
-        {ok, 400, _RespHeaders, _Body} ->
-          ?SLOG_DEBUG("cookie rejected - 400 response", #{url => URL}),
-          failed;
-        Response ->
-          ?SLOG_DEBUG("non 200 response", #{response => Response}),
-          {error, {response, Response}}
-      end
+  Res = spud_gun:get(URL, [{<<"X-LLNW-Auth-IP">>, IP}]
+                            ++ case MaybeCookie of
+                                undefined -> [];
+                                ExistingCookie -> [{"cookie", ExistingCookie}]
+                              end),
+  case Res of
+    {ok, 200, RespHeaders, _Body} ->
+      case lists:keyfind(<<"set-cookie">>, 1, RespHeaders) of
+        false ->
+          { ok, undefined };
+        {_, CookieValue} ->
+          case string:split(CookieValue, ";", all) of
+            [ Cookie | _ ] ->
+              { ok, Cookie };
+            _ ->
+              ?SLOG_DEBUG("bad cookie", #{cookie => CookieValue}),
+              { error, bad_cookie }
+          end
+      end;
+    {ok, 400, _RespHeaders, _Body} ->
+      ?SLOG_DEBUG("cookie rejected - 400 response", #{url => URL}),
+      failed;
+    Response ->
+      ?SLOG_DEBUG("non 200 response", #{url => URL,
+                                        response => Response}),
+      {error, {response, Response}}
   end.
-
 
 handle_sdp_offer(#{ <<"offer">> := SDP }, #?state_running{ server_id = ServerId, webrtc_session_id = WebRTCSessionId, start_options = StartOptions } = State) ->
   case webrtc_stream_server:handle_client_offer(ServerId, WebRTCSessionId, StartOptions, SDP) of

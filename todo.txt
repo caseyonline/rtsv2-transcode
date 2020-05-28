@@ -6,7 +6,6 @@
 [ ] - transPoP load messages
 [ ] - double check remote status through TransPoP
 [ ] - audio only - needs change to StreamDetails to indicate no video, since aggregator is currently waiting for iframe to sync multiple streams
-[ ] - Mediavault API integration
 [ ] - RTMP Egest - from edge
 [ ] - egest / client merging when load drops
 [ ] - relay merging when multiple instances start
@@ -22,6 +21,7 @@ Tests:
 [ ] - ingest prometheus stats
 [ ] - egest prometheus stats
 
+[x] - Mediavault API integration
 [x] - Canary / startup / migrating clients away etc
 [x] - data object messaging
 [x] - Egest needs to know model primary and backup

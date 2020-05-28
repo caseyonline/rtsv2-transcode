@@ -14,6 +14,7 @@
         , add_egest/6
         , remove_egest/2
         , add_egest_client/4
+        , add_test_egest_client/4
         , remove_egest_client/1
         , update_egest_client_subscription/3
         ]).
@@ -69,6 +70,9 @@ remove_egest(SlotId, SlotRole) ->
 
 add_egest_client(SlotId, SlotRole, ClientId, EgestClientConfig) ->
   gen_server:call(?SERVER, {add_egest_client, SlotId, SlotRole, ClientId, EgestClientConfig}).
+
+add_test_egest_client(SlotId, SlotRole, ClientId, TestEgestClientConfig) ->
+  gen_server:call(?SERVER, {add_test_egest_client, SlotId, SlotRole, ClientId, TestEgestClientConfig}).
 
 remove_egest_client(ClientId) ->
   gen_server:call(?SERVER, {remove_egest_client, ClientId}).
@@ -147,49 +151,53 @@ handle_call({remove_egest, SlotId, SlotRole}, _From, State) ->
 
   {reply, ok, NewState};
 
-handle_call({ add_egest_client
+handle_call({ add_test_egest_client
             , SlotId
             , SlotRole
             , ClientId
-            , #media_gateway_egest_client_config{ audio = #media_gateway_stream_element_config{ media_socket = AudioSocket
-                                                                                              , egest_crypto = AudioEgestCrypto
-                                                                                              , cname = AudioCName
-                                                                                              , payload_type_id = AudioPayloadTypeId
-                                                                                              , input_ssrc = AudioSSRC
-                                                                                              }
-                                                , video = #media_gateway_stream_element_config{ media_socket = VideoSocket
-                                                                                              , egest_crypto = VideoEgestCrypto
-                                                                                              , cname = VideoCName
-                                                                                              , payload_type_id = VideoPayloadTypeId
-                                                                                              , input_ssrc = VideoSSRC
-                                                                                              }
-                                                }
-            }
-           , _From
-           , State
-           ) ->
+            , #media_gateway_test_egest_client_config{ audio = #media_gateway_test_stream_element_config{ payload_type_id = AudioPayloadTypeId
+                                                                                                        , input_ssrc = AudioInputSSRC
+                                                                                                        , target_ip = AudioTargetIP
+                                                                                                        , target_port = AudioTargetPort
+                                                                                                        }
+                                                     , video = #media_gateway_test_stream_element_config{ payload_type_id = VideoPayloadTypeId
+                                                                                                        , input_ssrc = VideoInputSSRC
+                                                                                                        , target_ip = VideoTargetIP
+                                                                                                        , target_port = VideoTargetPort
+                                                                                                        }
+                                                     }
+            },
+            _From,
+            #?state{} = State
+            ) ->
 
-  NewState = ensure_control_socket(State),
+  {ok, AudioSocket} = gen_udp:open(0, [binary, {active, false}]),
+  ok = gen_udp:connect(AudioSocket, AudioTargetIP, AudioTargetPort),
 
-  Header = header(add_egest_client),
+  {ok, VideoSocket} = gen_udp:open(0, [binary, {active, false}]),
+  ok = gen_udp:connect(VideoSocket, VideoTargetIP, VideoTargetPort),
 
-  Body = ?pack(#{ slot_key => slot_key(SlotId, SlotRole)
-                , client_id => ClientId
-                , audio_crypto_params => convert_crypto_params(AudioEgestCrypto)
-                , audio_cname => AudioCName
-                , audio_payload_type_id => AudioPayloadTypeId
-                , audio_input_ssrc => AudioSSRC
-                , video_crypto_params => convert_crypto_params(VideoEgestCrypto)
-                , video_cname => VideoCName
-                , video_payload_type_id => VideoPayloadTypeId
-                , video_input_ssrc => VideoSSRC
-                }),
+  ClientConfig =
+    #media_gateway_egest_client_config{ audio = #media_gateway_stream_element_config{ media_socket = AudioSocket
+                                                                                    , egest_crypto = random_egest_crypto()
+                                                                                    , cname = <<"audio">>
+                                                                                    , payload_type_id = AudioPayloadTypeId
+                                                                                    , input_ssrc = AudioInputSSRC
+                                                                                    }
+                                      , video = #media_gateway_stream_element_config{ media_socket = VideoSocket
+                                                                                    , egest_crypto = random_egest_crypto()
+                                                                                    , cname = <<"video">>
+                                                                                    , payload_type_id = VideoPayloadTypeId
+                                                                                    , input_ssrc = VideoInputSSRC
+                                                                                    }
+                                      },
 
-  {ok, AudioSocketFd} = inet:getfd(AudioSocket),
-  {ok, VideoSocketFd} = inet:getfd(VideoSocket),
+  NewState = handle_add_egest_client(SlotId, SlotRole, ClientId, ClientConfig, State),
 
-  send_msg(NewState#?state.control_socket, Header, Body, [AudioSocketFd, VideoSocketFd]),
+  {reply, ok, NewState};
 
+handle_call({add_egest_client, SlotId , SlotRole , ClientId , EgestClientConfig} , _From , State) ->
+  NewState = handle_add_egest_client(SlotId, SlotRole, ClientId, EgestClientConfig, State),
   {reply, ok, NewState};
 
 handle_call({remove_egest_client, ClientId}, _From, State) ->
@@ -373,3 +381,50 @@ event_to_record(#{ <<"kind">> := <<"statistics_updated">> },
 
 event_to_record(#{ <<"kind">> := <<"client_add_failed">> }, #{ <<"reason">> := Reason }) ->
   #media_gateway_client_add_failed_event{ reason = binary_to_atom(Reason, utf8) }.
+
+handle_add_egest_client(SlotId,
+                        SlotRole,
+                        ClientId,
+                        #media_gateway_egest_client_config{ audio = #media_gateway_stream_element_config{ media_socket = AudioSocket
+                                                                                                        , egest_crypto = AudioEgestCrypto
+                                                                                                        , cname = AudioCName
+                                                                                                        , payload_type_id = AudioPayloadTypeId
+                                                                                                        , input_ssrc = AudioSSRC
+                                                                                                        }
+                                                          , video = #media_gateway_stream_element_config{ media_socket = VideoSocket
+                                                                                                        , egest_crypto = VideoEgestCrypto
+                                                                                                        , cname = VideoCName
+                                                                                                        , payload_type_id = VideoPayloadTypeId
+                                                                                                        , input_ssrc = VideoSSRC
+                                                                                                        }
+                                                          },
+                       State
+                       ) ->
+
+  NewState = ensure_control_socket(State),
+
+  Header = header(add_egest_client),
+
+  Body = ?pack(#{ slot_key => slot_key(SlotId, SlotRole)
+                , client_id => ClientId
+                , audio_crypto_params => convert_crypto_params(AudioEgestCrypto)
+                , audio_cname => AudioCName
+                , audio_payload_type_id => AudioPayloadTypeId
+                , audio_input_ssrc => AudioSSRC
+                , video_crypto_params => convert_crypto_params(VideoEgestCrypto)
+                , video_cname => VideoCName
+                , video_payload_type_id => VideoPayloadTypeId
+                , video_input_ssrc => VideoSSRC
+                }),
+
+  {ok, AudioSocketFd} = inet:getfd(AudioSocket),
+  {ok, VideoSocketFd} = inet:getfd(VideoSocket),
+
+  send_msg(NewState#?state.control_socket, Header, Body, [AudioSocketFd, VideoSocketFd]),
+
+  NewState.
+
+random_egest_crypto() ->
+  #srtp_crypto_params{ master_key = crypto:strong_rand_bytes(16)
+                     , master_salt = crypto:strong_rand_bytes(14)
+                     }.

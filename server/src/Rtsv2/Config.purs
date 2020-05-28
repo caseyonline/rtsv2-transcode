@@ -196,6 +196,7 @@ type LlnwApiConfig
     , headers :: List (Tuple2 String String)
     , defaultSegmentDurationMs :: Int
     , defaultPlaylistDurationMs :: Int
+    , validationUrlWhitelist :: List String
     }
 
 type LlnwApiConfigInternal
@@ -206,6 +207,7 @@ type LlnwApiConfigInternal
     , useBasicAuth :: Maybe String
     , defaultSegmentDurationMs :: Int
     , defaultPlaylistDurationMs :: Int
+    , validationUrlWhitelist :: List String
     }
 
 type HealthConfig
@@ -303,6 +305,7 @@ llnwApiConfig = do
     , useBasicAuth
     , defaultSegmentDurationMs
     , defaultPlaylistDurationMs
+    , validationUrlWhitelist
     } = internal
 
     external = { streamAuthTypeUrl
@@ -316,6 +319,7 @@ llnwApiConfig = do
                                in (tuple2 "Authorization" headerValue) : nil
                , defaultSegmentDurationMs
                , defaultPlaylistDurationMs
+               , validationUrlWhitelist
                }
   pure external
 
