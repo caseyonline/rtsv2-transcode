@@ -72,7 +72,7 @@ type SlotDbEntry =
 
 db :: List SlotDbEntry
 db =
-  slotA : slotB : webRtcSlotA : nil
+  slotA : slotB : slotC : webRtcSlotA : nil
 
   where
     slotA =
@@ -85,7 +85,7 @@ db =
       , details: { role: Primary
                  , slot : { id: wrap $ fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000001")
                           , name: "slot1"
-                          , subscribeValidation: true
+                          , subscribeValidation: false
                           , profiles: [ wrap { name: wrap "high",
                                                rtmpStreamName: wrap "slot1_1000",
                                                bitrate: 1000000}
@@ -132,6 +132,42 @@ db =
                           , outputFormats : []
                           }
                  , push : []
+                 }
+      }
+
+    slotC =
+      { auth: { host: AnyHost --"172.16.171.5"
+              , protocol: AnyProtocol
+              , rtmpShortName: wrap "mmddev003"
+              , authType: Adobe
+              , username: "user"
+              , password: "password" }
+      , details: { role: Primary
+                 , slot : { id: wrap $ fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000001")
+                          , name: "slot1"
+                          , subscribeValidation: true
+                          , profiles: [ wrap { name: wrap "high",
+                                               rtmpStreamName: wrap "slot1_1000",
+                                               bitrate: 1000000}
+                                      , wrap { name: wrap "low",
+                                               rtmpStreamName: wrap "slot1_500",
+                                               bitrate: 500000}
+                                      ]
+                          , outputFormats : [ HlsOutput ]
+                          }
+                 , push : [
+                    { protocol: HttpPut
+                    , formats: [ Hls ]
+                    , putBaseUrl: unwrap $ unsafePerformEffect $ System.makeUrlAddr (wrap "172.16.171.1") (System.HlsPushE ["test_slot_1"])
+                    , segmentDuration: Just 3
+                    , playlistDuration: Just 20
+                    , auth:
+                      { type: "basic"
+                      , username: "id3as"
+                      , password: "id3as"
+                      }
+                    }
+                  ]
                  }
       }
 
