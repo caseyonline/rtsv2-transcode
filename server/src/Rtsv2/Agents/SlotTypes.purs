@@ -16,6 +16,7 @@ type SlotConfiguration =
   , slotRole :: SlotRole
   , rtmpShortName :: RtmpShortName
   , profiles :: List SlotProfile
+  , subscribeValidation :: Boolean
   }
 
 type SlotProfile =
@@ -28,11 +29,12 @@ type SlotProfile =
   }
 
 llnwStreamDetailsToSlotConfiguration :: RtmpShortName -> LlnwApiTypes.StreamDetails -> SlotConfiguration
-llnwStreamDetailsToSlotConfiguration rtmpShortName {role, slot: {id, profiles}} =
+llnwStreamDetailsToSlotConfiguration rtmpShortName {role, slot: {id, profiles, subscribeValidation}} =
   { slotId : id
   , slotRole: role
   , rtmpShortName
   , profiles: mapWithIndex (llwnSlotProfileToSlotProfile id role) (fromFoldable profiles)
+  , subscribeValidation
   }
 
 llwnSlotProfileToSlotProfile :: SlotId -> SlotRole -> LlnwApiTypes.SlotProfile -> Int -> SlotProfile

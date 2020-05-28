@@ -11,12 +11,12 @@ export default class Player extends EventEmitter implements IPlayer {
   private session: Session;
   private localStream?: any = null;
 
-  constructor(account: string, stream: string, socketURL: string, videoElement: HTMLVideoElement) {
+  constructor(account: string, stream: string, socketURL: string, validationURL: string, videoElement: HTMLVideoElement) {
     super();
     this.account = account;
     this.stream = stream;
     this.videoElement = videoElement;
-    this.session = new Session(socketURL);
+    this.session = new Session(socketURL, validationURL);
     this.session.on("stream", stream => {
       console.debug("Received stream from session manager.");
       this.videoElement.srcObject = stream;

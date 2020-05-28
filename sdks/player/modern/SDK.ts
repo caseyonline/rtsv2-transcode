@@ -23,7 +23,7 @@ function createPlayerPrime(configuration: IPlayerConfiguration) {
     <HTMLVideoElement>document.getElementById(configuration.videoElementId);
 
   // TODO: Preflight checks?
-  return new Player(configuration.account, configuration.streamName, socketURL, videoElement);
+  return new Player(configuration.account, configuration.streamName, socketURL, configuration.validationURL, videoElement);
 }
 
 function getOrCreateTraceId(): string {

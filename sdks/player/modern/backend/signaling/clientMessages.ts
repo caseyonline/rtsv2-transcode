@@ -21,6 +21,7 @@ export type Message
  */
 export interface PingMessage {
   readonly type: "ping";
+  readonly validationCookie?: string;
 }
 
 /** Changes the function of the ABR implementation on the server. */

@@ -18,10 +18,6 @@ enum SessionState {
   Negotiating = 3000,
 }
 
-const enum RTSStatusCode {
-  StreamFinished = 4000,
-}
-
 const PING_INTERVAL_MS: number = 15000;
 
 export default class Session extends EventEmitter implements ISession {
@@ -31,13 +27,16 @@ export default class Session extends EventEmitter implements ISession {
   private traceId?: string = null;
   private serverConfig?: any = null;
   private peer?: RTCPeerConnection = null;
+  private cookie?: string = null;
+  private validationURL: string;
 
   // NOTE: Firefox currently doesn't support this
   private peerCanReconfigure = ("setConfiguration" in RTCPeerConnection.prototype);
 
-  constructor(socketURL: string) {
+  constructor(socketURL: string, validationURL: string) {
     super();
     this.socketURL = socketURL;
+    this.validationURL = validationURL;
     this.createSocket();
     setInterval(() => this.pingSocket(), PING_INTERVAL_MS);
   }
@@ -46,7 +45,7 @@ export default class Session extends EventEmitter implements ISession {
 
     // TODO: atomic switchover
     const maybePreviousSocket = this.socket;
-    this.socket = new WebSocket(this.socketURL);
+    this.socket = new WebSocket(`${this.socketURL}?validation_url=${this.validationURL}`);
     this.socket.onopen = (event) => {
       this.handleSocketOpen(event);
 
@@ -88,7 +87,8 @@ export default class Session extends EventEmitter implements ISession {
     }
 
     this.sendToSocket({
-      "type": "ping"
+      "type": "ping",
+      validationCookie: this.cookie
     });
   }
 
@@ -151,11 +151,6 @@ export default class Session extends EventEmitter implements ISession {
         this.switchServer();
         break;
 
-      case RTSStatusCode.StreamFinished:
-
-        // The stream has finished, no need to do anything further
-        break;
-
       default:
 
         // Unknown problem, just switch server
@@ -206,6 +201,7 @@ export default class Session extends EventEmitter implements ISession {
             // We know we need two candidates - one for audio, one for video
             iceCandidatePoolSize: 2
           };
+          this.cookie = message.validationCookie;
 
           console.log(`Initialized Session with identifier ${message.traceId}, moved to state ${SessionState[this.state]} (${this.state}). Final endpoint: ${thisEdge.socketURL}`, thisEdge);
 
@@ -236,6 +232,9 @@ export default class Session extends EventEmitter implements ISession {
 
     switch (message.type) {
       case "pong":
+        {
+          this.cookie = message.validationCookie;
+        }
         break;
 
       case "sdp.offer-response":
@@ -302,6 +301,19 @@ export default class Session extends EventEmitter implements ISession {
       case "time-zero":
         {
           this.emit("time-zero", message);
+        }
+        break;
+
+      case "bye":
+        {
+          if (message.otherEdges.length > 0) {
+            this.socketURL = message.otherEdges[0].socketURL;
+            console.log(`Rejected by server, we're being redirected to ${this.socketURL}.`);
+            this.createSocket();
+          }
+          else {
+            console.log(`Rejected by server, no alternatives were provided.`);
+          }
         }
         break;
 
@@ -389,9 +401,11 @@ export default class Session extends EventEmitter implements ISession {
 
       this.sendToSocket({
         "type": "sdp.offer",
-        "offer": offer.sdp,
+        "offer": offer.sdp
       });
       console.debug("Local description sent to server.");
+
+
 
       await peer.setLocalDescription(offer);
       console.debug("Local description applied.");
