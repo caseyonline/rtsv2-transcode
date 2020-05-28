@@ -44,6 +44,11 @@
         }).
 -type media_gateway_client_statistics_updated_event() :: #media_gateway_client_statistics_updated_event{}.
 
+-record(media_gateway_client_add_failed_event,
+        { reason :: egest_not_present | already_present | no_capacity
+        }).
+-type media_gateway_client_add_failed_event() :: #media_gateway_client_add_failed_event{}.
+
 -type media_gateway_event_details() ::
         media_gateway_client_synchronization_established_event()
       | media_gateway_client_subscription_switched_event()

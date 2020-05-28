@@ -472,6 +472,14 @@ websocket_info(#media_gateway_event{ details = Event }, #?state_running{ profile
                                                                        , stream_desc = #stream_desc_egest{ egest_key = Key
                                                                                                          , stats_update = StatsUpdate }} = State) ->
   case Event of
+    #media_gateway_client_add_failed_event{ reason = Reason } ->
+      ?WARNING("The client could not be added to the media gateway for reason ~p. Shutting down.", [Reason]),
+
+      %% TODO: redirects etc
+      { [ close_frame(?WebSocketStatusCode_GoingAway) ]
+      , State
+      };
+
     #media_gateway_client_synchronization_established_event{ rtp_timestamp = RTPTimestamp } ->
       { [ json_frame( <<"time-zero">>,
                       #{ <<"rtpTimestamp">> => RTPTimestamp

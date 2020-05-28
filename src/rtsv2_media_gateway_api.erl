@@ -362,4 +362,7 @@ event_to_record(#{ <<"kind">> := <<"statistics_updated">> },
                                                 , audio_octets_sent = AudioOctetsSent
                                                 , video_packets_sent = VideoPacketsSent
                                                 , video_octets_sent = VideoOctetsSent
-                                                }.
+                                                };
+
+event_to_record(#{ <<"kind">> := <<"client_add_failed">> }, #{ <<"reason">> := Reason }) ->
+  #media_gateway_client_add_failed_event{ reason = binary_to_atom(Reason, utf8) }.
