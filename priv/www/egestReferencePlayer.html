@@ -147,6 +147,8 @@
         var config = {
           account: "id3as-test-account",
           streamName: "id3as-test-stream",
+          //validationURL: "https://subscribe-validator.rts.llnwi.net/mmddev001/auth/v2/llnw-test-001/?ci=100&cd=100&cf=1600000000&h=c0518fc5aa957b128147545dfe45cc0f";
+          validationURL: "http://172.16.171.1:3001/system/llnwstub/rts/v1/validation/valid",
           overrides: {
             socketAuthority: window.location.host,
             socketSecure: window.location.protocol === "https:",

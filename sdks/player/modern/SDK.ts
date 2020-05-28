@@ -8,11 +8,6 @@ import Player from "./backend/Player";
 const DOMAIN_NAME: string = "rts.llnwi.net";
 const API_VERSION: string = "1.0";
 
-// TODO
-// const VALIDATION_URL = "https://subscribe-validator.rts.llnwi.net/mmddev001/auth/v2/llnw-test-001/?ci=100&cd=100&cf=1600000000&h=c0518fc5aa957b128147545dfe45cc0f";
-const VALIDATION_URL = "http://172.16.171.1:3001/system/llnwstub/rts/v1/validation/valid";
-
-
 export function createPlayer(configuration: IPlayerConfiguration) {
   const configurationWithDefaults = PlayerConfiguration.withDefaults(configuration);
   return createPlayerPrime(configurationWithDefaults);
@@ -28,7 +23,7 @@ function createPlayerPrime(configuration: IPlayerConfiguration) {
     <HTMLVideoElement>document.getElementById(configuration.videoElementId);
 
   // TODO: Preflight checks?
-  return new Player(configuration.account, configuration.streamName, socketURL, VALIDATION_URL, videoElement);
+  return new Player(configuration.account, configuration.streamName, socketURL, configuration.validationURL, videoElement);
 }
 
 function getOrCreateTraceId(): string {

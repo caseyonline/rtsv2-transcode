@@ -41,9 +41,7 @@
         { trace_id :: trace_id()
         , webrtc_session_id :: binary_string()
         , public_ip_string :: binary_string()
-        , client_ip_string :: binary_string()
-        , initial_cookie :: undefined | binary_string()
-        , validation_url :: binary_string()
+        , validation :: validation()
         , socket_url :: binary_string()
         , stream_desc :: stream_desc_ingest() | stream_desc_egest()
         , server_id :: term()
@@ -56,9 +54,8 @@
         { trace_id :: trace_id()
         , webrtc_session_id :: binary_string()
         , public_ip_string :: binary_string()
-        , client_ip_string :: binary_string()
         , socket_url :: binary_string()
-        , validation_url :: binary_string()
+        , validation :: validation()
         , stream_desc :: stream_desc_ingest() | stream_desc_egest()
         , server_id :: term()
 
@@ -118,6 +115,12 @@
         }).
 -type stream_desc_egest() :: #stream_desc_egest{}.
 
+-record(validation,
+        { url :: binary_string()
+        , initial_cookie :: binary_string()
+        , client_ip_string :: binary_string()
+        }).
+-type validation() :: no_validation | #validation{}.
 
 -define(MAX_PAYLOAD_SIZE, 16384).
 -define(IDLE_TIMEOUT_MS, 60000).
@@ -138,33 +141,46 @@ notify_profile_switched(ProfileName, WebSocket) ->
 
 
 init(Req, Params) ->
-  ClientIP = client_ip(Req),
-  #{ validation_url := ValidationUrl
-   , validation_cookie := ValidationCookie } = cowboy_req:match_qs([validation_url, {validation_cookie, [], undefined}], Req),
-  case perform_validation(ClientIP, ValidationUrl, ValidationCookie) of
-    failed -> init_validation_fail(Req);
-    {error, _Error } -> init_validation_fail(Req);
-    { ok, NewCookie } ->
-      case try_build_stream_desc(Req, Params) of
-        undefined ->
-          { cowboy_websocket
-          , Req
-          , #?state_failed{ detail = #failure_detail_not_found{} }
-          , #{ max_frame_size => 1024
-            , idle_timeout => 500
-            }
-          };
+  case try_build_stream_desc(Req, Params) of
+    undefined ->
+      { cowboy_websocket
+      , Req
+      , #?state_failed{ detail = #failure_detail_not_found{} }
+      , #{ max_frame_size => 1024
+        , idle_timeout => 500
+        }
+      };
 
-        StreamDesc ->
-          init_prime(Req, StreamDesc, NewCookie, ClientIP, ValidationUrl)
+    StreamDesc ->
+      case init_validation(Req, StreamDesc)  of
+        failed -> init_validation_fail(Req);
+        Validation -> init_prime(Req, StreamDesc, Validation)
       end
+  end.
+
+init_validation(Req, #stream_desc_egest{ get_slot_configuration = GetSlotConfiguration, egest_key = EgestKey }) ->
+  case (GetSlotConfiguration(EgestKey))() of
+    {just, #{ subscribeValidation := true } } -> 
+      ClientIP = client_ip(Req),
+      #{ validation_url := ValidationUrl
+      , validation_cookie := ValidationCookie } = cowboy_req:match_qs([validation_url, {validation_cookie, [], undefined}], Req),
+      case perform_validation(ClientIP, ValidationUrl, ValidationCookie) of
+        failed -> failed;
+        {error, _Error } -> failed;
+        { ok, NewCookie } ->
+          #validation{ initial_cookie = NewCookie
+                     , client_ip_string = i_convert:convert(ClientIP, binary_string)
+                     , url = ValidationUrl
+                     }
+      end;
+    _ -> no_validation
   end.
 
 init_validation_fail(Req) ->
   cowboy_req:reply(403, Req),
   {ok, Req, ignored}.
 
-init_prime(Req, StreamDesc, NewCookie, ClientIP, ValidationUrl) ->
+init_prime(Req, StreamDesc, Validation) ->
 
   %% Needs to come from config!
   PublicIP = this_server_ip(Req),
@@ -218,7 +234,6 @@ init_prime(Req, StreamDesc, NewCookie, ClientIP, ValidationUrl) ->
 
     available_here ->
       PublicIPString = i_convert:convert(PublicIP, binary_string),
-      ClientIPString = i_convert:convert(ClientIP, binary_string),
       SocketURL = <<"wss://", PublicIPString/binary, (cowboy_req:path(Req))/binary>>,
 
       { cowboy_websocket
@@ -226,9 +241,7 @@ init_prime(Req, StreamDesc, NewCookie, ClientIP, ValidationUrl) ->
       , #?state_initializing{ trace_id = TraceId
                             , webrtc_session_id = format_trace_id(TraceId)
                             , public_ip_string = PublicIPString
-                            , client_ip_string = ClientIPString
-                            , initial_cookie = NewCookie
-                            , validation_url = ValidationUrl
+                            , validation = Validation
                             , socket_url = SocketURL
                             , stream_desc = StreamDesc
                             , server_id = construct_server_id(StreamDesc)
@@ -691,9 +704,7 @@ transition_to_running([ #{ profileName := ActiveProfileName } | _OtherProfiles ]
                       #?state_initializing{ trace_id = TraceId
                                           , webrtc_session_id = WebRTCSessionId
                                           , public_ip_string = PublicIPString
-                                          , client_ip_string = ClientIPString
-                                          , initial_cookie = Cookie
-                                          , validation_url = ValidationUrl
+                                          , validation = Validation
                                           , socket_url = SocketURL
                                           , stream_desc = StreamDesc
                                           , server_id = ServerId
@@ -722,8 +733,7 @@ transition_to_running([ #{ profileName := ActiveProfileName } | _OtherProfiles ]
     #?state_running{ trace_id = TraceId
                    , webrtc_session_id = WebRTCSessionId
                    , public_ip_string = PublicIPString
-                   , client_ip_string = ClientIPString
-                   , validation_url = ValidationUrl
+                   , validation = Validation
                    , socket_url = SocketURL
                    , stream_desc = StreamDesc
                    , server_id = ServerId
@@ -740,7 +750,10 @@ transition_to_running([ #{ profileName := ActiveProfileName } | _OtherProfiles ]
           }
      , activeVariant => ActiveProfileName
      , variants => [ ProfileName || #{ name := ProfileName } <- Profiles ]
-     , validationCookie => ?null_coalesce(Cookie, null)
+     , validationCookie => case Validation of
+                            #validation{ initial_cookie = Cookie } -> ?null_coalesce(Cookie, null);
+                            _ -> null
+                           end
      },
 
   { [ {text, jsx:encode(InitialMessage)} ]
@@ -748,7 +761,7 @@ transition_to_running([ #{ profileName := ActiveProfileName } | _OtherProfiles ]
   }.
 
 
-handle_ping(#{ <<"validationCookie">> := ClientCookie }, State = #?state_running { client_ip_string = ClientIP, validation_url = URL }) when ClientCookie /= null ->
+handle_ping(#{ <<"validationCookie">> := ClientCookie }, State = #?state_running { validation = #validation{ client_ip_string = ClientIP, url = URL } }) when ClientCookie /= null ->
   case perform_validation(ClientIP, URL, ClientCookie) of
     { ok, NewCookie } ->
       { [ json_frame(<<"pong">>, #{ validationCookie => ?null_coalesce(NewCookie, null) }) ]

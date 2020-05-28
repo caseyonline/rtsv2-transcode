@@ -83,7 +83,7 @@ db =
       , details: { role: Primary
                  , slot : { id: wrap $ fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000001")
                           , name: "slot1"
-                          , subscribeValidation: false
+                          , subscribeValidation: true
                           , profiles: [ wrap { name: wrap "high",
                                                rtmpStreamName: wrap "slot1_1000",
                                                bitrate: 1000000}
