@@ -281,7 +281,7 @@ forceDrainTest2 =
         frames1 <- F.getInnerText "#frames" page
         packets1 <- F.getInnerText "#packets" page
 
-        _ <- delay (Milliseconds 65000.00) >>= as' "let video play for 5 seconds"
+        _ <- delay (Milliseconds 5000.00) >>= as' "let video play for 5 seconds"
 
         frames2 <- F.getInnerText "#frames" page
         packets2 <- F.getInnerText "#packets" page
