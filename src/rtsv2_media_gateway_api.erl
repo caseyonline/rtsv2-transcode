@@ -114,7 +114,9 @@ handle_call({add_egest, SlotId, SlotRole, ReceiveSocket, AudioSSRC, VideoSSRC}, 
 
   Header = header(add_egest),
 
+  %% TODO: bit rate should come from slot profile information
   Body = ?pack(#{ slot_key => slot_key(SlotId, SlotRole)
+                , max_bits_per_second => 1000000
                 , audio_payload_type_id => ?OPUS_ENCODING_ID
                 , audio_output_ssrc => AudioSSRC
                 , video_payload_type_id => ?H264_ENCODING_ID
