@@ -4,6 +4,29 @@
 -include_lib("id3as_rtc/include/srtp_crypto.hrl").
 
 
+
+
+-record(media_gateway_test_stream_element_config,
+        { payload_type_id :: rtp:encoding_id()
+        , input_ssrc :: rtp:ssrc()
+        , target_ip :: inet:ip_address()
+        , target_port :: inet:port_number()
+        }).
+-type media_gateway_test_stream_element_config() :: #media_gateway_test_stream_element_config{}.
+
+
+-record(media_gateway_test_egest_client_config,
+        { audio :: media_gateway_test_stream_element_config()
+        , video :: media_gateway_test_stream_element_config()
+        }).
+-type media_gateway_test_egest_client_config() :: #media_gateway_test_egest_client_config{}.
+
+
+
+
+
+
+
 -record(media_gateway_stream_element_config,
         { media_socket :: gen_udp:socket()
         , egest_crypto :: srtp_crypto_params()
