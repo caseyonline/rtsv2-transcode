@@ -7,6 +7,7 @@
     <title>LLNW Ingest Reference</title>
     <link href=data:, rel=icon">
     <link rel="stylesheet" type="text/css" href="css/bootstrap.min.css">
+    <link rel="stylesheet" type="text/css" href="css/referencepages.css">
     <style>
       body
       {
@@ -88,8 +89,24 @@
           </ul>
         </div>
       </div>
+      <div>
+          TraceId: <span id="traceId"></span>
+      </div>
+      <div class="content">
+        <div class="messages">
+        </div>
+        <form class="footer" onsubmit="return false;">
+          <input id="msginput" type="text" placeholder="Your message..">
+          <button id="msgsend" type="submit">Send</button>
+        </form>
+        <template data-template="message">
+          <div class="message">
+            <div class="msg_name"></div>
+            <div class="msg_bubble"></div>
+          </div>
+        </template>
+      </div>
     </div>
-
     <script src="js/llnwrts-ingest-sdk-2.0.0.js"></script>
     <script src="js/jquery-3.4.1.slim.min.js"></script>
     <script src="js/bootstrap.bundle.min.js"></script>
@@ -125,6 +142,8 @@
         var ingest = LimelightIngestSDK.createIngest(config);
 
         ingest.on("connected", (event) => {
+          $("#traceId").html(event.traceId)
+          console.log(event.traceId)
           $("#authenticate").prop("disabled", false);
         });
 

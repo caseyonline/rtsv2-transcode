@@ -186,7 +186,6 @@ export default class Session extends EventEmitter implements ISession {
 
   init_handleSocketMessage(event) {
     const message = <ServerMessages.Message> JSON.parse(event.data);
-
     switch (message.type) {
       case "init":
         {

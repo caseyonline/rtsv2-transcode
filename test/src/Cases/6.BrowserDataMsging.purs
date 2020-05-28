@@ -2,15 +2,14 @@ module Cases.BrowserDataMsging where
 
 import Prelude
 
-import Data.Traversable (traverse_)
 import Effect.Aff (Aff, Milliseconds(..), delay)
-import Helpers.Assert as A
 import Helpers.CreateString as C
 import Helpers.Env as E
+import Helpers.HTTP as HTTP
 import Helpers.Functions as F
 import Helpers.Log as L
 import Helpers.Types (Node)
-import Shared.Rtsv2.Stream (SlotRole(..), RtmpShortName, RtmpStreamName, SlotId)
+import Shared.Rtsv2.Stream (SlotRole(..))
 import Test.Spec (SpecT, describe, it, before_, after_)
 import Test.Unit.Assert as Assert
 import Toppokki as T
@@ -25,58 +24,99 @@ options =
   , devtools: true
   }
 
+firstMessage :: String
+firstMessage = "Hello everyone"
+
+secondMessage :: String
+secondMessage = "Oh hi"
+
 -------------------------------------------------------------------------------
 -- Runner
 -------------------------------------------------------------------------------
 browserDataMsging :: forall m. Monad m => SpecT Aff Unit m Unit
 browserDataMsging =
-  describe "WebRTC browser tests" do
-    ingestStream -- 5.3
+  describe "Data Messages" do
+    broadcastMessages -- 5.3
 
 -------------------------------------------------------------------------------
 -- Tests
 -------------------------------------------------------------------------------
 
 ingestNodes :: Array Node
-ingestNodes = [E.p1n1, E.p1n2, E.p1n3]
+ingestNodes = [E.p1n1, E.p1n2, E.p2n1]
 
-ingestStream :: forall m. Monad m => SpecT Aff Unit m Unit
-ingestStream =
-  describe "5.3 Ingest Stream tests" do
+broadcastMessages :: forall m. Monad m => SpecT Aff Unit m Unit
+broadcastMessages =
+  describe "6.1 Broadcast Messages " do
     before_ (F.startSession ingestNodes *> F.launch ingestNodes) do
       after_ (F.stopSession *> F.stopSlot) do
-        it "5.3.1 webrtc ingest on different node to aggregator" do
-          traverse_ F.maxOut (F.allNodesBar E.p1n1 ingestNodes) >>= L.as' "load up all servers bar one"
-          E.waitForIntraPoPDisseminate
-          F.startSlotHigh1000 (C.toAddrFromNode E.p1n2) >>= L.as' "create high ingest"
-          _ <- delay (Milliseconds 2000.00) >>= L.as' "wait for ingest to start fully"
+        it "6.1.1 broadcast messages accross slots" do
+
+          F.startSlotHigh1000 (C.toAddrFromNode E.p1n1) >>= L.as' "create high ingest on 1"
+          F.startSlotHigh1000Backup (C.toAddrFromNode E.p1n1) >>= L.as' "create high backup on 1"
+          F.start2SlotHigh1000 (C.toAddrFromNode E.p2n1) >>= L.as' "create high ingest on 2"
+
+          _ <- delay (Milliseconds 5000.00) >>= L.as' "wait for ingest to start fully"
 
           browser1 <- T.launch options
-          page1 <- T.newPage browser1
-          page2 <- T.newPage browser1
 
-          T.goto (F.mkPlayerUrl E.p1n1 E.slot1 Primary) page1
-          T.goto (F.mkPlayerUrl E.p1n2 E.slot1 Primary) page2
-          _ <- delay (Milliseconds 3000.00) >>= L.as' "wait for webRTC connection"
+          -- create the different tabs
+          tab1 <- T.newPage browser1
+          tab2 <- T.newPage browser1
+          tab3 <- T.newPage browser1
+          tab4 <- T.newPage browser1
 
-          -- traceIds aren't showing on UI in tests
-          -- traceId1 <- F.getInnerText "#traceId" page1
-          -- traceId2 <- F.getInnerText "#traceId" page2
+          -- navigate to specific Urls on each tab
+          T.goto (F.mkPlayerUrl E.p1n1 E.slot1 Primary) tab1
+          T.goto (F.mkPlayerUrl E.p1n2 E.slot1 Primary) tab2
+          T.goto (F.mkPlayerUrl E.p2n1 E.slot2 Primary) tab3
+          T.goto (HTTP.ingestUrl E.p1n1 E.shortName1 E.highStreamName) tab4
 
-          T.focus (T.Selector "input#msginput") page2
-          T.keyboardSendCharacter "Hello World" page2
-          T.click (T.Selector "button#msgsend") page2
+          _ <- delay (Milliseconds 1000.00) >>= L.as' "wait for tabs to load"
 
-          _ <- delay (Milliseconds 250.00) >>= L.as' "wait message to send"
-          -- need to change page
-          T.bringToFront page1
-          T.focus (T.Selector "input#msginput") page1
-          T.keyboardSendCharacter "Oh hi World" page1
-          T.click (T.Selector "button#msgsend") page1
+          -- get the traceIds from each tab
+          traceId1 <- F.getInnerText "#traceId" tab1
+          traceId2 <- F.getInnerText "#traceId" tab2
+          traceId3 <- F.getInnerText "#traceId" tab3
+          -- traceId4 <- F.getInnerText "#traceId" tab4
 
-          msgSentTraceId <- F.getInnerText "div.message.msg_sent > div.msg_name" page2
-          msgReceivedTraceId <- F.getInnerText "div.message.msg_received > div.msg_name" page1
+          -- go to tab2 send a message
+          T.bringToFront tab2 >>= L.as' "Send firstMessage from tab2"
+          T.focus (T.Selector "input#msginput") tab2
+          T.keyboardSendCharacter firstMessage tab2
+          T.click (T.Selector "button#msgsend") tab2
+
+          -- Go to tab 1 check message was sent
+          T.bringToFront tab1 >>= L.as' "Check firstMessage received in tab1"
+          msgReceivedTraceId1 <- F.getInnerText "div.message.msg_received > div.msg_name" tab1
+          msgContent1 <- F.getInnerText "div.message.msg_received > div.msg_bubble" tab1
 
 
-          Assert.assert "Same sent and received TraceIds" (msgSentTraceId == msgReceivedTraceId) >>= L.as' ("Sent: " <> show msgSentTraceId <> " Received: " <> msgReceivedTraceId )
+          Assert.assert "TraceId matches on first message sent and received" (traceId2 == msgReceivedTraceId1)
+            >>= L.as' ("Sent: " <> show traceId2 <> " Received: " <> msgReceivedTraceId1)
+          Assert.assert "Message content matched first sent message" (firstMessage == msgContent1)
+            >>= L.as' ("Sent: " <> firstMessage <> " Received: " <> msgContent1)
+
+          -- Send a message back
+          T.focus (T.Selector "input#msginput") tab1 >>= L.as' "Send secondMessage from tab2"
+          T.keyboardSendCharacter secondMessage tab1
+          T.click (T.Selector "button#msgsend") tab1
+
+          -- Got to tab2 check that new message has been recieved
+          T.bringToFront tab2 >>= L.as' "Check secondMessage received in tab1"
+          msgReceivedTraceId2 <- F.getInnerText "div.message.msg_received > div.msg_name" tab2
+          msgContent2 <- F.getInnerText "div.message.msg_received > div.msg_bubble" tab2
+
+          Assert.assert "TraceId matches on second message sent and received" (traceId1 == msgReceivedTraceId2)
+            >>= L.as' ("Sent: " <> show traceId1 <> " Received: " <> msgReceivedTraceId2)
+          Assert.assert "Message content matched second message sent" (secondMessage == msgContent2)
+            >>= L.as' ("Sent: " <> secondMessage <> " Received: " <> msgContent2)
+
+          -- Got to tab3 that there are no messages as it's a different slot
+          T.bringToFront tab3 >>= L.as' "Check tab3 has no messages as on different slot"
+          msgContent3 <- F.getInnerText "div.messages" tab3
+
+          Assert.assert "Message content should be empty as this is on different slot" ("" == msgContent3)
+            >>= L.as' ("Tab3 message content: " <> msgContent3)
+
           T.close browser1
