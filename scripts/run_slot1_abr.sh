@@ -6,7 +6,7 @@ cd ${0%/*}
 source ./config.sh
 
 ffmpeg \
-  -1 \
+  -stream_loop -1 \
   -re \
   -i \
   "${MEDIA_FILE_1000}" \
