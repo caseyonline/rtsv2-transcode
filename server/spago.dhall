@@ -25,12 +25,12 @@ You can edit this file as you like.
   , "partial"
   , "profunctor-lenses"
   , "psci-support"
-  , "purescript-longs"
   , "random"
   , "record-prefix"
   , "routing-duplex"
   , "simple-json"
   , "simple-json-generics"
+  , "longs"
   ]
 , packages = ./packages.dhall
 , sources = [ "src/**/*.purs" ]

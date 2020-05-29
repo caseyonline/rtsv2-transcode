@@ -17,6 +17,7 @@ import Prelude
 
 import Data.FoldableWithIndex (foldlWithIndex)
 import Data.Int (toNumber)
+import Data.Long as Long
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (wrap)
 import Effect (Effect)
@@ -33,7 +34,7 @@ import Pinto.Timer as Timer
 import Rtsv2.Config as Config
 import Rtsv2.Names as Names
 import Rtsv2.Utils (cryptoStrongToken)
-import Shared.Common (Milliseconds)
+import Shared.Common (Milliseconds(..))
 import Shared.Rtsv2.LlnwApiTypes (PublishCredentials(..))
 
 foreign import compareAdobeChallengeImpl :: String -> String -> String -> String -> String -> String -> Boolean
@@ -152,7 +153,7 @@ init _ = do
   void $ Timer.sendAfter serverName cryptoContextExpiryMs CheckExpiry
   pure $ { adobeContexts: Map.empty
          , llnwContexts: Map.empty
-         , cryptoContextExpiry: wrap $ toNumber cryptoContextExpiryMs
+         , cryptoContextExpiry: Milliseconds $ Long.fromInt cryptoContextExpiryMs
          }
 
 handleInfo :: Msg -> State -> Effect (CastResult State)

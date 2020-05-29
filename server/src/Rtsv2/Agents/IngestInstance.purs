@@ -21,6 +21,7 @@ import Prelude
 import Bus as Bus
 import Data.Either (Either(..), hush)
 import Data.Int (round, toNumber)
+import Data.Long as Long
 import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Newtype (unwrap, wrap)
 import Effect (Effect)
@@ -48,7 +49,7 @@ import Rtsv2.DataObject as DO
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Types (fromLocalOrRemote)
-import Shared.Common (Milliseconds)
+import Shared.Common (Milliseconds(..))
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.JsonLd as JsonLd
@@ -202,7 +203,7 @@ init { streamPublish
        , streamDetails
        , loadConfig
        , ingestKey
-       , aggregatorRetryTime: wrap $ toNumber aggregatorRetryTimeMs
+       , aggregatorRetryTime: Milliseconds $ Long.fromInt aggregatorRetryTimeMs
        , aggregatorWebSocket: Nothing
        , aggregatorServer: Nothing
        , clientMetadata: Nothing
@@ -363,7 +364,7 @@ informAggregator state@{ streamDetails
 
     failure = do
       logInfo "WebSocket attempt failed; retrying" {aggregatorRetryTime}
-      void $ Timer.sendAfter (serverName ingestKey) (round $ unwrap aggregatorRetryTime) InformAggregator
+      void $ Timer.sendAfter (serverName ingestKey) (round $ Long.toNumber $ unwrap aggregatorRetryTime) InformAggregator
       pure $ state
 
     addIngest Nothing = pure Nothing
@@ -393,7 +394,7 @@ handleAggregatorExit exitedAggregatorKey exitedAggregator state@{ ingestKey
   | exitedAggregatorKey == (ingestKeyToAggregatorKey ingestKey) && Just exitedAggregator == mAggregatorServer = do
     logInfo "Aggregator has exited" {exitedAggregatorKey, exitedAggregator, ingestKey: state.ingestKey}
     fromMaybe (pure unit) $ WsGun.closeWebSocket <$> mWebSocket
-    void $ Timer.sendAfter (serverName ingestKey) (round $ unwrap aggregatorRetryTime) InformAggregator
+    void $ Timer.sendAfter (serverName ingestKey) (round $ Long.toNumber $ unwrap aggregatorRetryTime) InformAggregator
     pure state{ aggregatorWebSocket = Nothing
               , aggregatorServer = Nothing}
   | otherwise = do

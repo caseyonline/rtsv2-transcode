@@ -19,6 +19,7 @@ import Prelude
 
 import Data.Foldable (foldl, intercalate)
 import Data.Int (round)
+import Data.Long as Long
 import Data.Maybe (Maybe(..))
 import Data.Newtype (unwrap)
 import Data.Tuple (Tuple(..))
@@ -88,7 +89,7 @@ type PrometheusMetricValue = { value :: IOValue
 
 toTimestamp :: Milliseconds -> IOTimestamp
 toTimestamp timestamp =
-  IOTimestamp $ toValue (round $ unwrap timestamp)
+  IOTimestamp $ toValue (Long.toInt $ unwrap timestamp)
 
 toLabels :: List (Tuple String IOLabelValue) -> IOLabels
 toLabels list =

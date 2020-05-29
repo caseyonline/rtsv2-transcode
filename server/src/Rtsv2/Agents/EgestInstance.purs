@@ -25,6 +25,7 @@ import Bus as Bus
 import Data.Either (Either(..), hush)
 import Data.Foldable (foldl)
 import Data.Int (round, toNumber)
+import Data.Long as Long
 import Data.Maybe (Maybe(..), fromMaybe, maybe')
 import Data.Newtype (class Newtype, unwrap, wrap)
 import Data.Traversable (traverse)
@@ -64,7 +65,7 @@ import Rtsv2.LoadTypes (LoadFixedCost(..), PredictedLoad(..))
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Types (LocalOrRemote(..), RegistrationResp, ResourceResp)
-import Shared.Common (Milliseconds)
+import Shared.Common (Milliseconds(..))
 import Shared.Rtsv2.Agent (SlotCharacteristics)
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.JsonLd (EgestStats, EgestSessionStats)
@@ -192,7 +193,7 @@ pendingClient egestKey  =
     ourServerName = serverName egestKey
     maybeResetStopTimer state@{clientCount: 0, lingerTime} = do
       ref <- makeRef
-      _ <- Timer.sendAfter ourServerName (round $ unwrap lingerTime) (MaybeStop ref)
+      _ <- Timer.sendAfter ourServerName (round $ Long.toNumber $ unwrap lingerTime) (MaybeStop ref)
       pure $ state{ stopRef = Just ref
                   }
     maybeResetStopTimer state =
@@ -262,8 +263,8 @@ forceDrain egestKey =
                        , parentCallbacks: { startLocalOrRemoteEgest } } = do
       logInfo "Egest entering force-drain mode" {egestKey}
 
-      void $ Timer.sendAfter (serverName egestKey) (round $ unwrap forceDrainTimeout) ForceDrainTimeout
-      void $ Timer.sendAfter (serverName egestKey) (round $ unwrap intraPoPLatency) (ForceDrainPhase 0)
+      void $ Timer.sendAfter (serverName egestKey) (round $ Long.toNumber $ unwrap forceDrainTimeout) ForceDrainTimeout
+      void $ Timer.sendAfter (serverName egestKey) (round $ Long.toNumber $ unwrap intraPoPLatency) (ForceDrainPhase 0)
       void $ startLocalOrRemoteEgest loadConfig LocalAgent {slotId, slotRole, aggregatorPoP, slotCharacteristics}
 
       pure $ CastNoReply state{forceDrain = true}
@@ -306,7 +307,8 @@ init parentCallbacks payload@{slotId, slotRole, aggregatorPoP, slotCharacteristi
     predictedLoad = PredictedLoad { cost: LoadFixedCost { cpu: wrap $ (unwrap cpuPerClient) * (toNumber reserveForPotentialNumClients)
                                                         , network: wrap $ (unwrap networkPerClient) * reserveForPotentialNumClients
                                                         }
-                                  , decayTime: wrap (toNumber decayReserveMs)}
+                                  , decayTime: Milliseconds $ Long.fromInt decayReserveMs
+                                  }
 
   { mediaGateway } <- Config.featureFlags
   receivePortNumber <- startEgestReceiverFFI egestKey mediaGateway
@@ -330,13 +332,13 @@ init parentCallbacks payload@{slotId, slotRole, aggregatorPoP, slotCharacteristi
             , thisServer
             , clientCount : 0
             , clientStats : Map.empty
-            , lingerTime : wrap $ toNumber lingerTimeMs
-            , relayCreationRetry : wrap $ toNumber relayCreationRetryMs
-            , forceDrainTimeout : wrap $ toNumber forceDrainTimeoutMs
-            , forceDrainPhaseTimeout : wrap $ toNumber ((forceDrainTimeoutMs - intraPoPLatencyMs) / (numForceDrainPhases + 1))
+            , lingerTime : Milliseconds $ Long.fromInt lingerTimeMs
+            , relayCreationRetry : Milliseconds $ Long.fromInt relayCreationRetryMs
+            , forceDrainTimeout : Milliseconds $ Long.fromInt forceDrainTimeoutMs
+            , forceDrainPhaseTimeout : Milliseconds $ Long.fromInt $ (forceDrainTimeoutMs - intraPoPLatencyMs) / (numForceDrainPhases + 1)
             , numForceDrainPhases
-            , intraPoPLatency : wrap $ toNumber intraPoPLatencyMs
-            , aggregatorExitLingerTime : wrap $ toNumber aggregatorExitLingerTimeMs
+            , intraPoPLatency : Milliseconds $ Long.fromInt intraPoPLatencyMs
+            , aggregatorExitLingerTime : Milliseconds $ Long.fromInt aggregatorExitLingerTimeMs
             , stopRef : Nothing
             , receivePortNumber
             , lastEgestAuditTime: now
@@ -374,7 +376,7 @@ handleInfo msg state@{egestKey: egestKey@(EgestKey slotId slotRole), thisServer}
     IntraPoPBus (IngestAggregatorExited (AggregatorKey exitedSlotId exitedSlotRole) serverAddress)
       | exitedSlotId == slotId && exitedSlotRole == slotRole -> do
         ref <- Erl.makeRef
-        void $ Timer.sendAfter (serverName egestKey) (round $ unwrap state.aggregatorExitLingerTime) (AggregatorExitTimer ref)
+        void $ Timer.sendAfter (serverName egestKey) (round $ Long.toNumber $ unwrap state.aggregatorExitLingerTime) (AggregatorExitTimer ref)
         pure $ CastNoReply $ state{aggregatorExitTimerRef = Just ref}
       | otherwise -> pure $ CastNoReply state
 
@@ -530,7 +532,7 @@ drainClients state@{egestKey, forceDrainPhaseTimeout, numForceDrainPhases, thisS
     numForceDrainPhases' = if phase == numForceDrainPhases then 1
                            else numForceDrainPhases
   Bus.raise (bus egestKey) (EgestDrain phase' numForceDrainPhases' egests)
-  void $ Timer.sendAfter (serverName egestKey) (round $ (unwrap forceDrainPhaseTimeout)) (ForceDrainPhase (phase + 1))
+  void $ Timer.sendAfter (serverName egestKey) (round $ Long.toNumber $ unwrap forceDrainPhaseTimeout) (ForceDrainPhase (phase + 1))
   pure $ CastNoReply state
 
 removeClient :: String -> State -> Effect State
@@ -541,7 +543,7 @@ removeClient sessionId state@{clientCount: 0} = do
 removeClient sessionId state@{clientCount: 1, lingerTime, egestKey} = do
   ref <- makeRef
   logInfo "Last client gone, start stop timer" {}
-  _ <- Timer.sendAfter (serverName egestKey) (round $ unwrap lingerTime) (MaybeStop ref)
+  _ <- Timer.sendAfter (serverName egestKey) (round $ Long.toNumber $ unwrap lingerTime) (MaybeStop ref)
   pure $ state{ clientCount = 0
               , clientStats = (Map.empty :: Map String EgestSessionStats)
               , stopRef = Just ref
@@ -606,7 +608,7 @@ initStreamRelay state@{relayCreationRetry, egestKey: egestKey@(EgestKey slotId s
   case relayResp of
     Left _ ->
       do
-        _ <- Timer.sendAfter (serverName egestKey) (round $ unwrap relayCreationRetry) InitStreamRelays
+        _ <- Timer.sendAfter (serverName egestKey) (round $ Long.toNumber $ unwrap relayCreationRetry) InitStreamRelays
         pure state
 
     Right (Local local) ->
@@ -624,7 +626,7 @@ initStreamRelay state@{relayCreationRetry, egestKey: egestKey@(EgestKey slotId s
           CachedInstanceState.recordInstanceData stateServerName webSocket
           pure state{ relayWebSocket = Just webSocket}
         Nothing -> do
-          _ <- Timer.sendAfter (serverName egestKey) (round $ unwrap relayCreationRetry) InitStreamRelays
+          _ <- Timer.sendAfter (serverName egestKey) (round $ Long.toNumber $ unwrap relayCreationRetry) InitStreamRelays
           pure state
 
 --------------------------------------------------------------------------------

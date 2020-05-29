@@ -18,6 +18,7 @@ import Data.Either (Either(..))
 import Data.Foldable (foldM, foldl)
 import Data.FoldableWithIndex (foldlWithIndex)
 import Data.Int (round, toNumber)
+import Data.Long as Long
 import Data.Maybe (Maybe(..), fromMaybe, fromMaybe', maybe)
 import Data.Newtype (unwrap, wrap)
 import Data.Set (Set, toUnfoldable)
@@ -55,7 +56,7 @@ import Rtsv2.PoPDefinition (PoP)
 import Rtsv2.PoPDefinition as PoPDefinition
 import Serf (IpAndPort, LamportClock, SerfCoordinate, calcRtt)
 import Serf as Serf
-import Shared.Common (Milliseconds)
+import Shared.Common (Milliseconds(..))
 import Shared.Rtsv2.Agent (SlotCharacteristics, emptySlotCharacteristics)
 import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.JsonLd as JsonLd
@@ -123,9 +124,9 @@ getNeighbours = exposeState doGetNeighbours serverName
 getTimedRoutesTo :: PoPName -> Effect (PublicState.TimedPoPRoutes List)
 getTimedRoutesTo pop = exposeState doGetTimedRoutes serverName
   where
-    getRtt rttMap from to = fromMaybe (wrap 1000.0) $ Map.lookup (Tuple from to) rttMap
+    getRtt rttMap from to = fromMaybe (Milliseconds $ Long.fromInt 1000) $ Map.lookup (Tuple from to) rttMap
     augmentWithRtt :: Rtts -> PoPName -> PoPName -> PublicState.TimedPoPStep
-    augmentWithRtt rttMap from to = {from, to, rtt: round $ unwrap $ getRtt rttMap from to}
+    augmentWithRtt rttMap from to = {from, to, rtt: round $ Long.toNumber $ unwrap $ getRtt rttMap from to}
     augmentWithRtts state@{rtts: rttMap}  acc from to vias =
       case uncons vias of
         Nothing -> reverse $ (augmentWithRtt rttMap from to) : acc
@@ -301,7 +302,7 @@ init { config: config@{ leaderTimeoutMs
       , currentLeader: Nothing
       , weAreLeader: false
       , lastLeaderAnnouncement: now
-      , leaderAnnouncementTimeout: wrap (toNumber leaderTimeoutMs)
+      , leaderAnnouncementTimeout: Milliseconds $ Long.fromInt leaderTimeoutMs
       , thisServer: thisServer
       , serfRpcAddress: serfRpcAddress
       , members: Map.empty
@@ -381,7 +382,7 @@ getDefaultRtts {defaultRttMs} = do
   pure $ foldlWithIndex
     (\k acc vs ->
       foldl (\acc' a ->
-              Map.insert (Tuple k a) (wrap (toNumber defaultRttMs)) acc')
+              Map.insert (Tuple k a) (Milliseconds $ Long.fromInt defaultRttMs) acc')
       acc vs
     ) Map.empty neighbourMap
 
@@ -500,7 +501,7 @@ calculateRoutes poPCoordinates currentRtts defaultRtts thisPoP otherPoPNames =
           in  Map.insert edge guess acc
         newRtts = foldlWithIndex bestGuessRtt Map.empty defaultRtts
         msToCost :: Milliseconds -> Int
-        msToCost = unwrap >>> round >>> (*) 10
+        msToCost = unwrap >>> Long.toNumber >>> round >>> (*) 10
         newNetwork :: Network PoPName
         newNetwork = foldlWithIndex (\(Tuple from to) acc ms -> addEdge' from to (msToCost ms) acc) emptyNetwork newRtts
         -- Get the bestroute pairs to all the other pops
@@ -565,7 +566,7 @@ connectStream state@{serfRpcAddress} = do
                         logInfo "Could not connect to TransPoP Serf Agent" { error: error }
                         unsafeCrashWith ("could_not_connect_stream")
                    _ -> do
-                         sleep (wrap 100.0)
+                         sleep $ Milliseconds $ Long.fromInt 100
                          loopStreamJoin serfRpcAddress $ n - 1
             Right x ->
               pure unit

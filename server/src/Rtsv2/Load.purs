@@ -19,6 +19,7 @@ import Data.Array (elemIndex)
 import Data.Foldable (foldl)
 import Data.FoldableWithIndex (foldlWithIndex) as Map
 import Data.Int (round, toNumber)
+import Data.Long as Long
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (class Newtype, unwrap, wrap)
 import Data.Set (fromFoldable)
@@ -40,7 +41,7 @@ import Rtsv2.Config as Config
 import Rtsv2.LoadTypes (HardwareFactor(..), LoadAgentCosts(..), LoadCheckResult(..), LoadCosts(..), LoadFixedCost(..), LoadLimits(..), LoadVariableCost(..), LoadWatermarks(..), PredictedLoad(..))
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
-import Shared.Common (Milliseconds)
+import Shared.Common (Milliseconds(..))
 import Shared.Rtsv2.Agent (Agent(..), SlotCharacteristics)
 import Shared.Rtsv2.Stream (AgentKey)
 import Shared.Rtsv2.Types (AcceptingRequests(..), CurrentLoad(..), NetworkKbps(..), Percentage(..), Server(..), ServerLoad(..), SpecInt(..), minLoad)
@@ -132,8 +133,8 @@ addPredictedLoad key (PredictedLoad {cost: (LoadFixedCost {cpu, network}), decay
         currentAdditionalCpu = cpuUnitsToPercentage cpu maxCpuCapacity
         newLoad = { currentAdditionalCpu
                   , currentAdditionalNetwork: network
-                  , cpuDecayPerTick: wrap $ (unwrap currentAdditionalCpu) * (unwrap tickTime) / (unwrap decayTime)
-                  , networkDecayPerTick: wrap $ (unwrap network) * ((round <<< unwrap) tickTime) / ((round <<< unwrap) decayTime)
+                  , cpuDecayPerTick: wrap $ (unwrap currentAdditionalCpu) * (Long.toNumber $ unwrap tickTime) / (Long.toNumber $ unwrap decayTime)
+                  , networkDecayPerTick: wrap $ (unwrap network) * (round $ Long.toNumber $ unwrap $ tickTime) / (round $ Long.toNumber $ unwrap decayTime)
                   }
         state2 = state{predictedLoads = Map.insert key newLoad predictedLoads}
         state3 = calculateEffectiveLoad state2
@@ -156,7 +157,7 @@ init args = do
          , cpuUtilState
          , networkUtilState
          , predictedLoads: Map.empty
-         , tickTime: wrap (toNumber loadAnnounceMs)
+         , tickTime: Milliseconds $ Long.fromInt loadAnnounceMs
          }
 
 handleInfo :: Msg -> State -> Effect (CastResult State)

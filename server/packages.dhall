@@ -40,17 +40,21 @@ let overrides =
               "https://github.com/justinwoo/purescript-simple-json-generics.git"
           , version = "f7127b94bd2da73b28e863c299edb72a42ee4bce"
           }
-      , purescript-longs =
-          { dependencies = [ "prelude" ]
-          , repo = "https://github.com/id3as/purescript-longs.git"
-          , version = "a6df077ee5245e806201006027016543caa1315a"
-          }
       , kishimen =
           { dependencies =
             [ "prelude", "generics-rep", "variant", "typelevel-prelude" ]
           , repo = "https://github.com/justinwoo/purescript-kishimen.git"
           , version = "8a9b11f9bcdaf4ff63c2e572def3d0b2a4e2c870"
           }
+      , longs =
+          { dependencies =
+          [ "prelude", "nullable", "strings", "foreign", "functions", "console", "effect" 
+
+          ]
+          , repo = "https://github.com/id3as/purescript-longs.git"
+          , version = "100d382591bbbf912821576294f0849b695446d9"
+          }
+
       }
 
 let additions = {=}

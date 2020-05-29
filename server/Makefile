@@ -17,8 +17,7 @@ $(COMPILED_PS): output
 	@touch $(COMPILED_PS)
 
 output: $(PS_SOURCEFILES) $(PS_ERL_FFI) .spago
-	spago build
-	@touch output
+	spago build && touch output
 
 .spago: spago.dhall packages.dhall
 	spago install

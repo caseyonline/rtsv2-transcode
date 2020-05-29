@@ -27,7 +27,9 @@ import Data.Either (Either(..), note)
 import Data.Int (round, toNumber)
 import Data.List.NonEmpty (singleton)
 import Data.List.NonEmpty as NEL
+import Data.Long as Long
 import Data.Maybe (Maybe, maybe)
+import Data.Maybe as Maybe
 import Data.Newtype (unwrap, wrap)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
@@ -64,15 +66,15 @@ data ExitReason = Normal
 data ExitMessage = Exit Pid Foreign
 
 sleep :: Milliseconds -> Effect Unit
-sleep = sleepImpl <<< round <<< unwrap
+sleep = sleepImpl <<< Maybe.fromMaybe 0 <<<  Long.toInt <<< unwrap
 
 -- TODO - find a place for these utility types to live (a la id3as_common?)
 
 systemTimeMs :: Effect Milliseconds
-systemTimeMs = wrap <$> toNumber <$> systemTimeImpl (atom "millisecond")
+systemTimeMs = wrap <$> Long.fromInt <$> systemTimeImpl (atom "millisecond")
 
 vmTimeMs :: Effect Milliseconds
-vmTimeMs = wrap <$> toNumber <$> vmTimeImpl (atom "millisecond")
+vmTimeMs = wrap <$> Long.fromInt <$> vmTimeImpl (atom "millisecond")
 
 instance eqRef :: Eq Ref where eq = eqRefImpl
 instance writeForeignRef :: WriteForeign Ref where writeImpl = refToStringImpl

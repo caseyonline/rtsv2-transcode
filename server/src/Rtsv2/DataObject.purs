@@ -25,6 +25,7 @@ import Prelude
 import Data.Either (Either(..))
 import Data.FoldableWithIndex (foldlWithIndex)
 import Data.Generic.Rep (class Generic)
+import Data.Long as Long
 import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype)
 import Effect (Effect)
@@ -234,7 +235,7 @@ merge lhs rhs = lhs
 init :: forall key. Effect (State key)
 init = do
   let
-    expireAfter = Milliseconds 1000.0
+    expireAfter = Milliseconds $ Long.fromInt 1000
     expireIntervalMs = 1000
   _ <- Timer.sendEvery serverName expireIntervalMs DoExpiry
   pure { expireAfter

@@ -30,5 +30,6 @@
     , "simple-json-generics"
     , "typelevel-prelude"
     , "variant"
+    , "longs"
     ]
 }

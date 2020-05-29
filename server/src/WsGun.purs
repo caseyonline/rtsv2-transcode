@@ -20,6 +20,7 @@ import Prelude
 
 import Data.Either (Either(..))
 import Data.Int (round)
+import Data.Long as Long
 import Data.Maybe (Maybe)
 import Data.Newtype (unwrap)
 import Effect (Effect)
@@ -148,7 +149,7 @@ processMessage _socket gunMsg@(GunWsFrame _connPid _streamRef (Text str)) =
 
 processMessage socket@(Connection connPid path lastKeepalive) gunMsg@(KeepAliveCheck _connPid) = do
   now <- Erl.systemTimeMs
-  if (round $ unwrap now) - (round $ unwrap lastKeepalive) > keepalive * numMissingKeepalives then do
+  if unwrap now - unwrap lastKeepalive > Long.fromInt (keepalive * numMissingKeepalives) then do
     closeImpl connPid
     pure $ Right WebSocketDown
   else

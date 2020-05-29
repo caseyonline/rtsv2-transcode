@@ -16,7 +16,8 @@ import Prelude
 
 import Data.Either (Either(..))
 import Data.Foldable (foldl)
-import Data.Int (fromString)
+import Data.Int (fromString, round)
+import Data.Long as Long
 import Data.Maybe (Maybe(..))
 import Data.Newtype (wrap)
 import Data.String (Pattern(..), split)
@@ -26,9 +27,9 @@ import Effect (Effect)
 import Erl.Atom (Atom)
 import Erl.Data.List (List, zip)
 import Erl.Data.Map (Map)
-import Shared.Common (Milliseconds)
 import Foreign (Foreign)
 import Math (sqrt)
+import Shared.Common (Milliseconds(..))
 
 type SerfResult a = Either ApiError a
 
@@ -113,7 +114,7 @@ getCoordinate = getCoordinateImpl Left Right
 
 -- Calculation as described in https://www.serf.io/docs/internals/coordinates.html
 calcRtt :: SerfCoordinate -> SerfCoordinate -> Milliseconds
-calcRtt lhs rhs = wrap $
+calcRtt lhs rhs = Milliseconds $ Long.fromInt $ round $
   let sumq = foldl (\acc (Tuple a b) -> acc + ((a - b) * (a - b))) 0.0 (zip lhs.vec rhs.vec)
       rtt = sqrt sumq + lhs.height + rhs.height
       adjusted = rtt + lhs.adjustment + rhs.adjustment

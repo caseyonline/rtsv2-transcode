@@ -90,6 +90,13 @@ let additions =
           ]
           "https://github.com/justinwoo/purescript-milkis.git"
           "v7.4.0"
+      , longs =
+          mkPackage
+          [ "prelude", "nullable", "strings", "foreign", "functions", "console", "effect" 
+
+          ]
+          "https://github.com/id3as/purescript-longs.git"
+          "100d382591bbbf912821576294f0849b695446d9"
       }
 
 in  upstream ⫽ overrides ⫽ additions

@@ -58,6 +58,7 @@ import Data.Filterable (filterMap)
 import Data.Foldable (foldM, foldl)
 import Data.FoldableWithIndex (foldlWithIndex)
 import Data.Int (round, toNumber)
+import Data.Long as Long
 import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Newtype (class Newtype, unwrap, wrap)
 import Data.Set (Set)
@@ -95,7 +96,7 @@ import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Types (LocalOrRemote(..), ResourceFailed(..), ResourceResp)
 import Serf (IpAndPort, LamportClock)
 import Serf as Serf
-import Shared.Common (Milliseconds)
+import Shared.Common (Milliseconds(..))
 import Shared.Rtsv2.Agent (SlotCharacteristics, emptySlotCharacteristics)
 import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.JsonLd (transPoPLeaderLocationNode)
@@ -555,7 +556,7 @@ aggregatorHandler
     , clockLens                : clockLens
     , locationLens             : locationLens
 
-    , reannounceEveryMs        : _.config >>> _.reannounceAgentEveryMs >>> _.aggregator >>> toNumber >>> wrap
+    , reannounceEveryMs        : _.config >>> _.reannounceAgentEveryMs >>> _.aggregator >>> Long.fromInt >>> Milliseconds
     }
   where
     availableLocal :: AgentMessageHandlerWithSerfPayload SlotCharacteristics
@@ -659,7 +660,7 @@ egestHandler
     , clockLens                : clockLens
     , locationLens             : locationLens
 
-    , reannounceEveryMs        : _.config >>> _.reannounceAgentEveryMs >>> _.egest >>> toNumber >>> wrap
+    , reannounceEveryMs        : _.config >>> _.reannounceAgentEveryMs >>> _.egest >>> Long.fromInt >>> Milliseconds
 
     }
   where
@@ -737,7 +738,7 @@ relayHandler
     , clockLens                : clockLens
     , locationLens             : locationLens
 
-    , reannounceEveryMs        : _.config >>> _.reannounceAgentEveryMs >>> _.relay >>> toNumber >>> wrap
+    , reannounceEveryMs        : _.config >>> _.reannounceAgentEveryMs >>> _.relay >>> Long.fromInt >>> Milliseconds
     }
   where
     availableLocal state agentKey server _ = do
@@ -810,7 +811,7 @@ announceAvailableLocal handler@{locationLens} serfPayload agentKey =
 doAnnounceAvailableLocal :: forall a. AgentHandler a -> a -> AgentKey -> State -> Effect Unit
 doAnnounceAvailableLocal handler serfPayload agentKey state@{thisServer, agentLocations} = do
   handler.availableLocal state agentKey thisServer serfPayload
-  void $ Timer.sendAfter serverName (round $ unwrap $ handler.reannounceEveryMs state) $ ReAnnounce agentKey handler (doAnnounceAvailableLocal handler serfPayload agentKey)
+  void $ Timer.sendAfter serverName (fromMaybe 0 $ Long.toInt $ unwrap $ handler.reannounceEveryMs state) $ ReAnnounce agentKey handler (doAnnounceAvailableLocal handler serfPayload agentKey)
 
 announceStoppedLocal :: forall a. AgentHandler a -> AgentKey -> Effect Unit
 announceStoppedLocal handler@{locationLens} agentKey = do
@@ -908,7 +909,7 @@ init { config
   case streamResp of
     Left error -> do
       logInfo "Could not connect to IntraPoP Serf Agent" { error: error }
-      Erl.sleep (wrap 100.0) -- Just so we don't spin like crazy...
+      Erl.sleep $ Milliseconds $ Long.fromInt 100 -- Just so we don't spin like crazy...
       unsafeCrashWith ("could_not_connect_stream")
     Right _ ->
       pure unit
@@ -1027,7 +1028,7 @@ handleIntraPoPSerfMsg imsg state@{ transPoPApi: {handleRemoteLeaderAnnouncement}
 
     Serf.StreamFailed -> do
       logInfo "Lost connection to IntraPoP Serf Agent" {}
-      Erl.sleep (wrap 100.0) -- Just so we don't spin like crazy...
+      Erl.sleep $ Milliseconds $ Long.fromInt 100 -- Just so we don't spin like crazy...
       -- TODO send a "stepping down message?" - except without Serf I guess we can't
       unsafeCrashWith ("lost_serf_connection")
 
@@ -1133,7 +1134,7 @@ handleAgentMessage msgLTime eventType agentKey msgServerAddress
 messageTimeout :: forall a. AgentHandler a -> State -> Effect Milliseconds
 messageTimeout agentMessageHandler state = do
   now <- Erl.systemTimeMs
-  pure $ now + ((agentMessageHandler.reannounceEveryMs state) * (wrap (toNumber state.config.missCountBeforeExpiry)))
+  pure $ now + (agentMessageHandler.reannounceEveryMs state) * (Milliseconds $ Long.fromInt state.config.missCountBeforeExpiry)
 
 --------------------------------------------------------------------------------
 -- Internal functions
@@ -1200,7 +1201,7 @@ garbageCollectVM state@{ config
   do
     now <- Erl.systemTimeMs
     let
-      expireThreshold = wrap $ toNumber $ config.missCountBeforeExpiry * config.vmLivenessIntervalMs
+      expireThreshold = Milliseconds $ Long.fromInt $ config.missCountBeforeExpiry * config.vmLivenessIntervalMs
       threshold = now - expireThreshold
       Tuple newServerRefs garbage = EMap.garbageCollect2 threshold serverRefs
       garbageCollectServer' s (Tuple server ref) = garbageCollectServer s server ref Nothing
