@@ -48,6 +48,8 @@ destroy_net
 
 create_net
 
+ulimit -n 65536
+
 tmux -L "$SESSION" -2 new-session -d -s "$SESSION"
 
 regionPopIndex=0

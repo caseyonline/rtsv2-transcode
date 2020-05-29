@@ -15,6 +15,7 @@
 
 start_test_clients(From, To) ->
   lists:foreach(fun(ClientId) ->
+                    timer:sleep(2),
                     start_test_client(ClientId)
                 end,
                 lists:seq(From, To)
