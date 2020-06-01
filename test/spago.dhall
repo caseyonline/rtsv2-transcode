@@ -14,6 +14,7 @@ You can edit this file as you like.
   , "generics-rep"
   , "heterogeneous"
   , "kishimen"
+  , "longs"
   , "milkis"
   , "node-child-process"
   , "node-fs"

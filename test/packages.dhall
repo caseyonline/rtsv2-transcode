@@ -38,6 +38,14 @@ let additions =
               "https://github.com/dariooddenino/purescript-record-prefix.git"
           , version = "v1.0.0"
           }
+      , longs =
+          { dependencies =
+          [ "prelude", "nullable", "strings", "foreign", "functions", "console", "effect"
+
+          ]
+          , repo = "https://github.com/id3as/purescript-longs.git"
+          , version = "100d382591bbbf912821576294f0849b695446d9"
+          }
       }
 
 in  upstream ⫽ overrides ⫽ additions

@@ -9,6 +9,7 @@ import Data.Bifunctor (lmap)
 import Data.Either (Either(..))
 import Data.Int (fromString)
 import Data.Lens (_Just, firstOf, over, set, traversed)
+import Data.Long as Long
 import Data.Map as Map
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (wrap, unwrap)
@@ -254,7 +255,7 @@ excludeTimestamps state@{ egests } =
     excludeEgestTimestamps =
       over (JsonLd._unwrappedNode <<< JsonLd._resource) clearTimestamp
     clearTimestamp =
-      set JsonLd._timestamp (wrap 0.0)
+      set JsonLd._timestamp (wrap $ Long.fromInt 0)
 
 -------------------------------------------------------------------------------
 -- Others
