@@ -37,6 +37,7 @@ import Pinto as Pinto
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
+import Prim.Row as Row
 import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Agents.IngestAggregatorSup as IngestAggregatorSup
 import Rtsv2.Agents.IngestStats as IngestStats
@@ -410,11 +411,11 @@ handleAggregatorExit exitedAggregatorKey exitedAggregator state@{ ingestKey
 domain :: List Atom
 domain = atom <$> (show Agent.Ingest :  "Instance" : nil)
 
-logInfo :: forall a. Logger (Record a)
+logInfo :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
 logInfo = Logger.doLog domain Logger.info
 
-logStart :: forall a. Logger (Record a)
+logStart :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
 logStart = Logger.doLogEvent domain Logger.Start Logger.info
 
-logStop :: forall a. Logger (Record a)
+logStop :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
 logStop = Logger.doLogEvent domain Logger.Stop Logger.info

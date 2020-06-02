@@ -23,6 +23,7 @@ module Rtsv2.Names
        , ingestOneForOneSupName
        , intraPoPName
        , loadServerName
+       , alertsServerName
        , nodeManagerServerName
        , popDefinitionName
 
@@ -111,6 +112,9 @@ intraPoPName = localName IntraPoP
 
 loadServerName :: forall a b. ServerName a b
 loadServerName = Local (atom "Load")
+
+alertsServerName :: forall a b. ServerName a b
+alertsServerName = Local (atom "Alerts")
 
 nodeManagerServerName :: forall a b. ServerName a b
 nodeManagerServerName = Local (atom "NodeManager")

@@ -36,6 +36,7 @@ import Pinto (ServerName, StartLinkResult, ok')
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
+import Prim.Row as Row
 import Rtsv2.Agents.EgestInstance as EgestInstance
 import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
 import Rtsv2.Agents.IntraPoP as IntraPoP
@@ -276,7 +277,6 @@ launchAndUpdateState agent canaryStream launchFun thisServer =
       pure $ CallReply (Left InvalidRunState) state
 
     doLaunchAndUpdateState state@{currentCanaryState} | currentCanaryState /= canary currentCanaryState canaryStream = do
-      logInfo "FAIL STREAM" {currentCanaryState, canary}
       pure $ CallReply (Left InvalidCanaryState) state
 
     doLaunchAndUpdateState state@{agentCounts} = do
@@ -406,5 +406,5 @@ activeSupStartArgs canaryState =
 domains :: List Atom
 domains = serverName # Names.toDomain # singleton
 
-logInfo :: forall a. Logger (Record a)
+logInfo :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
 logInfo = Logger.doLog domains Logger.info

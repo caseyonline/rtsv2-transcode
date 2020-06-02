@@ -346,8 +346,9 @@ getMandatoryRecord v = do
   case runExcept $ readImpl map of
     Left error ->
       do
-        _ <- Logger.error "Invalid Config" {misc: {key: v,
-                                                   error: error}}
+        _ <- Logger.error {} { text: "Invalid Config"
+                             , key: v
+                             , error: error}
         unsafeCrashWith ("invalid_config " <> v)
     Right ok ->
       pure $ ok

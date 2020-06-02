@@ -23,6 +23,7 @@ import Erl.Data.Map as Map
 import Erl.Process (Process(..))
 import Erl.Utils as Erl
 import Logger as Logger
+import Prim.Row as Row
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.StreamRelayInstance as StreamRelayInstance
 import Rtsv2.Agents.StreamRelaySup (findOrStart)
@@ -237,5 +238,5 @@ registeredEgestWs slotId slotRole egestAddress egestPort =
 --------------------------------------------------------------------------------
 -- Log helpers
 --------------------------------------------------------------------------------
-logInfo :: forall a. List Atom -> String -> Record a -> Effect Unit
+logInfo :: forall report. Row.Lacks "text" report => (List Atom) -> String -> { | report } -> Effect Unit
 logInfo domain msg misc = Logger.doLog domain Logger.info msg misc

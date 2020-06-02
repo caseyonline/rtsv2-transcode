@@ -15,6 +15,7 @@ import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
+import Prim.Row as Row
 import Rtsv2.Agents.EgestInstance as EgestInstance
 import Rtsv2.Config (EgestStatsConfig)
 import Rtsv2.Config as Config
@@ -75,5 +76,5 @@ gatherStats state = do
 domain :: List Atom
 domain = Agent.Egest # show # atom # singleton
 
-logInfo :: forall a. Logger (Record a)
+logInfo :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
 logInfo = Logger.doLog domain Logger.info

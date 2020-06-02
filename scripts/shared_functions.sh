@@ -24,6 +24,11 @@ function create_net {
     "Linux")
       sudo modprobe dummy
       sudo ip link add rtsv2-br type bridge
+
+      # Preliminary work on making the test environment available across hosts on an overlay network
+      # sudo ip link add rtsv2-vxlan type vxlan id 1310 group 239.1.13.10 dstport 4789 dev lab
+      # sudo ip link set rtsv2-vxlan master rtsv2-br
+      # sudo ip addr add 172.16.171.120/24 dev rtsv2-vxlan
       ;;
   esac
 }
@@ -65,6 +70,11 @@ function destroy_net {
       for name in $(ip link | grep "$(interface_name_prefix)"'[1-9][0-9][0-9]' | awk '{print $2}' | sed 's/://'); do
         sudo ip link delete "${name}"
       done
+
+      # Preliminary work on making the test environment available across hosts on an overlay network
+      # if [[ -n "$(ip link | grep "rtsv2-vxlan" | awk '{print $2}' | sed 's/://')" ]]; then
+      #   sudo ip link delete rtsv2-vxlan
+      # fi
 
       if [[ -n "$(ip link | grep "rtsv2-br" | awk '{print $2}' | sed 's/://')" ]]; then
         sudo ip link delete rtsv2-br
@@ -109,6 +119,9 @@ function start_node {
   tmux -L "$tmuxSession" send-keys " export SUPPORT_IFACE=$iface" C-m
   tmux -L "$tmuxSession" send-keys " export SYSTEM_IFACE=$iface" C-m
   tmux -L "$tmuxSession" send-keys " export IS_PROXIED=false" C-m
+  tmux -L "$tmuxSession" send-keys " export PUBLIC_PORT=3000" C-m
+  tmux -L "$tmuxSession" send-keys " export SYSTEM_PORT=3001" C-m
+  tmux -L "$tmuxSession" send-keys " export SUPPORT_PORT=3002" C-m
   tmux -L "$tmuxSession" send-keys " export DISK_LOG_ROOT=$(pwd)/logs/$nodeName" C-m
   tmux -L "$tmuxSession" send-keys " export LD_LIBRARY_PATH=$(pwd)/_build/default/lib/id3as_media/priv" C-m
   tmux -L "$tmuxSession" send-keys " until (serf info --rpc-addr \$HOSTNAME:7373); do printf '.'; sleep 0.5; done" C-m
