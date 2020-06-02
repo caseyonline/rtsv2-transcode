@@ -28,6 +28,7 @@ import Gproc as GProc
 import Gproc as Gproc
 import Logger (Logger)
 import Logger as Logger
+import Prim.Row as Row
 import Prometheus as Prometheus
 import Rtsv2.Agents.IngestInstance as IngestInstance
 import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
@@ -305,11 +306,8 @@ stopFakeIngest ingestKey = do
 --------------------------------------------------------------------------------
 -- Log helpers
 --------------------------------------------------------------------------------
-domains :: List Atom
-domains = atom <$> ("Client" :  "Instance" : List.nil)
+domain :: List Atom
+domain = atom <$> ("Client" :  "Instance" : List.nil)
 
-logInfo :: forall a. Logger (Record a)
-logInfo = domainLog Logger.info
-
-domainLog :: forall a. Logger {domain :: List Atom, misc :: Record a} -> Logger (Record a)
-domainLog = Logger.doLog domains
+logInfo :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
+logInfo = Logger.doLog domain Logger.info

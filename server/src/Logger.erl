@@ -12,7 +12,7 @@
          spyImpl/2
         ]).
 
--define(do_effectful_log(Level, Msg, Args),
+-define(do_effectful_log(Level, Metadata, Report),
         [{current_stacktrace, Stack}] = erlang:process_info(self(), [current_stacktrace]),
         fun() ->
             {Module, Fun, Arity, File, Line} = walk_stack(Stack),
@@ -22,46 +22,51 @@
                          line => Line,
                          file => File},
 
-            Args2 = case maps:get(event, Args, undefined) of
-                      {Event} -> maps:put(event, Event, Args);
-                      _ -> Args
-                    end,
+            Report2 = case maps:get(event, Report, undefined) of
+                        {Event} -> maps:put(event, Event, Report);
+                        _ -> Report
+                      end,
+
+            Metadata2 = case maps:get(text, Metadata, undefined) of
+                          undefined -> Metadata;
+                          Value -> maps:put(text, binary_to_list(Value), Metadata)
+                        end,
 
             case logger:allow(Level, Module) of
               true ->
-                apply(logger, macro_log, [Location, Level, binary_to_list(Msg), [], Args2]),
+                apply(logger, macro_log, [Location, Level, Report2, Metadata2]),
                 unit;
               false ->
                 unit
             end
         end).
 
-emergency(Msg, Args) ->
-  ?do_effectful_log(emergency, Msg, Args).
+emergency(Metadata, Report) ->
+  ?do_effectful_log(emergency, Metadata, Report).
 
-alert(Msg, Args) ->
-  ?do_effectful_log(alert, Msg, Args).
+alert(Metadata, Report) ->
+  ?do_effectful_log(alert, Metadata, Report).
 
-critical(Msg, Args) ->
-  ?do_effectful_log(critical, Msg, Args).
+critical(Metadata, Report) ->
+  ?do_effectful_log(critical, Metadata, Report).
 
-error(Msg, Args) ->
-  ?do_effectful_log(error, Msg, Args).
+error(Metadata, Report) ->
+  ?do_effectful_log(error, Metadata, Report).
 
-warning(Msg, Args) ->
-  ?do_effectful_log(warning, Msg, Args).
+warning(Metadata, Report) ->
+  ?do_effectful_log(warning, Metadata, Report).
 
-notice(Msg, Args) ->
-  ?do_effectful_log(notice, Msg, Args).
+notice(Metadata, Report) ->
+  ?do_effectful_log(notice, Metadata, Report).
 
-info(Msg, Args) ->
-  ?do_effectful_log(info, Msg, Args).
+info(Metadata, Report) ->
+  ?do_effectful_log(info, Metadata, Report).
 
-debug(Msg, Args) ->
-  ?do_effectful_log(debug, Msg, Args).
+debug(Metadata, Report) ->
+  ?do_effectful_log(debug, Metadata, Report).
 
-spyImpl(Msg, Args) ->
-  ?do_effectful_log(notice, Msg, Args).
+spyImpl(Metadata, Report) ->
+  ?do_effectful_log(notice, Metadata, Report).
 
 %%------------------------------------------------------------------------------
 %% Internal

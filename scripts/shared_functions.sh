@@ -109,6 +109,9 @@ function start_node {
   tmux -L "$tmuxSession" send-keys " export SUPPORT_IFACE=$iface" C-m
   tmux -L "$tmuxSession" send-keys " export SYSTEM_IFACE=$iface" C-m
   tmux -L "$tmuxSession" send-keys " export IS_PROXIED=false" C-m
+  tmux -L "$tmuxSession" send-keys " export PUBLIC_PORT=3000" C-m
+  tmux -L "$tmuxSession" send-keys " export SYSTEM_PORT=3001" C-m
+  tmux -L "$tmuxSession" send-keys " export SUPPORT_PORT=3002" C-m
   tmux -L "$tmuxSession" send-keys " export DISK_LOG_ROOT=$(pwd)/logs/$nodeName" C-m
   tmux -L "$tmuxSession" send-keys " export LD_LIBRARY_PATH=$(pwd)/_build/default/lib/id3as_media/priv" C-m
   tmux -L "$tmuxSession" send-keys " until (serf info --rpc-addr \$HOSTNAME:7373); do printf '.'; sleep 0.5; done" C-m

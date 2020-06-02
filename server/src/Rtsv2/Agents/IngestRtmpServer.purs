@@ -23,6 +23,7 @@ import Media.SourceDetails as SourceDetails
 import Pinto (ServerName)
 import Pinto as Pinto
 import Pinto.Gen as Gen
+import Prim.Row as Row
 import Rtsv2.Agents.IngestInstance as IngestInstance
 import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
 import Rtsv2.Agents.IngestRtmpCrypto (AdobeContextParams, AdobePhase1Params, AdobePhase2Params, LlnwContextParams, LlnwPhase1Params, LlnwPhase2Params, Phase2Params(..), checkCredentials)
@@ -209,8 +210,8 @@ getStreamDetails streamPublish = do
 domain :: List Atom
 domain = atom <$> (show Agent.Ingest : "Instance" : nil)
 
-logInfo :: forall a. Logger (Record a)
+logInfo :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
 logInfo = Logger.doLog domain Logger.info
 
-logWarning :: forall a. Logger (Record a)
+logWarning :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
 logWarning = Logger.doLog domain Logger.warning

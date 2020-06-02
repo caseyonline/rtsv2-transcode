@@ -24,6 +24,7 @@ import Gproc as GProc
 import Gproc as Gproc
 import Logger (Logger)
 import Logger as Logger
+import Prim.Row as Row
 import Rtsv2.Agents.EgestInstance as EgestInstance
 import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
 import Rtsv2.Audit as Audit
@@ -149,14 +150,8 @@ stopHandler clientId = do
 --------------------------------------------------------------------------------
 -- Log helpers
 --------------------------------------------------------------------------------
-domains :: List Atom
-domains = atom <$> ("Client" :  "Instance" : List.nil)
+domain :: List Atom
+domain = atom <$> ("Client" :  "Instance" : List.nil)
 
-logInfo :: forall a. Logger (Record a)
-logInfo = domainLog Logger.info
-
---logWarning :: forall a. Logger a
---logWarning = domainLog Logger.warning
-
-domainLog :: forall a. Logger {domain :: List Atom, misc :: Record a} -> Logger (Record a)
-domainLog = Logger.doLog domains
+logInfo :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
+logInfo = Logger.doLog domain Logger.info

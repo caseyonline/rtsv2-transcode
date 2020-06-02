@@ -9,7 +9,6 @@
 [ ] - RTMP Egest - from edge
 [ ] - egest / client merging when load drops
 [ ] - relay merging when multiple instances start
-[ ] - Port Data.Int53 or Data.Long to purescript, and then change Milliseconds type
 [ ] - Proper Serf messages codec (not just binary to term)
 [ ] - possibly announcing presence of stream in ingest aggregator too quickly - webrtc tests currently need a small sleep to get reliable playback
 [ ] - servers need a 16-bit id adding to them
@@ -21,6 +20,7 @@ Tests:
 [ ] - ingest prometheus stats
 [ ] - egest prometheus stats
 
+[x] - Port Data.Int53 or Data.Long to purescript, and then change Milliseconds type
 [x] - Mediavault API integration
 [x] - Canary / startup / migrating clients away etc
 [x] - data object messaging

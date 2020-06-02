@@ -61,6 +61,7 @@ import Pinto (ServerName, StartLinkResult, isRegistered)
 import Pinto.Gen (CallResult(..), CastResult(..), TerminateReason)
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
+import Prim.Row as Row
 import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..))
 import Rtsv2.Agents.IntraPoP as IntraPoP
@@ -1285,17 +1286,17 @@ sendMessageToDownstream msg process =
 domain :: List Atom
 domain = atom <$> (show Agent.StreamRelay :  "Instance" : List.nil)
 
-logInfo :: forall a. Logger (Record a)
+logInfo :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
 logInfo = Logger.doLog domain Logger.info
 
-logWarning :: forall a. Logger (Record a)
+logWarning :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
 logWarning = Logger.doLog domain Logger.warning
 
-logError :: forall a. Logger (Record a)
+logError :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
 logError = Logger.doLog domain Logger.error
 
-logStart :: forall a. Logger (Record a)
+logStart :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
 logStart = Logger.doLogEvent domain Logger.Start Logger.info
 
-logStop :: forall a. Logger (Record a)
+logStop :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
 logStop = Logger.doLogEvent domain Logger.Stop Logger.info

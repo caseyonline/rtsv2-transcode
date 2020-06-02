@@ -23,6 +23,42 @@ newtype Milliseconds = Milliseconds Long
 newtype Url = Url String
 derive newtype instance showUrl :: Show Url
 
+type IngestFailedAlert =
+  { shortName :: String
+  , slotName :: String
+  }
+
+type AuthFailedAlert =
+  {
+  }
+
+data AlertData = IngestFailed IngestFailedAlert
+               | AuthFailed AuthFailedAlert
+
+type Alert =
+  { timestamp :: Milliseconds
+  , alert :: AlertData
+  }
+
+ -- { type: "ingestFailed",
+ --          data: [
+ --            { timestamp: 2341324124,
+ --              shortName: "mmddev001",
+ --              slot: "slot_1000",
+ --              reason: "invalid video codec"
+ --            },
+ --            ...
+ --         ]
+ --        },
+ --        { type: "authFailed",
+ --          data: [
+ --            { timestamp: 123456789,
+ --              reason: "lsrs failed to respond"
+ --            },
+ --            ....
+ --          ]
+ --        }
+
 ------------------------------------------------------------------------------
 -- Type class derivations
 ------------------------------------------------------------------------------

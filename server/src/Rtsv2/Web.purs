@@ -17,10 +17,10 @@ import Erl.Data.Tuple (Tuple2, Tuple4, tuple2, tuple3, tuple4, uncurry4)
 import Erl.ModuleName (NativeModuleName(..))
 import Erl.Process.Raw (Pid)
 import Foreign (unsafeToForeign)
-import Logger (Logger)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen as Gen
+import Prim.Row as Row
 import Rtsv2.Agents.EgestInstance as EgestInstance
 import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
 import Rtsv2.Agents.IngestWebRTCIngestHandler as IngestWebRTCIngestHandler
@@ -343,14 +343,8 @@ textWriter text = tuple2 "text/plain" (\req state -> Rest.result text req state)
 --------------------------------------------------------------------------------
 -- Log helpers
 --------------------------------------------------------------------------------
-domains :: List Atom
-domains = serverName # Names.toDomain # singleton
+domain :: List Atom
+domain = serverName # Names.toDomain # singleton
 
-logInfo :: forall a. Logger (Record a)
-logInfo = domainLog Logger.info
-
---logWarning :: forall a. Logger a
---logWarning = domainLog Logger.warning
-
-domainLog :: forall a. Logger {domain :: List Atom, misc :: Record a} -> Logger (Record a)
-domainLog = Logger.doLog domains
+logInfo :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
+logInfo = Logger.doLog domain Logger.info
