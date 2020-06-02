@@ -136,10 +136,14 @@ getStats node route = get (M.URL $ C.makeUrlAndUnwrapSupport node route)
 getStatsSystem :: Node -> System.Endpoint -> Aff (Either String ResWithBody)
 getStatsSystem node route = get (M.URL $ C.makeUrlAndUnwrapSystem node route)
 
--- | Ingest
+-- | Egest
 getEgestStats :: Node -> SlotId -> Aff (Either String ResWithBody)
 getEgestStats node slotId = getStats node (Support.EgestStatsE slotId Primary)
 
+getIngestMetrics :: Node -> Aff (Either String ResWithBody)
+getIngestMetrics node = getStats node Support.IngestInstancesMetricsE
+
+-- | Ingest
 ingestStart :: Node -> CanaryState -> RtmpShortName -> RtmpStreamName -> Aff (Either String ResWithBody)
 ingestStart node canary shortName streamName =
   get (M.URL $ C.makeUrlAndUnwrapSystem node (System.IngestStartE canary shortName streamName))
