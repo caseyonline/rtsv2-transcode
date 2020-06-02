@@ -159,6 +159,9 @@ broadcastMessages =
           -- go to ingest tab
           T.bringToFront tab4 >>= L.as' "Bring to front ingest tab"
           T.click (T.Selector "button#authenticate") tab4 >>= L.as' "Click Authenticate"
+
+          -- These check that the publisher can send a broadcast message and uses traceId4
+
           -- T.focus (T.Selector "input#msginput") tab4
           -- T.keyboardSendCharacter firstMessage tab4
           -- T.click (T.Selector "button#msgsend") tab4
@@ -174,13 +177,13 @@ broadcastMessages =
           -- Assert.assert "Message content matched first sent message" (firstMessage == msgContent1)
           --   >>= L.as' ("Sent: " <> firstMessage <> " Received: " <> msgContent1)
 
-          -- Send a message back
-          T.focus (T.Selector "input#msginput") tab1 >>= L.as' "Send Broadcast message from tab2"
+          -- Send publisher message from tab1
+          T.focus (T.Selector "input#msginput") tab1 >>= L.as' "Send Publisher message from tab1"
           T.keyboardSendCharacter publisherMsg tab1
           T.select (T.Selector "select#msgType") "publisher" tab1
           T.click (T.Selector "button#msgsend") tab1
 
-          -- Got to tab4 check that new publisher message has been recieved
+          -- Go to tab4 check that new publisher message has been recieved
           T.bringToFront tab4 >>= L.as' "Check publisherMsg has been recieved on publisher page"
           msgReceivedTraceId4 <- F.getInnerText "div.message.msg_received > div.msg_name" tab4
           msgContent4 <- F.getInnerText "div.message.msg_received > div.msg_bubble" tab4
@@ -190,11 +193,68 @@ broadcastMessages =
           Assert.assert "Message content matched second message sent" (publisherMsg == msgContent4)
             >>= L.as' ("Sent: " <> publisherMsg <> " Received: " <> msgContent4)
 
-          -- Got to tab3 that there are no messages as it's a different slot
+          -- Go to tab3 that there are no messages as it's on different slot
           T.bringToFront tab3 >>= L.as' "Check tab3 has no messages as on different slot"
           msgContent3 <- F.getInnerText "div.messages" tab3
 
-          Assert.assert "Message content should be empty as this is on different slot" ("" == msgContent3)
+          Assert.assert "Message content should be empty as this is on a different slot" ("" == msgContent3)
             >>= L.as' ("Tab3 message content: " <> msgContent3)
 
           T.close browser1
+
+
+        -- it "6.1.3 private messages" do
+
+          -- F.startSlotHigh1000 (C.toAddrFromNode E.p1n1) >>= L.as' "create high ingest on 1"
+          -- F.startSlotHigh1000Backup (C.toAddrFromNode E.p1n1) >>= L.as' "create high backup on 1"
+          -- F.start2SlotHigh1000 (C.toAddrFromNode E.p2n1) >>= L.as' "create high ingest on 2"
+
+          -- _ <- delay (Milliseconds 5000.00) >>= L.as' "wait for ingest to start fully"
+
+          -- browser1 <- T.launch options
+
+          -- -- create the different tabs
+          -- tab1 <- T.newPage browser1
+          -- tab2 <- T.newPage browser1
+          -- tab3 <- T.newPage browser1
+
+          -- -- navigate to specific Urls on each tab
+          -- T.goto (F.mkPlayerUrl E.p1n1 E.slot1 Primary) tab1
+          -- T.goto (F.mkPlayerUrl E.p1n2 E.slot1 Primary) tab2
+          -- T.goto (F.mkPlayerUrl E.p1n1 E.slot1 Primary) tab3
+
+
+          -- -- get the traceIds from each tab
+          -- traceId1 <- F.getInnerText "#traceId" tab1
+          -- traceId2 <- F.getInnerText "#traceId" tab2
+          -- traceId3 <- F.getInnerText "#traceId" tab3
+
+          -- -- Send private message from tab 1
+          -- T.focus (T.Selector "input#msginput") tab1
+          -- T.keyboardSendCharacter firstMessage tab1
+
+          -- T.focus (T.Selector "input#msgPrivateId") tab1
+          -- T.keyboardSendCharacter traceId2 tab1
+
+
+          -- T.select (T.Selector "select#msgType") "private" tab1
+          -- T.click (T.Selector "button#msgsend") tab1 >>= L.as' "Send Private message from tab1 to tab2"
+
+          -- -- Go to tab4 check that new publisher message has been recieved
+          -- T.bringToFront tab2 >>= L.as' "Check private message has been recieved"
+          -- msgReceivedTraceId2 <- F.getInnerText "div.message.msg_received > div.msg_name" tab2
+          -- msgContent2 <- F.getInnerText "div.message.msg_received > div.msg_bubble" tab2
+
+          -- Assert.assert "TraceId matches on second message sent and received" (traceId1 == msgReceivedTraceId2)
+          --   >>= L.as' ("Sent: " <> show traceId1 <> " Received: " <> msgReceivedTraceId2)
+          -- Assert.assert "Message content matched second message sent" (firstMessage == msgContent2)
+          --   >>= L.as' ("Sent: " <> firstMessage <> " Received: " <> msgContent2)
+
+          -- -- Got to tab3 that there are no messages as it was a private message
+          -- T.bringToFront tab3 >>= L.as' "Check tab3 has no messages as on different slot"
+          -- msgContent3 <- F.getInnerText "div.messages" tab3
+
+          -- Assert.assert "Message content should be empty as this is on different slot" ("" == msgContent3)
+          --   >>= L.as' ("Tab3 message content: " <> msgContent3)
+
+          -- T.close browser1
