@@ -19,7 +19,7 @@ import Helpers.Functions as F
 import Helpers.HTTP as HTTP
 import Helpers.Log as L
 import Helpers.Types (Node, ResWithBody)
-import Test.Spec (SpecT, after_, before_, describe, describeOnly, it)
+import Test.Spec (SpecT, after_, before_, describe, it)
 import Test.Unit.Assert as Assert
 import Toppokki as T
 
@@ -28,7 +28,7 @@ import Toppokki as T
 -------------------------------------------------------------------------------
 metricsTests :: forall m. Monad m => SpecT Aff Unit m Unit
 metricsTests = do
-  describeOnly "10 metrics tests" do
+  describe "10 metrics tests" do
     ingestMetrics
     egestMetrics
 
@@ -81,12 +81,10 @@ egestMetrics =
           page <- T.newPage browser
           T.goto (HTTP.ingestUrl E.p1n1 E.shortName1 E.highStreamName) page
           _ <- delay (Milliseconds 2000.00) >>= L.as' "wait for page to load"
-
           T.click (T.Selector "#authenticate") page
           _ <- delay (Milliseconds 500.00) >>= L.as' "wait for authentication"
-
           T.click (T.Selector "#start-ingest") page
-          _ <- delay (Milliseconds 60000.00) >>= L.as' "let stream start"
+          _ <- delay (Milliseconds 2000.00) >>= L.as' "let stream start"
 
 
           response1 <- assertStatusCode 200 =<< HTTP.getEgestMetrics E.p1n1
@@ -103,7 +101,6 @@ egestMetrics =
             >>= L.as' ("octets: " <> show videoOctet1 <> ", octets: " <> show videoOctet2)
 
 
-
 -------------------------------------------------------------------------------
 -- Functions
 -------------------------------------------------------------------------------
@@ -112,7 +109,7 @@ getResBody response =
   case response of
     Left e -> pure $ Left e
     Right res -> do
-      pure $ Right $ spy "Body" res.body
+      pure $ Right res.body
 
 
 getLine :: Int -> (Either String String) -> (Either Error String)
@@ -122,7 +119,7 @@ getLine i body =
     Right b -> do
       case lines b !! i of
         Nothing -> throwError $ Ex.error "this line isn't present"
-        Just line -> Right $ spy "line" line
+        Just line -> Right line
 
 getValue :: Either Error String -> Maybe Int
 getValue line =
