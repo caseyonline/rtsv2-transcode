@@ -179,6 +179,9 @@ init args = do
           , "WorkflowGraphE"                              : CowboyRoutePlaceholder -- id3as_workflow_graph_resource
           , "WorkflowMetricsE"                            : CowboyRoutePlaceholder --id3as_workflow_graph_resource
           , "WorkflowStructureE"                          : CowboyRoutePlaceholder -- id3as_workflow_graph_resource
+          , "WorkflowConfigE"                             : CowboyRoutePlaceholder -- rtsv2_workflow_config_resource
+          , "VisualiserE"                                 : \(_ :: String) -> PrivFile "id3as_media" "www/visualiser.html"
+          , "VisualiserAssetsE"                           : \(_ :: String) -> PrivDir "id3as_media" "www"
           }
       # Stetson.cowboyRoutes (systemRoutes thisServer featureFlags loadConfig)
       # Stetson.port args.systemPort
@@ -242,6 +245,18 @@ init args = do
       : cowboyRoute ("/system/workflows/" <> referenceBinding <> "/metrics") "id3as_workflow_graph_resource" (unsafeToForeign (atom "metrics"))
       -- WorkflowStructureE String
       : cowboyRoute ("/system/workflows/" <> referenceBinding <> "/structure") "id3as_workflow_graph_resource" (unsafeToForeign (atom "structure"))
+
+      -- workflow/config is hardcoded visualiser path
+      : cowboyRoute ("/system/workflows/" <> referenceBinding <> "/workflow/config") "rtsv2_workflow_config_resource" (unsafeToForeign nil)
+
+
+-- {<< "/", Prefix/binary, "/:output/workflow/config">>, prf_workflow_structure_resource, [prf_packager_output, get_visualisation_config]},
+--    {<< "/", Prefix/binary, "/:output/workflow/graph/latest">>, prf_workflow_structure_resource, [prf_packager_output, get_graph]},
+--    {<< "/", Prefix/binary, "/:output/workflow/metrics">>, prf_workflow_structure_resource, [prf_packager_output, get_metrics]},
+
+--    {<< "/", Prefix/binary, "/:output/visualiser">>, cowboy_static, {priv_file, id3as_media, <<"www/visualiser.html">>}},
+--    {<< "/", Prefix/binary, "/:output/visualiser/[...]">>, cowboy_static, {priv_dir, id3as_media, <<"www">>}}
+
 
       : nil
 

@@ -31,8 +31,8 @@
 -define(SERVER, ?MODULE).
 
 
--define(pack(What), msgpack:pack(What, [{pack_str, none}])).
--define(unpack(What), msgpack:unpack_stream(What, [{unpack_str, as_binary}])).
+-define(pack(What), msgpack:pack(What, [{pack_str, none}, {map_format, map}])).
+-define(unpack(What), msgpack:unpack_stream(What, [{unpack_str, as_binary}, {map_format, map}])).
 
 -define(BLOCK_BODY_LEN_BYTES, 2).
 
@@ -62,12 +62,14 @@ start_link(ThisServerAddress, TransmitQueueCount, ReceiveQueueCount, TransmitQue
   gen_server:start_link({local, ?SERVER}, ?MODULE, [ThisServerAddress, TransmitQueueCount, ReceiveQueueCount, TransmitQueueCapacity, MediaGatewayFlag], []).
 
 
+%%@doc adds an audio video or audio only (if the VideoSSRC is undefined) egest to the media gateway
 add_egest(SlotId, SlotRole, ReceiveSocket, MaxBitsPerSecond, AudioSSRC, VideoSSRC) ->
   gen_server:call(?SERVER, {add_egest, SlotId, SlotRole, ReceiveSocket, MaxBitsPerSecond, AudioSSRC, VideoSSRC}).
 
 remove_egest(SlotId, SlotRole) ->
   gen_server:call(?SERVER, {remove_egest, SlotId, SlotRole}).
 
+%%@doc adds an audio video or audio only (if the config's video field is undefined) egest client to the media gateway
 add_egest_client(SlotId, SlotRole, ClientId, EgestClientConfig) ->
   gen_server:call(?SERVER, {add_egest_client, SlotId, SlotRole, ClientId, EgestClientConfig}).
 
@@ -117,11 +119,31 @@ init([ThisServerAddress, TransmitQueueCount, ReceiveQueueCount, TransmitQueueCap
   {ok, State}.
 
 
+handle_call({add_egest, SlotId, SlotRole, ReceiveSocket, MaxBitsPerSecond, AudioSSRC, undefined}, _From, State) ->
+
+  NewState = ensure_control_socket(State),
+
+  Header = header(add_audio_only_egest),
+
+  %% TODO: bit rate should come from slot profile information
+  Body = ?pack(#{ slot_key => slot_key(SlotId, SlotRole)
+                , max_bits_per_second => MaxBitsPerSecond
+                , audio_payload_type_id => ?OPUS_ENCODING_ID
+                , audio_output_ssrc => AudioSSRC
+                }),
+
+  {ok, ReceiveFD} = inet:getfd(ReceiveSocket),
+
+  send_msg(NewState#?state.control_socket, Header, Body, [ReceiveFD]),
+
+  {reply, ok, NewState};
+
+
 handle_call({add_egest, SlotId, SlotRole, ReceiveSocket, MaxBitsPerSecond, AudioSSRC, VideoSSRC}, _From, State) ->
 
   NewState = ensure_control_socket(State),
 
-  Header = header(add_egest),
+  Header = header(add_audio_video_egest),
 
   %% TODO: bit rate should come from slot profile information
   Body = ?pack(#{ slot_key => slot_key(SlotId, SlotRole)
@@ -150,6 +172,40 @@ handle_call({remove_egest, SlotId, SlotRole}, _From, State) ->
   send_msg(NewState#?state.control_socket, Header, Body, []),
 
   {reply, ok, NewState};
+
+handle_call({ add_test_egest_client
+            , SlotId
+            , SlotRole
+            , ClientId
+            , #media_gateway_test_egest_client_config{ audio = #media_gateway_test_stream_element_config{ payload_type_id = AudioPayloadTypeId
+                                                                                                        , input_ssrc = AudioInputSSRC
+                                                                                                        , target_ip = AudioTargetIP
+                                                                                                        , target_port = AudioTargetPort
+                                                                                                        }
+                                                     , video = undefined
+                                                     }
+            },
+            _From,
+            #?state{} = State
+            ) ->
+
+  {ok, AudioSocket} = gen_udp:open(0, [binary, {active, false}]),
+  ok = gen_udp:connect(AudioSocket, AudioTargetIP, AudioTargetPort),
+
+  ClientConfig =
+    #media_gateway_egest_client_config{ audio = #media_gateway_stream_element_config{ media_socket = AudioSocket
+                                                                                    , egest_crypto = random_egest_crypto()
+                                                                                    , cname = <<"audio">>
+                                                                                    , payload_type_id = AudioPayloadTypeId
+                                                                                    , input_ssrc = AudioInputSSRC
+                                                                                    }
+                                      , video = undefined
+                                      },
+
+  NewState = handle_add_egest_client(SlotId, SlotRole, ClientId, ClientConfig, State),
+
+  {reply, ok, NewState};
+
 
 handle_call({ add_test_egest_client
             , SlotId
@@ -195,6 +251,7 @@ handle_call({ add_test_egest_client
   NewState = handle_add_egest_client(SlotId, SlotRole, ClientId, ClientConfig, State),
 
   {reply, ok, NewState};
+
 
 handle_call({add_egest_client, SlotId , SlotRole , ClientId , EgestClientConfig} , _From , State) ->
   NewState = handle_add_egest_client(SlotId, SlotRole, ClientId, EgestClientConfig, State),
@@ -365,7 +422,7 @@ event_to_record(#{ <<"kind">> := <<"synchronization_established">> }, #{ <<"rtp_
   #media_gateway_client_synchronization_established_event{ rtp_timestamp = RTPTimestamp };
 
 event_to_record(#{ <<"kind">> := <<"subscription_switched">> }, #{ <<"audio_ssrc">> := AudioSSRC, <<"video_ssrc">> := VideoSSRC }) ->
-  #media_gateway_client_subscription_switched_event{ audio_ssrc = AudioSSRC, video_ssrc = VideoSSRC };
+  #media_gateway_client_subscription_switched_event{ audio_ssrc = AudioSSRC, video_ssrc = null_to_undefined(VideoSSRC) };
 
 event_to_record(#{ <<"kind">> := <<"statistics_updated">> },
                 #{ <<"audio_packets_sent">> := AudioPacketsSent
@@ -391,6 +448,39 @@ handle_add_egest_client(SlotId,
                                                                                                         , payload_type_id = AudioPayloadTypeId
                                                                                                         , input_ssrc = AudioSSRC
                                                                                                         }
+                                                          , video = undefined
+                                                          },
+                       State
+                       ) ->
+
+  NewState = ensure_control_socket(State),
+
+  Header = header(add_audio_only_egest_client),
+
+  Body = ?pack(#{ slot_key => slot_key(SlotId, SlotRole)
+                , client_id => ClientId
+                , audio_crypto_params => convert_crypto_params(AudioEgestCrypto)
+                , audio_cname => AudioCName
+                , audio_payload_type_id => AudioPayloadTypeId
+                , audio_input_ssrc => AudioSSRC
+                }),
+
+  {ok, AudioSocketFd} = inet:getfd(AudioSocket),
+
+  send_msg(NewState#?state.control_socket, Header, Body, [AudioSocketFd]),
+
+  NewState;
+
+
+handle_add_egest_client(SlotId,
+                        SlotRole,
+                        ClientId,
+                        #media_gateway_egest_client_config{ audio = #media_gateway_stream_element_config{ media_socket = AudioSocket
+                                                                                                        , egest_crypto = AudioEgestCrypto
+                                                                                                        , cname = AudioCName
+                                                                                                        , payload_type_id = AudioPayloadTypeId
+                                                                                                        , input_ssrc = AudioSSRC
+                                                                                                        }
                                                           , video = #media_gateway_stream_element_config{ media_socket = VideoSocket
                                                                                                         , egest_crypto = VideoEgestCrypto
                                                                                                         , cname = VideoCName
@@ -403,7 +493,7 @@ handle_add_egest_client(SlotId,
 
   NewState = ensure_control_socket(State),
 
-  Header = header(add_egest_client),
+  Header = header(add_audio_video_egest_client),
 
   Body = ?pack(#{ slot_key => slot_key(SlotId, SlotRole)
                 , client_id => ClientId
@@ -428,3 +518,7 @@ random_egest_crypto() ->
   #srtp_crypto_params{ master_key = crypto:strong_rand_bytes(16)
                      , master_salt = crypto:strong_rand_bytes(14)
                      }.
+
+
+null_to_undefined(null) -> undefined;
+null_to_undefined(Other) -> Other.

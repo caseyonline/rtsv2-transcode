@@ -56,6 +56,9 @@ data Endpoint
   | WorkflowGraphE String
   | WorkflowMetricsE String
   | WorkflowStructureE String
+  | WorkflowConfigE String
+  | VisualiserE String
+  | VisualiserAssetsE String (Array String)
 
 derive instance genericEndpoint :: Generic Endpoint _
 
@@ -104,6 +107,9 @@ endpoint = root $ sum
   , "WorkflowGraphE"                                   : "system" / "workflows" / segment / "graph" -- URL duplicated in Web.purs
   , "WorkflowMetricsE"                                 : "system" / "workflows" / segment / "metrics" -- URL duplicated in Web.purs
   , "WorkflowStructureE"                               : "system" / "workflows" / segment / "structure" -- URL duplicated in Web.purs
+  , "WorkflowConfigE"                                  : "system" / "workflows" / segment / "workflow/config" -- URL duplicated in Web.purs
+  , "VisualiserE"                                      : "system" / "workflows" / segment / "visualiser" 
+  , "VisualiserAssetsE"                                : "system" / "workflows" / segment / "visualiser" / rest
 }
 
 makePath :: Endpoint -> String

@@ -34,6 +34,8 @@
 -define(INITIAL_GOP_COUNT, 3).
 -define(state, ?MODULE).
 
+-define(AUDIO_GOP_LENGTH, 90000).
+
 -record(?state, {
   workflow :: undefined | i3das_workflow:compiled_workflow(),
   config :: rtsv2_hls_segment_workflow_config(),
@@ -55,16 +57,29 @@ spec(_Processor) ->
 initialise(_Processor = #processor{config = Config}) ->
   {ok, #?state{ config = Config }}.
 
-process_input(#gop_measurement{ duration = Duration }, State = #?state{ workflow = undefined, gop_duration = ExistingDuration, initial_gop_count = GopCount }) when GopCount+1 < ?INITIAL_GOP_COUNT ->
-  NewDuration = max(Duration, ExistingDuration),
-  {ok, State#?state{ gop_duration = NewDuration, initial_gop_count = GopCount+1 }};
 
-process_input(#gop_measurement{ duration = Duration }, State = #?state{ workflow = undefined, config = Config, initial_gop_count = GopCount }) ->
-  Workflow = build_workflow(Duration, Config),
+process_input(Input, State = #?state{ workflow = undefined, config = Config = #rtsv2_hls_segment_workflow_config{ audio_only = true }}) ->
+  ?INFO("Building audio-only workflow"),
+  Workflow = build_workflow(?AUDIO_GOP_LENGTH, Config),
 
   {ok, Pid} = id3as_workflow:start_link(Workflow),
   {ok, WorkflowState} = id3as_workflow:workflow_state(Pid),
-  {ok, State#?state{ workflow = WorkflowState, gop_duration = Duration, initial_gop_count = GopCount+1 }};
+  State2 = State#?state{ workflow = WorkflowState, gop_duration = ?AUDIO_GOP_LENGTH },
+  process_input(Input, State2);
+
+process_input(#gop_measurement{ duration = Duration }, State = #?state{ workflow = undefined, gop_duration = ExistingDuration, initial_gop_count = GopCount }) when GopCount+1 < ?INITIAL_GOP_COUNT ->
+  NewDuration = max(Duration, ?null_coalesce(ExistingDuration,0)),
+  ?INFO("Calculated GOP duration as ~p from ~p, ~p (~p)", [NewDuration, ExistingDuration, Duration, GopCount]),
+  {ok, State#?state{ gop_duration = NewDuration, initial_gop_count = GopCount+1 }};
+
+process_input(#gop_measurement{ duration = Duration }, State = #?state{ workflow = undefined, config = Config, gop_duration = ExistingDuration, initial_gop_count = GopCount }) ->
+  NewDuration = max(Duration, ?null_coalesce(ExistingDuration,0)),
+  ?INFO("Calculated GOP duration as ~p from ~p, ~p (~p) - now building workflow", [NewDuration, ExistingDuration, Duration, GopCount]),
+  Workflow = build_workflow(NewDuration, Config),
+
+  {ok, Pid} = id3as_workflow:start_link(Workflow),
+  {ok, WorkflowState} = id3as_workflow:workflow_state(Pid),
+  {ok, State#?state{ workflow = WorkflowState, gop_duration = NewDuration, initial_gop_count = GopCount+1 }};
 
 process_input(_Other, State = #?state{ workflow = undefined }) ->
   {ok, State};
@@ -72,7 +87,7 @@ process_input(_Other, State = #?state{ workflow = undefined }) ->
 process_input(#gop_measurement{}, State = #?state{ workflow = _Workflow }) ->
   {ok, State};
 
-process_input(Frame = #frame{}, State = #?state{ workflow = Workflow }) ->
+process_input(Frame, State = #?state{ workflow = Workflow }) ->
   ok = id3as_workflow:process_input(Frame, Workflow),
   {ok, State}.
 
@@ -103,9 +118,11 @@ contained_workflow(#?state{workflow = Workflow}) ->
 
 build_workflow(GopDurationPts,
                #rtsv2_hls_segment_workflow_config{ slot_profile = #{ profileName := ProfileName },
-                                                   push_details = PushDetails = [#{ auth := #{username := Username, password := Password}, segmentDuration := DesiredSegmentDuration, playlistDuration := PlaylistDuration, putBaseUrl := PutBaseUrl } | _ ]
+                                                   push_details = PushDetails = [#{ auth := #{username := Username, password := Password}, segmentDuration := DesiredSegmentDuration, playlistDuration := PlaylistDuration, putBaseUrl := PutBaseUrl } | _ ],
+                                                   audio_only = AudioOnly
 
  } ) ->
+  ?INFO("PushDetails: ~p, GopDurationPts: ~p", [PushDetails, GopDurationPts]),
   if length(PushDetails) > 1 -> ?WARNING("Only currently supporting 1 push details: ~p", [PushDetails]);
      ?otherwise -> ok
   end,
@@ -117,21 +134,26 @@ build_workflow(GopDurationPts,
   TsEncoderConfig = #ts_encoder_config{
                        which_encoder = ts_simple_encoder,
                        program_pid = 4096,
-                       pcr_pid = 256,
-                       streams = [
-                                  #ts_stream {
-                                     pid = 256,
-                                     index = 1,
-                                     pes_stream_type = ?STREAM_TYPE_VIDEO_H264,
-                                     pes_stream_id = ?PesVideoStreamId(1)
-                                    },
-                                  #ts_stream {
-                                     pid = 257,
-                                     index = 2,
-                                     pes_stream_type = ?STREAM_TYPE_AUDIO_AAC_ADTS,
-                                     pes_stream_id = ?PesAudioStreamId(1)
-                                    }
-                                 ]},
+                       pcr_pid = case AudioOnly of true -> 257; false -> 256 end,
+                       streams = 
+                        case AudioOnly of 
+                          true -> [];
+                          false -> [
+                            #ts_stream {
+                                pid = 256,
+                                index = 1,
+                                pes_stream_type = ?STREAM_TYPE_VIDEO_H264,
+                                pes_stream_id = ?PesVideoStreamId(1)
+                              }
+                          ]
+                         end ++ [ #ts_stream {
+                                    pid = 257,
+                                    index = 2,
+                                    pes_stream_type = ?STREAM_TYPE_AUDIO_AAC_ADTS,
+                                    pes_stream_id = ?PesAudioStreamId(1)
+                                  }
+                                ]
+                        },
   #workflow{
             name = rtsv2_hls_segmenter,
             display_name = <<"HLS Segment Publisher">>,
@@ -140,13 +162,12 @@ build_workflow(GopDurationPts,
                 #processor{name = adts,
                   module = adts_encapsulator,
                   subscribes_to = { outside_world, ?audio_frames }
-
                 },
                 #processor{
                   name = stream_sync,
                   module = stream_sync,
                   subscribes_to = [{outside_world, ?video_frames}, ?previous],
-                  config = #stream_sync_config{ num_streams = 2 }
+                  config = #stream_sync_config{ num_streams = case AudioOnly of true -> 1; false -> 2 end }
                 },
                 #processor{name = ts_mux,
                   display_name = <<"TS Mux">>,
@@ -159,7 +180,7 @@ build_workflow(GopDurationPts,
                   display_name = <<"TS Segmenter">>,
                   subscribes_to = ?previous,
                   config = #ts_segment_generator_config {
-                              mode = video,
+                              mode = gop_number,
                               segment_strategy = #ts_segment_generator_gop_strategy {
                                 gops_per_segment = GopsPerSegment 
                               }

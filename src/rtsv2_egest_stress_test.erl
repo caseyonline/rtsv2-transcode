@@ -9,13 +9,19 @@
 
 -export([ start_test_client/0
         , start_test_client/1
+        , start_test_client/2
         , start_test_clients/2
+        , start_test_clients/3
         ]).
 
 
 start_test_clients(From, To) ->
+  start_test_clients(audio_video, From, To).
+
+
+start_test_clients(ClientType, From, To) ->
   lists:foreach(fun(ClientId) ->
-                    start_test_client(ClientId)
+                    start_test_client(ClientType, ClientId)
                 end,
                 lists:seq(From, To)
                ).
@@ -24,6 +30,9 @@ start_test_client() ->
   start_test_client(1).
 
 start_test_client(ClientId) ->
+  start_test_client(audio_video, ClientId).
+
+start_test_client(audio_video, ClientId) ->
   SlotId = 1,
   SlotRole = primary,
 
@@ -40,4 +49,17 @@ start_test_client(ClientId) ->
                                                                                               }
                                            },
 
+  rtsv2_media_gateway_api:add_test_egest_client(SlotId, SlotRole, ClientId, Config);
+
+start_test_client(audio_only, ClientId) ->
+  SlotId = 1,
+  SlotRole = primary,
+
+  Config =
+    #media_gateway_test_egest_client_config{ audio = #media_gateway_test_stream_element_config{ payload_type_id = ?OPUS_ENCODING_ID
+                                                                                              , input_ssrc = ?make_audio_ssrc(16, 0)
+                                                                                              , target_ip = {127, 0, 0, 1}
+                                                                                              , target_port = 4242
+                                                                                              }
+                                           },
   rtsv2_media_gateway_api:add_test_egest_client(SlotId, SlotRole, ClientId, Config).

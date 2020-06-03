@@ -103,7 +103,8 @@ workflowMessageMapperImpl(_) ->
 %%------------------------------------------------------------------------------
 startWorkflow(SlotConfiguration = #{ slotId := SlotId
                                    , slotRole := SlotRole
-                                   , profiles := Profiles}, PushDetails) ->
+                                   , profiles := Profiles
+                                   , audioOnly := AudioOnly}, PushDetails) ->
 
   Pids = lists:map(fun(IngestKey) ->
                        {ok, Pid} = webrtc_stream_server:start_link(IngestKey, #{stream_module => rtsv2_webrtc_ingest_preview_stream_handler,
@@ -160,11 +161,13 @@ startWorkflow(SlotConfiguration = #{ slotId := SlotId
                               #processor{name = aggregate,
                                          display_name = <<"Gather Ingests">>,
                                          subscribes_to = ingests,
-                                         module = rtsv2_ingest_aggregator_processor
+                                         module = rtsv2_ingest_aggregator_processor,
+                                         config = AudioOnly
                                         },
 
                               #processor{name = set_video_profile_name,
-                                         subscribes_to = ?previous,
+                                         display_name = <<"Set Video Profile Name">>,
+                                         subscribes_to = {?previous, ?video_frames},
                                          module = fun_processor,
                                          config = #fun_processor_config{
                                                                           function = fun(Frame = #frame{source_metadata = #source_metadata{source_id = ProfileName},
@@ -176,10 +179,28 @@ startWorkflow(SlotConfiguration = #{ slotId := SlotId
                                                                        }
                                         },
 
+                              #compound_processor{
+                                               name = audio_transcode,
+                                               display_name = <<"Audio Transcode">>,
+                                               spec = #processor_spec{consumes = [?audio_frames]},
+                                               subscribes_to = {aggregate, ?audio_frames},
+                                               processors = [
+                                                  #processor{name = binary_to_atom(ProfileName, utf8),
+                                                             display_name = <<ProfileName/binary, " (receiving from ", StreamName/binary, ")">>,
+                                                             subscribes_to = {outside_world, ?audio_frames_with_source_id(ProfileName)},
+                                                             module = audio_transcode,
+                                                             config = AudioConfig
+                                                            }
+                                                  || #{ streamName := StreamName
+                                                      , profileName := ProfileName} <- Profiles
+                                               ]
+
+                                              },
+
 
                               #processor{name = gop_numberer,
                                          display_name = <<"GoP Numberer">>,
-                                         subscribes_to = ?previous,
+                                         subscribes_to = [set_video_profile_name, audio_transcode, {aggregate, ?program_details_frames}],
                                          module = gop_numberer
                                         },
 
@@ -192,14 +213,15 @@ startWorkflow(SlotConfiguration = #{ slotId := SlotId
                                 #processor{name = master_hls_playlists,
                                           display_name = <<"Publish Master HLS Playlists">>,
                                           subscribes_to = [
-                                              {gop_numberer, ?audio_frames},
+                                              {gop_numberer, ?audio_frames_with_profile_name(aac)},
                                               {gop_numberer, ?video_frames}
                                           ],
                                           module = rtsv2_hls_master_playlist_processor,
                                           config = #hls_master_playlist_processor_config{
                                               slot_id = SlotId,
                                               profiles = Profiles,
-                                              push_details = PushDetails
+                                              push_details = PushDetails,
+                                              audio_only = AudioOnly
                                             }
                                           }
                               ),
@@ -228,23 +250,18 @@ startWorkflow(SlotConfiguration = #{ slotId := SlotId
                                                                            display_name = <<"HLS Publish">>,
                                                                            subscribes_to = [
                                                                              {outside_world, ?video_frames},
-                                                                             {audio_transcode, ?audio_frames_with_profile_name(aac)},
+                                                                             {outside_world, ?audio_frames_with_profile_name(aac)},
                                                                              {outside_world, ?gop_measurements}
                                                                            ],
                                                                            module = rtsv2_hls_segment_workflow,
                                                                            config = #rtsv2_hls_segment_workflow_config{
                                                                              slot_id = SlotId,
                                                                              slot_profile = Profile,
-                                                                             push_details = PushDetails
+                                                                             push_details = PushDetails,
+                                                                             audio_only = AudioOnly
                                                                            }
                                                               }),
 
-                                                             #processor{name = audio_transcode,
-                                                                        display_name = <<"Audio Transcode">>,
-                                                                        subscribes_to = {outside_world, ?audio_frames},
-                                                                        module = audio_transcode,
-                                                                        config = AudioConfig
-                                                                       },
 
                                                              %% #processor{name = audio_decode,
                                                              %%            display_name = <<"Audio Decode">>,
@@ -278,7 +295,7 @@ startWorkflow(SlotConfiguration = #{ slotId := SlotId
                                                              #processor{name = rtp,
                                                                         display_name = <<"WebRTC RTP Mux">>,
                                                                         module = fun_processor,
-                                                                        subscribes_to = [{?previous, ?audio_frames_with_profile_name(opus)}, {outside_world, ?video_frames}],
+                                                                        subscribes_to = [{outside_world, ?audio_frames_with_profile_name(opus)}, {outside_world, ?video_frames}],
                                                                         config = #fun_processor_config{ initial_state =
                                                                                                           { rtp_opus_egest:new(AudioSSRCStart, ?OPUS_ENCODING_ID)
                                                                                                           , rtp_h264_egest:new(VideoSSRCStart, ?H264_ENCODING_ID)
