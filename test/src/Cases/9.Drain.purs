@@ -111,7 +111,7 @@ passiveDrainTest2 =
 
 passiveDrainTest3 :: forall m. Monad m => SpecT Aff Unit m Unit
 passiveDrainTest3 =
-  itOnly "9.1.3 Once agents have passively drained, node switches to out-of-service state" do
+  it "9.1.3 Once agents have passively drained, node switches to out-of-service state" do
     HTTP.ingestStart E.p1n1 Live E.shortName1 E.lowStreamName
                                        >>= A.assertStatusCode 200 >>= as "create low ingest"
 
