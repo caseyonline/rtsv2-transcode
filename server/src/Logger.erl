@@ -62,7 +62,6 @@ spyImpl(Metadata, Report) ->
 
 addLoggerMetadata(Metadata) ->
   fun() ->
-io:format(user, "XXX ADD ~p~n", [Metadata]),
       logger:update_process_metadata(#{rtsv2 => Metadata})
   end.
 
@@ -76,6 +75,7 @@ purs_metadata_to_erl(Metadata) ->
   Metadata2 = Metadata#{type => case Type of
                                   {trace} -> trace;
                                   {event} -> event;
+                                  {command} -> command;
                                   {audit} -> audit
                                 end},
 

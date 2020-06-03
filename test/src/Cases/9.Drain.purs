@@ -242,7 +242,7 @@ forceDrainTest1 =
 forceDrainTest2 :: forall m. Monad m => SpecT Aff Unit m Unit
 forceDrainTest2 =
     after_ (F.stopSlot) do
-      it "9.2.2 Force drain moves aggregator, relay and egest agents to other node" do
+      itOnly "9.2.2 Force drain moves aggregator, relay and egest agents to other node" do
 
         traverse_ F.maxOut (F.allNodesBar E.p1n2 threeNodes)                   >>= as' "load up all servers bar one"
 

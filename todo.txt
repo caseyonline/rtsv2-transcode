@@ -14,9 +14,9 @@ Tests:
 [ ] - data object store
 [ ] - discovery API
 [ ]	- multi-bitrate ingest
-[ ] - ingest prometheus stats
-[ ] - egest prometheus stats
 
+[x] - ingest prometheus stats
+[x] - egest prometheus stats
 [x] - double check remote status through TransPoP
 [x] - transPoP load messages - not done, not currently used
 [x] - add stream_id domain to logs that are per-stream - done with logger metadata

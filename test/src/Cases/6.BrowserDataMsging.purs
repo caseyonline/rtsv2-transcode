@@ -41,7 +41,7 @@ publisherMsg = "Publisher message"
 -------------------------------------------------------------------------------
 browserDataMsging :: forall m. Monad m => SpecT Aff Unit m Unit
 browserDataMsging =
-  describeOnly "Data Messages" do
+  describe "Data Messages" do
     broadcastMessages -- 5.3
 
 -------------------------------------------------------------------------------
