@@ -16,7 +16,7 @@ let additions =
                 ]
               : List Text
           , repo = "https://github.com/justinwoo/purescript-toppokki.git"
-          , version = "v2.4.0"
+          , version = "37a8bd725509d13894203d2c694e99f7ef2b0608"
           }
       , milkis =
           { dependencies =

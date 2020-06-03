@@ -59,13 +59,20 @@
         <div class="messages">
         </div>
         <form class="footer" onsubmit="return false;">
-          <input id="msginput" type="text" placeholder="Your message..">
-          <button id="msgsend" type="submit">Send</button>
-          <select name="msgType" id="msgType">
-            <option value="broadcast">broadcast</option>
-            <option value="private">private</option>
-            <option value="publisher">pusblisher</option>
-          </select>
+          <div class="container">
+          <div class="row">
+            <input id="msginput" type="text" placeholder="Your message..">
+          </div>
+          <div class="row">
+            <input id="msgPrivateId" type="text" placeholder="Private traceId if needed..">
+            <button id="msgsend" type="submit">Send</button>
+            <select name="msgType" id="msgType">
+              <option value="broadcast">broadcast</option>
+              <option value="private">private</option>
+              <option value="publisher">pusblisher</option>
+            </select>
+          </div>
+          </div>
         </form>
         <template data-template="message">
           <div class="message">
@@ -99,20 +106,26 @@
         var player = LimelightSDK.createPlayer(config);
 
         form.addEventListener('submit', (form) => {
-          const input = document.querySelector('input[type="text"]');
+          console.log(form)
+          const input = document.querySelector('#msginput');
           const msg = input.value;
+
+          const inputPrivate = document.querySelector('#msgPrivateId');
+          const privateTraceId = input.value;
+
           const s = $('#msgType option').filter(':selected').text();
           input.value = '';
+          inputPrivate.value = '';
+
           if (s == "broadcast") {
             player.sendBroadcastMessage(msg)
           }
           if (s == "private") {
-            player.sendPrivateMessage(msg)
+            player.sendPrivateMessage(privateTraceId, msg)
           }
           if (s == "pusblisher") {
             player.sendPublisherMessage(msg)
           }
-
         });
 
         function insertMessageToDOM(message, isFromMe) {
@@ -147,7 +160,7 @@
           console.log("active-profiles", profiles);
         });
         player.on("data-object-message", (message) => {
-           console.log("data-object-message", message);
+          console.log("data-object-message", message);
           insertMessageToDOM(message, (message.sender == player.session.traceId));
         });
         player.on("data-object-message-failure", () => {
