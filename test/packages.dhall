@@ -16,7 +16,7 @@ let additions =
                 ]
               : List Text
           , repo = "https://github.com/justinwoo/purescript-toppokki.git"
-          , version = "v2.4.0"
+          , version = "37a8bd725509d13894203d2c694e99f7ef2b0608"
           }
       , milkis =
           { dependencies =
@@ -37,6 +37,14 @@ let additions =
           , repo =
               "https://github.com/dariooddenino/purescript-record-prefix.git"
           , version = "v1.0.0"
+          }
+      , longs =
+          { dependencies =
+          [ "prelude", "nullable", "strings", "foreign", "functions", "console", "effect"
+
+          ]
+          , repo = "https://github.com/id3as/purescript-longs.git"
+          , version = "100d382591bbbf912821576294f0849b695446d9"
           }
       }
 

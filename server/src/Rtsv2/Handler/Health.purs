@@ -11,6 +11,7 @@ import Effect (Effect)
 import Erl.Data.List (nil, (:))
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.TransPoP as TransPoP
+import Rtsv2.Alerts as Alerts
 import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.Load as Load
 import Rtsv2.NodeManager as NodeManager
@@ -35,12 +36,15 @@ healthCheck =
       transPoPHealth <- TransPoP.health
       load <- Load.getLoad
       nodeManager <- NodeManager.getState
+      alerts <- Alerts.currentAlerts
       let
         health = { intraPoPHealth
                  , transPoPHealth
                  , load
                  , nodeManager
-                 , currentTransPoP : extractAddress <$> currentTransPoP}
+                 , currentTransPoP : extractAddress <$> currentTransPoP
+                 , alerts
+                 }
       node <- JsonLd.healthNode health thisServer
 
       Rest.result (JSON.writeJSON node) req state

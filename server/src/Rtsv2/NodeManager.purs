@@ -30,12 +30,13 @@ import Erl.Process.Raw (Pid)
 import Erl.Utils (Ref)
 import Erl.Utils as Erl
 import Erl.Utils as ErlUtils
-import Logger (Logger, spy)
+import Logger (spy)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult, ok')
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
+import Prim.Row as Row
 import Rtsv2.Agents.EgestInstance as EgestInstance
 import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
 import Rtsv2.Agents.IntraPoP as IntraPoP
@@ -146,8 +147,8 @@ changeCanaryState newCanary =
           totalAgents > 0 then
             pure $ CallReply (Left ActiveAgents) state
         else do
-          logInfo "CanaryState changed" { old: state.currentCanaryState
-                                        , new: newCanary}
+          logCommand "CanaryState changed" { old: state.currentCanaryState
+                                           , new: newCanary}
           let
             state2 = state{ currentCanaryState = newCanary }
           (CallReply (Right unit)) <$> restartActiveSup state2
@@ -163,8 +164,8 @@ changeRunState newRunState =
     doChange state = do
       let
         state2 = state{ currentRunState = newRunState }
-      _ <- logInfo "RunState changed" { old: state.currentRunState
-                                      , new: newRunState}
+      _ <- logCommand "RunState changed" { old: state.currentRunState
+                                         , new: newRunState}
       IntraPoP.announceAcceptingRequests $ acceptingRequests newRunState
       state3 <- maybeForceDrain state2
       pure $ CallReply (Right unit) state3
@@ -276,7 +277,6 @@ launchAndUpdateState agent canaryStream launchFun thisServer =
       pure $ CallReply (Left InvalidRunState) state
 
     doLaunchAndUpdateState state@{currentCanaryState} | currentCanaryState /= canary currentCanaryState canaryStream = do
-      logInfo "FAIL STREAM" {currentCanaryState, canary}
       pure $ CallReply (Left InvalidCanaryState) state
 
     doLaunchAndUpdateState state@{agentCounts} = do
@@ -406,5 +406,8 @@ activeSupStartArgs canaryState =
 domains :: List Atom
 domains = serverName # Names.toDomain # singleton
 
-logInfo :: forall a. Logger (Record a)
+logInfo :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
 logInfo = Logger.doLog domains Logger.info
+
+logCommand :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
+logCommand = Logger.doLogCommand domains

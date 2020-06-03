@@ -48,7 +48,9 @@ destroy_net
 
 create_net
 
-# ulimit -n 65536
+# To do at-scale tests with rtsv2-media-gateway, it's necessary
+# to have a lot of a file-handles available
+ulimit -n $(ulimit -H -n)
 
 tmux -L "$SESSION" -2 new-session -d -s "$SESSION"
 

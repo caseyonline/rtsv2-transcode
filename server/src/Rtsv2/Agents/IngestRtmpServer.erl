@@ -9,7 +9,7 @@
 
 -export([ startServerImpl/9
         , rtmpQueryToPurs/1
-        , startWorkflowImpl/6
+        , startWorkflowImpl/7
         ]).
 
 %%------------------------------------------------------------------------------
@@ -39,11 +39,11 @@ start_rtmp_server({ipv4, O1, O2, O3, O4}, Port, NbAcceptors, Callbacks) ->
     Error -> {error, Error}
   end.
 
-startWorkflowImpl(Rtmp, IngestPid, PublishArgs, IngestKey, ClientMetadataFn, SourceInfoFn) ->
+startWorkflowImpl(Rtmp, IngestPid, PublishArgs, IngestKey, ProfileMetadata, ClientMetadataFn, SourceInfoFn) ->
   fun() ->
       MRef = erlang:monitor(process, IngestPid),
 
-      {ok, _WorkflowPid} = start_workflow(Rtmp, PublishArgs, IngestKey),
+      {ok, _WorkflowPid} = start_workflow(Rtmp, PublishArgs, IngestKey, ProfileMetadata),
 
       %% Stream is now connected - we block in here, when we return the rtmp_server instance will close
       workflow_loop(MRef, ClientMetadataFn, SourceInfoFn)
@@ -87,7 +87,7 @@ rtmpQueryToPurs(#{}) ->
 %%------------------------------------------------------------------------------
 %% Internals
 %%------------------------------------------------------------------------------
-start_workflow(Rtmp, PublishArgs, Key = {ingestKey, SlotId, SlotRole, ProfileName}) ->
+start_workflow(Rtmp, PublishArgs, Key = {ingestKey, SlotId, SlotRole, ProfileName}, ProfileMetadata) ->
 
   Workflow = #workflow{
                 name = {rtmp_ingest_handler, Key},
@@ -95,7 +95,8 @@ start_workflow(Rtmp, PublishArgs, Key = {ingestKey, SlotId, SlotRole, ProfileNam
                 tags = #{type => rtmp_ingest_handler,
                          slot => SlotId,
                          profile => ProfileName,
-                         stream_role => SlotRole
+                         stream_role => SlotRole,
+                         profile_metadata => ProfileMetadata
                         },
                 generators = [
                               #generator{name = rtmp_ingest,

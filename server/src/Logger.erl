@@ -9,63 +9,88 @@
          notice/2,
          info/2,
          debug/2,
-         spyImpl/2
+         spyImpl/2,
+         addLoggerMetadata/1
         ]).
 
--define(do_effectful_log(Level, Msg, Args),
+-define(do_effectful_log(Level, Metadata, Report),
         [{current_stacktrace, Stack}] = erlang:process_info(self(), [current_stacktrace]),
         fun() ->
             {Module, Fun, Arity, File, Line} = walk_stack(Stack),
 
-            Location = #{mfa => {Module, Fun, Arity},
-                         module => Module,
-                         line => Line,
-                         file => File},
-
-            Args2 = case maps:get(event, Args, undefined) of
-                      {Event} -> maps:put(event, Event, Args);
-                      _ -> Args
-                    end,
-
             case logger:allow(Level, Module) of
               true ->
-                apply(logger, macro_log, [Location, Level, binary_to_list(Msg), [], Args2]),
+                Location = #{mfa => {Module, Fun, Arity},
+                             line => Line,
+                             file => File},
+
+                ErlMetadata = purs_metadata_to_erl(Metadata),
+
+                apply(logger, macro_log, [Location, Level, Report, ErlMetadata]),
                 unit;
               false ->
                 unit
             end
         end).
 
-emergency(Msg, Args) ->
-  ?do_effectful_log(emergency, Msg, Args).
+emergency(Metadata, Report) ->
+  ?do_effectful_log(emergency, Metadata, Report).
 
-alert(Msg, Args) ->
-  ?do_effectful_log(alert, Msg, Args).
+alert(Metadata, Report) ->
+  ?do_effectful_log(alert, Metadata, Report).
 
-critical(Msg, Args) ->
-  ?do_effectful_log(critical, Msg, Args).
+critical(Metadata, Report) ->
+  ?do_effectful_log(critical, Metadata, Report).
 
-error(Msg, Args) ->
-  ?do_effectful_log(error, Msg, Args).
+error(Metadata, Report) ->
+  ?do_effectful_log(error, Metadata, Report).
 
-warning(Msg, Args) ->
-  ?do_effectful_log(warning, Msg, Args).
+warning(Metadata, Report) ->
+  ?do_effectful_log(warning, Metadata, Report).
 
-notice(Msg, Args) ->
-  ?do_effectful_log(notice, Msg, Args).
+notice(Metadata, Report) ->
+  ?do_effectful_log(notice, Metadata, Report).
 
-info(Msg, Args) ->
-  ?do_effectful_log(info, Msg, Args).
+info(Metadata, Report) ->
+  ?do_effectful_log(info, Metadata, Report).
 
-debug(Msg, Args) ->
-  ?do_effectful_log(debug, Msg, Args).
+debug(Metadata, Report) ->
+  ?do_effectful_log(debug, Metadata, Report).
 
-spyImpl(Msg, Args) ->
-  ?do_effectful_log(notice, Msg, Args).
+spyImpl(Metadata, Report) ->
+  ?do_effectful_log(notice, Metadata, Report).
+
+addLoggerMetadata(Metadata) ->
+  fun() ->
+io:format(user, "XXX ADD ~p~n", [Metadata]),
+      logger:update_process_metadata(#{rtsv2 => Metadata})
+  end.
 
 %%------------------------------------------------------------------------------
 %% Internal
 %%------------------------------------------------------------------------------
+purs_metadata_to_erl(Metadata) ->
+
+  #{type := Type} = Metadata,
+
+  Metadata2 = Metadata#{type => case Type of
+                                  {trace} -> trace;
+                                  {event} -> event;
+                                  {audit} -> audit
+                                end},
+
+  Metadata3 = case maps:get(event, Metadata2, undefined) of
+                {Event} -> maps:put(event, Event, Metadata2);
+                _ -> Metadata2
+              end,
+
+  Metadata4 = case maps:get(text, Metadata3, undefined) of
+                undefined -> Metadata3;
+                Value -> maps:put(text, binary_to_list(Value), Metadata3)
+              end,
+
+  Metadata4.
+
 walk_stack([_LoggerFrame | Stack = [{TopModule, TopFun, TopArity, [{file, TopFile}, {line, TopLine}]} | _]]) ->
   walk_stack_internal({TopModule, TopFun, TopArity, TopFile, TopLine}, Stack).
 

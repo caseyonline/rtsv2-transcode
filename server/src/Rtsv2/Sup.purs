@@ -10,6 +10,7 @@ import Pinto as Pinto
 import Pinto.Sup (SupervisorChildType(..), SupervisorSpec, SupervisorStrategy(..), buildChild, buildSupervisor, childId, childStart, childType, supervisorChildren, supervisorStrategy)
 import Pinto.Sup as Sup
 import Rtsv2.ActiveSup as ActiveSup
+import Rtsv2.Alerts as Alerts
 import Rtsv2.Config as Config
 import Rtsv2.Load as Load
 import Rtsv2.NodeManager as NodeManager
@@ -29,6 +30,7 @@ init = do
         ( popDefinition popDefinitionConfig
           : nodeManager
           : load
+          : alerts
           : webServer webConfig
           : nil
         )
@@ -50,6 +52,12 @@ init = do
       # childType Worker
       # childId "load"
       # childStart Load.startLink unit
+
+    alerts =
+      buildChild
+      # childType Worker
+      # childId "alerts"
+      # childStart Alerts.startLink unit
 
     nodeManager =
       buildChild

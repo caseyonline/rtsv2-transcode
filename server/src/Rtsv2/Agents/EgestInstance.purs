@@ -41,13 +41,13 @@ import Erl.Process (Process(..), (!))
 import Erl.Process.Raw (Pid)
 import Erl.Utils (Ref, makeRef, systemTimeMs)
 import Erl.Utils as Erl
-import Logger (Logger)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
 import Pinto as Pinto
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
+import Prim.Row as Row
 import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Agents.EgestInstance.WebRTCTypes (WebRTCStreamServerStats, WebRTCSessionManagerStats)
 import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..), announceLocalEgestStopped)
@@ -65,7 +65,7 @@ import Rtsv2.LoadTypes (LoadFixedCost(..), PredictedLoad(..))
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Types (LocalOrRemote(..), RegistrationResp, ResourceResp)
-import Shared.Common (Milliseconds(..))
+import Shared.Common (LoggingMetadata(..), Milliseconds(..))
 import Shared.Rtsv2.Agent (SlotCharacteristics)
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.JsonLd (EgestStats, EgestSessionStats)
@@ -286,6 +286,7 @@ toEgestServer = unwrap >>> wrap
 
 init :: ParentCallbacks -> CreateEgestPayload -> StateServerName -> Effect State
 init parentCallbacks payload@{slotId, slotRole, aggregatorPoP, slotCharacteristics} stateServerName = do
+  Logger.addLoggerMetadata $ PerSlot { slotId, slotRole, slotName: Nothing}
   { eqLogIntervalMs
   , lingerTimeMs
   , relayCreationRetryMs
@@ -709,11 +710,11 @@ toRelayServer = unwrap >>> wrap
 domain :: List Atom
 domain = Agent.Egest # show # atom # singleton
 
-logInfo :: forall a. Logger (Record a)
+logInfo :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
 logInfo = Logger.doLog domain Logger.info
 
-logStart :: forall a. Logger (Record a)
+logStart :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
 logStart = Logger.doLogEvent domain Logger.Start Logger.info
 
-logStop :: forall a. Logger (Record a)
+logStop :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
 logStop = Logger.doLogEvent domain Logger.Stop Logger.info

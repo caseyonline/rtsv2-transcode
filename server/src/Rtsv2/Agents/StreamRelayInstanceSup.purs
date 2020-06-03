@@ -13,6 +13,7 @@ import Logger as Logger
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildType(..), SupervisorStrategy(..), buildChild, childId, childStart, childType)
 import Pinto.Sup as Sup
+import Prim.Row as Row
 import Rtsv2.Agents.StreamRelayInstance (ParentCallbacks)
 import Rtsv2.Agents.StreamRelayInstance as StreamRelayInstance
 import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload)
@@ -41,11 +42,8 @@ init relayKey parentCallbacks payload stateServerName = do
 --------------------------------------------------------------------------------
 -- Log helpers
 --------------------------------------------------------------------------------
-domains :: List Atom
-domains = atom <$> (show Agent.StreamRelay :  "Instance" : nil)
+domain :: List Atom
+domain = atom <$> (show Agent.StreamRelay :  "Instance" : nil)
 
-logInfo :: forall a. Logger (Record a)
-logInfo = domainLog Logger.info
-
-domainLog :: forall a. Logger {domain :: List Atom, misc :: Record a} -> Logger (Record a)
-domainLog = Logger.doLog domains
+logInfo :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
+logInfo = Logger.doLog domain Logger.info

@@ -32,7 +32,6 @@ import Erl.Data.Map (Map, mapMaybeWithKey, toUnfoldable)
 import Erl.Data.Map as Map
 import File as File
 import Foreign (ForeignError(..), MultipleErrors)
-import Logger (Logger)
 import Logger as Logger
 import Partial.Unsafe (unsafeCrashWith)
 import Pinto (ServerName, StartLinkResult)
@@ -40,12 +39,13 @@ import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import PintoHelper (doExposeState, exposeState)
+import Prim.Row as Row
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
 import Rtsv2.Names as Names
 import Shared.Rtsv2.Agent (Agent)
-import Shared.Rtsv2.Types (GeoLoc, NetworkKbps, PoPName, RegionName, Server(..), ServerAddress(..), ServerLocation(..), SpecInt, extractPoP, toServerLocation)
 import Shared.Rtsv2.Agent.State as PublicState
+import Shared.Rtsv2.Types (GeoLoc, NetworkKbps, PoPName, RegionName, Server(..), ServerAddress(..), ServerLocation(..), SpecInt, extractPoP, toServerLocation)
 import Simple.JSON as JSON
 
 type PoPInfo =
@@ -377,14 +377,11 @@ serverName = Names.popDefinitionName
 --------------------------------------------------------------------------------
 -- Log helpers
 --------------------------------------------------------------------------------
-domains :: List Atom
-domains = serverName # Names.toDomain # singleton
+domain :: List Atom
+domain = serverName # Names.toDomain # singleton
 
-logInfo :: forall a. Logger (Record a)
-logInfo = domainLog Logger.info
+logInfo :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
+logInfo = Logger.doLog domain Logger.info
 
-logWarning :: forall a. Logger (Record a)
-logWarning = domainLog Logger.warning
-
-domainLog :: forall a. Logger {domain :: List Atom, misc :: Record a} -> Logger (Record a)
-domainLog = Logger.doLog domains
+logWarning :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
+logWarning = Logger.doLog domain Logger.warning

@@ -1,41 +1,44 @@
 module Rtsv2.Config
-  ( FeatureFlags
-  , MediaGatewayFlag(..)
-  , GlobalConfig
-  , IngestInstanceConfig
-  , IngestAggregatorAgentConfig
-  , IngestStatsConfig
-  , EgestStatsConfig
-  , PoPDefinitionConfig
-  , IntraPoPAgentConfig
-  , TransPoPAgentConfig
-  , StreamRelayConfig
+  (
+    AlertConfig
   , EgestAgentConfig
-  , IntraPoPAgentApi
-  , TransPoPAgentApi
-  , LlnwApiConfig
+  , EgestStatsConfig
+  , FeatureFlags
+  , GlobalConfig
   , HealthConfig
+  , IngestAggregatorAgentConfig
+  , IngestInstanceConfig
+  , IngestStatsConfig
+  , IntraPoPAgentApi
+  , IntraPoPAgentConfig
+  , LlnwApiConfig
   , LoadConfig
+  , MediaGatewayFlag(..)
   , NodeManagerConfig
+  , PoPDefinitionConfig
+  , StreamRelayConfig
+  , TransPoPAgentApi
+  , TransPoPAgentConfig
+  , alertConfig
   , appName
-  , loadConfig
-  , nodeManagerConfig
-  , featureFlags
-  , webConfig
-  , globalConfig
-  , popDefinitionConfig
-  , intraPoPAgentConfig
-  , transPoPAgentConfig
-  , ingestStatsConfig
-  , egestStatsConfig
-  , ingestInstanceConfig
-  , ingestAggregatorAgentConfig
-  , streamRelayConfig
   , egestAgentConfig
-  , rtmpIngestConfig
-  , llnwApiConfig
+  , egestStatsConfig
+  , featureFlags
+  , globalConfig
   , healthConfig
+  , ingestAggregatorAgentConfig
+  , ingestInstanceConfig
+  , ingestStatsConfig
+  , intraPoPAgentConfig
+  , llnwApiConfig
+  , loadConfig
   , mergeOverrides
+  , nodeManagerConfig
+  , popDefinitionConfig
+  , rtmpIngestConfig
+  , streamRelayConfig
+  , transPoPAgentConfig
+  , webConfig
   ) where
 
 import Prelude
@@ -67,6 +70,10 @@ type LoadConfig
     , monitorLoad :: Boolean
     , limits :: LoadTypes.LoadLimits
     , costs :: LoadTypes.LoadCosts
+    }
+
+type AlertConfig
+  = { alertRetentionMs :: Int
     }
 
 type NodeManagerConfig
@@ -230,6 +237,10 @@ loadConfig :: Effect LoadConfig
 loadConfig = do
   getMandatoryRecord "loadConfig"
 
+alertConfig :: Effect AlertConfig
+alertConfig = do
+  getMandatoryRecord "alertConfig"
+
 nodeManagerConfig :: Effect NodeManagerConfig
 nodeManagerConfig = do
   getMandatoryRecord "nodeManagerConfig"
@@ -346,8 +357,12 @@ getMandatoryRecord v = do
   case runExcept $ readImpl map of
     Left error ->
       do
-        _ <- Logger.error "Invalid Config" {misc: {key: v,
-                                                   error: error}}
+        _ <- Logger.error { domain: (atom "config") : nil
+                          , type: Logger.Trace
+                          }
+                          { text: "Invalid Config"
+                          , key: v
+                          , error: error}
         unsafeCrashWith ("invalid_config " <> v)
     Right ok ->
       pure $ ok

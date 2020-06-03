@@ -20,13 +20,13 @@ import Effect (Effect)
 import Erl.Atom (Atom)
 import Erl.Data.List (List, nil, singleton, (:))
 import Erl.Process.Raw (Pid)
-import Logger (Logger)
 import Logger as Logger
 import Pinto (SupervisorName)
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStartTemplate, childType)
 import Pinto.Sup as Sup
 import Pinto.Types (startOkAS)
+import Prim.Row as Row
 import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Agents.EgestInstance (CreateEgestPayload)
 import Rtsv2.Agents.EgestInstance as EgestInstance
@@ -176,11 +176,11 @@ startEgest payload@{slotId, slotRole} =
 domain :: List Atom
 domain = serverName # Names.toDomain # singleton
 
-logInfo :: forall a. Logger (Record a)
+logInfo :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
 logInfo = Logger.doLog domain Logger.info
 
-logWarning :: forall a. Logger (Record a)
+logWarning :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
 logWarning = Logger.doLog domain Logger.warning
 
-logStart :: forall a. Logger (Record a)
+logStart :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
 logStart = Logger.doLogEvent domain Logger.Start Logger.info

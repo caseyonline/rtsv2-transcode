@@ -73,18 +73,23 @@ egestStop line =
 
 clientStart :: SlotId -> Effect Unit
 clientStart (SlotId slotId) = do
-  _ <- Logger.info "" { domain: (atom "audit") : (atom "client") : nil
-                      , auditEvent: toList "start"
-                      , slotId: toList $ show slotId}
+  _ <- Logger.info { domain: (atom "audit") : (atom "client") : nil
+                   , type: Logger.Audit
+                   }
+                   { auditEvent: toList "start"
+                   , slotId: toList $ show slotId
+                   }
   pure unit
 
 clientStop :: EgestKey -> Effect Unit
 clientStop (EgestKey (SlotId slotId) slotRole) = do
-  _ <- Logger.info "" { domain: (atom "audit") : (atom "client") : nil
-                      , auditEvent: toList "stop"
-                      , slotId: toList $ show slotId
-                      , slotRole: toList $ show slotRole
-                      }
+  _ <- Logger.info { domain: (atom "audit") : (atom "client") : nil
+                   , type: Logger.Audit
+                   }
+                   { auditEvent: toList "stop"
+                   , slotId: toList $ show slotId
+                   , slotRole: toList $ show slotRole
+                   }
   pure unit
 
 
@@ -107,25 +112,27 @@ writeIngestLine reason { ingestIp
                        , bytesRead
                        , lostPackets
                        } =
-  Logger.info "" { domain: (atom "audit") : (atom "ingest") : nil
-                 , auditEvent: toList reason
-                 , ingestIp: toList ingestIp
-                 , ingestPort: ingestPort
-                 , userIp: toList userIp
-                 , username: toList username
-                 , shortname: toList $ unwrap rtmpShortName
-                 , streamName: toList $ unwrap rtmpStreamName
-                 , slotId: toList $ show $ unwrap slotId
-                 , slotRole: toList $ show slotRole
-                 , connectionType: toList $ case connectionType of
-                                              Rtmp -> "RTMP"
-                                              WebRTC -> "WebRTC"
-                 , startMs
-                 , endMs
-                 , bytesWritten
-                 , bytesRead
-                 , lostPackets
-                 }
+  Logger.info { domain: (atom "audit") : (atom "ingest") : nil
+              , type: Logger.Audit
+              }
+              { auditEvent: toList reason
+              , ingestIp: toList ingestIp
+              , ingestPort: ingestPort
+              , userIp: toList userIp
+              , username: toList username
+              , shortname: toList $ unwrap rtmpShortName
+              , streamName: toList $ unwrap rtmpStreamName
+              , slotId: toList $ show $ unwrap slotId
+              , slotRole: toList $ show slotRole
+              , connectionType: toList $ case connectionType of
+                                           Rtmp -> "RTMP"
+                                           WebRTC -> "WebRTC"
+              , startMs
+              , endMs
+              , bytesWritten
+              , bytesRead
+              , lostPackets
+              }
 
 writeEgestLine :: String -> EgestEqLine -> Effect Unit
 writeEgestLine reason { egestIp
@@ -141,20 +148,22 @@ writeEgestLine reason { egestIp
                       , bytesRead
                       , lostPackets
                       } =
-  Logger.info "" { domain: (atom "audit") : (atom "egest") : nil
-                 , auditEvent: toList reason
-                 , egestIp: toList egestIp
-                 , egestPort: egestPort
-                 , subscriberIp: toList subscriberIp
-                 , username: toList username
-                 , shortname: toList $ unwrap rtmpShortName
-                 , slotId: toList $ show $ unwrap slotId
-                 , connectionType: toList $ case connectionType of
-                                              Rtmp -> "RTMP"
-                                              WebRTC -> "WebRTC"
-                 , startMs
-                 , endMs
-                 , bytesWritten
-                 , bytesRead
-                 , lostPackets
-                 }
+  Logger.info { domain: (atom "audit") : (atom "egest") : nil
+              , "type": Logger.Audit
+              }
+              { auditEvent: toList reason
+              , egestIp: toList egestIp
+              , egestPort: egestPort
+              , subscriberIp: toList subscriberIp
+              , username: toList username
+              , shortname: toList $ unwrap rtmpShortName
+              , slotId: toList $ show $ unwrap slotId
+              , connectionType: toList $ case connectionType of
+                                           Rtmp -> "RTMP"
+                                           WebRTC -> "WebRTC"
+              , startMs
+              , endMs
+              , bytesWritten
+              , bytesRead
+              , lostPackets
+              }

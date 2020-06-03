@@ -35,6 +35,7 @@ import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
+import Prim.Row as Row
 import Rtsv2.Agents.IntraPoP as IntraPop
 import Rtsv2.Config (LoadConfig)
 import Rtsv2.Config as Config
@@ -324,14 +325,11 @@ calculateEffectiveLoad state@{ predictedLoads
 --------------------------------------------------------------------------------
 -- Log helpers
 --------------------------------------------------------------------------------
-domains :: List Atom
-domains = serverName # Names.toDomain # singleton
+domain :: List Atom
+domain = serverName # Names.toDomain # singleton
 
-logInfo :: forall a. Logger (Record a)
-logInfo = domainLog Logger.info
+logInfo :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
+logInfo = Logger.doLog domain Logger.info
 
-logWarning :: forall a. Logger (Record a)
-logWarning = domainLog Logger.warning
-
-domainLog :: forall a. Logger {domain :: List Atom, misc :: Record a} -> Logger (Record a)
-domainLog = Logger.doLog domains
+logWarning :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
+logWarning = Logger.doLog domain Logger.warning

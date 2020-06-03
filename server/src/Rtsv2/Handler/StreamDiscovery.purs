@@ -15,6 +15,7 @@ import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:), singleton)
 import Logger (Logger)
 import Logger as Logger
+import Prim.Row as Row
 import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
 import Rtsv2.Config (LoadConfig)
 import Rtsv2.Config as Config
@@ -88,14 +89,11 @@ discover loadConfig canary accountName streamName =
 --------------------------------------------------------------------------------
 -- Log helpers
 --------------------------------------------------------------------------------
-domains :: List Atom
-domains = atom "StreamDiscovery" # singleton
+domain :: List Atom
+domain = atom "StreamDiscovery" # singleton
 
-logInfo :: forall a. Logger (Record a)
-logInfo = domainLog Logger.info
+logInfo :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
+logInfo = Logger.doLog domain Logger.info
 
-logWarning :: forall a. Logger (Record a)
-logWarning = domainLog Logger.warning
-
-domainLog :: forall a. Logger {domain :: List Atom, misc :: Record a} -> Logger (Record a)
-domainLog = Logger.doLog domains
+logWarning :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
+logWarning = Logger.doLog domain Logger.warning

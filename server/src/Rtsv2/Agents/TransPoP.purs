@@ -45,6 +45,7 @@ import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import PintoHelper (exposeState)
 import Prim.Row (class Nub, class Union)
+import Prim.Row as Row
 import Record as Record
 import Rtsv2.Agents.IntraPoP (AgentClock)
 import Rtsv2.Config (IntraPoPAgentApi, TransPoPAgentConfig)
@@ -672,19 +673,16 @@ sendToTransSerfNetwork state name msg = do
 --------------------------------------------------------------------------------
 -- Log helpers
 --------------------------------------------------------------------------------
-domains :: List Atom
-domains = serverName # Names.toDomain # singleton
+domain :: List Atom
+domain = serverName # Names.toDomain # singleton
 
-logInfo :: forall a. Logger (Record a)
-logInfo = domainLog Logger.info
+logInfo :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
+logInfo = Logger.doLog domain Logger.info
 
-logWarning :: forall a. Logger (Record a)
-logWarning = domainLog Logger.warning
+logWarning :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
+logWarning = Logger.doLog domain Logger.warning
 
-domainLog :: forall a. Logger {domain :: List Atom, misc :: Record a} -> Logger (Record a)
-domainLog = Logger.doLog domains
-
-maybeLogError :: forall r b c d e. Union b (error :: e) c => Nub c d => String -> Either e r -> Record b  -> Effect Unit
+maybeLogError :: forall a b c d e. Row.Lacks "text" b => Row.Lacks "text" d => Union b (error :: e) c => Nub c d => String -> Either e a -> Record b -> Effect Unit
 maybeLogError _ (Right _) _ = pure unit
 maybeLogError msg (Left err) metadata = do
   logInfo msg (Record.merge metadata {error: err})

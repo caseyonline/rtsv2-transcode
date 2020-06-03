@@ -107,7 +107,7 @@ import Data.Maybe (Maybe(..))
 import Data.Newtype (wrap)
 import Data.Symbol (SProxy(..))
 import Effect (Effect)
-import Shared.Common (Milliseconds)
+import Shared.Common (Milliseconds, Alert)
 import Shared.JsonLd (Context, ContextValue(..), ExpandedTermDefinition, Node(..), NodeMetadata, unwrapNode, _unwrappedNode, _id, _resource) as JsonLd
 import Shared.JsonLd (ContextDefinition(..))
 import Shared.Rtsv2.LlnwApiTypes (StreamDetails)
@@ -543,17 +543,19 @@ type HealthContextFields = ( intraPoPHealth :: JsonLd.ContextValue
                            , currentTransPoP :: JsonLd.ContextValue
                            , load :: JsonLd.ContextValue
                            , nodeManager :: JsonLd.ContextValue
+                           , alerts :: JsonLd.ContextValue
                            )
 
-type Health
+type Health f
   = { intraPoPHealth :: Types.Health
     , transPoPHealth :: Types.Health
     , currentTransPoP :: Maybe ServerAddress
     , load :: CurrentLoad
     , nodeManager :: NodeManagerStateNode
+    , alerts :: f Alert
     }
 
-type HealthNode = JsonLd.Node Health HealthContextFields
+type HealthNode f = JsonLd.Node (Health f) HealthContextFields
 
 healthContext :: JsonLd.Context HealthContextFields
 healthContext = wrap { "@language": Nothing
@@ -564,9 +566,10 @@ healthContext = wrap { "@language": Nothing
                      , currentTransPoP: JsonLd.Other "http://schema.rtsv2.llnw.com/Infrastructure/Locations/TransPoP"
                      , load: JsonLd.Other "http://schema.rtsv2.llnw.com/Load"
                      , nodeManager: JsonLd.Other "http://schema.rtsv2.llnw.com/NodeManager"
+                     , alerts: JsonLd.Other "http://schema.rtsv2.llnw.com/Alert"
                      }
 
-healthNode :: Health -> Server -> Effect HealthNode
+healthNode :: forall f. Functor f => Health f -> Server -> Effect (HealthNode f)
 healthNode state server = do
   id <- Support.makeUrl server Support.HealthCheckE
   pure $ wrap { resource: state

@@ -39,7 +39,7 @@
 
 -record(media_gateway_egest_client_config,
         { audio :: media_gateway_stream_element_config()
-        , video :: media_gateway_stream_element_config()
+        , video :: undefined | media_gateway_stream_element_config()
         }).
 -type media_gateway_egest_client_config() :: #media_gateway_egest_client_config{}.
 
@@ -55,7 +55,7 @@
 
 -record(media_gateway_client_subscription_switched_event,
         { audio_ssrc :: rtp:ssrc()
-        , video_ssrc :: rtp:ssrc()
+        , video_ssrc :: undefined | rtp:ssrc()
         }).
 -type media_gateway_client_subscription_switched_event() :: #media_gateway_client_subscription_switched_event{}.
 
@@ -68,7 +68,7 @@
 -type media_gateway_client_statistics_updated_event() :: #media_gateway_client_statistics_updated_event{}.
 
 -record(media_gateway_client_add_failed_event,
-        { reason :: egest_not_present | already_present | no_capacity
+        { reason :: egest_not_present | already_present | stream_is_audio_only | no_capacity
         }).
 -type media_gateway_client_add_failed_event() :: #media_gateway_client_add_failed_event{}.
 

@@ -23,6 +23,7 @@ import Media.SourceDetails as SourceDetails
 import Pinto (ServerName)
 import Pinto as Pinto
 import Pinto.Gen as Gen
+import Prim.Row as Row
 import Rtsv2.Agents.IngestInstance as IngestInstance
 import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
 import Rtsv2.Agents.IngestRtmpCrypto (AdobeContextParams, AdobePhase1Params, AdobePhase2Params, LlnwContextParams, LlnwPhase1Params, LlnwPhase2Params, Phase2Params(..), checkCredentials)
@@ -36,6 +37,7 @@ import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Types (LocalResource(..))
 import Rtsv2.Utils (crashIfLeft, noprocToMaybe)
 import Serf (Ip)
+import Shared.Common (ProfileMetadata)
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.LlnwApiTypes (AuthType, PublishCredentials, SlotProfile(..), SlotPublishAuthType(..), StreamAuth, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamPublish)
 import Shared.Rtsv2.Stream (IngestKey(..))
@@ -45,7 +47,7 @@ import Stetson.WebSocketHandler (self)
 
 foreign import startServerImpl :: (Foreign -> Either Foreign Unit) -> Either Foreign Unit -> Ip -> Int -> Callbacks -> Ip -> Int -> Callbacks -> Int -> Effect (Either Foreign Unit)
 foreign import rtmpQueryToPurs :: Foreign -> RtmpAuthRequest
-foreign import startWorkflowImpl :: Pid -> Pid -> Foreign -> IngestKey -> (Foreign -> (Effect Unit)) -> (Foreign -> (Effect Unit)) -> Effect Unit
+foreign import startWorkflowImpl :: Pid -> Pid -> Foreign -> IngestKey -> ProfileMetadata -> (Foreign -> (Effect Unit)) -> (Foreign -> (Effect Unit)) -> Effect Unit
 
 data RtmpAuthRequest = Initial
                      | AdobePhase1 AdobePhase1Params
@@ -127,7 +129,7 @@ onStreamCallback loadConfig canary host rtmpShortNameStr username remoteAddress 
           maybeStarted <- IngestInstanceSup.startLocalRtmpIngest loadConfig canary ingestKey streamPublish streamDetails remoteAddress remotePort self
           case maybeStarted of
             Right (LocalResource ingestPid _server) -> do
-              startWorkflowAndBlock rtmpPid ingestPid publishArgs ingestKey
+              startWorkflowAndBlock rtmpPid ingestPid publishArgs ingestKey streamDetails
               _ <- noprocToMaybe $ IngestInstance.stopIngest ingestKey
               pure unit
             Left error -> do
@@ -174,10 +176,14 @@ processPhase2Authentication loadConfig canary host rtmpShortName username authPa
       if ok then pure $ AcceptRequest (mkFn5 (onStreamCallback loadConfig canary host rtmpShortName username))
       else pure RejectRequest
 
-startWorkflowAndBlock :: Pid -> Pid -> Foreign -> IngestKey -> Effect Unit
-startWorkflowAndBlock rtmpPid ingestPid publishArgs ingestKey =
-  startWorkflowImpl rtmpPid ingestPid publishArgs ingestKey clientMetadata sourceInfo
+startWorkflowAndBlock :: Pid -> Pid -> Foreign -> IngestKey -> StreamDetails -> Effect Unit
+startWorkflowAndBlock rtmpPid ingestPid publishArgs ingestKey {slot: {name}} =
+  startWorkflowImpl rtmpPid ingestPid publishArgs ingestKey profileMetadata clientMetadata sourceInfo
   where
+    IngestKey slotId slotRole profileName = ingestKey
+
+    profileMetadata = { slotId, slotRole, profileName, slotName: name}
+
     clientMetadata foreignMetadata = do
       IngestInstance.setClientMetadata ingestKey (Rtmp.foreignToMetadata foreignMetadata)
 
@@ -209,8 +215,8 @@ getStreamDetails streamPublish = do
 domain :: List Atom
 domain = atom <$> (show Agent.Ingest : "Instance" : nil)
 
-logInfo :: forall a. Logger (Record a)
+logInfo :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
 logInfo = Logger.doLog domain Logger.info
 
-logWarning :: forall a. Logger (Record a)
+logWarning :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
 logWarning = Logger.doLog domain Logger.warning

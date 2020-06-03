@@ -87,6 +87,7 @@ import Pinto (ServerName, StartLinkResult, isRegistered)
 import Pinto.Gen (CallResult(..), CastResult(..), TerminateReason)
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
+import Prim.Row as Row
 import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..), announceLocalAggregatorIsAvailable, announceLocalAggregatorStopped)
 import Rtsv2.Agents.IntraPoP as IntraPoP
@@ -99,6 +100,7 @@ import Rtsv2.DataObject as DO
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Types (ResourceResp)
+import Shared.Common (LoggingMetadata(..))
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.JsonLd as JsonLd
@@ -482,7 +484,12 @@ stopAction aggregatorKey _cachedState = do
   announceLocalAggregatorStopped aggregatorKey
 
 init :: ParentCallbacks -> CreateAggregatorPayload -> StateServerName -> Effect State
-init parentCallbacks {shortName, streamDetails: streamDetails@{role: slotRole, slot: slot@{id: slotId}}, dataObject: initialDataObject} stateServerName = do
+init parentCallbacks { shortName
+                     , streamDetails: streamDetails@{role: slotRole, slot: slot@{ id: slotId
+                                                                                , name: slotName}}
+                     , dataObject: initialDataObject} stateServerName = do
+  Logger.addLoggerMetadata $ PerSlot { slotId, slotRole, slotName: Just slotName}
+
   logStart "Ingest Aggregator starting" {aggregatorKey, streamDetails}
   _ <- Erl.trapExit true
   config <- Config.ingestAggregatorAgentConfig
@@ -1032,14 +1039,14 @@ _relays = __cachedState <<< __relays
 domain :: List Atom
 domain = atom <$> (show Agent.IngestAggregator : "Instance" : nil)
 
-logInfo :: forall a. Logger (Record a)
+logInfo :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
 logInfo = Logger.doLog domain Logger.info
 
-logWarning :: forall a. Logger (Record a)
+logWarning :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
 logWarning = Logger.doLog domain Logger.warning
 
-logStart :: forall a. Logger (Record a)
+logStart :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
 logStart = Logger.doLogEvent domain Logger.Start Logger.info
 
-logStop :: forall a. Logger (Record a)
+logStop :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
 logStop = Logger.doLogEvent domain Logger.Stop Logger.info
