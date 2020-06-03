@@ -74,6 +74,7 @@ import Rtsv2.DataObject as DO
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Types (ResourceResp)
+import Shared.Common (LoggingMetadata(..))
 import Shared.Rtsv2.Agent (SlotCharacteristics)
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.Agent.State as PublicState
@@ -608,85 +609,85 @@ stopAction relayKey@(RelayKey slotId slotRole) cachedState = do
       pure unit
 
 init :: RelayKey -> ParentCallbacks -> CreateRelayPayload -> StateServerName -> Effect State
-init relayKey parentCallbacks payload@{slotId, slotRole, aggregatorPoP, slotCharacteristics} stateServerName =
-  do
-    Gen.registerExternalMapping (serverName relayKey) (\m -> Gun <$> (WsGun.messageMapper m))
-    thisServer <- PoPDefinition.getThisServer
-    egestSourceRoutes <- TransPoP.routesTo aggregatorPoP
-    streamRelayConfig <- Config.streamRelayConfig
-    loadConfig <- Config.loadConfig
-    IntraPoP.announceLocalRelayIsAvailable relayKey
-    _ <- Bus.subscribe (serverName relayKey) IntraPoP.bus IntraPoPBus
-    Gen.registerTerminate (serverName relayKey) terminate
-    mConfig <- CachedInstanceState.getInstanceData stateServerName
+init relayKey parentCallbacks payload@{slotId, slotRole, aggregatorPoP, slotCharacteristics} stateServerName = do
+  Logger.addLoggerMetadata $ PerSlot { slotId, slotRole, slotName: Nothing}
+  Gen.registerExternalMapping (serverName relayKey) (\m -> Gun <$> (WsGun.messageMapper m))
+  thisServer <- PoPDefinition.getThisServer
+  egestSourceRoutes <- TransPoP.routesTo aggregatorPoP
+  streamRelayConfig <- Config.streamRelayConfig
+  loadConfig <- Config.loadConfig
+  IntraPoP.announceLocalRelayIsAvailable relayKey
+  _ <- Bus.subscribe (serverName relayKey) IntraPoP.bus IntraPoPBus
+  Gen.registerTerminate (serverName relayKey) terminate
+  mConfig <- CachedInstanceState.getInstanceData stateServerName
 
-    let
-      commonStateData =
-        { relayKey
-        , thisServer
-        , parentCallbacks
-        , slotCharacteristics
-        , loadConfig
-        , aggregatorPoP
-        , stateServerName
-        , config: streamRelayConfig
-        , stopRef: Nothing
-        , dataObject: Nothing
-        , activeProfiles: nil
-        , forceDrain: false
-        , aggregatorExitTimerRef: Nothing
-        }
+  let
+    commonStateData =
+      { relayKey
+      , thisServer
+      , parentCallbacks
+      , slotCharacteristics
+      , loadConfig
+      , aggregatorPoP
+      , stateServerName
+      , config: streamRelayConfig
+      , stopRef: Nothing
+      , dataObject: Nothing
+      , activeProfiles: nil
+      , forceDrain: false
+      , aggregatorExitTimerRef: Nothing
+      }
 
-    if egestSourceRoutes == List.nil then
-      do
-        logStart (fromMaybe "Origin Relay Starting" ((const "Origin Relay Restarting") <$> mConfig)) {relayKey}
-        workflowHandle <- startOriginWorkflowFFI (un SlotId slotId)
-        let
-          config = cachedConfigToOriginConfig mConfig
-        monitorEgests config
-        monitorRelays config
+  if egestSourceRoutes == List.nil then
+    do
+      logStart (fromMaybe "Origin Relay Starting" ((const "Origin Relay Restarting") <$> mConfig)) {relayKey}
+      workflowHandle <- startOriginWorkflowFFI (un SlotId slotId)
+      let
+        config = cachedConfigToOriginConfig mConfig
+      monitorEgests config
+      monitorRelays config
 
-        let
-          initialOriginStateData =
-            { workflowHandle
-            , config
-            , plan: Nothing
-            , run: { slotConfiguration: Nothing
-                   , ingestAggregatorState: IngestAggregatorStateDisabled
-                   }
-            }
+      let
+        initialOriginStateData =
+          { workflowHandle
+          , config
+          , plan: Nothing
+          , run: { slotConfiguration: Nothing
+                 , ingestAggregatorState: IngestAggregatorStateDisabled
+                 }
+          }
 
-        newPlan <- originConfigToPlan commonStateData config
-        let
-          newOriginStateData = initialOriginStateData{ plan = newPlan }
-        applyOriginPlan commonStateData newOriginStateData
-    else
-      do
-        logStart (fromMaybe "Downstream Relay Starting" ((const "Downstream Relay Restarting") <$> mConfig)) {relayKey}
-        let
-          egestUpstreamRelays = map mkUpstreamRelay $ toUnfoldable <$> egestSourceRoutes
+      newPlan <- originConfigToPlan commonStateData config
+      let
+        newOriginStateData = initialOriginStateData{ plan = newPlan }
+      applyOriginPlan commonStateData newOriginStateData
+  else
+    do
+      logStart (fromMaybe "Downstream Relay Starting" ((const "Downstream Relay Restarting") <$> mConfig)) {relayKey}
+      let
+        egestUpstreamRelays = map mkUpstreamRelay $ toUnfoldable <$> egestSourceRoutes
 
-        workflowHandle <- startDownstreamWorkflowFFI (un SlotId slotId)
-        let
-          config = cachedConfigToDownstreamConfig mConfig egestUpstreamRelays
-        monitorEgests config
-        monitorRelays config
+      workflowHandle <- startDownstreamWorkflowFFI (un SlotId slotId)
+      let
+        config = cachedConfigToDownstreamConfig mConfig egestUpstreamRelays
+      monitorEgests config
+      monitorRelays config
 
-        let
-          initialDownstreamStateData =
-            { workflowHandle
-            , config
-            , plan: Nothing
-            , run: { slotConfiguration: Nothing
-                   , upstreamRelayStates: Map.empty
-                   }
-            }
+      let
+        initialDownstreamStateData =
+          { workflowHandle
+          , config
+          , plan: Nothing
+          , run: { slotConfiguration: Nothing
+                 , upstreamRelayStates: Map.empty
+                 }
+          }
 
-        newPlan <- downstreamConfigToPlan commonStateData config
-        let
-          newDownstreamStateData = initialDownstreamStateData{ plan = Just newPlan }
+      newPlan <- downstreamConfigToPlan commonStateData config
+      let
+        newDownstreamStateData = initialDownstreamStateData{ plan = Just newPlan }
 
-        applyDownstreamPlan commonStateData newDownstreamStateData
+      applyDownstreamPlan commonStateData newDownstreamStateData
 
   where
     cachedConfigToOriginConfig mConfig =

@@ -31,7 +31,6 @@ import Erl.Data.List (List, filter, head, nil, (:))
 import Erl.Data.Tuple (tuple2)
 import Erl.File as File
 import Erl.FileLib as FileLib
-import Logger (Logger)
 import Logger as Logger
 import Partial.Unsafe (unsafePartial)
 import Prim.Row as Row

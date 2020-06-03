@@ -20,7 +20,6 @@ import Effect (Effect)
 import Erl.Atom (Atom)
 import Erl.Data.List (List, nil, singleton, (:))
 import Erl.Process.Raw (Pid)
-import Logger (Logger)
 import Logger as Logger
 import Pinto (SupervisorName)
 import Pinto as Pinto

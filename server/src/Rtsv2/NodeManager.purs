@@ -30,7 +30,7 @@ import Erl.Process.Raw (Pid)
 import Erl.Utils (Ref)
 import Erl.Utils as Erl
 import Erl.Utils as ErlUtils
-import Logger (Logger, spy)
+import Logger (spy)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult, ok')
 import Pinto.Gen (CallResult(..), CastResult(..))
@@ -147,8 +147,8 @@ changeCanaryState newCanary =
           totalAgents > 0 then
             pure $ CallReply (Left ActiveAgents) state
         else do
-          logInfo "CanaryState changed" { old: state.currentCanaryState
-                                        , new: newCanary}
+          logCommand "CanaryState changed" { old: state.currentCanaryState
+                                           , new: newCanary}
           let
             state2 = state{ currentCanaryState = newCanary }
           (CallReply (Right unit)) <$> restartActiveSup state2
@@ -164,8 +164,8 @@ changeRunState newRunState =
     doChange state = do
       let
         state2 = state{ currentRunState = newRunState }
-      _ <- logInfo "RunState changed" { old: state.currentRunState
-                                      , new: newRunState}
+      _ <- logCommand "RunState changed" { old: state.currentRunState
+                                         , new: newRunState}
       IntraPoP.announceAcceptingRequests $ acceptingRequests newRunState
       state3 <- maybeForceDrain state2
       pure $ CallReply (Right unit) state3
@@ -408,3 +408,6 @@ domains = serverName # Names.toDomain # singleton
 
 logInfo :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
 logInfo = Logger.doLog domains Logger.info
+
+logCommand :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
+logCommand = Logger.doLogCommand domains

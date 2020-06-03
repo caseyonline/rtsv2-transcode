@@ -14,7 +14,7 @@ ffmpeg \
   -acodec aac \
   -profile:a aac_he_v2 \
   -vcodec "${VIDEO_CODEC}" \
-  -profile:v baseline \
+  ${VIDEO_PROFILE} \
   -g 25 \
   -preset "${VIDEO_PRESET}" \
   -b:v 1M \
