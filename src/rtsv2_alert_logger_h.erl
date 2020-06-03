@@ -15,60 +15,30 @@ log(LogEvent, Config = #{config := #{message_bus := Bus}}) ->
   end,
   ok.
 
-%% Purescript logging
-%% GOT:#{f =>
+%% Purescript logging:
 %%           #{level => info,
 %%             meta =>
-%%                 #{domain => ['IngestAggregator','Instance'],
+%%                 #{domain => ['IntraPoP'],
 %%                   file =>
-%%                       "/Users/steve/dev/rtsv2/server/src/Rtsv2/Agents/IngestAggregatorInstance.purs",
-%%                   gl => <0.213.0>,line => 936,
+%%                       "/Users/steve/dev/rtsv2/server/src/Rtsv2/Agents/IntraPoP.purs",
+%%                   gl => <0.213.0>,line => 1169,
 %%                   mfa =>
-%%                       {'Rtsv2.Agents.IngestAggregatorInstance@ps',
-%%                           '-doAddLocalIngest/3-fun-2-',8},
-%%                   misc =>
-%%                       #{profileName => <<"high">>,
-%%                         slotId => <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1>>,
-%%                         slotRole => {primary}},
-%%                   module => 'Rtsv2.Agents.IngestAggregatorInstance@ps',
-%%                   pid => <0.395.0>,time => 1591023093927476},
-%%             msg => {"Local Ingest added",[]}}}
-
-%% Non-structured id3as-media logging
-%% GOT:#{f =>
-%%           #{level => debug,
-%%             meta =>
-%%                 #{file =>
-%%                       "/Users/steve/dev/rtsv2/_build/default/lib/id3as_media/src/workflow/workflow_processor.erl",
-%%                   gl => <0.213.0>,line => 118,
-%%                   mfa => {workflow_processor,init,1},
-%%                   pid => <0.454.0>,time => 1591023094534447,
-%%                   workflow =>
-%%                       #{node_name => audio_transcode_opus_and_aac_decode,
-%%                         path =>
-%%                             [audio_transcode_opus_and_aac_decode,
-%%                              audio_transcode,audio_transcode,high,high,
-%%                              {ingest_aggregator_instance,
-%%                                  <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1>>}],
-%%                         root_workflow_name =>
-%%                             {ingest_aggregator_instance,
-%%                                 <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1>>},
-%%                         type => processor}},
+%%                       {'Rtsv2.Agents.IntraPoP@ps','-membersAlive/2-fun-8-',2},
+%%                   module => 'Rtsv2.Agents.IntraPoP@ps',pid => <0.220.0>,
+%%                   text => "Members Alive",time => 1591091915484887},
 %%             msg =>
-%%                 {"Processor '~s' started on pid ~p (~p)",
-%%                  [audio_transcode_opus_and_aac_decode,<0.454.0>,
-%%                   libav_audio_decoder]}}}
+%%                 {report,#{members =>
+%%                               [<<"172.16.171.2">>,<<"172.16.171.1">>]}}}
 
-%% Structure logging from erlang
-%% GOT:#{f =>
+%% Erlang structured:
 %%           #{level => info,
 %%             meta =>
 %%                 #{file =>
 %%                       "/Users/steve/dev/rtsv2/src/rtsv2_ingest_aggregator_processor.erl",
 %%                   gl => <0.213.0>,line => 108,
 %%                   mfa => {rtsv2_ingest_aggregator_processor,process_input,2},
-%%                   misc => #{delta => 143192078498610,stream => <<"high">>},
-%%                   pid => <0.437.0>,time => 1591023094450826,type => info,
+%%                   pid => <0.382.0>,text => "Stream selected as reference",
+%%                   time => 1591092008109512,type => trace,
 %%                   workflow =>
 %%                       #{node_name => aggregate,
 %%                         path =>
@@ -79,4 +49,32 @@ log(LogEvent, Config = #{config := #{message_bus := Bus}}) ->
 %%                             {ingest_aggregator_instance,
 %%                                 <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1>>},
 %%                         type => processor}},
-%%             msg => {string,"Stream selected as reference"}}}
+%%             msg => {report,#{delta => 143198280727920,stream => <<"high">>}}}}
+
+%% Erlang non-structured:
+%%           #{level => info,
+%%             meta =>
+%%                 #{file =>
+%%                       "/Users/steve/dev/rtsv2/_build/default/lib/id3as_media/src/drivers/audio_transcode.erl",
+%%                   gl => <0.213.0>,line => 221,
+%%                   mfa => {audio_transcode,build_processor,3},
+%%                   pid => <0.368.0>,time => 1591092008119806,
+%%                   workflow =>
+%%                       #{node_name => audio_transcode,
+%%                         path =>
+%%                             [audio_transcode,high,high,
+%%                              {ingest_aggregator_instance,
+%%                                  <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1>>}],
+%%                         root_workflow_name =>
+%%                             {ingest_aggregator_instance,
+%%                                 <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1>>},
+%%                         type => processor}},
+%%             msg =>
+%%                 {"Filter graph ~p (in: ~p, out: ~p)",
+%%                  [<<"aformat=sample_fmts=s16:sample_rates=48000:channel_layouts=stereo">>,
+%%                   {audio_profile,undefined,raw,
+%%                       {codec_profile_level,4,0},
+%%                       48000,fltp,stereo,undefined,undefined,undefined},
+%%                   {audio_profile,undefined,raw,
+%%                       {codec_profile_level,4,0},
+%%                       48000,s16,stereo,undefined,undefined,undefined}]}}}

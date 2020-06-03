@@ -70,6 +70,7 @@ process_input(_, State = #?state{ published_playlist = true }) ->
 
 handle_info(publish_playlists, State = #?state{
                                           config = #hls_master_playlist_processor_config{
+                                           audio_only = AudioOnly,
                                            slot_id = SlotId,
                                            profiles = Profiles,
                                            push_details = PushDetails = [ #{ putBaseUrl := PutBaseUrl, auth := #{ type := <<"basic">>, username := Username, password := Password } }]
@@ -78,7 +79,7 @@ handle_info(publish_playlists, State = #?state{
                                         }) ->
   ?INFO("Building and sending playlists, pushdetails = ~p", [PushDetails]),
 
-  Playlist = m3u8:master_playlist(build_playlists(rtsv2_types:uuid_to_string(SlotId), AvProfiles, Profiles, PushDetails)),
+  Playlist = m3u8:master_playlist(build_playlists(rtsv2_types:uuid_to_string(SlotId), AvProfiles, Profiles, PushDetails, AudioOnly)),
   ?INFO("Master playlist:~n~s", [Playlist]),
 
   rtsv2_internal_playlist_publish:send({Username, Password}, PutBaseUrl, [{<<"master.m3u8">>, Playlist}], primary_playlists_published, <<"version">>),
@@ -98,11 +99,12 @@ ioctl(_, State) ->
 %%------------------------------------------------------------------------------
 check_profiles_ready(_State = #?state{ profiles = FoundProfiles,
                                        config = #hls_master_playlist_processor_config{
-                                                   profiles = ConfigProfiles
-
+                                                   profiles = ConfigProfiles,
+                                                   audio_only = AudioOnly
                                       }
                                     }) ->
-  case {length(ConfigProfiles) * 2, maps:size(FoundProfiles)} of
+  ProfileX = case AudioOnly of true -> 1; false -> 2 end,
+  case {length(ConfigProfiles) * ProfileX, maps:size(FoundProfiles)} of
     {N, N} ->
       ?INFO("Profiles are ready!~n~p", [FoundProfiles]),
       true;
@@ -112,14 +114,14 @@ check_profiles_ready(_State = #?state{ profiles = FoundProfiles,
       false
   end.
 
-build_playlists(SlotId, AvProfiles, Profiles, [PushDetail = #{}|_]) ->
+build_playlists(SlotId, AvProfiles, Profiles, [PushDetail = #{}|_], AudioOnly) ->
   #master_playlist {
      rendition_groups = [ ],
-     variant_streams = lists:filtermap(fun (Profile) -> variant_stream(SlotId, AvProfiles, PushDetail, Profile) end, Profiles)
+     variant_streams = lists:filtermap(fun (Profile) -> variant_stream(SlotId, AvProfiles, PushDetail, Profile, AudioOnly) end, Profiles)
   }.
 
 
-variant_stream(SlotId, AvProfiles, _PushDetail, Profile = #{ bitrate := BitRate, profileName := ProfileName}) ->
+variant_stream(SlotId, AvProfiles, _PushDetail, Profile = #{ bitrate := BitRate, profileName := ProfileName}, AudioOnly) ->
   AvProfilesList = maps:to_list(AvProfiles),
   VideoProfiles = lists:filtermap(fun ({{P, _Pid}, Prof = #video_profile{}}) when P =:= ProfileName -> {true, Prof};
                                        (_) -> false
@@ -128,7 +130,7 @@ variant_stream(SlotId, AvProfiles, _PushDetail, Profile = #{ bitrate := BitRate,
                                        (_) -> false
                                    end, AvProfilesList),
   if
-    length(VideoProfiles) /= 1 ->
+    length(VideoProfiles) /= 1 and not AudioOnly ->
       ?ERROR("Expected 1 video profile on ~p", [ProfileName]),
       false;
     length(AudioProfiles) /= 1 ->
@@ -136,21 +138,36 @@ variant_stream(SlotId, AvProfiles, _PushDetail, Profile = #{ bitrate := BitRate,
       false;
     ?otherwise ->
       [AudioProfile] = AudioProfiles,
-      [VideoProfile = #video_profile { width = Width, height = Height } = VideoProfile] = VideoProfiles,
+      case AudioOnly of
+        true -> 
+          ?INFO("making variant for slotid=~p with ~p, av profiles=~p", [SlotId, Profile, AudioProfile]),
+          {true, #variant_stream {
+            name = ProfileName,
+            program_id = 1,
+            codecs = [
+              audio_profile_to_codec_descriptor(AudioProfile)
+            ],
+            peak_bandwidth = BitRate,
+            uri = << ProfileName/binary, "/playlist.m3u8" >>
+            }
+          };
+        false -> 
+          [VideoProfile = #video_profile { width = Width, height = Height } = VideoProfile] = VideoProfiles,
 
-      ?INFO("making variant for slotid=~p with ~p, av profiles=~p, ~p", [SlotId, Profile, VideoProfile, AudioProfile]),
-      {true, #variant_stream {
-        name = ProfileName,
-        program_id = 1,
-        codecs = [
-          video_profile_to_codec_descriptor(VideoProfile),
-          audio_profile_to_codec_descriptor(AudioProfile)
-        ],
-        peak_bandwidth = BitRate,
-        resolution = { Width, Height },
-        uri = << ProfileName/binary, "/playlist.m3u8" >>
-        }
-      }
+          ?INFO("making variant for slotid=~p with ~p, av profiles=~p, ~p", [SlotId, Profile, VideoProfile, AudioProfile]),
+          {true, #variant_stream {
+            name = ProfileName,
+            program_id = 1,
+            codecs = [
+              video_profile_to_codec_descriptor(VideoProfile),
+              audio_profile_to_codec_descriptor(AudioProfile)
+            ],
+            peak_bandwidth = BitRate,
+            resolution = { Width, Height },
+            uri = << ProfileName/binary, "/playlist.m3u8" >>
+            }
+          }
+        end
   end.
 
 

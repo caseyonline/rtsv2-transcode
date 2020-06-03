@@ -74,18 +74,22 @@ egestStop line =
 clientStart :: SlotId -> Effect Unit
 clientStart (SlotId slotId) = do
   _ <- Logger.info { domain: (atom "audit") : (atom "client") : nil
-                   , auditEvent: toList "start"
+                   , type: Logger.Audit
+                   }
+                   { auditEvent: toList "start"
                    , slotId: toList $ show slotId
-                   } {}
+                   }
   pure unit
 
 clientStop :: EgestKey -> Effect Unit
 clientStop (EgestKey (SlotId slotId) slotRole) = do
   _ <- Logger.info { domain: (atom "audit") : (atom "client") : nil
-                   , auditEvent: toList "stop"
+                   , type: Logger.Audit
+                   }
+                   { auditEvent: toList "stop"
                    , slotId: toList $ show slotId
                    , slotRole: toList $ show slotRole
-                   } {}
+                   }
   pure unit
 
 
@@ -108,7 +112,9 @@ writeIngestLine reason { ingestIp
                        , bytesRead
                        , lostPackets
                        } =
-  Logger.info { domain: (atom "audit") : (atom "ingest") : nil }
+  Logger.info { domain: (atom "audit") : (atom "ingest") : nil
+              , type: Logger.Audit
+              }
               { auditEvent: toList reason
               , ingestIp: toList ingestIp
               , ingestPort: ingestPort
@@ -142,8 +148,10 @@ writeEgestLine reason { egestIp
                       , bytesRead
                       , lostPackets
                       } =
-  Logger.info {domain: (atom "audit") : (atom "egest") : nil
-              , auditEvent: toList reason
+  Logger.info { domain: (atom "audit") : (atom "egest") : nil
+              , "type": Logger.Audit
+              }
+              { auditEvent: toList reason
               , egestIp: toList egestIp
               , egestPort: egestPort
               , subscriberIp: toList subscriberIp
@@ -158,4 +166,4 @@ writeEgestLine reason { egestIp
               , bytesWritten
               , bytesRead
               , lostPackets
-              } {}
+              }

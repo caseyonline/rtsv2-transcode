@@ -94,6 +94,7 @@ type SlotDetails =
   , subscribeValidation :: Boolean
   , outputFormats :: Array StreamOutputFormat
   , profiles :: Array SlotProfile
+  , audioOnly :: Boolean
   }
 
 type HlsPushAuth =

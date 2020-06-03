@@ -65,7 +65,7 @@ import Rtsv2.LoadTypes (LoadFixedCost(..), PredictedLoad(..))
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Types (LocalOrRemote(..), RegistrationResp, ResourceResp)
-import Shared.Common (Milliseconds(..))
+import Shared.Common (LoggingMetadata(..), Milliseconds(..))
 import Shared.Rtsv2.Agent (SlotCharacteristics)
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.JsonLd (EgestStats, EgestSessionStats)
@@ -286,6 +286,7 @@ toEgestServer = unwrap >>> wrap
 
 init :: ParentCallbacks -> CreateEgestPayload -> StateServerName -> Effect State
 init parentCallbacks payload@{slotId, slotRole, aggregatorPoP, slotCharacteristics} stateServerName = do
+  Logger.addLoggerMetadata $ PerSlot { slotId, slotRole, slotName: Nothing}
   { eqLogIntervalMs
   , lingerTimeMs
   , relayCreationRetryMs

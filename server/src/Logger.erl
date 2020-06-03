@@ -9,7 +9,8 @@
          notice/2,
          info/2,
          debug/2,
-         spyImpl/2
+         spyImpl/2,
+         addLoggerMetadata/1
         ]).
 
 -define(do_effectful_log(Level, Metadata, Report),
@@ -17,24 +18,15 @@
         fun() ->
             {Module, Fun, Arity, File, Line} = walk_stack(Stack),
 
-            Location = #{mfa => {Module, Fun, Arity},
-                         module => Module,
-                         line => Line,
-                         file => File},
-
-            Report2 = case maps:get(event, Report, undefined) of
-                        {Event} -> maps:put(event, Event, Report);
-                        _ -> Report
-                      end,
-
-            Metadata2 = case maps:get(text, Metadata, undefined) of
-                          undefined -> Metadata;
-                          Value -> maps:put(text, binary_to_list(Value), Metadata)
-                        end,
-
             case logger:allow(Level, Module) of
               true ->
-                apply(logger, macro_log, [Location, Level, Report2, Metadata2]),
+                Location = #{mfa => {Module, Fun, Arity},
+                             line => Line,
+                             file => File},
+
+                ErlMetadata = purs_metadata_to_erl(Metadata),
+
+                apply(logger, macro_log, [Location, Level, Report, ErlMetadata]),
                 unit;
               false ->
                 unit
@@ -68,9 +60,37 @@ debug(Metadata, Report) ->
 spyImpl(Metadata, Report) ->
   ?do_effectful_log(notice, Metadata, Report).
 
+addLoggerMetadata(Metadata) ->
+  fun() ->
+io:format(user, "XXX ADD ~p~n", [Metadata]),
+      logger:update_process_metadata(#{rtsv2 => Metadata})
+  end.
+
 %%------------------------------------------------------------------------------
 %% Internal
 %%------------------------------------------------------------------------------
+purs_metadata_to_erl(Metadata) ->
+
+  #{type := Type} = Metadata,
+
+  Metadata2 = Metadata#{type => case Type of
+                                  {trace} -> trace;
+                                  {event} -> event;
+                                  {audit} -> audit
+                                end},
+
+  Metadata3 = case maps:get(event, Metadata2, undefined) of
+                {Event} -> maps:put(event, Event, Metadata2);
+                _ -> Metadata2
+              end,
+
+  Metadata4 = case maps:get(text, Metadata3, undefined) of
+                undefined -> Metadata3;
+                Value -> maps:put(text, binary_to_list(Value), Metadata3)
+              end,
+
+  Metadata4.
+
 walk_stack([_LoggerFrame | Stack = [{TopModule, TopFun, TopArity, [{file, TopFile}, {line, TopLine}]} | _]]) ->
   walk_stack_internal({TopModule, TopFun, TopArity, TopFile, TopLine}, Stack).
 

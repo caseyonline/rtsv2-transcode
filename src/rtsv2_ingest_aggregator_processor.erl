@@ -28,7 +28,8 @@
          permissible_delta_before_adjustment_ms = 250 :: milliseconds(),
          reference_stream :: undefined | term(),
          streams :: undefined | maps:map({term(), reference()}, #active_stream_state{}),
-         pending_program_details = #{} :: maps:map(term(), frame())
+         pending_program_details = #{} :: maps:map(term(), frame()),
+         audio_only :: boolean()
         }).
 
 %%------------------------------------------------------------------------------
@@ -42,8 +43,8 @@ spec(_Processor) ->
      is_pure = true
     }.
 
-initialise(_Processor) ->
-  {ok, #?state{}}.
+initialise(#processor{ config = AudioOnly }) ->
+  {ok, #?state{ audio_only = AudioOnly }}.
 
 process_input({ingest_stopped, _}, State = #?state{streams = undefined}) ->
   %% Ingest stopped before we saw any frames
@@ -91,42 +92,16 @@ process_input({ingest_stopped, Id = {ingestKey, _SlotId, _SlotRole, ProfileName}
                        }}
   end;
 
-process_input(Input = #frame{source_metadata = #source_metadata{source_id = Id,
-                                                                source_instance = Instance},
-                             frame_metadata = #video_frame_metadata{is_idr_frame = true},
-                             vm_capture_us = CaptureUs,
-                             pts = Pts,
-                             dts = Dts},
+process_input(Input = #frame{frame_metadata = #video_frame_metadata{is_idr_frame = true}},
+              State = #?state{reference_stream = undefined}) ->
+  {Output, State2} = select_reference_stream(Input, State),
+  {ok, Output, State2};
+  
+process_input(Input = #frame{type = audio},
               State = #?state{reference_stream = undefined,
-                              pending_program_details = PendingProgramDetails}) ->
-
-  %% No reference - this stream is the new reference and no timestamp delta needed
-  Key = {Id, Instance},
-  Now = ?now_ms * 90,
-  Delta = Now - Dts,
-
-  ?SLOG_INFO("Stream selected as reference", #{ stream => Id
-                                              , delta => Delta}),
-
-  StreamState = #active_stream_state{delta = Delta,
-                                     last_iframe_utc = CaptureUs,
-                                     last_iframe_dts = Dts},
-
-  DeltadFrame = Input#frame{pts = Pts + Delta,
-                            dts = Dts + Delta
-                           },
-
-  Output = case maps:get(Id, PendingProgramDetails, undefined) of
-             undefined ->
-               DeltadFrame;
-             ProgramDetails ->
-               [ProgramDetails#frame{pts = Dts + Delta, dts = Dts + Delta}, DeltadFrame]
-           end,
-
-  {ok, Output, State#?state{reference_stream = Key,
-                            streams = maps:put(Key, StreamState, #{}),
-                            pending_program_details = maps:remove(Id, PendingProgramDetails)
-                           }};
+                              audio_only = true}) ->
+  {Output, State2} = select_reference_stream(Input, State),
+  {ok, Output, State2};
 
 process_input(Input = #frame{type = program_details,
                              source_metadata = #source_metadata{source_id = Id}},
@@ -147,7 +122,8 @@ process_input(Input = #frame{source_metadata = #source_metadata{source_id = Id,
                              dts = Dts}, State = #?state{streams = Streams,
                                                          reference_stream = ReferenceStream,
                                                          permissible_delta_before_adjustment_ms = PermissibleDelta,
-                                                         pending_program_details = PendingProgramDetails
+                                                         pending_program_details = PendingProgramDetails,
+                                                         audio_only = AudioOnly
                                                         }) ->
 
   Key = {Id, Instance},
@@ -157,8 +133,8 @@ process_input(Input = #frame{source_metadata = #source_metadata{source_id = Id,
       %% We should also check if there's an entry for Id with an old instance (which could also be the reference - if the reference dies,
       %% then we need to promote one of the others (but keep its delta)
 
-      case FrameMetadata of
-        #video_frame_metadata{is_idr_frame = true} ->
+      case is_sync_frame(Input, AudioOnly) of
+        true ->
           #active_stream_state{last_iframe_utc = ReferenceCaptureUs,
                                last_iframe_dts = ReferenceDts,
                                delta = ReferenceDelta
@@ -197,7 +173,7 @@ process_input(Input = #frame{source_metadata = #source_metadata{source_id = Id,
                    end,
           {ok, Output, State2#?state{pending_program_details = maps:remove(Id, PendingProgramDetails)}};
 
-        _ ->
+        false ->
           %% We can't generate a reference delta on a non-iframe
           case Input of
             #frame{type = program_details} ->
@@ -233,3 +209,41 @@ ioctl(_, State) ->
 %%------------------------------------------------------------------------------
 %% Internal functions
 %%------------------------------------------------------------------------------
+
+is_sync_frame(#frame{ frame_metadata = #video_frame_metadata{is_idr_frame = true} }, _) -> true;
+is_sync_frame(#frame{ type = audio }, _AudioOnly = true) -> true;
+is_sync_frame(_, _) -> false.
+
+select_reference_stream(Input = #frame{source_metadata = #source_metadata{source_id = Id,
+                                                                          source_instance = Instance},
+                                       vm_capture_us = CaptureUs,
+                                       pts = Pts,
+                                       dts = Dts},
+                        State = #?state{pending_program_details = PendingProgramDetails}) ->
+  %% No reference - this stream is the new reference and no timestamp delta needed
+  Key = {Id, Instance},
+  Now = ?now_ms * 90,
+  Delta = Now - Dts,
+
+  ?SLOG_INFO("Stream selected as reference", #{ stream => Id
+                                              , delta => Delta}),
+
+  StreamState = #active_stream_state{delta = Delta,
+                                     last_iframe_utc = CaptureUs,
+                                     last_iframe_dts = Dts},
+
+  DeltadFrame = Input#frame{pts = Pts + Delta,
+                            dts = Dts + Delta
+                           },
+
+  Output = case maps:get(Id, PendingProgramDetails, undefined) of
+             undefined ->
+               DeltadFrame;
+             ProgramDetails ->
+               [ProgramDetails#frame{pts = Dts + Delta, dts = Dts + Delta}, DeltadFrame]
+           end,
+
+  {Output, State#?state{reference_stream = Key,
+                        streams = maps:put(Key, StreamState, #{}),
+                        pending_program_details = maps:remove(Id, PendingProgramDetails)
+                        }}.

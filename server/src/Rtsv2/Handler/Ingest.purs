@@ -26,7 +26,6 @@ import Erl.Process.Raw as Raw
 import Erl.Utils (self)
 import Gproc as GProc
 import Gproc as Gproc
-import Logger (Logger)
 import Logger as Logger
 import Prim.Row as Row
 import Prometheus as Prometheus

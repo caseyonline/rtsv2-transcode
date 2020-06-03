@@ -20,17 +20,16 @@ import Prelude
 
 import Bus as Bus
 import Data.Either (Either(..), hush)
-import Data.Int (round, toNumber)
+import Data.Int (round)
 import Data.Long as Long
 import Data.Maybe (Maybe(..), fromMaybe, maybe)
-import Data.Newtype (unwrap, wrap)
+import Data.Newtype (unwrap)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
 import Erl.Data.Tuple (Tuple2, tuple2)
 import Erl.Process.Raw (Pid)
 import Erl.Utils (systemTimeMs)
-import Logger (Logger)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
 import Pinto as Pinto
@@ -50,7 +49,7 @@ import Rtsv2.DataObject as DO
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Types (fromLocalOrRemote)
-import Shared.Common (Milliseconds(..))
+import Shared.Common (LoggingMetadata(..), Milliseconds(..))
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.JsonLd as JsonLd
@@ -181,11 +180,13 @@ dataObjectUpdate ingestKey updateMsg =
 
 init :: StartArgs -> StateServerName -> Effect State
 init { streamPublish
-     , streamDetails
-     , ingestKey
+     , streamDetails: streamDetails@{slot: {name: slotName}}
+     , ingestKey: ingestKey@(IngestKey slotId slotRole profileName)
      , remoteAddress
      , remotePort
      , handlerPid} stateServerName = do
+  Logger.addLoggerMetadata $ PerProfile { slotId, slotRole, slotName, profileName}
+
   logStart "Ingest starting" {ingestKey, handlerPid}
   loadConfig <- Config.loadConfig
   thisServer <- PoPDefinition.getThisServer

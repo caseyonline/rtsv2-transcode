@@ -7,7 +7,8 @@
         {
           slot_id :: slot_id(),
           profiles :: list(slot_profile()),
-          push_details :: list(term())
+          push_details :: list(term()),
+          audio_only :: boolean()
         }).
 -type hls_master_playlist_processor_config() :: #hls_master_playlist_processor_config{}.
 

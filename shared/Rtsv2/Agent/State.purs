@@ -49,7 +49,7 @@ type TimedPoPStep
     , rtt :: Int
     }
 
-type Health = JsonLd.HealthNode
+type Health f = JsonLd.HealthNode f
 
 type NodeManager = JsonLd.NodeManagerStateNode
 

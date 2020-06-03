@@ -16,4 +16,4 @@ ffmpeg \
   -profile:a aac_he_v2 \
   -bf 0 \
   -tune zerolatency \
-  -f flv "rtmp://"${INGEST_NODE}":"${INGEST_PORT}"/mmddev001/slot1ao_500 pubUser=user pubPasswd=password"
+  -f flv "rtmp://"${INGEST_NODE}":"${INGEST_PORT}"/mmddev001/slot1ao_1000 pubUser=user pubPasswd=password"
