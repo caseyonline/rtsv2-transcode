@@ -140,8 +140,8 @@ getStatsSystem node route = get (M.URL $ C.makeUrlAndUnwrapSystem node route)
 getEgestStats :: Node -> SlotId -> Aff (Either String ResWithBody)
 getEgestStats node slotId = getStats node (Support.EgestStatsE slotId Primary)
 
-getIngestMetrics :: Node -> Aff (Either String ResWithBody)
-getIngestMetrics node = getStats node Support.IngestInstancesMetricsE
+getEgestMetrics :: Node -> Aff (Either String ResWithBody)
+getEgestMetrics node = getStats node Support.EgestInstancesMetricsE
 
 -- | Ingest
 ingestStart :: Node -> CanaryState -> RtmpShortName -> RtmpStreamName -> Aff (Either String ResWithBody)
@@ -151,6 +151,10 @@ ingestStart node canary shortName streamName =
 ingestStop :: Node -> SlotId -> ProfileName -> Aff (Either String ResWithBody)
 ingestStop node slotId profileName =
   get (M.URL $ C.makeUrlAndUnwrapSystem node (System.IngestStopE slotId Primary profileName))
+
+getIngestMetrics :: Node -> Aff (Either String ResWithBody)
+getIngestMetrics node = getStats node Support.IngestInstancesMetricsE
+
 
 -- | Aggregators
 getAggregatorStats :: Node -> SlotId -> Aff (Either String ResWithBody)
