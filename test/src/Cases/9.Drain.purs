@@ -3,6 +3,7 @@ module Cases.Drain where
 import Prelude
 
 import Data.Traversable (traverse_)
+import Debug.Trace (spy)
 import Effect.Aff (Aff, delay, Milliseconds(..))
 import Helpers.Types (Node)
 import Helpers.Assert as A
@@ -110,7 +111,7 @@ passiveDrainTest2 =
 
 passiveDrainTest3 :: forall m. Monad m => SpecT Aff Unit m Unit
 passiveDrainTest3 =
-  it "9.1.3 Once agents have passively drained, node switches to out-of-service state" do
+  itOnly "9.1.3 Once agents have passively drained, node switches to out-of-service state" do
     HTTP.ingestStart E.p1n1 Live E.shortName1 E.lowStreamName
                                        >>= A.assertStatusCode 200 >>= as "create low ingest"
 
@@ -242,7 +243,7 @@ forceDrainTest1 =
 forceDrainTest2 :: forall m. Monad m => SpecT Aff Unit m Unit
 forceDrainTest2 =
     after_ (F.stopSlot) do
-      itOnly "9.2.2 Force drain moves aggregator, relay and egest agents to other node" do
+      it "9.2.2 Force drain moves aggregator, relay and egest agents to other node" do
 
         traverse_ F.maxOut (F.allNodesBar E.p1n2 threeNodes)                   >>= as' "load up all servers bar one"
 
@@ -263,11 +264,11 @@ forceDrainTest2 =
 
         HTTP.healthCheck E.p1n2 >>= A.assertStatusCode 200
                                 >>= A.assertBodyFun ((==) 3 <<< healthNodeToAgentCount)
-                                >>= as "two agents running on p1n2"
+                                >>= as "three agents running on p1n2"
 
-        traverse_ F.freeUp threeNodes                   >>= as' "clear the load on all servers"
+        traverse_ F.freeUp threeNodes              >>= as' "clear the load on all servers"
 
-        E.waitForIntraPoPDisseminate               >>= as' "allow load to disseminate"
+        E.waitForIntraPoPDisseminate               >>= as' "allow load change to disseminate"
 
         HTTP.changeRunState E.p1n2 ForceDrain >>= A.assertStatusCode 204 >>= as "runState changed to force-drain"
 

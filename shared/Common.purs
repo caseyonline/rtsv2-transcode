@@ -6,6 +6,7 @@ module Shared.Common
        , AlertData(..)
        , LoggingMetadata(..)
        , IngestFailedAlert(..)
+       , CommonAlertFields
        , LSRSFailedAlert
        , GenericAlert
        , ProfileMetadata
@@ -15,20 +16,22 @@ module Shared.Common
 
 import Prelude
 
+import Control.Alt ((<|>))
 import Control.Monad.Except (except)
-import Data.Either (note)
+import Data.Either (Either(..), note)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show (genericShow)
+import Data.List.NonEmpty (singleton)
 import Data.List.NonEmpty as NEL
 import Data.Long (Long, toString)
 import Data.Long as Long
-import Data.Maybe (Maybe)
-import Data.Newtype (class Newtype, un)
-import Foreign (ForeignError(..), readString, unsafeToForeign)
+import Data.Maybe (Maybe(..))
+import Data.Newtype (class Newtype, un, wrap)
+import Data.Symbol (SProxy(..))
+import Foreign (Foreign, ForeignError(..), F, readString, unsafeToForeign)
 import Record as Record
 import Shared.Rtsv2.Stream (ProfileName, SlotId, SlotRole)
-import Simple.JSON (class ReadForeign, class WriteForeign, writeImpl)
-import Unsafe.Coerce (unsafeCoerce)
+import Simple.JSON (class ReadForeign, class WriteForeign, readImpl, writeImpl)
 
 -- TODO - find a place for these utility types to live (a la id3as_common?)
 -- | A duration measured in milliseconds.
@@ -76,14 +79,17 @@ data AlertData = IngestStarted
                | LSRSFailed LSRSFailedAlert
                | GenericAlert GenericAlert
 
-newtype Alert = Alert { initialReport :: Milliseconds
-                      , lastReport :: Milliseconds
-                      , repeatCount :: Int
-                      , alert :: AlertData
-                      , metadata :: Maybe LoggingMetadata
-                      , source :: Maybe LoggingSource
-                      , pid :: String
-                      }
+type CommonAlertFields a =
+  ( initialReport :: Milliseconds
+  , lastReport :: Milliseconds
+  , repeatCount :: Int
+  , metadata :: Maybe LoggingMetadata
+  , source :: Maybe LoggingSource
+  , pid :: String
+  | a
+  )
+
+newtype Alert = Alert (Record (CommonAlertFields ( alert :: AlertData )))
 
 ------------------------------------------------------------------------------
 -- Type class derivations
@@ -144,6 +150,10 @@ instance writeForeignLoggingMetadata :: WriteForeign LoggingMetadata where
   writeImpl (PerProfile profileMetadata) = writeImpl profileMetadata
   writeImpl (PerSlot slotMetadata) = writeImpl slotMetadata
 
+instance readForeignLoggingMetadata :: ReadForeign LoggingMetadata where
+  readImpl f = (PerProfile <$> readImpl f)
+           <|> (PerSlot <$> readImpl f)
+
 derive instance genericLoggingMetadata :: Generic LoggingMetadata _
 instance showLoggingMetadata :: Show LoggingMetadata where show = genericShow
 
@@ -155,9 +165,7 @@ instance showAlert :: Show Alert where show = genericShow
 instance writeForeignAlert :: WriteForeign Alert where
   writeImpl (Alert alert) =
     let
-      alertCommon {initialReport, lastReport, repeatCount, metadata, source, pid} =
-        {initialReport, lastReport, repeatCount, metadata, source, pid}
-
+      alertDetail :: Record (CommonAlertFields()) -> AlertData -> Foreign
       alertDetail common IngestStarted =
         writeImpl $ Record.merge common { "type" : "ingestStarted"
                                         }
@@ -178,7 +186,43 @@ instance writeForeignAlert :: WriteForeign Alert where
                                         , text
                                         }
     in
-     alertDetail (alertCommon alert) alert.alert
+     alertDetail (Record.delete (SProxy :: SProxy "alert") alert) alert.alert
+
 
 instance readForeignAlert :: ReadForeign Alert where
-  readImpl f = unsafeCoerce 1
+   readImpl f = decode f
+     where
+       decode o = do
+         common <- readImpl o :: F (Record (CommonAlertFields ("type" :: String)))
+         let
+           alert' = Record.delete (SProxy :: SProxy "type") common
+         case common."type" of
+           "ingestStarted" ->
+             pure $ Alert $ Record.insert (SProxy :: SProxy "alert") IngestStarted alert'
+           "ingestFailed" -> do
+             {reason} <- readImpl o :: F {reason :: String}
+             case reason of
+               "invalidVideoCodec" -> do
+                 {codecId} <- readImpl o :: F {codecId :: Number}
+                 pure $ Alert $ Record.insert (SProxy :: SProxy "alert") (IngestFailed (InvalidVideoCodec codecId)) alert'
+               _ ->
+                 except $ Left $ singleton (ForeignError ("Unknown ingest failed reason " <> reason))
+           "lsrsFailed" -> do
+             {reason} <- readImpl o :: F {reason :: String}
+             pure $ Alert $ Record.insert (SProxy :: SProxy "alert") (LSRSFailed {reason}) alert'
+           "genericAlert" -> do
+             {text} <- readImpl o :: F {text :: String}
+             pure $ Alert $ Record.insert (SProxy :: SProxy "alert") (GenericAlert {text}) alert'
+           _ ->
+             except $ Left $ singleton (ForeignError ("Unknown alert type " <> common."type"))
+
+defaultAlert :: Alert
+defaultAlert =
+  Alert { initialReport : wrap $ Long.fromInt 0
+        , lastReport: wrap $ Long.fromInt 0
+        , repeatCount: 0
+        , metadata: Nothing
+        , source : Nothing
+        , pid : ""
+        , alert: GenericAlert {text: ""}
+        }

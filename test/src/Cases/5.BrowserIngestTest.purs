@@ -139,7 +139,7 @@ webRtcIngest =
   describe "5.4 webRtc Ingest tests" do
     before_ (F.startSession ingestNodes *> F.launch ingestNodes) do
       after_ (F.stopSession *> F.stopSlot) do
-        it "5.4.1 can check that a streaming video has started and is playing on Backup" do
+        it "5.4.1 check that a webrtc video ingest starts and creates and aggregator" do
           traverse_ F.maxOut (F.allNodesBar E.p1n1 ingestNodes) >>= L.as' "load up all servers bar one"
           E.waitForIntraPoPDisseminate
 

@@ -10,7 +10,7 @@ import Helpers.HTTP as HTTP
 import Helpers.Log as L
 import Helpers.Types (Node)
 import Shared.Rtsv2.Stream (SlotRole(..))
-import Test.Spec (SpecT, after_, before_, describe, describeOnly, it)
+import Test.Spec (SpecT, after_, before_, describe, describeOnly, it, itOnly)
 import Test.Unit.Assert as Assert
 import Toppokki as T
 
@@ -183,8 +183,8 @@ broadcastMessages =
           T.select (T.Selector "select#msgType") "publisher" tab1
           T.click (T.Selector "button#msgsend") tab1
 
-          -- Go to tab4 check that new publisher message has been recieved
-          T.bringToFront tab4 >>= L.as' "Check publisherMsg has been recieved on publisher page"
+          -- Go to tab4 check that new publisher message has been received
+          T.bringToFront tab4 >>= L.as' "Check publisherMsg has been received on publisher page"
           msgReceivedTraceId4 <- F.getInnerText "div.message.msg_received > div.msg_name" tab4
           msgContent4 <- F.getInnerText "div.message.msg_received > div.msg_bubble" tab4
 

@@ -601,14 +601,3 @@ _timestamp = prop (SProxy :: SProxy "timestamp")
 
 _sessions :: forall a b. Lens' {sessions :: a | b} a
 _sessions = prop (SProxy :: SProxy "sessions")
-
--- foo :: forall resourceType otherFields newtypeType. Newtype newtypeType { resource :: resourceType | otherFields } => newtypeType -> resourceType
--- foo = _.resource <<< unwrap
-
--- bar :: JsonLd.Node Server () -> String
--- bar server =
---   writeJSON server
-
--- baz :: String -> E (JsonLd.Node Server ())
--- baz s =
---   readJSON s
