@@ -17,6 +17,8 @@ import Prelude
 
 import Control.Monad.Except (except)
 import Data.Either (note)
+import Data.Generic.Rep (class Generic)
+import Data.Generic.Rep.Show (genericShow)
 import Data.List.NonEmpty as NEL
 import Data.Long (Long, toString)
 import Data.Long as Long
@@ -26,6 +28,7 @@ import Foreign (ForeignError(..), readString, unsafeToForeign)
 import Record as Record
 import Shared.Rtsv2.Stream (ProfileName, SlotId, SlotRole)
 import Simple.JSON (class ReadForeign, class WriteForeign, writeImpl)
+import Unsafe.Coerce (unsafeCoerce)
 
 -- TODO - find a place for these utility types to live (a la id3as_common?)
 -- | A duration measured in milliseconds.
@@ -127,6 +130,13 @@ derive newtype instance writeForeignUrl :: WriteForeign Url
 -- IngestFailedAlert
 instance writeForeignIngestFailedAlert :: WriteForeign IngestFailedAlert where
   writeImpl (InvalidVideoCodec codecId) = writeImpl {invalidVideoCodec: codecId}
+derive instance genericIngestFailedAlert :: Generic IngestFailedAlert _
+instance showIngestFailedAlert :: Show IngestFailedAlert where show = genericShow
+
+------------------------------------------------------------------------------
+-- AlertData
+derive instance genericAlertData :: Generic AlertData _
+instance showAlertData :: Show AlertData where show = genericShow
 
 ------------------------------------------------------------------------------
 -- LoggingMetadata
@@ -134,8 +144,14 @@ instance writeForeignLoggingMetadata :: WriteForeign LoggingMetadata where
   writeImpl (PerProfile profileMetadata) = writeImpl profileMetadata
   writeImpl (PerSlot slotMetadata) = writeImpl slotMetadata
 
+derive instance genericLoggingMetadata :: Generic LoggingMetadata _
+instance showLoggingMetadata :: Show LoggingMetadata where show = genericShow
+
 ------------------------------------------------------------------------------
 -- Alert
+derive instance genericAlert :: Generic Alert _
+instance showAlert :: Show Alert where show = genericShow
+
 instance writeForeignAlert :: WriteForeign Alert where
   writeImpl (Alert alert) =
     let
@@ -163,3 +179,6 @@ instance writeForeignAlert :: WriteForeign Alert where
                                         }
     in
      alertDetail (alertCommon alert) alert.alert
+
+instance readForeignAlert :: ReadForeign Alert where
+  readImpl f = unsafeCoerce 1
