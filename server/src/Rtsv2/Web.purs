@@ -20,7 +20,6 @@ import Foreign (unsafeToForeign)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen as Gen
-import Prim.Row as Row
 import Rtsv2.Agents.EgestInstance as EgestInstance
 import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
 import Rtsv2.Agents.IngestWebRTCIngestHandler as IngestWebRTCIngestHandler
@@ -361,5 +360,5 @@ textWriter text = tuple2 "text/plain" (\req state -> Rest.result text req state)
 domain :: List Atom
 domain = serverName # Names.toDomain # singleton
 
-logInfo :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
-logInfo = Logger.doLog domain Logger.info
+logInfo :: forall report. String -> { | report } -> Effect Unit
+logInfo = Logger.info <<< Logger.traceMetadata domain

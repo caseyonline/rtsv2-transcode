@@ -36,7 +36,6 @@ import Pinto (ServerName, StartLinkResult, ok')
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
-import Prim.Row as Row
 import Rtsv2.Agents.EgestInstance as EgestInstance
 import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
 import Rtsv2.Agents.IntraPoP as IntraPoP
@@ -403,11 +402,11 @@ activeSupStartArgs canaryState =
   , acceptingRequestsFun: getAcceptingRequests
   }
 
-domains :: List Atom
-domains = serverName # Names.toDomain # singleton
+domain :: List Atom
+domain = serverName # Names.toDomain # singleton
 
-logInfo :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
-logInfo = Logger.doLog domains Logger.info
+logInfo :: forall report. String -> { | report } -> Effect Unit
+logInfo = Logger.info <<< Logger.traceMetadata domain
 
-logCommand :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
-logCommand = Logger.doLogCommand domains
+logCommand :: forall report. String -> { | report } -> Effect Unit
+logCommand = Logger.notice <<< Logger.commandMetadata domain

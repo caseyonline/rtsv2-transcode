@@ -8,8 +8,11 @@ module Rtsv2.Agents.IngestInstance
    , dataObjectSendMessage
    , dataObjectUpdate
    , stopIngest
-   , StartArgs
+   , getStreamAuthType
+   , getPublishCredentials
+   , getStreamDetails
 
+   , StartArgs
    , CachedState
    , WebSocket
    , StateServerName
@@ -19,11 +22,11 @@ module Rtsv2.Agents.IngestInstance
 import Prelude
 
 import Bus as Bus
-import Data.Either (Either(..), hush)
+import Data.Either (Either(..), either, hush)
 import Data.Int (round)
 import Data.Long as Long
 import Data.Maybe (Maybe(..), fromMaybe, maybe)
-import Data.Newtype (unwrap)
+import Data.Newtype (unwrap, wrap)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
@@ -46,6 +49,7 @@ import Rtsv2.Agents.StreamRelayTypes (AggregatorToIngestWsMessage(..), IngestToA
 import Rtsv2.Audit as Audit
 import Rtsv2.Config as Config
 import Rtsv2.DataObject as DO
+import Rtsv2.LlnwApi as LlnwApi
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Types (fromLocalOrRemote)
@@ -53,7 +57,7 @@ import Shared.Common (LoggingMetadata(..), Milliseconds(..))
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.JsonLd as JsonLd
-import Shared.Rtsv2.LlnwApiTypes (StreamDetails, StreamPublish(..))
+import Shared.Rtsv2.LlnwApiTypes (AuthType, PublishCredentials, StreamAuth, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamPublish(..))
 import Shared.Rtsv2.Router.Endpoint.System as System
 import Shared.Rtsv2.Stream (AggregatorKey, IngestKey(..), ingestKeyToAggregatorKey)
 import Shared.Rtsv2.Types (OnBehalfOf(..), Server, extractAddress)
@@ -112,8 +116,45 @@ type StartArgs
     , handlerPid :: Pid
     }
 
+------------------------------------------------------------------------------
+-- API
+------------------------------------------------------------------------------
 startLink :: StartArgs -> StateServerName -> Effect StartLinkResult
 startLink args@{ingestKey} stateServerName = Gen.startLink (serverName ingestKey) (init args stateServerName) handleInfo
+
+getStreamAuthType :: String -> String -> Effect (Maybe AuthType)
+getStreamAuthType host rtmpShortName = do
+  config <- Config.llnwApiConfig
+  restResult <- LlnwApi.streamAuthType config (wrap { host
+                                                    , protocol: Rtmp
+                                                    , rtmpShortName: wrap rtmpShortName} :: StreamConnection)
+  either error (pure <<< Just) restResult
+  where
+    error err = do
+      logInfoWithMetadata "StreamAuthType error" {alertId: (atom "lsrsFailure")} {reason: err}
+      pure Nothing
+
+getPublishCredentials :: String -> String -> String -> Effect (Maybe PublishCredentials)
+getPublishCredentials host rtmpShortName username = do
+  config <- Config.llnwApiConfig
+  restResult <- LlnwApi.streamAuth config (wrap { host
+                                                , rtmpShortName: wrap rtmpShortName
+                                                , username} :: StreamAuth)
+  either error (pure <<< Just) restResult
+  where
+    error err = do
+      logInfoWithMetadata "StreamAuth error" {alertId: (atom "lsrsFailure")} {reason: err}
+      pure Nothing
+
+getStreamDetails :: StreamPublish -> Effect (Maybe StreamDetails)
+getStreamDetails streamPublish = do
+  config <- Config.llnwApiConfig
+  restResult <- LlnwApi.streamPublish config streamPublish
+  either error (pure <<< Just) restResult
+  where
+    error err = do
+      logInfoWithMetadata "StreamPublish error" {alertId: (atom "lsrsFailure")} {reason: err}
+      pure Nothing
 
 stopAction :: IngestKey -> Maybe CachedState -> Effect Unit
 stopAction ingestKey mCachedState = do
@@ -178,6 +219,9 @@ dataObjectUpdate ingestKey updateMsg =
       pure $ CallReply unit state
   )
 
+------------------------------------------------------------------------------
+-- gen-server callbacks
+------------------------------------------------------------------------------
 init :: StartArgs -> StateServerName -> Effect State
 init { streamPublish
      , streamDetails: streamDetails@{slot: {name: slotName}}
@@ -261,6 +305,9 @@ handleInfo msg state@{ingestKey} = case msg of
   Gun gunMsg ->
     processGunMessage state gunMsg
 
+------------------------------------------------------------------------------
+-- Internals
+------------------------------------------------------------------------------
 processGunMessage :: State -> WsGun.GunMsg -> Effect (CastResult State)
 processGunMessage state@{aggregatorWebSocket: Nothing} gunMsg =
   pure $ CastNoReply state
@@ -412,11 +459,18 @@ handleAggregatorExit exitedAggregatorKey exitedAggregator state@{ ingestKey
 domain :: List Atom
 domain = atom <$> (show Agent.Ingest :  "Instance" : nil)
 
-logInfo :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
-logInfo = Logger.doLog domain Logger.info
+logInfo :: forall report. String -> { | report } -> Effect Unit
+logInfo msg = Logger.info (Logger.traceMetadata domain msg)
 
-logStart :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
-logStart = Logger.doLogEvent domain Logger.Start Logger.info
+logInfoWithMetadata :: forall report metadata.
+                       Row.Lacks "domain" metadata =>
+                       Row.Lacks "type" metadata =>
+                       Row.Lacks "text" metadata =>
+                       String -> { | metadata } -> { | report } -> Effect Unit
+logInfoWithMetadata msg = Logger.info <<< Logger.genericMetadata domain msg
 
-logStop :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
-logStop = Logger.doLogEvent domain Logger.Stop Logger.info
+logStart :: forall report. String -> { | report } -> Effect Unit
+logStart = Logger.info <<< Logger.eventMetadata domain Logger.Start
+
+logStop :: forall report. String -> { | report } -> Effect Unit
+logStop = Logger.info <<< Logger.eventMetadata domain Logger.Stop

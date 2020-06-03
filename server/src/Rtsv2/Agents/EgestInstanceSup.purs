@@ -26,7 +26,6 @@ import Pinto as Pinto
 import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStartTemplate, childType)
 import Pinto.Sup as Sup
 import Pinto.Types (startOkAS)
-import Prim.Row as Row
 import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Agents.EgestInstance (CreateEgestPayload)
 import Rtsv2.Agents.EgestInstance as EgestInstance
@@ -176,11 +175,11 @@ startEgest payload@{slotId, slotRole} =
 domain :: List Atom
 domain = serverName # Names.toDomain # singleton
 
-logInfo :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
-logInfo = Logger.doLog domain Logger.info
+logInfo :: forall report. String -> { | report } -> Effect Unit
+logInfo = Logger.info <<< Logger.traceMetadata domain
 
-logWarning :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
-logWarning = Logger.doLog domain Logger.warning
+logWarning :: forall report. String -> { | report } -> Effect Unit
+logWarning = Logger.warning <<< Logger.traceMetadata domain
 
-logStart :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
-logStart = Logger.doLogEvent domain Logger.Start Logger.info
+logStart :: forall report. String -> { | report } -> Effect Unit
+logStart = Logger.info <<< Logger.eventMetadata domain Logger.Start

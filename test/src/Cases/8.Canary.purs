@@ -223,6 +223,6 @@ canaryWhenCanary4 =
 -------------------------------------------------------------------------------
 -- Helpers
 -------------------------------------------------------------------------------
-healthNodeToCanaryState :: JsonLd.HealthNode -> CanaryState
+healthNodeToCanaryState :: JsonLd.HealthNode Array -> CanaryState
 healthNodeToCanaryState =
   _.canaryState <<< JsonLd.unwrapNode <<< _.nodeManager <<< JsonLd.unwrapNode

@@ -47,7 +47,6 @@ import Pinto as Pinto
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
-import Prim.Row as Row
 import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Agents.EgestInstance.WebRTCTypes (WebRTCStreamServerStats, WebRTCSessionManagerStats)
 import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..), announceLocalEgestStopped)
@@ -710,11 +709,11 @@ toRelayServer = unwrap >>> wrap
 domain :: List Atom
 domain = Agent.Egest # show # atom # singleton
 
-logInfo :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
-logInfo = Logger.doLog domain Logger.info
+logInfo :: forall report. String -> { | report } -> Effect Unit
+logInfo = Logger.info <<< Logger.traceMetadata domain
 
-logStart :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
-logStart = Logger.doLogEvent domain Logger.Start Logger.info
+logStart :: forall report. String -> { | report } -> Effect Unit
+logStart = Logger.info <<< Logger.eventMetadata domain Logger.Start
 
-logStop :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
-logStop = Logger.doLogEvent domain Logger.Stop Logger.info
+logStop :: forall report. String -> { | report } -> Effect Unit
+logStop = Logger.info <<< Logger.eventMetadata domain Logger.Stop

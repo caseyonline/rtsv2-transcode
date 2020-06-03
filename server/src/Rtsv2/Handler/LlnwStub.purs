@@ -33,7 +33,6 @@ import Erl.File as File
 import Erl.FileLib as FileLib
 import Logger as Logger
 import Partial.Unsafe (unsafePartial)
-import Prim.Row as Row
 import Rtsv2.Agents.IngestSup as IngestSup
 import Rtsv2.Handler.MimeType as MimeType
 import Shared.Rtsv2.LlnwApiTypes (AuthType, HlsPushProtocol(..), HlsPushSpecFormat(..), PublishCredentials, SlotLookupResult, SlotPublishAuthType(..), StreamAuth, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamOutputFormat(..), StreamPublish)
@@ -438,5 +437,5 @@ binaryToString = unsafeCoerce
 domain :: List Atom
 domain = atom <$> ("LlnwStub" : nil)
 
-logInfo :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
-logInfo = Logger.doLog domain Logger.info
+logInfo :: forall report. String -> { | report } -> Effect Unit
+logInfo = Logger.info <<< Logger.traceMetadata domain

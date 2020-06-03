@@ -297,11 +297,11 @@ forceDrainTest2 =
 -------------------------------------------------------------------------------
 -- Helpers
 -------------------------------------------------------------------------------
-healthNodeToRunState :: JsonLd.HealthNode -> RunState
+healthNodeToRunState :: JsonLd.HealthNode Array -> RunState
 healthNodeToRunState =
   _.runState <<< JsonLd.unwrapNode <<< _.nodeManager <<< JsonLd.unwrapNode
 
-healthNodeToAgentCount :: JsonLd.HealthNode -> Int
+healthNodeToAgentCount :: JsonLd.HealthNode Array -> Int
 healthNodeToAgentCount =
   (\{ingests, ingestAggregators, streamRelays, egests} -> ingests + ingestAggregators + streamRelays + egests)
   <<< JsonLd.unwrapNode <<< _.nodeManager <<< JsonLd.unwrapNode

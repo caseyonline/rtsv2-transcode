@@ -22,9 +22,7 @@ import Erl.Process.Raw (Pid)
 import Erl.Process.Raw as Raw
 import Gproc as GProc
 import Gproc as Gproc
-import Logger (Logger)
 import Logger as Logger
-import Prim.Row as Row
 import Rtsv2.Agents.EgestInstance as EgestInstance
 import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
 import Rtsv2.Audit as Audit
@@ -153,5 +151,5 @@ stopHandler clientId = do
 domain :: List Atom
 domain = atom <$> ("Client" :  "Instance" : List.nil)
 
-logInfo :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
-logInfo = Logger.doLog domain Logger.info
+logInfo :: forall report. String -> { | report } -> Effect Unit
+logInfo = Logger.info <<< Logger.traceMetadata domain

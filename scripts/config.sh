@@ -5,6 +5,7 @@ declare INGEST_PORT=${INGEST_PORT:-1935}
 declare VIDEO_CODEC=${VIDEO_CODEC:-h264}
 declare VIDEO_PRESET=faster
 declare VIDEO_PROFILE=${VIDEO_PROFILE:-profile:v baseline}
+declare SHORT_NAME=${SHORT_NAME:=mmddev001}
 
 case "${USER}" in
   stears)
@@ -40,3 +41,5 @@ export MEDIA_FILE_1000
 export INGEST_NODE
 export VIDEO_CODEC
 export VIDEO_PRESET
+export VIDEO_PROFILE
+export SHORT_NAME

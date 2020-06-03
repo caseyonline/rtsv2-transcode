@@ -6,7 +6,7 @@ module Rtsv2.Agents.IngestRtmpServer
 
 import Prelude
 
-import Data.Either (Either(..), hush)
+import Data.Either (Either(..))
 import Data.Foldable (find)
 import Data.Function.Uncurried (Fn2, Fn5, mkFn2, mkFn5)
 import Data.Maybe (Maybe(..), fromMaybe)
@@ -16,14 +16,13 @@ import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
 import Erl.Process.Raw (Pid)
 import Foreign (Foreign)
-import Logger (Logger)
 import Logger as Logger
 import Media.Rtmp as Rtmp
 import Media.SourceDetails as SourceDetails
 import Pinto (ServerName)
 import Pinto as Pinto
 import Pinto.Gen as Gen
-import Prim.Row as Row
+import Rtsv2.Agents.IngestInstance (getPublishCredentials, getStreamAuthType, getStreamDetails)
 import Rtsv2.Agents.IngestInstance as IngestInstance
 import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
 import Rtsv2.Agents.IngestRtmpCrypto (AdobeContextParams, AdobePhase1Params, AdobePhase2Params, LlnwContextParams, LlnwPhase1Params, LlnwPhase2Params, Phase2Params(..), checkCredentials)
@@ -31,7 +30,6 @@ import Rtsv2.Agents.IngestRtmpCrypto as IngestRtmpCrypto
 import Rtsv2.Config (LoadConfig)
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
-import Rtsv2.LlnwApi as LlnwApi
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Types (LocalResource(..))
@@ -39,10 +37,9 @@ import Rtsv2.Utils (crashIfLeft, noprocToMaybe)
 import Serf (Ip)
 import Shared.Common (ProfileMetadata)
 import Shared.Rtsv2.Agent as Agent
-import Shared.Rtsv2.LlnwApiTypes (AuthType, PublishCredentials, SlotProfile(..), SlotPublishAuthType(..), StreamAuth, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamPublish)
+import Shared.Rtsv2.LlnwApiTypes (AuthType, SlotProfile(..), SlotPublishAuthType(..), StreamDetails, StreamIngestProtocol(..))
 import Shared.Rtsv2.Stream (IngestKey(..))
 import Shared.Rtsv2.Types (CanaryState(..), extractAddress)
-import SpudGun (JsonResponseError)
 import Stetson.WebSocketHandler (self)
 
 foreign import startServerImpl :: (Foreign -> Either Foreign Unit) -> Either Foreign Unit -> Ip -> Int -> Callbacks -> Ip -> Int -> Callbacks -> Int -> Effect (Either Foreign Unit)
@@ -113,11 +110,10 @@ onStreamCallback loadConfig canary host rtmpShortNameStr username remoteAddress 
                          }
   maybeStreamDetails <- getStreamDetails streamPublish
   case maybeStreamDetails of
-    Left error -> do
-      _ <- logInfo "StreamPublish rejected" {reason: error}
+    Nothing -> do
       pure unit
 
-    Right streamDetails -> do
+    Just streamDetails -> do
       case findProfile rtmpStreamName streamDetails of
         Nothing ->
           pure unit
@@ -190,33 +186,11 @@ startWorkflowAndBlock rtmpPid ingestPid publishArgs ingestKey {slot: {name}} =
     sourceInfo foreignSourceInfo = do
       IngestInstance.setSourceInfo ingestKey (SourceDetails.foreignToSourceInfo foreignSourceInfo)
 
-getStreamAuthType :: String -> String -> Effect (Maybe AuthType)
-getStreamAuthType host rtmpShortName = do
-  config <- Config.llnwApiConfig
-  restResult <- LlnwApi.streamAuthType config (wrap { host
-                                                    , protocol: Rtmp
-                                                    , rtmpShortName: wrap rtmpShortName} :: StreamConnection)
-  pure $ hush restResult
-
-getPublishCredentials :: String -> String -> String -> Effect (Maybe PublishCredentials)
-getPublishCredentials host rtmpShortName username = do
-  config <- Config.llnwApiConfig
-  restResult <- LlnwApi.streamAuth config (wrap { host
-                                                , rtmpShortName: wrap rtmpShortName
-                                                , username} :: StreamAuth)
-  pure $ hush restResult
-
-getStreamDetails :: StreamPublish -> Effect (Either JsonResponseError StreamDetails)
-getStreamDetails streamPublish = do
-  config <- Config.llnwApiConfig
-  restResult <- LlnwApi.streamPublish config streamPublish
-  pure restResult
-
 domain :: List Atom
 domain = atom <$> (show Agent.Ingest : "Instance" : nil)
 
-logInfo :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
-logInfo = Logger.doLog domain Logger.info
+logInfo :: forall report. String -> { | report } -> Effect Unit
+logInfo = Logger.info <<< Logger.traceMetadata domain
 
-logWarning :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
-logWarning = Logger.doLog domain Logger.warning
+logWarning :: forall report. String -> { | report } -> Effect Unit
+logWarning = Logger.warning <<< Logger.traceMetadata domain

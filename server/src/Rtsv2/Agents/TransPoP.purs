@@ -17,10 +17,10 @@ import Prelude
 import Data.Either (Either(..))
 import Data.Foldable (foldM, foldl)
 import Data.FoldableWithIndex (foldlWithIndex)
-import Data.Int (round, toNumber)
+import Data.Int (round)
 import Data.Long as Long
 import Data.Maybe (Maybe(..), fromMaybe, fromMaybe', maybe)
-import Data.Newtype (unwrap, wrap)
+import Data.Newtype (unwrap)
 import Data.Set (Set, toUnfoldable)
 import Data.Set as Set
 import Data.Traversable (traverse, traverse_)
@@ -34,7 +34,6 @@ import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
 import Erl.Process (spawnLink)
 import Erl.Utils (sleep, systemTimeMs, privDir)
-import Logger (Logger)
 import Logger as Logger
 import Network (Network, addEdge', bestPaths, emptyNetwork, pathsBetween)
 import Os (osCmd)
@@ -45,7 +44,6 @@ import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import PintoHelper (exposeState)
 import Prim.Row (class Nub, class Union)
-import Prim.Row as Row
 import Record as Record
 import Rtsv2.Agents.IntraPoP (AgentClock)
 import Rtsv2.Config (IntraPoPAgentApi, TransPoPAgentConfig)
@@ -676,13 +674,13 @@ sendToTransSerfNetwork state name msg = do
 domain :: List Atom
 domain = serverName # Names.toDomain # singleton
 
-logInfo :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
-logInfo = Logger.doLog domain Logger.info
+logInfo :: forall report. String -> { | report } -> Effect Unit
+logInfo = Logger.info <<< Logger.traceMetadata domain
 
-logWarning :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
-logWarning = Logger.doLog domain Logger.warning
+logWarning :: forall report. String -> { | report } -> Effect Unit
+logWarning = Logger.warning <<< Logger.traceMetadata domain
 
-maybeLogError :: forall a b c d e. Row.Lacks "text" b => Row.Lacks "text" d => Union b (error :: e) c => Nub c d => String -> Either e a -> Record b -> Effect Unit
+maybeLogError :: forall a b c d e. Union b (error :: e) c => Nub c d => String -> Either e a -> Record b -> Effect Unit
 maybeLogError _ (Right _) _ = pure unit
 maybeLogError msg (Left err) metadata = do
   logInfo msg (Record.merge metadata {error: err})

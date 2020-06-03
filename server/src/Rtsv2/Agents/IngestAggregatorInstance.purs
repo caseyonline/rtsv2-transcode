@@ -81,13 +81,11 @@ import Erl.Process.Raw (Pid)
 import Erl.Utils (Ref, shutdown)
 import Erl.Utils as Erl
 import Foreign (Foreign)
-import Logger (Logger)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult, isRegistered)
 import Pinto.Gen (CallResult(..), CastResult(..), TerminateReason)
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
-import Prim.Row as Row
 import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..), announceLocalAggregatorIsAvailable, announceLocalAggregatorStopped)
 import Rtsv2.Agents.IntraPoP as IntraPoP
@@ -1039,14 +1037,14 @@ _relays = __cachedState <<< __relays
 domain :: List Atom
 domain = atom <$> (show Agent.IngestAggregator : "Instance" : nil)
 
-logInfo :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
-logInfo = Logger.doLog domain Logger.info
+logInfo :: forall report. String -> { | report } -> Effect Unit
+logInfo = Logger.info <<< Logger.traceMetadata domain
 
-logWarning :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
-logWarning = Logger.doLog domain Logger.warning
+logWarning :: forall report. String -> { | report } -> Effect Unit
+logWarning = Logger.warning <<< Logger.traceMetadata domain
 
-logStart :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
-logStart = Logger.doLogEvent domain Logger.Start Logger.info
+logStart :: forall report. String -> { | report } -> Effect Unit
+logStart = Logger.info <<< Logger.eventMetadata domain Logger.Start
 
-logStop :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
-logStop = Logger.doLogEvent domain Logger.Stop Logger.info
+logStop :: forall report. String -> { | report } -> Effect Unit
+logStop = Logger.info <<< Logger.eventMetadata domain Logger.Stop

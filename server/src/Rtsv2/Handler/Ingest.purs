@@ -27,7 +27,6 @@ import Erl.Utils (self)
 import Gproc as GProc
 import Gproc as Gproc
 import Logger as Logger
-import Prim.Row as Row
 import Prometheus as Prometheus
 import Rtsv2.Agents.IngestInstance as IngestInstance
 import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
@@ -308,5 +307,5 @@ stopFakeIngest ingestKey = do
 domain :: List Atom
 domain = atom <$> ("Client" :  "Instance" : List.nil)
 
-logInfo :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
-logInfo = Logger.doLog domain Logger.info
+logInfo :: forall report. String -> { | report } -> Effect Unit
+logInfo = Logger.info <<< Logger.traceMetadata domain
