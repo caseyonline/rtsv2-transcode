@@ -72,7 +72,7 @@ type SlotDbEntry =
 
 db :: List SlotDbEntry
 db =
-  slotA : slotB : slotC : webRtcSlotA : nil
+  slotA : slotB : slotC : slotD : webRtcSlotA : nil
 
   where
     slotA =
@@ -94,11 +94,12 @@ db =
                                                bitrate: 500000}
                                       ]
                           , outputFormats : [ HlsOutput ]
+                          , audioOnly : false
                           }
                  , push : [
                     { protocol: HttpPut
                     , formats: [ Hls ]
-                    , putBaseUrl: unwrap $ unsafePerformEffect $ System.makeUrlAddr (wrap "172.16.171.1") (System.HlsPushE ["test_slot_1"])
+                    , putBaseUrl: (_ <> "/") $ unwrap $ unsafePerformEffect $ System.makeUrlAddr (wrap "172.16.171.1") (System.HlsPushE ["test_slot_1"])
                     , segmentDuration: Just 3
                     , playlistDuration: Just 20
                     , auth:
@@ -130,6 +131,7 @@ db =
                                                bitrate: 500000}
                                       ]
                           , outputFormats : []
+                          , audioOnly : false
                           }
                  , push : []
                  }
@@ -154,11 +156,49 @@ db =
                                                bitrate: 500000}
                                       ]
                           , outputFormats : [ HlsOutput ]
+                          , audioOnly : false
                           }
                  , push : [
                     { protocol: HttpPut
                     , formats: [ Hls ]
-                    , putBaseUrl: unwrap $ unsafePerformEffect $ System.makeUrlAddr (wrap "172.16.171.1") (System.HlsPushE ["test_slot_1"])
+                    , putBaseUrl: (_ <> "/") $ unwrap $ unsafePerformEffect $ System.makeUrlAddr (wrap "172.16.171.1") (System.HlsPushE ["test_slot_1"])
+                    , segmentDuration: Just 3
+                    , playlistDuration: Just 20
+                    , auth:
+                      { type: "basic"
+                      , username: "id3as"
+                      , password: "id3as"
+                      }
+                    }
+                  ]
+                 }
+      }
+
+    slotD =
+      { auth: { host: AnyHost --"172.16.171.5"
+              , protocol: AnyProtocol
+              , rtmpShortName: wrap "mmddev001"
+              , authType: Adobe
+              , username: "user"
+              , password: "password" }
+      , details: { role: Primary
+                 , slot : { id: wrap $ fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000003")
+                          , name: "slot1ao"
+                          , subscribeValidation: false
+                          , profiles: [ wrap { name: wrap "high",
+                                               rtmpStreamName: wrap "slot1ao_1000",
+                                               bitrate: 1000000}
+                                      , wrap { name: wrap "low",
+                                               rtmpStreamName: wrap "slot1ao_500",
+                                               bitrate: 500000}
+                                      ]
+                          , outputFormats : [ HlsOutput ]
+                          , audioOnly : true
+                          }
+                 , push : [
+                    { protocol: HttpPut
+                    , formats: [ Hls ]
+                    , putBaseUrl: (_ <> "/") $ unwrap $ unsafePerformEffect $ System.makeUrlAddr (wrap "172.16.171.1") (System.HlsPushE ["test_slot_1_a"])
                     , segmentDuration: Just 3
                     , playlistDuration: Just 20
                     , auth:
@@ -190,6 +230,7 @@ db =
                                                bitrate: 500000}
                                       ]
                           , outputFormats : []
+                          , audioOnly : false
                           }
                  , push : []
                  }

@@ -29,3 +29,5 @@ test/config/popDefinition.json
 .psc-ide-port
 _assets
 _etwas/
+logs*/
+**/*.orig

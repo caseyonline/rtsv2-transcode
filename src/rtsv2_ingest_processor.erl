@@ -21,6 +21,7 @@ ingest_processor(IngestKey, ProfileName, Subscriptions) ->
                consumes = ?all
               }
     , subscribes_to = Subscriptions
+    , name = ingest_processor
     , processors = [ #processor{ name = set_video_stream_id
                                , subscribes_to = {outside_world, ?video_frames}
                                , module = set_stream_id
