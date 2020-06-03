@@ -39,7 +39,6 @@ import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import PintoHelper (doExposeState, exposeState)
-import Prim.Row as Row
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
 import Rtsv2.Names as Names
@@ -380,8 +379,8 @@ serverName = Names.popDefinitionName
 domain :: List Atom
 domain = serverName # Names.toDomain # singleton
 
-logInfo :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
-logInfo = Logger.doLog domain Logger.info
+logInfo :: forall report. String -> { | report } -> Effect Unit
+logInfo = Logger.info <<< Logger.traceMetadata domain
 
-logWarning :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
-logWarning = Logger.doLog domain Logger.warning
+logWarning :: forall report. String -> { | report } -> Effect Unit
+logWarning = Logger.warning <<< Logger.traceMetadata domain

@@ -16,22 +16,18 @@ import Erl.Data.List (List, nil, (:))
 import Erl.Process.Raw (Pid)
 import Erl.Utils as Erl
 import Foreign (Foreign)
-import Logger (Logger)
 import Logger as Logger
 import Media.SourceDetails as SourceDetails
-import Prim.Row as Row
+import Rtsv2.Agents.IngestInstance (getPublishCredentials, getStreamDetails)
 import Rtsv2.Agents.IngestInstance as IngestInstance
 import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
 import Rtsv2.Config (LoadConfig)
-import Rtsv2.Config as Config
 import Rtsv2.DataObject as DO
-import Rtsv2.LlnwApi as LlnwApi
 import Rtsv2.Types (LocalResourceResp)
 import Shared.Rtsv2.Agent as Agent
-import Shared.Rtsv2.LlnwApiTypes (PublishCredentials(..), SlotProfile(..), StreamAuth, StreamDetails, StreamIngestProtocol(..), StreamPublish(..))
+import Shared.Rtsv2.LlnwApiTypes (PublishCredentials(..), SlotProfile(..), StreamDetails, StreamIngestProtocol(..))
 import Shared.Rtsv2.Stream (IngestKey(..), ProfileName, RtmpStreamName(..))
 import Shared.Rtsv2.Types (CanaryState, Server)
-import SpudGun (JsonResponseError)
 
 foreign import startWorkflowImpl :: IngestKey -> Effect Pid
 
@@ -52,8 +48,8 @@ authenticate loadConfig canary host protocol account username password streamNam
   publishCredentials <- getPublishCredentials host account username
 
   case publishCredentials of
-    Right (PublishCredentials { username: expectedUsername
-                              , password: expectedPassword})
+    Just (PublishCredentials { username: expectedUsername
+                             , password: expectedPassword})
       | expectedUsername == username
       , expectedPassword == password -> do
         let
@@ -68,11 +64,10 @@ authenticate loadConfig canary host protocol account username password streamNam
         maybeStreamDetails <- getStreamDetails streamPublish
 
         case maybeStreamDetails of
-          Left error -> do
-            _ <- logInfo "StreamPublish rejected" {reason: error}
+          Nothing ->
             pure Nothing
 
-          Right streamDetails -> do
+          Just streamDetails -> do
             case findProfile streamDetails of
               Nothing -> do
                 _ <- logInfo "StreamProfile not found" { streamDetails
@@ -95,12 +90,11 @@ authenticate loadConfig canary host protocol account username password streamNam
                             , dataObjectSendMessage: IngestInstance.dataObjectSendMessage ingestKey
                             , dataObjectUpdate: IngestInstance.dataObjectUpdate ingestKey
                             }
-    Right _ -> do
+    Just _ -> do
       _ <- logInfo "Authentication failed; invalid username / password" {username}
       pure Nothing
 
-    Left error -> do
-      _ <- logInfo "Authentication error" {reason: error}
+    Nothing -> do
       pure Nothing
   where
     findProfile streamDetails@{ slot: { profiles } } =
@@ -129,28 +123,14 @@ stopStream :: IngestKey -> Effect Unit
 stopStream ingestKey =
   IngestInstance.stopIngest ingestKey
 
-getPublishCredentials :: String -> String -> String -> Effect (Either JsonResponseError PublishCredentials)
-getPublishCredentials host rtmpShortName username = do
-  config <- Config.llnwApiConfig
-  restResult <- LlnwApi.streamAuth config (wrap { host
-                                                , rtmpShortName: wrap rtmpShortName
-                                                , username} :: StreamAuth)
-  pure restResult
-
-getStreamDetails :: StreamPublish -> Effect (Either JsonResponseError StreamDetails)
-getStreamDetails streamPublish@(StreamPublish {rtmpStreamName}) = do
-  config <- Config.llnwApiConfig
-  restResult <- LlnwApi.streamPublish config streamPublish
-  pure restResult
-
 domain :: List Atom
 domain = atom <$> (show Agent.Ingest : "Instance" : nil)
 
-logInfo :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
-logInfo = Logger.doLog domain Logger.info
+logInfo :: forall report. String -> { | report } -> Effect Unit
+logInfo = Logger.info <<< Logger.traceMetadata domain
 
-logWarning :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
-logWarning = Logger.doLog domain Logger.warning
+logWarning :: forall report. String -> { | report } -> Effect Unit
+logWarning = Logger.warning <<< Logger.traceMetadata domain
 
 startWorkflow :: IngestKey -> Effect Pid
 startWorkflow ingestKey =

@@ -8,12 +8,10 @@ import Prelude
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
-import Logger (Logger)
 import Logger as Logger
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildType(..), SupervisorStrategy(..), buildChild, childId, childStart, childType)
 import Pinto.Sup as Sup
-import Prim.Row as Row
 import Rtsv2.Agents.StreamRelayInstance (ParentCallbacks)
 import Rtsv2.Agents.StreamRelayInstance as StreamRelayInstance
 import Rtsv2.Agents.StreamRelayTypes (CreateRelayPayload)
@@ -45,5 +43,5 @@ init relayKey parentCallbacks payload stateServerName = do
 domain :: List Atom
 domain = atom <$> (show Agent.StreamRelay :  "Instance" : nil)
 
-logInfo :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
-logInfo = Logger.doLog domain Logger.info
+logInfo :: forall report. String -> { | report } -> Effect Unit
+logInfo = Logger.info <<< Logger.traceMetadata domain

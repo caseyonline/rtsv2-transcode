@@ -6,9 +6,13 @@ module Rtsv2.Handler.Health
 
 import Prelude
 
+import Data.Long as Long
 import Data.Maybe (Maybe(..))
+import Data.Newtype (wrap)
 import Effect (Effect)
-import Erl.Data.List (nil, (:))
+import Erl.Atom (Atom, atom)
+import Erl.Cowboy.Req (Req)
+import Erl.Data.List (List, nil, (:))
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.TransPoP as TransPoP
 import Rtsv2.Alerts as Alerts
@@ -30,13 +34,15 @@ healthCheck =
   # Rest.yeeha
   where
     jsonHandler req state = do
+      let
+        {alertsFrom} = matchQs req (atom "alertsFrom" : nil)
       thisServer <- PoPDefinition.getThisServer
       currentTransPoP <- IntraPoP.getCurrentTransPoPLeader
       intraPoPHealth <- IntraPoP.health
       transPoPHealth <- TransPoP.health
       load <- Load.getLoad
       nodeManager <- NodeManager.getState
-      alerts <- Alerts.currentAlerts
+      alerts <- Alerts.currentAlerts $ wrap <$> (Long.fromString =<< alertsFrom)
       let
         health = { intraPoPHealth
                  , transPoPHealth
@@ -53,3 +59,5 @@ foreign import vmMetricsImpl :: Effect String
 
 vmMetrics  :: GetHandler String
 vmMetrics = multiMimeResponse (MimeType.openmetrics (pure <<< identity) : nil) (Just <$> vmMetricsImpl)
+
+foreign import matchQs :: forall a. Req -> List Atom -> Record a

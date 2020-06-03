@@ -25,7 +25,6 @@ import Logger as Logger
 import Pinto (ServerName, StartLinkResult(..))
 import Pinto.Gen (CallResult(..), CastResult(..), TerminateReason)
 import Pinto.Gen as Gen
-import Prim.Row as Row
 
 foreign import receiveImpl :: Ref -> Effect Unit
 
@@ -152,11 +151,11 @@ terminate reason state@{ domain, instanceData, childStopAction } =
 --------------------------------------------------------------------------------
 -- Log helpers
 --------------------------------------------------------------------------------
-logInfo :: forall a. Row.Lacks "text" a => List Atom -> String -> Record a -> Effect Unit
-logInfo domain msg misc = Logger.doLog domain Logger.info msg misc
+logInfo :: forall report. List Atom -> String -> Record report -> Effect Unit
+logInfo domain = Logger.info <<< Logger.traceMetadata domain
 
-logWarning :: forall a. Row.Lacks "text" a => List Atom -> String -> Record a -> Effect Unit
-logWarning domain msg misc = Logger.doLog domain Logger.warning msg misc
+logWarning :: forall report. List Atom -> String -> Record report -> Effect Unit
+logWarning domain = Logger.warning <<< Logger.traceMetadata domain
 
-logError :: forall a. Row.Lacks "text" a => List Atom -> String -> Record a -> Effect Unit
-logError domain msg misc = Logger.doLog domain Logger.error msg misc
+logError :: forall report. List Atom -> String -> Record report -> Effect Unit
+logError domain = Logger.error <<< Logger.traceMetadata domain

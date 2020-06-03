@@ -54,14 +54,12 @@ import Erl.Data.Tuple as ErlTuple
 import Erl.Process (Process(..), (!))
 import Erl.Utils (Ref, makeRef)
 import Erl.Utils as Erl
-import Logger (Logger)
 import Logger as Logger
 import Partial.Unsafe as Unsafe
 import Pinto (ServerName, StartLinkResult, isRegistered)
 import Pinto.Gen (CallResult(..), CastResult(..), TerminateReason)
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
-import Prim.Row as Row
 import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
 import Rtsv2.Agents.IntraPoP (IntraPoPBusMessage(..))
 import Rtsv2.Agents.IntraPoP as IntraPoP
@@ -1287,17 +1285,17 @@ sendMessageToDownstream msg process =
 domain :: List Atom
 domain = atom <$> (show Agent.StreamRelay :  "Instance" : List.nil)
 
-logInfo :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
-logInfo = Logger.doLog domain Logger.info
+logInfo :: forall report. String -> { | report } -> Effect Unit
+logInfo = Logger.info <<< Logger.traceMetadata domain
 
-logWarning :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
-logWarning = Logger.doLog domain Logger.warning
+logWarning :: forall report. String -> { | report } -> Effect Unit
+logWarning = Logger.warning <<< Logger.traceMetadata domain
 
-logError :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
-logError = Logger.doLog domain Logger.error
+logError :: forall report. String -> { | report } -> Effect Unit
+logError = Logger.error <<< Logger.traceMetadata domain
 
-logStart :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
-logStart = Logger.doLogEvent domain Logger.Start Logger.info
+logStart :: forall report. String -> { | report } -> Effect Unit
+logStart = Logger.info <<< Logger.eventMetadata domain Logger.Start
 
-logStop :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
-logStop = Logger.doLogEvent domain Logger.Stop Logger.info
+logStop :: forall report. String -> { | report } -> Effect Unit
+logStop = Logger.info <<< Logger.eventMetadata domain Logger.Stop

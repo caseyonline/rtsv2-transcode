@@ -2,9 +2,6 @@
       - egest to subscribe and take appropriate action - either exit itself or launch new relay?
 [ ] - Pinto stuff, async init, return stop from init
 [ ] - multiple IngestAggregators for same slot/role
-[ ] - add stream_id domain to logs that are per-stream
-[ ] - transPoP load messages
-[ ] - double check remote status through TransPoP
 [ ] - audio only - needs change to StreamDetails to indicate no video, since aggregator is currently waiting for iframe to sync multiple streams
 [ ] - RTMP Egest - from edge
 [ ] - egest / client merging when load drops
@@ -20,6 +17,9 @@ Tests:
 [ ] - ingest prometheus stats
 [ ] - egest prometheus stats
 
+[x] - double check remote status through TransPoP
+[x] - transPoP load messages - not done, not currently used
+[x] - add stream_id domain to logs that are per-stream - done with logger metadata
 [x] - Port Data.Int53 or Data.Long to purescript, and then change Milliseconds type
 [x] - Mediavault API integration
 [x] - Canary / startup / migrating clients away etc

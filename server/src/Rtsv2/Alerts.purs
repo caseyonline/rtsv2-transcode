@@ -12,11 +12,12 @@ import Data.Newtype (wrap)
 import Debug.Trace (spy)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
-import Erl.Data.List (List)
+import Erl.Data.List (List, singleton)
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
 import Erl.Utils as Erl
 import Foreign (Foreign)
+import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
@@ -48,9 +49,12 @@ startLink :: Unit -> Effect StartLinkResult
 startLink args =
   Gen.startLink serverName (init args) handleInfo
 
-currentAlerts :: Effect (List Alert)
-currentAlerts =
-  Gen.call serverName (\state@{alerts} -> CallReply (Map.values alerts) state)
+currentAlerts :: Maybe Milliseconds -> Effect (List Alert)
+currentAlerts from =
+  Gen.doCall serverName (\state@{alerts} -> do
+                            logInfo "from" {from}
+                            pure $ CallReply (Map.values alerts) state
+                        )
 
 ------------------------------------------------------------------------------
 -- gen_server callbacks
@@ -111,3 +115,9 @@ doExpiry state@{alerts, alertRetention} = do
     expire = now - alertRetention
     alerts2 = Map.filter (\(Alert {lastReport}) -> lastReport > expire) alerts
   pure state{alerts = alerts2}
+
+domain :: List Atom
+domain = (atom "Alerts") # singleton
+
+logInfo :: forall report. String -> { | report } -> Effect Unit
+logInfo = Logger.info <<< Logger.traceMetadata domain

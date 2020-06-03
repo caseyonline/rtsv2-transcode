@@ -21,8 +21,12 @@ mapToAlert(_LogEvent = #{ meta := #{ alertId := invalidVideoFormat }
                         , msg := {_FormatString, [CodecId]}} ) ->
   {ingestFailed, {invalidVideoCodec, CodecId}};
 
+mapToAlert(LogEvent = #{ meta := #{ alertId := lsrsFailure } }) ->
+  {lSRSFailed, #{reason => log_event_to_string(LogEvent)
+                }};
+
 mapToAlert(LogEvent) ->
-  {genericAlert, #{text => iolist_to_binary(logger_formatter:format(LogEvent, #{template =>  [level, ": ", msg]}))
+  {genericAlert, #{text => log_event_to_string(LogEvent)
                   }}.
 
 maybe_rtsv2_metadata(#{meta := #{rtsv2 := Metadata}}) ->
@@ -44,3 +48,6 @@ maybe_logging_source(#{meta := #{ mfa := {Module, Function, _}
 
 maybe_logging_source(_) ->
   {nothing}.
+
+log_event_to_string(LogEvent) ->
+  iolist_to_binary(logger_formatter:format(LogEvent, #{template =>  [level, ": ", msg]})).

@@ -29,13 +29,11 @@ import Erl.Atom (Atom)
 import Erl.Data.List (List, singleton)
 import Erl.Data.Map (Map, empty, insert) as Map
 import Erl.Data.Tuple (Tuple2, uncurry2)
-import Logger (Logger)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
-import Prim.Row as Row
 import Rtsv2.Agents.IntraPoP as IntraPop
 import Rtsv2.Config (LoadConfig)
 import Rtsv2.Config as Config
@@ -328,8 +326,8 @@ calculateEffectiveLoad state@{ predictedLoads
 domain :: List Atom
 domain = serverName # Names.toDomain # singleton
 
-logInfo :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
-logInfo = Logger.doLog domain Logger.info
+logInfo :: forall report. String -> { | report } -> Effect Unit
+logInfo = Logger.info <<< Logger.traceMetadata domain
 
-logWarning :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
-logWarning = Logger.doLog domain Logger.warning
+logWarning :: forall report. String -> { | report } -> Effect Unit
+logWarning = Logger.warning <<< Logger.traceMetadata domain

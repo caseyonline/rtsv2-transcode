@@ -13,9 +13,7 @@ import Data.Traversable (traverse)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:), singleton)
-import Logger (Logger)
 import Logger as Logger
-import Prim.Row as Row
 import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
 import Rtsv2.Config (LoadConfig)
 import Rtsv2.Config as Config
@@ -92,8 +90,8 @@ discover loadConfig canary accountName streamName =
 domain :: List Atom
 domain = atom "StreamDiscovery" # singleton
 
-logInfo :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
-logInfo = Logger.doLog domain Logger.info
+logInfo :: forall report. String -> { | report } -> Effect Unit
+logInfo = Logger.info <<< Logger.traceMetadata domain
 
-logWarning :: forall report. Row.Lacks "text" report => String -> { | report } -> Effect Unit
-logWarning = Logger.doLog domain Logger.warning
+logWarning :: forall report. String -> { | report } -> Effect Unit
+logWarning = Logger.warning <<< Logger.traceMetadata domain

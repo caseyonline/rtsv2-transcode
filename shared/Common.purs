@@ -6,7 +6,7 @@ module Shared.Common
        , AlertData(..)
        , LoggingMetadata(..)
        , IngestFailedAlert(..)
-       , AuthFailedAlert
+       , LSRSFailedAlert
        , GenericAlert
        , ProfileMetadata
        , SlotMetadata
@@ -60,8 +60,8 @@ type LoggingSource =
 
 data IngestFailedAlert = InvalidVideoCodec Number
 
-type AuthFailedAlert =
-  {
+type LSRSFailedAlert =
+  { reason :: String
   }
 
 type GenericAlert =
@@ -70,7 +70,7 @@ type GenericAlert =
 
 data AlertData = IngestStarted
                | IngestFailed IngestFailedAlert
-               | AuthFailed AuthFailedAlert
+               | LSRSFailed LSRSFailedAlert
                | GenericAlert GenericAlert
 
 newtype Alert = Alert { initialReport :: Milliseconds
@@ -81,25 +81,6 @@ newtype Alert = Alert { initialReport :: Milliseconds
                       , source :: Maybe LoggingSource
                       , pid :: String
                       }
-
- -- { type: "ingestFailed",
- --          data: [
- --            { timestamp: 2341324124,
- --              shortName: "mmddev001",
- --              slot: "slot_1000",
- --              reason: "invalid video codec"
- --            },
- --            ...
- --         ]
- --        },
- --        { type: "authFailed",
- --          data: [
- --            { timestamp: 123456789,
- --              reason: "lsrs failed to respond"
- --            },
- --            ....
- --          ]
- --        }
 
 ------------------------------------------------------------------------------
 -- Type class derivations
@@ -171,8 +152,9 @@ instance writeForeignAlert :: WriteForeign Alert where
                                         , codecId
                                         }
 
-      alertDetail common (AuthFailed authFailed) =
-        writeImpl $ Record.merge common { "type" : "authFailed"
+      alertDetail common (LSRSFailed {reason}) =
+        writeImpl $ Record.merge common { "type" : "lsrsFailed"
+                                        , reason
                                         }
 
       alertDetail common (GenericAlert {text}) =

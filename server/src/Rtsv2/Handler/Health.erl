@@ -1,13 +1,21 @@
 -module(rtsv2_handler_health@foreign).
 
--export([
-         vmMetricsImpl/0
+-export([ vmMetricsImpl/0
+        , matchQs/2
         ]).
 
 vmMetricsImpl() ->
   fun() ->
       trim_right(prometheus_text_format:format())
   end.
+
+matchQs(Req, Keys) ->
+  Matches = cowboy_req:match_qs([{Key, [], undefined}
+                                 || Key <- Keys], Req),
+  maps:map(fun(_, undefined) -> {nothing};
+              (_, Value) -> {just, Value}
+           end,
+           Matches).
 
 trim_right(Bin) ->
   case binary:last(Bin) of
