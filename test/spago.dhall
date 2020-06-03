@@ -29,6 +29,7 @@ You can edit this file as you like.
   , "simple-json"
   , "simple-json-generics"
   , "spec"
+  , "stringutils"
   , "test-unit"
   , "toppokki"
   , "tuples"
