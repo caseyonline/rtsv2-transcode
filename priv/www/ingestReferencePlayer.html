@@ -148,7 +148,7 @@
         var ingest = LimelightIngestSDK.createIngest(config);
 
         form.addEventListener('submit', (form) => {
-          const input = document.querySelector('input[type="text"]');
+          const input = document.querySelector('#msginput');
           const msg = input.value;
           const s = $('#msgType option').filter(':selected').text();
           input.value = '';

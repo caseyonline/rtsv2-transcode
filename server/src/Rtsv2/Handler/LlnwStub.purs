@@ -71,10 +71,15 @@ type SlotDbEntry =
 
 db :: List SlotDbEntry
 db =
-  slotA : slotB : slotC : slotD : webRtcSlotA : nil
+  mmddev001_slot1_Primary_Any
+  : mmddev001_slot1_Backup_Rtmp
+  : mmddev001_slot1ao_Primary_Any
+  : mmddev002_slot2_Primary_Any
+  : mmddev003_slot1_Primary_Any
+  : nil
 
   where
-    slotA =
+    mmddev001_slot1_Primary_Any =
       { auth: { host: AnyHost --"172.16.171.5"
               , protocol: AnyProtocol
               , rtmpShortName: wrap "mmddev001"
@@ -111,7 +116,7 @@ db =
                  }
       }
 
-    slotB =
+    mmddev001_slot1_Backup_Rtmp =
       { auth: { host: AnyHost --"172.16.171.5"
               , protocol: SpecificProtocol Rtmp
               , rtmpShortName: wrap "mmddev001"
@@ -136,7 +141,7 @@ db =
                  }
       }
 
-    slotC =
+    mmddev003_slot1_Primary_Any =
       { auth: { host: AnyHost --"172.16.171.5"
               , protocol: AnyProtocol
               , rtmpShortName: wrap "mmddev003"
@@ -144,7 +149,7 @@ db =
               , username: "user"
               , password: "password" }
       , details: { role: Primary
-                 , slot : { id: wrap $ fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000001")
+                 , slot : { id: wrap $ fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000003")
                           , name: "slot1"
                           , subscribeValidation: true
                           , profiles: [ wrap { name: wrap "high",
@@ -173,7 +178,7 @@ db =
                  }
       }
 
-    slotD =
+    mmddev001_slot1ao_Primary_Any =
       { auth: { host: AnyHost --"172.16.171.5"
               , protocol: AnyProtocol
               , rtmpShortName: wrap "mmddev001"
@@ -181,7 +186,7 @@ db =
               , username: "user"
               , password: "password" }
       , details: { role: Primary
-                 , slot : { id: wrap $ fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000003")
+                 , slot : { id: wrap $ fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000004")
                           , name: "slot1ao"
                           , subscribeValidation: false
                           , profiles: [ wrap { name: wrap "high",
@@ -210,9 +215,9 @@ db =
                  }
       }
 
-    webRtcSlotA =
+    mmddev002_slot2_Primary_Any =
       { auth: { host: AnyHost --"172.16.171.5"
-              , protocol: SpecificProtocol WebRTC
+              , protocol: AnyProtocol
               , rtmpShortName: wrap "mmddev002"
               , authType: Adobe
               , username: "user"

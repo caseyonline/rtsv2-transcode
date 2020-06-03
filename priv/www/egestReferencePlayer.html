@@ -106,12 +106,11 @@
         var player = LimelightSDK.createPlayer(config);
 
         form.addEventListener('submit', (form) => {
-          console.log(form)
           const input = document.querySelector('#msginput');
           const msg = input.value;
 
           const inputPrivate = document.querySelector('#msgPrivateId');
-          const privateTraceId = input.value;
+          const privateTraceId = inputPrivate.value;
 
           const s = $('#msgType option').filter(':selected').text();
           input.value = '';
@@ -121,7 +120,7 @@
             player.sendBroadcastMessage(msg)
           }
           if (s == "private") {
-            player.sendPrivateMessage(privateTraceId, msg)
+            player.sendPrivateMessage([privateTraceId], msg)
           }
           if (s == "pusblisher") {
             player.sendPublisherMessage(msg)
