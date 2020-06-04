@@ -24,10 +24,14 @@
 
 send(Auth, BaseUrl, Playlists, CompletionMsg, VersionString) ->
   Self = self(),
+  BaseUrl1 = case binary:last(BaseUrl) == $/ of
+    true -> BaseUrl;
+    false -> <<BaseUrl/binary, "/">>
+  end,
   spawn_link(fun() ->
                  monitor(process, Self),
                  send_playlists(#send_state {
-                                        base_url = BaseUrl,
+                                        base_url = BaseUrl1,
                                         auth = Auth,
                                         playlists = Playlists,
                                         completion_msg = CompletionMsg,

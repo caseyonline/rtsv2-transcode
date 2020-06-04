@@ -118,7 +118,7 @@ contained_workflow(#?state{workflow = Workflow}) ->
 
 build_workflow(GopDurationPts,
                #rtsv2_hls_segment_workflow_config{ slot_profile = #{ profileName := ProfileName },
-                                                   push_details = PushDetails = [#{ auth := #{username := Username, password := Password}, segmentDuration := DesiredSegmentDuration, playlistDuration := PlaylistDuration, putBaseUrl := PutBaseUrl } | _ ],
+                                                   push_details = PushDetails = [#{ auth := #{username := Username, password := Password}, segmentDuration := DesiredSegmentDuration, playlistDuration := PlaylistDuration, putBaseUrl := BaseUrl } | _ ],
                                                    audio_only = AudioOnly
 
  } ) ->
@@ -130,6 +130,11 @@ build_workflow(GopDurationPts,
   GopDurationS = GopDurationPts / 90000,
   GopsPerSegment = max(1, round(DesiredSegmentDuration / GopDurationS)),
   SegmentDurationActual = round(GopsPerSegment * GopDurationS),
+
+  PutBaseUrl = case binary:last(BaseUrl) == $/ of
+    true -> BaseUrl;
+    false -> <<BaseUrl/binary, "/">>
+  end,
 
   ?INFO("Requested segment duration of ~p, actual shall be ~p - ~p gops per segment, gop duration ~p", [DesiredSegmentDuration, SegmentDurationActual, GopsPerSegment, GopDurationS]),
   TsEncoderConfig = #ts_encoder_config{
