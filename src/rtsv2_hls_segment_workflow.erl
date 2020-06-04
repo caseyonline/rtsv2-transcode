@@ -8,7 +8,7 @@
 -include_lib("id3as_media/include/ts_encoder.hrl").
 -include_lib("id3as_media/include/ts_segment_generator.hrl").
 -include_lib("id3as_media/include/stream_sync.hrl").
-
+-include_lib("id3as_media/include/dynamic_stream_sync.hrl").
 
 -include("rtsv2_slot_media_source_publish_processor.hrl").
 -include("rtsv2_rtp.hrl").
@@ -40,7 +40,8 @@
   workflow :: undefined | i3das_workflow:compiled_workflow(),
   config :: rtsv2_hls_segment_workflow_config(),
   gop_duration :: integer(),
-  initial_gop_count = 0 :: integer()
+  initial_gop_count = 0 :: integer(),
+  initial_frames = [] :: list(term())
 }).
 
 
@@ -72,17 +73,18 @@ process_input(#gop_measurement{ duration = Duration }, State = #?state{ workflow
   ?INFO("Calculated GOP duration as ~p from ~p, ~p (~p)", [NewDuration, ExistingDuration, Duration, GopCount]),
   {ok, State#?state{ gop_duration = NewDuration, initial_gop_count = GopCount+1 }};
 
-process_input(#gop_measurement{ duration = Duration }, State = #?state{ workflow = undefined, config = Config, gop_duration = ExistingDuration, initial_gop_count = GopCount }) ->
+process_input(#gop_measurement{ duration = Duration }, State = #?state{ workflow = undefined, config = Config, gop_duration = ExistingDuration, initial_gop_count = GopCount, initial_frames = InitialFrames }) ->
   NewDuration = max(Duration, ?null_coalesce(ExistingDuration,0)),
   ?INFO("Calculated GOP duration as ~p from ~p, ~p (~p) - now building workflow", [NewDuration, ExistingDuration, Duration, GopCount]),
   Workflow = build_workflow(NewDuration, Config),
 
   {ok, Pid} = id3as_workflow:start_link(Workflow),
   {ok, WorkflowState} = id3as_workflow:workflow_state(Pid),
+  lists:foreach(fun (Input) -> id3as_workflow:process_input(Input, WorkflowState) end, lists:reverse(InitialFrames)),
   {ok, State#?state{ workflow = WorkflowState, gop_duration = NewDuration, initial_gop_count = GopCount+1 }};
 
-process_input(_Other, State = #?state{ workflow = undefined }) ->
-  {ok, State};
+process_input(Other, State = #?state{ workflow = undefined, initial_frames = InitialFrames }) ->
+  {ok, State#?state{ initial_frames = [Other|InitialFrames]}};
 
 process_input(#gop_measurement{}, State = #?state{ workflow = _Workflow }) ->
   {ok, State};
@@ -160,6 +162,8 @@ build_workflow(GopDurationPts,
                                   }
                                 ]
                         },
+  ProfileNames =  #{audio => [aac],
+                    video => [ProfileName]},
   #workflow{
             name = rtsv2_hls_segmenter,
             display_name = <<"HLS Segment Publisher">>,
@@ -167,13 +171,15 @@ build_workflow(GopDurationPts,
               [
                 #processor{name = adts,
                   module = adts_encapsulator,
-                  subscribes_to = { outside_world, ?audio_frames }
+                  subscribes_to = outside_world
                 },
                 #processor{
                   name = stream_sync,
-                  module = stream_sync,
-                  subscribes_to = [{outside_world, ?video_frames}, ?previous],
-                  config = #stream_sync_config{ num_streams = case AudioOnly of true -> 1; false -> 2 end }
+                  display_name = <<"A/V Sync">>,
+                  module = dynamic_stream_sync2,
+                  config = #dynamic_stream_sync_config2{tolerence = frame_duration,
+                                                        profile_names = ProfileNames},
+                  subscribes_to = ?previous
                 },
                 #processor{name = ts_mux,
                   display_name = <<"TS Mux">>,
