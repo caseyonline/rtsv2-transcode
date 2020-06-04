@@ -30,6 +30,7 @@ bus :: Bus.Bus Atom Foreign
 bus = Bus.bus (atom "rtsv2_alerts")
 
 -- TODO - include data in the key? Maybe just have Eq defined on Alert and use a set?
+
 data AlertKey = ByPid LoggingSource String
               | ByMetadata LoggingSource LoggingMetadata
               | NoKey
