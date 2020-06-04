@@ -25,13 +25,16 @@
 
 -define(state, ?MODULE).
 
+-define(AUDIO_PROFILE_WAIT_MS, 200).
+
 -type profile_key() :: { frame_source_id(), stream_id() }.
 
 -record(?state,
         {
           config :: hls_master_playlist_processor_config(),
           profiles = #{} :: maps:map(profile_key(), av_profile()),
-          published_playlist = false :: boolean()
+          published_playlist = false :: boolean(),
+          timer
         }).
 
 
@@ -51,22 +54,36 @@ initialise(_Processor = #processor{ config = Config }) ->
     config = Config
   }}.
 
-process_input(#frame{profile = Profile, source_metadata = #source_metadata {source_id = SourceId}, stream_metadata = #stream_metadata{ stream_id = StreamId }}, State = #?state{ profiles = Profiles, published_playlist = false }) ->
+process_input(#frame{type = Type, profile = Profile, source_metadata = #source_metadata {source_id = SourceId}, stream_metadata = #stream_metadata{ stream_id = StreamId }}, State = #?state{ profiles = Profiles, published_playlist = false,  timer = Timer }) ->
   Key = {SourceId, StreamId},
   Profiles2 = maps:put(Key, Profile, Profiles),
   State2 = State#?state{ profiles = Profiles2 },
   ProfilesReady = check_profiles_ready(State2),
   State3 =
     case ProfilesReady of
-      true ->
+      all_ready ->
         self() ! publish_playlists,
         State2#?state{ published_playlist = true };
-      false ->
-        State2
+      not_ready -> State2;
+      video_ready ->
+        if Type =:= video andalso Timer == undefined
+          -> 
+            {ok, Ref} = timer:send_after(?AUDIO_PROFILE_WAIT_MS, wait_for_audio_profile),
+            State2#?state{ timer = Ref };
+          ?otherwise -> State2
+        end
     end,
   {ok, State3};
 process_input(_, State = #?state{ published_playlist = true }) ->
   {ok, State}.
+
+handle_info(wait_for_audio_profile, State = #?state{ published_playlist = true }) ->
+  {noreply, State};
+
+handle_info(wait_for_audio_profile, State = #?state{ published_playlist = false }) ->
+  self() ! publish_playlists,
+  State2 = State#?state{ published_playlist = true },
+  {noreply, State2};
 
 handle_info(publish_playlists, State = #?state{
                                           config = #hls_master_playlist_processor_config{
@@ -103,16 +120,28 @@ check_profiles_ready(_State = #?state{ profiles = FoundProfiles,
                                                    audio_only = AudioOnly
                                       }
                                     }) ->
-  ProfileX = case AudioOnly of true -> 1; false -> 2 end,
-  case {length(ConfigProfiles) * ProfileX, maps:size(FoundProfiles)} of
-    {N, N} ->
+  AvProfilesList = maps:values(FoundProfiles),
+  VideoProfiles = lists:filtermap(fun (Prof = #video_profile{}) -> {true, Prof};
+                                      (_) -> false
+                                   end, AvProfilesList),
+  AudioProfiles = lists:filtermap(fun (Prof = #audio_profile{}) -> {true, Prof};
+                                      (_) -> false
+                                   end, AvProfilesList),
+  case {length(ConfigProfiles), length(VideoProfiles), length(AudioProfiles)} of
+    {N, N, N} ->
       ?INFO("Profiles are ready!~n~p", [FoundProfiles]),
-      true;
-    {Expected, Actual} when Expected > Actual -> false;
-    {Expected, Actual} when Expected < Actual ->
-      ?ERROR("Found ~p A/V profiles when only expecting ~p", [Actual, Expected]),
-      false
+      all_ready;
+    {N, _, N} when AudioOnly->
+      ?INFO("Profiles are ready!~n~p", [FoundProfiles]),
+      all_ready;
+    {N, N, _} ->
+      video_ready;
+    {Expected, ActualVideo, ActualAudio} when Expected > ActualVideo orelse Expected > ActualAudio -> not_ready;
+    {Expected, ActualVideo, ActualAudio} ->
+      ?ERROR("Found ~p/~p A/V profiles when only expecting ~p", [ActualVideo, ActualAudio, Expected]),
+      not_ready
   end.
+
 
 build_playlists(SlotId, AvProfiles, Profiles, [PushDetail = #{}|_], AudioOnly) ->
   #master_playlist {
@@ -133,11 +162,14 @@ variant_stream(SlotId, AvProfiles, _PushDetail, Profile = #{ bitrate := BitRate,
     length(VideoProfiles) /= 1 and not AudioOnly ->
       ?ERROR("Expected 1 video profile on ~p", [ProfileName]),
       false;
-    length(AudioProfiles) /= 1 ->
+    length(AudioProfiles) > 1 ->
       ?ERROR("Expected 1 audio profile on ~p", [ProfileName]),
       false;
     ?otherwise ->
-      [AudioProfile] = AudioProfiles,
+      AudioProfile = case AudioProfiles of
+                      [FoundProfile] -> FoundProfile;
+                      [] -> #audio_profile{codec_profile_level = #codec_profile_level { profile = ?LIBAV_AAC_PROFILE_MAIN } }
+                     end,
       case AudioOnly of
         true -> 
           ?INFO("making variant for slotid=~p with ~p, av profiles=~p", [SlotId, Profile, AudioProfile]),
