@@ -53,7 +53,7 @@ import Rtsv2.LlnwApi as LlnwApi
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Types (fromLocalOrRemote)
-import Shared.Common (LoggingMetadata(..), Milliseconds(..))
+import Shared.Common (LoggingContext(..), Milliseconds(..))
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.JsonLd as JsonLd
@@ -229,7 +229,7 @@ init { streamPublish
      , remoteAddress
      , remotePort
      , handlerPid} stateServerName = do
-  Logger.addLoggerMetadata $ PerProfile { slotId, slotRole, slotName, profileName}
+  Logger.addLoggerContext $ PerProfile { slotId, slotRole, slotName, profileName}
 
   logStart "Ingest starting" {ingestKey, handlerPid}
   loadConfig <- Config.loadConfig

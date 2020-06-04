@@ -8,7 +8,7 @@ module Logger
        , info
        , debug
        , spy
-       , addLoggerMetadata
+       , addLoggerContext
        , traceMetadata
        , commandMetadata
        , eventMetadata
@@ -31,7 +31,7 @@ import Erl.Data.List (List, singleton)
 import Prim.Row as Row
 import Prim.TypeError (class Warn, Text)
 import Record.Builder as Builder
-import Shared.Common (LoggingMetadata)
+import Shared.Common (LoggingContext)
 
 data LogType = Trace
              | Event
@@ -70,7 +70,7 @@ foreign import notice :: forall metadata report. MinimalMetadata metadata -> { |
 foreign import info :: forall metadata report. MinimalMetadata metadata -> { | report } -> Effect Unit
 foreign import debug :: forall metadata report. MinimalMetadata metadata -> { | report } -> Effect Unit
 foreign import spyImpl :: forall metadata report. MinimalMetadata metadata -> { | report } -> Effect Unit
-foreign import addLoggerMetadata :: LoggingMetadata -> Effect Unit
+foreign import addLoggerContext :: LoggingContext -> Effect Unit
 
 spy :: forall a. SpyWarning => String -> a -> a
 spy str a = unsafePerformEffect do

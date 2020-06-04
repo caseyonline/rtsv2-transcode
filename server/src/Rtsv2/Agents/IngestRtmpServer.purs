@@ -35,7 +35,7 @@ import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Types (LocalResource(..))
 import Rtsv2.Utils (crashIfLeft, noprocToMaybe)
 import Serf (Ip)
-import Shared.Common (ProfileMetadata)
+import Shared.Common (ProfileContext)
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.LlnwApiTypes (AuthType, SlotProfile(..), SlotPublishAuthType(..), StreamDetails, StreamIngestProtocol(..))
 import Shared.Rtsv2.Stream (IngestKey(..))
@@ -44,7 +44,7 @@ import Stetson.WebSocketHandler (self)
 
 foreign import startServerImpl :: (Foreign -> Either Foreign Unit) -> Either Foreign Unit -> Ip -> Int -> Callbacks -> Ip -> Int -> Callbacks -> Int -> Effect (Either Foreign Unit)
 foreign import rtmpQueryToPurs :: Foreign -> RtmpAuthRequest
-foreign import startWorkflowImpl :: Pid -> Pid -> Foreign -> IngestKey -> ProfileMetadata -> (Foreign -> (Effect Unit)) -> (Foreign -> (Effect Unit)) -> Effect Unit
+foreign import startWorkflowImpl :: Pid -> Pid -> Foreign -> IngestKey -> ProfileContext -> (Foreign -> (Effect Unit)) -> (Foreign -> (Effect Unit)) -> Effect Unit
 
 data RtmpAuthRequest = Initial
                      | AdobePhase1 AdobePhase1Params

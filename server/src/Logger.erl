@@ -10,7 +10,7 @@
          info/2,
          debug/2,
          spyImpl/2,
-         addLoggerMetadata/1
+         addLoggerContext/1
         ]).
 
 -define(do_effectful_log(Level, Metadata, Report),
@@ -60,9 +60,9 @@ debug(Metadata, Report) ->
 spyImpl(Metadata, Report) ->
   ?do_effectful_log(notice, Metadata, Report).
 
-addLoggerMetadata(Metadata) ->
+addLoggerContext(Context) ->
   fun() ->
-      logger:update_process_metadata(#{rtsv2 => Metadata})
+      logger:update_process_metadata(#{rtsv2_context => Context})
   end.
 
 %%------------------------------------------------------------------------------

@@ -87,7 +87,7 @@ rtmpQueryToPurs(#{}) ->
 %%------------------------------------------------------------------------------
 %% Internals
 %%------------------------------------------------------------------------------
-start_workflow(Rtmp, PublishArgs, Key = {ingestKey, SlotId, SlotRole, ProfileName}, ProfileMetadata) ->
+start_workflow(Rtmp, PublishArgs, Key = {ingestKey, SlotId, SlotRole, ProfileName}, ProfileContext) ->
 
   Workflow = #workflow{
                 name = {rtmp_ingest_handler, Key},
@@ -96,7 +96,7 @@ start_workflow(Rtmp, PublishArgs, Key = {ingestKey, SlotId, SlotRole, ProfileNam
                          slot => SlotId,
                          profile => ProfileName,
                          stream_role => SlotRole,
-                         profile_metadata => ProfileMetadata
+                         profile_context => ProfileContext
                         },
                 generators = [
                               #generator{name = rtmp_ingest,

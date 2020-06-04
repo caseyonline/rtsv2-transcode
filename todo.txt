@@ -2,7 +2,6 @@
       - egest to subscribe and take appropriate action - either exit itself or launch new relay?
 [ ] - Pinto stuff, async init, return stop from init
 [ ] - multiple IngestAggregators for same slot/role
-[ ] - audio only - needs change to StreamDetails to indicate no video, since aggregator is currently waiting for iframe to sync multiple streams
 [ ] - RTMP Egest - from edge
 [ ] - egest / client merging when load drops
 [ ] - relay merging when multiple instances start
@@ -15,6 +14,7 @@ Tests:
 [ ] - discovery API
 [ ]	- multi-bitrate ingest
 
+[x] - audio only - needs change to StreamDetails to indicate no video, since aggregator is currently waiting for iframe to sync multiple streams
 [x] - ingest prometheus stats
 [x] - egest prometheus stats
 [x] - double check remote status through TransPoP
