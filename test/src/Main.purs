@@ -12,6 +12,7 @@ import Cases.Canary (canaryTests)
 import Cases.Load (loadTests)
 import Cases.Drain (drainTests)
 import Cases.Metrics (metricsTests)
+import Cases.StreamDiscovery (streamDiscoveryTests)
 import Data.Identity (Identity(..))
 import Data.Maybe (Maybe(..))
 import Data.Newtype (un)
@@ -36,6 +37,7 @@ main =
     canaryTests       -- 8
     drainTests        -- 9
     metricsTests      -- 10
+    streamDiscoveryTests -- 11
     describe "Cleanup" do
       after_ F.stopSession do
         it "final cleanup" do

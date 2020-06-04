@@ -30,7 +30,7 @@ import Data.Newtype (class Newtype, un, wrap)
 import Data.Symbol (SProxy(..))
 import Foreign (Foreign, ForeignError(..), F, readString, unsafeToForeign)
 import Record as Record
-import Shared.Rtsv2.Stream (ProfileName, SlotId, SlotRole)
+import Shared.Rtsv2.Stream (ProfileName, RtmpStreamName, SlotId, SlotRole)
 import Simple.JSON (class ReadForeign, class WriteForeign, readImpl, writeImpl)
 
 -- TODO - find a place for these utility types to live (a la id3as_common?)
@@ -45,13 +45,13 @@ derive newtype instance showUrl :: Show Url
 type SlotMetadata =
   { slotId :: SlotId
   , slotRole :: SlotRole
-  , slotName :: Maybe String
+  , slotName :: Maybe RtmpStreamName
   }
 
 type ProfileMetadata =
   { slotId :: SlotId
   , slotRole :: SlotRole
-  , slotName :: String
+  , slotName :: RtmpStreamName
   , profileName :: ProfileName
   }
 

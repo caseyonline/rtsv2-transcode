@@ -2,7 +2,6 @@ module Cases.BrowserDataMsging where
 
 import Prelude
 
-import Debug.Trace (spy)
 import Effect.Aff (Aff, Milliseconds(..), delay)
 import Helpers.CreateString as C
 import Helpers.Env as E
@@ -11,7 +10,7 @@ import Helpers.HTTP as HTTP
 import Helpers.Log as L
 import Helpers.Types (Node)
 import Shared.Rtsv2.Stream (SlotRole(..))
-import Test.Spec (SpecT, after, after_, before, before_, describe, describeOnly, it, itOnly)
+import Test.Spec (SpecT, after, before, describe, it)
 import Test.Unit.Assert as Assert
 import Toppokki as T
 
@@ -48,7 +47,6 @@ browserDataMsging =
 -------------------------------------------------------------------------------
 -- Tests
 -------------------------------------------------------------------------------
-
 ingestNodes :: Array Node
 ingestNodes = [E.p1n1, E.p1n2, E.p2n1]
 
@@ -56,16 +54,16 @@ broadcastMessages :: forall m. Monad m => SpecT Aff Unit m Unit
 broadcastMessages =
   describe "6.1 Broadcast Messages " do
     before (F.startSession ingestNodes *> F.launch ingestNodes *> T.launch options) do
-      after (\browser1 -> (T.close browser1 *> F.stopSession *> F.stopSlot)) do
-        it "6.1.1 broadcast messages in different slots" $ \browser1 -> do
+      after (\browser -> (T.close browser *> F.stopSession *> F.stopSlot)) do
+        it "6.1.1 broadcast messages in different slots" $ \browser -> do
 
           F.startSlotHigh1000 (C.toAddrFromNode E.p1n1) >>= L.as' "create high ingest on 1"
 
           -- create the different tabs
-          tab1 <- T.newPage browser1
-          tab2 <- T.newPage browser1
-          tab3 <- T.newPage browser1
-          tab4 <- T.newPage browser1
+          tab1 <- T.newPage browser
+          tab2 <- T.newPage browser
+          tab3 <- T.newPage browser
+          tab4 <- T.newPage browser
 
           -- navigate to specific Urls on each tab
           T.goto (F.mkPlayerUrl E.p1n1 E.slot1 Primary) tab1
@@ -119,16 +117,16 @@ broadcastMessages =
           Assert.assert "Message content should be empty as this is on different slot" ("" == msgContent3)
             >>= L.as' ("Tab3 message content: " <> msgContent3)
 
-        it "6.1.2 publisher messages" $ \browser1 -> do
+        it "6.1.2 publisher messages" $ \browser -> do
 
           F.startSlotHigh1000 (C.toAddrFromNode E.p1n1) >>= L.as' "create high ingest on 1"
           F.start2SlotHigh1000 (C.toAddrFromNode E.p2n1) >>= L.as' "create high ingest on 2"
 
           -- create the different tabs
-          tab1 <- T.newPage browser1
-          tab2 <- T.newPage browser1
-          tab3 <- T.newPage browser1
-          tab4 <- T.newPage browser1
+          tab1 <- T.newPage browser
+          tab2 <- T.newPage browser
+          tab3 <- T.newPage browser
+          tab4 <- T.newPage browser
 
           -- navigate to specific Urls on each tab
           T.goto (F.mkPlayerUrl E.p1n1 E.slot1 Primary) tab1
@@ -186,14 +184,14 @@ broadcastMessages =
           Assert.assert "Message content should be empty as this is on a different slot" ("" == msgContent3)
             >>= L.as' ("Tab3 message content: " <> msgContent3)
 
-        it "6.1.3 private messages" $ \browser1 -> do
+        it "6.1.3 private messages" $ \browser -> do
 
           F.startSlotHigh1000 (C.toAddrFromNode E.p1n1) >>= L.as' "create high ingest on 1"
 
           -- create the different tabs
-          tab1 <- T.newPage browser1
-          tab2 <- T.newPage browser1
-          tab3 <- T.newPage browser1
+          tab1 <- T.newPage browser
+          tab2 <- T.newPage browser
+          tab3 <- T.newPage browser
 
           -- navigate to specific Urls on each tab
           T.goto (F.mkPlayerUrl E.p1n1 E.slot1 Primary) tab1

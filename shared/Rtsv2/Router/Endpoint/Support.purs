@@ -44,7 +44,7 @@ data Endpoint
   | ClientAppAssetsE (Array String)
   | ClientAppRouteHTMLE
 
-  | CanaryStreamDiscoveryE String String
+  | CanaryStreamDiscoveryE RtmpShortName RtmpStreamName
   | CanaryClientPlayerE SlotId SlotRole
   | CanaryClientPlayerControlE SlotId SlotRole
   | CanaryClientPlayerAssetsE SlotId SlotRole (Array String)
@@ -90,7 +90,7 @@ endpoint = root $ sum
   , "ClientAppAssetsE"                                 : "support" / "assets" / rest
   , "ClientAppRouteHTMLE"                              : "support" / noArgs
 
-  , "CanaryStreamDiscoveryE"                           : "support" / "canary" / "discovery" / "v1" / segment / segment
+  , "CanaryStreamDiscoveryE"                           : "support" / "canary" / "discovery" / "v1" / shortName segment / streamName segment
 
   , "CanaryClientPlayerE"                              : "support" / "canary" / "client" / slotId segment / slotRole segment / "player"
   , "CanaryClientPlayerControlE"                       : "support" / "canary" / "client" / slotId segment / slotRole segment / "session" -- URL duplicated in Web.purs
