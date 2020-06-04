@@ -44,6 +44,11 @@
                                                          spec = ?wildcard_by_name(frame)#frame{source_metadata = ?wildcard(#source_metadata{})#source_metadata{source_id = SourceId}}}).
 
 
+-define(program_details_frames_with_source_id(SourceId), #named_ets_spec{name = program_details_frames,
+                                                                         spec = ?wildcard_by_name(frame)#frame{type = program_details,
+                                                                                                              source_metadata = ?wildcard(#source_metadata{})#source_metadata{source_id = SourceId}
+                                                                         }}).
+
 startWorkflowImpl(SlotConfiguration, PushDetails) ->
   fun() ->
       startWorkflow(SlotConfiguration, PushDetails)
@@ -208,6 +213,7 @@ startWorkflow(SlotConfiguration = #{ slotId := SlotId
                                          subscribes_to = [{?previous, ?audio_frames}, {?previous, ?video_frames}],
                                          module = gop_measurer
                                         },
+                              #processor{name = log_pd, subscribes_to = {ingests, ?program_details_frames}, module = dev_null_processor, trace_inputs= console},
 
                               ?include_if(PushDetails /= [],
                                 #processor{name = master_hls_playlists,
@@ -239,7 +245,8 @@ startWorkflow(SlotConfiguration = #{ slotId := SlotId
                                                display_name = <<ProfileName/binary, " (receiving from ", StreamName/binary, ")">>,
                                                spec = #processor_spec{consumes = [?audio_frames, ?video_frames]},
                                                subscribes_to = [{gop_numberer, ?audio_frames_with_source_id(ProfileName)},
-                                                                {gop_numberer, ?video_frames_with_source_id(ProfileName)}]
+                                                                {gop_numberer, ?video_frames_with_source_id(ProfileName)},
+                                                                {ingests, ?program_details_frames_with_source_id(ProfileName)}]
                                                                 ++ case PushDetails of [] -> [];
                                                                                        _  -> [ {gop_measurer, ?gop_measurements_with_sourceid(ProfileName)} ]
                                                                    end,
@@ -251,7 +258,8 @@ startWorkflow(SlotConfiguration = #{ slotId := SlotId
                                                                            subscribes_to = [
                                                                              {outside_world, ?video_frames},
                                                                              {outside_world, ?audio_frames_with_profile_name(aac)},
-                                                                             {outside_world, ?gop_measurements}
+                                                                             {outside_world, ?gop_measurements},
+                                                                             {outside_world, ?program_details_frames}
                                                                            ],
                                                                            module = rtsv2_hls_segment_workflow,
                                                                            config = #rtsv2_hls_segment_workflow_config{

@@ -103,7 +103,7 @@ db =
                  , push : [
                     { protocol: HttpPut
                     , formats: [ Hls ]
-                    , putBaseUrl: (_ <> "/") $ unwrap $ unsafePerformEffect $ System.makeUrlAddr (wrap "172.16.171.1") (System.HlsPushE ["test_slot_1"])
+                    , putBaseUrl:  unwrap $ unsafePerformEffect $ System.makeUrlAddr (wrap "172.16.171.1") (System.HlsPushE ["test_slot_1"])
                     , segmentDuration: Just 3
                     , playlistDuration: Just 20
                     , auth:
@@ -165,7 +165,7 @@ db =
                  , push : [
                     { protocol: HttpPut
                     , formats: [ Hls ]
-                    , putBaseUrl: (_ <> "/") $ unwrap $ unsafePerformEffect $ System.makeUrlAddr (wrap "172.16.171.1") (System.HlsPushE ["test_slot_1"])
+                    , putBaseUrl: unwrap $ unsafePerformEffect $ System.makeUrlAddr (wrap "172.16.171.1") (System.HlsPushE ["test_slot_1"])
                     , segmentDuration: Just 3
                     , playlistDuration: Just 20
                     , auth:
@@ -202,7 +202,7 @@ db =
                  , push : [
                     { protocol: HttpPut
                     , formats: [ Hls ]
-                    , putBaseUrl: (_ <> "/") $ unwrap $ unsafePerformEffect $ System.makeUrlAddr (wrap "172.16.171.1") (System.HlsPushE ["test_slot_1_a"])
+                    , putBaseUrl: unwrap $ unsafePerformEffect $ System.makeUrlAddr (wrap "172.16.171.1") (System.HlsPushE ["test_slot_1_a"])
                     , segmentDuration: Just 3
                     , playlistDuration: Just 20
                     , auth:

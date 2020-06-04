@@ -54,6 +54,11 @@ let overrides =
           , repo = "https://github.com/id3as/purescript-longs.git"
           , version = "100d382591bbbf912821576294f0849b695446d9"
           }
+        , undefinable =
+        { dependencies = 
+            [ "prelude", "heterogeneous", "console", "typelevel-prelude" ],
+            repo = "https://github.com/purerl/purescript-undefinable.git", version = "582c6a697863c1e7f0fed5f45d91b4f8d3b5263f"
+    }
 
       }
 

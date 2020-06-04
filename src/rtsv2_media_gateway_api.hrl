@@ -72,9 +72,16 @@
         }).
 -type media_gateway_client_add_failed_event() :: #media_gateway_client_add_failed_event{}.
 
+-record(media_gateway_client_subscription_update_failed_event,
+        { reason :: not_present
+        }).
+-type media_gateway_client_subscription_update_failed_event() :: #media_gateway_client_subscription_update_failed_event{}.
+
 -type media_gateway_event_details() ::
         media_gateway_client_synchronization_established_event()
       | media_gateway_client_subscription_switched_event()
-      | media_gateway_client_statistics_updated_event().
+      | media_gateway_client_statistics_updated_event()
+      | media_gateway_client_add_failed_event()
+      | media_gateway_client_subscription_switched_event().
 
 -endif.

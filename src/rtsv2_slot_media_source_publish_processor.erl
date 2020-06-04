@@ -38,7 +38,7 @@
 -define(metadata, rtsv2_slot_media_source_publish_processor_metadata).
 
 -record(?metadata,
-        { slot_configuration :: rtsv2_slot_configuration:slot_configuration()
+        { slot_configuration :: slot_configuration()
         }).
 
 %%------------------------------------------------------------------------------
