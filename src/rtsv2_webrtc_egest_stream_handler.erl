@@ -82,7 +82,7 @@ handle_call({set_slot_configuration, _SlotConfiguration}, _From, #?state{ media_
 handle_call({set_slot_configuration, _SlotConfiguration}, _From, #?state{ media_gateway = active } = State) ->
   { reply, ok, State };
 
-handle_call({set_slot_configuration, #{ profiles := Profiles } = _SlotConfiguration},
+handle_call({set_slot_configuration, #{ profiles := Profiles, audioOnly := AudioOnly } = _SlotConfiguration},
             _From,
             #?state{ media_gateway = pending_initialization
                    , slot_id = SlotId
@@ -102,10 +102,14 @@ handle_call({set_slot_configuration, #{ profiles := Profiles } = _SlotConfigurat
               , ?make_video_ssrc(?PROFILE_INDEX_RESERVED_EGEST, 1)
               }
           end,
+  MaybeVideoSSRC = case AudioOnly of
+                      true -> undefined;
+                      false -> VideoSSRC
+                   end,
 
   MaxBitrate = lists:max([Bitrate || #{ bitrate := Bitrate } <- Profiles]),
 
-  ok = rtsv2_media_gateway_api:add_egest(SlotId, SlotRole, ReceiveSocket, MaxBitrate, AudioSSRC, VideoSSRC),
+  ok = rtsv2_media_gateway_api:add_egest(SlotId, SlotRole, ReceiveSocket, MaxBitrate, AudioSSRC, MaybeVideoSSRC),
 
   { reply, ok, State#?state{ media_gateway = active } }.
 

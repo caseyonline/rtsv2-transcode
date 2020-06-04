@@ -61,7 +61,7 @@
         , path :: binary_string()
 
         , start_options :: webrtc_stream_server:start_options()
-        , profiles :: list(rtsv2_slot_configuration:slot_profile())
+        , profiles :: list(slot_profile())
 
         , last_stats_event :: undefined | media_gateway_client_statistics_updated_event()
         , last_stats_received_at :: undefined | non_neg_integer()
@@ -765,23 +765,23 @@ determine_stream_availability(#stream_desc_egest{}) ->
   available_here.
 
 try_initialize(#?state_initializing{ stream_desc = StreamDesc } = State) ->
-  case get_slot_profiles(StreamDesc) of
+  case get_slot_configuration(StreamDesc) of
     undefined ->
       {ok, _TimerRef} = timer:send_after(30, try_initialize),
       {ok, State};
 
-    SlotProfiles ->
-      transition_to_running(SlotProfiles, State)
+    SlotConfiguration ->
+      transition_to_running(SlotConfiguration, State)
   end.
 
 
-get_slot_profiles(#stream_desc_ingest{ slot_id = SlotId, profile_name = IngestProfileName }) ->
+get_slot_configuration(#stream_desc_ingest{ slot_id = SlotId, profile_name = IngestProfileName }) ->
   case rtsv2_slot_media_source_publish_processor:maybe_slot_configuration(SlotId) of
-    #{ profiles := Profiles } ->
+    #{ profiles := Profiles } = SlotConfiguration ->
 
       case [ Profile || Profile = #{ profileName := ConfigProfileName } <- Profiles, ConfigProfileName =:= IngestProfileName ] of
         [ MatchingProfile | _ ] ->
-          [ MatchingProfile ];
+          SlotConfiguration#{ profiles => [ MatchingProfile ] };
 
         _NoMatchingProfile ->
           undefined
@@ -791,17 +791,19 @@ get_slot_profiles(#stream_desc_ingest{ slot_id = SlotId, profile_name = IngestPr
       undefined
   end;
 
-get_slot_profiles(#stream_desc_egest{ egest_key = EgestKey, get_slot_configuration = GetSlotConfiguration }) ->
+get_slot_configuration(#stream_desc_egest{ egest_key = EgestKey, get_slot_configuration = GetSlotConfiguration }) ->
   case (GetSlotConfiguration(EgestKey))() of
-    {just, #{ profiles := Profiles }} ->
-      Profiles;
+    {just, SlotConfiguration} ->
+      SlotConfiguration;
 
     {nothing} ->
       undefined
   end.
 
 
-transition_to_running([ #{ profileName := ActiveProfileName } | _OtherProfiles ] = Profiles,
+transition_to_running(#{ profiles := [ #{ profileName := ActiveProfileName } | _OtherProfiles ] = Profiles
+                       , audioOnly := AudioOnly
+                       } = SlotConfiguration,
                       #?state_initializing{ trace_id = TraceId
                                           , path = Path
                                           , webrtc_session_id = WebRTCSessionId
@@ -814,7 +816,7 @@ transition_to_running([ #{ profileName := ActiveProfileName } | _OtherProfiles ]
                                           }
                      ) ->
 
-  StartOptions = construct_start_options(TraceId, WebRTCSessionId, PublicIPString, Profiles, StreamDesc),
+  StartOptions = construct_start_options(TraceId, WebRTCSessionId, PublicIPString, SlotConfiguration, StreamDesc),
   webrtc_stream_server:ensure_session(ServerId, WebRTCSessionId, StartOptions),
   webrtc_stream_server:subscribe_for_msgs(WebRTCSessionId, #subscription_options{}),
   case StreamDesc of
@@ -847,6 +849,7 @@ transition_to_running([ #{ profileName := ActiveProfileName } | _OtherProfiles ]
   InitialMessage =
     #{ type => init
      , traceId => format_trace_id(TraceId)
+     , audioOnly => AudioOnly
      , thisEdge =>
          #{ socketURL => SocketURL
           , iceServers => ICEServers
@@ -1163,7 +1166,7 @@ client_ip(Req) ->
 construct_start_options(TraceId,
                         WebRTCSessionId,
                         IP,
-                        [ SlotProfile ] = SlotProfiles,
+                        #{ profiles := [ SlotProfile ] = SlotProfiles, audioOnly := AudioOnly  },
                         #stream_desc_ingest{ slot_id = SlotId, slot_role = SlotRole, use_media_gateway = UseMediaGateway }
                        ) ->
 
@@ -1181,6 +1184,7 @@ construct_start_options(TraceId,
                                            , slot_id = SlotId
                                            , slot_role = SlotRole
                                            , profiles = SlotProfiles
+                                           , audio_only = AudioOnly
                                            , web_socket = self()
                                            , audio_ssrc = AudioSSRC
                                            , video_ssrc = VideoSSRC
@@ -1212,7 +1216,7 @@ construct_start_options(TraceId,
 construct_start_options(TraceId,
                         WebRTCSessionId,
                         IP,
-                        SlotProfiles,
+                        #{ profiles := SlotProfiles, audioOnly := AudioOnly },
                         #stream_desc_egest{ slot_id = SlotId
                                           , slot_role = SlotRole
                                           , audio_ssrc = AudioSSRC
@@ -1231,6 +1235,7 @@ construct_start_options(TraceId,
                                            , slot_id = SlotId
                                            , slot_role = SlotRole
                                            , profiles = SlotProfiles
+                                           , audio_only = AudioOnly
                                            , web_socket = self()
                                            , audio_ssrc = AudioSSRC
                                            , video_ssrc = VideoSSRC

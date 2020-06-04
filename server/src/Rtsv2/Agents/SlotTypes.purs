@@ -2,14 +2,19 @@ module Rtsv2.Agents.SlotTypes
        ( SlotConfiguration
        , SlotProfile
        , llnwStreamDetailsToSlotConfiguration
+       , MaybeVideo
        )
        where
 
+import Prelude
+
 import Data.Int.Bits (shl, (.|.))
+import Data.Maybe (Maybe(..))
+import Data.Undefinable (Undefinable, toMaybe, toUndefinable)
 import Erl.Data.List (List, fromFoldable, mapWithIndex)
-import Prelude ((+))
 import Shared.Rtsv2.LlnwApiTypes as LlnwApiTypes
 import Shared.Rtsv2.Stream (IngestKey(..), ProfileName, RtmpShortName, RtmpStreamName, SlotId, SlotRole)
+import Simple.JSON (class ReadForeign, class WriteForeign, readImpl, writeImpl)
 
 type SlotConfiguration =
   { slotId :: SlotId
@@ -25,28 +30,43 @@ type SlotProfile =
   , streamName :: RtmpStreamName
   , ingestKey :: IngestKey
   , firstAudioSSRC :: Int
-  , firstVideoSSRC :: Int
+  , firstVideoSSRC :: MaybeVideo Int -- this is really just Undefinable but that doesn't have a WriteForeign instance
   , bitrate :: Int
   }
+
+newtype MaybeVideo a = MaybeVideo (Undefinable a)
+
+-- derive instance genericDownstreamWsMessage :: Generic DownstreamWsMessage _
+
+instance readForeignMaybeVideo :: ReadForeign a => ReadForeign (MaybeVideo a) where
+  readImpl o = (MaybeVideo <<< toUndefinable) <$> readImpl o
+
+instance writeForeignMaybeVideo :: WriteForeign a => WriteForeign (MaybeVideo a) where
+  writeImpl (MaybeVideo msg) = writeImpl (toMaybe msg)
+
 
 llnwStreamDetailsToSlotConfiguration :: RtmpShortName -> LlnwApiTypes.StreamDetails -> SlotConfiguration
 llnwStreamDetailsToSlotConfiguration rtmpShortName {role, slot: {id, profiles, subscribeValidation, audioOnly}} =
   { slotId : id
   , slotRole: role
   , rtmpShortName
-  , profiles: mapWithIndex (llwnSlotProfileToSlotProfile id role) (fromFoldable profiles)
+  , profiles: mapWithIndex (llwnSlotProfileToSlotProfile audioOnly id role) (fromFoldable profiles)
   , audioOnly
   , subscribeValidation
   }
 
-llwnSlotProfileToSlotProfile :: SlotId -> SlotRole -> LlnwApiTypes.SlotProfile -> Int -> SlotProfile
-llwnSlotProfileToSlotProfile slotId slotRole (LlnwApiTypes.SlotProfile {name, rtmpStreamName, bitrate}) index =
+llwnSlotProfileToSlotProfile :: Boolean -> SlotId -> SlotRole -> LlnwApiTypes.SlotProfile -> Int -> SlotProfile
+llwnSlotProfileToSlotProfile audioOnly slotId slotRole (LlnwApiTypes.SlotProfile {name, rtmpStreamName, bitrate}) index =
   { profileName: name
   , ingestKey: IngestKey slotId slotRole name
   , streamName: rtmpStreamName
   , bitrate
   , firstAudioSSRC: audioSSRC (index + indexStandardOffset)
-  , firstVideoSSRC: videoSSRC (index + indexStandardOffset)
+  , firstVideoSSRC: 
+      MaybeVideo $ toUndefinable
+        case audioOnly of
+          true -> Nothing
+          false -> Just $ videoSSRC (index + indexStandardOffset)
   }
 
 -- Bit-shifting logic and constants mirrored in rtsv2_rtp.hrl

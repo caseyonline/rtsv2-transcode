@@ -32,6 +32,9 @@ export interface InitMessage {
   /** Details of the edge to which the client has connected */
   readonly thisEdge: EdgeDetails;
 
+  /** Indicates whether the stream is an audio-only stream */
+  readonly audioOnly: boolean;
+
   /** The variant of the stream that is currently being sent/will be sent to the client
    *  over WebRTC
    */
