@@ -2,6 +2,7 @@ module Cases.BrowserDataMsging where
 
 import Prelude
 
+import Debug.Trace (spy)
 import Effect.Aff (Aff, Milliseconds(..), delay)
 import Helpers.CreateString as C
 import Helpers.Env as E
@@ -10,7 +11,7 @@ import Helpers.HTTP as HTTP
 import Helpers.Log as L
 import Helpers.Types (Node)
 import Shared.Rtsv2.Stream (SlotRole(..))
-import Test.Spec (SpecT, after_, before_, describe, describeOnly, it, itOnly)
+import Test.Spec (SpecT, after, after_, before, before_, describe, describeOnly, it, itOnly)
 import Test.Unit.Assert as Assert
 import Toppokki as T
 
@@ -54,15 +55,11 @@ ingestNodes = [E.p1n1, E.p1n2, E.p2n1]
 broadcastMessages :: forall m. Monad m => SpecT Aff Unit m Unit
 broadcastMessages =
   describe "6.1 Broadcast Messages " do
-    before_ (F.startSession ingestNodes *> F.launch ingestNodes) do
-      after_ (F.stopSession *> F.stopSlot) do
-        it "6.1.1 broadcast messages in different slots" do
+    before (F.startSession ingestNodes *> F.launch ingestNodes *> T.launch options) do
+      after (\browser1 -> (T.close browser1 *> F.stopSession *> F.stopSlot)) do
+        it "6.1.1 broadcast messages in different slots" $ \browser1 -> do
 
           F.startSlotHigh1000 (C.toAddrFromNode E.p1n1) >>= L.as' "create high ingest on 1"
-
-          _ <- delay (Milliseconds 5000.00) >>= L.as' "wait for ingest to start fully"
-
-          browser1 <- T.launch options
 
           -- create the different tabs
           tab1 <- T.newPage browser1
@@ -95,7 +92,6 @@ broadcastMessages =
           msgReceivedTraceId1 <- F.getInnerText "div.message.msg_received > div.msg_name" tab1
           msgContent1 <- F.getInnerText "div.message.msg_received > div.msg_bubble" tab1
 
-
           Assert.assert "TraceId matches on first message sent and received" (traceId2 == msgReceivedTraceId1)
             >>= L.as' ("Sent: " <> show traceId2 <> " Received: " <> msgReceivedTraceId1)
           Assert.assert "Message content matched first sent message" (firstMessage == msgContent1)
@@ -123,14 +119,10 @@ broadcastMessages =
           Assert.assert "Message content should be empty as this is on different slot" ("" == msgContent3)
             >>= L.as' ("Tab3 message content: " <> msgContent3)
 
-          T.close browser1
-
-        it "6.1.2 publisher messages" do
+        it "6.1.2 publisher messages" $ \browser1 -> do
 
           F.startSlotHigh1000 (C.toAddrFromNode E.p1n1) >>= L.as' "create high ingest on 1"
           F.start2SlotHigh1000 (C.toAddrFromNode E.p2n1) >>= L.as' "create high ingest on 2"
-
-          browser1 <- T.launch options
 
           -- create the different tabs
           tab1 <- T.newPage browser1
@@ -144,7 +136,7 @@ broadcastMessages =
           T.goto (F.mkPlayerUrl E.p2n1 E.slot2 Primary) tab3
           T.goto (HTTP.ingestUrl E.p1n1 E.shortName1 E.highStreamName) tab4
 
-          _ <- delay (Milliseconds 1000.00) >>= L.as' "wait for tabs to load"
+          _ <- delay (Milliseconds 1500.00) >>= L.as' "wait for tabs to load"
 
           -- get the traceIds from each tab
           traceId1 <- F.getInnerText "#traceId" tab1
@@ -168,7 +160,6 @@ broadcastMessages =
 
           Assert.assert "TraceId matches on first message sent and received" (traceId4 == msgReceivedTraceId1)
             >>= L.as' ("Sent: " <> show traceId4 <> " Received: " <> msgReceivedTraceId1)
-          _ <- delay (Milliseconds 0.0) >>= L.as' ("xxx message " <> firstMessage <> " -> " <> msgContent1)
           Assert.assert "Message content matched first sent message" (firstMessage == msgContent1)
             >>= L.as' ("Sent: " <> firstMessage <> " Received: " <> msgContent1)
 
@@ -183,7 +174,7 @@ broadcastMessages =
           msgReceivedTraceId4 <- F.getInnerText "div.message.msg_received > div.msg_name" tab4
           msgContent4 <- F.getInnerText "div.message.msg_received > div.msg_bubble" tab4
 
-          Assert.assert "TraceId matches on second message sent and received" (traceId1 == msgReceivedTraceId4)
+          Assert.assert ("TraceId matches on second message sent and received: " <> traceId1 <> ", " <> msgReceivedTraceId4) (traceId1 == msgReceivedTraceId4)
             >>= L.as' ("Sent: " <> show traceId1 <> " Received: " <> msgReceivedTraceId4)
           Assert.assert "Message content matched second message sent" (publisherMsg == msgContent4)
             >>= L.as' ("Sent: " <> publisherMsg <> " Received: " <> msgContent4)
@@ -195,14 +186,9 @@ broadcastMessages =
           Assert.assert "Message content should be empty as this is on a different slot" ("" == msgContent3)
             >>= L.as' ("Tab3 message content: " <> msgContent3)
 
-          T.close browser1
-
-
-        it "6.1.3 private messages" do
+        it "6.1.3 private messages" $ \browser1 -> do
 
           F.startSlotHigh1000 (C.toAddrFromNode E.p1n1) >>= L.as' "create high ingest on 1"
-
-          browser1 <- T.launch options
 
           -- create the different tabs
           tab1 <- T.newPage browser1
@@ -214,7 +200,7 @@ broadcastMessages =
           T.goto (F.mkPlayerUrl E.p1n2 E.slot1 Primary) tab2
           T.goto (F.mkPlayerUrl E.p1n1 E.slot1 Primary) tab3
 
-          _ <- delay (Milliseconds 1000.00) >>= L.as' "tabs opened"
+          _ <- delay (Milliseconds 1500.00) >>= L.as' "tabs opened"
 
           -- Get the traceIds from each tab
           traceId1 <- F.getInnerText "#traceId" tab1
@@ -253,5 +239,3 @@ broadcastMessages =
 
           Assert.assert "Message content should be empty as this is on different slot" ("" == msgContent3)
             >>= L.as' ("Tab3 message content: " <> msgContent3)
-
-          T.close browser1
