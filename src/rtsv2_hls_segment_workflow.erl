@@ -126,17 +126,18 @@ build_workflow(GopDurationPts,
   if length(PushDetails) > 1 -> ?WARNING("Only currently supporting 1 push details: ~p", [PushDetails]);
      ?otherwise -> ok
   end,
+
   GopDurationS = GopDurationPts / 90000,
-  GopsPerSegment = round(DesiredSegmentDuration / GopDurationS),
+  GopsPerSegment = max(1, round(DesiredSegmentDuration / GopDurationS)),
   SegmentDurationActual = round(GopsPerSegment * GopDurationS),
-  
+
   ?INFO("Requested segment duration of ~p, actual shall be ~p - ~p gops per segment, gop duration ~p", [DesiredSegmentDuration, SegmentDurationActual, GopsPerSegment, GopDurationS]),
   TsEncoderConfig = #ts_encoder_config{
                        which_encoder = ts_simple_encoder,
                        program_pid = 4096,
                        pcr_pid = case AudioOnly of true -> 257; false -> 256 end,
-                       streams = 
-                        case AudioOnly of 
+                       streams =
+                        case AudioOnly of
                           true -> [];
                           false -> [
                             #ts_stream {
@@ -182,7 +183,7 @@ build_workflow(GopDurationPts,
                   config = #ts_segment_generator_config {
                               mode = gop_number,
                               segment_strategy = #ts_segment_generator_gop_strategy {
-                                gops_per_segment = GopsPerSegment 
+                                gops_per_segment = GopsPerSegment
                               }
                             },
                   module = ts_segment_generator},
