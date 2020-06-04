@@ -523,6 +523,14 @@ websocket_info(#media_gateway_event{ details = Event }, #?state_running{ profile
       , State
       };
 
+    #media_gateway_client_subscription_update_failed_event{ reason = Reason } ->
+      ?WARNING("The client subscription could not be switched for reason ~p. Shutting down.", [Reason]),
+
+      %% TODO: redirects etc
+      { [ close_frame(?WebSocketStatusCode_GoingAway) ]
+      , State
+      };
+
     #media_gateway_client_synchronization_established_event{ rtp_timestamp = RTPTimestamp } ->
       { [ json_frame( <<"time-zero">>,
                       #{ <<"rtpTimestamp">> => RTPTimestamp

@@ -437,7 +437,10 @@ event_to_record(#{ <<"kind">> := <<"statistics_updated">> },
                                                 };
 
 event_to_record(#{ <<"kind">> := <<"client_add_failed">> }, #{ <<"reason">> := Reason }) ->
-  #media_gateway_client_add_failed_event{ reason = binary_to_atom(Reason, utf8) }.
+  #media_gateway_client_add_failed_event{ reason = binary_to_atom(Reason, utf8) };
+
+event_to_record(#{ <<"kind">> := <<"client_subscription_update_failed">> }, #{ <<"reason">> := Reason }) ->
+  #media_gateway_client_subscription_update_failed_event{ reason = binary_to_atom(Reason, utf8) }.
 
 handle_add_egest_client(SlotId,
                         SlotRole,
