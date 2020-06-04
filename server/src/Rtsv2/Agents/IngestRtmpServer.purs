@@ -42,7 +42,7 @@ import Shared.Rtsv2.Stream (IngestKey(..))
 import Shared.Rtsv2.Types (CanaryState(..), extractAddress)
 import Stetson.WebSocketHandler (self)
 
-foreign import startServerImpl :: (Foreign -> Either Foreign Unit) -> Either Foreign Unit -> Ip -> Int -> Callbacks -> Ip -> Int -> Callbacks -> Int -> Effect (Either Foreign Unit)
+foreign import startServerImpl :: (Foreign -> Either Foreign Unit) -> Either Foreign Unit -> Ip -> Int -> Callbacks -> Ip -> Int -> Callbacks -> Int -> Int -> Effect (Either Foreign Unit)
 foreign import rtmpQueryToPurs :: Foreign -> RtmpAuthRequest
 foreign import startWorkflowImpl :: Pid -> Pid -> Foreign -> IngestKey -> ProfileContext -> (Foreign -> (Effect Unit)) -> (Foreign -> (Effect Unit)) -> Effect Unit
 
@@ -78,6 +78,7 @@ init _ = do
   supportInterfaceIp <- Env.supportInterfaceIp
   loadConfig <- Config.loadConfig
   {port, canaryPort, nbAcceptors} <- Config.rtmpIngestConfig
+  {abortIfNoMediaMs} <- Config.ingestInstanceConfig
   thisServer <- PoPDefinition.getThisServer
   let
     host = unwrap $ extractAddress thisServer
@@ -87,7 +88,7 @@ init _ = do
     canaryCallbacks :: Callbacks
     canaryCallbacks = { init: mkFn2 (onConnectCallback loadConfig Canary host)
                       }
-  crashIfLeft =<< startServerImpl Left (Right unit) publicInterfaceIp port callbacks supportInterfaceIp canaryPort canaryCallbacks nbAcceptors
+  crashIfLeft =<< startServerImpl Left (Right unit) publicInterfaceIp port callbacks supportInterfaceIp canaryPort canaryCallbacks nbAcceptors abortIfNoMediaMs
   pure $ {}
 
 onConnectCallback :: LoadConfig -> CanaryState -> String -> String -> Foreign -> (Effect RtmpAuthResponse)
