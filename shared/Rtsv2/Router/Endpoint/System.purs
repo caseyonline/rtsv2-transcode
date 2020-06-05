@@ -48,7 +48,7 @@ data Endpoint
   | StreamAuthTypeE
   | StreamAuthE
   | StreamPublishE
-  | SlotLookupE String String
+  | SlotLookupE RtmpShortName RtmpStreamName
   | HlsPushE (Array String)
   | ValidationE String
 
@@ -96,7 +96,7 @@ endpoint = root $ sum
   , "ClientStartE"                                     : "system" / "test" / "client" / canaryState segment / slotId segment / slotRole segment / "start"
   , "ClientStopE"                                      : "system" / "test" / "client" / slotId segment / slotRole segment / "stop" / segment
 
-  , "SlotLookupE"                                      : "system" / "llnwstub" / "rts" / "v1" / "slotid" / segment / segment
+  , "SlotLookupE"                                      : "system" / "llnwstub" / "rts" / "v1" / "slotid" / shortName segment / streamName segment
   , "StreamAuthTypeE"                                  : "system" / "llnwstub" / "rts" / "v1" / path "streamauthtype" noArgs
   , "StreamAuthE"                                      : "system" / "llnwstub" / "rts" / "v1" / path "streamauth" noArgs
   , "StreamPublishE"                                   : "system" / "llnwstub" / "rts" / "v1" / path "streampublish" noArgs
