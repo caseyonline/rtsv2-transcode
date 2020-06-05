@@ -40,7 +40,7 @@
   0},
  {<<"id3as_rtc">>,
   {git,"git@github.com:id3as/id3as_rtc.git",
-       {ref,"d772aae1448da6f6595ec1e3e45dbbfbca0b3e98"}},
+       {ref,"8ad1e98eac9c8a04f7ba3b45efecd26841ef3078"}},
   0},
  {<<"jsx">>,{pkg,<<"jsx">>,<<"2.8.0">>},0},
  {<<"lager">>,{pkg,<<"lager">>,<<"3.2.0">>},0},

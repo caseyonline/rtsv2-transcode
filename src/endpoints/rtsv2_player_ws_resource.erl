@@ -613,6 +613,9 @@ websocket_handle({ text, JSON }, State) ->
         <<"set-quality-constraint-configuration">> ->
           handle_set_quality_constraint_configuration(Message, State);
 
+        <<"set-quality">> ->
+          handle_set_quality(Message, State);
+
         <<"dataobject.send-message">> ->
           handle_data_object_send_message(Message, State);
 
@@ -970,9 +973,24 @@ handle_ice_gathering_done(_Message, State) ->
   }.
 
 
-handle_set_quality_constraint_configuration(#{ <<"configuration">> := #{ <<"behavior">> := _Behavior, <<"variant">> := Variant } }, #?state_running{ server_id = ServerId, webrtc_session_id = WebRTCSessionId } = State) ->
-  %% TODO: PS: logging, actual abr
+handle_set_quality(#{ <<"variant">> := Variant }, #?state_running{ server_id = ServerId, webrtc_session_id = WebRTCSessionId } = State) ->
   rtsv2_webrtc_session_handler:set_active_profile(ServerId, WebRTCSessionId, Variant),
+  { []
+  , State
+  , hibernate
+  }.
+
+
+handle_set_quality_constraint_configuration(#{ <<"configuration">> := #{ <<"behavior">> := BehaviourString, <<"variant">> := Variant } }, #?state_running{ server_id = ServerId, webrtc_session_id = WebRTCSessionId } = State) ->
+  Behaviour =
+    case BehaviourString of
+      <<"force-quality">> ->
+        force_quality;
+      <<"max-quality">> ->
+        max_quality
+    end,
+
+  rtsv2_webrtc_session_handler:set_quality_constraint(ServerId, WebRTCSessionId, Behaviour, Variant),
   { []
   , State
   , hibernate

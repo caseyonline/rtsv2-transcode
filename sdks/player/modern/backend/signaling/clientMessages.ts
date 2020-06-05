@@ -13,6 +13,7 @@ export type Message
   | ICECandidateMessage
   | ICEDoneMessage
   | SetQualityConstraintConfigurationMessage
+  | SetQualityMessage
   | DataObjectSendMessage
   | DataObjectUpdateMessage
 
@@ -30,4 +31,12 @@ export interface SetQualityConstraintConfigurationMessage {
 
   /** The configuration to apply. */
   readonly configuration: IQualityConstraintConfiguration;
+}
+
+/** Changes the current ABR variant to the provided value. */
+export interface SetQualityMessage {
+  readonly type: "set-quality";
+
+  /** The variant to apply. */
+  readonly variant: string;
 }

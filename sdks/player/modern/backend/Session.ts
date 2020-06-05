@@ -340,6 +340,13 @@ export default class Session extends EventEmitter implements ISession {
     console.error(`Got unexpected message with type ${message.type} in state ${this.state}.`, message);
   }
 
+  setQuality(variant: string) {
+      this.sendToSocket({
+        "type": "set-quality",
+        "variant": variant
+      });
+  }
+
   setQualityConstraint(constraintConfiguration: IQualityConstraintConfiguration) {
       this.sendToSocket({
         "type": "set-quality-constraint-configuration",
