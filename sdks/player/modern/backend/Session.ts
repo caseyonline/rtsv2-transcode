@@ -411,7 +411,7 @@ export default class Session extends EventEmitter implements ISession {
         "offerToReceiveAudio": true,
         "offerToReceiveVideo": !this.audioOnly,
       });
-      console.debug("Local description obtained.");
+      console.debug("Local description obtained.", offer);
 
       this.sendToSocket({
         "type": "sdp.offer",
