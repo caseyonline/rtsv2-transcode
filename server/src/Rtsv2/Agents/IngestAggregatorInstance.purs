@@ -75,7 +75,7 @@ import Erl.Data.List (List, nil, (:))
 import Erl.Data.List as List
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
-import Erl.Data.Tuple (Tuple2, toNested2, tuple4)
+import Erl.Data.Tuple (Tuple2, toNested2)
 import Erl.Process (Process(..), (!))
 import Erl.Process.Raw (Pid)
 import Erl.Utils (Ref, shutdown)
@@ -102,7 +102,7 @@ import Shared.Common (LoggingContext(..))
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.JsonLd as JsonLd
-import Shared.Rtsv2.LlnwApiTypes (HlsPushAuth, HlsPushProtocol, HlsPushSpecFormat, SlotProfile(..), StreamDetails, slotDetailsToSlotCharacteristics)
+import Shared.Rtsv2.LlnwApiTypes (HlsPushAuth, HlsPushProtocol, HlsPushSpecFormat, StreamDetails, slotDetailsToSlotCharacteristics)
 import Shared.Rtsv2.Router.Endpoint.System as System
 import Shared.Rtsv2.Stream (AggregatorKey(..), IngestKey(..), ProfileName, RtmpShortName, SlotId, SlotRole(..), ingestKeyToAggregatorKey)
 import Shared.Rtsv2.Types (DeliverTo, OnBehalfOf(..), RelayServer, Server, ServerAddress, extractAddress)
@@ -534,7 +534,6 @@ init parentCallbacks { shortName
   maybeStartPrimaryTimeout state3
   pure state3
   where
-    mkKey (SlotProfile p) = tuple4 (IngestKey streamDetails.slot.id streamDetails.role p.name) (unwrap p.rtmpStreamName) (unwrap p.name) p.bitrate
     aggregatorKey = streamDetailsToAggregatorKey streamDetails
     thisServerName = (serverName (aggregatorKey))
     slotConfiguration = SlotTypes.llnwStreamDetailsToSlotConfiguration shortName streamDetails

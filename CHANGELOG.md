@@ -94,7 +94,29 @@
 
   More alerts will get added - let us know if you've seen things in logs that you'd like reported through this mechanism.  We will formally document this soon, along with the other endpoints in /public and /support.  For now, you can see the types and the json rendering in rtsv2/shared/Common.purs
 
-* Initial support for audio-only streams
+  The initialReport / lastReport / repeatCount fields are to ensure that, for example, a client continually connecting and sending invalid video doesn't cause an explosion of alerts.  reportCounts are based on contextual data, so two different clients attempting to connect with invalid video would show up as two different alerts.
+
+  
+
+* The healthCheck URLnow supports a 'from' parameter on the query string, which will filter out any alerts that have a 'lastReport' time earlier than 'from'
+
+* Updated our side of provisioning API to support new audioBitrate / videoBitrate fields in Profile
+
+* Initial support for audio-only streams - these are specified by having slots where *all* profiles have a videoBitrate of zero.  A couple of notes:
+
+  * The ingest does not currently validate that it is only receiving audio;  that wil lchange soon, so please don't try submitting a video stream to an audio-only slot :)
+
+  * The init message sent down the websocket to the player has an additional field that indicates if the stream is audio-only;  the client needs to create an appropriate SDP offer to only receive audio - the reference egest player shows this in Session.ts:412
+
+    
+
+* RTMP connections now timeout more reliably if the client doesn't send data - previous version required media flowing before the inactivity timer was started, it now starts as soon as the connection is established
+
+  
+
+* Minor HLS tweaks to support 'video-only' streams, although note that these are not (yet!) officially supported
+
+* HLS sequence numbers no longer reset to zero on a restart
 
 # RTS-V2 release 103
 

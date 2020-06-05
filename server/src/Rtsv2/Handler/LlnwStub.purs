@@ -90,15 +90,16 @@ db =
                  , slot : { id: wrap $ fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000001")
                           , name: wrap "slot1"
                           , subscribeValidation: false
-                          , profiles: [ wrap { name: wrap "high",
-                                               rtmpStreamName: wrap "slot1_1000",
-                                               bitrate: 1000000}
-                                      , wrap { name: wrap "low",
-                                               rtmpStreamName: wrap "slot1_500",
-                                               bitrate: 500000}
+                          , profiles: [ wrap { name: wrap "high"
+                                             , rtmpStreamName: wrap "slot1_1000"
+                                             , audioBitrate: 64000
+                                             , videoBitrate: 936000 }
+                                      , wrap { name: wrap "low"
+                                             , rtmpStreamName: wrap "slot1_500"
+                                             , audioBitrate: 64000
+                                             , videoBitrate: 436000 }
                                       ]
                           , outputFormats : [ HlsOutput ]
-                          , audioOnly : false
                           }
                  , push : [
                     { protocol: HttpPut
@@ -127,15 +128,16 @@ db =
                  , slot : { id: wrap $ fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000001")
                           , name: wrap "slot1b"
                           , subscribeValidation: false
-                          , profiles: [ wrap { name: wrap "high",
-                                               rtmpStreamName: wrap "slot1b_1000",
-                                               bitrate: 1000000}
-                                      , wrap { name: wrap "low",
-                                               rtmpStreamName: wrap "slot1b_500",
-                                               bitrate: 500000}
+                          , profiles: [ wrap { name: wrap "high"
+                                             , rtmpStreamName: wrap "slot1b_1000"
+                                             , audioBitrate: 64000
+                                             , videoBitrate: 936000 }
+                                      , wrap { name: wrap "low"
+                                             , rtmpStreamName: wrap "slot1b_500"
+                                             , audioBitrate: 64000
+                                             , videoBitrate: 436000 }
                                       ]
                           , outputFormats : []
-                          , audioOnly : false
                           }
                  , push : []
                  }
@@ -152,15 +154,16 @@ db =
                  , slot : { id: wrap $ fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000003")
                           , name: wrap "slot1"
                           , subscribeValidation: true
-                          , profiles: [ wrap { name: wrap "high",
-                                               rtmpStreamName: wrap "slot1_1000",
-                                               bitrate: 1000000}
-                                      , wrap { name: wrap "low",
-                                               rtmpStreamName: wrap "slot1_500",
-                                               bitrate: 500000}
+                          , profiles: [ wrap { name: wrap "high"
+                                             , rtmpStreamName: wrap "slot1_1000"
+                                             , audioBitrate: 64000
+                                             , videoBitrate: 936000 }
+                                      , wrap { name: wrap "low"
+                                             , rtmpStreamName: wrap "slot1_500"
+                                             , audioBitrate: 64000
+                                             , videoBitrate: 436000 }
                                       ]
                           , outputFormats : [ HlsOutput ]
-                          , audioOnly : false
                           }
                  , push : [
                     { protocol: HttpPut
@@ -189,15 +192,16 @@ db =
                  , slot : { id: wrap $ fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000004")
                           , name: wrap "slot1ao"
                           , subscribeValidation: false
-                          , profiles: [ wrap { name: wrap "high",
-                                               rtmpStreamName: wrap "slot1ao_1000",
-                                               bitrate: 1000000}
-                                      , wrap { name: wrap "low",
-                                               rtmpStreamName: wrap "slot1ao_500",
-                                               bitrate: 500000}
+                          , profiles: [ wrap { name: wrap "high"
+                                             , rtmpStreamName: wrap "slot1ao_1000"
+                                             , audioBitrate: 64000
+                                             , videoBitrate: 0 }
+                                      , wrap { name: wrap "low"
+                                             , rtmpStreamName: wrap "slot1ao_500"
+                                             , audioBitrate: 64000
+                                             , videoBitrate: 0 }
                                       ]
                           , outputFormats : [ HlsOutput ]
-                          , audioOnly : true
                           }
                  , push : [
                     { protocol: HttpPut
@@ -226,15 +230,16 @@ db =
                  , slot : { id: wrap $ fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000002")
                           , name: wrap "slot2"
                           , subscribeValidation: false
-                          , profiles: [ wrap { name: wrap "high",
-                                               rtmpStreamName: wrap "slot1_1000",
-                                               bitrate: 1000000}
-                                      , wrap { name: wrap "low",
-                                               rtmpStreamName: wrap "slot1_500",
-                                               bitrate: 500000}
+                          , profiles: [ wrap { name: wrap "high"
+                                             , rtmpStreamName: wrap "slot1_1000"
+                                             , audioBitrate: 64000
+                                             , videoBitrate: 936000 }
+                                      , wrap { name: wrap "low"
+                                             , rtmpStreamName: wrap "slot1_500"
+                                             , audioBitrate: 64000
+                                             , videoBitrate: 436000 }
                                       ]
                           , outputFormats : []
-                          , audioOnly : false
                           }
                  , push : []
                  }

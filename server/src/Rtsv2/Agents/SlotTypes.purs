@@ -8,6 +8,7 @@ module Rtsv2.Agents.SlotTypes
 
 import Prelude
 
+import Data.Foldable (all)
 import Data.Int.Bits (shl, (.|.))
 import Data.Maybe (Maybe(..))
 import Data.Undefinable (Undefinable, toMaybe, toUndefinable)
@@ -46,27 +47,29 @@ instance writeForeignMaybeVideo :: WriteForeign a => WriteForeign (MaybeVideo a)
 
 
 llnwStreamDetailsToSlotConfiguration :: RtmpShortName -> LlnwApiTypes.StreamDetails -> SlotConfiguration
-llnwStreamDetailsToSlotConfiguration rtmpShortName {role, slot: {id, profiles, subscribeValidation, audioOnly}} =
-  { slotId : id
-  , slotRole: role
-  , rtmpShortName
-  , profiles: mapWithIndex (llwnSlotProfileToSlotProfile audioOnly id role) (fromFoldable profiles)
-  , audioOnly
-  , subscribeValidation
-  }
+llnwStreamDetailsToSlotConfiguration rtmpShortName {role, slot: {id, profiles, subscribeValidation}} =
+  let
+    audioOnly = all (\(LlnwApiTypes.SlotProfile {videoBitrate}) -> videoBitrate == 0) profiles
+  in
+    { slotId : id
+    , slotRole: role
+    , rtmpShortName
+    , profiles: mapWithIndex (llwnSlotProfileToSlotProfile audioOnly id role) (fromFoldable profiles)
+    , audioOnly
+    , subscribeValidation
+    }
 
 llwnSlotProfileToSlotProfile :: Boolean -> SlotId -> SlotRole -> LlnwApiTypes.SlotProfile -> Int -> SlotProfile
-llwnSlotProfileToSlotProfile audioOnly slotId slotRole (LlnwApiTypes.SlotProfile {name, rtmpStreamName, bitrate}) index =
+llwnSlotProfileToSlotProfile audioOnly slotId slotRole (LlnwApiTypes.SlotProfile {name, rtmpStreamName, audioBitrate, videoBitrate}) index =
   { profileName: name
   , ingestKey: IngestKey slotId slotRole name
   , streamName: rtmpStreamName
-  , bitrate
+  , bitrate: audioBitrate + videoBitrate
   , firstAudioSSRC: audioSSRC (index + indexStandardOffset)
-  , firstVideoSSRC: 
+  , firstVideoSSRC:
       MaybeVideo $ toUndefinable
-        case audioOnly of
-          true -> Nothing
-          false -> Just $ videoSSRC (index + indexStandardOffset)
+        if videoBitrate == 0 then Nothing
+        else Just $ videoSSRC (index + indexStandardOffset)
   }
 
 -- Bit-shifting logic and constants mirrored in rtsv2_rtp.hrl
