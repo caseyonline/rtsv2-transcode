@@ -894,7 +894,7 @@ init { config
   void $ Timer.sendEvery serverName config.vmLivenessIntervalMs VMLiveness
   void $ Timer.sendEvery serverName garbageCollectVMInterval GarbageCollectVM
   void $ Timer.sendEvery serverName garbageCollectAgentInterval GarbageCollectAgents
-  rpcBindIp <- Env.systemInterfaceIp
+  rpcBindIp <- Env.intraSerfIp
   thisServer <- PoPDefinition.getThisServer
   let
     serfRpcAddress =
