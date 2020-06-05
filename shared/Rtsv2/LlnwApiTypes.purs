@@ -85,7 +85,8 @@ newtype StreamPublish = StreamPublish
 newtype SlotProfile = SlotProfile
                       { name :: ProfileName
                       , rtmpStreamName :: RtmpStreamName
-                      , bitrate :: Int
+                      , audioBitrate :: Int
+                      , videoBitrate :: Int
                       }
 
 type SlotDetails =
@@ -94,7 +95,6 @@ type SlotDetails =
   , subscribeValidation :: Boolean
   , outputFormats :: Array StreamOutputFormat
   , profiles :: Array SlotProfile
-  , audioOnly :: Boolean
   }
 
 type HlsPushAuth =
@@ -133,7 +133,7 @@ type SlotLookupResult =
 slotDetailsToSlotCharacteristics :: SlotDetails -> SlotCharacteristics
 slotDetailsToSlotCharacteristics {profiles} =
   { numProfiles: length profiles
-  , totalBitrate: (foldl (\acc (SlotProfile {bitrate}) -> acc + bitrate) 0 profiles) / 1000
+  , totalBitrate: (foldl (\acc (SlotProfile {audioBitrate, videoBitrate}) -> acc + audioBitrate + videoBitrate) 0 profiles) / 1000
   }
 
 --------------------------------------------------------------------------------
