@@ -160,6 +160,7 @@ instance readForeignDownstreamWsMessage :: ReadForeign DownstreamWsMessage where
 instance writeForeignDownstreamWsMessage :: WriteForeign DownstreamWsMessage where
   writeImpl msg = writeImpl (genericSumToVariant msg)
 
+
 ------------------------------------------------------------------------------
 -- NativeJson
 instance readForeignNativeJson :: ReadForeign NativeJson where

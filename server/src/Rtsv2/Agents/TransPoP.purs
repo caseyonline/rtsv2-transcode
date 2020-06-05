@@ -280,7 +280,7 @@ init { config: config@{ leaderTimeoutMs
 
   now <- systemTimeMs
 
-  rpcBindIp <- Env.systemInterfaceIp
+  rpcBindIp <- Env.transSerfIp
   thisServer <- PoPDefinition.getThisServer
   otherPoPNames <- PoPDefinition.getOtherPoPNames
   defaultRtts' <- getDefaultRtts config

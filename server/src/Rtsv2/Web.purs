@@ -75,9 +75,9 @@ init args = do
   loadConfig <- Config.loadConfig
   webConfig <- Config.webConfig
   llnwApiConfig <- Config.llnwApiConfig
-  publicBindIp <- Env.publicInterfaceIp
-  supportBindIp <- Env.supportInterfaceIp
-  systemBindIp <- Env.systemInterfaceIp
+  publicBindIp <- Env.publicListenIp
+  supportBindIp <- Env.supportListenIp
+  systemBindIp <- Env.systemListenIp
   thisServer <- PoPDefinition.getThisServer
 
   public <-

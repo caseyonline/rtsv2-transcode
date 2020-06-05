@@ -7,7 +7,7 @@
 -include_lib("id3as_media/include/send_to_bus_processor.hrl").
 -include_lib("id3as_avp/include/avp_ingest_source_details_extractor.hrl").
 
--export([ startServerImpl/9
+-export([ startServerImpl/10
         , rtmpQueryToPurs/1
         , startWorkflowImpl/7
         ]).
@@ -16,11 +16,11 @@
 %% API
 %%------------------------------------------------------------------------------
 
-startServerImpl(Left, Right, PublicIp, Port, Callbacks, PrivateIp, CanaryPort, CanaryCallbacks, NbAcceptors) ->
+startServerImpl(Left, Right, PublicIp, Port, Callbacks, PrivateIp, CanaryPort, CanaryCallbacks, NbAcceptors, ReceiveTimeout) ->
   fun() ->
-      case start_rtmp_server(PublicIp, Port, NbAcceptors, Callbacks) of
+      case start_rtmp_server(PublicIp, Port, NbAcceptors, ReceiveTimeout, Callbacks) of
         ok ->
-          case start_rtmp_server(PrivateIp, CanaryPort, NbAcceptors, CanaryCallbacks) of
+          case start_rtmp_server(PrivateIp, CanaryPort, NbAcceptors, ReceiveTimeout, CanaryCallbacks) of
             ok -> Right;
             {error, Error} -> Left(Error)
           end;
@@ -28,12 +28,12 @@ startServerImpl(Left, Right, PublicIp, Port, Callbacks, PrivateIp, CanaryPort, C
       end
   end.
 
-start_rtmp_server({ipv4, O1, O2, O3, O4}, Port, NbAcceptors, Callbacks) ->
+start_rtmp_server({ipv4, O1, O2, O3, O4}, Port, NbAcceptors, ReceiveTimeout, Callbacks) ->
   case rtmp_server:start_listener({rtmp_listener, Port},
                                   NbAcceptors,
                                   [{ip, {O1, O2, O3, O4}}, {port, Port}],
                                   [{dispatch, [{'*', rtsv2_rtmp_ingest_handler, [Callbacks]}]},
-                                   {config, #rtmp_server_config{}}]) of
+                                   {config, #rtmp_server_config{receive_loop_timeout = ReceiveTimeout}}]) of
     {ok, _} -> ok;
     {error, {already_started, _}} -> ok;
     Error -> {error, Error}
@@ -87,7 +87,7 @@ rtmpQueryToPurs(#{}) ->
 %%------------------------------------------------------------------------------
 %% Internals
 %%------------------------------------------------------------------------------
-start_workflow(Rtmp, PublishArgs, Key = {ingestKey, SlotId, SlotRole, ProfileName}, ProfileMetadata) ->
+start_workflow(Rtmp, PublishArgs, Key = {ingestKey, SlotId, SlotRole, ProfileName}, ProfileContext) ->
 
   Workflow = #workflow{
                 name = {rtmp_ingest_handler, Key},
@@ -96,7 +96,7 @@ start_workflow(Rtmp, PublishArgs, Key = {ingestKey, SlotId, SlotRole, ProfileNam
                          slot => SlotId,
                          profile => ProfileName,
                          stream_role => SlotRole,
-                         profile_metadata => ProfileMetadata
+                         profile_context => ProfileContext
                         },
                 generators = [
                               #generator{name = rtmp_ingest,

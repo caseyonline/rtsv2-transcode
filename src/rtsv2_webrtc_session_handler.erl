@@ -39,7 +39,8 @@
         { session_id :: binary_string()
         , cname :: binary_string()
         , media_gateway_client_id :: non_neg_integer()
-        , profiles :: list(rtsv2_slot_configuration:slot_profile())
+        , audio_only :: boolean()
+        , profiles :: list(slot_profile())
         , web_socket :: pid()
         , slot_id :: slot_id()
         , slot_role :: slot_role()
@@ -65,6 +66,7 @@ init(#rtsv2_webrtc_session_handler_config{ session_id = SessionId
                                          , slot_id = SlotId
                                          , slot_role = SlotRole
                                          , profiles = [ #{ profileName := ActiveProfileName } | _ ] = Profiles
+                                         , audio_only = AudioOnly
                                          , web_socket = WebSocket
                                          , audio_ssrc = AudioSSRC
                                          , video_ssrc = VideoSSRC
@@ -72,7 +74,16 @@ init(#rtsv2_webrtc_session_handler_config{ session_id = SessionId
                                          }
      ) ->
 
-  ?DEBUG("Session handler started for session ~p in profile ~p", [SessionId, ActiveProfileName]),
+  ?DEBUG("Session handler started for session ~p in profile ~p and mode ~p",
+         [ SessionId
+         , ActiveProfileName
+         , case AudioOnly of
+             true ->
+               <<"Audio Only">>;
+             false ->
+               <<"Audio/Video">>
+           end
+         ]),
 
   State1 = #?state{ session_id = SessionId
                   , cname = CName
@@ -80,6 +91,7 @@ init(#rtsv2_webrtc_session_handler_config{ session_id = SessionId
                   , slot_id = SlotId
                   , slot_role = SlotRole
                   , profiles = Profiles
+                  , audio_only = AudioOnly
                   , web_socket = WebSocket
                   , audio_state = #egest_stream_state{ egest_ssrc = AudioSSRC }
                   , video_state = #egest_stream_state{ egest_ssrc = VideoSSRC }
@@ -228,8 +240,9 @@ set_active_profile_impl(ProfileName, #?state{ profiles = Profiles } = State) ->
   end.
 
 
-apply_desired_state(DesiredState, #?state{ audio_stream_element_config = ASE, video_stream_element_config = VSE } = State)
-  when ASE =:= undefined orelse VSE =:= undefined ->
+apply_desired_state(DesiredState = #desired_state{ desired_video_ssrc = VideoSSRC},
+                    #?state{ audio_stream_element_config = ASE, video_stream_element_config = VSE } = State)
+  when ASE =:= undefined orelse (VSE =:= undefined andalso VideoSSRC /= undefined) ->
 
   State#?state{ desired_state = DesiredState
               };
@@ -338,7 +351,7 @@ parse_single_time_aggregation_units_prime(<<UnitSize:16/integer, Unit:UnitSize/b
 maybe_add_to_media_gateway(#?state{ audio_stream_element_config = undefined } = State) ->
   {ok, State};
 
-maybe_add_to_media_gateway(#?state{ video_stream_element_config = undefined } = State) ->
+maybe_add_to_media_gateway(#?state{ video_stream_element_config = undefined, audio_only = false } = State) ->
   {ok, State};
 
 maybe_add_to_media_gateway(#?state{ media_gateway_client_id = ClientId

@@ -35,16 +35,16 @@ import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Types (LocalResource(..))
 import Rtsv2.Utils (crashIfLeft, noprocToMaybe)
 import Serf (Ip)
-import Shared.Common (ProfileMetadata)
+import Shared.Common (ProfileContext)
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.LlnwApiTypes (AuthType, SlotProfile(..), SlotPublishAuthType(..), StreamDetails, StreamIngestProtocol(..))
 import Shared.Rtsv2.Stream (IngestKey(..))
 import Shared.Rtsv2.Types (CanaryState(..), extractAddress)
 import Stetson.WebSocketHandler (self)
 
-foreign import startServerImpl :: (Foreign -> Either Foreign Unit) -> Either Foreign Unit -> Ip -> Int -> Callbacks -> Ip -> Int -> Callbacks -> Int -> Effect (Either Foreign Unit)
+foreign import startServerImpl :: (Foreign -> Either Foreign Unit) -> Either Foreign Unit -> Ip -> Int -> Callbacks -> Ip -> Int -> Callbacks -> Int -> Int -> Effect (Either Foreign Unit)
 foreign import rtmpQueryToPurs :: Foreign -> RtmpAuthRequest
-foreign import startWorkflowImpl :: Pid -> Pid -> Foreign -> IngestKey -> ProfileMetadata -> (Foreign -> (Effect Unit)) -> (Foreign -> (Effect Unit)) -> Effect Unit
+foreign import startWorkflowImpl :: Pid -> Pid -> Foreign -> IngestKey -> ProfileContext -> (Foreign -> (Effect Unit)) -> (Foreign -> (Effect Unit)) -> Effect Unit
 
 data RtmpAuthRequest = Initial
                      | AdobePhase1 AdobePhase1Params
@@ -74,10 +74,11 @@ type State =
 
 init :: forall a. a -> Effect State
 init _ = do
-  publicInterfaceIp <- Env.publicInterfaceIp
-  supportInterfaceIp <- Env.supportInterfaceIp
+  publicListenIp <- Env.publicListenIp
+  supportListenIp <- Env.supportListenIp
   loadConfig <- Config.loadConfig
   {port, canaryPort, nbAcceptors} <- Config.rtmpIngestConfig
+  {abortIfNoMediaMs} <- Config.ingestInstanceConfig
   thisServer <- PoPDefinition.getThisServer
   let
     host = unwrap $ extractAddress thisServer
@@ -87,7 +88,7 @@ init _ = do
     canaryCallbacks :: Callbacks
     canaryCallbacks = { init: mkFn2 (onConnectCallback loadConfig Canary host)
                       }
-  crashIfLeft =<< startServerImpl Left (Right unit) publicInterfaceIp port callbacks supportInterfaceIp canaryPort canaryCallbacks nbAcceptors
+  crashIfLeft =<< startServerImpl Left (Right unit) publicListenIp port callbacks supportListenIp canaryPort canaryCallbacks nbAcceptors abortIfNoMediaMs
   pure $ {}
 
 onConnectCallback :: LoadConfig -> CanaryState -> String -> String -> Foreign -> (Effect RtmpAuthResponse)

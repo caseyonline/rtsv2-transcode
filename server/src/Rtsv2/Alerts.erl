@@ -5,11 +5,12 @@
 
 mapForeign(LogEvent = #{meta := #{ time := Time
                                  , pid := Pid }}) ->
+io:format(user, "HERE ~p~n", [LogEvent]),
   #{ initialReport => Time div 1000
    , lastReport => Time div 1000
    , repeatCount => 0
    , alert => mapToAlert(LogEvent)
-   , metadata => maybe_rtsv2_metadata(LogEvent)
+   , context => maybe_rtsv2_context(LogEvent)
    , source => maybe_logging_source(LogEvent)
    , pid => list_to_binary(pid_to_list(Pid))
    }.
@@ -29,13 +30,13 @@ mapToAlert(LogEvent) ->
   {genericAlert, #{text => log_event_to_string(LogEvent)
                   }}.
 
-maybe_rtsv2_metadata(#{meta := #{rtsv2 := Metadata}}) ->
-  {just, Metadata};
+maybe_rtsv2_context(#{meta := #{rtsv2_context := Context}}) ->
+  {just, Context};
 
-maybe_rtsv2_metadata(#{meta := #{workflow := #{workflow_tags := #{profile_metadata := ProfileMetadata }}}}) ->
-  {just, {perProfile, ProfileMetadata}};
+maybe_rtsv2_context(#{meta := #{workflow := #{workflow_tags := #{profile_context := ProfileContext }}}}) ->
+  {just, {perProfile, ProfileContext}};
 
-maybe_rtsv2_metadata(_) ->
+maybe_rtsv2_context(_) ->
   {nothing}.
 
 maybe_logging_source(#{meta := #{ mfa := {Module, Function, _}

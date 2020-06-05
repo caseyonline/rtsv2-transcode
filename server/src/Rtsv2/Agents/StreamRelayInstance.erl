@@ -28,7 +28,7 @@
 -define(metadata, rtsv2_agents_streamRelayInstance_metadata).
 
 -record(?metadata,
-        { slot_configuration :: rtsv2_slot_configuration:slot_configuration()
+        { slot_configuration :: slot_configuration()
         }).
 
 

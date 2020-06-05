@@ -4,13 +4,13 @@ module Shared.Common
        , Url(..)
        , Alert(..)
        , AlertData(..)
-       , LoggingMetadata(..)
+       , LoggingContext(..)
        , IngestFailedAlert(..)
        , CommonAlertFields
        , LSRSFailedAlert
        , GenericAlert
-       , ProfileMetadata
-       , SlotMetadata
+       , ProfileContext
+       , SlotContext
        , LoggingSource
        ) where
 
@@ -42,21 +42,21 @@ newtype Url = Url String
 derive newtype instance showUrl :: Show Url
 
 
-type SlotMetadata =
+type SlotContext =
   { slotId :: SlotId
   , slotRole :: SlotRole
   , slotName :: Maybe RtmpStreamName
   }
 
-type ProfileMetadata =
+type ProfileContext =
   { slotId :: SlotId
   , slotRole :: SlotRole
   , slotName :: RtmpStreamName
   , profileName :: ProfileName
   }
 
-data LoggingMetadata = PerProfile ProfileMetadata
-                     | PerSlot SlotMetadata
+data LoggingContext = PerProfile ProfileContext
+                    | PerSlot SlotContext
 
 type LoggingSource =
   { "module" :: String
@@ -83,7 +83,7 @@ type CommonAlertFields a =
   ( initialReport :: Milliseconds
   , lastReport :: Milliseconds
   , repeatCount :: Int
-  , metadata :: Maybe LoggingMetadata
+  , context :: Maybe LoggingContext
   , source :: Maybe LoggingSource
   , pid :: String
   | a
@@ -145,17 +145,17 @@ derive instance genericAlertData :: Generic AlertData _
 instance showAlertData :: Show AlertData where show = genericShow
 
 ------------------------------------------------------------------------------
--- LoggingMetadata
-instance writeForeignLoggingMetadata :: WriteForeign LoggingMetadata where
+-- LoggingContext
+instance writeForeignLoggingContext :: WriteForeign LoggingContext where
   writeImpl (PerProfile profileMetadata) = writeImpl profileMetadata
   writeImpl (PerSlot slotMetadata) = writeImpl slotMetadata
 
-instance readForeignLoggingMetadata :: ReadForeign LoggingMetadata where
+instance readForeignLoggingContext :: ReadForeign LoggingContext where
   readImpl f = (PerProfile <$> readImpl f)
            <|> (PerSlot <$> readImpl f)
 
-derive instance genericLoggingMetadata :: Generic LoggingMetadata _
-instance showLoggingMetadata :: Show LoggingMetadata where show = genericShow
+derive instance genericLoggingContext :: Generic LoggingContext _
+instance showLoggingContext :: Show LoggingContext where show = genericShow
 
 ------------------------------------------------------------------------------
 -- Alert
@@ -221,7 +221,7 @@ defaultAlert =
   Alert { initialReport : wrap $ Long.fromInt 0
         , lastReport: wrap $ Long.fromInt 0
         , repeatCount: 0
-        , metadata: Nothing
+        , context: Nothing
         , source : Nothing
         , pid : ""
         , alert: GenericAlert {text: ""}

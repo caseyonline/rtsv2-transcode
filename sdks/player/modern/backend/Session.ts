@@ -29,6 +29,7 @@ export default class Session extends EventEmitter implements ISession {
   private peer?: RTCPeerConnection = null;
   private cookie?: string = null;
   private validationURL: string;
+  private audioOnly: boolean = true;
 
   // NOTE: Firefox currently doesn't support this
   private peerCanReconfigure = ("setConfiguration" in RTCPeerConnection.prototype);
@@ -201,6 +202,7 @@ export default class Session extends EventEmitter implements ISession {
             iceCandidatePoolSize: 2
           };
           this.cookie = message.validationCookie;
+          this.audioOnly = message.audioOnly;
 
           console.log(`Initialized Session with identifier ${message.traceId}, moved to state ${SessionState[this.state]} (${this.state}). Final endpoint: ${thisEdge.socketURL}`, thisEdge);
 
@@ -407,7 +409,7 @@ export default class Session extends EventEmitter implements ISession {
       const offer = await peer.createOffer({
         "iceRestart": iceRestartRequired,
         "offerToReceiveAudio": true,
-        "offerToReceiveVideo": true,
+        "offerToReceiveVideo": !this.audioOnly,
       });
       console.debug("Local description obtained.");
 

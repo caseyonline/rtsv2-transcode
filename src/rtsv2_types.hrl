@@ -17,17 +17,20 @@
 
 -type ingest_key() :: {ingest_key, slot_id(), slot_role(), profile_name()}.
 
+%% SlotTypes.purs is the authority for these
+
 -type slot_configuration() :: #{ slotId := slot_id()
                                , slotRole := slot_role()
                                , rtmpShortName := rtmp_short_name()
                                , profiles := list(slot_profile())
+                               , audioOnly := boolean()
                                }.
 
 -type slot_profile() :: #{ profileName := profile_name()
                          , streamName := rtmp_stream_name()
                          , ingestKey := ingest_key()
                          , firstAudioSSRC := integer()
-                         , firstVideoSSRC := integer()
+                         , firstVideoSSRC := undefined | integer()
                          , bitrate := integer()
                          }.
 

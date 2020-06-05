@@ -72,7 +72,7 @@ import Rtsv2.DataObject as DO
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Types (ResourceResp)
-import Shared.Common (LoggingMetadata(..))
+import Shared.Common (LoggingContext(..))
 import Shared.Rtsv2.Agent (SlotCharacteristics)
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.Agent.State as PublicState
@@ -608,7 +608,7 @@ stopAction relayKey@(RelayKey slotId slotRole) cachedState = do
 
 init :: RelayKey -> ParentCallbacks -> CreateRelayPayload -> StateServerName -> Effect State
 init relayKey parentCallbacks payload@{slotId, slotRole, aggregatorPoP, slotCharacteristics} stateServerName = do
-  Logger.addLoggerMetadata $ PerSlot { slotId, slotRole, slotName: Nothing}
+  Logger.addLoggerContext $ PerSlot { slotId, slotRole, slotName: Nothing}
   Gen.registerExternalMapping (serverName relayKey) (\m -> Gun <$> (WsGun.messageMapper m))
   thisServer <- PoPDefinition.getThisServer
   egestSourceRoutes <- TransPoP.routesTo aggregatorPoP

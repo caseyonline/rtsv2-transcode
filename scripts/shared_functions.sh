@@ -118,6 +118,8 @@ function start_node {
   tmux -L "$tmuxSession" send-keys " export PUBLIC_IFACE=$iface" C-m
   tmux -L "$tmuxSession" send-keys " export SUPPORT_IFACE=$iface" C-m
   tmux -L "$tmuxSession" send-keys " export SYSTEM_IFACE=$iface" C-m
+  tmux -L "$tmuxSession" send-keys " export INTRA_SERF_IFACE=$iface" C-m
+  tmux -L "$tmuxSession" send-keys " export TRANS_SERF_IFACE=$iface" C-m
   tmux -L "$tmuxSession" send-keys " export IS_PROXIED=false" C-m
   tmux -L "$tmuxSession" send-keys " export PUBLIC_PORT=3000" C-m
   tmux -L "$tmuxSession" send-keys " export SYSTEM_PORT=3001" C-m
