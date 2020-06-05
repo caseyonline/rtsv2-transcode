@@ -801,8 +801,11 @@ announceAvailableLocal :: forall payload. Ord payload => AgentHandler payload ->
 announceAvailableLocal handler@{locationLens} serfPayload agentKey =
   Gen.doCast serverName
     \state@{thisServer} -> do
-      --logInfo ("New " <> unwrap handler.name <> " is available on this node") {agentKey}
-      doAnnounceAvailableLocal handler serfPayload agentKey state
+      if isNewLocalAgent handler (locationLens.get state.agentLocations) thisServer agentKey then
+        doAnnounceAvailableLocal handler serfPayload agentKey state
+      else do
+        logInfo "not announcing since already exists" {agentKey}
+        pure unit
       pure $ Gen.CastNoReply $ updateAgentLocation (recordLocalAgent serfPayload) locationLens agentKey thisServer state
 
 doAnnounceAvailableLocal :: forall a. AgentHandler a -> a -> AgentKey -> State -> Effect Unit
@@ -1138,6 +1141,12 @@ messageTimeout agentMessageHandler state = do
 --------------------------------------------------------------------------------
 serverName :: forall serfPayload. ServerName State (Msg serfPayload)
 serverName = Names.intraPoPName
+
+isNewLocalAgent :: forall payload. AgentHandler payload -> Locations payload -> Server -> AgentKey -> Boolean
+isNewLocalAgent handler locations thisServer agentKey =
+  case Map.lookup agentKey locations.byAgentKey of
+    Nothing -> true
+    Just {servers} -> not $ Set.member thisServer servers
 
 logIfNewAgent :: forall payload. AgentHandler payload -> Locations payload -> Server -> AgentKey -> Server -> Effect Unit
 logIfNewAgent handler locations thisServer agentKey agentServer =

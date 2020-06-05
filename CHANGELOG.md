@@ -116,6 +116,8 @@
 
 * Minor HLS tweaks to support 'video-only' streams, although note that these are not (yet!) officially supported
 
+* HLS sequence numbers no longer reset to zero on a restart
+
 # RTS-V2 release 103
 
 **What's new**
