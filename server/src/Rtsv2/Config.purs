@@ -191,6 +191,12 @@ type TransPoPAgentApi
 type RtmpIngestConfig
   = { port :: Int
     , canaryPort :: Int
+    , tlsPort :: Int
+    , canaryTlsPort :: Int
+    , certFile :: String
+    , keyFile :: String
+    , canaryCertFile :: String
+    , canaryKeyFile :: String
     , nbAcceptors :: Int
     , cryptoContextExpiryMs :: Int
     }
