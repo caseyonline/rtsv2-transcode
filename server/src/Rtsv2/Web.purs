@@ -249,15 +249,6 @@ init args = do
       -- workflow/config is hardcoded visualiser path
       : cowboyRoute ("/system/workflows/" <> referenceBinding <> "/workflow/config") "rtsv2_workflow_config_resource" (unsafeToForeign nil)
 
-
--- {<< "/", Prefix/binary, "/:output/workflow/config">>, prf_workflow_structure_resource, [prf_packager_output, get_visualisation_config]},
---    {<< "/", Prefix/binary, "/:output/workflow/graph/latest">>, prf_workflow_structure_resource, [prf_packager_output, get_graph]},
---    {<< "/", Prefix/binary, "/:output/workflow/metrics">>, prf_workflow_structure_resource, [prf_packager_output, get_metrics]},
-
---    {<< "/", Prefix/binary, "/:output/visualiser">>, cowboy_static, {priv_file, id3as_media, <<"www/visualiser.html">>}},
---    {<< "/", Prefix/binary, "/:output/visualiser/[...]">>, cowboy_static, {priv_dir, id3as_media, <<"www">>}}
-
-
       : nil
 
     publicRoutes :: Server -> Config.FeatureFlags -> Config.LoadConfig -> WebConfig -> List String -> List Path
