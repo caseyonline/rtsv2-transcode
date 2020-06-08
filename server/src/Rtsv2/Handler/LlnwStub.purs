@@ -16,6 +16,7 @@ import Data.Array as Array
 import Data.Either (either, hush)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Eq (genericEq)
+import Data.List (any)
 import Data.Maybe (Maybe(..), fromMaybe, fromMaybe', isNothing, isJust, fromJust)
 import Data.Newtype (unwrap, wrap)
 import Data.String (joinWith)
@@ -35,7 +36,7 @@ import Logger as Logger
 import Partial.Unsafe (unsafePartial)
 import Rtsv2.Agents.IngestSup as IngestSup
 import Rtsv2.Handler.MimeType as MimeType
-import Shared.Rtsv2.LlnwApiTypes (AuthType, HlsPushProtocol(..), HlsPushSpecFormat(..), PublishCredentials, SlotLookupResult, SlotPublishAuthType(..), StreamAuth, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamOutputFormat(..), StreamPublish)
+import Shared.Rtsv2.LlnwApiTypes (AuthType, HlsPushProtocol(..), HlsPushSpecFormat(..), PublishCredentials, SlotLookupResult, SlotProfile(..), SlotPublishAuthType(..), StreamAuth, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamOutputFormat(..), StreamPublish)
 import Shared.Rtsv2.Router.Endpoint.System as System
 import Shared.Rtsv2.Stream (RtmpShortName, RtmpStreamName(..), SlotRole(..))
 import Shared.UUID (fromString)
@@ -329,7 +330,7 @@ slotLookup accountName streamName =
 
     isMatchingEntry entry =
       (entry.auth.rtmpShortName) == accountName
-      && entry.details.slot.name == streamName
+      && (any (\(SlotProfile {rtmpStreamName}) -> rtmpStreamName == streamName) entry.details.slot.profiles)
 
 type PostHelper a b = StetsonHandler { payload :: Maybe a
                                      , output :: Maybe b

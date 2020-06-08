@@ -54,12 +54,12 @@ streamDiscovery =
       after (\browser -> T.close browser *> F.stopSession *> F.stopSlot) do
         it "10.1.1 ingest bytes should increase " $ \browser -> do
 
-          _ <- HTTP.getStreamDiscovery E.p1n1 E.shortName1 E.highStreamName
-               >>= assertStatusCode 404
-               >>= L.as' "No ingest started so returns 404"
+          -- _ <- HTTP.getStreamDiscovery E.p1n1 E.shortName1 E.highStreamName
+          --      >>= assertStatusCode 404
+          --      >>= L.as' "No ingest started so returns 404"
 
-          F.startSlotHigh1000 (C.toAddrFromNode E.p1n1)
-          E.waitForAsyncProfileStart >>= L.as' "wait for async start of profile"
+          -- F.startSlotHigh1000 (C.toAddrFromNode E.p1n1)
+          -- E.waitForAsyncProfileStart >>= L.as' "wait for async start of profile"
 
           page <- T.newPage browser
           T.goto (HTTP.ingestUrl E.p1n1 E.shortName1 E.highStreamName) page
@@ -69,7 +69,7 @@ streamDiscovery =
           _ <- delay (Milliseconds 500.00) >>= L.as' "wait for authentication"
 
           T.click (T.Selector "#start-ingest") page
-          _ <- delay (Milliseconds 8000.00) >>= L.as' "let stream start"
+          _ <- delay (Milliseconds 6000.00) >>= L.as' "let stream start"
 
           response2 <- assertStatusCode 200 =<< HTTP.getStreamDiscovery E.p1n1 E.shortName1 E.highStreamName
           body2 <- getResBody response2
@@ -91,7 +91,7 @@ streamDiscovery =
 getResBody :: Either String ResWithBody -> Aff (Either String String)
 getResBody response =
   case response of
-    Left e -> pure $ Left $ spy "err" e
+    Left e -> pure $ Left $ spy "ERR" e
     Right res -> do
       pure $ Right $ spy "body" res.body
 
