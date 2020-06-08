@@ -171,14 +171,14 @@ init config = do
   eNeighbourMap <- readNeighbourMap config
   nMap <- case eNeighbourMap of
     Left e -> do
-      _ <- logWarning "Failed to process WAN definition file" {misc: e}
+      logWarning "Failed to process WAN definition file" {misc: e}
       unsafeCrashWith "invalid WAN definition file"
     Right r -> pure r
 
   ePopInfo <- readAndProcessPoPDefinition config thisServerAddress nMap
   Tuple thisServer popInfo <- case ePopInfo of
     Left e -> do
-      _ <- logWarning "Failed to process pop definition file" {misc: e}
+      logWarning "Failed to process pop definition file" {misc: e}
       unsafeCrashWith "invalid pop definition file"
     Right r -> pure r
   let
@@ -193,7 +193,7 @@ init config = do
         }
   logInfo "PoPDefinition Starting" { thisServer
                                    , otherServers : state.otherServersInThisPoP}
-  _ <- Timer.sendAfter serverName 1000 Tick
+  void $ Timer.sendAfter serverName 1000 Tick
   pure state
 
 handleInfo :: Msg -> State -> Effect (CastResult State)
@@ -203,14 +203,16 @@ handleInfo msg state@{thisServer: (Server thisServer)}=
       do
         eNeighbourMap <- readNeighbourMap state.config
         newState <-  case eNeighbourMap of
-          Left e -> do _ <- logWarning "Failed to process WAN definition file" {misc: e}
-                       pure state
+          Left e -> do
+            logWarning "Failed to process WAN definition file" {misc: e}
+            pure state
           Right nMap -> do
             ePopInfo <- readAndProcessPoPDefinition state.config thisServer.address nMap
             case ePopInfo of
 
-              Left e -> do _ <- logWarning "Failed to process pop definition file" {misc: e}
-                           pure state
+              Left e -> do
+                logWarning "Failed to process pop definition file" {misc: e}
+                pure state
               Right (Tuple _thisServer popInfo@{thisLocation : (ServerLocation newPoPLocation)})
                 | newPoPLocation.pop == thisServer.pop  ->
                   pure $ (state { regions = popInfo.regions
@@ -218,13 +220,13 @@ handleInfo msg state@{thisServer: (Server thisServer)}=
                                 , otherServersInThisPoP = popInfo.otherServersInThisPoP
                                 , otherPoPs = toMap popInfo.otherPoPs
                                 } :: State)
-                | otherwise ->
-                    do _ <- logWarning "This node seems to have changed pop - ignoring" { currentLocation: state.thisServer
-                                                                                        , filePoP : newPoPLocation
-                                                                                        }
-                       pure state
+                | otherwise -> do
+                    logWarning "This node seems to have changed pop - ignoring" { currentLocation: state.thisServer
+                                                                                , filePoP : newPoPLocation
+                                                                                }
+                    pure state
 
-        _ <- Timer.sendAfter serverName 1000 Tick
+        void $ Timer.sendAfter serverName 1000 Tick
         pure $ CastNoReply newState
 
 --------------------------------------------------------------------------------
@@ -354,7 +356,7 @@ lookupPop regions (ServerLocation {pop, region}) =
 
 finalise :: State -> Either MultipleErrors State -> Effect State
 finalise state (Left errors) = do
-  _ <- logWarning "Failed to process pop definition file" {misc: errors}
+  logWarning "Failed to process pop definition file" {misc: errors}
   pure state
 finalise _ (Right state) =
   pure state
@@ -362,7 +364,7 @@ finalise _ (Right state) =
 maybeLog :: forall a. String -> Maybe a -> Effect (Maybe a)
 maybeLog _ val@(Just _) = pure $ val
 maybeLog msg Nothing = do
-  _ <- logWarning msg {}
+  logWarning msg {}
   pure $ Nothing
 
 toMap :: List PoP -> Map PoPName PoP

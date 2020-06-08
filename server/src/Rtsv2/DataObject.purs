@@ -237,9 +237,10 @@ init = do
   let
     expireAfter = Milliseconds $ Long.fromInt 1000
     expireIntervalMs = 1000
-  _ <- Timer.sendEvery serverName expireIntervalMs DoExpiry
+  void $ Timer.sendEvery serverName expireIntervalMs DoExpiry
   pure { expireAfter
-       , refs: Map.empty }
+       , refs: Map.empty
+       }
 
 handleInfo :: forall key. Msg -> State key -> Effect (CastResult (State key))
 handleInfo msg state =

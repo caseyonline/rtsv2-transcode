@@ -19,7 +19,6 @@ module WsGun
 import Prelude
 
 import Data.Either (Either(..))
-import Data.Int (round)
 import Data.Long as Long
 import Data.Maybe (Maybe)
 import Data.Newtype (unwrap)
@@ -31,12 +30,11 @@ import Erl.Process.Raw (Pid)
 import Erl.Utils (Ref)
 import Erl.Utils as Erl
 import Foreign (Foreign)
-import Logger (spy)
 import Pinto (ServerName)
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
-import Shared.Common (Milliseconds(..), Url)
 import Simple.JSON (class ReadForeign, class WriteForeign, readJSON, writeJSON)
+import Shared.Common (Milliseconds, Url)
 
 data Protocol = HTTP
               | HTTP2
@@ -102,7 +100,7 @@ openWebSocket serverName mapper url = do
         path = snd tuple
       now <- Erl.systemTimeMs
       Gen.monitorPid serverName pid (\_ -> mapper $ GunExit pid)
-      _ <- Timer.sendEvery serverName keepalive (mapper (KeepAliveCheck pid))
+      void $ Timer.sendEvery serverName keepalive (mapper (KeepAliveCheck pid))
       pure $ Right $ Connection (fst tuple) (snd tuple) now
 
 closeWebSocket :: forall clientMsg serverMsg. WebSocket clientMsg serverMsg -> Effect Unit
@@ -111,7 +109,7 @@ closeWebSocket (Connection connPid _path _) =
 
 processMessage :: forall clientMsg serverMsg. ReadForeign serverMsg => WebSocket clientMsg serverMsg -> GunMsg -> Effect (Either GunProtocolError (ProcessResponse clientMsg serverMsg))
 processMessage _socket@(Connection _connPid path _)  gunMsg@(GunUp connPid _protocol) = do
-  _ <- upgradeImpl connPid path
+  void $ upgradeImpl connPid path
   pure $ Right $ Internal gunMsg
 
 processMessage _socket gunMsg@(GunDown _connPid _protocol _reason _killedStreams _unprocessedStreams) =

@@ -58,7 +58,7 @@ startLink startArgs@{serverName, domain} = do
   Gen.registerTerminate serverName terminate
   case startLinkResult of
     Ok _ -> do
-      _ <- receiveImpl ref
+      receiveImpl ref
       pure startLinkResult
     _ ->
       pure startLinkResult
@@ -81,7 +81,7 @@ recordInstanceData serverName instanceData = do
 
 init :: forall instanceData. (Process Ref) -> Ref -> StartArgs instanceData -> Effect (State instanceData)
 init caller ref {serverName, childStartLink, childStopAction, domain} = do
-  _ <- Erl.trapExit true
+  void $ Erl.trapExit true
   logInfo domain "Cached state starting child" {serverName}
   Gen.registerExternalMapping serverName ((map ChildDown) <<< Erl.exitMessageMapper)
   performInitialisation
@@ -92,12 +92,12 @@ init caller ref {serverName, childStartLink, childStopAction, domain} = do
        }
   where
     performInitialisation = do
-      _ <- spawnLink launchChild
+      void $ spawnLink launchChild
       pure unit
       where
         launchChild :: SpawnedProcessState (Tuple3 Atom Pid Foreign) -> Effect Unit
         launchChild {receive} = do
-          _ <- Erl.trapExit true
+          void $ Erl.trapExit true
           childResult <- childStartLink serverName
           caller ! ref
           case childResult of

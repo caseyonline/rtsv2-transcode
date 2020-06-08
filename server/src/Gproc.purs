@@ -1,4 +1,3 @@
-
 module Gproc
        ( isRegistered
        , register
@@ -25,16 +24,13 @@ foreign import whereis_ :: forall a. a -> Effect (Either Unit Pid)
 foreign import match_ :: forall a. a -> Effect (List Foreign)
 
 isRegistered :: forall a. a -> Effect Boolean
-isRegistered name = registered_ name
+isRegistered = registered_
 
 register :: forall a. a -> Effect Unit
-register name = do
-  _ <- register_ name
-  pure unit
+register = register_
 
 whereIs :: forall a. a -> Effect (Either Unit Pid)
-whereIs name = do
-  whereis_ name
+whereIs = whereis_
 
 match :: forall matchSpec a. matchSpec -> Effect (List a)
 match = unsafeCoerce <$> match_

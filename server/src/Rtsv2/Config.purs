@@ -355,14 +355,14 @@ getMandatoryRecord :: forall a. ReadForeign a => String -> Effect a
 getMandatoryRecord v = do
   map <- getMap_ (atom v)
   case runExcept $ readImpl map of
-    Left error ->
-      do
-        _ <- Logger.error { domain: (atom "config") : nil
-                          , type: Logger.Trace
-                          }
-                          { text: "Invalid Config"
-                          , key: v
-                          , error: error}
-        unsafeCrashWith ("invalid_config " <> v)
+    Left error -> do
+      Logger.error { domain: (atom "config") : nil
+                   , type: Logger.Trace
+                   }
+                   { text: "Invalid Config"
+                   , key: v
+                   , error: error
+                   }
+      unsafeCrashWith ("invalid_config " <> v)
     Right ok ->
       pure $ ok

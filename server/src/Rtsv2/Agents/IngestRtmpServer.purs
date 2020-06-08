@@ -33,7 +33,7 @@ import Rtsv2.Env as Env
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Types (LocalResource(..))
-import Rtsv2.Utils (crashIfLeft, noprocToMaybe)
+import Rtsv2.Utils (crashIfLeft)
 import Serf (Ip)
 import Shared.Common (ProfileContext)
 import Shared.Rtsv2.Agent as Agent
@@ -127,10 +127,10 @@ onStreamCallback loadConfig canary host rtmpShortNameStr username remoteAddress 
           case maybeStarted of
             Right (LocalResource ingestPid _server) -> do
               startWorkflowAndBlock rtmpPid ingestPid publishArgs ingestKey streamDetails
-              _ <- noprocToMaybe $ IngestInstance.stopIngest ingestKey
+              IngestInstance.stopIngest ingestKey
               pure unit
             Left error -> do
-              _ <- logWarning "Attempt to start local RTMP ingest failed" {error}
+              logWarning "Attempt to start local RTMP ingest failed" {error}
               pure unit
   where
     findProfile ingestStreamName streamDetails@{ slot: { profiles } } =

@@ -73,23 +73,23 @@ egestStop line =
 
 clientStart :: SlotId -> Effect Unit
 clientStart (SlotId slotId) = do
-  _ <- Logger.info { domain: (atom "audit") : (atom "client") : nil
-                   , type: Logger.Audit
-                   }
-                   { auditEvent: toList "start"
-                   , slotId: toList $ show slotId
-                   }
+  Logger.info { domain: (atom "audit") : (atom "client") : nil
+              , type: Logger.Audit
+              }
+              { auditEvent: toList "start"
+              , slotId: toList $ show slotId
+              }
   pure unit
 
 clientStop :: EgestKey -> Effect Unit
 clientStop (EgestKey (SlotId slotId) slotRole) = do
-  _ <- Logger.info { domain: (atom "audit") : (atom "client") : nil
-                   , type: Logger.Audit
-                   }
-                   { auditEvent: toList "stop"
-                   , slotId: toList $ show slotId
-                   , slotRole: toList $ show slotRole
-                   }
+  Logger.info { domain: (atom "audit") : (atom "client") : nil
+              , type: Logger.Audit
+              }
+              { auditEvent: toList "stop"
+              , slotId: toList $ show slotId
+              , slotRole: toList $ show slotRole
+              }
   pure unit
 
 

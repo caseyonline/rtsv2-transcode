@@ -36,6 +36,7 @@ import Logger as Logger
 import Partial.Unsafe (unsafePartial)
 import Rtsv2.Agents.IngestSup as IngestSup
 import Rtsv2.Handler.MimeType as MimeType
+import Rtsv2.Utils (crashIfLeft)
 import Shared.Rtsv2.LlnwApiTypes (AuthType, HlsPushProtocol(..), HlsPushSpecFormat(..), PublishCredentials, SlotLookupResult, SlotProfile(..), SlotPublishAuthType(..), StreamAuth, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamOutputFormat(..), StreamPublish)
 import Shared.Rtsv2.Router.Endpoint.System as System
 import Shared.Rtsv2.Stream (RtmpShortName, RtmpStreamName(..), SlotRole(..))
@@ -400,7 +401,7 @@ hlsPush path =
   acceptPut req state = do
     body <- allBody req mempty
     let fname = "/tmp/rtsv2_hls/" <> joinWith "/" path
-    _ <- FileLib.ensureDir fname
+    crashIfLeft =<< FileLib.ensureDir fname
     File.writeFile fname (IOData.fromBinary body) >>=
       either (const $ logInfo "Failed to write" {path : joinWith "/" path}) (const $ pure unit)
     Rest.result true req state

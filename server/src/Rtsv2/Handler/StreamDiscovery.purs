@@ -42,12 +42,12 @@ discover loadConfig canary accountName streamName =
         case result of
           Left lookupError ->
             do
-              _ <- logWarning "Slot lookup failed during stream discovery" { accountName, streamName, lookupError }
+              logWarning "Slot lookup failed during stream discovery" { accountName, streamName, lookupError }
               pure Nothing
 
           Right { urls, slotId, errors } | urls == nil->
             do
-              _ <- logWarning "No playback URLs were obtainable for slot" { accountName, streamName, slotId, errors }
+              logWarning "No playback URLs were obtainable for slot" { accountName, streamName, slotId, errors }
               pure Nothing
 
           Right { urls } ->

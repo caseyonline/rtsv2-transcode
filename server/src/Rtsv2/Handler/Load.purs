@@ -53,10 +53,9 @@ load =
         currentLoad <- Load.getLoad
         Rest.result (JSON.writeJSON currentLoad) req state
 
-    acceptJson req state@{load: currentLoad} =
-      do
-        _ <- Load.setLoad currentLoad
-        Rest.result true req state
+    acceptJson req state@{load: currentLoad} = do
+      Load.setLoad currentLoad
+      Rest.result true req state
 
 allBody :: Req -> IOData -> Effect Binary
 allBody req acc = do

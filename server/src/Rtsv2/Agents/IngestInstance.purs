@@ -203,7 +203,7 @@ dataObjectSendMessage :: IngestKey -> DO.Message -> Effect Unit
 dataObjectSendMessage ingestKey msg =
   Gen.doCall (serverName ingestKey)
   (\state@{aggregatorWebSocket} -> do
-      _ <- case aggregatorWebSocket of
+      case aggregatorWebSocket of
         Just socket -> void $ WsGun.send socket (IngestToAggregatorDataObjectMessage msg)
         Nothing -> pure unit
       pure $ CallReply unit state
@@ -213,7 +213,7 @@ dataObjectUpdate :: IngestKey -> DO.ObjectUpdateMessage -> Effect Unit
 dataObjectUpdate ingestKey updateMsg =
   Gen.doCall (serverName ingestKey)
   (\state@{aggregatorWebSocket} -> do
-      _ <- case aggregatorWebSocket of
+      case aggregatorWebSocket of
         Just socket -> void $ WsGun.send socket (IngestToAggregatorDataObjectUpdateMessage updateMsg)
         Nothing -> pure unit
       pure $ CallReply unit state
@@ -317,7 +317,7 @@ processGunMessage state@{aggregatorWebSocket: Just socket, ingestKey} gunMsg =
     processResponse <- WsGun.processMessage socket gunMsg
     case processResponse of
       Left error -> do
-        _ <- logInfo "Gun process error" {error}
+        logInfo "Gun process error" {error}
         pure $ CastNoReply state
 
       Right (WsGun.Internal _) ->
@@ -327,16 +327,16 @@ processGunMessage state@{aggregatorWebSocket: Just socket, ingestKey} gunMsg =
         pure $ CastNoReply state{aggregatorWebSocket = Just newSocket}
 
       Right WsGun.WebSocketUp -> do
-        _ <- logInfo "Aggregator WebSocket up" {}
+        logInfo "Aggregator WebSocket up" {}
         pure $ CastNoReply state
 
       Right WsGun.WebSocketDown -> do
-        _ <- logInfo "Aggregator WebSocket down" {}
+        logInfo "Aggregator WebSocket down" {}
         state2 <- informAggregator state
         pure $ CastNoReply state2
 
       Right (WsGun.Frame IngestStop) -> do
-        _ <- logInfo "Aggregator requested that ingest stops" {}
+        logInfo "Aggregator requested that ingest stops" {}
         pure $ CastStop state
 
       Right (WsGun.Frame (AggregatorToIngestDataObjectMessage msg)) -> do

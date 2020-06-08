@@ -28,7 +28,7 @@ import Data.Int (round, toNumber)
 import Data.Long as Long
 import Data.Maybe (Maybe(..), fromMaybe, maybe')
 import Data.Newtype (class Newtype, unwrap, wrap)
-import Data.Traversable (traverse)
+import Data.Traversable (traverse_)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
@@ -192,7 +192,7 @@ pendingClient egestKey  =
     ourServerName = serverName egestKey
     maybeResetStopTimer state@{clientCount: 0, lingerTime} = do
       ref <- makeRef
-      _ <- Timer.sendAfter ourServerName (round $ Long.toNumber $ unwrap lingerTime) (MaybeStop ref)
+      void $ Timer.sendAfter ourServerName (round $ Long.toNumber $ unwrap lingerTime) (MaybeStop ref)
       pure $ state{ stopRef = Just ref
                   }
     maybeResetStopTimer state =
@@ -228,9 +228,9 @@ dataObjectSendMessage :: EgestKey -> DO.Message -> Effect Unit
 dataObjectSendMessage egestKey msg =
   Gen.doCall (serverName egestKey)
   (\state@{relayWebSocket: mRelayWebSocket} -> do
-    _ <- case mRelayWebSocket of
-           Just socket -> void $ WsGun.send socket (EdgeToRelayDataObjectMessage msg)
-           Nothing -> pure unit
+    case mRelayWebSocket of
+      Just socket -> void $ WsGun.send socket (EdgeToRelayDataObjectMessage msg)
+      Nothing -> pure unit
     pure $ CallReply unit state
   )
 
@@ -238,9 +238,9 @@ dataObjectUpdate :: EgestKey -> DO.ObjectUpdateMessage -> Effect Unit
 dataObjectUpdate egestKey updateMsg =
   Gen.doCall (serverName egestKey)
   (\state@{relayWebSocket: mRelayWebSocket} -> do
-    _ <- case mRelayWebSocket of
-           Just socket -> void $ WsGun.send socket (EdgeToRelayDataObjectUpdateMessage updateMsg)
-           Nothing -> pure unit
+    case mRelayWebSocket of
+      Just socket -> void $ WsGun.send socket (EdgeToRelayDataObjectUpdateMessage updateMsg)
+      Nothing -> pure unit
     pure $ CallReply unit state
   )
 
@@ -312,13 +312,13 @@ init parentCallbacks payload@{slotId, slotRole, aggregatorPoP, slotCharacteristi
 
   { mediaGateway } <- Config.featureFlags
   receivePortNumber <- startEgestReceiverFFI egestKey mediaGateway
-  _ <- Bus.subscribe (serverName egestKey) IntraPoP.bus IntraPoPBus
+  void $ Bus.subscribe (serverName egestKey) IntraPoP.bus IntraPoPBus
   logStart "Egest starting" {payload, receivePortNumber}
 
   now <- systemTimeMs
-  _ <- IntraPoP.announceLocalEgestIsAvailable egestKey
-  _ <- Timer.sendAfter (serverName egestKey) 0 InitStreamRelays
-  _ <- Timer.sendEvery (serverName egestKey) eqLogIntervalMs WriteEqLog
+  IntraPoP.announceLocalEgestIsAvailable egestKey
+  void $ Timer.sendAfter (serverName egestKey) 0 InitStreamRelays
+  void $ Timer.sendEvery (serverName egestKey) eqLogIntervalMs WriteEqLog
 
   Load.addPredictedLoad (egestKeyToAgentKey egestKey) predictedLoad
 
@@ -358,11 +358,11 @@ handleInfo msg state@{egestKey: egestKey@(EgestKey slotId slotRole), thisServer}
   case msg of
     WriteEqLog -> do
       Tuple endMs eqLines <- egestEqLines state
-      _ <- traverse Audit.egestUpdate eqLines
+      traverse_ Audit.egestUpdate eqLines
       pure $ CastNoReply state{lastEgestAuditTime = endMs}
 
     HandlerDown sessionId -> do
-      _ <- logInfo "client down!" {}
+      logInfo "client down!" {}
       state2 <- removeClient sessionId state
       pure $ CastNoReply state2
 
@@ -450,7 +450,7 @@ processGunMessage state@{relayWebSocket: Just socket, egestKey, lastOnFI} gunMsg
     processResponse <- WsGun.processMessage socket gunMsg
     case processResponse of
       Left error -> do
-        _ <- logInfo "Gun process error" {error}
+        logInfo "Gun process error" {error}
         pure $ CastNoReply state
 
       Right (WsGun.Internal _) ->
@@ -460,16 +460,16 @@ processGunMessage state@{relayWebSocket: Just socket, egestKey, lastOnFI} gunMsg
         pure $ CastNoReply state{relayWebSocket = Just newSocket}
 
       Right WsGun.WebSocketUp -> do
-        _ <- logInfo "Relay WebSocket up" {}
+        logInfo "Relay WebSocket up" {}
         pure $ CastNoReply state
 
       Right WsGun.WebSocketDown -> do
-        _ <- logInfo "Relay WebSocket down" {}
+        logInfo "Relay WebSocket down" {}
         CastNoReply <$> initStreamRelay state
 
       Right (WsGun.Frame (SlotConfig slotConfiguration))
         | Nothing <- state.slotConfiguration -> do
-          _ <- logInfo "Received slot configuration" {slotConfiguration}
+          logInfo "Received slot configuration" {slotConfiguration}
           setSlotConfigurationFFI egestKey slotConfiguration
           pure $ CastNoReply state{slotConfiguration = Just slotConfiguration}
 
@@ -506,7 +506,7 @@ processGunMessage state@{relayWebSocket: Just socket, egestKey, lastOnFI} gunMsg
       Right (WsGun.Frame (DataObject dataObjectMsg@(ObjectBroadcastMessage {object: dataObject}))) -> do
         shouldProcess <- DataObject.shouldProcessMessage egestKey dataObjectMsg
         if shouldProcess then do
-          _ <- Bus.raise (bus egestKey) (EgestDataObjectBroadcast dataObject)
+          Bus.raise (bus egestKey) (EgestDataObjectBroadcast dataObject)
           pure $ CastNoReply state{dataObject = Just dataObject}
         else
           pure $ CastNoReply state
@@ -543,7 +543,7 @@ removeClient sessionId state@{clientCount: 0} = do
 removeClient sessionId state@{clientCount: 1, lingerTime, egestKey} = do
   ref <- makeRef
   logInfo "Last client gone, start stop timer" {}
-  _ <- Timer.sendAfter (serverName egestKey) (round $ Long.toNumber $ unwrap lingerTime) (MaybeStop ref)
+  void $ Timer.sendAfter (serverName egestKey) (round $ Long.toNumber $ unwrap lingerTime) (MaybeStop ref)
   pure $ state{ clientCount = 0
               , clientStats = (Map.empty :: Map String EgestSessionStats)
               , stopRef = Just ref
@@ -608,7 +608,7 @@ initStreamRelay state@{relayCreationRetry, egestKey: egestKey@(EgestKey slotId s
   case relayResp of
     Left _ ->
       do
-        _ <- Timer.sendAfter (serverName egestKey) (round $ Long.toNumber $ unwrap relayCreationRetry) InitStreamRelays
+        void $ Timer.sendAfter (serverName egestKey) (round $ Long.toNumber $ unwrap relayCreationRetry) InitStreamRelays
         pure state
 
     Right (Local local) ->
@@ -626,7 +626,7 @@ initStreamRelay state@{relayCreationRetry, egestKey: egestKey@(EgestKey slotId s
           CachedInstanceState.recordInstanceData stateServerName webSocket
           pure state{ relayWebSocket = Just webSocket}
         Nothing -> do
-          _ <- Timer.sendAfter (serverName egestKey) (round $ Long.toNumber $ unwrap relayCreationRetry) InitStreamRelays
+          void $ Timer.sendAfter (serverName egestKey) (round $ Long.toNumber $ unwrap relayCreationRetry) InitStreamRelays
           pure state
 
 --------------------------------------------------------------------------------
@@ -696,7 +696,7 @@ toRelayServer = unwrap >>> wrap
 --         -- TODO / thoughts - do we wait for the entire relay chain to exist before returning?
 --         -- what if there isn't enough resource on an intermediate PoP?
 --         -- Single relay that goes direct?
---         _restResult <- SpudGun.postJson url request
+--         restResult <- SpudGun.postJson url request
 --         pure $ Right $ serverLoadToServer candidateRelayServer
 
 --     Nothing ->

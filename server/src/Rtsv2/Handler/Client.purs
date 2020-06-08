@@ -9,7 +9,7 @@ import Prelude
 import Data.Either (Either(..))
 import Data.Newtype (unwrap)
 import Data.String (Pattern(..), Replacement(..), replaceAll)
-import Data.Traversable (traverse)
+import Data.Traversable (traverse_)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Cowboy.Handlers.Rest (MovedResult, moved, notMoved)
@@ -74,6 +74,7 @@ clientStart loadConfig canary slotId slotRole =
           Rest.stop newReq state
         Right (Local _)  -> do
           handlerPid <- startHandler clientId
+          -- TODO: why is this being thrown away?
           _ <- EgestInstance.addClient handlerPid (EgestKey slotId slotRole) clientId
           Rest.result true req state
         Right (Remote _) -> do
@@ -115,20 +116,19 @@ clientStop slotId slotRole clientId  =
       isActive <- EgestInstance.isActive egestKey
       Rest.result isActive req state
 
-    removeClient req state@{egestKey} =
-      do
-      _ <- Audit.clientStop egestKey
-      _ <- stopHandler clientId
+    removeClient req state@{egestKey} = do
+      Audit.clientStop egestKey
+      stopHandler clientId
       Rest.result true req state
 
 startHandler :: String -> Effect Pid
 startHandler clientId =
   let
     proc = do
-      _ <- logInfo "fake handler starting" {}
-      _ <- GProc.register (tuple2 (atom "test_egest_client") clientId)
+      logInfo "fake handler starting" {}
+      GProc.register (tuple2 (atom "test_egest_client") clientId)
       handlerLoop
-      _ <- logInfo "fake handler stopping" {}
+      logInfo "fake handler stopping" {}
       pure unit
   in
     Raw.spawn proc
@@ -142,7 +142,7 @@ handlerLoop = do
 stopHandler :: String -> Effect Unit
 stopHandler clientId = do
   pid <- Gproc.whereIs (tuple2 (atom "test_egest_client") clientId)
-  _ <- traverse ((flip Raw.send) (atom "stop")) pid
+  traverse_ ((flip Raw.send) (atom "stop")) pid
   pure unit
 
 --------------------------------------------------------------------------------

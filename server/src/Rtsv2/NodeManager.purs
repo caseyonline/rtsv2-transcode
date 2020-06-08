@@ -20,7 +20,7 @@ import Data.Foldable (foldl)
 import Data.FoldableWithIndex (foldlWithIndex)
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (wrap)
-import Data.Traversable (traverse)
+import Data.Traversable (traverse, traverse_)
 import Effect (Effect)
 import Erl.Atom (Atom)
 import Erl.Data.List (List, singleton)
@@ -163,8 +163,9 @@ changeRunState newRunState =
     doChange state = do
       let
         state2 = state{ currentRunState = newRunState }
-      _ <- logCommand "RunState changed" { old: state.currentRunState
-                                         , new: newRunState}
+      logCommand "RunState changed" { old: state.currentRunState
+                                    , new: newRunState
+                                    }
       IntraPoP.announceAcceptingRequests $ acceptingRequests newRunState
       state3 <- maybeForceDrain state2
       pure $ CallReply (Right unit) state3
@@ -311,7 +312,7 @@ maybeForceDrain state@{ currentRunState: ForceDrain
        -- announce that they have stopped (but without stopping)
        -- stop when they see the announcement that the new aggregator has started
     aggregators <- getIngestAggregatorKeys
-    _ <- traverse IngestAggregatorInstance.forceDrain aggregators
+    traverse_ IngestAggregatorInstance.forceDrain aggregators
     pure state{ forceDrainPhase = WaitAggregators
               , forceDrainTimeoutRef = Just ref
               }
@@ -335,7 +336,7 @@ maybeForceDrain state@{ currentRunState: ForceDrain
     logInfo "Performing relay force drain" {}
     -- Step 1 - call forceDrain on relays - they will each:
     relays <- getStreamRelayKeys
-    _ <- traverse StreamRelayInstance.forceDrain relays
+    traverse_ StreamRelayInstance.forceDrain relays
     pure state{forceDrainPhase = WaitRelays}
 
 maybeForceDrain state@{ currentRunState: ForceDrain
@@ -357,7 +358,7 @@ maybeForceDrain state@{ currentRunState: ForceDrain
     logInfo "Performing egest force drain" {}
     -- Step 1 - call forceDrain on egests - they will each:
     egests <- getEgestKeys
-    _ <- traverse EgestInstance.forceDrain egests
+    traverse_ EgestInstance.forceDrain egests
     pure state{forceDrainPhase = WaitEgests}
 
 maybeForceDrain state@{ currentRunState: ForceDrain
@@ -374,7 +375,7 @@ maybeForceDrain state =
 
 transitionToOutOfService :: State -> Effect State
 transitionToOutOfService state = do
-  _ <- logInfo "RunState is OutOfService" { old: state.currentCanaryState }
+  logInfo "RunState is OutOfService" { old: state.currentCanaryState }
   restartActiveSup state{ currentRunState = OutOfService
                         , forceDrainPhase = DrainAggregators }
 

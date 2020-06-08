@@ -70,14 +70,14 @@ authenticate loadConfig canary host protocol account username password streamNam
           Just streamDetails -> do
             case findProfile streamDetails of
               Nothing -> do
-                _ <- logInfo "StreamProfile not found" { streamDetails
+                logInfo "StreamProfile not found" { streamDetails
                                                        , streamName }
                 pure Nothing
 
               Just (SlotProfile { name: profileName }) -> do
                 let
                   ingestKey = makeIngestKey profileName streamDetails
-                _ <- logInfo "Starting WEBRTC" {canary}
+                logInfo "Starting WEBRTC" {canary}
                 maybeStartStream <- case protocol of
                                       WebRTC -> do
                                         self <- Erl.self
@@ -91,7 +91,7 @@ authenticate loadConfig canary host protocol account username password streamNam
                             , dataObjectUpdate: IngestInstance.dataObjectUpdate ingestKey
                             }
     Just _ -> do
-      _ <- logInfo "Authentication failed; invalid username / password" {username}
+      logInfo "Authentication failed; invalid username / password" {username}
       pure Nothing
 
     Nothing -> do
@@ -113,7 +113,7 @@ startStream ingestKey startFn = do
                   , stopStream: stopStream ingestKey
                   , workflowPid}
     Left error -> do
-      _ <- logWarning "Attempt to start local RTMP ingest failed" {error}
+      logWarning "Attempt to start local RTMP ingest failed" {error}
       pure Nothing
   where
     sourceInfo foreignSourceInfo = do

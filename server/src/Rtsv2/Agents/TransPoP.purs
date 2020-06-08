@@ -226,7 +226,7 @@ handleRemoteLeaderAnnouncement server =
       | extractAddress server < extractAddress thisServer = do
         logInfo "Another node has taken over as transpop leader; stepping down" { leader: server }
         result <- Serf.leave serfRpcAddress
-        _ <- osCmd stopScript
+        void $ osCmd stopScript
 
         now <- systemTimeMs
         pure
@@ -273,7 +273,7 @@ init { config: config@{ leaderTimeoutMs
   logInfo "Trans-PoP Agent Starting" {config: config}
   healthConfig <- Config.healthConfig
   -- Stop any agent that might be running (in case we crashed)
-  _ <- osCmd stopScript
+  void $ osCmd stopScript
 
   Gen.registerExternalMapping serverName (\m -> TransPoPSerfMsg <$> (Serf.messageMapper m))
   void $ Timer.sendEvery serverName leaderAnnounceMs LeaderTimeoutTick
@@ -534,7 +534,7 @@ becomeLeader now state@{ lastLeaderAnnouncement
                        , intraPoPApi: {announceTransPoPLeader: intraPoP_announceTransPoPLeader}
                        } = do
   logInfo "Leader is absent, becoming leader" {}
-  _ <- osCmd startScript
+  void $ osCmd startScript
   intraPoP_announceTransPoPLeader
   void $ Timer.sendAfter serverName connectStreamAfterMs ConnectStream
   void $ Timer.sendAfter serverName rttRefreshMs RttRefreshTick
