@@ -5,17 +5,17 @@ import Prelude
 import Data.Traversable (traverse_)
 import Debug.Trace (spy)
 import Effect.Aff (Aff, delay, Milliseconds(..))
-import Helpers.Types (Node)
 import Helpers.Assert as A
 import Helpers.CreateString as C
 import Helpers.Env as E
 import Helpers.Functions as F
 import Helpers.HTTP as HTTP
 import Helpers.Log (as, as')
-import Shared.Rtsv2.Types (CanaryState(..), RunState(..))
-import Shared.Rtsv2.Stream (SlotRole(..))
+import Helpers.Types (Node)
 import Shared.Rtsv2.JsonLd as JsonLd
-import Test.Spec (SpecT, after_, before_, describe, it)
+import Shared.Rtsv2.Stream (SlotRole(..))
+import Shared.Rtsv2.Types (CanaryState(..), RunState(..))
+import Test.Spec (SpecT, after_, before_, describe, describeOnly, it, itOnly)
 import Test.Unit.Assert as Assert
 import Toppokki as T
 
@@ -24,7 +24,7 @@ import Toppokki as T
 -------------------------------------------------------------------------------
 drainTests :: forall m. Monad m => SpecT Aff Unit m Unit
 drainTests =
-  describe "9 Drain Tests" do
+  describeOnly "9 Drain Tests" do
     passiveDrainTests
     forceDrainTests
 
@@ -211,7 +211,7 @@ forceDrainTest1 =
         page <- T.newPage browser
 
         T.goto (HTTP.playerUrl E.p1n2 E.slot1 Primary) page
-        _ <- delay (Milliseconds 3000.00) >>= as' "wait for video to start"
+        delay (Milliseconds 3000.00) >>= as' "wait for video to start"
 
         HTTP.healthCheck E.p1n2 >>= A.assertStatusCode 200
                                 >>= A.assertBodyFun ((==) 2 <<< healthNodeToAgentCount)
@@ -222,7 +222,7 @@ forceDrainTest1 =
         frames1 <- F.getInnerText "#frames" page
         packets1 <- F.getInnerText "#packets" page
 
-        _ <- delay (Milliseconds 5000.00) >>= as' "let video play for 5 seconds"
+        delay (Milliseconds 5000.00) >>= as' "let video play for 5 seconds"
 
         HTTP.healthCheck E.p1n2 >>= A.assertStatusCode 200
                                 >>= A.assertBodyFun ((==) 0 <<< healthNodeToAgentCount)
@@ -243,7 +243,7 @@ forceDrainTest1 =
 forceDrainTest2 :: forall m. Monad m => SpecT Aff Unit m Unit
 forceDrainTest2 =
     after_ (F.stopSlot) do
-      it "9.2.2 Force drain moves aggregator, relay and egest agents to other node" do
+      itOnly "9.2.2 Force drain moves aggregator, relay and egest agents to other node" do
 
         traverse_ F.maxOut (F.allNodesBar E.p1n2 threeNodes)                   >>= as' "load up all servers bar one"
 
@@ -260,7 +260,7 @@ forceDrainTest2 =
         page <- T.newPage browser
 
         T.goto (HTTP.playerUrl E.p1n2 E.slot1 Primary) page
-        _ <- delay (Milliseconds 3000.00) >>= as' "wait for video to start"
+        delay (Milliseconds 3000.00) >>= as' "wait for video to start"
 
         HTTP.healthCheck E.p1n2 >>= A.assertStatusCode 200
                                 >>= A.assertBodyFun ((==) 3 <<< healthNodeToAgentCount)
@@ -272,7 +272,7 @@ forceDrainTest2 =
 
         HTTP.changeRunState E.p1n2 ForceDrain >>= A.assertStatusCode 204 >>= as "runState changed to force-drain"
 
-        _ <- delay (Milliseconds 5000.00) >>= as' "allow force-drain to propogate"
+        delay (Milliseconds 5000.00) >>= as' "allow force-drain to propogate"
 
         HTTP.healthCheck E.p1n2 >>= A.assertStatusCode 200
                                 >>= A.assertBodyFun ((==) 0 <<< healthNodeToAgentCount)
@@ -282,7 +282,7 @@ forceDrainTest2 =
         frames1 <- F.getInnerText "#frames" page
         packets1 <- F.getInnerText "#packets" page
 
-        _ <- delay (Milliseconds 5000.00) >>= as' "let video play for 5 seconds"
+        delay (Milliseconds 5000.00) >>= as' "let video play for 5 seconds"
 
         frames2 <- F.getInnerText "#frames" page
         packets2 <- F.getInnerText "#packets" page

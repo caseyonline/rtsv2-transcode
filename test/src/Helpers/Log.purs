@@ -15,7 +15,7 @@ import Milkis as M
 
 throwSlowError :: forall e. String -> Aff e
 throwSlowError e = do
-  _ <- delay (Milliseconds 200.0)
+  delay (Milliseconds 200.0)
   throwError $ Exception.error e
 
 
@@ -76,4 +76,3 @@ asT' :: forall a b. String -> b -> StateT a Aff Unit
 asT' desc _ = do
   let _ = maybeLogStep "step" desc
   pure $ unit
-

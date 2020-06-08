@@ -71,7 +71,7 @@ broadcastMessages =
           T.goto (F.mkPlayerUrl E.p2n1 E.slot2 Primary) tab3
           T.goto (HTTP.ingestUrl E.p1n1 E.shortName1 E.highStreamName) tab4
 
-          _ <- delay (Milliseconds 1000.00) >>= L.as' "wait for tabs to load"
+          delay (Milliseconds 1000.00) >>= L.as' "wait for tabs to load"
 
           -- get the traceIds from each tab
           traceId1 <- F.getInnerText "#traceId" tab1
@@ -134,7 +134,7 @@ broadcastMessages =
           T.goto (F.mkPlayerUrl E.p2n1 E.slot2 Primary) tab3
           T.goto (HTTP.ingestUrl E.p1n1 E.shortName1 E.highStreamName) tab4
 
-          _ <- delay (Milliseconds 1500.00) >>= L.as' "wait for tabs to load"
+          delay (Milliseconds 1500.00) >>= L.as' "wait for tabs to load"
 
           -- get the traceIds from each tab
           traceId1 <- F.getInnerText "#traceId" tab1
@@ -198,14 +198,14 @@ broadcastMessages =
           T.goto (F.mkPlayerUrl E.p1n2 E.slot1 Primary) tab2
           T.goto (F.mkPlayerUrl E.p1n1 E.slot1 Primary) tab3
 
-          _ <- delay (Milliseconds 1500.00) >>= L.as' "tabs opened"
+          delay (Milliseconds 1500.00) >>= L.as' "tabs opened"
 
           -- Get the traceIds from each tab
           traceId1 <- F.getInnerText "#traceId" tab1
           traceId2 <- F.getInnerText "#traceId" tab2
           traceId3 <- F.getInnerText "#traceId" tab3
 
-          _ <- delay (Milliseconds 0.00) >>= L.as' ("got traceids: " <> traceId1 <> ", " <> traceId2 <> ", " <> traceId3)
+          delay (Milliseconds 0.00) >>= L.as' ("got traceids: " <> traceId1 <> ", " <> traceId2 <> ", " <> traceId3)
 
           -- Send private message from tab 1
           T.focus (T.Selector "input#msginput") tab1
@@ -219,7 +219,7 @@ broadcastMessages =
           T.bringToFront tab1 >>= L.as' "Make tab1 active"
           T.click (T.Selector "button#msgsend") tab1 >>= L.as' "Send Private message from tab1 to tab2"
 
-          _ <- delay (Milliseconds 200.00) >>= L.as' "wait for delivery"
+          delay (Milliseconds 200.00) >>= L.as' "wait for delivery"
 
           -- Go to tab2 check that new publisher message has been received
           T.bringToFront tab2 >>= L.as' "Check private message has been received"

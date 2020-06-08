@@ -90,14 +90,14 @@ canaryWhenLiveTest3 =
     browser <- T.launch options
     page <- T.newPage browser
     T.goto (HTTP.canaryIngestUrl E.p1n1 E.shortName1 E.highStreamName) page
-    _ <- delay (Milliseconds 2000.00) >>= L.as' "wait for page to load"
+    delay (Milliseconds 2000.00) >>= L.as' "wait for page to load"
     T.bringToFront page >>= L.as' "Bring to front"
 
     T.click (T.Selector "#authenticate") page
-    _ <- delay (Milliseconds 500.00) >>= L.as' "wait for authentication"
+    delay (Milliseconds 500.00) >>= L.as' "wait for authentication"
 
     T.click (T.Selector "#start-ingest") page
-    _ <- delay (Milliseconds 2000.00) >>= L.as' "let stream start"
+    delay (Milliseconds 2000.00) >>= L.as' "let stream start"
 
     HTTP.getAggregatorStats E.p1n1 E.slot1 >>= A.assertStatusCode 404 >>= as "no aggregator running"
     T.close browser
@@ -200,13 +200,13 @@ canaryWhenCanary3 =
     browser <- T.launch options
     page <- T.newPage browser
     T.goto (HTTP.ingestUrl E.p1n1 E.shortName1 E.highStreamName) page
-    _ <- delay (Milliseconds 2000.00) >>= L.as' "wait for page to load"
+    delay (Milliseconds 2000.00) >>= L.as' "wait for page to load"
 
     T.click (T.Selector "#authenticate") page
-    _ <- delay (Milliseconds 500.00) >>= L.as' "wait for authentication"
+    delay (Milliseconds 500.00) >>= L.as' "wait for authentication"
 
     T.click (T.Selector "#start-ingest") page
-    _ <- delay (Milliseconds 2000.00) >>= L.as' "let stream start"
+    delay (Milliseconds 2000.00) >>= L.as' "let stream start"
 
     HTTP.getAggregatorStats E.p1n1 E.slot1 >>= A.assertStatusCode 404 >>= as "no aggregator running"
     T.close browser

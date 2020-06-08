@@ -46,20 +46,16 @@ primaryStream =
     before (F.startSession [E.p1n1] *> F.launch [E.p1n1] *> F.startSlotHigh1000 (C.toAddrFromNode E.p1n1) *> T.launch options) do
       after (\browser -> T.close browser *> F.stopSession *> F.stopSlot) do
         it "5.1.1 can check that a streaming video has started and is playing on Primary" $ \browser -> do
-          _ <- delay (Milliseconds 2000.00) >>= L.as' "wait for ingest to start fully"
+          delay (Milliseconds 2000.00) >>= L.as' "wait for ingest to start fully"
           page <- T.newPage browser
 
-          -- inject JS into the page
-          -- jsFile <- readTextFile UTF8 "./scripts/injectWebRTC.js"
-          -- _ <- T.unsafeEvaluateOnNewDocument jsFile page
-
           T.goto (HTTP.playerUrl E.p1n1 E.slot1 Primary) page
-          _ <- delay (Milliseconds 4000.00) >>= L.as' "wait for video to start"
+          delay (Milliseconds 4000.00) >>= L.as' "wait for video to start"
 
           frames1 <- F.getInnerText "#frames" page
           packets1 <- F.getInnerText "#packets" page
 
-          _ <- delay (Milliseconds 3000.00) >>= L.as' "let video play for 3 seconds"
+          delay (Milliseconds 3000.00) >>= L.as' "let video play for 3 seconds"
 
           frames2 <- F.getInnerText "#frames" page
           packets2 <- F.getInnerText "#packets" page
@@ -80,16 +76,16 @@ backupStream =
                *> T.launch options) do
       after (\browser -> T.close browser *> F.stopSession *> F.stopSlot) $ do
         it "5.2.1 can check that a streaming video has started and is playing on Backup" $ \browser -> do
-          _ <- delay (Milliseconds 2000.00) >>= L.as' "wait for ingest to start fully"
+          delay (Milliseconds 2000.00) >>= L.as' "wait for ingest to start fully"
 
           page <- T.newPage browser
           T.goto (HTTP.playerUrl E.p1n1 E.slot1 Backup) page
-          _ <- delay (Milliseconds 3000.00) >>= L.as' "wait for video to start"
+          delay (Milliseconds 3000.00) >>= L.as' "wait for video to start"
 
           frames1 <- F.getInnerText "#frames" page
           packets1 <- F.getInnerText "#packets" page
 
-          _ <- delay (Milliseconds 3000.00) >>= L.as' "let video play for 3 seconds"
+          delay (Milliseconds 3000.00) >>= L.as' "let video play for 3 seconds"
 
           frames2 <- F.getInnerText "#frames" page
           packets2 <- F.getInnerText "#packets" page
@@ -112,17 +108,17 @@ ingestStream =
           traverse_ F.maxOut (F.allNodesBar E.p1n1 ingestNodes) >>= L.as' "load up all servers bar one"
           E.waitForIntraPoPDisseminate
           F.startSlotHigh1000 (C.toAddrFromNode E.p1n2) >>= L.as' "create high ingest"
-          _ <- delay (Milliseconds 2000.00) >>= L.as' "wait for ingest to start fully"
+          delay (Milliseconds 2000.00) >>= L.as' "wait for ingest to start fully"
 
           page <- T.newPage browser
 
           T.goto (HTTP.playerUrl E.p1n1 E.slot1 Primary) page
-          _ <- delay (Milliseconds 3000.00) >>= L.as' "wait for video to start"
+          delay (Milliseconds 3000.00) >>= L.as' "wait for video to start"
 
           frames1 <- F.getInnerText "#frames" page
           packets1 <- F.getInnerText "#packets" page
 
-          _ <- delay (Milliseconds 3000.00) >>= L.as' "let video play for 3 seconds"
+          delay (Milliseconds 3000.00) >>= L.as' "let video play for 3 seconds"
 
           frames2 <- F.getInnerText "#frames" page
           packets2 <- F.getInnerText "#packets" page
@@ -145,17 +141,17 @@ webRtcIngest =
 
           page <- T.newPage browser
           T.goto (HTTP.ingestUrl E.p1n1 E.shortName1 E.highStreamName) page
-          _ <- delay (Milliseconds 2000.00) >>= L.as' "wait for page to load"
+          delay (Milliseconds 2000.00) >>= L.as' "wait for page to load"
 
           T.click (T.Selector "#authenticate") page
-          _ <- delay (Milliseconds 500.00) >>= L.as' "wait for authentication"
+          delay (Milliseconds 500.00) >>= L.as' "wait for authentication"
 
           T.click (T.Selector "#start-ingest") page
-          _ <- delay (Milliseconds 2000.00) >>= L.as' "let stream start"
+          delay (Milliseconds 2000.00) >>= L.as' "let stream start"
 
           byteSent <- F.getInnerText "#bytesSent" page
 
-          _ <- delay (Milliseconds 2000.00) >>= L.as' "let stream start"
+          delay (Milliseconds 2000.00) >>= L.as' "let stream start"
           Assert.assert "Bytes are being sent in the UI" ((F.stringToInt byteSent) > 10) >>= L.as' ("frames increased by: " <> byteSent)
 
           HTTP.getAggregatorStats E.p1n1 E.slot1 >>= A.assertStatusCode 200
