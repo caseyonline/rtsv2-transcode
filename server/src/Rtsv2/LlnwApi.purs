@@ -10,11 +10,12 @@ module Rtsv2.LlnwApi
 import Prelude
 
 import Data.Either (Either)
-import Data.Newtype (wrap)
+import Data.Newtype (unwrap, wrap)
 import Data.String (Pattern(..), Replacement(..), replace)
 import Effect (Effect)
 import Erl.Data.List ((:))
 import Erl.Data.Tuple (tuple2)
+import Logger (spy)
 import Rtsv2.Config (LlnwApiConfig)
 import Shared.Common (Url(..))
 import Shared.Rtsv2.LlnwApiTypes (AuthType, PublishCredentials, SlotLookupResult, StreamAuth, StreamConnection, StreamDetails, StreamPublish)
@@ -41,8 +42,8 @@ slotLookup {slotLookupUrl, headers} accountName streamName = do
     url = (replaceAccount >>> replaceStreamName >>> Url) slotLookupUrl
   jsonGet url headers <#> bodyToJSON
   where
-    replaceAccount = replace (Pattern "{account}") (Replacement $ show accountName)
-    replaceStreamName = replace (Pattern "{streamName}") (Replacement $ show streamName)
+    replaceAccount = replace (Pattern "{account}") (Replacement $ unwrap accountName)
+    replaceStreamName = replace (Pattern "{streamName}") (Replacement $ unwrap streamName)
 
 
 jsonPost :: forall body. WriteForeign body => Url -> Headers -> body -> Effect SpudResult

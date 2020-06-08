@@ -1,5 +1,3 @@
-[ ] - intrapop to raise bus message if relay exits
-      - egest to subscribe and take appropriate action - either exit itself or launch new relay?
 [ ] - Pinto stuff, async init, return stop from init
 [ ] - multiple IngestAggregators for same slot/role
 [ ] - RTMP Egest - from edge
@@ -8,12 +6,17 @@
 [ ] - Proper Serf messages codec (not just binary to term)
 [ ] - possibly announcing presence of stream in ingest aggregator too quickly - webrtc tests currently need a small sleep to get reliable playback
 [ ] - servers need a 16-bit id adding to them
+[ ] - ingest validator
+[ ] - RTMPS (ingest / egest)
 
 Tests:
 [ ] - data object store
-[ ] - discovery API
 [ ]	- multi-bitrate ingest
 
+[x] - intrapop to raise bus message if relay exits
+      - egest to subscribe and take appropriate action - either exit itself or launch new relay?
+      - not needed, since detected through websocket shutdown
+[x] - discovery API
 [x] - audio only - needs change to StreamDetails to indicate no video, since aggregator is currently waiting for iframe to sync multiple streams
 [x] - ingest prometheus stats
 [x] - egest prometheus stats
