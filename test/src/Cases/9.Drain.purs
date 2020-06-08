@@ -15,7 +15,7 @@ import Helpers.Types (Node)
 import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Rtsv2.Stream (SlotRole(..))
 import Shared.Rtsv2.Types (CanaryState(..), RunState(..))
-import Test.Spec (SpecT, after_, before_, describe, describeOnly, it, itOnly)
+import Test.Spec (SpecT, after, after_, before, before_, describe, describeOnly, it, itOnly)
 import Test.Unit.Assert as Assert
 import Toppokki as T
 
@@ -55,6 +55,10 @@ twoNodes = [E.p1n1, E.p1n2]
 threeNodes :: Array Node
 threeNodes = [E.p1n1, E.p1n2, E.p1n3]
 
+options :: { args :: Array String
+           , devtools :: Boolean
+           , headless :: Boolean
+           }
 options =
   { headless: false
   , args: E.browserLaunchArgsIng
@@ -196,9 +200,9 @@ passiveDrainTest4 =
 -------------------------------------------------------------------------------
 forceDrainTest1 :: forall m. Monad m => SpecT Aff Unit m Unit
 forceDrainTest1 =
-  before_ (F.startSlotHigh1000 (C.toAddrFromNode E.p1n1)) do
-    after_ (F.stopSlot) do
-      it "9.2.1 Force drain moves relay and egest agents to other node" do
+  before (F.startSlotHigh1000 (C.toAddrFromNode E.p1n1) *> T.launch options) do
+    after (\browser -> T.close browser *> F.stopSlot) do
+      it "9.2.1 Force drain moves relay and egest agents to other node" $ \browser -> do
 
         E.waitForAsyncProfileStart
 
@@ -207,7 +211,6 @@ forceDrainTest1 =
                                                                         >>= as "aggregator running with ingest connected"
         E.waitForIntraPoPDisseminate               >>= as' "allow intraPoP source avaialable to disseminate"
 
-        browser <- T.launch options
         page <- T.newPage browser
 
         T.goto (HTTP.playerUrl E.p1n2 E.slot1 Primary) page
@@ -242,57 +245,43 @@ forceDrainTest1 =
 
 forceDrainTest2 :: forall m. Monad m => SpecT Aff Unit m Unit
 forceDrainTest2 =
-    after_ (F.stopSlot) do
-      itOnly "9.2.2 Force drain moves aggregator, relay and egest agents to other node" do
+    before (T.launch options) do
+    after (\browser -> T.close browser *> F.stopSlot) do
+      itOnly "9.2.2 Force drain moves aggregator, relay and egest agents to other node" $ \browser -> do
 
         traverse_ F.maxOut (F.allNodesBar E.p1n2 threeNodes)                   >>= as' "load up all servers bar one"
-
         F.startSlotHigh1000 (C.toAddrFromNode E.p1n1)                          >>= as' "start ingest on node 1"
-
         E.waitForAsyncProfileStart
-
         HTTP.getAggregatorStats E.p1n2 E.slot1 >>= A.assertStatusCode 200
                                                >>= A.assertAggregator [E.highSlotAndProfileName]
-                                                                        >>= as "aggregator running on node 2 with ingest connected"
-        E.waitForIntraPoPDisseminate               >>= as' "allow intraPoP source avaialable to disseminate"
-
-        browser <- T.launch options
+                                                                               >>= as "aggregator running on node 2 with ingest connected"
+        E.waitForIntraPoPDisseminate                                           >>= as' "allow intraPoP source avaialable to disseminate"
         page <- T.newPage browser
-
         T.goto (HTTP.playerUrl E.p1n2 E.slot1 Primary) page
-        delay (Milliseconds 3000.00) >>= as' "wait for video to start"
-
+        delay (Milliseconds 3000.00)                                           >>= as' "wait for video to start"
         HTTP.healthCheck E.p1n2 >>= A.assertStatusCode 200
                                 >>= A.assertBodyFun ((==) 3 <<< healthNodeToAgentCount)
-                                >>= as "three agents running on p1n2"
-
-        traverse_ F.freeUp threeNodes              >>= as' "clear the load on all servers"
-
-        E.waitForIntraPoPDisseminate               >>= as' "allow load change to disseminate"
-
-        HTTP.changeRunState E.p1n2 ForceDrain >>= A.assertStatusCode 204 >>= as "runState changed to force-drain"
-
-        delay (Milliseconds 5000.00) >>= as' "allow force-drain to propogate"
-
+                                                                               >>= as "three agents running on p1n2"
+        traverse_ F.freeUp [E.p1n3]                                            >>= as' "clear the load on all servers"
+        E.waitForIntraPoPDisseminate                                           >>= as' "allow load change to disseminate"
+        HTTP.changeRunState E.p1n2 ForceDrain >>= A.assertStatusCode 204       >>= as "runState changed to force-drain"
+        delay (Milliseconds 5000.00)                                           >>= as' "allow force-drain to propogate"
+        frames1 <- F.getInnerText "#frames" page
+        packets1 <- F.getInnerText "#packets" page
         HTTP.healthCheck E.p1n2 >>= A.assertStatusCode 200
                                 >>= A.assertBodyFun ((==) 0 <<< healthNodeToAgentCount)
                                 >>= A.assertBodyFun ((==) OutOfService <<< healthNodeToRunState)
-                                >>= as "no agents running on p1n2"
-
-        frames1 <- F.getInnerText "#frames" page
-        packets1 <- F.getInnerText "#packets" page
-
-        delay (Milliseconds 5000.00) >>= as' "let video play for 5 seconds"
-
+                                                                               >>= as "no agents running on p1n2"
+        Assert.assert "packets received" (F.stringToInt packets1 > 0)          >>= as' ("initialialy received " <> packets1 <> " packets")
+        Assert.assert "frames received" (F.stringToInt frames1 > 0)            >>= as' ("initialialy received " <> frames1 <> " frames")
+        delay (Milliseconds 7000.00)                                           >>= as' "let video play again"
         frames2 <- F.getInnerText "#frames" page
         packets2 <- F.getInnerText "#packets" page
-
         let frameDiff = F.stringToInt frames2 - F.stringToInt frames1
-
-        Assert.assert "frames aren't increasing" (frameDiff > 65) >>= as' ("frames increased by: " <> show frameDiff)
-        Assert.assert "packets aren't increasing" ((F.stringToInt packets1) < (F.stringToInt packets2)) >>= as' ("packets are increasing: " <> packets2 <> " > " <> packets1)
+        Assert.assert "packets aren't increasing" ((F.stringToInt packets1) < (F.stringToInt packets2))
+                                                                               >>= as' ("packets are increasing: " <> packets2 <> " > " <> packets1)
+        Assert.assert "frames aren't increasing" (frameDiff > 65)              >>= as' ("frames increased by: " <> show frameDiff)
         T.close browser
-
         pure unit
 
 -------------------------------------------------------------------------------
