@@ -7,16 +7,18 @@ module Rtsv2.LlnwApi
        )
        where
 
+import Prelude
+
 import Data.Either (Either)
 import Data.Newtype (wrap)
 import Data.String (Pattern(..), Replacement(..), replace)
 import Effect (Effect)
 import Erl.Data.List ((:))
 import Erl.Data.Tuple (tuple2)
-import Prelude ((<#>), (<$>), (>>>))
 import Rtsv2.Config (LlnwApiConfig)
 import Shared.Common (Url(..))
 import Shared.Rtsv2.LlnwApiTypes (AuthType, PublishCredentials, SlotLookupResult, StreamAuth, StreamConnection, StreamDetails, StreamPublish)
+import Shared.Rtsv2.Stream (RtmpShortName, RtmpStreamName)
 import Simple.JSON (class WriteForeign, writeJSON)
 import SpudGun (Headers, JsonResponseError, SpudResult, bodyToJSON)
 import SpudGun as SpudGun
@@ -33,14 +35,14 @@ streamPublish :: LlnwApiConfig -> StreamPublish -> Effect (Either JsonResponseEr
 streamPublish {streamPublishUrl, headers} body =
   bodyToJSON <$> jsonPost (wrap streamPublishUrl) headers body
 
-slotLookup :: LlnwApiConfig -> String -> String -> Effect (Either JsonResponseError SlotLookupResult)
+slotLookup :: LlnwApiConfig -> RtmpShortName -> RtmpStreamName -> Effect (Either JsonResponseError SlotLookupResult)
 slotLookup {slotLookupUrl, headers} accountName streamName = do
   let
     url = (replaceAccount >>> replaceStreamName >>> Url) slotLookupUrl
   jsonGet url headers <#> bodyToJSON
   where
-    replaceAccount = replace (Pattern "{account}") (Replacement accountName)
-    replaceStreamName = replace (Pattern "{streamName}") (Replacement streamName)
+    replaceAccount = replace (Pattern "{account}") (Replacement $ show accountName)
+    replaceStreamName = replace (Pattern "{streamName}") (Replacement $ show streamName)
 
 
 jsonPost :: forall body. WriteForeign body => Url -> Headers -> body -> Effect SpudResult

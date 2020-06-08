@@ -91,7 +91,7 @@ newtype SlotProfile = SlotProfile
 
 type SlotDetails =
   { id :: SlotId
-  , name :: String
+  , name :: RtmpStreamName
   , subscribeValidation :: Boolean
   , outputFormats :: Array StreamOutputFormat
   , profiles :: Array SlotProfile

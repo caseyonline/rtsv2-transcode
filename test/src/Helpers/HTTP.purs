@@ -136,6 +136,11 @@ getStats node route = get (M.URL $ C.makeUrlAndUnwrapSupport node route)
 getStatsSystem :: Node -> System.Endpoint -> Aff (Either String ResWithBody)
 getStatsSystem node route = get (M.URL $ C.makeUrlAndUnwrapSystem node route)
 
+getStreamDiscovery :: Node -> RtmpShortName -> RtmpStreamName -> Aff (Either String ResWithBody)
+getStreamDiscovery node shortName streamName =
+  get (M.URL $ C.makeUrlAndUnwrapPublic node (Public.StreamDiscoveryE shortName streamName))
+
+
 -- | Egest
 getEgestStats :: Node -> SlotId -> Aff (Either String ResWithBody)
 getEgestStats node slotId = getStats node (Support.EgestStatsE slotId Primary)

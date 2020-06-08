@@ -16,6 +16,7 @@ import Data.Array as Array
 import Data.Either (either, hush)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Eq (genericEq)
+import Data.List (any)
 import Data.Maybe (Maybe(..), fromMaybe, fromMaybe', isNothing, isJust, fromJust)
 import Data.Newtype (unwrap, wrap)
 import Data.String (joinWith)
@@ -35,9 +36,9 @@ import Logger as Logger
 import Partial.Unsafe (unsafePartial)
 import Rtsv2.Agents.IngestSup as IngestSup
 import Rtsv2.Handler.MimeType as MimeType
-import Shared.Rtsv2.LlnwApiTypes (AuthType, HlsPushProtocol(..), HlsPushSpecFormat(..), PublishCredentials, SlotLookupResult, SlotPublishAuthType(..), StreamAuth, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamOutputFormat(..), StreamPublish)
+import Shared.Rtsv2.LlnwApiTypes (AuthType, HlsPushProtocol(..), HlsPushSpecFormat(..), PublishCredentials, SlotLookupResult, SlotProfile(..), SlotPublishAuthType(..), StreamAuth, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamOutputFormat(..), StreamPublish)
 import Shared.Rtsv2.Router.Endpoint.System as System
-import Shared.Rtsv2.Stream (RtmpShortName, SlotRole(..))
+import Shared.Rtsv2.Stream (RtmpShortName, RtmpStreamName(..), SlotRole(..))
 import Shared.UUID (fromString)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (class ReadForeign, class WriteForeign, readJSON, writeJSON)
@@ -71,7 +72,7 @@ type SlotDbEntry =
 
 db :: List SlotDbEntry
 db =
-  mmddev001_slot1_Primary_Any
+    mmddev001_slot1_Primary_Any
   : mmddev001_slot1_Backup_Rtmp
   : mmddev001_slot1ao_Primary_Any
   : mmddev002_slot2_Primary_Any
@@ -88,7 +89,7 @@ db =
               , password: "password" }
       , details: { role: Primary
                  , slot : { id: wrap $ fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000001")
-                          , name: "slot1"
+                          , name: wrap "slot1"
                           , subscribeValidation: false
                           , profiles: [ wrap { name: wrap "high"
                                              , rtmpStreamName: wrap "slot1_1000"
@@ -126,7 +127,7 @@ db =
               , password: "password" }
       , details: { role: Backup
                  , slot : { id: wrap $ fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000001")
-                          , name: "slot1b"
+                          , name: wrap "slot1b"
                           , subscribeValidation: false
                           , profiles: [ wrap { name: wrap "high"
                                              , rtmpStreamName: wrap "slot1b_1000"
@@ -152,7 +153,7 @@ db =
               , password: "password" }
       , details: { role: Primary
                  , slot : { id: wrap $ fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000003")
-                          , name: "slot1"
+                          , name: wrap "slot1"
                           , subscribeValidation: true
                           , profiles: [ wrap { name: wrap "high"
                                              , rtmpStreamName: wrap "slot1_1000"
@@ -190,7 +191,7 @@ db =
               , password: "password" }
       , details: { role: Primary
                  , slot : { id: wrap $ fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000004")
-                          , name: "slot1ao"
+                          , name: wrap "slot1ao"
                           , subscribeValidation: false
                           , profiles: [ wrap { name: wrap "high"
                                              , rtmpStreamName: wrap "slot1ao_1000"
@@ -228,7 +229,7 @@ db =
               , password: "password" }
       , details: { role: Primary
                  , slot : { id: wrap $ fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000002")
-                          , name: "slot2"
+                          , name: wrap "slot2"
                           , subscribeValidation: false
                           , profiles: [ wrap { name: wrap "high"
                                              , rtmpStreamName: wrap "slot1_1000"
@@ -308,8 +309,7 @@ streamPublish =
       # head
       <#> _.details
 
-
-slotLookup :: String -> String -> StetsonHandler Unit
+slotLookup :: RtmpShortName -> RtmpStreamName -> StetsonHandler Unit
 slotLookup accountName streamName =
   Rest.handler (\req -> Rest.initResult req unit)
   # Rest.resourceExists (\req state -> Rest.result (isJust matchingEntry) req state)
@@ -329,8 +329,8 @@ slotLookup accountName streamName =
       filter isMatchingEntry db # head
 
     isMatchingEntry entry =
-      (unwrap entry.auth.rtmpShortName) == accountName
-      && entry.details.slot.name == streamName
+      (entry.auth.rtmpShortName) == accountName
+      && (any (\(SlotProfile {rtmpStreamName}) -> rtmpStreamName == streamName) entry.details.slot.profiles)
 
 type PostHelper a b = StetsonHandler { payload :: Maybe a
                                      , output :: Maybe b
