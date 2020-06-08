@@ -33,7 +33,7 @@ import Rtsv2.Env as Env
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Types (LocalResource(..))
-import Rtsv2.Utils (crashIfLeft)
+import Rtsv2.Utils (noprocToMaybe)
 import Serf (Ip)
 import Shared.Common (ProfileContext)
 import Shared.Rtsv2.Agent as Agent
@@ -42,7 +42,9 @@ import Shared.Rtsv2.Stream (IngestKey(..))
 import Shared.Rtsv2.Types (CanaryState(..), extractAddress)
 import Stetson.WebSocketHandler (self)
 
-foreign import startServerImpl :: (Foreign -> Either Foreign Unit) -> Either Foreign Unit -> Ip -> Int -> Callbacks -> Ip -> Int -> Callbacks -> Int -> Int -> Effect (Either Foreign Unit)
+foreign import startServer :: Ip -> Int -> Callbacks -> Int -> Int -> Effect Unit
+foreign import startServerTls :: Ip -> Int -> Callbacks -> Int -> Int -> String -> String -> Effect Unit
+
 foreign import rtmpQueryToPurs :: Foreign -> RtmpAuthRequest
 foreign import startWorkflowImpl :: Pid -> Pid -> Foreign -> IngestKey -> ProfileContext -> (Foreign -> (Effect Unit)) -> (Foreign -> (Effect Unit)) -> Effect Unit
 
@@ -77,7 +79,7 @@ init _ = do
   publicListenIp <- Env.publicListenIp
   supportListenIp <- Env.supportListenIp
   loadConfig <- Config.loadConfig
-  {port, canaryPort, nbAcceptors} <- Config.rtmpIngestConfig
+  {port, tlsPort, canaryPort, canaryTlsPort, certFile, keyFile, canaryCertFile, canaryKeyFile, nbAcceptors} <- Config.rtmpIngestConfig
   {abortIfNoMediaMs} <- Config.ingestInstanceConfig
   thisServer <- PoPDefinition.getThisServer
   let
@@ -88,7 +90,15 @@ init _ = do
     canaryCallbacks :: Callbacks
     canaryCallbacks = { init: mkFn2 (onConnectCallback loadConfig Canary host)
                       }
-  crashIfLeft =<< startServerImpl Left (Right unit) publicListenIp port callbacks supportListenIp canaryPort canaryCallbacks nbAcceptors abortIfNoMediaMs
+
+  -- Public servers
+  startServer publicListenIp port callbacks nbAcceptors abortIfNoMediaMs
+  startServerTls publicListenIp tlsPort callbacks nbAcceptors abortIfNoMediaMs certFile keyFile
+
+  -- Canary servers
+  startServer supportListenIp canaryPort canaryCallbacks nbAcceptors abortIfNoMediaMs
+  startServerTls supportListenIp canaryTlsPort canaryCallbacks nbAcceptors abortIfNoMediaMs certFile keyFile
+
   pure $ {}
 
 onConnectCallback :: LoadConfig -> CanaryState -> String -> String -> Foreign -> (Effect RtmpAuthResponse)
