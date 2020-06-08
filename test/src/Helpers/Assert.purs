@@ -65,6 +65,19 @@ assertBodyFun pred (Right rwb) = pure $ (parse rwb) >>= (assertFun'' pred) <#> (
     parse {body} = lmap (jsonError body) $ SimpleJSON.readJSON body
     jsonError body error = "Could not parse json " <> body <> " due to " <> show error
 
+assertBodyTextFun
+  :: (String -> Boolean)
+  -> Either String ResWithBody
+  -> Aff (Either String ResWithBody)
+assertBodyTextFun pred either =
+  case either of
+    Left e -> pure $ Left e
+    Right response -> do
+      if pred response.body
+        then pure either
+        else pure $ Left $ "Body " <> response.body <> " did not match predicate"
+
+
 assertBodyText :: String -> Either String M.Response -> Aff (Either String M.Response)
 assertBodyText expected either =
   case either of

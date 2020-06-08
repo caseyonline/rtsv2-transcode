@@ -16,7 +16,7 @@ import Helpers.Log as L
 import Helpers.Types (Node)
 import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Rtsv2.Types (CanaryState(..))
-import Test.Spec (SpecT, after_, before_, describe, it, itOnly)
+import Test.Spec (SpecT, after_, before_, describe, it)
 import Toppokki as T
 
 -------------------------------------------------------------------------------

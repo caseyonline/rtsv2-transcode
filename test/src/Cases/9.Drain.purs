@@ -15,7 +15,7 @@ import Helpers.Log (as, as')
 import Shared.Rtsv2.Types (CanaryState(..), RunState(..))
 import Shared.Rtsv2.Stream (SlotRole(..))
 import Shared.Rtsv2.JsonLd as JsonLd
-import Test.Spec (SpecT, after_, before_, describe, it, itOnly)
+import Test.Spec (SpecT, after_, before_, describe, it)
 import Test.Unit.Assert as Assert
 import Toppokki as T
 

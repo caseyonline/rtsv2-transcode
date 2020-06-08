@@ -11,7 +11,7 @@ import Helpers.Functions as F
 import Helpers.HTTP as HTTP
 import Helpers.Log (as, as')
 import Shared.Rtsv2.Types (CurrentLoad(..), CanaryState(..))
-import Test.Spec (SpecT, after_, before_, describe, it, itOnly)
+import Test.Spec (SpecT, after_, before_, describe, it)
 
 -------------------------------------------------------------------------------
 -- Main
