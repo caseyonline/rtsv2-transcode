@@ -91,6 +91,7 @@ canaryWhenLiveTest3 =
     page <- T.newPage browser
     T.goto (HTTP.canaryIngestUrl E.p1n1 E.shortName1 E.highStreamName) page
     _ <- delay (Milliseconds 2000.00) >>= L.as' "wait for page to load"
+    T.bringToFront page >>= L.as' "Bring to front"
 
     T.click (T.Selector "#authenticate") page
     _ <- delay (Milliseconds 500.00) >>= L.as' "wait for authentication"

@@ -76,8 +76,20 @@ export default class Player extends EventEmitter implements IPlayer {
     this.session.requestMigrate(socketURL);
   }
 
-  setProfile(profileName: string) {
-    this.session.setQualityConstraint({ behavior: QualityConstraintBehavior.ForceQuality, variant: profileName });
+  setQuality(variant: string) {
+    this.session.setQuality(variant);
+  }
+
+  setQualityConstraintConfiguration(behavior: string, variant: string) {
+    switch (behavior) {
+      case "force":
+        this.session.setQualityConstraint({ behavior: QualityConstraintBehavior.ForceQuality, variant });
+        break;
+
+      case "max":
+        this.session.setQualityConstraint({ behavior: QualityConstraintBehavior.MaxQuality, variant });
+        break;
+    }
   }
 
   sendPrivateMessage(to: string[], msg: string) {
