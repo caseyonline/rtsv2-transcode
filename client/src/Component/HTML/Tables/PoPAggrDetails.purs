@@ -137,7 +137,7 @@ tableTRs state ingestAggr = do
   let profiles = (un SlotProfile <$> (unwrapNode ingestAggr).streamDetails.slot.profiles)
   HH.tbody_
     (flip mapWithIndex profiles
-      (\index profile@{ name, rtmpStreamName, bitrate } -> do
+      (\index profile@{ name, rtmpStreamName, videoBitrate } -> do
         let activeRes = isActiveProfile name ingestAggr
         HH.tr
           [ css_ if activeRes
@@ -145,7 +145,7 @@ tableTRs state ingestAggr = do
                   else "inactive"
           ]
           [ if activeRes
-              then HH.td          
+              then HH.td
                   [ css_ "checkbox-cell" ]
                   [ HH.label
                     [ css_ "b-checkbox checkbox"]
@@ -169,11 +169,11 @@ tableTRs state ingestAggr = do
             [ HH.text $ un ProfileName name ]
           , HH.td
             [ dataAttr "label" "Stream name" ]
-            [ HH.text $ un RtmpStreamName rtmpStreamName 
+            [ HH.text $ un RtmpStreamName rtmpStreamName
             ]
           , HH.td
             [ dataAttr "label" "Bitrate" ]
-            [ HH.text $ (show bitrate) <> " bps"
+            [ HH.text $ (show videoBitrate) <> " bps"
             ]
           , HH.td
             [ dataAttr "label" "Active" ]
@@ -187,8 +187,6 @@ tableTRs state ingestAggr = do
           ]
       )
     )
-    
-    
 
 
 tableNoAggr :: forall p i. Array (HH.HTML p i)
@@ -212,14 +210,15 @@ tableNoAggr =
 
 isActiveProfile :: ProfileName -> IngestAggregator Array -> Boolean
 isActiveProfile pName ingestAggr = do
-  let activeProfiles = unwrapNode <$> (unwrapNode ingestAggr).activeProfiles 
+  let activeProfiles = unwrapNode <$> (unwrapNode ingestAggr).activeProfiles
       results = (\p -> p.profileName == pName ) <$> activeProfiles
   elem true results
 
 getSlotProfile
   :: IngestAggregator Array
   -> ProfileName
-  -> Maybe { bitrate :: Int
+  -> Maybe { videoBitrate :: Int
+           , audioBitrate :: Int
            , name :: ProfileName
            , rtmpStreamName :: RtmpStreamName
            }
