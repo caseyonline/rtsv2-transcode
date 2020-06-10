@@ -1,0 +1,68 @@
+openapi: '3.0.3'
+info:
+  version: '1.0'
+  title: RTS v2 Documentation
+  description: |
+    OpenAPI (fka Swagger) specification for the Open Education API.
+
+    # Introduction
+
+    ```
+    {
+      "code": 404,
+      "title": "Resource not found"
+    }
+    ```
+  x-logo:
+    url: images/logo.png
+tags:
+  - name: service metadata
+    description: The service API provides additional metadata needed to make the OOAPI fit for this organization.
+  - name: Public
+    description: Description for the Public API.
+  - name: Support
+    description: Description for Support API.
+  - name: System
+    description: The courses API provides a self-contained and formally structured learning experience. Aimed at providing learning outcomes to students. Usually placed in the context of a program.
+
+x-tagGroups:
+  - name: Api
+    tags:
+      - Public
+      - Support
+      - System
+  - name: Models
+    tags:
+      - offerings
+      - associations
+      - buildings
+      - rooms
+paths:
+  /public/client/{slotId}/{slotRole}/player:
+    $ref: api/public/PublicClientPlayer.yaml
+  /public/client/{slotId}/{slotRole}/session:
+    $ref: api/public/PublicClientPlayerControl.yaml
+  /public/discovery/v1/{shortName}/{streamName}:
+    $ref: api/public/PublicStreamDiscovery.yaml
+  /public/ingest/{shortName}/{streamName}/ingest:
+    $ref: api/public/PublicClientWebRTCIngest.yaml
+  /public/ingest/{shortName}/{streamName}/session:
+    $ref: api/public/PublicClientWebRTCIngestControl.yaml
+
+
+  /support/canary/:
+    $ref: api/support/SupportCanary.yaml
+  /suport/healthCheck/:
+    $ref: api/support/SupportHealthCheck.yaml
+  /suport/runState/:
+    $ref: api/support/SupportRunState.yaml
+  /suport/state/:
+    $ref: api/support/SupportServerState.yaml
+  /suport/state/slot/{slotId}:
+    $ref: api/support/SupportSlotState.yaml
+  /suport/timedRoutes/:
+    $ref: api/support/SupportTimedRoutes.yaml
+  /suport/timedRoutes/{popName}:
+    $ref: api/support/SupportTimedRoutesForPoP.yaml
+  /suport/vm/v1/metrics/:
+    $ref: api/support/SupportVMMEtrics.yaml

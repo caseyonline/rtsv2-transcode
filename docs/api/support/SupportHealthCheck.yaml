@@ -1,0 +1,20 @@
+get:
+  summary: /support/healthCheck/
+  description: HealthCheck description.
+  tags:
+    - Support
+  responses:
+    '200':
+      description: OK
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: '../PublicSchema.yaml'
+    '404':
+      description: Not Found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../../schemas/Problem.yaml'

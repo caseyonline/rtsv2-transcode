@@ -1,0 +1,6 @@
+name: popName
+in: query
+description: popName description
+required: true
+schema:
+  type: string

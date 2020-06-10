@@ -1,0 +1,6 @@
+name: slotRole
+in: query
+description: SlotRole description
+required: true
+schema:
+  type: string

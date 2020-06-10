@@ -1,0 +1,6 @@
+name: shortName
+in: query
+description: shortName description
+required: true
+schema:
+  type: string
