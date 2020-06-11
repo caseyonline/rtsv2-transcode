@@ -30,6 +30,7 @@ import Data.Maybe (Maybe(..), fromMaybe, maybe')
 import Data.Newtype (class Newtype, unwrap, wrap)
 import Data.Traversable (traverse_)
 import Data.Tuple (Tuple(..))
+import Data.Tuple.Nested ((/\))
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, singleton)
@@ -37,6 +38,7 @@ import Erl.Data.List as List
 import Erl.Data.Map (Map, lookup, toUnfoldable, values)
 import Erl.Data.Map as Map
 import Erl.Data.Tuple (Tuple2, fst, snd, tuple2)
+import Erl.Data.Tuple as Tuple
 import Erl.Process (Process(..), (!))
 import Erl.Process.Raw (Pid)
 import Erl.Utils (Ref, makeRef, systemTimeMs)
@@ -59,6 +61,7 @@ import Rtsv2.Config as Config
 import Rtsv2.DataObject (ObjectBroadcastMessage(..))
 import Rtsv2.DataObject as DO
 import Rtsv2.DataObject as DataObject
+import Rtsv2.Env as Env
 import Rtsv2.Load as Load
 import Rtsv2.LoadTypes (LoadFixedCost(..), PredictedLoad(..))
 import Rtsv2.Names as Names
@@ -74,7 +77,7 @@ import Shared.Rtsv2.Stream (AggregatorKey(..), EgestKey(..), ProfileName, RelayK
 import Shared.Rtsv2.Types (EgestServer, FailureReason(..), OnBehalfOf(..), PoPName, RelayServer, Server(..), extractAddress)
 import WsGun as WsGun
 
-foreign import startEgestReceiverFFI :: EgestKey -> MediaGatewayFlag -> Effect Int
+foreign import startEgestReceiverFFI :: EgestKey -> MediaGatewayFlag -> Effect (Tuple2 Int Int)
 foreign import stopEgestFFI :: EgestKey -> Effect Unit
 foreign import getStatsFFI :: EgestKey -> Effect (WebRTCStreamServerStats EgestKey)
 foreign import setSlotConfigurationFFI :: EgestKey -> SlotConfiguration -> Effect Unit
@@ -118,6 +121,7 @@ type State
     , aggregatorExitLingerTime :: Milliseconds
     , stopRef :: Maybe Ref
     , receivePortNumber :: Int
+    , rtmpReceivePortNumber :: Int
     , lastEgestAuditTime :: Milliseconds
     , stateServerName :: StateServerName
     , relayWebSocket :: Maybe WebSocket
@@ -128,6 +132,8 @@ type State
     , forceDrain :: Boolean
     , aggregatorExitTimerRef :: Maybe Ref
     }
+
+
 
 emptySessionStats :: String -> EgestSessionStats
 emptySessionStats sessionId
@@ -313,9 +319,13 @@ init parentCallbacks payload@{slotId, slotRole, aggregatorPoP, slotCharacteristi
                                   }
 
   { mediaGateway } <- Config.featureFlags
-  receivePortNumber <- startEgestReceiverFFI egestKey mediaGateway
+  receivePortNumber /\ rtmpReceivePortNumber /\ _  <- Tuple.toNested2 <$> startEgestReceiverFFI egestKey mediaGateway
   void $ Bus.subscribe (serverName egestKey) IntraPoP.bus IntraPoPBus
-  logStart "Egest starting" {payload, receivePortNumber}
+  logStart "Egest starting" {payload, receivePortNumber, rtmpReceivePortNumber}
+
+  publicListenIp <- Env.publicListenIp
+
+  
 
   now <- systemTimeMs
   IntraPoP.announceLocalEgestIsAvailable egestKey
@@ -345,6 +355,7 @@ init parentCallbacks payload@{slotId, slotRole, aggregatorPoP, slotCharacteristi
             , aggregatorExitLingerTime : Milliseconds $ Long.fromInt aggregatorExitLingerTimeMs
             , stopRef : Nothing
             , receivePortNumber
+            , rtmpReceivePortNumber
             , lastEgestAuditTime: now
             , stateServerName
             , relayWebSocket: Nothing
@@ -635,13 +646,14 @@ initStreamRelay state@{relayCreationRetry, egestKey: egestKey@(EgestKey slotId s
 
   where
     tryConfigureAndRegister relayServer = do
-      wsUrl <- System.makeWsUrl relayServer $ System.RelayRegisteredEgestWs slotId slotRole (extractAddress thisServer) state.receivePortNumber
+      wsUrl <-  System.makeWsUrl relayServer $ System.RelayRegisteredEgestWs slotId slotRole (extractAddress thisServer) state.receivePortNumber state.rtmpReceivePortNumber
       maybeWebSocket <- hush <$> WsGun.openWebSocket (serverName egestKey) Gun wsUrl
       case maybeWebSocket of
         Just webSocket -> do
           CachedInstanceState.recordInstanceData stateServerName webSocket
-          pure state{ relayWebSocket = Just webSocket}
-        Nothing -> do
+          pure state{ relayWebSocket = Just webSocket
+                    }
+        _ -> do
           void $ Timer.sendAfter (serverName egestKey) (round $ Long.toNumber $ unwrap relayCreationRetry) InitStreamRelays
           pure state
 

@@ -24,6 +24,7 @@
 -endif.
 -include("../../../../src/rtsv2_slot_media_source_publish_processor.hrl").
 -include("../../../../src/rtsv2_rtp.hrl").
+-include("../../../../src/rtsv2_bus_messages.hrl").
 -include("../../../../src/gop_measurer.hrl").
 -include("../../../../src/rtsv2_hls_segment_workflow.hrl").
 
@@ -341,7 +342,7 @@ startWorkflow(SlotConfiguration = #{ slotId := SlotId
                                                                 module = send_to_bus_processor,
                                                                 config = #send_to_bus_processor_config{
                                                                             consumes = true,
-                                                                            bus_name = {webrtc_stream_output, IngestKey}
+                                                                            bus_name = ?WEBRTC_STREAM_OUTPUT_BUS(IngestKey)
                                                                            }
                                                                },
 

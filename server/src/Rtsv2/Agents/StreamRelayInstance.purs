@@ -80,7 +80,7 @@ import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Rtsv2.Router.Endpoint.System as Support
 import Shared.Rtsv2.Router.Endpoint.System as System
 import Shared.Rtsv2.Stream (AggregatorKey(..), ProfileName, RelayKey(..), SlotId(..), SlotRole, relayKeyToAggregatorKey)
-import Shared.Rtsv2.Types (DeliverTo, EgestServer, OnBehalfOf(..), PoPName, RelayServer, Server, ServerAddress(..), SourceRoute, extractAddress)
+import Shared.Rtsv2.Types (DeliverTo, DeliverTo2, EgestServer, OnBehalfOf(..), PoPName, RelayServer, Server, ServerAddress(..), SourceRoute, extractAddress)
 import Shared.UUID (UUID)
 import SpudGun (SpudResponse(..), StatusCode(..))
 import SpudGun as SpudGun
@@ -159,7 +159,7 @@ type DownstreamStreamRelayStateData =
 --       a registration
 --
 type EgestMap = Map ServerAddress { handler :: Process (WebSocketHandlerMessage DownstreamWsMessage)
-                                  , deliverTo :: DeliverTo EgestServer
+                                  , deliverTo :: DeliverTo2 EgestServer
                                   }
 type OriginRelayMap = Map ServerAddress { handler :: Process (WebSocketHandlerMessage DownstreamWsMessage)
                                         , deliverTo :: DeliverTo RelayServer
@@ -195,14 +195,14 @@ type DownstreamRelayWithSource =
 -- Erlang
 -- -----------------------------------------------------------------------------
 type OriginStreamRelayPlan =
-  { egests :: List (DeliverTo ServerAddress)
+  { egests :: List (DeliverTo2 ServerAddress)
   , downstreamRelays :: List (DeliverTo ServerAddress)
   , ingestAggregator :: Server
   }
 
 type DownstreamStreamRelayPlan =
   { upstreamRelaySources :: List UpstreamRelay
-  , egests :: List (DeliverTo ServerAddress)
+  , egests :: List (DeliverTo2 ServerAddress)
   , downstreamRelays :: List (DeliverTo ServerAddress)
   }
 
@@ -266,8 +266,8 @@ clearStopRef (StateOrigin commonState runState) =
 clearStopRef (StateDownstream commonState runState) =
   StateDownstream commonState{stopRef = Nothing} runState
 
-registerEgest :: SlotId -> SlotRole -> EgestServer -> Int -> Process (WebSocketHandlerMessage DownstreamWsMessage)  -> Effect (Maybe SlotConfiguration)
-registerEgest slotId slotRole egestServer egestPort handler@(Process handlerPid) =
+registerEgest :: SlotId -> SlotRole -> EgestServer -> Int -> Int -> Process (WebSocketHandlerMessage DownstreamWsMessage)  -> Effect (Maybe SlotConfiguration)
+registerEgest slotId slotRole egestServer egestPort secondaryEgestPort handler@(Process handlerPid) =
   Gen.doCall (serverName $ RelayKey slotId slotRole) doRegisterEgest
   where
     doRegisterEgest :: State -> Effect (CallResult (Maybe SlotConfiguration) State)
@@ -285,7 +285,7 @@ registerEgest slotId slotRole egestServer egestPort handler@(Process handlerPid)
       CallReply slotConfig <$> clearStopRef <$> applyNewEgests (updateMap egests) state
 
     egestAddress = (unwrap egestServer).address
-    deliverTo = { server: egestServer, port: egestPort }
+    deliverTo = { server: egestServer, port: egestPort, secondaryPort: secondaryEgestPort }
     updateMap egests = Map.insert egestAddress { handler, deliverTo } egests
     monitor = Gen.monitorPid (serverName $ RelayKey slotId slotRole) handlerPid (\_ -> EgestDown egestAddress)
     maybeSendDataObject Nothing = pure unit
@@ -1261,9 +1261,9 @@ extractServedByHeader (SpudResponse _statusCode headers _body) =
     # find (\tuple -> ErlTuple.fst tuple == "x-servedby")
     # map  (\tuple -> ServerAddress (ErlTuple.snd tuple))
 
-deliverToAddressFromDeliverToEgestServer :: DeliverTo EgestServer -> DeliverTo ServerAddress
-deliverToAddressFromDeliverToEgestServer { server, port } =
-  { server: extractAddress server, port }
+deliverToAddressFromDeliverToEgestServer :: DeliverTo2 EgestServer -> DeliverTo2 ServerAddress
+deliverToAddressFromDeliverToEgestServer { server, port, secondaryPort } =
+  { server: extractAddress server, port, secondaryPort }
 
 deliverToAddressFromDeliverToRelayServer :: DeliverTo RelayServer -> DeliverTo ServerAddress
 deliverToAddressFromDeliverToRelayServer { server, port } =

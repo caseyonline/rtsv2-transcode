@@ -6,8 +6,8 @@
 import Prelude
 
 import Data.Maybe (Maybe(..))
-import Data.Traversable (sequence)
 import Data.Newtype (unwrap)
+import Data.Traversable (sequence)
 import Effect (Effect)
 import Erl.Atom (atom)
 import Erl.Data.List (catMaybes, nil, (:))
@@ -18,6 +18,7 @@ import Pinto as Pinto
 import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStart, childType)
 import Pinto.Sup as Sup
 import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
+import Rtsv2.Agents.EgestRtmpServer as EgestRtmpServer
 import Rtsv2.Agents.EgestStats as EgestStats
 import Rtsv2.Config (MediaGatewayFlag(..))
 import Rtsv2.Config as Config
@@ -36,7 +37,7 @@ startLink _ = Sup.startLink serverName init
 
 init :: Effect Sup.SupervisorSpec
 init = do
-  agentSpecs <- sequence $ (instanceSup : mediaGateway : stats : nil)
+  agentSpecs <- sequence $ (instanceSup : mediaGateway : rtmpServer : stats : nil)
 
   pure $ Sup.buildSupervisor
     # Sup.supervisorStrategy Sup.OneForAll
@@ -47,6 +48,12 @@ init = do
                                 # childType Supervisor
                                 # childId "egestAgent"
                                 # childStart EgestInstanceSup.startLink unit
+
+    rtmpServer = pure $ Just $ buildChild
+                  # childType Worker
+                  # childId "egestRtmpServer"
+                  # childStart EgestRtmpServer.startLink unit
+                  # childRestart Transient
 
     stats = pure $ Just $ buildChild
             # childType Worker

@@ -27,6 +27,7 @@ module Rtsv2.Names
        , llnwApiServerName
        , nodeManagerServerName
        , popDefinitionName
+       , egestRtmpServerName
 
        , streamRelaySupName
        , streamRelayInstanceStateName
@@ -105,6 +106,9 @@ ingestStatsName = withSuffix "Stats" Ingest
 
 egestStatsName :: forall a b. ServerName a b
 egestStatsName = withSuffix "Stats" Egest
+
+egestRtmpServerName :: forall a b. ServerName a b
+egestRtmpServerName = withSuffix "RtmpServer" Egest
 
 ingestSupName :: SupervisorName
 ingestSupName = sup Ingest

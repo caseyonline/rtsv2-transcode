@@ -3,8 +3,14 @@
 -include_lib("id3as_common/include/common.hrl").
 -include_lib("id3as_media/include/id3as_workflow.hrl").
 -include_lib("id3as_rtc/include/rtp.hrl").
+-include_lib("id3as_media/include/transcode.hrl").
+-include_lib("id3as_media/include/send_to_bus_processor.hrl").
+-include_lib("id3as_media/include/stream_sync.hrl").
+
 -include("../../../../src/rtsv2_slot_media_source_publish_processor.hrl").
 -include("../../../../src/rtsv2_rtp.hrl").
+-include("../../../../src/rtsv2_bus_messages.hrl").
+
 
 
 %% foreign exports
@@ -41,7 +47,9 @@ startEgestReceiverFFI(EgestKey, UseMediaGateway) ->
 
       {ok, PortNumber} = rtsv2_webrtc_egest_stream_handler:port_number(EgestKey),
 
-      PortNumber
+      RtpPortNumber = start_rtmp_bus_workflow(EgestKey),
+
+      {PortNumber, RtpPortNumber}
   end.
 
 stopEgestFFI(EgestKey) ->
@@ -144,3 +152,80 @@ rtcp_reception_stats_to_purs(_, #{ lost_fraction := LostFraction
    , sequenceLatest => SequenceLatest
    , interarrivalJitter => InterarrivalJitter
    }.
+
+
+start_rtmp_bus_workflow(EgestKey) ->
+  ?INFO("Starting rtp from relay on bus ~p", [{egest_rtmp_bus, EgestKey}]),
+  AudioConfig = #audio_transcode_config{
+                  input = #frame_spec{
+                            profile = #audio_profile{}
+                            },
+                  outputs = [
+                            #named_output{
+                                profile_name = aac,
+                                frame_spec = #frame_spec{
+                                                profile = #audio_profile{
+                                                            codec = aac,
+                                                            sample_rate = 48000,
+                                                            sample_format = s16
+                                                            }
+                                              }
+                              }
+                            ]
+                },
+  Workflow = #workflow{
+                name = rtp_to_egest,
+                generators = [
+                              #generator{name = source
+                                        ,display_name = <<"Receive from Stream Relay">>
+                                        ,module = rtsv2_rtp_receiver_frame_generator
+                                        }
+                             ],
+                processors = [
+                              % #processor{name = transcode_audio,
+                              %            subscribes_to = {source, ?audio_frames},
+                              %            module = audio_transcode,
+                              %            config = AudioConfig
+                              %         },
+                              % #processor{name = set_audio_stream_id,
+                              %            subscribes_to = ?previous,
+                              %            module = set_stream_id,
+                              %            config = 2
+                              %         },
+                              
+                              % #processor{name = stream_sync,
+                              %            subscribes_to = [{source, ?video_frames}, ?previous],
+                              %            module = stream_sync,
+                              %            config = #stream_sync_config{ num_streams = 2,
+                              %               stream_key = fun (#frame{type = Type, stream_metadata = #stream_metadata{stream_id = StreamId}}) -> {Type, StreamId} end 
+                              %             }
+                                         
+                              %           },
+                              #processor{name = flv,
+                                         display_name = <<"FLV Frame Generator">>,
+                                        %  subscribes_to = ?previous,
+                                         subscribes_to = {source, ?video_frames},
+                                         module = flv_frame_generator
+                                        },
+
+                              #processor{name = send_to_bus,
+                                        display_name = <<"Send to RTMP Bus">>,
+                                        subscribes_to = ?previous,
+                                        module = send_to_bus_processor,
+                                        config = #send_to_bus_processor_config{consumes = true,
+                                                                               bus_name = ?RTMP_EGEST_BUS(EgestKey)}
+                                        },
+
+                                                                    
+                              #processor{name = sink_other,
+                                         subscribes_to = source,
+                                         module = dev_null_processor
+                                        }
+                ]
+
+               },
+  {ok, WorkflowPid} = id3as_workflow:start_link(Workflow),
+  {ok, WorkflowHandle} = id3as_workflow:workflow_handle(WorkflowPid),
+
+  {ok, Port} = id3as_workflow:ioctl(source, get_port_number, WorkflowHandle),
+  Port.
