@@ -1,0 +1,16 @@
+{
+  "name": "documentation",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "makedocs": "node ./node_modules/redoc-cli/index.js serve spec.yaml",
+    "watchdocs": "node ./node_modules/redoc-cli/index.js serve spec.yaml --watch",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "redoc-cli": "^0.9.8"
+  }
+}

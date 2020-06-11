@@ -1,0 +1,23 @@
+get:
+  summary: /support/canary/client/{slotId}/{slotRole}/
+  description: Support canary client player assets description
+  tags:
+    - Support
+  parameters:
+    - $ref: '../parameters/slotId.yaml'
+    - $ref: '../parameters/slotRole.yaml'
+  responses:
+    '200':
+      description: OK
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: '../PublicSchema.yaml'
+    '404':
+      description: Not Found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/Problem.yaml'

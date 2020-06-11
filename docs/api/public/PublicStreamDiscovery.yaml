@@ -1,0 +1,23 @@
+get:
+  summary: /public/discovery/v1/{shortName}/{streamName}
+  description: Stream discovery description
+  tags:
+    - Public
+  parameters:
+    - $ref: '../parameters/shortName.yaml'
+    - $ref: '../parameters/streamName.yaml'
+  responses:
+    '200':
+      description: OK
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: '../PublicSchema.yaml'
+    '404':
+      description: Not Found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/Problem.yaml'

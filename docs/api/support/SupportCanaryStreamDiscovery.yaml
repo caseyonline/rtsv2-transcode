@@ -1,0 +1,23 @@
+get:
+  summary: /support/canary/discovery/v1/{shortName}/{streamName}
+  description: Egest Canary stream discovery description
+  tags:
+    - Support
+  parameters:
+    - $ref: '../parameters/shortName.yaml'
+    - $ref: '../parameters/streamName.yaml'
+  responses:
+    '200':
+      description: OK
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: '../PublicSchema.yaml'
+    '404':
+      description: Not Found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/Problem.yaml'

@@ -1,0 +1,23 @@
+get:
+  summary: /public/ingest/{shortName}/{streamName}/session
+  description: Public client WebRTC Ingest Control description.
+  tags:
+    - Public
+  parameters:
+    - $ref: '../parameters/shortName.yaml'
+    - $ref: '../parameters/streamName.yaml'
+  responses:
+    '200':
+      description: OK
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: '../PublicSchema.yaml'
+    '404':
+      description: Not Found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/Problem.yaml'
