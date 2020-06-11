@@ -12,7 +12,7 @@ import Helpers.HTTP as HTTP
 import Helpers.Log as L
 import Helpers.Types (Node)
 import Shared.Rtsv2.Stream (SlotRole(..))
-import Test.Spec (SpecT, after, before, describe, it)
+import Test.Spec (SpecT, after, before, describe, it, itOnly)
 import Test.Unit.Assert as Assert
 import Toppokki as T
 
@@ -36,6 +36,7 @@ browserIngestTest =
     backupStream -- 5.2
     ingestStream -- 5.3
     webRtcIngest -- 5.4
+    abrIngest -- 5.5
 
 -------------------------------------------------------------------------------
 -- Tests
@@ -65,7 +66,6 @@ primaryStream =
           Assert.assert "frames aren't increasing" (frameDiff > 65) >>= L.as' ("frames increased by: " <> show frameDiff)
           Assert.assert "packets aren't increasing" ((F.stringToInt packets1) < (F.stringToInt packets2)) >>= L.as' ("packets are increasing: " <> packets2 <> " > " <> packets1)
           T.close browser
-
 
 backupStream :: forall m. Monad m => SpecT Aff Unit m Unit
 backupStream =
@@ -166,4 +166,30 @@ webRtcIngest =
           HTTP.getAggregatorStats E.p1n1 E.slot1 >>= A.assertStatusCode 200
                                                  >>= A.assertAggregator []  >>= L.as "aggregator has no profiles"
 
+          T.close browser
+
+abrIngest :: forall m. Monad m => SpecT Aff Unit m Unit
+abrIngest =
+  describe "5.5 ABR Stream tests" do
+    before (F.startSession [E.p1n1] *> F.launch [E.p1n1] *> F.startSlotLow500 (C.toAddrFromNode E.p1n1) *> T.launch options) do
+      after (\browser -> T.close browser *> F.stopSession *> F.stopSlot) do
+        itOnly "5.5.1 client receives stream even if top ABR not present" $ \browser -> do
+          delay (Milliseconds 2000.00) >>= L.as' "wait for ingest to start fully"
+          page <- T.newPage browser
+
+          T.goto (HTTP.playerUrl E.p1n1 E.slot1 Primary) page
+          delay (Milliseconds 4000.00) >>= L.as' "wait for video to start"
+
+          frames1 <- F.getInnerText "#frames" page
+          packets1 <- F.getInnerText "#packets" page
+
+          delay (Milliseconds 3000.00) >>= L.as' "let video play for 3 seconds"
+
+          frames2 <- F.getInnerText "#frames" page
+          packets2 <- F.getInnerText "#packets" page
+
+          let frameDiff = F.stringToInt frames2 - F.stringToInt frames1
+
+          Assert.assert "frames aren't increasing" (frameDiff > 65) >>= L.as' ("frames increased by: " <> show frameDiff)
+          Assert.assert "packets aren't increasing" ((F.stringToInt packets1) < (F.stringToInt packets2)) >>= L.as' ("packets are increasing: " <> packets2 <> " > " <> packets1)
           T.close browser

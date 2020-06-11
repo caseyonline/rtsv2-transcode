@@ -258,7 +258,7 @@ forceDrainTest2 =
         E.waitForIntraPoPDisseminate                                           >>= as' "allow intraPoP source avaialable to disseminate"
         page <- T.newPage browser
         T.goto (HTTP.playerUrl E.p1n2 E.slot1 Primary) page
-        delay (Milliseconds 3000.00)                                           >>= as' "wait for video to start"
+        delay (Milliseconds 3000.00)                                           >>= as' "wait for video to start from p1n2"
         HTTP.healthCheck E.p1n2 >>= A.assertStatusCode 200
                                 >>= A.assertBodyFun ((==) 3 <<< healthNodeToAgentCount)
                                                                                >>= as "three agents running on p1n2"
