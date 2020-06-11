@@ -1,8 +1,11 @@
 get:
-  summary: /support/state/
-  description: Server State description.
+  summary: /support/ingestAggregator/{slotId}/{slotRole}/player
+  description: Ingest aggregator player description
   tags:
     - Support
+  parameters:
+    - $ref: '../parameters/slotId.yaml'
+    - $ref: '../parameters/slotRole.yaml'
   responses:
     '200':
       description: OK

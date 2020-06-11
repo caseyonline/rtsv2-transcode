@@ -1,6 +1,6 @@
 get:
-  summary: /support/state/
-  description: Server State description.
+  summary: /support/popDefinition/
+  description: PoP definition description
   tags:
     - Support
   responses:

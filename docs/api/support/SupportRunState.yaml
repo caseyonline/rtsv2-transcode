@@ -17,4 +17,4 @@ get:
       content:
         application/problem+json:
           schema:
-            $ref: '../../schemas/Problem.yaml'
+            $ref: '../schemas/Problem.yaml'

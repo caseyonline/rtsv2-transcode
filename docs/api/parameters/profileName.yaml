@@ -1,0 +1,6 @@
+name: profileName
+in: query
+description: profileName description
+required: true
+schema:
+  type: string

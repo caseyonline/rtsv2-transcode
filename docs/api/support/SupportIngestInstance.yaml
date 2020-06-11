@@ -1,8 +1,12 @@
 get:
-  summary: /support/state/
-  description: Server State description.
+  summary: /support/ingest/{slotId}/{slotRole}/{profileName}
+  description: Ingest metrics description
   tags:
     - Support
+  parameters:
+    - $ref: '../parameters/slotId.yaml'
+    - $ref: '../parameters/slotRole.yaml'
+    - $ref: '../parameters/profileName.yaml'
   responses:
     '200':
       description: OK

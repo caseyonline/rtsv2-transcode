@@ -1,8 +1,10 @@
 get:
-  summary: /support/state/
-  description: Server State description.
+  summary: /support/jsonld/{contexType}
+  description: JsonLd contex description
   tags:
     - Support
+  parameters:
+    - $ref: '../parameters/contextType.yaml'
   responses:
     '200':
       description: OK

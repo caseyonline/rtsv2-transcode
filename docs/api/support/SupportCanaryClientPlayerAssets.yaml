@@ -1,8 +1,11 @@
 get:
-  summary: /support/state/
-  description: Server State description.
+  summary: /support/canary/client/{slotId}/{slotRole}/
+  description: Support canary client player assets description
   tags:
     - Support
+  parameters:
+    - $ref: '../parameters/slotId.yaml'
+    - $ref: '../parameters/slotRole.yaml'
   responses:
     '200':
       description: OK

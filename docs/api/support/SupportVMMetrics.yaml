@@ -4,8 +4,8 @@ get:
   tags:
     - Support
   parameters:
-    - $ref: '../../parameters/shortName.yaml'
-    - $ref: '../../parameters/streamName.yaml'
+    - $ref: '../parameters/shortName.yaml'
+    - $ref: '../parameters/streamName.yaml'
   responses:
     '200':
       description: OK
@@ -20,4 +20,4 @@ get:
       content:
         application/problem+json:
           schema:
-            $ref: '../../schemas/Problem.yaml'
+            $ref: '../schemas/Problem.yaml'

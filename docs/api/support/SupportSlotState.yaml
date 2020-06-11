@@ -4,7 +4,7 @@ get:
   tags:
     - Support
   parameters:
-    - $ref: '../../parameters/slotId.yaml'
+    - $ref: '../parameters/slotId.yaml'
   responses:
     '200':
       description: OK
@@ -19,4 +19,4 @@ get:
       content:
         application/problem+json:
           schema:
-            $ref: '../../schemas/Problem.yaml'
+            $ref: '../schemas/Problem.yaml'

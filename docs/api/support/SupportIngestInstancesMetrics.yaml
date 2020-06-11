@@ -1,6 +1,6 @@
 get:
-  summary: /support/state/
-  description: Server State description.
+  summary: /support/ingest/metrics/
+  description: Ingest metrics description
   tags:
     - Support
   responses:

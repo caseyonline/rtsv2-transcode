@@ -1,0 +1,6 @@
+name: contextType
+in: query
+description: contectType description
+required: true
+schema:
+  type: string

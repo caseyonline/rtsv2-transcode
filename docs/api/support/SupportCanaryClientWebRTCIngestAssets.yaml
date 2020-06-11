@@ -1,8 +1,11 @@
 get:
-  summary: /support/state/
-  description: Server State description.
+  summary: /support/canary/ingest/{slotId}/{slotRole}
+  description: Canary cloent WebRTC ingest description
   tags:
     - Support
+  parameters:
+    - $ref: '../parameters/slotId.yaml'
+    - $ref: '../parameters/slotRole.yaml'
   responses:
     '200':
       description: OK

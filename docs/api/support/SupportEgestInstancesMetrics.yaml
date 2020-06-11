@@ -1,6 +1,6 @@
 get:
-  summary: /support/state/
-  description: Server State description.
+  summary: /suport/egest/metrics
+  description: Egest metrics description
   tags:
     - Support
   responses:
