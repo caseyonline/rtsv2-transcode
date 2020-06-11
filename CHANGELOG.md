@@ -1,3 +1,11 @@
+# RTS-V2 release xxx
+
+**What's new**
+
+* Slot Lookup API is now cached and responses to cache misses are sent over IntraPoP serf to pre-load the caches on peers.  Basic cache statistics returned under the healthCheck URL.
+
+
+
 # RTS-V2 release 105
 
 **What's new**

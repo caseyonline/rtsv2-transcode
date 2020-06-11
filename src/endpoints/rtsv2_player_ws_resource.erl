@@ -233,7 +233,7 @@ valid_host(ValidationUrl, UrlWhitelist) ->
 
 init_prime(Req, StreamDesc, Validation) ->
 
-  %% Needs to come from config!
+  %% TODO Needs to come from config!
   PublicIP = this_server_ip(Req),
   CookieDomainName = PublicIP,
   ServerId = 1,
