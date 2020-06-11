@@ -45,7 +45,6 @@
         , path :: binary_string()
         , stream_desc :: stream_desc_ingest() | stream_desc_egest()
         , server_id :: term()
-
         , ice_servers :: list(map())
         }).
 
@@ -502,7 +501,12 @@ websocket_info({egestDataObjectBroadcast, Object}, State) ->
   , State
   };
 
-websocket_info({egestCurrentActiveProfiles, ActiveProfiles}, State) ->
+websocket_info({egestCurrentActiveProfiles, ActiveProfiles}, State = #?state_running{ server_id = ServerId
+                                                                                    , webrtc_session_id = WebRTCSessionId
+                                                                                    }) ->
+
+  ok = rtsv2_webrtc_session_handler:set_active_profiles(ServerId, WebRTCSessionId, ActiveProfiles),
+
   { [ json_frame( <<"active-profiles">>,
                   #{ <<"activeProfiles">> => ActiveProfiles
                    }
@@ -819,22 +823,27 @@ transition_to_running(#{ profiles := [ #{ profileName := ActiveProfileName } | _
                                           }
                      ) ->
 
-  StartOptions = construct_start_options(TraceId, WebRTCSessionId, PublicIPString, SlotConfiguration, StreamDesc),
+  ActiveProfileNames =
+    case StreamDesc of
+      #stream_desc_egest{ egest_key = EgestKey
+                        , add_client = AddClient
+                        , slot_id = SlotId
+                        , slot_role = SlotRole
+                        } ->
+
+        ?I_SUBSCRIBE_BUS_MSGS({egestBus, {egestKey, SlotId, SlotRole}}),
+        ?I_SUBSCRIBE_BUS_MSGS({media_gateway_event, trace_id_to_media_gateway_id(TraceId)}),
+        {right, TheActiveProfiles} = (AddClient(self(), EgestKey, WebRTCSessionId))(),
+        TheActiveProfiles;
+      _ ->
+        []
+    end,
+
+  StartOptions = construct_start_options(TraceId, WebRTCSessionId, PublicIPString, SlotConfiguration, StreamDesc, ActiveProfileNames),
   webrtc_stream_server:ensure_session(ServerId, WebRTCSessionId, StartOptions),
   webrtc_stream_server:subscribe_for_msgs(WebRTCSessionId, #subscription_options{}),
-  case StreamDesc of
-    #stream_desc_egest{ egest_key = EgestKey
-                      , add_client = AddClient
-                      , slot_id = SlotId
-                      , slot_role = SlotRole
-                      } ->
 
-      ?I_SUBSCRIBE_BUS_MSGS({egestBus, {egestKey, SlotId, SlotRole}}),
-      ?I_SUBSCRIBE_BUS_MSGS({media_gateway_event, trace_id_to_media_gateway_id(TraceId)}),
-      {right, unit} = (AddClient(self(), EgestKey, WebRTCSessionId))();
-    _ ->
-      ok
-  end,
+
 
   NewState =
     #?state_running{ trace_id = TraceId
@@ -1185,7 +1194,8 @@ construct_start_options(TraceId,
                         WebRTCSessionId,
                         IP,
                         #{ profiles := [ SlotProfile ] = SlotProfiles, audioOnly := AudioOnly  },
-                        #stream_desc_ingest{ slot_id = SlotId, slot_role = SlotRole, use_media_gateway = UseMediaGateway }
+                        #stream_desc_ingest{ slot_id = SlotId, slot_role = SlotRole, use_media_gateway = UseMediaGateway },
+                        ActiveProfileNames
                        ) ->
 
   #{ firstAudioSSRC := AudioSSRC
@@ -1202,6 +1212,7 @@ construct_start_options(TraceId,
                                            , slot_id = SlotId
                                            , slot_role = SlotRole
                                            , profiles = SlotProfiles
+                                           , active_profile_names = ActiveProfileNames
                                            , audio_only = AudioOnly
                                            , web_socket = self()
                                            , audio_ssrc = AudioSSRC
@@ -1240,7 +1251,8 @@ construct_start_options(TraceId,
                                           , audio_ssrc = AudioSSRC
                                           , video_ssrc = VideoSSRC
                                           , use_media_gateway = UseMediaGateway
-                                          }
+                                          },
+                        ActiveProfileNames
                        ) ->
 
   #{ session_id => WebRTCSessionId
@@ -1253,6 +1265,7 @@ construct_start_options(TraceId,
                                            , slot_id = SlotId
                                            , slot_role = SlotRole
                                            , profiles = SlotProfiles
+                                           , active_profile_names = ActiveProfileNames
                                            , audio_only = AudioOnly
                                            , web_socket = self()
                                            , audio_ssrc = AudioSSRC

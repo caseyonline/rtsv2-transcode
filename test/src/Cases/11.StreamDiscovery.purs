@@ -12,7 +12,7 @@ import Helpers.Log as L
 import Helpers.Types (Node)
 import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Rtsv2.Types (CanaryState(..))
-import Test.Spec (SpecT, after_, before_, describe, describeOnly, it, itOnly)
+import Test.Spec (SpecT, after_, before_, describe, it)
 import Toppokki as T
 
 -------------------------------------------------------------------------------
@@ -20,7 +20,7 @@ import Toppokki as T
 -------------------------------------------------------------------------------
 streamDiscoveryTests :: forall m. Monad m => SpecT Aff Unit m Unit
 streamDiscoveryTests = do
-  describeOnly "11 Stream discovery tests" do
+  describe "11 Stream discovery tests" do
     before_ (F.startSession nodes *> F.launch nodes) do
       after_ (F.stopSession *> F.stopSlot) do
         streamDiscoveryUrls
@@ -68,7 +68,7 @@ streamDiscoveryUrls =
 
 streamDiscoveryCache :: forall m. Monad m => SpecT Aff Unit m Unit
 streamDiscoveryCache =
-  itOnly "11.2 Stream Discovery caches slot lookups " $ do
+  it "11.2 Stream Discovery caches slot lookups " $ do
 
     HTTP.healthCheck E.p1n1 >>= A.assertStatusCode 200
       >>= A.assertBodyFun ((==) 0 <<< healthNodeToCacheTotal)

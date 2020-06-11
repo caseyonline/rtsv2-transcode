@@ -15,7 +15,6 @@ import Erl.Cowboy.Routes (InitialState(..), Path(..), matchSpec)
 import Erl.Data.List (List, nil, singleton, (:))
 import Erl.Data.Tuple (Tuple2, Tuple4, tuple2, tuple3, tuple4, uncurry4)
 import Erl.ModuleName (NativeModuleName(..))
-import Erl.Process.Raw (Pid)
 import Foreign (unsafeToForeign)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
@@ -45,7 +44,7 @@ import Rtsv2.Handler.StreamDiscovery as StreamDiscoveryHandler
 import Rtsv2.Handler.TransPoP as TransPoPHandler
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
-import Rtsv2.Types (LocationResp, RegistrationResp)
+import Rtsv2.Types (LocationResp)
 import Serf (Ip(..))
 import Shared.Rtsv2.LlnwApiTypes (StreamDetails)
 import Shared.Rtsv2.Router.Endpoint.Public as Public
@@ -271,7 +270,7 @@ init args = do
                       , canary
                       , make_egest_key: makeEgestKey
                       , start_stream: startStream loadConfig canary
-                      , add_client: mkFn3 addClient
+                      , add_client: mkFn3 EgestInstance.addClient
                       , get_slot_configuration: EgestInstance.getSlotConfiguration
                       , data_object_send_message: EgestInstance.dataObjectSendMessage
                       , data_object_update: EgestInstance.dataObjectUpdate
@@ -323,10 +322,6 @@ init args = do
     startStream :: Config.LoadConfig -> CanaryState -> EgestKey -> Effect LocationResp
     startStream loadConfig canary (EgestKey slotId slotRole) =
         EgestInstanceSup.findEgest loadConfig canary slotId slotRole
-
-    addClient :: Pid -> EgestKey -> String -> Effect RegistrationResp
-    addClient pid egestKey sessionId =
-      EgestInstance.addClient pid egestKey sessionId
 
     cowboyRoute path moduleName initialState =
       Path (tuple3
