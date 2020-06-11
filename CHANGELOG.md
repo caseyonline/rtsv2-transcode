@@ -22,7 +22,7 @@
 
     Suspect this needs further discussion to finalise how live is going to be setup.
 
-    
+
 
 * Initial support for Alerts returned in the healthCheck URL.  For example:
 
@@ -69,7 +69,7 @@
     ],
   ```
 
-  
+
 
   This show a list of alerts, with the latest first.  Each alert has the following fields:
 
@@ -96,9 +96,9 @@
 
   The initialReport / lastReport / repeatCount fields are to ensure that, for example, a client continually connecting and sending invalid video doesn't cause an explosion of alerts.  reportCounts are based on contextual data, so two different clients attempting to connect with invalid video would show up as two different alerts.
 
-  
 
-* The healthCheck URLnow supports a 'from' parameter on the query string, which will filter out any alerts that have a 'lastReport' time earlier than 'from'
+
+* The healthCheck URLnow supports a 'alertsFrom' parameter on the query string, which will filter out any alerts that have a 'lastReport' time earlier than 'from'
 
 * Updated our side of provisioning API to support new audioBitrate / videoBitrate fields in Profile
 
@@ -108,11 +108,11 @@
 
   * The init message sent down the websocket to the player has an additional field that indicates if the stream is audio-only;  the client needs to create an appropriate SDP offer to only receive audio - the reference egest player shows this in Session.ts:412
 
-    
+
 
 * RTMP connections now timeout more reliably if the client doesn't send data - previous version required media flowing before the inactivity timer was started, it now starts as soon as the connection is established
 
-  
+
 
 * Minor HLS tweaks to support 'video-only' streams, although note that these are not (yet!) officially supported
 

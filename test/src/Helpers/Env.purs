@@ -141,7 +141,7 @@ waitForAsyncRelayStop :: Aff Unit
 waitForAsyncRelayStop = delayMs  100.0
 
 waitForIntraPoPDisseminate :: Aff Unit
-waitForIntraPoPDisseminate = delayMs  700.0
+waitForIntraPoPDisseminate = delayMs 700.0
 
 waitForNodeStartDisseminate :: Aff Unit
 waitForNodeStartDisseminate = delayMs 1000.0

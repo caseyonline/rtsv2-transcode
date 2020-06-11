@@ -4,7 +4,6 @@ import Prelude
 
 import Data.Either (Either(..))
 import Data.Newtype (unwrap, wrap)
-import Debug.Trace (spy)
 import Effect.Aff (Aff, attempt)
 import Effect.Unsafe (unsafePerformEffect)
 import Helpers.CreateString as C

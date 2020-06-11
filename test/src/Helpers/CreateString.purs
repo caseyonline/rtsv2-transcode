@@ -97,7 +97,7 @@ makeUrlAndUnwrapSystem :: Node -> System.Endpoint -> String
 makeUrlAndUnwrapSystem node path = unwrapEffect $ System.makeUrl (mkServerAddress node) path
 
 makeUrlAndUnwrapPublic :: Node -> Public.Endpoint -> String
-makeUrlAndUnwrapPublic node path = spy "URL" $ unwrapEffect $ Public.makeUrl (mkServerAddress node) path
+makeUrlAndUnwrapPublic node path = unwrapEffect $ Public.makeUrl (mkServerAddress node) path
 
 toIfaceIndexString :: Node -> String
 toIfaceIndexString (Node popNum nodeNum) = show (popNum * 10) <> show nodeNum

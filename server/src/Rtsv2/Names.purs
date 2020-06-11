@@ -24,6 +24,7 @@ module Rtsv2.Names
        , intraPoPName
        , loadServerName
        , alertsServerName
+       , llnwApiServerName
        , nodeManagerServerName
        , popDefinitionName
 
@@ -115,6 +116,9 @@ loadServerName = Local (atom "Load")
 
 alertsServerName :: forall a b. ServerName a b
 alertsServerName = Local (atom "Alerts")
+
+llnwApiServerName :: forall a b. ServerName a b
+llnwApiServerName = Local (atom "LlnwApi")
 
 nodeManagerServerName :: forall a b. ServerName a b
 nodeManagerServerName = Local (atom "NodeManager")

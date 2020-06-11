@@ -210,6 +210,7 @@ type LlnwApiConfig
     , defaultSegmentDurationMs :: Int
     , defaultPlaylistDurationMs :: Int
     , validationUrlWhitelist :: List String
+    , slotLookupExpiryTimeMs :: Int
     }
 
 type LlnwApiConfigInternal
@@ -221,6 +222,7 @@ type LlnwApiConfigInternal
     , defaultSegmentDurationMs :: Int
     , defaultPlaylistDurationMs :: Int
     , validationUrlWhitelist :: List String
+    , slotLookupExpiryTimeMs :: Int
     }
 
 type HealthConfig
@@ -323,6 +325,7 @@ llnwApiConfig = do
     , defaultSegmentDurationMs
     , defaultPlaylistDurationMs
     , validationUrlWhitelist
+    , slotLookupExpiryTimeMs
     } = internal
 
     external = { streamAuthTypeUrl
@@ -337,6 +340,7 @@ llnwApiConfig = do
                , defaultSegmentDurationMs
                , defaultPlaylistDurationMs
                , validationUrlWhitelist
+               , slotLookupExpiryTimeMs
                }
   pure external
 

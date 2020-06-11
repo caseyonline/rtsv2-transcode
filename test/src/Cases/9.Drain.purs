@@ -24,7 +24,7 @@ import Toppokki as T
 -------------------------------------------------------------------------------
 drainTests :: forall m. Monad m => SpecT Aff Unit m Unit
 drainTests =
-  describeOnly "9 Drain Tests" do
+  describe "9 Drain Tests" do
     passiveDrainTests
     forceDrainTests
 
@@ -247,7 +247,7 @@ forceDrainTest2 :: forall m. Monad m => SpecT Aff Unit m Unit
 forceDrainTest2 =
     before (T.launch options) do
     after (\browser -> T.close browser *> F.stopSlot) do
-      itOnly "9.2.2 Force drain moves aggregator, relay and egest agents to other node" $ \browser -> do
+      it "9.2.2 Force drain moves aggregator, relay and egest agents to other node" $ \browser -> do
 
         traverse_ F.maxOut (F.allNodesBar E.p1n2 threeNodes)                   >>= as' "load up all servers bar one"
         F.startSlotHigh1000 (C.toAddrFromNode E.p1n1)                          >>= as' "start ingest on node 1"

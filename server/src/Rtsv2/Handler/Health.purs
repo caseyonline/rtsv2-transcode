@@ -17,6 +17,7 @@ import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.TransPoP as TransPoP
 import Rtsv2.Alerts as Alerts
 import Rtsv2.Handler.MimeType as MimeType
+import Rtsv2.LlnwApi as LlnwApi
 import Rtsv2.Load as Load
 import Rtsv2.NodeManager as NodeManager
 import Rtsv2.PoPDefinition as PoPDefinition
@@ -43,6 +44,7 @@ healthCheck =
       load <- Load.getLoad
       nodeManager <- NodeManager.getState
       alerts <- Alerts.currentAlerts $ wrap <$> (Long.fromString =<< alertsFrom)
+      slotLookupCacheUtilization <- LlnwApi.slotLookupCacheUtilization
       let
         health = { intraPoPHealth
                  , transPoPHealth
@@ -50,6 +52,7 @@ healthCheck =
                  , nodeManager
                  , currentTransPoP : extractAddress <$> currentTransPoP
                  , alerts
+                 , slotLookupCacheUtilization
                  }
       node <- JsonLd.healthNode health thisServer
 

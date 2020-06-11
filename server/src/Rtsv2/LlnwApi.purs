@@ -4,26 +4,43 @@ module Rtsv2.LlnwApi
        , streamAuth
        , streamPublish
        , slotLookup
+       , recordSlotLookup
+       , startLink
+       , slotLookupCacheUtilization
        )
        where
 
 import Prelude
 
-import Data.Either (Either)
+import Data.Either (Either(..), either)
+import Data.Long as Long
+import Data.Maybe (maybe)
 import Data.Newtype (unwrap, wrap)
 import Data.String (Pattern(..), Replacement(..), replace)
 import Effect (Effect)
-import Erl.Data.List ((:))
+import Ephemeral.Map (EMap)
+import Ephemeral.Map as EMap
+import Erl.Data.List (nil, (:))
 import Erl.Data.Tuple (tuple2)
-import Logger (spy)
+import Logger as Logger
+import Pinto (ServerName, StartLinkResult)
+import Pinto.Gen (CallResult(..), CastResult(..))
+import Pinto.Gen as Gen
+import Pinto.Timer as Timer
+import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Config (LlnwApiConfig)
-import Shared.Common (Url(..))
-import Shared.Rtsv2.LlnwApiTypes (AuthType, PublishCredentials, SlotLookupResult, StreamAuth, StreamConnection, StreamDetails, StreamPublish)
+import Rtsv2.Config as Config
+import Rtsv2.Names as Names
+import Shared.Common (Milliseconds, Url(..), CacheUtilization)
+import Shared.Rtsv2.LlnwApiTypes (AuthType, PublishCredentials, StreamAuth, StreamConnection, StreamDetails, StreamPublish, SlotLookupResult)
 import Shared.Rtsv2.Stream (RtmpShortName, RtmpStreamName)
 import Simple.JSON (class WriteForeign, writeJSON)
 import SpudGun (Headers, JsonResponseError, SpudResult, bodyToJSON)
 import SpudGun as SpudGun
 
+------------------------------------------------------------------------------
+-- API
+------------------------------------------------------------------------------
 streamAuthType :: LlnwApiConfig -> StreamConnection -> Effect (Either JsonResponseError AuthType)
 streamAuthType {streamAuthTypeUrl, headers} body =
   bodyToJSON <$> jsonPost (wrap streamAuthTypeUrl) headers body
@@ -37,14 +54,99 @@ streamPublish {streamPublishUrl, headers} body =
   bodyToJSON <$> jsonPost (wrap streamPublishUrl) headers body
 
 slotLookup :: LlnwApiConfig -> RtmpShortName -> RtmpStreamName -> Effect (Either JsonResponseError SlotLookupResult)
-slotLookup {slotLookupUrl, headers} accountName streamName = do
-  let
-    url = (replaceAccount >>> replaceStreamName >>> Url) slotLookupUrl
-  jsonGet url headers <#> bodyToJSON
+slotLookup {slotLookupUrl, headers} accountName streamName =
+  Gen.doCall serverName doSlotLookup
   where
+    key = (SlotKey accountName streamName)
+
+    doSlotLookup state@{slotLookupCache} = do
+      lookup <- EMap.lookupAndUpdateTime' key slotLookupCache
+      maybe (cacheMiss state) (cacheHit state) lookup
+
+    cacheHit state@{slotLookupCacheHits} {value: result, map: newCache} = do
+      pure $ CallReply (Right result) state{ slotLookupCache = newCache
+                                           , slotLookupCacheHits = slotLookupCacheHits + 1}
+
+    cacheMiss state = do
+      let
+        url = (replaceAccount >>> replaceStreamName >>> Url) slotLookupUrl
+      either (apiFail state) (apiSuccess state) =<< (bodyToJSON <$> jsonGet url headers)
+
+    apiFail state error = do
+      pure $ CallReply (Left error) state
+
+    apiSuccess state@{slotLookupCache, slotLookupCacheMisses} slotLookupResult = do
+      newCache <- EMap.insert' key slotLookupResult slotLookupCache
+      IntraPoP.announceEgestSlotLookup accountName streamName slotLookupResult
+      pure $ CallReply (Right slotLookupResult) state{ slotLookupCache = newCache
+                                                     , slotLookupCacheMisses = slotLookupCacheMisses + 1}
+
     replaceAccount = replace (Pattern "{account}") (Replacement $ unwrap accountName)
     replaceStreamName = replace (Pattern "{streamName}") (Replacement $ unwrap streamName)
 
+recordSlotLookup :: RtmpShortName -> RtmpStreamName -> SlotLookupResult -> Effect Unit
+recordSlotLookup accountName streamName slotLookupResult =
+  Gen.doCast serverName doRecordSlotLookup
+  where
+    key = (SlotKey accountName streamName)
+
+    doRecordSlotLookup state@{slotLookupCache} = do
+      newCache <- EMap.insert' key slotLookupResult slotLookupCache
+      pure $ CastNoReply state{ slotLookupCache = newCache }
+
+startLink :: Unit -> Effect StartLinkResult
+startLink args =
+  Gen.startLink serverName init handleInfo
+
+slotLookupCacheUtilization :: Effect CacheUtilization
+slotLookupCacheUtilization =
+  Gen.call serverName (\state@{ slotLookupCacheHits
+                              , slotLookupCacheMisses
+                              } -> CallReply { cacheHits: slotLookupCacheHits
+                                             , cacheMisses: slotLookupCacheMisses
+                                             } state)
+
+------------------------------------------------------------------------------
+-- gen_server callbacks
+------------------------------------------------------------------------------
+init :: Effect State
+init = do
+  config@{slotLookupExpiryTimeMs} <- Config.llnwApiConfig
+  void $ Timer.sendEvery serverName 1000 DoExpiry
+  pure { config
+       , slotLookupCache: EMap.empty
+       , slotLookupCacheHits: 0
+       , slotLookupCacheMisses: 0
+       , slotLookupExpiryTime: wrap $ Long.fromInt slotLookupExpiryTimeMs
+       }
+
+handleInfo :: Msg -> State -> Effect (CastResult State)
+handleInfo msg state =
+  case msg of
+    DoExpiry ->
+      CastNoReply <$> doExpiry state
+
+doExpiry :: State -> Effect State
+doExpiry state@{slotLookupCache, slotLookupExpiryTime} =
+  state{slotLookupCache = _} <$> EMap.garbageCollect' slotLookupExpiryTime slotLookupCache
+
+------------------------------------------------------------------------------
+-- Internals
+------------------------------------------------------------------------------
+data SlotKey = SlotKey RtmpShortName RtmpStreamName
+
+type State =
+  { config :: Config.LlnwApiConfig
+  , slotLookupCache :: EMap SlotKey SlotLookupResult
+  , slotLookupExpiryTime :: Milliseconds
+  , slotLookupCacheHits :: Int
+  , slotLookupCacheMisses :: Int
+  }
+
+data Msg = DoExpiry
+
+serverName :: ServerName State Msg
+serverName = Names.llnwApiServerName
 
 jsonPost :: forall body. WriteForeign body => Url -> Headers -> body -> Effect SpudResult
 jsonPost url headers body =

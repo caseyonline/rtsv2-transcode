@@ -11,6 +11,7 @@ import Pinto.Sup (SupervisorChildType(..), SupervisorSpec, SupervisorStrategy(..
 import Pinto.Sup as Sup
 import Rtsv2.Agents.AgentSup as AgentSup
 import Rtsv2.DataObject as DataObject
+import Rtsv2.LlnwApi as LlnwApi
 import Rtsv2.Types (AgentSupStartArgs)
 
 startLink :: AgentSupStartArgs -> Effect Pinto.StartLinkResult
@@ -23,6 +24,7 @@ init args = do
     # supervisorChildren
     ( agentSup
       : dataObject
+      : llnwApi
       : nil
     )
   where
@@ -31,6 +33,12 @@ init args = do
       # childType Worker
       # childId "dataObject"
       # childStart DataObject.startLink unit
+
+    llnwApi =
+      buildChild
+      # childType Worker
+      # childId "llnwApi"
+      # childStart LlnwApi.startLink unit
 
     agentSup =
       buildChild

@@ -1,6 +1,7 @@
 module Shared.Common
        (
-         Milliseconds(..)
+         CacheUtilization
+       , Milliseconds(..)
        , Url(..)
        , Alert(..)
        , AlertData(..)
@@ -41,6 +42,10 @@ newtype Milliseconds = Milliseconds Long
 newtype Url = Url String
 derive newtype instance showUrl :: Show Url
 
+type CacheUtilization =
+  { cacheHits :: Int
+  , cacheMisses :: Int
+  }
 
 type SlotContext =
   { slotId :: SlotId

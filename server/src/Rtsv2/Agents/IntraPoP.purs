@@ -10,7 +10,6 @@ module Rtsv2.Agents.IntraPoP
   , announceOtherPoPAggregatorIsAvailable
   , announceOtherPoPAggregatorStopped
 
-
     -- Data scoped to this PoP
   , announceLocalEgestIsAvailable
   , announceLocalEgestStopped
@@ -20,6 +19,7 @@ module Rtsv2.Agents.IntraPoP
   , announceLoad
   , announceAcceptingRequests
   , announceTransPoPLeader
+  , announceEgestSlotLookup
 
     -- State queries
 
@@ -99,7 +99,8 @@ import Shared.Rtsv2.Agent (SlotCharacteristics, emptySlotCharacteristics)
 import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.JsonLd (transPoPLeaderLocationNode)
 import Shared.Rtsv2.JsonLd as JsonLd
-import Shared.Rtsv2.Stream (AgentKey(..), AggregatorKey, EgestKey, RelayKey(..), agentKeyToAggregatorKey, agentKeyToEgestKey, agentKeyToRelayKey, aggregatorKeyToAgentKey, egestKeyToAgentKey)
+import Shared.Rtsv2.LlnwApiTypes (SlotLookupResult)
+import Shared.Rtsv2.Stream (AgentKey(..), AggregatorKey, EgestKey, RelayKey(..), RtmpShortName, RtmpStreamName, agentKeyToAggregatorKey, agentKeyToEgestKey, agentKeyToRelayKey, aggregatorKeyToAgentKey, egestKeyToAgentKey)
 import Shared.Rtsv2.Types (AcceptingRequests, CanaryState(..), CurrentLoad, Health, Server(..), ServerAddress(..), ServerLoad, extractAddress, extractPoP, maxLoad, minLoad, toServerLoad)
 import Shared.Utils (distinctRandomNumbers)
 
@@ -127,6 +128,7 @@ type ServerClocks =
   { loadClocks       :: ServerClock
   , popLeaderClocks  :: ServerClock
   , vmLivenessClocks :: ServerClock
+  , slotLookupClocks :: ServerClock
   }
 
 type AgentLocations = { relays                :: Locations Unit
@@ -148,6 +150,7 @@ type State
     , canary                :: CanaryState
     , healthConfig          :: Config.HealthConfig
     , transPoPApi           :: Config.TransPoPAgentApi
+    , llnwApiRecordSlotLookupApi  :: RtmpShortName -> RtmpStreamName -> SlotLookupResult -> Effect Unit
     , serfRpcAddress        :: IpAndPort
     , currentTransPoPLeader :: Maybe Server
 
@@ -177,6 +180,7 @@ data IntraMessage
   | IMServerLoad ServerAddress CurrentLoad AcceptingRequests
   | IMTransPoPLeader ServerAddress
   | IMVMLiveness ServerAddress Ref
+  | IMSlotLookup ServerAddress RtmpShortName RtmpStreamName SlotLookupResult
 
 data Msg serfPayload
   = JoinAll
@@ -422,6 +426,17 @@ announceLoad load =
       sendToIntraSerfNetwork state "loadUpdate" (IMServerLoad thisNodeAddress load acceptingRequests)
       pure $ Gen.CastNoReply state { members = newMembers , load = load}
 
+-- Called by LlnwApi to indicate a slot lookup
+announceEgestSlotLookup :: RtmpShortName -> RtmpStreamName -> SlotLookupResult -> Effect Unit
+announceEgestSlotLookup accountName streamName slotLookupResult =
+  Gen.doCast serverName
+    \state@{ thisServer, members, acceptingRequests } -> do
+      let
+        thisNodeAddress = extractAddress thisServer
+      sendToIntraSerfNetwork state "slotLookup" (IMSlotLookup thisNodeAddress accountName streamName slotLookupResult)
+      pure $ Gen.CastNoReply state
+
+
 -- Called by RunState to indicate runState on this node
 announceAcceptingRequests :: AcceptingRequests -> Effect Unit
 announceAcceptingRequests acceptingRequests =
@@ -478,6 +493,22 @@ type ServerMessageHandler =
   , clockLens     :: ServerClockLens
   , handleMessage :: Server -> State -> Effect State
   }
+
+slotLookupHandler :: RtmpShortName -> RtmpStreamName -> SlotLookupResult -> ServerMessageHandler
+slotLookupHandler rtmpShortName rtmpStreamName slotLookupResult =
+  { name : HandlerName "slotLookup"
+  , clockLens: clockLens
+  , handleMessage: handleMessage
+  }
+  where
+    clockLens = { get : _.slotLookupClocks
+                , set : \newClocks serverClocks -> serverClocks{slotLookupClocks = newClocks}
+                }
+
+    handleMessage :: Server -> State -> Effect State
+    handleMessage server state@{llnwApiRecordSlotLookupApi} = do
+      llnwApiRecordSlotLookupApi rtmpShortName rtmpStreamName slotLookupResult
+      pure state
 
 vmLivenessHandler :: Ref -> ServerMessageHandler
 vmLivenessHandler ref =
@@ -867,6 +898,7 @@ updateAgentLocation action lens agentKey server state@{agentLocations} =
 type StartArgs =
   { config :: Config.IntraPoPAgentConfig
   , transPoPApi :: Config.TransPoPAgentApi
+  , llnwApiRecordSlotLookupApi :: RtmpShortName -> RtmpStreamName -> SlotLookupResult -> Effect Unit
   , canaryState :: CanaryState
   , acceptingRequestsFun :: Effect AcceptingRequests
   }
@@ -877,6 +909,7 @@ startLink args = Gen.startLink serverName (init args) handleInfo
 init :: StartArgs -> Effect State
 init { config
      , transPoPApi
+     , llnwApiRecordSlotLookupApi
      , canaryState
      , acceptingRequestsFun
      } = do
@@ -943,6 +976,7 @@ init { config
     { config
     , healthConfig
     , transPoPApi
+    , llnwApiRecordSlotLookupApi
     , serfRpcAddress
     , currentTransPoPLeader: Nothing
 
@@ -968,6 +1002,7 @@ init { config
     , serverClocks: { loadClocks: Map.empty
                     , popLeaderClocks: Map.empty
                     , vmLivenessClocks : Map.empty
+                    , slotLookupClocks : Map.empty
                     }
     }
 
@@ -1052,6 +1087,8 @@ handleIntraPoPSerfMsg imsg state@{ transPoPApi: {handleRemoteLeaderAnnouncement}
         IMVMLiveness msgOrigin ref -> do
           handleServerMessage ltime msgOrigin state $ vmLivenessHandler ref
 
+        IMSlotLookup msgOrigin rtmpShortName rtmpStreamName slotLookupResult -> do
+          handleServerMessage ltime msgOrigin state $ slotLookupHandler rtmpShortName rtmpStreamName slotLookupResult
 
 handleServerMessage :: LamportClock -> ServerAddress -> State -> ServerMessageHandler -> Effect State
 handleServerMessage msgLTime msgServerAddress

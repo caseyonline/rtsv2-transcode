@@ -5,6 +5,8 @@ module Ephemeral
        , garbageCollect
        , new
        , new'
+       , updateTimestamp
+       , updateTimestamp'
        , expired
        ) where
 
@@ -32,12 +34,19 @@ new' a = do
   now <- Erl.systemTimeMs
   pure $ new now a
 
-
 extract :: forall a. EData a -> a
 extract (EData _ a) =  a
 
 createdAt :: forall a. EData a -> Milliseconds
 createdAt (EData ms _) =  ms
+
+updateTimestamp :: forall a. EData a -> Milliseconds -> EData a
+updateTimestamp (EData _ a) ms = EData ms a
+
+updateTimestamp' :: forall a. EData a -> Effect (EData a)
+updateTimestamp' edata = do
+  now <- Erl.systemTimeMs
+  pure $ updateTimestamp edata now
 
 garbageCollect :: forall a. Milliseconds -> EData a -> Maybe (EData a)
 garbageCollect threshold ed =
