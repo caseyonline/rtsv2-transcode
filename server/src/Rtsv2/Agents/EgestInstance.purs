@@ -63,7 +63,7 @@ import Rtsv2.Load as Load
 import Rtsv2.LoadTypes (LoadFixedCost(..), PredictedLoad(..))
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
-import Rtsv2.Types (LocalOrRemote(..), RegistrationResp, ResourceResp)
+import Rtsv2.Types (LocalOrRemote(..), ResourceResp)
 import Shared.Common (LoggingContext(..), Milliseconds(..))
 import Shared.Rtsv2.Agent (SlotCharacteristics)
 import Shared.Rtsv2.Agent as Agent
@@ -86,6 +86,8 @@ type CreateEgestPayload
     , aggregatorPoP :: PoPName
     , slotCharacteristics :: SlotCharacteristics
     }
+
+type RegistrationResp = (Either FailureReason (List ProfileName))
 
 type ParentCallbacks
   = { startLocalOrRemoteStreamRelay :: LoadConfig -> OnBehalfOf -> CreateRelayPayload -> Effect (ResourceResp Server)
@@ -186,7 +188,7 @@ pendingClient egestKey  =
         pure $ CallReply (Left NoResource) state
       Right _ -> do
         state2 <- maybeResetStopTimer state
-        pure $ CallReply (Right unit) state2
+        pure $ CallReply (Right state.activeProfiles) state2
 
   where
     ourServerName = serverName egestKey
@@ -211,10 +213,10 @@ addClient handlerPid egestKey sessionId =
         Gen.monitorPid ourServerName handlerPid (\_ -> (HandlerDown sessionId))
         maybeSend dataObject
         (Process handlerPid) ! (EgestCurrentActiveProfiles activeProfiles)
-        pure $ CallReply (Right unit) state{ clientCount = clientCount + 1
-                                           , clientStats = Map.insert sessionId (emptySessionStats sessionId) clientStats
-                                           , stopRef = Nothing
-                                           }
+        pure $ CallReply (Right state.activeProfiles) state{ clientCount = clientCount + 1
+                                                           , clientStats = Map.insert sessionId (emptySessionStats sessionId) clientStats
+                                                           , stopRef = Nothing
+                                                           }
   where
     ourServerName = serverName egestKey
     maybeSend Nothing = pure unit

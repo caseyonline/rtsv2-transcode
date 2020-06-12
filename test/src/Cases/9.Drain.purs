@@ -247,7 +247,7 @@ forceDrainTest2 :: forall m. Monad m => SpecT Aff Unit m Unit
 forceDrainTest2 =
     before (T.launch options) do
     after (\browser -> T.close browser *> F.stopSlot) do
-      it "9.2.2 Force drain moves aggregator, relay and egest agents to other node" $ \browser -> do
+      itOnly "9.2.2 Force drain moves aggregator, relay and egest agents to other node" $ \browser -> do
 
         traverse_ F.maxOut (F.allNodesBar E.p1n2 threeNodes)                   >>= as' "load up all servers bar one"
         F.startSlotHigh1000 (C.toAddrFromNode E.p1n1)                          >>= as' "start ingest on node 1"
@@ -258,7 +258,7 @@ forceDrainTest2 =
         E.waitForIntraPoPDisseminate                                           >>= as' "allow intraPoP source avaialable to disseminate"
         page <- T.newPage browser
         T.goto (HTTP.playerUrl E.p1n2 E.slot1 Primary) page
-        delay (Milliseconds 3000.00)                                           >>= as' "wait for video to start"
+        delay (Milliseconds 3000.00)                                           >>= as' "wait for video to start from p1n2"
         HTTP.healthCheck E.p1n2 >>= A.assertStatusCode 200
                                 >>= A.assertBodyFun ((==) 3 <<< healthNodeToAgentCount)
                                                                                >>= as "three agents running on p1n2"
@@ -274,7 +274,7 @@ forceDrainTest2 =
                                                                                >>= as "no agents running on p1n2"
         Assert.assert "packets received" (F.stringToInt packets1 > 0)          >>= as' ("initialialy received " <> packets1 <> " packets")
         Assert.assert "frames received" (F.stringToInt frames1 > 0)            >>= as' ("initialialy received " <> frames1 <> " frames")
-        delay (Milliseconds 7000.00)                                           >>= as' "let video play again"
+        delay (Milliseconds 3000.00)                                           >>= as' "let video play again"
         frames2 <- F.getInnerText "#frames" page
         packets2 <- F.getInnerText "#packets" page
         let frameDiff = F.stringToInt frames2 - F.stringToInt frames1

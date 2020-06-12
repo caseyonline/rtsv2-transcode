@@ -5,7 +5,6 @@ module Rtsv2.Types
        , LocalResource(..)
        , LocalResourceResp(..)
        , LocationResp
-       , RegistrationResp(..)
        , ResourceFailed(..)
        , ResourceResp(..)
        , fromLocalOrRemote
@@ -41,8 +40,6 @@ data ResourceFailed = NoCapacity
                     | InvalidCanaryState
                     | InvalidRunState
                     | AlreadyRunning
-
-type RegistrationResp = (Either FailureReason Unit)
 
 type AgentSupStartArgs =
   { canaryState :: CanaryState

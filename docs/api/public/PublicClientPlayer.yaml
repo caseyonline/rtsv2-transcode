@@ -1,0 +1,23 @@
+get:
+  summary: /public/client/{slotId}/{slotRole}/player
+  description: Public client player description
+  tags:
+    - Public
+  parameters:
+    - $ref: '../parameters/slotId.yaml'
+    - $ref: '../parameters/slotRole.yaml'
+  responses:
+    '200':
+      description: OK
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: '../PublicSchema.yaml'
+    '404':
+      description: Not Found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/Problem.yaml'

@@ -3,6 +3,7 @@
 -behaviour(webrtc_session_handler).
 
 -export([ set_active_profile/3
+        , set_active_profiles/3
         , set_quality_constraint/4
         ]).
 
@@ -67,6 +68,9 @@
 set_active_profile(ServerId, TraceId, ProfileName) ->
   webrtc_stream_server:cast_session(ServerId, TraceId, {set_active_profile, ProfileName}).
 
+set_active_profiles(ServerId, TraceId, ProfileNames) ->
+  webrtc_stream_server:cast_session(ServerId, TraceId, {set_active_profiles, ProfileNames}).
+
 set_quality_constraint(ServerId, TraceId, Behaviour, ProfileName) ->
   webrtc_stream_server:cast_session(ServerId, TraceId, {set_quality_constraint, Behaviour, ProfileName}).
 
@@ -76,6 +80,7 @@ init(#rtsv2_webrtc_session_handler_config{ session_id = SessionId
                                          , slot_id = SlotId
                                          , slot_role = SlotRole
                                          , profiles = [ #{ profileName := ActiveProfileName } | _ ] = Profiles
+                                         , active_profile_names = ActiveProfileNames
                                          , audio_only = AudioOnly
                                          , web_socket = WebSocket
                                          , audio_ssrc = AudioSSRC
@@ -95,14 +100,16 @@ init(#rtsv2_webrtc_session_handler_config{ session_id = SessionId
            end
          ]),
 
+  ProfilesWithActiveFlag = [maps:put(isActive, lists:member(Name, ActiveProfileNames), P) || P = #{profileName := Name} <- Profiles],
+
   State1 = #?state{ session_id = SessionId
                   , cname = CName
                   , media_gateway_client_id = MediaGatewayClientId
                   , slot_id = SlotId
                   , slot_role = SlotRole
 
-                  , profiles = Profiles
-                  , valid_profiles = Profiles
+                  , profiles = ProfilesWithActiveFlag
+                  , valid_profiles = ProfilesWithActiveFlag
                   , active_profile_name = ActiveProfileName
                   , quality_constraint_behaviour = max_quality
                   , quality_constraint_profile = ActiveProfileName
@@ -113,7 +120,7 @@ init(#rtsv2_webrtc_session_handler_config{ session_id = SessionId
                   , video_state = #egest_stream_state{ egest_ssrc = VideoSSRC }
                   , use_media_gateway = UseMediaGateway
                   },
-  State2 = set_active_profile_impl(ActiveProfileName, State1),
+  State2 = set_active_profile_impl(State1),
   State2.
 
 handle_media_frame(_, State = #?state{use_media_gateway = false}) ->
@@ -134,7 +141,7 @@ handle_media_frame(#rtp_engine_msg{message = #rtp_engine_remb{ feedback = #rtcp_
       {ok, State};
 
     ChosenProfileName ->
-      {ok, set_active_profile_impl(ChosenProfileName, State)}
+      {ok, set_active_profile_impl(State#?state{active_profile_name = ChosenProfileName})}
   end;
 
 handle_media_frame(#rtp_engine_msg{message = _RTPEngineState}, State) ->
@@ -220,41 +227,61 @@ handle_info(#rtp_sequence{ type = video, rtps = Packets } = Sequence,
 handle_info(#rtp_sequence{ type = video } = Sequence, State) ->
   handle_video_sequence(Sequence, State).
 
-handle_cast({set_active_profile, Profile}, State) ->
-  NewState = set_active_profile_impl(Profile, State),
-  {noreply, NewState};
+handle_cast({set_active_profile, ProfileName}, State) ->
+ case is_valid_profile_name(ProfileName, State) of
+   true ->
+     {noreply, set_active_profile_impl(State#?state{active_profile_name = ProfileName})};
+   false ->
+     {noreply, State}
+ end;
 
-handle_cast({set_quality_constraint, force_quality, Profile}, State) ->
-  NewState1 =
-    State#?state{ quality_constraint_behaviour = force_quality
-                , quality_constraint_profile = Profile
-                },
+handle_cast({set_active_profiles, ActiveProfileNames}, State = #?state{profiles = Profiles, valid_profiles = ValidProfiles}) ->
+  ProfilesWithActiveFlag = [maps:put(isActive, lists:member(Name, ActiveProfileNames), P) || P = #{profileName := Name} <- Profiles],
+  ValidProfilesWithActiveFlag = [maps:put(isActive, lists:member(Name, ActiveProfileNames), P) || P = #{profileName := Name} <- ValidProfiles],
+  {noreply, set_active_profile_impl(State#?state{profiles = ProfilesWithActiveFlag,
+                                                 valid_profiles = ValidProfilesWithActiveFlag})};
 
-  NewState2 = set_active_profile_impl(Profile, NewState1),
+handle_cast({set_quality_constraint, force_quality, ProfileName}, State) ->
+ case is_valid_profile_name(ProfileName, State) of
+   true ->
+     NewState1 =
+       State#?state{ quality_constraint_behaviour = force_quality
+                   , quality_constraint_profile = ProfileName
+                   , active_profile_name = ProfileName
+                   },
 
-  {noreply, NewState2};
+     NewState2 = set_active_profile_impl(NewState1),
+     {noreply, NewState2};
+   false ->
+  {noreply, State}
+  end;
+
 
 handle_cast({set_quality_constraint, max_quality, MaxProfile}, #?state{ active_profile_name = ActiveProfileName, profiles = Profiles } = State) ->
+ case is_valid_profile_name(MaxProfile, State) of
+   true ->
+     NewState1 =
+       State#?state{ quality_constraint_behaviour = max_quality
+                   , quality_constraint_profile = MaxProfile
+                   },
 
-  NewState1 =
-    State#?state{ quality_constraint_behaviour = max_quality
-                , quality_constraint_profile = MaxProfile
-                },
+     {ProfileAction, ValidProfiles} = decide_active_profile(ActiveProfileName, MaxProfile, Profiles),
 
-  {ProfileAction, ValidProfiles} = decide_active_profile(ActiveProfileName, MaxProfile, Profiles),
+     NewState2 = NewState1#?state{ valid_profiles = ValidProfiles },
 
-  NewState2 = NewState1#?state{ valid_profiles = ValidProfiles },
+     NewState3 =
+       case ProfileAction of
+         keep_active_profile ->
+           NewState2;
 
-  NewState3 =
-    case ProfileAction of
-      keep_active_profile ->
-        NewState2;
+         set_to_max_profile ->
+           set_active_profile_impl(NewState2#?state{active_profile_name = MaxProfile})
+       end,
 
-      set_to_max_profile ->
-        set_active_profile_impl(MaxProfile, NewState2)
-    end,
-
-  {noreply, NewState3};
+     {noreply, NewState3};
+   false ->
+       {noreply, State}
+ end;
 
 handle_cast(notify_socket_disconnect, State) ->
   NewState = maybe_remove_from_media_gateway(State),
@@ -289,17 +316,20 @@ handle_video_sequence(#rtp_sequence{ type = video } = Sequence, #?state{ video_s
   end.
 
 
-set_active_profile_impl(ProfileName, #?state{ profiles = Profiles } = State) ->
-  MaybeMatchingProfile = lists:search(fun(#{ profileName := ActualProfileName }) -> ActualProfileName =:= ProfileName end, Profiles),
+set_active_profile_impl(#?state{ active_profile_name = ProfileName
+                               , profiles = Profiles } = State) ->
 
-  case MaybeMatchingProfile of
-    {value, #{ firstAudioSSRC := AudioSSRC, firstVideoSSRC := VideoSSRC }} ->
+  ActualProfile = best_candidate(ProfileName, Profiles),
+  case ActualProfile of
+    undefined ->
+      State;
+    #{ profileName := ActualProfileName, firstAudioSSRC := AudioSSRC, firstVideoSSRC := VideoSSRC } ->
       apply_desired_state(
         #desired_state{ desired_video_ssrc = VideoSSRC
                       , desired_audio_ssrc = AudioSSRC
                       , profile_name = ProfileName
                       },
-        State#?state{ active_profile_name = ProfileName }
+        State#?state{active_profile_name = ActualProfileName}
        );
     false->
       State
@@ -472,10 +502,41 @@ decide_active_profile(ActiveProfileName, MaxProfileName, [#{ profileName := Head
 decide_active_profile(ActiveProfile, MaxProfile, [_Head | Tail ]) ->
   decide_active_profile(ActiveProfile, MaxProfile, Tail).
 
-
 choose_profile_for_bandwidth(_Bandwidth, [ #{ profileName := ProfileName } ]) ->
   ProfileName;
 choose_profile_for_bandwidth(Bandwidth, [ #{ bitrate := Bitrate, profileName := ProfileName } | _Tail ]) when Bitrate =< Bandwidth ->
   ProfileName;
 choose_profile_for_bandwidth(Bandwidth, [ _Head | Tail ]) ->
   choose_profile_for_bandwidth(Bandwidth, Tail).
+
+is_valid_profile_name(ProfileName, #?state{profiles = Profiles}) ->
+  lists:any(fun(#{ profileName := ActualProfileName }) -> ActualProfileName =:= ProfileName end, Profiles).
+
+best_candidate(ProfileName, Profiles) ->
+  best_candidate(undefined, ProfileName, Profiles).
+
+best_candidate(BestHigher, _ProfileName, []) ->
+  BestHigher;
+best_candidate(_BestHigher, ProfileName,  [ExactMatch = #{ profileName := ProfileName
+                                                         , isActive := true
+                                                         } | _]) ->
+  ExactMatch;
+best_candidate(BestHigher, ProfileName,  [#{ profileName := ProfileName
+                                           , isActive := false
+                                           } | T]) ->
+  best_candidate_lower(BestHigher, T);
+best_candidate(_BestHigher, ProfileName,  [NewBestHigher = #{ isActive := true
+                                                           } | T]) ->
+  best_candidate(NewBestHigher, ProfileName, T);
+best_candidate(BestHigher, ProfileName,  [#{ isActive := false
+                                           } | T]) ->
+  best_candidate(BestHigher, ProfileName, T).
+
+best_candidate_lower(BestHigher, []) ->
+  BestHigher;
+best_candidate_lower(_BestHigher, [BestLower = #{ isActive := true
+                                                } | _]) ->
+  BestLower;
+best_candidate_lower(BestHigher, [#{ isActive := false
+                                   } | T]) ->
+  best_candidate_lower(BestHigher, T).

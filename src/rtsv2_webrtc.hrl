@@ -11,10 +11,12 @@
         , slot_role :: slot_role()
         , audio_only :: boolean()
         , profiles :: list(slot_profile())
+        , active_profile_names :: list(binary_string())
         , web_socket :: pid()
         , audio_ssrc :: rtp:ssrc()
         , video_ssrc :: rtp:ssrc()
         , use_media_gateway :: boolean()
+
         }).
 -type rtsv2_webrtc_session_handler_config() :: #rtsv2_webrtc_session_handler_config{}.
 
