@@ -12,7 +12,7 @@ import Helpers.HTTP as HTTP
 import Helpers.Log as L
 import Helpers.Types (Node)
 import Shared.Rtsv2.Stream (SlotRole(..))
-import Test.Spec (SpecT, after, before, describe, it)
+import Test.Spec (SpecT, after, before, before_, describe, it)
 import Test.Unit.Assert as Assert
 import Toppokki as T
 
@@ -32,11 +32,12 @@ options =
 browserIngestTest :: forall m. Monad m => SpecT Aff Unit m Unit
 browserIngestTest =
   describe "WebRTC browser tests" do
-    primaryStream -- 5.1
-    backupStream -- 5.2
-    ingestStream -- 5.3
-    webRtcIngest -- 5.4
-    abrIngest -- 5.5
+    before_(E.lookupPuppeteerEnv) do
+      primaryStream -- 5.1
+      backupStream -- 5.2
+      ingestStream -- 5.3
+      webRtcIngest -- 5.4
+      abrIngest -- 5.5
 
 -------------------------------------------------------------------------------
 -- Tests

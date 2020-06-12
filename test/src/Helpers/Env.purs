@@ -5,20 +5,24 @@ import Prelude
 import Data.Array (catMaybes, filter, intercalate)
 import Data.Enum (class BoundedEnum, fromEnum)
 import Data.Map as Map
-import Data.Maybe (Maybe(..), fromMaybe')
+import Data.Maybe (Maybe(..), fromMaybe', maybe)
 import Data.Newtype (class Newtype, un, wrap, unwrap)
 import Data.String as String
 import Data.Time (Time(..))
 import Data.Time.Duration (Milliseconds(..))
+import Debug.Trace (spy)
 import Effect (Effect)
 import Effect.Aff (Aff, delay)
+import Effect.Class (liftEffect)
 import Effect.Now as Now
 import Helpers.OsCmd (runProc)
 import Helpers.Types (Node(..), TestNode)
+import Node.Process (lookupEnv)
 import Shared.Rtsv2.Chaos as Chaos
 import Shared.Rtsv2.Stream (ProfileName(..), RtmpShortName, RtmpStreamName, SlotId, SlotName(..), SlotNameAndProfileName(..), SlotRole(..))
 import Shared.UUID (fromString)
 import Shared.Utils (lazyCrashIfMissing)
+import Test.Spec.Assertions (fail)
 
 -- | Node
 p1n1 = Node 1 1
@@ -36,6 +40,13 @@ sessionName = "testSession"
 
 stop :: String
 stop = "stop"
+
+lookupPuppeteerEnv :: Aff Unit
+lookupPuppeteerEnv = do
+  env <- liftEffect $ lookupEnv "PUPPETEER_EXECUTABLE_PATH"
+  case env of
+    Nothing -> fail "PUPPETEER_EXECUTABLE_PATH has not been set as ENV"
+    Just a -> pure unit
 
 -- | Chrome launch arguments
 browserLaunchArgs :: Array String

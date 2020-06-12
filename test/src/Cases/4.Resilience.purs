@@ -25,7 +25,7 @@ import Test.Spec (SpecT, after_, before_, describe, it)
 resilienceTests :: forall m. Monad m => SpecT Aff Unit m Unit
 resilienceTests = do
   describe "4 resilience" do
-    before_ (F.startSession nodes *> F.launch' nodes "test/config/partial_nodes/sys.config") do
+    before_ (E.lookupPuppeteerEnv *> F.startSession nodes *> F.launch' nodes "test/config/partial_nodes/sys.config") do
       after_ F.stopSession do
         resilienceTest1
         resilienceTest2

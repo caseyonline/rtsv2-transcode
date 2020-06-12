@@ -19,7 +19,7 @@ import Helpers.HTTP as HTTP
 import Helpers.Log as L
 import Helpers.Types (Node, ResWithBody)
 import Shared.Rtsv2.Stream (SlotRole(..))
-import Test.Spec (SpecT, after_, after, before, before_, describe, it)
+import Test.Spec (SpecT, after, after_, before, before_, describe, it)
 import Test.Unit.Assert as Assert
 import Toppokki as T
 
@@ -29,8 +29,9 @@ import Toppokki as T
 metricsTests :: forall m. Monad m => SpecT Aff Unit m Unit
 metricsTests = do
   describe "10 metrics tests" do
-    ingestMetrics
-    egestMetrics
+    before_(E.lookupPuppeteerEnv) do
+      ingestMetrics
+      egestMetrics
 
 -------------------------------------------------------------------------------
 -- Vars

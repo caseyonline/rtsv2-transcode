@@ -25,8 +25,9 @@ import Toppokki as T
 drainTests :: forall m. Monad m => SpecT Aff Unit m Unit
 drainTests =
   describe "9 Drain Tests" do
-    passiveDrainTests
-    forceDrainTests
+    before_(E.lookupPuppeteerEnv) do
+      passiveDrainTests
+      forceDrainTests
 
 passiveDrainTests :: forall m. Monad m => SpecT Aff Unit m Unit
 passiveDrainTests = do

@@ -25,8 +25,9 @@ import Toppokki as T
 canaryTests :: forall m. Monad m => SpecT Aff Unit m Unit
 canaryTests =
   describe "8 Canary Tests" do
-    canaryWhenLiveTests
-    canaryWhenCanaryTests
+    before_(E.lookupPuppeteerEnv) do
+      canaryWhenLiveTests
+      canaryWhenCanaryTests
 
 canaryWhenLiveTests :: forall m. Monad m => SpecT Aff Unit m Unit
 canaryWhenLiveTests = do
