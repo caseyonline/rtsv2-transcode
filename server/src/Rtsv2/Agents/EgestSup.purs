@@ -52,7 +52,6 @@ init = do
             # childType Worker
             # childId "egestStatsServer"
             # childStart EgestStats.startLink unit
-            # childRestart Transient
 
     mediaGateway = do
       { mediaGateway: mediaGatewayFlag } <- Config.featureFlags

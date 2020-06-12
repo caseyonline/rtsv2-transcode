@@ -7,7 +7,7 @@ import Erl.Atom (atom)
 import Erl.Data.List (nil, (:))
 import Pinto (ServerName(..))
 import Pinto as Pinto
-import Pinto.Sup (SupervisorChildType(..), SupervisorSpec, SupervisorStrategy(..), buildChild, buildSupervisor, childId, childStart, childType, supervisorChildren, supervisorStrategy)
+import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), SupervisorSpec, SupervisorStrategy(..), buildChild, buildSupervisor, childId, childRestart, childStart, childType, supervisorChildren, supervisorStrategy)
 import Pinto.Sup as Sup
 import Rtsv2.ActiveSup as ActiveSup
 import Rtsv2.Alerts as Alerts

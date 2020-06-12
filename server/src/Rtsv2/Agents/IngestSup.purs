@@ -34,19 +34,16 @@ init = do
               # childType Worker
               # childId "ingestRtmpServer"
               # childStart IngestRtmpServer.startLink unit
-              # childRestart Transient
             )
           : ( buildChild
               # childType Supervisor
               # childId "ingestOneForOne"
               # childStart IngestOneForOneSup.startLink unit
-              # childRestart Transient
           )
           : ( buildChild
               # childType Supervisor
               # childId "ingestAgentInstance"
               # childStart IngestInstanceSup.startLink unit
-              # childRestart Transient
           )
             : nil
         )
