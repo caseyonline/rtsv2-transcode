@@ -5,7 +5,7 @@ let overrides =
       { erl-pinto =
           { dependencies = [ "erl-cowboy", "erl-process" ]
           , repo = "https://github.com/id3as/purescript-erl-pinto.git"
-          , version = "25896c055e07c6fb4f3d75f22a2584632c74519a"
+          , version = "2f37d2d0c01ba971e591898bfc74aa304fb61a3e"
           }
       , simple-json =
           { dependencies =
@@ -48,18 +48,23 @@ let overrides =
           }
       , longs =
           { dependencies =
-          [ "prelude", "nullable", "strings", "foreign", "functions", "console", "effect" 
-
-          ]
+            [ "prelude"
+            , "nullable"
+            , "strings"
+            , "foreign"
+            , "functions"
+            , "console"
+            , "effect"
+            ]
           , repo = "https://github.com/id3as/purescript-longs.git"
           , version = "100d382591bbbf912821576294f0849b695446d9"
           }
-        , undefinable =
-        { dependencies = 
-            [ "prelude", "heterogeneous", "console", "typelevel-prelude" ],
-            repo = "https://github.com/purerl/purescript-undefinable.git", version = "582c6a697863c1e7f0fed5f45d91b4f8d3b5263f"
-    }
-
+      , undefinable =
+          { dependencies =
+            [ "prelude", "heterogeneous", "console", "typelevel-prelude" ]
+          , repo = "https://github.com/purerl/purescript-undefinable.git"
+          , version = "582c6a697863c1e7f0fed5f45d91b4f8d3b5263f"
+          }
       }
 
 let additions = {=}
