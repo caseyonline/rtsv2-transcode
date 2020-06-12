@@ -9,6 +9,7 @@
 -include_lib("id3as_rtc/include/sdp.hrl"). 
 -include_lib("id3as_rtc/include/rtp_sdp.hrl"). 
 -include_lib("id3as_rtc/include/rtp_engine.hrl"). 
+-include("./rtsv2_rtp.hrl").
 
 -export([ init/1
         , handle_info/2
@@ -20,7 +21,11 @@
 -record(?state,
         { socket :: gen_udp:socket()
         , parse_info :: rtp:parse_info()
-        , rtp_engine :: rtp_engine:state()
+        % , rtp_engine :: rtp_engine:state(),
+        , h264_ingest_state :: rtp_h264_ingest:state()
+        , opus_ingest_state :: rtp_opus_ingest:state()
+        , h264_wrap_state :: rtp_timestamp_wrap:state()
+        , opus_wrap_state :: rtp_timestamp_wrap:state()
         }).
 
 %%------------------------------------------------------------------------------
@@ -36,18 +41,51 @@ init(#generator{}) ->
   { ok
   , #?state{ socket = Socket
            , parse_info = ParseInfo
-           , rtp_engine = RTPEngine1
+           , h264_ingest_state = rtp_h264_ingest:new()
+           , opus_ingest_state = rtp_opus_ingest:new()
+           , h264_wrap_state = rtp_timestamp_wrap:new(90000)
+           , opus_wrap_state = rtp_timestamp_wrap:new(48000)
            }
   }.
 
-handle_info({udp, _Socket, _FromIP, _FromPort, Data}, #?state{ rtp_engine = RtpEngine } = State) ->
-  {NewEngine, Frames} = rtp_engine:process_incoming_packet(RtpEngine, Data),
-  State2 = State#?state { rtp_engine = NewEngine },
+handle_info({udp, _Socket, _FromIP, _FromPort, Data},
+            #?state{ parse_info = ParseInfo
+                   , h264_ingest_state = RtpH264State
+                   , opus_ingest_state = RtpOpusState
+                   , h264_wrap_state = H264WrapState
+                   , opus_wrap_state = OpusWrapState
+                   } = State) ->
+  #rtp{ payload_type = #rtp_payload_type{encoding_id = EncodingId}, timestamp = Timestamp, processing_metadata = ProcessingMetadata } = RTP = rtp:parse(avp, Data, ParseInfo),
+  
+  {Frames, State2} = case EncodingId of
+    ?H264_ENCODING_ID ->
+      {H264WrapState2,_,ExtendedTimestamp} = rtp_timestamp_wrap:compute_extended_timestamp(H264WrapState, Timestamp),
+      RTP2 = RTP#rtp { processing_metadata = ProcessingMetadata#rtp_processing_metadata{ frame_time = ExtendedTimestamp } },
+      {RtpH264State2, Frames1} = rtp_h264_ingest:step(RtpH264State, RTP2),
+      ?INFO("Un-wrapped ~p to ~p", [Timestamp, ExtendedTimestamp]),
+      {Frames1, State#?state{ h264_ingest_state = RtpH264State2, h264_wrap_state = H264WrapState2}};
+    ?OPUS_ENCODING_ID ->
+      {OpusWrapState2,_,ExtendedTimestamp} = rtp_timestamp_wrap:compute_extended_timestamp(OpusWrapState, Timestamp),
+      RTP2 = RTP#rtp { processing_metadata = ProcessingMetadata#rtp_processing_metadata{ frame_time = round(ExtendedTimestamp * 90/48) } },
+      {RtpOpusState2, Frames1} = rtp_opus_ingest:step(RtpOpusState, RTP2),
+      ?INFO("Un-wrapped ~p to ~p and converted to ~p", [Timestamp, ExtendedTimestamp, round(ExtendedTimestamp * 90 / 48)]),
+      {Frames1, State#?state{ opus_ingest_state = RtpOpusState2, opus_wrap_state = OpusWrapState2}}
+  end,
   case Frames of 
     [] ->
       {noreply, State2};
     _ -> {output, Frames, State2}
   end.
+  
+
+% handle_info({udp, _Socket, _FromIP, _FromPort, Data}, #?state{ rtp_engine = RtpEngine } = State) ->
+  % {NewEngine, Frames} = rtp_engine:process_incoming_packet(RtpEngine, Data),
+  % State2 = State#?state { rtp_engine = NewEngine },
+  % case Frames of 
+  %   [] ->
+  %     {noreply, State2};
+  %   _ -> {output, Frames, State2}
+  % end.
 
 ioctl(get_port_number, State = #?state{ socket = Socket }) ->
   {ok, PortNumber} = inet:port(Socket),

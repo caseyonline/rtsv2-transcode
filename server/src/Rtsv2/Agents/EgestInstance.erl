@@ -182,29 +182,27 @@ start_rtmp_bus_workflow(EgestKey) ->
                                         }
                              ],
                 processors = [
-                              % #processor{name = transcode_audio,
-                              %            subscribes_to = {source, ?audio_frames},
-                              %            module = audio_transcode,
-                              %            config = AudioConfig
-                              %         },
-                              % #processor{name = set_audio_stream_id,
-                              %            subscribes_to = ?previous,
-                              %            module = set_stream_id,
-                              %            config = 2
-                              %         },
+                              #processor{name = transcode_audio,
+                                         subscribes_to = {source, ?audio_frames},
+                                         module = audio_transcode,
+                                         config = AudioConfig
+                                      },
+                              #processor{name = set_audio_stream_id,
+                                         subscribes_to = ?previous,
+                                         module = set_stream_id,
+                                         config = 2
+                                      },
                               
-                              % #processor{name = stream_sync,
-                              %            subscribes_to = [{source, ?video_frames}, ?previous],
-                              %            module = stream_sync,
-                              %            config = #stream_sync_config{ num_streams = 2,
-                              %               stream_key = fun (#frame{type = Type, stream_metadata = #stream_metadata{stream_id = StreamId}}) -> {Type, StreamId} end 
-                              %             }
-                                         
-                              %           },
+                              #processor{name = stream_sync,
+                                         subscribes_to = [{source, ?video_frames}, ?previous],
+                                         module = stream_sync,
+                                         config = #stream_sync_config{ num_streams = 2,
+                                                      stream_key = fun (#frame{type = Type, stream_metadata = #stream_metadata{stream_id = StreamId}}) -> {Type, StreamId} end 
+                                                  }
+                                        },
                               #processor{name = flv,
                                          display_name = <<"FLV Frame Generator">>,
-                                        %  subscribes_to = ?previous,
-                                         subscribes_to = {source, ?video_frames},
+                                         subscribes_to = ?previous,
                                          module = flv_frame_generator
                                         },
 
