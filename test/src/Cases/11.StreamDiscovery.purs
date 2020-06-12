@@ -21,7 +21,7 @@ import Toppokki as T
 streamDiscoveryTests :: forall m. Monad m => SpecT Aff Unit m Unit
 streamDiscoveryTests = do
   describe "11 Stream discovery tests" do
-    before_ (F.startSession nodes *> F.launch nodes) do
+    before_ (E.lookupPuppeteerEnv *> F.startSession nodes *> F.launch nodes) do
       after_ (F.stopSession *> F.stopSlot) do
         streamDiscoveryUrls
         streamDiscoveryCache

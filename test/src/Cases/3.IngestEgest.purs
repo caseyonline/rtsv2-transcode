@@ -20,11 +20,12 @@ import Test.Spec (SpecT, after_, before_, describe, describeOnly, it)
 ingestEgestTests :: forall m. Monad m => SpecT Aff Unit m Unit
 ingestEgestTests = do
   describe "3 Ingest egest tests" do
-    onePoPSetup
-    twoPoPSetup
-    nodeStartupOnePoP
-    packetLossOnePoP
-    fourPoPSetup
+    before_(E.lookupPuppeteerEnv) do
+      onePoPSetup
+      twoPoPSetup
+      nodeStartupOnePoP
+      packetLossOnePoP
+      fourPoPSetup
 
 
 onePoPSetup :: forall m. Monad m => SpecT Aff Unit m Unit

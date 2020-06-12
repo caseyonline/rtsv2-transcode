@@ -9,7 +9,6 @@
 [ ] - RTMP Egest - from edge
 [ ] - benchmarks
 [ ] - tweak tests to loop until timeout rather than sleep and then try once
-[ ] - browser tests to check for puppeteer export
 [ ] - media gateway logs to correct location, and logrotate (and logrotate on serf logs at the same time)
 [ ] - media gateway logs to be UTC
 [ ] - safari / ios / edge
@@ -97,3 +96,4 @@ Tests:
 [x] - currentTransPoP appears to be wrong sometimes...
 [x] - transPoP leave - ensure serf restarts (systemd) and maybe assert on each tick that still not a member
 [x] - reconnect stream if we get a stream-failed (intra and trans) - will need to call serf.members
+[X] - browser tests to check for puppeteer export

@@ -15,7 +15,7 @@ import Helpers.Types (Node)
 import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Rtsv2.Stream (SlotRole(..))
 import Shared.Rtsv2.Types (CanaryState(..), RunState(..))
-import Test.Spec (SpecT, after, after_, before, before_, describe, describeOnly, it, itOnly)
+import Test.Spec (SpecT, after, after_, before, before_, describe, describeOnly, it)
 import Test.Unit.Assert as Assert
 import Toppokki as T
 
@@ -25,8 +25,9 @@ import Toppokki as T
 drainTests :: forall m. Monad m => SpecT Aff Unit m Unit
 drainTests =
   describe "9 Drain Tests" do
-    passiveDrainTests
-    forceDrainTests
+    before_(E.lookupPuppeteerEnv) do
+      passiveDrainTests
+      forceDrainTests
 
 passiveDrainTests :: forall m. Monad m => SpecT Aff Unit m Unit
 passiveDrainTests = do
