@@ -31,7 +31,7 @@ import Data.Newtype (class Newtype, un, wrap)
 import Data.Symbol (SProxy(..))
 import Foreign (Foreign, ForeignError(..), F, readString, unsafeToForeign)
 import Record as Record
-import Shared.Rtsv2.Stream (ProfileName, RtmpStreamName, SlotId, SlotRole)
+import Shared.Rtsv2.Stream (ProfileName, RtmpStreamName, SlotId, SlotName(..), SlotRole)
 import Simple.JSON (class ReadForeign, class WriteForeign, readImpl, writeImpl)
 
 -- TODO - find a place for these utility types to live (a la id3as_common?)
@@ -50,13 +50,13 @@ type CacheUtilization =
 type SlotContext =
   { slotId :: SlotId
   , slotRole :: SlotRole
-  , slotName :: Maybe RtmpStreamName
+  , slotName :: Maybe SlotName
   }
 
 type ProfileContext =
   { slotId :: SlotId
   , slotRole :: SlotRole
-  , slotName :: RtmpStreamName
+  , slotName :: SlotName
   , profileName :: ProfileName
   }
 

@@ -42,7 +42,7 @@ import Data.Newtype (class Newtype)
 import Foreign (ForeignError(..), readString, unsafeToForeign)
 import Record (rename)
 import Shared.Rtsv2.Agent (SlotCharacteristics)
-import Shared.Rtsv2.Stream (ProfileName, RtmpShortName, RtmpStreamName, SlotId, SlotRole)
+import Shared.Rtsv2.Stream (ProfileName, RtmpShortName, RtmpStreamName, SlotId, SlotRole, SlotName)
 import Simple.JSON (class ReadForeign, class WriteForeign, readImpl, writeImpl)
 import Type.Prelude (SProxy(..))
 
@@ -91,7 +91,7 @@ newtype SlotProfile = SlotProfile
 
 type SlotDetails =
   { id :: SlotId
-  , name :: RtmpStreamName
+  , name :: SlotName
   , subscribeValidation :: Boolean
   , outputFormats :: Array StreamOutputFormat
   , profiles :: Array SlotProfile

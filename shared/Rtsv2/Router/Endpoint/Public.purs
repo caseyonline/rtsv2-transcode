@@ -11,16 +11,16 @@ import Routing.Duplex.Generic (sum)
 import Routing.Duplex.Generic.Syntax ((/))
 import Rtsv2.Config as Config
 import Shared.Common (Url)
-import Shared.Rtsv2.Router.Endpoint.Combinators (shortName, slotId, slotRole, streamName)
+import Shared.Rtsv2.Router.Endpoint.Combinators (shortName, slotName, slotId, slotRole, streamName)
 import Shared.Rtsv2.Router.Endpoint.Utils as Utils
-import Shared.Rtsv2.Stream (RtmpShortName, RtmpStreamName, SlotId, SlotRole)
+import Shared.Rtsv2.Stream (RtmpShortName, RtmpStreamName, SlotId, SlotName(..), SlotRole)
 import Shared.Rtsv2.Types (ServerAddress(..), extractAddress)
 
 
 data Endpoint
   =
   -- Public
-    StreamDiscoveryE RtmpShortName RtmpStreamName
+    StreamDiscoveryE RtmpShortName SlotName
   | ClientPlayerE SlotId SlotRole
   | ClientPlayerControlE SlotId SlotRole
   | ClientPlayerAssetsE SlotId SlotRole (Array String)
@@ -39,7 +39,7 @@ endpoint :: RouteDuplex' Endpoint
 endpoint = root $ sum
   {
   -- Public
-    "StreamDiscoveryE"                                 : "public" / "discovery" / "v1" / shortName segment / streamName segment
+    "StreamDiscoveryE"                                 : "public" / "discovery" / "v1" / shortName segment / slotName segment
 
   , "ClientPlayerE"                                    : "public" / "client" / slotId segment / slotRole segment / "player"
   , "ClientPlayerControlE"                             : "public" / "client" / slotId segment / slotRole segment / "session" -- URL duplicated in Web.purs

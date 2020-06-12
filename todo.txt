@@ -1,13 +1,18 @@
-[ ] - Pinto stuff, async init, return stop from init
 [ ] - multiple IngestAggregators for same slot/role
-[ ] - RTMP Egest - from edge
 [ ] - egest / client merging when load drops
 [ ] - relay merging when multiple instances start
 [ ] - Proper Serf messages codec (not just binary to term)
+[ ] - servers need a 16-bit id adding to them - just last two octets of server address from public interface (in rtsv2_player_ws_resource)?
 [ ] - possibly announcing presence of stream in ingest aggregator too quickly - webrtc tests currently need a small sleep to get reliable playback
-[ ] - servers need a 16-bit id adding to them
 [ ] - ingest validator
 [ ] - RTMPS (ingest / egest)
+[ ] - RTMP Egest - from edge
+[ ] - benchmarks
+[ ] - tweak tests to loop until timeout rather than sleep and then try once
+[ ] - browser tests to check for puppeteer export
+[ ] - media gateway logs to correct location, and logrotate (and logrotate on serf logs at the same time)
+[ ] - media gateway logs to be UTC
+[ ] - safari / ios / edge
 
 Tests:
 [ ] - data object store

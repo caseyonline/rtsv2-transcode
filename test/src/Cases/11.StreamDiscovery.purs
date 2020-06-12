@@ -20,7 +20,7 @@ import Toppokki as T
 -------------------------------------------------------------------------------
 streamDiscoveryTests :: forall m. Monad m => SpecT Aff Unit m Unit
 streamDiscoveryTests = do
-  describeOnly "11 Stream discovery tests" do
+  describe "11 Stream discovery tests" do
     before_ (F.startSession nodes *> F.launch nodes) do
       after_ (F.stopSession *> F.stopSlot) do
         streamDiscoveryUrls
@@ -49,7 +49,7 @@ streamDiscoveryUrls :: forall m. Monad m => SpecT Aff Unit m Unit
 streamDiscoveryUrls =
   it "11.1 Stream Discovery returns websocket urls " $ do
 
-    HTTP.getStreamDiscovery E.p1n1 E.shortName1 E.highStreamName
+    HTTP.getStreamDiscovery E.p1n1 E.shortName1 E.slot1Name
       >>= A.assertStatusCode 404
       >>= L.as "No ingest started so returns 404"
 
@@ -61,14 +61,14 @@ streamDiscoveryUrls =
     E.waitForIntraPoPDisseminate
       >>= L.as' "let ingest presence disseminate"
 
-    HTTP.getStreamDiscovery E.p1n1 E.shortName1 E.highStreamName
+    HTTP.getStreamDiscovery E.p1n1 E.shortName1 E.slot1Name
       >>= A.assertStatusCode 200
       >>= A.assertBodyTextFun (\a -> a /= "")
       >>= L.as "Ingest discovery returns non empty URL"
 
 streamDiscoveryCache :: forall m. Monad m => SpecT Aff Unit m Unit
 streamDiscoveryCache =
-  itOnly "11.2 Stream Discovery caches slot lookups " $ do
+  it "11.2 Stream Discovery caches slot lookups " $ do
 
     HTTP.healthCheck E.p1n1 >>= A.assertStatusCode 200
       >>= A.assertBodyFun ((==) 0 <<< healthNodeToCacheTotal)
@@ -78,7 +78,7 @@ streamDiscoveryCache =
 
     E.waitForIntraPoPDisseminate                                          >>= L.as' "let ingest presence disseminate"
 
-    HTTP.getStreamDiscovery E.p1n1 E.shortName1 E.highStreamName
+    HTTP.getStreamDiscovery E.p1n1 E.shortName1 E.slot1Name
       >>= A.assertStatusCode 200
       >>= A.assertBodyTextFun (\a -> a /= "")
       >>= L.as "Ingest discovery returns non empty URL"
@@ -88,7 +88,7 @@ streamDiscoveryCache =
       >>= A.assertBodyFun ((==) 0.0 <<< healthNodeToCacheUtilization)
       >>= L.as "cache has one access, but utilization is zero"
 
-    HTTP.getStreamDiscovery E.p1n1 E.shortName1 E.highStreamName
+    HTTP.getStreamDiscovery E.p1n1 E.shortName1 E.slot1Name
       >>= A.assertStatusCode 200
       >>= A.assertBodyTextFun (\a -> a /= "")
       >>= L.as "Ingest discovery returns non empty URL"
@@ -100,7 +100,7 @@ streamDiscoveryCache =
 
     E.waitForIntraPoPDisseminate                                          >>= L.as' "let slot lookup presence disseminate"
 
-    HTTP.getStreamDiscovery E.p1n2 E.shortName1 E.highStreamName
+    HTTP.getStreamDiscovery E.p1n2 E.shortName1 E.slot1Name
       >>= A.assertStatusCode 200
       >>= A.assertBodyTextFun (\a -> a /= "")
       >>= L.as "Ingest discovery returns non empty URL"

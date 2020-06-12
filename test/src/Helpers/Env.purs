@@ -5,7 +5,7 @@ import Prelude
 import Data.Array (catMaybes, filter, intercalate)
 import Data.Enum (class BoundedEnum, fromEnum)
 import Data.Map as Map
-import Data.Maybe (Maybe(..),  fromMaybe')
+import Data.Maybe (Maybe(..), fromMaybe')
 import Data.Newtype (class Newtype, un, wrap, unwrap)
 import Data.String as String
 import Data.Time (Time(..))
@@ -13,10 +13,10 @@ import Data.Time.Duration (Milliseconds(..))
 import Effect (Effect)
 import Effect.Aff (Aff, delay)
 import Effect.Now as Now
-import Helpers.Types (Node(..), TestNode)
 import Helpers.OsCmd (runProc)
+import Helpers.Types (Node(..), TestNode)
 import Shared.Rtsv2.Chaos as Chaos
-import Shared.Rtsv2.Stream (ProfileName(..), SlotId, SlotRole(..), SlotNameAndProfileName(..), RtmpShortName, RtmpStreamName)
+import Shared.Rtsv2.Stream (ProfileName(..), RtmpShortName, RtmpStreamName, SlotId, SlotName(..), SlotNameAndProfileName(..), SlotRole(..))
 import Shared.UUID (fromString)
 import Shared.Utils (lazyCrashIfMissing)
 
@@ -81,6 +81,9 @@ slot1 = wrap (fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "000000
 
 slot2 :: SlotId
 slot2 = wrap (fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000002"))
+
+slot1Name :: SlotName
+slot1Name = wrap "slot1"
 
 shortName1 :: RtmpShortName
 shortName1 = wrap "mmddev001"

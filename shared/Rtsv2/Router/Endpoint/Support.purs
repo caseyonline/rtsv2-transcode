@@ -4,16 +4,16 @@ import Prelude hiding ((/))
 
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show (genericShow)
-import Data.Newtype (class Newtype, wrap)
+import Data.Newtype (class Newtype)
 import Effect (Effect)
 import Routing.Duplex (RouteDuplex', path, print, rest, root, segment)
 import Routing.Duplex.Generic (noArgs, sum)
 import Routing.Duplex.Generic.Syntax ((/))
 import Rtsv2.Config as Config
 import Shared.Common (Url)
-import Shared.Rtsv2.Router.Endpoint.Combinators (contextType, popName, profileName, shortName, slotId, slotRole, streamName)
+import Shared.Rtsv2.Router.Endpoint.Combinators (contextType, popName, profileName, shortName, slotId, slotRole, streamName, slotName)
 import Shared.Rtsv2.Router.Endpoint.Utils as Utils
-import Shared.Rtsv2.Stream (ProfileName, RtmpShortName, RtmpStreamName, SlotId, SlotRole)
+import Shared.Rtsv2.Stream (ProfileName, RtmpShortName, RtmpStreamName, SlotId, SlotRole, SlotName)
 import Shared.Rtsv2.Types (JsonLdContextType, PoPName, ServerAddress(..), extractAddress)
 
 data Endpoint
@@ -44,7 +44,7 @@ data Endpoint
   | ClientAppAssetsE (Array String)
   | ClientAppRouteHTMLE
 
-  | CanaryStreamDiscoveryE RtmpShortName RtmpStreamName
+  | CanaryStreamDiscoveryE RtmpShortName SlotName
   | CanaryClientPlayerE SlotId SlotRole
   | CanaryClientPlayerControlE SlotId SlotRole
   | CanaryClientPlayerAssetsE SlotId SlotRole (Array String)
@@ -90,7 +90,7 @@ endpoint = root $ sum
   , "ClientAppAssetsE"                                 : "support" / "assets" / rest
   , "ClientAppRouteHTMLE"                              : "support" / noArgs
 
-  , "CanaryStreamDiscoveryE"                           : "support" / "canary" / "discovery" / "v1" / shortName segment / streamName segment
+  , "CanaryStreamDiscoveryE"                           : "support" / "canary" / "discovery" / "v1" / shortName segment / slotName segment
 
   , "CanaryClientPlayerE"                              : "support" / "canary" / "client" / slotId segment / slotRole segment / "player"
   , "CanaryClientPlayerControlE"                       : "support" / "canary" / "client" / slotId segment / slotRole segment / "session" -- URL duplicated in Web.purs

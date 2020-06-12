@@ -20,9 +20,8 @@ import Data.String (Pattern(..), Replacement(..), replace)
 import Effect (Effect)
 import Ephemeral.Map (EMap)
 import Ephemeral.Map as EMap
-import Erl.Data.List (nil, (:))
+import Erl.Data.List ((:))
 import Erl.Data.Tuple (tuple2)
-import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
@@ -33,7 +32,7 @@ import Rtsv2.Config as Config
 import Rtsv2.Names as Names
 import Shared.Common (Milliseconds, Url(..), CacheUtilization)
 import Shared.Rtsv2.LlnwApiTypes (AuthType, PublishCredentials, StreamAuth, StreamConnection, StreamDetails, StreamPublish, SlotLookupResult)
-import Shared.Rtsv2.Stream (RtmpShortName, RtmpStreamName)
+import Shared.Rtsv2.Stream (RtmpShortName, SlotName)
 import Simple.JSON (class WriteForeign, writeJSON)
 import SpudGun (Headers, JsonResponseError, SpudResult, bodyToJSON)
 import SpudGun as SpudGun
@@ -53,11 +52,11 @@ streamPublish :: LlnwApiConfig -> StreamPublish -> Effect (Either JsonResponseEr
 streamPublish {streamPublishUrl, headers} body =
   bodyToJSON <$> jsonPost (wrap streamPublishUrl) headers body
 
-slotLookup :: LlnwApiConfig -> RtmpShortName -> RtmpStreamName -> Effect (Either JsonResponseError SlotLookupResult)
-slotLookup {slotLookupUrl, headers} accountName streamName =
+slotLookup :: LlnwApiConfig -> RtmpShortName -> SlotName -> Effect (Either JsonResponseError SlotLookupResult)
+slotLookup {slotLookupUrl, headers} accountName slotName =
   Gen.doCall serverName doSlotLookup
   where
-    key = (SlotKey accountName streamName)
+    key = (SlotKey accountName slotName)
 
     doSlotLookup state@{slotLookupCache} = do
       lookup <- EMap.lookupAndUpdateTime' key slotLookupCache
@@ -69,7 +68,7 @@ slotLookup {slotLookupUrl, headers} accountName streamName =
 
     cacheMiss state = do
       let
-        url = (replaceAccount >>> replaceStreamName >>> Url) slotLookupUrl
+        url = (replaceAccount >>> replaceSlotName >>> Url) slotLookupUrl
       either (apiFail state) (apiSuccess state) =<< (bodyToJSON <$> jsonGet url headers)
 
     apiFail state error = do
@@ -77,18 +76,18 @@ slotLookup {slotLookupUrl, headers} accountName streamName =
 
     apiSuccess state@{slotLookupCache, slotLookupCacheMisses} slotLookupResult = do
       newCache <- EMap.insert' key slotLookupResult slotLookupCache
-      IntraPoP.announceEgestSlotLookup accountName streamName slotLookupResult
+      IntraPoP.announceEgestSlotLookup accountName slotName slotLookupResult
       pure $ CallReply (Right slotLookupResult) state{ slotLookupCache = newCache
                                                      , slotLookupCacheMisses = slotLookupCacheMisses + 1}
 
     replaceAccount = replace (Pattern "{account}") (Replacement $ unwrap accountName)
-    replaceStreamName = replace (Pattern "{streamName}") (Replacement $ unwrap streamName)
+    replaceSlotName = replace (Pattern "{streamName}") (Replacement $ unwrap slotName)
 
-recordSlotLookup :: RtmpShortName -> RtmpStreamName -> SlotLookupResult -> Effect Unit
-recordSlotLookup accountName streamName slotLookupResult =
+recordSlotLookup :: RtmpShortName -> SlotName -> SlotLookupResult -> Effect Unit
+recordSlotLookup accountName slotName slotLookupResult =
   Gen.doCast serverName doRecordSlotLookup
   where
-    key = (SlotKey accountName streamName)
+    key = (SlotKey accountName slotName)
 
     doRecordSlotLookup state@{slotLookupCache} = do
       newCache <- EMap.insert' key slotLookupResult slotLookupCache
@@ -133,7 +132,7 @@ doExpiry state@{slotLookupCache, slotLookupExpiryTime} =
 ------------------------------------------------------------------------------
 -- Internals
 ------------------------------------------------------------------------------
-data SlotKey = SlotKey RtmpShortName RtmpStreamName
+data SlotKey = SlotKey RtmpShortName SlotName
 
 type State =
   { config :: Config.LlnwApiConfig
