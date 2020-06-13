@@ -34,9 +34,9 @@ import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, singleton)
 import Erl.Data.List as List
-import Erl.Data.Map (Map, values)
+import Erl.Data.Map (Map, lookup, toUnfoldable, values)
 import Erl.Data.Map as Map
-import Erl.Data.Tuple (Tuple2, tuple2)
+import Erl.Data.Tuple (Tuple2, fst, snd, tuple2)
 import Erl.Process (Process(..), (!))
 import Erl.Process.Raw (Pid)
 import Erl.Utils (Ref, makeRef, systemTimeMs)
@@ -248,8 +248,9 @@ dataObjectUpdate egestKey updateMsg =
 
 statsUpdate :: EgestKey -> EgestSessionStats -> Effect Unit
 statsUpdate egestKey stats@{sessionId} = do
-  Gen.call (serverName egestKey) \state@{clientStats} ->
-    CallReply unit state{clientStats = Map.insert sessionId stats clientStats}
+  Gen.doCall (serverName egestKey) \state@{clientStats} -> do
+    logInfo "STATS" {stats}
+    pure $ CallReply unit state{clientStats = Map.insert sessionId stats clientStats}
 
 forceDrain :: EgestKey -> Effect Unit
 forceDrain egestKey =
@@ -571,15 +572,18 @@ removeClient sessionId state@{clientCount, clientStats} = do
 egestEqLines :: State -> Effect (Tuple Milliseconds (List Audit.EgestEqLine))
 egestEqLines state@{ egestKey: egestKey@(EgestKey slotId _slotRole)
                    , thisServer: (Server {address: thisServerAddr})
+                   , clientStats
                    , lastEgestAuditTime: startMs
                    , slotConfiguration} = do
   endMs <- systemTimeMs
   {sessionInfo} <- getStatsFFI egestKey
-  pure $ Tuple endMs ((egestEqLine slotId slotConfiguration (unwrap thisServerAddr) startMs endMs) <$> values sessionInfo)
+  logInfo "FFI STATS" {sessionInfo}
+  pure $ Tuple endMs ((egestEqLine slotId slotConfiguration (unwrap thisServerAddr) startMs endMs clientStats) <$> toUnfoldable sessionInfo)
 
-egestEqLine :: SlotId -> Maybe SlotConfiguration -> String -> Milliseconds -> Milliseconds -> WebRTCSessionManagerStats -> Audit.EgestEqLine
-egestEqLine slotId slotConfiguration thisServerAddr startMs endMs {channels} =
+egestEqLine :: SlotId -> Maybe SlotConfiguration -> String -> Milliseconds -> Milliseconds -> (Map String EgestSessionStats) -> Tuple String WebRTCSessionManagerStats -> Audit.EgestEqLine
+egestEqLine slotId slotConfiguration thisServerAddr startMs endMs clientStatsMap (Tuple sessionId {channels}) =
   let
+    clientStats = fromMaybe (emptySessionStats sessionId) $ lookup sessionId clientStatsMap
     receiverAccumulate acc {lostTotal} = acc + lostTotal
 
     channelInitial = {writtenAcc: 0, readAcc: 0, lostAcc: 0, remoteAddress: ""}
@@ -599,13 +603,13 @@ egestEqLine slotId slotConfiguration thisServerAddr startMs endMs {channels} =
   { egestIp: thisServerAddr
   , egestPort: -1
   , subscriberIp: remoteAddress
-  , username: "n/a" -- TODO
+  , username: sessionId
   , rtmpShortName: shortName
   , slotId
   , connectionType: WebRTC
   , startMs
   , endMs
-  , bytesWritten: writtenAcc
+  , bytesWritten: clientStats.audioOctetsSent + clientStats.videoOctetsSent
   , bytesRead: readAcc
   , lostPackets: lostAcc
   }
