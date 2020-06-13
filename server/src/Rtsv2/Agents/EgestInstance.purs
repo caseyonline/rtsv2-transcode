@@ -44,7 +44,7 @@ import Erl.Utils as Erl
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
 import Pinto as Pinto
-import Pinto.Gen (CallResult(..), CastResult(..))
+import Pinto.Gen (CallResult(..), CastResult(..), TerminateReason(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
@@ -325,6 +325,8 @@ init parentCallbacks payload@{slotId, slotRole, aggregatorPoP, slotCharacteristi
   Load.addPredictedLoad (egestKeyToAgentKey egestKey) predictedLoad
 
   Gen.registerExternalMapping (serverName egestKey) (\m -> Gun <$> (WsGun.messageMapper m))
+  Gen.registerTerminate (serverName egestKey) terminate
+
   let
     state = { egestKey
             , aggregatorPoP
@@ -442,6 +444,16 @@ handleInfo msg state@{egestKey: egestKey@(EgestKey slotId slotRole), thisServer}
     maybeStop ref
       | (state.clientCount == 0) && (Just ref == state.stopRef) = doStop state
       | otherwise = pure $ CastNoReply state
+
+terminate :: TerminateReason -> State -> Effect Unit
+terminate Normal state = do
+  logInfo "EgestInstance terminating" {reason: Normal}
+  pure unit
+terminate reason state = do
+  logInfo "EggestInstance terminating" {reason}
+  Tuple endMs eqLines <- egestEqLines state
+  traverse_ Audit.egestStop eqLines
+  pure unit
 
 processGunMessage :: State -> WsGun.GunMsg -> Effect (CastResult State)
 processGunMessage state@{relayWebSocket: Nothing} gunMsg =
