@@ -28,7 +28,7 @@ import Erl.Data.List (List, singleton)
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
 import Erl.Process.Raw (Pid)
-import Erl.Utils (Ref)
+import Erl.Utils (ExitMessage, Ref)
 import Erl.Utils as Erl
 import Erl.Utils as ErlUtils
 import Logger as Logger
@@ -55,6 +55,7 @@ import Shared.Rtsv2.Types (class CanaryType, AcceptingRequests, CanaryState(..),
 data Msg =
   AgentDown Agent
   | ForceDrainTimeout Ref
+  | IgnoreExit ExitMessage
 
 type State =
   { args :: StartArgs
@@ -218,6 +219,7 @@ init args@{activeSupStartLink} = do
   void $ Erl.trapExit true
   config@{ initialRunState
          , initialCanaryState } <- Config.nodeManagerConfig
+  Gen.registerExternalMapping serverName ((map IgnoreExit) <<< Erl.exitMessageMapper)
   Gen.registerTerminate serverName terminate
   thisServer <- PoPDefinition.getThisServer
   activeSupPid <- (ok' =<< (activeSupStartLink (activeSupStartArgs initialCanaryState)))
@@ -260,6 +262,9 @@ handleInfo msg state@{agentCounts, currentRunState, forceDrainTimeoutRef} =
         CastNoReply <$> transitionToOutOfService state
       | otherwise ->
         CastNoReply <$> pure state
+
+    IgnoreExit _ ->
+      pure $ CastNoReply state
 
   where
     decrementAgentCount Nothing = Nothing
