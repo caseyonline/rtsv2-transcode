@@ -1,5 +1,6 @@
 module Rtsv2.NodeManager
        ( startLink
+       , stop
        , getState
        , getAcceptingRequests
        , changeCanaryState
@@ -20,7 +21,7 @@ import Data.Foldable (foldl)
 import Data.FoldableWithIndex (foldlWithIndex)
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (wrap)
-import Data.Traversable (traverse, traverse_)
+import Data.Traversable (traverse_)
 import Effect (Effect)
 import Erl.Atom (Atom)
 import Erl.Data.List (List, singleton)
@@ -30,10 +31,9 @@ import Erl.Process.Raw (Pid)
 import Erl.Utils (Ref)
 import Erl.Utils as Erl
 import Erl.Utils as ErlUtils
-import Logger (spy)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult, ok')
-import Pinto.Gen (CallResult(..), CastResult(..))
+import Pinto.Gen (CallResult(..), CastResult(..), TerminateReason)
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Rtsv2.Agents.EgestInstance as EgestInstance
@@ -85,11 +85,16 @@ foreign import getAgentKeys :: forall a. String -> Effect (List a)
 --------------------------------------------------------------------------------
 type StartArgs =
   { activeSupStartLink :: AgentSupStartArgs -> Effect StartLinkResult
+  , activeSupStop :: Effect Unit
   }
 
 startLink :: StartArgs -> Effect StartLinkResult
 startLink args =
   Gen.startLink serverName (init args) handleInfo
+
+stop :: Effect Unit
+stop =
+  Gen.stop serverName
 
 getState :: Effect PublicState.NodeManager
 getState =
@@ -182,7 +187,7 @@ launchLocalOrRemoteAgent agent canaryStream pred launchLocalFun launchRemoteFun 
     Canary -> (map toLocalAndRemote) <$> launchLocalAgent agent canaryStream pred launchLocalFun
     Live -> do
       idleServerResp <- IntraPoP.getIdleServer pred
-      chainEither launch (spy "launch" idleServerResp)
+      chainEither launch idleServerResp
       where
         launch :: LocalOrRemote Server -> Effect (ResourceResp Server)
         launch (Local thisServer) = (map toLocalAndRemote) <$> launchAndUpdateState agent canaryStream launchLocalFun thisServer
@@ -210,8 +215,10 @@ getEgestKeys = getAgentKeys (show Egest)
 --------------------------------------------------------------------------------
 init :: StartArgs -> Effect State
 init args@{activeSupStartLink} = do
+  void $ Erl.trapExit true
   config@{ initialRunState
          , initialCanaryState } <- Config.nodeManagerConfig
+  Gen.registerTerminate serverName terminate
   thisServer <- PoPDefinition.getThisServer
   activeSupPid <- (ok' =<< (activeSupStartLink (activeSupStartArgs initialCanaryState)))
 
@@ -258,6 +265,12 @@ handleInfo msg state@{agentCounts, currentRunState, forceDrainTimeoutRef} =
     decrementAgentCount Nothing = Nothing
     decrementAgentCount (Just 1) = Nothing
     decrementAgentCount (Just n) = Just (n - 1)
+
+terminate :: TerminateReason -> State -> Effect Unit
+terminate reason state@{ args: {activeSupStop}, activeSupPid } = do
+  logInfo "NodeManager terminating" {reason, activeSupPid}
+  activeSupStop
+  pure unit
 
 --------------------------------------------------------------------------------
 -- Internal Functions
@@ -380,8 +393,10 @@ transitionToOutOfService state = do
                         , forceDrainPhase = DrainAggregators }
 
 restartActiveSup :: State -> Effect State
-restartActiveSup state@{activeSupPid, args: {activeSupStartLink}, currentCanaryState} = do
-  ErlUtils.shutdown activeSupPid
+restartActiveSup state@{ activeSupPid
+                       , args: {activeSupStartLink, activeSupStop}
+                       , currentCanaryState} = do
+  activeSupStop
   newActiveSupPid <- (ok' =<< (activeSupStartLink (activeSupStartArgs currentCanaryState)))
   pure state{ activeSupPid = newActiveSupPid }
 

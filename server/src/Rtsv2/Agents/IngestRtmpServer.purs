@@ -119,8 +119,8 @@ onStreamCallback loadConfig canary host rtmpShortNameStr username remoteAddress 
                          , rtmpStreamName
                          , username
                          }
-  maybeStreamDetails <- getStreamDetails streamPublish
-  case maybeStreamDetails of
+  maybeStreamDetails <- noprocToMaybe $ getStreamDetails streamPublish
+  case join maybeStreamDetails of
     Nothing -> do
       pure unit
 
@@ -137,7 +137,7 @@ onStreamCallback loadConfig canary host rtmpShortNameStr username remoteAddress 
           case maybeStarted of
             Right (LocalResource ingestPid _server) -> do
               startWorkflowAndBlock rtmpPid ingestPid publishArgs ingestKey streamDetails
-              IngestInstance.stopIngest ingestKey
+              void $ noprocToMaybe $ IngestInstance.stopIngest ingestKey
               pure unit
             Left error -> do
               logWarning "Attempt to start local RTMP ingest failed" {error}

@@ -81,8 +81,8 @@ discover loadConfig canary accountName slotName =
       where
         url :: Server -> Effect Url
         url = case canary of
-          Live -> flip Public.makeUrl $ Public.ClientPlayerControlE slot.id role
-          Canary -> flip Support.makeUrl $ Support.CanaryClientPlayerControlE slot.id role
+          Live -> flip Public.makeWsUrl $ Public.ClientPlayerControlE slot.id role
+          Canary -> flip Support.makeWsUrl $ Support.CanaryClientPlayerControlE slot.id role
 
 --------------------------------------------------------------------------------
 -- Log helpers

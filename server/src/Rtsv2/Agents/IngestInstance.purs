@@ -33,10 +33,11 @@ import Erl.Data.List (List, nil, (:))
 import Erl.Data.Tuple (Tuple2, tuple2)
 import Erl.Process.Raw (Pid)
 import Erl.Utils (systemTimeMs)
+import Erl.Utils as Erl
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
 import Pinto as Pinto
-import Pinto.Gen (CallResult(..), CastResult(..))
+import Pinto.Gen (CallResult(..), CastResult(..), TerminateReason(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Prim.Row as Row
@@ -243,6 +244,7 @@ init { streamPublish
   void $ Timer.sendAfter ourServerName 0 InformAggregator
   void $ Timer.sendEvery ourServerName eqLogIntervalMs WriteEqLog
   Gen.registerExternalMapping (serverName ingestKey) (\m -> Gun <$> (WsGun.messageMapper m))
+  Gen.registerTerminate (serverName ingestKey) terminate
 
   pure { thisServer
        , streamPublish
@@ -304,6 +306,16 @@ handleInfo msg state@{ingestKey} = case msg of
 
   Gun gunMsg ->
     processGunMessage state gunMsg
+
+terminate :: TerminateReason -> State -> Effect Unit
+terminate Normal state = do
+  logInfo "IngestInstance terminating" {reason: Normal}
+  pure unit
+terminate reason state = do
+  logInfo "IngestInstance terminating" {reason}
+  eqLine <- ingestEqLine state
+  Audit.ingestStop eqLine
+  pure unit
 
 ------------------------------------------------------------------------------
 -- Internals

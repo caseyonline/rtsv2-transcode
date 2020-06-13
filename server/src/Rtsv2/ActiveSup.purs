@@ -7,15 +7,21 @@ import Erl.Atom (atom)
 import Erl.Data.List (nil, (:))
 import Pinto (ServerName(..))
 import Pinto as Pinto
-import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), SupervisorSpec, SupervisorStrategy(..), buildChild, buildSupervisor, childId, childRestart, childStart, childType, supervisorChildren, supervisorStrategy)
+import Pinto.Sup (SupervisorChildType(..), SupervisorSpec, SupervisorStrategy(..), buildChild, buildSupervisor, childId, childStart, childType, supervisorChildren, supervisorStrategy)
 import Pinto.Sup as Sup
 import Rtsv2.Agents.AgentSup as AgentSup
 import Rtsv2.DataObject as DataObject
 import Rtsv2.LlnwApi as LlnwApi
 import Rtsv2.Types (AgentSupStartArgs)
 
+serverName :: forall state msg. ServerName state msg
+serverName = Local (atom "rtsv2ActiveSup")
+
 startLink :: AgentSupStartArgs -> Effect Pinto.StartLinkResult
-startLink args = Sup.startLink (Local (atom "rtsv2ActiveSup")) (init args)
+startLink args = Sup.startLink serverName (init args)
+
+stop :: Effect Unit
+stop = Sup.stop serverName
 
 init :: AgentSupStartArgs -> Effect SupervisorSpec
 init args = do
