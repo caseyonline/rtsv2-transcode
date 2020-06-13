@@ -123,24 +123,26 @@ type StartArgs
 startLink :: StartArgs -> StateServerName -> Effect StartLinkResult
 startLink args@{ingestKey} stateServerName = Gen.startLink (serverName ingestKey) (init args stateServerName) handleInfo
 
-getStreamAuthType :: String -> String -> Effect (Maybe AuthType)
-getStreamAuthType host rtmpShortName = do
+getStreamAuthType :: String -> String -> String -> Effect (Maybe AuthType)
+getStreamAuthType host rtmpShortName clientIp = do
   config <- Config.llnwApiConfig
   restResult <- LlnwApi.streamAuthType config (wrap { host
                                                     , protocol: Rtmp
-                                                    , rtmpShortName: wrap rtmpShortName} :: StreamConnection)
+                                                    , rtmpShortName: wrap rtmpShortName
+                                                    , clientIp} :: StreamConnection)
   either error (pure <<< Just) restResult
   where
     error err = do
       logInfoWithMetadata "StreamAuthType error" {alertId: (atom "lsrsFailure")} {reason: err}
       pure Nothing
 
-getPublishCredentials :: String -> String -> String -> Effect (Maybe PublishCredentials)
-getPublishCredentials host rtmpShortName username = do
+getPublishCredentials :: String -> String -> String -> String -> Effect (Maybe PublishCredentials)
+getPublishCredentials host rtmpShortName username clientIp = do
   config <- Config.llnwApiConfig
   restResult <- LlnwApi.streamAuth config (wrap { host
                                                 , rtmpShortName: wrap rtmpShortName
-                                                , username} :: StreamAuth)
+                                                , username
+                                                , clientIp} :: StreamAuth)
   either error (pure <<< Just) restResult
   where
     error err = do

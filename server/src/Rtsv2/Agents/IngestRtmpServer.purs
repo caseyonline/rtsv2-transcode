@@ -8,7 +8,7 @@ import Prelude
 
 import Data.Either (Either(..))
 import Data.Foldable (find)
-import Data.Function.Uncurried (Fn2, Fn5, mkFn2, mkFn5)
+import Data.Function.Uncurried (Fn3, Fn5, mkFn3, mkFn5)
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (unwrap, wrap)
 import Effect (Effect)
@@ -61,7 +61,7 @@ data RtmpAuthResponse = InitialResponse AuthType
                       | AcceptRequest (Fn5 String Int String Pid Foreign (Effect Unit))
 
 type Callbacks
-  = { init :: Fn2 String Foreign (Effect RtmpAuthResponse)
+  = { init :: Fn3 String String Foreign (Effect RtmpAuthResponse)
     }
 
 serverName :: ServerName State Unit
@@ -85,10 +85,10 @@ init _ = do
   let
     host = unwrap $ extractAddress thisServer
     callbacks :: Callbacks
-    callbacks = { init: mkFn2 (onConnectCallback loadConfig Live host)
+    callbacks = { init: mkFn3 (onConnectCallback loadConfig Live host)
                 }
     canaryCallbacks :: Callbacks
-    canaryCallbacks = { init: mkFn2 (onConnectCallback loadConfig Canary host)
+    canaryCallbacks = { init: mkFn3 (onConnectCallback loadConfig Canary host)
                       }
 
   -- Public servers
@@ -101,12 +101,12 @@ init _ = do
 
   pure $ {}
 
-onConnectCallback :: LoadConfig -> CanaryState -> String -> String -> Foreign -> (Effect RtmpAuthResponse)
-onConnectCallback loadConfig canary host rtmpShortName foreignQuery =
+onConnectCallback :: LoadConfig -> CanaryState -> String -> String -> String -> Foreign -> (Effect RtmpAuthResponse)
+onConnectCallback loadConfig canary host rtmpShortName remoteAddress foreignQuery =
   let
     authRequest = rtmpQueryToPurs foreignQuery
   in
-    processAuthRequest loadConfig canary host rtmpShortName authRequest
+    processAuthRequest loadConfig canary host rtmpShortName remoteAddress authRequest
 
 onStreamCallback :: LoadConfig -> CanaryState -> String -> String -> String -> String -> Int -> String -> Pid -> Foreign -> Effect Unit
 onStreamCallback loadConfig canary host rtmpShortNameStr username remoteAddress remotePort rtmpStreamNameStr rtmpPid publishArgs = do
@@ -118,6 +118,7 @@ onStreamCallback loadConfig canary host rtmpShortNameStr username remoteAddress 
                          , rtmpShortName
                          , rtmpStreamName
                          , username
+                         , clientIp: remoteAddress
                          }
   maybeStreamDetails <- noprocToMaybe $ getStreamDetails streamPublish
   case join maybeStreamDetails of
@@ -149,32 +150,32 @@ onStreamCallback loadConfig canary host rtmpShortNameStr username remoteAddress 
     makeIngestKey profileName {role, slot: {id: slotId}} =
       IngestKey slotId role profileName
 
-processAuthRequest :: LoadConfig -> CanaryState -> String -> String -> RtmpAuthRequest -> Effect RtmpAuthResponse
-processAuthRequest _loadConfig _canary host rtmpShortName Initial = do
-  authType <- getStreamAuthType host rtmpShortName
+processAuthRequest :: LoadConfig -> CanaryState -> String -> String -> String -> RtmpAuthRequest -> Effect RtmpAuthResponse
+processAuthRequest _loadConfig _canary host rtmpShortName remoteAddress Initial = do
+  authType <- getStreamAuthType host rtmpShortName remoteAddress
   pure $ fromMaybe RejectRequest $ InitialResponse <$> authType
 
-processAuthRequest _loadConfig _canary host rtmpShortName (AdobePhase1 {username}) = do
+processAuthRequest _loadConfig _canary host rtmpShortName _remoteAddress (AdobePhase1 {username}) = do
   context <- IngestRtmpCrypto.newAdobeContext username
   pure $ AdobePhase1Response username context
 
-processAuthRequest _loadConfig _canary host rtmpShortName (LlnwPhase1 {username}) = do
+processAuthRequest _loadConfig _canary host rtmpShortName _remoteAddress (LlnwPhase1 {username}) = do
   context <- IngestRtmpCrypto.newLlnwContext username
   pure $ LlnwPhase1Response username context
 
-processAuthRequest loadConfig canary host rtmpShortName (AdobePhase2 authParams@{username}) =
-  processPhase2Authentication loadConfig canary host rtmpShortName username (AdobePhase2P authParams)
+processAuthRequest loadConfig canary host rtmpShortName remoteAddress (AdobePhase2 authParams@{username}) =
+  processPhase2Authentication loadConfig canary host rtmpShortName username remoteAddress (AdobePhase2P authParams)
 
-processAuthRequest loadConfig canary host rtmpShortName (LlnwPhase2 authParams@{username}) =
-  processPhase2Authentication loadConfig canary host rtmpShortName username (LlnwPhase2P authParams)
+processAuthRequest loadConfig canary host rtmpShortName remoteAddress (LlnwPhase2 authParams@{username}) =
+  processPhase2Authentication loadConfig canary host rtmpShortName username remoteAddress (LlnwPhase2P authParams)
 
-processPhase2Authentication :: LoadConfig -> CanaryState -> String -> String -> String -> Phase2Params -> Effect RtmpAuthResponse
-processPhase2Authentication loadConfig canary host rtmpShortName username authParams = do
+processPhase2Authentication :: LoadConfig -> CanaryState -> String -> String -> String -> String -> Phase2Params -> Effect RtmpAuthResponse
+processPhase2Authentication loadConfig canary host rtmpShortName username remoteAddress authParams = do
   let
     authType = case authParams of
                  AdobePhase2P _ -> Adobe
                  LlnwPhase2P _ -> Llnw
-  maybePublishCredentials <- getPublishCredentials host rtmpShortName username
+  maybePublishCredentials <- getPublishCredentials host rtmpShortName username remoteAddress
   case maybePublishCredentials of
     Nothing ->
       pure RejectRequest
