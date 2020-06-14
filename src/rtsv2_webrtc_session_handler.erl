@@ -127,6 +127,7 @@ handle_media_frame(_, State = #?state{use_media_gateway = false}) ->
   {ok, State};
 
 handle_media_frame(#rtp_engine_msg{message = #rtp_engine_remb{}}, #?state{ quality_constraint_behaviour = force_quality } = State) ->
+  %% ?DEBUG("Received bandwidth estimate, but we're in force-quality mode."),
   {ok, State};
 
 handle_media_frame(#rtp_engine_msg{message = #rtp_engine_remb{ feedback = #rtcp_remb_payload_feedback_message{ estimated_bandwidth_bps = Bandwidth }}},
@@ -138,9 +139,11 @@ handle_media_frame(#rtp_engine_msg{message = #rtp_engine_remb{ feedback = #rtcp_
 
   case choose_profile_for_bandwidth(Bandwidth, ValidProfiles) of
     ChosenProfileName when ChosenProfileName =:= ActiveProfileName ->
+      %% ?DEBUG("Received bandwidth estimate (~pbps), but we decided to stay as we are with profile ~p.", [Bandwidth, ChosenProfileName]),
       {ok, State};
 
     ChosenProfileName ->
+      %% ?DEBUG("Received bandwidth estimate (~pbps), and we decided to change to profile ~p.", [Bandwidth, ChosenProfileName]),
       {ok, set_active_profile_impl(State#?state{active_profile_name = ChosenProfileName})}
   end;
 
