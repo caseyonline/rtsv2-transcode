@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+DEV=lo
+PORT=$1
+RATE=$2
+
+tc qdisc add dev $DEV root handle 1: htb 2>/dev/null || true
+
+if tc class show dev lo | grep "1:3"; then
+  tc class change dev $DEV parent 1: classid 1:3 htb rate $RATE
+else
+  tc class add dev $DEV parent 1: classid 1:3 htb rate $RATE
+fi
+
+if tc class show dev lo | grep "1:4"; then
+  tc class change dev $DEV parent 1: classid 1:4 htb rate 100mbit
+else
+  tc class add dev $DEV parent 1: classid 1:4 htb rate 100mbit
+fi
+
+sudo tc filter del dev lo
+
+tc filter add dev $DEV parent 1:0 \
+    protocol all \
+    prio 1 \
+    u32 match ip dport $PORT 0xffff \
+    flowid 1:3
+
+tc filter add dev $DEV parent 1:0 \
+    protocol all \
+    prio 1 \
+    u32 match ip sport $PORT 0xffff \
+    flowid 1:3
+
+tc filter add dev $DEV parent 1:0 \
+    protocol all \
+    prio 2 \
+    u32 match u32 0 0 \
+    flowid 1:4
+
+tc qdisc show dev lo
+
