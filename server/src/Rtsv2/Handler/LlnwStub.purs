@@ -77,6 +77,7 @@ db =
   : mmddev001_slot1ao_Primary_Any
   : mmddev002_slot2_Primary_Any
   : mmddev003_slot1_Primary_Any
+  : mmddev004_slot4_Primary_Rtmp
   : nil
 
   where
@@ -237,6 +238,36 @@ db =
                                              , videoBitrate: 936000 }
                                       , wrap { name: wrap "low"
                                              , rtmpStreamName: wrap "slot1_500"
+                                             , audioBitrate: 64000
+                                             , videoBitrate: 436000 }
+                                      ]
+                          , outputFormats : []
+                          }
+                 , push : []
+                 }
+      }
+
+    mmddev004_slot4_Primary_Rtmp =
+      { auth: { host: AnyHost --"172.16.171.5"
+              , protocol: AnyProtocol
+              , rtmpShortName: wrap "mmddev004"
+              , authType: Adobe
+              , username: "user"
+              , password: "password" }
+      , details: { role: Primary
+                 , slot : { id: wrap $ fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000004")
+                          , name: wrap "slot4"
+                          , subscribeValidation: false
+                          , profiles: [ wrap { name: wrap "high"
+                                             , rtmpStreamName: wrap "slot4_1500"
+                                             , audioBitrate: 64000
+                                             , videoBitrate: 1436000 }
+                                      , wrap { name: wrap "medium"
+                                             , rtmpStreamName: wrap "slot4_1000"
+                                             , audioBitrate: 64000
+                                             , videoBitrate: 936000 }
+                                      , wrap { name: wrap "low"
+                                             , rtmpStreamName: wrap "slot4_500"
                                              , audioBitrate: 64000
                                              , videoBitrate: 436000 }
                                       ]
