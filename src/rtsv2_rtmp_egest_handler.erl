@@ -22,9 +22,9 @@
          on_stream_callback :: fun()
         }).
 
-init(Rtmp, ConnectArgs, [#{ startStream := StartStream  }]) ->
+init(Rtmp, ConnectArgs, [#{ startStream := StartStream, slotLookup := SlotLookup, addClient := AddClient }]) ->
   %% big **ing TODO
-  EgestKey = {egestKey, << 1:128/big-unsigned-integer >>, {primary}},
+  % EgestKey = {egestKey, << 1:128/big-unsigned-integer >>, {primary}},
 
   {_, AppArg} = lists:keyfind("app", 1, ConnectArgs),
 
@@ -37,10 +37,15 @@ init(Rtmp, ConnectArgs, [#{ startStream := StartStream  }]) ->
 
   ?NOTICE("Hey I got an rtmp egest connection!"),
 
+   
+  EgestKey = SlotLookup(ShortName, <<"slot1_1000">>),
+  ?INFO("Looked up ~p to ~p", [ShortName, EgestKey]),
   StartStream(EgestKey),
   ?INFO("Started stream for ~p", [EgestKey]),
 
   {ok, WorkflowPid } = start_workflow(EgestKey, Rtmp),
+
+  AddClient(self(), EgestKey, <<"fake_session_id">>),
 
   ?INFO("Started workflow for ~p", [EgestKey]),
   {ok, #?state{rtmp_pid = Rtmp, workflow = WorkflowPid}}.

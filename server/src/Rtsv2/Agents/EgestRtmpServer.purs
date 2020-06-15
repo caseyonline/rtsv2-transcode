@@ -2,31 +2,40 @@ module Rtsv2.Agents.EgestRtmpServer where
 
 import Prelude
 
+import Data.Either (either)
 import Effect (Effect)
-import Effect.Uncurried (EffectFn1, mkEffectFn1)
+import Effect.Exception (throw)
+import Effect.Uncurried (EffectFn1, EffectFn2, EffectFn3, mkEffectFn1, mkEffectFn2, mkEffectFn3)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, singleton)
+import Erl.Process.Raw (Pid)
 import Logger as Logger
 import Pinto (ServerName)
 import Pinto as Pinto
 import Pinto.Gen as Gen
+import Rtsv2.Agents.EgestInstance as EgestInstance
 import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
+import Rtsv2.LlnwApi as LlnwApi
 import Rtsv2.Names as Names
-import Rtsv2.Types (LocationResp)
+import Rtsv2.Types (LocationResp, RegistrationResp)
 import Serf (Ip)
 import Shared.Rtsv2.Agent as Agent
-import Shared.Rtsv2.Stream (EgestKey(..))
+import Shared.Rtsv2.Stream (EgestKey(..), RtmpShortName(..), RtmpStreamName(..), SlotRole(..))
 import Shared.Rtsv2.Types (CanaryState(..))
 
 
 
 foreign import startServer :: Ip -> Int -> Callbacks -> Int -> Int -> Effect Unit
 
+foreign import startServerTls :: Ip -> Int -> Callbacks -> Int -> Int -> String -> String -> Effect Unit
+
 
 type Callbacks
   = { startStream :: EffectFn1 EgestKey LocationResp
+    , slotLookup :: EffectFn2 RtmpShortName RtmpStreamName EgestKey
+    , addClient :: EffectFn3 Pid EgestKey String RegistrationResp
     }
 
 serverName :: ServerName State Unit
@@ -42,14 +51,31 @@ type State =
 
 init :: forall a. a -> Effect State
 init _ = do
-  logInfo "Egest rtmp starting" {port: 5123}
+  
   publicListenIp <- Env.publicListenIp
+  supportListenIp <- Env.supportListenIp
   loadConfig <- Config.loadConfig
-  let callbacks :: Callbacks
-      callbacks = { startStream: mkEffectFn1 $ startStream loadConfig Live
+  apiConfig <- Config.llnwApiConfig
+  {port, tlsPort, canaryPort, canaryTlsPort, certFile, keyFile, canaryCertFile, canaryKeyFile, nbAcceptors} <- Config.rtmpEgestConfig
+  let callbacks :: CanaryState -> Callbacks
+      callbacks canary = { startStream: mkEffectFn1 $ startStream loadConfig canary
+                         , slotLookup: mkEffectFn2 \shortName streamId -> do
+                                  res <- LlnwApi.slotLookup apiConfig shortName streamId
+                                  { id } <- either (const $ throw "slot lookup error") pure res
+                                  pure $ EgestKey id Primary
+                         , addClient: mkEffectFn3 addClient
                   }
               
-  startServer publicListenIp 5123 callbacks 10 30000
+  -- Public servers
+  startServer publicListenIp port (callbacks Live) nbAcceptors 5000
+  startServerTls publicListenIp tlsPort (callbacks Live) nbAcceptors 5000 certFile keyFile
+
+  -- Canary servers
+  startServer supportListenIp canaryPort (callbacks Canary) nbAcceptors 5000
+  startServerTls supportListenIp canaryTlsPort (callbacks Canary) nbAcceptors 5000 certFile keyFile
+
+  logInfo "Egest rtmp started" {port, tlsPort, canaryPort, canaryTlsPort}
+
   pure {}
 
   where
@@ -57,6 +83,11 @@ init _ = do
   startStream :: Config.LoadConfig -> CanaryState -> EgestKey -> Effect LocationResp
   startStream loadConfig canary (EgestKey slotId slotRole) =
       EgestInstanceSup.findEgest loadConfig canary slotId slotRole
+
+  addClient :: Pid -> EgestKey -> String -> Effect RegistrationResp
+  addClient pid egestKey sessionId =
+    EgestInstance.addClient pid egestKey sessionId
+
 
 --------------------------------------------------------------------------------
 -- Log helpers

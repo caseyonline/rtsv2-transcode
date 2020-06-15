@@ -2,11 +2,19 @@
 
 -include_lib("id3as_media/include/rtmp.hrl").
 
--export([startServer/5]).
+-export([startServer/5, startServerTls/7]).
 
 startServer(PublicIp, Port, Callbacks, NbAcceptors, ReceiveTimeout) ->
   fun() ->
     case start_rtmp_server(PublicIp, Port, NbAcceptors, ReceiveTimeout, Callbacks, false, []) of
+      ok -> ok;
+      {error, Error} -> throw({rtmp_start_error, Error})
+    end
+  end.
+
+startServerTls(PublicIp, Port, Callbacks, NbAcceptors, ReceiveTimeout, CertFile, KeyFile) ->
+  fun() ->
+    case start_rtmp_server(PublicIp, Port, NbAcceptors, ReceiveTimeout, Callbacks, true, [{certfile, CertFile}, {keyfile, KeyFile}]) of
       ok -> ok;
       {error, Error} -> throw({rtmp_start_error, Error})
     end

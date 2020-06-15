@@ -62,13 +62,11 @@ handle_info({udp, _Socket, _FromIP, _FromPort, Data},
       {H264WrapState2,_,ExtendedTimestamp} = rtp_timestamp_wrap:compute_extended_timestamp(H264WrapState, Timestamp),
       RTP2 = RTP#rtp { processing_metadata = ProcessingMetadata#rtp_processing_metadata{ frame_time = ExtendedTimestamp } },
       {RtpH264State2, Frames1} = rtp_h264_ingest:step(RtpH264State, RTP2),
-      ?INFO("Un-wrapped ~p to ~p", [Timestamp, ExtendedTimestamp]),
       {Frames1, State#?state{ h264_ingest_state = RtpH264State2, h264_wrap_state = H264WrapState2}};
     ?OPUS_ENCODING_ID ->
       {OpusWrapState2,_,ExtendedTimestamp} = rtp_timestamp_wrap:compute_extended_timestamp(OpusWrapState, Timestamp),
       RTP2 = RTP#rtp { processing_metadata = ProcessingMetadata#rtp_processing_metadata{ frame_time = round(ExtendedTimestamp * 90/48) } },
       {RtpOpusState2, Frames1} = rtp_opus_ingest:step(RtpOpusState, RTP2),
-      ?INFO("Un-wrapped ~p to ~p and converted to ~p", [Timestamp, ExtendedTimestamp, round(ExtendedTimestamp * 90 / 48)]),
       {Frames1, State#?state{ opus_ingest_state = RtpOpusState2, opus_wrap_state = OpusWrapState2}}
   end,
   case Frames of 
