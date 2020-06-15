@@ -30,4 +30,4 @@ test/config/popDefinition.json
 _assets
 _etwas/
 logs*/
-**/*.orig
+*.beam
