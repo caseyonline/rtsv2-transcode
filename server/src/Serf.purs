@@ -9,6 +9,7 @@ module Serf
        , calcRtt
        , messageMapper
        , Ip(..), IpAndPort, ApiError(..), SerfCoordinate, SerfMember, SerfMessage(..), SerfResult(..), LamportClock
+       , class SerfWireMessage, toWireMessage --, fromWireMessage
        )
        where
 
@@ -19,24 +20,33 @@ import Data.Foldable (foldl)
 import Data.Int (fromString, round)
 import Data.Long as Long
 import Data.Maybe (Maybe(..))
-import Data.Newtype (wrap)
 import Data.String (Pattern(..), split)
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Erl.Atom (Atom)
+import Erl.Data.Binary (Binary)
 import Erl.Data.List (List, zip)
 import Erl.Data.Map (Map)
+import Erl.Data.Tuple (Tuple2, fst, snd)
 import Foreign (Foreign)
 import Math (sqrt)
 import Shared.Common (Milliseconds(..))
 
 type SerfResult a = Either ApiError a
 
+class SerfWireMessage a where
+  toWireMessage :: a -> Tuple2 String Binary
+--  fromWireMessage :: Tuple2 String Binary -> a
+
+
+class SerfWireElement a where
+  toWireElement :: a -> Binary
+  fromWireElement :: Binary -> a
+
 newtype LamportClock = LamportClock Int
 derive instance eqLamportClock :: Eq LamportClock
 derive instance ordLamportClock :: Ord LamportClock
-
 
 type SerfMember = { name :: String
                   , addr :: String
@@ -66,7 +76,7 @@ data SerfMessage a = MemberAlive (List SerfMember)
 
 foreign import joinImpl :: (ApiError -> (SerfResult Int)) -> (Int -> SerfResult Int) -> IpAndPort -> List IpAndPort -> Boolean ->  Effect (SerfResult Int)
 foreign import leaveImpl :: (ApiError -> (SerfResult Unit)) -> (Unit -> SerfResult Unit) -> IpAndPort ->  Effect (SerfResult Unit)
-foreign import eventImpl :: forall a. (ApiError -> (SerfResult Unit)) -> (SerfResult Unit) -> IpAndPort -> String -> a -> Boolean ->  Effect (SerfResult Unit)
+foreign import eventImpl :: (ApiError -> (SerfResult Unit)) -> (SerfResult Unit) -> IpAndPort -> String -> Binary -> Boolean ->  Effect (SerfResult Unit)
 foreign import streamImpl :: (ApiError -> (SerfResult Unit)) -> (SerfResult Unit) -> IpAndPort -> Effect (SerfResult Unit)
 foreign import membersImpl :: (ApiError -> (SerfResult (List SerfMember))) -> ((List SerfMember) -> SerfResult (List SerfMember)) -> IpAndPort -> Effect (SerfResult (List SerfMember))
 foreign import getCoordinateImpl :: (ApiError -> (SerfResult SerfCoordinate)) -> (SerfCoordinate -> SerfResult SerfCoordinate) -> IpAndPort -> String -> Effect (SerfResult SerfCoordinate)
@@ -100,8 +110,11 @@ join = joinImpl Left Right
 leave :: IpAndPort -> Effect (SerfResult Unit)
 leave = leaveImpl Left Right
 
-event :: forall a. IpAndPort -> String -> a -> Boolean ->  Effect (SerfResult Unit)
-event = eventImpl Left (Right unit)
+event :: forall a. SerfWireMessage a => IpAndPort -> a -> Boolean ->  Effect (SerfResult Unit)
+event rpcAddr msg =
+  let wireMsg = toWireMessage msg
+  in
+    eventImpl Left (Right unit) rpcAddr (fst wireMsg) (snd wireMsg)
 
 stream :: IpAndPort -> Effect (SerfResult Unit)
 stream = streamImpl Left (Right unit)
