@@ -69,6 +69,7 @@ import SpudGun (bodyToString)
 import SpudGun as SpudGun
 
 foreign import to_binary :: forall a. a -> Binary
+foreign import from_binary :: forall a. Binary -> a
 
 type Edge = Tuple PoPName PoPName
 type Rtts = Map Edge Milliseconds
@@ -116,6 +117,7 @@ instance serfWireMessageTM :: SerfWireMessage TransMessage where
   toWireMessage payload@(TMAggregatorState Stopped agentKey serverAddr slotCharacteristics) =
     tuple2 "streamStopped" $ to_binary payload
 
+  fromWireMessage name payload = Just $ from_binary payload
 
 
 data Msg

@@ -107,6 +107,7 @@ import Shared.Rtsv2.Types (AcceptingRequests, CanaryState(..), CurrentLoad, Heal
 import Shared.Utils (distinctRandomNumbers)
 
 foreign import to_binary :: forall a. a -> Binary
+foreign import from_binary :: forall a. Binary -> a
 
 type TestHelperPayload =
   { dropAgentMessages :: Boolean
@@ -212,6 +213,8 @@ instance serfWireMessageIM :: SerfWireMessage IntraMessage where
   toWireMessage payload@(IMVMLiveness serverAddress ref) =
     tuple2 "vmLiveness" $ to_binary payload
 
+
+  fromWireMessage name payload = Just $ from_binary payload
 
 
 data Msg serfPayload

@@ -9,7 +9,7 @@ module Serf
        , calcRtt
        , messageMapper
        , Ip(..), IpAndPort, ApiError(..), SerfCoordinate, SerfMember, SerfMessage(..), SerfResult(..), LamportClock
-       , class SerfWireMessage, toWireMessage --, fromWireMessage
+       , class SerfWireMessage, toWireMessage, fromWireMessage
        )
        where
 
@@ -32,12 +32,13 @@ import Erl.Data.Tuple (Tuple2, fst, snd)
 import Foreign (Foreign)
 import Math (sqrt)
 import Shared.Common (Milliseconds(..))
+import Unsafe.Coerce (unsafeCoerce)
 
 type SerfResult a = Either ApiError a
 
 class SerfWireMessage a where
   toWireMessage :: a -> Tuple2 String Binary
---  fromWireMessage :: Tuple2 String Binary -> a
+  fromWireMessage :: String -> Binary -> Maybe a
 
 
 class SerfWireElement a where
@@ -80,7 +81,7 @@ foreign import eventImpl :: (ApiError -> (SerfResult Unit)) -> (SerfResult Unit)
 foreign import streamImpl :: (ApiError -> (SerfResult Unit)) -> (SerfResult Unit) -> IpAndPort -> Effect (SerfResult Unit)
 foreign import membersImpl :: (ApiError -> (SerfResult (List SerfMember))) -> ((List SerfMember) -> SerfResult (List SerfMember)) -> IpAndPort -> Effect (SerfResult (List SerfMember))
 foreign import getCoordinateImpl :: (ApiError -> (SerfResult SerfCoordinate)) -> (SerfCoordinate -> SerfResult SerfCoordinate) -> IpAndPort -> String -> Effect (SerfResult SerfCoordinate)
-foreign import messageMapperImpl :: forall a. Foreign -> Maybe (SerfMessage a)
+foreign import messageMapperImpl :: Foreign -> Maybe (SerfMessage Binary)
 
 data Ip = Ipv4 Int Int Int Int
 
@@ -137,5 +138,13 @@ calcRtt lhs rhs = Milliseconds $ Long.fromInt $ round $
     else rtt * 1000.0
 
 
-messageMapper :: forall a. Foreign -> Maybe (SerfMessage a)
-messageMapper = messageMapperImpl
+messageMapper :: forall a. SerfWireMessage a => Foreign -> Maybe (SerfMessage a)
+messageMapper = do
+  mapUserPayload <=< messageMapperImpl
+  where
+    mapUserPayload :: SerfWireMessage a => SerfMessage Binary -> Maybe (SerfMessage a)
+    mapUserPayload (UserEvent name lamportClock coalesce payload) =
+      case fromWireMessage name payload of
+        Nothing -> Nothing
+        Just mappedPayload -> Just $ UserEvent name lamportClock coalesce mappedPayload
+    mapUserPayload other = Just $ unsafeCoerce other

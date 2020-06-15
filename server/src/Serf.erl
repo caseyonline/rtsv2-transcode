@@ -98,7 +98,7 @@ messageMapperImpl(#serf_user_event{ name = Name
                                   , coalesce = Coalesce
                                   , payload = Payload
                                   }) ->
-  {just, {userEvent, Name, LTime, Coalesce, binary_to_term(Payload)}};
+  {just, {userEvent, Name, LTime, Coalesce, Payload}};
 
 messageMapperImpl(#serf_members_event{ type = join
                                      , members = Members
