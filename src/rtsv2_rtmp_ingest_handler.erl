@@ -22,12 +22,15 @@ init(Rtmp, ConnectArgs, [#{ init := OnConnectCallback  }]) ->
 
   [ShortName | Rem] = string:split(AppArg, "?"),
 
+  {ok, {RemoteIp, _RemotePort}} = rtmp:peername(Rtmp),
+  RemoteIpStr = list_to_binary(inet:ntoa(RemoteIp)),
+
   Query = case Rem of
             [] -> #{};
             [QueryString] -> maps:from_list(rtmp_utils:parse_qs(list_to_binary(QueryString)))
           end,
 
-  Response = (OnConnectCallback(list_to_binary(ShortName), Query))(),
+  Response = (OnConnectCallback(list_to_binary(ShortName), RemoteIpStr, Query))(),
 
   case Response of
     {rejectRequest} ->

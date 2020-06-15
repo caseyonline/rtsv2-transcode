@@ -107,10 +107,10 @@ startRelay createPayload =
   in
   (note LaunchFailed <<< startOkAS) <$>
   Sup.startSimpleChild childTemplate serverName { childStartLink: StreamRelayInstanceSup.startLink relayKey parentCallbacks createPayload
-                                                 , childStopAction: StreamRelayInstance.stopAction relayKey
-                                                 , serverName: Names.streamRelayInstanceStateName relayKey
-                                                 , domain: StreamRelayInstance.domain
-                                                 }
+                                                , childStopAction: StreamRelayInstance.stopAction relayKey
+                                                , serverName: Names.streamRelayInstanceStateName relayKey
+                                                , domain: StreamRelayInstance.domain
+                                                }
 
 
 childTemplate :: Pinto.ChildTemplate (CachedInstanceState.StartArgs StreamRelayInstance.CachedState)

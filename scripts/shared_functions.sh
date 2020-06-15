@@ -24,6 +24,7 @@ function create_net {
     "Linux")
       sudo modprobe dummy
       sudo ip link add rtsv2-br type bridge
+      sudo ip link set rtsv2-br up
 
       # Preliminary work on making the test environment available across hosts on an overlay network
       # sudo ip link add rtsv2-vxlan type vxlan id 1310 group 239.1.13.10 dstport 4789 dev lab

@@ -34,9 +34,9 @@ import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, singleton)
 import Erl.Data.List as List
-import Erl.Data.Map (Map, values)
+import Erl.Data.Map (Map, lookup, toUnfoldable, values)
 import Erl.Data.Map as Map
-import Erl.Data.Tuple (Tuple2, tuple2)
+import Erl.Data.Tuple (Tuple2, fst, snd, tuple2)
 import Erl.Process (Process(..), (!))
 import Erl.Process.Raw (Pid)
 import Erl.Utils (Ref, makeRef, systemTimeMs)
@@ -44,7 +44,7 @@ import Erl.Utils as Erl
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
 import Pinto as Pinto
-import Pinto.Gen (CallResult(..), CastResult(..))
+import Pinto.Gen (CallResult(..), CastResult(..), TerminateReason(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Rtsv2.Agents.CachedInstanceState as CachedInstanceState
@@ -248,8 +248,9 @@ dataObjectUpdate egestKey updateMsg =
 
 statsUpdate :: EgestKey -> EgestSessionStats -> Effect Unit
 statsUpdate egestKey stats@{sessionId} = do
-  Gen.call (serverName egestKey) \state@{clientStats} ->
-    CallReply unit state{clientStats = Map.insert sessionId stats clientStats}
+  Gen.doCall (serverName egestKey) \state@{clientStats} -> do
+    logInfo "STATS" {stats}
+    pure $ CallReply unit state{clientStats = Map.insert sessionId stats clientStats}
 
 forceDrain :: EgestKey -> Effect Unit
 forceDrain egestKey =
@@ -325,6 +326,8 @@ init parentCallbacks payload@{slotId, slotRole, aggregatorPoP, slotCharacteristi
   Load.addPredictedLoad (egestKeyToAgentKey egestKey) predictedLoad
 
   Gen.registerExternalMapping (serverName egestKey) (\m -> Gun <$> (WsGun.messageMapper m))
+  Gen.registerTerminate (serverName egestKey) terminate
+
   let
     state = { egestKey
             , aggregatorPoP
@@ -443,6 +446,16 @@ handleInfo msg state@{egestKey: egestKey@(EgestKey slotId slotRole), thisServer}
       | (state.clientCount == 0) && (Just ref == state.stopRef) = doStop state
       | otherwise = pure $ CastNoReply state
 
+terminate :: TerminateReason -> State -> Effect Unit
+terminate Normal state = do
+  logInfo "EgestInstance terminating" {reason: Normal}
+  pure unit
+terminate reason state = do
+  logInfo "EggestInstance terminating" {reason}
+  Tuple endMs eqLines <- egestEqLines state
+  traverse_ Audit.egestStop eqLines
+  pure unit
+
 processGunMessage :: State -> WsGun.GunMsg -> Effect (CastResult State)
 processGunMessage state@{relayWebSocket: Nothing} gunMsg =
   pure $ CastNoReply state
@@ -559,15 +572,18 @@ removeClient sessionId state@{clientCount, clientStats} = do
 egestEqLines :: State -> Effect (Tuple Milliseconds (List Audit.EgestEqLine))
 egestEqLines state@{ egestKey: egestKey@(EgestKey slotId _slotRole)
                    , thisServer: (Server {address: thisServerAddr})
+                   , clientStats
                    , lastEgestAuditTime: startMs
                    , slotConfiguration} = do
   endMs <- systemTimeMs
   {sessionInfo} <- getStatsFFI egestKey
-  pure $ Tuple endMs ((egestEqLine slotId slotConfiguration (unwrap thisServerAddr) startMs endMs) <$> values sessionInfo)
+  logInfo "FFI STATS" {sessionInfo}
+  pure $ Tuple endMs ((egestEqLine slotId slotConfiguration (unwrap thisServerAddr) startMs endMs clientStats) <$> toUnfoldable sessionInfo)
 
-egestEqLine :: SlotId -> Maybe SlotConfiguration -> String -> Milliseconds -> Milliseconds -> WebRTCSessionManagerStats -> Audit.EgestEqLine
-egestEqLine slotId slotConfiguration thisServerAddr startMs endMs {channels} =
+egestEqLine :: SlotId -> Maybe SlotConfiguration -> String -> Milliseconds -> Milliseconds -> (Map String EgestSessionStats) -> Tuple String WebRTCSessionManagerStats -> Audit.EgestEqLine
+egestEqLine slotId slotConfiguration thisServerAddr startMs endMs clientStatsMap (Tuple sessionId {channels}) =
   let
+    clientStats = fromMaybe (emptySessionStats sessionId) $ lookup sessionId clientStatsMap
     receiverAccumulate acc {lostTotal} = acc + lostTotal
 
     channelInitial = {writtenAcc: 0, readAcc: 0, lostAcc: 0, remoteAddress: ""}
@@ -587,13 +603,13 @@ egestEqLine slotId slotConfiguration thisServerAddr startMs endMs {channels} =
   { egestIp: thisServerAddr
   , egestPort: -1
   , subscriberIp: remoteAddress
-  , username: "n/a" -- TODO
+  , username: sessionId
   , rtmpShortName: shortName
   , slotId
   , connectionType: WebRTC
   , startMs
   , endMs
-  , bytesWritten: writtenAcc
+  , bytesWritten: clientStats.audioOctetsSent + clientStats.videoOctetsSent
   , bytesRead: readAcc
   , lostPackets: lostAcc
   }

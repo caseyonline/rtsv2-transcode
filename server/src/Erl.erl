@@ -18,6 +18,7 @@
         , readTuple2Impl/1
         , base64EncodeImpl/1
         , linkImpl/1
+        , whereisImpl/1
         ]).
 
 linkImpl(Pid) ->
@@ -53,6 +54,25 @@ selfImpl() ->
 trapExitImpl(Value) ->
   fun() ->
       process_flag(trap_exit, Value)
+  end.
+
+whereisImpl(Target) ->
+  fun() ->
+      Pid = case Target of
+              P when is_pid(P) ->
+                P;
+              {via, Module, Name} ->
+                Module:whereis_name(Name);
+              {global, Name} ->
+                global:whereis_name(Name);
+              Name when is_atom(Name) ->
+                whereis(Name)
+            end,
+
+      case Pid of
+        undefined -> {nothing};
+        _ -> {just, Pid}
+      end
   end.
 
 monitorImpl(ToMonitor) ->

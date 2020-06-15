@@ -169,7 +169,7 @@ client_address(Req) ->
   case cowboy_req:header(<<"x-forwarded-for">>, Req) of
     undefined ->
       { ClientAddr, _ClientPort } = cowboy_req:peer(Req),
-      { ClientAddr
+      { list_to_binary(inet:ntoa(ClientAddr))
       , cowboy_req:port(Req)};
 
     RHost ->

@@ -9,7 +9,7 @@ import Effect (Effect)
 import Erl.Data.List (nil, (:))
 import Pinto (SupervisorName)
 import Pinto as Pinto
-import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStart, childType)
+import Pinto.Sup (SupervisorChildType(..), buildChild, childId, childStart, childType)
 import Pinto.Sup as Sup
 import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
 import Rtsv2.Agents.IngestOneForOneSup as IngestOneForOneSup

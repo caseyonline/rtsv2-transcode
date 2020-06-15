@@ -7,7 +7,7 @@ import Data.Traversable (sequence)
 import Effect (Effect)
 import Erl.Data.List ((:))
 import Pinto as Pinto
-import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildSpec, SupervisorChildType(..), SupervisorSpec, SupervisorStrategy(..))
+import Pinto.Sup (SupervisorChildSpec, SupervisorChildType(..), SupervisorSpec, SupervisorStrategy(..))
 import Pinto.Sup as Sup
 import Rtsv2.Agents.EgestSup as EgestSup
 import Rtsv2.Agents.IngestAggregatorSup as IngestAggregatorSup

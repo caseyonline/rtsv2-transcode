@@ -15,12 +15,12 @@ import Data.Traversable (traverse_)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
-import Erl.Cowboy.Req (StatusCode(..))
+import Erl.Cowboy.Req (StatusCode(..), IpAddress)
 import Erl.Cowboy.Req as Req
 import Erl.Data.List (List, nil, (:))
 import Erl.Data.List as List
 import Erl.Data.Map as Map
-import Erl.Data.Tuple (tuple2)
+import Erl.Data.Tuple (fst, tuple2, uncurry4)
 import Erl.Process.Raw (Pid)
 import Erl.Process.Raw as Raw
 import Erl.Utils (self)
@@ -207,7 +207,9 @@ ingestStart loadConfig canary shortName streamName =
                                                         , protocol: Rtmp
                                                         , rtmpShortName: shortName
                                                         , rtmpStreamName: streamName
-                                                        , username: "user"}
+                                                        , username: "user"
+                                                        , clientIp: ipToString $ fst $ Req.peer req
+                                                        }
                           in
                            do
                              config <- Config.llnwApiConfig
@@ -300,6 +302,15 @@ stopFakeIngest ingestKey = do
   logInfo "stopping fake ingest" {ingestKey, pid}
   traverse_ ((flip Raw.send) (atom "stop")) pid
   pure unit
+
+ipToString :: IpAddress -> String
+ipToString ip =
+  uncurry4 doToString ip
+  where
+    doToString a b c d =
+      (octetToString a) <> "." <> (octetToString b) <> "." <> (octetToString c) <> "." <> (octetToString d)
+    octetToString octet =
+      show octet
 
 --------------------------------------------------------------------------------
 -- Log helpers

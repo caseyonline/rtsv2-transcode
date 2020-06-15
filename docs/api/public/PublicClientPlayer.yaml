@@ -6,15 +6,24 @@ get:
   parameters:
     - $ref: '../parameters/slotId.yaml'
     - $ref: '../parameters/slotRole.yaml'
+  produces:
+    - "application/json-ld"
   responses:
     '200':
       description: OK
       content:
-        application/json:
+        application/json-ld:
           schema:
-            type: array
-            items:
-              $ref: '../PublicSchema.yaml'
+            type: object
+            example:
+              alerts: todo
+
+              currentTransPoP: 172.16.170.1
+              intraPoPHealth: healthType
+              load: todo
+              nodeManager: todo
+              transPoPHealth: todo
+
     '404':
       description: Not Found
       content:

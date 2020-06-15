@@ -16,10 +16,10 @@ module Rtsv2.Agents.IngestRtmpCrypto
 import Prelude
 
 import Data.FoldableWithIndex (foldlWithIndex)
-import Data.Int (toNumber)
+
 import Data.Long as Long
 import Data.Maybe (Maybe(..), fromMaybe)
-import Data.Newtype (wrap)
+
 import Effect (Effect)
 import Erl.Data.List (List, filter, nil, null, uncons, (:))
 import Erl.Data.Map (Map, alter, delete, insert, lookup)

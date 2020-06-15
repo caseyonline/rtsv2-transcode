@@ -34,6 +34,7 @@ module Rtsv2.Names
        , streamRelayInstanceName
        , streamRelayDownstreamProxyName
 
+       , topName
        , dataObjectName
        , transPoPName
        , webServerName
@@ -53,6 +54,9 @@ import Pinto (ServerName(..), SupervisorName)
 import Shared.Rtsv2.Agent (Agent(..))
 import Shared.Rtsv2.Stream (AggregatorKey, EgestKey, IngestKey, RelayKey)
 import Shared.Rtsv2.Types (PoPName)
+
+topName :: forall a b. ServerName a b
+topName = Local (atom "top")
 
 agentSupName :: SupervisorName
 agentSupName = Local (atom "AgentSup")

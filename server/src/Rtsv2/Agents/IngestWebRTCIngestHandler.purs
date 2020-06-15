@@ -45,7 +45,7 @@ type StartStreamResult = { sourceInfo :: Foreign -> Effect Unit
 
 authenticate :: LoadConfig -> CanaryState -> String -> StreamIngestProtocol -> String -> String -> String -> String -> String -> Int -> Effect (Maybe AuthenticateResult)
 authenticate loadConfig canary host protocol account username password streamName remoteAddress remotePort = do
-  publishCredentials <- getPublishCredentials host account username
+  publishCredentials <- getPublishCredentials host account username remoteAddress
 
   case publishCredentials of
     Just (PublishCredentials { username: expectedUsername
@@ -60,6 +60,7 @@ authenticate loadConfig canary host protocol account username password streamNam
                                , rtmpShortName
                                , rtmpStreamName
                                , username
+                               , clientIp: remoteAddress
                                }
         maybeStreamDetails <- getStreamDetails streamPublish
 
