@@ -24,7 +24,7 @@ import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Rtsv2.Config as Config
 import Rtsv2.Names as Names
-import Shared.Common (Alert(..), AlertData(..), LoggingContext, LoggingSource, Milliseconds)
+import Shared.Common (Alert(..), AlertData(..), IngestWarningAlert(..), LoggingContext, LoggingSource, Milliseconds)
 
 bus :: Bus.Bus Atom Foreign
 bus = Bus.bus (atom "rtsv2_alerts")
@@ -106,7 +106,9 @@ addOrUpdateAlert f state@{alerts} = do
     updateMap :: Alert -> Maybe Alert -> Maybe Alert
     updateMap alert Nothing = Just alert
     updateMap (Alert alert) (Just (Alert existing@{initialReport, repeatCount})) = Just (Alert alert{ initialReport = initialReport
-                                                                                                    , repeatCount = repeatCount + 1})
+                                                                                                    , repeatCount = repeatCount + 1
+                                                                                                    , alert = mergeAlert existing.alert alert.alert
+                                                                                                    })
 
 doExpiry :: State -> Effect State
 doExpiry state@{alerts, alertRetention} = do
@@ -120,12 +122,21 @@ alertToKey :: Alert -> AlertKey
 alertToKey alert@(Alert {alert: alertData}) =
   alertDataToKey alertData alert
 
+mergeAlert :: AlertData -> AlertData -> AlertData
+mergeAlert (IngestWarning (BitrateExceeded alertData@{value: existing})) (IngestWarning (BitrateExceeded {value: newValue})) =
+  IngestWarning (BitrateExceeded alertData{value = max existing newValue})
+
+mergeAlert existing new = existing
+
 alertDataToKey :: AlertData -> Alert -> AlertKey
 alertDataToKey (GenericAlert _) alert = defaultAlertKey alert Nothing
 
 alertDataToKey IngestStarted alert = defaultAlertKey alert Nothing
 
 alertDataToKey alertData@(IngestFailed reason) alert = defaultAlertKey alert (Just alertData)
+
+alertDataToKey (IngestWarning (BitrateExceeded alertData)) alert = defaultAlertKey alert (Just (IngestWarning (BitrateExceeded alertData{value = 0,
+                                                                                                                                         threshold = 0})))
 
 alertDataToKey alertData@(LSRSFailed reason) alert = defaultAlertKey alert (Just alertData)
 

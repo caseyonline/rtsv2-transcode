@@ -22,7 +22,6 @@ import Ephemeral.Map (EMap)
 import Ephemeral.Map as EMap
 import Erl.Data.List ((:))
 import Erl.Data.Tuple (tuple2)
-import Logger (spy)
 import Pinto (ServerName, StartLinkResult)
 import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
@@ -43,7 +42,7 @@ import SpudGun as SpudGun
 ------------------------------------------------------------------------------
 streamAuthType :: LlnwApiConfig -> StreamConnection -> Effect (Either JsonResponseError AuthType)
 streamAuthType {streamAuthTypeUrl, headers} body =
-  spy "here" $ bodyToJSON <$> jsonPost (wrap streamAuthTypeUrl) headers (spy "body" body)
+  bodyToJSON <$> jsonPost (wrap streamAuthTypeUrl) headers body
 
 streamAuth :: LlnwApiConfig -> StreamAuth -> Effect (Either JsonResponseError PublishCredentials)
 streamAuth {streamAuthUrl, headers} body =
@@ -151,7 +150,7 @@ serverName = Names.llnwApiServerName
 jsonPost :: forall body. WriteForeign body => Url -> Headers -> body -> Effect SpudResult
 jsonPost url headers body =
   SpudGun.post url { headers: ( tuple2 "Content-Type" "application/json" ) : headers
-                   , body: (spy "json" $ writeJSON body)
+                   , body: writeJSON body
                    }
 
 jsonGet :: Url -> Headers -> Effect SpudResult

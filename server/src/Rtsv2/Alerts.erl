@@ -5,7 +5,7 @@
 
 mapForeign(LogEvent = #{meta := #{ time := Time
                                  , pid := Pid }}) ->
-io:format(user, "HERE ~p~n", [LogEvent]),
+
   #{ initialReport => Time div 1000
    , lastReport => Time div 1000
    , repeatCount => 0
@@ -15,8 +15,25 @@ io:format(user, "HERE ~p~n", [LogEvent]),
    , pid => list_to_binary(pid_to_list(Pid))
    }.
 
-mapToAlert(_LogEvent = #{meta := #{ alertId := ingestStarted } } ) ->
+mapToAlert(_LogEvent = #{ meta := #{ alertId := ingestStarted } } ) ->
   {ingestStarted};
+
+mapToAlert(_LogEvent = #{ meta := #{ alertId := ingestBitrateExceeded
+                                   , bitrateType := BitrateType
+                                   , watermarkExceeded := WatermarkType }
+                        , msg := {report, #{ value := Value
+                                           , threshold := Watermark }}
+                        } ) ->
+  {ingestWarning, {bitrateExceeded, #{ bitrateType => case BitrateType of
+                                                        average -> {average};
+                                                        peak -> {peak}
+                                                      end
+                                     , watermarkType => case WatermarkType of
+                                                          high -> {high};
+                                                          low -> {low}
+                                                        end
+                                     , value => Value
+                                     , threshold => Watermark }}};
 
 mapToAlert(_LogEvent = #{ meta := #{ alertId := invalidVideoFormat }
                         , msg := {_FormatString, [CodecId]}} ) ->

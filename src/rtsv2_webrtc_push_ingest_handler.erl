@@ -22,10 +22,8 @@
         { workflow_handle :: id3as_workflow:workflow_handle()
         }).
 
-%% init should be part of negotiation so it can construct a workflow
-%%      based on the negotiated stream?
-init([ SlotId, SlotRole, ProfileName ]) ->
-  #?state{ workflow_handle = start_workflow(SlotId, SlotRole, ProfileName) }.
+init([ SlotId, SlotRole, ProfileName, SlotProfile ]) ->
+  #?state{ workflow_handle = start_workflow(SlotId, SlotRole, ProfileName, SlotProfile) }.
 
 handle_media_frame(Frame, State = #?state{ workflow_handle = WorkflowHandle }) ->
   ok = id3as_workflow:process_input(Frame, WorkflowHandle),
@@ -40,49 +38,14 @@ handle_info(#workflow_output{message = #workflow_data_msg{data = _Other}}, State
 handle_info({lost_ownership, _OperatorId}, State) ->
   {stop, normal, State}.
 
-start_workflow(SlotId, SlotRole, ProfileName) ->
-  BusName = {rtsv2_webrtc_ingest_bus, SlotId, SlotRole, ProfileName},
-
-  %% TODO - don't need the other workflow in webrtcingest.erl - this can do it all...
-  %% TODO - handle failure
+start_workflow(SlotId, SlotRole, ProfileName, SlotProfile) ->
+  Key = {ingestKey, SlotId, SlotRole, ProfileName},
 
   WorkflowDefinition =
     #workflow{ name = ?MODULE
              , generators = []
-             , processors = [ #processor{ name = video
-                                        , display_name = <<"Receive Video from WebRTC">>
-                                        , subscribes_to = {outside_world, ?video_frames}
-                                        , module = passthrough_processor
-                                        }
-
-                            , #processor{ name = video_with_correct_stream_id
-                                        , display_name = <<"Update Video Stream Id">>
-                                        , subscribes_to = video
-                                        , module = set_stream_id
-                                        , config = 256
-                                        }
-
-                            , #processor{ name = audio
-                                        , display_name = <<"Receive Audio from WebRTC">>
-                                        , subscribes_to = {outside_world, ?audio_frames}
-                                        , module = passthrough_processor
-                                        }
-
-                            , #processor{ name = audio_with_correct_stream_id
-                                        , display_name = <<"Update Audio Stream Id">>
-                                        , subscribes_to = audio
-                                        , module = set_stream_id
-                                        , config = 257
-                                        }
-
-                            , #processor{ name = despatch_media
-                                        , display_name = <<"Despatch WebRTC to Encoder Workflow">>
-                                        , subscribes_to = [ audio_with_correct_stream_id
-                                                          , video_with_correct_stream_id
-                                                          ]
-                                        , module = send_to_bus_processor
-                                        , config = #send_to_bus_processor_config{ bus_name = BusName }
-                                        }
+             , processors = [
+                              rtsv2_ingest_processor:ingest_processor(Key, ProfileName, SlotProfile, outside_world)
                             ]
              },
 

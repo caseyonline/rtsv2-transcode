@@ -249,7 +249,6 @@ dataObjectUpdate egestKey updateMsg =
 statsUpdate :: EgestKey -> EgestSessionStats -> Effect Unit
 statsUpdate egestKey stats@{sessionId} = do
   Gen.doCall (serverName egestKey) \state@{clientStats} -> do
-    logInfo "STATS" {stats}
     pure $ CallReply unit state{clientStats = Map.insert sessionId stats clientStats}
 
 forceDrain :: EgestKey -> Effect Unit
@@ -577,7 +576,6 @@ egestEqLines state@{ egestKey: egestKey@(EgestKey slotId _slotRole)
                    , slotConfiguration} = do
   endMs <- systemTimeMs
   {sessionInfo} <- getStatsFFI egestKey
-  logInfo "FFI STATS" {sessionInfo}
   pure $ Tuple endMs ((egestEqLine slotId slotConfiguration (unwrap thisServerAddr) startMs endMs clientStats) <$> toUnfoldable sessionInfo)
 
 egestEqLine :: SlotId -> Maybe SlotConfiguration -> String -> Milliseconds -> Milliseconds -> (Map String EgestSessionStats) -> Tuple String WebRTCSessionManagerStats -> Audit.EgestEqLine
