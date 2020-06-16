@@ -29,9 +29,11 @@ import Effect (Effect)
 import Ephemeral.Map (EMap)
 import Ephemeral.Map as EMap
 import Erl.Atom (Atom, atom)
+import Erl.Data.Binary (Binary)
 import Erl.Data.List (List, head, index, length, nil, reverse, singleton, uncons, (:))
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
+import Erl.Data.Tuple (tuple2)
 import Erl.Process (spawnLink)
 import Erl.Utils (sleep, systemTimeMs, privDir)
 import Logger as Logger
@@ -53,7 +55,7 @@ import Rtsv2.Health as Health
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition (PoP)
 import Rtsv2.PoPDefinition as PoPDefinition
-import Serf (IpAndPort, LamportClock, SerfCoordinate, calcRtt)
+import Serf (class SerfWireMessage, IpAndPort, LamportClock, SerfCoordinate, calcRtt)
 import Serf as Serf
 import Shared.Common (Milliseconds(..))
 import Shared.Rtsv2.Agent (SlotCharacteristics, emptySlotCharacteristics)
@@ -66,6 +68,8 @@ import Shared.Utils (distinctRandomNumbers)
 import SpudGun (bodyToString)
 import SpudGun as SpudGun
 
+foreign import to_binary :: forall a. a -> Binary
+foreign import from_binary :: forall a. Binary -> a
 
 type Edge = Tuple PoPName PoPName
 type Rtts = Map Edge Milliseconds
@@ -104,7 +108,17 @@ data EventType
   = Available
   | Stopped
 
-data TransMessage = TMAggregatorState EventType AgentKey ServerAddress SlotCharacteristics
+data TransMessage
+  = TMAggregatorState EventType AgentKey ServerAddress SlotCharacteristics
+
+instance serfWireMessageTM :: SerfWireMessage TransMessage where
+  toWireMessage payload@(TMAggregatorState Available agentKey serverAddress slotCharacteristics) =
+    tuple2 "streamAvailable" $ to_binary payload
+  toWireMessage payload@(TMAggregatorState Stopped agentKey serverAddr slotCharacteristics) =
+    tuple2 "streamStopped" $ to_binary payload
+
+  fromWireMessage name payload = Just $ from_binary payload
+
 
 data Msg
   = LeaderTimeoutTick
@@ -192,7 +206,7 @@ announceAggregatorIsAvailable slotCharacteristics agentKey server =
     doAnnounceStreamIsAvailable state@{ thisServer
                                       , serfRpcAddress
                                       } = do
-      sendToTransSerfNetwork state "streamAvailable" (TMAggregatorState Available agentKey (extractAddress server) slotCharacteristics)
+      sendToTransSerfNetwork state $ TMAggregatorState Available agentKey (extractAddress server) slotCharacteristics
       pure state
 
 announceAggregatorStopped :: AgentKey -> Server -> Effect Unit
@@ -210,7 +224,7 @@ announceAggregatorStopped agentKey server =
       then do
             -- Message from our pop - distribute over trans-pop
             --logInfo "Local stream stopped being delivered to trans-pop" { slotId: slotId }
-            sendToTransSerfNetwork state "streamStopped" (TMAggregatorState Stopped agentKey (extractAddress server) emptySlotCharacteristics)
+            sendToTransSerfNetwork state $ TMAggregatorState Stopped agentKey (extractAddress server) emptySlotCharacteristics
             pure state
       else pure state
 
@@ -662,11 +676,11 @@ startScript =  privDir(atom "rtsv2") <> "/scripts/startTransPoPAgent.sh"
 stopScript :: String
 stopScript = privDir(atom "rtsv2") <> "/scripts/stopTransPoPAgent.sh"
 
-sendToTransSerfNetwork :: State -> String -> TransMessage -> Effect Unit
-sendToTransSerfNetwork {canary: Canary} _name _msg = pure unit
-sendToTransSerfNetwork state name msg = do
-  result <- Serf.event state.serfRpcAddress name msg false
-  maybeLogError "Trans-PoP serf event failed" result {name, msg}
+sendToTransSerfNetwork :: State -> TransMessage -> Effect Unit
+sendToTransSerfNetwork {canary: Canary}  _msg = pure unit
+sendToTransSerfNetwork state msg = do
+  result <- Serf.event state.serfRpcAddress msg false
+  maybeLogError "Trans-PoP serf event failed" result {msg}
 
 --------------------------------------------------------------------------------
 -- Log helpers

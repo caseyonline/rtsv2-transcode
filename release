@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-find . -name "*.beam" | xargs rm
+find . -name "*.beam" -delete
 rm -rf server/output
 rm -rf server/compiled_ps
 rebar3 compile

@@ -22,7 +22,8 @@ tags:
     description: Description for the Public API.
   - name: Support
     description: Description for Support API.
-
+produces:
+  - "application/json-ld"
 x-tagGroups:
   - name: Api
     tags:

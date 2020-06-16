@@ -1,0 +1,23 @@
+{
+  "@context": "/support/jsonld/healthContext",
+  "@id": "http://172.16.170.1:3002/support/healthCheck",
+  "@nodeType": "http://types.rtsv2.llnw.com/Health",
+  "alerts": [],
+  "currentTransPoP": "172.16.170.1",
+  "intraPoPHealth": "Perfect",
+  "load": {
+    "cpu": 73.05407939981244,
+    "network": 0
+  },
+  "nodeManager": {
+    "@context": "/support/jsonld/nodeManagerState",
+    "@nodeType": "http://types.rtsv2.llnw.com/NodeManager",
+    "canaryState": "live",
+    "egests": 0,
+    "ingestAggregators": 0,
+    "ingests": 0,
+    "runState": "active",
+    "streamRelays": 0
+  },
+  "transPoPHealth": "Critical"
+}
