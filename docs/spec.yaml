@@ -14,7 +14,7 @@ info:
     }
     ```
   x-logo:
-    url: images/logo.png
+    url: https://static.wixstatic.com/media/b1006e_fb5b447f5d124676b0b1a328eb6adbd5~mv2_d_2986_1252_s_2.png
 tags:
   - name: service metadata
     description: The service API provides additional metadata needed to make the OOAPI fit for this organization.
