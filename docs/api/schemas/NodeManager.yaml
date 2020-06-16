@@ -1,0 +1,34 @@
+type: object
+properties:
+  canaryState:
+    oneOf:
+      - {type: string, description: Canary, example: Canary}
+      - {type: string, description: Live, example: Live}
+    description: Current Canaray state
+  network:
+    type: integer
+    description: Network Kbps
+    example: 12
+  runState:
+    description: Current running state of node.
+    oneOf:
+      - {type: string, description: Active, example: Active}
+      - {type: string, description: PasiveDrain, example: PasiveDrain}
+      - {type: string, description: ForceDrain, example: ForceDrain}
+      - {type: string, description: OutOfService, example: OutOfService}
+  egests:
+    description: Number of active egests
+    type: integer
+    exmple: 25
+  ingests:
+    description: Number of active ingests
+    type: integer
+    exmple: 16
+  ingestAggregators:
+    description: Number of active ingests aggregators
+    type: integer
+    example: 9
+  streamRelays:
+    description: Number of active stream relays
+    type: integer
+    exmaple: 1

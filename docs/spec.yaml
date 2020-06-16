@@ -47,63 +47,62 @@ paths:
   /public/ingest/{shortName}/{streamName}/session:
     $ref: api/public/PublicClientWebRTCIngestControl.yaml
 
+  /support/canary/:
+    $ref: api/support/SupportCanary.yaml
+  # client bases routes
+  # /support/canary/client/{slotId}/{slotRole}/:
+  #   $ref: api/support/SupportCanaryClientPlayerAssets.yaml
+  # /support/canary/client/{slotId}/{slotRole}/player:
+  #   $ref: api/support/SupportCanaryClientPlayer.yaml
+  # /support/canary/client/{slotId}/{slotRole}/session:
+  #   $ref: api/support/SupportCanaryClientPlayerControl.yaml
+  /support/canary/discovery/v1/{shortName}/{streamName}:
+    $ref: api/support/SupportCanaryStreamDiscovery.yaml
+  # /support/canary/ingest/{slotId}/{slotRole}/ingest:
+  #   $ref: api/support/SupportCanaryClientWebRTCIngest.yaml
+  # /support/canary/ingest/{slotId}/{slotRole}/session:
+  #   $ref: api/support/SupportCanaryClientWebRTCIngestControl.yaml
+  /support/egest/metrics:
+    $ref: api/support/SupportEgestInstancesMetrics.yaml
+  /support/egest/{slotId}/{slotRole}:
+    $ref: api/support/SupportEgestStats.yaml
+  /support/healthCheck/:
+    $ref: api/support/SupportHealthCheck.yaml
+
+
+  /support/ingest/metrics/:
+    $ref: api/support/SupportIngestInstancesMetrics.yaml
+  /support/ingest/{slotId}/{slotRole}/{profileName}:
+    $ref: api/support/SupportIngestInstance.yaml
+  /support/ingestAggregator/:
+    $ref: api/support/SupportIngestAggregator.yaml
+  /support/ingestAggregator/{slotId}/{slotRole}/activeIngests/{profileName}/control:
+    $ref: api/support/SupportIngestAggregatorActiveIngestsPlayerControl.yaml
+  /support/ingestAggregator/{slotId}/{slotRole}/activeIngests/{profileName}/js/:
+    $ref: api/support/SupportIngestAggregatorActiveIngestsPlayerJs.yaml
+  /support/ingestAggregator/{slotId}/{slotRole}/activeIngests/{profileName}/player:
+    $ref: api/support/SupportIngestAggregatorActiveIngestsPlayer.yaml
+  /support/ingestAggregator/{slotId}/{slotRole}/js/:
+    $ref: api/support/SupportIngestAggregatorPlayerJs.yaml
+  /support/ingestAggregator/{slotId}/{slotRole}/player:
+    $ref: api/support/SupportIngestAggregatorPlayer.yaml
+  /support/ingestAggregator/{slotId}/{slotRole}:
+    $ref: api/support/SupportIngestAggregator.yaml
   /support/jsonld/{contexType}:
     $ref: api/support/SupportJsonLdContext.yaml
   /support/popDefinition/:
     $ref: api/support/SupportPoPDefinition.yaml
   /support/relay/{slotId}/{slotRole}:
     $ref: api/support/SupportRelayStats.yaml
-  /suport/runState/:
+  /support/runState/:
     $ref: api/support/SupportRunState.yaml
-  /suport/state/:
+  /support/state/:
     $ref: api/support/SupportServerState.yaml
-  /suport/state/slot/{slotId}:
+  /support/state/slot/{slotId}:
     $ref: api/support/SupportSlotState.yaml
-  /suport/timedRoutes/:
+  /support/timedRoutes/:
     $ref: api/support/SupportTimedRoutes.yaml
-  /suport/timedRoutes/{popName}:
+  /support/timedRoutes/{popName}:
     $ref: api/support/SupportTimedRoutesForPoP.yaml
-  /suport/vm/v1/metrics/:
+  /support/vm/v1/metrics/:
     $ref: api/support/SupportVMMEtrics.yaml
-
-  /support/canary/:
-    $ref: api/support/SupportCanary.yaml
-  /support/egest/metrics:
-    $ref: api/support/SupportEgestInstancesMetrics.yaml
-  /support/egest/{slotId}/{slotRole}:
-    $ref: api/support/SupportEgestStats.yaml
-  /suport/healthCheck/:
-    $ref: api/support/SupportHealthCheck.yaml
-
-  /support/ingestAggregator/:
-    $ref: api/support/SupportIngestAggregator.yaml
-  /support/ingestAggregator/{slotId}/{slotRole}:
-    $ref: api/support/SupportIngestAggregator.yaml
-  /support/ingestAggregator/{slotId}/{slotRole}/player:
-    $ref: api/support/SupportIngestAggregatorPlayer.yaml
-  /support/ingestAggregator/{slotId}/{slotRole}/js/:
-    $ref: api/support/SupportIngestAggregatorPlayerJs.yaml
-  /support/ingestAggregator/{slotId}/{slotRole}/activeIngests/{profileName}/player:
-    $ref: api/support/SupportIngestAggregatorActiveIngestsPlayer.yaml
-  /support/ingestAggregator/{slotId}/{slotRole}/activeIngests/{profileName}/js/:
-    $ref: api/support/SupportIngestAggregatorActiveIngestsPlayerJs.yaml
-  /support/ingestAggregator/{slotId}/{slotRole}/activeIngests/{profileName}/control:
-    $ref: api/support/SupportIngestAggregatorActiveIngestsPlayerControl.yaml
-  /support/ingest/metrics/:
-    $ref: api/support/SupportIngestInstancesMetrics.yaml
-  /support/ingest/{slotId}/{slotRole}/{profileName}:
-    $ref: api/support/SupportIngestInstance.yaml
-
-
-  /support/canary/discovery/v1/{shortName}/{streamName}:
-    $ref: api/support/SupportCanaryStreamDiscovery.yaml
-  /support/canary/client/{slotId}/{slotRole}/player:
-    $ref: api/support/SupportCanaryClientPlayer.yaml
-  /support/canary/client/{slotId}/{slotRole}/session:
-    $ref: api/support/SupportCanaryClientPlayerControl.yaml
-  /support/canary/client/{slotId}/{slotRole}/:
-    $ref: api/support/SupportCanaryClientPlayerAssets.yaml
-  /support/canary/ingest/{slotId}/{slotRole}/ingest:
-    $ref: api/support/SupportCanaryClientWebRTCIngest.yaml
-  /support/canary/ingest/{slotId}/{slotRole}/session:
-    $ref: api/support/SupportCanaryClientWebRTCIngestControl.yaml

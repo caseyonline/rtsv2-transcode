@@ -1,0 +1,8 @@
+description: Health status
+oneOf:
+  - {type: string, description: Perfect, example: Perfect}
+  - {type: string, description: Excellent, example: Excellent}
+  - {type: string, description: Good, example: Good}
+  - {type: string, description: Poor, example: Poor}
+  - {type: string, description: Critical, example: Critical}
+  - {type: string, description: NA, example: NA}

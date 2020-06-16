@@ -7,11 +7,28 @@ get:
     '200':
       description: OK
       content:
-        application/json-ld:
-          schema:
-            type: array
-            items:
-              $ref: '../PublicSchema.yaml'
+            application/json-ld:
+              schema:
+                type: object
+                properties:
+                  alerts:
+                    type: array
+                    $ref: "../schemas/AlertData.yaml"
+                  currentTransPoP:
+                    type: string
+                    format: hostname
+                    description: IP address of current transPoP
+                  load:
+                    description: Current network and cpu load
+                    $ref: "../schemas/Load.yaml"
+                  nodeManager:
+                    description: Node mananger state
+                    $ref: "../schemas/NodeManager.yaml"
+                  transPoPHealth:
+                    $ref: "../schemas/Health.yaml"
+                  intraPoPHealth:
+                    $ref: "../schemas/Health.yaml"
+
     '404':
       description: Not Found
       content:
