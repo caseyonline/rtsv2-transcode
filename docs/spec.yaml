@@ -1,11 +1,56 @@
 openapi: '3.0.3'
 info:
   version: '1.0'
-  title: RTS v2 Documentation
+  title: RTSv2 Documentation
   description: |
-    OpenAPI (fka Swagger) specification for the Open Education API.
+    OpenAPI (fka Swagger) specification for the id3as RTSv2 API.
 
     # Introductions
+
+    Welcome to Real Time Streaming (v2): An implementation of id3as Advanced Video Pipelines.
+    Implemented For LIMELIGHT NETWORKS INC - (c) id3as 2019-2020.
+
+    This documentation is designed for engineers who wish to develop control and monitoring systems that directly interact with the underlying RTSv2 system.
+
+    It contains four key sections:
+
+      1. A highlevel systems description explaining how to setup the software in such a way that you can develop control and monitoring systems and you can execute examples in this documentation.
+
+      2. A detailed API documentation explaining the input and output API calls that RTSv2 can handle.
+         This is split into:
+
+          * The Public API (designed for end user applications to be able to interact with)
+          * The Support API (designed for internal operations teams at Limelight)
+
+      3. Four reference examples of developer focussed 'journeys' exploring how to use the API to achieve various key tasks:
+          * A) 'A day in the life of a stream'
+          * B) 'A day in the life of the infrastructure'
+          * C) Platform reporting and queries
+          * D) Interfacing to Prometheus, logging configuration and basic alerting.
+
+    ## Overview
+    This section will describe (or reference other detail) the aim of the system, how it is intended to be deployed, what the API does, how calls to the API can be manually simulated for testing and otherwise used by the developer, and how the documentation and API reference is setup optimally for developer purposes.
+
+    ## Quick Start
+      A working system and 'live' documentation that can be developed directly against that working system is most easily setup by following the Readme files in order:
+
+      * https://github.com/id3as/rtsv2/blob/master/SETUP.md Before you start.
+      * https://github.com/id3as/rtsv2/blob/master/docs/README.md to setup the documentation 'live' on the local system.
+      * https://github.com/id3as/rtsv2/blob/master/README.md to setup the system and launch a simple test.
+
+
+
+    ## Security Model
+    This section will explain how tokens and security are handled etc so you know what to expect as you go to production.
+
+    # Journeys
+
+    ## 'A day in the life of a stream'
+    ## 'A day in the life of the infrastructure'
+    ## Platform reporting and queries
+    ## Interfacing to Prometheus, logging configuration and basic alerting.
+
+
 
     ```
     {
@@ -29,12 +74,6 @@ x-tagGroups:
     tags:
       - Public
       - Support
-  - name: Models
-    tags:
-      - offerings
-      - associations
-      - buildings
-      - rooms
 paths:
   /public/client/{slotId}/{slotRole}/player:
     $ref: api/public/PublicClientPlayer.yaml
