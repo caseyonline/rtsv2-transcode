@@ -13,7 +13,6 @@ import Data.Newtype (wrap)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
-import Erl.Process.Raw (Pid)
 import Erl.Utils as Erl
 import Foreign (Foreign)
 import Logger as Logger
@@ -29,9 +28,8 @@ import Shared.Rtsv2.LlnwApiTypes (PublishCredentials(..), SlotProfile(..), Strea
 import Shared.Rtsv2.Stream (IngestKey(..), ProfileName, RtmpStreamName(..))
 import Shared.Rtsv2.Types (CanaryState, Server)
 
-foreign import startWorkflowImpl :: IngestKey -> Effect Pid
-
 type AuthenticateResult = { streamDetails :: StreamDetails
+                          , slotProfile :: SlotProfile
                           , profileName :: ProfileName
                           , startStream :: Maybe (Effect (Maybe StartStreamResult))
                           , dataObjectSendMessage :: DO.Message -> Effect Unit
@@ -39,7 +37,6 @@ type AuthenticateResult = { streamDetails :: StreamDetails
                           }
 
 type StartStreamResult = { sourceInfo :: Foreign -> Effect Unit
-                         , workflowPid :: Pid
                          , stopStream :: Effect Unit
                          }
 
@@ -75,7 +72,7 @@ authenticate loadConfig canary host protocol account username password streamNam
                                                        , streamName }
                 pure Nothing
 
-              Just (SlotProfile { name: profileName }) -> do
+              Just slotProfile@(SlotProfile { name: profileName }) -> do
                 let
                   ingestKey = makeIngestKey profileName streamDetails
                 logInfo "Starting WEBRTC" {canary}
@@ -86,6 +83,7 @@ authenticate loadConfig canary host protocol account username password streamNam
                                       Rtmp ->
                                         pure Nothing
                 pure $ Just { streamDetails
+                            , slotProfile
                             , profileName
                             , startStream: maybeStartStream
                             , dataObjectSendMessage: IngestInstance.dataObjectSendMessage ingestKey
@@ -109,10 +107,9 @@ startStream ingestKey startFn = do
   maybeStarted <- startFn
   case maybeStarted of
     Right _ -> do
-      workflowPid <- startWorkflow ingestKey
       pure $ Just { sourceInfo: sourceInfo
                   , stopStream: stopStream ingestKey
-                  , workflowPid}
+                  }
     Left error -> do
       logWarning "Attempt to start local RTMP ingest failed" {error}
       pure Nothing
@@ -132,7 +129,3 @@ logInfo = Logger.info <<< Logger.traceMetadata domain
 
 logWarning :: forall report. String -> { | report } -> Effect Unit
 logWarning = Logger.warning <<< Logger.traceMetadata domain
-
-startWorkflow :: IngestKey -> Effect Pid
-startWorkflow ingestKey =
-  startWorkflowImpl ingestKey

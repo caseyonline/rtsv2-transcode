@@ -1,0 +1,7 @@
+items:
+  description: Node running status
+  oneOf:
+    - {type: string, description: IngestStarted, example: IngestStarted }
+    - {type: string, description: IngestFailed, example: IngestFailed }
+    - {type: string, description: LSRSFailed, example: LSRSFailed }
+    - {type: string, description: GenericAlert, example: GenericAlert }

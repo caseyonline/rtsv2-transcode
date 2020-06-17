@@ -118,6 +118,10 @@ type IngestInstanceConfig
     , aggregatorRetryTimeMs :: Int
     , qosPollIntervalMs :: Int
     , abortIfNoMediaMs :: Int
+    , qosAverageBitrateLowWatermark :: Number
+    , qosAverageBitrateHighWatermark :: Number
+    , qosPeakBitrateLowWatermark :: Number
+    , qosPeakBitrateHighWatermark :: Number
     }
 
 type IngestAggregatorAgentConfig

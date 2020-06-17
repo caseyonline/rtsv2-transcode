@@ -11,12 +11,13 @@
         , getCoordinateImpl/4
         , messageMapperImpl/1
         ]).
-%% event :: forall a. IpAndPort -> String -> a -> Boolean ->  Effect (Either SerfApiError Unit)
+
+%% eventImpl :: (ApiError -> (SerfResult Unit)) -> (SerfResult Unit) -> IpAndPort -> String -> Binary -> Boolean ->  Effect (SerfResult Unit)
 eventImpl(Left, Right, RpcAddr, Name, Msg, Coalesce) ->
   fun() ->
       case serf_api:event(mapAddr(RpcAddr),
                           Name,
-                          term_to_binary(Msg),
+                          Msg,
                           Coalesce) of
         ok -> Right;
 
@@ -97,7 +98,7 @@ messageMapperImpl(#serf_user_event{ name = Name
                                   , coalesce = Coalesce
                                   , payload = Payload
                                   }) ->
-  {just, {userEvent, Name, LTime, Coalesce, binary_to_term(Payload)}};
+  {just, {userEvent, Name, LTime, Coalesce, Payload}};
 
 messageMapperImpl(#serf_members_event{ type = join
                                      , members = Members

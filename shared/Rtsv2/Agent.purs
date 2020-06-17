@@ -30,12 +30,13 @@ data Agent = Egest
            | TransPoP
 
 type SlotCharacteristics = { numProfiles :: Int
-                           , totalBitrate :: Int }
-
+                           , totalBitrate :: Int
+                           }
 
 emptySlotCharacteristics :: SlotCharacteristics
 emptySlotCharacteristics = { numProfiles: 0
-                           , totalBitrate: 0 }
+                           , totalBitrate: 0
+                           }
 
 --------------------------------------------------------------------------------
 -- Type class derivations

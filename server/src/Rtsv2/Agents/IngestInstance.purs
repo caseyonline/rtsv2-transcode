@@ -33,7 +33,6 @@ import Erl.Data.List (List, nil, (:))
 import Erl.Data.Tuple (Tuple2, tuple2)
 import Erl.Process.Raw (Pid)
 import Erl.Utils (systemTimeMs)
-import Erl.Utils as Erl
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
 import Pinto as Pinto

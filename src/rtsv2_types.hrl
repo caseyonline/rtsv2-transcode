@@ -34,4 +34,9 @@
                          , bitrate := integer()
                          }.
 
+-type llnw_slot_profile() :: #{ name := profile_name()
+                              , rtmpStreamName := rtmp_stream_name()
+                              , audioBitrate := integer()
+                              , videoBitrate := integer()
+                              }.
 -endif.

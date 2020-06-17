@@ -11,7 +11,19 @@ get:
           schema:
             type: array
             items:
-              $ref: '../PublicSchema.yaml'
+              type: object
+              properties:
+                timestamp:
+                  type: number
+                  example: 437829.2232
+                ingestKey:
+                  type: string
+                streamBitrateMetrics:
+                  $ref: "../schemas/BitrateMetrics.yaml"
+                # frameFlowMeterMetrics:
+                #   $ref: "../schemas/FlowMeterMetrics.yaml"
+                # rtmpIngestMetrics:
+                #   $ref: "../schemas/IngestMetrics.yaml"
     '404':
       description: Not Found
       content:

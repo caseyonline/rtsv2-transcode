@@ -8,13 +8,12 @@
 -include("./rtsv2_ingest_qos_monitor.hrl").
 
 -export([
-         ingest_processor/3
+         ingest_processor/4
         ]).
 
-ingest_processor(IngestKey, ProfileName, Subscriptions) ->
+ingest_processor(IngestKey, ProfileName, SlotProfile, Subscriptions) ->
 
-  #{ qosPollIntervalMs := QosPollIntervalMs
-   , abortIfNoMediaMs := AbortIfNoMediaMs} = (rtsv2_config@ps:ingestInstanceConfig())(),
+  IngestInstanceConfig = (rtsv2_config@ps:ingestInstanceConfig())(),
 
   #compound_processor{
      spec = #processor_spec{
@@ -51,18 +50,6 @@ ingest_processor(IngestKey, ProfileName, Subscriptions) ->
                                , module = program_details_generator
                                }
 
-                     %% Updates frame to add estimated bitrate,
-                     %% and outputs #bitrate_info messages
-                   , #processor{ name = source_bitrate_monitor
-                               , display_name = <<"Source Bitrate Monitor">>
-                               , subscribes_to = ?previous
-                               , module = stream_bitrate_monitor
-                               , config = #bitrate_monitor_config{ default_profile_name = source
-                                                                 , mode = passthrough_with_update
-                                                                 , output_bitrate_info_messages = false
-                                                                 }
-                               }
-
                    , #processor{ name = send_to_bus
                                , subscribes_to = ?previous
                                , module = send_to_bus_processor
@@ -73,12 +60,42 @@ ingest_processor(IngestKey, ProfileName, Subscriptions) ->
                      %%--------------------------------------------------
                      %% Monitoring
                      %%--------------------------------------------------
+
+                     %% Outputs #bitrate_info messages
+                   , #processor{ name = average_bitrate_monitor
+                               , display_name = <<"Average Bitrate Monitor">>
+                               , subscribes_to = set_source_id
+                               , module = stream_bitrate_monitor
+                               , config = #bitrate_monitor_config{ default_profile_name = source
+                                                                 , mode = consumes
+                                                                 , time_source = streamtime
+                                                                 , output_bitrate_info_messages = true
+                                                                 , group_bitrate_info_messages = true
+                                                                 }
+                               }
+
+                     %% Outputs #bitrate_info messages
+                   , #processor{ name = peak_bitrate_monitor
+                               , display_name = <<"Peak Bitrate Monitor">>
+                               , subscribes_to = set_source_id
+                               , module = stream_bitrate_monitor
+                               , config = #bitrate_monitor_config{ default_profile_name = source
+                                                                 , mode = consumes
+                                                                 , time_source = streamtime
+                                                                 , output_bitrate_info_messages = true
+                                                                 , group_bitrate_info_messages = true
+                                                                 , window_size = 200
+                                                                 , notification_frequency = 200
+                                                                 }
+                               }
+
+                     %% Monitors #frame and #bitrate_info messages to determine ingest health
                    , #processor{ name = ingest_qos_monitor
                                , display_name = <<"QOS Monitor">>
-                               , subscribes_to = set_source_id
-                               , module = rtsv2_ingest_qos_monitor
-                               , config = #rtsv2_ingest_qos_monitor_config{ poll_interval_ms = QosPollIntervalMs
-                                                                          , abort_if_no_media_in_ms = AbortIfNoMediaMs
+                               , subscribes_to = [set_source_id, average_bitrate_monitor, peak_bitrate_monitor]
+                               , module = rtsv2_ingest_qos_monitor %% - TODO default 5000 kills webrtc sometimes? Perhaps initial poll should be slower?
+                               , config = #rtsv2_ingest_qos_monitor_config{ ingestInstanceConfig = IngestInstanceConfig
+                                                                          , slotProfile = SlotProfile
                                                                           }
                                }
 
@@ -89,7 +106,7 @@ ingest_processor(IngestKey, ProfileName, Subscriptions) ->
                      %% Count inbound frames - no output, just meters
                    , #processor{ name = source_frame_meter
                                , display_name = <<"Source Frame Meter">>
-                               , subscribes_to = source_bitrate_monitor
+                               , subscribes_to = set_source_id
                                , module = frame_flow_meter
                                }
 
@@ -97,7 +114,7 @@ ingest_processor(IngestKey, ProfileName, Subscriptions) ->
                      %% Generates #source_info{} records
                    , #processor{ name = source_details_extractor
                                , display_name = <<"Source Details Extractor">>
-                               , subscribes_to = source_bitrate_monitor
+                               , subscribes_to = program_details
                                , module = source_details_extractor
                                }
                    ]

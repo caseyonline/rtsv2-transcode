@@ -10,7 +10,7 @@
 -export([ startServer/5
         , startServerTls/7
         , rtmpQueryToPurs/1
-        , startWorkflowImpl/7
+        , startWorkflowImpl/8
         ]).
 
 %%------------------------------------------------------------------------------
@@ -45,11 +45,11 @@ start_rtmp_server({ipv4, O1, O2, O3, O4}, Port, NbAcceptors, ReceiveTimeout, Cal
     Error -> {error, Error}
   end.
 
-startWorkflowImpl(Rtmp, IngestPid, PublishArgs, IngestKey, ProfileMetadata, ClientMetadataFn, SourceInfoFn) ->
+startWorkflowImpl(Rtmp, IngestPid, RtmpPublishArgs, IngestKey, SlotProfile, ProfileContext, ClientMetadataFn, SourceInfoFn) ->
   fun() ->
       MRef = erlang:monitor(process, IngestPid),
 
-      {ok, _WorkflowPid} = start_workflow(Rtmp, PublishArgs, IngestKey, ProfileMetadata),
+      {ok, _WorkflowPid} = start_workflow(Rtmp, RtmpPublishArgs, IngestKey, SlotProfile, ProfileContext),
 
       %% Stream is now connected - we block in here, when we return the rtmp_server instance will close
       workflow_loop(MRef, ClientMetadataFn, SourceInfoFn)
@@ -93,7 +93,7 @@ rtmpQueryToPurs(#{}) ->
 %%------------------------------------------------------------------------------
 %% Internals
 %%------------------------------------------------------------------------------
-start_workflow(Rtmp, PublishArgs, Key = {ingestKey, SlotId, SlotRole, ProfileName}, ProfileContext) ->
+start_workflow(Rtmp, RtmpPublishArgs, Key = {ingestKey, SlotId, SlotRole, ProfileName}, SlotProfile, ProfileContext) ->
 
   Workflow = #workflow{
                 name = {rtmp_ingest_handler, Key},
@@ -109,7 +109,7 @@ start_workflow(Rtmp, PublishArgs, Key = {ingestKey, SlotId, SlotRole, ProfileNam
                                          module = rtmp_push_ingest_generator,
                                          config = #rtmp_push_ingest_generator_config{
                                                      rtmp = Rtmp,
-                                                     auto_accept = PublishArgs
+                                                     auto_accept = RtmpPublishArgs
                                                     }}
                              ],
                 processors = [
@@ -123,7 +123,7 @@ start_workflow(Rtmp, PublishArgs, Key = {ingestKey, SlotId, SlotRole, ProfileNam
                                          module = rtmp_onfi_to_frame
                                         },
 
-                              rtsv2_ingest_processor:ingest_processor(Key, ProfileName, onfi_to_frame)
+                              rtsv2_ingest_processor:ingest_processor(Key, ProfileName, SlotProfile, onfi_to_frame)
                              ]
                },
 
