@@ -14,7 +14,7 @@ info:
     }
     ```
   x-logo:
-    url: images/logo.png
+    url: ./assets/images/logo.png
 tags:
   - name: service metadata
     description: The service API provides additional metadata needed to make the OOAPI fit for this organization.
@@ -49,19 +49,8 @@ paths:
 
   /support/canary/:
     $ref: api/support/SupportCanary.yaml
-  # client bases routes
-  # /support/canary/client/{slotId}/{slotRole}/:
-  #   $ref: api/support/SupportCanaryClientPlayerAssets.yaml
-  # /support/canary/client/{slotId}/{slotRole}/player:
-  #   $ref: api/support/SupportCanaryClientPlayer.yaml
-  # /support/canary/client/{slotId}/{slotRole}/session:
-  #   $ref: api/support/SupportCanaryClientPlayerControl.yaml
   /support/canary/discovery/v1/{shortName}/{streamName}:
     $ref: api/support/SupportCanaryStreamDiscovery.yaml
-  # /support/canary/ingest/{slotId}/{slotRole}/ingest:
-  #   $ref: api/support/SupportCanaryClientWebRTCIngest.yaml
-  # /support/canary/ingest/{slotId}/{slotRole}/session:
-  #   $ref: api/support/SupportCanaryClientWebRTCIngestControl.yaml
   /support/egest/metrics:
     $ref: api/support/SupportEgestInstancesMetrics.yaml
   /support/egest/{slotId}/{slotRole}:
@@ -72,8 +61,44 @@ paths:
     $ref: api/support/SupportIngestInstancesMetrics.yaml
   /support/ingest/{slotId}/{slotRole}/{profileName}:
     $ref: api/support/SupportIngestInstance.yaml
+  /support/ingestAggregator/{slotId}/{slotRole}:
+    $ref: api/support/SupportIngestAggregator.yaml
+  /support/popDefinition:
+    $ref: api/support/SupportPoPDefinition.yaml
+  /support/relay/{slotId}/{slotRole}:
+    $ref: api/support/SupportRelayStats.yaml
+  /support/runState/:
+    $ref: api/support/SupportRunState.yaml
+
+
+  /support/state/:
+    $ref: api/support/SupportServerState.yaml
+
+
+  /support/state/slot/{slotId}:
+    $ref: api/support/SupportSlotState.yaml
+  /support/timedRoutes/:
+    $ref: api/support/SupportTimedRoutes.yaml
+  /support/timedRoutes/{popName}:
+    $ref: api/support/SupportTimedRoutesForPoP.yaml
+  /support/vm/v1/metrics/:
+    $ref: api/support/SupportVMMEtrics.yaml
+
+  # Non API routes
+  # /support/canary/client/{slotId}/{slotRole}/:
+  #   $ref: api/support/SupportCanaryClientPlayerAssets.yaml
+  # /support/canary/client/{slotId}/{slotRole}/player:
+  #   $ref: api/support/SupportCanaryClientPlayer.yaml
+  # /support/canary/client/{slotId}/{slotRole}/session:
+  #   $ref: api/support/SupportCanaryClientPlayerControl.yaml
+  #
+  # /support/canary/ingest/{slotId}/{slotRole}/ingest:
+  #   $ref: api/support/SupportCanaryClientWebRTCIngest.yaml
+  # /support/canary/ingest/{slotId}/{slotRole}/session:
+  #   $ref: api/support/SupportCanaryClientWebRTCIngestControl.yaml
+  #
   # /support/ingestAggregator/:
-    # $ref: api/support/SupportIngestAggregator.yaml
+  #   $ref: api/support/SupportIngestAggregator.yaml
   # /support/ingestAggregator/{slotId}/{slotRole}/activeIngests/{profileName}/control:
   #   $ref: api/support/SupportIngestAggregatorActiveIngestsPlayerControl.yaml
   # /support/ingestAggregator/{slotId}/{slotRole}/activeIngests/{profileName}/js/:
@@ -84,27 +109,7 @@ paths:
   #   $ref: api/support/SupportIngestAggregatorPlayerJs.yaml
   # /support/ingestAggregator/{slotId}/{slotRole}/player:
   #   $ref: api/support/SupportIngestAggregatorPlayer.yaml
-
-  /support/ingestAggregator/{slotId}/{slotRole}:
-    $ref: api/support/SupportIngestAggregator.yaml
-
   # /support/jsonld/{contexType}:
   #   $ref: api/support/SupportJsonLdContext.yaml
-  /support/popDefinition:
-    $ref: api/support/SupportPoPDefinition.yaml
-
-  /support/relay/{slotId}/{slotRole}:
-    $ref: api/support/SupportRelayStats.yaml
-
-  /support/runState/:
-    $ref: api/support/SupportRunState.yaml
-  /support/state/:
-    $ref: api/support/SupportServerState.yaml
-  /support/state/slot/{slotId}:
-    $ref: api/support/SupportSlotState.yaml
-  /support/timedRoutes/:
-    $ref: api/support/SupportTimedRoutes.yaml
-  /support/timedRoutes/{popName}:
-    $ref: api/support/SupportTimedRoutesForPoP.yaml
-  /support/vm/v1/metrics/:
-    $ref: api/support/SupportVMMEtrics.yaml
+  # /support/jsonld/{contexType}:
+  #   $ref: api/support/SupportJsonLdContext.yaml

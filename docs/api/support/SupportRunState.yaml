@@ -1,17 +1,18 @@
 get:
-  summary: /support/runState/
+  summary: /support/runState
   description: Run State description.
   tags:
     - Support
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: text
+          $ref: "../schemas/RunState.yaml"
   responses:
-    '200':
-      description: OK
-      content:
-        application/json-ld:
-          schema:
-            type: array
-            items:
-              $ref: '../PublicSchema.yaml'
+    '204':
+      description: NO CONTENT
     '404':
       description: Not Found
       content:
