@@ -32,7 +32,8 @@ info:
 
     ## High Level Schematic
 
-    ![](/images/highlevel-scehmatic.rtsv2.png)
+    ![Schematic](images/highlevel-scehmatic.rtsv2.png)
+
 
 
     The above schematic shows a very high level view of the RTS architecture. Within each PoP there are a number of nodes, with no node having a dedicated role. If it is decided to perform transcodes during ingest, then Ingest Agents may become dedicated to a subset of nodes that have suitable hardware (e.g., GPU acceleration) All the nodes continually communicate membership and state information through the SWIM gossip protocol2; from this membership information, one node in each PoP will become the ‘PoP leader’ and will then also participate in a trans-PoP SWIM gossip to exchange aggregate information about the state of each PoP.
@@ -53,32 +54,43 @@ info:
       * trans-PoP SWIM Agent - one agent on the node currently designated as the PoP Leader
 
     ## Quick Start
-      A working system and 'live' documentation that can be developed directly against that working system is most easily setup by following the Readme files in order:
+    ### Single Machine
+      A working system and 'live' documentation that can be developed directly against on a single machine is most easily setup by following the Readme files in the following order:
 
-      * https://github.com/id3as/rtsv2/blob/master/SETUP.md Before you start.
-      * https://github.com/id3as/rtsv2/blob/master/docs/README.md to setup the documentation 'live' on the local system.
-      * https://github.com/id3as/rtsv2/blob/master/README.md to setup the system and launch a simple test.
+      1. https://github.com/id3as/rtsv2/blob/master/SETUP.md Before you start.
+      2. https://github.com/id3as/rtsv2/blob/master/docs/README.md to setup the documentation 'live' on the local system.
+      3. https://github.com/id3as/rtsv2/blob/master/README.md to setup the system and launch a simple test.
 
+    ### Multi-Machine
+      To setup several machines on a LAN to performance test machinary etc each must be setup as a 'node' and then configured for specific test roles. Following the setup Readme files below in order on each machine (following the variations for specific roles as detailed).
+      1. https://github.com/id3as/rtsv2/blob/master/SETUP.md Before you start.
+      2. https://github.com/id3as/rtsv2/blob/master/docs/README.md to setup the documentation 'live' on the local system.
+      3. https://github.com/id3as/rtsv2/blob/master/README_LAN_TEST.md to setup the system and launch a multi-machine test.
 
 
     ## Security Model
     This section will explain how tokens and security are handled etc so you know what to expect as you go to production.
 
+    ---
     # Journeys
+    This section of the documentation shows some examples of API interaction in action focussing on some typical use-cases anticipated within the Limgelight development teams. We will call each of these examples a 'developer journey'.
+      1. 'A day in the life of a stream': What the client 'should' see - How infrastrcuture is configured for ingestion of RTMP live - Establishing a live stream - Configuring Outputs - Monitoring a live stream.
+      2. 'A day in the life of the infrastructure': How the service 'should' work - How the underlying nodes coordinate to manage the distribution services - How SlotIDs are referenced -  A test of infrastructure failure and recovery.
+      3. Platform reporting and queries: Checking the health of a live stream - Checking the health of the Infrastructure - SNMP integration.
+      4. Interfacing to Prometheus, logging configuration and basic alerting: How some of the key integrations with other parts of Limelight Operations Infrastructure have been established.
 
-    ## 'A day in the life of a stream'
-    ## 'A day in the life of the infrastructure'
-    ## Platform reporting and queries
-    ## Interfacing to Prometheus, logging configuration and basic alerting.
+    ## 1. 'A day in the life of a stream'
+    (tbd)
+    ## 2. 'A day in the life of the infrastructure'
+    (tbd)
+    ## 3. Platform reporting and queries
+    (tbd)
+    ## 4. Interfacing to Prometheus, logging configuration and basic alerting
+    (tbd)
 
 
+    ---
 
-    ```
-    {
-      "code": 404,
-      "title": "Resource not found"
-    }
-    ```
   x-logo:
     url: https://static.wixstatic.com/media/b1006e_fb5b447f5d124676b0b1a328eb6adbd5~mv2_d_2986_1252_s_2.png
 tags:
@@ -90,6 +102,7 @@ tags:
     description: Description for Support API.
 produces:
   - "application/json-ld"
+
 x-tagGroups:
   - name: Api
     tags:
