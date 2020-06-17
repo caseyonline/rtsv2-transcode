@@ -34,6 +34,7 @@ You can edit this file as you like.
   , "toppokki"
   , "tuples"
   , "uri"
+  , "numbers"
   ]
 , packages = ./packages.dhall
 , sources = [ "src/**/*.purs" ]
