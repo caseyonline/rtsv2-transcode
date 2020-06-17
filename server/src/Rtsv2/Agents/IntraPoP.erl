@@ -16,6 +16,7 @@
 -define(iMAggregatorStateMsgName, <<"a">>).
 -define(iMEgestStateMsgName,      <<"b">>).
 -define(iMRelayStateMsgName,      <<"c">>).
+-define(iMServerLoad,             <<"d">>).
 %%------------------------------------------------------------------------------
 %% End of list of message names
 %%------------------------------------------------------------------------------
@@ -73,6 +74,17 @@ to_wire_message(
      , ServerAddress/binary                             %% rest of msg
     >>
   }.
+
+%% to_wire_message(
+ %%  { iMServerLoad
+ %%  , ServerAddress
+ %%  , CurrentLoad
+ %%  , AcceptingRequests
+ %%  }) ->
+
+
+
+
 
 from_wire_message(
   ?iMAggregatorStateMsgName
@@ -150,20 +162,25 @@ from_wire_element_slot_role(1) ->
 %% types causes breaks
 %%------------------------------------------------------------------------------
 x() ->
-  Msg = test_message(),
-  {Name, ToBin} = to_wire_message(Msg),
-  From = from_wire_message(Name, ToBin),
+  lists:foreach(fun encode_decode/1,
+                [ test_IMAggregatorState_message()
+                , test_IMEgestState_message()
+                , test_IMRelayState_message()
+                ]),
+  ok.
+
+
+encode_decode(Msg) ->
+  {Name, WireMsg} = to_wire_message(Msg),
+  From = from_wire_message(Name, WireMsg),
   {just, Msg} = From.
 
 
-test_message() ->
-  { iMAggregatorState
-  , {available}
-  , {agentKey
-    , <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1>>
-    , {primary}}
-  , <<"172.16.169.1">>
-  , #{ numProfiles => 2
-     , totalBitrate => 1500
-     }
-  }.
+test_IMAggregatorState_message() ->
+  {iMAggregatorState,{available},{agentKey, <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1>>,{primary}},<<"172.16.169.1">>,#{numProfiles => 2,totalBitrate => 1500}}.
+
+test_IMEgestState_message() ->
+  {iMEgestState,{available},{agentKey,<<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1>>,{primary}},<<"172.16.170.1">>}.
+
+test_IMRelayState_message() ->
+  {iMRelayState,{available},{agentKey,<<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1>>,{primary}},<<"172.16.170.1">>}.
