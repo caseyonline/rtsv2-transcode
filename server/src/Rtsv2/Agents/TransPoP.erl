@@ -29,7 +29,6 @@ to_wire_message(
                             }
   })
   when
-    byte_size(ServerAddress) > 0 andalso byte_size(ServerAddress) =< 16#80, %% Server adress =< 256
     NumProfiles              > 0 andalso NumProfiles =< 16#10,              %% Max of 16 profiles
     TotalKBitrate            > 0 andalso TotalKBitrate =< 16#40000          %% Max of 250 Mbps of a single ADR ladder total
     ->

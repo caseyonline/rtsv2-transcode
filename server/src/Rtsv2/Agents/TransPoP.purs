@@ -68,8 +68,8 @@ import Shared.Utils (distinctRandomNumbers)
 import SpudGun (bodyToString)
 import SpudGun as SpudGun
 
-foreign import to_wire_message :: forall a. a -> Tuple2 String Binary
-foreign import from_wire_message :: forall a. String -> Binary -> a
+foreign import to_wire_message :: TransMessage -> Tuple2 String Binary
+foreign import from_wire_message :: String -> Binary -> Maybe TransMessage
 
 type Edge = Tuple PoPName PoPName
 type Rtts = Map Edge Milliseconds
@@ -110,6 +110,7 @@ data EventType
 
 data TransMessage
   = TMAggregatorState EventType AgentKey ServerAddress SlotCharacteristics
+
 instance serfWireMessageTM :: SerfWireMessage TransMessage where
   toWireMessage = to_wire_message
   fromWireMessage = from_wire_message
