@@ -72,7 +72,7 @@ import Erl.Data.Binary (Binary)
 import Erl.Data.List (List, head, index, length, nil, singleton, sortBy, uncons, (:))
 import Erl.Data.Map (Map, alter, fromFoldable, values)
 import Erl.Data.Map as Map
-import Erl.Data.Tuple (tuple2)
+import Erl.Data.Tuple (Tuple2, tuple2)
 import Erl.Process (Process, spawnLink)
 import Erl.Utils (Ref, makeRef)
 import Erl.Utils as Erl
@@ -106,8 +106,14 @@ import Shared.Rtsv2.Stream (AgentKey(..), AggregatorKey, EgestKey, RelayKey(..),
 import Shared.Rtsv2.Types (AcceptingRequests, CanaryState(..), CurrentLoad, Health, Server(..), ServerAddress(..), ServerLoad, extractAddress, extractPoP, maxLoad, minLoad, toServerLoad)
 import Shared.Utils (distinctRandomNumbers)
 
-foreign import to_binary :: forall a. a -> Binary
-foreign import from_binary :: forall a. Binary -> a
+
+foreign import to_wire_message :: IntraMessage -> Tuple2 String Binary
+foreign import from_wire_message :: String -> Binary -> Maybe IntraMessage
+
+foreign import to_binary :: IntraMessage -> Binary
+foreign import from_binary :: Binary -> IntraMessage
+
+
 
 type TestHelperPayload =
   { dropAgentMessages :: Boolean
@@ -155,7 +161,7 @@ type State
     , canary                :: CanaryState
     , healthConfig          :: Config.HealthConfig
     , transPoPApi           :: Config.TransPoPAgentApi
-    , llnwApiRecordSlotLookupApi  :: RtmpShortName -> SlotName -> SlotLookupResult -> Effect Unit
+    , llnwApiRecordSlotLookupApi :: RtmpShortName -> SlotName -> SlotLookupResult -> Effect Unit
     , serfRpcAddress        :: IpAndPort
     , currentTransPoPLeader :: Maybe Server
 
@@ -188,15 +194,11 @@ data IntraMessage
   | IMSlotLookup ServerAddress RtmpShortName SlotName SlotLookupResult
 
 instance serfWireMessageIM :: SerfWireMessage IntraMessage where
-  toWireMessage payload@(IMAggregatorState Available agentKey serverAddr slotCharacteristics) =
-    tuple2 "aggregatorAvailable" $ to_binary payload
-  toWireMessage payload@(IMAggregatorState Stopped agentKey serverAddr slotCharacteristics) =
-    tuple2 "aggregatorStopped" $ to_binary payload
+  toWireMessage payload@(IMAggregatorState _ _ _ _) =
+    to_wire_message payload
 
-  toWireMessage payload@(IMEgestState Available _ _) =
-    tuple2 "egestAvailable" $ to_binary payload
-  toWireMessage payload@(IMEgestState Stopped _ _) =
-    tuple2 "egestAvailable" $ to_binary payload
+  toWireMessage payload@(IMEgestState _ _ _) =
+    to_wire_message payload
 
   toWireMessage payload@(IMRelayState Available agentKey serverAddress) =
     tuple2 "relayAvailable" $ to_binary payload
@@ -214,7 +216,12 @@ instance serfWireMessageIM :: SerfWireMessage IntraMessage where
     tuple2 "vmLiveness" $ to_binary payload
 
 
-  fromWireMessage name payload = Just $ from_binary payload
+  fromWireMessage "a" payload =
+    from_wire_message "a" payload
+  fromWireMessage "b" payload =
+    from_wire_message "b" payload
+  fromWireMessage name payload =
+    Just $ from_binary payload
 
 
 data Msg serfPayload
