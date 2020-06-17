@@ -77,7 +77,7 @@ initialise(_Processor = #processor{config = #rtsv2_ingest_qos_monitor_config{ in
 process_input(#frame{type = audio}, State) ->
   {ok, State#?state{last_audio_frame_seen = ?vm_now_ms}};
 
-process_input(#frame{type = video}, State) ->
+process_input(#frame{type = video, dts = _Dts, pts = _Pts}, State) ->
   {ok, State#?state{last_video_frame_seen = ?vm_now_ms}};
 
 process_input(#frame{}, State) ->
