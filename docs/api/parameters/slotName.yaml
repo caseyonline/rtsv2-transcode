@@ -1,0 +1,6 @@
+name: slotName
+in: query
+description: The slot name
+required: true
+schema:
+  type: string

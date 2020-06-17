@@ -68,32 +68,34 @@ paths:
     $ref: api/support/SupportEgestStats.yaml
   /support/healthCheck/:
     $ref: api/support/SupportHealthCheck.yaml
-
-
   /support/ingest/metrics/:
     $ref: api/support/SupportIngestInstancesMetrics.yaml
   /support/ingest/{slotId}/{slotRole}/{profileName}:
     $ref: api/support/SupportIngestInstance.yaml
-  /support/ingestAggregator/:
-    $ref: api/support/SupportIngestAggregator.yaml
-  /support/ingestAggregator/{slotId}/{slotRole}/activeIngests/{profileName}/control:
-    $ref: api/support/SupportIngestAggregatorActiveIngestsPlayerControl.yaml
-  /support/ingestAggregator/{slotId}/{slotRole}/activeIngests/{profileName}/js/:
-    $ref: api/support/SupportIngestAggregatorActiveIngestsPlayerJs.yaml
-  /support/ingestAggregator/{slotId}/{slotRole}/activeIngests/{profileName}/player:
-    $ref: api/support/SupportIngestAggregatorActiveIngestsPlayer.yaml
-  /support/ingestAggregator/{slotId}/{slotRole}/js/:
-    $ref: api/support/SupportIngestAggregatorPlayerJs.yaml
-  /support/ingestAggregator/{slotId}/{slotRole}/player:
-    $ref: api/support/SupportIngestAggregatorPlayer.yaml
+  # /support/ingestAggregator/:
+    # $ref: api/support/SupportIngestAggregator.yaml
+  # /support/ingestAggregator/{slotId}/{slotRole}/activeIngests/{profileName}/control:
+  #   $ref: api/support/SupportIngestAggregatorActiveIngestsPlayerControl.yaml
+  # /support/ingestAggregator/{slotId}/{slotRole}/activeIngests/{profileName}/js/:
+  #   $ref: api/support/SupportIngestAggregatorActiveIngestsPlayerJs.yaml
+  # /support/ingestAggregator/{slotId}/{slotRole}/activeIngests/{profileName}/player:
+  #   $ref: api/support/SupportIngestAggregatorActiveIngestsPlayer.yaml
+  # /support/ingestAggregator/{slotId}/{slotRole}/js/:
+  #   $ref: api/support/SupportIngestAggregatorPlayerJs.yaml
+  # /support/ingestAggregator/{slotId}/{slotRole}/player:
+  #   $ref: api/support/SupportIngestAggregatorPlayer.yaml
+
   /support/ingestAggregator/{slotId}/{slotRole}:
     $ref: api/support/SupportIngestAggregator.yaml
-  /support/jsonld/{contexType}:
-    $ref: api/support/SupportJsonLdContext.yaml
-  /support/popDefinition/:
+
+  # /support/jsonld/{contexType}:
+  #   $ref: api/support/SupportJsonLdContext.yaml
+  /support/popDefinition:
     $ref: api/support/SupportPoPDefinition.yaml
+
   /support/relay/{slotId}/{slotRole}:
     $ref: api/support/SupportRelayStats.yaml
+
   /support/runState/:
     $ref: api/support/SupportRunState.yaml
   /support/state/:

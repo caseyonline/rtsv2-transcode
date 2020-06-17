@@ -1,0 +1,10 @@
+type: object
+properties:
+  name:
+    type: string
+  rtmpStreamName:
+    type: string
+  audioBitrate:
+    type: interger
+  videoBitrate:
+    type: interger

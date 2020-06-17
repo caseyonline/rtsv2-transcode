@@ -17,13 +17,13 @@ get:
                   type: number
                   example: 437829.2232
                 ingestKey:
-                  type: string
+                  $ref: "../schemas/IngestKey.yaml"
                 streamBitrateMetrics:
                   $ref: "../schemas/BitrateMetrics.yaml"
-                # frameFlowMeterMetrics:
-                #   $ref: "../schemas/FlowMeterMetrics.yaml"
-                # rtmpIngestMetrics:
-                #   $ref: "../schemas/IngestMetrics.yaml"
+                frameFlowMeterMetrics:
+                  $ref: "../schemas/FlowMetrics.yaml"
+                rtmpIngestMetrics:
+                  $ref: "../schemas/IngestMetrics.yaml"
     '404':
       description: Not Found
       content:
