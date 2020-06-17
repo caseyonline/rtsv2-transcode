@@ -33,7 +33,7 @@ import Erl.Data.Binary (Binary)
 import Erl.Data.List (List, head, index, length, nil, reverse, singleton, uncons, (:))
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
-import Erl.Data.Tuple (tuple2)
+import Erl.Data.Tuple (Tuple2, tuple2)
 import Erl.Process (spawnLink)
 import Erl.Utils (sleep, systemTimeMs, privDir)
 import Logger as Logger
@@ -68,8 +68,8 @@ import Shared.Utils (distinctRandomNumbers)
 import SpudGun (bodyToString)
 import SpudGun as SpudGun
 
-foreign import to_binary :: forall a. a -> Binary
-foreign import from_binary :: forall a. Binary -> a
+foreign import to_wire_message :: forall a. a -> Tuple2 String Binary
+foreign import from_wire_message :: forall a. String -> Binary -> a
 
 type Edge = Tuple PoPName PoPName
 type Rtts = Map Edge Milliseconds
@@ -110,15 +110,9 @@ data EventType
 
 data TransMessage
   = TMAggregatorState EventType AgentKey ServerAddress SlotCharacteristics
-
 instance serfWireMessageTM :: SerfWireMessage TransMessage where
-  toWireMessage payload@(TMAggregatorState Available agentKey serverAddress slotCharacteristics) =
-    tuple2 "streamAvailable" $ to_binary payload
-  toWireMessage payload@(TMAggregatorState Stopped agentKey serverAddr slotCharacteristics) =
-    tuple2 "streamStopped" $ to_binary payload
-
-  fromWireMessage name payload = Just $ from_binary payload
-
+  toWireMessage = to_wire_message
+  fromWireMessage = from_wire_message
 
 data Msg
   = LeaderTimeoutTick
@@ -126,7 +120,6 @@ data Msg
   | JoinAll
   | ConnectStream
   | TransPoPSerfMsg (Serf.SerfMessage TransMessage)
-
 
 getNeighbours :: Effect (Tuple Server (List (JsonLd.TimedRouteNeighbour List)))
 getNeighbours = exposeState doGetNeighbours serverName
@@ -155,8 +148,6 @@ getTimedRoutesTo pop = exposeState doGetTimedRoutes serverName
       , routes
       }
 
-
-
 getRtts :: Effect Rtts
 getRtts = exposeState _.rtts serverName
 
@@ -183,7 +174,6 @@ routesTo pop = Gen.doCall serverName
             -- it is convenient to have the final destination added to them...
             pure $ (_ <> singleton pop) <$> viaLists
     pure $ CallReply resp state
-
 
 health :: Effect Health
 health =

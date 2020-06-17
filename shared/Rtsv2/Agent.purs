@@ -33,7 +33,6 @@ type SlotCharacteristics = { numProfiles :: Int
                            , totalBitrate :: Int
                            }
 
-
 emptySlotCharacteristics :: SlotCharacteristics
 emptySlotCharacteristics = { numProfiles: 0
                            , totalBitrate: 0
