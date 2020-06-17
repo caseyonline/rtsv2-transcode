@@ -37,7 +37,7 @@ import Erl.Data.List (List, nil, singleton)
 import Erl.Data.List as List
 import Erl.Data.Map (Map, lookup, toUnfoldable, values)
 import Erl.Data.Map as Map
-import Erl.Data.Tuple (Tuple2, fst, snd, tuple2)
+import Erl.Data.Tuple (Tuple2, fsd, snd, Tuple3, tuple2)
 import Erl.Data.Tuple as Tuple
 import Erl.Process (Process(..), (!))
 import Erl.Process.Raw (Pid)
@@ -77,11 +77,13 @@ import Shared.Rtsv2.Stream (AggregatorKey(..), EgestKey(..), ProfileName, RelayK
 import Shared.Rtsv2.Types (EgestServer, FailureReason(..), OnBehalfOf(..), PoPName, RelayServer, Server(..), extractAddress)
 import WsGun as WsGun
 
-foreign import startEgestReceiverFFI :: EgestKey -> MediaGatewayFlag -> Effect (Tuple2 Int Int)
+foreign import startEgestReceiverFFI :: EgestKey -> MediaGatewayFlag -> Effect (Tuple3 Int Int WorkflowHandle)
 foreign import stopEgestFFI :: EgestKey -> Effect Unit
 foreign import getStatsFFI :: EgestKey -> Effect (WebRTCStreamServerStats EgestKey)
-foreign import setSlotConfigurationFFI :: EgestKey -> SlotConfiguration -> Effect Unit
+foreign import setSlotConfigurationFFI :: EgestKey -> WorkflowHandle -> SlotConfiguration -> Effect Unit
 foreign import getSlotConfigurationFFI :: EgestKey -> Effect (Maybe SlotConfiguration)
+
+foreign import data WorkflowHandle :: Type
 
 type CreateEgestPayload
   = { slotId :: SlotId
@@ -131,6 +133,8 @@ type State
     , activeProfiles :: List ProfileName
     , forceDrain :: Boolean
     , aggregatorExitTimerRef :: Maybe Ref
+
+    , rtmpWorkflowHandle :: WorkflowHandle
     }
 
 
@@ -319,7 +323,7 @@ init parentCallbacks payload@{slotId, slotRole, aggregatorPoP, slotCharacteristi
                                   }
 
   { mediaGateway } <- Config.featureFlags
-  receivePortNumber /\ rtmpReceivePortNumber /\ _  <- Tuple.toNested2 <$> startEgestReceiverFFI egestKey mediaGateway
+  receivePortNumber /\ rtmpReceivePortNumber /\ rtmpWorkflowHandle /\ _  <- Tuple.toNested3 <$> startEgestReceiverFFI egestKey mediaGateway
   void $ Bus.subscribe (serverName egestKey) IntraPoP.bus IntraPoPBus
   logStart "Egest starting" {payload, receivePortNumber, rtmpReceivePortNumber}
 
@@ -365,6 +369,7 @@ init parentCallbacks payload@{slotId, slotRole, aggregatorPoP, slotCharacteristi
             , activeProfiles: nil
             , forceDrain: false
             , aggregatorExitTimerRef: Nothing
+            , rtmpWorkflowHandle
             }
   pure state
 
@@ -470,7 +475,7 @@ processGunMessage :: State -> WsGun.GunMsg -> Effect (CastResult State)
 processGunMessage state@{relayWebSocket: Nothing} gunMsg =
   pure $ CastNoReply state
 
-processGunMessage state@{relayWebSocket: Just socket, egestKey, lastOnFI} gunMsg =
+processGunMessage state@{relayWebSocket: Just socket, egestKey, lastOnFI, rtmpWorkflowHandle} gunMsg =
   if WsGun.isSocketForMessage gunMsg socket then do
     processResponse <- WsGun.processMessage socket gunMsg
     case processResponse of
@@ -495,7 +500,7 @@ processGunMessage state@{relayWebSocket: Just socket, egestKey, lastOnFI} gunMsg
       Right (WsGun.Frame (SlotConfig slotConfiguration))
         | Nothing <- state.slotConfiguration -> do
           logInfo "Received slot configuration" {slotConfiguration}
-          setSlotConfigurationFFI egestKey slotConfiguration
+          setSlotConfigurationFFI egestKey rtmpWorkflowHandle slotConfiguration
           pure $ CastNoReply state{slotConfiguration = Just slotConfiguration}
 
         | otherwise ->

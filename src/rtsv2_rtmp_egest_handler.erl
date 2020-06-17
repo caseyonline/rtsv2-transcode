@@ -19,59 +19,93 @@
         {
          rtmp_pid :: pid(),
          workflow :: pid(),
+         egest_key,
+         slot_lookup,
+         play_request,
+         profiles,
          on_stream_callback :: fun()
         }).
 
 init(Rtmp, ConnectArgs, [#{ startStream := StartStream, slotLookup := SlotLookup, addClient := AddClient }]) ->
-  %% big **ing TODO
-  % EgestKey = {egestKey, << 1:128/big-unsigned-integer >>, {primary}},
-
   {_, AppArg} = lists:keyfind("app", 1, ConnectArgs),
 
-  [ShortName | Rem] = string:split(AppArg, "?"),
+  [AppName | _] = string:split(AppArg, "?"),
 
-  Query = case Rem of
-            [] -> #{};
-            [QueryString] -> maps:from_list(rtmp_utils:parse_qs(list_to_binary(QueryString)))
-          end,
+  UUID = rtsv2_types:string_to_uuid(unicode:characters_to_binary(AppName,utf8)),
+  EgestKey = {egestKey, UUID, {primary}},
 
-  ?NOTICE("Hey I got an rtmp egest connection!"),
-
-   
-  EgestKey = SlotLookup(ShortName, <<"slot1_1000">>),
-  ?INFO("Looked up ~p to ~p", [ShortName, EgestKey]),
   StartStream(EgestKey),
-  ?INFO("Started stream for ~p", [EgestKey]),
+  ?INFO("Got RTMP egest connection, started stream for ~p", [EgestKey]),
 
-  {ok, WorkflowPid } = start_workflow(EgestKey, Rtmp),
+  
+  SlotConfig = SlotLookup(EgestKey),
+  ?INFO("Looked up ~p to ~p", [EgestKey, SlotConfig]),
+  State = #?state{rtmp_pid = Rtmp, egest_key = EgestKey, slot_lookup = SlotLookup },
+  State2 = wait_for_slot_config(State),
 
   AddClient(self(), EgestKey, <<"fake_session_id">>),
 
-  ?INFO("Started workflow for ~p", [EgestKey]),
-  {ok, #?state{rtmp_pid = Rtmp, workflow = WorkflowPid}}.
+  {ok, State2}.
 
 
-handle(State = #?state{rtmp_pid = Rtmp,
-               on_stream_callback = OnStreamCallback}) ->
-
-  {ok, {RemoteIp, RemotePort}} = rtmp:peername(Rtmp),
-  RemoteIpStr = list_to_binary(inet:ntoa(RemoteIp)),
-
+handle(State = #?state{}) ->
   %% the workflow is dealing with the RTMP, so just wait until it says we are done
   receive
     #workflow_output{message = #workflow_data_msg{data = disconnected}} ->
-      % multi_port_rtmp_server:remove_client(Rtmp, something),
       ok;
+
+    {egestCurrentActiveProfiles, _Profiles} -> handle(State);
+
+    slot_lookup ->
+      State2 = wait_for_slot_config(State),
+      handle(maybe_start(State2));
+
+    PlayRequest = {_Rtmp, {request, play, {_StreamId, _ClientId, _Path}}} ->
+      handle(maybe_start(State#?state{play_request = PlayRequest}));
 
     Other ->
       ?WARNING("Unexpected workflow output ~p", [Other]),
       handle(State)
   end.
 
+wait_for_slot_config(State = #?state{slot_lookup = SlotLookup, egest_key = EgestKey}) ->
+  SlotConfig = SlotLookup(EgestKey),
+  ?INFO("Looked up ~p to ~p", [EgestKey, SlotConfig]),
+  case SlotConfig of
+    {nothing} -> timer:send_after(100, slot_lookup), State;
+    {just, #{profiles := Profiles}} ->
+      State#?state{ profiles = Profiles }
+  end.
+
+maybe_start(State = #?state { rtmp_pid = Rtmp,
+                              egest_key = EgestKey,
+                              workflow = undefined,
+                              play_request = PlayRequest =  {_Rtmp, {request, play, {_StreamId, _ClientId, Path}}},
+                              profiles = Profiles }) when is_list(Profiles) ->
+
+  ?INFO("Starting with path ~p and profiles ~p", [Path, Profiles]),
+  StreamName = unicode:characters_to_binary(Path, utf8),
+  case lists:search(fun (#{profileName := Name}) -> Name == StreamName end, Profiles) of
+    false -> 
+      ?INFO("Couldn't find profile ~p", [StreamName]),
+      State;
+    {value, Profile} -> 
+      {ok, WorkflowPid } = start_workflow(EgestKey, Rtmp, Profile),
+      {ok, Handle} = id3as_workflow:workflow_handle(WorkflowPid),
+      {ok, Nodes} = id3as_workflow:get_nodes(Handle),
+      case lists:search(fun (#workflow_node{ name = Name }) -> Name =:= rtmp_egest end, Nodes) of
+        {value, #workflow_node{ pid = Pid }} ->
+          ?INFO("Found egest node at pid ~p", Pid),
+          Pid ! PlayRequest
+      end,
+      State#?state{ workflow = WorkflowPid }
+  end;
+  
+maybe_start(State) -> State.
 
 
-
-start_workflow(EgestKey, Rtmp) ->
+start_workflow(EgestKey, Rtmp, Profile = #{ firstAudioSSRC := AudioSSRC, firstVideoSSRC := VideoSSRC, profileName := ProfileName }) ->
+  ?INFO("Starting workflow for profile ~p", [Profile]),
   VideoMetadata = #rtmp_video_metadata{
                       video_key_frame_frequency = 5,
                       video_data_rate = 500,
@@ -85,14 +119,14 @@ start_workflow(EgestKey, Rtmp) ->
                   video_metadata = VideoMetadata,
                   audio_metadata = AudioMetadata
                  },
-  ?INFO("Starting rtmp egest from bus ~p", [{egest_rtmp_bus, EgestKey}]),
+  ?INFO("Starting rtmp egest from bus ~p", [?RTMP_EGEST_BUS(EgestKey, ProfileName)]),
   Workflow = #workflow{
                 name = egest,
                 generators = [
                               #generator{name = source,
                                          display_name = <<"Receive from bus">>,
                                          module = receive_from_bus_generator,
-                                         config = #receive_from_bus_generator_config{ bus_name = ?RTMP_EGEST_BUS(EgestKey) }
+                                         config = #receive_from_bus_generator_config{ bus_name = ?RTMP_EGEST_BUS(EgestKey, ProfileName) }
                                         }
                              ],
                 processors = [

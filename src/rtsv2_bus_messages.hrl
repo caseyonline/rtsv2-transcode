@@ -5,5 +5,7 @@
 
 -define(RTMP_EGEST_BUS(IngestKey), {egest_rtmp_bus, IngestKey}).
 
+-define(RTMP_EGEST_BUS(IngestKey, ProfileName), {egest_rtmp_bus, IngestKey, ProfileName}).
+
 
 -endif.

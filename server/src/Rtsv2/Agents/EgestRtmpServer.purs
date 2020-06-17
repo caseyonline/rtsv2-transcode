@@ -3,6 +3,7 @@ module Rtsv2.Agents.EgestRtmpServer where
 import Prelude
 
 import Data.Either (either)
+import Data.Maybe (Maybe, maybe)
 import Effect (Effect)
 import Effect.Exception (throw)
 import Effect.Uncurried (EffectFn1, EffectFn2, EffectFn3, mkEffectFn1, mkEffectFn2, mkEffectFn3)
@@ -15,6 +16,7 @@ import Pinto as Pinto
 import Pinto.Gen as Gen
 import Rtsv2.Agents.EgestInstance as EgestInstance
 import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
+import Rtsv2.Agents.SlotTypes (SlotConfiguration)
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
 import Rtsv2.LlnwApi as LlnwApi
@@ -34,7 +36,7 @@ foreign import startServerTls :: Ip -> Int -> Callbacks -> Int -> Int -> String 
 
 type Callbacks
   = { startStream :: EffectFn1 EgestKey LocationResp
-    , slotLookup :: EffectFn2 RtmpShortName RtmpStreamName EgestKey
+    , slotLookup :: EffectFn1 EgestKey (Maybe SlotConfiguration)
     , addClient :: EffectFn3 Pid EgestKey String RegistrationResp
     }
 
@@ -59,15 +61,12 @@ init _ = do
   {port, tlsPort, canaryPort, canaryTlsPort, certFile, keyFile, canaryCertFile, canaryKeyFile, nbAcceptors} <- Config.rtmpEgestConfig
   let callbacks :: CanaryState -> Callbacks
       callbacks canary = { startStream: mkEffectFn1 $ startStream loadConfig canary
-                         , slotLookup: mkEffectFn2 \shortName streamId -> do
-                                  res <- LlnwApi.slotLookup apiConfig shortName streamId
-                                  { id } <- either (const $ throw "slot lookup error") pure res
-                                  pure $ EgestKey id Primary
+                         , slotLookup: mkEffectFn1 \egestKey -> EgestInstance.getSlotConfiguration egestKey
                          , addClient: mkEffectFn3 addClient
                   }
               
   -- Public servers
-  startServer publicListenIp port (callbacks Live) nbAcceptors 5000
+  startServer publicListenIp port (callbacks Live) nbAcceptors 50000
   startServerTls publicListenIp tlsPort (callbacks Live) nbAcceptors 5000 certFile keyFile
 
   -- Canary servers
