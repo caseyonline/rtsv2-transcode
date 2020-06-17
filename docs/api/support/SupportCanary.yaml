@@ -1,17 +1,15 @@
-get:
+post:
   summary: /support/canary/
   description: Canary description.
   tags:
     - Support
   responses:
-    '200':
+    '204':
       description: OK
-      content:
-        application/json-ld:
-          schema:
-            type: array
-            items:
-              $ref: '../PublicSchema.yaml'
+    '409':
+      description: Conflict
+    '400':
+      description: Bad Request
     '404':
       description: Not Found
       content:

@@ -1,0 +1,6 @@
+description: Node running status
+oneOf:
+  - {type: string, description: Active, example: Active}
+  - {type: string, description: PassiveDrain, example: PassiveDrain}
+  - {type: string, description: ForceDrain, example: ForceDrain}
+  - {type: string, description: OutOfService, example: OutOfService}

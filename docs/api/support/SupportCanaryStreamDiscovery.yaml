@@ -14,7 +14,9 @@ get:
           schema:
             type: array
             items:
-              $ref: '../PublicSchema.yaml'
+              type: string
+              format: uri
+              example: http://172.16.171.1:3002/support/canary/client/00000000-0000-0000-0000-000000000001/primary/session
     '404':
       description: Not Found
       content:
