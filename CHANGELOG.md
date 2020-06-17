@@ -3,11 +3,32 @@
 **What's new**
 
 * Slot Lookup API is now cached and responses to cache misses are sent over IntraPoP serf to pre-load the caches on peers.  Basic cache statistics returned under the healthCheck URL.
+
 * RTVS2-50 - now fixed;  on a fatal error connecting to serf (such as introduced with tcpkill), the supervision trees will now retry repeatedly until finally the erlang node will exit.  At that point, systemd will restart it and the loop will continue until the connection to serf recovers.
+
 * RTSV2-63 - now fixed; URLs are correctly on the wss scheme
+
 * RTSV2-112 - EQ logs now flushed out on clean node exits
+
 * RTSV2-111 - EQ Egest logs now include the byte counts
+
 * client_ip field now included in all auth calls
+
+* ingest bitrate validation now happening - currently just raises alerts but once parameters are tuned it can easily be extended to drop the ingest.  Parameters are in rtsv2_core.config:
+
+  ```
+  , qosAverageBitrateLowWatermark => 1.2
+  , qosAverageBitrateHighWatermark => 1.5
+  , qosPeakBitrateLowWatermark => 1.5
+  , qosPeakBitrateHighWatermark => 2.0
+  
+  ```
+
+  average bitrates are measured over a 20 second period, peak bitrates are over a 200ms period.  The numbers are simple factors of the configured bitrate from the SlotProfile
+
+* ingest now validates the abscence of video on audio-only profiles and closes down the ingest if video is detected
+
+* HLS segment numbers no longer reset to zero
 
 # RTS-V2 release 105
 

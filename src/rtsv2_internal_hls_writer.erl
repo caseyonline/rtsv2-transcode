@@ -133,7 +133,7 @@ process_input(#ts_stream_end_marker{}, State = #state{post_url = PostUrl }) ->
 process_input(#ts_segment_start_marker{start_pts = Pts,
                                        start_source_timestamp = Timestamp,
                                        sequence_number = SeqNumber}, State = #state{current_segment = undefined}) ->
-                                          
+
   {ok, State#state{segment_start_pts = Pts,
                    segment_start_timestamp = Timestamp,
                    current_segment = [],
@@ -175,6 +175,9 @@ flush(State = #state { worker_pid = WorkerPid }) ->
   end.
 
 -spec ioctl(read_meter, term()) -> {ok, status(), term()}.
+ioctl(read_meter, State = #state{next_sequence_number = undefined}) ->
+  {ok, #status{}, State};
+
 ioctl(read_meter, State = #state{post_url = PostUrl,
                                  directory_prefix = Prefix,
                                  max_entries_per_directory = MaxEntriesPerDirectory,
@@ -428,7 +431,7 @@ do_posting_work(State = #worker_state {
                )
   of
     {ok, SuccessStatus, _, NewSpudPid} when SuccessStatus >= 200 andalso SuccessStatus =< 299 ->
-      if 
+      if
         Retries >= 1 -> ?INFO("Successful retry of ~p post to ~s (~p/~p)", [ JobType, Url, Retries+1, MaxRetries ]);
         ?otherwise -> ok
       end,

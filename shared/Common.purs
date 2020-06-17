@@ -73,6 +73,9 @@ type LoggingSource =
   }
 
 data IngestFailedAlert = InvalidVideoCodec Number
+                       | VideoReceivedOnAudioOnlyProfile
+                       | NoAudioReceived
+                       | NoVideoReceived
 
 data IngestBitrateType = Average
                        | Peak
@@ -233,6 +236,21 @@ instance writeForeignAlert :: WriteForeign Alert where
                                         , codecId
                                         }
 
+      alertDetail common (IngestFailed VideoReceivedOnAudioOnlyProfile) =
+        writeImpl $ Record.merge common { "type" : "ingestFailed"
+                                        , "reason": "videoReceivedOnAudioOnlyProfile"
+                                        }
+
+      alertDetail common (IngestFailed NoAudioReceived) =
+        writeImpl $ Record.merge common { "type" : "ingestFailed"
+                                        , "reason": "noAudioReceived"
+                                        }
+
+      alertDetail common (IngestFailed NoVideoReceived) =
+        writeImpl $ Record.merge common { "type" : "ingestFailed"
+                                        , "reason": "noVideoReceived"
+                                        }
+
       alertDetail common (IngestWarning (BitrateExceeded {bitrateType, watermarkType, value, threshold})) =
         writeImpl $ Record.merge common { "type" : "ingestWarning"
                                         , "reason": "bitrateExceeded"
@@ -273,6 +291,12 @@ instance readForeignAlert :: ReadForeign Alert where
                "invalidVideoCodec" -> do
                  {codecId} <- readImpl o :: F {codecId :: Number}
                  pure $ Alert $ Record.insert (SProxy :: SProxy "alert") (IngestFailed (InvalidVideoCodec codecId)) alert'
+               "videoReceivedOnAudioOnlyProfile" -> do
+                 pure $ Alert $ Record.insert (SProxy :: SProxy "alert") (IngestFailed VideoReceivedOnAudioOnlyProfile) alert'
+               "noAudioReceived" -> do
+                 pure $ Alert $ Record.insert (SProxy :: SProxy "alert") (IngestFailed NoAudioReceived) alert'
+               "noVideoReceived" -> do
+                 pure $ Alert $ Record.insert (SProxy :: SProxy "alert") (IngestFailed NoVideoReceived) alert'
                _ ->
                  except $ Left $ singleton (ForeignError ("Unknown ingest failed reason " <> reason))
 

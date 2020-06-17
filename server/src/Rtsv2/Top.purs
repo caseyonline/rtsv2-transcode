@@ -6,12 +6,9 @@ module Rtsv2.Top
 
 import Prelude
 
-import Data.Long as Long
-import Data.Newtype (wrap)
 import Effect (Effect)
 import Erl.Atom (Atom)
 import Erl.Data.List (List, singleton)
-import Erl.Utils as Erl
 import Logger as Logger
 import Pinto (ServerName, ok)
 import Pinto as Pinto

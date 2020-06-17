@@ -18,7 +18,9 @@ mapForeign(LogEvent = #{meta := #{ time := Time
 mapToAlert(_LogEvent = #{ meta := #{ alertId := ingestStarted } } ) ->
   {ingestStarted};
 
-mapToAlert(_LogEvent = #{ meta := #{ alertId := ingestBitrateExceeded
+
+mapToAlert(_LogEvent = #{ meta := #{ alertId := ingestWarning
+                                   , reason := bitrateExceeded
                                    , bitrateType := BitrateType
                                    , watermarkExceeded := WatermarkType }
                         , msg := {report, #{ value := Value
@@ -35,7 +37,20 @@ mapToAlert(_LogEvent = #{ meta := #{ alertId := ingestBitrateExceeded
                                      , value => Value
                                      , threshold => Watermark }}};
 
-mapToAlert(_LogEvent = #{ meta := #{ alertId := invalidVideoFormat }
+mapToAlert(_LogEvent = #{ meta := #{ alertId := ingestFailed
+                                   , reason := videoReceivedOnAudioOnlyProfile } }) ->
+  {ingestFailed, {videoReceivedOnAudioOnlyProfile}};
+
+mapToAlert(_LogEvent = #{ meta := #{ alertId := ingestFailed
+                                   , reason := noAudioReceived } }) ->
+  {ingestFailed, {noAudioReceived}};
+
+mapToAlert(_LogEvent = #{ meta := #{ alertId := ingestFailed
+                                   , reason := noVideoReceived } }) ->
+  {ingestFailed, {noVideoReceived}};
+
+mapToAlert(_LogEvent = #{ meta := #{ alertId := ingestFailed
+                                   , reason := invalidVideoFormat }
                         , msg := {_FormatString, [CodecId]}} ) ->
   {ingestFailed, {invalidVideoCodec, CodecId}};
 
