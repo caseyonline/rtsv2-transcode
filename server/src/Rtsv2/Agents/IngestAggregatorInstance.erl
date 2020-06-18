@@ -139,17 +139,19 @@ startWorkflow(SlotConfiguration = #{ slotId := SlotId
                                 }
                               |
                               ?include_if(PushDetails /= [],
-                                          #named_output{
-                                             profile_name = aac,
-                                             frame_spec = #frame_spec{
-                                                             profile = #audio_profile{
-                                                                          codec = aac,
-                                                                          sample_rate = 48000,
-                                                                          sample_format = s16
-                                                                         }
-                                                            }
-                                            }
-                                         )
+                                          [
+                                           #named_output{
+                                              profile_name = aac,
+                                              frame_spec = #frame_spec{
+                                                              profile = #audio_profile{
+                                                                           codec = aac,
+                                                                           sample_rate = 48000,
+                                                                           sample_format = s16
+                                                                          }
+                                                             }
+                                             }
+                                          )
+                                         ]
                              ]
                   },
 
