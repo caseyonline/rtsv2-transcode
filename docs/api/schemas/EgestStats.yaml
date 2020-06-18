@@ -10,22 +10,25 @@ properties:
     example: 12
   sessions:
     description: Session stats
-    type: object
-    properties:
-      sessionId:
-        type: string
-      audioPacketSent:
-        type: integer
-        example: 933862
-      audioOctetsSent:
-        type: integer
-        example: 7083
-      videoPacketsSent:
-        type: integer
-        example: 98765432
-      videoOctetsSent :
-        type: integer
-        example: 743082
+    type: array
+    items:
+      type: object
+      properties:
+        sessionId:
+          type: string
+          example: 1.143686979409328
+        audioPacketSent:
+          type: integer
+          example: 933862
+        audioOctetsSent:
+          type: integer
+          example: 7083
+        videoPacketsSent:
+          type: integer
+          example: 98765432
+        videoOctetsSent :
+          type: integer
+          example: 743082
   clientCount:
     description: Number of clients
     type: integer

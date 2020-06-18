@@ -1,0 +1,8 @@
+items:
+  description: Rtmp video codec ID
+  oneOf:
+    - {type: string, description: SorensonH263, example: SorensonH263 }
+    - {type: string, description: Screen, example: Screen }
+    - {type: string, description: On2VP6, example: On2VP6 }
+    - {type: string, description: On2VP6Transparency, example: On2VP6Transparency }
+    - {type: string, description: H264, example: H264 }

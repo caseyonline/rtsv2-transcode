@@ -1,0 +1,6 @@
+type: object
+properties:
+  audioStream:
+    $ref: "./AudioStreamInfo.yaml"
+  videoStreams:
+    $ref: "./VideoStreamInfo.yaml"

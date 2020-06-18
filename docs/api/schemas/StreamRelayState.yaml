@@ -1,0 +1,18 @@
+type: object
+properties:
+  role:
+    $ref: "./SlotRole.yaml"
+  egestsServed:
+    type: array
+    items:
+      type: object
+      properties:
+        address:
+          type: string
+  relaysServed:
+    type: array
+    items:
+      type: object
+      properties:
+        address:
+          type: string

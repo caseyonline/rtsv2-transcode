@@ -1,6 +1,6 @@
 get:
-  summary: /support/state/
-  description: Server State description.
+  summary: /support/state
+  description: Get full state of current server
   tags:
     - Support
   responses:
@@ -9,9 +9,7 @@ get:
       content:
         application/json-ld:
           schema:
-            type: array
-            items:
-              $ref: '../PublicSchema.yaml'
+            $ref: '../schemas/IntraPoPState.yaml'
     '404':
       description: Not Found
       content:

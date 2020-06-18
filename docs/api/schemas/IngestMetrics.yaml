@@ -1,0 +1,14 @@
+type: object
+properties:
+  remoteIp:
+    type: String
+  remotePort:
+    type: integer
+  bytesCount:
+    type: integer
+  totalBytesSent:
+    type: integer
+  totalBytesReceived:
+    type: integer
+  lastBytesReadReport:
+    type: integer
