@@ -7,12 +7,13 @@
 The `rtsv2-media-gateway` is the component of `rtsv2` responsible for delivering
 encrypted media content to viewers/listeners.
 
-It receives the media for a given slot from the stream relay in the same point-of-presence
-as a flow of RTP over UDP, identifies subscribers, performs per viewer/listener encryption,
-and delivers it to the viewer/listener, as well as performing any patching of the RTP required
-for bitrate switching.
+It receives the media for a given slot, as a flow of RTP over UDP, from the stream relay in
+the same point-of-presence as the media gateway. When it receives media, it identifies subscribers,
+performs per viewer/listener encryption, and delivers it to the viewer/listener, as well as
+performing any patching of the RTP required for bitrate switching or fast primary/backup
+failover.
 
-The media gateway is implemented in a programming language called rust, which was chosen
+The media gateway is implemented in a programming language called `rust`, which was chosen
 because it enables systems-level programming (giving us fine-grained control over the
 execution of the program) whilst having a strong emphasis on safety.
 
@@ -50,7 +51,7 @@ expectation is that this mode will likely be removed in the future.
 In this mode, the configuration parameters used by the media gateway are given to the media
 gateway by `rtsv2`.
 
-Of note, `rtsv2` specifies the receive queue count, transmit queue count,
+Of note, `rtsv2` specifies the receive queue count, transmit queue count, and
 transmit queue capacity. These values are derived from the `popDefinition.json` file:
 
 [source,json]
@@ -69,7 +70,7 @@ of transmit queues, although this is *likely to change*.
 <2> The receive queue count is passed as-is to the media gateway.
 <3> The transmit queue count is passed as-is to the media gateway.
 
-It also redirects stdout and stderr to files so that they can be reviewed later.
+It also redirects `stdout` and `stderr` to files so that they can be reviewed later.
 
 Finally, `rtsv2` tells the media gateway to put its control socket in a known location,
 rather than using its default location of `/tmp/rtsv2-media-gateway.sock`. This is done
@@ -78,7 +79,7 @@ to enable development scenarios where it is desired to launch multiple instances
 
 For precise information about the setup of the media gateway from `rtsv2`, consult
 `media_gateway_api.erl` which is the Erlang module responsible for handling iteraction
-with the media gateway, and `runMediaGateway.sh` which is the shell file used by
+with the media gateway, and `runMediaGateway.sh` which is the shell script used by
 `media_gateway_api.erl` to launch the media gateway.
 
 
@@ -98,12 +99,12 @@ There are three ways that one might start the media gateway manually:
 
 Each of which is covered further on.
 
-The media gateway supports `--help` and `--version` arguments which
-will show help for supported options, and the version of the media gateway which
-is expressed the abbreviated SHA-1 hash of the commit from which it was built, and the
-date of that commit.
+The media gateway supports `--help` and `--version` arguments which will show information
+about supported options, and the version of the media gateway (which
+is expressed as an abbreviated SHA-1 hash of the commit from which it was built, and the
+date of that commit).
 
-==== From the media gateway source
+==== Running the media gateway from the media gateway source
 Firstly, ensure that `oxidized` is cloned, and that you've either entered a nix environment
 manually using `nix-shell`, or implicitly using `direnv`.
 
@@ -120,7 +121,7 @@ Here we are using the `rust` build tool `cargo` to build and run the project
 Note the use of `--` to separate the parameters to cargo, from the parameters
 to the media gateway.
 
-==== From the rtsv2 source
+==== Running the media gateway from the rtsv2 source
 Firstly, ensure that `rtsv2` is cloned, and that you've either entered a nix environment
 manually using `nix-shell`, or implicitly using `direnv`.
 
@@ -134,7 +135,7 @@ rtsv2-media-gateway --transmit-queue-capacity 425000000
 The nix shell automatically brings in a correctly build release version of rtsv2-media-gateway
 and makes it available on the `PATH`.
 
-==== From a release of rtsv2
+==== Running the media gateway from a release of rtsv2
 If given an extracted release tarball, the media gateway can be started as follows:
 
 [source,sh]
@@ -157,12 +158,12 @@ the `on` mode of operation), and any process-level failure will result in output
 to `stderr` (which again, is redirected in `on` mode).
 
 Finally, the media gateway is its own operating system process with various named threads (one per
-transmit queue, one per receive queue, and a couple of control threads). Which means
-its memory and CPU usage can be monitored at that level.
+transmit queue, one per receive queue, and a couple of control threads), which means typical
+process/thread monitoring of CPU and memory usage will work.
 
 == Load Testing with "Virtual" Clients
 
-A basic load/stress testing facility for the media gateway is built in to the `rtsv2` in
+A basic load/stress testing facility for the media gateway is built in to `rtsv2` in
 a module called `rtsv2_egest_stress_test`.
 
 To use the stress testing facility, the following process should be followed:
@@ -257,6 +258,18 @@ gateway which shows clients being added/removed.
 NOTE: When adding lots of clients at the same time, the media gateway may log
 that some log message have been dropped due to queue overload. This is expected
 behavior.
+
+A second batch of clients can be added by adjusting the client id range:
+
+[source,erlang]
+----
+3> rtsv2_egest_stress_test:start_test_clients(101, 200).
+ok
+4>
+----
+
+NOTE: If subsequent id ranges intersect with prior ones, then the clients for the intersection
+won't be added, and log entries will be generated in the media gateway's log.
 
 The `rtp-bench-receiver` UDP sink will report traffic every five seconds and can be
 used to get a rough indication of whether things are working as expected. `iftop` gives
