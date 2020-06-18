@@ -2,7 +2,7 @@ get:
   summary: /support/timedRoutes/{popName}
   description: VM support metrics description
   tags:
-    - Support
+    - Support Api
   parameters:
     - $ref: '../parameters/popName.yaml'
   responses:

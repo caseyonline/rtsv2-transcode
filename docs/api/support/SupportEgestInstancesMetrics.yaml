@@ -2,7 +2,7 @@ get:
   summary: /suport/egest/metrics
   description: Egest metrics description
   tags:
-    - Support
+    - Support Api
   responses:
     '200':
       description: OK

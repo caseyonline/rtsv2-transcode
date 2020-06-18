@@ -2,22 +2,20 @@ get:
   summary: /public/ingest/{shortName}/{streamName}/session
   description: Public client WebRTC Ingest Control description.
   tags:
-    - Public
+    - Public Html
   parameters:
-    - $ref: '../parameters/shortName.yaml'
-    - $ref: '../parameters/streamName.yaml'
+    - $ref: '../../parameters/shortName.yaml'
+    - $ref: '../../parameters/streamName.yaml'
   responses:
     '200':
       description: OK
       content:
-        application/json-ld:
+        text/html:
           schema:
-            type: array
-            items:
-              $ref: '../PublicSchema.yaml'
+            type: string
     '404':
       description: Not Found
       content:
         application/problem+json:
           schema:
-            $ref: '../schemas/Problem.yaml'
+            $ref: '../../schemas/Problem.yaml'

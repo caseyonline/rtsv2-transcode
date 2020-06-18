@@ -2,7 +2,7 @@ get:
   summary: /support/relay/{slotId}/{slotRole}
   description: PoP definition shit
   tags:
-    - Support
+    - Support Api
   responses:
     '200':
       description: OK

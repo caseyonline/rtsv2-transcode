@@ -2,23 +2,21 @@ get:
   summary: /support/ingestAggregator/{slotId}/{slotRole}/activeIngests/{profileName}/player
   description: Ingest aggregator active ingests player description
   tags:
-    - Support
+    - Support Html
   parameters:
-    - $ref: '../parameters/slotId.yaml'
-    - $ref: '../parameters/slotRole.yaml'
-    - $ref: '../parameters/profileName.yaml'
+    - $ref: '../../parameters/slotId.yaml'
+    - $ref: '../../parameters/slotRole.yaml'
+    - $ref: '../../parameters/profileName.yaml'
   responses:
     '200':
       description: OK
       content:
-        application/json-ld:
+        text/html:
           schema:
-            type: array
-            items:
-              $ref: '../PublicSchema.yaml'
+            type: string
     '404':
       description: Not Found
       content:
         application/problem+json:
           schema:
-            $ref: '../schemas/Problem.yaml'
+            $ref: '../../schemas/Problem.yaml'

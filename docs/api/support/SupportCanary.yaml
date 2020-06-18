@@ -2,7 +2,7 @@ post:
   summary: /support/canary/
   description: Canary description.
   tags:
-    - Support
+    - Support Api
   requestBody:
     required: true
     content:
