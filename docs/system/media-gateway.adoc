@@ -258,7 +258,7 @@ A rough process for tuning transmit queue capacity would be:
 - Choose a starting value for the capacity (somewhere around 500Mbit per core is likely a good starting point, revising downwards or upwards from there as appropriate)
 - Start the media gateway with that capacity
 - Add sufficient load to get close to max capacity for a single transmit queue, e.g. if the
-queue capacity is 500Mbit, and the stream is 100Mbit, 499 clients will be scheduled on to a single transmit queue (our scheduling is conservative), so ~ 497 virtual clients should leave room for the two browser clients used by the test.
+queue capacity is 500Mbit, and the stream is 1Mbit, 499 clients will be scheduled on to a single transmit queue (our scheduling is conservative), so ~ 497 virtual clients should leave room for the two browser clients used by the test.
 - Observe CPU usage over a period of time to make sure that CPU usage spikes aren't excessive (prolonged usage over 90%).
 - Start a player in the browser to be sure that latency between the two browser players is acceptable and playback is
 still smooth.
