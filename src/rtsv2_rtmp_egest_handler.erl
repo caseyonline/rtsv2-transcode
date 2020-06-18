@@ -23,9 +23,7 @@
          slot_lookup,
          play_request,
          profiles,
-         on_stream_callback :: fun(),
-
-         slotname
+         on_stream_callback :: fun()
         }).
 
 init(Rtmp, ConnectArgs, [#{ startStream := StartStream, slotLookup := SlotLookup, addClient := AddClient }]) ->
@@ -33,37 +31,26 @@ init(Rtmp, ConnectArgs, [#{ startStream := StartStream, slotLookup := SlotLookup
 
   [AppName | _] = string:split(AppArg, "?"),
 
+  UUID = rtsv2_types:string_to_uuid(unicode:characters_to_binary(AppName,utf8)),
+  EgestKey = {egestKey, UUID, {primary}},
 
-
-
-
-  % UUID = rtsv2_types:string_to_uuid(unicode:characters_to_binary(AppName,utf8)),
-  % EgestKey = {egestKey, UUID, {primary}},
-
-  % StartStream(EgestKey),
-  % ?INFO("Got RTMP egest connection, started stream for ~p", [EgestKey]),
+  StartStream(EgestKey),
+  ?INFO("Got RTMP egest connection, started stream for ~p", [EgestKey]),
 
   
-  % SlotConfig = SlotLookup(EgestKey),
-  % ?INFO("Looked up ~p to ~p", [EgestKey, SlotConfig]),
-  % State = #?state{rtmp_pid = Rtmp, egest_key = EgestKey, slot_lookup = SlotLookup },
-  % State2 = wait_for_slot_config(State),
+  SlotConfig = SlotLookup(EgestKey),
+  ?INFO("Looked up ~p to ~p", [EgestKey, SlotConfig]),
+  State = #?state{rtmp_pid = Rtmp, egest_key = EgestKey, slot_lookup = SlotLookup },
+  State2 = wait_for_slot_config(State),
 
-  % AddClient(self(), EgestKey, <<"fake_session_id">>),
+  AddClient(self(), EgestKey, <<"fake_session_id">>),
 
-  {ok, #?state{ rtmp_pid = Rtmp, slotname = AppName }}.
+  {ok, State2}.
 
 
-handle(State = #?state{ slotname = SlotName }) ->
-  %% the workflow is dealing with the RTMP (once it starts up), so just wait until it says we are done
+handle(State = #?state{}) ->
+  %% the workflow is dealing with the RTMP, so just wait until it says we are done
   receive
-
-    PlayRequest = {_Rtmp, {request, play, {_StreamId, _ClientId, _Path}}} ->
-      ?INFO("Play request with path ~p, slot name ~p", [_Path, SlotName]),
-      % handle(maybe_start(State#?state{play_request = PlayRequest}));
-      handle(State);
-
-
     #workflow_output{message = #workflow_data_msg{data = disconnected}} ->
       ok;
 
@@ -73,6 +60,8 @@ handle(State = #?state{ slotname = SlotName }) ->
       State2 = wait_for_slot_config(State),
       handle(maybe_start(State2));
 
+    PlayRequest = {_Rtmp, {request, play, {_StreamId, _ClientId, _Path}}} ->
+      handle(maybe_start(State#?state{play_request = PlayRequest}));
 
     Other ->
       ?WARNING("Unexpected workflow output ~p", [Other]),

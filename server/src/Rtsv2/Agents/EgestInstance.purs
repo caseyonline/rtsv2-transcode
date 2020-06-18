@@ -16,6 +16,7 @@ module Rtsv2.Agents.EgestInstance
   , ParentCallbacks
   , WebSocket
   , StateServerName
+  , RegistrationResp
   , domain
 ) where
 
@@ -37,7 +38,7 @@ import Erl.Data.List (List, nil, singleton)
 import Erl.Data.List as List
 import Erl.Data.Map (Map, lookup, toUnfoldable, values)
 import Erl.Data.Map as Map
-import Erl.Data.Tuple (Tuple2, fsd, snd, Tuple3, tuple2)
+import Erl.Data.Tuple (Tuple2, Tuple3, tuple2)
 import Erl.Data.Tuple as Tuple
 import Erl.Process (Process(..), (!))
 import Erl.Process.Raw (Pid)

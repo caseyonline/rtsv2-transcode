@@ -14,6 +14,7 @@ import Logger as Logger
 import Pinto (ServerName)
 import Pinto as Pinto
 import Pinto.Gen as Gen
+import Rtsv2.Agents.EgestInstance (RegistrationResp)
 import Rtsv2.Agents.EgestInstance as EgestInstance
 import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
@@ -21,7 +22,7 @@ import Rtsv2.Config as Config
 import Rtsv2.Env as Env
 import Rtsv2.LlnwApi as LlnwApi
 import Rtsv2.Names as Names
-import Rtsv2.Types (LocationResp, RegistrationResp)
+import Rtsv2.Types (LocationResp)
 import Serf (Ip)
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.Stream (EgestKey(..), RtmpShortName(..), RtmpStreamName(..), SlotRole(..))
