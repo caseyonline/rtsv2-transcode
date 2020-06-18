@@ -23,7 +23,9 @@
          slot_lookup,
          play_request,
          profiles,
-         on_stream_callback :: fun()
+         on_stream_callback :: fun(),
+
+         slotname
         }).
 
 init(Rtmp, ConnectArgs, [#{ startStream := StartStream, slotLookup := SlotLookup, addClient := AddClient }]) ->
@@ -31,26 +33,37 @@ init(Rtmp, ConnectArgs, [#{ startStream := StartStream, slotLookup := SlotLookup
 
   [AppName | _] = string:split(AppArg, "?"),
 
-  UUID = rtsv2_types:string_to_uuid(unicode:characters_to_binary(AppName,utf8)),
-  EgestKey = {egestKey, UUID, {primary}},
 
-  StartStream(EgestKey),
-  ?INFO("Got RTMP egest connection, started stream for ~p", [EgestKey]),
+
+
+
+  % UUID = rtsv2_types:string_to_uuid(unicode:characters_to_binary(AppName,utf8)),
+  % EgestKey = {egestKey, UUID, {primary}},
+
+  % StartStream(EgestKey),
+  % ?INFO("Got RTMP egest connection, started stream for ~p", [EgestKey]),
 
   
-  SlotConfig = SlotLookup(EgestKey),
-  ?INFO("Looked up ~p to ~p", [EgestKey, SlotConfig]),
-  State = #?state{rtmp_pid = Rtmp, egest_key = EgestKey, slot_lookup = SlotLookup },
-  State2 = wait_for_slot_config(State),
+  % SlotConfig = SlotLookup(EgestKey),
+  % ?INFO("Looked up ~p to ~p", [EgestKey, SlotConfig]),
+  % State = #?state{rtmp_pid = Rtmp, egest_key = EgestKey, slot_lookup = SlotLookup },
+  % State2 = wait_for_slot_config(State),
 
-  AddClient(self(), EgestKey, <<"fake_session_id">>),
+  % AddClient(self(), EgestKey, <<"fake_session_id">>),
 
-  {ok, State2}.
+  {ok, #?state{ rtmp_pid = Rtmp, slotname = AppName }}.
 
 
-handle(State = #?state{}) ->
-  %% the workflow is dealing with the RTMP, so just wait until it says we are done
+handle(State = #?state{ slotname = SlotName }) ->
+  %% the workflow is dealing with the RTMP (once it starts up), so just wait until it says we are done
   receive
+
+    PlayRequest = {_Rtmp, {request, play, {_StreamId, _ClientId, _Path}}} ->
+      ?INFO("Play request with path ~p, slot name ~p", [_Path, SlotName]),
+      % handle(maybe_start(State#?state{play_request = PlayRequest}));
+      handle(State);
+
+
     #workflow_output{message = #workflow_data_msg{data = disconnected}} ->
       ok;
 
@@ -60,8 +73,6 @@ handle(State = #?state{}) ->
       State2 = wait_for_slot_config(State),
       handle(maybe_start(State2));
 
-    PlayRequest = {_Rtmp, {request, play, {_StreamId, _ClientId, _Path}}} ->
-      handle(maybe_start(State#?state{play_request = PlayRequest}));
 
     Other ->
       ?WARNING("Unexpected workflow output ~p", [Other]),
@@ -106,13 +117,38 @@ maybe_start(State) -> State.
 
 start_workflow(EgestKey, Rtmp, Profile = #{ firstAudioSSRC := AudioSSRC, firstVideoSSRC := VideoSSRC, profileName := ProfileName }) ->
   ?INFO("Starting workflow for profile ~p", [Profile]),
+ %% {video_profile,undefined,h264,{codec_profile_level,66,3.0},false,720,400,undefined,yuv420p,{1,1},{24000,1001},undefined,undefined,undefined,undefined,undefined},{video_frame_metadata,false,false,false,false},undefined,false,false,false,false,-576460483451168,1592408029892,clock,undefined,143316722689200,143316722689200,0,<<0,0,0,1,65,154,160,26,188,8,1,57,191,...>>,[],false}
+
+
   VideoMetadata = #rtmp_video_metadata{
                       video_key_frame_frequency = 5,
-                      video_data_rate = 500,
+                      video_data_rate = 0, %% 500
                       avcprofile = 66
                       },
+
+
+  % KeyFrameFrequency = case FrameRate of
+  %                       {Num, Den} ->
+  %                         case media_utils:gop_size(VideoProfile) of
+  %                           undefined ->
+  %                             1;
+  %                           GopSize ->
+  %                             (GopSize * Den) div Num
+  %                         end;
+  %                       _ ->
+  %                         1
+  %                     end,
+
+
+                    %% set from profile:
+                  %  frame_rate = IncomingFrameRate,
+                  %   width = IncomingWidth,
+                  %   height = IncomingHeight,
+                  %   video_codec_id = VideoCodecId
   AudioMetadata = #rtmp_audio_metadata{
-                      audio_data_rate = 48
+                      audio_data_rate = 0,%% 48
+                      audio_sample_size = media_utils:sample_format_to_bits(s16)
+                      %% audio_sample_rate, audio_channels, audio_codec_id set from profile
                       },
   RtmpConfig = #rtmp_pull_egest_processor_config{
                   rtmp = Rtmp,

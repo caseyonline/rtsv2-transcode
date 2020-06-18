@@ -165,6 +165,7 @@ start_rtmp_bus_workflow(EgestKey) ->
                               #generator{name = source
                                         ,display_name = <<"Receive from Stream Relay">>
                                         ,module = rtsv2_rtp_receiver_frame_generator
+                                       , trace_outputs = console
                                         }
                              ],
                 processors = [
