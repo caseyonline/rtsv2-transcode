@@ -24,30 +24,30 @@ import Shared.Common (Url)
 import Shared.Rtsv2.LlnwApiTypes (SlotLookupResult)
 import Shared.Rtsv2.Router.Endpoint.Public as Public
 import Shared.Rtsv2.Router.Endpoint.Support as Support
-import Shared.Rtsv2.Stream (SlotId, SlotRole(..))
+import Shared.Rtsv2.Stream (RtmpShortName, SlotId, SlotName, SlotRole(..))
 import Shared.Rtsv2.Types (CanaryState(..), FailureReason, Server)
 import Stetson (StetsonHandler)
 import StetsonHelper (jsonResponse)
 
-discover :: LoadConfig -> CanaryState -> String -> String -> StetsonHandler (Maybe (List Url))
-discover loadConfig canary accountName streamName =
+discover :: LoadConfig -> CanaryState -> RtmpShortName -> SlotName -> StetsonHandler (Maybe (List Url))
+discover loadConfig canary accountName slotName =
   jsonResponse getUrls
 
   where
     getUrls =
       do
         config <- Config.llnwApiConfig
-        result <- (LlnwApi.slotLookup config accountName streamName) >>= chainIntoEither getSessionUrls
+        result <- (LlnwApi.slotLookup config accountName slotName) >>= chainIntoEither getSessionUrls
 
         case result of
           Left lookupError ->
             do
-              _ <- logWarning "Slot lookup failed during stream discovery" { accountName, streamName, lookupError }
+              logWarning "Slot lookup failed during stream discovery" { accountName, slotName, lookupError }
               pure Nothing
 
           Right { urls, slotId, errors } | urls == nil->
             do
-              _ <- logWarning "No playback URLs were obtainable for slot" { accountName, streamName, slotId, errors }
+              logWarning "No playback URLs were obtainable for slot" { accountName, slotName, slotId, errors }
               pure Nothing
 
           Right { urls } ->
@@ -81,8 +81,8 @@ discover loadConfig canary accountName streamName =
       where
         url :: Server -> Effect Url
         url = case canary of
-          Live -> flip Public.makeUrl $ Public.ClientPlayerControlE slot.id role
-          Canary -> flip Support.makeUrl $ Support.CanaryClientPlayerControlE slot.id role
+          Live -> flip Public.makeWsUrl $ Public.ClientPlayerControlE slot.id role
+          Canary -> flip Support.makeWsUrl $ Support.CanaryClientPlayerControlE slot.id role
 
 --------------------------------------------------------------------------------
 -- Log helpers

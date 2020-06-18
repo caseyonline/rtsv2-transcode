@@ -13,7 +13,6 @@ import Data.Newtype (wrap)
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
-import Erl.Process.Raw (Pid)
 import Erl.Utils as Erl
 import Foreign (Foreign)
 import Logger as Logger
@@ -29,9 +28,8 @@ import Shared.Rtsv2.LlnwApiTypes (PublishCredentials(..), SlotProfile(..), Strea
 import Shared.Rtsv2.Stream (IngestKey(..), ProfileName, RtmpStreamName(..))
 import Shared.Rtsv2.Types (CanaryState, Server)
 
-foreign import startWorkflowImpl :: IngestKey -> Effect Pid
-
 type AuthenticateResult = { streamDetails :: StreamDetails
+                          , slotProfile :: SlotProfile
                           , profileName :: ProfileName
                           , startStream :: Maybe (Effect (Maybe StartStreamResult))
                           , dataObjectSendMessage :: DO.Message -> Effect Unit
@@ -39,13 +37,12 @@ type AuthenticateResult = { streamDetails :: StreamDetails
                           }
 
 type StartStreamResult = { sourceInfo :: Foreign -> Effect Unit
-                         , workflowPid :: Pid
                          , stopStream :: Effect Unit
                          }
 
 authenticate :: LoadConfig -> CanaryState -> String -> StreamIngestProtocol -> String -> String -> String -> String -> String -> Int -> Effect (Maybe AuthenticateResult)
 authenticate loadConfig canary host protocol account username password streamName remoteAddress remotePort = do
-  publishCredentials <- getPublishCredentials host account username
+  publishCredentials <- getPublishCredentials host account username remoteAddress
 
   case publishCredentials of
     Just (PublishCredentials { username: expectedUsername
@@ -60,6 +57,7 @@ authenticate loadConfig canary host protocol account username password streamNam
                                , rtmpShortName
                                , rtmpStreamName
                                , username
+                               , clientIp: remoteAddress
                                }
         maybeStreamDetails <- getStreamDetails streamPublish
 
@@ -70,14 +68,14 @@ authenticate loadConfig canary host protocol account username password streamNam
           Just streamDetails -> do
             case findProfile streamDetails of
               Nothing -> do
-                _ <- logInfo "StreamProfile not found" { streamDetails
+                logInfo "StreamProfile not found" { streamDetails
                                                        , streamName }
                 pure Nothing
 
-              Just (SlotProfile { name: profileName }) -> do
+              Just slotProfile@(SlotProfile { name: profileName }) -> do
                 let
                   ingestKey = makeIngestKey profileName streamDetails
-                _ <- logInfo "Starting WEBRTC" {canary}
+                logInfo "Starting WEBRTC" {canary}
                 maybeStartStream <- case protocol of
                                       WebRTC -> do
                                         self <- Erl.self
@@ -85,13 +83,14 @@ authenticate loadConfig canary host protocol account username password streamNam
                                       Rtmp ->
                                         pure Nothing
                 pure $ Just { streamDetails
+                            , slotProfile
                             , profileName
                             , startStream: maybeStartStream
                             , dataObjectSendMessage: IngestInstance.dataObjectSendMessage ingestKey
                             , dataObjectUpdate: IngestInstance.dataObjectUpdate ingestKey
                             }
     Just _ -> do
-      _ <- logInfo "Authentication failed; invalid username / password" {username}
+      logInfo "Authentication failed; invalid username / password" {username}
       pure Nothing
 
     Nothing -> do
@@ -108,12 +107,11 @@ startStream ingestKey startFn = do
   maybeStarted <- startFn
   case maybeStarted of
     Right _ -> do
-      workflowPid <- startWorkflow ingestKey
       pure $ Just { sourceInfo: sourceInfo
                   , stopStream: stopStream ingestKey
-                  , workflowPid}
+                  }
     Left error -> do
-      _ <- logWarning "Attempt to start local RTMP ingest failed" {error}
+      logWarning "Attempt to start local RTMP ingest failed" {error}
       pure Nothing
   where
     sourceInfo foreignSourceInfo = do
@@ -131,7 +129,3 @@ logInfo = Logger.info <<< Logger.traceMetadata domain
 
 logWarning :: forall report. String -> { | report } -> Effect Unit
 logWarning = Logger.warning <<< Logger.traceMetadata domain
-
-startWorkflow :: IngestKey -> Effect Pid
-startWorkflow ingestKey =
-  startWorkflowImpl ingestKey

@@ -4,7 +4,6 @@ import Prelude
 
 import Data.Either (Either(..))
 import Data.Newtype (unwrap, wrap)
-import Debug.Trace (spy)
 import Effect.Aff (Aff, attempt)
 import Effect.Unsafe (unsafePerformEffect)
 import Helpers.CreateString as C
@@ -16,7 +15,7 @@ import Shared.Rtsv2.Chaos as Chaos
 import Shared.Rtsv2.Router.Endpoint.Public as Public
 import Shared.Rtsv2.Router.Endpoint.Support as Support
 import Shared.Rtsv2.Router.Endpoint.System as System
-import Shared.Rtsv2.Stream (RtmpShortName, SlotId, SlotNameAndProfileName(..), SlotRole(..), RtmpStreamName, ProfileName)
+import Shared.Rtsv2.Stream (RtmpShortName, SlotId, SlotNameAndProfileName(..), SlotRole(..), RtmpStreamName, ProfileName, SlotName)
 import Shared.Rtsv2.Types (CanaryState(..), RunState(..), CurrentLoad(..), ServerAddress(..))
 import Simple.JSON as SimpleJSON
 import Toppokki as T
@@ -135,6 +134,11 @@ getStats node route = get (M.URL $ C.makeUrlAndUnwrapSupport node route)
 
 getStatsSystem :: Node -> System.Endpoint -> Aff (Either String ResWithBody)
 getStatsSystem node route = get (M.URL $ C.makeUrlAndUnwrapSystem node route)
+
+getStreamDiscovery :: Node -> RtmpShortName -> SlotName -> Aff (Either String ResWithBody)
+getStreamDiscovery node shortName slotName =
+  get (M.URL $ C.makeUrlAndUnwrapPublic node (Public.StreamDiscoveryE shortName slotName))
+
 
 -- | Egest
 getEgestStats :: Node -> SlotId -> Aff (Either String ResWithBody)

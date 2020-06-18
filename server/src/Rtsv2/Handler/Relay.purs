@@ -229,7 +229,7 @@ registeredEgestWs slotId slotRole egestAddress egestPort =
       pure $ WebSocketNoReply state
 
     info state WsStop = do
-      _ <- logInfo StreamRelayInstance.domain "Agent closed - closing websocket" {}
+      logInfo StreamRelayInstance.domain "Agent closed - closing websocket" {}
       pure $ WebSocketStop state
     info state (WsSend msg) =
       pure $ WebSocketReply msg state

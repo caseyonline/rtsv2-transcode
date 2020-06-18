@@ -37,11 +37,11 @@ import Bus as Bus
 import Data.Array as Array
 import Data.Either (Either(..), hush)
 import Data.Foldable (find, foldl)
-import Data.FoldableWithIndex (foldlWithIndex)
+import Data.FoldableWithIndex (foldlWithIndex, traverseWithIndex_)
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Maybe as Maybe
 import Data.Newtype (un, unwrap)
-import Data.Traversable (traverse)
+import Data.Traversable (traverse, traverse_)
 import Data.TraversableWithIndex (traverseWithIndex)
 import Data.Tuple as PursTuple
 import Effect (Effect)
@@ -390,7 +390,7 @@ forceDrain relayKey =
 applyOriginPlan :: CommonStateData -> OriginStreamRelayStateData -> Effect State
 
 applyOriginPlan commonStateData@{relayKey, stateServerName, config: {reApplyPlanTimeMs}} originStateData@{ config, plan: Nothing } = do
-  _ <- Timer.sendAfter (serverName relayKey) reApplyPlanTimeMs ReApplyPlan
+  void $ Timer.sendAfter (serverName relayKey) reApplyPlanTimeMs ReApplyPlan
   CachedInstanceState.recordInstanceData stateServerName (CachedOrigin commonStateData config Nothing)
   pure $ StateOrigin commonStateData originStateData
 
@@ -474,23 +474,22 @@ applyDownstreamRunResult commonStateData@{ relayKey: relayKey@(RelayKey slotId s
       do
         maybeRelayAddress <- ensureRelayInPoP next
 
-        _ <- (logInfo "Ensured relay running in pop" { pop: next, maybeRelayAddress })
+        logInfo "Ensured relay running in pop" { pop: next, maybeRelayAddress }
 
         case maybeRelayAddress of
           Nothing ->
             pure $ (UpstreamRelayStatePendingRegistration portNumber)
 
-          Just relayAddress ->
-            do
-              maybeWebSocket <- registerWithSpecificRelay portNumber relayAddress rest
+          Just relayAddress -> do
+            maybeWebSocket <- registerWithSpecificRelay portNumber relayAddress rest
 
-              _ <- (logInfo "Attempted registration with relay" { relayAddress, portNumber })
+            logInfo "Attempted registration with relay" { relayAddress, portNumber }
 
-              case maybeWebSocket of
-                Just webSocket ->
-                  pure $ (UpstreamRelayStateRegistered portNumber relayAddress webSocket)
-                Nothing ->
-                  pure $ (UpstreamRelayStatePendingRegistration portNumber)
+            case maybeWebSocket of
+              Just webSocket ->
+                pure $ (UpstreamRelayStateRegistered portNumber relayAddress webSocket)
+              Nothing ->
+                pure $ (UpstreamRelayStatePendingRegistration portNumber)
 
     ensureRelayInPoP pop = do
       maybeRandomServerInPoP <- PoPDefinition.getRandomServerInPoP pop
@@ -594,7 +593,7 @@ stopAction relayKey@(RelayKey slotId slotRole) cachedState = do
       pure unit
 
     deRegisterUpstreams (Just {upstreamRelayStates}) = do
-      _ <- traverse deRegisterUpstream (Map.values upstreamRelayStates)
+      traverse_ deRegisterUpstream (Map.values upstreamRelayStates)
       pure unit
 
     deRegisterUpstream (UpstreamRelayStatePendingDeregistration _portNumber _relayAddress webSocket) =
@@ -615,7 +614,7 @@ init relayKey parentCallbacks payload@{slotId, slotRole, aggregatorPoP, slotChar
   streamRelayConfig <- Config.streamRelayConfig
   loadConfig <- Config.loadConfig
   IntraPoP.announceLocalRelayIsAvailable relayKey
-  _ <- Bus.subscribe (serverName relayKey) IntraPoP.bus IntraPoPBus
+  void $ Bus.subscribe (serverName relayKey) IntraPoP.bus IntraPoPBus
   Gen.registerTerminate (serverName relayKey) terminate
   mConfig <- CachedInstanceState.getInstanceData stateServerName
 
@@ -714,7 +713,7 @@ init relayKey parentCallbacks payload@{slotId, slotRole, aggregatorPoP, slotChar
 
     monitorEgests :: forall r. {egests :: EgestMap | r} -> Effect Unit
     monitorEgests {egests} = do
-      _ <- traverseWithIndex monitorEgest egests
+      traverseWithIndex_ monitorEgest egests
       pure unit
 
     monitorRelay :: forall r1. ServerAddress -> { handler :: Process (WebSocketHandlerMessage DownstreamWsMessage) | r1} -> Effect Unit
@@ -725,7 +724,7 @@ init relayKey parentCallbacks payload@{slotId, slotRole, aggregatorPoP, slotChar
                                                                            | r1}
                                    | r2 } -> Effect Unit
     monitorRelays {downstreamRelays} = do
-      _ <- traverseWithIndex monitorRelay downstreamRelays
+      traverseWithIndex_ monitorRelay downstreamRelays
       pure unit
 
 handleInfo :: Msg -> State -> Effect (CastResult State)
@@ -806,12 +805,12 @@ handleInfo msg state =
       processGunMessage state inMsg
 
     EgestDown egestAddress -> do
-      _ <- logInfo "Egest down" {egestAddress}
+      logInfo "Egest down" {egestAddress}
       state2 <- fireStopTimer state
       CastNoReply <$> deRegisterEgest egestAddress state2
 
     RelayDown relayAddress -> do
-      _ <- logInfo "Relay down" {relayAddress}
+      logInfo "Relay down" {relayAddress}
       state2 <- fireStopTimer state
       CastNoReply <$> deRegisterRelay relayAddress state2
 
@@ -836,7 +835,7 @@ handleInfo msg state =
 
     fireStopTimer' commonState@{ config : { lingerTimeMs } } = do
       ref <- makeRef
-      _ <- Timer.sendAfter (serverName relayKey) lingerTimeMs (MaybeStop ref)
+      void $ Timer.sendAfter (serverName relayKey) lingerTimeMs (MaybeStop ref)
       pure commonState{stopRef = Just ref}
 
     maybeAggregatorStop (StateOrigin {aggregatorExitTimerRef} runState) ref
@@ -904,7 +903,7 @@ handleInfo msg state =
       let
         egestPids = Map.values egests <#> _.handler
         relayPids = Map.values downstreamRelays <#> _.handler
-      _ <- traverse (sendMessageToDownstream msg') (egestPids <> relayPids)
+      traverse_ (sendMessageToDownstream msg') (egestPids <> relayPids)
       pure unit
 
     processGunMessage stateOrigin@(StateOrigin common@{config: {reApplyPlanTimeMs}} origin@{config, run: run@{ingestAggregatorState}}) gunMsg = do
@@ -915,8 +914,8 @@ handleInfo msg state =
               pure stateOrigin
 
             down = do
-              _ <- logInfo "Aggregator down, scheduling reapply" {reApplyPlanTimeMs}
-              _ <- Timer.sendAfter (serverName relayKey) reApplyPlanTimeMs ReApplyPlan
+              logInfo "Aggregator down, scheduling reapply" {reApplyPlanTimeMs}
+              void $ Timer.sendAfter (serverName relayKey) reApplyPlanTimeMs ReApplyPlan
               pure $ StateOrigin common origin{ run = run { ingestAggregatorState = IngestAggregatorStatePendingRegistration portNumber} }
 
             updateSocket newSocket = do
@@ -924,7 +923,7 @@ handleInfo msg state =
 
             slotConfig slotConfiguration
               | Nothing <- run.slotConfiguration = do
-                _ <- logInfo "Received slot configuration" {slotConfiguration}
+                logInfo "Received slot configuration" {slotConfiguration}
                 setSlotConfigurationFFI (relayKeyFromState state) slotConfiguration
                 sendMessageToDownstreams (SlotConfig slotConfiguration) config
                 pure $ StateOrigin common origin{ run = run { slotConfiguration = Just slotConfiguration }}
@@ -956,8 +955,8 @@ handleInfo msg state =
               pure stateDownStream
 
             down = do
-              _ <- logInfo "Upstream Relay down, scheduling replay" {upstreamRelay, reApplyPlanTimeMs}
-              _ <- Timer.sendAfter (serverName relayKey) reApplyPlanTimeMs ReApplyPlan
+              logInfo "Upstream Relay down, scheduling replay" {upstreamRelay, reApplyPlanTimeMs}
+              void $ Timer.sendAfter (serverName relayKey) reApplyPlanTimeMs ReApplyPlan
               let
                 newRelayStates = Map.insert upstreamRelay (UpstreamRelayStatePendingRegistration portNumber) upstreamRelayStates
               pure $ StateDownstream common downstream{run = run{ upstreamRelayStates = newRelayStates } }
@@ -973,7 +972,7 @@ handleInfo msg state =
 
             slotConfig slotConfiguration
               | Nothing <- run.slotConfiguration = do
-                _ <- logInfo "Received slot configuration" {slotConfiguration}
+                logInfo "Received slot configuration" {slotConfiguration}
                 setSlotConfigurationFFI (relayKeyFromState state) slotConfiguration
                 sendMessageToDownstreams (SlotConfig slotConfiguration) config
                 pure $ StateDownstream common downstream{run = run{ slotConfiguration = Just slotConfiguration }}
@@ -1002,7 +1001,7 @@ handleInfo msg state =
       processResponse <- WsGun.processMessage socket gunMsg
       case processResponse of
         Left error -> do
-          _ <- logInfo "Gun process error" {error}
+          logInfo "Gun process error" {error}
           noop
 
         Right (WsGun.Internal _) ->
@@ -1016,7 +1015,7 @@ handleInfo msg state =
 
         Right WsGun.WebSocketDown -> do
           -- todo - kick off timer?  If websocket doesn't recover, attempt to launch new relay?
-          _ <- logInfo "Relay Websocket down - but which one!!" {socket}
+          logInfo "Relay Websocket down - but which one!!" {socket}
           down
 
         Right (WsGun.Frame (SlotConfig slotConfiguration)) ->

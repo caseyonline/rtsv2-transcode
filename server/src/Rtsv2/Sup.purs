@@ -5,7 +5,7 @@ import Prelude
 import Effect (Effect)
 import Erl.Atom (atom)
 import Erl.Data.List (nil, (:))
-import Pinto (ServerName(..))
+import Pinto (ServerName(..), SupervisorName)
 import Pinto as Pinto
 import Pinto.Sup (SupervisorChildType(..), SupervisorSpec, SupervisorStrategy(..), buildChild, buildSupervisor, childId, childStart, childType, supervisorChildren, supervisorStrategy)
 import Pinto.Sup as Sup
@@ -15,14 +15,18 @@ import Rtsv2.Config as Config
 import Rtsv2.Load as Load
 import Rtsv2.NodeManager as NodeManager
 import Rtsv2.PoPDefinition as PoPDefinition
-import Rtsv2.Web as Web
+
+serverName :: SupervisorName
+serverName = (Local (atom "rtsv2sup"))
 
 startLink :: Effect Pinto.StartLinkResult
-startLink = Sup.startLink (Local (atom "rtsv2sup")) init
+startLink = Sup.startLink serverName init
+
+stop :: Effect Unit
+stop = Sup.stop serverName
 
 init :: Effect SupervisorSpec
 init = do
-  webConfig <- Config.webConfig
   popDefinitionConfig <- Config.popDefinitionConfig
   pure $ buildSupervisor
     # supervisorStrategy OneForOne
@@ -31,7 +35,6 @@ init = do
           : nodeManager
           : load
           : alerts
-          : webServer webConfig
           : nil
         )
   where
@@ -40,12 +43,6 @@ init = do
       # childType Worker
       # childId "popDefinition"
       # childStart PoPDefinition.startLink popDefinitionConfig
-
-    webServer webConfig =
-      buildChild
-      # childType Worker
-      # childId "web"
-      # childStart Web.startLink webConfig
 
     load =
       buildChild
@@ -64,4 +61,5 @@ init = do
       # childType Worker
       # childId "nodeManager"
       # childStart NodeManager.startLink { activeSupStartLink: ActiveSup.startLink
+                                         , activeSupStop: ActiveSup.stop
                                          }

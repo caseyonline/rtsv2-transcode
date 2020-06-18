@@ -1,3 +1,161 @@
+# RTS-V2 release xxx
+
+**What's new**
+
+* Fix to HLS publish if onFI messages present in inbound RTMP stream
+
+# RTS-V2 release 106
+
+**What's new**
+
+* Slot Lookup API is now cached and responses to cache misses are sent over IntraPoP serf to pre-load the caches on peers.  Basic cache statistics returned under the healthCheck URL.
+
+* RTVS2-50 - now fixed;  on a fatal error connecting to serf (such as introduced with tcpkill), the supervision trees will now retry repeatedly until finally the erlang node will exit.  At that point, systemd will restart it and the loop will continue until the connection to serf recovers.
+
+* RTSV2-63 - now fixed; URLs are correctly on the wss scheme
+
+* RTSV2-112 - EQ logs now flushed out on clean node exits
+
+* RTSV2-111 - EQ Egest logs now include the byte counts
+
+* client_ip field now included in all auth calls
+
+* ingest bitrate validation now happening - currently just raises alerts but once parameters are tuned it can easily be extended to drop the ingest.  Parameters are in rtsv2_core.config:
+
+  ```
+  , qosAverageBitrateLowWatermark => 1.2
+  , qosAverageBitrateHighWatermark => 1.5
+  , qosPeakBitrateLowWatermark => 1.5
+  , qosPeakBitrateHighWatermark => 2.0
+  
+  ```
+
+  average bitrates are measured over a 20 second period, peak bitrates are over a 200ms period.  The numbers are simple factors of the configured bitrate from the SlotProfile
+
+* ingest now validates the abscence of video on audio-only profiles and closes down the ingest if video is detected
+
+* HLS segment numbers no longer reset to zero
+
+# RTS-V2 release 105
+
+**What's new**
+
+* Further changes to interfaces to correctly support 'any'.  There are now 5 interfaces listed in rtsv2_environment
+
+  * public listen - used for /public urls and live RTMP
+
+  * support listen - used for /support urls and canary RTMP
+
+  * system listen - used for internal /system urls
+
+  * intra-serf - used for intra-serf traffic
+
+  * trans-serf - used for trans-serf traffic
+
+    Of these, the first 3 are used for the 3 HTTP servers and 'any' is a valid interface name, which equates to listening on 0.0.0.0.
+
+    Note that currently we only hav eon nodee name in the popDefinition file - this means that all generated URLs have that node name embedded, which will obviously only resolve to one IP address.  As such, currently public, support and system interfaces all need to be the same.  If it is decided that we want to actually support multiple interfaces in production then we will need to extend popDefinition to include names that resolve to the appropriate interfaces (or have a systematic way in which thosee names can be derived, such as popDefinition having 'rtsv2-poc-1.devnet.llnw.net' and the platform deriving something like 'rtsv2-poc-1.system.devnet.llnw.net' etc).
+
+    Also note that we are currently proxying through nginx for handling SSL termination.  system urls do not go through nginx, but both support and public do - so again if we want multiple interfaces it would, in production, probably be nginx configuration handling that, with the rtsv2 configuration binding public and support to lo0.
+
+    Suspect this needs further discussion to finalise how live is going to be setup.
+
+
+
+* Initial support for Alerts returned in the healthCheck URL.  For example:
+
+  ```json
+    "alerts": [
+      {
+        "codecId": "h263",
+        "context": {
+          "profileName": "high",
+          "slotId": "00000000-0000-0000-0000-000000000001",
+          "slotName": "slot1",
+          "slotRole": "primary"
+        },
+        "initialReport": "1591347301380",
+        "lastReport": "1591347301380",
+        "pid": "<0.384.0>",
+        "reason": "invalidVideoCodec",
+        "repeatCount": 0,
+        "source": {
+          "function": "map_video_format_from_rtmp",
+          "line": 133,
+          "module": "rtmp_utils"
+        },
+        "type": "ingestFailed"
+      },
+      {
+        "context": {
+          "profileName": "high",
+          "slotId": "00000000-0000-0000-0000-000000000001",
+          "slotName": "slot1",
+          "slotRole": "primary"
+        },
+        "initialReport": "1591347300760",
+        "lastReport": "1591347300760",
+        "pid": "<0.360.0>",
+        "repeatCount": 0,
+        "source": {
+          "function": "-init/2-fun-5-",
+          "line": 234,
+          "module": "Rtsv2.Agents.IngestInstance@ps"
+        },
+        "type": "ingestStarted"
+      }
+    ],
+  ```
+
+
+
+  This show a list of alerts, with the latest first.  Each alert has the following fields:
+
+  	* initialReport - a millisecond-timestamp of the first time this alert was reported
+  	* lastReport - a millisecond-timestamp of the most recent time this alert was reported
+  	* repeatCount - how many times this alert has been repeated
+  	* type - the alert type
+  	* source - not always present, but shows the module / function / line that raised th report
+  	* context - not always present, but shows RTS-V2 context information (slotId, name etc)
+   * and then various fields that are dependent on the alert type.  Current types with their fields:
+      * "ingestStarted"
+        	*  no addtional fields
+      * "ingestFailed"
+        	* reason
+         * and then various fields that are dependent on the reason.  Current reasons with their fields:
+            * "invalidVideoCodec"
+              	* codecId - the invalid codec id
+      * "lsrsFailed"
+        	* reason - reason text returned from the underlying http client
+      * "genericAlert"
+        	* text - string formatted from the underlying alert
+
+  More alerts will get added - let us know if you've seen things in logs that you'd like reported through this mechanism.  We will formally document this soon, along with the other endpoints in /public and /support.  For now, you can see the types and the json rendering in rtsv2/shared/Common.purs
+
+  The initialReport / lastReport / repeatCount fields are to ensure that, for example, a client continually connecting and sending invalid video doesn't cause an explosion of alerts.  reportCounts are based on contextual data, so two different clients attempting to connect with invalid video would show up as two different alerts.
+
+
+
+* The healthCheck URLnow supports a 'alertsFrom' parameter on the query string, which will filter out any alerts that have a 'lastReport' time earlier than 'from'
+
+* Updated our side of provisioning API to support new audioBitrate / videoBitrate fields in Profile
+
+* Initial support for audio-only streams - these are specified by having slots where *all* profiles have a videoBitrate of zero.  A couple of notes:
+
+  * The ingest does not currently validate that it is only receiving audio;  that wil lchange soon, so please don't try submitting a video stream to an audio-only slot :)
+
+  * The init message sent down the websocket to the player has an additional field that indicates if the stream is audio-only;  the client needs to create an appropriate SDP offer to only receive audio - the reference egest player shows this in Session.ts:412
+
+
+
+* RTMP connections now timeout more reliably if the client doesn't send data - previous version required media flowing before the inactivity timer was started, it now starts as soon as the connection is established
+
+
+
+* Minor HLS tweaks to support 'video-only' streams, although note that these are not (yet!) officially supported
+
+* HLS sequence numbers no longer reset to zero on a restart
+
 # RTS-V2 release 103
 
 **What's new**

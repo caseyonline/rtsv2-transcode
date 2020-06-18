@@ -1,0 +1,42 @@
+get:
+  summary: /support/timedRoutes/{popName}
+  description: VM support metrics description
+  tags:
+    - Support Api
+  parameters:
+    - $ref: '../parameters/popName.yaml'
+  responses:
+    '200':
+      description: OK
+      content:
+        application/json-ld:
+          schema:
+            type: object
+            properties:
+              from:
+                type: string
+                example: PoPName
+              to:
+                type: string
+                example: PoPName
+              routes:
+                type: array
+                items:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      from:
+                        type: string
+                        example: PoPName
+                      to:
+                        type: string
+                        example: PoPName
+                      rrt:
+                        type: interger
+    '404':
+      description: Not Found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/Problem.yaml'

@@ -11,16 +11,16 @@ import Data.Either (Either(..), hush)
 import Data.Foldable (foldl, find)
 import Data.Maybe (Maybe(..), fromMaybe', isJust)
 import Data.Newtype (unwrap, wrap)
-import Data.Traversable (traverse)
+import Data.Traversable (traverse_)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
-import Erl.Cowboy.Req (StatusCode(..))
+import Erl.Cowboy.Req (StatusCode(..), IpAddress)
 import Erl.Cowboy.Req as Req
 import Erl.Data.List (List, nil, (:))
 import Erl.Data.List as List
 import Erl.Data.Map as Map
-import Erl.Data.Tuple (tuple2)
+import Erl.Data.Tuple (fst, tuple2, uncurry4)
 import Erl.Process.Raw (Pid)
 import Erl.Process.Raw as Raw
 import Erl.Utils (self)
@@ -207,7 +207,9 @@ ingestStart loadConfig canary shortName streamName =
                                                         , protocol: Rtmp
                                                         , rtmpShortName: shortName
                                                         , rtmpStreamName: streamName
-                                                        , username: "user"}
+                                                        , username: "user"
+                                                        , clientIp: ipToString $ fst $ Req.peer req
+                                                        }
                           in
                            do
                              config <- Config.llnwApiConfig
@@ -229,7 +231,7 @@ ingestStart loadConfig canary shortName streamName =
                                                                          ingestKey = IngestKey streamDetails.slot.id streamDetails.role profileName
                                                                        pid <- startFakeIngest ingestKey
                                                                        maybeStarted <- IngestInstanceSup.startLocalRtmpIngest loadConfig canary ingestKey streamPublish streamDetails "127.0.0.1" 0 pid
-                                                                       _ <- logInfo "IngestInstanceSup returned" {maybeStarted, canary}
+                                                                       logInfo "IngestInstanceSup returned" {maybeStarted, canary}
                                                                        case maybeStarted of
                                                                          Right _ ->
                                                                            Rest.result "ingestStarted" req2 state2
@@ -273,18 +275,18 @@ startFakeIngest ingestKey = do
   let
     proc parent = do
       self <- self
-      _ <- logInfo "fake ingest running" {ingestKey, self}
+      logInfo "fake ingest running" {ingestKey, self}
       registerRes <- badargToMaybe $ GProc.register (tuple2 (atom "test_ingest_client") ingestKey)
       Raw.send parent (atom "running")
       case registerRes of
         Nothing -> pure unit
         Just _ -> do
           handlerLoop ingestKey
-          _ <- logInfo "fake ingest stopped" {}
+          logInfo "fake ingest stopped" {}
           pure unit
   parent <- self
   child <- Raw.spawn (proc parent)
-  _ <- Raw.receive
+  void $ Raw.receive
   pure child
 
 handlerLoop :: IngestKey -> Effect Unit
@@ -297,9 +299,18 @@ handlerLoop ingestKey = do
 stopFakeIngest :: IngestKey -> Effect Unit
 stopFakeIngest ingestKey = do
   pid <- Gproc.whereIs (tuple2 (atom "test_ingest_client") ingestKey)
-  _ <- logInfo "stopping fake ingest" {ingestKey, pid}
-  _ <- traverse ((flip Raw.send) (atom "stop")) pid
+  logInfo "stopping fake ingest" {ingestKey, pid}
+  traverse_ ((flip Raw.send) (atom "stop")) pid
   pure unit
+
+ipToString :: IpAddress -> String
+ipToString ip =
+  uncurry4 doToString ip
+  where
+    doToString a b c d =
+      (octetToString a) <> "." <> (octetToString b) <> "." <> (octetToString c) <> "." <> (octetToString d)
+    octetToString octet =
+      show octet
 
 --------------------------------------------------------------------------------
 -- Log helpers

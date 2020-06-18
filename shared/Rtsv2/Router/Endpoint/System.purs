@@ -2,24 +2,18 @@ module Shared.Rtsv2.Router.Endpoint.System where
 
 import Prelude hiding ((/))
 
-import Data.Array (intercalate)
-import Data.Either (note)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show (genericShow)
-import Data.Int as Int
-import Data.Maybe (Maybe(..))
-import Data.Newtype (class Newtype, unwrap, wrap)
-import Data.String (Pattern(..), split)
+import Data.Newtype (class Newtype, wrap)
 import Effect (Effect)
-import Routing.Duplex (RouteDuplex', as, path, print, rest, root, segment)
+import Routing.Duplex (RouteDuplex', path, print, rest, root, segment)
 import Routing.Duplex.Generic (noArgs, sum)
 import Routing.Duplex.Generic.Syntax ((/))
 import Rtsv2.Config as Config
 import Shared.Common (Url)
-import Shared.Rtsv2.Router.Endpoint.Utils as Utils
-import Shared.Rtsv2.Stream (ProfileName, RtmpShortName, RtmpStreamName, SlotId, SlotRole(..))
-import Shared.Rtsv2.Types (CanaryState(..), JsonLdContextType(..), PoPName(..), ServerAddress(..), SourceRoute, Username(..), extractAddress)
-import Shared.UUID (fromString)
+import Shared.Rtsv2.Router.Endpoint.Combinators (shortName, slotName, slotId, slotRole, streamName, serverAddress, port, sourceRoute, profileName, canary)
+import Shared.Rtsv2.Stream (ProfileName, RtmpShortName, RtmpStreamName, SlotId, SlotName, SlotRole)
+import Shared.Rtsv2.Types (CanaryState, ServerAddress(..), SourceRoute, extractAddress)
 
 data Endpoint
   =
@@ -30,6 +24,8 @@ data Endpoint
   | RelayEnsureStartedE
   | RelayRegisteredRelayWs SlotId SlotRole ServerAddress Int SourceRoute
   | RelayRegisteredEgestWs SlotId SlotRole ServerAddress Int
+
+  | IngestAggregatorsE
   | IngestAggregatorRegisteredIngestWs SlotId SlotRole ProfileName ServerAddress
   | IngestAggregatorRegisteredRelayWs SlotId SlotRole ServerAddress Int
   | IngestAggregatorBackupWs SlotId SlotRole
@@ -48,7 +44,7 @@ data Endpoint
   | StreamAuthTypeE
   | StreamAuthE
   | StreamPublishE
-  | SlotLookupE String String
+  | SlotLookupE RtmpShortName SlotName
   | HlsPushE (Array String)
   | ValidationE String
 
@@ -59,6 +55,7 @@ data Endpoint
   | WorkflowConfigE String
   | VisualiserE String
   | VisualiserAssetsE String (Array String)
+  | FaviconE
 
 derive instance genericEndpoint :: Generic Endpoint _
 
@@ -79,6 +76,7 @@ endpoint = root $ sum
   , "RelayRegisteredRelayWs"                           : "system" / "relay" / slotId segment / slotRole segment / "relays" / serverAddress segment / port segment / sourceRoute segment / "ws"
   , "RelayRegisteredEgestWs"                           : "system" / "relay" / slotId segment / slotRole segment / "egests" / serverAddress segment / port segment / "ws"
 
+  , "IngestAggregatorsE"                               : "system" / "ingestAggregator" / noArgs
   , "IngestAggregatorRegisteredIngestWs"               : "system" / "ingestAggregator" / slotId segment / slotRole segment / "ingests" / profileName segment / serverAddress segment / "ws"
   , "IngestAggregatorRegisteredRelayWs"                : "system" / "ingestAggregator" / slotId segment / slotRole segment / "relays" / serverAddress segment / port segment / "ws"
   , "IngestAggregatorBackupWs"                         : "system" / "ingestAggregator" / slotId segment / slotRole segment / "backupWs"
@@ -91,12 +89,12 @@ endpoint = root $ sum
 
   , "Chaos"                                            : "system" / "test" / path "chaos" noArgs
   , "LoadE"                                            : "system" / "test" / path "load" noArgs
-  , "IngestStartE"                                     : "system" / "test" / "ingest" / canaryState segment / shortName segment / streamName segment / "start"
+  , "IngestStartE"                                     : "system" / "test" / "ingest" / canary segment / shortName segment / streamName segment / "start"
   , "IngestStopE"                                      : "system" / "test" / "ingest" / slotId segment / slotRole segment / profileName segment / "stop"
-  , "ClientStartE"                                     : "system" / "test" / "client" / canaryState segment / slotId segment / slotRole segment / "start"
+  , "ClientStartE"                                     : "system" / "test" / "client" / canary segment / slotId segment / slotRole segment / "start"
   , "ClientStopE"                                      : "system" / "test" / "client" / slotId segment / slotRole segment / "stop" / segment
 
-  , "SlotLookupE"                                      : "system" / "llnwstub" / "rts" / "v1" / "slotid" / segment / segment
+  , "SlotLookupE"                                      : "system" / "llnwstub" / "rts" / "v1" / "slotid" / shortName segment / slotName segment
   , "StreamAuthTypeE"                                  : "system" / "llnwstub" / "rts" / "v1" / path "streamauthtype" noArgs
   , "StreamAuthE"                                      : "system" / "llnwstub" / "rts" / "v1" / path "streamauth" noArgs
   , "StreamPublishE"                                   : "system" / "llnwstub" / "rts" / "v1" / path "streampublish" noArgs
@@ -108,8 +106,9 @@ endpoint = root $ sum
   , "WorkflowMetricsE"                                 : "system" / "workflows" / segment / "metrics" -- URL duplicated in Web.purs
   , "WorkflowStructureE"                               : "system" / "workflows" / segment / "structure" -- URL duplicated in Web.purs
   , "WorkflowConfigE"                                  : "system" / "workflows" / segment / "workflow/config" -- URL duplicated in Web.purs
-  , "VisualiserE"                                      : "system" / "workflows" / segment / "visualiser" 
+  , "VisualiserE"                                      : "system" / "workflows" / segment / "visualiser"
   , "VisualiserAssetsE"                                : "system" / "workflows" / segment / "visualiser" / rest
+  , "FaviconE"                                         : "favicon.ico" / noArgs
 }
 
 makePath :: Endpoint -> String
@@ -153,170 +152,170 @@ makeWsUrlAddrWithPath (ServerAddress host) path = do
   webC <- Config.webConfig
   pure $ wrap $ "ws://" <> host <> ":" <> (show webC.systemPort) <> path
 
--- | JsonLd Context Type
-contextTypeToString :: JsonLdContextType -> String
-contextTypeToString ServerContext = "server"
-contextTypeToString ServerAddressContext = "serverAddress"
-contextTypeToString DeliverToContext = "deliverTo"
-contextTypeToString TimedRouteNeighbourContext = "timedRouteNeighbour"
-contextTypeToString ActiveIngestLocationContext = "activeIngestLocation"
-contextTypeToString EgestStatsContext = "egestStats"
-contextTypeToString IntraPoPStateContext = "intraPoPState"
-contextTypeToString IngestAggregatorStateContext = "ingestAggregatorState"
-contextTypeToString StreamRelayStateContext = "streamRelayState"
-contextTypeToString IngestStateContext = "ingestState"
-contextTypeToString NodeManagerStateContext = "nodeManagerState"
-contextTypeToString HealthContext = "healthContext"
+-- -- | JsonLd Context Type
+-- contextTypeToString :: JsonLdContextType -> String
+-- contextTypeToString ServerContext = "server"
+-- contextTypeToString ServerAddressContext = "serverAddress"
+-- contextTypeToString DeliverToContext = "deliverTo"
+-- contextTypeToString TimedRouteNeighbourContext = "timedRouteNeighbour"
+-- contextTypeToString ActiveIngestLocationContext = "activeIngestLocation"
+-- contextTypeToString EgestStatsContext = "egestStats"
+-- contextTypeToString IntraPoPStateContext = "intraPoPState"
+-- contextTypeToString IngestAggregatorStateContext = "ingestAggregatorState"
+-- contextTypeToString StreamRelayStateContext = "streamRelayState"
+-- contextTypeToString IngestStateContext = "ingestState"
+-- contextTypeToString NodeManagerStateContext = "nodeManagerState"
+-- contextTypeToString HealthContext = "healthContext"
 
-parseContextType :: String -> Maybe JsonLdContextType
-parseContextType "server" = Just ServerContext
-parseContextType "serverAddress" = Just ServerAddressContext
-parseContextType "deliverTo" = Just DeliverToContext
-parseContextType "timedRouteNeighbour" = Just TimedRouteNeighbourContext
-parseContextType "activeIngestLocation" = Just ActiveIngestLocationContext
-parseContextType "egestStats" = Just EgestStatsContext
-parseContextType "intraPoPState" = Just IntraPoPStateContext
-parseContextType "ingestAggregatorState" = Just IngestAggregatorStateContext
-parseContextType "streamRelayState" = Just StreamRelayStateContext
-parseContextType "ingestState" = Just IngestStateContext
-parseContextType "nodeManagerState" = Just NodeManagerStateContext
-parseContextType "healthContext" = Just HealthContext
-parseContextType _ = Nothing
+-- parseContextType :: String -> Maybe JsonLdContextType
+-- parseContextType "server" = Just ServerContext
+-- parseContextType "serverAddress" = Just ServerAddressContext
+-- parseContextType "deliverTo" = Just DeliverToContext
+-- parseContextType "timedRouteNeighbour" = Just TimedRouteNeighbourContext
+-- parseContextType "activeIngestLocation" = Just ActiveIngestLocationContext
+-- parseContextType "egestStats" = Just EgestStatsContext
+-- parseContextType "intraPoPState" = Just IntraPoPStateContext
+-- parseContextType "ingestAggregatorState" = Just IngestAggregatorStateContext
+-- parseContextType "streamRelayState" = Just StreamRelayStateContext
+-- parseContextType "ingestState" = Just IngestStateContext
+-- parseContextType "nodeManagerState" = Just NodeManagerStateContext
+-- parseContextType "healthContext" = Just HealthContext
+-- parseContextType _ = Nothing
 
--- | Int
-parseInt :: String -> Maybe Int
-parseInt = Int.fromString
+-- -- | Int
+-- parseInt :: String -> Maybe Int
+-- parseInt = Int.fromString
 
-intToString :: Int -> String
-intToString = show
+-- intToString :: Int -> String
+-- intToString = show
 
--- | SourceRoute
-parseSourceRoute :: String -> Maybe SourceRoute
-parseSourceRoute str = Just $ PoPName <$> split (Pattern ":") str
+-- -- | SourceRoute
+-- parseSourceRoute :: String -> Maybe SourceRoute
+-- parseSourceRoute str = Just $ PoPName <$> split (Pattern ":") str
 
-sourceRouteToString :: SourceRoute -> String
-sourceRouteToString route = intercalate ":" $ unwrap <$> route
+-- sourceRouteToString :: SourceRoute -> String
+-- sourceRouteToString route = intercalate ":" $ unwrap <$> route
 
--- | SlotId
-parseSlotId :: String -> Maybe SlotId
-parseSlotId = ((<$>) wrap) <<< fromString
+-- -- | SlotId
+-- parseSlotId :: String -> Maybe SlotId
+-- parseSlotId = ((<$>) wrap) <<< fromString
 
-slotIdToString :: SlotId -> String
-slotIdToString = show <<< unwrap
+-- slotIdToString :: SlotId -> String
+-- slotIdToString = show <<< unwrap
 
--- | ServerAddress
-parseServerAddress :: String -> Maybe ServerAddress
-parseServerAddress = wrapParser
+-- -- | ServerAddress
+-- parseServerAddress :: String -> Maybe ServerAddress
+-- parseServerAddress = wrapParser
 
-serverAddressToString :: ServerAddress -> String
-serverAddressToString = unwrap
+-- serverAddressToString :: ServerAddress -> String
+-- serverAddressToString = unwrap
 
--- | ProfileName
-parseProfileName :: String -> Maybe ProfileName
-parseProfileName = wrapParser
+-- -- | ProfileName
+-- parseProfileName :: String -> Maybe ProfileName
+-- parseProfileName = wrapParser
 
-profileNameToString :: ProfileName -> String
-profileNameToString = unwrap
+-- profileNameToString :: ProfileName -> String
+-- profileNameToString = unwrap
 
--- | SlotRole
-parseSlotRole :: String -> Maybe SlotRole
-parseSlotRole "primary" = Just Primary
-parseSlotRole "backup" = Just Backup
-parseSlotRole _ = Nothing
+-- -- | SlotRole
+-- parseSlotRole :: String -> Maybe SlotRole
+-- parseSlotRole "primary" = Just Primary
+-- parseSlotRole "backup" = Just Backup
+-- parseSlotRole _ = Nothing
 
-slotRoleToString :: SlotRole -> String
-slotRoleToString Primary = "primary"
-slotRoleToString Backup = "backup"
+-- slotRoleToString :: SlotRole -> String
+-- slotRoleToString Primary = "primary"
+-- slotRoleToString Backup = "backup"
 
--- | RtmpShortName
-parseRtmpShortName :: String -> Maybe RtmpShortName
-parseRtmpShortName = wrapParser
+-- -- | RtmpShortName
+-- parseRtmpShortName :: String -> Maybe RtmpShortName
+-- parseRtmpShortName = wrapParser
 
-shortNameToString :: RtmpShortName -> String
-shortNameToString = unwrap
-
-
--- | RtmpStreamName
-parseRtmpStreamName :: String -> Maybe RtmpStreamName
-parseRtmpStreamName = wrapParser
-
-streamNameToString :: RtmpStreamName -> String
-streamNameToString = unwrap
+-- shortNameToString :: RtmpShortName -> String
+-- shortNameToString = unwrap
 
 
--- | Generic parser for newtypes
-wrapParser :: forall a. Newtype a String => String -> Maybe a
-wrapParser "" = Nothing
-wrapParser str = Just $ wrap str
+-- -- | RtmpStreamName
+-- parseRtmpStreamName :: String -> Maybe RtmpStreamName
+-- parseRtmpStreamName = wrapParser
 
--- | PoPName
-parsePoPName :: String -> Maybe PoPName
-parsePoPName  = wrapParser
+-- streamNameToString :: RtmpStreamName -> String
+-- streamNameToString = unwrap
 
-poPNameToString :: PoPName -> String
-poPNameToString = unwrap
 
--- | Username
-parseUsername :: String -> Maybe Username
-parseUsername "" = Nothing
-parseUsername str = Just (Username str)
+-- -- | Generic parser for newtypes
+-- wrapParser :: forall a. Newtype a String => String -> Maybe a
+-- wrapParser "" = Nothing
+-- wrapParser str = Just $ wrap str
 
-userNametoString :: Username -> String
-userNametoString (Username str) = str
+-- -- | PoPName
+-- parsePoPName :: String -> Maybe PoPName
+-- parsePoPName  = wrapParser
 
--- | CanaryState
-parseCanaryState :: String -> Maybe CanaryState
-parseCanaryState "live"  = Just Live
-parseCanaryState "canary"  = Just Canary
-parseCanaryState _ = Nothing
+-- poPNameToString :: PoPName -> String
+-- poPNameToString = unwrap
 
-canaryStateToString :: CanaryState -> String
-canaryStateToString Live = "live"
-canaryStateToString Canary = "canary"
+-- -- | Username
+-- parseUsername :: String -> Maybe Username
+-- parseUsername "" = Nothing
+-- parseUsername str = Just (Username str)
 
--- | This combinator transforms a codec over `String` into one that operates on the `ContextType` type.
-contextType :: RouteDuplex' String -> RouteDuplex' JsonLdContextType
-contextType = as contextTypeToString (parseContextType >>> note "Bad ContextType")
+-- userNametoString :: Username -> String
+-- userNametoString (Username str) = str
 
--- | This combinator transforms a codec over `String` into one that operates on the `SlotId` type.
-slotId :: RouteDuplex' String -> RouteDuplex' SlotId
-slotId = as slotIdToString (parseSlotId >>> note "Bad SlotId")
+-- -- | CanaryState
+-- parseCanaryState :: String -> Maybe CanaryState
+-- parseCanaryState "live"  = Just Live
+-- parseCanaryState "canary"  = Just Canary
+-- parseCanaryState _ = Nothing
 
--- | This combinator transforms a codec over `String` into one that operates on the `ProfileName` type.
-profileName :: RouteDuplex' String -> RouteDuplex' ProfileName
-profileName = as profileNameToString (parseProfileName >>> note "Bad ProfileName")
+-- canaryStateToString :: CanaryState -> String
+-- canaryStateToString Live = "live"
+-- canaryStateToString Canary = "canary"
 
--- | This combinator transforms a codec over `String` into one that operates on the `ServerAddress` type.
-serverAddress :: RouteDuplex' String -> RouteDuplex' ServerAddress
-serverAddress = as serverAddressToString (parseServerAddress >>> note "Bad ServerAddress")
+-- -- | This combinator transforms a codec over `String` into one that operates on the `ContextType` type.
+-- contextType :: RouteDuplex' String -> RouteDuplex' JsonLdContextType
+-- contextType = as contextTypeToString (parseContextType >>> note "Bad ContextType")
 
--- | This combinator transforms a codec over `String` into one that operates on the `ProfileName` type.
-slotRole :: RouteDuplex' String -> RouteDuplex' SlotRole
-slotRole = as slotRoleToString (parseSlotRole >>> note "Bad SlotRole")
+-- -- | This combinator transforms a codec over `String` into one that operates on the `SlotId` type.
+-- slotId :: RouteDuplex' String -> RouteDuplex' SlotId
+-- slotId = as slotIdToString (parseSlotId >>> note "Bad SlotId")
 
--- | This combinator transforms a codec over `String` into one that operates on the `Int` type.
-port :: RouteDuplex' String -> RouteDuplex' Int
-port = as intToString (parseInt >>> note "Bad Port")
+-- -- | This combinator transforms a codec over `String` into one that operates on the `ProfileName` type.
+-- profileName :: RouteDuplex' String -> RouteDuplex' ProfileName
+-- profileName = as profileNameToString (parseProfileName >>> note "Bad ProfileName")
 
--- | This combinator transforms a codec over `String` into one that operates on the `Int` type.
-sourceRoute :: RouteDuplex' String -> RouteDuplex' SourceRoute
-sourceRoute = as sourceRouteToString (parseSourceRoute >>> note "Bad SourceRoute")
+-- -- | This combinator transforms a codec over `String` into one that operates on the `ServerAddress` type.
+-- serverAddress :: RouteDuplex' String -> RouteDuplex' ServerAddress
+-- serverAddress = as serverAddressToString (parseServerAddress >>> note "Bad ServerAddress")
 
--- | This combinator transforms a codec over `String` into one that operates on the `PoPName` type.
-popName :: RouteDuplex' String -> RouteDuplex' PoPName
-popName = as poPNameToString (parsePoPName >>> note "Bad PoPName")
+-- -- | This combinator transforms a codec over `String` into one that operates on the `ProfileName` type.
+-- slotRole :: RouteDuplex' String -> RouteDuplex' SlotRole
+-- slotRole = as slotRoleToString (parseSlotRole >>> note "Bad SlotRole")
 
--- | This combinator transforms a codec over `String` into one that operates on the `RtmpStreamName` type.
-streamName :: RouteDuplex' String -> RouteDuplex' RtmpStreamName
-streamName = as streamNameToString (parseRtmpStreamName >>> note "Bad RtmpStreamName")
+-- -- | This combinator transforms a codec over `String` into one that operates on the `Int` type.
+-- port :: RouteDuplex' String -> RouteDuplex' Int
+-- port = as intToString (parseInt >>> note "Bad Port")
 
--- | This combinator transforms a codec over `String` into one that operates on the `RtmpShortName` type.
-shortName :: RouteDuplex' String -> RouteDuplex' RtmpShortName
-shortName = as shortNameToString (parseRtmpShortName >>> note "Bad RtmpShortName")
+-- -- | This combinator transforms a codec over `String` into one that operates on the `Int` type.
+-- sourceRoute :: RouteDuplex' String -> RouteDuplex' SourceRoute
+-- sourceRoute = as sourceRouteToString (parseSourceRoute >>> note "Bad SourceRoute")
 
--- | This combinator transforms a codec over `String` into one that operates on the `CanaryState` type.
-canaryState :: RouteDuplex' String -> RouteDuplex' CanaryState
-canaryState = as canaryStateToString (parseCanaryState >>> note "Bad CanaryId")
+-- -- | This combinator transforms a codec over `String` into one that operates on the `PoPName` type.
+-- popName :: RouteDuplex' String -> RouteDuplex' PoPName
+-- popName = as poPNameToString (parsePoPName >>> note "Bad PoPName")
 
-uName :: RouteDuplex' String -> RouteDuplex' Username
-uName = as userNametoString (parseUsername >>> note "Bad username")
+-- -- | This combinator transforms a codec over `String` into one that operates on the `RtmpStreamName` type.
+-- streamName :: RouteDuplex' String -> RouteDuplex' RtmpStreamName
+-- streamName = as streamNameToString (parseRtmpStreamName >>> note "Bad RtmpStreamName")
+
+-- -- | This combinator transforms a codec over `String` into one that operates on the `RtmpShortName` type.
+-- shortName :: RouteDuplex' String -> RouteDuplex' RtmpShortName
+-- shortName = as shortNameToString (parseRtmpShortName >>> note "Bad RtmpShortName")
+
+-- -- | This combinator transforms a codec over `String` into one that operates on the `CanaryState` type.
+-- canaryState :: RouteDuplex' String -> RouteDuplex' CanaryState
+-- canaryState = as canaryStateToString (parseCanaryState >>> note "Bad CanaryId")
+
+-- uName :: RouteDuplex' String -> RouteDuplex' Username
+-- uName = as userNametoString (parseUsername >>> note "Bad username")

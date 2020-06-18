@@ -1,19 +1,26 @@
-[ ] - intrapop to raise bus message if relay exits
-      - egest to subscribe and take appropriate action - either exit itself or launch new relay?
-[ ] - Pinto stuff, async init, return stop from init
 [ ] - multiple IngestAggregators for same slot/role
-[ ] - RTMP Egest - from edge
 [ ] - egest / client merging when load drops
 [ ] - relay merging when multiple instances start
-[ ] - Proper Serf messages codec (not just binary to term)
+[ ] - servers need a 16-bit id adding to them - just last two octets of server address from public interface (in rtsv2_player_ws_resource)?
 [ ] - possibly announcing presence of stream in ingest aggregator too quickly - webrtc tests currently need a small sleep to get reliable playback
-[ ] - servers need a 16-bit id adding to them
+[ ] - benchmarks
+[ ] - tweak tests to loop until timeout rather than sleep and then try once
+[ ] - media gateway logs to correct location, and logrotate (and logrotate on serf logs at the same time)
+[ ] - media gateway logs to be UTC
+[ ] - safari / ios / edge
 
 Tests:
 [ ] - data object store
-[ ] - discovery API
-[ ]	- multi-bitrate ingest
 
+[x] - ingest validator
+[x] - RTMPS (ingest / egest)
+[x] - RTMP Egest - from edge
+[x]	- multi-bitrate ingest
+[x] - Proper Serf messages codec (not just binary to term)
+[x] - intrapop to raise bus message if relay exits
+      - egest to subscribe and take appropriate action - either exit itself or launch new relay?
+      - not needed, since detected through websocket shutdown
+[x] - discovery API
 [x] - audio only - needs change to StreamDetails to indicate no video, since aggregator is currently waiting for iframe to sync multiple streams
 [x] - ingest prometheus stats
 [x] - egest prometheus stats
@@ -89,3 +96,4 @@ Tests:
 [x] - currentTransPoP appears to be wrong sometimes...
 [x] - transPoP leave - ensure serf restarts (systemd) and maybe assert on each tick that still not a member
 [x] - reconnect stream if we get a stream-failed (intra and trans) - will need to call serf.members
+[X] - browser tests to check for puppeteer export

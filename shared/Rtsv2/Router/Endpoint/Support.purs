@@ -4,16 +4,16 @@ import Prelude hiding ((/))
 
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show (genericShow)
-import Data.Newtype (class Newtype, wrap)
+import Data.Newtype (class Newtype)
 import Effect (Effect)
 import Routing.Duplex (RouteDuplex', path, print, rest, root, segment)
 import Routing.Duplex.Generic (noArgs, sum)
 import Routing.Duplex.Generic.Syntax ((/))
 import Rtsv2.Config as Config
 import Shared.Common (Url)
-import Shared.Rtsv2.Router.Endpoint.Combinators (contextType, popName, profileName, shortName, slotId, slotRole, streamName)
+import Shared.Rtsv2.Router.Endpoint.Combinators (contextType, popName, profileName, shortName, slotId, slotRole, streamName, slotName)
 import Shared.Rtsv2.Router.Endpoint.Utils as Utils
-import Shared.Rtsv2.Stream (ProfileName, RtmpShortName, RtmpStreamName, SlotId, SlotRole)
+import Shared.Rtsv2.Stream (ProfileName, RtmpShortName, RtmpStreamName, SlotId, SlotRole, SlotName)
 import Shared.Rtsv2.Types (JsonLdContextType, PoPName, ServerAddress(..), extractAddress)
 
 data Endpoint
@@ -38,13 +38,12 @@ data Endpoint
   | IngestAggregatorActiveIngestsPlayerE SlotId SlotRole ProfileName
   | IngestAggregatorActiveIngestsPlayerJsE SlotId SlotRole ProfileName (Array String)
   | IngestAggregatorActiveIngestsPlayerControlE SlotId SlotRole ProfileName
-  | IngestAggregatorsE
   | IngestInstancesMetricsE
   | IngestInstanceE SlotId SlotRole ProfileName
   | ClientAppAssetsE (Array String)
   | ClientAppRouteHTMLE
 
-  | CanaryStreamDiscoveryE String String
+  | CanaryStreamDiscoveryE RtmpShortName SlotName
   | CanaryClientPlayerE SlotId SlotRole
   | CanaryClientPlayerControlE SlotId SlotRole
   | CanaryClientPlayerAssetsE SlotId SlotRole (Array String)
@@ -52,6 +51,7 @@ data Endpoint
   | CanaryClientWebRTCIngestE RtmpShortName RtmpStreamName
   | CanaryClientWebRTCIngestControlE RtmpShortName RtmpStreamName
   | CanaryClientWebRTCIngestAssetsE RtmpShortName RtmpStreamName (Array String)
+  | FaviconE
 
 derive instance genericEndpoint :: Generic Endpoint _
 
@@ -83,14 +83,13 @@ endpoint = root $ sum
   , "IngestAggregatorActiveIngestsPlayerE"             : "support" / "ingestAggregator" / slotId segment / slotRole segment / "activeIngests" / profileName segment / "player"
   , "IngestAggregatorActiveIngestsPlayerJsE"           : "support" / "ingestAggregator" / slotId segment / slotRole segment / "activeIngests" / profileName segment / "js" / rest
   , "IngestAggregatorActiveIngestsPlayerControlE"      : "support" / "ingestAggregator" / slotId segment / slotRole segment / "activeIngests" / profileName segment / "control" -- URL duplicated in Web.purs
-  , "IngestAggregatorsE"                               : "support" / "ingestAggregator" / noArgs
   , "IngestInstancesMetricsE"                          : "support" / "ingest" / "metrics" / noArgs
   , "IngestInstanceE"                                  : "support" / "ingest" / slotId segment / slotRole segment / profileName segment
 
   , "ClientAppAssetsE"                                 : "support" / "assets" / rest
   , "ClientAppRouteHTMLE"                              : "support" / noArgs
 
-  , "CanaryStreamDiscoveryE"                           : "support" / "canary" / "discovery" / "v1" / segment / segment
+  , "CanaryStreamDiscoveryE"                           : "support" / "canary" / "discovery" / "v1" / shortName segment / slotName segment
 
   , "CanaryClientPlayerE"                              : "support" / "canary" / "client" / slotId segment / slotRole segment / "player"
   , "CanaryClientPlayerControlE"                       : "support" / "canary" / "client" / slotId segment / slotRole segment / "session" -- URL duplicated in Web.purs
@@ -99,6 +98,7 @@ endpoint = root $ sum
   , "CanaryClientWebRTCIngestE"                        : "support" / "canary" / "ingest" / shortName segment / streamName segment / "ingest"
   , "CanaryClientWebRTCIngestControlE"                 : "support" / "canary" / "ingest" / shortName segment / streamName segment / "session"
   , "CanaryClientWebRTCIngestAssetsE"                  : "support" / "canary" / "ingest" / shortName segment / streamName segment / rest
+  , "FaviconE"                                         : "favicon.ico" / noArgs
 }
 
 makePath :: Endpoint -> String

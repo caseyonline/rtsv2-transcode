@@ -1,0 +1,24 @@
+get:
+  summary: /suport/egest/{slotId}/{slotRole}
+  description: Egest stats description
+  tags:
+    - Support Api
+  parameters:
+    - $ref: '../parameters/slotId.yaml'
+    - $ref: '../parameters/slotRole.yaml'
+  responses:
+    '200':
+      description: OK
+      content:
+        application/json-ld:
+          schema:
+            type: object
+            properties:
+              resources:
+                $ref: '../schemas/EgestStats.yaml'
+    '404':
+      description: Not Found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/Problem.yaml'

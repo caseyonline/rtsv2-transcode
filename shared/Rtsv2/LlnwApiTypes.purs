@@ -42,7 +42,7 @@ import Data.Newtype (class Newtype)
 import Foreign (ForeignError(..), readString, unsafeToForeign)
 import Record (rename)
 import Shared.Rtsv2.Agent (SlotCharacteristics)
-import Shared.Rtsv2.Stream (ProfileName, RtmpShortName, RtmpStreamName, SlotId, SlotRole)
+import Shared.Rtsv2.Stream (ProfileName, RtmpShortName, RtmpStreamName, SlotId, SlotRole, SlotName)
 import Simple.JSON (class ReadForeign, class WriteForeign, readImpl, writeImpl)
 import Type.Prelude (SProxy(..))
 
@@ -53,6 +53,7 @@ newtype StreamConnection = StreamConnection
                            { host :: String
                            , protocol :: StreamIngestProtocol
                            , rtmpShortName :: RtmpShortName
+                           , clientIp :: String
                            }
 
 data SlotPublishAuthType = Adobe
@@ -67,6 +68,7 @@ newtype StreamAuth = StreamAuth
                      { host :: String
                      , rtmpShortName :: RtmpShortName
                      , username :: String
+                     , clientIp :: String
                      }
 
 newtype PublishCredentials = PublishCredentials
@@ -80,21 +82,22 @@ newtype StreamPublish = StreamPublish
                         , rtmpShortName :: RtmpShortName
                         , rtmpStreamName :: RtmpStreamName
                         , username :: String
+                        , clientIp :: String
                         }
 
 newtype SlotProfile = SlotProfile
                       { name :: ProfileName
                       , rtmpStreamName :: RtmpStreamName
-                      , bitrate :: Int
+                      , audioBitrate :: Int
+                      , videoBitrate :: Int
                       }
 
 type SlotDetails =
   { id :: SlotId
-  , name :: String
+  , name :: SlotName
   , subscribeValidation :: Boolean
   , outputFormats :: Array StreamOutputFormat
   , profiles :: Array SlotProfile
-  , audioOnly :: Boolean
   }
 
 type HlsPushAuth =
@@ -133,7 +136,7 @@ type SlotLookupResult =
 slotDetailsToSlotCharacteristics :: SlotDetails -> SlotCharacteristics
 slotDetailsToSlotCharacteristics {profiles} =
   { numProfiles: length profiles
-  , totalBitrate: (foldl (\acc (SlotProfile {bitrate}) -> acc + bitrate) 0 profiles) / 1000
+  , totalBitrate: (foldl (\acc (SlotProfile {audioBitrate, videoBitrate}) -> acc + audioBitrate + videoBitrate) 0 profiles) / 1000
   }
 
 --------------------------------------------------------------------------------
@@ -293,15 +296,16 @@ instance readForeignStreamAuth :: ReadForeign StreamAuth where
       parsed <- readImpl s
       pure
         $ StreamAuth
-        $ rename (SProxy :: SProxy "shortname") (SProxy :: SProxy "rtmpShortName") parsed
+        $ rename (SProxy :: SProxy "shortname") (SProxy :: SProxy "rtmpShortName")
+        $ rename (SProxy :: SProxy "client_ip") (SProxy :: SProxy "clientIp") parsed
 
 instance writeForeignStreamAuth :: WriteForeign StreamAuth where
   writeImpl = (unsafeToForeign <<< encode)
     where
       encode (StreamAuth r) = do
         writeImpl
-          $ rename (SProxy :: SProxy "rtmpShortName") (SProxy :: SProxy "shortname") r
-
+          $ rename (SProxy :: SProxy "rtmpShortName") (SProxy :: SProxy "shortname")
+          $ rename (SProxy :: SProxy "clientIp") (SProxy :: SProxy "client_ip") r
 
 derive instance newtypeStreamConnection :: Newtype StreamConnection _
 derive instance genericStreamConnection :: Generic StreamConnection _
@@ -315,15 +319,16 @@ instance readForeignStreamConnection :: ReadForeign StreamConnection where
       parsed <- readImpl o
       pure
         $ StreamConnection
-        $ rename (SProxy :: SProxy "shortname") (SProxy :: SProxy "rtmpShortName") parsed
+        $ rename (SProxy :: SProxy "shortname") (SProxy :: SProxy "rtmpShortName")
+        $ rename (SProxy :: SProxy "client_ip") (SProxy :: SProxy "clientIp") parsed
 
 instance writeForeignStreamConnection :: WriteForeign StreamConnection where
   writeImpl = (unsafeToForeign <<< encode)
     where
       encode (StreamConnection r) = do
         writeImpl
-          $ rename (SProxy :: SProxy "rtmpShortName") (SProxy :: SProxy "shortname") r
-
+          $ rename (SProxy :: SProxy "rtmpShortName") (SProxy :: SProxy "shortname")
+          $ rename (SProxy :: SProxy "clientIp") (SProxy :: SProxy "client_ip") r
 
 derive instance newtypeSlotProfile :: Newtype SlotProfile _
 derive instance genericSlotProfile :: Generic SlotProfile _
@@ -360,7 +365,8 @@ instance readForeignStreamPublish :: ReadForeign StreamPublish where
       pure
         $ StreamPublish
         $ rename (SProxy :: SProxy "shortname") (SProxy :: SProxy "rtmpShortName")
-        $ rename (SProxy :: SProxy "streamName") (SProxy :: SProxy "rtmpStreamName") parsed
+        $ rename (SProxy :: SProxy "streamName") (SProxy :: SProxy "rtmpStreamName")
+        $ rename (SProxy :: SProxy "client_ip") (SProxy :: SProxy "clientIp") parsed
 
 instance writeForeignStreamPublish :: WriteForeign StreamPublish where
   writeImpl = (unsafeToForeign <<< encode)
@@ -368,4 +374,5 @@ instance writeForeignStreamPublish :: WriteForeign StreamPublish where
       encode (StreamPublish r) = do
         writeImpl
           $ rename (SProxy :: SProxy "rtmpShortName") (SProxy :: SProxy "shortname")
-          $ rename (SProxy :: SProxy "rtmpStreamName") (SProxy :: SProxy "streamName") r
+          $ rename (SProxy :: SProxy "rtmpStreamName") (SProxy :: SProxy "streamName")
+          $ rename (SProxy :: SProxy "clientIp") (SProxy :: SProxy "client_ip") r

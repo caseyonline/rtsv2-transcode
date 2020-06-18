@@ -6,6 +6,7 @@ module Ephemeral.Map
        , delete
        , keys
        , lookup
+       , lookupAndUpdateTime'
        , insert
        , insert'
        , values
@@ -19,7 +20,7 @@ import Prelude
 
 import Data.Bifunctor (lmap)
 import Data.FoldableWithIndex (foldlWithIndex)
-import Data.Maybe (Maybe)
+import Data.Maybe (Maybe(..), maybe)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Ephemeral (EData, expired, extract)
@@ -27,8 +28,8 @@ import Ephemeral as EData
 import Erl.Data.List (List, nil, (:))
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
-import Shared.Common (Milliseconds)
 import Erl.Utils as Erl
+import Shared.Common (Milliseconds)
 
 
 --multimap
@@ -54,6 +55,15 @@ keys (EMap m) = Map.keys m
 
 lookup :: forall k v. k -> EMap k v -> Maybe v
 lookup k (EMap m) = EData.extract <$> Map.lookup k m
+
+lookupAndUpdateTime' :: forall k v. k -> EMap k v -> Effect (Maybe {value :: v, map :: EMap k v})
+lookupAndUpdateTime' k (EMap m) = maybe (pure Nothing) updateTimestamp $ Map.lookup k m
+  where
+    updateTimestamp value = do
+      value2 <- EData.updateTimestamp' value
+      let
+        m2 = Map.insert k value2 m
+      pure $ Just {value: EData.extract value, map: EMap m2}
 
 insert :: forall k v. k -> EData v -> EMap k v -> EMap k v
 insert k ev (EMap m) = EMap $ Map.insert k ev m

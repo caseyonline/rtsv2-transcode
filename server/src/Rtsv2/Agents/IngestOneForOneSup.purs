@@ -26,7 +26,7 @@ startLink _ = Sup.startLink serverName init
 init :: Effect Sup.SupervisorSpec
 init = do
   pure $ Sup.buildSupervisor
-    # Sup.supervisorStrategy Sup.OneForAll
+    # Sup.supervisorStrategy Sup.OneForOne
     # Sup.supervisorChildren
         ( ( buildChild
               # childType Worker

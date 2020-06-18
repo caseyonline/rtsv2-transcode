@@ -107,7 +107,7 @@ import Data.Maybe (Maybe(..))
 import Data.Newtype (wrap)
 import Data.Symbol (SProxy(..))
 import Effect (Effect)
-import Shared.Common (Milliseconds, Alert)
+import Shared.Common (Alert, Milliseconds, CacheUtilization)
 import Shared.JsonLd (Context, ContextValue(..), ExpandedTermDefinition, Node(..), NodeMetadata, unwrapNode, _unwrappedNode, _id, _resource) as JsonLd
 import Shared.JsonLd (ContextDefinition(..))
 import Shared.Rtsv2.LlnwApiTypes (StreamDetails)
@@ -544,6 +544,7 @@ type HealthContextFields = ( intraPoPHealth :: JsonLd.ContextValue
                            , load :: JsonLd.ContextValue
                            , nodeManager :: JsonLd.ContextValue
                            , alerts :: JsonLd.ContextValue
+                           , slotLookupCacheUtilization :: JsonLd.ContextValue
                            )
 
 type Health f
@@ -553,6 +554,7 @@ type Health f
     , load :: CurrentLoad
     , nodeManager :: NodeManagerStateNode
     , alerts :: f Alert
+    , slotLookupCacheUtilization :: CacheUtilization
     }
 
 type HealthNode f = JsonLd.Node (Health f) HealthContextFields
@@ -567,6 +569,7 @@ healthContext = wrap { "@language": Nothing
                      , load: JsonLd.Other "http://schema.rtsv2.llnw.com/Load"
                      , nodeManager: JsonLd.Other "http://schema.rtsv2.llnw.com/NodeManager"
                      , alerts: JsonLd.Other "http://schema.rtsv2.llnw.com/Alert"
+                     , slotLookupCacheUtilization: JsonLd.Other "http://schema.rtsv2.llnw.com/CacheUtilization"
                      }
 
 healthNode :: forall f. Functor f => Health f -> Server -> Effect (HealthNode f)

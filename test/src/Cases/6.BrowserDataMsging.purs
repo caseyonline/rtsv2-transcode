@@ -2,7 +2,6 @@ module Cases.BrowserDataMsging where
 
 import Prelude
 
-import Debug.Trace (spy)
 import Effect.Aff (Aff, Milliseconds(..), delay)
 import Helpers.CreateString as C
 import Helpers.Env as E
@@ -11,7 +10,7 @@ import Helpers.HTTP as HTTP
 import Helpers.Log as L
 import Helpers.Types (Node)
 import Shared.Rtsv2.Stream (SlotRole(..))
-import Test.Spec (SpecT, after, after_, before, before_, describe, describeOnly, it, itOnly)
+import Test.Spec (SpecT, after, before, before_, describe, it)
 import Test.Unit.Assert as Assert
 import Toppokki as T
 
@@ -43,12 +42,12 @@ publisherMsg = "Publisher message"
 browserDataMsging :: forall m. Monad m => SpecT Aff Unit m Unit
 browserDataMsging =
   describe "Data Messages" do
-    broadcastMessages -- 5.3
+    before_(E.lookupPuppeteerEnv) do
+      broadcastMessages -- 5.3
 
 -------------------------------------------------------------------------------
 -- Tests
 -------------------------------------------------------------------------------
-
 ingestNodes :: Array Node
 ingestNodes = [E.p1n1, E.p1n2, E.p2n1]
 
@@ -56,16 +55,16 @@ broadcastMessages :: forall m. Monad m => SpecT Aff Unit m Unit
 broadcastMessages =
   describe "6.1 Broadcast Messages " do
     before (F.startSession ingestNodes *> F.launch ingestNodes *> T.launch options) do
-      after (\browser1 -> (T.close browser1 *> F.stopSession *> F.stopSlot)) do
-        it "6.1.1 broadcast messages in different slots" $ \browser1 -> do
+      after (\browser -> (T.close browser *> F.stopSession *> F.stopSlot)) do
+        it "6.1.1 broadcast messages in different slots" $ \browser -> do
 
           F.startSlotHigh1000 (C.toAddrFromNode E.p1n1) >>= L.as' "create high ingest on 1"
 
           -- create the different tabs
-          tab1 <- T.newPage browser1
-          tab2 <- T.newPage browser1
-          tab3 <- T.newPage browser1
-          tab4 <- T.newPage browser1
+          tab1 <- T.newPage browser
+          tab2 <- T.newPage browser
+          tab3 <- T.newPage browser
+          tab4 <- T.newPage browser
 
           -- navigate to specific Urls on each tab
           T.goto (F.mkPlayerUrl E.p1n1 E.slot1 Primary) tab1
@@ -73,7 +72,7 @@ broadcastMessages =
           T.goto (F.mkPlayerUrl E.p2n1 E.slot2 Primary) tab3
           T.goto (HTTP.ingestUrl E.p1n1 E.shortName1 E.highStreamName) tab4
 
-          _ <- delay (Milliseconds 1000.00) >>= L.as' "wait for tabs to load"
+          delay (Milliseconds 1000.00) >>= L.as' "wait for tabs to load"
 
           -- get the traceIds from each tab
           traceId1 <- F.getInnerText "#traceId" tab1
@@ -119,16 +118,16 @@ broadcastMessages =
           Assert.assert "Message content should be empty as this is on different slot" ("" == msgContent3)
             >>= L.as' ("Tab3 message content: " <> msgContent3)
 
-        it "6.1.2 publisher messages" $ \browser1 -> do
+        it "6.1.2 publisher messages" $ \browser -> do
 
           F.startSlotHigh1000 (C.toAddrFromNode E.p1n1) >>= L.as' "create high ingest on 1"
           F.start2SlotHigh1000 (C.toAddrFromNode E.p2n1) >>= L.as' "create high ingest on 2"
 
           -- create the different tabs
-          tab1 <- T.newPage browser1
-          tab2 <- T.newPage browser1
-          tab3 <- T.newPage browser1
-          tab4 <- T.newPage browser1
+          tab1 <- T.newPage browser
+          tab2 <- T.newPage browser
+          tab3 <- T.newPage browser
+          tab4 <- T.newPage browser
 
           -- navigate to specific Urls on each tab
           T.goto (F.mkPlayerUrl E.p1n1 E.slot1 Primary) tab1
@@ -136,7 +135,7 @@ broadcastMessages =
           T.goto (F.mkPlayerUrl E.p2n1 E.slot2 Primary) tab3
           T.goto (HTTP.ingestUrl E.p1n1 E.shortName1 E.highStreamName) tab4
 
-          _ <- delay (Milliseconds 1500.00) >>= L.as' "wait for tabs to load"
+          delay (Milliseconds 1500.00) >>= L.as' "wait for tabs to load"
 
           -- get the traceIds from each tab
           traceId1 <- F.getInnerText "#traceId" tab1
@@ -186,28 +185,28 @@ broadcastMessages =
           Assert.assert "Message content should be empty as this is on a different slot" ("" == msgContent3)
             >>= L.as' ("Tab3 message content: " <> msgContent3)
 
-        it "6.1.3 private messages" $ \browser1 -> do
+        it "6.1.3 private messages" $ \browser -> do
 
           F.startSlotHigh1000 (C.toAddrFromNode E.p1n1) >>= L.as' "create high ingest on 1"
 
           -- create the different tabs
-          tab1 <- T.newPage browser1
-          tab2 <- T.newPage browser1
-          tab3 <- T.newPage browser1
+          tab1 <- T.newPage browser
+          tab2 <- T.newPage browser
+          tab3 <- T.newPage browser
 
           -- navigate to specific Urls on each tab
           T.goto (F.mkPlayerUrl E.p1n1 E.slot1 Primary) tab1
           T.goto (F.mkPlayerUrl E.p1n2 E.slot1 Primary) tab2
           T.goto (F.mkPlayerUrl E.p1n1 E.slot1 Primary) tab3
 
-          _ <- delay (Milliseconds 1500.00) >>= L.as' "tabs opened"
+          delay (Milliseconds 1500.00) >>= L.as' "tabs opened"
 
           -- Get the traceIds from each tab
           traceId1 <- F.getInnerText "#traceId" tab1
           traceId2 <- F.getInnerText "#traceId" tab2
           traceId3 <- F.getInnerText "#traceId" tab3
 
-          _ <- delay (Milliseconds 0.00) >>= L.as' ("got traceids: " <> traceId1 <> ", " <> traceId2 <> ", " <> traceId3)
+          delay (Milliseconds 0.00) >>= L.as' ("got traceids: " <> traceId1 <> ", " <> traceId2 <> ", " <> traceId3)
 
           -- Send private message from tab 1
           T.focus (T.Selector "input#msginput") tab1
@@ -221,7 +220,7 @@ broadcastMessages =
           T.bringToFront tab1 >>= L.as' "Make tab1 active"
           T.click (T.Selector "button#msgsend") tab1 >>= L.as' "Send Private message from tab1 to tab2"
 
-          _ <- delay (Milliseconds 200.00) >>= L.as' "wait for delivery"
+          delay (Milliseconds 200.00) >>= L.as' "wait for delivery"
 
           -- Go to tab2 check that new publisher message has been received
           T.bringToFront tab2 >>= L.as' "Check private message has been received"

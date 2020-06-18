@@ -9,7 +9,7 @@ import Effect (Effect)
 import Erl.Data.List (nil, (:))
 import Pinto (SupervisorName)
 import Pinto as Pinto
-import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStart, childType)
+import Pinto.Sup (SupervisorChildType(..), buildChild, childId, childStart, childType)
 import Pinto.Sup as Sup
 import Rtsv2.Agents.IngestInstanceSup as IngestInstanceSup
 import Rtsv2.Agents.IngestOneForOneSup as IngestOneForOneSup
@@ -34,19 +34,16 @@ init = do
               # childType Worker
               # childId "ingestRtmpServer"
               # childStart IngestRtmpServer.startLink unit
-              # childRestart Transient
             )
           : ( buildChild
               # childType Supervisor
               # childId "ingestOneForOne"
               # childStart IngestOneForOneSup.startLink unit
-              # childRestart Transient
           )
           : ( buildChild
               # childType Supervisor
               # childId "ingestAgentInstance"
               # childStart IngestInstanceSup.startLink unit
-              # childRestart Transient
           )
             : nil
         )

@@ -67,7 +67,7 @@ import Data.Lens.Record (prop)
 import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Newtype (unwrap)
 import Data.Symbol (SProxy(..))
-import Data.Traversable (traverse)
+import Data.Traversable (traverse, traverse_)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
@@ -75,7 +75,7 @@ import Erl.Data.List (List, nil, (:))
 import Erl.Data.List as List
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
-import Erl.Data.Tuple (Tuple2, toNested2, tuple4)
+import Erl.Data.Tuple (Tuple2, toNested2)
 import Erl.Process (Process(..), (!))
 import Erl.Process.Raw (Pid)
 import Erl.Utils (Ref, shutdown)
@@ -102,7 +102,7 @@ import Shared.Common (LoggingContext(..))
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.JsonLd as JsonLd
-import Shared.Rtsv2.LlnwApiTypes (HlsPushAuth, HlsPushProtocol, HlsPushSpecFormat, SlotProfile(..), StreamDetails, slotDetailsToSlotCharacteristics)
+import Shared.Rtsv2.LlnwApiTypes (HlsPushAuth, HlsPushProtocol, HlsPushSpecFormat, StreamDetails, slotDetailsToSlotCharacteristics)
 import Shared.Rtsv2.Router.Endpoint.System as System
 import Shared.Rtsv2.Stream (AggregatorKey(..), IngestKey(..), ProfileName, RtmpShortName, SlotId, SlotRole(..), ingestKeyToAggregatorKey)
 import Shared.Rtsv2.Types (DeliverTo, OnBehalfOf(..), RelayServer, Server, ServerAddress, extractAddress)
@@ -489,7 +489,7 @@ init parentCallbacks { shortName
   Logger.addLoggerContext $ PerSlot { slotId, slotRole, slotName: Just slotName}
 
   logStart "Ingest Aggregator starting" {aggregatorKey, streamDetails}
-  _ <- Erl.trapExit true
+  void $ Erl.trapExit true
   config <- Config.ingestAggregatorAgentConfig
   {defaultSegmentDurationMs
   , defaultPlaylistDurationMs} <- Config.llnwApiConfig
@@ -534,7 +534,6 @@ init parentCallbacks { shortName
   maybeStartPrimaryTimeout state3
   pure state3
   where
-    mkKey (SlotProfile p) = tuple4 (IngestKey streamDetails.slot.id streamDetails.role p.name) (unwrap p.rtmpStreamName) (unwrap p.name) p.bitrate
     aggregatorKey = streamDetailsToAggregatorKey streamDetails
     thisServerName = (serverName (aggregatorKey))
     slotConfiguration = SlotTypes.llnwStreamDetailsToSlotConfiguration shortName streamDetails
@@ -560,7 +559,7 @@ maybeStartPrimaryTimeout state@{dataObjectState: Left _} = do
 
 maybeStartPrimaryTimeout state@{aggregatorKey, dataObjectState: Right _} = do
   -- We are backup starting up.  If primary exists, it will detect us and connect and send us its data object
-  _ <- Timer.sendAfter (serverName aggregatorKey) (backupConnectionRetryPeriod * 3) BackupMaybeCreateDataObject
+  void $ Timer.sendAfter (serverName aggregatorKey) (backupConnectionRetryPeriod * 3) BackupMaybeCreateDataObject
   pure unit
 
 attemptConnectionToBackup :: State -> Effect State
@@ -584,7 +583,7 @@ attemptConnectionToBackup state@{slotId, slotRole, aggregatorKey, dataObjectStat
       case mPeerWebSocket of
         Nothing -> do
           -- We have a peer but failed to connect - start timer to retry
-          _ <- Timer.sendAfter (serverName (AggregatorKey slotId slotRole)) backupConnectionRetryPeriod AttemptConnectionToBackup
+          void $ Timer.sendAfter (serverName (AggregatorKey slotId slotRole)) backupConnectionRetryPeriod AttemptConnectionToBackup
           pure state
         Just socket -> do
           -- We have a peer and have connected - it'll send us its data object...
@@ -598,7 +597,7 @@ terminate :: TerminateReason -> State -> Effect Unit
 terminate reason state@{workflowHandle, webRtcStreamServers} = do
   logInfo "Ingest aggregator terminating" {reason}
   stopWorkflowImpl workflowHandle
-  _ <- traverse shutdown webRtcStreamServers
+  traverse_ shutdown webRtcStreamServers
   pure unit
 
 emptyCachedState :: CachedState
@@ -736,7 +735,7 @@ handleInfo msg state@{aggregatorKey, slotId, slotRole, stateServerName, workflow
     Workflow (RtmpOnFI payload pts) -> do
       let
         send relay = relay ! (WsSend $ OnFI {payload, pts})
-      _ <- traverse send $ _.handler <$> Map.values state.cachedState.relays
+      traverse_ send $ _.handler <$> Map.values state.cachedState.relays
       pure $ CastNoReply state
 
     RelayDown relayServer -> do
@@ -773,7 +772,7 @@ processGunMessage state@{slotId, slotRole, dataObjectState: Left dos@{connection
     processResponse <- WsGun.processMessage socket gunMsg
     case processResponse of
       Left error -> do
-        _ <- logInfo "Gun process error" {error}
+        logInfo "Gun process error" {error}
         pure $ CastNoReply state
 
       Right (WsGun.Internal _) ->
@@ -783,12 +782,12 @@ processGunMessage state@{slotId, slotRole, dataObjectState: Left dos@{connection
         pure $ CastNoReply state{dataObjectState = Left dos{connectionToBackup = Just newSocket}}
 
       Right WsGun.WebSocketUp -> do
-        _ <- logInfo "Backup WebSocket up" {slotId}
+        logInfo "Backup WebSocket up" {slotId}
         WsGun.send socket P2B_Synchronise
         pure $ CastNoReply state
 
       Right WsGun.WebSocketDown -> do
-        _ <- logInfo "Backup WebSocket down" {slotId}
+        logInfo "Backup WebSocket down" {slotId}
         CastNoReply <$> attemptConnectionToBackup state{dataObjectState = Left dos{connectionToBackup = Nothing}}
 
       Right (WsGun.Frame (B2P_Message msg)) -> do
@@ -815,7 +814,7 @@ processGunMessage state@{slotId, slotRole, dataObjectState: Left dos@{connection
       Right (WsGun.Frame (B2P_Update updateMsg)) -> do
         -- We are primary and just got an update msg from backup, but are not in the expected state
         -- Fail the update and log a big warning - shouldn't be able to get here
-        _ <- logWarning "DataObject Update message received from backup when we have no data object" {}
+        logWarning "DataObject Update message received from backup when we have no data object" {}
         responseMsg <- makeResponse updateMsg $ DO.Error DO.Unexpected
         sendToBackup dos (P2B_UpdateResponse responseMsg)
         pure $ CastNoReply state
@@ -993,7 +992,7 @@ doRemoveIngest profileName cachedStateRemoveFun state@{aggregatorKey, workflowHa
   if not hasIngests state2 then do
     ref <- Erl.makeRef
     void $ Timer.sendAfter (serverName aggregatorKey) shutdownLingerTimeMs (MaybeStop ref)
-    _ <- logInfo "Starting linger timer" {ref}
+    logInfo "Starting linger timer" {ref}
     pure state2{maybeStopRef = Just ref}
   else
     pure state2

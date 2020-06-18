@@ -1,0 +1,14 @@
+type: object
+properties:
+  role:
+    $ref: "../parameters/slotRole.yaml"
+  streamDetails:
+    $ref: "./StreamDetails.yaml"
+  bytesCount:
+    type: integer
+  totalBytesSent:
+    type: integer
+  totalBytesReceived:
+    type: integer
+  lastBytesReadReport:
+    type: integer

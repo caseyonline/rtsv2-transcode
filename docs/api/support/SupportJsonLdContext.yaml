@@ -1,0 +1,22 @@
+get:
+  summary: /support/jsonld/{contexType}
+  description: JsonLd contex description
+  tags:
+    - Support Api
+  parameters:
+    - $ref: '../parameters/contextType.yaml'
+  responses:
+    '200':
+      description: OK
+      content:
+        application/json-ld:
+          schema:
+            type: array
+            items:
+              $ref: '../PublicSchema.yaml'
+    '404':
+      description: Not Found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/Problem.yaml'

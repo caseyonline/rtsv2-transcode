@@ -1,0 +1,32 @@
+get:
+  summary: /support/ingest/metrics/
+  description: Ingest metrics description
+  tags:
+    - Support Api
+  responses:
+    '200':
+      description: OK
+      content:
+        application/json-ld:
+          schema:
+            type: array
+            items:
+              type: object
+              properties:
+                timestamp:
+                  type: number
+                  example: 437829.2232
+                ingestKey:
+                  $ref: "../schemas/IngestKey.yaml"
+                streamBitrateMetrics:
+                  $ref: "../schemas/BitrateMetrics.yaml"
+                frameFlowMeterMetrics:
+                  $ref: "../schemas/FlowMetrics.yaml"
+                rtmpIngestMetrics:
+                  $ref: "../schemas/IngestMetrics.yaml"
+    '404':
+      description: Not Found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/Problem.yaml'

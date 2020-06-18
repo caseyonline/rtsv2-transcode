@@ -1,0 +1,21 @@
+get:
+  summary: /support/ingestAggregator/{slotId}/{slotRole}
+  description: Ingest aggregator description
+  tags:
+    - Support Api
+  parameters:
+    - $ref: '../parameters/slotId.yaml'
+    - $ref: '../parameters/slotRole.yaml'
+  responses:
+    '200':
+      description: OK
+      content:
+        application/json-ld:
+          schema:
+            $ref: '../schemas/IngestAggregatorState.yaml'
+    '404':
+      description: Not Found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/Problem.yaml'

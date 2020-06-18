@@ -29,9 +29,11 @@ import Effect (Effect)
 import Ephemeral.Map (EMap)
 import Ephemeral.Map as EMap
 import Erl.Atom (Atom, atom)
+import Erl.Data.Binary (Binary)
 import Erl.Data.List (List, head, index, length, nil, reverse, singleton, uncons, (:))
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
+import Erl.Data.Tuple (Tuple2, tuple2)
 import Erl.Process (spawnLink)
 import Erl.Utils (sleep, systemTimeMs, privDir)
 import Logger as Logger
@@ -53,7 +55,7 @@ import Rtsv2.Health as Health
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition (PoP)
 import Rtsv2.PoPDefinition as PoPDefinition
-import Serf (IpAndPort, LamportClock, SerfCoordinate, calcRtt)
+import Serf (class SerfWireMessage, IpAndPort, LamportClock, SerfCoordinate, calcRtt)
 import Serf as Serf
 import Shared.Common (Milliseconds(..))
 import Shared.Rtsv2.Agent (SlotCharacteristics, emptySlotCharacteristics)
@@ -66,6 +68,8 @@ import Shared.Utils (distinctRandomNumbers)
 import SpudGun (bodyToString)
 import SpudGun as SpudGun
 
+foreign import to_wire_message :: TransMessage -> Tuple2 String Binary
+foreign import from_wire_message :: String -> Binary -> Maybe TransMessage
 
 type Edge = Tuple PoPName PoPName
 type Rtts = Map Edge Milliseconds
@@ -104,7 +108,12 @@ data EventType
   = Available
   | Stopped
 
-data TransMessage = TMAggregatorState EventType AgentKey ServerAddress SlotCharacteristics
+data TransMessage
+  = TMAggregatorState EventType AgentKey ServerAddress SlotCharacteristics
+
+instance serfWireMessageTM :: SerfWireMessage TransMessage where
+  toWireMessage = to_wire_message
+  fromWireMessage = from_wire_message
 
 data Msg
   = LeaderTimeoutTick
@@ -112,7 +121,6 @@ data Msg
   | JoinAll
   | ConnectStream
   | TransPoPSerfMsg (Serf.SerfMessage TransMessage)
-
 
 getNeighbours :: Effect (Tuple Server (List (JsonLd.TimedRouteNeighbour List)))
 getNeighbours = exposeState doGetNeighbours serverName
@@ -141,8 +149,6 @@ getTimedRoutesTo pop = exposeState doGetTimedRoutes serverName
       , routes
       }
 
-
-
 getRtts :: Effect Rtts
 getRtts = exposeState _.rtts serverName
 
@@ -170,7 +176,6 @@ routesTo pop = Gen.doCall serverName
             pure $ (_ <> singleton pop) <$> viaLists
     pure $ CallReply resp state
 
-
 health :: Effect Health
 health =
   Gen.doCall serverName \state -> do
@@ -192,7 +197,7 @@ announceAggregatorIsAvailable slotCharacteristics agentKey server =
     doAnnounceStreamIsAvailable state@{ thisServer
                                       , serfRpcAddress
                                       } = do
-      sendToTransSerfNetwork state "streamAvailable" (TMAggregatorState Available agentKey (extractAddress server) slotCharacteristics)
+      sendToTransSerfNetwork state $ TMAggregatorState Available agentKey (extractAddress server) slotCharacteristics
       pure state
 
 announceAggregatorStopped :: AgentKey -> Server -> Effect Unit
@@ -210,7 +215,7 @@ announceAggregatorStopped agentKey server =
       then do
             -- Message from our pop - distribute over trans-pop
             --logInfo "Local stream stopped being delivered to trans-pop" { slotId: slotId }
-            sendToTransSerfNetwork state "streamStopped" (TMAggregatorState Stopped agentKey (extractAddress server) emptySlotCharacteristics)
+            sendToTransSerfNetwork state $ TMAggregatorState Stopped agentKey (extractAddress server) emptySlotCharacteristics
             pure state
       else pure state
 
@@ -226,7 +231,7 @@ handleRemoteLeaderAnnouncement server =
       | extractAddress server < extractAddress thisServer = do
         logInfo "Another node has taken over as transpop leader; stepping down" { leader: server }
         result <- Serf.leave serfRpcAddress
-        _ <- osCmd stopScript
+        void $ osCmd stopScript
 
         now <- systemTimeMs
         pure
@@ -273,14 +278,14 @@ init { config: config@{ leaderTimeoutMs
   logInfo "Trans-PoP Agent Starting" {config: config}
   healthConfig <- Config.healthConfig
   -- Stop any agent that might be running (in case we crashed)
-  _ <- osCmd stopScript
+  void $ osCmd stopScript
 
   Gen.registerExternalMapping serverName (\m -> TransPoPSerfMsg <$> (Serf.messageMapper m))
   void $ Timer.sendEvery serverName leaderAnnounceMs LeaderTimeoutTick
 
   now <- systemTimeMs
 
-  rpcBindIp <- Env.systemInterfaceIp
+  rpcBindIp <- Env.transSerfIp
   thisServer <- PoPDefinition.getThisServer
   otherPoPNames <- PoPDefinition.getOtherPoPNames
   defaultRtts' <- getDefaultRtts config
@@ -534,7 +539,7 @@ becomeLeader now state@{ lastLeaderAnnouncement
                        , intraPoPApi: {announceTransPoPLeader: intraPoP_announceTransPoPLeader}
                        } = do
   logInfo "Leader is absent, becoming leader" {}
-  _ <- osCmd startScript
+  void $ osCmd startScript
   intraPoP_announceTransPoPLeader
   void $ Timer.sendAfter serverName connectStreamAfterMs ConnectStream
   void $ Timer.sendAfter serverName rttRefreshMs RttRefreshTick
@@ -662,11 +667,11 @@ startScript =  privDir(atom "rtsv2") <> "/scripts/startTransPoPAgent.sh"
 stopScript :: String
 stopScript = privDir(atom "rtsv2") <> "/scripts/stopTransPoPAgent.sh"
 
-sendToTransSerfNetwork :: State -> String -> TransMessage -> Effect Unit
-sendToTransSerfNetwork {canary: Canary} _name _msg = pure unit
-sendToTransSerfNetwork state name msg = do
-  result <- Serf.event state.serfRpcAddress name msg false
-  maybeLogError "Trans-PoP serf event failed" result {name, msg}
+sendToTransSerfNetwork :: State -> TransMessage -> Effect Unit
+sendToTransSerfNetwork {canary: Canary}  _msg = pure unit
+sendToTransSerfNetwork state msg = do
+  result <- Serf.event state.serfRpcAddress msg false
+  maybeLogError "Trans-PoP serf event failed" result {msg}
 
 --------------------------------------------------------------------------------
 -- Log helpers

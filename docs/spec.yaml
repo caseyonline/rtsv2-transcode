@@ -1,0 +1,106 @@
+openapi: '3.0.3'
+info:
+  version: '1.0'
+  title: RTS v2 Documentation
+  description: |
+    OpenAPI (fka Swagger) specification for the Open Education API.
+
+    # Introduction
+
+    ```
+    {
+      "code": 404,
+      "title": "Resource not found"
+    }
+    ```
+  x-logo:
+    url: ./assets/images/logo.png
+tags:
+  - name: Public Html
+    description: Description for the Public API.
+  - name: Support Api
+    description: Description for Support API.
+  - name: Support Html
+    description: Description for Support Html.
+produces:
+  - "application/json-ld"
+x-tagGroups:
+  - name: Api
+    tags:
+      - Support Api
+  - name: Html
+    tags:
+      - Public Html
+      - Support Html
+
+paths:
+  /support/canary:
+    $ref: api/support/SupportCanary.yaml
+  /support/canary/discovery/v1/{shortName}/{streamName}:
+    $ref: api/support/SupportCanaryStreamDiscovery.yaml
+  /support/egest/metrics:
+    $ref: api/support/SupportEgestInstancesMetrics.yaml
+  /support/egest/{slotId}/{slotRole}:
+    $ref: api/support/SupportEgestStats.yaml
+  /support/healthCheck:
+    $ref: api/support/SupportHealthCheck.yaml
+  /support/ingest/metrics:
+    $ref: api/support/SupportIngestInstancesMetrics.yaml
+  /support/ingest/{slotId}/{slotRole}/{profileName}:
+    $ref: api/support/SupportIngestInstance.yaml
+  /support/ingestAggregator/{slotId}/{slotRole}:
+    $ref: api/support/SupportIngestAggregator.yaml
+  /support/popDefinition:
+    $ref: api/support/SupportPoPDefinition.yaml
+  /support/relay/{slotId}/{slotRole}:
+    $ref: api/support/SupportRelayStats.yaml
+  /support/runState:
+    $ref: api/support/SupportRunState.yaml
+  /support/state:
+    $ref: api/support/SupportServerState.yaml
+  /support/state/slot/{slotId}:
+    $ref: api/support/SupportSlotState.yaml
+  /support/timedRoutes:
+    $ref: api/support/SupportTimedRoutes.yaml
+  /support/timedRoutes/{popName}:
+    $ref: api/support/SupportTimedRoutesForPoP.yaml
+  /support/vm/metrics:
+    $ref: api/support/SupportVMMEtrics.yaml
+
+  # Web Routes
+  /public/client/{slotId}/{slotRole}/player:
+    $ref: api/html/public/PublicClientPlayer.yaml
+  /public/client/{slotId}/{slotRole}/session:
+    $ref: api/html/public/PublicClientPlayerControl.yaml
+  /public/discovery/v1/{shortName}/{streamName}:
+    $ref: api/html/public/PublicStreamDiscovery.yaml
+  /public/ingest/{shortName}/{streamName}/ingest:
+    $ref: api/html/public/PublicClientWebRTCIngest.yaml
+  /public/ingest/{shortName}/{streamName}/session:
+    $ref: api/html/public/PublicClientWebRTCIngestControl.yaml
+
+  /support/canary/client/{slotId}/{slotRole}/:
+    $ref: api/html/support/SupportCanaryClientPlayerAssets.yaml
+  /support/canary/client/{slotId}/{slotRole}/player:
+    $ref: api/html/support/SupportCanaryClientPlayer.yaml
+  /support/canary/client/{slotId}/{slotRole}/session:
+    $ref: api/html/support/SupportCanaryClientPlayerControl.yaml
+
+  /support/canary/ingest/{slotId}/{slotRole}/ingest:
+    $ref: api/html/support/SupportCanaryClientWebRTCIngest.yaml
+  /support/canary/ingest/{slotId}/{slotRole}/session:
+    $ref: api/html/support/SupportCanaryClientWebRTCIngestControl.yaml
+
+  /support/ingestAggregator/{slotId}/{slotRole}/activeIngests/{profileName}/control:
+    $ref: api/html/support/SupportIngestAggregatorActiveIngestsPlayerControl.yaml
+  /support/ingestAggregator/{slotId}/{slotRole}/activeIngests/{profileName}/js/:
+    $ref: api/html/support/SupportIngestAggregatorActiveIngestsPlayerJs.yaml
+  /support/ingestAggregator/{slotId}/{slotRole}/activeIngests/{profileName}/player:
+    $ref: api/html/support/SupportIngestAggregatorActiveIngestsPlayer.yaml
+  /support/ingestAggregator/{slotId}/{slotRole}/js/:
+    $ref: api/html/support/SupportIngestAggregatorPlayerJs.yaml
+  /support/ingestAggregator/{slotId}/{slotRole}/player:
+    $ref: api/html/support/SupportIngestAggregatorPlayer.yaml
+
+  # /support/jsonld/{contexType}:
+  #   $ref: api/html/support/SupportJsonLdContext.yaml

@@ -10,7 +10,6 @@ module Rtsv2.Agents.IntraPoP
   , announceOtherPoPAggregatorIsAvailable
   , announceOtherPoPAggregatorStopped
 
-
     -- Data scoped to this PoP
   , announceLocalEgestIsAvailable
   , announceLocalEgestStopped
@@ -20,6 +19,7 @@ module Rtsv2.Agents.IntraPoP
   , announceLoad
   , announceAcceptingRequests
   , announceTransPoPLeader
+  , announceEgestSlotLookup
 
     -- State queries
 
@@ -68,11 +68,13 @@ import Effect (Effect)
 import Ephemeral.Map (EMap)
 import Ephemeral.Map as EMap
 import Erl.Atom (Atom)
+import Erl.Data.Binary (Binary)
 import Erl.Data.List (List, head, index, length, nil, singleton, sortBy, uncons, (:))
 import Erl.Data.Map (Map, alter, fromFoldable, values)
 import Erl.Data.Map as Map
+import Erl.Data.Tuple (Tuple2, tuple2)
 import Erl.Process (Process, spawnLink)
-import Erl.Utils (Ref, makeRef)
+import Erl.Utils (MonotonicTime, monotonicTime)
 import Erl.Utils as Erl
 import Heterogeneous.Folding (hfoldl)
 import Logger as Logger
@@ -92,16 +94,26 @@ import Rtsv2.LoadTypes as LoadTypes
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Types (LocalOrRemote(..), ResourceFailed(..), ResourceResp)
-import Serf (IpAndPort, LamportClock)
+import Serf (class SerfWireMessage, IpAndPort, LamportClock)
 import Serf as Serf
 import Shared.Common (Milliseconds(..))
 import Shared.Rtsv2.Agent (SlotCharacteristics, emptySlotCharacteristics)
 import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.JsonLd (transPoPLeaderLocationNode)
 import Shared.Rtsv2.JsonLd as JsonLd
-import Shared.Rtsv2.Stream (AgentKey(..), AggregatorKey, EgestKey, RelayKey(..), agentKeyToAggregatorKey, agentKeyToEgestKey, agentKeyToRelayKey, aggregatorKeyToAgentKey, egestKeyToAgentKey)
+import Shared.Rtsv2.LlnwApiTypes (SlotLookupResult)
+import Shared.Rtsv2.Stream (AgentKey(..), AggregatorKey, EgestKey, RelayKey(..), RtmpShortName, SlotName, agentKeyToAggregatorKey, agentKeyToEgestKey, agentKeyToRelayKey, aggregatorKeyToAgentKey, egestKeyToAgentKey)
 import Shared.Rtsv2.Types (AcceptingRequests, CanaryState(..), CurrentLoad, Health, Server(..), ServerAddress(..), ServerLoad, extractAddress, extractPoP, maxLoad, minLoad, toServerLoad)
 import Shared.Utils (distinctRandomNumbers)
+
+
+foreign import to_wire_message :: IntraMessage -> Tuple2 String Binary
+foreign import from_wire_message :: String -> Binary -> Maybe IntraMessage
+
+foreign import to_binary :: IntraMessage -> Binary
+foreign import from_binary :: Binary -> IntraMessage
+
+
 
 type TestHelperPayload =
   { dropAgentMessages :: Boolean
@@ -127,6 +139,7 @@ type ServerClocks =
   { loadClocks       :: ServerClock
   , popLeaderClocks  :: ServerClock
   , vmLivenessClocks :: ServerClock
+  , slotLookupClocks :: ServerClock
   }
 
 type AgentLocations = { relays                :: Locations Unit
@@ -148,13 +161,14 @@ type State
     , canary                :: CanaryState
     , healthConfig          :: Config.HealthConfig
     , transPoPApi           :: Config.TransPoPAgentApi
+    , llnwApiRecordSlotLookupApi :: RtmpShortName -> SlotName -> SlotLookupResult -> Effect Unit
     , serfRpcAddress        :: IpAndPort
     , currentTransPoPLeader :: Maybe Server
 
     , testDropAgentMessages :: Boolean
 
-    , thisServerRef         :: Ref
-    , serverRefs            :: EMap Server Ref
+    , thisServerRef         :: MonotonicTime
+    , serverRefs            :: EMap Server MonotonicTime
 
     , thisServer            :: Server
     , load                  :: CurrentLoad
@@ -176,7 +190,43 @@ data IntraMessage
 
   | IMServerLoad ServerAddress CurrentLoad AcceptingRequests
   | IMTransPoPLeader ServerAddress
-  | IMVMLiveness ServerAddress Ref
+  | IMVMLiveness ServerAddress MonotonicTime
+  | IMSlotLookup ServerAddress RtmpShortName SlotName SlotLookupResult
+
+instance serfWireMessageIM :: SerfWireMessage IntraMessage where
+  toWireMessage payload@(IMAggregatorState _ _ _ _) =
+    to_wire_message payload
+
+  toWireMessage payload@(IMEgestState _ _ _) =
+    to_wire_message payload
+
+  toWireMessage payload@(IMRelayState Available agentKey serverAddress) =
+    tuple2 "relayAvailable" $ to_binary payload
+  toWireMessage payload@(IMRelayState Stopped agentKey serverAddress) =
+    tuple2 "relayStopped" $ to_binary payload
+
+  toWireMessage payload@(IMServerLoad serverAddress currentLoad acceptingRequests) =
+    tuple2 "loadUpdate" $ to_binary payload
+
+  toWireMessage payload@(IMSlotLookup serverAddress rtmpShortName slotName slotLookupResult) =
+    tuple2 "slotLookup" $ to_binary payload
+  toWireMessage payload@(IMTransPoPLeader serverAddress) =
+    tuple2 "transPoPLeader" $ to_binary payload
+  toWireMessage payload@(IMVMLiveness serverAddress ref) =
+    tuple2 "vmLiveness" $ to_binary payload
+
+
+  fromWireMessage "a" payload =
+    from_wire_message "a" payload
+  fromWireMessage "b" payload =
+    from_wire_message "b" payload
+  fromWireMessage "c" payload =
+    from_wire_message "c" payload
+  fromWireMessage "d" payload =
+    from_wire_message "d" payload
+  fromWireMessage name payload =
+    Just $ from_binary payload
+
 
 data Msg serfPayload
   = JoinAll
@@ -194,7 +244,7 @@ data IntraPoPBusMessage
   | StreamRelayExited RelayKey Server
   | EgestStarted EgestKey Server
   | EgestExited EgestKey Server
-  | VmReset Server Ref (Maybe Ref)
+  | VmReset Server MonotonicTime (Maybe MonotonicTime)
 
 
 --------------------------------------------------------------------------------
@@ -257,10 +307,10 @@ getPublicState = Gen.doCall serverName publicState
              , servers: servers'
              }
 
-currentLocalRef :: Effect Ref
+currentLocalRef :: Effect MonotonicTime
 currentLocalRef = exposeState _.thisServerRef serverName
 
-currentRemoteRef :: Server -> Effect (Maybe Ref)
+currentRemoteRef :: Server -> Effect (Maybe MonotonicTime)
 currentRemoteRef remoteServer = exposeState ((EMap.lookup remoteServer) <<<  _.serverRefs) serverName
 
 -- TODO - we should be calling the prime' versions and handling that there might, in fact be more than
@@ -419,8 +469,19 @@ announceLoad load =
       let
         thisNodeAddress = extractAddress thisServer
         newMembers = alter (map (\ memberInfo -> memberInfo { load = load })) thisNodeAddress members
-      sendToIntraSerfNetwork state "loadUpdate" (IMServerLoad thisNodeAddress load acceptingRequests)
+      sendToIntraSerfNetwork state $ IMServerLoad thisNodeAddress load acceptingRequests
       pure $ Gen.CastNoReply state { members = newMembers , load = load}
+
+-- Called by LlnwApi to indicate a slot lookup
+announceEgestSlotLookup :: RtmpShortName -> SlotName -> SlotLookupResult -> Effect Unit
+announceEgestSlotLookup accountName slotName slotLookupResult =
+  Gen.doCast serverName
+    \state@{ thisServer, members, acceptingRequests } -> do
+      let
+        thisNodeAddress = extractAddress thisServer
+      sendToIntraSerfNetwork state $ IMSlotLookup thisNodeAddress accountName slotName slotLookupResult
+      pure $ Gen.CastNoReply state
+
 
 -- Called by RunState to indicate runState on this node
 announceAcceptingRequests :: AcceptingRequests -> Effect Unit
@@ -430,7 +491,7 @@ announceAcceptingRequests acceptingRequests =
       let
         thisNodeAddress = extractAddress thisServer
         newMembers = alter (map (\ memberInfo -> memberInfo { acceptingRequests = acceptingRequests })) thisNodeAddress members
-      sendToIntraSerfNetwork state "loadUpdate" (IMServerLoad thisNodeAddress load acceptingRequests)
+      sendToIntraSerfNetwork state $ IMServerLoad thisNodeAddress load acceptingRequests
       pure $ Gen.CastNoReply state { members = newMembers , acceptingRequests = acceptingRequests}
 
 type AgentMessageHandlerWithSerfPayload a = State -> AgentKey -> Server -> a -> Effect Unit
@@ -479,7 +540,23 @@ type ServerMessageHandler =
   , handleMessage :: Server -> State -> Effect State
   }
 
-vmLivenessHandler :: Ref -> ServerMessageHandler
+slotLookupHandler :: RtmpShortName -> SlotName -> SlotLookupResult -> ServerMessageHandler
+slotLookupHandler rtmpShortName slotName slotLookupResult =
+  { name : HandlerName "slotLookup"
+  , clockLens: clockLens
+  , handleMessage: handleMessage
+  }
+  where
+    clockLens = { get : _.slotLookupClocks
+                , set : \newClocks serverClocks -> serverClocks{slotLookupClocks = newClocks}
+                }
+
+    handleMessage :: Server -> State -> Effect State
+    handleMessage server state@{llnwApiRecordSlotLookupApi} = do
+      llnwApiRecordSlotLookupApi rtmpShortName slotName slotLookupResult
+      pure state
+
+vmLivenessHandler :: MonotonicTime -> ServerMessageHandler
 vmLivenessHandler ref =
   { name : HandlerName "vmLiveness"
   , clockLens : clockLens
@@ -561,7 +638,7 @@ aggregatorHandler
       let
         aggregatorKey = agentKeyToAggregatorKey agentKey
       Bus.raise bus (IngestAggregatorStarted aggregatorKey server)
-      sendToIntraSerfNetwork state "aggregatorAvailable" $IMAggregatorState Available agentKey (extractAddress server) serfPayload
+      sendToIntraSerfNetwork state $ IMAggregatorState Available agentKey (extractAddress server) serfPayload
       state.transPoPApi.announceAggregatorIsAvailable serfPayload agentKey server
 
     availableThisPoP :: AgentMessageHandlerWithSerfPayload SlotCharacteristics
@@ -576,14 +653,14 @@ aggregatorHandler
       let
         aggregatorKey = agentKeyToAggregatorKey agentKey
       Bus.raise bus (IngestAggregatorStarted aggregatorKey server)
-      sendToIntraSerfNetwork state "aggregatorAvailable" $ IMAggregatorState Available agentKey (extractAddress server) serfPayload
+      sendToIntraSerfNetwork state $ IMAggregatorState Available agentKey (extractAddress server) serfPayload
 
     stoppedLocal :: AgentMessageHandler
     stoppedLocal state agentKey server = do
       let
         aggregatorKey = agentKeyToAggregatorKey agentKey
       Bus.raise bus (IngestAggregatorExited aggregatorKey server)
-      sendToIntraSerfNetwork state "aggregatorStopped" $ IMAggregatorState Stopped agentKey (extractAddress server) emptySlotCharacteristics
+      sendToIntraSerfNetwork state $ IMAggregatorState Stopped agentKey (extractAddress server) emptySlotCharacteristics
       state.transPoPApi.announceAggregatorStopped agentKey server
 
     stoppedThisPoP :: AgentMessageHandler
@@ -598,7 +675,7 @@ aggregatorHandler
     stoppedOtherPoP_viaTrans state agentKey server = do
       logInfo "Remote aggregator stopped in another PoP" {agentKey, server}
       Bus.raise bus (IngestAggregatorExited (agentKeyToAggregatorKey agentKey)  server)
-      sendToIntraSerfNetwork state "aggregatorStopped" $ IMAggregatorState Stopped agentKey (extractAddress server) emptySlotCharacteristics
+      sendToIntraSerfNetwork state $ IMAggregatorState Stopped agentKey (extractAddress server) emptySlotCharacteristics
 
     stoppedOtherPoP_viaIntra :: AgentMessageHandler
     stoppedOtherPoP_viaIntra state agentKey server = do
@@ -665,7 +742,7 @@ egestHandler
       let
         egestKey = agentKeyToEgestKey agentKey
       Bus.raise bus (EgestStarted egestKey server)
-      sendToIntraSerfNetwork state "egestAvailable" (IMEgestState Available agentKey $ extractAddress server)
+      sendToIntraSerfNetwork state $ IMEgestState Available agentKey $ extractAddress server
 
     availableThisPoP state agentKey server _ = do
       -- logInfo "New egest is avaiable in this PoP" {agentKey, server}
@@ -683,7 +760,7 @@ egestHandler
       let
         egestKey = agentKeyToEgestKey agentKey
       Bus.raise bus (EgestExited egestKey server)
-      sendToIntraSerfNetwork state "egestStopped" $ IMEgestState Stopped agentKey $ extractAddress server
+      sendToIntraSerfNetwork state $ IMEgestState Stopped agentKey $ extractAddress server
 
     stoppedThisPoP state agentKey server = do
       let
@@ -742,12 +819,12 @@ relayHandler
       let
         relayKey = agentKeyToRelayKey agentKey
       Bus.raise bus (StreamRelayStarted relayKey server)
-      sendToIntraSerfNetwork state "relayAvailable" (IMRelayState Available agentKey $ extractAddress server)
+      sendToIntraSerfNetwork state $ IMRelayState Available agentKey $ extractAddress server
 
     availableThisPoP state agentKey server _ = do
       let
         relayKey = agentKeyToRelayKey agentKey
-      Bus.raise bus (StreamRelayStarted relayKey server)
+      Bus.raise bus $ StreamRelayStarted relayKey server
       pure unit
 
     availableOtherPoP state agentKey server _ = do
@@ -758,8 +835,8 @@ relayHandler
       logInfo "Local relay stopped" {agentKey}
       let
         relayKey = agentKeyToRelayKey agentKey
-      Bus.raise bus (StreamRelayExited relayKey server)
-      sendToIntraSerfNetwork state "relayStopped" $ IMRelayState Stopped agentKey $ extractAddress server
+      Bus.raise bus $ StreamRelayExited relayKey server
+      sendToIntraSerfNetwork state $ IMRelayState Stopped agentKey $ extractAddress server
 
     stoppedThisPoP state agentKey server = do
       let
@@ -801,8 +878,11 @@ announceAvailableLocal :: forall payload. Ord payload => AgentHandler payload ->
 announceAvailableLocal handler@{locationLens} serfPayload agentKey =
   Gen.doCast serverName
     \state@{thisServer} -> do
-      --logInfo ("New " <> unwrap handler.name <> " is available on this node") {agentKey}
-      doAnnounceAvailableLocal handler serfPayload agentKey state
+      if isNewLocalAgent handler (locationLens.get state.agentLocations) thisServer agentKey then
+        doAnnounceAvailableLocal handler serfPayload agentKey state
+      else do
+        logInfo "not announcing since already exists" {agentKey}
+        pure unit
       pure $ Gen.CastNoReply $ updateAgentLocation (recordLocalAgent serfPayload) locationLens agentKey thisServer state
 
 doAnnounceAvailableLocal :: forall a. AgentHandler a -> a -> AgentKey -> State -> Effect Unit
@@ -845,7 +925,7 @@ announceTransPoPLeader =
     \state@{ thisServer, transPoPApi:{handleRemoteLeaderAnnouncement: transPoP_announceTransPoPLeader} } ->
     do
       transPoP_announceTransPoPLeader thisServer
-      sendToIntraSerfNetwork state "transPoPLeader" (IMTransPoPLeader $ extractAddress thisServer)
+      sendToIntraSerfNetwork state $ IMTransPoPLeader $ extractAddress thisServer
       pure $ Gen.CastNoReply state{currentTransPoPLeader = Just thisServer}
 
 
@@ -864,6 +944,7 @@ updateAgentLocation action lens agentKey server state@{agentLocations} =
 type StartArgs =
   { config :: Config.IntraPoPAgentConfig
   , transPoPApi :: Config.TransPoPAgentApi
+  , llnwApiRecordSlotLookupApi :: RtmpShortName -> SlotName -> SlotLookupResult -> Effect Unit
   , canaryState :: CanaryState
   , acceptingRequestsFun :: Effect AcceptingRequests
   }
@@ -874,6 +955,7 @@ startLink args = Gen.startLink serverName (init args) handleInfo
 init :: StartArgs -> Effect State
 init { config
      , transPoPApi
+     , llnwApiRecordSlotLookupApi
      , canaryState
      , acceptingRequestsFun
      } = do
@@ -894,7 +976,7 @@ init { config
   void $ Timer.sendEvery serverName config.vmLivenessIntervalMs VMLiveness
   void $ Timer.sendEvery serverName garbageCollectVMInterval GarbageCollectVM
   void $ Timer.sendEvery serverName garbageCollectAgentInterval GarbageCollectAgents
-  rpcBindIp <- Env.systemInterfaceIp
+  rpcBindIp <- Env.intraSerfIp
   thisServer <- PoPDefinition.getThisServer
   let
     serfRpcAddress =
@@ -912,7 +994,7 @@ init { config
       pure unit
 
   serversInPoP <- PoPDefinition.serversInThisPoPByAddress
-  thisServerRef <- makeRef
+  thisServerRef <- monotonicTime
 
   let
     emptyLocations :: forall payload. Locations payload
@@ -940,6 +1022,7 @@ init { config
     { config
     , healthConfig
     , transPoPApi
+    , llnwApiRecordSlotLookupApi
     , serfRpcAddress
     , currentTransPoPLeader: Nothing
 
@@ -965,6 +1048,7 @@ init { config
     , serverClocks: { loadClocks: Map.empty
                     , popLeaderClocks: Map.empty
                     , vmLivenessClocks : Map.empty
+                    , slotLookupClocks : Map.empty
                     }
     }
 
@@ -989,7 +1073,7 @@ handleInfo msg state = case msg of
     CastNoReply <$> garbageCollectAgents state
 
   VMLiveness -> do
-    sendToIntraSerfNetwork state "vmLiveness" (IMVMLiveness (extractAddress state.thisServer) state.thisServerRef )
+    sendToIntraSerfNetwork state $ IMVMLiveness (extractAddress state.thisServer) state.thisServerRef
     pure $ CastNoReply state
 
   ReAnnounce agentKey handler announceFun -> do
@@ -1049,6 +1133,8 @@ handleIntraPoPSerfMsg imsg state@{ transPoPApi: {handleRemoteLeaderAnnouncement}
         IMVMLiveness msgOrigin ref -> do
           handleServerMessage ltime msgOrigin state $ vmLivenessHandler ref
 
+        IMSlotLookup msgOrigin rtmpShortName slotName slotLookupResult -> do
+          handleServerMessage ltime msgOrigin state $ slotLookupHandler rtmpShortName slotName slotLookupResult
 
 handleServerMessage :: LamportClock -> ServerAddress -> State -> ServerMessageHandler -> Effect State
 handleServerMessage msgLTime msgServerAddress
@@ -1139,6 +1225,12 @@ messageTimeout agentMessageHandler state = do
 serverName :: forall serfPayload. ServerName State (Msg serfPayload)
 serverName = Names.intraPoPName
 
+isNewLocalAgent :: forall payload. AgentHandler payload -> Locations payload -> Server -> AgentKey -> Boolean
+isNewLocalAgent handler locations thisServer agentKey =
+  case Map.lookup agentKey locations.byAgentKey of
+    Nothing -> true
+    Just {servers} -> not $ Set.member thisServer servers
+
 logIfNewAgent :: forall payload. AgentHandler payload -> Locations payload -> Server -> AgentKey -> Server -> Effect Unit
 logIfNewAgent handler locations thisServer agentKey agentServer =
   if Map.member (Tuple agentKey agentServer) locations.remoteTimeouts
@@ -1150,11 +1242,11 @@ logIfNewAgent handler locations thisServer agentKey agentServer =
               else "in another PoP"
     logInfo ("New " <> unwrap handler.name <> " is available " <> scope) {agentKey, agentServer}
 
-sendToIntraSerfNetwork :: State -> String -> IntraMessage -> Effect Unit
-sendToIntraSerfNetwork {canary: Canary} _name _msg = pure unit
-sendToIntraSerfNetwork state name msg = do
-  result <- Serf.event state.serfRpcAddress name msg false
-  maybeLogError "Intra-PoP serf event failed" result {name, msg}
+sendToIntraSerfNetwork :: State -> IntraMessage -> Effect Unit
+sendToIntraSerfNetwork {canary: Canary} _msg = pure unit
+sendToIntraSerfNetwork state msg = do
+  result <- Serf.event state.serfRpcAddress msg false
+  maybeLogError "Intra-PoP serf event failed" result {msg}
 
 
 membersAlive :: (List Serf.SerfMember) -> State -> Effect State
@@ -1232,7 +1324,7 @@ foldHandlers :: forall acc. (forall a. AgentHandler a -> acc -> Effect acc) -> a
 foldHandlers perHandlerFun =
   perHandlerFun relayHandler >=> perHandlerFun aggregatorHandler >=> perHandlerFun egestHandler
 
-garbageCollectServer :: State -> Server -> Ref -> Maybe Ref -> Effect State
+garbageCollectServer :: State -> Server -> MonotonicTime -> Maybe MonotonicTime -> Effect State
 garbageCollectServer state@{members} deadServer oldRef newRef = do
   -- TODO - add a server decomissioning message to do this cleanly
   logWarning "server liveness timeout" { server: deadServer

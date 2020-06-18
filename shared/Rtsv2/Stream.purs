@@ -3,6 +3,7 @@ module Shared.Rtsv2.Stream
   , RtmpStreamName(..)
   , SlotId(..)
   , SlotIdAndRole(..)
+  , SlotName(..)
   , SlotRole(..)
   , ProfileName(..)
   , SlotIdAndProfileName(..)
@@ -46,6 +47,8 @@ import Simple.JSON (class ReadForeign, class WriteForeign, readImpl, writeImpl)
 import Shared.UUID (UUID, fromString)
 
 newtype SlotId = SlotId UUID
+
+newtype SlotName = SlotName String
 
 data SlotRole = Primary
               | Backup
@@ -135,15 +138,18 @@ derive instance genericSlotId :: Generic SlotId _
 derive instance newtypeSlotId :: Newtype SlotId _
 derive newtype instance readForeignSlotId :: ReadForeign SlotId
 derive newtype instance writeForeignSlotId :: WriteForeign SlotId
+instance eqSlotId :: Eq SlotId where eq = genericEq
+instance compareSlotId :: Ord SlotId where compare = genericCompare
+instance showSlotId :: Show SlotId where show = genericShow
 
-instance eqSlotId :: Eq SlotId where
-  eq = genericEq
-
-instance compareSlotId :: Ord SlotId where
-  compare = genericCompare
-
-instance showSlotId :: Show SlotId where
-  show = genericShow
+------------------------------------------------------------------------------
+-- SlotName
+derive instance genericSlotName :: Generic SlotName _
+derive instance newtypeSlotName :: Newtype SlotName _
+derive newtype instance readForeignSlotName :: ReadForeign SlotName
+derive newtype instance writeForeignSlotName :: WriteForeign SlotName
+instance eqSlotName :: Eq SlotName where eq = genericEq
+instance showSlotName :: Show SlotName where show = genericShow
 
 ------------------------------------------------------------------------------
 -- SlotIdAndRole

@@ -14,9 +14,12 @@ module Erl.Utils
        , exitMessageMapper
        , base64Encode
        , readTuple2
+       , whereis
+       , monotonicTime
        , Ref
        , ExitReason(..)
        , ExitMessage(..)
+       , MonotonicTime
        )
        where
 
@@ -50,6 +53,7 @@ foreign import data Ref :: Type
 foreign import selfImpl :: Effect Pid
 foreign import trapExitImpl :: Boolean -> Effect Boolean
 foreign import exitImpl :: Foreign -> Effect Unit
+foreign import whereisImpl :: Foreign -> Effect (Maybe Pid)
 foreign import mapExitReasonImpl :: Foreign -> ExitReason
 foreign import shutdownImpl :: Pid -> Effect Unit
 foreign import exitMessageMapperImpl :: Foreign -> Maybe ExitMessage
@@ -57,12 +61,17 @@ foreign import refToStringImpl :: Ref -> Foreign
 foreign import stringToRefImpl :: Foreign -> Maybe Ref
 foreign import monitorImpl :: Foreign -> Effect Unit
 foreign import linkImpl :: Pid -> Effect Unit
+foreign import monotonicTime :: Effect MonotonicTime
 
 data ExitReason = Normal
                 | Shutdown Foreign
                 | Other Foreign
 
 data ExitMessage = Exit Pid Foreign
+
+newtype MonotonicTime = MonotonicTime Int
+derive instance eqMonotonicTime :: Eq MonotonicTime
+
 
 sleep :: Milliseconds -> Effect Unit
 sleep = sleepImpl <<< Maybe.fromMaybe 0 <<<  Long.toInt <<< unwrap
@@ -112,6 +121,9 @@ foreign import readTuple2Impl :: Foreign -> Maybe (Tuple2 Foreign Foreign)
 
 readTuple2 :: Foreign -> F (Tuple2 Foreign Foreign)
 readTuple2 f = except $ note (singleton $ ForeignError "invalid tuple") $ readTuple2Impl f
+
+whereis :: Foreign -> Effect (Maybe Pid)
+whereis = whereisImpl
 
 mapExitReason :: Foreign -> ExitReason
 mapExitReason = mapExitReasonImpl

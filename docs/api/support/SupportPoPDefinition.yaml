@@ -1,0 +1,34 @@
+get:
+  summary: /support/popDefinition/
+  description: PoP definition description
+  tags:
+    - Support Api
+  responses:
+    '200':
+      description: OK
+      content:
+        application/json-ld:
+          schema:
+            type: object
+            properties:
+              neighbourMap:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    popName:
+                      type: string
+                    neighbours:
+                      type: array
+                      items:
+                        type: string
+              regions:
+                type: array
+                items:
+                $ref: '../schemas/Region.yaml'
+    '404':
+      description: Not Found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/Problem.yaml'

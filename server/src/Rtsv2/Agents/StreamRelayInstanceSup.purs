@@ -10,7 +10,7 @@ import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
 import Logger as Logger
 import Pinto as Pinto
-import Pinto.Sup (SupervisorChildType(..), SupervisorStrategy(..), buildChild, childId, childStart, childType)
+import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), SupervisorStrategy(..), buildChild, childId, childRestart, childStart, childType)
 import Pinto.Sup as Sup
 import Rtsv2.Agents.StreamRelayInstance (ParentCallbacks)
 import Rtsv2.Agents.StreamRelayInstance as StreamRelayInstance
@@ -33,6 +33,7 @@ init relayKey parentCallbacks payload stateServerName = do
               # childType Worker
               # childId "streamRelayAgentInstance"
               # childStart (StreamRelayInstance.startLink relayKey parentCallbacks payload) stateServerName
+              # childRestart Transient
           )
             : nil
         )

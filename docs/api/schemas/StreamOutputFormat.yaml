@@ -1,0 +1,6 @@
+items:
+  description: Stream Output format
+  oneOf:
+    - {type: string, description: WebRTCOutput, example: WebRTCOutput }
+    - {type: string, description: RtmpOutput, example: RtmpOutput }
+    - {type: string, description: HlsOutput, example: HlsOutput }

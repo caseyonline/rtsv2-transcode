@@ -118,7 +118,7 @@ initialise(#processor{config = #rtsv2_internal_hls_writer_config{collision_prote
                  worker_pid = start_worker_loop(VersionString, Auth)
                 },
 
-  {ok, State#state{next_sequence_number = 1}}.
+  {ok, State}.
 
 process_input(_, State = #state{ post_url = PostUrl, stream_ended = true}) ->
   ?INFO("Akamai writer for ~p ignoring input as stream ended", [ PostUrl ]),
@@ -131,16 +131,19 @@ process_input(#ts_stream_end_marker{}, State = #state{post_url = PostUrl }) ->
   {ok, NewState };
 
 process_input(#ts_segment_start_marker{start_pts = Pts,
-                                       start_source_timestamp = Timestamp}, State = #state{current_segment = undefined}) ->
+                                       start_source_timestamp = Timestamp,
+                                       sequence_number = SeqNumber}, State = #state{current_segment = undefined}) ->
+
   {ok, State#state{segment_start_pts = Pts,
                    segment_start_timestamp = Timestamp,
-                   current_segment = []}};
+                   current_segment = [],
+                   next_sequence_number = SeqNumber}};
 
-process_input(Marker = #ts_segment_start_marker{}, State) ->
+process_input(Marker = #ts_segment_start_marker{sequence_number = SeqNumber}, State) ->
 
   %% We never really expect this case - a start_marker is always either the first thing
   %% that we see (so file == undefined), or comes after an end marker (so file == undefined).
-  NewState = send_segment(Marker, State),
+  NewState = send_segment(Marker, State#state{next_sequence_number = SeqNumber}),
 
   process_input(Marker, NewState);
 
@@ -172,10 +175,13 @@ flush(State = #state { worker_pid = WorkerPid }) ->
   end.
 
 -spec ioctl(read_meter, term()) -> {ok, status(), term()}.
+ioctl(read_meter, State = #state{next_sequence_number = undefined}) ->
+  {ok, #status{}, State};
+
 ioctl(read_meter, State = #state{post_url = PostUrl,
-                                 next_sequence_number = NextSequenceNumber,
                                  directory_prefix = Prefix,
-                                 max_entries_per_directory = MaxEntriesPerDirectory
+                                 max_entries_per_directory = MaxEntriesPerDirectory,
+                                 next_sequence_number = NextSequenceNumber
                                 }) ->
 
   NextDirectoryNumber = NextSequenceNumber div MaxEntriesPerDirectory,
@@ -241,14 +247,13 @@ send_segment(EndPts, State = #state{post_url = PostUrl,
                           max_retry_attempts = 3
                          },
   WorkerPid !  SegmentJob,
-  setup_for_next_segment(PlaylistEntry, State).
+  setup_for_next_segment(State).
 
-setup_for_next_segment(PlaylistEntry, State) ->
+setup_for_next_segment(State) ->
   State#state{current_segment = undefined,
               segment_start_pts = undefined,
               segment_start_timestamp = undefined,
-              last_pts = undefined,
-              next_sequence_number = PlaylistEntry#playlist_entry.sequence_number + 1
+              last_pts = undefined
              }.
 
 send_current_playlist(#state { playlist = Playlist,
@@ -321,7 +326,7 @@ build_playlist_entry(EndPts, #state{directory_prefix = Prefix,
 
   DirectoryNumber = SequenceNumber div MaxEntriesPerDirectory,
 
-  ThisUrl = <<Prefix/binary, (integer_to_binary(DirectoryNumber))/binary, "/file", (integer_to_binary(SequenceNumber))/binary, ".ts">>,
+  ThisUrl = <<Prefix/binary, (integer_to_binary(DirectoryNumber))/binary, "/file_", (integer_to_binary(SequenceNumber))/binary, ".ts">>,
 
   PlaylistEntry = #playlist_entry{
                      url = ThisUrl,
@@ -426,7 +431,7 @@ do_posting_work(State = #worker_state {
                )
   of
     {ok, SuccessStatus, _, NewSpudPid} when SuccessStatus >= 200 andalso SuccessStatus =< 299 ->
-      if 
+      if
         Retries >= 1 -> ?INFO("Successful retry of ~p post to ~s (~p/~p)", [ JobType, Url, Retries+1, MaxRetries ]);
         ?otherwise -> ok
       end,

@@ -1,11 +1,10 @@
 module Rtsv2.Env
   ( hostname
-  , publicInterfaceName
-  , publicInterfaceIp
-  , supportInterfaceName
-  , supportInterfaceIp
-  , systemInterfaceName
-  , systemInterfaceIp
+  , publicListenIp
+  , supportListenIp
+  , systemListenIp
+  , intraSerfIp
+  , transSerfIp
   , isProxied
   ) where
 
@@ -18,9 +17,37 @@ import Os (getEnv)
 import Serf (Ip)
 import Shared.Utils (lazyCrashIfMissing)
 
+------------------------------------------------------------------------------
+-- API
+------------------------------------------------------------------------------
 hostname :: Effect String
 hostname = mandatoryOsEnv "HOSTNAME"
 
+publicListenIp :: Effect Ip
+publicListenIp = mandatoryInterfaceIp =<< publicInterfaceName
+
+supportListenIp :: Effect Ip
+supportListenIp = mandatoryInterfaceIp =<< supportInterfaceName
+
+systemListenIp :: Effect Ip
+systemListenIp = mandatoryInterfaceIp =<< systemInterfaceName
+
+intraSerfIp :: Effect Ip
+intraSerfIp = mandatoryInterfaceIp =<< intraSerfInterfaceName
+
+transSerfIp :: Effect Ip
+transSerfIp = mandatoryInterfaceIp =<< transSerfInterfaceName
+
+isProxied :: Effect Boolean
+isProxied = fromMaybe' (lazyCrashIfMissing ("Invalid isProxied environment variable")) <$> parse <$> mandatoryOsEnv "IS_PROXIED"
+  where
+    parse "true" = Just true
+    parse "false" = Just false
+    parse _ = Nothing
+
+------------------------------------------------------------------------------
+-- Internals
+------------------------------------------------------------------------------
 publicInterfaceName :: Effect String
 publicInterfaceName = mandatoryOsEnv "PUBLIC_IFACE"
 
@@ -30,21 +57,11 @@ supportInterfaceName = mandatoryOsEnv "SUPPORT_IFACE"
 systemInterfaceName :: Effect String
 systemInterfaceName = mandatoryOsEnv "SYSTEM_IFACE"
 
-publicInterfaceIp :: Effect Ip
-publicInterfaceIp = mandatoryInterfaceIp =<< publicInterfaceName
+intraSerfInterfaceName :: Effect String
+intraSerfInterfaceName = mandatoryOsEnv "INTRA_SERF_IFACE"
 
-supportInterfaceIp :: Effect Ip
-supportInterfaceIp = mandatoryInterfaceIp =<< supportInterfaceName
-
-systemInterfaceIp :: Effect Ip
-systemInterfaceIp = mandatoryInterfaceIp =<< systemInterfaceName
-
-isProxied :: Effect Boolean
-isProxied = fromMaybe' (lazyCrashIfMissing ("Invalid isProxied environment variable")) <$> parse <$> mandatoryOsEnv "IS_PROXIED"
-  where
-    parse "true" = Just true
-    parse "false" = Just false
-    parse _ = Nothing
+transSerfInterfaceName :: Effect String
+transSerfInterfaceName = mandatoryOsEnv "TRANS_SERF_IFACE"
 
 mandatoryOsEnv :: String -> Effect String
 mandatoryOsEnv env = do

@@ -11,7 +11,7 @@ import Helpers.Functions as F
 import Helpers.HTTP as HTTP
 import Helpers.Log (as, as')
 import Shared.Rtsv2.Types (CurrentLoad(..), CanaryState(..))
-import Test.Spec (SpecT, after_, before_, describe, it, itOnly)
+import Test.Spec (SpecT, after_, before_, describe, it)
 
 -------------------------------------------------------------------------------
 -- Main
@@ -19,7 +19,7 @@ import Test.Spec (SpecT, after_, before_, describe, it, itOnly)
 loadTests :: forall m. Monad m => SpecT Aff Unit m Unit
 loadTests = do
   describe "7 load" do
-    before_ (F.startSession nodes *> F.launch nodes) do
+    before_ (E.lookupPuppeteerEnv *> F.startSession nodes *> F.launch nodes) do
       after_ F.stopSession do
         loadTest1
 

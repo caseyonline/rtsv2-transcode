@@ -1,0 +1,302 @@
+= RTSv2 Media Gateway
+id3as <info@id3as.co.uk>
+v1.1, 2020-06-18
+:source-highlighter: rouge
+:toc:
+:icons: font
+
+== Purpose
+The `rtsv2-media-gateway` is the component of `rtsv2` responsible for delivering
+encrypted media content to viewers/listeners.
+
+It receives the media for a given slot, as a flow of RTP over UDP, from the stream relay in
+the same point-of-presence as the media gateway. When it receives media, it identifies subscribers,
+performs per viewer/listener encryption, and delivers it to the viewer/listener, as well as
+performing any patching of the RTP required for bitrate switching or fast primary/backup
+failover.
+
+The media gateway is implemented in a programming language called `rust`, which was chosen
+because it enables systems-level programming (giving us fine-grained control over the
+execution of the program) whilst having a strong emphasis on safety.
+
+== Configuration and Process Management
+`rtsv2` can work with the media gateway in one of three modes, `off`, `on`, and `external`.
+
+Which mode is in use is controlled by feature flags, which are principally configured in
+`rtsv2_core.config`, but can be overriden by later `sys.config` style configuration files.
+
+The standard `rtsv2_core.config` file contains the following section
+
+[source,erlang]
+----
+   , {featureFlags, #{ mediaGateway => <<"on">>
+                     }}
+----
+
+Which specifically configures the media gateway to be in `on` mode.
+
+If the media gateway is not disabled (via use of the `off` mode), then the `media_gateway_api.erl`
+module is responsible for communicating with the media gateway. Communication is via
+a custom protocol over a unix domain socket whose location depends on the specific
+mode the media gateway is in.
+
+=== Mode `off`
+
+`off` disables the media gateway entirely, and uses a pure Erlang implementation. The
+expectation is that this mode will likely be removed in the future.
+
+=== Mode `on`
+
+`on` is the standard mode for production deployment. In this mode, `rtsv2` itself will stop/start
+`rtsv2-media-gateway` as necessary.
+
+In this mode, the configuration parameters used by the media gateway are given to the media
+gateway by `rtsv2`.
+
+Of note, `rtsv2` specifies the receive queue count, transmit queue count, and
+transmit queue capacity. These values are derived from the `popDefinition.json` file:
+
+[source,json]
+----
+      "nodes": [ { "address": "172.16.171.1"
+                 , "maxCpuCapacity": 1000
+                 , "maxNetworkCapacity": 1000000     // <1>
+                 , "receiveQueueCount": 4            // <2>
+                 , "transmitQueueCount": 4           // <3>
+                 , "capabilityTags": []
+                 , "agents": ["TransPoP", "Ingest", "IngestAggregator", "StreamRelay", "Egest"]
+----
+<1> The transmit queue capacity is derived from the network capacity. Currently this
+is derived by taking 80% of the result of dividing the network capacity by the number
+of transmit queues (note that this is likely to change as a result of production benchmarking).
+This value is specified in *kilobits per second*.
+<2> The receive queue count is passed as-is to the media gateway.
+<3> The transmit queue count is passed as-is to the media gateway.
+
+It also redirects `stdout` and `stderr` to files so that they can be reviewed later.
+
+Finally, `rtsv2` tells the media gateway to put its control socket in a known location,
+rather than using its default location of `/tmp/rtsv2-media-gateway.sock`. This is done
+to enable development scenarios where it is desired to launch multiple instances of
+`rtsv2` on a single physical machine.
+
+For precise information about the setup of the media gateway from `rtsv2`, consult
+`media_gateway_api.erl` which is the Erlang module responsible for handling iteraction
+with the media gateway, and `runMediaGateway.sh` which is the shell script used by
+`media_gateway_api.erl` to launch the media gateway.
+
+
+
+=== Mode `external`
+
+`external` enables one to start the media gateway manually, and have `rtsv2` connect to
+it. This is primarily useful for development/debugging.
+
+In this mode, `media_gateway_api.erl` assumes that the control socket is in its *default*
+location, so the location must be left at the default when starting the media gateway.
+
+There are three ways that one might start the media gateway manually:
+1. From the source of the media gateway in the `oxidized` repository.
+2. From the source of `rtsv2` repository.
+3. From a released version of `rtsv2`.
+
+Each of which is covered further on.
+
+The media gateway supports `--help` and `--version` arguments which will show information
+about supported options, and the version of the media gateway (which
+is expressed as an abbreviated SHA-1 hash of the commit from which it was built, and the
+date of that commit).
+
+==== Running the media gateway from the media gateway source
+Firstly, ensure that `oxidized` is cloned, and that you've either entered a nix environment
+manually using `nix-shell`, or implicitly using `direnv`.
+
+Afterwards, one can run the media gateway as follows:
+
+[source,sh]
+----
+cargo run --release -p rtsv2-media-gateway -- --transmit-queue-capacity 425000000
+----
+
+NOTE: The transmit queue capacity here is specified in *bits per second*. Note that this
+is different to the `popDefinition.json` file which uses kilobits per second instead.
+
+Here we are using the `rust` build tool `cargo` to build and run the project
+`rtsv2-media-gateway` in release mode.
+
+Note the use of `--` to separate the parameters to cargo, from the parameters
+to the media gateway.
+
+==== Running the media gateway from the rtsv2 source
+Firstly, ensure that `rtsv2` is cloned, and that you've either entered a nix environment
+manually using `nix-shell`, or implicitly using `direnv`.
+
+Afterwards, one can run the media gateway as follows:
+
+[source,sh]
+----
+rtsv2-media-gateway --transmit-queue-capacity 425000000
+----
+
+NOTE: The transmit queue capacity here is specified in *bits per second*. Note that this
+is different to the `popDefinition.json` file which uses kilobits per second instead.
+
+The nix shell automatically brings in a correctly built release version of rtsv2-media-gateway
+and makes it available on the `PATH`.
+
+Note the use of `--` to separate the parameters to cargo, from the parameters
+to the media gateway.
+
+==== Running the media gateway from a release of rtsv2
+If given an extracted release tarball, the media gateway can be started as follows:
+
+[source,sh]
+----
+cd <path-to-extracted-tar-ball>
+cd crate-rtsv2-media-gateway-0.1.0/bin
+./rtsv2-media-gateway --transmit-queue-capacity 425000000
+----
+
+NOTE: The transmit queue capacity here is specified in *bits per second*. Note that this
+is different to the `popDefinition.json` file which uses kilobits per second instead.
+
+== Monitoring
+The media gateway is principally a black box controlled by `rtsv2`. That said, there are
+a few ways to monitor it.
+
+Firstly, metrics on individual viewers/listeners are sent by the media gateway back to `rtvs2`
+which are exposed via its prometheus endpoint.
+
+Secondly, logging information is written to `stdout` (which is redirected to a log file by
+the `on` mode of operation), and any process-level failure will result in output being written
+to `stderr` (which again, is redirected in `on` mode).
+
+Finally, the media gateway is its own operating system process with various named threads (one per
+transmit queue, one per receive queue, and a couple of control threads), which means typical
+process/thread monitoring of CPU and memory usage will work.
+
+== Load Testing with "Virtual" Clients
+
+A basic load/stress testing facility for the media gateway is built in to `rtsv2` in
+a module called `rtsv2_egest_stress_test`.
+
+To use the stress testing facility, the following process should be followed:
+
+1. Ensure that a working `rtsv2` system is running with media being ingested.
+2. Open the player for the media in a browser and ensure that the media is playing.
+3. Start a UDP sink for the virtual clients.
+4. Add virtual clients to the same node as the player.
+
+[IMPORTANT]
+.Player Lifetime
+====
+The player opened in 2. must be left running for the entire duration of the
+test. This is because the virtual sessions don't have any control-level state of their
+own, which means that without an external client keeping the egest alive, it will
+automatically shutdown after its time-out period, invalidating the test.
+====
+
+[WARNING]
+.Work in Progress
+====
+
+The stress test facility is a work in progress. We expect it to mature over the coming
+weeks.
+
+As implemented today, the stress test facility makes various assumptions that,
+if aren't true, will require changes to the code of the stress test
+to overcome.
+
+The first assumption it makes is that the UDP sink for the traffic generated by the
+stress test is running on `127.0.0.1:4242`.
+
+The second assumption it makes is that the slot used for testing has id `1`, e.g
+the corresponding player URL is something like `http://<node>/public/client/00000000-0000-0000-0000-000000000001/primary/player`.
+
+If either of those assumptions is untrue, the code of `rtsv2_egest_stress_test.erl`
+will require alteration.
+
+====
+
+=== Starting a UDP sink
+`oxidized` provides a simple UDP sink called `rtp-bench-receiver` which can be used
+for stress testing.
+
+If the `oxidized` repository is available on the test harness, one can simply run:
+
+[source,sh]
+----
+cargo run --release -p rtp-bench-receiver
+----
+
+NOTE: See the section on running `rtsv2-media-gateway` in external mode to ensure
+that you're in an appropriate environment for running `cargo run`.
+
+If `oxidized` isn't available on the test harness, then either another UDP sink will need
+to be used, or `rtsv2_egest_stress_test.erl` will need modifying to send the UDP traffic
+to a node which does have `oxidized` available.
+
+
+=== Adding virtual clients
+To add virtual clients, first connect to the same Erlang node that the player was started
+from.
+
+That done, we can interact with the Erlang node.
+
+We need to ask the Erlang node, to make the stress testing facility available, that is done
+by loading its module:
+
+[source,erlang]
+----
+1> l(rtsv2_egest_stress_test).
+{module,rtsv2_egest_stress_test}
+2>
+----
+
+Loading the module gives us tab completion for the functions contained within.
+
+Now we can add test audio/video clients:
+
+[source,erlang]
+----
+2> rtsv2_egest_stress_test:start_test_clients(1, 100).
+ok
+3>
+----
+
+This command will start clients starting from client id 1, to client 100, inclusive.
+
+To be sure the clients got added successfully, we can consult the log file for the media
+gateway which shows clients being added/removed.
+
+NOTE: When adding lots of clients at the same time, the media gateway may log
+that some log message have been dropped due to queue overload. This is expected
+behavior.
+
+A second batch of clients can be added by adjusting the client id range:
+
+[source,erlang]
+----
+3> rtsv2_egest_stress_test:start_test_clients(101, 200).
+ok
+4>
+----
+
+NOTE: If subsequent id ranges intersect with prior ones, then the clients for the intersection
+won't be added, and log entries will be generated in the media gateway's log.
+
+The `rtp-bench-receiver` UDP sink will report traffic every five seconds and can be
+used to get a rough indication of whether things are working as expected. `iftop` gives
+a more accurate indication.
+
+A rough process for tuning transmit queue capacity would be:
+
+- Choose a starting value for the capacity (somewhere around 500Mbit per core is likely a good starting point, revising downwards or upwards from there as appropriate)
+- Start the media gateway with that capacity
+- Add sufficient load to get close to max capacity for a single transmit queue, e.g. if the
+queue capacity is 500Mbit, and the stream is 1Mbit, 499 clients will be scheduled on to a single transmit queue (our scheduling is conservative), so ~ 497 virtual clients should leave room for the two browser clients used by the test.
+- Observe CPU usage over a period of time to make sure that CPU usage spikes aren't excessive (prolonged usage over 90%).
+- Start a player in the browser to be sure that latency between the two browser players is acceptable and playback is
+still smooth.
+
+

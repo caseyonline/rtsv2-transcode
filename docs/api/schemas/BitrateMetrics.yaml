@@ -1,0 +1,22 @@
+type: object
+properties:
+  windowSize:
+    type: integer
+    example: 1080
+  notificationFrequency:
+    type: integer
+    description: Notification frequency
+  perStreamMetrics:
+    description: list of stream metrics
+    type: array
+    items:
+      type: object
+      properties:
+        frameCount:
+          type: integer
+        packetsPerSecond:
+          type: number
+        bitrate:
+          type: integer
+        averagePacketSize:
+          type: number

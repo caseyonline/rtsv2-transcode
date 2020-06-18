@@ -1,0 +1,54 @@
+type: object
+properties:
+  audio:
+    type: object
+    properties:
+      codecId:
+        $ref: "./RtmpAudioCodecId.yaml"
+      dataRate:
+        type: number
+      sampleRate:
+        type: integer
+      sampleSize:
+        type: integer
+      stereo:
+        type: boolean
+      device:
+        type: string
+      channels:
+        type: integer
+      inputVolume:
+        type: number
+  video:
+    type: object
+    properties:
+      codecId:
+        $ref: "./RtmpVideoCodecId.yaml"
+      dataRate:
+        type: number
+      sampleRate:
+        type: integer
+      sampleSize:
+        type: integer
+      stereo:
+        type: boolean
+      device:
+        type: string
+      channels:
+        type: int
+      inputVolume :
+        type: number
+
+  duration:
+    type: number
+  encoder:
+    type: string
+  filesize:
+    type: number
+  other:
+    type: object
+    properties:
+      name:
+        type: string
+      value:
+        $ref: "./RtmpClientMetadataValue.yaml"

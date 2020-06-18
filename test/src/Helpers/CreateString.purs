@@ -1,11 +1,12 @@
 module Helpers.CreateString where
 
+import Data.Maybe
 import Prelude
 
 import Data.Array (catMaybes, filter, intercalate)
 import Data.Map as Map
-import Data.Maybe
 import Data.Newtype (unwrap)
+import Debug.Trace (spy)
 import Effect (Effect)
 import Effect.Unsafe (unsafePerformEffect)
 import Helpers.Types (Node(..), NodeAddress(..), PoPInfo)

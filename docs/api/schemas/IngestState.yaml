@@ -1,0 +1,14 @@
+type: object
+properties:
+  ingestStartedTime:
+    type: interger
+    example: 65038269
+  remoteAddress:
+    type: string
+  remotePort:
+    type: interger
+    example: 3001
+  rtmpClientMetadata:
+    $ref: "./RtmpClientMetadata.yaml"
+  sourceInfo:
+    $ref: "./SourceInfo.yaml"

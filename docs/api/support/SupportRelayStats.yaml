@@ -1,0 +1,37 @@
+get:
+  summary: /support/relay/{slotId}/{slotRole}
+  description: PoP definition shit
+  tags:
+    - Support Api
+  responses:
+    '200':
+      description: OK
+      content:
+        application/json-ld:
+          schema:
+            type: object
+            properties:
+              role:
+                $ref: '../parameters/slotRole.yaml'
+              egestsServed:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    address:
+                      type: string
+              relaysServed:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    port:
+                      type: interger
+                    server:
+                      type: string
+    '404':
+      description: Not Found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/Problem.yaml'

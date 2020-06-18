@@ -9,7 +9,7 @@ import Prelude
 import Effect (Effect)
 import Erl.Data.List (nil, (:))
 import Pinto as Pinto
-import Pinto.Sup (SupervisorChildType(..), SupervisorSpec, SupervisorStrategy(..))
+import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), SupervisorSpec, SupervisorStrategy(..))
 import Pinto.Sup as Sup
 import Rtsv2.Agents.IngestAggregatorInstance (CreateAggregatorPayload, ParentCallbacks)
 import Rtsv2.Agents.IngestAggregatorInstance as IngestAggregatorInstance
@@ -32,5 +32,6 @@ init aggregatorKey parentCallbacks payload stateServerName = do
         # Sup.childType Worker
         # Sup.childId "ingestAggregatorInstance"
         # Sup.childStart (IngestAggregatorInstance.startLink aggregatorKey parentCallbacks payload) stateServerName
+        # Sup.childRestart Transient
       )
       : nil

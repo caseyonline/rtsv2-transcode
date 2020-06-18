@@ -1,0 +1,49 @@
+get:
+  summary: /support/vm/metrics/
+  description: VM support metrics description
+  tags:
+    - Support Api
+  parameters:
+    - $ref: '../parameters/shortName.yaml'
+    - $ref: '../parameters/streamName.yaml'
+  responses:
+    '200':
+      description: OK
+      content:
+        application/openmetrics-text:
+          type: text
+          example: |
+            # TYPE process_open_fds gauge
+            # HELP process_open_fds Number of open file descriptors.
+            process_open_fds 276
+            # TYPE process_max_fds gauge
+            # HELP process_max_fds Maximum number of open file descriptors.
+            process_max_fds 256
+            # TYPE process_start_time_seconds gauge
+            # HELP process_start_time_seconds Start time of the process since unix epoch in seconds.
+            process_start_time_seconds 1592467903
+            # TYPE process_uptime_seconds counter
+            # HELP process_uptime_seconds Process uptime in seconds.
+            process_uptime_seconds 6445
+            # TYPE process_threads_total gauge
+            # HELP process_threads_total Process Threads count.
+            process_threads_total 48
+            # TYPE process_virtual_memory_bytes gauge
+            # HELP process_virtual_memory_bytes Virtual memory size in bytes.
+            process_virtual_memory_bytes 6124429312
+            # TYPE process_resident_memory_bytes gauge
+            # HELP process_resident_memory_bytes Resident memory size in bytes.
+            process_resident_memory_bytes 91877376
+            # TYPE process_cpu_seconds_total counter
+            # HELP process_cpu_seconds_total Process CPU seconds total.
+            process_cpu_seconds_total{kind="utime"} 79.474185
+            process_cpu_seconds_total{kind="stime"} 61.652351
+            # TYPE process_max_resident_memory_bytes gauge
+            # HELP process_max_resident_memory_bytes Maximum resident set size used.
+
+    '404':
+      description: Not Found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/Problem.yaml'

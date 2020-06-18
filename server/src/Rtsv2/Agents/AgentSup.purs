@@ -16,6 +16,7 @@ import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.StreamRelaySup as StreamRelaySup
 import Rtsv2.Agents.TransPoP as TransPoP
 import Rtsv2.Config as Config
+import Rtsv2.LlnwApi as LlnwApi
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Types (AgentSupStartArgs)
@@ -73,6 +74,7 @@ init {canaryState, acceptingRequestsFun} = do
                                                            , announceAggregatorStopped: TransPoP.announceAggregatorStopped
                                                            , handleRemoteLeaderAnnouncement: TransPoP.handleRemoteLeaderAnnouncement
                                                            }
+                                            , llnwApiRecordSlotLookupApi: LlnwApi.recordSlotLookup
                                             , canaryState
                                             , acceptingRequestsFun
                                             }

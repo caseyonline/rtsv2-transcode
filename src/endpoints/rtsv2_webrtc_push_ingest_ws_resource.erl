@@ -41,6 +41,7 @@
         , protocol :: {webRTC} | {rtmp}
         , slot_id :: slot_id()
         , slot_role :: slot_role()
+        , slot_profile :: llnw_slot_profile()
         , profile_name :: profile_name()
         , username :: binary()
         }).
@@ -60,7 +61,6 @@
         , authentication_response :: #authentication_response{}
         , webrtc_session_pid :: pid()
         , webrtc_session_ref :: reference()
-        , workflow_pid :: pid()
         , stop_stream :: fun()
         , source_info :: fun()
         }).
@@ -105,10 +105,8 @@ init(Req, #{ authenticate := Authenticate }) ->
                         }
   }.
 
-terminate(_Reason, _PartialReq, #?state_ingesting{ webrtc_session_pid = SessionPid
-                                                 , workflow_pid = WorkflowPid }) ->
+terminate(_Reason, _PartialReq, #?state_ingesting{ webrtc_session_pid = SessionPid }) ->
   gen_server:stop(SessionPid),
-  id3as_workflow:stop(WorkflowPid),
   ok;
 
 terminate(_Reason, _PartialReq, _State) ->
@@ -278,6 +276,7 @@ handle_authenticate(#{ <<"username">> := Username
                                 , role := SlotRole
                                 }
             , profileName := ProfileName
+            , slotProfile := SlotProfile
             , startStream := StartStream
             , dataObjectSendMessage := SendMessage
             , dataObjectUpdate := ObjectUpdate
@@ -295,6 +294,7 @@ handle_authenticate(#{ <<"username">> := Username
                              , authentication_response = #authentication_response{ username = Username
                                                                                  , slot_id = SlotId
                                                                                  , slot_role = SlotRole
+                                                                                 , slot_profile = SlotProfile
                                                                                  , profile_name = ProfileName
                                                                                  , protocol = PursProtocol
                                                                                  , start_stream = StartStream
@@ -330,6 +330,7 @@ handle_start_ingest(#{ }, State = #?state_authenticated{ stream_desc =
                                                        , authentication_response =
                                                            AuthenticationResponse = #authentication_response{ slot_id = SlotId
                                                                                                             , slot_role = SlotRole
+                                                                                                            , slot_profile = SlotProfile
                                                                                                             , profile_name = ProfileName
                                                                                                             , start_stream = {just, StartStreamFn}
                                                                                                             , protocol = {webRTC}
@@ -339,13 +340,12 @@ handle_start_ingest(#{ }, State = #?state_authenticated{ stream_desc =
   case StartStreamFn() of
 
     {just, #{ sourceInfo := SourceInfoFn
-            , stopStream := StopStreamFn
-            , workflowPid := WorkflowPid}} ->
+            , stopStream := StopStreamFn}} ->
 
       {ok, Pid} = webrtc_session:start_link(TraceId,
                                             PublicIPString,
                                             rtsv2_webrtc_push_ingest_handler,
-                                            [ SlotId, SlotRole, ProfileName ]
+                                            [ SlotId, SlotRole, ProfileName, SlotProfile ]
                                            ),
       webrtc_session:subscribe_for_msgs(TraceId, [#webrtc_session_response{}]),
 
@@ -360,7 +360,6 @@ handle_start_ingest(#{ }, State = #?state_authenticated{ stream_desc =
                          , source_info = SourceInfoFn
                          , stop_stream = StopStreamFn
                          , webrtc_session_pid = Pid
-                         , workflow_pid = WorkflowPid
                          , webrtc_session_ref = NewRTCSessionRef
                          }
       };
@@ -377,13 +376,11 @@ handle_start_ingest(_, State) ->
   }.
 
 handle_stop_ingest(_, _State = #?state_ingesting{ webrtc_session_pid = SessionPid
-                                                , workflow_pid = WorkflowPid
                                                 , stop_stream = StopStreamFn
                                                 , stream_desc = StreamDesc
                                                 , authentication_response = AuthenticationResponse
                                                 }) ->
   gen_server:stop(SessionPid),
-  id3as_workflow:stop(WorkflowPid),
   StopStreamFn(),
 
   { [ json_frame( <<"ingest-stopped">>,

@@ -45,7 +45,6 @@
         , path :: binary_string()
         , stream_desc :: stream_desc_ingest() | stream_desc_egest()
         , server_id :: term()
-
         , ice_servers :: list(map())
         }).
 
@@ -233,7 +232,7 @@ valid_host(ValidationUrl, UrlWhitelist) ->
 
 init_prime(Req, StreamDesc, Validation) ->
 
-  %% Needs to come from config!
+  %% TODO Needs to come from config!
   PublicIP = this_server_ip(Req),
   CookieDomainName = PublicIP,
   ServerId = 1,
@@ -502,7 +501,12 @@ websocket_info({egestDataObjectBroadcast, Object}, State) ->
   , State
   };
 
-websocket_info({egestCurrentActiveProfiles, ActiveProfiles}, State) ->
+websocket_info({egestCurrentActiveProfiles, ActiveProfiles}, State = #?state_running{ server_id = ServerId
+                                                                                    , webrtc_session_id = WebRTCSessionId
+                                                                                    }) ->
+
+  ok = rtsv2_webrtc_session_handler:set_active_profiles(ServerId, WebRTCSessionId, ActiveProfiles),
+
   { [ json_frame( <<"active-profiles">>,
                   #{ <<"activeProfiles">> => ActiveProfiles
                    }
@@ -612,6 +616,9 @@ websocket_handle({ text, JSON }, State) ->
 
         <<"set-quality-constraint-configuration">> ->
           handle_set_quality_constraint_configuration(Message, State);
+
+        <<"set-quality">> ->
+          handle_set_quality(Message, State);
 
         <<"dataobject.send-message">> ->
           handle_data_object_send_message(Message, State);
@@ -816,22 +823,27 @@ transition_to_running(#{ profiles := [ #{ profileName := ActiveProfileName } | _
                                           }
                      ) ->
 
-  StartOptions = construct_start_options(TraceId, WebRTCSessionId, PublicIPString, SlotConfiguration, StreamDesc),
+  ActiveProfileNames =
+    case StreamDesc of
+      #stream_desc_egest{ egest_key = EgestKey
+                        , add_client = AddClient
+                        , slot_id = SlotId
+                        , slot_role = SlotRole
+                        } ->
+
+        ?I_SUBSCRIBE_BUS_MSGS({egestBus, {egestKey, SlotId, SlotRole}}),
+        ?I_SUBSCRIBE_BUS_MSGS({media_gateway_event, trace_id_to_media_gateway_id(TraceId)}),
+        {right, TheActiveProfiles} = (AddClient(self(), EgestKey, WebRTCSessionId))(),
+        TheActiveProfiles;
+      _ ->
+        []
+    end,
+
+  StartOptions = construct_start_options(TraceId, WebRTCSessionId, PublicIPString, SlotConfiguration, StreamDesc, ActiveProfileNames),
   webrtc_stream_server:ensure_session(ServerId, WebRTCSessionId, StartOptions),
   webrtc_stream_server:subscribe_for_msgs(WebRTCSessionId, #subscription_options{}),
-  case StreamDesc of
-    #stream_desc_egest{ egest_key = EgestKey
-                      , add_client = AddClient
-                      , slot_id = SlotId
-                      , slot_role = SlotRole
-                      } ->
 
-      ?I_SUBSCRIBE_BUS_MSGS({egestBus, {egestKey, SlotId, SlotRole}}),
-      ?I_SUBSCRIBE_BUS_MSGS({media_gateway_event, trace_id_to_media_gateway_id(TraceId)}),
-      {right, unit} = (AddClient(self(), EgestKey, WebRTCSessionId))();
-    _ ->
-      ok
-  end,
+
 
   NewState =
     #?state_running{ trace_id = TraceId
@@ -970,9 +982,24 @@ handle_ice_gathering_done(_Message, State) ->
   }.
 
 
-handle_set_quality_constraint_configuration(#{ <<"configuration">> := #{ <<"behavior">> := _Behavior, <<"variant">> := Variant } }, #?state_running{ server_id = ServerId, webrtc_session_id = WebRTCSessionId } = State) ->
-  %% TODO: PS: logging, actual abr
+handle_set_quality(#{ <<"variant">> := Variant }, #?state_running{ server_id = ServerId, webrtc_session_id = WebRTCSessionId } = State) ->
   rtsv2_webrtc_session_handler:set_active_profile(ServerId, WebRTCSessionId, Variant),
+  { []
+  , State
+  , hibernate
+  }.
+
+
+handle_set_quality_constraint_configuration(#{ <<"configuration">> := #{ <<"behavior">> := BehaviourString, <<"variant">> := Variant } }, #?state_running{ server_id = ServerId, webrtc_session_id = WebRTCSessionId } = State) ->
+  Behaviour =
+    case BehaviourString of
+      <<"force-quality">> ->
+        force_quality;
+      <<"max-quality">> ->
+        max_quality
+    end,
+
+  rtsv2_webrtc_session_handler:set_quality_constraint(ServerId, WebRTCSessionId, Behaviour, Variant),
   { []
   , State
   , hibernate
@@ -1167,7 +1194,8 @@ construct_start_options(TraceId,
                         WebRTCSessionId,
                         IP,
                         #{ profiles := [ SlotProfile ] = SlotProfiles, audioOnly := AudioOnly  },
-                        #stream_desc_ingest{ slot_id = SlotId, slot_role = SlotRole, use_media_gateway = UseMediaGateway }
+                        #stream_desc_ingest{ slot_id = SlotId, slot_role = SlotRole, use_media_gateway = UseMediaGateway },
+                        ActiveProfileNames
                        ) ->
 
   #{ firstAudioSSRC := AudioSSRC
@@ -1184,6 +1212,7 @@ construct_start_options(TraceId,
                                            , slot_id = SlotId
                                            , slot_role = SlotRole
                                            , profiles = SlotProfiles
+                                           , active_profile_names = ActiveProfileNames
                                            , audio_only = AudioOnly
                                            , web_socket = self()
                                            , audio_ssrc = AudioSSRC
@@ -1222,7 +1251,8 @@ construct_start_options(TraceId,
                                           , audio_ssrc = AudioSSRC
                                           , video_ssrc = VideoSSRC
                                           , use_media_gateway = UseMediaGateway
-                                          }
+                                          },
+                        ActiveProfileNames
                        ) ->
 
   #{ session_id => WebRTCSessionId
@@ -1235,6 +1265,7 @@ construct_start_options(TraceId,
                                            , slot_id = SlotId
                                            , slot_role = SlotRole
                                            , profiles = SlotProfiles
+                                           , active_profile_names = ActiveProfileNames
                                            , audio_only = AudioOnly
                                            , web_socket = self()
                                            , audio_ssrc = AudioSSRC

@@ -1,0 +1,3 @@
+oneOf:
+  - {type: string, description: live, example: live }
+  - {type: string, description: canary, example: canary }

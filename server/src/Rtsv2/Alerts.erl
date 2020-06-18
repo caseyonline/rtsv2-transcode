@@ -5,7 +5,7 @@
 
 mapForeign(LogEvent = #{meta := #{ time := Time
                                  , pid := Pid }}) ->
-io:format(user, "HERE ~p~n", [LogEvent]),
+
   #{ initialReport => Time div 1000
    , lastReport => Time div 1000
    , repeatCount => 0
@@ -15,10 +15,42 @@ io:format(user, "HERE ~p~n", [LogEvent]),
    , pid => list_to_binary(pid_to_list(Pid))
    }.
 
-mapToAlert(_LogEvent = #{meta := #{ alertId := ingestStarted } } ) ->
+mapToAlert(_LogEvent = #{ meta := #{ alertId := ingestStarted } } ) ->
   {ingestStarted};
 
-mapToAlert(_LogEvent = #{ meta := #{ alertId := invalidVideoFormat }
+
+mapToAlert(_LogEvent = #{ meta := #{ alertId := ingestWarning
+                                   , reason := bitrateExceeded
+                                   , bitrateType := BitrateType
+                                   , watermarkExceeded := WatermarkType }
+                        , msg := {report, #{ value := Value
+                                           , threshold := Watermark }}
+                        } ) ->
+  {ingestWarning, {bitrateExceeded, #{ bitrateType => case BitrateType of
+                                                        average -> {average};
+                                                        peak -> {peak}
+                                                      end
+                                     , watermarkType => case WatermarkType of
+                                                          high -> {high};
+                                                          low -> {low}
+                                                        end
+                                     , value => Value
+                                     , threshold => Watermark }}};
+
+mapToAlert(_LogEvent = #{ meta := #{ alertId := ingestFailed
+                                   , reason := videoReceivedOnAudioOnlyProfile } }) ->
+  {ingestFailed, {videoReceivedOnAudioOnlyProfile}};
+
+mapToAlert(_LogEvent = #{ meta := #{ alertId := ingestFailed
+                                   , reason := noAudioReceived } }) ->
+  {ingestFailed, {noAudioReceived}};
+
+mapToAlert(_LogEvent = #{ meta := #{ alertId := ingestFailed
+                                   , reason := noVideoReceived } }) ->
+  {ingestFailed, {noVideoReceived}};
+
+mapToAlert(_LogEvent = #{ meta := #{ alertId := ingestFailed
+                                   , reason := invalidVideoFormat }
                         , msg := {_FormatString, [CodecId]}} ) ->
   {ingestFailed, {invalidVideoCodec, CodecId}};
 

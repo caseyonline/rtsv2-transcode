@@ -35,9 +35,10 @@ import Logger as Logger
 import Partial.Unsafe (unsafePartial)
 import Rtsv2.Agents.IngestSup as IngestSup
 import Rtsv2.Handler.MimeType as MimeType
+import Rtsv2.Utils (crashIfLeft)
 import Shared.Rtsv2.LlnwApiTypes (AuthType, HlsPushProtocol(..), HlsPushSpecFormat(..), PublishCredentials, SlotLookupResult, SlotPublishAuthType(..), StreamAuth, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamOutputFormat(..), StreamPublish)
 import Shared.Rtsv2.Router.Endpoint.System as System
-import Shared.Rtsv2.Stream (RtmpShortName, SlotRole(..))
+import Shared.Rtsv2.Stream (RtmpShortName, SlotName, SlotRole(..))
 import Shared.UUID (fromString)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (class ReadForeign, class WriteForeign, readJSON, writeJSON)
@@ -71,11 +72,12 @@ type SlotDbEntry =
 
 db :: List SlotDbEntry
 db =
-  mmddev001_slot1_Primary_Any
+    mmddev001_slot1_Primary_Any
   : mmddev001_slot1_Backup_Rtmp
   : mmddev001_slot1ao_Primary_Any
   : mmddev002_slot2_Primary_Any
   : mmddev003_slot1_Primary_Any
+  : mmddev004_slot4_Primary_Rtmp
   : nil
 
   where
@@ -88,17 +90,18 @@ db =
               , password: "password" }
       , details: { role: Primary
                  , slot : { id: wrap $ fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000001")
-                          , name: "slot1"
+                          , name: wrap "slot1"
                           , subscribeValidation: false
-                          , profiles: [ wrap { name: wrap "high",
-                                               rtmpStreamName: wrap "slot1_1000",
-                                               bitrate: 1000000}
-                                      , wrap { name: wrap "low",
-                                               rtmpStreamName: wrap "slot1_500",
-                                               bitrate: 500000}
+                          , profiles: [ wrap { name: wrap "high"
+                                             , rtmpStreamName: wrap "slot1_1000"
+                                             , audioBitrate: 64000
+                                             , videoBitrate: 936000 }
+                                      , wrap { name: wrap "low"
+                                             , rtmpStreamName: wrap "slot1_500"
+                                             , audioBitrate: 64000
+                                             , videoBitrate: 436000 }
                                       ]
                           , outputFormats : [ HlsOutput ]
-                          , audioOnly : false
                           }
                  , push : [
                     { protocol: HttpPut
@@ -125,17 +128,18 @@ db =
               , password: "password" }
       , details: { role: Backup
                  , slot : { id: wrap $ fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000001")
-                          , name: "slot1b"
+                          , name: wrap "slot1b"
                           , subscribeValidation: false
-                          , profiles: [ wrap { name: wrap "high",
-                                               rtmpStreamName: wrap "slot1b_1000",
-                                               bitrate: 1000000}
-                                      , wrap { name: wrap "low",
-                                               rtmpStreamName: wrap "slot1b_500",
-                                               bitrate: 500000}
+                          , profiles: [ wrap { name: wrap "high"
+                                             , rtmpStreamName: wrap "slot1b_1000"
+                                             , audioBitrate: 64000
+                                             , videoBitrate: 936000 }
+                                      , wrap { name: wrap "low"
+                                             , rtmpStreamName: wrap "slot1b_500"
+                                             , audioBitrate: 64000
+                                             , videoBitrate: 436000 }
                                       ]
                           , outputFormats : []
-                          , audioOnly : false
                           }
                  , push : []
                  }
@@ -150,17 +154,18 @@ db =
               , password: "password" }
       , details: { role: Primary
                  , slot : { id: wrap $ fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000003")
-                          , name: "slot1"
+                          , name: wrap "slot1"
                           , subscribeValidation: true
-                          , profiles: [ wrap { name: wrap "high",
-                                               rtmpStreamName: wrap "slot1_1000",
-                                               bitrate: 1000000}
-                                      , wrap { name: wrap "low",
-                                               rtmpStreamName: wrap "slot1_500",
-                                               bitrate: 500000}
+                          , profiles: [ wrap { name: wrap "high"
+                                             , rtmpStreamName: wrap "slot1_1000"
+                                             , audioBitrate: 64000
+                                             , videoBitrate: 936000 }
+                                      , wrap { name: wrap "low"
+                                             , rtmpStreamName: wrap "slot1_500"
+                                             , audioBitrate: 64000
+                                             , videoBitrate: 436000 }
                                       ]
                           , outputFormats : [ HlsOutput ]
-                          , audioOnly : false
                           }
                  , push : [
                     { protocol: HttpPut
@@ -187,17 +192,18 @@ db =
               , password: "password" }
       , details: { role: Primary
                  , slot : { id: wrap $ fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000004")
-                          , name: "slot1ao"
+                          , name: wrap "slot1ao"
                           , subscribeValidation: false
-                          , profiles: [ wrap { name: wrap "high",
-                                               rtmpStreamName: wrap "slot1ao_1000",
-                                               bitrate: 1000000}
-                                      , wrap { name: wrap "low",
-                                               rtmpStreamName: wrap "slot1ao_500",
-                                               bitrate: 500000}
+                          , profiles: [ wrap { name: wrap "high"
+                                             , rtmpStreamName: wrap "slot1ao_1000"
+                                             , audioBitrate: 64000
+                                             , videoBitrate: 0 }
+                                      , wrap { name: wrap "low"
+                                             , rtmpStreamName: wrap "slot1ao_500"
+                                             , audioBitrate: 64000
+                                             , videoBitrate: 0 }
                                       ]
                           , outputFormats : [ HlsOutput ]
-                          , audioOnly : true
                           }
                  , push : [
                     { protocol: HttpPut
@@ -224,17 +230,48 @@ db =
               , password: "password" }
       , details: { role: Primary
                  , slot : { id: wrap $ fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000002")
-                          , name: "slot2"
+                          , name: wrap "slot2"
                           , subscribeValidation: false
-                          , profiles: [ wrap { name: wrap "high",
-                                               rtmpStreamName: wrap "slot1_1000",
-                                               bitrate: 1000000}
-                                      , wrap { name: wrap "low",
-                                               rtmpStreamName: wrap "slot1_500",
-                                               bitrate: 500000}
+                          , profiles: [ wrap { name: wrap "high"
+                                             , rtmpStreamName: wrap "slot1_1000"
+                                             , audioBitrate: 64000
+                                             , videoBitrate: 936000 }
+                                      , wrap { name: wrap "low"
+                                             , rtmpStreamName: wrap "slot1_500"
+                                             , audioBitrate: 64000
+                                             , videoBitrate: 436000 }
                                       ]
                           , outputFormats : []
-                          , audioOnly : false
+                          }
+                 , push : []
+                 }
+      }
+
+    mmddev004_slot4_Primary_Rtmp =
+      { auth: { host: AnyHost --"172.16.171.5"
+              , protocol: AnyProtocol
+              , rtmpShortName: wrap "mmddev004"
+              , authType: Adobe
+              , username: "user"
+              , password: "password" }
+      , details: { role: Primary
+                 , slot : { id: wrap $ fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000004")
+                          , name: wrap "slot4"
+                          , subscribeValidation: false
+                          , profiles: [ wrap { name: wrap "high"
+                                             , rtmpStreamName: wrap "slot4_1500"
+                                             , audioBitrate: 64000
+                                             , videoBitrate: 1436000 }
+                                      , wrap { name: wrap "medium"
+                                             , rtmpStreamName: wrap "slot4_1000"
+                                             , audioBitrate: 64000
+                                             , videoBitrate: 936000 }
+                                      , wrap { name: wrap "low"
+                                             , rtmpStreamName: wrap "slot4_500"
+                                             , audioBitrate: 64000
+                                             , videoBitrate: 436000 }
+                                      ]
+                          , outputFormats : []
                           }
                  , push : []
                  }
@@ -303,9 +340,8 @@ streamPublish =
       # head
       <#> _.details
 
-
-slotLookup :: String -> String -> StetsonHandler Unit
-slotLookup accountName streamName =
+slotLookup :: RtmpShortName -> SlotName -> StetsonHandler Unit
+slotLookup accountName slotName =
   Rest.handler (\req -> Rest.initResult req unit)
   # Rest.resourceExists (\req state -> Rest.result (isJust matchingEntry) req state)
   # Rest.contentTypesProvided (\req state -> Rest.result (MimeType.json jsonHandler : nil) req unit)
@@ -324,8 +360,8 @@ slotLookup accountName streamName =
       filter isMatchingEntry db # head
 
     isMatchingEntry entry =
-      (unwrap entry.auth.rtmpShortName) == accountName
-      && entry.details.slot.name == streamName
+      (entry.auth.rtmpShortName == accountName)
+      && (entry.details.slot.name == slotName)
 
 type PostHelper a b = StetsonHandler { payload :: Maybe a
                                      , output :: Maybe b
@@ -395,7 +431,7 @@ hlsPush path =
   acceptPut req state = do
     body <- allBody req mempty
     let fname = "/tmp/rtsv2_hls/" <> joinWith "/" path
-    _ <- FileLib.ensureDir fname
+    crashIfLeft =<< FileLib.ensureDir fname
     File.writeFile fname (IOData.fromBinary body) >>=
       either (const $ logInfo "Failed to write" {path : joinWith "/" path}) (const $ pure unit)
     Rest.result true req state

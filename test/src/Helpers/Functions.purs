@@ -127,6 +127,12 @@ startSlotHigh1000 ip = do
   runProc "./scripts/run_slot1_1000.sh" [ip]
   delay (Milliseconds 5000.0)
 
+
+startSlotLow500 :: String -> Aff Unit
+startSlotLow500 ip = do
+  runProc "./scripts/run_slot1_500.sh" [ip]
+  delay (Milliseconds 5000.0)
+
 start2SlotHigh1000 :: String -> Aff Unit
 start2SlotHigh1000 ip = do
   runProc "./scripts/run2_slot1_1000.sh" [ip]
@@ -211,7 +217,7 @@ makePoPInfo n i = {name: n, number: i, x: 0.0, y: 0.0}
 storeSlotState :: forall e a v. Applicative a => Bind a => MonadState (Map.Map String v) a => Either e v -> a (Either e v)
 storeSlotState either@(Left _) = pure either
 storeSlotState either@(Right slotState) = do
-  _ <- modify (Map.insert "slotState" slotState)
+  void $ modify (Map.insert "slotState" slotState)
   pure either
 
 canonicaliseSlotState :: PublicState.SlotState Array -> PublicState.SlotState Array
@@ -286,7 +292,7 @@ storeHeader header key either@(Left _) = pure either
 storeHeader header key either@(Right {headers}) = do
   let
     value = fromMaybe "unknown" $ Object.lookup header headers
-  _ <- modify (Map.insert key value)
+  void $ modify (Map.insert key value)
   pure either
 
 

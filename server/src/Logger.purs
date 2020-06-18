@@ -74,9 +74,9 @@ foreign import addLoggerContext :: LoggingContext -> Effect Unit
 
 spy :: forall a. SpyWarning => String -> a -> a
 spy str a = unsafePerformEffect do
-  _ <-  spyImpl { domain: singleton $ atom "spy"
-                , "type": Trace
-                , text: str} {spydata: a}
+  spyImpl { domain: singleton $ atom "spy"
+          , "type": Trace
+          , text: str} {spydata: a}
   pure a
 
 traceMetadata :: List Atom -> String -> BasicMetadata

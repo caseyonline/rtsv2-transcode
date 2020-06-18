@@ -50,7 +50,7 @@ create_net
 
 # To do at-scale tests with rtsv2-media-gateway, it's necessary
 # to have a lot of a file-handles available
-ulimit -n $(ulimit -H -n) || true
+ulimit -n $(ulimit -H -n) 2>/dev/null || true
 
 tmux -L "$SESSION" -2 new-session -d -s "$SESSION"
 

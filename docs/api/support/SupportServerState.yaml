@@ -1,0 +1,18 @@
+get:
+  summary: /support/state
+  description: Get full state of current server
+  tags:
+    - Support Api
+  responses:
+    '200':
+      description: OK
+      content:
+        application/json-ld:
+          schema:
+            $ref: '../schemas/IntraPoPState.yaml'
+    '404':
+      description: Not Found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/Problem.yaml'

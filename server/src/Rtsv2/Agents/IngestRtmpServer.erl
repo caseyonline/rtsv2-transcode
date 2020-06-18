@@ -7,43 +7,49 @@
 -include_lib("id3as_media/include/send_to_bus_processor.hrl").
 -include_lib("id3as_avp/include/avp_ingest_source_details_extractor.hrl").
 
--export([ startServerImpl/10
+-export([ startServer/5
+        , startServerTls/7
         , rtmpQueryToPurs/1
-        , startWorkflowImpl/7
+        , startWorkflowImpl/8
         ]).
 
 %%------------------------------------------------------------------------------
 %% API
 %%------------------------------------------------------------------------------
 
-startServerImpl(Left, Right, PublicIp, Port, Callbacks, PrivateIp, CanaryPort, CanaryCallbacks, NbAcceptors, ReceiveTimeout) ->
+startServer(PublicIp, Port, Callbacks, NbAcceptors, ReceiveTimeout) ->
   fun() ->
-      case start_rtmp_server(PublicIp, Port, NbAcceptors, ReceiveTimeout, Callbacks) of
-        ok ->
-          case start_rtmp_server(PrivateIp, CanaryPort, NbAcceptors, ReceiveTimeout, CanaryCallbacks) of
-            ok -> Right;
-            {error, Error} -> Left(Error)
-          end;
-        {error, Error} -> Left(Error)
-      end
+    case start_rtmp_server(PublicIp, Port, NbAcceptors, ReceiveTimeout, Callbacks, false, []) of
+      ok -> ok;
+      {error, Error} -> throw({rtmp_start_error, Error})
+    end
   end.
 
-start_rtmp_server({ipv4, O1, O2, O3, O4}, Port, NbAcceptors, ReceiveTimeout, Callbacks) ->
+startServerTls(PublicIp, Port, Callbacks, NbAcceptors, ReceiveTimeout, CertFile, KeyFile) ->
+  fun() ->
+    case start_rtmp_server(PublicIp, Port, NbAcceptors, ReceiveTimeout, Callbacks, true, [{certfile, CertFile}, {keyfile, KeyFile}]) of
+      ok -> ok;
+      {error, Error} -> throw({rtmp_start_error, Error})
+    end
+  end.
+
+
+start_rtmp_server({ipv4, O1, O2, O3, O4}, Port, NbAcceptors, ReceiveTimeout, Callbacks, UseTls, Opts) ->
   case rtmp_server:start_listener({rtmp_listener, Port},
                                   NbAcceptors,
-                                  [{ip, {O1, O2, O3, O4}}, {port, Port}],
+                                  [{ip, {O1, O2, O3, O4}}, {port, Port}] ++ Opts,
                                   [{dispatch, [{'*', rtsv2_rtmp_ingest_handler, [Callbacks]}]},
-                                   {config, #rtmp_server_config{receive_loop_timeout = ReceiveTimeout}}]) of
+                                   {config, #rtmp_server_config{receive_loop_timeout = ReceiveTimeout, ssl = UseTls}}]) of
     {ok, _} -> ok;
     {error, {already_started, _}} -> ok;
     Error -> {error, Error}
   end.
 
-startWorkflowImpl(Rtmp, IngestPid, PublishArgs, IngestKey, ProfileMetadata, ClientMetadataFn, SourceInfoFn) ->
+startWorkflowImpl(Rtmp, IngestPid, RtmpPublishArgs, IngestKey, SlotProfile, ProfileContext, ClientMetadataFn, SourceInfoFn) ->
   fun() ->
       MRef = erlang:monitor(process, IngestPid),
 
-      {ok, _WorkflowPid} = start_workflow(Rtmp, PublishArgs, IngestKey, ProfileMetadata),
+      {ok, _WorkflowPid} = start_workflow(Rtmp, RtmpPublishArgs, IngestKey, SlotProfile, ProfileContext),
 
       %% Stream is now connected - we block in here, when we return the rtmp_server instance will close
       workflow_loop(MRef, ClientMetadataFn, SourceInfoFn)
@@ -87,7 +93,7 @@ rtmpQueryToPurs(#{}) ->
 %%------------------------------------------------------------------------------
 %% Internals
 %%------------------------------------------------------------------------------
-start_workflow(Rtmp, PublishArgs, Key = {ingestKey, SlotId, SlotRole, ProfileName}, ProfileContext) ->
+start_workflow(Rtmp, RtmpPublishArgs, Key = {ingestKey, SlotId, SlotRole, ProfileName}, SlotProfile, ProfileContext) ->
 
   Workflow = #workflow{
                 name = {rtmp_ingest_handler, Key},
@@ -103,7 +109,7 @@ start_workflow(Rtmp, PublishArgs, Key = {ingestKey, SlotId, SlotRole, ProfileNam
                                          module = rtmp_push_ingest_generator,
                                          config = #rtmp_push_ingest_generator_config{
                                                      rtmp = Rtmp,
-                                                     auto_accept = PublishArgs
+                                                     auto_accept = RtmpPublishArgs
                                                     }}
                              ],
                 processors = [
@@ -117,7 +123,7 @@ start_workflow(Rtmp, PublishArgs, Key = {ingestKey, SlotId, SlotRole, ProfileNam
                                          module = rtmp_onfi_to_frame
                                         },
 
-                              rtsv2_ingest_processor:ingest_processor(Key, ProfileName, onfi_to_frame)
+                              rtsv2_ingest_processor:ingest_processor(Key, ProfileName, SlotProfile, onfi_to_frame)
                              ]
                },
 

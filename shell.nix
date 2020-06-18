@@ -129,5 +129,8 @@ mkShell {
     # Etwas - for de-nixification
     etwas
 
+    # Documentation build
+    asciidoctor
+    rubyPackages_2_6.rouge
   ] ++ optionals stdenv.isLinux [ iproute ];
 }

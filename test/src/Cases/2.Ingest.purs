@@ -19,7 +19,7 @@ import Test.Spec (SpecT, after_, before_, describe, it, itOnly)
 ingestTests :: forall m. Monad m => SpecT Aff Unit m Unit
 ingestTests = do
   describe "2 Ingest tests" do
-    before_ (startSession nodes *> launch nodes) do
+    before_ (E.lookupPuppeteerEnv *> startSession nodes *> launch nodes) do
       after_ stopSession do
         ingestTests1
         ingestTests2

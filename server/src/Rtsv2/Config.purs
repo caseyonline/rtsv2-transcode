@@ -118,6 +118,10 @@ type IngestInstanceConfig
     , aggregatorRetryTimeMs :: Int
     , qosPollIntervalMs :: Int
     , abortIfNoMediaMs :: Int
+    , qosAverageBitrateLowWatermark :: Number
+    , qosAverageBitrateHighWatermark :: Number
+    , qosPeakBitrateLowWatermark :: Number
+    , qosPeakBitrateHighWatermark :: Number
     }
 
 type IngestAggregatorAgentConfig
@@ -191,6 +195,12 @@ type TransPoPAgentApi
 type RtmpIngestConfig
   = { port :: Int
     , canaryPort :: Int
+    , tlsPort :: Int
+    , canaryTlsPort :: Int
+    , certFile :: String
+    , keyFile :: String
+    , canaryCertFile :: String
+    , canaryKeyFile :: String
     , nbAcceptors :: Int
     , cryptoContextExpiryMs :: Int
     }
@@ -204,6 +214,7 @@ type LlnwApiConfig
     , defaultSegmentDurationMs :: Int
     , defaultPlaylistDurationMs :: Int
     , validationUrlWhitelist :: List String
+    , slotLookupExpiryTimeMs :: Int
     }
 
 type LlnwApiConfigInternal
@@ -215,6 +226,7 @@ type LlnwApiConfigInternal
     , defaultSegmentDurationMs :: Int
     , defaultPlaylistDurationMs :: Int
     , validationUrlWhitelist :: List String
+    , slotLookupExpiryTimeMs :: Int
     }
 
 type HealthConfig
@@ -317,6 +329,7 @@ llnwApiConfig = do
     , defaultSegmentDurationMs
     , defaultPlaylistDurationMs
     , validationUrlWhitelist
+    , slotLookupExpiryTimeMs
     } = internal
 
     external = { streamAuthTypeUrl
@@ -331,6 +344,7 @@ llnwApiConfig = do
                , defaultSegmentDurationMs
                , defaultPlaylistDurationMs
                , validationUrlWhitelist
+               , slotLookupExpiryTimeMs
                }
   pure external
 
@@ -355,14 +369,14 @@ getMandatoryRecord :: forall a. ReadForeign a => String -> Effect a
 getMandatoryRecord v = do
   map <- getMap_ (atom v)
   case runExcept $ readImpl map of
-    Left error ->
-      do
-        _ <- Logger.error { domain: (atom "config") : nil
-                          , type: Logger.Trace
-                          }
-                          { text: "Invalid Config"
-                          , key: v
-                          , error: error}
-        unsafeCrashWith ("invalid_config " <> v)
+    Left error -> do
+      Logger.error { domain: (atom "config") : nil
+                   , type: Logger.Trace
+                   }
+                   { text: "Invalid Config"
+                   , key: v
+                   , error: error
+                   }
+      unsafeCrashWith ("invalid_config " <> v)
     Right ok ->
       pure $ ok

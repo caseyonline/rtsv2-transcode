@@ -1,0 +1,28 @@
+get:
+  summary: /suport/timedRoutes/
+  description: Timed Routes description
+  tags:
+    - Support Api
+  responses:
+    '200':
+      description: OK
+      content:
+        application/json-ld:
+          schema:
+            type: array
+            items:
+              type: object
+              properties:
+                pop:
+                  type:string
+                servers:
+                  type: array
+                  items:
+                    type: string
+
+    '404':
+      description: Not Found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/Problem.yaml'

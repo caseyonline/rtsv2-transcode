@@ -1,0 +1,20 @@
+get:
+  summary: /support/state/slot/{slotId}
+  description: Get the state of a specific slot via it's slotId
+  tags:
+    - Support Api
+  parameters:
+    - $ref: '../parameters/slotId.yaml'
+  responses:
+    '200':
+      description: OK
+      content:
+        application/json-ld:
+          schema:
+            $ref: '../schemas/SlotState.yaml'
+    '404':
+      description: Not Found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/Problem.yaml'

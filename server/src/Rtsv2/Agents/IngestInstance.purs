@@ -36,7 +36,7 @@ import Erl.Utils (systemTimeMs)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult)
 import Pinto as Pinto
-import Pinto.Gen (CallResult(..), CastResult(..))
+import Pinto.Gen (CallResult(..), CastResult(..), TerminateReason(..))
 import Pinto.Gen as Gen
 import Pinto.Timer as Timer
 import Prim.Row as Row
@@ -122,24 +122,26 @@ type StartArgs
 startLink :: StartArgs -> StateServerName -> Effect StartLinkResult
 startLink args@{ingestKey} stateServerName = Gen.startLink (serverName ingestKey) (init args stateServerName) handleInfo
 
-getStreamAuthType :: String -> String -> Effect (Maybe AuthType)
-getStreamAuthType host rtmpShortName = do
+getStreamAuthType :: String -> String -> String -> Effect (Maybe AuthType)
+getStreamAuthType host rtmpShortName clientIp = do
   config <- Config.llnwApiConfig
   restResult <- LlnwApi.streamAuthType config (wrap { host
                                                     , protocol: Rtmp
-                                                    , rtmpShortName: wrap rtmpShortName} :: StreamConnection)
+                                                    , rtmpShortName: wrap rtmpShortName
+                                                    , clientIp} :: StreamConnection)
   either error (pure <<< Just) restResult
   where
     error err = do
       logInfoWithMetadata "StreamAuthType error" {alertId: (atom "lsrsFailure")} {reason: err}
       pure Nothing
 
-getPublishCredentials :: String -> String -> String -> Effect (Maybe PublishCredentials)
-getPublishCredentials host rtmpShortName username = do
+getPublishCredentials :: String -> String -> String -> String -> Effect (Maybe PublishCredentials)
+getPublishCredentials host rtmpShortName username clientIp = do
   config <- Config.llnwApiConfig
   restResult <- LlnwApi.streamAuth config (wrap { host
                                                 , rtmpShortName: wrap rtmpShortName
-                                                , username} :: StreamAuth)
+                                                , username
+                                                , clientIp} :: StreamAuth)
   either error (pure <<< Just) restResult
   where
     error err = do
@@ -203,7 +205,7 @@ dataObjectSendMessage :: IngestKey -> DO.Message -> Effect Unit
 dataObjectSendMessage ingestKey msg =
   Gen.doCall (serverName ingestKey)
   (\state@{aggregatorWebSocket} -> do
-      _ <- case aggregatorWebSocket of
+      case aggregatorWebSocket of
         Just socket -> void $ WsGun.send socket (IngestToAggregatorDataObjectMessage msg)
         Nothing -> pure unit
       pure $ CallReply unit state
@@ -213,7 +215,7 @@ dataObjectUpdate :: IngestKey -> DO.ObjectUpdateMessage -> Effect Unit
 dataObjectUpdate ingestKey updateMsg =
   Gen.doCall (serverName ingestKey)
   (\state@{aggregatorWebSocket} -> do
-      _ <- case aggregatorWebSocket of
+      case aggregatorWebSocket of
         Just socket -> void $ WsGun.send socket (IngestToAggregatorDataObjectUpdateMessage updateMsg)
         Nothing -> pure unit
       pure $ CallReply unit state
@@ -243,6 +245,7 @@ init { streamPublish
   void $ Timer.sendAfter ourServerName 0 InformAggregator
   void $ Timer.sendEvery ourServerName eqLogIntervalMs WriteEqLog
   Gen.registerExternalMapping (serverName ingestKey) (\m -> Gun <$> (WsGun.messageMapper m))
+  Gen.registerTerminate (serverName ingestKey) terminate
 
   pure { thisServer
        , streamPublish
@@ -305,6 +308,16 @@ handleInfo msg state@{ingestKey} = case msg of
   Gun gunMsg ->
     processGunMessage state gunMsg
 
+terminate :: TerminateReason -> State -> Effect Unit
+terminate Normal state = do
+  logInfo "IngestInstance terminating" {reason: Normal}
+  pure unit
+terminate reason state = do
+  logInfo "IngestInstance terminating" {reason}
+  eqLine <- ingestEqLine state
+  Audit.ingestStop eqLine
+  pure unit
+
 ------------------------------------------------------------------------------
 -- Internals
 ------------------------------------------------------------------------------
@@ -317,7 +330,7 @@ processGunMessage state@{aggregatorWebSocket: Just socket, ingestKey} gunMsg =
     processResponse <- WsGun.processMessage socket gunMsg
     case processResponse of
       Left error -> do
-        _ <- logInfo "Gun process error" {error}
+        logInfo "Gun process error" {error}
         pure $ CastNoReply state
 
       Right (WsGun.Internal _) ->
@@ -327,16 +340,16 @@ processGunMessage state@{aggregatorWebSocket: Just socket, ingestKey} gunMsg =
         pure $ CastNoReply state{aggregatorWebSocket = Just newSocket}
 
       Right WsGun.WebSocketUp -> do
-        _ <- logInfo "Aggregator WebSocket up" {}
+        logInfo "Aggregator WebSocket up" {}
         pure $ CastNoReply state
 
       Right WsGun.WebSocketDown -> do
-        _ <- logInfo "Aggregator WebSocket down" {}
+        logInfo "Aggregator WebSocket down" {}
         state2 <- informAggregator state
         pure $ CastNoReply state2
 
       Right (WsGun.Frame IngestStop) -> do
-        _ <- logInfo "Aggregator requested that ingest stops" {}
+        logInfo "Aggregator requested that ingest stops" {}
         pure $ CastStop state
 
       Right (WsGun.Frame (AggregatorToIngestDataObjectMessage msg)) -> do

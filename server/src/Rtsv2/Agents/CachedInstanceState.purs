@@ -11,22 +11,21 @@ module Rtsv2.Agents.CachedInstanceState
 import Prelude
 
 import Data.Maybe (Maybe(..))
-import Data.Tuple (Tuple(..))
 import Effect (Effect)
-import Erl.Atom (Atom, atom)
+import Erl.Atom (Atom)
 import Erl.Data.List (List)
-import Erl.Data.Tuple (Tuple3, toNested3)
-import Erl.Process (Process(..), SpawnedProcessState, spawnLink, (!))
+import Erl.Process (Process(..))
 import Erl.Process.Raw (Pid)
 import Erl.Utils (ExitMessage(..), ExitReason(..), Ref)
 import Erl.Utils as Erl
-import Foreign (Foreign, unsafeToForeign)
+import Foreign (Foreign)
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult(..))
 import Pinto.Gen (CallResult(..), CastResult(..), TerminateReason)
 import Pinto.Gen as Gen
 
 foreign import receiveImpl :: Ref -> Effect Unit
+foreign import spawnChild :: Pid -> Process Ref -> Ref -> Effect StartLinkResult -> Effect Pid
 
 type StateServerName instanceData = ServerName (State instanceData) (Msg instanceData)
 
@@ -43,7 +42,7 @@ data Msg instanceData =
 
 type State instanceData =
   { instanceData :: Maybe instanceData
-  , instancePid :: Maybe Pid
+  , instancePid :: Pid
   , childStopAction :: Maybe instanceData -> Effect Unit
   , domain :: List Atom
   }
@@ -55,10 +54,9 @@ startLink startArgs@{serverName, domain} = do
   let
     callerProcess = Process callerPid :: Process Ref
   startLinkResult <- Gen.startLink serverName (init callerProcess ref startArgs) handleInfo
-  Gen.registerTerminate serverName terminate
   case startLinkResult of
     Ok _ -> do
-      _ <- receiveImpl ref
+      receiveImpl ref
       pure startLinkResult
     _ ->
       pure startLinkResult
@@ -81,54 +79,36 @@ recordInstanceData serverName instanceData = do
 
 init :: forall instanceData. (Process Ref) -> Ref -> StartArgs instanceData -> Effect (State instanceData)
 init caller ref {serverName, childStartLink, childStopAction, domain} = do
-  _ <- Erl.trapExit true
+  void $ Erl.trapExit true
   logInfo domain "Cached state starting child" {serverName}
   Gen.registerExternalMapping serverName ((map ChildDown) <<< Erl.exitMessageMapper)
-  performInitialisation
+  Gen.registerTerminate serverName terminate
+  self <- Erl.self
+  instancePid <- spawnChild self caller ref $ childStartLink serverName
   pure { instanceData: Nothing
-       , instancePid: Nothing
+       , instancePid
        , childStopAction
        , domain
        }
-  where
-    performInitialisation = do
-      _ <- spawnLink launchChild
-      pure unit
-      where
-        launchChild :: SpawnedProcessState (Tuple3 Atom Pid Foreign) -> Effect Unit
-        launchChild {receive} = do
-          _ <- Erl.trapExit true
-          childResult <- childStartLink serverName
-          caller ! ref
-          case childResult of
-            Ok pid -> do
-              Tuple _ (Tuple _ (Tuple reason _)) <- toNested3 <$> receive
-              Erl.exit reason
-              pure unit
-            other -> do
-              logError domain "Child failed to start" { serverName
-                                                      , reason: other}
-              Erl.exit $ unsafeToForeign $ atom "normal"
-              pure $ unit
 
 handleInfo :: forall instanceData. Msg instanceData -> State instanceData -> Effect (CastResult (State instanceData))
 handleInfo msg state@{ instanceData
                      , childStopAction
-                     , domain} = case msg of
+                     , domain} =
+  case msg of
+    ChildDown (Exit pid reason) ->
+      shutdown pid reason
 
-  ChildDown (Exit pid reason) ->
-    shutdown pid reason
+    InstanceDown pid reason ->
+      case Erl.mapExitReason reason of
+        Normal ->
+          shutdown pid reason
 
-  InstanceDown pid reason ->
-    case Erl.mapExitReason reason of
-      Normal ->
-        shutdown pid reason
+        Shutdown _ ->
+          shutdown pid reason
 
-      Shutdown _ ->
-        shutdown pid reason
-
-      Other _ ->
-        pure $ CastNoReply state
+        Other _ ->
+          pure $ CastNoReply state
   where
     shutdown pid reason = do
       logInfo domain "State exiting due to child exit" { pid
@@ -138,13 +118,14 @@ handleInfo msg state@{ instanceData
       pure $ CastStop state
 
 terminate :: forall instanceData. TerminateReason -> State instanceData -> Effect Unit
-terminate reason state@{ domain, instanceData, childStopAction } =
+terminate reason state@{ domain, instanceData, childStopAction, instancePid } =
   case reason of
     Gen.Normal ->
       pure unit
     _ ->
       do
-        logWarning domain "Cached instance state terminating" {reason}
+        logWarning domain "Cached instance state terminating" {reason, instancePid}
+        Erl.shutdown instancePid
         childStopAction instanceData
         pure unit
 

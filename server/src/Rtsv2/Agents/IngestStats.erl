@@ -23,7 +23,7 @@ getStatsImpl() ->
                                                                 status = '$2',
                                                                 _ = '_'},
                                           [{'orelse',
-                                            {'==', '$1', source_bitrate_monitor},
+                                            {'==', '$1', average_bitrate_monitor},
                                             {'orelse',
                                              {'==', '$1', rtmp_ingest},
                                              {'==', '$1', source_frame_meter}}}],
@@ -46,6 +46,7 @@ getStatsImpl() ->
                                                end,
                                                Initial,
                                                Statuses),
+
                           Fields = maps:size(Output),
                           if
                             Fields == 5 -> {true, Output};

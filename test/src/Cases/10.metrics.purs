@@ -9,7 +9,6 @@ import Data.Maybe (Maybe(..), fromMaybe)
 import Data.String.Common (split)
 import Data.String.Pattern (Pattern(..))
 import Data.String.Utils (lines)
-import Debug.Trace (spy)
 import Effect.Aff (Aff, Error, Milliseconds(..), delay, throwError)
 import Effect.Exception as Ex
 import Helpers.Assert (assertStatusCode)
@@ -20,7 +19,7 @@ import Helpers.HTTP as HTTP
 import Helpers.Log as L
 import Helpers.Types (Node, ResWithBody)
 import Shared.Rtsv2.Stream (SlotRole(..))
-import Test.Spec (SpecT, after_, before_, describe, it, itOnly)
+import Test.Spec (SpecT, after, after_, before, before_, describe, it)
 import Test.Unit.Assert as Assert
 import Toppokki as T
 
@@ -30,8 +29,9 @@ import Toppokki as T
 metricsTests :: forall m. Monad m => SpecT Aff Unit m Unit
 metricsTests = do
   describe "10 metrics tests" do
-    ingestMetrics
-    egestMetrics
+    before_(E.lookupPuppeteerEnv) do
+      ingestMetrics
+      egestMetrics
 
 -------------------------------------------------------------------------------
 -- Vars
@@ -60,7 +60,7 @@ ingestMetrics =
           body1 <- getResBody response1
           let bytes1 = fromMaybe 0 $ getValue $ getLine 5 body1
 
-          _ <- delay (Milliseconds 3000.00) >>= L.as' "let bytes transfer for 3 seconds"
+          delay (Milliseconds 3000.00) >>= L.as' "let bytes transfer for 3 seconds"
 
           response2 <- assertStatusCode 200 =<< HTTP.getIngestMetrics E.p1n1
           body2 <- getResBody response2
@@ -73,33 +73,32 @@ ingestMetrics =
 egestMetrics :: forall m. Monad m => SpecT Aff Unit m Unit
 egestMetrics =
   describe "10.2 Egest metrics" do
-    before_ (F.startSession [E.p1n1] *> F.launch [E.p1n1]) do
-      after_ (F.stopSession *> F.stopSlot) do
-        it "10.2.1 egest bytes should increase " do
+    before (F.startSession [E.p1n1] *> F.launch [E.p1n1] *> T.launch options) do
+      after (\browser -> (T.close browser *> F.stopSession *> F.stopSlot)) do
+        it "10.2.1 egest bytes should increase" $ \browser -> do
           E.waitForAsyncProfileStart >>= L.as' "wait for async start of profile"
 
-          browser <- T.launch options
           ingestPage <- T.newPage browser
           T.goto (HTTP.ingestUrl E.p1n1 E.shortName1 E.highStreamName) ingestPage
-          _ <- delay (Milliseconds 2000.00) >>= L.as' "wait for page to load"
+          delay (Milliseconds 2000.00) >>= L.as' "wait for page to load"
           T.bringToFront ingestPage
           T.click (T.Selector "#authenticate") ingestPage
-          _ <- delay (Milliseconds 500.00) >>= L.as' "wait for authentication"
+          delay (Milliseconds 500.00) >>= L.as' "wait for authentication"
           T.click (T.Selector "#start-ingest") ingestPage
-          _ <- delay (Milliseconds 2000.00) >>= L.as' "let stream start"
+          delay (Milliseconds 2000.00) >>= L.as' "let stream start"
 
-          _ <- delay (Milliseconds 1000.00) >>= L.as' "let ingest start"
+          delay (Milliseconds 1000.00) >>= L.as' "let ingest start"
 
           egestPage <- T.newPage browser
           T.goto (F.mkPlayerUrl E.p1n1 E.slot1 Primary) egestPage
 
-          _ <- delay (Milliseconds 10000.00) >>= L.as' "let egest start"
+          delay (Milliseconds 10000.00) >>= L.as' "let egest start"
 
           response1 <- assertStatusCode 200 =<< HTTP.getEgestMetrics E.p1n1
           body1 <- getResBody response1
           let videoOctet1 = fromMaybe 0 $ getValue $ getLine 2 body1
 
-          _ <- delay (Milliseconds 11000.00) >>= L.as' "let bytes transfer for 11 seconds"
+          delay (Milliseconds 11000.00) >>= L.as' "let bytes transfer for 11 seconds"
 
           response2 <- assertStatusCode 200 =<< HTTP.getEgestMetrics E.p1n1
           body2 <- getResBody response2
