@@ -1,4 +1,6 @@
 = RTSv2 Media Gateway
+id3as <info@id3as.co.uk>
+v1.1, 2020-06-18
 :source-highlighter: rouge
 :toc:
 :icons: font
