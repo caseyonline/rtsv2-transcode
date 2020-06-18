@@ -189,7 +189,7 @@ stress test is running on `127.0.0.1:4242`.
 The second assumption it makes is that the slot used for testing has id `1`, e.g
 the corresponding player URL is something like `http://<node>/public/client/00000000-0000-0000-0000-000000000001/primary/player`.
 
-If either of those assumptions is untrued, the code of `rtsv2_egest_stress_test.erl`
+If either of those assumptions is untrue, the code of `rtsv2_egest_stress_test.erl`
 will require alteration.
 
 ====
