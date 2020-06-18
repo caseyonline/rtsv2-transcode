@@ -69,12 +69,8 @@ paths:
     $ref: api/support/SupportRelayStats.yaml
   /support/runState/:
     $ref: api/support/SupportRunState.yaml
-
-
   /support/state/:
     $ref: api/support/SupportServerState.yaml
-
-
   /support/state/slot/{slotId}:
     $ref: api/support/SupportSlotState.yaml
   /support/timedRoutes/:

@@ -1,0 +1,8 @@
+oneOf:
+  - {type: string, description: RawVideo, example: RawVideo }
+  - {type: string, description: H263, example: H263 }
+  - {type: string, description: H264, example: H264 }
+  - {type: string, description: H265, example: H265 }
+  - {type: string, description: MPEG2, example: MPEG2 }
+  - {type: string, description: JPEG, example: JPEG }
+  - {type: string, description: JPEG2000, example: JPEG2000 }

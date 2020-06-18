@@ -1,0 +1,22 @@
+type: object
+properties:
+  aggregators:
+    type: array
+    items:
+      $ref: "./IngestAggregatorState.yaml"
+  ingests:
+    type: array
+    items:
+      $ref: "./IngestState.yaml"
+  originRelays:
+    type: array
+    items:
+      $ref: "./StreamRelayState.yaml"
+  downstreamRelays:
+    type: array
+    items:
+      $ref: "./StreamRelayState.yaml"
+  egests:
+    type: array
+    items:
+      $ref: "./EgestStats.yaml"
