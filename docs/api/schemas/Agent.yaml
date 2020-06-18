@@ -1,0 +1,7 @@
+oneOf:
+  - {type: string, description: Egest, example: Egest }
+  - {type: string, description: Ingest, example: Ingest }
+  - {type: string, description: IngestAggregator, example: IngestAggregator }
+  - {type: string, description: StreamRelay, example: StreamRelay }
+  - {type: string, description: IntraPoP, example: IntraPoP }
+  - {type: string, description: TransPoP, example: TransPoP }

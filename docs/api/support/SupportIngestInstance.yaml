@@ -15,7 +15,18 @@ get:
           schema:
             type: array
             items:
-              $ref: '../PublicSchema.yaml'
+              type: object
+              properties:
+                ingestStartedTime:
+                  type: number
+                  example: 329786432
+                remoteAddress:
+                  type: string
+                remotePort:
+                  type: int
+                  example: 3000
+                rtmpClientMetadata:
+                  $ref: "../schemas/RtmpClientMetadata.yaml"
     '404':
       description: Not Found
       content:

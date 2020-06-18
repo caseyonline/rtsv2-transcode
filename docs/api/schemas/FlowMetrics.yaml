@@ -1,0 +1,12 @@
+type: object
+properties:
+  frameCount:
+    type: integer
+  bytesCount:
+    type: integer
+  lastPts:
+    type: integer
+  lastCaptureMs:
+    type: integer
+  codec:
+    type: string

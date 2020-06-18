@@ -9,9 +9,23 @@ get:
       content:
         application/json-ld:
           schema:
-            type: array
-            items:
-              $ref: '../PublicSchema.yaml'
+            type: object
+            properties:
+              neighbourMap:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    popName:
+                      type: string
+                    neighbours:
+                      type: array
+                      items:
+                        type: string
+              regions:
+                type: array
+                items:
+                $ref: '../schemas/Region.yaml'
     '404':
       description: Not Found
       content:

@@ -1,0 +1,3 @@
+oneOf:
+  - {type: string, description: Primary, example: Primary }
+  - {type: string, description: Backup, example: Backup }

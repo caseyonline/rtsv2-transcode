@@ -1,0 +1,8 @@
+type: object
+properties:
+  slotId:
+    $ref: "../parameters/slotId.yaml"
+  slotRole:
+    $ref: "../parameters/slotRole.yaml"
+  profileName:
+    $ref: "../parameters/profileName.yaml"

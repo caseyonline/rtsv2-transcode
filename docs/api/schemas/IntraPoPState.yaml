@@ -1,0 +1,43 @@
+type: object
+properties:
+  aggregatorLocations:
+    type: array
+    items:
+      type: object
+      properties:
+        slotId:
+          type: string
+        role:
+          type: string
+        servers:
+          type: array
+          items:
+            $ref: "./Server.yaml"
+  relayLocations:
+    type: array
+    items:
+      type: object
+      properties:
+        slotId:
+          type: string
+        role:
+          type: string
+        servers:
+          type: array
+          items:
+            $ref: "./Server.yaml"
+  egestLocations:
+    type: array
+    items:
+      type: object
+      properties:
+        slotId:
+          type: string
+        role:
+          type: string
+        servers:
+          type: array
+          items:
+            $ref: "./Server.yaml"
+  currentTransPoPLeader:
+    $ref: "./Server.yaml"

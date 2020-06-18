@@ -1,0 +1,8 @@
+type: object
+properties:
+  name:
+    type: string
+  pops:
+    type: array
+    items:
+      $ref: "./PoP.yaml"

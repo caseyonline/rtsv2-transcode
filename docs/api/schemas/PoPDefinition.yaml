@@ -1,0 +1,17 @@
+type: object
+properties:
+  regions:
+    type: array
+    items:
+      $ref: "./Region.yaml"
+  neighbourMap:
+    type: array
+    items:
+      type: object
+      properties:
+        popName:
+          $ref: "../parameters/popName.yaml"
+        neighbours:
+          type: array
+          items:
+            $ref: "../parameters/popName.yaml"

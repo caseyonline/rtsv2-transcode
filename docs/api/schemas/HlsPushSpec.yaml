@@ -1,0 +1,23 @@
+type: object
+properties:
+  protocol:
+    type: string
+  formats:
+    type: array
+    items:
+      type: string
+  putBaseUrl:
+    type: string
+  segmentDuration:
+    type: integer
+  playlistDuration:
+    type: integer
+  auth:
+    type: object
+    properties:
+      "type":
+        type: string
+      username:
+        type: string
+      password:
+        type: string
