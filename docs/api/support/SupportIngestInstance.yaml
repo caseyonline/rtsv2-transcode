@@ -2,7 +2,7 @@ get:
   summary: /support/ingest/{slotId}/{slotRole}/{profileName}
   description: Ingest metrics description
   tags:
-    - Support
+    - Support Api
   parameters:
     - $ref: '../parameters/slotId.yaml'
     - $ref: '../parameters/slotRole.yaml'

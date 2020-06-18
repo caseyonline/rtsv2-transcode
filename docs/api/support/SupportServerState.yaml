@@ -2,7 +2,7 @@ get:
   summary: /support/state
   description: Get full state of current server
   tags:
-    - Support
+    - Support Api
   responses:
     '200':
       description: OK

@@ -15,9 +15,11 @@ module Erl.Utils
        , base64Encode
        , readTuple2
        , whereis
+       , monotonicTime
        , Ref
        , ExitReason(..)
        , ExitMessage(..)
+       , MonotonicTime
        )
        where
 
@@ -59,12 +61,17 @@ foreign import refToStringImpl :: Ref -> Foreign
 foreign import stringToRefImpl :: Foreign -> Maybe Ref
 foreign import monitorImpl :: Foreign -> Effect Unit
 foreign import linkImpl :: Pid -> Effect Unit
+foreign import monotonicTime :: Effect MonotonicTime
 
 data ExitReason = Normal
                 | Shutdown Foreign
                 | Other Foreign
 
 data ExitMessage = Exit Pid Foreign
+
+newtype MonotonicTime = MonotonicTime Int
+derive instance eqMonotonicTime :: Eq MonotonicTime
+
 
 sleep :: Milliseconds -> Effect Unit
 sleep = sleepImpl <<< Maybe.fromMaybe 0 <<<  Long.toInt <<< unwrap

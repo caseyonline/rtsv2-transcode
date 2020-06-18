@@ -2,7 +2,7 @@ get:
   summary: /support/ingestAggregator/{slotId}/{slotRole}
   description: Ingest aggregator description
   tags:
-    - Support
+    - Support Api
   parameters:
     - $ref: '../parameters/slotId.yaml'
     - $ref: '../parameters/slotRole.yaml'

@@ -2,7 +2,7 @@ get:
   summary: /support/healthCheck/
   description: HealthCheck description.
   tags:
-    - Support
+    - Support Api
   responses:
     '200':
       description: OK
