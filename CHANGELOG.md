@@ -2,6 +2,12 @@
 
 **What's new**
 
+* Fix to HLS publish if onFI messages present in inbound RTMP stream
+
+# RTS-V2 release 106
+
+**What's new**
+
 * Slot Lookup API is now cached and responses to cache misses are sent over IntraPoP serf to pre-load the caches on peers.  Basic cache statistics returned under the healthCheck URL.
 
 * RTVS2-50 - now fixed;  on a fatal error connecting to serf (such as introduced with tcpkill), the supervision trees will now retry repeatedly until finally the erlang node will exit.  At that point, systemd will restart it and the loop will continue until the connection to serf recovers.

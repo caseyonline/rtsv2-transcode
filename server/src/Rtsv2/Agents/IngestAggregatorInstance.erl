@@ -136,17 +136,20 @@ startWorkflow(SlotConfiguration = #{ slotId := SlotId
                                                                          frame_size_ms = 20
                                                                         }
                                                 }
-                                },
-                              #named_output{
-                                 profile_name = aac,
-                                 frame_spec = #frame_spec{
-                                                 profile = #audio_profile{
-                                                              codec = aac,
-                                                              sample_rate = 48000,
-                                                              sample_format = s16
-                                                             }
-                                                }
                                 }
+                              |
+                              ?include_if(PushDetails /= [],
+                                          #named_output{
+                                             profile_name = aac,
+                                             frame_spec = #frame_spec{
+                                                             profile = #audio_profile{
+                                                                          codec = aac,
+                                                                          sample_rate = 48000,
+                                                                          sample_format = s16
+                                                                         }
+                                                            }
+                                            }
+                                         )
                              ]
                   },
 
@@ -202,7 +205,6 @@ startWorkflow(SlotConfiguration = #{ slotId := SlotId
 
                                               },
 
-
                               #processor{name = gop_numberer,
                                          display_name = <<"GoP Numberer">>,
                                          subscribes_to = [set_video_profile_name, audio_transcode, {aggregate, ?program_details_frames}],
@@ -213,6 +215,7 @@ startWorkflow(SlotConfiguration = #{ slotId := SlotId
                                          subscribes_to = [{?previous, ?audio_frames}, {?previous, ?video_frames}],
                                          module = gop_measurer
                                         },
+
                               #processor{name = log_pd, subscribes_to = {ingests, ?program_details_frames}, module = dev_null_processor, trace_inputs= console},
 
                               ?include_if(PushDetails /= [],
@@ -253,52 +256,24 @@ startWorkflow(SlotConfiguration = #{ slotId := SlotId
 
                                                processors = [
                                                              ?include_if(PushDetails /= [],
-                                                                #processor{name = hls_publish,
-                                                                           display_name = <<"HLS Publish">>,
-                                                                           subscribes_to = [
-                                                                             {outside_world, ?video_frames},
-                                                                             {outside_world, ?audio_frames_with_profile_name(aac)},
-                                                                             {outside_world, ?gop_measurements},
-                                                                             {outside_world, ?program_details_frames}
-                                                                           ],
-                                                                           module = rtsv2_hls_segment_workflow,
-                                                                           config = #rtsv2_hls_segment_workflow_config{
-                                                                             slot_id = SlotId,
-                                                                             slot_profile = Profile,
-                                                                             push_details = PushDetails,
-                                                                             audio_only = AudioOnly
-                                                                           }
-                                                              }),
-
-
-                                                             %% #processor{name = audio_decode,
-                                                             %%            display_name = <<"Audio Decode">>,
-                                                             %%            subscribes_to = {outside_world, ?audio_frames},
-                                                             %%            module = fdk_aac_decoder
-                                                             %%           },
-
-                                                             %% #processor{name = audio_levels,
-                                                             %%            display_name = <<"dB Levels">>,
-                                                             %%            subscribes_to = ?previous,
-                                                             %%            module = audio_levels,
-                                                             %%            config = #audio_levels_config{mode = consumes,
-                                                             %%                                          tag = levels}
-                                                             %%           },
-
-                                                             %% #processor{name = levels_to_bus,
-                                                             %%            display_name = <<"Publish Levels">>,
-                                                             %%            subscribes_to = ?previous,
-                                                             %%            module = send_to_bus_processor,
-                                                             %%            config = #send_to_bus_processor_config{consumes = true,
-                                                             %%                                                   bus_name = {audio_levels, IngestKey}}
-                                                             %%           },
-
-                                                             %% #processor{name = audio_transcode,
-                                                             %%            display_name = <<"Audio Transcode">>,
-                                                             %%            subscribes_to = audio_decode,
-                                                             %%            module = audio_transcode,
-                                                             %%            config = AudioConfig
-                                                             %%           },
+                                                                         [
+                                                                          #processor{name = hls_publish,
+                                                                                     display_name = <<"HLS Publish">>,
+                                                                                     subscribes_to = [
+                                                                                                      {outside_world, ?video_frames},
+                                                                                                      {outside_world, ?audio_frames_with_profile_name(aac)},
+                                                                                                      {outside_world, ?gop_measurements},
+                                                                                                      {outside_world, ?program_details_frames}
+                                                                                                     ],
+                                                                                     module = rtsv2_hls_segment_workflow,
+                                                                                     config = #rtsv2_hls_segment_workflow_config{
+                                                                                                 slot_id = SlotId,
+                                                                                                 slot_profile = Profile,
+                                                                                                 push_details = PushDetails,
+                                                                                                 audio_only = AudioOnly
+                                                                                                }
+                                                                                    }
+                                                                         ]),
 
                                                              #processor{name = rtp,
                                                                         display_name = <<"WebRTC RTP Mux">>,

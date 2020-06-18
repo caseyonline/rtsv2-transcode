@@ -163,7 +163,8 @@ build_workflow(GopDurationPts,
                                 ]
                         },
   ProfileNames =  #{audio => [aac],
-                    video => [ProfileName]},
+                    video => [ProfileName],
+                    script_frame => []},
   #workflow{
             name = rtsv2_hls_segmenter,
             display_name = <<"HLS Segment Publisher">>,
@@ -206,7 +207,7 @@ build_workflow(GopDurationPts,
                   config =
                       #rtsv2_internal_hls_writer_config{
                         post_url = <<PutBaseUrl/binary, ProfileName/binary, "/">>,
-                        max_playlist_length = PlaylistDuration div SegmentDurationActual,
+                        max_playlist_length = max(1, PlaylistDuration div SegmentDurationActual),
                         target_segment_duration = SegmentDurationActual,
                         playlist_name = <<"playlist.m3u8">>,
                         auth = {Username,Password}
