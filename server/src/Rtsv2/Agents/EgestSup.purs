@@ -15,7 +15,7 @@ import Erl.ModuleName (NativeModuleName(..))
 import Foreign (unsafeToForeign)
 import Pinto (SupervisorName)
 import Pinto as Pinto
-import Pinto.Sup (SupervisorChildRestart(..), SupervisorChildType(..), buildChild, childId, childRestart, childStart, childType)
+import Pinto.Sup (SupervisorChildType(..), buildChild, childId, childStart, childType)
 import Pinto.Sup as Sup
 import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
 import Rtsv2.Agents.EgestStats as EgestStats

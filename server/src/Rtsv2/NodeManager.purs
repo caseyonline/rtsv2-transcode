@@ -30,7 +30,6 @@ import Erl.Data.Map as Map
 import Erl.Process.Raw (Pid)
 import Erl.Utils (ExitMessage, Ref)
 import Erl.Utils as Erl
-import Erl.Utils as ErlUtils
 import Logger as Logger
 import Pinto (ServerName, StartLinkResult, ok')
 import Pinto.Gen (CallResult(..), CastResult(..), TerminateReason)
@@ -56,6 +55,7 @@ data Msg =
   AgentDown Agent
   | ForceDrainTimeout Ref
   | IgnoreExit ExitMessage
+  | RestartActiveSup
 
 type State =
   { args :: StartArgs
@@ -156,7 +156,8 @@ changeCanaryState newCanary =
                                            , new: newCanary}
           let
             state2 = state{ currentCanaryState = newCanary }
-          (CallReply (Right unit)) <$> restartActiveSup state2
+          void $ Timer.sendAfter serverName 20 RestartActiveSup
+          pure $ CallReply (Right unit)state2
 
 changeRunState :: RunState -> Effect (Either RunStateChangeFailure Unit)
 changeRunState newRunState =
@@ -262,6 +263,10 @@ handleInfo msg state@{agentCounts, currentRunState, forceDrainTimeoutRef} =
         CastNoReply <$> transitionToOutOfService state
       | otherwise ->
         CastNoReply <$> pure state
+
+    RestartActiveSup -> do
+      state2 <- restartActiveSup state
+      CastNoReply <$> pure state2
 
     IgnoreExit _ ->
       pure $ CastNoReply state
@@ -394,8 +399,9 @@ maybeForceDrain state =
 transitionToOutOfService :: State -> Effect State
 transitionToOutOfService state = do
   logInfo "RunState is OutOfService" { old: state.currentCanaryState }
-  restartActiveSup state{ currentRunState = OutOfService
-                        , forceDrainPhase = DrainAggregators }
+  void $ Timer.sendAfter serverName 20 RestartActiveSup
+  pure state{ currentRunState = OutOfService
+            , forceDrainPhase = DrainAggregators }
 
 restartActiveSup :: State -> Effect State
 restartActiveSup state@{ activeSupPid

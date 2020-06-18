@@ -15,7 +15,6 @@ import Rtsv2.Config as Config
 import Rtsv2.Load as Load
 import Rtsv2.NodeManager as NodeManager
 import Rtsv2.PoPDefinition as PoPDefinition
-import Rtsv2.Web as Web
 
 serverName :: SupervisorName
 serverName = (Local (atom "rtsv2sup"))
@@ -28,7 +27,6 @@ stop = Sup.stop serverName
 
 init :: Effect SupervisorSpec
 init = do
-  webConfig <- Config.webConfig
   popDefinitionConfig <- Config.popDefinitionConfig
   pure $ buildSupervisor
     # supervisorStrategy OneForOne
@@ -37,7 +35,6 @@ init = do
           : nodeManager
           : load
           : alerts
-          : webServer webConfig
           : nil
         )
   where
@@ -46,12 +43,6 @@ init = do
       # childType Worker
       # childId "popDefinition"
       # childStart PoPDefinition.startLink popDefinitionConfig
-
-    webServer webConfig =
-      buildChild
-      # childType Worker
-      # childId "web"
-      # childStart Web.startLink webConfig
 
     load =
       buildChild
