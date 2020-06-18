@@ -47,10 +47,6 @@ handle_info({udp, _Socket, _FromIP, _FromPort, Data},
                    , wrap_state = WrapState
                    } = State) ->
   #rtp{ ssrc = SSRC, payload_type = #rtp_payload_type{encoding_id = EncodingId}, timestamp = Timestamp, processing_metadata = ProcessingMetadata } = RTP = rtp:parse(avp, Data, ParseInfo),
-  
-  ?INFO("Wrap state for ~p ~p is ~p ; timestamp = ~p", [if EncodingId == ?H264_ENCODING_ID -> video; ?otherwise -> audio end, 
-                                                          SSRC, maps:get(SSRC, WrapState, undefined), Timestamp]),
-
   {Frames, State2} = case EncodingId of
     ?H264_ENCODING_ID ->
       H264WrapState = maps:get(SSRC, WrapState, rtp_timestamp_wrap:new(90000)), 
