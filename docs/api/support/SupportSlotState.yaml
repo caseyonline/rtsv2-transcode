@@ -2,7 +2,7 @@ get:
   summary: /support/state/slot/{slotId}
   description: Get the state of a specific slot via it's slotId
   tags:
-    - Support
+    - Support Api
   parameters:
     - $ref: '../parameters/slotId.yaml'
   responses:

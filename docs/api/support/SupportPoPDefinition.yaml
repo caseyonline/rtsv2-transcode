@@ -2,7 +2,7 @@ get:
   summary: /support/popDefinition/
   description: PoP definition description
   tags:
-    - Support
+    - Support Api
   responses:
     '200':
       description: OK

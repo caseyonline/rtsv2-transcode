@@ -2,7 +2,7 @@ get:
   summary: /support/vm/metrics/
   description: VM support metrics description
   tags:
-    - Support
+    - Support Api
   parameters:
     - $ref: '../parameters/shortName.yaml'
     - $ref: '../parameters/streamName.yaml'

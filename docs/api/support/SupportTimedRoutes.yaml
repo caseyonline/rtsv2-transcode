@@ -2,7 +2,7 @@ get:
   summary: /suport/timedRoutes/
   description: Timed Routes description
   tags:
-    - Support
+    - Support Api
   responses:
     '200':
       description: OK
