@@ -4,7 +4,7 @@
 :icons: font
 
 == Purpose
-The `rtsv2-media gateway` is the component of `rtsv2` responsible for delivering
+The `rtsv2-media-gateway` is the component of `rtsv2` responsible for delivering
 encrypted media content to viewers/listeners.
 
 It receives the media for a given slot from the stream relay in the same point-of-presence
