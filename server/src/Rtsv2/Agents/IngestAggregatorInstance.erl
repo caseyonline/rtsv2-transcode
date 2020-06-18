@@ -150,8 +150,8 @@ startWorkflow(SlotConfiguration = #{ slotId := SlotId
                                                                           }
                                                              }
                                              }
-                                          )
-                                         ]
+                                          ]
+                                         )
                              ]
                   },
 
