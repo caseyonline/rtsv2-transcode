@@ -13,14 +13,17 @@
 %% old message can still be parsed / provide defaults for the new data
 %% before eventually retiring messages that are no longer in the wild
 %%------------------------------------------------------------------------------
--define(iMAggregatorStateMsgName, <<"a">>).
--define(iMEgestStateMsgName,      <<"b">>).
--define(iMRelayStateMsgName,      <<"c">>).
--define(iMServerLoad,             <<"d">>).
+-define(iMAggregatorAvailableMsgName, <<"a">>).
+-define(iMAggregatorStoppedMsgName,   <<"b">>).
+-define(iMEgestStateMsgName,          <<"c">>).
+-define(iMRelayStateMsgName,          <<"d">>).
+-define(iMServerLoad,                 <<"e">>).
+-define(iMTransPoPLeader,             <<"f">>).
+-define(iMVMLiveness,                 <<"g">>).
+-define(iMSlotLookup,                 <<"h">>).
 %%------------------------------------------------------------------------------
 %% End of list of message names
 %%------------------------------------------------------------------------------
-
 to_binary(X) ->
   term_to_binary(X).
 
@@ -32,22 +35,38 @@ from_binary(X) ->
 %%------------------------------------------------------------------------------
 to_wire_message(
   { iMAggregatorState
-  , Type
+  , {available}
   , {agentKey, SlotId, SlotRole}
   , ServerAddress
   , _SlotCharacteristics = #{ numProfiles := NumProfiles
                             , totalBitrate := TotalKBitrate
                             }
   })
-  %% when
-  %%   NumProfiles              > 0 andalso NumProfiles =< 16#10,              %% Max of 16 profiles
-  %%   TotalKBitrate            > 0 andalso TotalKBitrate =< 16#40000          %% Max of 250 Mbps of a single ADR ladder total
+  when
+    NumProfiles              > 0 andalso NumProfiles =< 16#20,              %% Max of 32 profiles
+    TotalKBitrate            > 0 andalso TotalKBitrate =< 16#40000          %% Max of 250 Mbps total in a single ABR ladder
     ->
-  { ?iMAggregatorStateMsgName
-  , << (to_wire_element_event_type(Type)):1                             %%   1    1
-     , (to_wire_element_slot_role(SlotRole)):1                          %%   1    2
-     , (NumProfiles - 1):4                                              %%   4    6
+  { ?iMAggregatorAvailableMsgName
+  , << (to_wire_element_slot_role(SlotRole)):1                          %%   1    1
+     , (NumProfiles - 1):5                                              %%   5    6
      , (TotalKBitrate - 1):18/unsigned-big-integer                      %%  18   24
+     , SlotId:16/binary                                                 %% 128  152
+     , ServerAddress/binary                                             %% rest of msg
+    >>
+  };
+
+to_wire_message(
+  { iMAggregatorState
+  , {stopped}
+  , {agentKey, SlotId, SlotRole}
+  , ServerAddress
+  , _SlotCharacteristics = #{ numProfiles := _NumProfiles
+                            , totalBitrate := _TotalKBitrate
+                            }
+  }) ->
+  { ?iMAggregatorStoppedMsgName
+  , << (to_wire_element_slot_role(SlotRole)):1                          %%   1    1
+     , 0:7                                                              %%   7    8
      , SlotId:16/binary                                                 %% 128  152
      , ServerAddress/binary                                             %% rest of msg
     >>
@@ -83,25 +102,39 @@ to_wire_message(
  %%  }) ->
 
 
-
-
-
 from_wire_message(
-  ?iMAggregatorStateMsgName
- , << WireType:1                                        %%   1     1
-    , WireSlotRole:1                                    %%   1     2
-    , WireNumProfiles:4                                 %%   4     6
+  ?iMAggregatorAvailableMsgName
+ , << WireSlotRole:1                                    %%   1     1
+    , WireNumProfiles:5                                 %%   5     6
     , WireKBitrate:18/unsigned-big-integer              %%  18    24
     , SlotId:16/binary                                  %% 128   160
     , ServerAddress/binary                              %% rest of msg
    >>
  ) ->
   { just, { iMAggregatorState
-          , from_wire_element_event_type(WireType)
+          , {available}
           , {agentKey, SlotId, from_wire_element_slot_role(WireSlotRole)}
           , ServerAddress
           , #{ numProfiles => WireNumProfiles + 1
              , totalBitrate => WireKBitrate + 1
+             }
+          }
+  };
+
+from_wire_message(
+  ?iMAggregatorStoppedMsgName
+ , << WireSlotRole:1                                    %%   1     1
+    , 0:7                                               %%   7     8
+    , SlotId:16/binary                                  %% 128   136
+    , ServerAddress/binary                              %% rest of msg
+   >>
+ ) ->
+  { just, { iMAggregatorState
+          , {stopped}
+          , {agentKey, SlotId, from_wire_element_slot_role(WireSlotRole)}
+          , ServerAddress
+          , #{ numProfiles => 0
+             , totalBitrate => 0
              }
           }
   };
@@ -163,7 +196,8 @@ from_wire_element_slot_role(1) ->
 %%------------------------------------------------------------------------------
 x() ->
   lists:foreach(fun encode_decode/1,
-                [ test_IMAggregatorState_message()
+                [ test_IMAggregatorAvailable_message()
+                , test_IMAggregatorStopped_message()
                 , test_IMEgestState_message()
                 , test_IMRelayState_message()
                 ]),
@@ -176,8 +210,11 @@ encode_decode(Msg) ->
   {just, Msg} = From.
 
 
-test_IMAggregatorState_message() ->
+test_IMAggregatorAvailable_message() ->
   {iMAggregatorState,{available},{agentKey, <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1>>,{primary}},<<"172.16.169.1">>,#{numProfiles => 2,totalBitrate => 1500}}.
+
+test_IMAggregatorStopped_message() ->
+  {iMAggregatorState,{stopped},{agentKey, <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1>>,{primary}},<<"172.16.169.1">>,#{numProfiles => 0,totalBitrate => 0}}.
 
 test_IMEgestState_message() ->
   {iMEgestState,{available},{agentKey,<<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1>>,{primary}},<<"172.16.170.1">>}.
