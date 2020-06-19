@@ -200,13 +200,11 @@ instance serfWireMessageIM :: SerfWireMessage IntraMessage where
   toWireMessage payload@(IMEgestState _ _ _) =
     to_wire_message payload
 
-  toWireMessage payload@(IMRelayState Available agentKey serverAddress) =
-    tuple2 "relayAvailable" $ to_binary payload
-  toWireMessage payload@(IMRelayState Stopped agentKey serverAddress) =
-    tuple2 "relayStopped" $ to_binary payload
+  toWireMessage payload@(IMRelayState _ _ _) =
+    to_wire_message payload
 
-  toWireMessage payload@(IMServerLoad serverAddress currentLoad acceptingRequests) =
-    tuple2 "loadUpdate" $ to_binary payload
+  toWireMessage payload@(IMServerLoad _ _ _) =
+    to_wire_message payload
 
   toWireMessage payload@(IMSlotLookup serverAddress rtmpShortName slotName slotLookupResult) =
     tuple2 "slotLookup" $ to_binary payload
@@ -224,6 +222,9 @@ instance serfWireMessageIM :: SerfWireMessage IntraMessage where
     from_wire_message "c" payload
   fromWireMessage "d" payload =
     from_wire_message "d" payload
+  fromWireMessage "e" payload =
+    from_wire_message "e" payload
+
   fromWireMessage name payload =
     Just $ from_binary payload
 
