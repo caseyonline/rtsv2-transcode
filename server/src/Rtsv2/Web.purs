@@ -47,6 +47,8 @@ import Rtsv2.Handler.TransPoP as TransPoPHandler
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Serf (Ip(..))
+import Shared.Rtsv2.JsonLd (EgestSessionStats(..))
+import Shared.Rtsv2.LlnwApiTypes (StreamEgestProtocol(..))
 import Shared.Rtsv2.Router.Endpoint.Public as Public
 import Shared.Rtsv2.Router.Endpoint.Support as Support
 import Shared.Rtsv2.Router.Endpoint.System as System
@@ -306,11 +308,11 @@ playerControlArgs loadConfig webConfig mediaGateway canary validationUrlWhitelis
                   , canary
                   , make_egest_key: makeEgestKey
                   , start_stream: (\(EgestKey slotId slotRole) -> EgestInstanceSup.findEgest loadConfig canary slotId slotRole)
-                  , add_client: mkFn3 EgestInstance.addClient
+                  , add_client: mkFn3 (EgestInstance.addClient WebRTCEgest)
                   , get_slot_configuration: EgestInstance.getSlotConfiguration
                   , data_object_send_message: EgestInstance.dataObjectSendMessage
                   , data_object_update: EgestInstance.dataObjectUpdate
-                  , stats_update: mkFn2 EgestInstance.statsUpdate
+                  , stats_update: mkFn2 (\key stats -> EgestInstance.statsUpdate key (EgestRtcSessionStats stats))
                   , public_port: webConfig.publicPort
                   , support_port: webConfig.supportPort
                   , validation_url_whitelist: validationUrlWhitelist

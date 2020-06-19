@@ -2,10 +2,8 @@ module Rtsv2.Agents.EgestRtmpServer where
 
 import Prelude
 
-import Data.Either (either)
-import Data.Maybe (Maybe, maybe)
+import Data.Maybe (Maybe)
 import Effect (Effect)
-import Effect.Exception (throw)
 import Effect.Uncurried (EffectFn1, EffectFn2, EffectFn3, mkEffectFn1, mkEffectFn2, mkEffectFn3)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, singleton)
@@ -20,12 +18,13 @@ import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
 import Rtsv2.Config as Config
 import Rtsv2.Env as Env
-import Rtsv2.LlnwApi as LlnwApi
 import Rtsv2.Names as Names
 import Rtsv2.Types (LocationResp)
 import Serf (Ip)
 import Shared.Rtsv2.Agent as Agent
-import Shared.Rtsv2.Stream (EgestKey(..), RtmpShortName(..), RtmpStreamName(..), SlotRole(..))
+import Shared.Rtsv2.JsonLd (EgestSessionStats(..), EgestRtmpSessionStats)
+import Shared.Rtsv2.LlnwApiTypes (StreamEgestProtocol(..))
+import Shared.Rtsv2.Stream (EgestKey(..))
 import Shared.Rtsv2.Types (CanaryState(..))
 
 
@@ -39,6 +38,7 @@ type Callbacks
   = { startStream :: EffectFn1 EgestKey LocationResp
     , slotLookup :: EffectFn1 EgestKey (Maybe SlotConfiguration)
     , addClient :: EffectFn3 Pid EgestKey String RegistrationResp
+    , statsUpdate :: EffectFn2 EgestKey EgestRtmpSessionStats Unit
     }
 
 serverName :: ServerName State Unit
@@ -64,6 +64,7 @@ init _ = do
       callbacks canary = { startStream: mkEffectFn1 $ startStream loadConfig canary
                          , slotLookup: mkEffectFn1 \egestKey -> EgestInstance.getSlotConfiguration egestKey
                          , addClient: mkEffectFn3 addClient
+                         , statsUpdate: mkEffectFn2 \key stats -> EgestInstance.statsUpdate key (EgestRtmpSessionStats stats)
                   }
               
   -- Public servers
@@ -86,7 +87,7 @@ init _ = do
 
   addClient :: Pid -> EgestKey -> String -> Effect RegistrationResp
   addClient pid egestKey sessionId =
-    EgestInstance.addClient pid egestKey sessionId
+    EgestInstance.addClient RtmpEgest pid egestKey sessionId
 
 
 --------------------------------------------------------------------------------
