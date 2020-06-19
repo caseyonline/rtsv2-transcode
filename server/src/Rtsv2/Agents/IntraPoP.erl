@@ -109,12 +109,24 @@ to_wire_message(
      , ServerAddress/binary                                                %% rest of msg
     >>
   };
+
 to_wire_message(
   { iMTransPoPLeader
   , ServerAddress
   }) ->
   { ?iMTransPoPLeaderMsgName
   , ServerAddress
+  };
+
+to_wire_message(
+  { iMVMLiveness
+  ,  ServerAddress
+  ,  MonotonicTime
+  }) ->
+  { ?iMVMLivenessMsgName
+  , << MonotonicTime:64/signed-big-integer                                 %%  64    64
+     , ServerAddress/binary                                                %% rest of msg
+    >>
   }.
 
 
@@ -203,6 +215,18 @@ from_wire_message(
   { just, { iMTransPoPLeader
           , ServerAddress
           }
+  };
+
+from_wire_message(
+   ?iMVMLivenessMsgName
+  , << MonotonicTime:64/signed-big-integer                                 %%  64    64
+     , ServerAddress/binary                                                %% rest of msg
+    >>
+  ) ->
+  { just, { iMVMLiveness
+         ,  ServerAddress
+         ,  MonotonicTime
+         }
   }.
 
 
@@ -250,6 +274,7 @@ x() ->
                 , test_IMEgestState_message()
                 , test_IMRelayState_message()
                 , test_IMServerLoad_message()
+                , test_IMVMLiveness_message()
                 ]),
   ok.
 
@@ -274,3 +299,6 @@ test_IMRelayState_message() ->
 
 test_IMServerLoad_message() ->
   {iMServerLoad,<<"172.16.169.3">>,#{cpu => 100.0,network => 0},true}.
+
+test_IMVMLiveness_message() ->
+  {iMVMLiveness,<<"172.16.169.1">>,-576460657433848941}.
