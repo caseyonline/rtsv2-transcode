@@ -274,7 +274,7 @@ getNewLoad state@{config: {monitorLoad}} | monitorLoad = do
     newMeasuredLoad = CurrentLoad { cpu: newCpu
                                   , network: newNetwork
                                   }
-  pure state{currentMeasuredLoad = newMeasuredLoad}
+  pure state3{currentMeasuredLoad = newMeasuredLoad}
 
 getNewLoad state =
   pure state

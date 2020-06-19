@@ -109,7 +109,7 @@ sum_lines([H | T], Receive, Transmit) ->
 
 expire_entries(Expiry, Queue) ->
   case queue:out(Queue) of
-    {{value, {_Bitrate, When}}, Queue2} when When < Expiry -> expire_entries(Expiry, Queue2);
+    {{value, {_Bytes, When}}, Queue2} when When < Expiry -> expire_entries(Expiry, Queue2);
     _ -> Queue
   end.
 
@@ -118,7 +118,8 @@ bitrate(Queue) ->
     {value, {OldestBytes, OldestTime}} ->
       case queue:peek_r(Queue) of
         {value, {NewestBytes, NewestTime}} when NewestTime > OldestTime ->
-          ((NewestBytes - OldestBytes) * 8) / (NewestTime - OldestTime);
+          %% Bytes * 8 div Milliseconds -> bits per millisecond or kilobits per second
+          ((NewestBytes - OldestBytes) * 8) div (NewestTime - OldestTime);
         _ ->
           undefined
       end;
