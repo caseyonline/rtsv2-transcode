@@ -36,7 +36,7 @@
   0},
  {<<"id3as_media">>,
   {git,"git@github.com:id3as/id3as.media.git",
-       {ref,"ed47dfbe6b000f46f5afba37019f1c2f4ca2f853"}},
+       {ref,"378321d0b6b31487ef1be51e516e784271ad22fb"}},
   0},
  {<<"id3as_rtc">>,
   {git,"git@github.com:id3as/id3as_rtc.git",
