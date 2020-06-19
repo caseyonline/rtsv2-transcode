@@ -1,4 +1,4 @@
-# RTS-V2 release xxx
+# RTS-V2 release 107
 
 **What's new**
 
