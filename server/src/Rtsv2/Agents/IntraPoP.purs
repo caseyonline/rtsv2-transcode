@@ -196,23 +196,19 @@ data IntraMessage
 instance serfWireMessageIM :: SerfWireMessage IntraMessage where
   toWireMessage payload@(IMAggregatorState _ _ _ _) =
     to_wire_message payload
-
   toWireMessage payload@(IMEgestState _ _ _) =
     to_wire_message payload
-
   toWireMessage payload@(IMRelayState _ _ _) =
     to_wire_message payload
-
   toWireMessage payload@(IMServerLoad _ _ _) =
     to_wire_message payload
+  toWireMessage payload@(IMTransPoPLeader _) =
+    to_wire_message payload
 
-  toWireMessage payload@(IMSlotLookup serverAddress rtmpShortName slotName slotLookupResult) =
-    tuple2 "slotLookup" $ to_binary payload
-  toWireMessage payload@(IMTransPoPLeader serverAddress) =
-    tuple2 "transPoPLeader" $ to_binary payload
   toWireMessage payload@(IMVMLiveness serverAddress ref) =
     tuple2 "vmLiveness" $ to_binary payload
-
+  toWireMessage payload@(IMSlotLookup serverAddress rtmpShortName slotName slotLookupResult) =
+    tuple2 "slotLookup" $ to_binary payload
 
   fromWireMessage "a" payload =
     from_wire_message "a" payload
@@ -224,6 +220,8 @@ instance serfWireMessageIM :: SerfWireMessage IntraMessage where
     from_wire_message "d" payload
   fromWireMessage "e" payload =
     from_wire_message "e" payload
+  fromWireMessage "f" payload =
+    from_wire_message "f" payload
 
   fromWireMessage name payload =
     Just $ from_binary payload

@@ -108,7 +108,15 @@ to_wire_message(
      , (to_wire_element_network_kbps(NetworkKbps)):16/unsigned-big-integer %%  16    24
      , ServerAddress/binary                                                %% rest of msg
     >>
+  };
+to_wire_message(
+  { iMTransPoPLeader
+  , ServerAddress
+  }) ->
+  { ?iMTransPoPLeaderMsgName
+  , ServerAddress
   }.
+
 
 from_wire_message(
   ?iMAggregatorAvailableMsgName
@@ -185,6 +193,15 @@ from_wire_message(
                             , network => from_wire_element_network_kbps(WireNetwork)
                     }
           , from_wire_element_accepting_requests(WireAcceptingRequests)
+          }
+  };
+
+from_wire_message(
+  ?iMTransPoPLeaderMsgName
+ , ServerAddress
+ ) ->
+  { just, { iMTransPoPLeader
+          , ServerAddress
           }
   }.
 
