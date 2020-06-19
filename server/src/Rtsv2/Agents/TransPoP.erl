@@ -28,9 +28,9 @@ to_wire_message(
                             , totalBitrate := TotalKBitrate
                             }
   })
-  when
-    NumProfiles              > 0 andalso NumProfiles =< 16#10,              %% Max of 16 profiles
-    TotalKBitrate            > 0 andalso TotalKBitrate =< 16#40000          %% Max of 250 Mbps of a single ADR ladder total
+  %% when
+  %%   NumProfiles              > 0 andalso NumProfiles =< 16#10,              %% Max of 16 profiles
+  %%   TotalKBitrate            > 0 andalso TotalKBitrate =< 16#40000          %% Max of 250 Mbps of a single ADR ladder total
     ->
   { ?tMAggregatorStateMsgName
   , << (to_wire_element_event_type(Type)):1                             %%   1    1

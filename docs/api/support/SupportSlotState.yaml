@@ -1,8 +1,8 @@
 get:
   summary: /support/state/slot/{slotId}
-  description: Server State description.
+  description: Get the state of a specific slot via it's slotId
   tags:
-    - Support
+    - Support Api
   parameters:
     - $ref: '../parameters/slotId.yaml'
   responses:
@@ -11,9 +11,7 @@ get:
       content:
         application/json-ld:
           schema:
-            type: array
-            items:
-              $ref: '../PublicSchema.yaml'
+            $ref: '../schemas/SlotState.yaml'
     '404':
       description: Not Found
       content:

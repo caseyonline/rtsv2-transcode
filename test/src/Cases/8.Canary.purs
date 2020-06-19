@@ -16,7 +16,8 @@ import Helpers.Log as L
 import Helpers.Types (Node)
 import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Rtsv2.Types (CanaryState(..))
-import Test.Spec (SpecT, after_, before_, describe, it)
+import Test.Spec (SpecT, after, after_, before, before_, describe, describeOnly, it, itOnly)
+import Test.Unit.Assert as Assert
 import Toppokki as T
 
 -------------------------------------------------------------------------------
@@ -87,22 +88,22 @@ canaryWhenLiveTest2 =
 
 canaryWhenLiveTest3 :: forall m. Monad m => SpecT Aff Unit m Unit
 canaryWhenLiveTest3 =
-  it "8.1.3 Cannot perform WebRTC ingest against canary path" do
-    browser <- T.launch options
-    page <- T.newPage browser
-    T.goto (HTTP.canaryIngestUrl E.p1n1 E.shortName1 E.highStreamName) page
-    delay (Milliseconds 2000.00) >>= L.as' "wait for page to load"
-    T.bringToFront page >>= L.as' "Bring to front"
+  before (T.launch options) do
+    after (\browser -> T.close browser) do
+      it "8.1.3 Cannot perform WebRTC ingest against canary path" $ \browser -> do
+        page <- T.newPage browser
+        T.goto (HTTP.canaryIngestUrl E.p1n1 E.shortName1 E.highStreamName) page
+        delay (Milliseconds 2000.00) >>= L.as' "wait for page to load"
+        T.bringToFront page >>= L.as' "Bring to front"
 
-    T.click (T.Selector "#authenticate") page
-    delay (Milliseconds 500.00) >>= L.as' "wait for authentication"
+        T.click (T.Selector "#authenticate") page
+        delay (Milliseconds 500.00) >>= L.as' "wait for authentication"
 
-    T.click (T.Selector "#start-ingest") page
-    delay (Milliseconds 2000.00) >>= L.as' "let stream start"
+        T.click (T.Selector "#start-ingest") page
+        delay (Milliseconds 2000.00) >>= L.as' "let stream start"
 
-    HTTP.getAggregatorStats E.p1n1 E.slot1 >>= A.assertStatusCode 404 >>= as "no aggregator running"
-    T.close browser
-    pure unit
+        HTTP.getAggregatorStats E.p1n1 E.slot1 >>= A.assertStatusCode 404 >>= as "no aggregator running"
+        pure unit
 
 canaryWhenLiveTest4 :: forall m. Monad m => SpecT Aff Unit m Unit
 canaryWhenLiveTest4 =
@@ -143,6 +144,8 @@ canaryWhenLiveTest7 =
       lift $ HTTP.getAggregatorStats E.p1n1 E.slot1 >>= A.assertStatusCode 404 >>= as "aggregator not running"
 
       lift $ HTTP.changeCanaryState E.p1n1 Canary >>= A.assertStatusCode 204 >>= as "canary state changed"
+
+      lift $ E.waitForIntraPoPDisseminate
 
       lift $ HTTP.ingestStart E.p1n1 Canary E.shortName1 E.lowStreamName
                                                >>= A.assertStatusCode 200 >>= as "create low canary ingest"
@@ -197,21 +200,18 @@ canaryWhenCanary2 =
 
 canaryWhenCanary3 :: forall m. Monad m => SpecT Aff Unit m Unit
 canaryWhenCanary3 =
-  it "8.2.3 Cannot perform WebRTC ingest against live path" do
-    browser <- T.launch options
-    page <- T.newPage browser
-    T.goto (HTTP.ingestUrl E.p1n1 E.shortName1 E.highStreamName) page
-    delay (Milliseconds 2000.00) >>= L.as' "wait for page to load"
+  before (T.launch options) do
+    after (\browser -> T.close browser) do
+      it "8.2.3 Cannot perform WebRTC ingest against live path" $ \browser -> do
+        page <- T.newPage browser
+        T.goto (HTTP.ingestUrl E.p1n1 E.shortName1 E.highStreamName) page
+        delay (Milliseconds 2000.00) >>= L.as' "wait for page to load"
 
-    T.click (T.Selector "#authenticate") page
-    delay (Milliseconds 500.00) >>= L.as' "wait for authentication"
+        code <- F.getInnerText ".error-code" page
 
-    T.click (T.Selector "#start-ingest") page
-    delay (Milliseconds 2000.00) >>= L.as' "let stream start"
+        Assert.assert "503 returned" (code == "HTTP ERROR 503") >>= L.as' "503 returned"
 
-    HTTP.getAggregatorStats E.p1n1 E.slot1 >>= A.assertStatusCode 404 >>= as "no aggregator running"
-    T.close browser
-    pure unit
+        pure unit
 
 canaryWhenCanary4 :: forall m. Monad m => SpecT Aff Unit m Unit
 canaryWhenCanary4 =

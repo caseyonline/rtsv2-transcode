@@ -19,6 +19,7 @@
         , base64EncodeImpl/1
         , linkImpl/1
         , whereisImpl/1
+        , monotonicTime/0
         ]).
 
 linkImpl(Pid) ->
@@ -136,3 +137,8 @@ readTuple2Impl(_) ->
 
 base64EncodeImpl(String) ->
   base64:encode(String).
+
+monotonicTime() ->
+  fun() ->
+      erlang:monotonic_time()
+  end.

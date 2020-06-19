@@ -2,7 +2,17 @@ let upstream =
       https://github.com/purerl/package-sets/releases/download/erl-0.13.6-20200513/packages.dhall sha256:a06d91d931d8f2b984b53e4fd5fae0d8a30f7c0ccf99b8516b9aaa356bc46169
 
 let overrides =
-      { erl-pinto =
+      { erl-cowboy =
+          { dependencies = [ "erl-modules" ]
+          , repo = "https://github.com/id3as/purescript-erl-cowboy.git"
+          , version = "4ee391f0349c00d92f68e4331425174eb8bdff9e"
+          }
+      , erl-stetson =
+          { dependencies = [ "erl-cowboy" ]
+          , repo = "https://github.com/id3as/purescript-erl-stetson.git"
+          , version = "0a2b2b5ad4a013a71c9a2e39ae50cd9ec6c011cd"
+          }
+      , erl-pinto =
           { dependencies = [ "erl-cowboy", "erl-process" ]
           , repo = "https://github.com/id3as/purescript-erl-pinto.git"
           , version = "e08a7285eefa73e22869e24f2e366eb4890fe414"

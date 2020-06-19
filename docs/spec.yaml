@@ -91,91 +91,95 @@ info:
 
     ---
 
-  x-logo:
-    url: https://static.wixstatic.com/media/b1006e_fb5b447f5d124676b0b1a328eb6adbd5~mv2_d_2986_1252_s_2.png
+x-logo:
+  url: https://static.wixstatic.com/media/b1006e_fb5b447f5d124676b0b1a328eb6adbd5~mv2_d_2986_1252_s_2.png
 tags:
-  - name: service metadata
-    description: The service API provides additional metadata needed to make the OOAPI fit for this organization.
-  - name: Public
+  - name: Public Html
     description: Description for the Public API.
-  - name: Support
+  - name: Support Api
     description: Description for Support API.
+  - name: Support Html
+    description: Description for Support Html.
 produces:
   - "application/json-ld"
 
 x-tagGroups:
   - name: Api
     tags:
-      - Public
-      - Support
-paths:
-  /public/client/{slotId}/{slotRole}/player:
-    $ref: api/public/PublicClientPlayer.yaml
-  /public/client/{slotId}/{slotRole}/session:
-    $ref: api/public/PublicClientPlayerControl.yaml
-  /public/discovery/v1/{shortName}/{streamName}:
-    $ref: api/public/PublicStreamDiscovery.yaml
-  /public/ingest/{shortName}/{streamName}/ingest:
-    $ref: api/public/PublicClientWebRTCIngest.yaml
-  /public/ingest/{shortName}/{streamName}/session:
-    $ref: api/public/PublicClientWebRTCIngestControl.yaml
+      - Support Api
+  - name: Html
+    tags:
+      - Public Html
+      - Support Html
 
-  /support/canary/:
+paths:
+  /support/canary:
     $ref: api/support/SupportCanary.yaml
-  # client bases routes
-  # /support/canary/client/{slotId}/{slotRole}/:
-  #   $ref: api/support/SupportCanaryClientPlayerAssets.yaml
-  # /support/canary/client/{slotId}/{slotRole}/player:
-  #   $ref: api/support/SupportCanaryClientPlayer.yaml
-  # /support/canary/client/{slotId}/{slotRole}/session:
-  #   $ref: api/support/SupportCanaryClientPlayerControl.yaml
   /support/canary/discovery/v1/{shortName}/{streamName}:
     $ref: api/support/SupportCanaryStreamDiscovery.yaml
-  # /support/canary/ingest/{slotId}/{slotRole}/ingest:
-  #   $ref: api/support/SupportCanaryClientWebRTCIngest.yaml
-  # /support/canary/ingest/{slotId}/{slotRole}/session:
-  #   $ref: api/support/SupportCanaryClientWebRTCIngestControl.yaml
   /support/egest/metrics:
     $ref: api/support/SupportEgestInstancesMetrics.yaml
   /support/egest/{slotId}/{slotRole}:
     $ref: api/support/SupportEgestStats.yaml
-  /support/healthCheck/:
+  /support/healthCheck:
     $ref: api/support/SupportHealthCheck.yaml
-
-
-  /support/ingest/metrics/:
+  /support/ingest/metrics:
     $ref: api/support/SupportIngestInstancesMetrics.yaml
   /support/ingest/{slotId}/{slotRole}/{profileName}:
     $ref: api/support/SupportIngestInstance.yaml
-  /support/ingestAggregator/:
-    $ref: api/support/SupportIngestAggregator.yaml
-  /support/ingestAggregator/{slotId}/{slotRole}/activeIngests/{profileName}/control:
-    $ref: api/support/SupportIngestAggregatorActiveIngestsPlayerControl.yaml
-  /support/ingestAggregator/{slotId}/{slotRole}/activeIngests/{profileName}/js/:
-    $ref: api/support/SupportIngestAggregatorActiveIngestsPlayerJs.yaml
-  /support/ingestAggregator/{slotId}/{slotRole}/activeIngests/{profileName}/player:
-    $ref: api/support/SupportIngestAggregatorActiveIngestsPlayer.yaml
-  /support/ingestAggregator/{slotId}/{slotRole}/js/:
-    $ref: api/support/SupportIngestAggregatorPlayerJs.yaml
-  /support/ingestAggregator/{slotId}/{slotRole}/player:
-    $ref: api/support/SupportIngestAggregatorPlayer.yaml
   /support/ingestAggregator/{slotId}/{slotRole}:
     $ref: api/support/SupportIngestAggregator.yaml
-  /support/jsonld/{contexType}:
-    $ref: api/support/SupportJsonLdContext.yaml
-  /support/popDefinition/:
+  /support/popDefinition:
     $ref: api/support/SupportPoPDefinition.yaml
   /support/relay/{slotId}/{slotRole}:
     $ref: api/support/SupportRelayStats.yaml
-  /support/runState/:
+  /support/runState:
     $ref: api/support/SupportRunState.yaml
-  /support/state/:
+  /support/state:
     $ref: api/support/SupportServerState.yaml
   /support/state/slot/{slotId}:
     $ref: api/support/SupportSlotState.yaml
-  /support/timedRoutes/:
+  /support/timedRoutes:
     $ref: api/support/SupportTimedRoutes.yaml
   /support/timedRoutes/{popName}:
     $ref: api/support/SupportTimedRoutesForPoP.yaml
-  /support/vm/v1/metrics/:
+  /support/vm/metrics:
     $ref: api/support/SupportVMMEtrics.yaml
+
+  # Web Routes
+  /public/client/{slotId}/{slotRole}/player:
+    $ref: api/html/public/PublicClientPlayer.yaml
+  /public/client/{slotId}/{slotRole}/session:
+    $ref: api/html/public/PublicClientPlayerControl.yaml
+  /public/discovery/v1/{shortName}/{streamName}:
+    $ref: api/html/public/PublicStreamDiscovery.yaml
+  /public/ingest/{shortName}/{streamName}/ingest:
+    $ref: api/html/public/PublicClientWebRTCIngest.yaml
+  /public/ingest/{shortName}/{streamName}/session:
+    $ref: api/html/public/PublicClientWebRTCIngestControl.yaml
+
+  /support/canary/client/{slotId}/{slotRole}/:
+    $ref: api/html/support/SupportCanaryClientPlayerAssets.yaml
+  /support/canary/client/{slotId}/{slotRole}/player:
+    $ref: api/html/support/SupportCanaryClientPlayer.yaml
+  /support/canary/client/{slotId}/{slotRole}/session:
+    $ref: api/html/support/SupportCanaryClientPlayerControl.yaml
+
+  /support/canary/ingest/{slotId}/{slotRole}/ingest:
+    $ref: api/html/support/SupportCanaryClientWebRTCIngest.yaml
+  /support/canary/ingest/{slotId}/{slotRole}/session:
+    $ref: api/html/support/SupportCanaryClientWebRTCIngestControl.yaml
+
+  /support/ingestAggregator/{slotId}/{slotRole}/activeIngests/{profileName}/control:
+    $ref: api/html/support/SupportIngestAggregatorActiveIngestsPlayerControl.yaml
+  /support/ingestAggregator/{slotId}/{slotRole}/activeIngests/{profileName}/js/:
+    $ref: api/html/support/SupportIngestAggregatorActiveIngestsPlayerJs.yaml
+  /support/ingestAggregator/{slotId}/{slotRole}/activeIngests/{profileName}/player:
+    $ref: api/html/support/SupportIngestAggregatorActiveIngestsPlayer.yaml
+  /support/ingestAggregator/{slotId}/{slotRole}/js/:
+    $ref: api/html/support/SupportIngestAggregatorPlayerJs.yaml
+  /support/ingestAggregator/{slotId}/{slotRole}/player:
+    $ref: api/html/support/SupportIngestAggregatorPlayer.yaml
+
+  # /support/jsonld/{contexType}:
+  #   $ref: api/html/support/SupportJsonLdContext.yaml

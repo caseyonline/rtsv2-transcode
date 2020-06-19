@@ -2,7 +2,7 @@ get:
   summary: /suport/egest/metrics
   description: Egest metrics description
   tags:
-    - Support
+    - Support Api
   responses:
     '200':
       description: OK
@@ -10,16 +10,16 @@ get:
         application/openmetrics-text:
           type: text
           example: |
-            HELP video_octets_sent The number of video octets sent for this session
-            TYPE video_octets_sent counter
-            HELP video_packets_sent The number of video packets sent for this session
-            TYPE video_packets_sent counter
-            HELP audio_octets_sent The number of audio octets sent for this session
-            TYPE audio_octets_sent counter
-            HELP audio_packets_sent The number of audio packets sent for this session
-            TYPE audio_packets_sent counter
-            HELP client_count The number of clients for this egest node
-            TYPE client_count counter
+            # HELP video_octets_sent The number of video octets sent for this session
+            # TYPE video_octets_sent counter
+            # HELP video_packets_sent The number of video packets sent for this session
+            # TYPE video_packets_sent counter
+            # HELP audio_octets_sent The number of audio octets sent for this session
+            # TYPE audio_octets_sent counter
+            # HELP audio_packets_sent The number of audio packets sent for this session
+            # TYPE audio_packets_sent counter
+            # HELP client_count The number of clients for this egest node
+            # TYPE client_count counter
 
     '404':
       description: Not Found

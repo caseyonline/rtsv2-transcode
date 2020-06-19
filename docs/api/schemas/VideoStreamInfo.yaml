@@ -1,0 +1,24 @@
+type: object
+properties:
+  streamId:
+    type: string
+  codec:
+    $ref: './VideoCodec.yaml'
+  width:
+    type: interger
+  height:
+    type: interger
+  pixelAspectRatio:
+    type: array
+    items:
+      type: interger
+  interlaced:
+    type: boolean
+  resolutionName:
+    type: string
+  frameRateName:
+    type: string
+  language:
+    type: string
+  inFillinMode:
+    type: boolean

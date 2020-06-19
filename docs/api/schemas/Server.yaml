@@ -1,0 +1,24 @@
+type: object
+properties:
+  address:
+    type: string
+  pop:
+    type: string
+  region:
+    type: string
+  maxCpuCapacity:
+    type: interger
+  maxNetworkCapacity:
+    type: interger
+  receiveQueueCount:
+    type: interger
+  transmitQueueCount:
+    type: interger
+  capabilityTags:
+    type: array
+    items:
+      type: string
+  agents:
+    type: array
+    items:
+      $ref: "./Server.yaml"

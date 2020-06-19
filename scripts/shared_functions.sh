@@ -99,39 +99,53 @@ function start_node {
   local -r addr=$4
   local -r sysConfig=$5
 
-  iface=$(interface_name_from_index "${ifaceIndex}")
+  case ${ifaceIndex} in
+    "any") iface=any
+           case "$(uname -s)" in
+             "Darwin")
+               serfIface=lo0
+               ;;
 
-  create_iface "$iface" "$addr"
+             "Linux")
+               serfIface=lo
+               ;;
+           esac
+           ;;
+    *) iface=$(interface_name_from_index "${ifaceIndex}")
+       serfIface=$iface
+       create_iface "$iface" "$addr"
+       ;;
+  esac
 
   mkdir -p "logs/$nodeName"
   touch "logs/$nodeName/t-serf.log"
 
-  tmux -L "$tmuxSession" send-keys " nix-shell" C-m
+  if [ -z ${IN_NIX_SHELL+x} ]; then tmux -L "$tmuxSession" send-keys " nix-shell" C-m; fi
   tmux -L "$tmuxSession" send-keys " export HOSTNAME=$addr" C-m
-  tmux -L "$tmuxSession" send-keys " serf agent -iface $iface -node $nodeName -bind $addr:7946 -rpc-addr $addr:7373 | tee -a logs/$nodeName/i-serf.log | grep -v 'Accepted client' | grep -v 'liveness' | grep -v 'transPoPLeader'" C-m
+  tmux -L "$tmuxSession" send-keys " serf agent -iface $serfIface -node $nodeName -bind $addr:7946 -rpc-addr $addr:7373 | tee -a logs/$nodeName/i-serf.log | grep -v 'Accepted client' | grep -v 'liveness' | grep -v 'transPoPLeader'" C-m
   tmux -L "$tmuxSession" split-window -h -p 80
-  tmux -L "$tmuxSession" send-keys " nix-shell" C-m
+  if [ -z ${IN_NIX_SHELL+x} ]; then tmux -L "$tmuxSession" send-keys " nix-shell" C-m; fi
   tmux -L "$tmuxSession" send-keys " export HOSTNAME=$addr" C-m
   tmux -L "$tmuxSession" send-keys " tail -f logs/$nodeName/t-serf.log | grep -v 'Accepted client'" C-m
   tmux -L "$tmuxSession" split-window -h -p 50
-  tmux -L "$tmuxSession" send-keys " nix-shell" C-m
+  if [ -z ${IN_NIX_SHELL+x} ]; then tmux -L "$tmuxSession" send-keys " nix-shell" C-m; fi
   tmux -L "$tmuxSession" send-keys " export HOSTNAME=$addr" C-m
   tmux -L "$tmuxSession" split-window -h -p 50
-  tmux -L "$tmuxSession" send-keys " nix-shell" C-m
+  if [ -z ${IN_NIX_SHELL+x} ]; then tmux -L "$tmuxSession" send-keys " nix-shell" C-m; fi
   tmux -L "$tmuxSession" send-keys " export PS1='> '" C-m
   tmux -L "$tmuxSession" send-keys " export HOSTNAME=$addr" C-m
   tmux -L "$tmuxSession" send-keys " export PUBLIC_IFACE=$iface" C-m
   tmux -L "$tmuxSession" send-keys " export SUPPORT_IFACE=$iface" C-m
   tmux -L "$tmuxSession" send-keys " export SYSTEM_IFACE=$iface" C-m
-  tmux -L "$tmuxSession" send-keys " export INTRA_SERF_IFACE=$iface" C-m
-  tmux -L "$tmuxSession" send-keys " export TRANS_SERF_IFACE=$iface" C-m
+  tmux -L "$tmuxSession" send-keys " export INTRA_SERF_IFACE=$serfIface" C-m
+  tmux -L "$tmuxSession" send-keys " export TRANS_SERF_IFACE=$serfIface" C-m
   tmux -L "$tmuxSession" send-keys " export IS_PROXIED=false" C-m
   tmux -L "$tmuxSession" send-keys " export PUBLIC_PORT=3000" C-m
   tmux -L "$tmuxSession" send-keys " export SYSTEM_PORT=3001" C-m
   tmux -L "$tmuxSession" send-keys " export SUPPORT_PORT=3002" C-m
   tmux -L "$tmuxSession" send-keys " export DISK_LOG_ROOT=$(pwd)/logs/$nodeName" C-m
   tmux -L "$tmuxSession" send-keys " export LD_LIBRARY_PATH=$(pwd)/_build/default/lib/id3as_media/priv" C-m
-  tmux -L "$tmuxSession" send-keys " until (serf info --rpc-addr \$HOSTNAME:7373); do printf '.'; sleep 0.5; done" C-m
+  tmux -L "$tmuxSession" send-keys " until (serf info --rpc-addr \$HOSTNAME:7373 >/dev/null 2>&1); do printf '.'; sleep 0.5; done" C-m
   tmux -L "$tmuxSession" send-keys " erl +sbwt none +sbwtdcpu none +sbwtdio none -pa _build/default/lib/*/ebin -config $sysConfig -rtsv2 id '\"rtsv2TestRunner$nodeName\"' -eval 'application:ensure_all_started(rtsv2).'" C-m
 }
 

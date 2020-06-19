@@ -1,0 +1,16 @@
+{
+  "europe": {
+    "fra": {
+      "geoLoc": ["8.682127","50.110922"],
+      "nodes": [ { "address": "localhost"
+                 , "maxCpuCapacity": 1000
+                 , "maxNetworkCapacity": 1000000
+                 , "receiveQueueCount": 4
+                 , "transmitQueueCount": 4
+                 , "capabilityTags": []
+                 , "agents": ["TransPoP", "Ingest", "IngestAggregator", "StreamRelay", "Egest"]
+                 }
+               ]
+    }
+  }
+}

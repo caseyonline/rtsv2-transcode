@@ -1,0 +1,15 @@
+oneOf:
+  - {type: string, description: RawAudio, example: RawAudio }
+  - {type: string, description: ADPCM, example: ADPCM }
+  - {type: string, description: MP2, example: MP2 }
+  - {type: string, description: MP3, example: MP3 }
+  - {type: string, description: LinearPCM, example: LinearPCM }
+  - {type: string, description: Nellymoser, example: Nellymoser }
+  - {type: string, description: ALaw, example: ALaw }
+  - {type: string, description: ULaw, example: ULaw }
+  - {type: string, description: AAC, example: AAC }
+  - {type: string, description: Speex, example: Speex }
+  - {type: string, description: AC3, example: AC3 }
+  - {type: string, description: EAC3, example: EAC3 }
+  - {type: string, description: G722, example: G722 }
+  - {type: string, description: Opus, example: Opus }

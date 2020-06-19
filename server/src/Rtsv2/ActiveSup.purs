@@ -13,6 +13,7 @@ import Rtsv2.Agents.AgentSup as AgentSup
 import Rtsv2.DataObject as DataObject
 import Rtsv2.LlnwApi as LlnwApi
 import Rtsv2.Types (AgentSupStartArgs)
+import Rtsv2.Web as Web
 
 serverName :: forall state msg. ServerName state msg
 serverName = Local (atom "rtsv2ActiveSup")
@@ -31,6 +32,7 @@ init args = do
     ( agentSup
       : dataObject
       : llnwApi
+      : webServer
       : nil
     )
   where
@@ -51,3 +53,9 @@ init args = do
       # childType Supervisor
       # childId "agentSup"
       # childStart AgentSup.startLink args
+
+    webServer =
+      buildChild
+      # childType Worker
+      # childId "web"
+      # childStart Web.startLink args.canaryState
