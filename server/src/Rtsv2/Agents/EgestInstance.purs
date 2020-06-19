@@ -27,7 +27,7 @@ import Data.Either (Either(..), hush)
 import Data.Foldable (foldl)
 import Data.Int (round, toNumber)
 import Data.Long as Long
-import Data.Maybe (Maybe(..), fromMaybe, maybe')
+import Data.Maybe (Maybe(..), fromMaybe, maybe, maybe')
 import Data.Newtype (class Newtype, unwrap, wrap)
 import Data.Traversable (traverse_)
 import Data.Tuple (Tuple(..))
@@ -71,7 +71,7 @@ import Rtsv2.Types (LocalOrRemote(..), ResourceResp)
 import Shared.Common (LoggingContext(..), Milliseconds(..))
 import Shared.Rtsv2.Agent (SlotCharacteristics)
 import Shared.Rtsv2.Agent as Agent
-import Shared.Rtsv2.JsonLd (EgestStats, EgestSessionStats)
+import Shared.Rtsv2.JsonLd (EgestSessionStats(..), EgestStats, statsSessionId)
 import Shared.Rtsv2.LlnwApiTypes (StreamEgestProtocol(..))
 import Shared.Rtsv2.Router.Endpoint.System as System
 import Shared.Rtsv2.Stream (AggregatorKey(..), EgestKey(..), ProfileName, RelayKey(..), SlotId, SlotRole, egestKeyToAgentKey, egestKeyToAggregatorKey)
@@ -140,17 +140,6 @@ type State
     , rtmpWorkflowHandle :: WorkflowHandle
     }
 
-
-
-emptySessionStats :: String -> EgestSessionStats
-emptySessionStats sessionId
-  = { sessionId
-    , audioPacketsSent: 0
-    , audioOctetsSent: 0
-    , videoPacketsSent: 0
-    , videoOctetsSent: 0
-    }
-
 payloadToEgestKey :: CreateEgestPayload -> EgestKey
 payloadToEgestKey payload = EgestKey payload.slotId payload.slotRole
 
@@ -173,6 +162,20 @@ data Msg = WriteEqLog
          | ForceDrainPhase Int
          | ForceDrainTimeout
          | AggregatorExitTimer Ref
+
+emptySessionStats :: StreamEgestProtocol -> String -> EgestSessionStats
+emptySessionStats WebRTCEgest sessionId =
+  EgestRtcSessionStats { sessionId
+                       , audioPacketsSent: 0
+                       , audioOctetsSent: 0
+                       , videoPacketsSent: 0
+                       , videoOctetsSent: 0
+                       }
+emptySessionStats RtmpEgest sessionId =
+  EgestRtmpSessionStats { sessionId
+                        , octetsSent: 0
+                        , octetsReceived: 0
+                        }
 
 serverName :: EgestKey -> ServerName State Msg
 serverName egestKey = Names.egestInstanceName egestKey
@@ -213,8 +216,8 @@ pendingClient egestKey  =
     maybeResetStopTimer state =
       pure state
 
-addClient :: Pid -> EgestKey -> String -> Effect RegistrationResp
-addClient handlerPid egestKey sessionId =
+addClient :: StreamEgestProtocol -> Pid -> EgestKey -> String -> Effect RegistrationResp
+addClient egestProtocol handlerPid egestKey sessionId =
   Gen.doCall ourServerName \state@{clientCount, clientStats, dataObject, activeProfiles, slotCharacteristics, loadConfig} -> do
 
     idleServerResp <- IntraPoP.getThisIdleServer $ Load.hasCapacityForEgestClient slotCharacteristics loadConfig
@@ -227,7 +230,7 @@ addClient handlerPid egestKey sessionId =
         maybeSend dataObject
         (Process handlerPid) ! (EgestCurrentActiveProfiles activeProfiles)
         pure $ CallReply (Right state.activeProfiles) state{ clientCount = clientCount + 1
-                                                           , clientStats = Map.insert sessionId (emptySessionStats sessionId) clientStats
+                                                           , clientStats = Map.insert sessionId (emptySessionStats egestProtocol sessionId) clientStats
                                                            , stopRef = Nothing
                                                            }
   where
@@ -260,9 +263,9 @@ dataObjectUpdate egestKey updateMsg =
   )
 
 statsUpdate :: EgestKey -> EgestSessionStats -> Effect Unit
-statsUpdate egestKey stats@{sessionId} = do
+statsUpdate egestKey stats = do
   Gen.doCall (serverName egestKey) \state@{clientStats} -> do
-    pure $ CallReply unit state{clientStats = Map.insert sessionId stats clientStats}
+    pure $ CallReply unit state{clientStats = Map.insert (statsSessionId stats) stats clientStats}
 
 forceDrain :: EgestKey -> Effect Unit
 forceDrain egestKey =
@@ -616,7 +619,15 @@ egestEqLines state@{ egestKey: egestKey@(EgestKey slotId _slotRole)
 egestEqLine :: SlotId -> SlotConfiguration -> String -> Milliseconds -> Milliseconds -> (Map String EgestSessionStats) -> Int -> Int -> Tuple String WebRTCSessionManagerStats -> Audit.EgestEqLine
 egestEqLine slotId slotConfiguration thisServerAddr startMs endMs clientStatsMap webRTCPort rtmpPort (Tuple sessionId {channels}) =
   let
-    clientStats = fromMaybe (emptySessionStats sessionId) $ lookup sessionId clientStatsMap
+    statsToWrittenBytes (EgestRtmpSessionStats {octetsSent}) = octetsSent
+    statsToWrittenBytes (EgestRtcSessionStats { audioOctetsSent, videoOctetsSent }) = audioOctetsSent + videoOctetsSent
+
+    bytesWritten = fromMaybe 0 $ statsToWrittenBytes <$> lookup sessionId clientStatsMap
+
+    connectionType = maybe WebRTCEgest t $ lookup sessionId clientStatsMap
+      where t (EgestRtmpSessionStats _) = RtmpEgest
+            t (EgestRtcSessionStats _) = WebRTCEgest
+
     receiverAccumulate acc {lostTotal} = acc + lostTotal
 
     channelInitial = {writtenAcc: 0, readAcc: 0, lostAcc: 0, remoteAddress: ""}
@@ -636,17 +647,19 @@ egestEqLine slotId slotConfiguration thisServerAddr startMs endMs clientStatsMap
   in
 
   { egestIp: thisServerAddr
-  , egestPort: webRTCPort -- TODO - flip for rtmp
+  , egestPort: case connectionType of
+                  WebRTCEgest -> webRTCPort
+                  RtmpEgest -> rtmpPort
   , subscriberIp: remoteAddress
   , username: sessionId
   , rtmpShortName: shortName
   , slotId
   , slotRole
   , slotName
-  , connectionType: WebRTCEgest
+  , connectionType
   , startMs
   , endMs
-  , bytesWritten: clientStats.audioOctetsSent + clientStats.videoOctetsSent
+  , bytesWritten
   , bytesRead: readAcc
   , lostPackets: lostAcc
   }
