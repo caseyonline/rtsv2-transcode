@@ -7,13 +7,13 @@ import Data.Generic.Rep.Show (genericShow)
 import Data.Newtype (class Newtype)
 import Effect (Effect)
 import Routing.Duplex (RouteDuplex', print, rest, root, segment)
-import Routing.Duplex.Generic (sum)
+import Routing.Duplex.Generic (noArgs, sum)
 import Routing.Duplex.Generic.Syntax ((/))
 import Rtsv2.Config as Config
 import Shared.Common (Url)
 import Shared.Rtsv2.Router.Endpoint.Combinators (shortName, slotName, slotId, slotRole, streamName)
 import Shared.Rtsv2.Router.Endpoint.Utils as Utils
-import Shared.Rtsv2.Stream (RtmpShortName, RtmpStreamName, SlotId, SlotName(..), SlotRole)
+import Shared.Rtsv2.Stream (RtmpShortName, RtmpStreamName, SlotId, SlotName, SlotRole)
 import Shared.Rtsv2.Types (ServerAddress(..), extractAddress)
 
 
@@ -28,6 +28,8 @@ data Endpoint
   | ClientWebRTCIngestE RtmpShortName RtmpStreamName
   | ClientWebRTCIngestControlE RtmpShortName RtmpStreamName
   | ClientWebRTCIngestAssetsE RtmpShortName RtmpStreamName (Array String)
+
+  | FaviconE
 
 derive instance genericEndpoint :: Generic Endpoint _
 
@@ -48,6 +50,7 @@ endpoint = root $ sum
   , "ClientWebRTCIngestE"                              : "public" / "ingest" / shortName segment / streamName segment / "ingest"
   , "ClientWebRTCIngestControlE"                       : "public" / "ingest" / shortName segment / streamName segment / "session"
   , "ClientWebRTCIngestAssetsE"                        : "public" / "ingest" / shortName segment / streamName segment / rest
+  , "FaviconE"                                         : "favicon.ico" / noArgs
 }
 
 makePath :: Endpoint -> String

@@ -1,4 +1,6 @@
 = RTSv2 Media Gateway
+id3as <info@id3as.co.uk>
+v1.1, 2020-06-18
 :source-highlighter: rouge
 :toc:
 :icons: font
@@ -66,7 +68,8 @@ transmit queue capacity. These values are derived from the `popDefinition.json` 
 ----
 <1> The transmit queue capacity is derived from the network capacity. Currently this
 is derived by taking 80% of the result of dividing the network capacity by the number
-of transmit queues, although this is *likely to change*.
+of transmit queues (note that this is likely to change as a result of production benchmarking).
+This value is specified in *kilobits per second*.
 <2> The receive queue count is passed as-is to the media gateway.
 <3> The transmit queue count is passed as-is to the media gateway.
 
@@ -115,6 +118,9 @@ Afterwards, one can run the media gateway as follows:
 cargo run --release -p rtsv2-media-gateway -- --transmit-queue-capacity 425000000
 ----
 
+NOTE: The transmit queue capacity here is specified in *bits per second*. Note that this
+is different to the `popDefinition.json` file which uses kilobits per second instead.
+
 Here we are using the `rust` build tool `cargo` to build and run the project
 `rtsv2-media-gateway` in release mode.
 
@@ -132,8 +138,14 @@ Afterwards, one can run the media gateway as follows:
 rtsv2-media-gateway --transmit-queue-capacity 425000000
 ----
 
-The nix shell automatically brings in a correctly build release version of rtsv2-media-gateway
+NOTE: The transmit queue capacity here is specified in *bits per second*. Note that this
+is different to the `popDefinition.json` file which uses kilobits per second instead.
+
+The nix shell automatically brings in a correctly built release version of rtsv2-media-gateway
 and makes it available on the `PATH`.
+
+Note the use of `--` to separate the parameters to cargo, from the parameters
+to the media gateway.
 
 ==== Running the media gateway from a release of rtsv2
 If given an extracted release tarball, the media gateway can be started as follows:
@@ -145,6 +157,8 @@ cd crate-rtsv2-media-gateway-0.1.0/bin
 ./rtsv2-media-gateway --transmit-queue-capacity 425000000
 ----
 
+NOTE: The transmit queue capacity here is specified in *bits per second*. Note that this
+is different to the `popDefinition.json` file which uses kilobits per second instead.
 
 == Monitoring
 The media gateway is principally a black box controlled by `rtsv2`. That said, there are

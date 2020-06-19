@@ -1,0 +1,16 @@
+type: object
+properties:
+  id:
+    $ref: "../parameters/slotId.yaml"
+  name:
+    $ref: "../parameters/slotName.yaml"
+  subscribeValidation:
+    type: boolean
+  outputFormats:
+    type: array
+    items:
+      $ref: "./StreamOutputFormat.yaml"
+  profiles:
+    type: array
+    items:
+      $ref: "./SlotProfile.yaml"

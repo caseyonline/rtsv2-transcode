@@ -24,6 +24,7 @@ data Endpoint
   | RelayEnsureStartedE
   | RelayRegisteredRelayWs SlotId SlotRole ServerAddress Int SourceRoute
   | RelayRegisteredEgestWs SlotId SlotRole ServerAddress Int Int
+  | IngestAggregatorsE
   | IngestAggregatorRegisteredIngestWs SlotId SlotRole ProfileName ServerAddress
   | IngestAggregatorRegisteredRelayWs SlotId SlotRole ServerAddress Int
   | IngestAggregatorBackupWs SlotId SlotRole
@@ -53,6 +54,7 @@ data Endpoint
   | WorkflowConfigE String
   | VisualiserE String
   | VisualiserAssetsE String (Array String)
+  | FaviconE
 
 derive instance genericEndpoint :: Generic Endpoint _
 
@@ -73,6 +75,7 @@ endpoint = root $ sum
   , "RelayRegisteredRelayWs"                           : "system" / "relay" / slotId segment / slotRole segment / "relays" / serverAddress segment / port segment / sourceRoute segment / "ws"
   , "RelayRegisteredEgestWs"                           : "system" / "relay" / slotId segment / slotRole segment / "egests" / serverAddress segment / port segment / port segment / "ws"
 
+  , "IngestAggregatorsE"                               : "system" / "ingestAggregator" / noArgs
   , "IngestAggregatorRegisteredIngestWs"               : "system" / "ingestAggregator" / slotId segment / slotRole segment / "ingests" / profileName segment / serverAddress segment / "ws"
   , "IngestAggregatorRegisteredRelayWs"                : "system" / "ingestAggregator" / slotId segment / slotRole segment / "relays" / serverAddress segment / port segment / "ws"
   , "IngestAggregatorBackupWs"                         : "system" / "ingestAggregator" / slotId segment / slotRole segment / "backupWs"
@@ -104,6 +107,7 @@ endpoint = root $ sum
   , "WorkflowConfigE"                                  : "system" / "workflows" / segment / "workflow/config" -- URL duplicated in Web.purs
   , "VisualiserE"                                      : "system" / "workflows" / segment / "visualiser"
   , "VisualiserAssetsE"                                : "system" / "workflows" / segment / "visualiser" / rest
+  , "FaviconE"                                         : "favicon.ico" / noArgs
 }
 
 makePath :: Endpoint -> String

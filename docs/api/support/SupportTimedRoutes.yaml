@@ -2,7 +2,7 @@ get:
   summary: /suport/timedRoutes/
   description: Timed Routes description
   tags:
-    - Support
+    - Support Api
   responses:
     '200':
       description: OK
@@ -11,7 +11,15 @@ get:
           schema:
             type: array
             items:
-              $ref: '../PublicSchema.yaml'
+              type: object
+              properties:
+                pop:
+                  type:string
+                servers:
+                  type: array
+                  items:
+                    type: string
+
     '404':
       description: Not Found
       content:

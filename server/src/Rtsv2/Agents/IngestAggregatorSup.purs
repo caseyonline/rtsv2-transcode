@@ -26,9 +26,9 @@ import Rtsv2.Names as Names
 import Rtsv2.NodeManager as NodeManager
 import Rtsv2.Types (ResourceFailed(..), ResourceResp, LocalResourceResp)
 import Shared.Rtsv2.Agent (Agent(..))
-import Shared.Rtsv2.Types (OnBehalfOf, Server)
 import Shared.Rtsv2.LlnwApiTypes (slotDetailsToSlotCharacteristics)
-import Shared.Rtsv2.Router.Endpoint.Support as Support
+import Shared.Rtsv2.Router.Endpoint.System as System
+import Shared.Rtsv2.Types (OnBehalfOf, Server)
 import SpudGun as SpudGun
 
 ------------------------------------------------------------------------------
@@ -60,7 +60,7 @@ startLocalOrRemoteAggregator loadConfig onBehalfOf payload@{streamDetails} =
     launchLocal _ = do
       (note LaunchFailed <<< startOkAS) <$> startAggregator payload
     launchRemote idleServer = do
-      url <- Support.makeUrl idleServer Support.IngestAggregatorsE
+      url <- System.makeUrl idleServer System.IngestAggregatorsE
       either (const false) (const true) <$> SpudGun.postJson url payload
 
 ------------------------------------------------------------------------------

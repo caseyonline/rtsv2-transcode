@@ -335,7 +335,8 @@ processPoPJson thisServerAddress regions nMap =
 
   in
    case maybeThisServer of
-     Nothing -> Left $ NonEmptyList.singleton $ ForeignError "This node not present in any pop"
+     Nothing -> Left $ NonEmptyList.singleton $ ForeignError $ "This node not present in any pop: " <> show thisServerAddress
+
      Just thisServer@(Server {pop}) ->
        case partitionPoPs  pop of
          (Tuple (Just thisPoP') otherPoPs) ->

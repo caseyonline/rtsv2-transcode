@@ -2,7 +2,14 @@ post:
   summary: /support/canary/
   description: Canary description.
   tags:
-    - Support
+    - Support Api
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: text
+          $ref: "../schemas/CanaryType.yaml"
   responses:
     '204':
       description: OK

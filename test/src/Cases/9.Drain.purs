@@ -141,36 +141,42 @@ passiveDrainTest4 =
                             >>= as "run state is active"
 
     HTTP.changeRunState E.p1n1 PassiveDrain >>= A.assertStatusCode 204 >>= as "switch to passive drain"
+    E.waitForIntraPoPDisseminate
 
     HTTP.healthCheck E.p1n1 >>= A.assertStatusCode 200
                             >>= A.assertBodyFun ((==) PassiveDrain <<< healthNodeToRunState)
                             >>= as "run state is passiveDrain"
 
     HTTP.changeRunState E.p1n1 ForceDrain >>= A.assertStatusCode 204 >>= as "switch to force drain"
+    E.waitForIntraPoPDisseminate
 
     HTTP.healthCheck E.p1n1 >>= A.assertStatusCode 200
                             >>= A.assertBodyFun ((==) OutOfService <<< healthNodeToRunState)
                             >>= as "run state is outOfService (post forceDrain)"
 
     HTTP.changeRunState E.p1n1 Active >>= A.assertStatusCode 204 >>= as "switch to active"
+    E.waitForIntraPoPDisseminate
 
     HTTP.healthCheck E.p1n1 >>= A.assertStatusCode 200
                             >>= A.assertBodyFun ((==) Active <<< healthNodeToRunState)
                             >>= as "run state is active"
 
     HTTP.changeRunState E.p1n1 ForceDrain >>= A.assertStatusCode 204 >>= as "switch to force drain"
+    E.waitForIntraPoPDisseminate
 
     HTTP.healthCheck E.p1n1 >>= A.assertStatusCode 200
                             >>= A.assertBodyFun ((==) OutOfService <<< healthNodeToRunState)
                             >>= as "run state is outOfService (post forceDrain)"
 
     HTTP.changeRunState E.p1n1 Active >>= A.assertStatusCode 204 >>= as "switch to active"
+    E.waitForIntraPoPDisseminate
 
     HTTP.healthCheck E.p1n1 >>= A.assertStatusCode 200
                             >>= A.assertBodyFun ((==) Active <<< healthNodeToRunState)
                             >>= as "run state is active"
 
     HTTP.changeRunState E.p1n1 OutOfService >>= A.assertStatusCode 204 >>= as "switch to out-of-service"
+    E.waitForIntraPoPDisseminate
 
     HTTP.healthCheck E.p1n1 >>= A.assertStatusCode 200
                             >>= A.assertBodyFun ((==) OutOfService <<< healthNodeToRunState)
@@ -181,14 +187,17 @@ passiveDrainTest4 =
     HTTP.changeRunState E.p1n1 ForceDrain >>= A.assertStatusCode 409 >>= as "fail to switch from out-of-service to force drain"
 
     HTTP.changeRunState E.p1n1 Active >>= A.assertStatusCode 204 >>= as "switch to active"
+    E.waitForIntraPoPDisseminate
 
     HTTP.healthCheck E.p1n1 >>= A.assertStatusCode 200
                             >>= A.assertBodyFun ((==) Active <<< healthNodeToRunState)
                             >>= as "run state is active"
 
     HTTP.changeRunState E.p1n1 PassiveDrain >>= A.assertStatusCode 204 >>= as "switch to passive drain"
+    E.waitForIntraPoPDisseminate
 
     HTTP.changeRunState E.p1n1 OutOfService >>= A.assertStatusCode 204 >>= as "switch to out-of-service"
+    E.waitForIntraPoPDisseminate
 
     HTTP.healthCheck E.p1n1 >>= A.assertStatusCode 200
                             >>= A.assertBodyFun ((==) OutOfService <<< healthNodeToRunState)

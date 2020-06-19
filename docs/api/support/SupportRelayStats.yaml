@@ -1,20 +1,34 @@
 get:
   summary: /support/relay/{slotId}/{slotRole}
-  description: Relay stats description
+  description: PoP definition shit
   tags:
-    - Support
-  parameters:
-    - $ref: '../parameters/slotId.yaml'
-    - $ref: '../parameters/slotRole.yaml'
+    - Support Api
   responses:
     '200':
       description: OK
       content:
         application/json-ld:
           schema:
-            type: array
-            items:
-              $ref: '../PublicSchema.yaml'
+            type: object
+            properties:
+              role:
+                $ref: '../parameters/slotRole.yaml'
+              egestsServed:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    address:
+                      type: string
+              relaysServed:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    port:
+                      type: interger
+                    server:
+                      type: string
     '404':
       description: Not Found
       content:

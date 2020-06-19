@@ -1,0 +1,18 @@
+type: object
+properties:
+  streamId:
+    type: string
+  codec:
+    $ref: './AudioCodec.yaml'
+  sampleRate:
+    type: interger
+  channelLayout:
+    oneOf:
+      - {type: string, description: Mono, example: Mono }
+      - {type: string, description: Stereo, example: Stereo }
+  language:
+    type: string
+  dvbStreamId:
+    type: interger
+  inFillinMode:
+    type: boolean

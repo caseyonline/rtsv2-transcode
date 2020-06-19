@@ -2,7 +2,7 @@ get:
   summary: /support/jsonld/{contexType}
   description: JsonLd contex description
   tags:
-    - Support
+    - Support Api
   parameters:
     - $ref: '../parameters/contextType.yaml'
   responses:

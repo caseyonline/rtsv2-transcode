@@ -1,0 +1,8 @@
+type: object
+properties:
+  role:
+    $ref: "../parameters/slotRole.yaml"
+  slot:
+    $ref: "./SlotDetails.yaml"
+  push:
+    $ref: "./HlsPushSpec.yaml"

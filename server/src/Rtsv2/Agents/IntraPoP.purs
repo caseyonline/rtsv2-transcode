@@ -74,7 +74,7 @@ import Erl.Data.Map (Map, alter, fromFoldable, values)
 import Erl.Data.Map as Map
 import Erl.Data.Tuple (Tuple2, tuple2)
 import Erl.Process (Process, spawnLink)
-import Erl.Utils (Ref, makeRef)
+import Erl.Utils (MonotonicTime, monotonicTime)
 import Erl.Utils as Erl
 import Heterogeneous.Folding (hfoldl)
 import Logger as Logger
@@ -167,8 +167,8 @@ type State
 
     , testDropAgentMessages :: Boolean
 
-    , thisServerRef         :: Ref
-    , serverRefs            :: EMap Server Ref
+    , thisServerRef         :: MonotonicTime
+    , serverRefs            :: EMap Server MonotonicTime
 
     , thisServer            :: Server
     , load                  :: CurrentLoad
@@ -190,7 +190,7 @@ data IntraMessage
 
   | IMServerLoad ServerAddress CurrentLoad AcceptingRequests
   | IMTransPoPLeader ServerAddress
-  | IMVMLiveness ServerAddress Ref
+  | IMVMLiveness ServerAddress MonotonicTime
   | IMSlotLookup ServerAddress RtmpShortName SlotName SlotLookupResult
 
 instance serfWireMessageIM :: SerfWireMessage IntraMessage where
@@ -220,6 +220,10 @@ instance serfWireMessageIM :: SerfWireMessage IntraMessage where
     from_wire_message "a" payload
   fromWireMessage "b" payload =
     from_wire_message "b" payload
+  fromWireMessage "c" payload =
+    from_wire_message "c" payload
+  fromWireMessage "d" payload =
+    from_wire_message "d" payload
   fromWireMessage name payload =
     Just $ from_binary payload
 
@@ -240,7 +244,7 @@ data IntraPoPBusMessage
   | StreamRelayExited RelayKey Server
   | EgestStarted EgestKey Server
   | EgestExited EgestKey Server
-  | VmReset Server Ref (Maybe Ref)
+  | VmReset Server MonotonicTime (Maybe MonotonicTime)
 
 
 --------------------------------------------------------------------------------
@@ -303,10 +307,10 @@ getPublicState = Gen.doCall serverName publicState
              , servers: servers'
              }
 
-currentLocalRef :: Effect Ref
+currentLocalRef :: Effect MonotonicTime
 currentLocalRef = exposeState _.thisServerRef serverName
 
-currentRemoteRef :: Server -> Effect (Maybe Ref)
+currentRemoteRef :: Server -> Effect (Maybe MonotonicTime)
 currentRemoteRef remoteServer = exposeState ((EMap.lookup remoteServer) <<<  _.serverRefs) serverName
 
 -- TODO - we should be calling the prime' versions and handling that there might, in fact be more than
@@ -552,7 +556,7 @@ slotLookupHandler rtmpShortName slotName slotLookupResult =
       llnwApiRecordSlotLookupApi rtmpShortName slotName slotLookupResult
       pure state
 
-vmLivenessHandler :: Ref -> ServerMessageHandler
+vmLivenessHandler :: MonotonicTime -> ServerMessageHandler
 vmLivenessHandler ref =
   { name : HandlerName "vmLiveness"
   , clockLens : clockLens
@@ -990,7 +994,7 @@ init { config
       pure unit
 
   serversInPoP <- PoPDefinition.serversInThisPoPByAddress
-  thisServerRef <- makeRef
+  thisServerRef <- monotonicTime
 
   let
     emptyLocations :: forall payload. Locations payload
@@ -1320,7 +1324,7 @@ foldHandlers :: forall acc. (forall a. AgentHandler a -> acc -> Effect acc) -> a
 foldHandlers perHandlerFun =
   perHandlerFun relayHandler >=> perHandlerFun aggregatorHandler >=> perHandlerFun egestHandler
 
-garbageCollectServer :: State -> Server -> Ref -> Maybe Ref -> Effect State
+garbageCollectServer :: State -> Server -> MonotonicTime -> Maybe MonotonicTime -> Effect State
 garbageCollectServer state@{members} deadServer oldRef newRef = do
   -- TODO - add a server decomissioning message to do this cleanly
   logWarning "server liveness timeout" { server: deadServer

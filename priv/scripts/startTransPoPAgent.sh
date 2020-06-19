@@ -5,9 +5,9 @@ cd ..
 
 function main {
   if [[ $(uname) == "Darwin" ]]; then
-    IP=$(ifconfig $TRANS_SERF_IFACE | awk '/inet/ {print $2}')
+    IP=$(ifconfig $TRANS_SERF_IFACE | awk '/inet/ {print $2}' | head -1)
   else
-    IP=$(ip -4  -o addr | grep \ $TRANS_SERF_IFACE\  | awk {'print $4'} | sed 's/\/.*$//')
+    IP=$(ip -4 -o addr | grep \ $TRANS_SERF_IFACE\  | awk {'print $4'} | sed 's/\/.*$//')
   fi
 
   echo serf agent \

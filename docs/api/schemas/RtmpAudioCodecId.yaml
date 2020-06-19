@@ -1,0 +1,10 @@
+items:
+  description: Rtmp video codec ID
+  oneOf:
+    - {type: string, description: Uncompressed, example: Uncompressed }
+    - {type: string, description: ADPCM, example: ADPCM }
+    - {type: string, description: MP3, example: MP3 }
+    - {type: string, description: Nellymoser8Mono, example: Nellymoser8Mono }
+    - {type: string, description: Nellymoser, example: Nellymoser }
+    - {type: string, description: AAC, example: AAC }
+    - {type: string, description: Nellymoser, example: Nellymoser }

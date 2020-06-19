@@ -1,0 +1,21 @@
+type: object
+properties:
+  name:
+    type: string
+  geoLoc:
+    type: array
+    items:
+      type: string
+      example: "51.5085300 0.1257400"
+  servers:
+    description: list severs
+    type: array
+    items:
+      type: string
+      example: http://172.16.171.1:3002
+  neighbours:
+    description: list of PoP names
+    type: array
+    items:
+      type: string
+      example: dal

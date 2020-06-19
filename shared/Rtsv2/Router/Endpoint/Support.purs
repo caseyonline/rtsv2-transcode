@@ -38,7 +38,6 @@ data Endpoint
   | IngestAggregatorActiveIngestsPlayerE SlotId SlotRole ProfileName
   | IngestAggregatorActiveIngestsPlayerJsE SlotId SlotRole ProfileName (Array String)
   | IngestAggregatorActiveIngestsPlayerControlE SlotId SlotRole ProfileName
-  | IngestAggregatorsE
   | IngestInstancesMetricsE
   | IngestInstanceE SlotId SlotRole ProfileName
   | ClientAppAssetsE (Array String)
@@ -52,6 +51,7 @@ data Endpoint
   | CanaryClientWebRTCIngestE RtmpShortName RtmpStreamName
   | CanaryClientWebRTCIngestControlE RtmpShortName RtmpStreamName
   | CanaryClientWebRTCIngestAssetsE RtmpShortName RtmpStreamName (Array String)
+  | FaviconE
 
 derive instance genericEndpoint :: Generic Endpoint _
 
@@ -83,7 +83,6 @@ endpoint = root $ sum
   , "IngestAggregatorActiveIngestsPlayerE"             : "support" / "ingestAggregator" / slotId segment / slotRole segment / "activeIngests" / profileName segment / "player"
   , "IngestAggregatorActiveIngestsPlayerJsE"           : "support" / "ingestAggregator" / slotId segment / slotRole segment / "activeIngests" / profileName segment / "js" / rest
   , "IngestAggregatorActiveIngestsPlayerControlE"      : "support" / "ingestAggregator" / slotId segment / slotRole segment / "activeIngests" / profileName segment / "control" -- URL duplicated in Web.purs
-  , "IngestAggregatorsE"                               : "support" / "ingestAggregator" / noArgs
   , "IngestInstancesMetricsE"                          : "support" / "ingest" / "metrics" / noArgs
   , "IngestInstanceE"                                  : "support" / "ingest" / slotId segment / slotRole segment / profileName segment
 
@@ -99,6 +98,7 @@ endpoint = root $ sum
   , "CanaryClientWebRTCIngestE"                        : "support" / "canary" / "ingest" / shortName segment / streamName segment / "ingest"
   , "CanaryClientWebRTCIngestControlE"                 : "support" / "canary" / "ingest" / shortName segment / streamName segment / "session"
   , "CanaryClientWebRTCIngestAssetsE"                  : "support" / "canary" / "ingest" / shortName segment / streamName segment / rest
+  , "FaviconE"                                         : "favicon.ico" / noArgs
 }
 
 makePath :: Endpoint -> String

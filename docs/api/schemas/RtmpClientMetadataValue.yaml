@@ -1,0 +1,7 @@
+items:
+  description: Rtmp client meta data values
+  oneOf:
+    - {type: string, description: RtmpBool, example: true  }
+    - {type: string, description: RtmpString , example: abc }
+    - {type: string, description: RtmpInt, example: 34 }
+    - {type: string, description: RtmpFloat, example: 28191.00 }
