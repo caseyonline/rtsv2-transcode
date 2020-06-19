@@ -3,6 +3,7 @@ info:
   version: '1.0'
   title: RTSv2 Documentation
   description: |
+<<<<<<< HEAD
     OpenAPI (fka Swagger) specification for the id3as RTSv2 API.
 
     # Introductions
@@ -93,6 +94,20 @@ info:
 
 x-logo:
   url: https://static.wixstatic.com/media/b1006e_fb5b447f5d124676b0b1a328eb6adbd5~mv2_d_2986_1252_s_2.png
+=======
+    OpenAPI (fka Swagger) specification for the Open Education API.
+
+    # Introduction
+
+    ```
+    {
+      "code": 404,
+      "title": "Resource not found"
+    }
+    ```
+  x-logo:
+    url: ./assets/images/logo.png
+>>>>>>> master
 tags:
   - name: Public Html
     description: Description for the Public API.
