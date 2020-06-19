@@ -53,7 +53,6 @@ init = do
                   # childType Worker
                   # childId "egestRtmpServer"
                   # childStart EgestRtmpServer.startLink unit
-                  # childRestart Transient
 
     stats = pure $ Just $ buildChild
             # childType Worker

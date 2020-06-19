@@ -17,9 +17,9 @@ import Effect (Effect)
 import Erl.Atom (atom)
 import Erl.Data.List (List, nil, (:))
 import Logger as Logger
-import Shared.Rtsv2.LlnwApiTypes (StreamIngestProtocol(..))
-import Shared.Rtsv2.Stream (EgestKey(..), SlotId(..), SlotRole, RtmpShortName, RtmpStreamName)
 import Shared.Common (Milliseconds)
+import Shared.Rtsv2.LlnwApiTypes (StreamEgestProtocol(..), StreamIngestProtocol(..))
+import Shared.Rtsv2.Stream (EgestKey(..), RtmpShortName, RtmpStreamName, SlotId(..), SlotName, SlotRole)
 
 foreign import toList :: String -> List Char
 
@@ -47,7 +47,9 @@ type EgestEqLine =
   , username :: String
   , rtmpShortName :: RtmpShortName
   , slotId :: SlotId
-  , connectionType :: StreamIngestProtocol
+  , slotRole :: SlotRole
+  , slotName :: SlotName
+  , connectionType :: StreamEgestProtocol
   , startMs :: Milliseconds
   , endMs :: Milliseconds
   , bytesWritten :: Int
@@ -141,6 +143,8 @@ writeEgestLine reason { egestIp
                       , username
                       , rtmpShortName
                       , slotId
+                      , slotRole
+                      , slotName
                       , connectionType
                       , startMs
                       , endMs
@@ -158,9 +162,11 @@ writeEgestLine reason { egestIp
               , username: toList username
               , shortname: toList $ unwrap rtmpShortName
               , slotId: toList $ show $ unwrap slotId
+              , slotRole: toList $ show slotRole
+              , streamName: toList $ unwrap slotName
               , connectionType: toList $ case connectionType of
-                                           Rtmp -> "RTMP"
-                                           WebRTC -> "WebRTC"
+                                           RtmpEgest -> "RTMP"
+                                           WebRTCEgest -> "WebRTC"
               , startMs
               , endMs
               , bytesWritten
