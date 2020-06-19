@@ -99,7 +99,7 @@ init _ = do
   startServer supportListenIp canaryPort canaryCallbacks nbAcceptors abortIfNoMediaMs
   startServerTls supportListenIp canaryTlsPort canaryCallbacks nbAcceptors abortIfNoMediaMs certFile keyFile
 
-  pure $ {}
+  pure {}
 
 onConnectCallback :: LoadConfig -> CanaryState -> String -> String -> String -> Foreign -> (Effect RtmpAuthResponse)
 onConnectCallback loadConfig canary host rtmpShortName remoteAddress foreignQuery =

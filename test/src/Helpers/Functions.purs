@@ -148,6 +148,12 @@ startSlotHigh1000Canary ip = do
   runProc "./scripts/run_slot1_1000.sh" [ip, "1936"]
   delay (Milliseconds 5000.0)
 
+startEgestHigh :: String -> Int -> String -> Aff Unit
+startEgestHigh ip port filename = do
+  runProc "./scripts/run_egest_slot1_1000.sh" [ip, show port, filename]
+  delay (Milliseconds 5000.0)
+
+
 stopSlot :: Aff Unit
 stopSlot = do
   runProc "./scripts/stopSlot.sh" []

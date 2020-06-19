@@ -7,6 +7,7 @@
 -include_lib("id3as_media/include/frame.hrl").
 -include("../rtsv2_types.hrl").
 -include("../rtsv2_rtp.hrl").
+-include("../rtsv2_bus_messages.hrl").
 -include("../rtsv2_webrtc.hrl").
 -include("../rtsv2_media_gateway_api.hrl").
 
@@ -739,7 +740,7 @@ try_build_stream_desc(Req,
 
 determine_stream_availability(#stream_desc_ingest{ ingest_key = IngestKey }) ->
 
-  BusName = {webrtc_stream_output, IngestKey},
+  BusName = ?WEBRTC_STREAM_OUTPUT_BUS(IngestKey),
 
   case pubsub:exists(BusName) of
     true ->

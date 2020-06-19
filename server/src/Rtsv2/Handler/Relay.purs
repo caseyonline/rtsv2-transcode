@@ -199,8 +199,8 @@ type WsEgestState =
   , relayKey :: RelayKey
   }
 
-registeredEgestWs :: SlotId -> SlotRole -> ServerAddress -> Int -> InnerStetsonHandler (WebSocketHandlerMessage DownstreamWsMessage) WsEgestState
-registeredEgestWs slotId slotRole egestAddress egestPort =
+registeredEgestWs :: SlotId -> SlotRole -> ServerAddress -> Int -> Int -> InnerStetsonHandler (WebSocketHandlerMessage DownstreamWsMessage) WsEgestState
+registeredEgestWs slotId slotRole egestAddress egestPort secondaryEgestPort =
   webSocketHandler init wsInit handle info
   where
     init req = do
@@ -214,7 +214,7 @@ registeredEgestWs slotId slotRole egestAddress egestPort =
     wsInit state@{egestServer, relayKey} = do
       self <- Process <$> Erl.self :: Effect (Process (WebSocketHandlerMessage DownstreamWsMessage))
       Erl.monitor (Names.streamRelayInstanceStateName relayKey)
-      maybeSlotConfiguration <- noprocToMaybe $ StreamRelayInstance.registerEgest slotId slotRole egestServer egestPort self
+      maybeSlotConfiguration <- noprocToMaybe $ StreamRelayInstance.registerEgest slotId slotRole egestServer egestPort secondaryEgestPort self
       pure $ case maybeSlotConfiguration of
                Nothing -> WebSocketStop state
                Just Nothing -> WebSocketNoReply state

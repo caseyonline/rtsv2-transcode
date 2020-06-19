@@ -23,8 +23,7 @@ data Endpoint
   | RelayE
   | RelayEnsureStartedE
   | RelayRegisteredRelayWs SlotId SlotRole ServerAddress Int SourceRoute
-  | RelayRegisteredEgestWs SlotId SlotRole ServerAddress Int
-
+  | RelayRegisteredEgestWs SlotId SlotRole ServerAddress Int Int
   | IngestAggregatorsE
   | IngestAggregatorRegisteredIngestWs SlotId SlotRole ProfileName ServerAddress
   | IngestAggregatorRegisteredRelayWs SlotId SlotRole ServerAddress Int
@@ -74,7 +73,7 @@ endpoint = root $ sum
   , "RelayE"                                           : "system" / "relay" / path "egest" noArgs
   , "RelayEnsureStartedE"                              : "system" / "relay" / path "ensureStarted" noArgs
   , "RelayRegisteredRelayWs"                           : "system" / "relay" / slotId segment / slotRole segment / "relays" / serverAddress segment / port segment / sourceRoute segment / "ws"
-  , "RelayRegisteredEgestWs"                           : "system" / "relay" / slotId segment / slotRole segment / "egests" / serverAddress segment / port segment / "ws"
+  , "RelayRegisteredEgestWs"                           : "system" / "relay" / slotId segment / slotRole segment / "egests" / serverAddress segment / port segment / port segment / "ws"
 
   , "IngestAggregatorsE"                               : "system" / "ingestAggregator" / noArgs
   , "IngestAggregatorRegisteredIngestWs"               : "system" / "ingestAggregator" / slotId segment / slotRole segment / "ingests" / profileName segment / serverAddress segment / "ws"
