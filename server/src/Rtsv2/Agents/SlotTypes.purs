@@ -14,13 +14,14 @@ import Data.Maybe (Maybe(..))
 import Data.Undefinable (Undefinable, toMaybe, toUndefinable)
 import Erl.Data.List (List, fromFoldable, mapWithIndex)
 import Shared.Rtsv2.LlnwApiTypes as LlnwApiTypes
-import Shared.Rtsv2.Stream (IngestKey(..), ProfileName, RtmpShortName, RtmpStreamName, SlotId, SlotRole)
+import Shared.Rtsv2.Stream (IngestKey(..), ProfileName, RtmpShortName, RtmpStreamName, SlotId, SlotName(..), SlotRole)
 import Simple.JSON (class ReadForeign, class WriteForeign, readImpl, writeImpl)
 
 type SlotConfiguration =
   { slotId :: SlotId
   , slotRole :: SlotRole
   , rtmpShortName :: RtmpShortName
+  , slotName :: SlotName
   , profiles :: List SlotProfile
   , subscribeValidation :: Boolean
   , audioOnly :: Boolean
@@ -47,12 +48,13 @@ instance writeForeignMaybeVideo :: WriteForeign a => WriteForeign (MaybeVideo a)
 
 
 llnwStreamDetailsToSlotConfiguration :: RtmpShortName -> LlnwApiTypes.StreamDetails -> SlotConfiguration
-llnwStreamDetailsToSlotConfiguration rtmpShortName {role, slot: {id, profiles, subscribeValidation}} =
+llnwStreamDetailsToSlotConfiguration rtmpShortName {role, slot: {name, id, profiles, subscribeValidation}} =
   let
     audioOnly = all (\(LlnwApiTypes.SlotProfile {videoBitrate}) -> videoBitrate == 0) profiles
   in
-    { slotId : id
+    { slotId: id
     , slotRole: role
+    , slotName: name
     , rtmpShortName
     , profiles: mapWithIndex (llwnSlotProfileToSlotProfile audioOnly id role) (fromFoldable profiles)
     , audioOnly

@@ -36,7 +36,7 @@ import Erl.Data.List (List, nil, singleton)
 import Erl.Data.List as List
 import Erl.Data.Map (Map, lookup, toUnfoldable, values)
 import Erl.Data.Map as Map
-import Erl.Data.Tuple (Tuple2, fst, snd, tuple2)
+import Erl.Data.Tuple (Tuple2, tuple2)
 import Erl.Process (Process(..), (!))
 import Erl.Process.Raw (Pid)
 import Erl.Utils (Ref, makeRef, systemTimeMs)
@@ -59,6 +59,7 @@ import Rtsv2.Config as Config
 import Rtsv2.DataObject (ObjectBroadcastMessage(..))
 import Rtsv2.DataObject as DO
 import Rtsv2.DataObject as DataObject
+import Rtsv2.Env as Env
 import Rtsv2.Load as Load
 import Rtsv2.LoadTypes (LoadFixedCost(..), PredictedLoad(..))
 import Rtsv2.Names as Names
@@ -68,7 +69,7 @@ import Shared.Common (LoggingContext(..), Milliseconds(..))
 import Shared.Rtsv2.Agent (SlotCharacteristics)
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.JsonLd (EgestStats, EgestSessionStats)
-import Shared.Rtsv2.LlnwApiTypes (StreamIngestProtocol(..))
+import Shared.Rtsv2.LlnwApiTypes (StreamEgestProtocol(..))
 import Shared.Rtsv2.Router.Endpoint.System as System
 import Shared.Rtsv2.Stream (AggregatorKey(..), EgestKey(..), ProfileName, RelayKey(..), SlotId, SlotRole, egestKeyToAgentKey, egestKeyToAggregatorKey)
 import Shared.Rtsv2.Types (EgestServer, FailureReason(..), OnBehalfOf(..), PoPName, RelayServer, Server(..), extractAddress)
@@ -127,6 +128,8 @@ type State
     , activeProfiles :: List ProfileName
     , forceDrain :: Boolean
     , aggregatorExitTimerRef :: Maybe Ref
+    , eqRtmpPort :: Int
+    , eqWebRTCPort :: Int
     }
 
 emptySessionStats :: String -> EgestSessionStats
@@ -301,6 +304,9 @@ init parentCallbacks payload@{slotId, slotRole, aggregatorPoP, slotCharacteristi
   loadConfig <- Config.loadConfig
   thisServer <- PoPDefinition.getThisServer
 
+  isProxied <- Env.isProxied
+  webConfig <- Config.webConfig
+
   let
     egestKey = payloadToEgestKey payload
     relayKey = RelayKey slotId slotRole
@@ -311,6 +317,10 @@ init parentCallbacks payload@{slotId, slotRole, aggregatorPoP, slotCharacteristi
                                                         }
                                   , decayTime: Milliseconds $ Long.fromInt decayReserveMs
                                   }
+
+    eqWebRTCPort = if isProxied then 443
+                   else webConfig.publicPort
+    eqRtmpPort = 1935 -- TODO - get from config when merged with rtmp egest
 
   { mediaGateway } <- Config.featureFlags
   receivePortNumber <- startEgestReceiverFFI egestKey mediaGateway
@@ -354,6 +364,8 @@ init parentCallbacks payload@{slotId, slotRole, aggregatorPoP, slotCharacteristi
             , activeProfiles: nil
             , forceDrain: false
             , aggregatorExitTimerRef: Nothing
+            , eqWebRTCPort
+            , eqRtmpPort
             }
   pure state
 
@@ -569,17 +581,24 @@ removeClient sessionId state@{clientCount, clientStats} = do
               , clientStats = Map.delete sessionId clientStats}
 
 egestEqLines :: State -> Effect (Tuple Milliseconds (List Audit.EgestEqLine))
+egestEqLines state@{ lastEgestAuditTime: startMs
+                   , slotConfiguration: Nothing} =
+  -- No slot configuration;  can't have clients so nothing to log
+  pure $ Tuple startMs nil
+
 egestEqLines state@{ egestKey: egestKey@(EgestKey slotId _slotRole)
                    , thisServer: (Server {address: thisServerAddr})
                    , clientStats
+                   , eqWebRTCPort
+                   , eqRtmpPort
                    , lastEgestAuditTime: startMs
-                   , slotConfiguration} = do
+                   , slotConfiguration: Just slotConfiguration} = do
   endMs <- systemTimeMs
   {sessionInfo} <- getStatsFFI egestKey
-  pure $ Tuple endMs ((egestEqLine slotId slotConfiguration (unwrap thisServerAddr) startMs endMs clientStats) <$> toUnfoldable sessionInfo)
+  pure $ Tuple endMs ((egestEqLine slotId slotConfiguration (unwrap thisServerAddr) startMs endMs clientStats eqWebRTCPort eqRtmpPort) <$> toUnfoldable sessionInfo)
 
-egestEqLine :: SlotId -> Maybe SlotConfiguration -> String -> Milliseconds -> Milliseconds -> (Map String EgestSessionStats) -> Tuple String WebRTCSessionManagerStats -> Audit.EgestEqLine
-egestEqLine slotId slotConfiguration thisServerAddr startMs endMs clientStatsMap (Tuple sessionId {channels}) =
+egestEqLine :: SlotId -> SlotConfiguration -> String -> Milliseconds -> Milliseconds -> (Map String EgestSessionStats) -> Int -> Int -> Tuple String WebRTCSessionManagerStats -> Audit.EgestEqLine
+egestEqLine slotId slotConfiguration thisServerAddr startMs endMs clientStatsMap webRTCPort rtmpPort (Tuple sessionId {channels}) =
   let
     clientStats = fromMaybe (emptySessionStats sessionId) $ lookup sessionId clientStatsMap
     receiverAccumulate acc {lostTotal} = acc + lostTotal
@@ -595,16 +614,20 @@ egestEqLine slotId slotConfiguration thisServerAddr startMs endMs clientStatsMap
 
     {writtenAcc, readAcc, lostAcc, remoteAddress} = foldl channelAccumulate channelInitial (values channels)
 
-    shortName = fromMaybe (wrap "n/a") (_.rtmpShortName <$> slotConfiguration)
+    shortName = slotConfiguration.rtmpShortName
+    slotRole = slotConfiguration.slotRole
+    slotName = slotConfiguration.slotName
   in
 
   { egestIp: thisServerAddr
-  , egestPort: -1
+  , egestPort: webRTCPort -- TODO - flip for rtmp
   , subscriberIp: remoteAddress
   , username: sessionId
   , rtmpShortName: shortName
   , slotId
-  , connectionType: WebRTC
+  , slotRole
+  , slotName
+  , connectionType: WebRTCEgest
   , startMs
   , endMs
   , bytesWritten: clientStats.audioOctetsSent + clientStats.videoOctetsSent
