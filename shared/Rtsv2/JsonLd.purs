@@ -106,6 +106,7 @@ import Prelude
 
 import Data.Either (Either(..))
 import Data.Generic.Rep (class Generic)
+import Data.Generic.Rep.Show (genericShow)
 import Data.Lens (Lens')
 import Data.Lens.Record (prop)
 import Data.Maybe (Maybe(..))
@@ -332,6 +333,7 @@ data EgestSessionStats = EgestRtcSessionStats EgestRtcSessionStats
 
 derive instance eqEgestSessionStats :: Eq EgestSessionStats
 derive instance genericEgestSessionStats :: Generic EgestSessionStats _
+instance showEgestSessionStats :: Show EgestSessionStats where show = genericShow
 
 instance readForeignEgestSessionStats :: ReadForeign EgestSessionStats where
   readImpl o = do
