@@ -379,7 +379,6 @@ ingestEqLine state@{ ingestKey: ingestKey@(IngestKey slotId slotRole _profileNam
                    , lastIngestAuditTime: startMs} = do
   endMs <- systemTimeMs
   stats <- IngestStats.getStatsForIngest ingestKey
-  logInfo "STATS" {ingestKey, stats}
   let
     metrics = _.rtmpIngestMetrics <$> stats
     totalBytesSent = fromMaybe 0 ((_.totalBytesSent) <$> metrics)
