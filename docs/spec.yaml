@@ -1,20 +1,97 @@
 openapi: '3.0.3'
 info:
   version: '1.0'
-  title: RTS v2 Documentation
+  title: RTSv2 Documentation
   description: |
-    OpenAPI (fka Swagger) specification for the Open Education API.
+    OpenAPI (fka Swagger) specification for the id3as RTSv2 API.
 
-    # Introduction
+    # Introductions
 
-    ```
-    {
-      "code": 404,
-      "title": "Resource not found"
-    }
-    ```
-  x-logo:
-    url: ./assets/images/logo.png
+    Welcome to Real Time Streaming (v2): An implementation of id3as Advanced Video Pipelines.
+    Implemented For LIMELIGHT NETWORKS INC - (c) id3as 2019-2020.
+
+    This documentation is designed for engineers who wish to develop control and monitoring systems that directly interact with the underlying RTSv2 system.
+
+    It contains three key sections:
+
+      1. A highlevel systems description explaining how to setup the software in such a way that you can develop control and monitoring systems and you can execute examples in this documentation.
+
+      2. A detailed API documentation explaining the input and output API calls that RTSv2 can handle.
+         This is split into:
+          * The Public API (designed for end user applications to be able to interact with)
+          * The Support API (designed for internal operations teams at Limelight)
+
+      3. Four reference examples of developer focussed 'journeys' exploring how to use the API to achieve various key tasks:
+          * A) 'A day in the life of a stream'
+          * B) 'A day in the life of the infrastructure'
+          * C) Platform reporting and queries
+          * D) Interfacing to Prometheus, logging configuration and basic alerting.
+
+    ## Overview
+    This section will describe (or reference other detail) the aim of the system, how it is intended to be deployed, what the API does, how calls to the API can be manually simulated for testing and otherwise used by the developer, and how the documentation and API reference is setup optimally for developer purposes.
+
+    ## High Level Schematic
+
+    ![Schematic](images/highlevel-scehmatic.rtsv2.png)
+
+
+
+    The above schematic shows a very high level view of the RTS architecture. Within each PoP there are a number of nodes, with no node having a dedicated role. If it is decided to perform transcodes during ingest, then Ingest Agents may become dedicated to a subset of nodes that have suitable hardware (e.g., GPU acceleration) All the nodes continually communicate membership and state information through the SWIM gossip protocol2; from this membership information, one node in each PoP will become the ‘PoP leader’ and will then also participate in a trans-PoP SWIM gossip to exchange aggregate information about the state of each PoP.
+
+    Through this hierarchical gossip, each node in the entire network will maintain a global view of the world, such that it is able to make good local decisions efficiently - even in the face of failures within the network. This is key for providing for a highly-scalable, highly-fault-tolerant service.
+
+    In addition to the gossip protocol, there are also multiple media streams flowing through the network. These are sent as RTP traffic using the RIST protocol3 which provides for “high performance media transport by using UDP at the transport layer to avoid the inefficiencies of TCP, then layering on top Forward Error Correction and Retransmits to add the reliability inherently absent from UDP”​ [​wikipedia​]​. Note that due to the low-latency requirements of RTS, it is likely that the retransmission facilities within RIST will ​not​ be used - reliability will come from the multiple routes chosen for the repeat copies of the stream sent..
+
+    Each stream will consist of one video track which has one or more bitrate variants and one audio track.
+
+    Each Node runs a single Erlang VM. Agents running within that VM include:
+      * Ingest Agent - one Agent per stream variant ingest currently active on that node
+      * Edge Agent - one Agent per stream currently being delivered to clients from that node
+      * Relay Agent - one Agent per stream currently being relayed by that node
+      ** Note there should be only one relay agent per stream, per pop (the choice of node being enabled by the intra-PoP SWIM network)
+      * Request Router Agent - one Agent per node (note the agent can handle multiple requests in parallel - this does not serialise inbound requests)
+      * intra-PoP SWIM Agent - one Agent per node
+      * trans-PoP SWIM Agent - one agent on the node currently designated as the PoP Leader
+
+    ## Quick Start
+    ### Single Machine
+      A working system and 'live' documentation that can be developed directly against on a single machine is most easily setup by following the Readme files in the following order:
+
+      1. https://github.com/id3as/rtsv2/blob/master/SETUP.md Before you start.
+      2. https://github.com/id3as/rtsv2/blob/master/docs/README.md to setup the documentation 'live' on the local system.
+      3. https://github.com/id3as/rtsv2/blob/master/README.md to setup the system and launch a simple test.
+
+    ### Multi-Machine
+      To setup several machines on a LAN to performance test machinary etc each must be setup as a 'node' and then configured for specific test roles. Following the setup Readme files below in order on each machine (following the variations for specific roles as detailed).
+      1. https://github.com/id3as/rtsv2/blob/master/SETUP.md Before you start.
+      2. https://github.com/id3as/rtsv2/blob/master/docs/README.md to setup the documentation 'live' on the local system.
+      3. https://github.com/id3as/rtsv2/blob/master/README_LAN_TEST.md to setup the system and launch a multi-machine test.
+
+
+    ## Security Model
+    This section will explain how tokens and security are handled etc so you know what to expect as you go to production.
+
+    ---
+    # Journeys
+    This section of the documentation shows some examples of API interaction in action focussing on some typical use-cases anticipated within the Limgelight development teams. We will call each of these examples a 'developer journey'.
+      1. 'A day in the life of a stream': What the client 'should' see - How infrastrcuture is configured for ingestion of RTMP live - Establishing a live stream - Configuring Outputs - Monitoring a live stream.
+      2. 'A day in the life of the infrastructure': How the service 'should' work - How the underlying nodes coordinate to manage the distribution services - How SlotIDs are referenced -  A test of infrastructure failure and recovery.
+      3. Platform reporting and queries: Checking the health of a live stream - Checking the health of the Infrastructure - SNMP integration.
+      4. Interfacing to Prometheus, logging configuration and basic alerting: How some of the key integrations with other parts of Limelight Operations Infrastructure have been established.
+
+    ## 1. 'A day in the life of a stream'
+    (tbd)
+    ## 2. 'A day in the life of the infrastructure'
+    (tbd)
+    ## 3. Platform reporting and queries
+    (tbd)
+    ## 4. Interfacing to Prometheus, logging configuration and basic alerting
+    (tbd)
+
+    ---
+
+x-logo:
+  url: https://static.wixstatic.com/media/b1006e_fb5b447f5d124676b0b1a328eb6adbd5~mv2_d_2986_1252_s_2.png
 tags:
   - name: Public Html
     description: Description for the Public API.
@@ -24,6 +101,7 @@ tags:
     description: Description for Support Html.
 produces:
   - "application/json-ld"
+
 x-tagGroups:
   - name: Api
     tags:
