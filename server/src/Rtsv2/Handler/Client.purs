@@ -31,6 +31,7 @@ import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Types (LocalOrRemote(..))
 import Rtsv2.Utils (cryptoStrongToken)
+import Shared.Rtsv2.LlnwApiTypes (StreamEgestProtocol(..))
 import Shared.Rtsv2.Router.Endpoint.System as System
 import Shared.Rtsv2.Stream (EgestKey(..), SlotId, SlotRole)
 import Shared.Rtsv2.Types (CanaryState, FailureReason(..), Server, extractAddress)
@@ -75,7 +76,7 @@ clientStart loadConfig canary slotId slotRole =
         Right (Local _)  -> do
           handlerPid <- startHandler clientId
           -- TODO: why is this being thrown away?
-          _ <- EgestInstance.addClient handlerPid (EgestKey slotId slotRole) clientId
+          _ <- EgestInstance.addClient WebRTCEgest handlerPid (EgestKey slotId slotRole) clientId
           Rest.result true req state
         Right (Remote _) -> do
           Rest.result false req state

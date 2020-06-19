@@ -9,6 +9,8 @@
 -include("./rtsv2_bus_messages.hrl").
 -include("./rtsv2_types.hrl").
 
+-define(STATS_INTERVAL_MS, 1000).
+
 -export([
          init/3,
          handle/1
@@ -25,11 +27,17 @@
   play_request :: term(),
   callbacks :: maps:map(),
   egest_key :: term(),
-  stream_name :: binary()
+  stream_name :: binary(),
+  session_id :: binary()
 }).
 
 -record(rtmp_egest_state, {
-  workflow :: pid()
+  rtmp_pid :: pid(),
+  workflow :: pid(),
+  stats_timer :: timer:tref(),
+  callbacks :: maps:map(),
+  egest_key :: term(),
+  session_id :: binary()
 }).
 
 init(Rtmp, ConnectArgs, [Callbacks]) ->
@@ -61,14 +69,21 @@ handle(State = #rtmp_egest_initial_state{ rtmp_pid = Rtmp, slot_id = SlotId, cal
 
       SlotConfig = SlotLookup(EgestKey),
       ?INFO("Looked up ~p to ~p", [EgestKey, SlotConfig]),
+
+      %% TODO see rtsv2_player_ws_resource      
+      ServerId = 1,
+      TraceId = format_trace_id(generate_trace_id(ServerId)),
+
+      SessionId = <<"rtmp.", TraceId/binary>>,
       
-      AddClient(self(), EgestKey, <<"rtmp_session_id">>), %% TODO generate something unique here?
+      AddClient(self(), EgestKey, SessionId), 
 
       State2 = #rtmp_egest_starting_state{ rtmp_pid = Rtmp,
                                            callbacks = Callbacks,
                                            egest_key = EgestKey,
                                            play_request = PlayRequest,
-                                           stream_name = unicode:characters_to_binary(StreamName, utf8)
+                                           stream_name = unicode:characters_to_binary(StreamName, utf8),
+                                           session_id = SessionId
                                          },
 
       case wait_for_slot_config(SlotLookup, EgestKey) of
@@ -94,19 +109,35 @@ handle(State = #rtmp_egest_starting_state{ callbacks = #{ slotLookup := SlotLook
       handle(State)
   end;
 
-handle(State = #rtmp_egest_state{ }) ->
+handle(State = #rtmp_egest_state{ stats_timer = Timer }) ->
   %% the workflow is dealing with the RTMP, so just wait until it says we are done
   receive
     #workflow_output{message = #workflow_data_msg{data = disconnected}} ->
+      timer:cancel(Timer),
+      send_stats(State),
       ok;
 
-    {egestCurrentActiveProfiles, _Profiles} -> handle(State);
+    update_stats ->
+      send_stats(State),
+      handle(State);
+
+    {egestCurrentActiveProfiles, _Profiles} ->
+      handle(State);
 
     Other ->
       ?WARNING("Unexpected workflow output ~p", [Other]),
       handle(State)
   end.
 
+generate_trace_id(ThisServerId) ->
+  << LocallyUniqueId:48/big-integer >> = crypto:strong_rand_bytes(6),
+  { ThisServerId, LocallyUniqueId }.
+
+
+format_trace_id({ServerId, ServerScopedClientId}) ->
+  <<(integer_to_binary(ServerId))/binary, ".",
+    (integer_to_binary(ServerScopedClientId))/binary
+  >>.
 
 
 wait_for_slot_config(SlotLookup, EgestKey) ->
@@ -120,10 +151,16 @@ wait_for_slot_config(SlotLookup, EgestKey) ->
       {ready, Profiles }
   end.
 
+send_stats(#rtmp_egest_state{ rtmp_pid = Rtmp, egest_key = EgestKey, session_id = SessionId, callbacks = #{ statsUpdate := StatsUpdate }}) ->
+  {Sent, Received} = rtmp:get_stats(Rtmp),
+  StatsUpdate(EgestKey, #{sessionId => SessionId, octetsSent => Sent, octetsReceived => Received}).
+
 start_workflow(#rtmp_egest_starting_state{ rtmp_pid = Rtmp,
                                            egest_key = EgestKey,
                                            play_request = {_Rtmp, {request, play, PlayRequest}},
-                                           stream_name = StreamName
+                                           stream_name = StreamName,
+                                           callbacks = Callbacks,
+                                           session_id = SessionId
                                          },
                                           Profiles) ->
   case lists:search(fun (#{profileName := Name}) -> Name == StreamName end, Profiles) of
@@ -132,7 +169,8 @@ start_workflow(#rtmp_egest_starting_state{ rtmp_pid = Rtmp,
       throw({no_profile, StreamName});
     {value, Profile} -> 
       {ok, WorkflowPid } = start_workflow(EgestKey, Rtmp, PlayRequest, Profile),
-      #rtmp_egest_state{ workflow = WorkflowPid }
+      {ok, Timer} = timer:send_interval(?STATS_INTERVAL_MS, update_stats),
+      #rtmp_egest_state{ workflow = WorkflowPid, stats_timer = Timer, rtmp_pid = Rtmp, egest_key = EgestKey, session_id = SessionId, callbacks = Callbacks }
   end.
 
 

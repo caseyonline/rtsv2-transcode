@@ -47,8 +47,11 @@ module Shared.Rtsv2.JsonLd
 
        , EgestStatsContextFields
        , EgestStats
-       , EgestSessionStats
+       , EgestSessionStats(..)
+       , EgestRtmpSessionStats
+       , EgestRtcSessionStats
        , EgestStatsNode
+       , statsSessionId
        , egestStatsContext
        , egestStatsNode
 
@@ -101,12 +104,17 @@ module Shared.Rtsv2.JsonLd
 
 import Prelude
 
+import Data.Either (Either(..))
+import Data.Generic.Rep (class Generic)
 import Data.Lens (Lens')
 import Data.Lens.Record (prop)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (wrap)
 import Data.Symbol (SProxy(..))
 import Effect (Effect)
+import Foreign (ForeignError(..), MultipleErrors, fail)
+import Kishimen (genericSumToVariant, variantToGenericSum)
+import Record as Record
 import Shared.Common (Alert, Milliseconds, CacheUtilization)
 import Shared.JsonLd (Context, ContextValue(..), ExpandedTermDefinition, Node(..), NodeMetadata, unwrapNode, _unwrappedNode, _id, _resource) as JsonLd
 import Shared.JsonLd (ContextDefinition(..))
@@ -117,6 +125,7 @@ import Shared.Rtsv2.Types (CanaryState, CurrentLoad, DeliverTo, JsonLdContextTyp
 import Shared.Rtsv2.Types as Types
 import Shared.Types.Media.Types.Rtmp (RtmpClientMetadata)
 import Shared.Types.Media.Types.SourceDetails (SourceInfo)
+import Simple.JSON (class ReadForeign, class WriteForeign, readImpl, writeImpl)
 
 ------------------------------------------------------------------------------
 -- Server
@@ -318,12 +327,42 @@ type EgestStatsContextFields = ( timestamp :: JsonLd.ContextValue
                                , sessions :: JsonLd.ContextValue
                                )
 
-type EgestSessionStats = { sessionId :: String
+data EgestSessionStats = EgestRtcSessionStats EgestRtcSessionStats
+                       | EgestRtmpSessionStats EgestRtmpSessionStats
+
+derive instance eqEgestSessionStats :: Eq EgestSessionStats
+derive instance genericEgestSessionStats :: Generic EgestSessionStats _
+
+instance readForeignEgestSessionStats :: ReadForeign EgestSessionStats where
+  readImpl o = do
+    rec :: { connectionType :: String } <- readImpl o
+    case rec.connectionType of
+      "webrtc" -> EgestRtcSessionStats <$> readImpl o
+      "rtmp" -> EgestRtmpSessionStats <$> readImpl o
+      _ -> fail $ ForeignError $ "Bad connection type " <> rec.connectionType
+
+instance writeForeignEgestSessionStats :: WriteForeign EgestSessionStats where
+  writeImpl (EgestRtcSessionStats stats) =
+    writeImpl $ Record.insert (SProxy :: SProxy "connectionType") "webrtc" stats
+  writeImpl (EgestRtmpSessionStats stats) =
+    writeImpl $ Record.insert (SProxy :: SProxy "connectionType") "rtmp" stats
+
+type EgestRtcSessionStats = { sessionId :: String
                          , audioPacketsSent :: Int
                          , audioOctetsSent :: Int
                          , videoPacketsSent :: Int
                          , videoOctetsSent :: Int
                          }
+
+type EgestRtmpSessionStats = { sessionId :: String
+                             , octetsSent :: Int
+                             , octetsReceived :: Int
+                             }
+
+statsSessionId :: EgestSessionStats -> String
+statsSessionId (EgestRtmpSessionStats {sessionId}) = sessionId
+statsSessionId (EgestRtcSessionStats {sessionId}) = sessionId
+
 
 type EgestStats f = { timestamp :: Milliseconds
                     , egestKey :: EgestKey
