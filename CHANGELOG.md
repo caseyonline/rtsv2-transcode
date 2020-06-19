@@ -4,6 +4,22 @@
 
 * Fix to HLS publish if onFI messages present in inbound RTMP stream
 
+* Fix to missing byte count in ingest eq log and missing ingest prometheus stats
+
+* Fix to missing slotName / streamName / port number in egest eq log
+
+* Initial support for RTMP egest, using an RTMP url such as:
+
+  ```
+  rtmp://node-name:1937/00000000-0000-0000-0000-000000000001/high
+  ```
+
+  A variant of stream discovery will be added to return the RTMP-style URLs for use on RTMP clients, but for now you need to know the slotId and profile name
+
+* Fix to timing related issue that could prevent HLS output
+
+
+
 # RTS-V2 release 106
 
 **What's new**

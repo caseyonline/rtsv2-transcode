@@ -71,7 +71,9 @@ start_workflow_for_local_ingest(IngestKey, Context) ->
                               #generator{name = bus,
                                          display_name = <<"Receive from Bus">>,
                                          module = receive_from_bus_generator,
-                                         config = #receive_from_bus_generator_config{bus_name = {ingest, IngestKey}}
+                                         config = #receive_from_bus_generator_config{ bus_name = {ingest, IngestKey}
+                                                                                    , send_program_details_from_metadata_on_startup = true
+                                                                                    }
                                         }
                              ],
                 processors = [

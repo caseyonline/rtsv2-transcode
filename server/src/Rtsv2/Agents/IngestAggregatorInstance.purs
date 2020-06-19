@@ -487,7 +487,6 @@ init parentCallbacks { shortName
                                                                                 , name: slotName}}
                      , dataObject: initialDataObject} stateServerName = do
   Logger.addLoggerContext $ PerSlot { slotId, slotRole, slotName: Just slotName}
-
   logStart "Ingest Aggregator starting" {aggregatorKey, streamDetails}
   void $ Erl.trapExit true
   config <- Config.ingestAggregatorAgentConfig
