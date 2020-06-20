@@ -38,7 +38,7 @@ import Serf (Ip)
 import Shared.Common (ProfileContext)
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.LlnwApiTypes (AuthType, SlotProfile(..), SlotPublishAuthType(..), StreamDetails, StreamIngestProtocol(..))
-import Shared.Rtsv2.Stream (IngestKey(..))
+import Shared.Rtsv2.Stream (IngestKey(..), RtmpShortName, stringToRtmpShortName)
 import Shared.Rtsv2.Types (CanaryState(..), extractAddress)
 import Stetson.WebSocketHandler (self)
 
@@ -101,17 +101,22 @@ init _ = do
 
   pure {}
 
-onConnectCallback :: LoadConfig -> CanaryState -> String -> String -> String -> Foreign -> (Effect RtmpAuthResponse)
+onConnectCallback :: LoadConfig -> CanaryState -> String -> String -> String -> Foreign -> Effect RtmpAuthResponse
 onConnectCallback loadConfig canary host rtmpShortName remoteAddress foreignQuery =
   let
     authRequest = rtmpQueryToPurs foreignQuery
   in
     processAuthRequest loadConfig canary host rtmpShortName remoteAddress authRequest
 
+
 onStreamCallback :: LoadConfig -> CanaryState -> String -> String -> String -> String -> Int -> String -> Pid -> Foreign -> Effect Unit
 onStreamCallback loadConfig canary host rtmpShortNameStr username remoteAddress remotePort rtmpStreamNameStr rtmpPid publishArgs = do
+  validateRtmpShortName rtmpShortNameStr (pure unit) $
+    onStreamCallbackInt loadConfig canary host username remoteAddress remotePort rtmpStreamNameStr rtmpPid publishArgs
+
+onStreamCallbackInt :: LoadConfig -> CanaryState -> String -> String -> String -> Int -> String -> Pid -> Foreign -> RtmpShortName -> Effect Unit
+onStreamCallbackInt loadConfig canary host username remoteAddress remotePort rtmpStreamNameStr rtmpPid publishArgs rtmpShortName = do
   let
-    rtmpShortName = wrap rtmpShortNameStr
     rtmpStreamName = wrap rtmpStreamNameStr
     streamPublish = wrap { host
                          , protocol: Rtmp
@@ -197,6 +202,15 @@ startWorkflowAndBlock rtmpPid ingestPid publishArgs ingestKey {slot: {name}} slo
 
     sourceInfo foreignSourceInfo = do
       IngestInstance.setSourceInfo ingestKey (SourceDetails.foreignToSourceInfo foreignSourceInfo)
+
+validateRtmpShortName :: forall a. String -> Effect a -> (RtmpShortName -> Effect a) -> Effect a
+validateRtmpShortName rtmpShortNameString errResp postValidationFn =
+  case stringToRtmpShortName rtmpShortNameString of
+    Just rtmpShortName -> postValidationFn rtmpShortName
+    Nothing -> do
+      logInfo "invalid rtmpShortName (too long?)" {rtmpShortNameString}
+      errResp
+
 
 domain :: List Atom
 domain = atom <$> (show Agent.Ingest : "Instance" : nil)

@@ -25,7 +25,7 @@ import Rtsv2.DataObject as DO
 import Rtsv2.Types (LocalResourceResp)
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.LlnwApiTypes (PublishCredentials(..), SlotProfile(..), StreamDetails, StreamIngestProtocol(..))
-import Shared.Rtsv2.Stream (IngestKey(..), ProfileName, RtmpStreamName(..))
+import Shared.Rtsv2.Stream (IngestKey(..), ProfileName, RtmpShortName, RtmpStreamName(..), rtmpShortNameToString, stringToRtmpShortName)
 import Shared.Rtsv2.Types (CanaryState, Server)
 
 type AuthenticateResult = { streamDetails :: StreamDetails
@@ -42,7 +42,13 @@ type StartStreamResult = { sourceInfo :: Foreign -> Effect Unit
 
 authenticate :: LoadConfig -> CanaryState -> String -> StreamIngestProtocol -> String -> String -> String -> String -> String -> Int -> Effect (Maybe AuthenticateResult)
 authenticate loadConfig canary host protocol account username password streamName remoteAddress remotePort = do
-  publishCredentials <- getPublishCredentials host account username remoteAddress
+  validateRtmpShortName account (pure Nothing)  $
+    authenticateInt loadConfig canary host protocol username password streamName remoteAddress remotePort
+
+authenticateInt :: LoadConfig -> CanaryState -> String -> StreamIngestProtocol -> String -> String -> String -> String -> Int -> RtmpShortName -> Effect (Maybe AuthenticateResult)
+authenticateInt loadConfig canary host protocol username password streamName remoteAddress remotePort rtmpShortName = do
+
+  publishCredentials <- getPublishCredentials host (rtmpShortNameToString rtmpShortName) username remoteAddress
 
   case publishCredentials of
     Just (PublishCredentials { username: expectedUsername
@@ -50,7 +56,6 @@ authenticate loadConfig canary host protocol account username password streamNam
       | expectedUsername == username
       , expectedPassword == password -> do
         let
-          rtmpShortName = wrap account
           rtmpStreamName = wrap streamName
           streamPublish = wrap { host
                                , protocol
@@ -69,7 +74,8 @@ authenticate loadConfig canary host protocol account username password streamNam
             case findProfile streamDetails of
               Nothing -> do
                 logInfo "StreamProfile not found" { streamDetails
-                                                       , streamName }
+                                                  , streamName
+                                                  }
                 pure Nothing
 
               Just slotProfile@(SlotProfile { name: profileName }) -> do
@@ -120,6 +126,14 @@ startStream ingestKey startFn = do
 stopStream :: IngestKey -> Effect Unit
 stopStream ingestKey =
   IngestInstance.stopIngest ingestKey
+
+validateRtmpShortName :: forall a. String -> Effect a -> (RtmpShortName -> Effect a) -> Effect a
+validateRtmpShortName rtmpShortNameString errResp postValidationFn =
+  case stringToRtmpShortName rtmpShortNameString of
+    Just rtmpShortName -> postValidationFn rtmpShortName
+    Nothing -> do
+      logInfo "invalid rtmpShortName (too long?)" {rtmpShortNameString}
+      errResp
 
 domain :: List Atom
 domain = atom <$> (show Agent.Ingest : "Instance" : nil)

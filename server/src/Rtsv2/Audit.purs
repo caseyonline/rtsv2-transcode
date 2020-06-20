@@ -19,7 +19,7 @@ import Erl.Data.List (List, nil, (:))
 import Logger as Logger
 import Shared.Common (Milliseconds)
 import Shared.Rtsv2.LlnwApiTypes (StreamEgestProtocol(..), StreamIngestProtocol(..))
-import Shared.Rtsv2.Stream (EgestKey(..), RtmpShortName, RtmpStreamName, SlotId(..), SlotName, SlotRole)
+import Shared.Rtsv2.Stream (EgestKey(..), RtmpShortName, RtmpStreamName, SlotId(..), SlotName, SlotRole, rtmpShortNameToString)
 
 foreign import toList :: String -> List Char
 
@@ -122,7 +122,7 @@ writeIngestLine reason { ingestIp
               , ingestPort: ingestPort
               , userIp: toList userIp
               , username: toList username
-              , shortname: toList $ unwrap rtmpShortName
+              , shortname: toList $ rtmpShortNameToString rtmpShortName
               , streamName: toList $ unwrap rtmpStreamName
               , slotId: toList $ show $ unwrap slotId
               , slotRole: toList $ show slotRole
@@ -160,7 +160,7 @@ writeEgestLine reason { egestIp
               , egestPort: egestPort
               , subscriberIp: toList subscriberIp
               , username: toList username
-              , shortname: toList $ unwrap rtmpShortName
+              , shortname: toList $ rtmpShortNameToString rtmpShortName
               , slotId: toList $ show $ unwrap slotId
               , slotRole: toList $ show slotRole
               , streamName: toList $ unwrap slotName

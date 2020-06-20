@@ -3,8 +3,6 @@
 -export([ to_wire_message/1
         , from_wire_message/2
         , x/0
-        , to_binary/1
-        , from_binary/1
         ]).
 
 %%------------------------------------------------------------------------------
@@ -24,11 +22,6 @@
 %%------------------------------------------------------------------------------
 %% End of list of message names
 %%------------------------------------------------------------------------------
-to_binary(X) ->
-  term_to_binary(X).
-
-from_binary(X) ->
-  binary_to_term(X).
 
 %%------------------------------------------------------------------------------
 %% Public API
@@ -127,8 +120,28 @@ to_wire_message(
   , << MonotonicTime:64/signed-big-integer                                 %%  64    64
      , ServerAddress/binary                                                %% rest of msg
     >>
-  }.
+  };
 
+
+to_wire_message(
+  { iMSlotLookup
+  , ServerAddress
+  , RtmpShortName
+  , SlotName
+  , _SlotLookupResult = #{ id := SlotId
+                         }
+  }) ->
+  RtmpShortNameLen = byte_size(RtmpShortName),
+  SlotNameLen = byte_size(SlotName),
+  { ?iMSlotLookupMsgName
+  , << RtmpShortNameLen:8                               %%   8  136
+     , SlotNameLen:8                                    %%   8  142
+     , SlotId:16/binary                                 %% 128  128
+     , RtmpShortName/binary                             %% variable
+     , SlotName/binary                                  %% variable
+     , ServerAddress/binary                             %% rest of msg
+    >>
+  }.
 
 from_wire_message(
   ?iMAggregatorAvailableMsgName
@@ -227,9 +240,33 @@ from_wire_message(
          ,  ServerAddress
          ,  MonotonicTime
          }
-  }.
+  };
+from_wire_message(
+  ?iMSlotLookupMsgName
+  , << RtmpShortNameLen:8                               %%   8  136
+     , SlotNameLen:8                                    %%   8  142
+     , SlotId:16/binary                                 %% 128  128
+     , RtmpShortName:RtmpShortNameLen/binary            %% variable
+     , SlotName:SlotNameLen/binary                      %% variable
+     , ServerAddress/binary                             %% rest of msg
+    >>
+ ) ->
+  RtmpShortNameLen = byte_size(RtmpShortName),
+  SlotNameLen = byte_size(SlotName),
+  { just, { iMSlotLookup
+  , ServerAddress
+  , RtmpShortName
+  , SlotName
+  , _SlotLookupResult = #{ id => SlotId
+                         }
+          }
+  };
 
-
+from_wire_message(
+  _Name
+ , _WireMessage
+ )->
+  {nothing}.
 
 
 %%------------------------------------------------------------------------------
@@ -252,9 +289,9 @@ from_wire_element_accepting_requests(0) -> false.
 
 
 
--define(wireCpukLoadFactor, 1.27). %% 7 bits max = 127 - / 100
-to_wire_element_cpu(Load) -> trunc(max(0, min(100, Load) * ?wireCpukLoadFactor)).
-from_wire_element_cpu(Load) -> Load / ?wireCpukLoadFactor.
+-define(wireCpuLoadFactor, 1.27). %% 7 bits max = 127 - / 100
+to_wire_element_cpu(Load) -> trunc(max(0, min(100, Load) * ?wireCpuLoadFactor)).
+from_wire_element_cpu(Load) -> Load / ?wireCpuLoadFactor.
 
 
 -define(wireNetworkLoadFactor, 2000).

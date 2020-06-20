@@ -32,7 +32,7 @@ import Rtsv2.Config as Config
 import Rtsv2.Names as Names
 import Shared.Common (Milliseconds, Url(..), CacheUtilization)
 import Shared.Rtsv2.LlnwApiTypes (AuthType, PublishCredentials, StreamAuth, StreamConnection, StreamDetails, StreamPublish, SlotLookupResult)
-import Shared.Rtsv2.Stream (RtmpShortName, SlotName)
+import Shared.Rtsv2.Stream (RtmpShortName, SlotName, rtmpShortNameToString)
 import Simple.JSON (class WriteForeign, writeJSON)
 import SpudGun (Headers, JsonResponseError, SpudResult, bodyToJSON)
 import SpudGun as SpudGun
@@ -80,7 +80,7 @@ slotLookup {slotLookupUrl, headers} accountName slotName =
       pure $ CallReply (Right slotLookupResult) state{ slotLookupCache = newCache
                                                      , slotLookupCacheMisses = slotLookupCacheMisses + 1}
 
-    replaceAccount = replace (Pattern "{account}") (Replacement $ unwrap accountName)
+    replaceAccount = replace (Pattern "{account}") (Replacement $ rtmpShortNameToString accountName)
     replaceSlotName = replace (Pattern "{streamName}") (Replacement $ unwrap slotName)
 
 recordSlotLookup :: RtmpShortName -> SlotName -> SlotLookupResult -> Effect Unit
