@@ -114,6 +114,7 @@ type State
     , loadConfig :: LoadConfig
     , thisServer :: Server
     , clientCount :: Int
+    , totalClientCount :: Int
     , clientStats :: Map String EgestSessionStats
     , lingerTime :: Milliseconds
     , relayCreationRetry :: Milliseconds
@@ -122,6 +123,7 @@ type State
     , forceDrainPhaseTimeout :: Milliseconds
     , intraPoPLatency :: Milliseconds
     , aggregatorExitLingerTime :: Milliseconds
+    , clientCountReportingTime :: Milliseconds
     , stopRef :: Maybe Ref
     , receivePortNumber :: Int
     , rtmpReceivePortNumber :: Int
@@ -162,6 +164,7 @@ data Msg = WriteEqLog
          | ForceDrainPhase Int
          | ForceDrainTimeout
          | AggregatorExitTimer Ref
+         | ReportClientCount Int
 
 emptySessionStats :: StreamEgestProtocol -> String -> EgestSessionStats
 emptySessionStats WebRTCEgest sessionId =
@@ -288,12 +291,13 @@ forceDrain egestKey =
 
 currentStats :: EgestKey -> Effect (EgestStats List)
 currentStats egestKey@(EgestKey slotId slotRole) =
-  Gen.doCall (serverName egestKey) \state@{clientCount, clientStats} -> do
+  Gen.doCall (serverName egestKey) \state@{clientCount, totalClientCount, clientStats} -> do
     now <- Erl.systemTimeMs
     let
       stats = { egestKey
               , timestamp: now
               , clientCount
+              , totalClientCount
               , sessions: Map.values clientStats
               }
     pure $ CallReply stats state
@@ -312,6 +316,7 @@ init parentCallbacks payload@{slotId, slotRole, aggregatorPoP, slotCharacteristi
   , forceDrainTimeoutMs
   , numForceDrainPhases
   , aggregatorExitLingerTimeMs
+  , clientCountReportingTimeMs
   } <- Config.egestAgentConfig
   { intraPoPLatencyMs } <- Config.globalConfig
   loadConfig <- Config.loadConfig
@@ -342,12 +347,11 @@ init parentCallbacks payload@{slotId, slotRole, aggregatorPoP, slotCharacteristi
 
   publicListenIp <- Env.publicListenIp
 
-  
-
   now <- systemTimeMs
   IntraPoP.announceLocalEgestIsAvailable egestKey
   void $ Timer.sendAfter (serverName egestKey) 0 InitStreamRelays
   void $ Timer.sendEvery (serverName egestKey) eqLogIntervalMs WriteEqLog
+  void $ Timer.sendAfter (serverName egestKey) clientCountReportingTimeMs (ReportClientCount 0)
 
   Load.addPredictedLoad (egestKeyToAgentKey egestKey) predictedLoad
 
@@ -362,6 +366,7 @@ init parentCallbacks payload@{slotId, slotRole, aggregatorPoP, slotCharacteristi
             , loadConfig
             , thisServer
             , clientCount : 0
+            , totalClientCount : 0
             , clientStats : Map.empty
             , lingerTime : Milliseconds $ Long.fromInt lingerTimeMs
             , relayCreationRetry : Milliseconds $ Long.fromInt relayCreationRetryMs
@@ -370,6 +375,7 @@ init parentCallbacks payload@{slotId, slotRole, aggregatorPoP, slotCharacteristi
             , numForceDrainPhases
             , intraPoPLatency : Milliseconds $ Long.fromInt intraPoPLatencyMs
             , aggregatorExitLingerTime : Milliseconds $ Long.fromInt aggregatorExitLingerTimeMs
+            , clientCountReportingTime : Milliseconds $ Long.fromInt clientCountReportingTimeMs
             , stopRef : Nothing
             , receivePortNumber
             , rtmpReceivePortNumber
@@ -400,6 +406,10 @@ handleInfo msg state@{egestKey: egestKey@(EgestKey slotId slotRole), thisServer}
       logInfo "client down!" {}
       state2 <- removeClient sessionId state
       pure $ CastNoReply state2
+
+    ReportClientCount lastReport -> do
+      maybeReportClientCount lastReport
+      pure $ CastNoReply state
 
     InitStreamRelays -> CastNoReply <$> initStreamRelay state
 
@@ -475,6 +485,20 @@ handleInfo msg state@{egestKey: egestKey@(EgestKey slotId slotRole), thisServer}
     maybeStop ref
       | (state.clientCount == 0) && (Just ref == state.stopRef) = doStop state
       | otherwise = pure $ CastNoReply state
+
+    maybeReportClientCount lastReport | lastReport == state.clientCount =
+      fireClientCountTimer lastReport
+
+    maybeReportClientCount lastReport | otherwise =
+      case state.relayWebSocket of
+        Nothing ->
+          fireClientCountTimer lastReport
+        Just socket -> do
+          void $ WsGun.send socket (EgestClientCount state.clientCount)
+          fireClientCountTimer state.clientCount
+
+    fireClientCountTimer lastReport =
+      void $ Timer.sendAfter (serverName egestKey) (round $ Long.toNumber $ unwrap state.clientCountReportingTime) (ReportClientCount lastReport)
 
 terminate :: TerminateReason -> State -> Effect Unit
 terminate Normal state = do
@@ -555,6 +579,9 @@ processGunMessage state@{relayWebSocket: Just socket, egestKey, lastOnFI, rtmpWo
           pure $ CastNoReply state{dataObject = Just dataObject}
         else
           pure $ CastNoReply state
+
+      Right (WsGun.Frame (ClientCount count)) -> do
+        pure $ CastNoReply state{totalClientCount = count}
 
   else
     pure $ CastNoReply state

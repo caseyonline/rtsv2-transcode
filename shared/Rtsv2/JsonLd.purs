@@ -325,6 +325,7 @@ egestLocationNode slotId slotRole server = do
 type EgestStatsContextFields = ( timestamp :: JsonLd.ContextValue
                                , egestKey :: JsonLd.ContextValue
                                , clientCount :: JsonLd.ContextValue
+                               , totalClientCount :: JsonLd.ContextValue
                                , sessions :: JsonLd.ContextValue
                                )
 
@@ -369,6 +370,7 @@ statsSessionId (EgestRtcSessionStats {sessionId}) = sessionId
 type EgestStats f = { timestamp :: Milliseconds
                     , egestKey :: EgestKey
                     , clientCount :: Int
+                    , totalClientCount :: Int
                     , sessions :: f EgestSessionStats
                     }
 
@@ -381,6 +383,7 @@ egestStatsContext = wrap { "@language": Nothing
                          , timestamp: JsonLd.Other "http://schema.rtsv2.llnw.com/UTCTimestamp"
                          , egestKey: JsonLd.Other "http://schema.rtsv2.llnw.com/EgestKey"
                          , clientCount: JsonLd.Other "http://schema.rtsv2.llnw.com/Counter"
+                         , totalClientCount: JsonLd.Other "http://schema.rtsv2.llnw.com/Counter"
                          , sessions: JsonLd.Other "http://schema.rtsv2.llnw.com/EgestSessions"
                          }
 
@@ -389,7 +392,7 @@ egestStatsNode slotId slotRole server stats = do
   id <- Support.makeUrl server (Support.EgestStatsE slotId slotRole)
   pure$ wrap { resource: stats
              , "@id": Just id
-             , "@nodeType": Just "http://types.rtsv2.llnw.com/Egest"
+             , "@nodeType": Just "http://types.rtsv2.llnw.com/EgestStats"
              , "@context": Just $ ContextUrl $ Support.makePath $ Support.JsonLdContext EgestStatsContext
              }
 
@@ -435,6 +438,7 @@ type IngestAggregatorStateContextFields = ( role :: JsonLd.ContextValue
                                           , activeProfiles :: JsonLd.ContextValue
                                           , downstreamRelays :: JsonLd.ContextValue
                                           , hlsPublish :: JsonLd.ContextValue
+                                          , clientCount :: JsonLd.ContextValue
                                           )
 type IngestAggregatorState f
    = { role :: SlotRole
@@ -442,6 +446,7 @@ type IngestAggregatorState f
      , activeProfiles :: f ActiveIngestLocationNode
      , downstreamRelays :: f DownstreamRelayLocationNode
      , hlsPublish :: Boolean
+     , clientCount :: Int
      }
 
 type IngestAggregatorStateNode f = JsonLd.Node (IngestAggregatorState f) IngestAggregatorStateContextFields
@@ -455,6 +460,7 @@ ingestAggregatorStateContext = wrap { "@language": Nothing
                                     , activeProfiles: JsonLd.Other "http://schema.rtsv2.llnw.com/Infrastructure/Locations/Ingest"
                                     , downstreamRelays: JsonLd.Other "http://schema.rtsv2.llnw.com/Infrastructure/Locations/Relay"
                                     , hlsPublish: JsonLd.Other "http://schema.rtsv2.llnw.com/Boolean"
+                                    , clientCount: JsonLd.Other "http://schema.rtsv2.llnw.com/Counter"
                                     }
 ingestAggregatorStateNode :: forall f. SlotId -> IngestAggregatorState f -> Server -> Effect (IngestAggregatorStateNode f)
 ingestAggregatorStateNode slotId state@{role: slotRole} server = do
@@ -470,11 +476,15 @@ ingestAggregatorStateNode slotId state@{role: slotRole} server = do
 type StreamRelayStateContextFields = ( role :: JsonLd.ContextValue
                                      , egestsServed :: JsonLd.ContextValue
                                      , relaysServed :: JsonLd.ContextValue
+                                     , downstreamClientCount :: JsonLd.ContextValue
+                                     , totalClientCount :: JsonLd.ContextValue
                                      )
 type StreamRelayState f
   = { role :: SlotRole
     , egestsServed :: f EgestServedLocationNode
     , relaysServed :: f DownstreamRelayLocationNode
+    , downstreamClientCount :: Int
+    , totalClientCount :: Int
     }
 
 type StreamRelayStateNode f = JsonLd.Node (StreamRelayState f) StreamRelayStateContextFields
@@ -486,6 +496,8 @@ streamRelayStateContext = wrap { "@language": Nothing
                                , role: JsonLd.Other "http://schema.rtsv2.llnw.com/Role"
                                , egestsServed: JsonLd.Other "http://schema.rtsv2.llnw.com/Infrastructure/Locations/Egest"
                                , relaysServed: JsonLd.Other "http://schema.rtsv2.llnw.com/Infrastructure/Locations/Relay"
+                               , downstreamClientCount: JsonLd.Other "http://schema.rtsv2.llnw.com/Infrastructure/Locations/Counter"
+                               , totalClientCount: JsonLd.Other "http://schema.rtsv2.llnw.com/Infrastructure/Locations/Counter"
                                }
 
 streamRelayStateNode :: forall f. SlotId -> StreamRelayState f -> Server -> Effect (StreamRelayStateNode f)

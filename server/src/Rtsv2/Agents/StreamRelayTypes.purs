@@ -23,6 +23,7 @@ import Kishimen (genericSumToVariant, variantToGenericSum)
 import Rtsv2.Agents.SlotTypes (SlotConfiguration)
 import Rtsv2.DataObject (class DataObjectRef)
 import Rtsv2.DataObject as DO
+import Shared.Common (Milliseconds)
 import Shared.Rtsv2.Agent (SlotCharacteristics)
 import Shared.Rtsv2.Stream (ProfileName, SlotId, SlotRole)
 import Shared.Rtsv2.Types (PoPName)
@@ -50,17 +51,21 @@ data AggregatorPrimaryToBackupWsMessage = P2B_Synchronise
                                         | P2B_Latest DO.Object
                                         | P2B_Message DO.Message
                                         | P2B_UpdateResponse DO.ObjectUpdateResponseMessage
+                                        | P2B_ClientCount Int
 
 data AggregatorBackupToPrimaryWsMessage = B2P_SynchroniseObject DO.Object
                                         | B2P_SynchroniseNoObject
                                         | B2P_Message DO.Message
                                         | B2P_Update DO.ObjectUpdateMessage
+                                        | B2P_ClientCount Int
 
 data RelayUpstreamWsMessage = RelayUpstreamDataObjectMessage DO.Message
                             | RelayUpstreamDataObjectUpdateMessage DO.ObjectUpdateMessage
+                            | RelayAggregateClientCount {count :: Int, time :: Milliseconds}
 
 data EgestUpstreamWsMessage = EdgeToRelayDataObjectMessage DO.Message
                             | EdgeToRelayDataObjectUpdateMessage DO.ObjectUpdateMessage
+                            | EgestClientCount Int
 
 newtype ActiveProfiles = ActiveProfiles { profiles :: List ProfileName
                                         , ref :: Ref
@@ -72,6 +77,7 @@ data DownstreamWsMessage = SlotConfig SlotConfiguration
                          | DataObjectMessage DO.Message
                          | DataObjectUpdateResponse DO.ObjectUpdateResponseMessage
                          | DataObject DO.ObjectBroadcastMessage
+                         | ClientCount Int
 
 data WebSocketHandlerMessage a = WsStop
                                | WsSend a

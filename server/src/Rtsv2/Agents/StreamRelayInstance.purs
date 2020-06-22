@@ -16,6 +16,8 @@ module Rtsv2.Agents.StreamRelayInstance
          startLink
        , dataObjectSendMessage
        , dataObjectUpdateSendMessage
+       , updateRelayAggregateClientCount
+       , updateEgestClientCount
        , domain
        , forceDrain
        , init
@@ -38,9 +40,10 @@ import Data.Array as Array
 import Data.Either (Either(..), hush)
 import Data.Foldable (find, foldl)
 import Data.FoldableWithIndex (foldlWithIndex, traverseWithIndex_)
+import Data.Long as Long
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Maybe as Maybe
-import Data.Newtype (un, unwrap)
+import Data.Newtype (un, unwrap, wrap)
 import Data.Traversable (traverse, traverse_)
 import Data.TraversableWithIndex (traverseWithIndex)
 import Data.Tuple as PursTuple
@@ -72,7 +75,7 @@ import Rtsv2.DataObject as DO
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Types (ResourceResp)
-import Shared.Common (LoggingContext(..))
+import Shared.Common (LoggingContext(..), Milliseconds)
 import Shared.Rtsv2.Agent (SlotCharacteristics)
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.Agent.State as PublicState
@@ -132,6 +135,7 @@ type CommonStateData =
   , activeProfiles :: List ProfileName
   , forceDrain :: Boolean
   , aggregatorExitTimerRef :: Maybe Ref
+  , totalClientCount :: Int
   }
 
 type OriginStreamRelayStateData =
@@ -160,12 +164,17 @@ type DownstreamStreamRelayStateData =
 --
 type EgestMap = Map ServerAddress { handler :: Process (WebSocketHandlerMessage DownstreamWsMessage)
                                   , deliverTo :: DeliverTo2 EgestServer
+                                  , clientCount :: Int
                                   }
 type OriginRelayMap = Map ServerAddress { handler :: Process (WebSocketHandlerMessage DownstreamWsMessage)
                                         , deliverTo :: DeliverTo RelayServer
+                                        , clientCount :: Int
+                                        , clientCountUpdated :: Milliseconds
                                         }
 type DownstreamRelayMap = Map ServerAddress { handler :: Process (WebSocketHandlerMessage DownstreamWsMessage)
                                             , deliverToWithSource :: DownstreamRelayWithSource
+                                            , clientCount :: Int
+                                            , clientCountUpdated :: Milliseconds
                                             }
 
 type OriginStreamRelayConfig =
@@ -286,7 +295,7 @@ registerEgest slotId slotRole egestServer egestPort secondaryEgestPort handler@(
 
     egestAddress = (unwrap egestServer).address
     deliverTo = { server: egestServer, port: egestPort, secondaryPort: secondaryEgestPort }
-    updateMap egests = Map.insert egestAddress { handler, deliverTo } egests
+    updateMap egests = Map.insert egestAddress { handler, deliverTo, clientCount: 0 } egests
     monitor = Gen.monitorPid (serverName $ RelayKey slotId slotRole) handlerPid (\_ -> EgestDown egestAddress)
     maybeSendDataObject Nothing = pure unit
     maybeSendDataObject (Just dataObject) = do
@@ -308,7 +317,7 @@ registerRelay slotId slotRole relayServer relayPort sourceRoute handler@(Process
     doRegisterRelay (StateOrigin commonStateData@{thisServer, dataObject, activeProfiles} originStateData@{ config: config@{ downstreamRelays }, run: { slotConfiguration: slotConfig } }) = do
       -- TODO: PS: log if we've got a non-nil source when we're in origin mode
       let
-        newDownstreamRelays = Map.insert relayAddress { handler, deliverTo} downstreamRelays
+        newDownstreamRelays = Map.insert relayAddress { handler, deliverTo, clientCount: 0, clientCountUpdated: wrap $ Long.fromInt 0} downstreamRelays
       maybeSendDataObject dataObject
       sendActiveProfiles activeProfiles
       monitor
@@ -322,7 +331,7 @@ registerRelay slotId slotRole relayServer relayPort sourceRoute handler@(Process
               { source: { next: head, rest: tail }
               , deliverTo
               }
-            newDownstreamRelays = Map.insert relayAddress { handler, deliverToWithSource: downstreamRelayWithSource} downstreamRelays
+            newDownstreamRelays = Map.insert relayAddress { handler, deliverToWithSource: downstreamRelayWithSource, clientCount: 0, clientCountUpdated: wrap $ Long.fromInt 0} downstreamRelays
           maybeSendDataObject dataObject
           sendActiveProfiles activeProfiles
           monitor
@@ -364,6 +373,32 @@ dataObjectUpdateSendMessage relayKey msg =
     else pure unit
     pure $ CallReply unit state
   )
+
+updateRelayAggregateClientCount :: RelayKey -> RelayServer -> Int -> Milliseconds -> Effect Unit
+updateRelayAggregateClientCount relayKey relayServer count time =
+  Gen.cast (serverName relayKey) doUpdateRelayClientCount
+  where
+    doUpdateRelayClientCount (StateOrigin common origin@{config: config@{downstreamRelays}}) =
+      CastNoReply (StateOrigin common origin{config = config{downstreamRelays = updateRelay downstreamRelays}})
+    doUpdateRelayClientCount (StateDownstream common downstream@{config: config@{downstreamRelays}}) =
+      CastNoReply (StateDownstream common downstream{config = config{downstreamRelays = updateRelay downstreamRelays}})
+    updateRelay :: forall a. Map ServerAddress {clientCount :: Int, clientCountUpdated :: Milliseconds | a} -> Map ServerAddress {clientCount :: Int, clientCountUpdated :: Milliseconds | a}
+    updateRelay relays =
+      Map.update (\relay@{clientCountUpdated} ->
+                   if time > clientCountUpdated then Just relay{clientCount = count}
+                   else Just relay
+                 ) (extractAddress relayServer) relays
+
+updateEgestClientCount :: RelayKey -> EgestServer -> Int -> Effect Unit
+updateEgestClientCount relayKey egestServer count =
+  Gen.cast (serverName relayKey) doUpdateEgestClientCount
+  where
+    doUpdateEgestClientCount (StateOrigin common origin@{config: config@{egests}}) =
+      CastNoReply (StateOrigin common origin{config = config{egests = updateEgest egests}})
+    doUpdateEgestClientCount (StateDownstream common downstream@{config: config@{egests}}) =
+      CastNoReply (StateDownstream common downstream{config = config{egests = updateEgest egests}})
+    updateEgest egests =
+      Map.update (\egest -> Just egest{clientCount = count}) (extractAddress egestServer) egests
 
 forceDrain :: RelayKey -> Effect Unit
 forceDrain relayKey =
@@ -520,7 +555,7 @@ status :: RelayKey -> Effect (PublicState.StreamRelay List)
 status rk =
   Gen.doCall (serverName rk) mkStatus
   where
-    mkStatus state@(StateOrigin {relayKey: RelayKey slotId slotRole, thisServer} originStateData) = do
+    mkStatus state@(StateOrigin {relayKey: RelayKey slotId slotRole, thisServer, totalClientCount} originStateData) = do
       newState <- publicState
       json <- JsonLd.streamRelayStateNode slotId newState thisServer
       pure $ Gen.CallReply json state
@@ -531,8 +566,10 @@ status rk =
           pure { role : slotRole
                , egestsServed : es
                , relaysServed : rs
+               , downstreamClientCount : currentClientCount state
+               , totalClientCount
                }
-    mkStatus state@(StateDownstream {relayKey: RelayKey slotId slotRole, thisServer} downstreamStateData) = do
+    mkStatus state@(StateDownstream {relayKey: RelayKey slotId slotRole, thisServer, totalClientCount} downstreamStateData) = do
       newState <- publicState
       json <- JsonLd.streamRelayStateNode slotId newState thisServer
       pure $ Gen.CallReply json state
@@ -543,6 +580,8 @@ status rk =
           pure { role : slotRole
                , egestsServed : es
                , relaysServed : rs
+               , downstreamClientCount : currentClientCount state
+               , totalClientCount
                }
 
 -- -----------------------------------------------------------------------------
@@ -556,6 +595,7 @@ data Msg = IntraPoPBus IntraPoP.IntraPoPBusMessage
          | ReApplyPlan
          | ForceDrainTimeout
          | AggregatorExitTimer Ref
+         | ReportClientCount Int
 
 payloadToRelayKey :: forall r. { slotId :: SlotId, slotRole :: SlotRole | r } -> RelayKey
 payloadToRelayKey payload = RelayKey payload.slotId payload.slotRole
@@ -633,7 +673,10 @@ init relayKey parentCallbacks payload@{slotId, slotRole, aggregatorPoP, slotChar
       , activeProfiles: nil
       , forceDrain: false
       , aggregatorExitTimerRef: Nothing
+      , totalClientCount: 0
       }
+
+  void $ Timer.sendAfter (serverName relayKey) streamRelayConfig.clientCountReportingTimeMs (ReportClientCount 0)
 
   if egestSourceRoutes == List.nil then
     do
@@ -740,6 +783,10 @@ handleInfo msg state =
       | otherwise ->
         pure $ CastNoReply state -- todo - why clause needed?
 
+    ReportClientCount lastReport -> do
+      maybeReportClientCount lastReport
+      pure $ CastNoReply state
+
     IntraPoPBus (IngestAggregatorStarted _ _) ->
       pure $ CastNoReply state
 
@@ -825,6 +872,21 @@ handleInfo msg state =
 
     relayKey = relayKeyFromState state
     (RelayKey ourSlotId ourSlotRole) = relayKey
+
+    maybeReportClientCount lastReport = do
+      let
+        currentCount = currentClientCount state
+      if currentCount == lastReport then
+        fireClientCountTimer lastReport
+      else do
+        now <- Erl.systemTimeMs
+        sendMessageToUpstreams (RelayAggregateClientCount {count: currentCount, time: now}) state
+        fireClientCountTimer currentCount
+
+    fireClientCountTimer lastReport =
+      void $ Timer.sendAfter (serverName relayKey) (case state of
+                                                      StateOrigin common _ -> common.config.clientCountReportingTimeMs
+                                                      StateDownstream common _ -> common.config.clientCountReportingTimeMs) (ReportClientCount lastReport)
 
     fireStopTimer (StateOrigin commonState runState) = do
       commonState2 <- fireStopTimer' commonState
@@ -921,6 +983,9 @@ handleInfo msg state =
             updateSocket newSocket = do
               pure $ StateOrigin common origin{ run = run { ingestAggregatorState = IngestAggregatorStateRegistered portNumber newSocket} }
 
+            updateTotalClientCount newCount = do
+              pure $ StateOrigin common{totalClientCount = newCount} origin
+
             slotConfig slotConfiguration
               | Nothing <- run.slotConfiguration = do
                 logInfo "Received slot configuration" {slotConfiguration}
@@ -942,7 +1007,7 @@ handleInfo msg state =
               sendMessageToDownstreams msg' config
               pure stateOrigin
 
-          CastNoReply <$> processGunMessage' noop down updateSocket slotConfig send socket gunMsg
+          CastNoReply <$> processGunMessage' noop down updateSocket updateTotalClientCount slotConfig send socket gunMsg
 
         Nothing ->
           pure $ CastNoReply stateOrigin
@@ -964,11 +1029,14 @@ handleInfo msg state =
             updateSocket newSocket = do
               let
                 updateSocket' x@(UpstreamRelayStatePendingRegistration _portNumber) = Just x
-                updateSocket' x@(UpstreamRelayStateRegistered portNumber serverAddress _socket) = Just $ UpstreamRelayStateRegistered portNumber serverAddress newSocket
-                updateSocket' x@(UpstreamRelayStatePendingDeregistration portNumber serverAddress _socket) = Just $ UpstreamRelayStatePendingDeregistration portNumber serverAddress newSocket
+                updateSocket' (UpstreamRelayStateRegistered registeredPortNumber serverAddress _socket) = Just $ UpstreamRelayStateRegistered registeredPortNumber serverAddress newSocket
+                updateSocket' (UpstreamRelayStatePendingDeregistration registeredPortNumber serverAddress _socket) = Just $ UpstreamRelayStatePendingDeregistration registeredPortNumber serverAddress newSocket
                 updateSocket' x@(UpstreamRelayStateDeregistered _portNumber) = Just x
                 newRelayStates = Map.update updateSocket' upstreamRelay upstreamRelayStates
               pure $ StateDownstream common downstream{run = run{ upstreamRelayStates = newRelayStates } }
+
+            updateTotalClientCount newCount =
+              pure $ StateDownstream common{totalClientCount = newCount} downstream
 
             slotConfig slotConfiguration
               | Nothing <- run.slotConfiguration = do
@@ -991,13 +1059,13 @@ handleInfo msg state =
               sendMessageToDownstreams msg' config
               pure stateDownStream
 
-          CastNoReply <$> processGunMessage' noop down updateSocket slotConfig send socket gunMsg
+          CastNoReply <$> processGunMessage' noop down updateSocket updateTotalClientCount slotConfig send socket gunMsg
 
         Nothing ->
           pure $ CastNoReply stateDownStream
 
-    processGunMessage' :: forall a. Effect a -> Effect a -> (WebSocket -> Effect a) -> (SlotConfiguration -> Effect a) -> (DownstreamWsMessage -> Effect a) -> WebSocket -> WsGun.GunMsg -> Effect a
-    processGunMessage' noop down updateSocket slotConfig send socket gunMsg = do
+    processGunMessage' :: forall a. Effect a -> Effect a -> (WebSocket -> Effect a) -> (Int -> Effect a) -> (SlotConfiguration -> Effect a) -> (DownstreamWsMessage -> Effect a) -> WebSocket -> WsGun.GunMsg -> Effect a
+    processGunMessage' noop down updateSocket updateTotalClientCount slotConfig send socket gunMsg = do
       processResponse <- WsGun.processMessage socket gunMsg
       case processResponse of
         Left error -> do
@@ -1035,6 +1103,24 @@ handleInfo msg state =
 
         Right (WsGun.Frame dataObjectMsg@(DataObject _msg)) -> do
           send dataObjectMsg
+
+        Right (WsGun.Frame dataObjectMsg@(ClientCount count)) -> do
+          updateTotalClientCount count
+
+currentClientCount :: State -> Int
+currentClientCount state =
+  case state of
+    (StateOrigin _ origin) -> getCurrentClientCount origin
+    (StateDownstream _ downstream) -> getCurrentClientCount downstream
+  where
+    getCurrentClientCount :: forall a b c d k. {config :: { egests :: Map k {clientCount :: Int | c}
+                                                          , downstreamRelays :: Map k {clientCount :: Int | d}
+                                                          | b
+                                                          } | a} -> Int
+    getCurrentClientCount {config: {egests, downstreamRelays}} =
+      (foldl (\acc {clientCount} -> acc + clientCount) 0 egests) +
+      (foldl (\acc {clientCount} -> acc + clientCount) 0 downstreamRelays)
+
 
 terminate :: TerminateReason -> State -> Effect Unit
 terminate reason state = do

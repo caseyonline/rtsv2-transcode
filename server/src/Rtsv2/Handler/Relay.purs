@@ -188,6 +188,9 @@ registeredRelayWs slotId slotRole relayAddress relayPort sourceRoute =
     handle state@{relayKey} (RelayUpstreamDataObjectUpdateMessage msg) = do
       StreamRelayInstance.dataObjectUpdateSendMessage relayKey msg
       pure $ WebSocketNoReply state
+    handle state@{relayServer, relayKey} (RelayAggregateClientCount {count, time}) = do
+      StreamRelayInstance.updateRelayAggregateClientCount relayKey relayServer count time
+      pure $ WebSocketNoReply state
 
     info state WsStop =
       pure $ WebSocketStop state
@@ -226,6 +229,9 @@ registeredEgestWs slotId slotRole egestAddress egestPort secondaryEgestPort =
       pure $ WebSocketNoReply state
     handle state@{relayKey} (EdgeToRelayDataObjectUpdateMessage msg) = do
       StreamRelayInstance.dataObjectUpdateSendMessage relayKey msg
+      pure $ WebSocketNoReply state
+    handle state@{egestServer, relayKey} (EgestClientCount count) = do
+      StreamRelayInstance.updateEgestClientCount relayKey egestServer count
       pure $ WebSocketNoReply state
 
     info state WsStop = do

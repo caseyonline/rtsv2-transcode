@@ -147,6 +147,7 @@ type EgestAgentConfig
     , forceDrainTimeoutMs :: Int
     , numForceDrainPhases :: Int
     , aggregatorExitLingerTimeMs :: Int
+    , clientCountReportingTimeMs :: Int
     }
 
 type IntraPoPAgentConfig
@@ -179,6 +180,7 @@ type StreamRelayConfig
     , reApplyPlanTimeMs :: Int
     , forceDrainTimeoutMs :: Int
     , aggregatorExitLingerTimeMs :: Int
+    , clientCountReportingTimeMs :: Int
     }
 
 type IntraPoPAgentApi

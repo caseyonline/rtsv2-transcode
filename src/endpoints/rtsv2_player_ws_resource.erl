@@ -484,7 +484,7 @@ websocket_info({egestDataObjectUpdateResponse,#{ response := Response
   if
     To == TraceIdString ->
       { [ json_frame( <<"dataobject.update-response">>,
-                      #{ <<"senderRef">> => SenderRef,
+                      #{ <<"requestResponseCorrelationId">> => SenderRef,
                          <<"response">> => endpoint_helpers:dataobject_response_to_ts(Response)
                        }
                     ) ]
@@ -1029,7 +1029,7 @@ handle_data_object_send_message(#{ <<"msg">> := Message
   end.
 
 handle_data_object_update(#{ <<"operation">> := Operation,
-                             <<"senderRef">> := SenderRef },
+                             <<"requestResponseCorrelationId">> := SenderRef },
                           State = #?state_running { trace_id = TraceId
                                                   , stream_desc = #stream_desc_egest {
                                                                      egest_key = EgestKey
@@ -1048,23 +1048,26 @@ handle_data_object_update(#{ <<"operation">> := Operation,
     {ok, State}
   catch
     _Class:_Reason ->
+
       { [ json_frame( <<"dataobject.update-response">>,
-                      #{ <<"senderRef">> => SenderRef,
+                      #{ <<"requestResponseCorrelationId">> => SenderRef,
                          <<"response">> => <<"invalidRequest">>} ) ]
       , State
       }
   end;
 
-handle_data_object_update(_Request = #{ <<"senderRef">> := SenderRef }, State) ->
+handle_data_object_update(_Request = #{ <<"requestResponseCorrelationId">> := SenderRef }, State) ->
+
   { [ json_frame( <<"dataobject.update-response">>,
-                  #{ <<"senderRef">> => SenderRef,
+                  #{ <<"requestResponseCorrelationId">> => SenderRef,
                      <<"response">> => <<"invalidRequest">>} ) ]
   , State
   };
 
 handle_data_object_update(_Request, State) ->
+
   { [ json_frame( <<"dataobject.update-response">>,
-                  #{ <<"senderRef">> => <<"unknown">>,
+                  #{ <<"requestResponseCorrelationId">> => <<"unknown">>,
                      <<"response">> => <<"invalidRequest">>} ) ]
   , State
   }.

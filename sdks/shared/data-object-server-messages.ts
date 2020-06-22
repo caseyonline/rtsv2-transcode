@@ -22,7 +22,7 @@ export interface DataObjectUpdateResponseMessage {
   readonly type: "dataobject.update-response";
 
   /** An opaque reference as sent on the request. */
-  readonly senderRef: string;
+  readonly requestResponseCorrelationId: string;
 
   /** The response code. */
   readonly response: DataObjectUpdateResponse;

@@ -32,6 +32,10 @@
 -- 	bPeerOwned --Primary Exits--> backupOwned
 --------------------------------------------------------------------------------
 
+-- next - method to get current client count
+--      - expose count on state (and do same on stream relays)
+--      - new downstream message to inform total count (and expose on relay and egest)
+
 module Rtsv2.Agents.IngestAggregatorInstance
   ( startLink
   , stopAction
@@ -39,6 +43,7 @@ module Rtsv2.Agents.IngestAggregatorInstance
   , registerPrimary
   , registerIngest
   , registerRelay
+  , updateRelayAggregateClientCount
   , getState
   , domain
   , dataObjectSendMessage
@@ -60,12 +65,14 @@ import Prelude
 import Bus as Bus
 import Data.Array as Array
 import Data.Either (Either(..), either, hush)
+import Data.Foldable (foldl)
 import Data.FoldableWithIndex (foldWithIndexM, foldlWithIndex)
 import Data.Lens (Lens', set, view)
 import Data.Lens.At (at)
 import Data.Lens.Record (prop)
+import Data.Long as Long
 import Data.Maybe (Maybe(..), fromMaybe, maybe)
-import Data.Newtype (unwrap)
+import Data.Newtype (unwrap, wrap)
 import Data.Symbol (SProxy(..))
 import Data.Traversable (traverse, traverse_)
 import Data.Tuple (Tuple(..))
@@ -98,7 +105,7 @@ import Rtsv2.DataObject as DO
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
 import Rtsv2.Types (ResourceResp)
-import Shared.Common (LoggingContext(..))
+import Shared.Common (LoggingContext(..), Milliseconds)
 import Shared.Rtsv2.Agent as Agent
 import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.JsonLd as JsonLd
@@ -136,6 +143,8 @@ type IngestProcess = Process (WebSocketHandlerMessage AggregatorToIngestWsMessag
 
 type RegisteredRelay = { port :: Int
                        , handler :: RelayProcess
+                       , clientCount :: Int
+                       , clientCountUpdated :: Milliseconds
                        }
 
 type CachedState = { localIngests :: Map ProfileName IngestProcess
@@ -180,6 +189,7 @@ type State
     , dataObjectState :: Either PrimaryDOState BackupDOState
     , maybeStopRef :: Maybe Ref
     , forceDrain :: Boolean
+    , peerClientCount :: Int
     }
 
 type HlsPush =
@@ -273,6 +283,19 @@ registerRelay slotId slotRole deliverTo handler =
   where
     key = AggregatorKey slotId slotRole
 
+updateRelayAggregateClientCount :: AggregatorKey -> RelayServer -> Int -> Milliseconds -> Effect Unit
+updateRelayAggregateClientCount aggregatorKey relayServer count time =
+  Gen.cast (serverName aggregatorKey) doUpdateRelayClientCount
+  where
+    doUpdateRelayClientCount state@{cachedState: cachedState@{relays}} =
+      CastNoReply state{cachedState = cachedState{relays = updateRelay relays}}
+    updateRelay :: Map RelayServer RegisteredRelay -> Map RelayServer RegisteredRelay
+    updateRelay relays =
+      Map.update (\relay@{clientCountUpdated} ->
+                   if time > clientCountUpdated then Just relay{clientCount = count}
+                   else Just relay
+                 ) relayServer relays
+
 processMessageFromPrimary :: AggregatorKey -> AggregatorPrimaryToBackupWsMessage -> Effect Unit
 processMessageFromPrimary aggregatorKey msg =
   Gen.doCall (serverName aggregatorKey) doProcessMessage
@@ -294,6 +317,9 @@ processMessageFromPrimary aggregatorKey msg =
         P2B_UpdateResponse responseMessage -> do
           sendDownstream state (DataObjectUpdateResponse responseMessage)
           pure $ CallReply unit state
+
+        P2B_ClientCount count ->
+          pure $ CallReply unit state{peerClientCount = count}
 
     doProcessMessage state@{dataObjectState: Left _} =
       -- We are primary, who the heck called us!
@@ -324,7 +350,6 @@ checkProfileInactive :: ProfileName -> State -> Boolean
 checkProfileInactive profileName {cachedState: {localIngests, remoteIngests}} =
   not (Map.member profileName localIngests) && not (Map.member profileName remoteIngests)
 
-
 getState :: AggregatorKey -> Effect (PublicState.IngestAggregator List)
 getState aggregatorKey@(AggregatorKey slotId slotRole) = Gen.doCall (serverName aggregatorKey) getState'
   where
@@ -347,6 +372,7 @@ getState aggregatorKey@(AggregatorKey slotId slotRole) = Gen.doCall (serverName 
                , activeProfiles: activeP
                , downstreamRelays: dsr
                , hlsPublish: (Array.length streamDetails.push) /= 0
+               , clientCount: currentClientCount state
                }
         localProfiles outerAcc = foldlWithIndex (\profileName acc _handler -> (Tuple profileName (extractAddress thisServer)) : acc) outerAcc localIngests
         remoteProfiles outerAcc = foldlWithIndex (\profileName acc {ingestAddress} -> (Tuple profileName ingestAddress) : acc) outerAcc remoteIngests
@@ -526,6 +552,7 @@ init parentCallbacks { shortName
                                                         , connectionToPrimary: Nothing }
                    , maybeStopRef: Just ref
                    , forceDrain: false
+                   , peerClientCount: 0
                    }
   cachedState <- fromMaybe emptyCachedState <$> CachedInstanceState.getInstanceData stateServerName
   state2 <- applyCachedState initialState cachedState
@@ -843,7 +870,11 @@ processGunMessage state@{slotId, slotRole, dataObjectState: Left dos@{connection
           dataObject = DO.new
         sendToBackup dos (P2B_Latest dataObject)
         pure $ CastNoReply state{dataObjectState = Left dos{dataObject = Just dataObject}}
-else
+
+      Right (WsGun.Frame (B2P_ClientCount count)) -> do
+        pure $ CastNoReply state{peerClientCount = count}
+
+  else
     pure $ CastNoReply state
 
 processGunMessage state gunMsg =
@@ -896,7 +927,7 @@ addRemoteIngestToCachedState :: ProfileName -> IngestProcess -> ServerAddress ->
 addRemoteIngestToCachedState ingestKey handler ingestAddress = set (_remoteIngests <<< (at ingestKey)) (Just {ingestAddress, handler})
 
 addRelayToCachedState :: (DeliverTo RelayServer) -> RelayProcess -> State -> State
-addRelayToCachedState {server, port} handler = set (_relays <<< (at server)) (Just {port, handler})
+addRelayToCachedState {server, port} handler = set (_relays <<< (at server)) (Just {port, handler, clientCount: 0, clientCountUpdated: wrap $ Long.fromInt 0})
 
 removeLocalIngestFromCachedState :: ProfileName -> State -> State
 removeLocalIngestFromCachedState profileName = set (_localIngests <<< (at profileName)) Nothing
@@ -995,6 +1026,12 @@ doRemoveIngest profileName cachedStateRemoveFun state@{aggregatorKey, workflowHa
     pure state2{maybeStopRef = Just ref}
   else
     pure state2
+
+currentClientCount :: State -> Int
+currentClientCount { cachedState: { relays }
+                   , peerClientCount } =
+  peerClientCount +
+  foldl (\acc {clientCount} -> acc + clientCount) 0 relays
 
 getDataObject :: State -> Maybe DO.Object
 getDataObject { dataObjectState: (Left {dataObject: Nothing}) } = Nothing
