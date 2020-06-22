@@ -32,10 +32,6 @@
 -- 	bPeerOwned --Primary Exits--> backupOwned
 --------------------------------------------------------------------------------
 
--- next - method to get current client count
---      - expose count on state (and do same on stream relays)
---      - new downstream message to inform total count (and expose on relay and egest)
-
 module Rtsv2.Agents.IngestAggregatorInstance
   ( startLink
   , stopAction
