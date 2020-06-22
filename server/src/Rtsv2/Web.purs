@@ -301,7 +301,6 @@ systemRoutes webConfig loadConfig featureFlags@{mediaGateway} thisServer = do
 
       : nil
 
-
 playerControlArgs :: Config.LoadConfig -> WebConfig -> MediaGatewayFlag -> CanaryState -> List String -> Foreign
 playerControlArgs loadConfig webConfig mediaGateway canary validationUrlWhitelist =
   unsafeToForeign { mode: (atom "egest")

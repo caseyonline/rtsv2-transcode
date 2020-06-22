@@ -285,10 +285,13 @@ registerRelay slotId slotRole deliverTo handler =
 
 updateRelayAggregateClientCount :: AggregatorKey -> RelayServer -> Int -> Milliseconds -> Effect Unit
 updateRelayAggregateClientCount aggregatorKey relayServer count time =
-  Gen.cast (serverName aggregatorKey) doUpdateRelayClientCount
+  Gen.doCast (serverName aggregatorKey) doUpdateRelayClientCount
   where
-    doUpdateRelayClientCount state@{cachedState: cachedState@{relays}} =
-      CastNoReply state{cachedState = cachedState{relays = updateRelay relays}}
+    doUpdateRelayClientCount state@{cachedState: cachedState@{relays}} = do
+      let
+        state2 = state{cachedState = cachedState{relays = updateRelay relays}}
+      sendDownstream state (ClientCount (currentClientCount state2))
+      pure $ CastNoReply state2
     updateRelay :: Map RelayServer RegisteredRelay -> Map RelayServer RegisteredRelay
     updateRelay relays =
       Map.update (\relay@{clientCountUpdated} ->
@@ -318,8 +321,11 @@ processMessageFromPrimary aggregatorKey msg =
           sendDownstream state (DataObjectUpdateResponse responseMessage)
           pure $ CallReply unit state
 
-        P2B_ClientCount count ->
-          pure $ CallReply unit state{peerClientCount = count}
+        P2B_ClientCount count -> do
+          let
+            state2 = state{peerClientCount = count}
+          sendDownstream state (ClientCount (currentClientCount state2))
+          pure $ CallReply unit state2
 
     doProcessMessage state@{dataObjectState: Left _} =
       -- We are primary, who the heck called us!
@@ -872,7 +878,10 @@ processGunMessage state@{slotId, slotRole, dataObjectState: Left dos@{connection
         pure $ CastNoReply state{dataObjectState = Left dos{dataObject = Just dataObject}}
 
       Right (WsGun.Frame (B2P_ClientCount count)) -> do
-        pure $ CastNoReply state{peerClientCount = count}
+        let
+          state2 = state{peerClientCount = count}
+        sendDownstream state2 (ClientCount (currentClientCount state2))
+        pure $ CastNoReply state2
 
   else
     pure $ CastNoReply state

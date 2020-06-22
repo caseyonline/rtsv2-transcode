@@ -15,6 +15,9 @@ export interface DataObjectReceiveMessage {
 /** Receive a message send failure from the DataObject subsystem. */
 export interface DataObjectSendMessageFailure {
   readonly type: "dataobject.message-failure";
+
+  /** The failure reason **/
+  readonly reason: string
 }
 
 /** Receive a response to a previous update. */

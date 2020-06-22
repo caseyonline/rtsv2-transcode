@@ -1105,6 +1105,7 @@ handleInfo msg state =
           send dataObjectMsg
 
         Right (WsGun.Frame dataObjectMsg@(ClientCount count)) -> do
+          void $ send dataObjectMsg
           updateTotalClientCount count
 
 currentClientCount :: State -> Int

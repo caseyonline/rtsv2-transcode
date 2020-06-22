@@ -45,6 +45,7 @@
         , socket_url :: binary_string()
         , path :: binary_string()
         , stream_desc :: stream_desc_ingest() | stream_desc_egest()
+        , slot_configuration :: slot_configuration()
         , server_id :: term()
         , ice_servers :: list(map())
         }).
@@ -65,6 +66,11 @@
 
         , last_stats_event :: undefined | media_gateway_client_statistics_updated_event()
         , last_stats_received_at :: undefined | non_neg_integer()
+
+        , max_message_size :: non_neg_integer()
+        , max_messages_per_second :: non_neg_integer()
+        , current_message_second = 0 :: non_neg_integer()
+        , current_messages_sent_this_second = 0 :: non_neg_integer()
         }).
 
 
@@ -89,7 +95,6 @@
 -record(failure_detail_retry, { reason :: stream_initializing }).
 -type failure_detail_retry() :: #failure_detail_retry{}.
 
-
 -record(stream_desc_ingest,
         { slot_id :: slot_id()
         , profile_name :: profile_name()
@@ -99,7 +104,6 @@
         , support_port :: non_neg_integer()
         }).
 -type stream_desc_ingest() :: #stream_desc_ingest{}.
-
 
 -record(stream_desc_egest,
         { slot_id  :: slot_id()
@@ -158,9 +162,12 @@ init(Req, Params) ->
     StreamDesc ->
       case init_validation(Req, StreamDesc, 0)  of
         failed -> init_validation_fail(Req);
-        Validation -> init_prime(Req, StreamDesc, Validation)
+        {Validation, SlotConfiguration} -> init_prime(Req, StreamDesc, Validation, SlotConfiguration)
       end
   end.
+
+init_validation(_Req, _StreamDesc = #stream_desc_ingest{}, _N) ->
+  {no_validation, undefined};
 
 init_validation(_Req, _StreamDesc, N) when N > 10 ->
   ?SLOG_DEBUG("Egest never received slot configuration"),
@@ -171,7 +178,7 @@ init_validation(Req, StreamDesc = #stream_desc_egest{ get_slot_configuration = G
                                                     , validation_url_whitelist = UrlWhitelist
                                                     , start_stream_result = { right, { local, _ } } }, N) ->
   case (GetSlotConfiguration(EgestKey))() of
-    {just, #{ subscribeValidation := true } } ->
+    {just, SlotConfiguration = #{ subscribeValidation := true } } ->
       ClientIP = client_ip(Req),
       #{ validation_url := ValidationUrl
        , validation_cookie := ValidationCookie } = cowboy_req:match_qs([ {validation_url, [], undefined},
@@ -186,25 +193,26 @@ init_validation(Req, StreamDesc = #stream_desc_egest{ get_slot_configuration = G
             failed -> failed;
             {error, _Error } -> failed;
             { ok, NewCookie } ->
-              #validation{ initial_cookie = NewCookie
-                         , client_ip_string = i_convert:convert(ClientIP, binary_string)
-                         , url = ValidationUrl
-                         }
+              Validation = #validation{ initial_cookie = NewCookie
+                                      , client_ip_string = i_convert:convert(ClientIP, binary_string)
+                                      , url = ValidationUrl
+                                      },
+              {Validation, SlotConfiguration}
           end
       end;
 
-    {just, #{ subscribeValidation := false } } ->
-      no_validation;
+    {just, SlotConfiguration = #{ subscribeValidation := false } } ->
+      {no_validation, SlotConfiguration};
 
     {nothing} ->
       ?SLOG_DEBUG("No slot configuration available"),
       timer:sleep(100),
       init_validation(Req, StreamDesc, N + 1)
-
   end;
 
 init_validation(_Req, _StreamDesc, _N) ->
-  no_validation.
+  %% egest, but remote;  we'll do this when they redirect to the correct node
+  {no_validation, undefined}.
 
 init_validation_fail(Req) ->
   cowboy_req:reply(403, Req),
@@ -231,7 +239,7 @@ valid_host(ValidationUrl, UrlWhitelist) ->
       end
   end.
 
-init_prime(Req, StreamDesc, Validation) ->
+init_prime(Req, StreamDesc, Validation, SlotConfiguration) ->
 
   %% TODO Needs to come from config!
   PublicIP = this_server_ip(Req),
@@ -306,6 +314,7 @@ init_prime(Req, StreamDesc, Validation) ->
                             , validation = Validation
                             , socket_url = SocketURL
                             , stream_desc = StreamDesc
+                            , slot_configuration = SlotConfiguration
                             , server_id = construct_server_id(StreamDesc)
                             , ice_servers = stun_turn_config(none, TurnIP, TurnPort, TurnUsername, TurnPassword)
                             }
@@ -393,7 +402,6 @@ websocket_init(#?state_initializing{ trace_id = TraceId } = State) ->
   logger:set_process_metadata(#{ correlation_id => TraceId }),
   try_initialize(State).
 
-
 websocket_info(try_initialize, State) ->
   try_initialize(State);
 
@@ -451,6 +459,9 @@ websocket_info({egestDrain, Phase, NumPhases, Alternates}, State = #?state_runni
 
 websocket_info({egestDrain, _Phase, _NumPhases, _Alternates}, State) ->
   {ok, State};
+
+websocket_info({egestUpdateMaxMessagesPerSecond, MaxMessagesPerSecond}, State = #?state_running{}) ->
+  {ok, State#?state_running{max_messages_per_second = MaxMessagesPerSecond}};
 
 websocket_info({egestDataObjectMessage, #{ destination := Destination
                                          , msg := Msg
@@ -772,8 +783,11 @@ determine_stream_availability(#stream_desc_egest{ start_stream_result = { right,
 determine_stream_availability(#stream_desc_egest{}) ->
   available_here.
 
-try_initialize(#?state_initializing{ stream_desc = StreamDesc } = State) ->
-  case get_slot_configuration(StreamDesc) of
+try_initialize(#?state_initializing{ stream_desc = #stream_desc_egest{}, slot_configuration = SlotConfiguration } = State) ->
+  transition_to_running(SlotConfiguration, State);
+
+try_initialize(#?state_initializing{ stream_desc = StreamDesc = #stream_desc_ingest{} } = State) ->
+  case get_ingest_slot_configuration(StreamDesc) of
     undefined ->
       {ok, _TimerRef} = timer:send_after(30, try_initialize),
       {ok, State};
@@ -783,7 +797,7 @@ try_initialize(#?state_initializing{ stream_desc = StreamDesc } = State) ->
   end.
 
 
-get_slot_configuration(#stream_desc_ingest{ slot_id = SlotId, profile_name = IngestProfileName }) ->
+get_ingest_slot_configuration(#stream_desc_ingest{ slot_id = SlotId, profile_name = IngestProfileName }) ->
   case rtsv2_slot_media_source_publish_processor:maybe_slot_configuration(SlotId) of
     #{ profiles := Profiles } = SlotConfiguration ->
 
@@ -797,17 +811,7 @@ get_slot_configuration(#stream_desc_ingest{ slot_id = SlotId, profile_name = Ing
 
     _ ->
       undefined
-  end;
-
-get_slot_configuration(#stream_desc_egest{ egest_key = EgestKey, get_slot_configuration = GetSlotConfiguration }) ->
-  case (GetSlotConfiguration(EgestKey))() of
-    {just, SlotConfiguration} ->
-      SlotConfiguration;
-
-    {nothing} ->
-      undefined
   end.
-
 
 transition_to_running(#{ profiles := [ #{ profileName := ActiveProfileName } | _OtherProfiles ] = Profiles
                        , audioOnly := AudioOnly
@@ -824,7 +828,7 @@ transition_to_running(#{ profiles := [ #{ profileName := ActiveProfileName } | _
                                           }
                      ) ->
 
-  ActiveProfileNames =
+  {ActiveProfileNames, MaxMessagesPerSecond, MaxMessageSize} =
     case StreamDesc of
       #stream_desc_egest{ egest_key = EgestKey
                         , add_client = AddClient
@@ -834,17 +838,18 @@ transition_to_running(#{ profiles := [ #{ profileName := ActiveProfileName } | _
 
         ?I_SUBSCRIBE_BUS_MSGS({egestBus, {egestKey, SlotId, SlotRole}}),
         ?I_SUBSCRIBE_BUS_MSGS({media_gateway_event, trace_id_to_media_gateway_id(TraceId)}),
-        {right, TheActiveProfiles} = (AddClient(self(), EgestKey, WebRTCSessionId))(),
-        TheActiveProfiles;
+        {right, #{ profiles := TheActiveProfiles
+                 , maxMessagesPerSecond := TheMaxMessagesPerSecond
+                 , maxMessageSize := TheMaxMessageSize
+                 }} = (AddClient(self(), EgestKey, WebRTCSessionId))(),
+        {TheActiveProfiles, TheMaxMessagesPerSecond, TheMaxMessageSize};
       _ ->
-        []
+        {[], 0, 0}
     end,
 
   StartOptions = construct_start_options(TraceId, WebRTCSessionId, PublicIPString, SlotConfiguration, StreamDesc, ActiveProfileNames),
   webrtc_stream_server:ensure_session(ServerId, WebRTCSessionId, StartOptions),
   webrtc_stream_server:subscribe_for_msgs(WebRTCSessionId, #subscription_options{}),
-
-
 
   NewState =
     #?state_running{ trace_id = TraceId
@@ -857,6 +862,8 @@ transition_to_running(#{ profiles := [ #{ profileName := ActiveProfileName } | _
                    , server_id = ServerId
                    , start_options = StartOptions
                    , profiles = Profiles
+                   , max_messages_per_second = MaxMessagesPerSecond,
+                     max_message_size = MaxMessageSize
                    },
 
   InitialMessage =
@@ -1006,24 +1013,56 @@ handle_set_quality_constraint_configuration(#{ <<"configuration">> := #{ <<"beha
   , hibernate
   }.
 
-handle_data_object_send_message(#{ <<"msg">> := Message
+handle_data_object_send_message(#{ <<"msg">> := SrcMessage
                                  , <<"destination">> := Destination },
                                 State = #?state_running { trace_id = TraceId
                                                         , stream_desc = #stream_desc_egest {
                                                                            egest_key = Key
                                                                           , data_object_send_message = SendMessage
-                                                                          } }) ->
+                                                                          }
+                                                        , max_message_size = MaxMessageSize
+                                                        , max_messages_per_second = MaxPerSecond
+                                                        , current_message_second = CurrentMessageSecond
+                                                        , current_messages_sent_this_second = CurrentMessagesThisSecond
+                                                        }) ->
 
   try
-    PursMessage = endpoint_helpers:dataobject_message_to_purs(format_trace_id(TraceId), Message, Destination),
+    Size = iolist_size(SrcMessage),
 
-    ((SendMessage(Key))(PursMessage))(),
+    if
+      Size > MaxMessageSize -> throw({error, message_too_large});
+      ?otherwise -> ok
+    end,
 
-    {ok, State}
+    Now = ?now_s,
+    Elapsed = Now - CurrentMessageSecond + 1,
+    Allowed = Elapsed * MaxPerSecond,
+
+    if
+      CurrentMessagesThisSecond < Allowed ->
+        %% We haven't sent our limit - can send
+        PursMessage = endpoint_helpers:dataobject_message_to_purs(format_trace_id(TraceId), iolist_to_binary(SrcMessage), Destination),
+
+        ((SendMessage(Key))(PursMessage))(),
+
+        {ok, State#?state_running{ current_message_second = Now
+                                 , current_messages_sent_this_second = if Now == CurrentMessageSecond -> CurrentMessagesThisSecond + 1;
+                                                                          ?otherwise -> 1
+                                                                       end}};
+
+      ?otherwise ->
+        throw({error, message_frequency_too_high})
+    end
+
   catch
-    _:_ ->
+    Class:Reason:S ->
+      MsgReason = case {Class, Reason} of
+                    {throw, {error, message_too_large}} -> <<"Message too large">>;
+                    {throw, {error, message_frequency_too_high}} -> <<"Message frequency too high">>;
+                    _ -> <<"Malformed request">>
+                  end,
       { [ json_frame( <<"dataobject.message-failure">>,
-                      #{ } ) ]
+                      #{ <<"reason">> => MsgReason} ) ]
       , State
       }
   end.

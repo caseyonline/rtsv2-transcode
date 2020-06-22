@@ -94,7 +94,7 @@ init = do
     $ Sup.buildSupervisor
     # Sup.supervisorStrategy Sup.SimpleOneForOne
     # Sup.supervisorChildren
-    ( 
+    (
       ( buildChild
         # childType Worker
         # childId "egestAgent"

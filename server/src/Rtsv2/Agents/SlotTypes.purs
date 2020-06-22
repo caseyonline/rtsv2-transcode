@@ -14,7 +14,7 @@ import Data.Maybe (Maybe(..))
 import Data.Undefinable (Undefinable, toMaybe, toUndefinable)
 import Erl.Data.List (List, fromFoldable, mapWithIndex)
 import Shared.Rtsv2.LlnwApiTypes as LlnwApiTypes
-import Shared.Rtsv2.Stream (IngestKey(..), ProfileName, RtmpShortName, RtmpStreamName, SlotId, SlotName(..), SlotRole)
+import Shared.Rtsv2.Stream (IngestKey(..), ProfileName, RtmpShortName, RtmpStreamName, SlotId, SlotName, SlotRole)
 import Simple.JSON (class ReadForeign, class WriteForeign, readImpl, writeImpl)
 
 type SlotConfiguration =

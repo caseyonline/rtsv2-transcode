@@ -93,7 +93,10 @@ type CreateEgestPayload
     , slotCharacteristics :: SlotCharacteristics
     }
 
-type RegistrationResp = (Either FailureReason (List ProfileName))
+type RegistrationResp = (Either FailureReason { profiles :: List ProfileName
+                                              , maxMessagesPerSecond :: Number
+                                              , maxMessageSize :: Int
+                                              })
 
 type ParentCallbacks
   = { startLocalOrRemoteStreamRelay :: LoadConfig -> OnBehalfOf -> CreateRelayPayload -> Effect (ResourceResp Server)
@@ -111,6 +114,7 @@ type State
     , aggregatorPoP :: PoPName
     , parentCallbacks :: ParentCallbacks
     , slotCharacteristics :: SlotCharacteristics
+    , config :: Config.EgestAgentConfig
     , loadConfig :: LoadConfig
     , thisServer :: Server
     , clientCount :: Int
@@ -151,6 +155,7 @@ data EgestBusMsg = EgestOnFI NativeJson Int
                  | EgestDataObjectUpdateResponse DO.ObjectUpdateResponseMessage
                  | EgestDataObjectBroadcast DO.Object
                  | EgestDrain Int Int (List String)
+                 | EgestUpdateMaxMessagesPerSecond Number
 
 bus :: EgestKey -> Bus.Bus (Tuple2 Atom EgestKey) EgestBusMsg
 bus egestKey = Bus.bus (tuple2 (atom "egestBus") egestKey)
@@ -198,8 +203,8 @@ stopAction egestKey mCachedState = do
   stopEgestFFI egestKey
   pure unit
 
-pendingClient :: EgestKey -> Effect RegistrationResp
-pendingClient egestKey  =
+pendingClient :: EgestKey -> Effect (Either FailureReason Unit)
+pendingClient egestKey =
   Gen.doCall ourServerName \state@{slotCharacteristics, loadConfig} -> do
     idleServerResp <- IntraPoP.getThisIdleServer $ Load.hasCapacityForEgestClient slotCharacteristics loadConfig
     case idleServerResp of
@@ -207,7 +212,7 @@ pendingClient egestKey  =
         pure $ CallReply (Left NoResource) state
       Right _ -> do
         state2 <- maybeResetStopTimer state
-        pure $ CallReply (Right state.activeProfiles) state2
+        pure $ CallReply (Right unit) state2
 
   where
     ourServerName = serverName egestKey
@@ -221,7 +226,14 @@ pendingClient egestKey  =
 
 addClient :: StreamEgestProtocol -> Pid -> EgestKey -> String -> Effect RegistrationResp
 addClient egestProtocol handlerPid egestKey sessionId =
-  Gen.doCall ourServerName \state@{clientCount, clientStats, dataObject, activeProfiles, slotCharacteristics, loadConfig} -> do
+  Gen.doCall ourServerName \state@{ clientCount
+                                  , clientStats
+                                  , dataObject
+                                  , activeProfiles
+                                  , slotCharacteristics
+                                  , totalClientCount
+                                  , config
+                                  , loadConfig} -> do
 
     idleServerResp <- IntraPoP.getThisIdleServer $ Load.hasCapacityForEgestClient slotCharacteristics loadConfig
     case idleServerResp of
@@ -232,10 +244,19 @@ addClient egestProtocol handlerPid egestKey sessionId =
         Gen.monitorPid ourServerName handlerPid (\_ -> (HandlerDown sessionId))
         maybeSend dataObject
         (Process handlerPid) ! (EgestCurrentActiveProfiles activeProfiles)
-        pure $ CallReply (Right state.activeProfiles) state{ clientCount = clientCount + 1
-                                                           , clientStats = Map.insert sessionId (emptySessionStats egestProtocol sessionId) clientStats
-                                                           , stopRef = Nothing
-                                                           }
+        let
+          state2 = state{ clientCount = clientCount + 1
+                        , totalClientCount = totalClientCount + 1
+                        , clientStats = Map.insert sessionId (emptySessionStats egestProtocol sessionId) clientStats
+                        , stopRef = Nothing
+                        }
+
+          resp = { profiles: state.activeProfiles
+                 , maxMessageSize: config.maxMessageSize
+                 , maxMessagesPerSecond: maxMessagesPerSecond state2
+                 }
+
+        pure $ CallReply (Right resp) state2
   where
     ourServerName = serverName egestKey
     maybeSend Nothing = pure unit
@@ -308,21 +329,26 @@ toEgestServer = unwrap >>> wrap
 init :: ParentCallbacks -> CreateEgestPayload -> StateServerName -> Effect State
 init parentCallbacks payload@{slotId, slotRole, aggregatorPoP, slotCharacteristics} stateServerName = do
   Logger.addLoggerContext $ PerSlot { slotId, slotRole, slotName: Nothing}
-  { eqLogIntervalMs
-  , lingerTimeMs
-  , relayCreationRetryMs
-  , reserveForPotentialNumClients
-  , decayReserveMs
-  , forceDrainTimeoutMs
-  , numForceDrainPhases
-  , aggregatorExitLingerTimeMs
-  , clientCountReportingTimeMs
-  } <- Config.egestAgentConfig
+
+  config@{ eqLogIntervalMs
+         , lingerTimeMs
+         , relayCreationRetryMs
+         , reserveForPotentialNumClients
+         , decayReserveMs
+         , forceDrainTimeoutMs
+         , numForceDrainPhases
+         , aggregatorExitLingerTimeMs
+         , clientCountReportingTimeMs
+         } <- Config.egestAgentConfig
+
   { intraPoPLatencyMs } <- Config.globalConfig
+
   loadConfig <- Config.loadConfig
+
   thisServer <- PoPDefinition.getThisServer
 
   isProxied <- Env.isProxied
+
   webConfig <- Config.webConfig
 
   let
@@ -363,6 +389,7 @@ init parentCallbacks payload@{slotId, slotRole, aggregatorPoP, slotCharacteristi
             , aggregatorPoP
             , parentCallbacks
             , slotCharacteristics
+            , config
             , loadConfig
             , thisServer
             , clientCount : 0
@@ -581,7 +608,10 @@ processGunMessage state@{relayWebSocket: Just socket, egestKey, lastOnFI, rtmpWo
           pure $ CastNoReply state
 
       Right (WsGun.Frame (ClientCount count)) -> do
-        pure $ CastNoReply state{totalClientCount = count}
+        let
+          state2 = state{totalClientCount = count}
+        Bus.raise (bus egestKey) (EgestUpdateMaxMessagesPerSecond (maxMessagesPerSecond state2))
+        pure $ CastNoReply state2
 
   else
     pure $ CastNoReply state
@@ -724,6 +754,14 @@ initStreamRelay state@{relayCreationRetry, egestKey: egestKey@(EgestKey slotId s
         _ -> do
           void $ Timer.sendAfter (serverName egestKey) (round $ Long.toNumber $ unwrap relayCreationRetry) InitStreamRelays
           pure state
+
+maxMessagesPerSecond :: State -> Number
+maxMessagesPerSecond { config: { maxMessagesPerSecondPerClient
+                               , maxMessagesPerSecondPerSlot
+                               }
+                     , totalClientCount
+                     } =
+  min maxMessagesPerSecondPerClient $ (maxMessagesPerSecondPerSlot / (toNumber (max 1 totalClientCount)))
 
 --------------------------------------------------------------------------------
 -- Do we have a relay in this pop - yes -> use it

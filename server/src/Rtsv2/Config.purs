@@ -148,6 +148,9 @@ type EgestAgentConfig
     , numForceDrainPhases :: Int
     , aggregatorExitLingerTimeMs :: Int
     , clientCountReportingTimeMs :: Int
+    , maxMessageSize :: Int
+    , maxMessagesPerSecondPerClient :: Number
+    , maxMessagesPerSecondPerSlot :: Number
     }
 
 type IntraPoPAgentConfig

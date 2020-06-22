@@ -163,8 +163,8 @@
           console.log("data-object-message", message);
           insertMessageToDOM(message, (message.sender == player.session.traceId));
         });
-        player.on("data-object-message-failure", () => {
-          console.log("data-object-message-failure");
+        player.on("data-object-message-failure", (message) => {
+          console.log("data-object-message-failure", message.reason);
         });
         player.on("data-object-update-response", (response) => {
           console.log("data-object-update-response", response);
