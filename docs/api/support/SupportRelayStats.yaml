@@ -1,6 +1,6 @@
 get:
   summary: /support/relay/{slotId}/{slotRole}
-  description: PoP definition shit
+  description: PoP definition relay statistics.
   tags:
     - Support Api
   responses:

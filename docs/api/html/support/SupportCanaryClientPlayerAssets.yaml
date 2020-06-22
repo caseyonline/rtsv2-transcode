@@ -1,6 +1,6 @@
 get:
   summary: /support/canary/client/{slotId}/{slotRole}/
-  description: Support canary client player assets description
+  description: Support canary client player page assets.
   tags:
     - Support Html
   parameters:

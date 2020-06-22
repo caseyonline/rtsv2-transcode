@@ -1,6 +1,6 @@
 get:
   summary: /suport/timedRoutes/
-  description: Timed Routes description
+  description: Returns the route a stream took to get from source to current location.
   tags:
     - Support Api
   responses:

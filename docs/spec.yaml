@@ -94,6 +94,8 @@ x-logo:
   url: https://static.wixstatic.com/media/b1006e_fb5b447f5d124676b0b1a328eb6adbd5~mv2_d_2986_1252_s_2.png
 tags:
   - name: Public Html
+    description: Description for the Public Html.
+  - name: Public Api
     description: Description for the Public API.
   - name: Support Api
     description: Description for Support API.
@@ -106,12 +108,18 @@ x-tagGroups:
   - name: Api
     tags:
       - Support Api
+      - Public Api
   - name: Html
     tags:
       - Public Html
       - Support Html
 
 paths:
+  #
+  # API
+  #
+
+  # SUPPORT API
   /support/canary:
     $ref: api/support/SupportCanary.yaml
   /support/canary/discovery/v1/{shortName}/{streamName}:
@@ -145,18 +153,26 @@ paths:
   /support/vm/metrics:
     $ref: api/support/SupportVMMEtrics.yaml
 
-  # Web Routes
+  # PUBLIC API
+  /public/discovery/v1/{shortName}/{streamName}:
+    $ref: api/public/PublicStreamDiscovery.yaml
+
+
+  #
+  # HTML
+  #
+
+  # PUBLIC HTML
   /public/client/{slotId}/{slotRole}/player:
     $ref: api/html/public/PublicClientPlayer.yaml
   /public/client/{slotId}/{slotRole}/session:
     $ref: api/html/public/PublicClientPlayerControl.yaml
-  /public/discovery/v1/{shortName}/{streamName}:
-    $ref: api/html/public/PublicStreamDiscovery.yaml
   /public/ingest/{shortName}/{streamName}/ingest:
     $ref: api/html/public/PublicClientWebRTCIngest.yaml
   /public/ingest/{shortName}/{streamName}/session:
     $ref: api/html/public/PublicClientWebRTCIngestControl.yaml
 
+  # SUPPORT HTML
   /support/canary/client/{slotId}/{slotRole}/:
     $ref: api/html/support/SupportCanaryClientPlayerAssets.yaml
   /support/canary/client/{slotId}/{slotRole}/player:

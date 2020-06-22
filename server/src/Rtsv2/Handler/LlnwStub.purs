@@ -16,7 +16,7 @@ import Data.Array as Array
 import Data.Either (either, hush)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Eq (genericEq)
-import Data.Maybe (Maybe(..), fromMaybe, fromMaybe', isNothing, isJust, fromJust)
+import Data.Maybe (Maybe(..), fromJust, fromMaybe, fromMaybe', isJust, isNothing)
 import Data.Newtype (unwrap, wrap)
 import Data.String (joinWith)
 import Effect (Effect)
@@ -38,7 +38,7 @@ import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.Utils (crashIfLeft)
 import Shared.Rtsv2.LlnwApiTypes (AuthType, HlsPushProtocol(..), HlsPushSpecFormat(..), PublishCredentials, SlotLookupResult, SlotPublishAuthType(..), StreamAuth, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamOutputFormat(..), StreamPublish)
 import Shared.Rtsv2.Router.Endpoint.System as System
-import Shared.Rtsv2.Stream (RtmpShortName, SlotName, SlotRole(..))
+import Shared.Rtsv2.Stream (RtmpShortName, SlotName, SlotRole(..), stringToRtmpShortName, stringToSlotName)
 import Shared.UUID (fromString)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (class ReadForeign, class WriteForeign, readJSON, writeJSON)
@@ -84,13 +84,13 @@ db =
     mmddev001_slot1_Primary_Any =
       { auth: { host: AnyHost --"172.16.171.5"
               , protocol: AnyProtocol
-              , rtmpShortName: wrap "mmddev001"
+              , rtmpShortName: makeRtmpShortName "mmddev001"
               , authType: Adobe
               , username: "user"
               , password: "password" }
       , details: { role: Primary
                  , slot : { id: wrap $ fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000001")
-                          , name: wrap "slot1"
+                          , name: makeSlotName "slot1"
                           , subscribeValidation: false
                           , profiles: [ wrap { name: wrap "high"
                                              , rtmpStreamName: wrap "slot1_1000"
@@ -122,13 +122,13 @@ db =
     mmddev001_slot1_Backup_Rtmp =
       { auth: { host: AnyHost --"172.16.171.5"
               , protocol: SpecificProtocol Rtmp
-              , rtmpShortName: wrap "mmddev001"
+              , rtmpShortName: makeRtmpShortName "mmddev001"
               , authType: Llnw
               , username: "user"
               , password: "password" }
       , details: { role: Backup
                  , slot : { id: wrap $ fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000001")
-                          , name: wrap "slot1b"
+                          , name: makeSlotName "slot1b"
                           , subscribeValidation: false
                           , profiles: [ wrap { name: wrap "high"
                                              , rtmpStreamName: wrap "slot1b_1000"
@@ -148,13 +148,13 @@ db =
     mmddev003_slot1_Primary_Any =
       { auth: { host: AnyHost --"172.16.171.5"
               , protocol: AnyProtocol
-              , rtmpShortName: wrap "mmddev003"
+              , rtmpShortName: makeRtmpShortName "mmddev003"
               , authType: Adobe
               , username: "user"
               , password: "password" }
       , details: { role: Primary
                  , slot : { id: wrap $ fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000003")
-                          , name: wrap "slot1"
+                          , name: makeSlotName "slot1"
                           , subscribeValidation: true
                           , profiles: [ wrap { name: wrap "high"
                                              , rtmpStreamName: wrap "slot1_1000"
@@ -186,13 +186,13 @@ db =
     mmddev001_slot1ao_Primary_Any =
       { auth: { host: AnyHost --"172.16.171.5"
               , protocol: AnyProtocol
-              , rtmpShortName: wrap "mmddev001"
+              , rtmpShortName: makeRtmpShortName "mmddev001"
               , authType: Adobe
               , username: "user"
               , password: "password" }
       , details: { role: Primary
                  , slot : { id: wrap $ fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000004")
-                          , name: wrap "slot1ao"
+                          , name: makeSlotName "slot1ao"
                           , subscribeValidation: false
                           , profiles: [ wrap { name: wrap "high"
                                              , rtmpStreamName: wrap "slot1ao_1000"
@@ -224,13 +224,13 @@ db =
     mmddev002_slot2_Primary_Any =
       { auth: { host: AnyHost --"172.16.171.5"
               , protocol: AnyProtocol
-              , rtmpShortName: wrap "mmddev002"
+              , rtmpShortName: makeRtmpShortName "mmddev002"
               , authType: Adobe
               , username: "user"
               , password: "password" }
       , details: { role: Primary
                  , slot : { id: wrap $ fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000002")
-                          , name: wrap "slot2"
+                          , name: makeSlotName "slot2"
                           , subscribeValidation: false
                           , profiles: [ wrap { name: wrap "high"
                                              , rtmpStreamName: wrap "slot1_1000"
@@ -250,13 +250,13 @@ db =
     mmddev004_slot4_Primary_Rtmp =
       { auth: { host: AnyHost --"172.16.171.5"
               , protocol: AnyProtocol
-              , rtmpShortName: wrap "mmddev004"
+              , rtmpShortName: makeRtmpShortName "mmddev004"
               , authType: Adobe
               , username: "user"
               , password: "password" }
       , details: { role: Primary
                  , slot : { id: wrap $ fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000004")
-                          , name: wrap "slot4"
+                          , name: makeSlotName "slot4"
                           , subscribeValidation: false
                           , profiles: [ wrap { name: wrap "high"
                                              , rtmpStreamName: wrap "slot4_1500"
@@ -474,6 +474,12 @@ allBody req acc = do
 
 binaryToString :: Binary -> String
 binaryToString = unsafeCoerce
+
+makeRtmpShortName :: String -> RtmpShortName
+makeRtmpShortName s = unsafePartial $ fromJust $ stringToRtmpShortName s
+
+makeSlotName :: String -> SlotName
+makeSlotName s = unsafePartial $ fromJust $ stringToSlotName s
 
 domain :: List Atom
 domain = atom <$> ("LlnwStub" : nil)

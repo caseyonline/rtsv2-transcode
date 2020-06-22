@@ -15,7 +15,7 @@ import Prelude
 import Data.Either (Either(..), either)
 import Data.Long as Long
 import Data.Maybe (maybe)
-import Data.Newtype (unwrap, wrap)
+import Data.Newtype (wrap)
 import Data.String (Pattern(..), Replacement(..), replace)
 import Effect (Effect)
 import Ephemeral.Map (EMap)
@@ -32,7 +32,7 @@ import Rtsv2.Config as Config
 import Rtsv2.Names as Names
 import Shared.Common (Milliseconds, Url(..), CacheUtilization)
 import Shared.Rtsv2.LlnwApiTypes (AuthType, PublishCredentials, StreamAuth, StreamConnection, StreamDetails, StreamPublish, SlotLookupResult)
-import Shared.Rtsv2.Stream (RtmpShortName, SlotName)
+import Shared.Rtsv2.Stream (RtmpShortName, SlotName, rtmpShortNameToString, slotNameToString)
 import Simple.JSON (class WriteForeign, writeJSON)
 import SpudGun (Headers, JsonResponseError, SpudResult, bodyToJSON)
 import SpudGun as SpudGun
@@ -80,8 +80,8 @@ slotLookup {slotLookupUrl, headers} accountName slotName =
       pure $ CallReply (Right slotLookupResult) state{ slotLookupCache = newCache
                                                      , slotLookupCacheMisses = slotLookupCacheMisses + 1}
 
-    replaceAccount = replace (Pattern "{account}") (Replacement $ unwrap accountName)
-    replaceSlotName = replace (Pattern "{streamName}") (Replacement $ unwrap slotName)
+    replaceAccount = replace (Pattern "{account}") (Replacement $ rtmpShortNameToString accountName)
+    replaceSlotName = replace (Pattern "{streamName}") (Replacement $ slotNameToString slotName)
 
 recordSlotLookup :: RtmpShortName -> SlotName -> SlotLookupResult -> Effect Unit
 recordSlotLookup accountName slotName slotLookupResult =

@@ -1,6 +1,6 @@
 post:
   summary: /support/canary/
-  description: Canary description.
+  description: Returns if current PoP is in Live or Canary mode.
   tags:
     - Support Api
   requestBody:

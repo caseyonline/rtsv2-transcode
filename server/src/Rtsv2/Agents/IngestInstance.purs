@@ -59,7 +59,7 @@ import Shared.Rtsv2.Agent.State as PublicState
 import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Rtsv2.LlnwApiTypes (AuthType, PublishCredentials, StreamAuth, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamPublish(..))
 import Shared.Rtsv2.Router.Endpoint.System as System
-import Shared.Rtsv2.Stream (AggregatorKey, IngestKey(..), ingestKeyToAggregatorKey)
+import Shared.Rtsv2.Stream (AggregatorKey, IngestKey(..), RtmpShortName, ingestKeyToAggregatorKey, stringToRtmpShortName)
 import Shared.Rtsv2.Types (OnBehalfOf(..), Server, extractAddress)
 import Shared.Types.Media.Types.Rtmp (RtmpClientMetadata)
 import Shared.Types.Media.Types.SourceDetails (SourceInfo)
@@ -124,10 +124,15 @@ startLink args@{ingestKey} stateServerName = Gen.startLink (serverName ingestKey
 
 getStreamAuthType :: String -> String -> String -> Effect (Maybe AuthType)
 getStreamAuthType host rtmpShortName clientIp = do
+  validateRtmpShortName rtmpShortName (pure Nothing)$ getStreamAuthTypeInt host clientIp
+
+
+getStreamAuthTypeInt :: String -> String -> RtmpShortName -> Effect (Maybe AuthType)
+getStreamAuthTypeInt host clientIp rtmpShortName  = do
   config <- Config.llnwApiConfig
   restResult <- LlnwApi.streamAuthType config (wrap { host
                                                     , protocol: Rtmp
-                                                    , rtmpShortName: wrap rtmpShortName
+                                                    , rtmpShortName
                                                     , clientIp} :: StreamConnection)
   either error (pure <<< Just) restResult
   where
@@ -136,10 +141,14 @@ getStreamAuthType host rtmpShortName clientIp = do
       pure Nothing
 
 getPublishCredentials :: String -> String -> String -> String -> Effect (Maybe PublishCredentials)
-getPublishCredentials host rtmpShortName username clientIp = do
+getPublishCredentials host rtmpShortNameString username clientIp = do
+  validateRtmpShortName rtmpShortNameString (pure Nothing) $ getPublishCredentialsInt host username clientIp
+
+getPublishCredentialsInt :: String -> String -> String -> RtmpShortName -> Effect (Maybe PublishCredentials)
+getPublishCredentialsInt host username clientIp rtmpShortName  = do
   config <- Config.llnwApiConfig
   restResult <- LlnwApi.streamAuth config (wrap { host
-                                                , rtmpShortName: wrap rtmpShortName
+                                                , rtmpShortName
                                                 , username
                                                 , clientIp} :: StreamAuth)
   either error (pure <<< Just) restResult
@@ -321,6 +330,14 @@ terminate reason state = do
 ------------------------------------------------------------------------------
 -- Internals
 ------------------------------------------------------------------------------
+validateRtmpShortName :: forall a. String -> Effect a -> (RtmpShortName -> Effect a) -> Effect a
+validateRtmpShortName rtmpShortNameString errResp postValidationFn =
+  case stringToRtmpShortName rtmpShortNameString of
+    Just rtmpShortName -> postValidationFn rtmpShortName
+    Nothing -> do
+      logInfoWithMetadata "StreamAuth error" {alertId: (atom "lsrsFailure")} {reason: "invalid rtmpShortName (too long?)"}
+      errResp
+
 processGunMessage :: State -> WsGun.GunMsg -> Effect (CastResult State)
 processGunMessage state@{aggregatorWebSocket: Nothing} gunMsg =
   pure $ CastNoReply state

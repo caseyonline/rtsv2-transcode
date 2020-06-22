@@ -1,6 +1,6 @@
 get:
   summary: /support/canary/ingest/{slotId}/{slotRole}/ingest
-  description: Canary cloent WebRTC ingest description
+  description: Canary client WebRTC ingest web page.
   tags:
     - Support Html
   parameters:

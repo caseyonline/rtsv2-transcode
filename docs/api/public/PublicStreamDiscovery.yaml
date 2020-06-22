@@ -1,8 +1,8 @@
 get:
-  summary: /support/canary/discovery/v1/{shortName}/{streamName}
-  description: Returns a list of egest Canary streams.
+  summary: /public/discovery/v1/{shortName}/{streamName}
+  description: Stream discovery, returning a list of Urls.
   tags:
-    - Support Api
+    - Public Api
   parameters:
     - $ref: '../parameters/shortName.yaml'
     - $ref: '../parameters/streamName.yaml'
@@ -16,7 +16,6 @@ get:
             items:
               type: string
               format: uri
-              example: http://172.16.171.1:3002/support/canary/client/00000000-0000-0000-0000-000000000001/primary/session
     '404':
       description: Not Found
       content:

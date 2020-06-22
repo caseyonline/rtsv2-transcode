@@ -1,6 +1,6 @@
 name: slotRole
 in: query
-description: SlotRole description
+description: Role for a slot
 required: true
 schema:
   type: string

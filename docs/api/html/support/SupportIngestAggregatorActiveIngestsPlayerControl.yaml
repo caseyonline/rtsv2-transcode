@@ -1,6 +1,6 @@
 get:
   summary: /support/ingestAggregator/{slotId}/{slotRole}/activeIngests/{profileName}/control
-  description: Ingest aggregator active ingests control description
+  description: Ingest aggregator active ingests web page controls.
   tags:
     - Support Html
   parameters:

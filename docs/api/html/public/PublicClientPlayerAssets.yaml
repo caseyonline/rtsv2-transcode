@@ -1,6 +1,6 @@
 get:
   summary: /public/client/{slotId}/{slotRole}/*
-  description: Public client player assets location
+  description: Public client player exposed assets.
   tags:
     - Public Html
   parameters:
