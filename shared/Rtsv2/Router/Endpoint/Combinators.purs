@@ -10,7 +10,7 @@ import Data.Newtype (class Newtype, unwrap, wrap)
 import Data.String (Pattern(..), split)
 import Routing.Duplex (RouteDuplex', as)
 import Shared.Rtsv2.Stream ( ProfileName, RtmpShortName, RtmpStreamName, SlotId, SlotName, SlotRole(..)
-                           , rtmpShortNameToString, stringToRtmpShortName)
+                           , rtmpShortNameToString, slotNameToString, stringToSlotName, stringToRtmpShortName)
 import Shared.Rtsv2.Types (CanaryState(..), JsonLdContextType(..), PoPName(..), ServerAddress, SourceRoute, Username(..))
 import Shared.UUID (fromString)
 
@@ -92,10 +92,7 @@ slotRoleToString Backup = "backup"
 
 -- | SlotName
 parseSlotName :: String -> Maybe SlotName
-parseSlotName = wrapParser
-
-slotNameToString :: SlotName -> String
-slotNameToString = unwrap
+parseSlotName = stringToSlotName
 
 -- | RtmpShortName
 parseRtmpShortName :: String -> Maybe RtmpShortName

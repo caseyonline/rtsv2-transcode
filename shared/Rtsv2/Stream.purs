@@ -3,7 +3,7 @@ module Shared.Rtsv2.Stream
   , RtmpStreamName(..)
   , SlotId(..)
   , SlotIdAndRole(..)
-  , SlotName(..)
+  , SlotName
   , SlotRole(..)
   , ProfileName(..)
   , SlotIdAndProfileName(..)
@@ -29,7 +29,9 @@ module Shared.Rtsv2.Stream
 
   , rtmpShortNameToString
   , stringToRtmpShortName
-  ) where
+  , slotNameToString
+  , stringToSlotName
+) where
 
 import Prelude
 
@@ -168,11 +170,30 @@ instance showSlotId :: Show SlotId where show = genericShow
 ------------------------------------------------------------------------------
 -- SlotName
 derive instance genericSlotName :: Generic SlotName _
-derive instance newtypeSlotName :: Newtype SlotName _
-derive newtype instance readForeignSlotName :: ReadForeign SlotName
-derive newtype instance writeForeignSlotName :: WriteForeign SlotName
+
+instance writeForeignSlotName :: WriteForeign SlotName where
+  writeImpl (SlotName s) = writeImpl s
+instance readForeignSlotName :: ReadForeign SlotName where
+  readImpl = checkLength <=< readImpl
+    where
+      checkLength s =
+        case stringToSlotName s of
+          Nothing -> fail $ ForeignError "SlotName too long"
+          Just sn -> pure sn
 instance eqSlotName :: Eq SlotName where eq = genericEq
 instance showSlotName :: Show SlotName where show = genericShow
+
+slotNameToString :: SlotName -> String
+slotNameToString (SlotName s) = s
+
+stringToSlotName :: String -> Maybe SlotName
+stringToSlotName s =
+  let l = length s
+  in
+   if l <= 256 && l > 0
+   then Just $ SlotName s
+   else Nothing
+
 
 ------------------------------------------------------------------------------
 -- SlotIdAndRole

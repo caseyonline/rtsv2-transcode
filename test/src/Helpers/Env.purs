@@ -20,7 +20,7 @@ import Helpers.Types (Node(..), TestNode)
 import Node.Process (lookupEnv)
 import Partial.Unsafe (unsafePartial)
 import Shared.Rtsv2.Chaos as Chaos
-import Shared.Rtsv2.Stream (ProfileName(..), RtmpShortName, RtmpStreamName, SlotId, SlotName(..), SlotNameAndProfileName(..), SlotRole(..), stringToRtmpShortName)
+import Shared.Rtsv2.Stream (ProfileName(..), RtmpShortName, RtmpStreamName, SlotId, SlotName(..), SlotNameAndProfileName(..), SlotRole(..), stringToRtmpShortName, stringToSlotName)
 import Shared.UUID (fromString)
 import Shared.Utils (lazyCrashIfMissing)
 import Test.Spec.Assertions (fail)
@@ -95,7 +95,7 @@ slot2 :: SlotId
 slot2 = wrap (fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000002"))
 
 slot1Name :: SlotName
-slot1Name = wrap "slot1"
+slot1Name = makeSlotName "slot1"
 
 shortName1 :: RtmpShortName
 shortName1 = makeRtmpShortName "mmddev001"
@@ -185,10 +185,11 @@ waitForHalfLoadDecay = delayMs 5000.0
 waitForLoadTick :: Aff Unit
 waitForLoadTick = delayMs 2000.0
 
-
 makeRtmpShortName :: String -> RtmpShortName
 makeRtmpShortName s = unsafePartial $ fromJust $ stringToRtmpShortName s
 
+makeSlotName :: String -> SlotName
+makeSlotName s = unsafePartial $ fromJust $ stringToSlotName s
 
 currentTime :: Effect String
 currentTime = do

@@ -38,7 +38,7 @@ import Rtsv2.Handler.MimeType as MimeType
 import Rtsv2.Utils (crashIfLeft)
 import Shared.Rtsv2.LlnwApiTypes (AuthType, HlsPushProtocol(..), HlsPushSpecFormat(..), PublishCredentials, SlotLookupResult, SlotPublishAuthType(..), StreamAuth, StreamConnection, StreamDetails, StreamIngestProtocol(..), StreamOutputFormat(..), StreamPublish)
 import Shared.Rtsv2.Router.Endpoint.System as System
-import Shared.Rtsv2.Stream (RtmpShortName, SlotName, SlotRole(..), stringToRtmpShortName)
+import Shared.Rtsv2.Stream (RtmpShortName, SlotName, SlotRole(..), stringToRtmpShortName, stringToSlotName)
 import Shared.UUID (fromString)
 import Shared.Utils (lazyCrashIfMissing)
 import Simple.JSON (class ReadForeign, class WriteForeign, readJSON, writeJSON)
@@ -90,7 +90,7 @@ db =
               , password: "password" }
       , details: { role: Primary
                  , slot : { id: wrap $ fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000001")
-                          , name: wrap "slot1"
+                          , name: makeSlotName "slot1"
                           , subscribeValidation: false
                           , profiles: [ wrap { name: wrap "high"
                                              , rtmpStreamName: wrap "slot1_1000"
@@ -128,7 +128,7 @@ db =
               , password: "password" }
       , details: { role: Backup
                  , slot : { id: wrap $ fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000001")
-                          , name: wrap "slot1b"
+                          , name: makeSlotName "slot1b"
                           , subscribeValidation: false
                           , profiles: [ wrap { name: wrap "high"
                                              , rtmpStreamName: wrap "slot1b_1000"
@@ -154,7 +154,7 @@ db =
               , password: "password" }
       , details: { role: Primary
                  , slot : { id: wrap $ fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000003")
-                          , name: wrap "slot1"
+                          , name: makeSlotName "slot1"
                           , subscribeValidation: true
                           , profiles: [ wrap { name: wrap "high"
                                              , rtmpStreamName: wrap "slot1_1000"
@@ -192,7 +192,7 @@ db =
               , password: "password" }
       , details: { role: Primary
                  , slot : { id: wrap $ fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000004")
-                          , name: wrap "slot1ao"
+                          , name: makeSlotName "slot1ao"
                           , subscribeValidation: false
                           , profiles: [ wrap { name: wrap "high"
                                              , rtmpStreamName: wrap "slot1ao_1000"
@@ -230,7 +230,7 @@ db =
               , password: "password" }
       , details: { role: Primary
                  , slot : { id: wrap $ fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000002")
-                          , name: wrap "slot2"
+                          , name: makeSlotName "slot2"
                           , subscribeValidation: false
                           , profiles: [ wrap { name: wrap "high"
                                              , rtmpStreamName: wrap "slot1_1000"
@@ -256,7 +256,7 @@ db =
               , password: "password" }
       , details: { role: Primary
                  , slot : { id: wrap $ fromMaybe' (lazyCrashIfMissing "Invalid UUID") (fromString "00000000-0000-0000-0000-000000000004")
-                          , name: wrap "slot4"
+                          , name: makeSlotName "slot4"
                           , subscribeValidation: false
                           , profiles: [ wrap { name: wrap "high"
                                              , rtmpStreamName: wrap "slot4_1500"
@@ -477,6 +477,9 @@ binaryToString = unsafeCoerce
 
 makeRtmpShortName :: String -> RtmpShortName
 makeRtmpShortName s = unsafePartial $ fromJust $ stringToRtmpShortName s
+
+makeSlotName :: String -> SlotName
+makeSlotName s = unsafePartial $ fromJust $ stringToSlotName s
 
 domain :: List Atom
 domain = atom <$> ("LlnwStub" : nil)
