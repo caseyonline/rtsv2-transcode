@@ -30,7 +30,7 @@ import Node.Encoding as Encoding
 import Node.FS.Aff as FS
 import Partial.Unsafe (unsafePartial)
 import Simple.JSON as SimpleJSON
-import Test.Spec (SpecT, after_, before_, describe, describeOnly, it)
+import Test.Spec (SpecT, after_, before_, describe, describeOnly, it, itOnly)
 import Test.Spec.Assertions (fail, shouldEqual)
 
 
@@ -56,7 +56,7 @@ rtmpEgestTests = do
           F.startEgestHigh (C.toAddrFromNode E.p1n1) 1937 tmpFile
           delay (Milliseconds 5000.0)
 
-          probeResultsJson <- liftEffect $ Buffer.toString Encoding.UTF8 =<< execSync ("ffprobe -v quiet -print_format json -show_streams " <> tmpFile) defaultExecSyncOptions
+          probeResultsJson <- F.runFFProbe tmpFile
           probeResults :: ProbeResults <- liftEffect $ either (const $ throw "didn't parse probejson") (pure) $ SimpleJSON.readJSON probeResultsJson
 
           let res0 = unsafePartial $ fromJust $ probeResults.streams !! 0

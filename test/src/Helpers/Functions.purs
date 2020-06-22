@@ -18,6 +18,7 @@ import Data.Time.Duration (Milliseconds(..))
 import Data.Traversable (traverse_)
 import Debug.Trace (spy)
 import Effect (Effect)
+import Effect.Class (liftEffect)
 import Effect.Aff (Aff, delay)
 import Effect.Unsafe (unsafePerformEffect)
 import Foreign (unsafeFromForeign)
@@ -29,7 +30,10 @@ import Helpers.HTTP as HTTP
 import Helpers.Log (throwSlowError, as)
 import Helpers.OsCmd (runProc)
 import Helpers.Types (Node, PoPInfo, ResWithBody, TestNode, ToRecord)
+import Node.Buffer as Buffer
+import Node.ChildProcess (defaultExecSyncOptions, exec, execSync)
 import Node.Encoding (Encoding(..))
+import Node.Encoding as Encoding
 import Node.FS.Aff (writeTextFile)
 import Partial.Unsafe (unsafePartial)
 import Shared.Common (Url)
@@ -153,10 +157,13 @@ startEgestHigh ip port filename = do
   runProc "./scripts/run_egest_slot1_1000.sh" [ip, show port, filename]
   delay (Milliseconds 5000.0)
 
-
 stopSlot :: Aff Unit
 stopSlot = do
   runProc "./scripts/stopSlot.sh" []
+
+runFFProbe :: String -> Aff String
+runFFProbe filename =
+  liftEffect $ Buffer.toString Encoding.UTF8 =<< execSync ("./scripts/ffprobe.sh " <> filename) defaultExecSyncOptions
 
 -------------------------------------------------------------------------------
 -- Relay
