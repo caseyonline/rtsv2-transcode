@@ -1,6 +1,6 @@
 get:
   summary: /support/ingest/metrics/
-  description: Ingest metrics description
+  description: Ingest metrics
   tags:
     - Support Api
   responses:

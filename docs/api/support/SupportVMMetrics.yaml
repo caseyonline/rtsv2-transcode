@@ -1,6 +1,6 @@
 get:
   summary: /support/vm/metrics/
-  description: VM support metrics description
+  description: VM support metrics.
   tags:
     - Support Api
   parameters:

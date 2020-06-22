@@ -1,6 +1,6 @@
 get:
   summary: /public/client/{slotId}/{slotRole}/player
-  description: Html page to view a public player of specific slotID and SlotRole.
+  description: Public client player example, from the use of specific slotID and SlotRole.
   tags:
     - Public Html
   parameters:

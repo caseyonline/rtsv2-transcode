@@ -1,6 +1,6 @@
 get:
   summary: /support/canary/discovery/v1/{shortName}/{streamName}
-  description: Egest Canary stream discovery description
+  description: Returns a list of egest Canary streams.
   tags:
     - Support Api
   parameters:

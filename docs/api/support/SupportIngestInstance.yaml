@@ -1,6 +1,6 @@
 get:
   summary: /support/ingest/{slotId}/{slotRole}/{profileName}
-  description: Ingest metrics description
+  description: Metrics for ingest.
   tags:
     - Support Api
   parameters:

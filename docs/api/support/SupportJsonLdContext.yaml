@@ -1,6 +1,6 @@
 get:
   summary: /support/jsonld/{contexType}
-  description: JsonLd contex description
+  description: JsonLd contex.
   tags:
     - Support Api
   parameters:

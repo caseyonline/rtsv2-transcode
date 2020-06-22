@@ -1,6 +1,6 @@
 get:
   summary: /support/runState
-  description: Run State description.
+  description: Run State.
   tags:
     - Support Api
   requestBody:

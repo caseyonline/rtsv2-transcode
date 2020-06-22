@@ -1,6 +1,6 @@
 get:
   summary: /support/ingestAggregator/{slotId}/{slotRole}
-  description: Ingest aggregator description
+  description: Statistics and state of Ingest aggregator.
   tags:
     - Support Api
   parameters:

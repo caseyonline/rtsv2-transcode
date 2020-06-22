@@ -1,6 +1,6 @@
 get:
   summary: /support/popDefinition/
-  description: PoP definition description
+  description: PoP definition for local PoP.
   tags:
     - Support Api
   responses:

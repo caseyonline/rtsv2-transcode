@@ -1,6 +1,6 @@
 get:
   summary: /support/timedRoutes/{popName}
-  description: VM support metrics description
+  description: Returns the route a stream took to get from source to specified PoP.
   tags:
     - Support Api
   parameters:
