@@ -1,6 +1,6 @@
 get:
   summary: /public/ingest/{shortName}/{streamName}/ingest
-  description: Public client WebRTC Ingest description.
+  description: Public client example for a WebRTC Ingest, fromr the use of specific shortName and streamName.
   tags:
     - Public Html
   parameters:

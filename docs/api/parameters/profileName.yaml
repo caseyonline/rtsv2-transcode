@@ -1,6 +1,6 @@
 name: profileName
 in: query
-description: profileName description
+description: Name of a Profile
 required: true
 schema:
   type: string

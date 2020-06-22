@@ -1,6 +1,6 @@
 get:
   summary: /public/client/{slotId}/{slotRole}/session
-  description: Public client player Control description
+  description: Public client Control placeholder.
   tags:
     - Public Html
   parameters:

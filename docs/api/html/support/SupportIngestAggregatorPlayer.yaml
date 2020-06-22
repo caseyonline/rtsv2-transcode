@@ -1,6 +1,6 @@
 get:
   summary: /support/ingestAggregator/{slotId}/{slotRole}/player
-  description: Ingest aggregator player description
+  description: Ingest aggregator player web page.
   tags:
     - Support Html
   parameters:

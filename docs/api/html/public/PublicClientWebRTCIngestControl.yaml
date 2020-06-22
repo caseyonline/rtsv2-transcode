@@ -1,6 +1,6 @@
 get:
   summary: /public/ingest/{shortName}/{streamName}/session
-  description: Public client WebRTC Ingest Control description.
+  description: Public client WebRTC Ingest Control placeholder.
   tags:
     - Public Html
   parameters:

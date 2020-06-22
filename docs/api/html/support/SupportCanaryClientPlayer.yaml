@@ -1,8 +1,8 @@
 get:
   summary: /support/canary/client/{slotId}/{slotRole}/player
-  description: Support canary client player description
+  description: Support canary client player page.
   tags:
-    - Support Html
+    - Support API
   parameters:
     - $ref: '../../parameters/slotId.yaml'
     - $ref: '../../parameters/slotRole.yaml'
@@ -10,9 +10,12 @@ get:
     '200':
       description: OK
       content:
-        text/html:
-          schema:
+        application/json:
+        schema:
+          type: array
+          items:
             type: string
+            format: uri
     '404':
       description: Not Found
       content:

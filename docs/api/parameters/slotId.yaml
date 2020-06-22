@@ -1,6 +1,6 @@
 name: slotId
 in: query
-description: SlotId description
+description: Id for a slot
 required: true
 schema:
   type: string
