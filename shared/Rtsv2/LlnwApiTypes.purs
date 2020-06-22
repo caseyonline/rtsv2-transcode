@@ -9,6 +9,7 @@ module Shared.Rtsv2.LlnwApiTypes
        ( StreamConnection
        , AuthType
        , StreamIngestProtocol(..)
+       , StreamEgestProtocol(..)
        , SlotPublishAuthType(..)
        , StreamAuth
        , PublishCredentials(..)
@@ -48,6 +49,9 @@ import Type.Prelude (SProxy(..))
 
 data StreamIngestProtocol = Rtmp
                           | WebRTC
+
+data StreamEgestProtocol = RtmpEgest
+                         | WebRTCEgest
 
 newtype StreamConnection = StreamConnection
                            { host :: String

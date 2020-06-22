@@ -1,0 +1,24 @@
+get:
+  summary: /public/discovery/v1/{shortName}/{streamName}
+  description: Stream discovery, returning a list of Urls.
+  tags:
+    - Public Api
+  parameters:
+    - $ref: '../parameters/shortName.yaml'
+    - $ref: '../parameters/streamName.yaml'
+  responses:
+    '200':
+      description: OK
+      content:
+        application/json-ld:
+          schema:
+            type: array
+            items:
+              type: string
+              format: uri
+    '404':
+      description: Not Found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/Problem.yaml'

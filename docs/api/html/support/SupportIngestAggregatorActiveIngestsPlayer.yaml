@@ -1,6 +1,6 @@
 get:
   summary: /support/ingestAggregator/{slotId}/{slotRole}/activeIngests/{profileName}/player
-  description: Ingest aggregator active ingests player description
+  description: Ingest aggregator active ingests player web page.
   tags:
     - Support Html
   parameters:

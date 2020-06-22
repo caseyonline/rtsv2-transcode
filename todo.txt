@@ -1,13 +1,13 @@
-[ ] - multiple IngestAggregators for same slot/role
-[ ] - egest / client merging when load drops
-[ ] - relay merging when multiple instances start
+[S] - multiple IngestAggregators for same slot/role
+[S] - egest / client merging when load drops
+[S] - relay merging when multiple instances start
 [ ] - servers need a 16-bit id adding to them - just last two octets of server address from public interface (in rtsv2_player_ws_resource)?
 [ ] - possibly announcing presence of stream in ingest aggregator too quickly - webrtc tests currently need a small sleep to get reliable playback
 [ ] - benchmarks
 [ ] - tweak tests to loop until timeout rather than sleep and then try once
-[ ] - media gateway logs to correct location, and logrotate (and logrotate on serf logs at the same time)
-[ ] - media gateway logs to be UTC
-[ ] - safari / ios / edge
+[P] - media gateway logs to correct location, and logrotate (and logrotate on serf logs at the same time)
+[P] - media gateway logs to be UTC
+[P] - [safari] / ios / edge
 
 Tests:
 [ ] - data object store

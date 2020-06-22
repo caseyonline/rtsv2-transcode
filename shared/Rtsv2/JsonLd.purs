@@ -47,8 +47,11 @@ module Shared.Rtsv2.JsonLd
 
        , EgestStatsContextFields
        , EgestStats
-       , EgestSessionStats
+       , EgestSessionStats(..)
+       , EgestRtmpSessionStats
+       , EgestRtcSessionStats
        , EgestStatsNode
+       , statsSessionId
        , egestStatsContext
        , egestStatsNode
 
@@ -101,12 +104,18 @@ module Shared.Rtsv2.JsonLd
 
 import Prelude
 
+import Data.Either (Either(..))
+import Data.Generic.Rep (class Generic)
+import Data.Generic.Rep.Show (genericShow)
 import Data.Lens (Lens')
 import Data.Lens.Record (prop)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (wrap)
 import Data.Symbol (SProxy(..))
 import Effect (Effect)
+import Foreign (ForeignError(..), MultipleErrors, fail)
+import Kishimen (genericSumToVariant, variantToGenericSum)
+import Record as Record
 import Shared.Common (Alert, Milliseconds, CacheUtilization)
 import Shared.JsonLd (Context, ContextValue(..), ExpandedTermDefinition, Node(..), NodeMetadata, unwrapNode, _unwrappedNode, _id, _resource) as JsonLd
 import Shared.JsonLd (ContextDefinition(..))
@@ -117,6 +126,7 @@ import Shared.Rtsv2.Types (CanaryState, CurrentLoad, DeliverTo, JsonLdContextTyp
 import Shared.Rtsv2.Types as Types
 import Shared.Types.Media.Types.Rtmp (RtmpClientMetadata)
 import Shared.Types.Media.Types.SourceDetails (SourceInfo)
+import Simple.JSON (class ReadForeign, class WriteForeign, readImpl, writeImpl)
 
 ------------------------------------------------------------------------------
 -- Server
@@ -315,19 +325,52 @@ egestLocationNode slotId slotRole server = do
 type EgestStatsContextFields = ( timestamp :: JsonLd.ContextValue
                                , egestKey :: JsonLd.ContextValue
                                , clientCount :: JsonLd.ContextValue
+                               , totalClientCount :: JsonLd.ContextValue
                                , sessions :: JsonLd.ContextValue
                                )
 
-type EgestSessionStats = { sessionId :: String
+data EgestSessionStats = EgestRtcSessionStats EgestRtcSessionStats
+                       | EgestRtmpSessionStats EgestRtmpSessionStats
+
+derive instance eqEgestSessionStats :: Eq EgestSessionStats
+derive instance genericEgestSessionStats :: Generic EgestSessionStats _
+instance showEgestSessionStats :: Show EgestSessionStats where show = genericShow
+
+instance readForeignEgestSessionStats :: ReadForeign EgestSessionStats where
+  readImpl o = do
+    rec :: { connectionType :: String } <- readImpl o
+    case rec.connectionType of
+      "webrtc" -> EgestRtcSessionStats <$> readImpl o
+      "rtmp" -> EgestRtmpSessionStats <$> readImpl o
+      _ -> fail $ ForeignError $ "Bad connection type " <> rec.connectionType
+
+instance writeForeignEgestSessionStats :: WriteForeign EgestSessionStats where
+  writeImpl (EgestRtcSessionStats stats) =
+    writeImpl $ Record.insert (SProxy :: SProxy "connectionType") "webrtc" stats
+  writeImpl (EgestRtmpSessionStats stats) =
+    writeImpl $ Record.insert (SProxy :: SProxy "connectionType") "rtmp" stats
+
+type EgestRtcSessionStats = { sessionId :: String
                          , audioPacketsSent :: Int
                          , audioOctetsSent :: Int
                          , videoPacketsSent :: Int
                          , videoOctetsSent :: Int
                          }
 
+type EgestRtmpSessionStats = { sessionId :: String
+                             , octetsSent :: Int
+                             , octetsReceived :: Int
+                             }
+
+statsSessionId :: EgestSessionStats -> String
+statsSessionId (EgestRtmpSessionStats {sessionId}) = sessionId
+statsSessionId (EgestRtcSessionStats {sessionId}) = sessionId
+
+
 type EgestStats f = { timestamp :: Milliseconds
                     , egestKey :: EgestKey
                     , clientCount :: Int
+                    , totalClientCount :: Int
                     , sessions :: f EgestSessionStats
                     }
 
@@ -340,6 +383,7 @@ egestStatsContext = wrap { "@language": Nothing
                          , timestamp: JsonLd.Other "http://schema.rtsv2.llnw.com/UTCTimestamp"
                          , egestKey: JsonLd.Other "http://schema.rtsv2.llnw.com/EgestKey"
                          , clientCount: JsonLd.Other "http://schema.rtsv2.llnw.com/Counter"
+                         , totalClientCount: JsonLd.Other "http://schema.rtsv2.llnw.com/Counter"
                          , sessions: JsonLd.Other "http://schema.rtsv2.llnw.com/EgestSessions"
                          }
 
@@ -348,7 +392,7 @@ egestStatsNode slotId slotRole server stats = do
   id <- Support.makeUrl server (Support.EgestStatsE slotId slotRole)
   pure$ wrap { resource: stats
              , "@id": Just id
-             , "@nodeType": Just "http://types.rtsv2.llnw.com/Egest"
+             , "@nodeType": Just "http://types.rtsv2.llnw.com/EgestStats"
              , "@context": Just $ ContextUrl $ Support.makePath $ Support.JsonLdContext EgestStatsContext
              }
 
@@ -394,6 +438,7 @@ type IngestAggregatorStateContextFields = ( role :: JsonLd.ContextValue
                                           , activeProfiles :: JsonLd.ContextValue
                                           , downstreamRelays :: JsonLd.ContextValue
                                           , hlsPublish :: JsonLd.ContextValue
+                                          , clientCount :: JsonLd.ContextValue
                                           )
 type IngestAggregatorState f
    = { role :: SlotRole
@@ -401,6 +446,7 @@ type IngestAggregatorState f
      , activeProfiles :: f ActiveIngestLocationNode
      , downstreamRelays :: f DownstreamRelayLocationNode
      , hlsPublish :: Boolean
+     , clientCount :: Int
      }
 
 type IngestAggregatorStateNode f = JsonLd.Node (IngestAggregatorState f) IngestAggregatorStateContextFields
@@ -414,6 +460,7 @@ ingestAggregatorStateContext = wrap { "@language": Nothing
                                     , activeProfiles: JsonLd.Other "http://schema.rtsv2.llnw.com/Infrastructure/Locations/Ingest"
                                     , downstreamRelays: JsonLd.Other "http://schema.rtsv2.llnw.com/Infrastructure/Locations/Relay"
                                     , hlsPublish: JsonLd.Other "http://schema.rtsv2.llnw.com/Boolean"
+                                    , clientCount: JsonLd.Other "http://schema.rtsv2.llnw.com/Counter"
                                     }
 ingestAggregatorStateNode :: forall f. SlotId -> IngestAggregatorState f -> Server -> Effect (IngestAggregatorStateNode f)
 ingestAggregatorStateNode slotId state@{role: slotRole} server = do
@@ -429,11 +476,15 @@ ingestAggregatorStateNode slotId state@{role: slotRole} server = do
 type StreamRelayStateContextFields = ( role :: JsonLd.ContextValue
                                      , egestsServed :: JsonLd.ContextValue
                                      , relaysServed :: JsonLd.ContextValue
+                                     , downstreamClientCount :: JsonLd.ContextValue
+                                     , totalClientCount :: JsonLd.ContextValue
                                      )
 type StreamRelayState f
   = { role :: SlotRole
     , egestsServed :: f EgestServedLocationNode
     , relaysServed :: f DownstreamRelayLocationNode
+    , downstreamClientCount :: Int
+    , totalClientCount :: Int
     }
 
 type StreamRelayStateNode f = JsonLd.Node (StreamRelayState f) StreamRelayStateContextFields
@@ -445,6 +496,8 @@ streamRelayStateContext = wrap { "@language": Nothing
                                , role: JsonLd.Other "http://schema.rtsv2.llnw.com/Role"
                                , egestsServed: JsonLd.Other "http://schema.rtsv2.llnw.com/Infrastructure/Locations/Egest"
                                , relaysServed: JsonLd.Other "http://schema.rtsv2.llnw.com/Infrastructure/Locations/Relay"
+                               , downstreamClientCount: JsonLd.Other "http://schema.rtsv2.llnw.com/Infrastructure/Locations/Counter"
+                               , totalClientCount: JsonLd.Other "http://schema.rtsv2.llnw.com/Infrastructure/Locations/Counter"
                                }
 
 streamRelayStateNode :: forall f. SlotId -> StreamRelayState f -> Server -> Effect (StreamRelayStateNode f)

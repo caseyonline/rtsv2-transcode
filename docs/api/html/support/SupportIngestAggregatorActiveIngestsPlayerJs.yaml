@@ -1,6 +1,6 @@
 get:
   summary: /support/ingestAggregator/{slotId}/{slotRole}/activeIngests/{profileName}/js/
-  description: Ingest aggregator active ingests player JS description
+  description: Ingest aggregator active ingests player exposed Javascript files.
   tags:
     - Support Html
   parameters:

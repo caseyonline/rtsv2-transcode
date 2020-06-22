@@ -3,15 +3,21 @@
 -include_lib("id3as_common/include/common.hrl").
 -include_lib("id3as_media/include/id3as_workflow.hrl").
 -include_lib("id3as_rtc/include/rtp.hrl").
+-include_lib("id3as_media/include/transcode.hrl").
+-include_lib("id3as_media/include/send_to_bus_processor.hrl").
+-include_lib("id3as_media/include/stream_sync.hrl").
+
 -include("../../../../src/rtsv2_slot_media_source_publish_processor.hrl").
 -include("../../../../src/rtsv2_rtp.hrl").
+-include("../../../../src/rtsv2_bus_messages.hrl").
+
 
 
 %% foreign exports
 -export([ startEgestReceiverFFI/2
         , stopEgestFFI/1
         , getStatsFFI/1
-        , setSlotConfigurationFFI/2
+        , setSlotConfigurationFFI/3
         , getSlotConfigurationFFI/1
         ]).
 
@@ -41,7 +47,9 @@ startEgestReceiverFFI(EgestKey, UseMediaGateway) ->
 
       {ok, PortNumber} = rtsv2_webrtc_egest_stream_handler:port_number(EgestKey),
 
-      PortNumber
+      {RtpPortNumber,RtmpWorkflowHandle} = start_rtmp_bus_workflow(EgestKey),
+
+      {PortNumber, RtpPortNumber, RtmpWorkflowHandle}
   end.
 
 stopEgestFFI(EgestKey) ->
@@ -63,11 +71,13 @@ getStatsFFI(EgestKey) ->
       webrtc_stream_server_stats_to_purs(Stats)
   end.
 
-setSlotConfigurationFFI(EgestKey, SlotConfiguration) ->
+setSlotConfigurationFFI(EgestKey, RtmpWorkflowHandle, SlotConfiguration) ->
   fun() ->
       _ = gproc:add_local_property({metadata, EgestKey},
                                    #?metadata{ slot_configuration = SlotConfiguration }
                                   ),
+
+      ok = id3as_workflow:ioctl(send_to_bus, {slot_configuration, SlotConfiguration}, RtmpWorkflowHandle),
 
       ok = rtsv2_webrtc_egest_stream_handler:set_slot_configuration(EgestKey, SlotConfiguration),
 
@@ -144,3 +154,35 @@ rtcp_reception_stats_to_purs(_, #{ lost_fraction := LostFraction
    , sequenceLatest => SequenceLatest
    , interarrivalJitter => InterarrivalJitter
    }.
+
+
+start_rtmp_bus_workflow(EgestKey) ->
+  ?INFO("Starting rtp from relay on bus ~p", [{egest_rtmp_bus, EgestKey}]),
+  
+  Workflow = #workflow{
+                name = rtp_to_egest,
+                generators = [
+                              #generator{name = source
+                                        ,display_name = <<"Receive from Stream Relay">>
+                                        ,module = rtsv2_rtp_receiver_frame_generator
+                                        }
+                             ],
+                processors = [
+                  %% why is this letting output
+                              #processor{name = send_to_bus
+                                        ,module = rtsv2_rtmp_profiles_bus_processor
+                                        ,subscribes_to = [{source, ?audio_frames}, {source, ?video_frames}]
+                                        }
+                                                                    
+                              ,#processor{name = sink_all,
+                                         subscribes_to = [source, send_to_bus],
+                                         module = dev_null_processor
+                                        }
+                ]
+
+               },
+  {ok, WorkflowPid} = id3as_workflow:start_link(Workflow),
+  {ok, WorkflowHandle} = id3as_workflow:workflow_handle(WorkflowPid),
+
+  {ok, Port} = id3as_workflow:ioctl(source, get_port_number, WorkflowHandle),
+  {Port, WorkflowHandle}.

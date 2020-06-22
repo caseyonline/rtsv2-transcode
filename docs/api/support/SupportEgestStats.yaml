@@ -1,6 +1,6 @@
 get:
   summary: /suport/egest/{slotId}/{slotRole}
-  description: Egest stats description
+  description: Egest statistics
   tags:
     - Support Api
   parameters:

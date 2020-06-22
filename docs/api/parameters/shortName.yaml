@@ -1,6 +1,6 @@
 name: shortName
 in: query
-description: shortName description
+description: Short name
 required: true
 schema:
   type: string

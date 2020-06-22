@@ -33,7 +33,7 @@ import Erl.Data.Binary (Binary)
 import Erl.Data.List (List, head, index, length, nil, reverse, singleton, uncons, (:))
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
-import Erl.Data.Tuple (Tuple2, tuple2)
+import Erl.Data.Tuple (Tuple2)
 import Erl.Process (spawnLink)
 import Erl.Utils (sleep, systemTimeMs, privDir)
 import Logger as Logger

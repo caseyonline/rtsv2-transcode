@@ -3,8 +3,6 @@
 -export([ to_wire_message/1
         , from_wire_message/2
         , x/0
-        , to_binary/1
-        , from_binary/1
         ]).
 
 %%------------------------------------------------------------------------------
@@ -17,18 +15,13 @@
 -define(iMAggregatorStoppedMsgName,   <<"b">>).
 -define(iMEgestStateMsgName,          <<"c">>).
 -define(iMRelayStateMsgName,          <<"d">>).
--define(iMServerLoad,                 <<"e">>).
--define(iMTransPoPLeader,             <<"f">>).
--define(iMVMLiveness,                 <<"g">>).
--define(iMSlotLookup,                 <<"h">>).
+-define(iMServerLoadMsgName,          <<"e">>).
+-define(iMTransPoPLeaderMsgName,      <<"f">>).
+-define(iMVMLivenessMsgName,          <<"g">>).
+-define(iMSlotLookupMsgName,          <<"h">>).
 %%------------------------------------------------------------------------------
 %% End of list of message names
 %%------------------------------------------------------------------------------
-to_binary(X) ->
-  term_to_binary(X).
-
-from_binary(X) ->
-  binary_to_term(X).
 
 %%------------------------------------------------------------------------------
 %% Public API
@@ -92,15 +85,63 @@ to_wire_message(
      , SlotId:16/binary                                 %% 128  136
      , ServerAddress/binary                             %% rest of msg
     >>
+  };
+
+to_wire_message(
+  { iMServerLoad
+  , ServerAddress
+  , _CurrentLoad = #{ cpu := Cpu
+                    , network := NetworkKbps
+                    }
+  , AcceptingRequests
+  }) ->
+  { ?iMServerLoadMsgName
+  , << (to_wire_element_accepting_requests(AcceptingRequests)):1           %%   1    1
+     , (to_wire_element_cpu(Cpu)):7/unsigned-big-integer                   %%   7    8
+     , (to_wire_element_network_kbps(NetworkKbps)):16/unsigned-big-integer %%  16    24
+     , ServerAddress/binary                                                %% rest of msg
+    >>
+  };
+
+to_wire_message(
+  { iMTransPoPLeader
+  , ServerAddress
+  }) ->
+  { ?iMTransPoPLeaderMsgName
+  , ServerAddress
+  };
+
+to_wire_message(
+  { iMVMLiveness
+  ,  ServerAddress
+  ,  MonotonicTime
+  }) ->
+  { ?iMVMLivenessMsgName
+  , << MonotonicTime:64/signed-big-integer                                 %%  64    64
+     , ServerAddress/binary                                                %% rest of msg
+    >>
+  };
+
+
+to_wire_message(
+  { iMSlotLookup
+  , ServerAddress
+  , RtmpShortName
+  , SlotName
+  , _SlotLookupResult = #{ id := SlotId
+                         }
+  }) ->
+  RtmpShortNameLen = byte_size(RtmpShortName),
+  SlotNameLen = byte_size(SlotName),
+  { ?iMSlotLookupMsgName
+  , << RtmpShortNameLen:8                               %%   8  136
+     , SlotNameLen:8                                    %%   8  142
+     , SlotId:16/binary                                 %% 128  128
+     , RtmpShortName/binary                             %% variable
+     , SlotName/binary                                  %% variable
+     , ServerAddress/binary                             %% rest of msg
+    >>
   }.
-
-%% to_wire_message(
- %%  { iMServerLoad
- %%  , ServerAddress
- %%  , CurrentLoad
- %%  , AcceptingRequests
- %%  }) ->
-
 
 from_wire_message(
   ?iMAggregatorAvailableMsgName
@@ -161,33 +202,102 @@ from_wire_message(
           , {agentKey, SlotId, from_wire_element_slot_role(WireSlotRole)}
           , ServerAddress
           }
-  }.
+  };
+
+from_wire_message(
+  ?iMServerLoadMsgName
+ , << WireAcceptingRequests:1               %%   1    1
+    , WireCpu:7/unsigned-big-integer        %%   7    8
+    , WireNetwork:16/unsigned-big-integer   %%  16    24
+    , ServerAddress/binary                  %% rest of msg
+   >>
+ ) ->
+  { just, { iMServerLoad
+          , ServerAddress
+          , _CurrentLoad = #{ cpu => from_wire_element_cpu(WireCpu)
+                            , network => from_wire_element_network_kbps(WireNetwork)
+                    }
+          , from_wire_element_accepting_requests(WireAcceptingRequests)
+          }
+  };
+
+from_wire_message(
+  ?iMTransPoPLeaderMsgName
+ , ServerAddress
+ ) ->
+  { just, { iMTransPoPLeader
+          , ServerAddress
+          }
+  };
+
+from_wire_message(
+   ?iMVMLivenessMsgName
+  , << MonotonicTime:64/signed-big-integer                                 %%  64    64
+     , ServerAddress/binary                                                %% rest of msg
+    >>
+  ) ->
+  { just, { iMVMLiveness
+         ,  ServerAddress
+         ,  MonotonicTime
+         }
+  };
+from_wire_message(
+  ?iMSlotLookupMsgName
+  , << RtmpShortNameLen:8                               %%   8  136
+     , SlotNameLen:8                                    %%   8  142
+     , SlotId:16/binary                                 %% 128  128
+     , RtmpShortName:RtmpShortNameLen/binary            %% variable
+     , SlotName:SlotNameLen/binary                      %% variable
+     , ServerAddress/binary                             %% rest of msg
+    >>
+ ) ->
+  RtmpShortNameLen = byte_size(RtmpShortName),
+  SlotNameLen = byte_size(SlotName),
+  { just, { iMSlotLookup
+  , ServerAddress
+  , RtmpShortName
+  , SlotName
+  , _SlotLookupResult = #{ id => SlotId
+                         }
+          }
+  };
+
+from_wire_message(
+  _Name
+ , _WireMessage
+ )->
+  {nothing}.
 
 
 %%------------------------------------------------------------------------------
 %% Internal functions
 %%------------------------------------------------------------------------------
-to_wire_element_event_type({available}) ->
-  0;
-to_wire_element_event_type({stopped}) ->
-  1.
+to_wire_element_event_type({available}) -> 0;
+to_wire_element_event_type({stopped})   -> 1.
+from_wire_element_event_type(0) -> {available};
+from_wire_element_event_type(1) -> {stopped}.
 
-from_wire_element_event_type(0) ->
-  {available};
-from_wire_element_event_type(1) ->
-  {stopped}.
+to_wire_element_slot_role({primary}) -> 0;
+to_wire_element_slot_role({backup})  -> 1.
+from_wire_element_slot_role(0) -> {primary};
+from_wire_element_slot_role(1) -> {backup}.
 
-to_wire_element_slot_role({primary}) ->
-  0;
-to_wire_element_slot_role({backup}) ->
-  1.
-
-from_wire_element_slot_role(0) ->
-  {primary};
-from_wire_element_slot_role(1) ->
-  {backup}.
+to_wire_element_accepting_requests(true)  -> 1;
+to_wire_element_accepting_requests(false) -> 0.
+from_wire_element_accepting_requests(1)  -> true;
+from_wire_element_accepting_requests(0) -> false.
 
 
+
+-define(wireCpuLoadFactor, 1.27). %% 7 bits max = 127 - / 100
+to_wire_element_cpu(Load) -> trunc(max(0, min(100, Load) * ?wireCpuLoadFactor)).
+from_wire_element_cpu(Load) -> Load / ?wireCpuLoadFactor.
+
+
+-define(wireNetworkLoadFactor, 2000).
+to_wire_element_network_kbps(Kbps) ->
+  min(16#ffff, Kbps div ?wireNetworkLoadFactor).
+from_wire_element_network_kbps(Wire) -> Wire * ?wireNetworkLoadFactor.
 
 
 %%------------------------------------------------------------------------------
@@ -200,6 +310,8 @@ x() ->
                 , test_IMAggregatorStopped_message()
                 , test_IMEgestState_message()
                 , test_IMRelayState_message()
+                , test_IMServerLoad_message()
+                , test_IMVMLiveness_message()
                 ]),
   ok.
 
@@ -221,3 +333,9 @@ test_IMEgestState_message() ->
 
 test_IMRelayState_message() ->
   {iMRelayState,{available},{agentKey,<<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1>>,{primary}},<<"172.16.170.1">>}.
+
+test_IMServerLoad_message() ->
+  {iMServerLoad,<<"172.16.169.3">>,#{cpu => 100.0,network => 0},true}.
+
+test_IMVMLiveness_message() ->
+  {iMVMLiveness,<<"172.16.169.1">>,-576460657433848941}.

@@ -1,6 +1,6 @@
 get:
   summary: /support/canary/client/{slotId}/{slotRole}/session
-  description: Support canary client player control description
+  description: Support canary client player control page session.
   tags:
     - Support Html
   parameters:

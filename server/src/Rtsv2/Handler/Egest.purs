@@ -18,7 +18,7 @@ import Rtsv2.Agents.EgestInstanceSup as EgestInstanceSup
 import Rtsv2.Agents.EgestStats as EgestStats
 import Rtsv2.Config (LoadConfig)
 import Rtsv2.Handler.MimeType as MimeType
-import Shared.Rtsv2.JsonLd (EgestStats, EgestSessionStats)
+import Shared.Rtsv2.JsonLd (EgestSessionStats(..), EgestStats, statsSessionId)
 import Shared.Rtsv2.JsonLd as JsonLd
 import Shared.Rtsv2.Stream (EgestKey(..), SlotId, SlotRole)
 import Shared.Rtsv2.Types (OnBehalfOf(..), Server)
@@ -63,22 +63,34 @@ statsToPrometheus stats =
   where
     sessionMetricsToPrometheus prometheusTimestamp slotId slotRole sessions page =
       foldl
-      (\innerPage session@{ audioPacketsSent
-                          , audioOctetsSent
-                          , videoPacketsSent
-                          , videoOctetsSent
-                          } ->
-       let
-         labels = labelsForSession slotId slotRole session
-       in
-        innerPage
-        # Prometheus.addMetric "audio_packets_sent" audioPacketsSent labels prometheusTimestamp
-        # Prometheus.addMetric "audio_octets_sent" audioOctetsSent labels prometheusTimestamp
-        # Prometheus.addMetric "video_packets_sent" videoPacketsSent labels prometheusTimestamp
-        # Prometheus.addMetric "video_octets_sent" videoOctetsSent labels prometheusTimestamp
-      )
+      (addMetrics slotId slotRole prometheusTimestamp)
       page
       sessions
+
+    addMetrics slotId slotRole timestamp innerPage session@(EgestRtcSessionStats
+                                    { audioPacketsSent
+                                    , audioOctetsSent
+                                    , videoPacketsSent
+                                    , videoOctetsSent
+                                  }) =
+      let
+        labels = labelsForSession slotId slotRole session
+      in
+        innerPage
+        # Prometheus.addMetric "audio_packets_sent" audioPacketsSent labels timestamp
+        # Prometheus.addMetric "audio_octets_sent" audioOctetsSent labels timestamp
+        # Prometheus.addMetric "video_packets_sent" videoPacketsSent labels timestamp
+        # Prometheus.addMetric "video_octets_sent" videoOctetsSent labels timestamp
+    addMetrics slotId slotRole timestamp innerPage session@(EgestRtmpSessionStats
+                                                            { octetsSent
+                                                            , octetsReceived
+                                                            }) =
+      let
+        labels = labelsForSession slotId slotRole session
+      in
+        innerPage
+        # Prometheus.addMetric "rtmp_octets_sent" octetsSent labels timestamp
+        # Prometheus.addMetric "rtmp_octets_received" octetsReceived labels timestamp
 
     labelsForSlot :: SlotId -> SlotRole -> Prometheus.IOLabels
     labelsForSlot slotId role =
@@ -87,10 +99,10 @@ statsToPrometheus stats =
                             nil
 
     labelsForSession :: SlotId -> SlotRole -> EgestSessionStats -> Prometheus.IOLabels
-    labelsForSession slotId role {sessionId} =
+    labelsForSession slotId role stats =
       Prometheus.toLabels $ (Tuple "slot" (Prometheus.toLabelValue (show (unwrap slotId)))) :
                             (Tuple "role" (Prometheus.toLabelValue (show role))) :
-                            (Tuple "sessionId" (Prometheus.toLabelValue sessionId)) :
+                            (Tuple "sessionId" (Prometheus.toLabelValue $ statsSessionId stats)) :
                             nil
 
 

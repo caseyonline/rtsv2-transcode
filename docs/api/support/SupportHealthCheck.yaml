@@ -1,6 +1,6 @@
 get:
   summary: /support/healthCheck/
-  description: HealthCheck description.
+  description: Full network health check.
   tags:
     - Support Api
   responses:

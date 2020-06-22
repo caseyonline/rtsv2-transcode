@@ -1,6 +1,6 @@
 name: contextType
 in: query
-description: contectType description
+description: Context type
 required: true
 schema:
   type: string

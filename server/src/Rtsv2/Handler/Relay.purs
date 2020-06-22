@@ -188,6 +188,9 @@ registeredRelayWs slotId slotRole relayAddress relayPort sourceRoute =
     handle state@{relayKey} (RelayUpstreamDataObjectUpdateMessage msg) = do
       StreamRelayInstance.dataObjectUpdateSendMessage relayKey msg
       pure $ WebSocketNoReply state
+    handle state@{relayServer, relayKey} (RelayAggregateClientCount {count, time}) = do
+      StreamRelayInstance.updateRelayAggregateClientCount relayKey relayServer count time
+      pure $ WebSocketNoReply state
 
     info state WsStop =
       pure $ WebSocketStop state
@@ -199,8 +202,8 @@ type WsEgestState =
   , relayKey :: RelayKey
   }
 
-registeredEgestWs :: SlotId -> SlotRole -> ServerAddress -> Int -> InnerStetsonHandler (WebSocketHandlerMessage DownstreamWsMessage) WsEgestState
-registeredEgestWs slotId slotRole egestAddress egestPort =
+registeredEgestWs :: SlotId -> SlotRole -> ServerAddress -> Int -> Int -> InnerStetsonHandler (WebSocketHandlerMessage DownstreamWsMessage) WsEgestState
+registeredEgestWs slotId slotRole egestAddress egestPort secondaryEgestPort =
   webSocketHandler init wsInit handle info
   where
     init req = do
@@ -214,7 +217,7 @@ registeredEgestWs slotId slotRole egestAddress egestPort =
     wsInit state@{egestServer, relayKey} = do
       self <- Process <$> Erl.self :: Effect (Process (WebSocketHandlerMessage DownstreamWsMessage))
       Erl.monitor (Names.streamRelayInstanceStateName relayKey)
-      maybeSlotConfiguration <- noprocToMaybe $ StreamRelayInstance.registerEgest slotId slotRole egestServer egestPort self
+      maybeSlotConfiguration <- noprocToMaybe $ StreamRelayInstance.registerEgest slotId slotRole egestServer egestPort secondaryEgestPort self
       pure $ case maybeSlotConfiguration of
                Nothing -> WebSocketStop state
                Just Nothing -> WebSocketNoReply state
@@ -226,6 +229,9 @@ registeredEgestWs slotId slotRole egestAddress egestPort =
       pure $ WebSocketNoReply state
     handle state@{relayKey} (EdgeToRelayDataObjectUpdateMessage msg) = do
       StreamRelayInstance.dataObjectUpdateSendMessage relayKey msg
+      pure $ WebSocketNoReply state
+    handle state@{egestServer, relayKey} (EgestClientCount count) = do
+      StreamRelayInstance.updateEgestClientCount relayKey egestServer count
       pure $ WebSocketNoReply state
 
     info state WsStop = do

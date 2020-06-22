@@ -16,7 +16,7 @@
          on_stream_callback :: fun()
         }).
 
-init(Rtmp, ConnectArgs, [#{ init := OnConnectCallback  }]) ->
+init(Rtmp, ConnectArgs, [#{ init := OnConnectCallback }]) ->
 
   {_, AppArg} = lists:keyfind("app", 1, ConnectArgs),
 

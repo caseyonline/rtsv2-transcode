@@ -16,6 +16,7 @@ module Rtsv2.Agents.EgestInstance
   , ParentCallbacks
   , WebSocket
   , StateServerName
+  , RegistrationResp
   , domain
 ) where
 
@@ -26,17 +27,19 @@ import Data.Either (Either(..), hush)
 import Data.Foldable (foldl)
 import Data.Int (round, toNumber)
 import Data.Long as Long
-import Data.Maybe (Maybe(..), fromMaybe, maybe')
+import Data.Maybe (Maybe(..), fromMaybe, maybe, maybe')
 import Data.Newtype (class Newtype, unwrap, wrap)
 import Data.Traversable (traverse_)
 import Data.Tuple (Tuple(..))
+import Data.Tuple.Nested ((/\))
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, singleton)
 import Erl.Data.List as List
 import Erl.Data.Map (Map, lookup, toUnfoldable, values)
 import Erl.Data.Map as Map
-import Erl.Data.Tuple (Tuple2, fst, snd, tuple2)
+import Erl.Data.Tuple (Tuple2, Tuple3, tuple2)
+import Erl.Data.Tuple as Tuple
 import Erl.Process (Process(..), (!))
 import Erl.Process.Raw (Pid)
 import Erl.Utils (Ref, makeRef, systemTimeMs)
@@ -59,6 +62,7 @@ import Rtsv2.Config as Config
 import Rtsv2.DataObject (ObjectBroadcastMessage(..))
 import Rtsv2.DataObject as DO
 import Rtsv2.DataObject as DataObject
+import Rtsv2.Env as Env
 import Rtsv2.Load as Load
 import Rtsv2.LoadTypes (LoadFixedCost(..), PredictedLoad(..))
 import Rtsv2.Names as Names
@@ -67,18 +71,20 @@ import Rtsv2.Types (LocalOrRemote(..), ResourceResp)
 import Shared.Common (LoggingContext(..), Milliseconds(..))
 import Shared.Rtsv2.Agent (SlotCharacteristics)
 import Shared.Rtsv2.Agent as Agent
-import Shared.Rtsv2.JsonLd (EgestStats, EgestSessionStats)
-import Shared.Rtsv2.LlnwApiTypes (StreamIngestProtocol(..))
+import Shared.Rtsv2.JsonLd (EgestSessionStats(..), EgestStats, statsSessionId)
+import Shared.Rtsv2.LlnwApiTypes (StreamEgestProtocol(..))
 import Shared.Rtsv2.Router.Endpoint.System as System
 import Shared.Rtsv2.Stream (AggregatorKey(..), EgestKey(..), ProfileName, RelayKey(..), SlotId, SlotRole, egestKeyToAgentKey, egestKeyToAggregatorKey)
 import Shared.Rtsv2.Types (EgestServer, FailureReason(..), OnBehalfOf(..), PoPName, RelayServer, Server(..), extractAddress)
 import WsGun as WsGun
 
-foreign import startEgestReceiverFFI :: EgestKey -> MediaGatewayFlag -> Effect Int
+foreign import startEgestReceiverFFI :: EgestKey -> MediaGatewayFlag -> Effect (Tuple3 Int Int WorkflowHandle)
 foreign import stopEgestFFI :: EgestKey -> Effect Unit
 foreign import getStatsFFI :: EgestKey -> Effect (WebRTCStreamServerStats EgestKey)
-foreign import setSlotConfigurationFFI :: EgestKey -> SlotConfiguration -> Effect Unit
+foreign import setSlotConfigurationFFI :: EgestKey -> WorkflowHandle -> SlotConfiguration -> Effect Unit
 foreign import getSlotConfigurationFFI :: EgestKey -> Effect (Maybe SlotConfiguration)
+
+foreign import data WorkflowHandle :: Type
 
 type CreateEgestPayload
   = { slotId :: SlotId
@@ -87,7 +93,10 @@ type CreateEgestPayload
     , slotCharacteristics :: SlotCharacteristics
     }
 
-type RegistrationResp = (Either FailureReason (List ProfileName))
+type RegistrationResp = (Either FailureReason { profiles :: List ProfileName
+                                              , maxMessagesPerSecond :: Number
+                                              , maxMessageSize :: Int
+                                              })
 
 type ParentCallbacks
   = { startLocalOrRemoteStreamRelay :: LoadConfig -> OnBehalfOf -> CreateRelayPayload -> Effect (ResourceResp Server)
@@ -105,9 +114,11 @@ type State
     , aggregatorPoP :: PoPName
     , parentCallbacks :: ParentCallbacks
     , slotCharacteristics :: SlotCharacteristics
+    , config :: Config.EgestAgentConfig
     , loadConfig :: LoadConfig
     , thisServer :: Server
     , clientCount :: Int
+    , totalClientCount :: Int
     , clientStats :: Map String EgestSessionStats
     , lingerTime :: Milliseconds
     , relayCreationRetry :: Milliseconds
@@ -116,8 +127,10 @@ type State
     , forceDrainPhaseTimeout :: Milliseconds
     , intraPoPLatency :: Milliseconds
     , aggregatorExitLingerTime :: Milliseconds
+    , clientCountReportingTime :: Milliseconds
     , stopRef :: Maybe Ref
     , receivePortNumber :: Int
+    , rtmpReceivePortNumber :: Int
     , lastEgestAuditTime :: Milliseconds
     , stateServerName :: StateServerName
     , relayWebSocket :: Maybe WebSocket
@@ -127,15 +140,10 @@ type State
     , activeProfiles :: List ProfileName
     , forceDrain :: Boolean
     , aggregatorExitTimerRef :: Maybe Ref
-    }
+    , eqRtmpPort :: Int
+    , eqWebRTCPort :: Int
 
-emptySessionStats :: String -> EgestSessionStats
-emptySessionStats sessionId
-  = { sessionId
-    , audioPacketsSent: 0
-    , audioOctetsSent: 0
-    , videoPacketsSent: 0
-    , videoOctetsSent: 0
+    , rtmpWorkflowHandle :: WorkflowHandle
     }
 
 payloadToEgestKey :: CreateEgestPayload -> EgestKey
@@ -147,6 +155,7 @@ data EgestBusMsg = EgestOnFI NativeJson Int
                  | EgestDataObjectUpdateResponse DO.ObjectUpdateResponseMessage
                  | EgestDataObjectBroadcast DO.Object
                  | EgestDrain Int Int (List String)
+                 | EgestUpdateMaxMessagesPerSecond Number
 
 bus :: EgestKey -> Bus.Bus (Tuple2 Atom EgestKey) EgestBusMsg
 bus egestKey = Bus.bus (tuple2 (atom "egestBus") egestKey)
@@ -160,6 +169,21 @@ data Msg = WriteEqLog
          | ForceDrainPhase Int
          | ForceDrainTimeout
          | AggregatorExitTimer Ref
+         | ReportClientCount Int
+
+emptySessionStats :: StreamEgestProtocol -> String -> EgestSessionStats
+emptySessionStats WebRTCEgest sessionId =
+  EgestRtcSessionStats { sessionId
+                       , audioPacketsSent: 0
+                       , audioOctetsSent: 0
+                       , videoPacketsSent: 0
+                       , videoOctetsSent: 0
+                       }
+emptySessionStats RtmpEgest sessionId =
+  EgestRtmpSessionStats { sessionId
+                        , octetsSent: 0
+                        , octetsReceived: 0
+                        }
 
 serverName :: EgestKey -> ServerName State Msg
 serverName egestKey = Names.egestInstanceName egestKey
@@ -179,8 +203,8 @@ stopAction egestKey mCachedState = do
   stopEgestFFI egestKey
   pure unit
 
-pendingClient :: EgestKey -> Effect RegistrationResp
-pendingClient egestKey  =
+pendingClient :: EgestKey -> Effect (Either FailureReason Unit)
+pendingClient egestKey =
   Gen.doCall ourServerName \state@{slotCharacteristics, loadConfig} -> do
     idleServerResp <- IntraPoP.getThisIdleServer $ Load.hasCapacityForEgestClient slotCharacteristics loadConfig
     case idleServerResp of
@@ -188,7 +212,7 @@ pendingClient egestKey  =
         pure $ CallReply (Left NoResource) state
       Right _ -> do
         state2 <- maybeResetStopTimer state
-        pure $ CallReply (Right state.activeProfiles) state2
+        pure $ CallReply (Right unit) state2
 
   where
     ourServerName = serverName egestKey
@@ -200,9 +224,16 @@ pendingClient egestKey  =
     maybeResetStopTimer state =
       pure state
 
-addClient :: Pid -> EgestKey -> String -> Effect RegistrationResp
-addClient handlerPid egestKey sessionId =
-  Gen.doCall ourServerName \state@{clientCount, clientStats, dataObject, activeProfiles, slotCharacteristics, loadConfig} -> do
+addClient :: StreamEgestProtocol -> Pid -> EgestKey -> String -> Effect RegistrationResp
+addClient egestProtocol handlerPid egestKey sessionId =
+  Gen.doCall ourServerName \state@{ clientCount
+                                  , clientStats
+                                  , dataObject
+                                  , activeProfiles
+                                  , slotCharacteristics
+                                  , totalClientCount
+                                  , config
+                                  , loadConfig} -> do
 
     idleServerResp <- IntraPoP.getThisIdleServer $ Load.hasCapacityForEgestClient slotCharacteristics loadConfig
     case idleServerResp of
@@ -213,10 +244,19 @@ addClient handlerPid egestKey sessionId =
         Gen.monitorPid ourServerName handlerPid (\_ -> (HandlerDown sessionId))
         maybeSend dataObject
         (Process handlerPid) ! (EgestCurrentActiveProfiles activeProfiles)
-        pure $ CallReply (Right state.activeProfiles) state{ clientCount = clientCount + 1
-                                                           , clientStats = Map.insert sessionId (emptySessionStats sessionId) clientStats
-                                                           , stopRef = Nothing
-                                                           }
+        let
+          state2 = state{ clientCount = clientCount + 1
+                        , totalClientCount = totalClientCount + 1
+                        , clientStats = Map.insert sessionId (emptySessionStats egestProtocol sessionId) clientStats
+                        , stopRef = Nothing
+                        }
+
+          resp = { profiles: state.activeProfiles
+                 , maxMessageSize: config.maxMessageSize
+                 , maxMessagesPerSecond: maxMessagesPerSecond state2
+                 }
+
+        pure $ CallReply (Right resp) state2
   where
     ourServerName = serverName egestKey
     maybeSend Nothing = pure unit
@@ -247,9 +287,9 @@ dataObjectUpdate egestKey updateMsg =
   )
 
 statsUpdate :: EgestKey -> EgestSessionStats -> Effect Unit
-statsUpdate egestKey stats@{sessionId} = do
+statsUpdate egestKey stats = do
   Gen.doCall (serverName egestKey) \state@{clientStats} -> do
-    pure $ CallReply unit state{clientStats = Map.insert sessionId stats clientStats}
+    pure $ CallReply unit state{clientStats = Map.insert (statsSessionId stats) stats clientStats}
 
 forceDrain :: EgestKey -> Effect Unit
 forceDrain egestKey =
@@ -272,12 +312,13 @@ forceDrain egestKey =
 
 currentStats :: EgestKey -> Effect (EgestStats List)
 currentStats egestKey@(EgestKey slotId slotRole) =
-  Gen.doCall (serverName egestKey) \state@{clientCount, clientStats} -> do
+  Gen.doCall (serverName egestKey) \state@{clientCount, totalClientCount, clientStats} -> do
     now <- Erl.systemTimeMs
     let
       stats = { egestKey
               , timestamp: now
               , clientCount
+              , totalClientCount
               , sessions: Map.values clientStats
               }
     pure $ CallReply stats state
@@ -288,18 +329,27 @@ toEgestServer = unwrap >>> wrap
 init :: ParentCallbacks -> CreateEgestPayload -> StateServerName -> Effect State
 init parentCallbacks payload@{slotId, slotRole, aggregatorPoP, slotCharacteristics} stateServerName = do
   Logger.addLoggerContext $ PerSlot { slotId, slotRole, slotName: Nothing}
-  { eqLogIntervalMs
-  , lingerTimeMs
-  , relayCreationRetryMs
-  , reserveForPotentialNumClients
-  , decayReserveMs
-  , forceDrainTimeoutMs
-  , numForceDrainPhases
-  , aggregatorExitLingerTimeMs
-  } <- Config.egestAgentConfig
+
+  config@{ eqLogIntervalMs
+         , lingerTimeMs
+         , relayCreationRetryMs
+         , reserveForPotentialNumClients
+         , decayReserveMs
+         , forceDrainTimeoutMs
+         , numForceDrainPhases
+         , aggregatorExitLingerTimeMs
+         , clientCountReportingTimeMs
+         } <- Config.egestAgentConfig
+
   { intraPoPLatencyMs } <- Config.globalConfig
+
   loadConfig <- Config.loadConfig
+
   thisServer <- PoPDefinition.getThisServer
+
+  isProxied <- Env.isProxied
+
+  webConfig <- Config.webConfig
 
   let
     egestKey = payloadToEgestKey payload
@@ -312,15 +362,22 @@ init parentCallbacks payload@{slotId, slotRole, aggregatorPoP, slotCharacteristi
                                   , decayTime: Milliseconds $ Long.fromInt decayReserveMs
                                   }
 
+    eqWebRTCPort = if isProxied then 443
+                   else webConfig.publicPort
+    eqRtmpPort = 1935 -- TODO - get from config when merged with rtmp egest
+
   { mediaGateway } <- Config.featureFlags
-  receivePortNumber <- startEgestReceiverFFI egestKey mediaGateway
+  receivePortNumber /\ rtmpReceivePortNumber /\ rtmpWorkflowHandle /\ _  <- Tuple.toNested3 <$> startEgestReceiverFFI egestKey mediaGateway
   void $ Bus.subscribe (serverName egestKey) IntraPoP.bus IntraPoPBus
-  logStart "Egest starting" {payload, receivePortNumber}
+  logStart "Egest starting" {payload, receivePortNumber, rtmpReceivePortNumber}
+
+  publicListenIp <- Env.publicListenIp
 
   now <- systemTimeMs
   IntraPoP.announceLocalEgestIsAvailable egestKey
   void $ Timer.sendAfter (serverName egestKey) 0 InitStreamRelays
   void $ Timer.sendEvery (serverName egestKey) eqLogIntervalMs WriteEqLog
+  void $ Timer.sendAfter (serverName egestKey) clientCountReportingTimeMs (ReportClientCount 0)
 
   Load.addPredictedLoad (egestKeyToAgentKey egestKey) predictedLoad
 
@@ -332,9 +389,11 @@ init parentCallbacks payload@{slotId, slotRole, aggregatorPoP, slotCharacteristi
             , aggregatorPoP
             , parentCallbacks
             , slotCharacteristics
+            , config
             , loadConfig
             , thisServer
             , clientCount : 0
+            , totalClientCount : 0
             , clientStats : Map.empty
             , lingerTime : Milliseconds $ Long.fromInt lingerTimeMs
             , relayCreationRetry : Milliseconds $ Long.fromInt relayCreationRetryMs
@@ -343,8 +402,10 @@ init parentCallbacks payload@{slotId, slotRole, aggregatorPoP, slotCharacteristi
             , numForceDrainPhases
             , intraPoPLatency : Milliseconds $ Long.fromInt intraPoPLatencyMs
             , aggregatorExitLingerTime : Milliseconds $ Long.fromInt aggregatorExitLingerTimeMs
+            , clientCountReportingTime : Milliseconds $ Long.fromInt clientCountReportingTimeMs
             , stopRef : Nothing
             , receivePortNumber
+            , rtmpReceivePortNumber
             , lastEgestAuditTime: now
             , stateServerName
             , relayWebSocket: Nothing
@@ -354,6 +415,9 @@ init parentCallbacks payload@{slotId, slotRole, aggregatorPoP, slotCharacteristi
             , activeProfiles: nil
             , forceDrain: false
             , aggregatorExitTimerRef: Nothing
+            , eqWebRTCPort
+            , rtmpWorkflowHandle
+            , eqRtmpPort
             }
   pure state
 
@@ -369,6 +433,10 @@ handleInfo msg state@{egestKey: egestKey@(EgestKey slotId slotRole), thisServer}
       logInfo "client down!" {}
       state2 <- removeClient sessionId state
       pure $ CastNoReply state2
+
+    ReportClientCount lastReport -> do
+      maybeReportClientCount lastReport
+      pure $ CastNoReply state
 
     InitStreamRelays -> CastNoReply <$> initStreamRelay state
 
@@ -445,6 +513,20 @@ handleInfo msg state@{egestKey: egestKey@(EgestKey slotId slotRole), thisServer}
       | (state.clientCount == 0) && (Just ref == state.stopRef) = doStop state
       | otherwise = pure $ CastNoReply state
 
+    maybeReportClientCount lastReport | lastReport == state.clientCount =
+      fireClientCountTimer lastReport
+
+    maybeReportClientCount lastReport | otherwise =
+      case state.relayWebSocket of
+        Nothing ->
+          fireClientCountTimer lastReport
+        Just socket -> do
+          void $ WsGun.send socket (EgestClientCount state.clientCount)
+          fireClientCountTimer state.clientCount
+
+    fireClientCountTimer lastReport =
+      void $ Timer.sendAfter (serverName egestKey) (round $ Long.toNumber $ unwrap state.clientCountReportingTime) (ReportClientCount lastReport)
+
 terminate :: TerminateReason -> State -> Effect Unit
 terminate Normal state = do
   logInfo "EgestInstance terminating" {reason: Normal}
@@ -459,7 +541,7 @@ processGunMessage :: State -> WsGun.GunMsg -> Effect (CastResult State)
 processGunMessage state@{relayWebSocket: Nothing} gunMsg =
   pure $ CastNoReply state
 
-processGunMessage state@{relayWebSocket: Just socket, egestKey, lastOnFI} gunMsg =
+processGunMessage state@{relayWebSocket: Just socket, egestKey, lastOnFI, rtmpWorkflowHandle} gunMsg =
   if WsGun.isSocketForMessage gunMsg socket then do
     processResponse <- WsGun.processMessage socket gunMsg
     case processResponse of
@@ -484,7 +566,7 @@ processGunMessage state@{relayWebSocket: Just socket, egestKey, lastOnFI} gunMsg
       Right (WsGun.Frame (SlotConfig slotConfiguration))
         | Nothing <- state.slotConfiguration -> do
           logInfo "Received slot configuration" {slotConfiguration}
-          setSlotConfigurationFFI egestKey slotConfiguration
+          setSlotConfigurationFFI egestKey rtmpWorkflowHandle slotConfiguration
           pure $ CastNoReply state{slotConfiguration = Just slotConfiguration}
 
         | otherwise ->
@@ -524,6 +606,12 @@ processGunMessage state@{relayWebSocket: Just socket, egestKey, lastOnFI} gunMsg
           pure $ CastNoReply state{dataObject = Just dataObject}
         else
           pure $ CastNoReply state
+
+      Right (WsGun.Frame (ClientCount count)) -> do
+        let
+          state2 = state{totalClientCount = count}
+        Bus.raise (bus egestKey) (EgestUpdateMaxMessagesPerSecond (maxMessagesPerSecond state2))
+        pure $ CastNoReply state2
 
   else
     pure $ CastNoReply state
@@ -569,19 +657,34 @@ removeClient sessionId state@{clientCount, clientStats} = do
               , clientStats = Map.delete sessionId clientStats}
 
 egestEqLines :: State -> Effect (Tuple Milliseconds (List Audit.EgestEqLine))
+egestEqLines state@{ lastEgestAuditTime: startMs
+                   , slotConfiguration: Nothing} =
+  -- No slot configuration;  can't have clients so nothing to log
+  pure $ Tuple startMs nil
+
 egestEqLines state@{ egestKey: egestKey@(EgestKey slotId _slotRole)
                    , thisServer: (Server {address: thisServerAddr})
                    , clientStats
+                   , eqWebRTCPort
+                   , eqRtmpPort
                    , lastEgestAuditTime: startMs
-                   , slotConfiguration} = do
+                   , slotConfiguration: Just slotConfiguration} = do
   endMs <- systemTimeMs
   {sessionInfo} <- getStatsFFI egestKey
-  pure $ Tuple endMs ((egestEqLine slotId slotConfiguration (unwrap thisServerAddr) startMs endMs clientStats) <$> toUnfoldable sessionInfo)
+  pure $ Tuple endMs ((egestEqLine slotId slotConfiguration (unwrap thisServerAddr) startMs endMs clientStats eqWebRTCPort eqRtmpPort) <$> toUnfoldable sessionInfo)
 
-egestEqLine :: SlotId -> Maybe SlotConfiguration -> String -> Milliseconds -> Milliseconds -> (Map String EgestSessionStats) -> Tuple String WebRTCSessionManagerStats -> Audit.EgestEqLine
-egestEqLine slotId slotConfiguration thisServerAddr startMs endMs clientStatsMap (Tuple sessionId {channels}) =
+egestEqLine :: SlotId -> SlotConfiguration -> String -> Milliseconds -> Milliseconds -> (Map String EgestSessionStats) -> Int -> Int -> Tuple String WebRTCSessionManagerStats -> Audit.EgestEqLine
+egestEqLine slotId slotConfiguration thisServerAddr startMs endMs clientStatsMap webRTCPort rtmpPort (Tuple sessionId {channels}) =
   let
-    clientStats = fromMaybe (emptySessionStats sessionId) $ lookup sessionId clientStatsMap
+    statsToWrittenBytes (EgestRtmpSessionStats {octetsSent}) = octetsSent
+    statsToWrittenBytes (EgestRtcSessionStats { audioOctetsSent, videoOctetsSent }) = audioOctetsSent + videoOctetsSent
+
+    bytesWritten = fromMaybe 0 $ statsToWrittenBytes <$> lookup sessionId clientStatsMap
+
+    connectionType = maybe WebRTCEgest t $ lookup sessionId clientStatsMap
+      where t (EgestRtmpSessionStats _) = RtmpEgest
+            t (EgestRtcSessionStats _) = WebRTCEgest
+
     receiverAccumulate acc {lostTotal} = acc + lostTotal
 
     channelInitial = {writtenAcc: 0, readAcc: 0, lostAcc: 0, remoteAddress: ""}
@@ -595,19 +698,25 @@ egestEqLine slotId slotConfiguration thisServerAddr startMs endMs clientStatsMap
 
     {writtenAcc, readAcc, lostAcc, remoteAddress} = foldl channelAccumulate channelInitial (values channels)
 
-    shortName = fromMaybe (wrap "n/a") (_.rtmpShortName <$> slotConfiguration)
+    shortName = slotConfiguration.rtmpShortName
+    slotRole = slotConfiguration.slotRole
+    slotName = slotConfiguration.slotName
   in
 
   { egestIp: thisServerAddr
-  , egestPort: -1
+  , egestPort: case connectionType of
+                  WebRTCEgest -> webRTCPort
+                  RtmpEgest -> rtmpPort
   , subscriberIp: remoteAddress
   , username: sessionId
   , rtmpShortName: shortName
   , slotId
-  , connectionType: WebRTC
+  , slotRole
+  , slotName
+  , connectionType
   , startMs
   , endMs
-  , bytesWritten: clientStats.audioOctetsSent + clientStats.videoOctetsSent
+  , bytesWritten
   , bytesRead: readAcc
   , lostPackets: lostAcc
   }
@@ -635,15 +744,24 @@ initStreamRelay state@{relayCreationRetry, egestKey: egestKey@(EgestKey slotId s
 
   where
     tryConfigureAndRegister relayServer = do
-      wsUrl <- System.makeWsUrl relayServer $ System.RelayRegisteredEgestWs slotId slotRole (extractAddress thisServer) state.receivePortNumber
+      wsUrl <-  System.makeWsUrl relayServer $ System.RelayRegisteredEgestWs slotId slotRole (extractAddress thisServer) state.receivePortNumber state.rtmpReceivePortNumber
       maybeWebSocket <- hush <$> WsGun.openWebSocket (serverName egestKey) Gun wsUrl
       case maybeWebSocket of
         Just webSocket -> do
           CachedInstanceState.recordInstanceData stateServerName webSocket
-          pure state{ relayWebSocket = Just webSocket}
-        Nothing -> do
+          pure state{ relayWebSocket = Just webSocket
+                    }
+        _ -> do
           void $ Timer.sendAfter (serverName egestKey) (round $ Long.toNumber $ unwrap relayCreationRetry) InitStreamRelays
           pure state
+
+maxMessagesPerSecond :: State -> Number
+maxMessagesPerSecond { config: { maxMessagesPerSecondPerClient
+                               , maxMessagesPerSecondPerSlot
+                               }
+                     , totalClientCount
+                     } =
+  min maxMessagesPerSecondPerClient $ (maxMessagesPerSecondPerSlot / (toNumber (max 1 totalClientCount)))
 
 --------------------------------------------------------------------------------
 -- Do we have a relay in this pop - yes -> use it

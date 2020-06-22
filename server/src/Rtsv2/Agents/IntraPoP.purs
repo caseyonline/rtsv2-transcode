@@ -110,11 +110,6 @@ import Shared.Utils (distinctRandomNumbers)
 foreign import to_wire_message :: IntraMessage -> Tuple2 String Binary
 foreign import from_wire_message :: String -> Binary -> Maybe IntraMessage
 
-foreign import to_binary :: IntraMessage -> Binary
-foreign import from_binary :: Binary -> IntraMessage
-
-
-
 type TestHelperPayload =
   { dropAgentMessages :: Boolean
   }
@@ -194,38 +189,8 @@ data IntraMessage
   | IMSlotLookup ServerAddress RtmpShortName SlotName SlotLookupResult
 
 instance serfWireMessageIM :: SerfWireMessage IntraMessage where
-  toWireMessage payload@(IMAggregatorState _ _ _ _) =
-    to_wire_message payload
-
-  toWireMessage payload@(IMEgestState _ _ _) =
-    to_wire_message payload
-
-  toWireMessage payload@(IMRelayState Available agentKey serverAddress) =
-    tuple2 "relayAvailable" $ to_binary payload
-  toWireMessage payload@(IMRelayState Stopped agentKey serverAddress) =
-    tuple2 "relayStopped" $ to_binary payload
-
-  toWireMessage payload@(IMServerLoad serverAddress currentLoad acceptingRequests) =
-    tuple2 "loadUpdate" $ to_binary payload
-
-  toWireMessage payload@(IMSlotLookup serverAddress rtmpShortName slotName slotLookupResult) =
-    tuple2 "slotLookup" $ to_binary payload
-  toWireMessage payload@(IMTransPoPLeader serverAddress) =
-    tuple2 "transPoPLeader" $ to_binary payload
-  toWireMessage payload@(IMVMLiveness serverAddress ref) =
-    tuple2 "vmLiveness" $ to_binary payload
-
-
-  fromWireMessage "a" payload =
-    from_wire_message "a" payload
-  fromWireMessage "b" payload =
-    from_wire_message "b" payload
-  fromWireMessage "c" payload =
-    from_wire_message "c" payload
-  fromWireMessage "d" payload =
-    from_wire_message "d" payload
-  fromWireMessage name payload =
-    Just $ from_binary payload
+  toWireMessage = to_wire_message
+  fromWireMessage = from_wire_message
 
 
 data Msg serfPayload

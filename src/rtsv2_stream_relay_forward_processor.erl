@@ -133,14 +133,21 @@ ioctl({set_destinations, UnresolvedDestinationList},
      ) ->
 
   {ResolvedDestinationList, ResolveFailedList} =
-    lists:foldl(fun(#{ server := Host, port := Port }, { ResolvedDestinationListIn, ResolveFailedListIn }) ->
+    lists:foldl(fun(Dest = #{ server := Host, port := Port }, { ResolvedDestinationListIn, ResolveFailedListIn }) ->
                   case inet:gethostbyname(?to_list(Host)) of
                     {ok, #hostent{ h_addr_list = [ Addr | _ ] }} ->
                       ResolvedDestination = {Addr, Port},
-
-                      { [ ResolvedDestination | ResolvedDestinationListIn ]
-                      , ResolveFailedListIn
-                      };
+                      case maps:is_key(secondaryPort, Dest) of
+                        true -> 
+                          ResolvedDestination2 = {Addr, maps:get(secondaryPort, Dest)},
+                          { [ ResolvedDestination, ResolvedDestination2 | ResolvedDestinationListIn ]
+                          , ResolveFailedListIn
+                          };
+                        false ->
+                          { [ ResolvedDestination | ResolvedDestinationListIn ]
+                          , ResolveFailedListIn
+                          }
+                      end;
 
                     Other ->
                       Failure = { { Host, Port}, Other },

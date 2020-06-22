@@ -190,7 +190,7 @@ process_input(Input = #frame{source_metadata = #source_metadata{source_id = Id,
       State2 = case FrameMetadata of
                  #video_frame_metadata{is_idr_frame = true} ->
                    StreamState2 = StreamState#active_stream_state{last_iframe_utc = CaptureUs,
-                                                                  last_iframe_dts = Dts + Delta},
+                                                                  last_iframe_dts = Dts},
 
                    State#?state{streams = maps:put(Key, StreamState2, Streams)};
                  _ ->

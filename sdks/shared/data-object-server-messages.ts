@@ -15,6 +15,9 @@ export interface DataObjectReceiveMessage {
 /** Receive a message send failure from the DataObject subsystem. */
 export interface DataObjectSendMessageFailure {
   readonly type: "dataobject.message-failure";
+
+  /** The failure reason **/
+  readonly reason: string
 }
 
 /** Receive a response to a previous update. */
@@ -22,7 +25,7 @@ export interface DataObjectUpdateResponseMessage {
   readonly type: "dataobject.update-response";
 
   /** An opaque reference as sent on the request. */
-  readonly senderRef: string;
+  readonly requestResponseCorrelationId: string;
 
   /** The response code. */
   readonly response: DataObjectUpdateResponse;

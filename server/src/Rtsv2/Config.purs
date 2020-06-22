@@ -36,6 +36,7 @@ module Rtsv2.Config
   , nodeManagerConfig
   , popDefinitionConfig
   , rtmpIngestConfig
+  , rtmpEgestConfig
   , streamRelayConfig
   , transPoPAgentConfig
   , webConfig
@@ -146,6 +147,10 @@ type EgestAgentConfig
     , forceDrainTimeoutMs :: Int
     , numForceDrainPhases :: Int
     , aggregatorExitLingerTimeMs :: Int
+    , clientCountReportingTimeMs :: Int
+    , maxMessageSize :: Int
+    , maxMessagesPerSecondPerClient :: Number
+    , maxMessagesPerSecondPerSlot :: Number
     }
 
 type IntraPoPAgentConfig
@@ -178,6 +183,7 @@ type StreamRelayConfig
     , reApplyPlanTimeMs :: Int
     , forceDrainTimeoutMs :: Int
     , aggregatorExitLingerTimeMs :: Int
+    , clientCountReportingTimeMs :: Int
     }
 
 type IntraPoPAgentApi
@@ -203,6 +209,18 @@ type RtmpIngestConfig
     , canaryKeyFile :: String
     , nbAcceptors :: Int
     , cryptoContextExpiryMs :: Int
+    }
+
+type RtmpEgestConfig
+  = { port :: Int
+    , canaryPort :: Int
+    , tlsPort :: Int
+    , canaryTlsPort :: Int
+    , certFile :: String
+    , keyFile :: String
+    , canaryCertFile :: String
+    , canaryKeyFile :: String
+    , nbAcceptors :: Int
     }
 
 type LlnwApiConfig
@@ -316,6 +334,11 @@ egestAgentConfig = do
 rtmpIngestConfig :: Effect RtmpIngestConfig
 rtmpIngestConfig = do
   getMandatoryRecord "rtmpIngestConfig"
+
+rtmpEgestConfig :: Effect RtmpEgestConfig
+rtmpEgestConfig = do
+  getMandatoryRecord "rtmpEgestConfig"
+
 
 llnwApiConfig :: Effect LlnwApiConfig
 llnwApiConfig = do

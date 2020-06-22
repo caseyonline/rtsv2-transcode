@@ -104,6 +104,9 @@ registeredRelayWs slotId slotRole relayAddress relayPort =
     handle state@{aggregatorKey} (RelayUpstreamDataObjectUpdateMessage msg) = do
       IngestAggregatorInstance.dataObjectUpdate aggregatorKey msg
       pure $ WebSocketNoReply state
+    handle state@{aggregatorKey, relayServer} (RelayAggregateClientCount {count, time}) = do
+      IngestAggregatorInstance.updateRelayAggregateClientCount aggregatorKey relayServer count time
+      pure $ WebSocketNoReply state
 
     info state WsStop =
       pure $ WebSocketStop state

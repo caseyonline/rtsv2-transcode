@@ -2,6 +2,7 @@ module Shared.Rtsv2.Types
        (
 
          DeliverTo(..)
+       , DeliverTo2(..)
        , AcceptingRequests(..)
        , CanaryState(..)
        , CanaryStateChangeFailure(..)
@@ -152,6 +153,12 @@ newtype EgestServer = Egest (ServerRec ())
 type DeliverTo serverType
   = { server :: serverType
     , port :: Int
+    }
+
+type DeliverTo2 serverType
+  = { server :: serverType
+    , port :: Int
+    , secondaryPort :: Int
     }
 
 newtype ServerLoad = ServerLoad (ServerRec (load :: CurrentLoad, acceptingRequests :: AcceptingRequests))

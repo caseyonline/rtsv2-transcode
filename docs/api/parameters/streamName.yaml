@@ -1,6 +1,6 @@
 name: streamName
 in: query
-description: The stream name
+description: Stream name
 required: true
 schema:
   type: string

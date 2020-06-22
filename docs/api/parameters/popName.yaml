@@ -1,6 +1,6 @@
 name: popName
 in: query
-description: popName description
+description: Name of a PoP
 required: true
 schema:
   type: string

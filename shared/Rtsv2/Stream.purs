@@ -1,9 +1,9 @@
 module Shared.Rtsv2.Stream
-  ( RtmpShortName(..)
+  ( RtmpShortName
   , RtmpStreamName(..)
   , SlotId(..)
   , SlotIdAndRole(..)
-  , SlotName(..)
+  , SlotName
   , SlotRole(..)
   , ProfileName(..)
   , SlotIdAndProfileName(..)
@@ -26,7 +26,12 @@ module Shared.Rtsv2.Stream
 
   , toSlotId
   , toProfileName
-  ) where
+
+  , rtmpShortNameToString
+  , stringToRtmpShortName
+  , slotNameToString
+  , stringToSlotName
+) where
 
 import Prelude
 
@@ -41,10 +46,10 @@ import Data.Generic.Rep.Show (genericShow)
 import Data.List.NonEmpty (singleton)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype, unwrap)
-import Data.String (Pattern(..), split)
-import Foreign (ForeignError(..), readString, unsafeToForeign)
-import Simple.JSON (class ReadForeign, class WriteForeign, readImpl, writeImpl)
+import Data.String (Pattern(..), length, split)
+import Foreign (ForeignError(..), fail, readString, unsafeToForeign)
 import Shared.UUID (UUID, fromString)
+import Simple.JSON (class ReadForeign, class WriteForeign, readImpl, writeImpl)
 
 newtype SlotId = SlotId UUID
 
@@ -115,12 +120,32 @@ toProfileName (SlotIdAndProfileName _ v) = v
 ------------------------------------------------------------------------------
 -- RtmpShortName
 derive instance genericRtmpShortName :: Generic RtmpShortName _
-derive instance newtypeRtmpShortName :: Newtype RtmpShortName _
-derive newtype instance readForeignRtmpShortName :: ReadForeign RtmpShortName
-derive newtype instance writeForeignRtmpShortName :: WriteForeign RtmpShortName
+
+instance writeForeignRtmpShortName :: WriteForeign RtmpShortName where
+  writeImpl (RtmpShortName s) = writeImpl s
+instance readForeignRtmpShortName :: ReadForeign RtmpShortName where
+  readImpl = checkLength <=< readImpl
+    where
+      checkLength s =
+        case stringToRtmpShortName s of
+          Nothing -> fail $ ForeignError "RtmpShortName too long"
+          Just sn -> pure sn
+
 instance eqRtmpShortName :: Eq RtmpShortName where eq = genericEq
 instance compareRtmpShortName :: Ord RtmpShortName where compare = genericCompare
 instance showRtmpShortName :: Show RtmpShortName where show = genericShow
+
+
+rtmpShortNameToString :: RtmpShortName -> String
+rtmpShortNameToString (RtmpShortName s) = s
+
+stringToRtmpShortName :: String -> Maybe RtmpShortName
+stringToRtmpShortName s =
+  let l = length s
+  in
+   if l <= 256 && l > 0
+   then Just $ RtmpShortName s
+   else Nothing
 
 ------------------------------------------------------------------------------
 -- RtmpStreamName
@@ -145,11 +170,30 @@ instance showSlotId :: Show SlotId where show = genericShow
 ------------------------------------------------------------------------------
 -- SlotName
 derive instance genericSlotName :: Generic SlotName _
-derive instance newtypeSlotName :: Newtype SlotName _
-derive newtype instance readForeignSlotName :: ReadForeign SlotName
-derive newtype instance writeForeignSlotName :: WriteForeign SlotName
+
+instance writeForeignSlotName :: WriteForeign SlotName where
+  writeImpl (SlotName s) = writeImpl s
+instance readForeignSlotName :: ReadForeign SlotName where
+  readImpl = checkLength <=< readImpl
+    where
+      checkLength s =
+        case stringToSlotName s of
+          Nothing -> fail $ ForeignError "SlotName too long"
+          Just sn -> pure sn
 instance eqSlotName :: Eq SlotName where eq = genericEq
 instance showSlotName :: Show SlotName where show = genericShow
+
+slotNameToString :: SlotName -> String
+slotNameToString (SlotName s) = s
+
+stringToSlotName :: String -> Maybe SlotName
+stringToSlotName s =
+  let l = length s
+  in
+   if l <= 256 && l > 0
+   then Just $ SlotName s
+   else Nothing
+
 
 ------------------------------------------------------------------------------
 -- SlotIdAndRole
