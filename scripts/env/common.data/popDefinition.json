@@ -126,7 +126,7 @@
                  , "receiveQueueCount": 4
                  , "transmitQueueCount": 4
                  , "capabilityTags": []
-                 , "agents": ["TransPoP", "Ingest", "IngestAggregator", "StreamRelay", "Egest"]
+                 , "agents": ["TransPoP", "Ingest", "IngestAggregator", "StreamRelay", "Egest", "TestNode"]
                  }
                ]
     }

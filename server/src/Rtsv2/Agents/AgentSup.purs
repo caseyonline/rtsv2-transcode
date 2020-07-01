@@ -14,6 +14,7 @@ import Rtsv2.Agents.IngestAggregatorSup as IngestAggregatorSup
 import Rtsv2.Agents.IngestSup as IngestSup
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.StreamRelaySup as StreamRelaySup
+import Rtsv2.Agents.TestNodeSup as TestNodeSup
 import Rtsv2.Agents.TransPoP as TransPoP
 import Rtsv2.Config as Config
 import Rtsv2.LlnwApi as LlnwApi
@@ -63,6 +64,13 @@ init {canaryState, acceptingRequestsFun} = do
         # Sup.childId "streamRelayAgent"
         # Sup.childStart StreamRelaySup.startLink unit
         # pure
+
+    makeSpec TestNode =
+       Sup.buildChild
+         # Sup.childType Supervisor
+         # Sup.childId "testNodeAgent"
+         # Sup.childStart TestNodeSup.startLink unit
+         # pure
 
     makeSpec IntraPoP = do
       intraPoPAgentConfig <- Config.intraPoPAgentConfig

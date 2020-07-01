@@ -29,6 +29,8 @@ data Endpoint
   | ClientWebRTCIngestControlE RtmpShortName RtmpStreamName
   | ClientWebRTCIngestAssetsE RtmpShortName RtmpStreamName (Array String)
 
+  | TestServerPing
+
   | FaviconE
 
 derive instance genericEndpoint :: Generic Endpoint _
@@ -51,6 +53,8 @@ endpoint = root $ sum
   , "ClientWebRTCIngestControlE"                       : "public" / "ingest" / shortName segment / streamName segment / "session"
   , "ClientWebRTCIngestAssetsE"                        : "public" / "ingest" / shortName segment / streamName segment / rest
   , "FaviconE"                                         : "favicon.ico" / noArgs
+
+  , "TestServerPing"                                   : "test" / "ping" / noArgs
 }
 
 makePath :: Endpoint -> String

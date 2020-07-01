@@ -45,6 +45,7 @@ import Shared.Rtsv2.Router.Endpoint.System as System
 import Shared.Rtsv2.Stream (AggregatorKey(..), EgestKey(..), SlotId, SlotRole)
 import Shared.Rtsv2.Types (CanaryState, FailureReason(..), OnBehalfOf, Server, ServerLoad, extractPoP, serverLoadToServer)
 import SpudGun as SpudGun
+import Effect.Console (log, logShow)
 
 ------------------------------------------------------------------------------
 -- API

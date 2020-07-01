@@ -25,4 +25,4 @@ ping loadConfig canary =
     getUrls =
       do
         config <- Config.llnwApiConfig
-        pure $ Just "some string"
+        pure $ Just "some blah blah string"

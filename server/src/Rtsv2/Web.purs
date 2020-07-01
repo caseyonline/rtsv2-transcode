@@ -43,6 +43,7 @@ import Rtsv2.Handler.Relay as RelayHandler
 import Rtsv2.Handler.RunState as RunStateHandler
 import Rtsv2.Handler.ServiceUnavailable as ServiceUnavailable
 import Rtsv2.Handler.StreamDiscovery as StreamDiscoveryHandler
+import Rtsv2.Handler.TestServer as TestServerHandler
 import Rtsv2.Handler.TransPoP as TransPoPHandler
 import Rtsv2.Names as Names
 import Rtsv2.PoPDefinition as PoPDefinition
@@ -109,6 +110,8 @@ publicRoutes Live webConfig loadConfig featureFlags@{mediaGateway} llnwApiConfig
              , "ClientWebRTCIngestAssetsE"                   : \(_ :: RtmpShortName) (_ :: RtmpStreamName) -> PrivDir "rtsv2" "www/assets"
              , "ClientWebRTCIngestControlE"                  : CowboyRoutePlaceholder
              , "FaviconE"                                    : PrivFile "rtsv2" "www/assets/images/favicon.ico"
+
+             , "TestServerPing"                              : TestServerHandler.ping loadConfig Live
              }
        # Stetson.cowboyRoutes publicCowboyRoutes
        # Stetson.port webConfig.publicPort
@@ -146,6 +149,7 @@ publicRoutes Canary webConfig loadConfig featureFlags@{mediaGateway} llnwApiConf
              , "ClientWebRTCIngestAssetsE"                   : \(_ :: RtmpShortName) (_ :: RtmpStreamName) (_ :: Array String) -> unavailable
              , "ClientWebRTCIngestControlE"                  : \(_ :: RtmpShortName) (_ :: RtmpStreamName) -> unavailable
              , "FaviconE"                                    : unavailable
+             , "TestServerPing"                              : unavailable
              }
        # Stetson.port webConfig.publicPort
        # (uncurry4 Stetson.bindTo) (ipToTuple publicBindIp)

@@ -16,6 +16,7 @@ module Rtsv2.Names
        , ingestInstanceName
        , ingestRtmpServerName
        , ingestRtmpCryptoName
+       , testNodeServerName
 
        , ingestStatsName
        , egestStatsName
@@ -28,6 +29,8 @@ module Rtsv2.Names
        , nodeManagerServerName
        , popDefinitionName
        , egestRtmpServerName
+
+       , testNodeSupName
 
        , streamRelaySupName
        , streamRelayInstanceStateName
@@ -98,6 +101,9 @@ ingestInstanceName = gprocName2 Ingest
 ingestRtmpServerName :: forall a b. ServerName a b
 ingestRtmpServerName = withSuffix "RtmpServer" Ingest
 
+testNodeServerName :: forall a b. ServerName a b
+testNodeServerName = withSuffix "Node" TestNode
+
 ingestRtmpCryptoName :: forall a b. ServerName a b
 ingestRtmpCryptoName = withSuffix "RtmpCrypto" Ingest
 
@@ -133,6 +139,9 @@ nodeManagerServerName = Local (atom "NodeManager")
 
 popDefinitionName :: forall a b. ServerName a b
 popDefinitionName = Local (atom "PoPDefinition")
+
+testNodeSupName :: SupervisorName
+testNodeSupName = sup TestNode
 
 streamRelaySupName :: SupervisorName
 streamRelaySupName = sup StreamRelay
