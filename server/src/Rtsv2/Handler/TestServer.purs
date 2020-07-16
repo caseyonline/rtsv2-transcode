@@ -25,4 +25,5 @@ ping loadConfig canary =
     getUrls =
       do
         config <- Config.llnwApiConfig
+        {} <- TestNodeServer.transcode "Movie" "123k"
         pure $ Just "some blah blah string"

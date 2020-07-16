@@ -1,6 +1,7 @@
 module Rtsv2.Agents.TestNodeServer
        (
          startLink
+       , transcode
        )
        where
 
@@ -21,6 +22,7 @@ import Media.Rtmp as Rtmp
 import Media.SourceDetails as SourceDetails
 import Pinto (ServerName)
 import Pinto as Pinto
+import Pinto.Gen (CallResult(..), CastResult(..))
 import Pinto.Gen as Gen
 import Rtsv2.Agents.IngestInstance (getPublishCredentials, getStreamAuthType, getStreamDetails)
 import Rtsv2.Agents.IngestInstance as IngestInstance
@@ -45,6 +47,7 @@ import Effect.Console (log, logShow)
 import Stetson (StetsonHandler)
 import Shared.Common (Url)
 import StetsonHelper (jsonResponse)
+import Effect.Console (log)
 
 ------------------------------------------------------------------------------
 -- API
@@ -53,16 +56,29 @@ import StetsonHelper (jsonResponse)
 serverName :: ServerName State Unit
 serverName = Names.testNodeServerName
 
-
 startLink :: forall a. a -> Effect Pinto.StartLinkResult
 startLink args = Gen.startLink serverName (init args) Gen.defaultHandleInfo
 
+
+transcode :: VideoTitle -> VideoBitrate -> Effect State
+transcode videoTitle videoBitrate =
+  Gen.doCall serverName \state@{} -> do
+      logInfo "----------------- Transcode ---------" {text : videoTitle}
+      pure $ CallReply {} state
+
+
 type MyRecord = {value :: Int,
-                somethingelse :: String}
+                text :: String}
+
+type VideoTitle = String
+type VideoBitrate = String
 
 type State =
   {
   }
+
+data Msg
+   = TestInfo
 
 ------------------------------------------------------------------------------
 -- callbacks
@@ -72,6 +88,13 @@ init :: forall a. a -> Effect State
 init _ = do
   logInfo "----------------- TestNodeServer: init running ---------" {value : 6900}
   pure $ {}
+
+handleInfo :: Msg -> State -> Effect (CastResult State)
+handleInfo msg state = do
+  case msg of
+    TestInfo -> do
+      logInfo "----------------- blah blah blah ------------------------------" {value : 8600}
+      pure $ CastNoReply state
 
 ------------------------------------------------------------------------------
 -- helper

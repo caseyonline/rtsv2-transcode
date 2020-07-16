@@ -15,6 +15,7 @@ import Rtsv2.Agents.IngestSup as IngestSup
 import Rtsv2.Agents.IntraPoP as IntraPoP
 import Rtsv2.Agents.StreamRelaySup as StreamRelaySup
 import Rtsv2.Agents.TestNodeSup as TestNodeSup
+import Rtsv2.Agents.TestNodeServer as TestNodeServer
 import Rtsv2.Agents.TransPoP as TransPoP
 import Rtsv2.Config as Config
 import Rtsv2.LlnwApi as LlnwApi
@@ -67,9 +68,9 @@ init {canaryState, acceptingRequestsFun} = do
 
     makeSpec TestNode =
        Sup.buildChild
-         # Sup.childType Supervisor
+         # Sup.childType Worker
          # Sup.childId "testNodeAgent"
-         # Sup.childStart TestNodeSup.startLink unit
+         # Sup.childStart TestNodeServer.startLink unit
          # pure
 
     makeSpec IntraPoP = do

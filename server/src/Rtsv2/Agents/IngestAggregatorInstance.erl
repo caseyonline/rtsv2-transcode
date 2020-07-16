@@ -156,6 +156,30 @@ startWorkflow(SlotConfiguration = #{ slotId := SlotId
                              ]
                   },
 
+  VideoConfig = #video_transcode_config{
+                  input = #frame_spec{
+                            profile = #video_profile{}
+                          },
+                  outputs = [
+                             #named_output{
+                                profile_name = h264,
+                                frame_spec = #frame_spec{
+                                                profile = #video_profile{
+                                                            codec = h264,
+                                                            interlaced = true,
+                                                            width = 1920,
+                                                            height = 1080,
+                                                            pixel_format = yuv420p,
+                                                            frame_rate = {25, 1}
+                                                          },
+                                                encoder_parameters = #video_encoder_parameters{
+                                                  rate_control = #video_rc_variable_bitrate{bitrate = 1000}
+                                                }
+                                                }
+                                }
+                            ]
+                  },
+
   Workflow = #workflow{
                 name = {ingest_aggregator_instance, SlotId},
                 display_name = <<"Ingest Aggregator">>,
@@ -208,7 +232,25 @@ startWorkflow(SlotConfiguration = #{ slotId := SlotId
 
                                               },
 
-                              #processor{name = gop_numberer,
+
+                              #compound_processor{
+                                            name = video_transcode,
+                                            display_name = <<"Video Transcode">>,
+                                            spec = #processor_spec{consumes = [?video_frames]},
+                                            subscribes_to = {aggregate, ?video_frames},
+                                            processors = [
+                                                #processor{name = binary_to_atom(ProfileName, utf8),
+                                                display_name = <<ProfileName/binary, " (receiving from ", StreamName/binary, ")">>,
+                                                subscribes_to = {outside_world, ?video_frames_with_source_id(ProfileName)},
+                                                module = avp_video_transcode,
+                                                config = VideoConfig
+                                                }
+                                                || #{ streamName := StreamName
+                                                   , profileName := ProfileName} <- Profiles
+                                            ]
+                                            },
+
+                  #processor{name = gop_numberer,
                                          display_name = <<"GoP Numberer">>,
                                          subscribes_to = [set_video_profile_name, audio_transcode, {aggregate, ?program_details_frames}],
                                          module = gop_numberer
