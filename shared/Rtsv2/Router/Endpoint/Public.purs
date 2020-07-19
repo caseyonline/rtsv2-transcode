@@ -16,6 +16,7 @@ import Shared.Rtsv2.Router.Endpoint.Utils as Utils
 import Shared.Rtsv2.Stream (RtmpShortName, RtmpStreamName, SlotId, SlotName, SlotRole)
 import Shared.Rtsv2.Types (ServerAddress(..), extractAddress)
 
+--type bitRate = String
 
 data Endpoint
   =
@@ -30,6 +31,7 @@ data Endpoint
   | ClientWebRTCIngestAssetsE RtmpShortName RtmpStreamName (Array String)
 
   | TestServerPing
+  | TranscodeServerT
 
   | FaviconE
 
@@ -55,6 +57,7 @@ endpoint = root $ sum
   , "FaviconE"                                         : "favicon.ico" / noArgs
 
   , "TestServerPing"                                   : "test" / "ping" / noArgs
+  , "TranscodeServerT"                                 : "transcode" / noArgs
 }
 
 makePath :: Endpoint -> String

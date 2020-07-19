@@ -110,7 +110,7 @@
                  , "receiveQueueCount": 4
                  , "transmitQueueCount": 4
                  , "capabilityTags": []
-                 , "agents": ["TransPoP", "Ingest", "IngestAggregator", "StreamRelay", "Egest"]
+                 , "agents": ["TransPoP", "Ingest", "IngestAggregator", "StreamRelay", "Egest", "TranscodeNode"]
                  },
                  { "address": "172.16.171.4"
                  , "maxCpuCapacity": 1000

@@ -17,6 +17,7 @@ module Rtsv2.Names
        , ingestRtmpServerName
        , ingestRtmpCryptoName
        , testNodeServerName
+       , transcodeNodeServerName
 
        , ingestStatsName
        , egestStatsName
@@ -103,6 +104,9 @@ ingestRtmpServerName = withSuffix "RtmpServer" Ingest
 
 testNodeServerName :: forall a b. ServerName a b
 testNodeServerName = withSuffix "Node" TestNode
+
+transcodeNodeServerName :: forall a b. ServerName a b
+transcodeNodeServerName = withSuffix "Node" TranscodeNode
 
 ingestRtmpCryptoName :: forall a b. ServerName a b
 ingestRtmpCryptoName = withSuffix "RtmpCrypto" Ingest

@@ -27,6 +27,7 @@ data Agent = Egest
            | IngestAggregator
            | StreamRelay
            | TestNode
+           | TranscodeNode
            | IntraPoP
            | TransPoP
 
@@ -64,6 +65,7 @@ instance ordAgent :: Ord Agent where
       toInt StreamRelay = 5
       toInt Egest = 6
       toInt TestNode = 100
+      toInt TranscodeNode = 101
 
 strToAgent :: String -> Agent
 strToAgent s =
@@ -75,6 +77,7 @@ strToMaybeAgent "Ingest" = pure Ingest
 strToMaybeAgent "IngestAggregator" = pure IngestAggregator
 strToMaybeAgent "StreamRelay" = pure StreamRelay
 strToMaybeAgent "TestNode" = pure TestNode
+strToMaybeAgent "TranscodeNode" = pure TranscodeNode
 strToMaybeAgent "IntraPoP" = pure IntraPoP
 strToMaybeAgent "TransPoP" = pure TransPoP
 strToMaybeAgent unknown = Nothing

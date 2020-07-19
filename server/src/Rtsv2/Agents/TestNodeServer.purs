@@ -49,6 +49,9 @@ import Shared.Common (Url)
 import StetsonHelper (jsonResponse)
 import Effect.Console (log)
 
+foreign import test :: VideoTitle -> Effect Unit
+foreign import execute :: VideoTitle -> VideoBitrate -> Effect Unit
+
 ------------------------------------------------------------------------------
 -- API
 ------------------------------------------------------------------------------
@@ -63,7 +66,7 @@ startLink args = Gen.startLink serverName (init args) Gen.defaultHandleInfo
 transcode :: VideoTitle -> VideoBitrate -> Effect State
 transcode videoTitle videoBitrate =
   Gen.doCall serverName \state@{} -> do
-      logInfo "----------------- Transcode ---------" {text : videoTitle}
+      execute videoTitle videoBitrate
       pure $ CallReply {} state
 
 
@@ -93,7 +96,6 @@ handleInfo :: Msg -> State -> Effect (CastResult State)
 handleInfo msg state = do
   case msg of
     TestInfo -> do
-      logInfo "----------------- blah blah blah ------------------------------" {value : 8600}
       pure $ CastNoReply state
 
 ------------------------------------------------------------------------------
