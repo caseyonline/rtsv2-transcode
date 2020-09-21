@@ -4,15 +4,15 @@
 execute(Title, Bitrate) ->
   fun() ->
     Cmd = "ffmpeg -i " ++ erlang:binary_to_list(Title) ++ ".mp4 -b:v " ++ erlang:binary_to_list(Bitrate) ++ " " ++ erlang:binary_to_list(Title) ++ "-" ++ erlang:binary_to_list(Bitrate) ++ ".mp4",
-    Pid = spawn(fun () -> transcode(Cmd) end),
+    Pid = spawn(fun () -> transcode(Cmd,Bitrate) end),
     unit
   end.
 
-transcode(Cmd) ->
+transcode(Cmd,Bitrate) ->
   Opt = [stream, exit_status, use_stdio, stderr_to_stdout, in, eof],
   P = open_port({spawn, Cmd},Opt),
   {R, D} = do_read(P,[]),
-  io:format("--- Transcode Complete ---\n").
+  io:format("--- Transcode Complete --- ~pk\n",[Bitrate]).
 
 do_read(Port,D) ->
   receive

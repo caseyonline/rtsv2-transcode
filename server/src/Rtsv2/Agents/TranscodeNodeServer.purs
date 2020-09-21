@@ -66,6 +66,7 @@ startLink args = Gen.startLink serverName (init args) Gen.defaultHandleInfo
 transcode :: VideoTitle -> VideoBitrate -> Effect State
 transcode videoTitle videoBitrate =
   Gen.doCall serverName \state@{} -> do
+      logInfo "---- Transcoding ---" {value : 0}
       execute videoTitle videoBitrate
       pure $ CallReply {} state
 
@@ -89,7 +90,7 @@ data Msg
 
 init :: forall a. a -> Effect State
 init _ = do
-  logInfo "---------------------------- TranscodeNodeServer: init running --------------------------" {value : 6900}
+  logInfo "--- TranscodeNodeServer: init running ---" {value : 6900}
   pure $ {}
 
 handleInfo :: Msg -> State -> Effect (CastResult State)

@@ -1,4 +1,4 @@
-module Rtsv2.Env
+  module Rtsv2.Env
   ( hostname
   , publicListenIp
   , supportListenIp
